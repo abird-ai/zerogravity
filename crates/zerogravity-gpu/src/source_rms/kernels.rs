@@ -5,14 +5,9 @@ use crate::source_float::{round_source, widen_source};
 use cubecl::prelude::*;
 
 #[cube(launch_unchecked)]
-pub(crate) fn squares(
-    input: &[f32],
-    output: &mut [f32],
-    status: &[Atomic<u32>],
-    #[comptime] count: usize,
-) {
+pub(crate) fn squares(input: &[f32], output: &mut [f32], status: &[Atomic<u32>]) {
     let i = ABSOLUTE_POS;
-    if i < count {
+    if i < output.len() {
         let x = input[i];
         let y = mul(x, x);
         output[i] = y;
@@ -59,10 +54,9 @@ pub(crate) fn scalar(
     status: &[Atomic<u32>],
     #[comptime] stage: u32,
     #[comptime] width: usize,
-    #[comptime] rows: usize,
 ) {
     let i = ABSOLUTE_POS;
-    if i < rows {
+    if i < output.len() {
         let x = input[i];
         let mut y = x;
         if comptime!(stage == 0) {
@@ -90,10 +84,9 @@ pub(crate) fn normalize(
     output: &mut [f32],
     status: &[Atomic<u32>],
     #[comptime] width: usize,
-    #[comptime] count: usize,
 ) {
     let i = ABSOLUTE_POS;
-    if i < count {
+    if i < output.len() {
         let y = mul(input[i], inverse[i / width]);
         output[i] = y;
         if !finite(y) {
@@ -108,11 +101,10 @@ pub(crate) fn weight(
     output: &mut [f32],
     status: &[Atomic<u32>],
     #[comptime] width: usize,
-    #[comptime] count: usize,
     #[comptime] mode: u32,
 ) {
     let i = ABSOLUTE_POS;
-    if i < count {
+    if i < output.len() {
         let mut y = input[i];
         if comptime!(mode != 0u32) {
             let raw = gamma[i % width];
@@ -135,14 +127,9 @@ pub(crate) fn weight(
     }
 }
 #[cube(launch_unchecked)]
-pub(crate) fn store(
-    input: &[f32],
-    output: &mut [f32],
-    status: &[Atomic<u32>],
-    #[comptime] count: usize,
-) {
+pub(crate) fn store(input: &[f32], output: &mut [f32], status: &[Atomic<u32>]) {
     let i = ABSOLUTE_POS;
-    if i < count {
+    if i < output.len() {
         let y = bf16(input[i]);
         output[i] = y;
         if !finite(y) {

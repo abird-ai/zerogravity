@@ -1,10 +1,12 @@
 # Model execution
 
-## Current direction — ordinary multi-row HIP accepted
+## Current direction — populated Qwen HIP serving accepted
 
 [Fabric transition](../fabric-vnext-transition/TODO.md) is accepted through source
-`8c43844`, docs `1c99929`. Genuine multi-row0.8B/2B HIP now passes SDK, numerics and lifetimes. Next:
-general27B/populated contexts, C1..C64 and matched performance.
+`8c43844`, docs `1c99929`. Genuine multi-row and populated1K–16K0.8B/2B HIP now pass native/SDK/HTTP
+correctness and original retirement; final isolated gate passes.
+This batch lands as `fix(hip): qualify populated Qwen serving`.
+Next: remaining populated CUDA/general27B, native batching, matched performance.
 Preserve accepted source/operator/lifetime evidence; no repeated Fabric extraction.
 Main only; existing approved inputs/devices. No acquisition, gfx90c, recovery,
 push or recurrence restart. Recurrence`17aafa71` remains cancelled.
@@ -18,221 +20,27 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-### Verified batch — call-free CPU-source HIP prefill/decode
+### Next end-to-end milestone
 
-- [x] Connect original `SourceInvocation`/`SourceOperatorTemplate` recording to
-  the actual CPU-source contract, full4 convolution history, padded GDN chunks,
-  full-call attention contraction and existing physical/session owners. No
-  position-body catalogue or cached-one substitute for genuine chunk execution.
-- [x] Confirm retained two-model original66-call references: fresh47/48/49/50 and
-  uniform/ragged512→514, full logits/layers/state; hashes unchanged. No recapture.
-- [x] Independent original F.linear49 cases: existing AVX2 dot matches20,674 BF16
-  output words, including cancellation-sensitive rows and scalar tails. CPU row
-  primitive and three focused tests pass. Operator evidence only, not model/HIP.
-- [x] CPU full-call arithmetic matches unchanged original source:
-  - Conv4:12 cold/continued cases,2,831,232 exact words, complete four-word cache.
-  - Attention:20 cases,4,024,472 exact words; genuine multi-query causal calls and
-    actual populated contraction lengths through32K. Operator evidence only.
-  - Complete synthetic GDN layers:6 actual original forward calls,4,413,632
-    exact words. Rust projections → Conv4 → chunk/cached recurrence → norm/gate →
-    output projection; later calls consume actual Rust prior outputs, never
-    expected states. Rows47→1→17→1 and64→1; heads16/48, mixed norm codecs.
-  - Reference containers terminated/removed; parameters and inputs unchanged.
-- [x] Same source seal/traversal/`ForwardPlan` now records a distinct CPU-source
-  contract and MKL exp identity, preserving CUDA spellings/behavior. Core9 and
-  model4 tests passed; CPU101 passed/12 ignored, plus the new masking/cancel/
-  extent regression and exact Conv4/attention/GDN follow-up. These establish metadata/math,
-  not native execution. Explicit cached-one declarations cannot become chunks.
-- [x] Qualify the assembled native resident body. `source_call` now connects
-  multi-row projection, complete Conv4, chunk/cached GDN, full-call attention,
-  residual/RMS/rotary and last-row full-vocabulary readout. It traverses the
-  original sealed plan through `ResidentModel`/`ResidentSession`/
-  `PreparedInference`, native sets, ResourceArbiter, root pool and publication.
-  No separate scheduler, publisher, position-body catalogue or repeated decode
-  substitute. Shared recurrence/activation/parameter uploads were extracted,
-  not duplicated. Whole-call sigmoid preserves vector/scalar-tail selection.
-  Submitted CPU-contract calls complete before cancellation discards publication.
-- [x] Validate original-flight observation and trained-call consumer. Completed
-  producer frames use the existing bounded source-priced checkpoint. Diagnostic
-  mapping reads actual residual-add producers for all24 layer outputs; no host
-  reconstruction. The new test-support reader authenticates the retained66-call
-  archives; `qwen_source_calls_hip` uses original resident execution, two
-  interleaved roots and actual-logit feedback. Initial-root/unused-KV zero
-  controls and position metadata stay separate from trained float comparisons.
-  Last-row/full-vocabulary readout matches the original capture; no policy change.
-- Host diagnostics pass: assembled HIP library/all-target strict check; both
-  new/old source examples strict; CUDA all-target strict; two native helper
-  geometry tests (one each, no ignored/empty suite). Both real models authenticate
-  all66 calls/7,608 records, materialize every original invocation and derive the
-  native layout at capacity514 with six roots. No GPU initialization/execution.
-  - `.8B`: weights1,503,789,056B/workspace32,588,032B;
-    model upper11,399,708,928B/physical upper15,694,676,224B.
-  - `2B`: weights3,762,552,832B/workspace34,033,920B;
-    model upper13,659,918,592B/physical upper17,954,885,888B.
-  - Both: root33,275,904B; physical upper includes original4GiB context.
-  - `source-call-host-r3.log` passes. R1 preserved2B's source-seal refusal:
-    diagnostic reused a4MiB loader; the original seal requires1MiB. New caller
-    selects1MiB; existing loader defaults and source guards stay unchanged.
-  - Original one-MiB native catalogue admission preserved after review caught
-    an incorrect caller reservation. Compilation/lint/API failures retained;
-    HIP unwired and CUDA observer-only warnings resolved without lint suppression.
-  These host preflights authenticate data, not native outputs. Later numerical,
-  SDK and lifetime evidence is scoped below.
-- Source lifetime integration (physical qualification below):
-  - `SourceCallModel/Session/Pending/Snapshot/Readback` retain the same original
-    resident objects. Private inner access prevents unpriced reader escape;
-    immutable readback access keeps the actual Vec and reservation together.
-  - Reserve32MiB before original invocation materialization/control/readback;
-    64KiB model/session/snapshot controls. Snapshot clones share one allocation
-    and reservation; reads reserve4×root+64KiB. Root initialization keeps its
-    existing3×root charge; conservative host preflight now includes both.
-    Configured session count is a nonblocking permit bound before allocation.
-  - Same source/model/host guards retained on actual initialization, forward,
-    snapshot-read flights and uncertainty. Reset/restore/commit use the original
-    methods/authority; no second publisher. Source shutdown refuses live readers.
-  - Proven prelaunch capacity/cancel differ from completed private Ready;
-    cancellation at commit discards with actual completion metrics. Submitted
-    failures stay fatal even with cancellation-looking errors. CUDA cancellation
-    checks unchanged.
-  - `source-call-ownership-r2.log`: HIP all-target, source example, CUDA
-    all-target and minimal HIP strict pass; one nonempty prelaunch/submitted
-    classification test passes. R1 large-enum lint retained; Pending boxes its
-    original prepared value under the existing call charge. R3 HIP/all-target
-    and source-example strict pass after final session limits, conservative host
-    estimate and directly retained guard cleanup.
-- Runtime source feature extracted; strict/dependency checks:
-  - GPU `hip-source` depends on HIP + original artifact cache only;
-    `qwen-source-qualification` depends on it, never the reverse. Normal/build
-    dependency closure contains no CPU/model crates or qualification feature.
-  - Shared arithmetic, resident matrices/parameters/pages, root pools and native
-    context/cache ownership compile independently. Finite source bodies,
-    portable/model harnesses, matrix fault cuts/row probes and diagnostic kernel
-    injection remain explicitly diagnostic; no warning suppression added.
-  - Weak original native/service observation moved to `source_native_probe`;
-    runtime + hardware probe does not require finite source/fault orchestration.
-    Legacy root exports and original cold/warm/environment/owner guards retained.
-  - Ordinary-only builds omit successful native kernel/code/config telemetry.
-    Actual native host/device inventory is checked against the original bound;
-    call termination uses the original page `finish` guard/actor (serial `None`
-    remains the same construction). Physical evidence is scoped below.
-  - `runtime-feature-strict-r3`: runtime-only all-target strict passes; R5:
-    runtime+weak probe all-target and runtime+CUDA+Vulkan library strict pass;
-    R6: three shared-HIP/source example consumers and CUDA all-target strict
-    pass; normal/build dependency tree inspected. R1–R5 failed scopes retained,
-    including missing cache binding, diagnostic reachability and moved-state
-    import; no native launch or float comparison in these checks.
-- Canonical source/SDK integration; initial host checks:
-  - Facade `qwen35-hip` + `ModelLoadRequest::QwenHip` use the existing registry,
-    `Router::with_executor` and worker. One cold source,1..16 aliases, active1..8,
-    context512..32768 subject to actual backend admission. Raw text only; chat,
-    warm reconfiguration and native cross-session cohorts are not enabled.
-  - Original CUDA verifier/held descriptor/inventory code moved to shared
-    `qwen35_source`; legacy directory receipt, exact source membership/SHA,
-    source limits and CUDA seal preserved. Canonical input uses actual
-    `SnapshotLease` descriptors/digest/provenance; no reopen/import/acquisition.
-    Same original family owner/seal/plan; tokenizer uses the already held bytes.
-  - `ServingHost::from_process_admission` borrows the original16GiB system-RAM
-    arbiter/key, not another wallet. Real64MiB source/cache/plan control follows
-    source/native/tokenizer readers; tokenizer bootstrap/constructor/retained
-    guards remain original. Device/root/call reservations remain library-owned.
-    Diagnostics leave unobserved backend/source host subdivisions null.
-  - Source executor keeps actual-logit feedback bound to its committed root,
-    explicitly selects Decode for initialized single-row prompt tails, and uses
-    genuine chunks up to64. Core finite greedy preserves first numeric ties and
-    signed-zero bits. Same primitive used by the source trajectory diagnostic.
-    Completed discard counts actual work without publication; submitted errors
-    remain fatal. The closing shared worker invokes original native shutdown
-    after active states retire; join observes that outcome.
-  - `source-sdk-assembly-r3`: runtime-only/no-default facade all-target strict,
-    combined HIP+legacy CUDA and CUDA-only library strict pass. Core greedy1,
-    original host-domain1, source adapter4 tests pass; four filtered engine
-    integration suites are empty, not additional evidence. Canonical2B host
-    test separately enabled: real source/tokenizer/plan/preflight, last tokenizer
-    reader retains cache/source/credit, final host returns to bootstrap baseline.
-    No GPU execution or mathematical comparison in this test.
-  - `source-sdk-public-host-r1`: public SDK refusal/limit/lifecycle registration
-    test1 and target strict pass. Runtime normal/build dependency tree has no
-    CPU/qualification edge. R1 vocabulary type and R2 borrowed-str/unused
-    directory-helper failures retained; no warning suppression.
-- Trained ordinary native calls pass on approved x2/gfx1151: both models66calls/
-  7608records, capacity514, true47/48/49/50/64/17-row chunks and cached decode,
-  all24layers/full248320 vocabulary/all42state domains (48physical planes).
-  Actual feedback, two independent roots, uniform/ragged512→514 exact. Float
-  words:0.8B873,649,152;2B939,144,192. Per model separate controls:99,827,712
-  initial-zero words,206,512,128 unused-KV-tail words,7380position metadata words.
-  Every case/extent/count independently checked against the original manifest;
-  no reference recapture or repinning. Known retirement releases95/90 original
-  modules, leaves resident bytes0 and original4GiB context/unfenced.
-  - Evidence `native-results-r4`/`native-calls-r4-08-verified.json` and
-    `native-results-r5`/`native-calls-r5-2b-verified.json` under the multi-row run.
-    R4 model exits0; immediate sampled-utilization guard stops its supervisor
-    before2B, later verified idle/KFD empty/MainPID0/empty cgroup. R5 contains
-    only2B (no redundant0.8 replay), exits0 with terminal ownership verified.
-  - R1 protected-process-FD guard, R2 stale Python PATH and R3 noclobber lock
-    setup failures retained; no model executed in these scopes. Readable KFD
-    process inventory supplies authoritative idle ownership without privileges;
-    unrelated descriptor-forwarding service remains untouched. Retrieval banner
-    parse failure retained; corrected retrieval checks exact sizes/digests.
-- Public SDK native qualification exposed two integration gaps; fixes assembled:
-  - SDK R1: finite wave guard correctly rejects context514. Adapter now selects
-    existing sequential/fair worker with original64-row prefill, not enlarged
-    wave limits or a new scheduler. Runtime-only all-target strict passes.
-  - SDK R2: actual token arrives, but sequential presentation drops supplied
-    GPU publication metadata. Shared `accept_observed` now preserves the
-    original observation and counts actual presented tokens; CPU compatibility
-    and backpressure remain unchanged. Engine strict + regression pass;85 other
-    router tests already pass. Initial regression fixture47/7 error retained.
-  - New runtime-only `tests/qwen_hip_sdk.rs`: approved manifest-pinned IDs,
-    aliases/independent roots, public generic run,65-row prompt tail replay,
-    disconnect/cancel and native/host/tokenizer final-reader checks. All four
-    fresh native cases now pass: both models × complete/disconnect. Exact pinned
-    IDs, generic run, independent alias sessions, prompt-tail replay, native4GiB
-    context/unfenced and last tokenizer/source/cache/host reader assertions pass.
-    Runtime-only binary; no qualification execution dependency. Native SDK R1/R2
-    failures retained. R3's first completion passed; immediate KFD retirement
-    sampling stopped its batch supervisor, not the test. Remaining three cells
-    passed in fresh R4 processes, without repeating the successful first cell.
-    All four logs inspected; terminal KFD/cgroups empty/GPU idle. Evidence:
-    `native-results-sdkbatch-r3` and `native-results-sdk-{08-disconnect,2b-complete,2b-disconnect}-r4`.
-- Observer-free/state/lifecycle native batch accepted, both models:
-  - All66 original calls/model:450,794,496 exact post-commit state/full-logit
-    words/model; all42domains/48planes, independent sessions and actual feedback.
-    Original typed snapshot readers separately check114,647,040 KV-tail words.
-    No per-layer observer or reconstructed feedback; observed trajectory evidence
-    above remains unchanged and was not repeated.
-  - Healthy controls: prelaunch capacity/cancel, session limit, cross-session
-    refusals, submitted cancellation → known completed discard with1862dispatches,
-    snapshot clone charging/restore/reset/replay and independent roots pass.
-  - Original final session/snapshot/pending readers: actual lease release before
-    native retirement, known/fault pairs. Immutable inference/snapshot readbacks
-    retain model/native/source until the actual final reader. Known paths leave
-    native/resident0, device4GiB, host2GiB +64MiB reference support, unfenced.
-    Release faults retain95/90 original modules,543/539 handles, source/cache
-    and24GiB device fence; physical peer admission refused.
-  - Unknown completion:495/491 submitted handles,1pending event,543/539 retained
-    handles and completion owners; unchanged published roots, peer/reset/read
-    refusal, original native/source/cache/charges retained after caller drops.
-    Pre-fault5,449,728 state words exact/model. Post-fault device state and pending
-    outputs unavailable, not numerical comparisons or recovery evidence.
-  - R1:20cases pass; two unknown diagnostics incorrectly attempted a post-fence
-    GPU read. Original native policy correctly refused. Removed only that new
-    diagnostic path; R2 asserts the original snapshot fence refusal and both
-    unknown cases pass. No production fence relaxation; no passed case repeated.
-    Every case/count/cleanup independently inspected; terminal KFD/cgroups empty,
-    GPU idle. Evidence: `native-results-state-lifecycle-r{1,2}` and
-    `state-lifecycle-verified-r{1,2}.json`. Earlier compile/lint failures retained.
-  - Affected bare HIP-source+hardware, CUDA+hardware and runtime-only SDK strict
-    checks pass. Diagnostic support remains outside the production dependency
-    closure; no native arithmetic, source pins or accepted trajectories changed.
-- [x] Final complete isolated `scripts/check.sh` passes:2348Rust passes,0failures,
-  101ignored,309suites including74empty;17Python suites/182cases/10skips.
-  Two existing unused HIP probe-hook warnings remain in the Vulkan-peer compile
-  scope; no suppression or runtime change. `final-checkpoint-gate-r1.log` and
-  `final-checkpoint-gate-summary-r1.json` retain the complete result.
-- [ ] Land the reviewed signed checkpoint; no push.
-  Next larger milestone: populated contexts/serving concurrency, then matched
-  performance; no Fabric reopening or per-helper acceptance cycles.
-  Run-local evidence: XDG state `abird/zerogravity/qwen-multirow-4DkQcm4c/`.
+- [ ] Extend populated contexts beyond accepted0.8B/2B HIP scopes to remaining
+  CUDA/general27B routes; retain full-logit/state truth, cancellation and physical
+  ownership at actual extents.32K refusal remains a capacity result, not inference.
+- [ ] Extend/qualify serving concurrency through C1..C64 and general27B/CUDA;
+  preserve missing-source/kernel/runtime refusals. Offered C64/active≤8 singleton
+  execution is only a baseline, not native-batch acceptance.
+- [ ] Measure matched vLLM workloads only after correctness/capacity and batching
+  acceptance. No superiority claim without matched measurements.
+
+### Deferred until Fabric and model/context correctness are complete
+
+- [ ] Owner requirement: independently configure queue depth, active admission,
+  batch members and per-step token budget; enable genuine continuous batching,
+  including all eligible admitted work when it fits. Remove the universal
+  eight-session/singleton policy ceiling, not physical/source/kernel safeguards.
+  Reuse shared cohorts, original flights/roots and the arbiter. Cross-session
+  kernels/state mappings and partial cancellation must work before promotion;
+  no metadata-only batching or silent relabeling of serial work. This is queued,
+  not part of the current populated-context correctness implementation.
 
 ### Current physical checkpoint — 31 Oct
 
@@ -257,20 +65,14 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ### Ordinary HIP continuation — 31 Oct
 
-- [ ] Generalize actual geometry/backend execution for27B and populated contexts.
-  Finite27B still pins2 positions/112 domains; the new source path executes
-  single rows through64. Scalable prefill/multichunk/general27B remain open.
-- [ ] Implement scalable ordinary prefill/decode beyond position-bound single-row
-  capacity64; qualify populated wider contexts and serving before production.
-  Reuse signed `55536ce` original call references and connected CPU chunk core.
-  Next: multi-row projection/Conv4/attention and BF16 residuals, then call-free
-  lowering. Keep explicit prefill/decode phase.
-  Reuse `SourceInvocation`/`ForwardPlan` and original physical/root owners; do
-  not turn the position-indexed64-body catalogue into production architecture.
-  Call-free templates now also record the distinct CPU-source contract in the
-  active batch; native/SDK acceptance remains open, not backend-relabeled. See
-  [numerics TODO](../numerics-and-context/TODO.md) for evidence and failures.
-  Native chunk arithmetic is qualified in `e2559b6`; full-call lowering remains open.
+- [ ] Generalize actual geometry/backend execution for27B. Finite27B still
+  pins2 positions/112 domains; it is not the ordinary small-model source path.
+- [ ] Extend the signed`bb400c4` ordinary0.8B/2B multi-row route beyond its
+  populated514 baseline. Projection/Conv4/attention/GDN, call-free lowering and
+  public SDK are landed; longer populated contexts and serving need the batch
+  above. Preserve explicit phases and original`SourceInvocation`/`ForwardPlan`,
+  physical/root owners. No position-indexed catalogue or backend relabeling.
+  [Numerics](../numerics-and-context/TODO.md) retains independent evidence.
 
 ### Ordinary Qwen execution checkpoint — 27 Oct
 
@@ -762,6 +564,252 @@ or model support. Qwen parity/short benchmark/long→dense27B→Gemma remains bi
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### `fix(hip): qualify populated Qwen serving` — populated contexts
+
+- [x] Original0.8B/2B multi-row and16K parity: R28 accepts both66-call schedules
+  (873649152/939144192words) and both516-call trajectories (955163648/956867584
+  float words;128133120digest/448512tail words each),0mismatches. Original
+  feedback/source/native retirement and exact physical cleanup verified.
+- [x] R29 audit accepts26/26: SDK1K–16K completion/cancel/replay,16K HTTP
+  JSON/SSE/disconnect/replay,32K pre-native refusal. Both16K SDK cancellations
+  observed once,7tokens/49150model-token steps. Every original final reader passes;
+  actual binaries, receipt and executed scripts authenticated. HTTP180s/SDK1200s
+  unchanged. No repeated matrix after the monitor stopped.
+- [x] R29 physical terminal is an explicit later observation of the SAME successful
+  invocation. Missing contemporaneous terminal receipt/supervision gap retained,
+  separately from verified per-case semantics/readers. Original capture and R12
+  precheck limitations remain explicit.
+- [x] Twenty small-context population cases: offeredC1..C64, active≤8, singleton.
+  Profile/transport context checks and raw-text-only chat refusal preserved.
+  32K refusal is not inference; prompt/head-row grouping is not native batching.
+- [x] Source-exact trig/digest coverage, bounded attention/RMS work and priced
+  scratch, weight-local traversal, integer status tree. Full-call PV, original
+  reductions/BF16/+0, caps, roots, flights, source seals and arbiter unchanged.
+  RejectedR26 tiling removed; no matched performance claim.
+- [x] Final isolated gateR2:2350Rust/0failed/101ignored;309suites including74empty;
+  17Python suites/182cases/10skips. Combined HIP gate exposed stale RMS preparation
+  arguments in a separate consumer; corrected without changing qualified kernels.
+  Numerical/physical acceptance is separate from the host gate.
+- [x] [Qualification history and retained failures](archive/populated-hip-serving/TODO.md).
+  External evidence remains under XDG state `qwen-context-serving-8SXpaZGt`.
+
+
+### `bb400c4` — ordinary multi-row HIP SDK
+
+- [x] Connect original `SourceInvocation`/`SourceOperatorTemplate` recording to
+  the actual CPU-source contract, full4 convolution history, padded GDN chunks,
+  full-call attention contraction and existing physical/session owners. No
+  position-body catalogue or cached-one substitute for genuine chunk execution.
+- [x] Confirm retained two-model original66-call references: fresh47/48/49/50 and
+  uniform/ragged512→514, full logits/layers/state; hashes unchanged. No recapture.
+- [x] Independent original F.linear49 cases: existing AVX2 dot matches20,674 BF16
+  output words, including cancellation-sensitive rows and scalar tails. CPU row
+  primitive and three focused tests pass. Operator evidence only, not model/HIP.
+- [x] CPU full-call arithmetic matches unchanged original source:
+  - Conv4:12 cold/continued cases,2,831,232 exact words, complete four-word cache.
+  - Attention:20 cases,4,024,472 exact words; genuine multi-query causal calls and
+    actual populated contraction lengths through32K. Operator evidence only.
+  - Complete synthetic GDN layers:6 actual original forward calls,4,413,632
+    exact words. Rust projections → Conv4 → chunk/cached recurrence → norm/gate →
+    output projection; later calls consume actual Rust prior outputs, never
+    expected states. Rows47→1→17→1 and64→1; heads16/48, mixed norm codecs.
+  - Reference containers terminated/removed; parameters and inputs unchanged.
+- [x] Same source seal/traversal/`ForwardPlan` now records a distinct CPU-source
+  contract and MKL exp identity, preserving CUDA spellings/behavior. Core9 and
+  model4 tests passed; CPU101 passed/12 ignored, plus the new masking/cancel/
+  extent regression and exact Conv4/attention/GDN follow-up. These establish metadata/math,
+  not native execution. Explicit cached-one declarations cannot become chunks.
+- [x] Qualify the assembled native resident body. `source_call` now connects
+  multi-row projection, complete Conv4, chunk/cached GDN, full-call attention,
+  residual/RMS/rotary and last-row full-vocabulary readout. It traverses the
+  original sealed plan through `ResidentModel`/`ResidentSession`/
+  `PreparedInference`, native sets, ResourceArbiter, root pool and publication.
+  No separate scheduler, publisher, position-body catalogue or repeated decode
+  substitute. Shared recurrence/activation/parameter uploads were extracted,
+  not duplicated. Whole-call sigmoid preserves vector/scalar-tail selection.
+  Submitted CPU-contract calls complete before cancellation discards publication.
+- [x] Validate original-flight observation and trained-call consumer. Completed
+  producer frames use the existing bounded source-priced checkpoint. Diagnostic
+  mapping reads actual residual-add producers for all24 layer outputs; no host
+  reconstruction. The new test-support reader authenticates the retained66-call
+  archives; `qwen_source_calls_hip` uses original resident execution, two
+  interleaved roots and actual-logit feedback. Initial-root/unused-KV zero
+  controls and position metadata stay separate from trained float comparisons.
+  Last-row/full-vocabulary readout matches the original capture; no policy change.
+- Host diagnostics pass: assembled HIP library/all-target strict check; both
+  new/old source examples strict; CUDA all-target strict; two native helper
+  geometry tests (one each, no ignored/empty suite). Both real models authenticate
+  all66 calls/7,608 records, materialize every original invocation and derive the
+  native layout at capacity514 with six roots. No GPU initialization/execution.
+  - `.8B`: weights1,503,789,056B/workspace32,588,032B;
+    model upper11,399,708,928B/physical upper15,694,676,224B.
+  - `2B`: weights3,762,552,832B/workspace34,033,920B;
+    model upper13,659,918,592B/physical upper17,954,885,888B.
+  - Both: root33,275,904B; physical upper includes original4GiB context.
+  - `source-call-host-r3.log` passes. R1 preserved2B's source-seal refusal:
+    diagnostic reused a4MiB loader; the original seal requires1MiB. New caller
+    selects1MiB; existing loader defaults and source guards stay unchanged.
+  - Original one-MiB native catalogue admission preserved after review caught
+    an incorrect caller reservation. Compilation/lint/API failures retained;
+    HIP unwired and CUDA observer-only warnings resolved without lint suppression.
+  These host preflights authenticate data, not native outputs. Later numerical,
+  SDK and lifetime evidence is scoped below.
+- Source lifetime integration (physical qualification below):
+  - `SourceCallModel/Session/Pending/Snapshot/Readback` retain the same original
+    resident objects. Private inner access prevents unpriced reader escape;
+    immutable readback access keeps the actual Vec and reservation together.
+  - Reserve32MiB before original invocation materialization/control/readback;
+    64KiB model/session/snapshot controls. Snapshot clones share one allocation
+    and reservation; reads reserve4×root+64KiB. Root initialization keeps its
+    existing3×root charge; conservative host preflight now includes both.
+    Configured session count is a nonblocking permit bound before allocation.
+  - Same source/model/host guards retained on actual initialization, forward,
+    snapshot-read flights and uncertainty. Reset/restore/commit use the original
+    methods/authority; no second publisher. Source shutdown refuses live readers.
+  - Proven prelaunch capacity/cancel differ from completed private Ready;
+    cancellation at commit discards with actual completion metrics. Submitted
+    failures stay fatal even with cancellation-looking errors. CUDA cancellation
+    checks unchanged.
+  - `source-call-ownership-r2.log`: HIP all-target, source example, CUDA
+    all-target and minimal HIP strict pass; one nonempty prelaunch/submitted
+    classification test passes. R1 large-enum lint retained; Pending boxes its
+    original prepared value under the existing call charge. R3 HIP/all-target
+    and source-example strict pass after final session limits, conservative host
+    estimate and directly retained guard cleanup.
+- Runtime source feature extracted; strict/dependency checks:
+  - GPU `hip-source` depends on HIP + original artifact cache only;
+    `qwen-source-qualification` depends on it, never the reverse. Normal/build
+    dependency closure contains no CPU/model crates or qualification feature.
+  - Shared arithmetic, resident matrices/parameters/pages, root pools and native
+    context/cache ownership compile independently. Finite source bodies,
+    portable/model harnesses, matrix fault cuts/row probes and diagnostic kernel
+    injection remain explicitly diagnostic; no warning suppression added.
+  - Weak original native/service observation moved to `source_native_probe`;
+    runtime + hardware probe does not require finite source/fault orchestration.
+    Legacy root exports and original cold/warm/environment/owner guards retained.
+  - Ordinary-only builds omit successful native kernel/code/config telemetry.
+    Actual native host/device inventory is checked against the original bound;
+    call termination uses the original page `finish` guard/actor (serial `None`
+    remains the same construction). Physical evidence is scoped below.
+  - `runtime-feature-strict-r3`: runtime-only all-target strict passes; R5:
+    runtime+weak probe all-target and runtime+CUDA+Vulkan library strict pass;
+    R6: three shared-HIP/source example consumers and CUDA all-target strict
+    pass; normal/build dependency tree inspected. R1–R5 failed scopes retained,
+    including missing cache binding, diagnostic reachability and moved-state
+    import; no native launch or float comparison in these checks.
+- Canonical source/SDK integration; initial host checks:
+  - Facade `qwen35-hip` + `ModelLoadRequest::QwenHip` use the existing registry,
+    `Router::with_executor` and worker. One cold source,1..16 aliases, active1..8,
+    context512..32768 subject to actual backend admission. Raw text only; chat,
+    warm reconfiguration and native cross-session cohorts are not enabled.
+  - Original CUDA verifier/held descriptor/inventory code moved to shared
+    `qwen35_source`; legacy directory receipt, exact source membership/SHA,
+    source limits and CUDA seal preserved. Canonical input uses actual
+    `SnapshotLease` descriptors/digest/provenance; no reopen/import/acquisition.
+    Same original family owner/seal/plan; tokenizer uses the already held bytes.
+  - `ServingHost::from_process_admission` borrows the original16GiB system-RAM
+    arbiter/key, not another wallet. Real64MiB source/cache/plan control follows
+    source/native/tokenizer readers; tokenizer bootstrap/constructor/retained
+    guards remain original. Device/root/call reservations remain library-owned.
+    Diagnostics leave unobserved backend/source host subdivisions null.
+  - Source executor keeps actual-logit feedback bound to its committed root,
+    explicitly selects Decode for initialized single-row prompt tails, and uses
+    genuine chunks up to64. Core finite greedy preserves first numeric ties and
+    signed-zero bits. Same primitive used by the source trajectory diagnostic.
+    Completed discard counts actual work without publication; submitted errors
+    remain fatal. The closing shared worker invokes original native shutdown
+    after active states retire; join observes that outcome.
+  - `source-sdk-assembly-r3`: runtime-only/no-default facade all-target strict,
+    combined HIP+legacy CUDA and CUDA-only library strict pass. Core greedy1,
+    original host-domain1, source adapter4 tests pass; four filtered engine
+    integration suites are empty, not additional evidence. Canonical2B host
+    test separately enabled: real source/tokenizer/plan/preflight, last tokenizer
+    reader retains cache/source/credit, final host returns to bootstrap baseline.
+    No GPU execution or mathematical comparison in this test.
+  - `source-sdk-public-host-r1`: public SDK refusal/limit/lifecycle registration
+    test1 and target strict pass. Runtime normal/build dependency tree has no
+    CPU/qualification edge. R1 vocabulary type and R2 borrowed-str/unused
+    directory-helper failures retained; no warning suppression.
+- Trained ordinary native calls pass on approved x2/gfx1151: both models66calls/
+  7608records, capacity514, true47/48/49/50/64/17-row chunks and cached decode,
+  all24layers/full248320 vocabulary/all42state domains (48physical planes).
+  Actual feedback, two independent roots, uniform/ragged512→514 exact. Float
+  words:0.8B873,649,152;2B939,144,192. Per model separate controls:99,827,712
+  initial-zero words,206,512,128 unused-KV-tail words,7380position metadata words.
+  Every case/extent/count independently checked against the original manifest;
+  no reference recapture or repinning. Known retirement releases95/90 original
+  modules, leaves resident bytes0 and original4GiB context/unfenced.
+  - Evidence `native-results-r4`/`native-calls-r4-08-verified.json` and
+    `native-results-r5`/`native-calls-r5-2b-verified.json` under the multi-row run.
+    R4 model exits0; immediate sampled-utilization guard stops its supervisor
+    before2B, later verified idle/KFD empty/MainPID0/empty cgroup. R5 contains
+    only2B (no redundant0.8 replay), exits0 with terminal ownership verified.
+  - R1 protected-process-FD guard, R2 stale Python PATH and R3 noclobber lock
+    setup failures retained; no model executed in these scopes. Readable KFD
+    process inventory supplies authoritative idle ownership without privileges;
+    unrelated descriptor-forwarding service remains untouched. Retrieval banner
+    parse failure retained; corrected retrieval checks exact sizes/digests.
+- Public SDK native qualification exposed two integration gaps; fixes assembled:
+  - SDK R1: finite wave guard correctly rejects context514. Adapter now selects
+    existing sequential/fair worker with original64-row prefill, not enlarged
+    wave limits or a new scheduler. Runtime-only all-target strict passes.
+  - SDK R2: actual token arrives, but sequential presentation drops supplied
+    GPU publication metadata. Shared `accept_observed` now preserves the
+    original observation and counts actual presented tokens; CPU compatibility
+    and backpressure remain unchanged. Engine strict + regression pass;85 other
+    router tests already pass. Initial regression fixture47/7 error retained.
+  - New runtime-only `tests/qwen_hip_sdk.rs`: approved manifest-pinned IDs,
+    aliases/independent roots, public generic run,65-row prompt tail replay,
+    disconnect/cancel and native/host/tokenizer final-reader checks. All four
+    fresh native cases now pass: both models × complete/disconnect. Exact pinned
+    IDs, generic run, independent alias sessions, prompt-tail replay, native4GiB
+    context/unfenced and last tokenizer/source/cache/host reader assertions pass.
+    Runtime-only binary; no qualification execution dependency. Native SDK R1/R2
+    failures retained. R3's first completion passed; immediate KFD retirement
+    sampling stopped its batch supervisor, not the test. Remaining three cells
+    passed in fresh R4 processes, without repeating the successful first cell.
+    All four logs inspected; terminal KFD/cgroups empty/GPU idle. Evidence:
+    `native-results-sdkbatch-r3` and `native-results-sdk-{08-disconnect,2b-complete,2b-disconnect}-r4`.
+- Observer-free/state/lifecycle native batch accepted, both models:
+  - All66 original calls/model:450,794,496 exact post-commit state/full-logit
+    words/model; all42domains/48planes, independent sessions and actual feedback.
+    Original typed snapshot readers separately check114,647,040 KV-tail words.
+    No per-layer observer or reconstructed feedback; observed trajectory evidence
+    above remains unchanged and was not repeated.
+  - Healthy controls: prelaunch capacity/cancel, session limit, cross-session
+    refusals, submitted cancellation → known completed discard with1862dispatches,
+    snapshot clone charging/restore/reset/replay and independent roots pass.
+  - Original final session/snapshot/pending readers: actual lease release before
+    native retirement, known/fault pairs. Immutable inference/snapshot readbacks
+    retain model/native/source until the actual final reader. Known paths leave
+    native/resident0, device4GiB, host2GiB +64MiB reference support, unfenced.
+    Release faults retain95/90 original modules,543/539 handles, source/cache
+    and24GiB device fence; physical peer admission refused.
+  - Unknown completion:495/491 submitted handles,1pending event,543/539 retained
+    handles and completion owners; unchanged published roots, peer/reset/read
+    refusal, original native/source/cache/charges retained after caller drops.
+    Pre-fault5,449,728 state words exact/model. Post-fault device state and pending
+    outputs unavailable, not numerical comparisons or recovery evidence.
+  - R1:20cases pass; two unknown diagnostics incorrectly attempted a post-fence
+    GPU read. Original native policy correctly refused. Removed only that new
+    diagnostic path; R2 asserts the original snapshot fence refusal and both
+    unknown cases pass. No production fence relaxation; no passed case repeated.
+    Every case/count/cleanup independently inspected; terminal KFD/cgroups empty,
+    GPU idle. Evidence: `native-results-state-lifecycle-r{1,2}` and
+    `state-lifecycle-verified-r{1,2}.json`. Earlier compile/lint failures retained.
+  - Affected bare HIP-source+hardware, CUDA+hardware and runtime-only SDK strict
+    checks pass. Diagnostic support remains outside the production dependency
+    closure; no native arithmetic, source pins or accepted trajectories changed.
+- [x] Final complete isolated `scripts/check.sh` passes:2348Rust passes,0failures,
+  101ignored,309suites including74empty;17Python suites/182cases/10skips.
+  Two existing unused HIP probe-hook warnings remain in the Vulkan-peer compile
+  scope; no suppression or runtime change. `final-checkpoint-gate-r1.log` and
+  `final-checkpoint-gate-summary-r1.json` retain the complete result.
+- [x] Land signed`bb400c4`; signature verified G with the expected key. No push.
+  Next larger milestone: populated contexts/serving concurrency, then matched
+  performance; no Fabric reopening or per-helper acceptance cycles.
+  Run-local evidence: XDG state `abird/zerogravity/qwen-multirow-4DkQcm4c/`.
 
 ### `e2559b6` — original-source native chunk GDN
 

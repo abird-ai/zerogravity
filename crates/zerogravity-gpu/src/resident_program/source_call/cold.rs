@@ -215,11 +215,11 @@ impl Admission {
             BufferRole::Scratch,
         )?;
         let accumulation = init.allocate_empty(
-            layout::aligned(self.layout.max_matrix_rows * 4)?,
+            layout::aligned(self.layout.projection_scratch_words * 4)?,
             BufferRole::Scratch,
         )?;
         let flags = init.allocate_empty(
-            layout::aligned(self.layout.max_matrix_rows * 4)?,
+            layout::aligned(self.layout.projection_scratch_words * 4)?,
             BufferRole::Scratch,
         )?;
         let status = init.allocate_empty(layout::ALIGNMENT, BufferRole::Scratch)?;

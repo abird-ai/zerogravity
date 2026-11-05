@@ -29,6 +29,10 @@ pub trait PreparedModel: Send + Sync {
     fn max_context(&self) -> usize;
     fn max_token_bytes(&self) -> usize;
     fn vocabulary_size(&self) -> u64;
+    /// Endpoint policy, independent of whether the caller already framed chat text.
+    fn validate_chat(&self) -> std::result::Result<(), crate::router::ServiceError> {
+        Ok(())
+    }
     /// Source-specific validation after count and host admission, before enqueue.
     fn validate_request(
         &self,

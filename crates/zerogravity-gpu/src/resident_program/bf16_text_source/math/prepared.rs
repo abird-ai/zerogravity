@@ -290,7 +290,7 @@ fn add_coefficients_ffn_silu_mul(b: &mut Builder, elements: usize) -> Result<()>
     ))
 }
 
-fn add_source_rms_kernels_squares(b: &mut Builder, count: usize) -> Result<()> {
+fn add_source_rms_kernels_squares(b: &mut Builder) -> Result<()> {
     b.add(<crate::source_rms::kernels::squares::Squares>::new(
         b.settings(32),
         b.properties.clone(),
@@ -298,7 +298,6 @@ fn add_source_rms_kernels_squares(b: &mut Builder, count: usize) -> Result<()> {
         buffer(),
         buffer(),
         buffer(),
-        count,
     ))
 }
 
@@ -314,12 +313,7 @@ fn add_source_rms_kernels_sum(b: &mut Builder, width: usize) -> Result<()> {
     ))
 }
 
-fn add_source_rms_kernels_scalar(
-    b: &mut Builder,
-    stage: u32,
-    width: usize,
-    rows: usize,
-) -> Result<()> {
+fn add_source_rms_kernels_scalar(b: &mut Builder, stage: u32, width: usize) -> Result<()> {
     b.add(<crate::source_rms::kernels::scalar::Scalar>::new(
         b.settings(32),
         b.properties.clone(),
@@ -329,11 +323,10 @@ fn add_source_rms_kernels_scalar(
         buffer(),
         stage,
         width,
-        rows,
     ))
 }
 
-fn add_source_rms_kernels_normalize(b: &mut Builder, width: usize, count: usize) -> Result<()> {
+fn add_source_rms_kernels_normalize(b: &mut Builder, width: usize) -> Result<()> {
     b.add(<crate::source_rms::kernels::normalize::Normalize>::new(
         b.settings(32),
         b.properties.clone(),
@@ -343,16 +336,10 @@ fn add_source_rms_kernels_normalize(b: &mut Builder, width: usize, count: usize)
         buffer(),
         buffer(),
         width,
-        count,
     ))
 }
 
-fn add_source_rms_kernels_weight(
-    b: &mut Builder,
-    width: usize,
-    count: usize,
-    mode: u32,
-) -> Result<()> {
+fn add_source_rms_kernels_weight(b: &mut Builder, width: usize, mode: u32) -> Result<()> {
     b.add(<crate::source_rms::kernels::weight::Weight>::new(
         b.settings(32),
         b.properties.clone(),
@@ -362,12 +349,11 @@ fn add_source_rms_kernels_weight(
         buffer(),
         buffer(),
         width,
-        count,
         mode,
     ))
 }
 
-fn add_source_rms_kernels_store(b: &mut Builder, count: usize) -> Result<()> {
+fn add_source_rms_kernels_store(b: &mut Builder) -> Result<()> {
     b.add(<crate::source_rms::kernels::store::Store>::new(
         b.settings(32),
         b.properties.clone(),
@@ -375,7 +361,6 @@ fn add_source_rms_kernels_store(b: &mut Builder, count: usize) -> Result<()> {
         buffer(),
         buffer(),
         buffer(),
-        count,
     ))
 }
 
@@ -455,16 +440,16 @@ fn add_transport_add(b: &mut Builder, elements: usize) -> Result<()> {
     ))
 }
 fn rms(b: &mut Builder, width: usize, groups: usize, mode: crate::source_rms::Gamma) -> Result<()> {
-    let count = width * groups;
-    add_source_rms_kernels_squares(b, count)?;
+    crate::source_rms::scratch_words(width, groups)?;
+    add_source_rms_kernels_squares(b)?;
     add_source_rms_kernels_sum(b, width)?;
     for stage in 0..4 {
-        add_source_rms_kernels_scalar(b, stage, width, groups)?;
+        add_source_rms_kernels_scalar(b, stage, width)?;
     }
-    add_source_rms_kernels_normalize(b, width, count)?;
-    add_source_rms_kernels_weight(b, width, count, mode.mode())?;
+    add_source_rms_kernels_normalize(b, width)?;
+    add_source_rms_kernels_weight(b, width, mode.mode())?;
     if mode != crate::source_rms::Gamma::DirectF32AfterBf16 {
-        add_source_rms_kernels_store(b, count)?;
+        add_source_rms_kernels_store(b)?;
     }
     Ok(())
 }

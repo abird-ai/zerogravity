@@ -3,6 +3,7 @@
 use cubecl::{client::Client, prelude::*, server::Handle};
 use zerogravity_core::{Error, Result};
 pub(crate) mod kernels;
+pub(crate) const MAX_GROUPS: usize = 64;
 #[cfg(all(feature = "hip-source", feature = "hip"))]
 pub(crate) mod prepared;
 
@@ -44,6 +45,17 @@ fn check(handle: &Handle, elements: usize) -> Result<()> {
     }
     Ok(())
 }
+pub(crate) fn scratch_words(width: usize, groups: usize) -> Result<[usize; 8]> {
+    if width == 0
+        || width > 5120
+        || !width.is_multiple_of(32)
+        || !(1..=MAX_GROUPS).contains(&groups)
+    {
+        return Err(Error::Unsupported("RMS explicit source geometry".into()));
+    }
+    let count = width * groups;
+    Ok([count, groups, groups, groups, groups, groups, count, count])
+}
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn launch(
     client: &Client,
@@ -57,22 +69,13 @@ pub(crate) fn launch(
     groups: usize,
     mode: Gamma,
 ) -> Result<usize> {
-    let count = width
-        .checked_mul(groups)
-        .ok_or_else(|| Error::Limit("RMS geometry".into()))?;
-    if width == 0
-        || width > 5120
-        || !width.is_multiple_of(32)
-        || groups == 0
-        || groups > 64
-        || scratch.len() != 8
-        || (mode == Gamma::Unit) != gamma.is_none()
-    {
+    let extents = scratch_words(width, groups)?;
+    let count = extents[0];
+    if scratch.len() != 8 || (mode == Gamma::Unit) != gamma.is_none() {
         return Err(Error::Unsupported(
             "RMS explicit source geometry/gamma".into(),
         ));
     }
-    let extents = [count, groups, groups, groups, groups, groups, count, count];
     for (h, n) in scratch.iter().zip(extents) {
         check(h, n)?;
     }
@@ -111,7 +114,6 @@ pub(crate) fn launch(
             arg(input, count),
             arg(&scratch[0], count),
             arg(status, 1),
-            count,
         );
         kernels::sum::launch_unchecked(
             client,
@@ -132,7 +134,6 @@ pub(crate) fn launch(
                 arg(status, 1),
                 stage,
                 width,
-                groups,
             );
         }
         kernels::normalize::launch_unchecked(
@@ -144,7 +145,6 @@ pub(crate) fn launch(
             arg(&scratch[6], count),
             arg(status, 1),
             width,
-            count,
         );
         let weighted = if mode == Gamma::DirectF32AfterBf16 {
             output
@@ -163,7 +163,6 @@ pub(crate) fn launch(
             arg(weighted, count),
             arg(status, 1),
             width,
-            count,
             mode.mode(),
         );
         if mode != Gamma::DirectF32AfterBf16 {
@@ -174,7 +173,6 @@ pub(crate) fn launch(
                 arg(&scratch[7], count),
                 arg(output, count),
                 arg(status, 1),
-                count,
             );
         }
     }
@@ -183,4 +181,32 @@ pub(crate) fn launch(
     } else {
         9
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scratch_words;
+    #[test]
+    fn runtime_rows_price_distinct_vector_and_scalar_scratch() {
+        for width in [32, 128, 256, 1024, 2048, 5120] {
+            for groups in [1, 2, 8, 17, 47, 62, 64] {
+                let words = width * groups;
+                assert_eq!(
+                    scratch_words(width, groups).unwrap(),
+                    [words, groups, groups, groups, groups, groups, words, words]
+                );
+            }
+        }
+        for (width, groups) in [
+            (0, 1),
+            (33, 1),
+            (5152, 1),
+            (128, 0),
+            (128, 65),
+            (usize::MAX, 64),
+            (32, usize::MAX),
+        ] {
+            assert!(scratch_words(width, groups).is_err());
+        }
+    }
 }

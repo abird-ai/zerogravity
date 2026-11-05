@@ -335,16 +335,14 @@ impl Cold {
                     &inputs[0]
                 };
                 let gamma = self.parameter(&d.parameters()[0])?;
-                for row in 0..rows {
-                    count += self.rms(
-                        &subview(input, row * g.width * 4, g.width * 4)?,
-                        &gamma,
-                        &subview(&outputs[0], row * g.width * 4, g.width * 4)?,
-                        g.width,
-                        1,
-                        crate::source_rms::Gamma::OnePlusRaw,
-                    )?;
-                }
+                count += self.rms(
+                    input,
+                    &gamma,
+                    &outputs[0],
+                    g.width,
+                    rows,
+                    crate::source_rms::Gamma::OnePlusRaw,
+                )?;
                 Ok(count)
             }
             CausalConvSplit {
@@ -397,12 +395,12 @@ impl Cold {
                 let k = kh * 256;
                 let rawq = self.s(layout::QUERY, rows * q)?;
                 let rawk = self.s(layout::KEY, rows * k)?;
-                let normq = self.s(layout::CORE, q)?;
-                let normk = self.s(layout::VALUE, k)?;
+                let normq = self.s(layout::CORE, rows * q)?;
+                let normk = self.s(layout::VALUE, rows * k)?;
                 let gammaq = self.parameter(&d.parameters()[0])?;
                 let gammak = self.parameter(&d.parameters()[1])?;
                 let freq = self.table(3, 32 * 4)?;
-                let table = self.table(2, 35 * 8)?;
+                let table = self.trig_table()?;
                 let angles = self.s(layout::ANGLES, 32)?;
                 let trig = self.s(layout::TRIG, 64)?;
                 unsafe {
@@ -420,6 +418,18 @@ impl Cold {
                     );
                 }
                 let mut count = 1;
+                for (raw, norm, gamma, heads) in
+                    [(&rawq, &normq, &gammaq, qh), (&rawk, &normk, &gammak, kh)]
+                {
+                    count += self.rms(
+                        raw,
+                        gamma,
+                        norm,
+                        256,
+                        rows * heads,
+                        crate::source_rms::Gamma::OnePlusRaw,
+                    )?;
+                }
                 for row in 0..rows {
                     unsafe {
                         crate::source_rotary::kernels::angles::launch_unchecked(
@@ -431,37 +441,30 @@ impl Cold {
                             (base + row) as u32,
                             32,
                         );
-                        crate::source_trig::sincos_angles::launch_unchecked(
+                        crate::source_trig::cpu::sincos_angles::launch_unchecked(
                             client,
                             grid(32),
                             dim(),
                             arg(&angles, 32),
-                            arg(&table, 35),
+                            arg(&table, crate::source_trig::cpu::TABLES.len()),
                             arg(&trig, 64),
+                            arg(&status, 1),
                             32,
                         );
                     }
                     count += 2;
-                    for (raw, norm, gamma, target, heads) in [
-                        (&rawq, &normq, &gammaq, &outputs[0], qh),
-                        (&rawk, &normk, &gammak, &outputs[1], kh),
-                    ] {
+                    for (norm, target, heads) in
+                        [(&normq, &outputs[0], qh), (&normk, &outputs[1], kh)]
+                    {
                         let width = heads * 256;
-                        count += self.rms(
-                            &subview(raw, row * width * 4, width * 4)?,
-                            gamma,
-                            norm,
-                            256,
-                            heads,
-                            crate::source_rms::Gamma::OnePlusRaw,
-                        )?;
+                        let norm = subview(norm, row * width * 4, width * 4)?;
                         let out = subview(target, row * width * 4, width * 4)?;
                         unsafe {
                             kernels::columns::launch_unchecked(
                                 client,
                                 grid(width),
                                 dim(),
-                                arg(norm, width),
+                                arg(&norm, width),
                                 arg(&out, width),
                                 arg(&status, 1),
                                 1u32,
@@ -475,7 +478,7 @@ impl Cold {
                                 client,
                                 grid(heads * 32),
                                 dim(),
-                                arg(norm, width),
+                                arg(&norm, width),
                                 arg(&trig, 64),
                                 arg(&out, width),
                                 arg(&status, 1),

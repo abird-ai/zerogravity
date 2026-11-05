@@ -114,7 +114,7 @@ pub(super) fn kernels(
                     g.width,
                     1,
                     crate::source_rms::Gamma::OnePlusRaw,
-                ));
+                )?);
             }
             SourceOperatorKind::CausalConvSplit { geometry: g, .. } => {
                 add!(
@@ -234,7 +234,7 @@ pub(super) fn kernels(
                     128,
                     vh,
                     crate::source_rms::Gamma::DirectF32AfterBf16,
-                ));
+                )?);
                 let bf16 = d.parameters()[2].kind
                     == zerogravity_core::encoding::StoredTensorEncoding::Scalar(
                         zerogravity_core::encoding::ScalarDType::Bf16,
@@ -273,8 +273,9 @@ pub(super) fn kernels(
                     32usize
                 );
                 add!(
-                    crate::source_trig::sincos_angles::SincosAngles,
+                    crate::source_trig::cpu::sincos_angles::SincosAngles,
                     32,
+                    b(),
                     b(),
                     b(),
                     b(),
@@ -287,7 +288,7 @@ pub(super) fn kernels(
                         256,
                         heads,
                         crate::source_rms::Gamma::OnePlusRaw,
-                    ));
+                    )?);
                     add!(
                         super::kernels::columns::Columns,
                         32,

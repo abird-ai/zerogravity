@@ -21,6 +21,12 @@
 // THE SOFTWARE.
 use cubecl::prelude::*;
 
+// Adjacent workgroups reuse the same weight row across independent prompt rows.
+#[cube]
+fn output_index(group: usize, requests: usize, #[comptime] rows: usize) -> usize {
+    (group % requests) * rows + group / requests
+}
+
 /// One [request,original output row] per64-thread workgroup. The lane index
 /// is exactly CPU register*8+lane; no subgroup reduction or TensorCore math.
 #[cube(launch_unchecked)]
@@ -34,7 +40,7 @@ pub(crate) fn project_cpu_bf16(
     #[comptime] rows: usize,
     #[comptime] columns: usize,
 ) {
-    let output = usize::cast_from(CUBE_POS_X);
+    let output = output_index(usize::cast_from(CUBE_POS_X), rounded.len() / rows, rows);
     let request = output / rows;
     let row = output % rows;
     let lane = usize::cast_from(UNIT_POS);
@@ -68,20 +74,27 @@ pub(crate) fn project_cpu_bf16(
     }
     sums[lane] = accumulator;
     flags[lane] = invalid;
+    // Fold integer status alongside the unchanged float tree/barriers.
     sync_cube();
     if lane < 32usize {
         let collapsed = sums[lane] + sums[lane + 32usize];
         sums[lane] = collapsed;
+        let combined = flags[lane] | flags[lane + 32usize];
+        flags[lane] = combined;
     }
     sync_cube();
     if lane < 16usize {
         let collapsed = sums[lane] + sums[lane + 16usize];
         sums[lane] = collapsed;
+        let combined = flags[lane] | flags[lane + 16usize];
+        flags[lane] = combined;
     }
     sync_cube();
     if lane < 8usize {
         let collapsed = sums[lane] + sums[lane + 8usize];
         sums[lane] = collapsed;
+        let combined = flags[lane] | flags[lane + 8usize];
+        flags[lane] = combined;
     }
     sync_cube();
     if lane == 0usize {
@@ -93,7 +106,7 @@ pub(crate) fn project_cpu_bf16(
         let bits = u32::reinterpret(result);
         let rounded_bits = (bits + (0x7fffu32 + ((bits >> 16u32) & 1u32))) & 0xffff0000u32;
         let mut combined = 0u32;
-        for at in 0..64usize {
+        for at in 0..8usize {
             combined |= flags[at];
         }
         if (bits & 0x7f800000u32) == 0x7f800000u32 {
@@ -107,3 +120,6 @@ pub(crate) fn project_cpu_bf16(
         status[output] = combined;
     }
 }
+
+#[cfg(test)]
+mod tests;

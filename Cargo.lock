@@ -5577,6 +5577,7 @@ dependencies = [
 name = "zerogravity"
 version = "0.1.0"
 dependencies = [
+ "cubecl-runtime",
  "futures-lite",
  "nvml-wrapper",
  "rustix 1.1.5",

@@ -8,6 +8,11 @@ use std::{collections::BTreeMap, sync::Arc};
 use zerogravity_core::{Error, Result, accelerator::program::SourceNumericalContract};
 mod body;
 mod cold;
+#[cfg(all(
+    feature = "hardware-abort-probe",
+    feature = "qwen-source-qualification"
+))]
+mod diagnostic;
 mod execute;
 mod kernels;
 mod layout;
@@ -30,7 +35,7 @@ fn tables() -> Vec<Vec<u8>> {
             .iter()
             .flat_map(|v| v.to_le_bytes())
             .collect(),
-        crate::source_trig::TRIG_TABLES
+        crate::source_trig::cpu::TABLES
             .iter()
             .flat_map(|v| v.to_le_bytes())
             .collect(),

@@ -3,7 +3,9 @@
 //! Explicit grouped QK, source Vec8 softmax and full-call BF16 PV.
 use crate::program_kernels::NONFINITE_VALUE;
 use crate::{
-    source_arithmetic::{add, bf16, div, finite, fused, mul, source_bf16, sub},
+    source_arithmetic::{
+        add_normal as add, bf16, div, finite, fused_bf16, mul, mul_bf16, source_bf16, sub,
+    },
     source_sleef as transcendentals,
 };
 use cubecl::prelude::*;
@@ -26,7 +28,8 @@ pub(crate) fn qk(
 ) {
     let active = usize::cast_from(active);
     let first = usize::cast_from(first);
-    let column = usize::cast_from(CUBE_POS_X);
+    // Flat X preserves single-query callers; Y groups independent query/head rows.
+    let column = usize::cast_from(CUBE_POS_X) + usize::cast_from(CUBE_POS_Y) * capacity;
     let head = column / capacity;
     let token = column % capacity;
     let lane = usize::cast_from(UNIT_POS);
@@ -37,11 +40,11 @@ pub(crate) fn qk(
         for block in 0..width / 64usize {
             let i = block * 64usize + lane;
             let a = query[head * width + i];
-            let b = keys[(token * kv_heads + head / (heads / kv_heads)) * width + i];
+            let b = keys[(token * kv_heads + (head % heads) / (heads / kv_heads)) * width + i];
             if !source_bf16(a) || !source_bf16(b) {
                 status[0].fetch_or(NONFINITE_VALUE);
             }
-            sum = fused(a, b, sum);
+            sum = fused_bf16(a, b, sum);
         }
     }
     sums[lane] = sum;
@@ -167,7 +170,7 @@ pub(crate) fn exponentials(
 ) {
     let active = usize::cast_from(active);
     let i = ABSOLUTE_POS;
-    if i < heads * capacity {
+    if i < heads * capacity && i < output.len() {
         let token = i % capacity;
         let mut y = 0.0f32;
         if token < active {
@@ -190,7 +193,7 @@ pub(crate) fn inverse(
     #[comptime] heads: usize,
 ) {
     let i = ABSOLUTE_POS;
-    if i < heads {
+    if i < heads && i < output.len() {
         let x = input[i];
         let y = div(1.0f32, x);
         output[i] = y;
@@ -211,7 +214,7 @@ pub(crate) fn probabilities(
 ) {
     let active = usize::cast_from(active);
     let i = ABSOLUTE_POS;
-    if i < heads * capacity {
+    if i < heads * capacity && i < output.len() {
         let mut y = 0.0f32;
         if i % capacity < active {
             y = bf16(mul(input[i], inverse[i / capacity]));
@@ -238,12 +241,13 @@ fn product(
 ) -> f32 {
     let mut y = 0.0f32;
     if token < active {
+        // Probability groups include query rows; immutable KV heads do not.
         let p = probabilities[head * capacity + token];
-        let v = values[(token * kv_heads + head / (heads / kv_heads)) * width + lane];
+        let v = values[(token * kv_heads + (head % heads) / (heads / kv_heads)) * width + lane];
         if !source_bf16(p) || !source_bf16(v) || p < 0.0f32 || p > 1.0f32 {
             status[0].fetch_or(NONFINITE_VALUE);
         }
-        y = mul(v, p);
+        y = mul_bf16(v, p);
     }
     y
 }
@@ -266,7 +270,7 @@ pub(crate) fn pv(
     let query_rows = usize::cast_from(query_rows);
     let contraction = usize::cast_from(contraction);
     let i = ABSOLUTE_POS;
-    if i < heads * width {
+    if i < output.len() {
         let head = i / width;
         let lane = i % width;
         let z = zero[0];

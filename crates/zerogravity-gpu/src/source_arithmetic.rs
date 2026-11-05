@@ -31,6 +31,54 @@ pub(crate) fn div(a: f32, b: f32) -> f32 {
     correct_quotient(a, b, candidate)
 }
 #[cube]
+fn normal(x: f32) -> bool {
+    let exponent = u32::reinterpret(x) & 0x7f800000u32;
+    exponent != 0u32 && exponent != 0x7f800000u32
+}
+#[cube]
+fn normal_or_zero(x: f32) -> bool {
+    normal(x) || (u32::reinterpret(x) & 0x7fffffffu32) == 0u32
+}
+#[cube]
+pub(crate) fn add_normal(a: f32, b: f32) -> f32 {
+    // Normal operands/results are independent of device denormal modes.
+    // Explicit FMA keeps source nearest-even addition; zero/tiny results fall back.
+    let result = fma(a, 1.0f32, b);
+    if normal_or_zero(a) && normal_or_zero(b) && normal(result) {
+        result
+    } else {
+        add(a, b)
+    }
+}
+#[cube]
+pub(crate) fn mul_bf16(a: f32, b: f32) -> f32 {
+    let result = fma(a, b, 0.0f32);
+    if source_bf16(a) && source_bf16(b) && normal(a) && normal(b) && normal(result) {
+        result
+    } else {
+        mul(a, b)
+    }
+}
+#[cube]
+pub(crate) fn fused_bf16(a: f32, b: f32, c: f32) -> f32 {
+    // BF16 normal products are exact FP32. No FP64 conversion on this path.
+    // Reject denormal inputs, intermediates and results, including flushed zeros.
+    let product = fma(a, b, 0.0f32);
+    let result = fma(a, b, c);
+    if source_bf16(a)
+        && source_bf16(b)
+        && normal(a)
+        && normal(b)
+        && normal_or_zero(c)
+        && normal(product)
+        && normal(result)
+    {
+        result
+    } else {
+        fused(a, b, c)
+    }
+}
+#[cube]
 pub(crate) fn fused(a: f32, b: f32, c: f32) -> f32 {
     // Integer significands retain a fused product's exact48 bits and the
     // addend, with a jammed low bit only when cancellation cannot expose it.
@@ -201,3 +249,6 @@ pub(crate) fn finite(x: f32) -> bool {
 pub(crate) fn source_bf16(x: f32) -> bool {
     finite(x) && (u32::reinterpret(x) & 0xffffu32) == 0u32
 }
+
+#[cfg(test)]
+mod tests;

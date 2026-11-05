@@ -1033,6 +1033,9 @@ fn respond(
         ));
     }
     let (mut task, include_usage) = parse_body(&req.body, chat, Some(router), &mut req.ingress)?;
+    if chat {
+        router.validate_chat(&task.model)?;
+    }
     bind_token_metrics(
         &mut task,
         req.header("x-request-id"),

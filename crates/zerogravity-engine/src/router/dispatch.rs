@@ -26,6 +26,9 @@ use zerogravity_core::resource_arbiter::GlobalResourceLease;
 pub const EVENTS_PER_REQUEST: usize = 16;
 pub const MAX_TOKEN_OBSERVATIONS: usize = 512;
 pub const MAX_ACTIVE_PER_WORKER: usize = 8;
+/// Transport bounds only; each prepared source still limits its own context.
+pub const MAX_CONTEXT_TOKENS: usize = 32768;
+pub const MAX_OUTPUT_TOKENS: usize = MAX_TOKEN_OBSERVATIONS;
 
 /// Conservative allocator header/rounding for a `Vec`/`VecDeque` backing.
 const CONTAINER_ALLOC_OVERHEAD_BYTES: u64 = 64;
@@ -751,6 +754,12 @@ impl Router {
             index: 0,
         }
     }
+    pub fn validate_chat(&self, alias: &str) -> Result<(), ServiceError> {
+        self.models
+            .model(alias)
+            .ok_or_else(|| ServiceError::new(404, "model_not_found", "model is not registered"))?
+            .validate_chat()
+    }
     pub fn admission(&self) -> Result<serde_json::Value, ServiceError> {
         self.models.admission(&worker::SchedulerSnapshot {
             queue: self.queue_snapshot(),
@@ -876,6 +885,9 @@ impl Router {
             AllocationClass::RecurrentState,
             prompt_bytes,
         )?;
+        if request.chat {
+            model.validate_chat()?;
+        }
         model.validate_request(&request)?;
         let model_alias = request.model.clone();
         let token_metrics = request.token_metrics.clone();
@@ -1071,8 +1083,8 @@ pub fn validate_config(
     if !(1..=16).contains(&models)
         || !(1..=32).contains(&workers)
         || !(1..=MAX_ACTIVE_PER_WORKER).contains(&active_per_worker)
-        || !(1..=8192).contains(&max_context)
-        || !(1..=512).contains(&max_output)
+        || !(1..=MAX_CONTEXT_TOKENS).contains(&max_context)
+        || !(1..=MAX_OUTPUT_TOKENS).contains(&max_output)
         || max_output > max_context
         || max_pending == Some(0)
     {
@@ -1108,6 +1120,16 @@ mod scheduler_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transport_context_bound_does_not_imply_source_or_output_capacity() {
+        for context in [8192, 16384, MAX_CONTEXT_TOKENS] {
+            assert!(validate_config(1, 1, 2, context, 3, Some(64)).is_ok());
+        }
+        assert!(validate_config(1, 1, 2, MAX_CONTEXT_TOKENS + 1, 3, Some(64)).is_err());
+        assert!(validate_config(1, 1, 2, 16384, MAX_OUTPUT_TOKENS + 1, Some(64)).is_err());
+        assert!(validate_config(1, 1, MAX_ACTIVE_PER_WORKER + 1, 16384, 3, Some(64)).is_err());
+    }
 
     #[test]
     fn explicit_shutdown_reports_worker_panic_and_joins_remaining_workers() {

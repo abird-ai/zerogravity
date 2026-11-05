@@ -19,6 +19,10 @@ pub trait TextService: Send + Sync + 'static {
     fn model_ids(&self) -> Result<Vec<String>>;
     fn max_output(&self) -> Result<usize>;
     fn admission(&self) -> Result<Value>;
+    /// Preserve source endpoint policy even when HTTP has already framed chat.
+    fn validate_chat(&self, _model: &str) -> Result<()> {
+        Ok(())
+    }
     /// Cold validation; an unconfigured runtime may still be configured later.
     fn require_open(&self) -> crate::Result<()> {
         Ok(())
@@ -26,6 +30,9 @@ pub trait TextService: Send + Sync + 'static {
 }
 
 impl TextService for Runtime {
+    fn validate_chat(&self, model: &str) -> Result<()> {
+        self.with_text_router(|router| router.validate_chat(model))
+    }
     fn request_admitted(
         &self,
         request: Request,
@@ -58,6 +65,9 @@ impl TextService for Runtime {
 }
 
 impl TextService for Router {
+    fn validate_chat(&self, model: &str) -> Result<()> {
+        Router::validate_chat(self, model)
+    }
     fn request_admitted(
         &self,
         request: Request,

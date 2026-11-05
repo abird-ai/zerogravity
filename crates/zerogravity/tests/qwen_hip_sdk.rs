@@ -1,6 +1,14 @@
 //! Public runtime-only source route. Each ignored case needs a fresh gfx1151 process.
 #![cfg(all(feature = "qwen35-hip", target_os = "linux"))]
 
+#[path = "support/qwen_hip_context.rs"]
+mod contexts;
+#[cfg(feature = "serve")]
+#[path = "support/qwen_hip_http.rs"]
+mod http;
+#[path = "support/qwen_hip_population.rs"]
+mod population;
+
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -57,6 +65,12 @@ fn reference(path: &Path, label: &str) -> Reference {
         "2b" => "1a299081a66d386c9f86e8b6e71e44fd653ae6424a1709a93184d3cda48e8c96",
         _ => panic!("explicit approved model required"),
     };
+    let bytes = manifest_bytes(path, expected, 8 * 1024 * 1024);
+    let result: Reference = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(result.calls.len(), 66);
+    result
+}
+fn manifest_bytes(path: &Path, expected: &str, limit: u64) -> Vec<u8> {
     let file = std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(0o400000 | 0o2000000)
@@ -64,16 +78,11 @@ fn reference(path: &Path, label: &str) -> Reference {
         .unwrap();
     let before = stamp(&file);
     let mut bytes = Vec::new();
-    (&file)
-        .take(8 * 1024 * 1024 + 1)
-        .read_to_end(&mut bytes)
-        .unwrap();
-    assert!(bytes.len() <= 8 * 1024 * 1024);
+    (&file).take(limit + 1).read_to_end(&mut bytes).unwrap();
+    assert!(bytes.len() as u64 <= limit);
     assert_eq!(stamp(&file), before);
     assert_eq!(format!("{:x}", Sha256::digest(&bytes)), expected);
-    let result: Reference = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(result.calls.len(), 66);
-    result
+    bytes
 }
 fn request(alias: &str, prompt: &str) -> Request {
     Request {

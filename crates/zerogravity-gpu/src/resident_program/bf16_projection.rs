@@ -260,8 +260,9 @@ impl PreparedBf16Projection {
                 "BF16 prepared original scratch/input/status/zero roles".into(),
             ));
         }
-        view(b.accumulation, 0, self.max_launch_rows() * 4)?;
-        view(b.flags, 0, self.max_launch_rows() * 4)?;
+        let (batch, scratch_words) = row_tile(input_rows, total_rows, self.max_launch_rows())?;
+        view(b.accumulation, 0, scratch_words * 4)?;
+        view(b.flags, 0, scratch_words * 4)?;
         if self.storage == Bf16ProjectionStorage::Resident {
             let resident = self
                 .resident
@@ -318,40 +319,42 @@ impl PreparedBf16Projection {
             cancelled(flag)?;
             let rows = self.rows_per_launch.min(total_rows - first);
             let range = first..first + rows;
-            let accumulation = view(b.accumulation, 0, rows * 4)?;
-            let flags = view(b.flags, 0, rows * 4)?;
+            let elements = rows * batch;
+            let launches = 2 * (input_rows / batch);
+            let accumulation = view(b.accumulation, 0, elements * 4)?;
+            let flags = view(b.flags, 0, elements * 4)?;
             let launch = |weights: &Handle| unsafe {
-                // Same prepared image/ABI and reduction for every source row.
-                // Scratch reuse is ordered on the original submitting queue.
-                for token in 0..input_rows {
+                // Full weight windows already support independent request/output indices.
+                // Partial windows retain ordered per-row scratch reuse and output strides.
+                for token in (0..input_rows).step_by(batch) {
                     let start = token * total_rows + first;
                     let destination = b
                         .output
                         .clone()
                         .offset_start((start * 4) as u64)
-                        .offset_end(((output_elements - start - rows) * 4) as u64);
+                        .offset_end(((output_elements - start - elements) * 4) as u64);
                     let activation = packed
                         .clone()
                         .offset_start((token * columns * 2) as u64)
-                        .offset_end(((input_rows - token - 1) * columns * 2) as u64);
+                        .offset_end(((input_rows - token - batch) * columns * 2) as u64);
                     crate::bf16_projection_kernel::project_cpu_bf16::launch_unchecked(
                         service.client(),
-                        CubeCount::Static(rows as u32, 1, 1),
+                        CubeCount::Static(elements as u32, 1, 1),
                         CubeDim::new_1d(64),
                         arg(weights, rows * columns / 2),
-                        arg(&activation, columns / 2),
+                        arg(&activation, batch * columns / 2),
                         arg(&b.zero.handle(), 1),
-                        arg(&accumulation, rows),
-                        arg(&destination, rows),
-                        arg(&flags, rows),
+                        arg(&accumulation, elements),
+                        arg(&destination, elements),
+                        arg(&flags, elements),
                         rows,
                         columns,
                     );
                     projection_status::launch_unchecked(
                         service.client(),
-                        grid(rows),
+                        grid(elements),
                         threads(),
-                        arg(&flags, rows),
+                        arg(&flags, elements),
                         arg(&b.status.handle(), 1),
                     );
                 }
@@ -374,7 +377,7 @@ impl PreparedBf16Projection {
                                 return Err(Error::State("BF16 resident exact full-K view".into()));
                             }
                             launch(actual.handle());
-                            Ok(2 * input_rows)
+                            Ok(launches)
                         },
                     )?;
                 }
@@ -397,10 +400,21 @@ impl PreparedBf16Projection {
                     .await?;
                 }
             }
-            commands += 2 * input_rows;
+            commands += launches;
         }
         Ok(commands)
     }
+}
+fn row_tile(input_rows: usize, outputs: usize, tile_rows: usize) -> Result<(usize, usize)> {
+    let (_, words) = row_extents(input_rows, 1, outputs)?;
+    if tile_rows == 0 || tile_rows > outputs {
+        return Err(Error::Limit("BF16 projection weight row tile".into()));
+    }
+    Ok(if tile_rows == outputs {
+        (input_rows, words)
+    } else {
+        (1, tile_rows)
+    })
 }
 fn row_extents(input_rows: usize, columns: usize, outputs: usize) -> Result<(usize, usize)> {
     if !(1..=64).contains(&input_rows) || columns == 0 || outputs == 0 {
@@ -501,7 +515,35 @@ pub(crate) fn widen(
 
 #[cfg(test)]
 mod row_tests {
-    use super::row_extents;
+    use super::{row_extents, row_tile};
+
+    #[test]
+    fn whole_weight_windows_group_rows_but_partial_tiles_keep_strides() {
+        for input_rows in [1, 17, 47, 62, 64] {
+            for outputs in [1, 128, 6144, 248320] {
+                assert_eq!(
+                    row_tile(input_rows, outputs, outputs).unwrap(),
+                    (input_rows, input_rows * outputs)
+                );
+                if outputs > 1 {
+                    assert_eq!(
+                        row_tile(input_rows, outputs, outputs - 1).unwrap(),
+                        (1, outputs - 1)
+                    );
+                }
+            }
+        }
+        for (inputs, outputs, tile) in [
+            (0, 64, 64),
+            (65, 64, 64),
+            (64, 0, 1),
+            (64, 64, 0),
+            (64, 64, 65),
+            (64, u32::MAX as usize, 1),
+        ] {
+            assert!(row_tile(inputs, outputs, tile).is_err());
+        }
+    }
 
     #[test]
     fn rows_price_complete_inputs_and_outputs_without_changing_weight_tiles() {

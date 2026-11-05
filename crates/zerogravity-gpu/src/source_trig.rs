@@ -3,6 +3,9 @@
 //! Copyright (c) 2018-2024, Arm Limited. SPDX-License-Identifier: MIT
 //! Full permission notice: ../LICENSE-ARM-MATH. No glibc code incorporated.
 
+#[cfg(feature = "hip-source")]
+pub(crate) mod cpu;
+
 pub(crate) const TRIG_TABLES: [f64; 35] = [
     f64::from_bits(0x41645f306dc9c883),
     f64::from_bits(0x3ff921fb54442d18),

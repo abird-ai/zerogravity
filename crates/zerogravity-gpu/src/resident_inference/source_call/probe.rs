@@ -134,6 +134,32 @@ impl SourceCallPending {
     }
 }
 impl SourceCallModel {
+    /// Execute the original prepared primitive; returned storage retains this model.
+    pub async fn diagnostic_trig(
+        self: &Arc<Self>,
+        angles: &[f32],
+    ) -> Result<SourceCallReadback<Vec<f32>>> {
+        self.inner.service.ensure_usable()?;
+        let workspace =
+            self.inner.workspace.try_lock().ok_or_else(|| {
+                Error::State("source trig diagnostic requires idle workspace".into())
+            })?;
+        let bytes = angles
+            .len()
+            .checked_mul(20)
+            .and_then(|n| n.checked_add(CONTROL_BYTES))
+            .ok_or_else(|| Error::Limit("source trig host extent".into()))?;
+        let scope = self.reader_scope(bytes)?;
+        let data = workspace
+            .program
+            .source_call_diagnostic_trig(angles, scope.clone())
+            .await?;
+        Ok(SourceCallReadback {
+            data,
+            _scope: scope,
+        })
+    }
+
     pub fn diagnostic_pause_next_launch(&self) -> Result<()> {
         let _idle = self.inner.workspace.try_lock().ok_or_else(|| {
             Error::State("source-call launch probe requires idle workspace".into())

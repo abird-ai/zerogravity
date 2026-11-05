@@ -70,6 +70,15 @@ fn canonical_hip_registration_checks_runtime_limits_and_aliases_before_source_io
         .load(request(1, vec!["source".into(), "source".into()]))
         .unwrap_err();
     assert_eq!(error.code, "invalid_model");
+    let mut oversized = request(1, vec!["source".into()]);
+    if let ModelLoadRequest::QwenHip { profile, .. } = &mut oversized {
+        profile.context = 16384;
+        profile.output = 513;
+    }
+    assert_eq!(
+        runtime.models().load(oversized).unwrap_err().code,
+        "invalid_source_profile"
+    );
     assert!(runtime.models().list().unwrap().is_empty());
     assert_eq!(runtime.status().execution_adapters, 0);
     runtime.shutdown().unwrap();

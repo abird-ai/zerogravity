@@ -40,7 +40,7 @@ pub(super) struct Layout {
     pub parameters: BTreeMap<String, SourceParameter>,
     pub scratch: Vec<usize>,
     pub max_columns: usize,
-    pub max_matrix_rows: usize,
+    pub projection_scratch_words: usize,
     pub vocabulary: usize,
     pub preflight: ResidentPreflight,
 }
@@ -398,6 +398,7 @@ impl Layout {
         }
         let v = MAX_ROWS * heads * 128;
         let a = MAX_ROWS * qheads * 256;
+        let rms = rms * MAX_ROWS;
         let mut scratch = vec![
             rms,
             64,
@@ -429,8 +430,9 @@ impl Layout {
         let g = crate::source_gdn::chunk::execution::Geometry::new(MAX_ROWS, heads)?;
         scratch.extend(g.output_words());
         scratch.extend(g.scratch_words());
-        scratch.extend([qheads * plan.prefix_capacity(); 4]);
-        scratch.extend([qheads; 3]);
+        let attention =
+            crate::source_attention::rows::Geometry::new(qheads, kvheads, plan.prefix_capacity())?;
+        scratch.extend(attention.scratch_words());
         if scratch.len() != ATTENTION.end {
             return Err(Error::State("source-call scratch schema".into()));
         }
@@ -462,11 +464,13 @@ impl Layout {
             })
             .collect::<Result<Vec<_>>>()?)?;
         let root_bytes = sum(ordered.iter().map(|s| s.bytes))?;
+        // Largest complete projection output also bounds each constituent matrix.
+        let projection_scratch_words = max_matrix_rows.max(project);
         let workspace_bytes = sum([
             sum(scratch.iter().copied())?,
             crate::resident_leases::source_page::PAGE_BYTES,
             aligned(MAX_ROWS * max_columns * 2)?,
-            2 * aligned(max_matrix_rows * 4)?,
+            2 * aligned(projection_scratch_words * 4)?,
         ])?;
         let tables = super::tables()
             .into_iter()
@@ -493,7 +497,7 @@ impl Layout {
             parameters,
             scratch,
             max_columns,
-            max_matrix_rows,
+            projection_scratch_words,
             vocabulary,
             preflight,
         })

@@ -30,15 +30,24 @@ impl QwenHipProfile {
             || !(ORDINARY_SOURCE_MIN_CONTEXT..=ORDINARY_SOURCE_MAX_CONTEXT).contains(&self.context)
             || self.output == 0
             || self.output > self.context
+            || self.output > zerogravity_engine::router::MAX_OUTPUT_TOKENS
             || self.max_pending == Some(0)
         {
             return Err(ServiceError::new(
                 400,
                 "invalid_source_profile",
-                "source HIP requires active=1..8, context=512..32768, output=1..context, positive pending bound",
+                "source HIP requires active=1..8, context=512..32768, output=1..512, positive pending bound",
             ));
         }
-        Ok(())
+        // Keep every shared worker refusal before source IO or device creation.
+        zerogravity_engine::router::validate_config(
+            1,
+            1,
+            self.active,
+            self.context,
+            self.output,
+            self.max_pending,
+        )
     }
 }
 struct Source {
@@ -69,18 +78,22 @@ fn poison() -> ServiceError {
     ServiceError::new(500, "source_owner", "original model owner lock poisoned")
 }
 impl PreparedModel for Model {
+    fn validate_chat(&self) -> Result<(), ServiceError> {
+        Err(ServiceError::new(
+            400,
+            "unsupported_chat",
+            "original source HIP currently accepts raw text only",
+        ))
+    }
     fn validate_request(
         &self,
         request: &zerogravity_engine::router::Request,
     ) -> Result<(), ServiceError> {
         if request.chat {
-            return Err(ServiceError::new(
-                400,
-                "unsupported_chat",
-                "original source HIP currently accepts raw text only",
-            ));
+            self.validate_chat()
+        } else {
+            Ok(())
         }
-        Ok(())
     }
     fn source(&self) -> SourceIdentity {
         self.source.plan.source_seal().source_identity()
@@ -111,6 +124,9 @@ mod tests {
             max_pending: Some(4),
         };
         assert!(good.validate().is_ok());
+        for context in [8192, 16384, 32768] {
+            assert!(QwenHipProfile { context, ..good }.validate().is_ok());
+        }
         for bad in [
             QwenHipProfile { active: 0, ..good },
             QwenHipProfile { active: 9, ..good },
@@ -120,6 +136,11 @@ mod tests {
             },
             QwenHipProfile {
                 context: 32769,
+                ..good
+            },
+            QwenHipProfile {
+                context: 16384,
+                output: 513,
                 ..good
             },
             QwenHipProfile {

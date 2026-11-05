@@ -6,16 +6,51 @@ It is deliberately not a generated concatenation of every historical plan, run l
 
 A successor should be able to start here without prior chat history, understand how the project evolved, identify what is implemented versus merely designed, and continue either the current Qwen correctness critical path or the separately authorized Fabric vNext transition.
 
-## Active work — ordinary multi-row HIP
+## Current checkpoint — populated Qwen HIP serving
 
-Owner resumed after the signed Fabric closeout `1c99929`. Next: genuine0.8B/2B
-multi-row prefill/decode through original source/physical/session owners; then
-broader contexts/serving and matched performance. Existing references retained.
-Native trajectories, public SDK, source state/lifetimes and final isolated gate
-pass for both models; reviewed signed checkpoint is next. See [model execution](../plans/model-execution/TODO.md).
-Main only, no acquisition,
-recovery, gfx90c, push or recurrence restart. Fabric's accepted evidence below
-covers its landed source, not the new dirty implementation.
+Fabric migration remains accepted (`8c43844`, closeout`1c99929`); signed
+`bb400c4` remains the previous ordinary multi-row HIP baseline. The current
+0.8B/2B populated-context repair now passes native and public SDK/HTTP correctness.
+
+- NativeR28 independently accepts both original66-call schedules and both
+  516-call16K trajectories, exact full-vocabulary digests, sparse state/KV tails,
+  original feedback IDs, source/native retirement and exact physical cleanup.
+- ServingR29 independently accepts **26/26**, no failed/unrun cases: both models'
+  SDK1K/2K/4K/8K/16K completion/cancel/replay,16K HTTP JSON/SSE/disconnect/replay,
+  and32K pre-native capacity refusals. Both16K SDK cases observe one actual
+  cancellation,7accepted tokens/49150model-token steps. Original roots, aliases,
+  counters, native/source/tokenizer final readers verified. HTTP180s and SDK1200s
+  remain unchanged; whole-cell durations include several sequential requests.
+- R29's monitor stopped before its final receipt. Audit2417 authenticates every
+  case and the unchanged R27 executable/receipt/scripts, then accepts a clearly
+  labelled **later observation of the same invocation**: exit0, exact owned
+  cgroup absent, KFD empty, GPU idle. The continuous-monitor terminal receipt is
+  missing and the supervision gap remains explicit; no rerun or fabricated
+  contemporaneous receipt. No old monitor/watch is armed.
+- Twenty earlier small-context population cases remain separately accepted:
+  offeredC1..C64, active≤8, singleton execution. This is not native batching.
+  32K refusal is not32K inference support. Original capture reap/EOF gaps, R12's
+  stale precheck and every failed/rejected scope remain retained.
+- Repairs preserve original numerical/source/owner contracts: source trig,
+  digest coverage, bounded attention and RMS row work, weight-local traversal,
+  integer-only status reduction. R26four-row tiling was rejected, not promoted.
+  Diagnostic178.825s includes readback; no matched performance or GPU-time claim.
+- Final gateR1 caught five stale shared RMS constructor arguments in the separate
+  `bf16_text` preparation consumer. Removed obsolete count/groups arguments;
+  exact geometry, kernels, launch semantics and the qualified Qwen path unchanged.
+  Corrected complete isolated gateR2 passes:2350Rust/0failed/101ignored,309suites
+  including74empty;17Python suites/182cases/10skips. This batch lands as
+  `fix(hip): qualify populated Qwen serving`.
+
+Next: remaining populated CUDA/general27B correctness,
+configurable native continuous batching, and matched vLLM performance, in that
+order. No new kernel-tuning campaign. [Model plan](../plans/model-execution/TODO.md)
+retains the detailed accepted scopes and historical failures.
+
+Main only; approved sources/devices; no acquisition, gfx90c, recovery, push or
+recurrence restart. Recurrences`7cddc6c9`/`17aafa71` stay cancelled.
+
+## Retained earlier checkpoints
 
 - CPU-contract resident body now connects the original template traversal,
   native kernels, root pool and prepared publication; HIP strict compilation
@@ -72,8 +107,10 @@ covers its landed source, not the new dirty implementation.
 - Final complete isolated gate passes:2348Rust passes/0failures/101ignored,
   309suites including74empty;17Python suites/182cases/10skips. Two existing
   Vulkan-peer HIP probe-hook warnings remain; no suppression or runtime change.
-- Next: reviewed signed checkpoint, then populated contexts/serving concurrency
-  and matched performance. No new commit yet.
+- Signed checkpoint`bb400c42136a798e177be82d3a1e6ca40b3b8431` verified; no push.
+  Next: populated contexts/serving concurrency and matched performance.
+  Post-commit tracking and the new populated-context/serving source/tests are
+  uncommitted; the new batch has not passed its final assembled gate.
 
 ## Functional transition accepted — `8d761c4` / `8c43844`
 

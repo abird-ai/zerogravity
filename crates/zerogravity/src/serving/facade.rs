@@ -6,6 +6,9 @@ use super::{
 type Result<T> = std::result::Result<T, ServiceError>;
 
 impl TextService for crate::Runtime {
+    fn validate_chat(&self, model: &str) -> Result<()> {
+        self.engine.validate_chat(model)
+    }
     fn request_admitted(
         &self,
         request: Request,

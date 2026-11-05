@@ -1,14 +1,16 @@
 # Serving and speculation
 
-## Priority override — 31 Oct: Fabric first
+## Current priority — Fabric closeout and correctness before batching
 
-Owner prioritizes [Fabric transition](../fabric-vnext-transition/TODO.md).
-Signed S0`7396984` is structural only; preserve all accepted model/operator/
-source/lifetime evidence and all unfinished work below. Historical “resume now”
-orders are deferred, not cancelled requirements. S1–S3/F0–F4 migration and its
-applicable acceptance precede returning to genuine multi-row HIP/general27B,
-populated CUDA/HIP contexts, C1..C64 and matched vLLM. Recurrence`17aafa71` stays
-cancelled; no automatic hardware restart or new production permit.
+[Fabric transition](../fabric-vnext-transition/TODO.md) S0–S3/F0–F4 and scoped
+acceptance are complete on source`8c43844`; ordinary multi-row HIP landed
+`bb400c4`. Preserve those accepted owners/numerics/lifetimes; do not repeat the
+migration. Populated0.8B/2B HIP correctness and its final gate pass. Finish
+remaining populated CUDA/general27B, then configurable native continuous batching:
+independent queue/active/member/token limits, including all eligible admitted
+work when it fits. Current offered-C64/active≤8 singleton coverage is not native
+batching. Matched vLLM performance follows correctness and batching.
+Recurrence`17aafa71` stays cancelled; no new acquisition or production permit.
 
 
 Provenance commit: `6d74f76`.
@@ -526,6 +528,18 @@ or a change to the active correctness/benchmark/27B order.
 - [ ] Preserve zero untriaged frontier/disposition requirements before any full-parity claim; synthetic acceptance, fewer launches and competitor measurements do not establish local parity or speed.
 
 ## Committed
+
+### `fix(hip): qualify populated Qwen serving`
+
+- [x] Resolve16K HIP serving deadlines without extending HTTP180s/SDK1200s or
+  changing references, caps or owners. R28 accepts all4native scopes; R29 audit2417
+  accepts26/26 SDK/HTTP/capacity cases, including both16K HTTP completions and
+  actual SDK cancellation/model, exact roots/replay and final readers. Earlier
+  failures remain failures. Original R29 monitor missed terminal capture;
+  same-invocation exit/physical cleanup is an explicit later observation, with
+  the gap retained. Final isolated gate passes2350Rust/0failed;17Python suites.
+  [Owning implementation](../model-execution/TODO.md).
+
 
 ### c84b987 — Owned provider stop evidence
 

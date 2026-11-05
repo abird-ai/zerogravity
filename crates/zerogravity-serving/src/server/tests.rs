@@ -131,6 +131,7 @@ struct Script {
     host: ServingHost,
     requests: Mutex<Vec<(Request, Vec<ServingCharge>)>>,
     cancellations: Mutex<Vec<CancelToken>>,
+    raw_only: bool,
 }
 impl Script {
     fn new(host: ServingHost) -> Arc<Self> {
@@ -138,10 +139,18 @@ impl Script {
             host,
             requests: Mutex::new(Vec::new()),
             cancellations: Mutex::new(Vec::new()),
+            raw_only: false,
         })
     }
 }
 impl TextService for Script {
+    fn validate_chat(&self, _: &str) -> std::result::Result<(), ServiceError> {
+        if self.raw_only {
+            Err(ServiceError::new(400, "unsupported_chat", "raw text only"))
+        } else {
+            Ok(())
+        }
+    }
     fn charge_ingress(
         &self,
         session: &str,
@@ -193,6 +202,29 @@ impl TextService for Script {
         self.requests.lock().unwrap().push((request, ingress));
         Ok(events)
     }
+}
+
+#[test]
+fn framed_chat_preserves_source_refusal_before_enqueue() {
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let mut service = Script::new(host.clone());
+    Arc::get_mut(&mut service).unwrap().raw_only = true;
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let body = r#"{"model":"fixture","messages":[{"role":"user","content":"hello"}]}"#;
+    let response = exchange(server.local_addr(), &post("/v1/chat/completions", body));
+    assert!(response.starts_with("HTTP/1.1 400"));
+    assert_eq!(document(&response)["error"]["code"], "unsupported_chat");
+    assert!(service.requests.lock().unwrap().is_empty());
+    server.shutdown().unwrap();
+    drop(service);
+    assert_eq!(host.serving_bytes(), baseline);
 }
 
 #[test]

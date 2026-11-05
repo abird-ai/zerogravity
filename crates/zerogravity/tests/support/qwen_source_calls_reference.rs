@@ -47,6 +47,13 @@ pub struct Call {
     pub input_ids: Vec<u32>,
     pub selected: u32,
     pub max_bits: u32,
+    #[serde(default = "captured")]
+    pub checkpoint: bool,
+    #[serde(default)]
+    pub logits_sha256: Option<String>,
+}
+fn captured() -> bool {
+    true
 }
 impl Call {
     pub fn key(&self) -> (usize, usize, usize) {
@@ -75,6 +82,8 @@ struct Document {
     numerical_profile: String,
     original_full_forward: bool,
     all_original_source_and_mapped_bytes_unchanged: bool,
+    #[serde(default)]
+    prompts: Vec<String>,
 }
 type Key = (usize, usize, usize, String, Option<usize>);
 pub struct Expected {
@@ -84,7 +93,7 @@ pub struct Expected {
     stamp: [u64; 7],
     _host: GlobalResourceLease,
 }
-fn stamp(f: &File) -> Result<[u64; 7]> {
+pub(super) fn stamp(f: &File) -> Result<[u64; 7]> {
     let m = f.metadata()?;
     need(m.is_file(), "source-call reference regular file")?;
     Ok([
@@ -97,7 +106,7 @@ fn stamp(f: &File) -> Result<[u64; 7]> {
         m.ctime_nsec() as u64,
     ])
 }
-fn open(path: &Path) -> Result<File> {
+pub(super) fn open(path: &Path) -> Result<File> {
     Ok(std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(0o400000 | 0o2000000)
@@ -119,6 +128,34 @@ impl Expected {
                 "Qwen/Qwen3.5-2B",
             ),
             _ => return Err(Error::Unsupported("source-call reference model".into())),
+        };
+        Self::open_pinned(
+            directory,
+            repository,
+            manifest_sha,
+            Some((raw_sha, raw_bytes)),
+            false,
+        )
+    }
+    /// New original captures supply a separately verified immutable manifest digest.
+    /// Historical 66-call pins and strict scope above remain unchanged.
+    pub fn open_pinned(
+        directory: &Path,
+        repository: &str,
+        manifest_sha: &str,
+        raw_pin: Option<(&str, u64)>,
+        populated: bool,
+    ) -> Result<Self> {
+        let (schema, capacity, cases, calls_count, records_count) = if populated {
+            (
+                "zg.original-hf-source-context-reference.v1",
+                16384,
+                5,
+                1012,
+                3720,
+            )
+        } else {
+            ("zg.original-hf-source-call-reference.v1", 514, 6, 66, 7608)
         };
         let arbiter = ResourceArbiter::process_shared();
         let key = PhysicalDeviceKey::new("host", "system-ram")?;
@@ -146,21 +183,24 @@ impl Expected {
         let doc: Document =
             serde_json::from_slice(&bytes).map_err(|e| Error::Malformed(e.to_string()))?;
         need(
-            doc.schema == "zg.original-hf-source-call-reference.v1"
+            doc.schema == schema
                 && doc.status == "CAPTURED_ORIGINAL_SOURCE_CALL_REFERENCE_ONLY"
                 && doc.repository == repository
-                && doc.active_context == 514
+                && doc.active_context == capacity
                 && doc.repeats == 2
                 && !doc.rust_or_gpu_parity
-                && doc.raw_bytes == raw_bytes
-                && doc.raw_sha256 == raw_sha
-                && doc.calls.len() == 66
-                && doc.records.len() == 7608
+                && (0 < doc.raw_bytes && doc.raw_bytes <= 16 * 1024 * 1024 * 1024)
+                && raw_pin
+                    .is_none_or(|(sha, bytes)| doc.raw_bytes == bytes && doc.raw_sha256 == sha)
+                && doc.calls.len() == calls_count
+                && doc.records.len() == records_count
+                && doc.prompts.len() == if populated { cases } else { 0 }
                 && doc.numerical_profile == "TorchCpuBf16Avx2MixedSourceV1"
                 && doc.original_full_forward
                 && doc.all_original_source_and_mapped_bytes_unchanged,
             "source-call original scope",
         )?;
+        let raw_bytes = doc.raw_bytes;
         let raw = open(&directory.join("raw.bin"))?;
         let before = stamp(&raw)?;
         need(before[2] == raw_bytes, "source-call raw extent")?;
@@ -174,7 +214,7 @@ impl Expected {
             at += n as u64;
         }
         need(
-            format!("{:x}", h.finalize()) == raw_sha && stamp(&raw)? == before,
+            format!("{:x}", h.finalize()) == doc.raw_sha256 && stamp(&raw)? == before,
             "source-call raw full digest/stable inode",
         )?;
         let mut calls = BTreeMap::new();
@@ -183,14 +223,20 @@ impl Expected {
             let frontier = frontiers.entry((c.repeat, c.case)).or_insert((0, 0));
             need(
                 c.repeat < 2
-                    && c.case < 6
+                    && c.case < cases
                     && c.call == frontier.0
                     && c.position == frontier.1
                     && c.rows == c.input_ids.len()
                     && (1..=64).contains(&c.rows)
-                    && c.position + c.rows <= 514
+                    && c.position
+                        .checked_add(c.rows)
+                        .is_some_and(|n| n <= capacity)
                     && c.input_ids.iter().all(|id| *id < 248320)
                     && c.selected < 248320
+                    && (!populated
+                        || c.logits_sha256.as_ref().is_some_and(|s| {
+                            s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
+                        }))
                     && matches!(c.phase.as_str(), "prefill" | "decode")
                     && (c.phase != "decode" || c.rows == 1 && c.position > 0),
                 "source-call schedule and actual frontiers",
@@ -199,7 +245,7 @@ impl Expected {
             *frontier = (c.call + 1, c.position + c.rows);
         }
         need(
-            frontiers.len() == 12,
+            frontiers.len() == 2 * cases,
             "source-call independent repeat/case groups",
         )?;
         let mut index = BTreeMap::new();
@@ -220,7 +266,8 @@ impl Expected {
                 _ => return Err(Error::Malformed("reference codec".into())),
             };
             need(
-                r.offset == end
+                c.checkpoint
+                    && r.offset == end
                     && n.checked_mul(width) == Some(r.bytes)
                     && r.bytes <= 16 * 1024 * 1024
                     && r.position == c.position
@@ -237,13 +284,55 @@ impl Expected {
             end += r.bytes as u64;
         }
         need(end == raw_bytes, "source-call entire archive coverage")?;
-        Ok(Self {
+        let result = Self {
             doc,
             index,
             raw,
             stamp: before,
             _host: host,
-        })
+        };
+        if populated {
+            for (case, capacity) in [1024, 2048, 4096, 8192, 16384].into_iter().enumerate() {
+                need(
+                    result.prompt(case).is_some_and(|p| !p.is_empty()),
+                    "original context text present",
+                )?;
+                for repeat in 0..2 {
+                    let group = result
+                        .calls()
+                        .iter()
+                        .filter(|c| c.case == case && c.repeat == repeat)
+                        .collect::<Vec<_>>();
+                    let prefill = (capacity - 2) / 64 + 1;
+                    need(
+                        group.len() == prefill + 2,
+                        "complete original populated trajectory",
+                    )?;
+                    for (i, c) in group.into_iter().enumerate() {
+                        let last_prefill = i == prefill - 1;
+                        let (phase, rows) = if i >= prefill {
+                            ("decode", 1)
+                        } else {
+                            ("prefill", if last_prefill { 62 } else { 64 })
+                        };
+                        need(
+                            c.phase == phase
+                                && c.rows == rows
+                                && c.checkpoint == (i >= prefill - 1),
+                            "original64-row population and final three checkpoints",
+                        )?;
+                    }
+                    need(
+                        frontiers[&(repeat, case)].1 == capacity,
+                        "actual populated final context",
+                    )?;
+                }
+            }
+        }
+        Ok(result)
+    }
+    pub fn prompt(&self, case: usize) -> Option<&str> {
+        self.doc.prompts.get(case).map(String::as_str)
     }
     pub fn calls(&self) -> &[Call] {
         &self.doc.calls

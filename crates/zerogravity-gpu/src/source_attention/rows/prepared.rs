@@ -29,7 +29,7 @@ pub(crate) fn kernels(client: &Client, g: Geometry) -> Vec<Box<dyn CubeKernel>> 
         g.kv_heads,
         g.capacity
     );
-    add!(mask::Mask, 32, b(), (), g.capacity);
+    add!(mask::Mask, 32, b(), b(), (), (), g.heads, g.capacity);
     for maximum in [true, false] {
         add!(
             crate::source_attention::kernels::reduce::Reduce,
@@ -50,7 +50,7 @@ pub(crate) fn kernels(client: &Client, g: Geometry) -> Vec<Box<dyn CubeKernel>> 
         b(),
         b(),
         (),
-        g.heads,
+        g.heads * QUERY_TILE_ROWS,
         g.capacity
     );
     add!(
@@ -59,7 +59,7 @@ pub(crate) fn kernels(client: &Client, g: Geometry) -> Vec<Box<dyn CubeKernel>> 
         b(),
         b(),
         b(),
-        g.heads
+        g.heads * QUERY_TILE_ROWS
     );
     add!(
         crate::source_attention::kernels::probabilities::Probabilities,
@@ -69,7 +69,7 @@ pub(crate) fn kernels(client: &Client, g: Geometry) -> Vec<Box<dyn CubeKernel>> 
         b(),
         b(),
         (),
-        g.heads,
+        g.heads * QUERY_TILE_ROWS,
         g.capacity
     );
     add!(

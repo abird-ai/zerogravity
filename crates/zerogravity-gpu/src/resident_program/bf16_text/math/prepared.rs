@@ -187,15 +187,7 @@ pub(in crate::resident_program::bf16_text) fn enumerate(
                 if width.checked_mul(*groups) != Some(count) {
                     return Err(Error::State("prepared exact grouped RMS extent".into()));
                 }
-                add!(
-                    b,
-                    rms::squares::Squares,
-                    32,
-                    buffer(),
-                    buffer(),
-                    buffer(),
-                    count
-                );
+                add!(b, rms::squares::Squares, 32, buffer(), buffer(), buffer());
                 add!(b, rms::sum::Sum, 32, buffer(), buffer(), buffer(), width);
                 for stage in 0..4u32 {
                     add!(
@@ -206,8 +198,7 @@ pub(in crate::resident_program::bf16_text) fn enumerate(
                         buffer(),
                         buffer(),
                         stage,
-                        width,
-                        *groups
+                        width
                     );
                 }
                 add!(
@@ -218,8 +209,7 @@ pub(in crate::resident_program::bf16_text) fn enumerate(
                     buffer(),
                     buffer(),
                     buffer(),
-                    width,
-                    count
+                    width
                 );
                 add!(
                     b,
@@ -230,18 +220,9 @@ pub(in crate::resident_program::bf16_text) fn enumerate(
                     buffer(),
                     buffer(),
                     width,
-                    count,
                     if unit { 0u32 } else { 1u32 }
                 );
-                add!(
-                    b,
-                    rms::store::Store,
-                    32,
-                    buffer(),
-                    buffer(),
-                    buffer(),
-                    count
-                );
+                add!(b, rms::store::Store, 32, buffer(), buffer(), buffer());
             }
             PlanOperation::TextElementwise(op) => {
                 let kind = match op {

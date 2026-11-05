@@ -28,6 +28,9 @@ impl Cold {
     pub(super) fn table(&self, index: usize, bytes: usize) -> Result<Handle> {
         view(&self.tables[index], 0, bytes)
     }
+    pub(super) fn trig_table(&self) -> Result<Handle> {
+        self.table(2, std::mem::size_of_val(&crate::source_trig::cpu::TABLES))
+    }
     pub(super) fn parameter(&self, p: &SourceParameter) -> Result<Handle> {
         if self.layout.parameters.get(&p.name) != Some(p) {
             return Err(Error::State(
@@ -62,25 +65,33 @@ impl Cold {
         groups: usize,
         mode: crate::source_rms::Gamma,
     ) -> Result<usize> {
-        let n = width * groups;
-        let lengths = [n, groups, groups, groups, groups, groups, n, n];
+        let (bytes, tiles) = rms_tiles(width, groups)?;
+        // Validate the complete borrowed vectors before submitting any tile.
+        subview(input, 0, bytes)?;
+        subview(output, 0, bytes)?;
+        let lengths =
+            crate::source_rms::scratch_words(width, groups.min(crate::source_rms::MAX_GROUPS))?;
         let scratch = lengths
             .into_iter()
             .enumerate()
             .map(|(i, n)| self.s(layout::RMS.start + i, n))
             .collect::<Result<Vec<_>>>()?;
-        crate::source_rms::launch(
-            self.service.client(),
-            &scratch,
-            input,
-            Some(gamma),
-            output,
-            &self.status_view()?,
-            &self.zero_view()?,
-            width,
-            groups,
-            mode,
-        )
+        let mut count = 0;
+        for (offset, bytes, groups) in tiles {
+            count += crate::source_rms::launch(
+                self.service.client(),
+                &scratch,
+                &subview(input, offset, bytes)?,
+                Some(gamma),
+                &subview(output, offset, bytes)?,
+                &self.status_view()?,
+                &self.zero_view()?,
+                width,
+                groups,
+                mode,
+            )?;
+        }
+        Ok(count)
     }
     pub(super) fn sigmoid(
         &self,
@@ -319,21 +330,21 @@ impl Cold {
                 count += 7;
             }
         }
-        let normalized = self.s(layout::NORMAL, width)?;
+        let normalized = self.s(layout::NORMAL, n)?;
         let bf16_gamma = parameters[2].kind
             == zerogravity_core::encoding::StoredTensorEncoding::Scalar(
                 zerogravity_core::encoding::ScalarDType::Bf16,
             );
+        count += self.rms(
+            &core,
+            &gamma,
+            &normalized,
+            128,
+            rows * vh,
+            crate::source_rms::Gamma::DirectF32AfterBf16,
+        )?;
         for row in 0..rows {
-            let core_row = subview(&core, row * width * 4, width * 4)?;
-            count += self.rms(
-                &core_row,
-                &gamma,
-                &normalized,
-                128,
-                vh,
-                crate::source_rms::Gamma::DirectF32AfterBf16,
-            )?;
+            let normalized_row = subview(&normalized, row * width * 4, width * 4)?;
             let gate_row = subview(gate, row * width * 4, width * 4)?;
             let output_row = subview(output, row * width * 4, width * 4)?;
             unsafe {
@@ -341,7 +352,7 @@ impl Cold {
                     client,
                     grid(width),
                     dim(),
-                    arg(&normalized, width),
+                    arg(&normalized_row, width),
                     arg(&gate_row, width),
                     arg(&output_row, width),
                     arg(&status, 1),
@@ -354,6 +365,24 @@ impl Cold {
         Ok(count)
     }
 }
+// Flatten only independent RMS groups; each launch retains the existing bound.
+fn rms_tiles(
+    width: usize,
+    groups: usize,
+) -> Result<(usize, impl Iterator<Item = (usize, usize, usize)>)> {
+    let bound = crate::source_rms::MAX_GROUPS;
+    crate::source_rms::scratch_words(width, groups.min(bound))?;
+    let bytes = width
+        .checked_mul(groups)
+        .and_then(|n| n.checked_mul(4))
+        .ok_or_else(|| Error::Limit("source-call RMS complete byte extent".into()))?;
+    let tiles = (0..groups).step_by(bound).map(move |first| {
+        let count = (groups - first).min(bound);
+        (first * width * 4, count * width * 4, count)
+    });
+    Ok((bytes, tiles))
+}
+
 pub(super) fn subview(handle: &Handle, offset: usize, bytes: usize) -> Result<Handle> {
     let total = handle
         .size()
@@ -368,4 +397,46 @@ pub(super) fn subview(handle: &Handle, offset: usize, bytes: usize) -> Result<Ha
         .clone()
         .offset_start(offset as u64)
         .offset_end(total - end as u64))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rms_tiles;
+
+    #[test]
+    fn rms_tiles_cover_independent_head_rows_with_bounded_complete_groups() {
+        for width in [32, 128, 256, 1024, 5120] {
+            for rows in 1..=64 {
+                for heads in [1, 2, 3, 4, 8, 16, 24, 32, 48, 64] {
+                    let groups = rows * heads;
+                    let (bytes, tiles) = rms_tiles(width, groups).unwrap();
+                    let (mut offset, mut seen) = (0, 0);
+                    for (start, length, count) in tiles {
+                        assert_eq!(start, offset);
+                        assert_eq!(length, count * width * 4);
+                        assert!(crate::source_rms::scratch_words(width, count).is_ok());
+                        offset += length;
+                        seen += count;
+                    }
+                    assert_eq!(seen, groups);
+                    assert_eq!(offset, bytes);
+                    assert_eq!(bytes, groups * width * 4);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rms_tiles_refuse_empty_invalid_and_overflowing_extents() {
+        for (width, groups) in [
+            (0, 1),
+            (31, 1),
+            (5121, 1),
+            (128, 0),
+            (128, usize::MAX),
+            (5120, usize::MAX / 5120),
+        ] {
+            assert!(rms_tiles(width, groups).is_err());
+        }
+    }
 }

@@ -8,7 +8,8 @@ pub(crate) fn kernels(
     width: usize,
     groups: usize,
     mode: Gamma,
-) -> Vec<Box<dyn CubeKernel>> {
+) -> Result<Vec<Box<dyn CubeKernel>>> {
+    super::scratch_words(width, groups)?;
     let mut out: Vec<Box<dyn CubeKernel>> = Vec::new();
     let b = || BufferCompilationArg { inplace: None };
     macro_rules! add {
@@ -17,19 +18,10 @@ pub(crate) fn kernels(
             client.properties_shared(),client.target_properties_shared(),$($a),*
         )))}
     }
-    let count = width * groups;
-    add!(super::kernels::squares::Squares, b(), b(), b(), count);
+    add!(super::kernels::squares::Squares, b(), b(), b());
     add!(super::kernels::sum::Sum, b(), b(), b(), width);
     for stage in 0..4u32 {
-        add!(
-            super::kernels::scalar::Scalar,
-            b(),
-            b(),
-            b(),
-            stage,
-            width,
-            groups
-        );
+        add!(super::kernels::scalar::Scalar, b(), b(), b(), stage, width);
     }
     add!(
         super::kernels::normalize::Normalize,
@@ -37,8 +29,7 @@ pub(crate) fn kernels(
         b(),
         b(),
         b(),
-        width,
-        count
+        width
     );
     add!(
         super::kernels::weight::Weight,
@@ -47,11 +38,10 @@ pub(crate) fn kernels(
         b(),
         b(),
         width,
-        count,
         mode.mode()
     );
     if mode != Gamma::DirectF32AfterBf16 {
-        add!(super::kernels::store::Store, b(), b(), b(), count);
+        add!(super::kernels::store::Store, b(), b(), b());
     }
-    out
+    Ok(out)
 }

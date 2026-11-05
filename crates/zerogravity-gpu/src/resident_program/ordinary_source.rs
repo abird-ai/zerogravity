@@ -81,6 +81,20 @@ impl ResidentProgram {
     feature = "hardware-abort-probe"
 ))]
 impl ResidentProgram {
+    #[cfg(feature = "qwen-source-qualification")]
+    pub(crate) async fn source_call_diagnostic_trig(
+        &self,
+        angles: &[f32],
+        owner: std::sync::Arc<dyn std::any::Any + Send + Sync>,
+    ) -> Result<Vec<f32>> {
+        match &self.body {
+            ResidentProgramBody::SourceCall(body) => body.diagnostic_trig(angles, owner).await,
+            _ => Err(Error::State(
+                "source trig reached another resident body".into(),
+            )),
+        }
+    }
+
     pub(crate) fn source_call_native_probe(&self) -> Result<crate::hip::native::FinalNativeProbe> {
         match &self.body {
             ResidentProgramBody::SourceCall(body) => Ok(body.native_probe()),
