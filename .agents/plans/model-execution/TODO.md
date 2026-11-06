@@ -20,16 +20,22 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-### Verified source-window reuse — pending landing
+### Verified CUDA output-reduction repair — pending landing
 
-- [x] Reuse already authenticated chunk spans for adjacent tensor windows;
- 4MiB maximum entry, unchanged8MiB cache cap, source-stamp checks and prepaid
- ownership. Outstanding readers retain their charge after eviction.
-- [x] 30 source integration tests; current-tree isolated final gate passes:
- 2360Rust passes/0failures/101ignored/309suites;17Python suites/182cases/10skips.
- Evidence: `qwen-cuda-regeneration-tDW0EJ1I/output-fix-final-gate-r2.log`.
-- 27B HTTP improvement remains unmeasured: staged successor is blocked by the
- unchanged12GiB x2 available-memory guard. No model/serving qualification grant.
+- [x] Preserve the original sliced-K/ordered accumulation boundary at
+ three-quarter occupancy of a64-row output tile. Shared typed role/shape rule;
+ no prompt IDs, testcase ordinals, value patches or public capability change.
+- [x] Assembled-tree0.8B/2B each pass48 genuine calls against unchanged accepted
+ references:11919360 vocabulary words/model, all42 populated state domains/call,
+ native feedback/frontiers and two repeats. Original invocation/group/EOF/device
+ retirement independently checked. `native-output-fix-{08,2b}-r1/`, binary`ac3b55e3`.
+- [x] Eight real-operand projection regressions, arithmetic host assertion and
+ strict CUDA consumer check pass. Complete gate `output-fix-final-gate-r2.log` passes;
+ no production changes followed that gate. First formatting/lint failures retained.
+- Typed original executable joins and associated SASS establish the accumulation
+ chains; unsupported-schema ENTRY argument gaps remain. No serving/full-reference
+ or matched-performance grant. Extra operator capture failed later and was not
+ adopted as a replacement reference. Broader diagnostic helper remains uncommitted.
 
 ### Next end-to-end milestone
 
@@ -575,6 +581,17 @@ or model support. Qwen parity/short benchmark/long→dense27B→Gemma remains bi
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### `b9d8355` — authenticated source-window reuse
+
+- [x] Reuse already authenticated chunk spans for adjacent tensor windows;
+ 4MiB maximum entry, unchanged8MiB cache cap, source-stamp checks and prepaid
+ ownership. Outstanding readers retain their charge after eviction.
+- [x] 30 source integration tests; current-tree isolated final gate passes:
+ 2360Rust passes/0failures/101ignored/309suites;17Python suites/182cases/10skips.
+ Evidence: `qwen-cuda-regeneration-tDW0EJ1I/output-fix-final-gate-r2.log`.
+- 27B HTTP improvement remains unmeasured: staged successor is blocked by the
+ unchanged12GiB x2 available-memory guard. No model/serving qualification grant.
 
 ### `fix(hip): qualify populated Qwen serving` — populated contexts
 

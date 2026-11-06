@@ -453,8 +453,11 @@ fn reference_cases() -> Result<Vec<TestCase>> {
                     lanes: 32,
                     terms: 32,
                 },
-                (32, 47, 1024) => Bf16GemmReduction::RoundedSegments { terms: 64 },
+                (32, 47 | 48, 1024) => Bf16GemmReduction::RoundedSegments { terms: 64 },
                 (1024, 47, 2048) => Bf16GemmReduction::InterleavedPair { terms: 32 },
+                (1024, 48, 2048) => Bf16GemmReduction::Ordered,
+                (7168, 47 | 48, 1024) => Bf16GemmReduction::Ordered,
+                (1024, 47 | 48, 3584) => Bf16GemmReduction::RoundedSegments { terms: 1792 },
                 (1024, 1, 2048) => Bf16GemmReduction::RoundedSegments { terms: 704 },
                 (5120, 47, 1024) => Bf16GemmReduction::InterleavedPair { terms: 512 },
                 (5120, 1, 1024) => Bf16GemmReduction::LaneStrided {

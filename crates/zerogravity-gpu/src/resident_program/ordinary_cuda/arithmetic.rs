@@ -113,7 +113,10 @@ impl ProjectionUse {
             Self::Contraction => rounded(shape.inner.div_ceil(2048)),
             Self::Output if vector && shape.columns < shape.inner => rounded(3),
             Self::Output if vector => lane_sum(256),
-            Self::Output if shape.columns < shape.inner => InterleavedPair { terms: 32 },
+            // Two K slices below three-quarter occupancy of a source 64-row tile.
+            Self::Output if shape.columns < shape.inner && shape.rows < 64 * 3 / 4 => {
+                InterleavedPair { terms: 32 }
+            }
             Self::Output => Ordered,
         }
     }
@@ -142,6 +145,11 @@ mod tests {
                 2048,
                 InterleavedPair { terms: 32 },
             ),
+            (ProjectionUse::Output, 1024, 48, 2048, Ordered),
+            (ProjectionUse::Output, 1024, 49, 2048, Ordered),
+            (ProjectionUse::Output, 1024, 50, 2048, Ordered),
+            (ProjectionUse::Output, 1024, 64, 2048, Ordered),
+            (ProjectionUse::Output, 2048, 47, 2048, Ordered),
             (
                 ProjectionUse::ConvPacked,
                 8192,
