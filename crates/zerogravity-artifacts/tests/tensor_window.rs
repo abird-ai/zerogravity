@@ -200,17 +200,27 @@ fn shared_small_window_reuse_spends_only_prepaid_capacity_and_keeps_source_alive
     let hot = source.read_rows(&matrix, 1..3).unwrap();
     assert_eq!(hot.as_slice(), expected);
     assert_eq!(reserved(&host), META + 4096);
+    let neighbour = source.read_rows(&matrix, 0..1).unwrap();
+    assert_eq!(
+        neighbour.as_slice(),
+        (1..=4)
+            .flat_map(|n| (n as f32).to_le_bytes())
+            .collect::<Vec<_>>()
+    );
+    drop(neighbour);
+    let other_shard = source.matrix("bf16", MatrixAxes::OutputInput).unwrap();
     assert!(matches!(
-        source.read_rows(&matrix, 0..1),
+        source.read_rows(&other_shard, 0..1),
         Err(Error::Limit(_))
     ));
+    drop(other_shard);
     assert!(
         source
             .read_rows_cancellable(&matrix, 1..3, &AtomicBool::new(true))
             .is_err()
     );
     let stats = source.window_cache_stats().unwrap();
-    assert_eq!(stats.hits, 1);
+    assert_eq!(stats.hits, 2);
     assert!(stats.live_payload_bytes > 0 && stats.live_payload_bytes <= stats.budget_bytes);
     drop((source, matrix, occupied));
     assert_eq!(reserved(&host), META);
@@ -842,7 +852,13 @@ fn raw_rank1_parameter_kind_original_descriptor_and_contiguous_ranges_are_exact(
     use zerogravity_core::encoding::StoredTensorEncoding;
     let fixture = ParameterFixture::new();
     let host = admission(64 * 1024 * 1024, "host");
-    let source = fixture.plan(&host).unwrap().open().unwrap();
+    // This scope checks explicit staging charges; cache reuse is covered separately.
+    let source = fixture
+        .plan(&host)
+        .unwrap()
+        .without_window_cache()
+        .open()
+        .unwrap();
     assert_eq!(reserved(&host), META);
     for (name, kind, shape, raw) in [
         (

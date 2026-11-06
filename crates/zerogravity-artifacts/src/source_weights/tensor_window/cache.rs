@@ -1,10 +1,10 @@
-//! Small authenticated windows, paid from unused source metadata capacity.
+//! Authenticated windows/chunks, paid from unused source metadata capacity.
 //! No source owner backedge; outstanding evicted readers retain their budget.
 use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 const ENTRIES: usize = 512;
-const MAX_WINDOW: usize = 256 * 1024;
+const MAX_WINDOW: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WindowCacheStats {
@@ -48,25 +48,25 @@ pub(super) struct Bytes {
 }
 pub(super) enum Storage {
     Staged(StagedSlice),
-    Cached(Arc<Bytes>, u64),
+    Cached(Arc<Bytes>, u64, Range<usize>),
 }
 impl Storage {
     pub(super) fn as_slice(&self) -> &[u8] {
         match self {
             Self::Staged(s) => s.as_slice(),
-            Self::Cached(b, _) => &b.data,
+            Self::Cached(b, _, range) => &b.data[range.clone()],
         }
     }
     pub(super) fn source_offset(&self) -> u64 {
         match self {
             Self::Staged(s) => s.source_offset(),
-            Self::Cached(_, n) => *n,
+            Self::Cached(_, n, _) => *n,
         }
     }
     pub(super) fn charged_bytes(&self) -> usize {
         match self {
             Self::Staged(s) => s.charged_bytes(),
-            Self::Cached(b, _) => b._charge.bytes,
+            Self::Cached(b, _, _) => b._charge.bytes,
         }
     }
 }
@@ -118,10 +118,16 @@ impl Cache {
             return None;
         }
         self.clock = self.clock.saturating_add(1);
-        if let Some(e) = self.entries.iter_mut().find(|e| e.key == key) {
+        if let Some(e) = self.entries.iter_mut().find(|e| {
+            e.key.0 == key.0
+                && key.1.checked_sub(e.key.1).is_some_and(|offset| {
+                    offset <= e.key.2 as u64 && key.2 as u64 <= e.key.2 as u64 - offset
+                })
+        }) {
             e.touched = self.clock;
             self.hits = self.hits.saturating_add(1);
-            Some(Storage::Cached(e.data.clone(), key.1))
+            let start = (key.1 - e.key.1) as usize;
+            Some(Storage::Cached(e.data.clone(), key.1, start..start + key.2))
         } else {
             self.misses = self.misses.saturating_add(1);
             None
@@ -215,6 +221,30 @@ mod tests {
         assert!(c.get(Key(1, 2, data.len())).is_none());
         assert!(c.get(Key(0, 1, data.len())).is_none());
         assert!(c.stats().live_payload_bytes <= c.stats().budget_bytes);
+    }
+    #[test]
+    fn adjacent_windows_share_verified_bytes_without_extending_the_source_range() {
+        let mut c = Cache::new(8 * 1024 * 1024).unwrap();
+        let data: Vec<_> = (0..MAX_WINDOW).map(|n| (n % 251) as u8).collect();
+        c.insert(Key(1, 64, data.len()), &data);
+        let used = c.stats().live_payload_bytes;
+        for offset in [0, 1024 * 1024, 2 * 1024 * 1024, 3 * 1024 * 1024] {
+            let view = c.get(Key(1, 64 + offset as u64, 1024 * 1024)).unwrap();
+            assert_eq!(view.as_slice(), &data[offset..offset + 1024 * 1024]);
+            assert_eq!(view.source_offset(), 64 + offset as u64);
+            assert_eq!(c.stats().live_payload_bytes, used);
+        }
+        assert!(c.get(Key(0, 64, 1)).is_none());
+        assert!(c.get(Key(1, 63, 1)).is_none());
+        assert!(c.get(Key(1, 65, data.len())).is_none());
+        assert!(c.get(Key(1, u64::MAX, 2)).is_none());
+        let held = c.get(Key(1, 64, 1)).unwrap();
+        c.invalidate_shard(1);
+        assert!(c.get(Key(1, 64, 1)).is_none());
+        assert_eq!(c.stats().live_payload_bytes, used);
+        assert_eq!(held.as_slice(), &data[..1]);
+        drop(held);
+        assert_eq!(c.stats().live_payload_bytes, 0);
     }
     #[test]
     fn disabled_and_large_streamed_windows_allocate_no_cache_payload() {

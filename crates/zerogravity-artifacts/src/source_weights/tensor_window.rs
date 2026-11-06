@@ -463,11 +463,19 @@ impl VerifiedTensorSource {
         } else {
             let staged = source.read_window(offset, bytes, &self.0.admission)?;
             if unchanged && source.cache_stamp_unchanged()? {
-                self.0
+                let (start, verified) = staged.verified_span();
+                let mut windows = self
+                    .0
                     .windows
                     .lock()
-                    .map_err(|_| Error::State("source window cache poisoned".into()))?
-                    .insert(key, staged.as_slice());
+                    .map_err(|_| Error::State("source window cache poisoned".into()))?;
+                // Reuse bytes already read/hashed for neighbouring page windows.
+                // Oversized spans keep the existing exact-window fallback.
+                if verified.len() <= self.0.cached_window_max_bytes {
+                    windows.insert(cache::Key(shard, start, verified.len()), verified);
+                } else {
+                    windows.insert(key, staged.as_slice());
+                }
             }
             cache::Storage::Staged(staged)
         };

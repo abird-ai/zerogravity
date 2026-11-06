@@ -117,6 +117,13 @@ impl StagedSlice {
     pub fn charged_bytes(&self) -> usize {
         self.stage.charged_bytes()
     }
+    /// Contiguous, already authenticated chunks underlying this window.
+    pub(crate) fn verified_span(&self) -> (u64, &[u8]) {
+        (
+            self.source_offset - self.range.start as u64,
+            &self.stage.bytes,
+        )
+    }
 }
 
 impl ExtentSource {

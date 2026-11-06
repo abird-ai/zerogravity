@@ -20,6 +20,17 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
+### Verified source-window reuse — pending landing
+
+- [x] Reuse already authenticated chunk spans for adjacent tensor windows;
+ 4MiB maximum entry, unchanged8MiB cache cap, source-stamp checks and prepaid
+ ownership. Outstanding readers retain their charge after eviction.
+- [x] 30 source integration tests; current-tree isolated final gate passes:
+ 2360Rust passes/0failures/101ignored/309suites;17Python suites/182cases/10skips.
+ Evidence: `qwen-cuda-regeneration-tDW0EJ1I/output-fix-final-gate-r2.log`.
+- 27B HTTP improvement remains unmeasured: staged successor is blocked by the
+ unchanged12GiB x2 available-memory guard. No model/serving qualification grant.
+
 ### Next end-to-end milestone
 
 - [ ] Extend populated contexts beyond accepted0.8B/2B HIP scopes to remaining
