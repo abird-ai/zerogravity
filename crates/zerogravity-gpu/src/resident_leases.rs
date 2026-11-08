@@ -76,7 +76,11 @@ pub(crate) mod ordinary_projection_upload;
 ))]
 pub(crate) mod resident_matrix;
 #[cfg(all(
-    any(feature = "gemma-bf16-qualification", feature = "hip-source"),
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "hip-source",
+        feature = "cuda-cublas"
+    ),
     target_os = "linux"
 ))]
 pub(crate) mod source_page;

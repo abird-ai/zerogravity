@@ -8,7 +8,13 @@ Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 **Fabric functional transition accepted:** source `8c43844`, CUDA repair
 `8d761c4`; scoped model/GPU/SDK/HTTP/cache acceptance and final isolated gate pass.
 Original unsupported/unavailable cells and Qwen expansion remain explicit.
-Main only; no new subagents, acquisition or recurrence restart.
+Main only; no new or resumed subagents or recurrence restart.
+Owner now approves x2 ROCm vLLM runtime acquisition and running below the former
+12GiB available-host guard with swap; native budgets/device safeguards unchanged.
+Complete substantial implementation batches before combined validation; full gate last.
+Prioritize working paths + early matched-vLLM feedback; reuse checks/evidence,
+add fixtures only for concrete gaps. Baselines need not await all models/batching.
+Owner resumed items2/3: CUDA + ordinary27B, quick real-model/serving feedback.
 
 Fabric migration is complete; the unfinished Qwen campaign remains next.
 Preserve signed native GDN`e2559b6`/pause`1c35172` and all accepted bounded
@@ -25,7 +31,7 @@ activating held routes.
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)
 - [~] P1 pipeline-composition — @pvl — recursive primitives/pipelines/profiles; shared execution adapters active, reuse current adapters in Fabric; Qwen expansion deferred — [details](pipeline-composition/TODO.md)
 - [~] P1 cli-device-routing — @pvl — unified run/config/source/device selection; preserve behavior through Fabric SDK/CLI migration — [details](cli-device-routing/TODO.md)
-- [~] P2 model-execution — @pvl — populated0.8B/2B HIP native/SDK/HTTP accepted; final gate passes; wider CUDA/general27B and native batching remain — [details](model-execution/TODO.md)
+- [~] P2 model-execution — @pvl — CUDA first: small resident/streamed exact logits/state,8 shared SDK/HTTP scopes and4 streamed lifecycle scopes pass; grouped large-source smoke/final gate pass; large numerical qualification stays open, signed checkpoint next. Populated small HIP signed`8ffb511`;27B numerical/state/SDK/lifecycle audited, HTTP504/context closure open; approved~75GiB-total native comparison deferred behind CUDA — [details](model-execution/TODO.md)
 - [~] P2 model-acquisition — @pvl — [details](model-acquisition/TODO.md)
 
 ## Icebox

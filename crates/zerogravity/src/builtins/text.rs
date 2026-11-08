@@ -91,7 +91,15 @@ pub(crate) mod gpu;
 #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
 pub use gpu::{GpuProfile, load_gpu_router};
 
+#[cfg(all(
+    any(feature = "qwen35-hip", feature = "qwen35-cuda"),
+    target_os = "linux"
+))]
+pub(crate) mod qwen_source;
 #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
-pub(crate) mod qwen_hip;
-#[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
-pub use qwen_hip::QwenHipProfile;
+pub use QwenSourceProfile as QwenHipProfile;
+#[cfg(all(
+    any(feature = "qwen35-hip", feature = "qwen35-cuda"),
+    target_os = "linux"
+))]
+pub use qwen_source::QwenSourceProfile;

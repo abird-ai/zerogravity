@@ -196,7 +196,7 @@ fn run() -> Result<()> {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     need(
         args.len() == 4,
-        "usage: qwen_source_calls_hip preflight|cache-preflight|cold|parity|state-parity 08|2b SOURCE REFERENCE",
+        "usage: qwen_source_calls_hip preflight|cache-preflight|cold|parity|state-parity 08|2b|27b SOURCE REFERENCE",
     )?;
     let mode = args[0].as_str();
     need(

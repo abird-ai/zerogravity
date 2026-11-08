@@ -546,6 +546,7 @@ pub(in crate::resident_program::bf16_text_source) fn enumerate_records(
                                 buffer(),
                                 rows,
                                 tensor.columns,
+                                tensor.rows,
                             ),
                         )?;
                     }

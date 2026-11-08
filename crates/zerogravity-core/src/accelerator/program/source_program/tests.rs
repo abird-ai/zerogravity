@@ -529,3 +529,81 @@ fn cpu_source_templates_preserve_arithmetic_issuer_and_reject_cuda_mixing() {
             .is_err()
     );
 }
+
+#[test]
+fn gdn_source_preserves_bf16_and_f32_storage_for_each_arithmetic_contract() {
+    use crate::encoding::ScalarDType::{Bf16, F16, F32};
+    let source = SourceIdentity::for_new_allocation().unwrap();
+    let call = call(source, &[1, 2]);
+    let parameter = |name: &str, dtype, elements: usize| SourceParameter {
+        source,
+        name: name.into(),
+        kind: StoredTensorEncoding::Scalar(dtype),
+        shape: vec![elements as u64],
+        bytes: elements * if dtype == F32 { 4 } else { 2 },
+    };
+    let cpu = SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1;
+    for a_kind in [Bf16, F32] {
+        for norm_kind in [Bf16, F32] {
+            let parameters = vec![
+                parameter("A_log", a_kind, 48),
+                parameter("dt_bias", Bf16, 48),
+                parameter("norm.weight", norm_kind, 128),
+            ];
+            for numerical in [cpu, NUMERICAL] {
+                let kind = SourceOperatorKind::GatedDelta {
+                    domain: RecurrentDomain(0),
+                    geometry: SourceGdnGeometry {
+                        key_heads: 16,
+                        value_heads: 48,
+                        key_width: 128,
+                        value_width: 128,
+                        epsilon: 1e-6,
+                        contract: if numerical == cpu {
+                            SourceGdnContract::TorchCpuAvx2L2SiluBf16V1
+                        } else {
+                            SourceGdnContract::ReferenceCudaSm86L2SiluBf16V1
+                        },
+                    },
+                };
+                let op =
+                    SourceOperator::new(call.clone(), kind, numerical, vec![], parameters.clone());
+                let template = SourceOperatorTemplate::new(
+                    SourcePlanGeometry::new(source, 17, 8, 2).unwrap(),
+                    SourceRowSelection::AllActive,
+                    kind,
+                    numerical,
+                    vec![],
+                    parameters.clone(),
+                );
+                assert_eq!(op.unwrap().parameters(), parameters);
+                assert_eq!(template.unwrap().parameters(), parameters);
+                let mut wrong_bias = parameters.clone();
+                wrong_bias[1] = parameter("dt_bias", F32, 48);
+                assert!(
+                    SourceOperator::new(call.clone(), kind, numerical, vec![], wrong_bias).is_err()
+                );
+                for index in [0, 1, 2] {
+                    for fault in 0..4 {
+                        let mut wrong = parameters.clone();
+                        match fault {
+                            0 => {
+                                wrong[index].kind = StoredTensorEncoding::Scalar(F16);
+                                wrong[index].bytes = wrong[index].shape[0] as usize * 2;
+                            }
+                            1 => wrong[index].bytes -= 1,
+                            2 => {
+                                wrong[index].source = SourceIdentity::for_new_allocation().unwrap()
+                            }
+                            _ => wrong[index].shape[0] += 1,
+                        }
+                        assert!(
+                            SourceOperator::new(call.clone(), kind, numerical, vec![], wrong,)
+                                .is_err()
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

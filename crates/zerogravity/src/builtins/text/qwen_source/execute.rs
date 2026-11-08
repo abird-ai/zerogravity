@@ -187,8 +187,7 @@ impl Executor for SourceText {
         for model in models.values() {
             let resident = model.resident.lock().map_err(|_| poison())?.take();
             if let Some(resident) = resident {
-                block_on(resident.shutdown_ordinary_cpu_source())
-                    .map_err(ServiceError::inference)?;
+                block_on(resident.shutdown()).map_err(ServiceError::inference)?;
             }
         }
         Ok(())
@@ -213,7 +212,8 @@ impl Executor for SourceText {
             let metadata = &model.source.metadata;
             serde_json::json!({"alias": alias, "family": metadata.family, "repository": metadata.repository,
                 "revision": metadata.revision, "hidden_width": metadata.hidden_width,
-                "context": model.max_context(), "prefill_rows": 64, "native_session_rows": 0})
+                "context": model.max_context(), "prefill_rows": 64, "native_session_rows": 0,
+                "numerical_contract": format!("{:?}", model.source.plan.source_seal().numerical_contract())})
         }).collect());
         Ok(report)
     }

@@ -1,7 +1,7 @@
 // BF16 W[columns,inner] * X[rows,inner]^T -> Y[rows,columns].
 // Explicit reduction arithmetic; no global scratch or hidden allocations.
 struct __align__(8) GemmShape {
-    unsigned long long columns, rows, inner, reduction_terms, lane_shift;
+    unsigned long long columns, rows, inner, reduction_terms, lane_shift, output_stride;
 };
 
 __device__ __forceinline__ unsigned pack(const unsigned short* p) {
@@ -138,7 +138,7 @@ __device__ __forceinline__ void gemm_body(
             const auto n = base_n + j * 8 + pair + i % 2;
             const float result = MODE == 2 ? second[j][i]
                 : MODE == 1 ? d[j][i] + second[j][i] : d[j][i];
-            if (m < s.columns && n < s.rows) y[n * s.columns + m] = round_bf16(result);
+            if (m < s.columns && n < s.rows) y[n * s.output_stride + m] = round_bf16(result);
         }
     }
 }
@@ -196,7 +196,7 @@ extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided(
     }
     float result = lane_value(total, 0, control);
     for (unsigned i = 1; i < lanes; ++i) result += lane_value(total, i, control);
-    if (lane == 0 && col < s.columns) y[row * s.columns + col] = round_bf16(result);
+    if (lane == 0 && col < s.columns) y[row * s.output_stride + col] = round_bf16(result);
 }
 extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_blocked(
     const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
@@ -221,5 +221,5 @@ extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_blocked(
         const float other = lane_down(total, delta, control);
         if (lane < delta) total += other;
     }
-    if (lane == 0 && col < s.columns) y[row * s.columns + col] = round_bf16(total);
+    if (lane == 0 && col < s.columns) y[row * s.output_stride + col] = round_bf16(total);
 }

@@ -31,11 +31,7 @@ impl Harness {
                 expected
             );
         }
-        let snapshot = match label {
-            "08" => "d7c7bf56e176bd70a8190acb9873cc719e65b6b306181039f2896d6f9387b36c",
-            "2b" => "88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52",
-            _ => panic!("approved model required"),
-        };
+        let snapshot = source_snapshot(label);
         let arbiter = ResourceArbiter::process_shared();
         let host = PhysicalDeviceKey::new("host", "system-ram").unwrap();
         let device = PhysicalDeviceKey::new("pci", "0000:c6:00.0").unwrap();
@@ -244,4 +240,59 @@ fn public_source_population_completion_cancel_and_shutdown() {
     );
     h.retire();
     println!("SOURCE_POPULATION_PASS model={label} mode={mode} offered={clients}");
+}
+
+#[test]
+#[ignore = "approved source/reference, gfx1151, fresh isolated release process"]
+fn public_source_population_benchmark() {
+    let label = std::env::var("ZG_QWEN_HIP_SDK_MODEL").unwrap();
+    let clients: Vec<usize> = std::env::var("ZG_QWEN_HIP_BENCH_CLIENTS")
+        .unwrap_or_else(|_| "1,4,8,16,32,64".into())
+        .split(',')
+        .map(|s| s.parse().unwrap())
+        .collect();
+    assert!(!clients.is_empty() && clients.iter().all(|c| [1, 4, 8, 16, 32, 64].contains(c)));
+    let load = Instant::now();
+    let h = Harness::open(&label, 8, 1024, 3, 65);
+    println!(
+        "HIP_BENCH_LOAD {}",
+        serde_json::json!({"model":label,"load_ms":load.elapsed().as_secs_f64()*1000.0,
+        "active_limit":8,"context":1024,"output":3})
+    );
+    let (prompt, expected) = h.canonical();
+    println!(
+        "HIP_BENCH_INPUT {}",
+        serde_json::json!({"prompt":prompt,
+        "prompt_token_ids":h.tokenizer.prompt_tokens(&prompt,false).unwrap(),"expected":expected})
+    );
+    for clients in clients {
+        for wave in 0..3 {
+            let start = Instant::now();
+            let requests: Vec<_> = (0..clients)
+                .map(|_| h.runtime.request_text(request("source", &prompt)).unwrap())
+                .collect();
+            let mut sessions = BTreeSet::new();
+            let mut outputs = Vec::with_capacity(clients);
+            for events in requests {
+                let output = complete(events, 47, h.tokenizer.as_ref());
+                assert_eq!(output.ids, expected);
+                assert!(sessions.insert(output.roots[0].producer_root.unwrap().session_id));
+                outputs.push(output.ids);
+            }
+            let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+            let admission = h.admission();
+            assert_eq!(admission["failed_gpu_quanta"], 0);
+            assert_eq!(admission["queued_requests"], 0);
+            assert_eq!(admission["gpu_fused_batches"], 0);
+            println!(
+                "HIP_BENCH_WAVE {}",
+                serde_json::json!({"model":label,"clients":clients,"wave":wave,
+                "warmup":wave==0,"elapsed_ms":elapsed_ms,"completed":outputs.len(),"output_tokens":3*outputs.len(),
+                "token_ids":outputs,"expected":expected,"output_match":true,"native_batch_width":1,
+                "active_sessions_limit":8,"admission":admission})
+            );
+        }
+    }
+    h.retire();
+    println!("HIP_BENCH_CLOSED closed=true output_match=true");
 }

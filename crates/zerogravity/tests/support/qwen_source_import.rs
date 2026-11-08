@@ -78,6 +78,7 @@ pub fn import(label: &str, directory: &Path) -> Result<PathBuf> {
 pub fn manifest(label: &str) -> Result<Manifest> {
     let limits = CacheLimits::default();
     let manifest = match label {
+        "27b" => Manifest::from_json(include_bytes!("qwen_source_large_manifest.json"), &limits)?,
         "2b" => Manifest::from_json(
             include_bytes!("../../src/qwen35_cuda/source2b.json"),
             &limits,
@@ -175,7 +176,7 @@ mod tests {
     use super::*;
     #[test]
     fn native_source_paths_refuse_staging_and_another_snapshot() {
-        for label in ["08", "2b"] {
+        for label in ["08", "2b", "27b"] {
             let root = canonical_root(label).unwrap();
             require_canonical(label, &root).unwrap();
             for bad in [
@@ -186,7 +187,7 @@ mod tests {
                 assert!(require_canonical(label, &bad).is_err());
             }
         }
-        assert!(canonical_root("27b").is_err());
+        assert!(canonical_root("unqualified").is_err());
     }
     #[test]
     fn original_schema_and_legacy_provenance_survive_cache_conversion() {
@@ -206,5 +207,23 @@ mod tests {
             "88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52"
         );
         assert_eq!(two.entries().len(), 12);
+        let large = manifest("27b").unwrap();
+        assert_eq!(
+            large.digest().unwrap(),
+            "98cea13c169310196c4d8a113765f8fe58ab7a7961f0d1be69212c70dba8015e"
+        );
+        assert_eq!(large.entries().len(), 31);
+        assert_eq!(large.source().repository(), "Qwen/Qwen3.8-27B");
+        assert_eq!(
+            large
+                .entries()
+                .iter()
+                .filter(|e| matches!(
+                    e.digest_provenance(),
+                    zerogravity::cache::DigestProvenance::TrustedSha256
+                ))
+                .count(),
+            19
+        );
     }
 }

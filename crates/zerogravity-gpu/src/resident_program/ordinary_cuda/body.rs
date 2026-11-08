@@ -22,6 +22,10 @@ pub(in crate::resident_program) struct OrdinaryCudaBody {
     logit_accesses: Arc<[(ResidentLease, DeviceAccess)]>,
 }
 impl OrdinaryCudaBody {
+    pub(in crate::resident_program) fn waits_on_cancel(&self) -> bool {
+        self.cold().source_page().is_some()
+    }
+
     pub(super) fn bind(
         cold: Arc<OrdinaryCudaCold>,
         gemm: Arc<OrdinaryCudaGemm>,
@@ -151,10 +155,13 @@ impl ResidentProgram {
                 "ordinary CUDA retirement requested from another resident body".into(),
             ));
         };
+        if let Some(page) = body.cold().source_page() {
+            page.finish()?;
+        }
         body.gemm().retire()
     }
 
-    pub(crate) fn launch_ordinary_cuda(
+    pub(crate) async fn launch_ordinary_cuda(
         &self,
         flight: &mut crate::resident_leases::ResidentSubmission<'_>,
         request: &zerogravity_core::accelerator::program::ForwardPlan,
@@ -168,5 +175,6 @@ impl ResidentProgram {
             ));
         };
         body.execute(flight, request, states, output, cancelled)
+            .await
     }
 }

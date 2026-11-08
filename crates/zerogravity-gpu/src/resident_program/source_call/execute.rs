@@ -7,7 +7,7 @@ use super::{
 use crate::resident_leases::{ResidentLease, ResidentSubmission as Flight};
 use crate::resident_program::{
     BufferRange, DeviceBuffer, ResidentOutput, ResidentSubmission, StateBinding,
-    bf16_projection::Bf16ProjectionBindings,
+    bf16_projection::{Bf16ProjectionBindings, Bf16ProjectionStorage},
 };
 use cubecl::{bytes::Bytes, server::Handle};
 use zerogravity_core::{
@@ -232,32 +232,57 @@ impl Cold {
             EmbeddingRows => {
                 let tensor = &d.matrices()[0];
                 let p = &self.operands[&tensor.name];
-                let resident = p
-                    .resident()
-                    .ok_or_else(|| Error::State("source-call embedding not Ready".into()))?;
                 let width = tensor.columns;
                 for (row, &id) in d.call().rows().ids().iter().enumerate() {
                     let target = subview(&outputs[0], row * width * 4, width * 4)?;
-                    resident.with_rows(
-                        flight,
-                        &self.source,
-                        p.matrix(),
-                        id as usize..id as usize + 1,
-                        &mut |actual| {
-                            unsafe {
-                                super::super::bf16_projection::widen::launch_unchecked(
-                                    client,
-                                    grid(width),
-                                    dim(),
-                                    arg(actual.handle(), width / 2),
-                                    arg(&target, width),
-                                    arg(&status, 1),
-                                    crate::program_kernels::NONFINITE_VALUE,
-                                );
-                            }
-                            Ok(1)
-                        },
-                    )?;
+                    let range = id as usize..id as usize + 1;
+                    let launch = |weights: &Handle| unsafe {
+                        super::super::bf16_projection::widen::launch_unchecked(
+                            client,
+                            grid(width),
+                            dim(),
+                            arg(weights, width / 2),
+                            arg(&target, width),
+                            arg(&status, 1),
+                            crate::program_kernels::NONFINITE_VALUE,
+                        );
+                    };
+                    match p.storage() {
+                        Bf16ProjectionStorage::Resident => {
+                            let resident = p.resident().ok_or_else(|| {
+                                Error::State("source-call embedding not Ready".into())
+                            })?;
+                            resident.with_rows(
+                                flight,
+                                &self.source,
+                                p.matrix(),
+                                range,
+                                &mut |actual| {
+                                    launch(actual.handle());
+                                    Ok(1)
+                                },
+                            )?;
+                        }
+                        Bf16ProjectionStorage::Streamed => {
+                            self.page
+                                .with_rows(flight, p.matrix(), range.clone(), None, |actual| {
+                                    if !actual.matrix().same_binding(p.matrix())
+                                        || actual.rows() != range
+                                        || actual.bytes() != width * 2
+                                    {
+                                        return Err(Error::State(
+                                            "source-call original embedding row view".into(),
+                                        ));
+                                    }
+                                    launch(actual.handle());
+                                    Ok(vec![
+                                        self.value_lease(node.outputs[0])?.clone(),
+                                        self.status.clone(),
+                                    ])
+                                })
+                                .await?;
+                        }
+                    }
                 }
                 Ok(rows)
             }

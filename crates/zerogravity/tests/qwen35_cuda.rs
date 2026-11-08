@@ -36,6 +36,8 @@ mod attention_differential;
 mod gemm_differential;
 #[path = "qwen35_cuda/oracle.rs"]
 mod oracle;
+#[path = "support/qwen_cuda_regenerated.rs"]
+mod regenerated;
 fn fail(message: impl Into<String>) -> Error {
     Error::State(message.into())
 }

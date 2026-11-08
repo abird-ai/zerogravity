@@ -4,18 +4,16 @@
 
 use crate::{Error, Result};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 use tokenizers::Tokenizer;
 
 mod bounds;
+mod source;
 pub use bounds::{TokenizerPlan, constructor_tree_bytes};
 
 const CHAT_TEMPLATE_BYTES: usize = "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n".len();
-pub const APPROVED_TOKENIZER_BYTES: u64 = 12_807_982;
-const APPROVED_TOKENIZER_SHA256: &str =
-    "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42";
+pub const APPROVED_TOKENIZER_BYTES: u64 = source::BASE.bytes;
 const APPROVED_SPLIT_REGEX: &str = r#"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?[\p{L}\p{M}]+|\p{N}| ?[^\s\p{L}\p{M}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"#;
 // Keep the exact approved expression referenced in non-test builds as well as
 // descriptor tests, without reparsing 12.8 MiB of JSON in production.
@@ -36,7 +34,7 @@ pub struct ServingBound {
 impl ServingBound {
     fn approved() -> Self {
         Self {
-            // Approved source: max vocabulary entry 256 bytes, added 20.
+            // Approved sources: max vocabulary entry 256 bytes, added <= 21.
             max_decoded_token_bytes: 256,
             // ByteLevel with add_prefix_space=false adds no prompt prefix.
             prompt_prefix_bytes: 0,
@@ -113,7 +111,7 @@ pub struct QwenTokenizer {
     bound: ServingBound,
     /// The approved serving profile disables BPE memoization in the cold
     /// constructor; `serving_inventory` is only valid for that profile.
-    memoization_off: bool,
+    source: Option<&'static source::Source>,
 }
 
 impl QwenTokenizer {
@@ -132,14 +130,10 @@ impl QwenTokenizer {
         if bytes.len() > 64 * 1024 * 1024 {
             return Err(Error::Limit("tokenizer.json exceeds 64 MiB".into()));
         }
-        if !approved_source(bytes) {
-            return Err(Error::Malformed(format!(
-                "tokenizer.json is not the approved source ({APPROVED_TOKENIZER_BYTES} bytes, SHA256 {APPROVED_TOKENIZER_SHA256})"
-            )));
-        }
+        let source = require_source(bytes)?;
         let inner = Tokenizer::from_bytes(bytes)
             .map_err(|e| Error::Malformed(format!("tokenizer.json: {e}")))?;
-        Self::from_tokenizer(inner, ServingBound::approved(), true)
+        Self::from_tokenizer(inner, ServingBound::approved(), Some(source))
     }
 
     /// Parse unverified bounded bytes for tests and exploratory adapters. It
@@ -155,17 +149,21 @@ impl QwenTokenizer {
             .map_err(|error| Error::Malformed(format!("tokenizer.json: {error}")))?;
         let inner = Tokenizer::from_bytes(bytes)
             .map_err(|e| Error::Malformed(format!("tokenizer.json: {e}")))?;
-        let serving = approved_source(bytes);
-        Self::from_tokenizer(inner, bound, serving)
+        let source = source::recognize(bytes);
+        Self::from_tokenizer(inner, bound, source)
     }
 
-    fn from_tokenizer(mut inner: Tokenizer, bound: ServingBound, serving: bool) -> Result<Self> {
+    fn from_tokenizer(
+        mut inner: Tokenizer,
+        bound: ServingBound,
+        source: Option<&'static source::Source>,
+    ) -> Result<Self> {
         // BPE cache repair through public API only (pinned 0.22.2 exposes
         // `Tokenizer::{get_model, with_model}` and `ModelWrapper::resize_cache`,
         // but no `get_model_mut`). `BPE::clone` builds a fresh cache, and
         // `with_model` drops the old model; the clone is a cold constructor
         // cost priced by `TokenizerPlan::bpe_constructor_peak_bytes`.
-        if serving {
+        if source.is_some() {
             let mut model = inner.get_model().clone();
             model.resize_cache(0);
             inner.with_model(model);
@@ -188,7 +186,7 @@ impl QwenTokenizer {
             begin,
             end,
             bound,
-            memoization_off: serving,
+            source,
         })
     }
 
@@ -240,11 +238,11 @@ impl QwenTokenizer {
     /// parallelism sample. Counts come from the compiled literal descriptor and
     /// the pinned collection layouts in [`bounds`].
     pub fn serving_inventory(&self) -> Result<TokenizerPlan> {
-        if !self.memoization_off {
-            return Err(Error::Malformed(
+        let source = self.source.ok_or_else(|| {
+            Error::Malformed(
                 "serving inventory requires the approved profile with bounded BPE cache".into(),
-            ));
-        }
+            )
+        })?;
         // The parsed source's measured envelope must match the approved one
         // before the plan that prices it is published.
         if self.bound != ServingBound::approved() {
@@ -252,7 +250,7 @@ impl QwenTokenizer {
                 "parsed tokenizer envelope disagrees with the approved inventory".into(),
             ));
         }
-        approved_plan()
+        source_plan(source)
     }
 
     /// One `decode` call's scratch peak for `tokens` output IDs.
@@ -305,7 +303,7 @@ impl QwenTokenizer {
     /// subtraction or zero fallback. Above the original prompt cap this
     /// refuses instead of guessing.
     pub fn admitted_prompt_scratch_bound(&self, message_len: usize, chat: bool) -> Result<u64> {
-        if !self.memoization_off || self.bound != ServingBound::approved() {
+        if self.source.is_none() || self.bound != ServingBound::approved() {
             return Err(Error::Malformed(
                 "admitted prompt bound requires the approved profile with bounded BPE cache".into(),
             ));
@@ -326,9 +324,23 @@ impl QwenTokenizer {
     }
 }
 
-fn approved_source(bytes: &[u8]) -> bool {
-    bytes.len() as u64 == APPROVED_TOKENIZER_BYTES
-        && format!("{:x}", Sha256::digest(bytes)) == APPROVED_TOKENIZER_SHA256
+fn require_source(bytes: &[u8]) -> Result<&'static source::Source> {
+    source::recognize(bytes).ok_or_else(|| {
+        Error::Malformed("tokenizer.json size/SHA256 has no approved source profile".into())
+    })
+}
+
+fn source_plan(source: &source::Source) -> Result<TokenizerPlan> {
+    bounds::plan_for_source(
+        regex_automata::meta::Config::new().get_pool_capacity(),
+        source,
+    )
+}
+
+/// Exact source-specific inventory, before parsing or constructing the BPE.
+/// Shared ByteLevel/Split semantics do not imply identical added-token owners.
+pub fn approved_plan_for_source(bytes: &[u8]) -> Result<TokenizerPlan> {
+    source_plan(require_source(bytes)?)
 }
 
 /// Source descriptor for unverified test/exploratory bytes. It never grants
@@ -588,20 +600,56 @@ mod tests {
 
     /// Approved-source cross-check; skips when the pinned file is absent.
     ///
-    /// `ZG_APPROVED_TOKENIZER` names the approved `tokenizer.json` (12,807,982
-    /// bytes, SHA-256 5f9e4d49...cb42).
+    /// `ZG_APPROVED_TOKENIZER` names either exact approved `tokenizer.json`.
     #[test]
     fn approved_source_plan_prompt_and_full_prefix_decode_are_consistent() {
         let Some(path) = std::env::var_os("ZG_APPROVED_TOKENIZER") else {
             return;
         };
         let bytes = std::fs::read(&path).unwrap();
-        assert_eq!(bytes.len(), 12_807_982);
+        let source = require_source(&bytes).unwrap();
+        let root: Value = serde_json::from_slice(&bytes).unwrap();
+        exact_approved_profile(&root).unwrap();
+        let added = root["added_tokens"].as_array().unwrap();
+        assert_eq!(added.len() as u64, source.added_tokens);
+        assert_eq!(
+            added
+                .iter()
+                .map(|token| token["content"].as_str().unwrap().len())
+                .max()
+                .unwrap() as u64,
+            source.max_added_bytes
+        );
+        assert_eq!(
+            root["model"]["vocab"].as_object().unwrap().len() as u64,
+            bounds::VOCAB_ENTRIES
+        );
+        assert_eq!(
+            root["model"]["merges"].as_array().unwrap().len() as u64,
+            bounds::MERGE_ENTRIES
+        );
+        assert_eq!(source_bound(&bytes).unwrap(), ServingBound::approved());
         let tokenizer = QwenTokenizer::from_approved_bytes(&bytes).unwrap();
+        for token in added {
+            let content = token["content"].as_str().unwrap();
+            let id = u32::try_from(token["id"].as_u64().unwrap()).unwrap();
+            assert_eq!(tokenizer.encode(content).unwrap(), [id]);
+            assert_eq!(tokenizer.decode(&[id], false).unwrap(), content);
+            let skipped = if token["special"].as_bool().unwrap() {
+                ""
+            } else {
+                content
+            };
+            assert_eq!(tokenizer.decode(&[id], true).unwrap(), skipped);
+        }
+        let mut changed = bytes.clone();
+        changed[0] ^= 1;
+        assert!(QwenTokenizer::from_approved_bytes(&changed).is_err());
+        assert!(approved_plan_for_source(&changed).is_err());
         // The measured source envelope must agree with the priced plan.
         assert_eq!(
             tokenizer.serving_inventory().unwrap(),
-            approved_plan().unwrap()
+            approved_plan_for_source(&bytes).unwrap()
         );
         let text = "Hyv\u{e4}\u{e4} p\u{e4}iv\u{e4}\u{e4} \u{2014} 0.8B \u{fc}n\u{ef}c\u{f8}d\u{e9} \u{2713} \u{1f600}";
         // Chat framing adds exactly the approved template bytes.

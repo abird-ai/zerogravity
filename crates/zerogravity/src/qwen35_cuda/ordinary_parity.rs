@@ -331,7 +331,7 @@ pub async fn compare_ordinary_cached_47_to_50(
     reference: &Cached47To50Reference,
     cancelled: Option<&AtomicBool>,
 ) -> Result<Cached47To50ParityReport> {
-    if model.model_profile() != QwenSourceProfile::Qwen08
+    if model.model_profile() != QwenSourceProfile::Qwen08.into()
         || model.context_capacity_tokens() != reference.capacity
         || reference.prompt.as_ref() != OriginalWindowModelSource::fixed_prompt_ids().as_slice()
         || reference.steps.len() != FRONTIERS.len()

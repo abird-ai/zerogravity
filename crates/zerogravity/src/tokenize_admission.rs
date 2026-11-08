@@ -112,6 +112,26 @@ impl Bootstrap {
         self.plan
     }
 
+    /// Select an authenticated source inventory, sharing the existing global
+    /// ByteLevel owner. This creates no new lease or execution authority.
+    pub fn for_source(&self, bytes: &[u8]) -> crate::Result<Self> {
+        let plan = tokenize::approved_plan_for_source(bytes)?;
+        if plan.pool_stacks != self.plan.pool_stacks
+            || plan.bootstrap_bytes != self.plan.bootstrap_bytes
+            || plan.bootstrap_peak_bytes != self.plan.bootstrap_peak_bytes
+            || plan.byte_level_retained_bytes != self.plan.byte_level_retained_bytes
+            || plan.byte_level_program_bytes != self.plan.byte_level_program_bytes
+        {
+            return Err(crate::Error::State(
+                "tokenizer source requires a different global bootstrap".into(),
+            ));
+        }
+        Ok(Self {
+            plan,
+            lease: Arc::clone(&self.lease),
+        })
+    }
+
     /// Validate that this process-lifetime owner still belongs to the caller's
     /// original arbiter/key domain.
     pub fn validate_domain(&self, host: &TransferAdmission) -> crate::Result<()> {
@@ -155,6 +175,13 @@ impl Bootstrap {
         source: &[u8],
     ) -> crate::Result<Constructor> {
         self.validate_domain(host)?;
+        if let Ok(plan) = tokenize::approved_plan_for_source(source)
+            && plan != self.plan
+        {
+            return Err(crate::Error::State(
+                "tokenizer source disagrees with the admitted constructor plan".into(),
+            ));
+        }
         let source_len = u64::try_from(source.len())
             .map_err(|_| crate::Error::Limit("json census source length".into()))?;
         let scratch_bytes = u64::try_from(census_scratch_peak(source.len())?)
@@ -335,6 +362,61 @@ mod tests {
             .unwrap()
             .checked_add(lease_actual_inventory_bytes(&host.resource, &owner, 3).unwrap())
             .unwrap()
+    }
+
+    #[test]
+    fn source_inventory_reuses_bootstrap_and_keeps_exact_owner_credits() -> crate::Result<()> {
+        let Some(path) = std::env::var_os("ZG_APPROVED_TOKENIZER") else {
+            return Ok(());
+        };
+        let bytes = std::fs::read(path)?;
+        let _serial = serial();
+        let host = host(SHARED, HOST_MIB)?;
+        let bootstrap = approve_arbiter(&host, "source-bootstrap")?;
+        let before = reserved(&host)?;
+        assert!(bootstrap.for_source(b"{}").is_err());
+        let selected = bootstrap.for_source(&bytes)?;
+        assert!(Arc::ptr_eq(&bootstrap.lease, &selected.lease));
+        assert_eq!(reserved(&host)?, before);
+        assert_eq!(selected.plan(), tokenize::approved_plan_for_source(&bytes)?);
+        if selected.plan() != bootstrap.plan() {
+            assert!(
+                bootstrap
+                    .constructor_of_arbiter(&host, "wrong-plan", &bytes)
+                    .is_err()
+            );
+            assert_eq!(reserved(&host)?, before);
+        }
+        let retained = selected.retain_arbiter(&host, "source-inventory")?;
+        let credit = source_credit_total(&host, "source-inventory", &selected.plan());
+        assert_eq!(reserved(&host)?, before + credit);
+        let tokenizer = {
+            let constructor =
+                selected.constructor_of_arbiter(&host, "source-constructor", &bytes)?;
+            let census = census_json(&bytes, ValueConstruction::SerdeValue)?;
+            let tree = tokenize::constructor_tree_bytes(
+                census.tree_heap_upper() as u64,
+                bytes.len() as u64,
+            )?;
+            let peak = selected.plan().bpe_constructor_static_bytes + tree;
+            assert_eq!(
+                reserved(&host)?,
+                before + credit + total(&host, "source-constructor", peak)
+            );
+            let tokenizer = QwenTokenizer::from_approved_bytes(&bytes)?;
+            selected.verify(&tokenizer)?;
+            if selected.plan() != bootstrap.plan() {
+                assert!(bootstrap.verify(&tokenizer).is_err());
+            }
+            drop(constructor);
+            tokenizer
+        };
+        assert_eq!(reserved(&host)?, before + credit);
+        drop(tokenizer);
+        drop(retained);
+        drop(selected);
+        assert_eq!(reserved(&host)?, before);
+        Ok(())
     }
 
     #[test]

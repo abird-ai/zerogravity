@@ -560,6 +560,7 @@ async fn probe(
             arg(5, shape.outputs),
             shape.rows,
             shape.columns,
+            shape.rows,
         );
     }
     let outputs = leases[3..].to_vec();

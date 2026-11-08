@@ -171,7 +171,8 @@ pub(in crate::resident_program::bf16_text) fn enumerate(
                         buffer(),
                         buffer(),
                         rows,
-                        tensor.columns
+                        tensor.columns,
+                        tensor.rows
                     );
                 }
             }

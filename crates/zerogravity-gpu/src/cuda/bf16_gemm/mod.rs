@@ -84,7 +84,18 @@ impl Bf16Gemm {
         inner: usize,
         reduction: Bf16GemmReduction,
     ) -> Result<Self> {
+        Self::with_output_stride(columns, rows, inner, reduction, columns)
+    }
+
+    pub(crate) fn with_output_stride(
+        columns: usize,
+        rows: usize,
+        inner: usize,
+        reduction: Bf16GemmReduction,
+        output_stride: usize,
+    ) -> Result<Self> {
         let shape = Bf16GemmShape::new(columns, rows, inner)?;
+        let output_bytes = output_span(columns, rows, output_stride)?;
         let (terms, lanes) = match reduction {
             Bf16GemmReduction::Ordered => (32, 1),
             Bf16GemmReduction::InterleavedPair { terms }
@@ -130,14 +141,22 @@ impl Bf16Gemm {
                 (StaticScalarType::U64, 16),
                 (StaticScalarType::U64, 24),
                 (StaticScalarType::U64, 32),
+                (StaticScalarType::U64, 40),
             ],
-            40,
+            48,
             8,
         )?;
         let scalars = StaticScalarBlock::new(
             schema,
-            &[columns, rows, inner, terms, lanes.trailing_zeros() as usize]
-                .map(|n| StaticScalarValue::U64(n as u64)),
+            &[
+                columns,
+                rows,
+                inner,
+                terms,
+                lanes.trailing_zeros() as usize,
+                output_stride,
+            ]
+            .map(|n| StaticScalarValue::U64(n as u64)),
         )?;
         let kernel = PinnedKernel::new_with_static_scalars(
             match (reduction, tile_rows == 8) {
@@ -155,11 +174,12 @@ impl Bf16Gemm {
             [
                 (shape.weight_bytes(), BufferIOAttr::ReadOnly),
                 (shape.input_bytes(), BufferIOAttr::ReadOnly),
-                (shape.output_bytes(), BufferIOAttr::WriteOnly),
+                (output_bytes, BufferIOAttr::WriteOnly),
             ]
             .into(),
             scalars,
-        )?;
+        )?
+        .with_binding_alignment(2)?;
         Ok(Self { kernel, grid })
     }
 
@@ -178,6 +198,18 @@ impl Bf16Gemm {
         self.kernel
             .prepare(client, self.grid, vec![weights, input, output])
     }
+}
+
+pub(crate) fn output_span(columns: usize, rows: usize, stride: usize) -> Result<usize> {
+    if columns == 0 || rows == 0 || stride < columns {
+        return Err(Error::Malformed("BF16 GEMM output stride".into()));
+    }
+    (rows - 1)
+        .checked_mul(stride)
+        .and_then(|n| n.checked_add(columns))
+        .and_then(|n| n.checked_mul(2))
+        .filter(|n| *n <= isize::MAX as usize)
+        .ok_or_else(|| Error::Limit("BF16 GEMM strided output extent".into()))
 }
 
 fn require_disjoint_output(weights: &Handle, input: &Handle, output: &Handle) -> Result<()> {

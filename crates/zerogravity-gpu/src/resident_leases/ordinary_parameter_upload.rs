@@ -20,13 +20,67 @@ pub(crate) enum OrdinaryParameterStorage {
     Original,
     /// Source is either BF16 already or finite F32 converted with IEEE BF16 RNE.
     Bf16Rne,
+    /// Exact widening of BF16, or the original finite F32 values.
+    F32Exact,
 }
 
-#[derive(Clone)]
+impl OrdinaryParameterStorage {
+    pub(crate) fn resident_bytes(self, descriptor: &SourceParameter) -> Result<usize> {
+        use zerogravity_core::encoding::ScalarDType::{Bf16, F32};
+        if self == Self::Original {
+            return Ok(descriptor.bytes);
+        }
+        if !matches!(descriptor.kind, StoredTensorEncoding::Scalar(Bf16 | F32)) {
+            return Err(Error::Unsupported(
+                "ordinary parameter conversion codec".into(),
+            ));
+        }
+        descriptor.shape.iter().try_fold(
+            if self == Self::Bf16Rne {
+                2usize
+            } else {
+                4usize
+            },
+            |bytes, &n| {
+                usize::try_from(n)
+                    .ok()
+                    .and_then(|n| bytes.checked_mul(n))
+                    .ok_or_else(|| Error::Limit("ordinary parameter converted extent".into()))
+            },
+        )
+    }
+}
+
+fn bf16_bytes_to_f32(bytes: &[u8]) -> Result<Vec<u8>> {
+    if bytes.is_empty() || !bytes.len().is_multiple_of(2) {
+        return Err(Error::Malformed("ordinary BF16 parameter extent".into()));
+    }
+    let mut output = Vec::new();
+    output
+        .try_reserve_exact(
+            bytes
+                .len()
+                .checked_mul(2)
+                .ok_or_else(|| Error::Limit("ordinary parameter staging extent".into()))?,
+        )
+        .map_err(|_| Error::Limit("ordinary parameter staging allocation".into()))?;
+    for word in bytes.chunks_exact(2) {
+        let bits = u32::from(u16::from_le_bytes([word[0], word[1]])) << 16;
+        if bits & 0x7f80_0000 == 0x7f80_0000 {
+            return Err(Error::Malformed(
+                "ordinary parameter contains nonfinite BF16".into(),
+            ));
+        }
+        output.extend_from_slice(&bits.to_le_bytes());
+    }
+    Ok(output)
+}
+
 struct ParameterOwner {
     source: VerifiedTensorSource,
     descriptor: SourceParameter,
     window: Arc<ParameterWindow>,
+    _conversion: zerogravity_artifacts::source_weights::WindowWorkspace,
 }
 
 pub(crate) struct OrdinaryParameter {
@@ -126,7 +180,32 @@ impl ResidentInitialization<'_> {
         }
 
         let elements = window.parameter().elements();
+        let conversion = source.reserve_workspace(
+            storage
+                .resident_bytes(descriptor)?
+                .checked_mul(2)
+                .ok_or_else(|| Error::Limit("ordinary parameter staging charge".into()))?,
+        )?;
         let (payload, kind) = match storage {
+            OrdinaryParameterStorage::F32Exact => match descriptor.kind {
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) => (
+                    bf16_bytes_to_f32(window.as_slice())?,
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                ),
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => {
+                    if window.as_slice().chunks_exact(4).any(|word| {
+                        u32::from_le_bytes(word.try_into().expect("F32 parameter word"))
+                            & 0x7f80_0000
+                            == 0x7f80_0000
+                    }) {
+                        return Err(Error::Malformed(
+                            "ordinary parameter contains nonfinite F32".into(),
+                        ));
+                    }
+                    (window.as_slice().to_vec(), descriptor.kind)
+                }
+                _ => return Err(Error::Unsupported("ordinary F32 parameter codec".into())),
+            },
             OrdinaryParameterStorage::Original => (window.as_slice().to_vec(), descriptor.kind),
             OrdinaryParameterStorage::Bf16Rne => match descriptor.kind {
                 StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) => (
@@ -160,6 +239,7 @@ impl ResidentInitialization<'_> {
             source,
             descriptor: descriptor.clone(),
             window,
+            _conversion: conversion,
         });
         self.retain_completion_owner(owner.clone())?;
         let lease = self.upload_bytes(&payload, BufferRole::ImmutableWeights)?;
@@ -188,6 +268,30 @@ mod tests {
             .chunks_exact(2)
             .map(|word| u16::from_le_bytes([word[0], word[1]]))
             .collect())
+    }
+
+    #[test]
+    fn bf16_widening_preserves_every_finite_word_exactly() -> Result<()> {
+        let words = (0..=u16::MAX)
+            .filter(|word| word & 0x7f80 != 0x7f80)
+            .collect::<Vec<_>>();
+        let source = words
+            .iter()
+            .flat_map(|word| word.to_le_bytes())
+            .collect::<Vec<_>>();
+        let output = bf16_bytes_to_f32(&source)?;
+        for (word, bytes) in words.into_iter().zip(output.chunks_exact(4)) {
+            assert_eq!(
+                u32::from_le_bytes(bytes.try_into().unwrap()),
+                u32::from(word) << 16
+            );
+        }
+        for word in [0x7f80u16, 0xff80, 0x7fc0] {
+            assert!(bf16_bytes_to_f32(&word.to_le_bytes()).is_err());
+        }
+        assert!(bf16_bytes_to_f32(&[0]).is_err());
+        assert!(bf16_bytes_to_f32(&[]).is_err());
+        Ok(())
     }
 
     #[test]

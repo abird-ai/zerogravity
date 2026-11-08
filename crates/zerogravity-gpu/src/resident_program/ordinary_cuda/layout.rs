@@ -16,22 +16,21 @@ use crate::{
         StateRequirement,
     },
 };
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{
-        ConvDomain, ForwardPlan, KvDomain, PlanOperation, RecurrentDomain, SourceNumericalContract,
-        SourceOperatorKind, SourceParameter, SourceTensor, StateSlot, ValueId, ValueStorageBinding,
-        ValueStorageLimits, ValueStorageRetention, ValueStorageReusePolicy,
+        ForwardPlan, PlanOperation, SourceNumericalContract, SourceOperatorKind, SourceParameter,
+        SourceTensor, StateSlot, ValueId, ValueStorageBinding, ValueStorageLimits,
+        ValueStorageRetention, ValueStorageReusePolicy,
     },
 };
 
 pub(super) const MAX_ROWS: usize = 64;
-pub(super) const VOCABULARY: usize = 248_320;
-const VALUES: usize = 327;
-const NODES: usize = 255;
+const MAX_VALUES: usize = 8192;
+const MAX_NODES: usize = 8192;
 const VALUE_ALIGNMENT: usize = 512;
-const VALUE_MAX_SLOT_BYTES: usize = 2 * 1024 * 1024;
+const VALUE_MAX_SLOT_BYTES: usize = 16 * 1024 * 1024;
 const VALUE_MAX_TOTAL_BYTES: usize = 64 * 1024 * 1024;
 // Keep the original conservative admission envelope while qualifying the new
 // executor. GEMM itself has no device scratch or opaque-provider allocation;
@@ -39,7 +38,6 @@ const VALUE_MAX_TOTAL_BYTES: usize = 64 * 1024 * 1024;
 const ADMISSION_HEADROOM_BYTES: usize = 64 * 1024 * 1024 + 8_519_680 + 4;
 const TOKEN_BYTES: usize = MAX_ROWS * 4;
 const INVERSE_FREQUENCY_BYTES: usize = 32 * 4;
-const F32_LOGITS_BYTES: usize = VOCABULARY * 4;
 const STATUS_BYTES: usize = 4;
 
 #[derive(Clone)]
@@ -77,6 +75,8 @@ impl ParameterSpec {
 #[derive(Clone)]
 pub(super) struct OrdinaryCudaLayout {
     plan: Arc<ForwardPlan>,
+    geometry: crate::cuda::ordinary_text::Geometry,
+    groups: crate::cuda::gdn::head_tile::HeadGroups,
     value_layouts: Arc<[ResidentBufferLayout]>,
     value_bindings: Arc<[ValueStorageBinding]>,
     slot_bytes: Arc<[usize]>,
@@ -85,10 +85,12 @@ pub(super) struct OrdinaryCudaLayout {
     parameters: Arc<[ParameterSpec]>,
     gdn: GdnRuntimeWorkspaceLayout,
     preflight: ResidentPreflight,
+    resident_weights: bool,
 }
 impl OrdinaryCudaLayout {
     pub(super) fn analyze(plan: Arc<ForwardPlan>) -> Result<Arc<Self>> {
         require_plan_shape(&plan)?;
+        let (geometry, groups) = super::geometry::derive(&plan)?;
         let value_layouts = plan
             .values()
             .iter()
@@ -113,9 +115,9 @@ impl OrdinaryCudaLayout {
                 taps: &[],
             },
             ValueStorageLimits {
-                max_nodes: NODES,
-                max_values: VALUES,
-                max_slots: VALUES,
+                max_nodes: MAX_NODES,
+                max_values: MAX_VALUES,
+                max_slots: MAX_VALUES,
                 max_slot_bytes: VALUE_MAX_SLOT_BYTES,
                 max_total_bytes: VALUE_MAX_TOTAL_BYTES,
                 alignment: VALUE_ALIGNMENT,
@@ -156,27 +158,22 @@ impl OrdinaryCudaLayout {
             gdn.buffers()
                 .iter()
                 .filter(|buffer| {
-                    matches!(
-                        buffer.ownership(),
-                        GdnRuntimeBufferOwnership::CacheState
-                            | GdnRuntimeBufferOwnership::Control
-                            | GdnRuntimeBufferOwnership::Scratch
-                    ) || matches!(
-                        buffer.role(),
-                        crate::cuda::gdn::GdnRuntimeBuffer::Rstd
-                            | crate::cuda::gdn::GdnRuntimeBuffer::InitialState
-                            | crate::cuda::gdn::GdnRuntimeBuffer::FinalState
-                    )
+                    owns_gdn_buffer(buffer.role(), buffer.ownership(), !groups.direct())
                 })
                 .map(|buffer| buffer.bytes()),
         )?;
-        let attention_bytes = attention::managed_bytes(plan.prefix_capacity())?;
+        let attention_bytes = attention::managed_bytes(plan.prefix_capacity(), geometry)?;
         let workspace_bytes = checked_sum([
             attention_bytes,
             gdn_workspace_bytes,
+            if groups.direct() {
+                0
+            } else {
+                crate::cuda::gdn::state_transport::CONV_ELEMENTS * 4
+            },
             TOKEN_BYTES,
-            F32_LOGITS_BYTES,
-            rotary::scratch_bytes(),
+            geometry.vocabulary * 4,
+            rotary::scratch_bytes(geometry.query_heads, geometry.kv_heads),
         ])?;
         let mut value_bindings = storage.bindings().to_vec();
         for (value, alias) in residual_aliases.iter().enumerate() {
@@ -217,6 +214,8 @@ impl OrdinaryCudaLayout {
         preflight.total_with_state()?;
         Ok(Arc::new(Self {
             plan,
+            geometry,
+            groups,
             value_layouts: value_layouts.into(),
             value_bindings,
             slot_bytes: slot_bytes.into(),
@@ -225,7 +224,32 @@ impl OrdinaryCudaLayout {
             parameters: parameters.into(),
             gdn,
             preflight,
+            resident_weights: true,
         }))
+    }
+
+    pub(super) fn resident_weights(&self) -> bool {
+        self.resident_weights
+    }
+    pub(super) fn stream_weights(&mut self) -> Result<()> {
+        if self.resident_weights {
+            self.preflight.source_bytes = 0;
+            self.preflight.workspace_bytes = self
+                .preflight
+                .workspace_bytes
+                .checked_add(crate::resident_leases::source_page::PAGE_BYTES)
+                .ok_or_else(|| Error::Limit("ordinary CUDA source page inventory".into()))?;
+            self.resident_weights = false;
+        }
+        Ok(())
+    }
+
+    pub(super) fn groups(&self) -> crate::cuda::gdn::head_tile::HeadGroups {
+        self.groups
+    }
+
+    pub(super) fn geometry(&self) -> crate::cuda::ordinary_text::Geometry {
+        self.geometry
     }
 
     pub(super) fn plan(&self) -> &Arc<ForwardPlan> {
@@ -260,6 +284,25 @@ impl OrdinaryCudaLayout {
     }
 }
 
+pub(super) fn owns_gdn_buffer(
+    role: crate::cuda::gdn::GdnRuntimeBuffer,
+    ownership: GdnRuntimeBufferOwnership,
+    grouped: bool,
+) -> bool {
+    use crate::cuda::gdn::GdnRuntimeBuffer::*;
+    matches!(
+        ownership,
+        GdnRuntimeBufferOwnership::CacheState
+            | GdnRuntimeBufferOwnership::Control
+            | GdnRuntimeBufferOwnership::Scratch
+    ) || matches!(role, Rstd | InitialState | FinalState)
+        || grouped
+            && matches!(
+                role,
+                PackedQkvz | PackedBa | ConvOutput | ZCompact | Gated | ConvWeights
+            )
+}
+
 pub(super) fn gdn_runtime_config() -> Result<GdnRuntimeConfig> {
     Ok(GdnRuntimeConfig::new(
         GdnKernelConfig::from_stages(
@@ -275,19 +318,21 @@ pub(super) fn gdn_runtime_config() -> Result<GdnRuntimeConfig> {
 fn require_plan_shape(plan: &ForwardPlan) -> Result<()> {
     if plan.source_call().is_some()
         || plan.frontier_delta() != 0
-        || plan.nodes().len() != NODES
-        || plan.values().len() != VALUES
+        || plan.nodes().is_empty()
+        || plan.nodes().len() > MAX_NODES
+        || plan.values().is_empty()
+        || plan.values().len() > MAX_VALUES
         || plan.logits().is_none()
         || plan.prefix_capacity() < 512
         || plan.prefix_capacity() > 32_768
-        || plan.required_domains().len() != 42
-        || plan.proposed_domains().len() != 42
+        || plan.required_domains().is_empty()
+        || plan.required_domains().len() > MAX_NODES
+        || plan.proposed_domains().len() != plan.required_domains().len()
     {
         return Err(Error::Unsupported(
-            "ordinary CUDA exact call-free Qwen plan shape".into(),
+            "ordinary CUDA bounded call-free source plan".into(),
         ));
     }
-    let mut counts = OperationCounts::default();
     for (index, node) in plan.nodes().iter().enumerate() {
         let PlanOperation::SourceOperatorTemplate { descriptor, .. } = &node.operation else {
             return Err(Error::Unsupported(
@@ -296,7 +341,6 @@ fn require_plan_shape(plan: &ForwardPlan) -> Result<()> {
         };
         if descriptor.source() != plan.source()
             || descriptor.max_rows() != MAX_ROWS
-            || descriptor.vocabulary() != VOCABULARY
             || descriptor.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
         {
             return Err(Error::State(
@@ -306,9 +350,28 @@ fn require_plan_shape(plan: &ForwardPlan) -> Result<()> {
         if matches!(descriptor.kind(), SourceOperatorKind::Projection { .. }) {
             super::arithmetic::projection_use(plan, index)?;
         }
-        counts.add(descriptor.kind());
+        use SourceOperatorKind::*;
+        if !matches!(
+            descriptor.kind(),
+            EmbeddingRows
+                | Projection { selected_row: None }
+                | Rms(_)
+                | ResidualRms(_)
+                | CausalConvSplit { .. }
+                | GatedDelta { .. }
+                | QkRmsRotaryGated(_)
+                | KvAppend { .. }
+                | FlashAttention { .. }
+                | Sigmoid { .. }
+                | Multiply { .. }
+                | SiluAndMul { .. }
+        ) {
+            return Err(Error::Unsupported(
+                "ordinary CUDA source operator implementation".into(),
+            ));
+        }
     }
-    counts.require_exact()
+    Ok(())
 }
 
 fn residual_aliases(plan: &ForwardPlan) -> Result<Vec<Option<ValueId>>> {
@@ -348,101 +411,49 @@ fn residual_aliases(plan: &ForwardPlan) -> Result<Vec<Option<ValueId>>> {
         }
         aliases[carried_index] = Some(root);
     }
-    if aliases.iter().filter(|alias| alias.is_some()).count() != 48 {
-        return Err(Error::State(
-            "ordinary CUDA exact 48 residual in-place aliases differ".into(),
-        ));
-    }
     Ok(aliases)
 }
 
-#[derive(Default)]
-struct OperationCounts {
-    embedding: usize,
-    projection: usize,
-    rms: usize,
-    residual_rms: usize,
-    conv: usize,
-    recurrent: usize,
-    qk: usize,
-    kv: usize,
-    attention: usize,
-    sigmoid: usize,
-    multiply: usize,
-    silu: usize,
-}
-impl OperationCounts {
-    fn add(&mut self, kind: SourceOperatorKind) {
-        use SourceOperatorKind::*;
-        match kind {
-            EmbeddingRows => self.embedding += 1,
-            Projection { .. } => self.projection += 1,
-            Rms(_) => self.rms += 1,
-            ResidualRms(_) => self.residual_rms += 1,
-            CausalConvSplit { .. } => self.conv += 1,
-            GatedDelta { .. } => self.recurrent += 1,
-            QkRmsRotaryGated(_) => self.qk += 1,
-            KvAppend { .. } => self.kv += 1,
-            FlashAttention { .. } => self.attention += 1,
-            Sigmoid { .. } => self.sigmoid += 1,
-            Multiply { .. } => self.multiply += 1,
-            SiluAndMul { .. } => self.silu += 1,
-            _ => {}
-        }
-    }
-    fn require_exact(&self) -> Result<()> {
-        let actual = [
-            self.embedding,
-            self.projection,
-            self.rms,
-            self.residual_rms,
-            self.conv,
-            self.recurrent,
-            self.qk,
-            self.kv,
-            self.attention,
-            self.sigmoid,
-            self.multiply,
-            self.silu,
-        ];
-        let expected = [1, 115, 1, 48, 18, 18, 6, 6, 6, 6, 6, 24];
-        if actual != expected || actual.iter().sum::<usize>() != NODES {
-            return Err(Error::Unsupported(
-                "ordinary CUDA exact source operator population".into(),
-            ));
-        }
-        Ok(())
-    }
-}
-
 fn state_requirements(plan: &ForwardPlan) -> Result<Vec<StateRequirement>> {
-    let mut result = Vec::with_capacity(42);
-    let proposed = plan.proposed_domains();
-    for (index, &slot) in plan.required_domains().iter().enumerate() {
-        let version = proposed
-            .get(index)
-            .ok_or_else(|| Error::State("ordinary CUDA proposed state missing".into()))?;
-        if version.slot != slot || version.ordinal != 1 {
-            return Err(Error::State(
-                "ordinary CUDA proposed state slot/version differs".into(),
+    let mut writers = BTreeMap::new();
+    for node in plan.nodes() {
+        let PlanOperation::SourceOperatorTemplate { descriptor, .. } = &node.operation else {
+            return Err(Error::Unsupported(
+                "ordinary CUDA state source template".into(),
             ));
-        }
-        let requirement = match slot {
-            StateSlot::Conv(ConvDomain(layer)) if layer < 24 && layer % 4 != 3 => {
-                state_vector(slot, 6144 * 3, ResidentPhysicalType::F32)?
+        };
+        let state = match descriptor.kind() {
+            SourceOperatorKind::CausalConvSplit { domain, geometry } => {
+                let elements = geometry
+                    .kernel
+                    .checked_sub(1)
+                    .and_then(|history| history.checked_mul(geometry.qkv_channels))
+                    .ok_or_else(|| Error::Limit("ordinary CUDA convolution state extent".into()))?;
+                state_vector(StateSlot::Conv(domain), elements, ResidentPhysicalType::F32)?
             }
-            StateSlot::Recurrent(RecurrentDomain(layer)) if layer < 24 && layer % 4 != 3 => {
-                state_vector(slot, 16 * 128 * 128, ResidentPhysicalType::F32)?
+            SourceOperatorKind::GatedDelta { domain, geometry } => {
+                let elements = geometry
+                    .value_heads
+                    .checked_mul(geometry.key_width)
+                    .and_then(|n| n.checked_mul(geometry.value_width))
+                    .ok_or_else(|| Error::Limit("ordinary CUDA recurrent state extent".into()))?;
+                state_vector(
+                    StateSlot::Recurrent(domain),
+                    elements,
+                    ResidentPhysicalType::F32,
+                )?
             }
-            StateSlot::Kv(KvDomain(layer)) if layer < 24 && layer % 4 == 3 => {
-                let elements = 512usize
+            SourceOperatorKind::KvAppend {
+                domain, key_width, ..
+            } => {
+                let elements = key_width
                     .checked_mul(plan.prefix_capacity())
                     .ok_or_else(|| Error::Limit("ordinary CUDA KV state extent".into()))?;
                 let layout = ResidentBufferLayout::new(ResidentPhysicalType::Bf16, elements)?;
                 StateRequirement {
-                    slot,
+                    slot: StateSlot::Kv(domain),
                     layout: StateLayout::Kv {
-                        slab: 512,
+                        slab: key_width,
                         capacity: plan.prefix_capacity(),
                     },
                     physical: ResidentPhysicalType::Bf16,
@@ -452,36 +463,36 @@ fn state_requirements(plan: &ForwardPlan) -> Result<Vec<StateRequirement>> {
                         .ok_or_else(|| Error::Limit("ordinary CUDA KV state bytes".into()))?,
                 }
             }
-            _ => {
-                return Err(Error::Unsupported(
-                    "ordinary CUDA state domain population".into(),
-                ));
-            }
+            _ => continue,
         };
-        requirement.plane_layout()?;
-        result.push(requirement);
+        state.plane_layout()?;
+        if writers.insert(state.slot, state).is_some() {
+            return Err(Error::State(
+                "ordinary CUDA state has multiple writers".into(),
+            ));
+        }
     }
-    if result
-        .iter()
-        .filter(|state| matches!(state.slot, StateSlot::Conv(_)))
-        .count()
-        != 18
-        || result
-            .iter()
-            .filter(|state| matches!(state.slot, StateSlot::Recurrent(_)))
-            .count()
-            != 18
-        || result
-            .iter()
-            .filter(|state| matches!(state.slot, StateSlot::Kv(_)))
-            .count()
-            != 6
+    if writers.len() != plan.required_domains().len()
+        || plan.proposed_domains().len() != plan.required_domains().len()
     {
         return Err(Error::State(
-            "ordinary CUDA exact 18/18/6 state population differs".into(),
+            "ordinary CUDA state writer/domain coverage".into(),
         ));
     }
-    Ok(result)
+    plan.required_domains()
+        .iter()
+        .zip(plan.proposed_domains())
+        .map(|(&slot, version)| {
+            if version.slot != slot || version.ordinal != 1 {
+                return Err(Error::State(
+                    "ordinary CUDA proposed state slot/version differs".into(),
+                ));
+            }
+            writers
+                .remove(&slot)
+                .ok_or_else(|| Error::State("ordinary CUDA state writer absent".into()))
+        })
+        .collect()
 }
 
 fn state_vector(
@@ -552,14 +563,15 @@ pub(super) fn parameter_storage(
     kind: SourceOperatorKind,
     ordinal: usize,
 ) -> Result<OrdinaryParameterStorage> {
-    use OrdinaryParameterStorage::{Bf16Rne, Original};
+    use OrdinaryParameterStorage::{Bf16Rne, F32Exact, Original};
     use SourceOperatorKind::*;
     match kind {
         Rms(_) | ResidualRms(_) if ordinal == 0 => Ok(Bf16Rne),
         QkRmsRotaryGated(_) if ordinal < 2 => Ok(Original),
         CausalConvSplit { .. } if ordinal == 0 => Ok(Original),
         GatedDelta { .. } => match ordinal {
-            0 | 1 => Ok(Original),
+            0 => Ok(F32Exact),
+            1 => Ok(Original),
             2 => Ok(Bf16Rne),
             _ => Err(Error::State("ordinary CUDA GDN parameter ordinal".into())),
         },
@@ -573,36 +585,7 @@ fn parameter_resident_bytes(
     parameter: &SourceParameter,
     storage: OrdinaryParameterStorage,
 ) -> Result<usize> {
-    match storage {
-        OrdinaryParameterStorage::Original => Ok(parameter.bytes),
-        OrdinaryParameterStorage::Bf16Rne => {
-            if !matches!(
-                parameter.kind,
-                zerogravity_core::encoding::StoredTensorEncoding::Scalar(
-                    zerogravity_core::encoding::ScalarDType::Bf16
-                ) | zerogravity_core::encoding::StoredTensorEncoding::Scalar(
-                    zerogravity_core::encoding::ScalarDType::F32
-                )
-            ) {
-                return Err(Error::Unsupported(
-                    "ordinary CUDA converted parameter codec".into(),
-                ));
-            }
-            let elements = parameter
-                .shape
-                .iter()
-                .try_fold(1usize, |product, &dimension| {
-                    let dimension = usize::try_from(dimension)
-                        .map_err(|_| Error::Limit("ordinary CUDA parameter dimension".into()))?;
-                    product
-                        .checked_mul(dimension)
-                        .ok_or_else(|| Error::Limit("ordinary CUDA parameter elements".into()))
-                })?;
-            elements
-                .checked_mul(2)
-                .ok_or_else(|| Error::Limit("ordinary CUDA converted parameter bytes".into()))
-        }
-    }
+    storage.resident_bytes(parameter)
 }
 
 fn checked_sum(values: impl IntoIterator<Item = usize>) -> Result<usize> {
@@ -615,6 +598,7 @@ fn checked_sum(values: impl IntoIterator<Item = usize>) -> Result<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zerogravity_core::accelerator::program::{ConvDomain, KvDomain, RecurrentDomain};
 
     #[test]
     fn typed_state_layout_is_exact_f32_f32_bf16_and_two_root_cost_is_derived() {

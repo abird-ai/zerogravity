@@ -5,14 +5,11 @@ use super::{
     OrdinaryCudaProjection, attention::OrdinaryCudaAttention, layout, rotary::OrdinaryCudaRotary,
 };
 use crate::{
-    cuda::{
-        gdn::{GdnRuntimeBuffer, GdnRuntimeBufferOwnership},
-        ordinary_text::{Geometry, Program},
-    },
+    cuda::{gdn::GdnRuntimeBuffer, ordinary_text::Program},
     resident_leases::{
         ResidentInitialization, ResidentLease, ResidentService,
         ordinary_parameter_upload::OrdinaryParameter,
-        ordinary_projection_upload::PackedSourceMatrices,
+        ordinary_projection_upload::BoundSourceMatrices,
     },
     resident_program::DeviceBuffer,
 };
@@ -33,6 +30,7 @@ use zerogravity_core::{
 pub(super) struct OrdinaryCudaCold {
     layout: Arc<layout::OrdinaryCudaLayout>,
     source: VerifiedTensorSource,
+    _source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
     service: Arc<ResidentService>,
     program: Program,
     values: Arc<[DeviceBuffer]>,
@@ -44,11 +42,13 @@ pub(super) struct OrdinaryCudaCold {
     rotary: Arc<OrdinaryCudaRotary>,
     attention: Arc<OrdinaryCudaAttention>,
     gdn_internal: BTreeMap<GdnRuntimeBuffer, ResidentLease>,
-    matrix_packs: Arc<[Arc<PackedSourceMatrices>]>,
+    gdn_conv_tile: Option<ResidentLease>,
+    matrix_packs: Arc<[Arc<BoundSourceMatrices>]>,
     parameters: Arc<[Arc<OrdinaryParameter>]>,
     node_parameters: BTreeMap<usize, Arc<[Arc<OrdinaryParameter>]>>,
     projections: BTreeMap<usize, Arc<OrdinaryCudaProjection>>,
-    embedding: Arc<PackedSourceMatrices>,
+    embedding: Arc<BoundSourceMatrices>,
+    source_page: Option<Arc<crate::resident_leases::source_page::ResidentSourcePage>>,
 }
 
 impl OrdinaryCudaCold {
@@ -56,6 +56,7 @@ impl OrdinaryCudaCold {
         layout: Arc<layout::OrdinaryCudaLayout>,
         source: VerifiedTensorSource,
         service: Arc<ResidentService>,
+        source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
         init: &mut ResidentInitialization<'_>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
@@ -69,9 +70,23 @@ impl OrdinaryCudaCold {
                 "ordinary CUDA cold source/service/plan differs".into(),
             ));
         }
+        if !layout.resident_weights() {
+            let host = source
+                .metadata_reserved_bytes()
+                .checked_add(
+                    crate::resident_leases::source_page::transport_host_bytes(&source)? as u64,
+                )
+                .ok_or_else(|| Error::Limit("CUDA source-page host preflight".into()))?;
+            if host > source.workspace_limit_bytes()? {
+                return Err(Error::Limit("CUDA source-page host budget".into()));
+            }
+        }
+        if let Some(owner) = &source_owner {
+            init.retain_completion_owner(owner.clone())?;
+        }
         init.retain_completion_owner(Arc::new(source.clone()))?;
 
-        let geometry = geometry(layout.plan())?;
+        let geometry = layout.geometry();
         let program = Program::new(geometry)?;
 
         let value_slots = layout
@@ -104,25 +119,29 @@ impl OrdinaryCudaCold {
 
         let status = init.upload_zeroed(4, BufferRole::Scratch)?;
         let token_ids = init.upload_zeroed(layout::MAX_ROWS * 4, BufferRole::Activation)?;
-        let logits_f32 = init.allocate_empty(layout::VOCABULARY * 4, BufferRole::Output)?;
+        let logits_f32 =
+            init.allocate_empty(layout.geometry().vocabulary * 4, BufferRole::Output)?;
         let inverse_frequency =
             init.upload_bytes(&inverse_frequency_bytes(), BufferRole::ImmutableWeights)?;
-        let rotary = OrdinaryCudaRotary::prepare(service.clone(), init)?;
-        let attention =
-            OrdinaryCudaAttention::prepare(service.clone(), init, layout.plan().prefix_capacity())?;
+        let rotary = OrdinaryCudaRotary::prepare(
+            service.clone(),
+            init,
+            layout.geometry().query_heads,
+            layout.geometry().kv_heads,
+        )?;
+        let attention = OrdinaryCudaAttention::prepare(
+            service.clone(),
+            init,
+            layout.plan().prefix_capacity(),
+            geometry,
+        )?;
 
         let mut gdn_internal = BTreeMap::new();
         for buffer in layout.gdn().buffers() {
-            if !matches!(
-                buffer.ownership(),
-                GdnRuntimeBufferOwnership::CacheState
-                    | GdnRuntimeBufferOwnership::Control
-                    | GdnRuntimeBufferOwnership::Scratch
-            ) && !matches!(
+            if !layout::owns_gdn_buffer(
                 buffer.role(),
-                GdnRuntimeBuffer::Rstd
-                    | GdnRuntimeBuffer::InitialState
-                    | GdnRuntimeBuffer::FinalState
+                buffer.ownership(),
+                !layout.groups().direct(),
             ) {
                 continue;
             }
@@ -139,6 +158,26 @@ impl OrdinaryCudaCold {
             }
         }
 
+        let gdn_conv_tile = if layout.groups().direct() {
+            None
+        } else {
+            Some(init.allocate_empty(
+                crate::cuda::gdn::state_transport::CONV_ELEMENTS * 4,
+                BufferRole::Scratch,
+            )?)
+        };
+
+        let source_page = if layout.resident_weights() {
+            None
+        } else {
+            Some(
+                crate::resident_leases::source_page::ResidentSourcePage::allocate(
+                    source.clone(),
+                    service.clone(),
+                    init,
+                )?,
+            )
+        };
         let mut matrix_packs = Vec::with_capacity(layout.matrices().len());
         for spec in layout.matrices() {
             if cancelled.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire)) {
@@ -147,9 +186,17 @@ impl OrdinaryCudaCold {
                 ));
             }
             let packed = init
-                .upload_ordinary_matrices(&service, source.clone(), spec.members(), cancelled)
+                .prepare_ordinary_matrices(
+                    &service,
+                    source.clone(),
+                    spec.members(),
+                    layout.resident_weights(),
+                    cancelled,
+                )
                 .await?;
-            if packed.lease().bytes() != spec.bytes() {
+            if packed.lease().map(|lease| lease.bytes())
+                != layout.resident_weights().then_some(spec.bytes())
+            {
                 return Err(Error::State(
                     "ordinary CUDA packed source matrix preflight bytes differ".into(),
                 ));
@@ -179,7 +226,7 @@ impl OrdinaryCudaCold {
             parameters.push(parameter);
         }
 
-        let find_pack = |members: &[SourceTensor]| -> Result<Arc<PackedSourceMatrices>> {
+        let find_pack = |members: &[SourceTensor]| -> Result<Arc<BoundSourceMatrices>> {
             let mut matches = matrix_packs
                 .iter()
                 .filter(|pack| pack.require_members(members).is_ok());
@@ -265,7 +312,7 @@ impl OrdinaryCudaCold {
                 _ => {}
             }
         }
-        if projections.len() != 115 || node_parameters.is_empty() {
+        if projections.is_empty() || node_parameters.is_empty() {
             return Err(Error::State(
                 "ordinary CUDA cold projection/parameter population differs".into(),
             ));
@@ -274,6 +321,7 @@ impl OrdinaryCudaCold {
         let result = Arc::new(Self {
             layout,
             source,
+            _source_owner: source_owner,
             service,
             program,
             values: values.into(),
@@ -285,6 +333,8 @@ impl OrdinaryCudaCold {
             rotary,
             attention,
             gdn_internal,
+            gdn_conv_tile,
+            source_page,
             matrix_packs: matrix_packs.into(),
             parameters: parameters.into(),
             node_parameters,
@@ -304,7 +354,7 @@ impl OrdinaryCudaCold {
             || self.value_slots.len() != self.layout.slot_bytes().len()
             || self.status.bytes() != 4
             || self.token_ids.bytes() != layout::MAX_ROWS * 4
-            || self.logits_f32.bytes() != layout::VOCABULARY * 4
+            || self.logits_f32.bytes() != self.layout.geometry().vocabulary * 4
             || self.inverse_frequency.bytes() != 32 * 4
             || self.matrix_packs.len() != self.layout.matrices().len()
             || self.parameters.len() != self.layout.parameters().len()
@@ -414,7 +464,12 @@ impl OrdinaryCudaCold {
             .get(&node)
             .ok_or_else(|| Error::State("ordinary CUDA projection binding absent".into()))
     }
-    pub(super) fn embedding(&self) -> &Arc<PackedSourceMatrices> {
+    pub(super) fn source_page(
+        &self,
+    ) -> Option<&Arc<crate::resident_leases::source_page::ResidentSourcePage>> {
+        self.source_page.as_ref()
+    }
+    pub(super) fn embedding(&self) -> &Arc<BoundSourceMatrices> {
         &self.embedding
     }
     pub(super) fn node_parameters(&self, node: usize) -> Result<&[Arc<OrdinaryParameter>]> {
@@ -422,6 +477,11 @@ impl OrdinaryCudaCold {
             .get(&node)
             .map(AsRef::as_ref)
             .ok_or_else(|| Error::State("ordinary CUDA node parameters absent".into()))
+    }
+    pub(super) fn gdn_conv_tile(&self) -> Result<&ResidentLease> {
+        self.gdn_conv_tile
+            .as_ref()
+            .ok_or_else(|| Error::State("ordinary CUDA GDN state tile absent".into()))
     }
     pub(super) fn gdn_internal(&self, role: GdnRuntimeBuffer) -> Result<&ResidentLease> {
         self.gdn_internal
@@ -457,63 +517,22 @@ impl OrdinaryCudaCold {
         for lease in self.gdn_internal.values() {
             add(lease, DeviceAccess::Write);
         }
+        if let Some(lease) = &self.gdn_conv_tile {
+            add(lease, DeviceAccess::Write);
+        }
         for pack in self.matrix_packs.iter() {
-            add(pack.lease(), DeviceAccess::Read);
+            if let Some(lease) = pack.lease() {
+                add(lease, DeviceAccess::Read);
+            }
+        }
+        if let Some(page) = &self.source_page {
+            add(page.lease(), DeviceAccess::Write);
         }
         for parameter in self.parameters.iter() {
             add(parameter.lease(), DeviceAccess::Read);
         }
         unique.into_values().collect()
     }
-}
-
-fn geometry(plan: &ForwardPlan) -> Result<Geometry> {
-    let mut hidden = None;
-    let mut intermediate = None;
-    for node in plan.nodes() {
-        let PlanOperation::SourceOperatorTemplate { descriptor, .. } = &node.operation else {
-            continue;
-        };
-        match descriptor.kind() {
-            SourceOperatorKind::Rms(g) | SourceOperatorKind::ResidualRms(g)
-                if hidden
-                    .replace(g.width)
-                    .is_some_and(|prior| prior != g.width) =>
-            {
-                return Err(Error::State(
-                    "ordinary CUDA hidden width differs across RMS".into(),
-                ));
-            }
-            SourceOperatorKind::SiluAndMul { width }
-                if intermediate
-                    .replace(width)
-                    .is_some_and(|prior| prior != width) =>
-            {
-                return Err(Error::State(
-                    "ordinary CUDA intermediate width differs".into(),
-                ));
-            }
-            _ => {}
-        }
-    }
-    let hidden = hidden.ok_or_else(|| Error::State("ordinary CUDA hidden width absent".into()))?;
-    let intermediate = intermediate
-        .ok_or_else(|| Error::State("ordinary CUDA intermediate width absent".into()))?;
-    if !matches!((hidden, intermediate), (1024, 3584) | (2048, 6144)) {
-        return Err(Error::Unsupported(
-            "ordinary CUDA Qwen .8B/2B hidden/intermediate geometry".into(),
-        ));
-    }
-    Geometry {
-        hidden_width: hidden,
-        intermediate_width: intermediate,
-        vocabulary: layout::VOCABULARY,
-        query_heads: 8,
-        kv_heads: 2,
-        head_width: 256,
-        rotary_width: 64,
-    }
-    .validate()
 }
 
 fn inverse_frequency_bytes() -> Vec<u8> {

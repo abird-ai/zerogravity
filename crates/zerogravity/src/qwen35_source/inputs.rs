@@ -1,5 +1,5 @@
 //! Original descriptor capabilities, not paths reopened after authentication.
-#[cfg(feature = "qwen35-hip")]
+#[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
 use super::Error;
 #[cfg(feature = "qwen35-cuda-qualification")]
 use super::source_inventory::digest;
@@ -9,7 +9,7 @@ use std::{fs::File, sync::atomic::AtomicBool};
 pub(crate) enum Inputs<'a> {
     #[cfg(feature = "qwen35-cuda-qualification")]
     Directory(&'a super::held_directory::Directory),
-    #[cfg(feature = "qwen35-hip")]
+    #[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
     Snapshot(&'a zerogravity_artifacts::cache::SnapshotLease),
 }
 impl Inputs<'_> {
@@ -17,7 +17,7 @@ impl Inputs<'_> {
         match self {
             #[cfg(feature = "qwen35-cuda-qualification")]
             Self::Directory(dir) => dir.file(name),
-            #[cfg(feature = "qwen35-hip")]
+            #[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
             Self::Snapshot(snapshot) => Ok(snapshot.file(name)?.try_clone()?),
         }
     }
@@ -30,7 +30,7 @@ impl Inputs<'_> {
         match self {
             #[cfg(feature = "qwen35-cuda-qualification")]
             Self::Directory(dir) => dir.bounded(name, cap, cancelled),
-            #[cfg(feature = "qwen35-hip")]
+            #[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
             Self::Snapshot(_) => super::held_file::HeldFile::from_file(self.file(name)?)?
                 .read_bounded(cap, None, cancelled),
         }
@@ -45,7 +45,7 @@ impl Inputs<'_> {
         match self {
             #[cfg(feature = "qwen35-cuda-qualification")]
             Self::Directory(dir) => dir.read(name, bytes, sha, cancelled),
-            #[cfg(feature = "qwen35-hip")]
+            #[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
             Self::Snapshot(_) => super::held_file::HeldFile::from_file(self.file(name)?)?
                 .read_exact_bounded(bytes, 32 * 1024 * 1024, sha, cancelled),
         }
@@ -72,7 +72,7 @@ impl Inputs<'_> {
                 }
                 let _ = members;
             }
-            #[cfg(feature = "qwen35-hip")]
+            #[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
             Self::Snapshot(snapshot) => {
                 let manifest = snapshot.manifest();
                 if manifest.entries().len() != members
@@ -89,7 +89,7 @@ impl Inputs<'_> {
         }
         Ok(())
     }
-    #[cfg(feature = "qwen35-hip")]
+    #[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
     pub(super) fn retains_tokenizer(&self) -> bool {
         matches!(self, Self::Snapshot(_))
     }

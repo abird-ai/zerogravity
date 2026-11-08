@@ -9,7 +9,7 @@
 use crate::cuda::bf16_gemm::Bf16GemmShape;
 use crate::resident_leases::{
     ResidentInitialization, ResidentLease, ResidentService, ResidentSubmission,
-    ordinary_projection_upload::PackedSourceMatrices,
+    ordinary_projection_upload::BoundSourceMatrices,
 };
 use std::sync::{
     Arc,
@@ -26,6 +26,8 @@ mod attention;
 pub(super) mod body;
 mod cold;
 mod execute;
+mod geometry;
+mod grouped_gdn;
 mod layout;
 pub(crate) mod rotary;
 
@@ -64,7 +66,7 @@ fn exact_view(
 /// template; request-local row geometry never owns or reloads weights.
 pub(crate) struct OrdinaryCudaProjection {
     template: SourceOperatorTemplate,
-    weights: Arc<PackedSourceMatrices>,
+    weights: Arc<BoundSourceMatrices>,
     arithmetic: ProjectionUse,
 }
 impl OrdinaryCudaProjection {
@@ -100,7 +102,7 @@ impl OrdinaryCudaProjection {
 
     pub(crate) fn prepare_with_weights(
         template: &SourceOperatorTemplate,
-        weights: Arc<PackedSourceMatrices>,
+        weights: Arc<BoundSourceMatrices>,
         arithmetic: ProjectionUse,
     ) -> Result<Arc<Self>> {
         if template.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
@@ -194,37 +196,96 @@ impl OrdinaryCudaProjection {
                 "ordinary CUDA projection input/output lease extent differs".into(),
             ));
         }
-        Ok(vec![
-            (self.weights.lease().clone(), DeviceAccess::Read),
+        let mut accesses = vec![
             (input.clone(), DeviceAccess::Read),
             (output.clone(), DeviceAccess::Write),
-        ])
+        ];
+        if let Some(weights) = self.weights.lease() {
+            accesses.push((weights.clone(), DeviceAccess::Read));
+        }
+        Ok(accesses)
     }
 
-    fn enqueue(
+    async fn enqueue(
         &self,
         descriptor: &SourceOperator,
         gemm: &OrdinaryCudaGemm,
         flight: &mut ResidentSubmission<'_>,
         input: &ResidentLease,
         output: &ResidentLease,
-    ) -> Result<()> {
+        page: Option<&Arc<crate::resident_leases::source_page::ResidentSourcePage>>,
+    ) -> Result<usize> {
         let (operation, input_offset) = self.operation(descriptor)?;
-        gemm.enqueue(
-            flight,
-            operation,
-            self.arithmetic.reduction(operation),
-            self.weights.lease(),
+        // The reduction is selected for the full projection, never for a transport page.
+        let reduction = self.arithmetic.reduction(operation);
+        if let Some(weights) = self.weights.lease() {
+            gemm.enqueue(
+                flight,
+                operation,
+                reduction,
+                weights,
+                input,
+                input_offset,
+                output,
+                0,
+            )?;
+            return Ok(1);
+        }
+        let page = page
+            .ok_or_else(|| Error::State("ordinary CUDA streamed projection has no page".into()))?;
+        flight.require_accesses([(input, DeviceAccess::Read), (output, DeviceAccess::Write)])?;
+        let input = exact_view(
             input,
             input_offset,
-            output,
-            0,
-        )
+            operation.input_bytes(),
+            "streamed GEMM input",
+        )?;
+        let mut base = 0;
+        let mut launches = 0;
+        for matrix in self.weights.matrices() {
+            let geometry = crate::resident_leases::source_page::PageGeometry::new(
+                matrix.rows(),
+                matrix.columns(),
+            )?;
+            for first in (0..geometry.rows).step_by(geometry.rows_per_page) {
+                let rows = first..first + (geometry.rows - first).min(geometry.rows_per_page);
+                let shape = Bf16GemmShape::new(rows.len(), operation.rows, operation.inner)?;
+                let offset = (base + rows.start) * 2;
+                let extent = crate::cuda::bf16_gemm::output_span(
+                    shape.columns,
+                    shape.rows,
+                    operation.columns,
+                )?;
+                let target = exact_view(output, offset, extent, "streamed GEMM output")?;
+                page.with_rows(flight, matrix, rows, None, |view| {
+                    if view.rows().len() != shape.columns
+                        || view.matrix().columns() != shape.inner
+                        || view.bytes() != shape.weight_bytes()
+                    {
+                        return Err(Error::State("CUDA streamed GEMM page geometry".into()));
+                    }
+                    gemm.enqueue_page(
+                        shape,
+                        reduction,
+                        view.handle().clone(),
+                        input.clone(),
+                        target,
+                        operation.columns,
+                    )?;
+                    Ok(vec![output.clone()])
+                })
+                .await?;
+                launches += 1;
+            }
+            base += matrix.rows();
+        }
+        Ok(launches)
     }
 }
 
 pub(crate) struct OrdinaryCudaAdmission {
     layout: Arc<layout::OrdinaryCudaLayout>,
+    roots: usize,
 }
 impl OrdinaryCudaAdmission {
     pub(crate) fn analyze(
@@ -232,10 +293,43 @@ impl OrdinaryCudaAdmission {
     ) -> Result<Self> {
         Ok(Self {
             layout: layout::OrdinaryCudaLayout::analyze(plan)?,
+            roots: 2,
         })
     }
+    pub(crate) fn with_roots(mut self, roots: usize) -> Result<Self> {
+        if roots < 2 {
+            return Err(Error::Limit(
+                "ordinary CUDA requires prior/candidate roots".into(),
+            ));
+        }
+        self.roots = roots;
+        self.total_bytes()?;
+        Ok(self)
+    }
+    pub(crate) fn fit(mut self, provider_capacity: usize) -> Result<Self> {
+        if self.total_bytes()? > provider_capacity {
+            Arc::make_mut(&mut self.layout).stream_weights()?;
+        }
+        let total = self.total_bytes()?;
+        if total > provider_capacity {
+            return Err(Error::Limit(format!(
+                "ordinary CUDA workspace/{}-root plan does not fit: {total} > {provider_capacity}",
+                self.roots
+            )));
+        }
+        Ok(self)
+    }
     pub(crate) fn total_bytes(&self) -> Result<usize> {
-        self.layout.total_admission_bytes()
+        let extra = self
+            .layout
+            .preflight()
+            .prior_state_bytes
+            .checked_mul(self.roots - 2)
+            .ok_or_else(|| Error::Limit("ordinary CUDA root inventory overflow".into()))?;
+        self.layout
+            .total_admission_bytes()?
+            .checked_add(extra)
+            .ok_or_else(|| Error::Limit("ordinary CUDA complete root inventory overflow".into()))
     }
     pub(crate) fn source(&self) -> zerogravity_core::accelerator::SourceIdentity {
         self.layout.plan().source()
@@ -244,7 +338,7 @@ impl OrdinaryCudaAdmission {
         self.layout.plan().prefix_capacity()
     }
     pub(crate) fn vocabulary(&self) -> usize {
-        layout::VOCABULARY
+        self.layout.geometry().vocabulary
     }
     pub(crate) fn preflight(&self) -> &crate::resident_program::ResidentPreflight {
         self.layout.preflight()
@@ -291,6 +385,7 @@ pub(crate) async fn prepare_program(
     service: Arc<ResidentService>,
     admission: OrdinaryCudaAdmission,
     source: VerifiedTensorSource,
+    source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
     cancelled: Option<&AtomicBool>,
 ) -> Result<PreparedOrdinaryCuda> {
     service.ensure_usable()?;
@@ -336,6 +431,7 @@ pub(crate) async fn prepare_program(
         admission.layout.clone(),
         source,
         service.clone(),
+        source_owner,
         &mut init,
         cancelled,
     )
@@ -371,6 +467,93 @@ mod admission_matrix_tests {
 
     const MIB: usize = 1024 * 1024;
     const PROVIDER_CAP: usize = 4608 * MIB;
+
+    #[test]
+    fn placement_streams_only_weights_and_preserves_two_root_inventory() {
+        let plan = diagnostic_ordinary_plan(QwenSourceProfile::Qwen08, 1024).unwrap();
+        let resident = OrdinaryCudaAdmission::analyze(plan.clone()).unwrap();
+        let streamed = OrdinaryCudaAdmission::analyze(plan.clone())
+            .unwrap()
+            .fit(512 * MIB)
+            .unwrap();
+        assert!(resident.layout.resident_weights());
+        assert!(!streamed.layout.resident_weights());
+        assert_eq!(streamed.preflight().source_bytes, 0);
+        assert_eq!(
+            streamed.preflight().workspace_bytes,
+            resident.preflight().workspace_bytes + crate::resident_leases::source_page::PAGE_BYTES
+        );
+        assert_eq!(
+            streamed.preflight().prior_state_bytes,
+            resident.preflight().prior_state_bytes
+        );
+        assert_eq!(
+            streamed.preflight().candidate_state_bytes,
+            resident.preflight().candidate_state_bytes
+        );
+        assert_eq!(
+            streamed.preflight().parameter_bytes,
+            resident.preflight().parameter_bytes
+        );
+        assert!(streamed.total_bytes().unwrap() <= 512 * MIB);
+        assert!(
+            OrdinaryCudaAdmission::analyze(plan)
+                .unwrap()
+                .fit(1)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn placement_prices_every_original_root_before_selecting_residency() {
+        let plan = diagnostic_ordinary_plan(QwenSourceProfile::Qwen08, 1024).unwrap();
+        let base = OrdinaryCudaAdmission::analyze(plan.clone()).unwrap();
+        let state = base.preflight().prior_state_bytes;
+        for roots in [2, 4, 6, 18] {
+            let sized = OrdinaryCudaAdmission::analyze(plan.clone())
+                .unwrap()
+                .with_roots(roots)
+                .unwrap();
+            assert_eq!(
+                sized.total_bytes().unwrap(),
+                base.total_bytes().unwrap() + (roots - 2) * state
+            );
+        }
+        let complete = OrdinaryCudaAdmission::analyze(plan.clone())
+            .unwrap()
+            .with_roots(6)
+            .unwrap()
+            .total_bytes()
+            .unwrap();
+        let streamed = OrdinaryCudaAdmission::analyze(plan.clone())
+            .unwrap()
+            .with_roots(6)
+            .unwrap()
+            .fit(complete - 1)
+            .unwrap();
+        assert!(!streamed.layout.resident_weights());
+        let floor = streamed.total_bytes().unwrap();
+        assert!(
+            OrdinaryCudaAdmission::analyze(plan.clone())
+                .unwrap()
+                .with_roots(6)
+                .unwrap()
+                .fit(floor - 1)
+                .is_err()
+        );
+        assert!(
+            OrdinaryCudaAdmission::analyze(plan.clone())
+                .unwrap()
+                .with_roots(1)
+                .is_err()
+        );
+        assert!(
+            OrdinaryCudaAdmission::analyze(plan)
+                .unwrap()
+                .with_roots(usize::MAX)
+                .is_err()
+        );
+    }
 
     #[test]
     fn source_semantic_context_matrix_reports_exact_two_root_fit() {

@@ -89,13 +89,14 @@ impl Loaded {
         native: bool,
         chunk: usize,
     ) -> Result<Arc<Self>> {
-        let small = label == "08";
+        let named = matches!(label, "08" | "27b");
         let raw: &[u8] = match label {
             "08" => include_bytes!("../../src/qwen35_cuda/source08.json"),
             "2b" => include_bytes!("../../src/qwen35_cuda/source2b.json"),
+            "27b" => include_bytes!("../../src/qwen27b_gpu/source.json"),
             _ => {
                 return Err(Error::Unsupported(
-                    "explicit small-model source fixture".into(),
+                    "explicit original model source fixture".into(),
                 ));
             }
         };
@@ -132,12 +133,12 @@ impl Loaded {
             .as_array()
             .ok_or_else(|| Error::Malformed("source fixture members".into()))?
         {
-            let name = text(row, if small { "name" } else { "path" })?.to_owned();
+            let name = text(row, if named { "name" } else { "path" })?.to_owned();
             zerogravity::cache::paths::validate_relative_path(&name)?;
             let bytes = row["bytes"]
                 .as_u64()
                 .ok_or_else(|| Error::Malformed("source member bytes".into()))?;
-            let sha = text(row, if small { "sha256" } else { "digest" })?.to_owned();
+            let sha = text(row, if named { "sha256" } else { "digest" })?.to_owned();
             let file = if let Some(snapshot) = &snapshot {
                 // Dup the original pinned description; do not reopen its pathname.
                 snapshot.file(&name)?.try_clone()?
@@ -189,9 +190,9 @@ impl Loaded {
             &index_sha,
             shards,
             WindowOpenLimits {
-                max_source_bytes: 8 * 1024 * 1024 * 1024,
+                max_source_bytes: if label == "27b" { 64 } else { 8 } * 1024 * 1024 * 1024,
                 max_metadata_bytes: 64 * 1024 * 1024,
-                max_shards: 2,
+                max_shards: if label == "27b" { 18 } else { 2 },
                 max_tensors: 2048,
                 scan_chunk_bytes: chunk,
             },

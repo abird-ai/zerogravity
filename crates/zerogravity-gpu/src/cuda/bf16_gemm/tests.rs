@@ -3,6 +3,21 @@ use cubecl_common::device::{DeviceId, ServiceId};
 use cubecl_core::environment::stream::StreamId;
 
 #[test]
+fn output_stride_preserves_operands_and_checks_the_complete_view() -> Result<()> {
+    let compact = Bf16Gemm::new(17, 3, 49)?;
+    let strided = Bf16Gemm::with_output_stride(17, 3, 49, Bf16GemmReduction::Ordered, 83)?;
+    assert_eq!(strided.grid, compact.grid);
+    assert_eq!(
+        strided.kernel.binding_sizes(),
+        [17 * 49 * 2, 3 * 49 * 2, (2 * 83 + 17) * 2]
+    );
+    assert_eq!(output_span(17, 1, 83)?, 34);
+    assert!(output_span(17, 3, 16).is_err());
+    assert!(output_span(17, 3, usize::MAX).is_err());
+    Ok(())
+}
+
+#[test]
 fn geometry_checks_extents_and_tiles_without_case_whitelists() -> Result<()> {
     for (columns, rows, inner, grid) in [
         (1, 1, 1, [1, 1, 1]),

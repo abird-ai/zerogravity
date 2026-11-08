@@ -215,6 +215,7 @@ pub(crate) struct PinnedKernel {
     shared_bytes: usize,
     // Exact physical sizes and access, in CUDA pointer-parameter order.
     bindings: Arc<[(usize, BufferIOAttr)]>,
+    binding_alignment: usize,
     static_scalars: StaticScalarBlock,
 }
 
@@ -412,8 +413,22 @@ impl PinnedKernel {
             threads,
             shared_bytes,
             bindings,
+            binding_alignment: 4,
             static_scalars,
         })
+    }
+
+    /// Natural alignment of every pointer's actual CUDA element type.
+    pub(crate) fn with_binding_alignment(mut self, alignment: usize) -> Result<Self> {
+        if !alignment.is_power_of_two() || alignment > 16 {
+            return Err(Error::Unsupported("closed CUDA pointer alignment".into()));
+        }
+        self.binding_alignment = alignment;
+        Ok(self)
+    }
+
+    fn binding_extent_matches(&self, start: u64, actual: u64, expected: usize) -> bool {
+        start.is_multiple_of(self.binding_alignment as u64) && actual == expected as u64
     }
 
     /// Pure validation, before the caller arms its original submission.
@@ -443,8 +458,11 @@ impl PinnedKernel {
         }
         for (handle, (bytes, _)) in handles.iter().zip(self.bindings.iter()) {
             if handle.service != client.service_id()
-                || !handle.offset_start.unwrap_or(0).is_multiple_of(4)
-                || handle.size_in_used() != *bytes as u64
+                || !self.binding_extent_matches(
+                    handle.offset_start.unwrap_or(0),
+                    handle.size_in_used(),
+                    *bytes,
+                )
             {
                 return Err(Error::State(
                     "pinned vLLM CUDA original binding extent/service".into(),
@@ -519,6 +537,7 @@ impl KernelMetadata for PinnedKernel {
             .info((
                 self.key.clone(),
                 self.bindings.clone(),
+                self.binding_alignment,
                 self.static_scalars.schema(),
             ))
     }
@@ -631,6 +650,21 @@ mod tests {
         .unwrap();
         assert_ne!(kernel("one").id(), other_entry.id());
     }
+    #[test]
+    fn bf16_pointer_alignment_admits_odd_column_pages_without_relaxing_other_kernels() {
+        let f32 = kernel("one");
+        let bf16 = f32.clone().with_binding_alignment(2).unwrap();
+        let bytes = ((47 - 1) * 2048 + 85) * 2;
+        assert!(!f32.binding_extent_matches(85 * 2, bytes as u64, bytes));
+        assert!(bf16.binding_extent_matches(85 * 2, bytes as u64, bytes));
+        assert!(!bf16.binding_extent_matches(85 * 2 + 1, bytes as u64, bytes));
+        assert!(!bf16.binding_extent_matches(85 * 2, bytes as u64 - 1, bytes));
+        assert_ne!(f32.id(), bf16.id());
+        for alignment in [0, 3, 32] {
+            assert!(f32.clone().with_binding_alignment(alignment).is_err());
+        }
+    }
+
     #[test]
     fn prepared_key_retains_complete_source_with_bounded_shared_metadata() {
         let first = kernel("one");

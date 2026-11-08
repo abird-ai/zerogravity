@@ -100,6 +100,27 @@ impl OrdinaryCudaGemm {
         launch.launch_on(self.service.client())
     }
 
+    pub(super) fn enqueue_page(
+        &self,
+        shape: Bf16GemmShape,
+        reduction: Bf16GemmReduction,
+        weights: cubecl::server::Handle,
+        input: cubecl::server::Handle,
+        output: cubecl::server::Handle,
+        output_stride: usize,
+    ) -> Result<()> {
+        self.require_service(&self.service)?;
+        Bf16Gemm::with_output_stride(
+            shape.columns,
+            shape.rows,
+            shape.inner,
+            reduction,
+            output_stride,
+        )?
+        .prepare(self.service.client(), weights, input, output)?
+        .launch_on(self.service.client())
+    }
+
     pub(super) fn retire(&self) -> Result<()> {
         self.require_service(&self.service)?;
         if self.service.model_events()? != 0 {

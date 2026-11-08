@@ -35,7 +35,7 @@ pub use zerogravity_core::{encoding, identity, numerics, placement, provider, se
 pub mod qwen35_cuda;
 #[cfg(all(
     target_os = "linux",
-    any(feature = "qwen35-hip", feature = "qwen35-cuda-qualification")
+    any(feature = "qwen35-hip", feature = "qwen35-cuda")
 ))]
 mod qwen35_source;
 #[cfg(feature = "cpu")]

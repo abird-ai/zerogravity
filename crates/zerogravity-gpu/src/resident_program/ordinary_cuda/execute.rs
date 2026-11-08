@@ -41,7 +41,7 @@ fn require_not_cancelled(cancelled: Option<&std::sync::atomic::AtomicBool>) -> R
 }
 
 impl OrdinaryCudaBody {
-    pub(in crate::resident_program) fn execute(
+    pub(in crate::resident_program) async fn execute(
         &self,
         flight: &mut PhysicalSubmission<'_>,
         request: &ForwardPlan,
@@ -67,6 +67,13 @@ impl OrdinaryCudaBody {
         }
         flight.retain_completion_owner(self.cold().clone())?;
         flight.retain_completion_owner(self.gemm().clone())?;
+        // Once a streamed call starts, finish its original flight; cancellation
+        // discards the completed candidate rather than abandoning a page owner.
+        let cancelled = if self.waits_on_cancel() {
+            None
+        } else {
+            cancelled
+        };
 
         let client = self.cold().service().client();
         self.clear_and_bind_call(client, call)?;
@@ -120,22 +127,27 @@ impl OrdinaryCudaBody {
                     "ordinary CUDA source node state/version differs".into(),
                 ));
             }
-            let (launched, fused) = self.enqueue_node(
-                flight,
-                request,
-                node_index,
-                node,
-                descriptor,
-                &state_map,
-                step,
-                &mut gate_alias,
-            )?;
+            let (launched, fused) = self
+                .enqueue_node(
+                    flight,
+                    request,
+                    node_index,
+                    node,
+                    descriptor,
+                    &state_map,
+                    step,
+                    &mut gate_alias,
+                )
+                .await?;
             dispatches = dispatches
                 .checked_add(launched)
                 .ok_or_else(|| Error::Limit("ordinary CUDA dispatch count".into()))?;
             fused_dispatches = fused_dispatches
                 .checked_add(fused)
                 .ok_or_else(|| Error::Limit("ordinary CUDA fused dispatch count".into()))?;
+        }
+        if let Some(page) = self.cold().source_page() {
+            page.finish()?;
         }
         require_not_cancelled(cancelled)?;
         if !gate_alias.is_empty() {
@@ -148,18 +160,22 @@ impl OrdinaryCudaBody {
             let id = request
                 .logits()
                 .ok_or_else(|| Error::State("ordinary CUDA logits value absent".into()))?;
-            let source = self.value_handle(request, id, layout::VOCABULARY)?;
+            let source =
+                self.value_handle(request, id, self.cold().layout().geometry().vocabulary)?;
             let target = self.cold().logits_f32().handle();
             dispatches += attention::widen(
                 client,
                 &source,
                 &target,
                 &self.cold().status().handle(),
-                layout::VOCABULARY,
+                self.cold().layout().geometry().vocabulary,
             )?;
             Some(DeviceBuffer::from_lease(
                 self.cold().logits_f32().clone(),
-                ResidentBufferLayout::new(ResidentPhysicalType::F32, layout::VOCABULARY)?,
+                ResidentBufferLayout::new(
+                    ResidentPhysicalType::F32,
+                    self.cold().layout().geometry().vocabulary,
+                )?,
                 BufferRole::Output,
                 DeviceAccess::Write,
             )?)
@@ -223,7 +239,7 @@ impl OrdinaryCudaBody {
             .ok_or_else(|| Error::State("ordinary CUDA request source call absent".into()))?;
         if call.source() != cold.source()
             || call.rows().capacity() != cold.prefix_capacity()
-            || call.rows().vocabulary() != layout::VOCABULARY
+            || call.rows().vocabulary() != self.cold().layout().geometry().vocabulary
             || !(1..=layout::MAX_ROWS).contains(&call.rows().len())
             || call.rows().frontier() > cold.prefix_capacity()
             || (call.mode() == SourceCallMode::Decode
@@ -337,7 +353,7 @@ impl OrdinaryCudaBody {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn enqueue_node(
+    async fn enqueue_node(
         &self,
         flight: &mut PhysicalSubmission<'_>,
         request: &ForwardPlan,
@@ -362,6 +378,37 @@ impl OrdinaryCudaBody {
                 let [output] = node.outputs.as_slice() else {
                     unreachable!()
                 };
+                if self.cold().embedding().lease().is_none() {
+                    let page = self.cold().source_page().ok_or_else(|| {
+                        Error::State("CUDA streamed embedding page absent".into())
+                    })?;
+                    let [matrix] = self.cold().embedding().matrices() else {
+                        return Err(Error::State("CUDA streamed embedding source arity".into()));
+                    };
+                    let target = self.cold().value_lease(output.0 as usize)?;
+                    let width = self.cold().layout().geometry().hidden_width;
+                    for (row, &token) in descriptor.call().rows().ids().iter().enumerate() {
+                        let token = token as usize;
+                        let destination = exact_view(
+                            target,
+                            row * width * 2,
+                            width * 2,
+                            "streamed embedding row",
+                        )?;
+                        page.with_rows(flight, matrix, token..token + 1, None, |view| {
+                            attention::copy_bf16_prefix(
+                                client,
+                                view.handle(),
+                                &destination,
+                                &self.cold().status().handle(),
+                                width,
+                            )?;
+                            Ok(vec![target.clone()])
+                        })
+                        .await?;
+                    }
+                    return Ok((step.rows, 0));
+                }
                 let out = self.value_handle(request, *output, outputs[0])?;
                 let tokens = exact_view(
                     self.cold().token_ids(),
@@ -376,7 +423,13 @@ impl OrdinaryCudaBody {
                         LaunchBinding::new(
                             OrdinaryRole::EmbeddingTable,
                             Access::Read,
-                            self.cold().embedding().lease().handle(),
+                            self.cold()
+                                .embedding()
+                                .lease()
+                                .ok_or_else(|| {
+                                    Error::State("CUDA resident embedding absent".into())
+                                })?
+                                .handle(),
                         ),
                         LaunchBinding::new(OrdinaryRole::Output, Access::Write, out),
                     ],
@@ -390,9 +443,17 @@ impl OrdinaryCudaBody {
                 let projection = self.cold().projection(node_index)?;
                 let input_lease = self.cold().value_lease(input.0 as usize)?;
                 let output_lease = self.cold().value_lease(output.0 as usize)?;
-                projection.enqueue(descriptor, self.gemm(), flight, input_lease, output_lease)?;
+                let mut launches = projection
+                    .enqueue(
+                        descriptor,
+                        self.gemm(),
+                        flight,
+                        input_lease,
+                        output_lease,
+                        self.cold().source_page(),
+                    )
+                    .await?;
                 let output_handle = self.value_handle(request, *output, outputs[0])?;
-                let mut launches = 1usize;
                 launches += attention::certify(
                     client,
                     &output_handle,
@@ -578,15 +639,18 @@ impl OrdinaryCudaBody {
                 };
                 let state_elements = step
                     .capacity
-                    .checked_mul(512)
+                    .checked_mul(self.cold().layout().geometry().kv_width()?)
                     .ok_or_else(|| Error::Limit("ordinary CUDA KV state extent".into()))?;
                 let mut launches = 0;
                 launches += attention::zero_bf16(client, &candidate_keys.handle, state_elements)?;
                 launches += attention::zero_bf16(client, &candidate_values.handle, state_elements)?;
                 if step.base != 0 {
-                    let elements = step.base.checked_mul(512).ok_or_else(|| {
-                        Error::Limit("ordinary CUDA KV prefix element count".into())
-                    })?;
+                    let elements = step
+                        .base
+                        .checked_mul(self.cold().layout().geometry().kv_width()?)
+                        .ok_or_else(|| {
+                            Error::Limit("ordinary CUDA KV prefix element count".into())
+                        })?;
                     for (prior, candidate, role) in [
                         (prior_keys, candidate_keys, "key"),
                         (prior_values, candidate_values, "value"),
@@ -674,7 +738,14 @@ impl OrdinaryCudaBody {
                         LaunchBinding::new(
                             OrdinaryRole::PackedAttention,
                             Access::Read,
-                            self.value_handle(request, packed, step.rows * 5120)?,
+                            self.value_handle(
+                                request,
+                                packed,
+                                step.rows
+                                    * 2
+                                    * (self.cold().layout().geometry().query_width()?
+                                        + self.cold().layout().geometry().kv_width()?),
+                            )?,
                         ),
                         LaunchBinding::new(
                             OrdinaryRole::Output,
@@ -767,6 +838,10 @@ impl OrdinaryCudaBody {
         state: &StateBinding,
         step: Step,
     ) -> Result<(usize, usize)> {
+        if !self.cold().layout().groups().direct() {
+            return self
+                .enqueue_grouped_convolution(request, node_index, node, descriptor, state, step);
+        }
         let ([packed_qkvz, packed_ba], [conv_output, z]) =
             (node.inputs.as_slice(), node.outputs.as_slice())
         else {
@@ -872,6 +947,10 @@ impl OrdinaryCudaBody {
         state: &StateBinding,
         step: Step,
     ) -> Result<(usize, usize)> {
+        if !self.cold().layout().groups().direct() {
+            return self
+                .enqueue_grouped_recurrent(request, node_index, node, descriptor, state, step);
+        }
         let ([conv_output, z, packed_ba], [output]) =
             (node.inputs.as_slice(), node.outputs.as_slice())
         else {
@@ -964,7 +1043,7 @@ impl OrdinaryCudaBody {
         Ok((dispatches, 0))
     }
 
-    fn gdn_plan(&self, step: Step, mode: SourceCallMode) -> Result<GdnRuntimePlan> {
+    pub(super) fn gdn_plan(&self, step: Step, mode: SourceCallMode) -> Result<GdnRuntimePlan> {
         let slot = GdnRuntimeCacheSlot::new(1)?;
         if self.cold().plan().source_call().is_some() {
             return Err(Error::State(
@@ -991,7 +1070,7 @@ impl OrdinaryCudaBody {
         Ok(plan)
     }
 
-    fn write_gdn_controls(&self, plan: &GdnRuntimePlan) -> Result<()> {
+    pub(super) fn write_gdn_controls(&self, plan: &GdnRuntimePlan) -> Result<()> {
         for control in plan.controls() {
             let lease = self.cold().gdn_internal(control.role())?;
             let handle = exact_view(lease, 0, control.bytes().len(), "ordinary GDN control")?;
@@ -1003,7 +1082,7 @@ impl OrdinaryCudaBody {
         Ok(())
     }
 
-    fn gdn_internal_handles(&self) -> Result<BTreeMap<GdnRuntimeBuffer, Handle>> {
+    pub(super) fn gdn_internal_handles(&self) -> Result<BTreeMap<GdnRuntimeBuffer, Handle>> {
         let mut handles = BTreeMap::new();
         for layout in self.cold().layout().gdn().buffers() {
             if let Ok(lease) = self.cold().gdn_internal(layout.role()) {
@@ -1024,7 +1103,12 @@ impl OrdinaryCudaBody {
             .ok_or_else(|| Error::State("ordinary CUDA state slot binding absent".into()))
     }
 
-    fn value_handle(&self, request: &ForwardPlan, id: ValueId, elements: usize) -> Result<Handle> {
+    pub(super) fn value_handle(
+        &self,
+        request: &ForwardPlan,
+        id: ValueId,
+        elements: usize,
+    ) -> Result<Handle> {
         let shape = request
             .values()
             .get(id.0 as usize)

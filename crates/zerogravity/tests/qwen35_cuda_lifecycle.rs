@@ -52,7 +52,10 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
     let mode = std::env::var("ZG_QWEN35_ORDINARY_LIFECYCLE")
         .map_err(|_| Error::State("lifecycle mode required".into()))?;
     require(
-        matches!(mode.as_str(), "normal" | "cancel" | "unknown" | "refuse"),
+        matches!(
+            mode.as_str(),
+            "normal" | "cancel" | "unknown" | "refuse" | "cancel-page" | "unknown-page"
+        ),
         "unknown lifecycle mode",
     )?;
     let directory = PathBuf::from(
@@ -64,6 +67,18 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
         .unwrap_or_else(|_| "512".into())
         .parse::<usize>()
         .map_err(|_| Error::State("context capacity".into()))?;
+    let streamed = std::env::var("ZG_QWEN35_STREAM_WEIGHTS").as_deref() == Ok("1");
+    require(
+        !mode.ends_with("-page") || streamed,
+        "page cut requires streaming",
+    )?;
+    let provider_bytes = if mode == "refuse" {
+        1
+    } else if streamed {
+        512 * MIB
+    } else {
+        qwen35_cuda::PROVIDER_MIB * MIB
+    };
     block_on(async {
         let device = Device::cuda(0).map_err(|e| Error::State(format!("CUDA device: {e}")))?;
         let loaded = qwen35_cuda::ordinary_candidate::Model::load(
@@ -71,28 +86,24 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
             &directory,
             capacity,
             qwen35_cuda::HOST_MIB,
-            qwen35_cuda::PROVIDER_MIB * MIB,
+            provider_bytes,
             (qwen35_cuda::DEVICE_MIB * MIB) as u64,
             None,
         )
         .await;
         if mode == "refuse" {
-            require(capacity == 32_768, "refusal context must be32K")?;
             return match loaded {
-                Err(Error::Limit(detail))
-                    if detail
-                        == "ordinary CUDA exact cold plus two-root plan does not fit provider cap: 4840819049 > 4831838208" =>
-                {
-                    // This exact branch precedes physical-owner creation in load_ordinary_cuda.
+                Err(Error::Limit(detail)) if detail.starts_with("ordinary CUDA workspace/") => {
+                    // Admission precedes physical-owner creation; historical resident-only32K refusal remains historical.
                     println!(
-                        "ORDINARY_CUDA_ADMISSION_REFUSAL_PASS family=2b capacity=32768 required=4840819049 available=4831838208 preflight=true"
+                        "ORDINARY_CUDA_ADMISSION_REFUSAL_PASS capacity={capacity} available={provider_bytes} preflight=true detail={detail}"
                     );
                     Ok(())
                 }
                 Err(error) => Err(error),
                 Ok(model) => {
                     model.shutdown().await?;
-                    Err(Error::State("over-budget2B32K model admitted".into()))
+                    Err(Error::State("over-budget model admitted".into()))
                 }
             };
         }
@@ -150,7 +161,7 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
         let before = session.binding();
         let expected = prior.read_domains().await?;
         require(
-            expected.len() == 42 && before.frontier() == 47,
+            expected.len() == resident.state_requirements().len() && before.frontier() == 47,
             "initial root/state coverage",
         )?;
         if mode == "normal" {
@@ -195,7 +206,11 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
             return Ok(());
         }
         resident.qualification_reset_launch_seen();
-        resident.qualification_arm_abort(1);
+        let page_cut = mode.ends_with("-page");
+        let uploads = service.uploaded_value_bytes();
+        if !page_cut {
+            resident.qualification_arm_abort(1);
+        }
         let mut future = Box::pin(session.prepare_ordinary_cuda_cancellable(
             request(SourceCallMode::Decode, 47, &[token])?,
             &cancelled,
@@ -207,6 +222,10 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
                 )));
             }
             let handles = resident.qualification_launch_seen();
+            if page_cut && service.uploaded_value_bytes() - uploads >= MIB as u64 {
+                // Actual page upload observed while the original future is Pending.
+                return Poll::Ready(Ok(0));
+            }
             if handles == 0 {
                 Poll::Pending
             } else {
@@ -214,15 +233,45 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
             }
         })
         .await?;
-        if mode == "cancel" {
+        if matches!(mode.as_str(), "cancel" | "cancel-page") {
             cancelled.store(true, Ordering::Release);
             resident.qualification_reset_launch_seen();
             require(
-                future.await.is_err(),
-                "after-launch cancellation returned ready",
+                matches!(future.await, Err(Error::State(reason)) if reason == "ordinary CUDA request cancelled"),
+                "after-launch cancellation returned another result",
             )?;
         } else {
             drop(future);
+        }
+        if streamed && matches!(mode.as_str(), "cancel" | "cancel-page") {
+            require(
+                session.binding() == before && service.pending_events()? == 0,
+                "completed streamed cancellation published or retained an event",
+            )?;
+            service.ensure_usable()?;
+            diagnostics::compare_domains(&expected, &session.snapshot().read_domains().await?)?;
+            cancelled.store(false, Ordering::Release);
+            let _ = session
+                .forward_ordinary_cuda(request(SourceCallMode::Decode, 47, &[token])?)
+                .await?;
+            require(
+                session.binding().frontier() == 48 && service.pending_events()? == 0,
+                "streamed cancellation did not leave a reusable owner",
+            )?;
+            drop((prior, session, resident));
+            model.shutdown().await?;
+            require(
+                service.resident_bytes().is_err()
+                    && service.pending_events()? == 0
+                    && !ResourceArbiter::process_shared()
+                        .snapshot(&service.physical_key())?
+                        .fenced,
+                "streamed cancellation shutdown did not retire",
+            )?;
+            println!(
+                "ORDINARY_CUDA_LIFECYCLE_PASS mode={mode} family={family} streamed=true completed_discard=true root_unchanged=true replay=true shutdown=retired"
+            );
+            return Ok(());
         }
         require(
             session.binding() == before && service.ensure_usable().is_err(),
@@ -231,7 +280,8 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
         let client = service.client();
         let quarantined = diagnostics::quarantined_handles_for(&client)?;
         require(
-            quarantined == handles && service.pending_events()? == 1,
+            ((page_cut && quarantined > 0) || (!page_cut && quarantined == handles))
+                && service.pending_events()? == 1,
             "terminal original handle/event quarantine differs",
         )?;
         client
@@ -256,7 +306,7 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
         let budget = ResourceArbiter::process_shared().snapshot(&key)?;
         require(
             budget.fenced
-                && budget.reserved >= (qwen35_cuda::PROVIDER_MIB * MIB) as u64
+                && budget.reserved >= provider_bytes as u64
                 && kept.resident_bytes()? == retained
                 && kept.pending_events()? == 1,
             "quarantine released original charges after external drops",

@@ -440,6 +440,7 @@ impl TypedBody {
                 arg(&self.lease(Buffer::ProjectionStatus).handle(), r),
                 r,
                 h,
+                r,
             );
         }
         Ok(1)

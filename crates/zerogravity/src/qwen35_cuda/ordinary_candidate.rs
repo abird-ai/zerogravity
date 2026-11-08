@@ -9,7 +9,7 @@ use crate::{
     Error, Result,
     accelerator::program::SourceCallMode,
     gpu::{InferenceReadback, ResidentModel, ResidentSession},
-    qwen35::plan::{OrdinaryQwenPlan, QwenSourceProfile},
+    qwen35::plan::{OrdinaryQwenGeometry, OrdinaryQwenPlan},
     resource_arbiter::ResourceOwner,
 };
 use std::{
@@ -27,6 +27,7 @@ pub struct SourceMetadata {
 
 pub struct Model {
     plan: OrdinaryQwenPlan,
+    profile: OrdinaryQwenGeometry,
     resident: Arc<ResidentModel>,
     metadata: SourceMetadata,
 }
@@ -46,9 +47,10 @@ impl Model {
             ResourceOwner::new("qwen35-cuda-ordinary-candidate", "ordinary-source")?,
         )?;
         let opened = ordinary_source::open(hf_directory, &host, cancelled)?;
-        let profile = opened.seal.model_profile();
+        let geometry = opened.seal.model_profile();
+        let profile = geometry;
         let plan = opened.seal.build_plan(context_capacity_tokens)?;
-        if plan.model_profile() != profile
+        if plan.model_profile() != geometry
             || plan.source().source_identity() != opened.seal.source_identity()
             || plan.context_capacity_tokens() != context_capacity_tokens
         {
@@ -67,6 +69,7 @@ impl Model {
         .await?;
         Ok(Arc::new(Self {
             plan,
+            profile,
             resident,
             metadata: SourceMetadata {
                 family: opened.metadata.family,
@@ -77,8 +80,8 @@ impl Model {
         }))
     }
 
-    pub fn model_profile(&self) -> QwenSourceProfile {
-        self.plan.model_profile()
+    pub fn model_profile(&self) -> OrdinaryQwenGeometry {
+        self.profile
     }
 
     pub fn context_capacity_tokens(&self) -> usize {

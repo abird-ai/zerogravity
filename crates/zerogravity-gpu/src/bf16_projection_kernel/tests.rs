@@ -1,4 +1,4 @@
-use super::output_index;
+use super::{output_index, rounded_index};
 use std::{process::Command, time::SystemTime};
 
 #[test]
@@ -14,6 +14,41 @@ fn weight_local_groups_cover_each_output_once() {
                 seen[output] = true;
             }
             assert!(seen.into_iter().all(|visited| visited));
+        }
+    }
+}
+
+#[test]
+fn strided_rounding_maps_unique_words_and_preserves_gaps() {
+    let bits = [0u32, 0x80000000, 0x3f800000, 0x80010000, 0x7f7f0000];
+    for requests in [1, 2, 3, 17, 47, 62, 64] {
+        for stride in [1usize, 3, 31, 64, 257] {
+            for rows in [1, stride.div_ceil(2), stride] {
+                let span = (requests - 1) * stride + rows;
+                let mut actual = vec![0x7fc0beef; span];
+                let mut seen = vec![false; span];
+                for group in 0..requests * rows {
+                    let output = output_index(group, requests, rows);
+                    let at = rounded_index(output, rows, stride);
+                    assert_eq!(at, (group % requests) * stride + group / requests);
+                    assert!(!seen[at]);
+                    seen[at] = true;
+                    actual[at] = bits[output % bits.len()];
+                    if rows == stride {
+                        assert_eq!(at, output);
+                    }
+                }
+                for at in 0..span {
+                    if at % stride < rows {
+                        let output = (at / stride) * rows + at % stride;
+                        assert!(seen[at]);
+                        assert_eq!(actual[at], bits[output % bits.len()]);
+                    } else {
+                        assert!(!seen[at]);
+                        assert_eq!(actual[at], 0x7fc0beef);
+                    }
+                }
+            }
         }
     }
 }

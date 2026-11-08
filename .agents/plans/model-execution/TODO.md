@@ -1,15 +1,44 @@
 # Model execution
 
-## Current direction — populated Qwen HIP serving accepted
+## Current direction — shared CUDA composition, then HIP
 
 [Fabric transition](../fabric-vnext-transition/TODO.md) is accepted through source
 `8c43844`, docs `1c99929`. Genuine multi-row and populated1K–16K0.8B/2B HIP now pass native/SDK/HTTP
 correctness and original retirement; final isolated gate passes.
-This batch lands as `fix(hip): qualify populated Qwen serving`.
-Next: remaining populated CUDA/general27B, native batching, matched performance.
+Signed `8ffb511` closes the populated0.8B/2B HIP checkpoint.
+Owner prioritizes roadmap items1/2: item1 is signed complete; advance CUDA
+reference/state/executable closure on l5 while ordinary27B remains open.
+Missing legacy CUDA authority remains distinct from new vLLM references.
+Native batching remains subsequent; matched baselines need not wait for it.
 Preserve accepted source/operator/lifetime evidence; no repeated Fabric extraction.
-Main only; existing approved inputs/devices. No acquisition, gfx90c, recovery,
-push or recurrence restart. Recurrence`17aafa71` remains cancelled.
+Main only; no new or resumed subagents. Last existing reviewer finished.
+Assemble substantial shared surfaces, then batch numerical/state/lifecycle/serving
+checks; narrow diagnostics only for concrete blockers, complete gate last.
+Owner correction: prioritize working implementation and quick matched-vLLM feedback.
+Reuse existing end-to-end checks/evidence; add fixtures only for concrete bugs or
+uncovered contracts, not speculative coverage or more evidence administration.
+Prefer simple shared fixes; optimize measured hot paths. Benchmark each completed,
+qualified comparable path without waiting for all models/backends/batching.
+Owner resumed items2/3: finish implementation quickly with real-model/serving
+feedback, reusing accepted results and avoiding extensive synthetics.
+Existing approved model inputs/devices; x2 ROCm vLLM acquisition now owner-approved.
+No gfx90c, recovery, push or recurrence restart. Recurrence`17aafa71` remains cancelled.
+
+Owner architecture correction: models compose established shared primitives; do
+not build another per-size engine. Family source/config owns geometry, roles,
+ties and traversal; backend implementations own explicit numerical/layout domains.
+Reuse accepted primitive/ownership evidence; compact real-model composition and
+state checks first, deeper diagnostics for concrete gaps or changed optimizations.
+CUDA composition is assembled: source-derived layouts/geometry, parameterized
+attention/rotary, grouped-head GDN using existing16-head leaves, and bounded
+source-page weight streaming on the6GiB l5 device. Fresh small-model resident
+and streamed numerical/state diagnostics pass. Shared public SDK/HTTP and streamed
+cancellation/quarantine scopes now pass. Large-source composition smoke and the
+assembled final gate pass; independent large numerical qualification stays open. Preserve explicit primitive domains; do not
+remove guards without implementing their capability. New-shape vendor bitwise
+parity is separate from correctness under an established operator contract.
+Owner approved a fresh approximately75GiB total native27B HIP GPU budget for the
+resident comparison;16GiB host and4GiB context remain. Not implemented/launched.
 
 
 Provenance commit: `6d74f76`.
@@ -20,22 +49,487 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-### Verified CUDA output-reduction repair — pending landing
+### Shared CUDA composition — small numerical/state and public serving verified
 
-- [x] Preserve the original sliced-K/ordered accumulation boundary at
- three-quarter occupancy of a64-row output tile. Shared typed role/shape rule;
- no prompt IDs, testcase ordinals, value patches or public capability change.
-- [x] Assembled-tree0.8B/2B each pass48 genuine calls against unchanged accepted
- references:11919360 vocabulary words/model, all42 populated state domains/call,
- native feedback/frontiers and two repeats. Original invocation/group/EOF/device
- retirement independently checked. `native-output-fix-{08,2b}-r1/`, binary`ac3b55e3`.
-- [x] Eight real-operand projection regressions, arithmetic host assertion and
- strict CUDA consumer check pass. Complete gate `output-fix-final-gate-r2.log` passes;
- no production changes followed that gate. First formatting/lint failures retained.
-- Typed original executable joins and associated SASS establish the accumulation
- chains; unsupported-schema ENTRY argument gaps remain. No serving/full-reference
- or matched-performance grant. Extra operator capture failed later and was not
- adopted as a replacement reference. Broader diagnostic helper remains uncommitted.
+- Source geometry retained through the facade; backend layout/state/alias counts
+  derive from typed operators. Attention, rotary and KV extents use actual heads.
+- Grouped GDN composes existing16-head leaves with word-exact gather/scatter;
+  direct16/16 path retained. A_log supports exact BF16→F32 widening; dt_bias stays
+  BF16 per executable ABI. This is a new transport domain, not accepted evidence.
+- Resident/streamed matrix bindings share authenticated sources. Admission can
+  select one bounded page; strided GEMM keeps full-projection reduction selection.
+  Streamed calls retain the original flight through completion/candidate discard.
+- Isolated facade/test compilation passed (`composable-cuda-check-r4.log`,42.04s).
+  Earlier API errors retained; R2 was intentionally stopped by owner to raise
+  Cargo parallelism. Current default8 build jobs; runtime/test limits unchanged.
+  25 focused host checks passed;2 physical tests remained ignored. The initial
+  serial-transport filter matched zero tests; enabling the existing test support
+  for CUDA produced6 executed page/cache/charge passes. Strict R1 found a kernel
+  `is_multiple_of` lint; corrected using the supported CubeCL operation.
+  Shared GPU and facade/test strict checks then passed with `-D warnings`
+  (`composable-cuda-strict-r2.log`). Subsequent physical results below; the final
+  assembled gate and wider qualification remain. No new performance claim.
+- [x] Reader preallocation debt repaired: regular-file size checked before fallible
+  allocation; exact read plus EOF growth probe. Review/reference JSON and32MiB
+  state manifest use the same bound. Exact/oversize/sparse/hash controls pass
+  (`reference-bounds-r1.log`); original reference pins unchanged.
+- [x] Fresh release composition R2 passes both48-call resident trajectories and
+  both3-call streamed trajectories (47-row prefill + two nonzero-state decodes).
+  Streaming uses512MiB provider capacity, not a512MiB total-GPU claim. All248320
+  vocabulary words and42 state domains/call match unchanged references exactly:
+  102 calls/25328640 vocabulary words, zero logit/state mismatches. Original
+  invocation/group/EOF/GPU retirement verified separately for every scope.
+  `composition-{resident,streamed}-{08,2b}-r2/`, `composable-small-results-r2.json`;
+  frozen binary`9a67353f`. Diagnostic evidence, not full serving qualification.
+- First streamed2B scope failed before its first result; original failed scope
+  and successful process/GPU retirement retained.85-column pages exposed a
+  four-byte binding-alignment assumption at BF16 output byte170. GEMM now declares
+  natural two-byte alignment; other pinned kernels retain four-byte checks.
+  Alignment participates in ABI identity; exact extent/service checks remain.
+  Diagnostic helper now reports initiating and shutdown errors separately.
+  Seven pinned-kernel host controls, shared GPU/facade strict checks and the fresh
+  release build pass (`composition-align-r2.log`); all four successor scopes pass.
+- [x] Reuse the existing source-call session/root/readback/publication owner for
+  production CUDA. Shared `qwen_source` adapter serves both backends; public
+  `ModelLoadRequest::QwenCuda`, `QwenSourceProfile`, compatible `QwenHipProfile`.
+  Raw text only; aliases cannot bypass chat refusal. Admission prices all
+  `2*max_sessions+2` roots before resident/streamed placement. Original source owner
+  survives uncertain cold initialization; retained calls finish before discard.
+- [x] Eight small-model public scopes pass:0.8B/2B × resident/streamed × SDK/HTTP.
+  Unchanged47-token/3-output reference; independent sessions/roots, shared aliases,
+  chat refusal, SDK cancel/replay, HTTP JSON/SSE/disconnect/replay and final-reader
+  source lifetime. Worker active limit2; physical batch1, not fused batching.
+  Model/namespace retirement leaves the intended process-retained compiler
+  reservations:512MiB device/384MiB host. Every original log and invocation,
+  group/reap/EOF/GPU boundary inspected independently. R7 binary`3987e38b`;
+  `composition-serving-results-r2.json`. No full-reference/performance claim.
+- [x] Four streamed lifecycle scopes pass:0.8B actual-page cancellation/completed
+  discard/replay and unknown-completion quarantine;2B normal state/restore and
+  one-byte-provider prelaunch refusal. Unknown retains282 quarantined owners/
+  89293157 bytes; peer reuse refused, no recovery. Original retirement verified.
+  `composition-semantic-batch-r1.log` retains these passes and separate failures.
+- Preserve failed scopes: first page-cut test never suspended after real launch;
+  a diagnostic-only yield now cuts after queued consumers, before completion.
+  Cancellation must return its exact expected error. Initial0.8B SDK scopes lacked
+  the canonical snapshot; existing approved local bytes were subsequently imported
+  through CacheStore, no download/repin. First HTTP launcher had a `Path` NameError
+  before invocation; no HTTP execution/retirement claim for that empty scope.
+- [x] Qualification-free CUDA serving build, strict facade/GPU tests and three
+  root-accounting controls pass. HIP-only/mixed-feature strict checks plus six
+  page/cache/charge controls and one source-call refusal control pass; no new HIP
+  physical campaign. `composition-checks-build-r7.log`,
+  `composition-shared-features-r1.log`.
+- Large CUDA R1 refused a stale sharded-source routing guard; R2 refused core GDN
+  parameter storage before inference. Both failures/retirement remain. Source
+  routing now preserves the approved inventory; core accepts authentic BF16/F32
+  A_log/norm storage for both arithmetic contracts, retaining BF16-only dt_bias,
+  exact source/shape/bytes and F16 rejection. Backend conversion stays explicit;
+  storage permission is not vendor parity. Core/large-plan regressions, strict
+  checks and R8 release build pass (`composition-checks-build-r8.log`).
+- [x] R8 binary`81ffe668`: approved large-source composition smoke passes genuine
+  47-row prefill and feedback at48/49; IDs343/288/830,112 populated finite state
+  domains, exact immutable-prior digests and clean shutdown/original retirement.
+  Load83648ms; calls115707/110039/110078ms, not a performance qualification.
+  `composition-large-tail-results-r3.json`. This is not full27B accuracy acceptance:
+  CPU-reference logit NMSE0.124241/0.090048/0.043837, maxabs9.34375/5.494141/4.570313.
+  Different declared arithmetic profiles; no distribution bound or vendor parity
+  inferred from matching IDs. Grouped transport executes; numerical scope stays
+  explicit, `qualification=false`, `full_reference_acceptance=false`.
+- [x] Public generic `run` and65-token (64+1) chunk-tail independent replay pass
+  for0.8B resident/2B streamed on R8, including normal serving retirement. Tail
+  replay has no independent numerical reference;47-token checks retain theirs.
+- [ ] Establish independent large-source distribution/state accuracy under its
+  declared numerical contract before claiming full large CUDA qualification.
+  Current smoke data is diagnostic, not a post-hoc tolerance grant.
+- [x] Complete isolated final gate R2 passes:2360 Rust passes/0 failures/101 ignored
+  across309 suites;17 Python suites/182 cases. `composition-final-gate-r2.log`.
+  GPU feature/physical results are the separate scopes above, not inferred from
+  this CPU workspace gate. R1 formatting failure retained; only the owned
+  `head_tile` declaration ordering changed before R2.
+- [ ] Reconcile the contained signed shared-source/CUDA checkpoint after owned-path
+  dependency review. Preserve user AGENTS bytes; no push; root README unchanged.
+- Keep backend capabilities reusable for Gemma/DeepSeek/Mistral; source family
+  semantics stay in model crates. Concrete prepared types/static dispatch;
+  no per-size engine or speculative universal framework. HIP follows CUDA.
+
+### Current real-model feedback — items2/3
+
+- CUDA0.8B/2B: both48-call native schedules now match the unchanged accepted
+  references exactly:11919360 vocabulary words/model, all42 state domains/call,
+  genuine feedback/frontiers and two repeats. Every case and original invocation/
+  group/EOF/device retirement inspected. `native-output-fix-{08,2b}-r1/`;
+  frozen binary`ac3b55e3`. Diagnostic milestone, not serving/full-reference or
+  matched-performance acceptance. Earlier2B pass and0.8B failure remain.
+- Fixed shared output-projection arithmetic: the source uses two interleaved
+  K slices below three-quarter64-row tile occupancy, ordered accumulation above.
+  Actual47-row output projection matched;48-row projection had43 BF16 differences.
+  Typed handle/lifetime/resource/image joins and associated SASS confirm the two
+  accumulation chains; no name-only kernel substitution or token-value patches.
+  `output-projection-lineage-r{1,2}/`, `output-projection-images-r1/` retain evidence.
+  Current recorder's standalone launches still have unsupported-schema argument
+  gaps (zero ENTRY bytes); no aggregate-ABI/model-wide lineage grant.
+- Extra early-operator capture failed atstep20 when its unchanged GPU snapshot
+  arena filled. Its GDN autotuning/state differs from the accepted reference;
+  it was not adopted as a replacement. Only fully persisted/hash-checked actual
+  projection operands were used diagnostically. `early-operators-08-r1/` and both
+  failed/passing native projection scopes retained. First disassembly dependency
+  failure and first build-feature error retained; no SDK acquisition.
+- Old Nix NVRTC/header paths no longer exist. Fresh native runners use retained
+  approved CUDA12.9 package headers/libraries plus installed host C++ runtime.
+  Both pre-inference loader failures remain; no SDK download or source repin.
+- Original27B latest validation audited: both66-call numerical/state trajectories,
+  SDK completion/disconnect and10 lifecycle scopes verified. HTTP504 and original
+  BrokenPipe remain. `ordinary-semantic-disposition-r10.json`; not an overall pass.
+- Shared source cache now reuses authenticated integrity chunks for adjacent
+  page windows within its unchanged budget.30 existing integration tests pass;
+  CUDA/HIP release builds pass. No measured serving speedup yet.
+- Fresh27B HTTP/SDK scope is staged (`ordinary-semantic-inputs-r11.json`), not
+  launched: latest read-only x2 guard12130418688B <12884901888B required.
+  Watch`960f23ca` timed out. Owner now waives the12GiB host-available threshold
+  and permits swap for new scopes; original guard failures retained. No device change. CUDA regressions
+  and the complete assembled gate pass. Signed fixes: CUDA`a57590e`, cache`b9d8355`.
+- [x] CUDA C1 quick benchmark: same approved sources/47–50-token inputs,
+  greedy3 outputs, BF16/context1024, eager vLLM;8 warmups +16 timed requests/model.
+  Mean request latency:0.8B native65.22ms/vLLM90.64ms (1.39× faster);
+  2B native114.29ms/vLLM84.34ms (1.36× slower). All outputs and original retirement
+  verified in all four runs. No observers or new reference/fixture campaign.
+  Load times separately: native6.39/11.96s, vLLM113.13/114.08s; boundaries differ
+  (native includes source validation). Short direct-API comparison, not HTTP,
+  compiled/CUDA-graph vLLM, long context, batching or general superiority.
+  `qwen-cuda-regeneration-tDW0EJ1I/c1-benchmark-summary-r1.json` retains samples.
+  Next measured optimization target:2B; its native decode averages30.97ms/token.
+- [x] CUDA offered C1/4/8/16/32/64 sweep:0.8B native45.59/45.04/45.46/45.55/44.80/refused,
+  vLLM36.94/60.85/72.20/87.79/91.22/95.56 output tok/s;2B native26.24/26.26/26.32/
+  refused/refused/refused, vLLM34.88/60.55/73.70/87.17/90.55/88.01. All measured
+  outputs and original retirement verified. Native singleton, independent live
+  sessions; vLLM eager active8, higher offered populations queue.47–50 input/3output
+  tokens, context1024; exploratory direct-API timing. Native throughput does not
+  scale; capacity refusals preserve private prior/candidate roots and budgets.
+  `qwen-cuda-regeneration-tDW0EJ1I/population-benchmark-summary-r1.json`.
+- [x] x2 ROCm runtime acquired under owner approval; fixed12GiB available-host
+  threshold waived, swap≤8GiB permitted in fresh scopes. Identity/ownership,
+  native budgets/deadlines, driver and host privileges unchanged. Official RDNA
+  image digest`19ad8dc5fb3012f2d5810995f73e8bf069302056d2b4aa6fdf2d2ae5fa9a68ab`
+  supports gfx1151. Actual packages: Torch2.11.0+rocm7.14.1,
+  vLLM0.23.1.dev1+g9ddef7117.d20260901.rocm714, Transformers5.16.1.
+  Device-free LLM import failed (GPU-dependent platform detection); retained.
+  Metadata probe and all three GPU model executions subsequently ran.
+- [x] Native HIP SDK timing scope:0.8B/2B C1..64 and27B C1. All39 waves,
+  expected IDs, distinct session roots and original per-model/unit retirement
+  verified. Native27B timed requests243.61/239.08s; higher populations not run,
+  not memory refusals. No native fused batching.
+- [x] ROCm vLLM0.8B/27B offered C1..64: all outputs and original retirement
+  verified.2B C1/4/8 match; higher populations below remain failed.
+- [ ] Resolve ROCm2B batch-dependent output mismatch. C16/C32 each2 timed
+  requests differ; C64 has6. Expected[95726,26516,220], actual[95726,98019,271].
+  Failed run/source bytes/shutdown/original retirement retained. Cause unlocalized;
+  not established as a ROCm kernel bug. Do not repin expected IDs or count these
+  cells as accepted matched speedups.
+
+Output tok/s, including prefill; offered clients:
+
+| C | HIP0.8B | vLLM0.8B | HIP2B | vLLM2B | HIP27B | vLLM27B |
+|---|---:|---:|---:|---:|---:|---:|
+|1|12.51|57.81|6.85|34.14|0.01243|3.85|
+|4|12.28|79.12|6.96|60.23|not run|7.18|
+|8|12.14|125.70|6.86|74.85|not run|9.25|
+|16|12.02|140.86|6.83|86.51†|not run|10.74|
+|32|12.07|150.25|6.77|92.56†|not run|11.72|
+|64|12.01|154.04|6.77|95.35†|not run|12.07|
+
+- † Measured but output-mismatched, not an accepted matched comparison.
+- Same canonical47 input/3 greedy outputs/model, context1024, one warmup and two
+  timed waves/cell. Both active limits8; above8 queues. Native physical batch1;
+  vLLM actual peak-active/batch width uninstrumented.
+- Native raw-text SDK delivery vs vLLM token-ID direct API; native CPU-source
+  arithmetic vs stock ROCm BF16 execution. Not bitwise equivalence/full qualification.
+- Native27B unchanged24GiB provider(+4GiB context) streams weights; vLLM uses78%
+  of96GiB and loads50.22GiB weights. Not resource-matched. Native small scopes
+  overlap runtime acquisition; device-free probes overlap part of27B. Exploratory.
+- Load timers native/vLLM seconds:0.8B19.54/183.41,2B26.78/187.11,
+  27B111.79/209.05. Different boundaries, not matched process cold starts.
+- Native summary: `qwen-cuda-regeneration-tDW0EJ1I/hip-native-benchmark-summary-r1.json`.
+  Runtime/results/audits: XDG state `qwen-rocm-benchmark-3gteresx`,
+  `vllm-{08,2b,27b}-summary-r1.json`. All GPU owners retired; no active campaign.
+  Benchmark helpers release-built/executed; last complete gate predates them.
+  Reader preallocation repair now passes; helper landing still requires the
+  assembled final gate and contained ownership/dependency review.
+
+### Ordinary27B — active, unqualified
+
+- [ ] Complete actual27B ordinary HIP/SDK/serve, not the finite two-position route.
+  Authenticated `Qwen/Qwen3.8-27B` geometry now drives the same ordinary template:
+  64layers,112domains, untied head,851text roles/18shards. Finite CUDA profiles
+  remain closed; source geometry grants no execution or numerical acceptance.
+- [ ] Qualify bounded weight streaming and source/physical final readers.
+  Whole-source BF16 storage is priced before upload; use existing source-page
+  transport when resident weights plus workspace/roots/native owners exceed the
+  unchanged24GiB provider/4GiB context plan. Host ledger remains16GiB. Original
+  source extent is separate from resident allocation; no float kernels changed.
+- [ ] Independently audit the original CPU capture before native comparison.
+  Existing approved source/image,66 genuine calls/two repeats, full64layers,
+  fresh47/48/49/50 and uniform/ragged512→514. Capture completed:66 calls,
+  19848 records,22126120608 raw bytes; contemporaneous foreground/group/container/
+  EOF retirement recorded before owner receipt. Independent audit now passes
+  all6 cases/6533182464 float words/851 roles, full digests, natural feedback and
+  repeats. Accepted manifest`f226ad21`; raw`d9690f46`. No HIP parity, serving or
+  CUDA-oracle claim follows. Accepted archive staged on x2 with full stream hashes.
+  NativeR4 observed child exited0:66calls/6533182464 exact words, full vocabulary,
+  natural feedback, independent roots and source/native final readers independently
+  audited in `native-observed-reviewed-r4.json`. The supervisor then failed its
+  stale descriptor-proxy PID/executable guard, before x2 rebooted. Observer-free
+  never started; original terminal/results are absent. Preserve this failed
+  campaign and limited observed acceptance; no full-R4/serving acceptance.
+  Observer-free-only continuation keeps frozenR3/references; no observed rerun.
+  Fresh guard pins boot/PID/starttime/executable without changing device/KFD/busy
+  or12GiB checks. R6 staged but superseded unexecuted after
+  review: mainPID0 did not ensure descendant retirement; post-start errors could
+  skip watcher attachment. Watch`566a9940` cancelled. R7 reviewed/fixed/staged;
+  pure/output controls and four stubbed-OS failure injections pass: launch
+  timeout, receipt failure, transient status and interrupted wait. Observation
+  survives these errors; signals stop only the exact owned invocation; attempted/
+  indeterminate scopes are not labelled unrun. R7 manifest`730bcdeb`; watch
+  `e89ad3c8` succeeded. Fresh guards/pins/unit/path checks passed with13650759680B
+  available. Observer-free R7 launched2026-11-05T12:41:41Z, invocation
+  `a31ca21457a24796ad21fb1ad0e3798e`. Only `state-parity`, unchangedR3/reference.
+  Original terminal2026-11-05T14:37:14Z proves nonce/invocation, absent owned
+  cgroup/KFD[]/busy0 and no supervision errors. Independent
+  `native-state-reviewed-r7.json` passes all66calls/3137737728 state-logit words,
+  611450880 KV-tail words, independent roots/natural feedback/final owners.
+  Job2666 completed; monitor2667 stopped after retrieval/audit. R4 supervisor
+  failure and missing original terminal remain; no full-R4 acceptance. Do not
+  rerun observed numerics, duplicate launch/restage R7 or revive R6.
+- [ ] Run actual-source admission, full-vocabulary/state parity, observer-free
+  execution, cancellation/replay/final-reader and ordinary serving checks; then
+  the complete assembled gate. Host tests/strict feature checks pass15 tests,
+  including retained finite-source boundaries and exact managed manifest.
+  Two earlier host failures (stale helper argument/new frontier assertion) are
+  retained and corrected; call-free frontier stays0, runtime calls own extents.
+  Evidence: XDG state `qwen-ordinary-large-rHMls4mk`; changes remain uncommitted.
+- [ ] Finish additive BF16/F32 GDN source storage qualification. Canonical host
+  and x2 hostR2 exposed the same exact-type refusal: all48 original large-source
+  `A_log` and GDN norm tensors are BF16; small-source F32 remains required.
+  Shared CPU-source GDN descriptors now accept both independently, retaining
+  original dtype/bytes and exact widening through existing upload; CUDA's F32
+  contract stays closed. Model-source validation still requires its pinned types.
+  Shared descriptor/ordinary-plan/storage regressions and strict checks pass;
+  R7 release diagnostics/SDK built, but actual-source final-reader test failed
+  on the tokenizer's old single-source pin. R6's test-helper type error remains.
+  Tokenizer JSON differs only by seven added-token entries (33 total; max21B):
+  source-specific BPE/automata accounting now shares the same authenticated
+  NFC/Split/ByteLevel machinery and global owner; original26-token pricing stays.
+  R9 assembled validation passes:22 tokenizer plus8 owner-accounting tests per
+  exact source, strict HIP/CUDA consumers, release diagnostics/SDK and actual27B
+  canonical source/plan/tokenizer/final-reader test. Small-source pricing stays
+  unchanged; R8's incorrect special-token test expectation remains as a failure.
+  Canonical514/active2 plan streams53786705920B original weights; host14720655712B,
+  physical device15439853568B including4GiB context; estimates, not reservations.
+  Repaired binariesR2 frozen unqualified. x2 host-capacityR3 passes all28 cells:
+  contexts512/1K/2K active1/2/4/8 admitted as estimates;4K–32K refused under the
+  original host/device caps. Source recheck and exact-invocation idle retirement
+  pass. Frozen binariesR1 remain unqualified and predate both repairs.
+  x2 hostR1 failed before source IO on noclobber lock opening; R2 source refusal
+  retired its exact invocation/cgroup with KFD empty; both were host-only.
+  Independent1K/2K original capture was interrupted by SIGTERM, child137; owned
+  foreground/group/container/EOF retirement is recorded. Partial archive remains
+  unqualified:104calls/3888records/all104 digests were the target, not a result.
+  Host-private successorR2 preserved byte-identical inputs and R1's missing
+  original-name absence evidence; it also received SIGTERM/child137, after11/104
+  logged calls. Cleanup recorded; both partial archives remain unqualified.
+  No active capture or accepted populated-context reference. A successor requires
+  fresh identity and reviewed supervision. Shared scopes preserve small-model
+  1K–16K and add large1K/2K schedules. R10 passes19 host reader controls/strict
+  checks and release assembly; frozenR3 production bytes equal accepted hostR2.
+  Capacity/refusal and reader preparation do not qualify actual contexts.
+  Sequential C1 HTTP JSON/SSE/disconnect/replay coverage is authored separately
+  from concurrency; existing population scopes stay unchanged. R11 stopped on
+  a test-only constant-assert lint; runtime guard corrected. R12 strict/release
+  assembly passes (1 host test,8 physical scopes ignored); SDK-onlyR4 frozen.
+  Only HTTP qualification support differs from frozenR3; production and native
+  example bytes are unchanged. No new HTTP physical acceptance.
+  R5 lifecycle/SDK/sequential-HTTP campaign and terminal retrieval/audit are
+  prepared only:13 fresh scopes. Its original full-R4 gate cannot pass after
+  interruption. Successor R8 consumes limited observedR4 + accepted observer-freeR7
+  honestly; same nativeR3/SDK-onlyR4 and deadlines/limits. Exact-owned supervisor
+  failure controls and attempted/indeterminate/unrun runner controls pass;
+  manifest`e8a35f90`, never staged/launched. Review found inter-case descendant,
+  signal-handler lock and unit-name signal races. R8 preserved; R9 preparation
+  adds case-cgroup checks, lock-free flags and pidfd-bound cancellation. Eleven
+  ownership/four supervision controls pass; independent review found no launch
+  blocker. Fresh exact guard/pins/paths passed; R9 exclusively staged and launched
+  once2026-11-05T16:20:39Z, invocation`26c8c471c5f44b63896052bae63d596e`,
+  nonce`9753bbec952d432abcf9562a33ddf8c8`; manifest`05e6cd11`, supervisor2729,
+  monitor2730. SDK-complete/disconnect and healthy/session-known/snapshot-known/
+  pending-known/readback-known/snapshot-readback-known exited0 with pass markers.
+  HTTP-sequential failed101/HTTP504 at `qwen_hip_http.rs:98`, unchanged180s deadline;
+  303.74s is cell duration. Stable live snapshot binds exact invocation and the
+  HTTP after-boundary runner-only cgroup/KFD[]/busy0. All13 scopes then completed;
+  independent retrieval/audit verifies12 semantic scopes plus HTTP101/504,
+  authentic original retirement and no supervision errors.52 ordered case events/
+  26 runner-only boundaries checked; indeterminate/unrun empty. Disposition:
+  `ordinary-semantic-disposition-r9.json`. Original auditor's clean-supervision
+  predicate also required semantic process success; supplemental disposition
+  separates successful retirement from HTTP failure without changing old bytes.
+  Staging log's inherited uppercase R8 labels are stale; filenames/hashes are R9.
+  Never manufacture R4 terminal evidence. Retained-service bytes include state/
+  scratch; do not confuse them with weight residency.
+  Main now implements shared strided projection output/grouped partial windows
+  for the concrete HTTP failure. Float operations/reductions/BF16, page/full-K,
+  owners/cancellation and budgets are unchanged; all direct/prepared callers
+  updated. Eight host mapping/status/scratch/extent controls and strict HIP/CUDA/
+  Vulkan consumers and corrected R14 release assembly pass. Preserve R13's
+  test-only integer-inference failure. FrozenR5 executed in R10: all15 scopes
+  attempted,14 exited0 and HTTP101/504 retained. Logs report66 observed plus66
+  observer-free calls, zero mismatches; independent retrieval/audit remains open.
+  Original terminal records retirement for invocation`6448edba84244c1b9eb339908a7a2618`,
+  nonce`42cfc1bc2aa8407ba8b1ceb07143254c`, owned cgroup absent/KFD[]/busy0;
+  output errors include `BrokenPipeError(32, 'Broken pipe')`. No clean-supervision,
+  whole-campaign or numerical acceptance before independent disposition.
+  R10 is finished, not live; never restage/relaunch or overwrite its artifacts.
+  Grouping did not resolve HTTP504; localize measured latency without changing
+  deadlines or budgets. Row grouping is not cross-session native batching.
+  No measured speedup, populated-context acceptance, current full gate or signature.
+  Owner requires shared, additive capabilities—not per-model forks.
+- [ ] Complete independent CUDA references on l5; Main owns implementation and
+  execution, no new or resumed subagents. Authenticate runtime/provider/source/kernel identities; fresh
+  captures do not replace missing legacy executable authority.
+  XDG run `qwen-cuda-regeneration-tDW0EJ1I`: exact RTX3060 UUID/SM86, driver595.91.07;
+  original retained image passed a CUDA tensor probe. Runtime-addressable memory
+  is6088359936B, distinct from physical6GiB; initial equality assertion failed and
+  is retained. Upstream vLLM image then failed LLM import on CUDA13 torchcodec.
+  Existing CPU-codec image`f57d77f5` (no installation/download) runs both0.8B/2B:
+  two actual47-token greedy requests/model produce `[264,264,264]`; source hashes/
+  identities before/after and original foreground/group/container/EOF inspected.
+  Earlier controller mount exposed guest-writable CID/receipts; review limitation
+  retained with supplemental current-name absence, never replacement receipts.
+  New ownerR4 mounts only payload/cache, keeps control files host-private and
+  independently checks the original container name after cleanup.
+  Torch2.13/cu129, vLLM0.31, Transformers5.17, Triton3.7.1; eager/V2/FA2/Triton-GDN.
+  Full-vocabulary R1 refused callable serialization; R2's FP32-only assertion
+  rejected native BF16. Deferred async exception reporting masked that first
+  error as uncleared pending state, not a proven hook bypass/forward overlap.
+  R3 snapshots public `compute_logits` native returns and actual input buffers,
+  defers CPU drain, returns the same object and exactly restores hooks/methods.
+  No head dtype, arithmetic, async or serialization-security changes. Three
+  CPU-only controls pass; both models'48calls/16requests independently audited:
+  fresh47–50 uniform/alphabet, two repeats, genuine feedback, all248320 vocabulary
+  words/call,11919360BF16 words/23838720rawB per model; exact repeats/source pins/
+  foreground-group-container-EOF retirement. Raw08`36350f39`,2b`f0b70f7a`;
+  `full-vocabulary-{08,2b}-reviewed-r3.json` are discovery-only acceptance.
+  Both genuinely unobserved16-request runs independently match public outputs
+  and termination, with exact source/options/retirement verified:
+  `unobserved-{08,2b}-reviewed-r1.json`. No plain full-vocabulary/state-bit claim.
+  Bounded async transport passes host and independent actual-CUDA native-bit/
+  stride/mutation controls:40MiB GPU arena +24MiB minimal snapshots,128MiB pinned
+  host; nonblocking producer, independent GPU/host retirement. Both expanded
+  captures completed and retired; `expanded-{08,2b}-reviewed-r1.json` audit every
+  archived byte (5925722312 /10564249800B), all24 original layer/deferred-add
+  boundaries and4032 physical state snapshots/model. Captured valid prefixes
+  preserve continuity/repeat bits; live views are disjoint. All320 original text
+  parameters associate with actual loaded packing/casts, and parameters/buffers
+  match before/after. This producer casts18 original F32 GDN norms/model to BF16;
+  native source contracts unchanged. Full vocabulary equals R3, public output/
+  termination equals unobserved runs. These expanded captures are not full-reference
+  passes: they omit actual context slot mapping, owner-boundary mutable metadata
+  and classification inputs; consumer successors below extend that coverage.
+  Constructor buffers are not independently regenerated.
+  KV layout is head×token×(K256|V256), not a leading K/V axis. Fresh Mamba backing
+  is invalid history, not assumed zero. Producer/native CUDA use history3;
+  CPU/HIP history4 is separate. Slab padding/plain-internal invariance remain
+  unclaimed. At this expanded-capture stage CUPTI was inspected only; later
+  standalone lineage diagnostics below do not grant model-wide ABI, native CUDA,
+  matched performance or later roadmap acceptance. R1 review found incomplete
+  chunk-storage attribution, metadata-reference provenance and lifecycle order,
+  not capture corruption. R2 strengthens all three; both actual metadata archives
+  and9 adversarial controls pass; both full R2 audits passed. Review then found
+  inventory subview order was not linked to archive logical offsets. R3 fixes
+  that link and rejects a coordinated descriptor/inventory swap: both metadata
+  archives and10 adversaries pass. `expanded-{08,2b}-reviewed-r3.json` rehash both
+  unchanged native/vocabulary archives, bind792/1334 chunks and explicitly reuse
+  pinned R2 byte/layer/source checks. R1/R2 remain immutable; current scoped
+  acceptance is R3, not exhaustive effective-state/reference/native closure.
+  Read-only R3 review found no remaining concrete order hole; not reexecution.
+  Actual-consumer observer captures KV/context mapping, conv/recurrent arguments,
+  gather/mask/scatter and classification CPU/GPU inputs;12 real-Torch CPU controls
+  pass. 08 consumerR2 completed48calls/37848records/6873374472B with original
+  foreground/group/container/name/EOF retirement; vocabulary/public outputs match.
+  Independent08 consumer auditR3 now passes all48 calls/8432 events, actual
+  classification/counters/mappings, conv mutation and gather/mask/chunk/scatter
+  bytes/order. Earlier audits wrongly treated padded GPU schedules as active CPU
+  lists and prompt progress as total decode progress. Source-derived corrections
+  check full padded allocations/roles, not weakened expectations;19 adversaries
+  pass. `consumer-08-reviewed-r3.json`; failed auditors/logs remain immutable.
+  2B consumerR2 failed at step28 after9 public requests; partial5987762129B and
+  original cleanup retained. R3 removed duplicate chunk-return copying but failed
+  at step1. Both original tracebacks identify host-ring admission, not GPU or
+  record-budget exhaustion. Neither failure has a complete archive/contemporaneous
+  GPU-after receipt; later idle observations never backfill those omissions.
+  GPU retirement was already independent of disk work. Corrected transport splits
+  GPU snapshot admission from coordinator-owned host admission/copy; host leases
+  retire after raw consumption, record credits after bounded manifest writes.
+  Drain acknowledges both GPU and exact host retirement. First failure is latched
+  before diagnostics; uncertainty fences/quarantines before logging and survives
+  query/close races. No producer waits, async/options/cap changes or extra temporaries.
+  Fresh2B R4 completed48calls/38102records/11209912072B; all original foreground/
+  group/container/name/EOF retirement independently verified, GPU before/after41MiB.
+  Full audit verifies source bytes, all24 layers/4032 states/8432 consumer events,
+  exact vocabulary/public outputs, masks/conv/scatter and all transport frontiers.
+  `consumer-2b-reviewed-r4.json`;288 real scatter links plus7 adversaries pass.
+  GPU transport peak11034368B, host90827008B; final used/padding/pending0, no
+  failure/unknown/quarantine. Limits remain40MiB GPU+24MiB minimal/128MiB host.
+  Transport controls:24 host scopes/20000 allocator operations/600records;
+  actual CUDA9 native-bit/stride/mutation records and3 stalled-writer records.
+  Latest `tensor-archive-r6.py` / `expanded-consumer-observation-r7.py` fixes a
+  subsequent minimal-error publication race with deterministic interleaving and
+  callback-fallback controls. Successful GPU/producer paths are byte-identical;
+  reuse physical success evidence explicitly, no model recapture or physical
+  uncertainty claim for that delta. Original clean R4 capture remains unchanged.
+  `consumer-boundaries-reviewed-r5.json` binds both scoped audits and controls.
+  Raw K/V candidateR8 and audit bodyR4 now observe actual entry arguments and
+  compare logical page mutation through the existing transport. Both actual
+  layouts/24 adversaries and original-once/same-return wrapper controls pass;
+  no new model execution, backing-padding or complete effective-readset acceptance.
+  Native callback recorder/offline typed lineage/checked ELF decoder assembled
+  separately as qualification support. Runtime-compatible build replaces the
+  failed host-libc probe; all failed bytes/logs stay. R3 repairs rejected nested
+  calls incorrectly popping outer frames;15 native host scopes/400 concurrent
+  calls/eight wire adversaries pass. No callback CUDA/GIL/file IO/capacity waits.
+  Standalone RTX3060 R3 independently verifies13 primitive cases/launches, three
+  public-edge-associated executable images,5544 callback records, original
+  foreground/group/container/name/EOF retirement and no inter-case synchronization
+  in its driver trace. Cubin-derived extents match eight successful parameter
+  queries plus three terminal invalid-index responses;34 metadata/eight query
+  adversaries pass. `cuda-parameter-lineage-reviewed-r4.json`. Original CUDA-info
+  metadata has two explicitly checked link formats; retain R1's decoder refusal.
+  Earlier R2 control staging waits and unload-fixture failure remain recorded.
+  Independent constructor regeneration now passes for both source configs:
+  `constructors-lineage-reviewed-r3.json`,268435488 fresh original CUDA bytes,
+  all30 named buffers/model before/after (25 unique,5 aliases/phase), complete
+  fresh archive/source/config and original retirement. Accepted consumer raw-byte
+  audits explicitly reused; no observed tensor bytes supplied as constructor input.
+  Its24 launches/10 images have typed lineage, but **zero captured arguments**:
+  producer-version129 was unsupported. These24 ENTRY gaps are permanent for R3.
+  Earlier constructor R1 missing-config-context and R2 enum-check failures stay;
+  both precede kernels and lack contemporaneous GPU-after receipts.
+  Native argument recorder `cuda-lineage-r6/`, approved-runtime buildR5, now
+  supports witnessed123/128/129 metadata, live typed handles, declared host extents,
+  packed extra/Ex attributes and explicit unmarked threads.32 native scopes,
+  400 concurrent calls,14 actual schemas,166 malformed metadata cases and8 wire
+  adversaries pass on CPU; source/binary pins and original retirement inspected.
+  Binary`22a8dcaa2bc33f6e96a5bb141c4f60a0631b3ff96999a78d682f9730b8309f5f`.
+  Initial native parser refusal remains. No GPU/model run of the new recorder,
+  worker bootstrap/event attribution integration or actual GPU argument acceptance.
+  Candidate `argument-wire-r1.py` still points to R5 readers; prepare/test an
+  explicit successor, not an in-place rewrite of executed capture/audit inputs.
+  Paused here by owner; no next campaign launched. Resume combined model-wide
+  argument/image observation, effective-state read/write and recurrent-axis proof,
+  then native CUDA/serving. Native CUDA history3 already exists; do not impose
+  CPU/HIP history4. No aggregate-field/model-ABI/full-reference/native acceptance.
+  No retained package found in the inspected readable local/remote scopes;
+  five local container housekeeping paths denied.
+  Exact2B cubin and original FLA/causal-conv/FlashAttention qualification remain
+  unavailable. No CPU substitution or source repin; accepted new discovery is
+  not full CUDA reference or legacy-authority acceptance.
 
 ### Next end-to-end milestone
 
@@ -45,8 +539,10 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 - [ ] Extend/qualify serving concurrency through C1..C64 and general27B/CUDA;
   preserve missing-source/kernel/runtime refusals. Offered C64/active≤8 singleton
   execution is only a baseline, not native-batch acceptance.
-- [ ] Measure matched vLLM workloads only after correctness/capacity and batching
-  acceptance. No superiority claim without matched measurements.
+- [ ] Measure matched vLLM workloads as each implemented path passes its relevant
+  correctness/capacity checks; do not wait for the whole roadmap or batching.
+  Match workload/settings/concurrency, report losses and limits. Unqualified
+  experiments stay exploratory; no superiority claim without matched measurements.
 
 ### Deferred until Fabric and model/context correctness are complete
 
@@ -84,12 +580,9 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 - [ ] Generalize actual geometry/backend execution for27B. Finite27B still
   pins2 positions/112 domains; it is not the ordinary small-model source path.
-- [ ] Extend the signed`bb400c4` ordinary0.8B/2B multi-row route beyond its
-  populated514 baseline. Projection/Conv4/attention/GDN, call-free lowering and
-  public SDK are landed; longer populated contexts and serving need the batch
-  above. Preserve explicit phases and original`SourceInvocation`/`ForwardPlan`,
-  physical/root owners. No position-indexed catalogue or backend relabeling.
-  [Numerics](../numerics-and-context/TODO.md) retains independent evidence.
+The former0.8B/2B populated-context continuation is complete in`8ffb511` below;
+its1K–16K native/SDK/HTTP acceptance is not reopened by the27B extension.
+[Numerics](../numerics-and-context/TODO.md) retains independent evidence.
 
 ### Ordinary Qwen execution checkpoint — 27 Oct
 
@@ -582,6 +1075,23 @@ or model support. Qwen parity/short benchmark/long→dense27B→Gemma remains bi
 
 ## Committed
 
+### `a57590e` — CUDA output-reduction repair
+
+- [x] Preserve the original sliced-K/ordered accumulation boundary at
+ three-quarter occupancy of a64-row output tile. Shared typed role/shape rule;
+ no prompt IDs, testcase ordinals, value patches or public capability change.
+- [x] Assembled-tree0.8B/2B each pass48 genuine calls against unchanged accepted
+ references:11919360 vocabulary words/model, all42 populated state domains/call,
+ native feedback/frontiers and two repeats. Original invocation/group/EOF/device
+ retirement independently checked. `native-output-fix-{08,2b}-r1/`, binary`ac3b55e3`.
+- [x] Eight real-operand projection regressions, arithmetic host assertion and
+ strict CUDA consumer check pass. Complete gate `output-fix-final-gate-r2.log` passes;
+ no production changes followed that gate. First formatting/lint failures retained.
+- Typed original executable joins and associated SASS establish the accumulation
+ chains; unsupported-schema ENTRY argument gaps remain. No serving/full-reference
+ or matched-performance grant. Extra operator capture failed later and was not
+ adopted as a replacement reference. Broader diagnostic helper remains uncommitted.
+
 ### `b9d8355` — authenticated source-window reuse
 
 - [x] Reuse already authenticated chunk spans for adjacent tensor windows;
@@ -593,7 +1103,7 @@ or model support. Qwen parity/short benchmark/long→dense27B→Gemma remains bi
 - 27B HTTP improvement remains unmeasured: staged successor is blocked by the
  unchanged12GiB x2 available-memory guard. No model/serving qualification grant.
 
-### `fix(hip): qualify populated Qwen serving` — populated contexts
+### `8ffb511` — populated Qwen HIP serving
 
 - [x] Original0.8B/2B multi-row and16K parity: R28 accepts both66-call schedules
   (873649152/939144192words) and both516-call trajectories (955163648/956867584

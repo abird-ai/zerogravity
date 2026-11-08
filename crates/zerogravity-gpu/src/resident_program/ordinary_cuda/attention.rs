@@ -287,36 +287,38 @@ pub(super) fn certify(
 }
 
 const WIDTH: usize = 256;
-const QUERY_HEADS: usize = 8;
-const KV_HEADS: usize = 2;
-const QUERY_WIDTH: usize = WIDTH * QUERY_HEADS;
-const KV_WIDTH: usize = WIDTH * KV_HEADS;
 const SCALE: f32 = 0.0625;
 
-pub(super) fn managed_bytes(capacity: usize) -> Result<usize> {
+pub(super) fn managed_bytes(
+    capacity: usize,
+    geometry: crate::cuda::ordinary_text::Geometry,
+) -> Result<usize> {
+    let geometry = geometry.validate()?;
+    let query_width = geometry.query_width()?;
+    let kv_width = geometry.kv_width()?;
     if !(1..=32_768).contains(&capacity) {
         return Err(Error::Unsupported(
             "ordinary CUDA attention context capacity".into(),
         ));
     }
     let kv = capacity
-        .checked_mul(KV_WIDTH)
+        .checked_mul(kv_width)
         .ok_or_else(|| Error::Limit("ordinary attention KV extent".into()))?;
     let scores = capacity
-        .checked_mul(QUERY_HEADS)
+        .checked_mul(geometry.query_heads)
         .ok_or_else(|| Error::Limit("ordinary attention score extent".into()))?;
     [
-        QUERY_WIDTH,
+        query_width,
         kv,
         kv,
         scores,
         scores,
-        QUERY_HEADS,
+        geometry.query_heads,
         scores,
-        QUERY_HEADS,
-        QUERY_HEADS,
+        geometry.query_heads,
+        geometry.query_heads,
         scores,
-        QUERY_WIDTH,
+        query_width,
         1,
     ]
     .into_iter()
@@ -331,6 +333,7 @@ pub(super) fn managed_bytes(capacity: usize) -> Result<usize> {
 pub(super) struct OrdinaryCudaAttention {
     service: Arc<ResidentService>,
     capacity: usize,
+    geometry: crate::cuda::ordinary_text::Geometry,
     // Preserve the admitted workspace envelope until long-context qualification.
     // The tile-local kernel itself consumes no global scratch.
     workspace_reserve: ResidentLease,
@@ -341,12 +344,14 @@ impl OrdinaryCudaAttention {
         service: Arc<ResidentService>,
         init: &mut crate::resident_leases::ResidentInitialization<'_>,
         capacity: usize,
+        geometry: crate::cuda::ordinary_text::Geometry,
     ) -> Result<Arc<Self>> {
-        let bytes = managed_bytes(capacity)?;
+        let bytes = managed_bytes(capacity, geometry)?;
         init.require_service(&service)?;
         let result = Arc::new(Self {
             service,
             capacity,
+            geometry,
             workspace_reserve: init.allocate_empty(bytes, BufferRole::Scratch)?,
         });
         init.retain_completion_owner(result.clone())?;
@@ -375,8 +380,8 @@ impl OrdinaryCudaAttention {
                     mask: SourceAttentionMask::Causal,
                     ..
                 } if geometry.width == WIDTH
-                    && geometry.query_heads == QUERY_HEADS
-                    && geometry.kv_heads == KV_HEADS
+                    && geometry.query_heads == self.geometry.query_heads
+                    && geometry.kv_heads == self.geometry.kv_heads
                     && scale.to_bits() == SCALE.to_bits()
             )
             || !operator.matrices().is_empty()
@@ -420,7 +425,7 @@ impl OrdinaryCudaAttention {
             .filter(|end| *end <= self.capacity)
             .ok_or_else(|| Error::Limit("ordinary attention active prefix".into()))?;
         let query_elements = rows
-            .checked_mul(QUERY_WIDTH)
+            .checked_mul(self.geometry.query_width()?)
             .ok_or_else(|| Error::Limit("ordinary attention query batch".into()))?;
         if query.size_in_used() != (query_elements * 2) as u64
             || output.size_in_used() != (query_elements * 2) as u64
@@ -432,7 +437,7 @@ impl OrdinaryCudaAttention {
 
         let state_elements = self
             .capacity
-            .checked_mul(KV_WIDTH)
+            .checked_mul(self.geometry.kv_width()?)
             .ok_or_else(|| Error::Limit("ordinary attention state extent".into()))?;
         let layout = ResidentBufferLayout::new(ResidentPhysicalType::Bf16, state_elements)?;
         candidate_keys.require_layout(layout)?;
@@ -453,8 +458,8 @@ impl OrdinaryCudaAttention {
             rows,
             base,
             self.capacity,
-            QUERY_HEADS,
-            KV_HEADS,
+            self.geometry.query_heads,
+            self.geometry.kv_heads,
             WIDTH,
             SCALE,
         )?
@@ -494,9 +499,12 @@ mod tests {
     fn attention_inventory_is_capacity_derived_and_bounded() {
         for capacity in [1usize, 512, 8_192, 32_768] {
             let expected_elements = 4_121usize + 1_056usize * capacity;
-            assert_eq!(managed_bytes(capacity).unwrap(), expected_elements * 4);
+            assert_eq!(
+                managed_bytes(capacity, crate::cuda::ordinary_text::Geometry::qwen35_08()).unwrap(),
+                expected_elements * 4
+            );
         }
-        assert!(managed_bytes(0).is_err());
-        assert!(managed_bytes(32_769).is_err());
+        assert!(managed_bytes(0, crate::cuda::ordinary_text::Geometry::qwen35_08()).is_err());
+        assert!(managed_bytes(32_769, crate::cuda::ordinary_text::Geometry::qwen35_08()).is_err());
     }
 }

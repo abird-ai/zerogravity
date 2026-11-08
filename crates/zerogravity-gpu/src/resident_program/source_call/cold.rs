@@ -16,6 +16,7 @@ use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 /// and extra snapshot readers require their own original host admission.
 #[derive(Clone, Debug)]
 pub struct SourceCallInventory {
+    pub source_weight_bytes: usize,
     pub resident_weight_bytes: usize,
     pub workspace_bytes: usize,
     pub root_bytes: usize,
@@ -45,7 +46,27 @@ impl Admission {
             ));
         }
         let metadata = source.reserve_workspace(8 * 1024 * 1024)?;
-        let layout = Arc::new(layout::Layout::derive(plan)?);
+        let mut layout = layout::Layout::derive(plan)?;
+        let source_weight_bytes = layout.preflight.source_bytes;
+        let root_count = 2 * max_sessions + 2;
+        let root_bytes = layout.preflight.prior_state_bytes;
+        let (_, native_device) = crate::hip::native::source_preparation_upper_bytes();
+        let fixed_device_bytes = layout::sum([
+            layout.preflight.owned_bytes()? - source_weight_bytes,
+            root_bytes * root_count,
+            native_device,
+        ])?;
+        let storage = weight_storage(
+            source_weight_bytes,
+            fixed_device_bytes,
+            crate::hip::native::resident_source_model_limit_bytes(),
+        )?;
+        if storage == Bf16ProjectionStorage::Streamed {
+            // Immutable source extent is unchanged. Only the original bounded
+            // source-page transport is resident; its bytes are already priced.
+            layout.preflight.source_bytes = 0;
+        }
+        let layout = Arc::new(layout);
         let mut operands = BTreeMap::new();
         for d in layout.matrices.values() {
             let m = source.matrix(&d.name, d.axes)?;
@@ -60,14 +81,12 @@ impl Admission {
             }
             operands.insert(
                 d.name.clone(),
-                PreparedBf16Projection::new(source.clone(), m, Bf16ProjectionStorage::Resident)?,
+                PreparedBf16Projection::new(source.clone(), m, storage)?,
             );
         }
         for p in layout.parameters.values() {
             source.bind_declared_parameter(p)?;
         }
-        let root_count = 2 * max_sessions + 2;
-        let root_bytes = layout.preflight.prior_state_bytes;
         let (native_host, native_device) = crate::hip::native::source_preparation_upper_bytes();
         let root_planes = layout
             .preflight
@@ -107,6 +126,7 @@ impl Admission {
         let (context_device_bytes, physical_device_upper_bytes) =
             crate::hip::native::resident_source_device_inventory(model_device_upper_bytes)?;
         let inventory = SourceCallInventory {
+            source_weight_bytes,
             resident_weight_bytes: layout.preflight.source_bytes,
             workspace_bytes: layout.preflight.owned_bytes()? - layout.preflight.source_bytes,
             root_bytes,
@@ -241,16 +261,18 @@ impl Admission {
                 .cloned()
                 .map(|l| (l, DeviceAccess::Read)),
         );
-        for (_, p) in &pending {
-            accesses.push((
-                p.as_ref()
-                    .ok_or_else(|| {
-                        Error::State("source-call resident matrix upload absent".into())
-                    })?
-                    .lease()
-                    .clone(),
-                DeviceAccess::Read,
-            ));
+        for (operand, pending) in &pending {
+            match (operand.storage(), pending) {
+                (Bf16ProjectionStorage::Resident, Some(matrix)) => {
+                    accesses.push((matrix.lease().clone(), DeviceAccess::Read));
+                }
+                (Bf16ProjectionStorage::Streamed, None) => {}
+                _ => {
+                    return Err(Error::State(
+                        "source-call selected weight owner differs".into(),
+                    ));
+                }
+            }
         }
         let owned = layout::sum(accesses.iter().map(|(l, _)| l.bytes()))?;
         if owned != self.layout.preflight.owned_bytes()? {
@@ -362,5 +384,43 @@ pub(super) fn view(
 impl Cold {
     pub(in crate::resident_program) fn native_probe(&self) -> crate::hip::native::FinalNativeProbe {
         self.native.final_owner_probe()
+    }
+}
+
+fn weight_storage(weights: usize, fixed: usize, limit: usize) -> Result<Bf16ProjectionStorage> {
+    let available = limit
+        .checked_sub(fixed)
+        .ok_or_else(|| Error::Limit("source-call workspace/native/root device admission".into()))?;
+    if weights == 0 {
+        return Err(Error::State(
+            "source-call original weight extent absent".into(),
+        ));
+    }
+    Ok(if weights <= available {
+        Bf16ProjectionStorage::Resident
+    } else {
+        Bf16ProjectionStorage::Streamed
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn storage_selection_preserves_actual_caps_and_never_omits_fixed_owners() {
+        assert_eq!(
+            weight_storage(8, 16, 24).unwrap(),
+            Bf16ProjectionStorage::Resident
+        );
+        assert_eq!(
+            weight_storage(9, 16, 24).unwrap(),
+            Bf16ProjectionStorage::Streamed
+        );
+        assert_eq!(
+            weight_storage(usize::MAX, 24, 24).unwrap(),
+            Bf16ProjectionStorage::Streamed
+        );
+        assert!(weight_storage(1, 25, 24).is_err());
+        assert!(weight_storage(0, 0, 24).is_err());
     }
 }

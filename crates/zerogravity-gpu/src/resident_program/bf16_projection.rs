@@ -110,6 +110,7 @@ impl PreparedBf16Projection {
         &self.matrix
     }
     #[cfg(any(
+        feature = "hip-source",
         feature = "qwen-source-qualification",
         feature = "gemma-bf16-qualification"
     ))]
@@ -261,6 +262,11 @@ impl PreparedBf16Projection {
             ));
         }
         let (batch, scratch_words) = row_tile(input_rows, total_rows, self.max_launch_rows())?;
+        if scratch_words > service.client().properties().hardware.max_cube_count.0 as usize {
+            return Err(Error::Unsupported(
+                "BF16 projection token/weight row grid".into(),
+            ));
+        }
         view(b.accumulation, 0, scratch_words * 4)?;
         view(b.flags, 0, scratch_words * 4)?;
         if self.storage == Bf16ProjectionStorage::Resident {
@@ -320,44 +326,38 @@ impl PreparedBf16Projection {
             let rows = self.rows_per_launch.min(total_rows - first);
             let range = first..first + rows;
             let elements = rows * batch;
-            let launches = 2 * (input_rows / batch);
+            let launches = 2;
             let accumulation = view(b.accumulation, 0, elements * 4)?;
             let flags = view(b.flags, 0, elements * 4)?;
+            let destination_rows = row_destination(batch, total_rows, first, rows)?;
+            let destination = b
+                .output
+                .clone()
+                .offset_start((destination_rows.start * 4) as u64)
+                .offset_end(((output_elements - destination_rows.end) * 4) as u64);
             let launch = |weights: &Handle| unsafe {
-                // Full weight windows already support independent request/output indices.
-                // Partial windows retain ordered per-row scratch reuse and output strides.
-                for token in (0..input_rows).step_by(batch) {
-                    let start = token * total_rows + first;
-                    let destination = b
-                        .output
-                        .clone()
-                        .offset_start((start * 4) as u64)
-                        .offset_end(((output_elements - start - elements) * 4) as u64);
-                    let activation = packed
-                        .clone()
-                        .offset_start((token * columns * 2) as u64)
-                        .offset_end(((input_rows - token - batch) * columns * 2) as u64);
-                    crate::bf16_projection_kernel::project_cpu_bf16::launch_unchecked(
-                        service.client(),
-                        CubeCount::Static(elements as u32, 1, 1),
-                        CubeDim::new_1d(64),
-                        arg(weights, rows * columns / 2),
-                        arg(&activation, batch * columns / 2),
-                        arg(&b.zero.handle(), 1),
-                        arg(&accumulation, elements),
-                        arg(&destination, elements),
-                        arg(&flags, elements),
-                        rows,
-                        columns,
-                    );
-                    projection_status::launch_unchecked(
-                        service.client(),
-                        grid(elements),
-                        threads(),
-                        arg(&flags, elements),
-                        arg(&b.status.handle(), 1),
-                    );
-                }
+                // Compact scratch; rounded stores retain each complete output-row stride.
+                crate::bf16_projection_kernel::project_cpu_bf16::launch_unchecked(
+                    service.client(),
+                    CubeCount::Static(elements as u32, 1, 1),
+                    CubeDim::new_1d(64),
+                    arg(weights, rows * columns / 2),
+                    arg(&packed, batch * columns / 2),
+                    arg(&b.zero.handle(), 1),
+                    arg(&accumulation, elements),
+                    arg(&destination, destination_rows.len()),
+                    arg(&flags, elements),
+                    rows,
+                    columns,
+                    total_rows,
+                );
+                projection_status::launch_unchecked(
+                    service.client(),
+                    grid(elements),
+                    threads(),
+                    arg(&flags, elements),
+                    arg(&b.status.handle(), 1),
+                );
             };
             match self.storage {
                 Bf16ProjectionStorage::Resident => {
@@ -406,15 +406,29 @@ impl PreparedBf16Projection {
     }
 }
 fn row_tile(input_rows: usize, outputs: usize, tile_rows: usize) -> Result<(usize, usize)> {
-    let (_, words) = row_extents(input_rows, 1, outputs)?;
+    row_extents(input_rows, 1, outputs)?;
     if tile_rows == 0 || tile_rows > outputs {
         return Err(Error::Limit("BF16 projection weight row tile".into()));
     }
-    Ok(if tile_rows == outputs {
-        (input_rows, words)
-    } else {
-        (1, tile_rows)
-    })
+    Ok((input_rows, input_rows * tile_rows))
+}
+fn row_destination(
+    input_rows: usize,
+    outputs: usize,
+    first: usize,
+    tile_rows: usize,
+) -> Result<std::ops::Range<usize>> {
+    let (_, complete) = row_extents(input_rows, 1, outputs)?;
+    let last = first
+        .checked_add(tile_rows)
+        .filter(|last| tile_rows != 0 && *last <= outputs)
+        .ok_or_else(|| Error::Limit("BF16 projection output row window".into()))?;
+    let end = (input_rows - 1)
+        .checked_mul(outputs)
+        .and_then(|base| base.checked_add(last))
+        .filter(|end| *end <= complete)
+        .ok_or_else(|| Error::Limit("BF16 projection strided output extent".into()))?;
+    Ok(first..end)
 }
 fn row_extents(input_rows: usize, columns: usize, outputs: usize) -> Result<(usize, usize)> {
     if !(1..=64).contains(&input_rows) || columns == 0 || outputs == 0 {
@@ -515,10 +529,10 @@ pub(crate) fn widen(
 
 #[cfg(test)]
 mod row_tests {
-    use super::{row_extents, row_tile};
+    use super::{row_destination, row_extents, row_tile};
 
     #[test]
-    fn whole_weight_windows_group_rows_but_partial_tiles_keep_strides() {
+    fn whole_and_partial_weight_windows_group_all_rows() {
         for input_rows in [1, 17, 47, 62, 64] {
             for outputs in [1, 128, 6144, 248320] {
                 assert_eq!(
@@ -528,7 +542,7 @@ mod row_tests {
                 if outputs > 1 {
                     assert_eq!(
                         row_tile(input_rows, outputs, outputs - 1).unwrap(),
-                        (1, outputs - 1)
+                        (input_rows, input_rows * (outputs - 1))
                     );
                 }
             }
@@ -542,6 +556,40 @@ mod row_tests {
             (64, u32::MAX as usize, 1),
         ] {
             assert!(row_tile(inputs, outputs, tile).is_err());
+        }
+    }
+
+    #[test]
+    fn every_partial_window_fits_the_complete_output_owner() {
+        for inputs in [1, 17, 47, 62, 64] {
+            for outputs in [1usize, 128, 6144, 248320] {
+                for tile in [1, outputs.div_ceil(3), outputs] {
+                    for first in (0..outputs).step_by(tile) {
+                        let rows = tile.min(outputs - first);
+                        let span = row_destination(inputs, outputs, first, rows).unwrap();
+                        assert_eq!(span.start, first);
+                        assert_eq!(span.len(), (inputs - 1) * outputs + rows);
+                        assert!(span.end <= inputs * outputs);
+                        assert_eq!(span.end - 1, (inputs - 1) * outputs + first + rows - 1);
+                        let (batch, scratch) = row_tile(inputs, outputs, rows).unwrap();
+                        assert_eq!(batch, inputs);
+                        assert_eq!(scratch, inputs * rows);
+                        assert!(scratch <= inputs * outputs);
+                    }
+                }
+            }
+        }
+        for (inputs, outputs, first, rows) in [
+            (0, 64, 0, 64),
+            (65, 64, 0, 64),
+            (1, 0, 0, 1),
+            (1, 64, 0, 0),
+            (1, 64, 64, 1),
+            (64, 64, 63, 2),
+            (1, 64, usize::MAX, 1),
+            (64, usize::MAX, 0, 1),
+        ] {
+            assert!(row_destination(inputs, outputs, first, rows).is_err());
         }
     }
 

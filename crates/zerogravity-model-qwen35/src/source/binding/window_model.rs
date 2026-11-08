@@ -153,6 +153,7 @@ mod gdn_fragment;
 
 mod full_model_source;
 mod ordinary_source;
+mod source_geometry;
 mod source_plan;
 pub use full_model_source::{BoundFullModelSource, BoundPromptCall};
 pub use ordinary_source::{OrdinaryCudaSourceSeal, OrdinarySourceSeal};

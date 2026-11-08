@@ -94,8 +94,10 @@ async fn check(session: &SourceCallSession, expected: &Expected, call: &Call) ->
     let data = snapshot.read_domains().await?;
     let (words, tails) = expected.compare_domains(call, &data, 514)?;
     println!(
-        "SOURCE_LIFECYCLE_STATE call={} state_words={words} runtime_checked_kv_tail_words={tails} domains=42 planes=48 mismatches=0 observer=false",
-        call.call
+        "SOURCE_LIFECYCLE_STATE call={} state_words={words} runtime_checked_kv_tail_words={tails} domains={} planes={} mismatches=0 observer=false",
+        call.call,
+        expected.domain_count(),
+        expected.plane_count()
     );
     Ok(words)
 }

@@ -41,7 +41,10 @@ impl ObservationMap {
                 "unique original layer producer",
             )?;
         }
-        need(values.len() == 25, "complete original embedding/layers")?;
+        need(
+            values.len() == plan.model_profile().layer_count() + 1,
+            "complete original embedding/layers",
+        )?;
         need(
             values
                 .insert(plan.normalized().0, ("normalized".into(), None))
@@ -86,7 +89,8 @@ impl<'a> Observer<'a> {
             .map(|(i, _)| i)
             .collect::<BTreeSet<_>>();
         need(
-            expected.len() == if call.position == 0 { 76 } else { 124 },
+            expected.len()
+                == reference.layers + 4 + reference.planes * if call.position == 0 { 1 } else { 2 },
             "complete original call record set",
         )?;
         let mut out = Self {
@@ -147,7 +151,7 @@ impl<'a> Observer<'a> {
                 )?;
             }
             need(
-                out.zero_required.len() == 48,
+                out.zero_required.len() == reference.planes,
                 "complete initial root planes",
             )?;
         }

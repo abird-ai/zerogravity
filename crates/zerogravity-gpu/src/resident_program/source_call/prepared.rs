@@ -81,7 +81,8 @@ pub(super) fn kernels(
                 b(),
                 b(),
                 rows,
-                p.matrix().columns()
+                p.matrix().columns(),
+                p.matrix().rows()
             );
         }
     }

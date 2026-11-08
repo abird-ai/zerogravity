@@ -1406,6 +1406,8 @@ fn qualify_ordinary_rope_source_parity(device: Device) -> zerogravity_core::Resu
             &ordinary_status,
             position,
             1,
+            QUERY_ELEMENTS / 256,
+            KEY_ELEMENTS / 256,
         )?;
 
         let source_frequency = client.create_from_slice(f32::as_bytes(&frequencies));

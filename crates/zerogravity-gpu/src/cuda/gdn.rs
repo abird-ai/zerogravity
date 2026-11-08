@@ -18,6 +18,7 @@ use zerogravity_core::{Error, Result};
 mod arithmetic;
 pub(crate) use arithmetic::GdnFamilyIdentity;
 mod assets;
+pub(crate) mod head_tile;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod qwen2b_arithmetic;
 #[cfg(all(

@@ -12,6 +12,11 @@ impl ResidentProgram {
         }
     }
     pub(crate) fn source_call_waits_on_cancel(&self) -> bool {
+        #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+        if let ResidentProgramBody::OrdinaryCuda(body) = &self.body {
+            return body.waits_on_cancel();
+        }
+
         #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
         if matches!(self.body, ResidentProgramBody::SourceCall(_)) {
             return true;
@@ -62,6 +67,7 @@ impl ResidentProgram {
                     ));
                 }
                 body.execute(flight, request, states, output, cancelled)
+                    .await
             }
             #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
             ResidentProgramBody::SourceCall(body) => {

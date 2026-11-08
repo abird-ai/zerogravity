@@ -1,5 +1,8 @@
 //! Real populated prompts through the ordinary SDK's state-only chunks and decode.
 use super::{population::Harness, *};
+#[path = "qwen_source_reference_scope.rs"]
+mod scope;
+use scope::ReferenceScope;
 
 #[derive(Deserialize)]
 struct ContextCall {
@@ -41,6 +44,7 @@ impl ContextReference {
             match label {
                 "08" => "Qwen/Qwen3.5-0.8B",
                 "2b" => "Qwen/Qwen3.5-2B",
+                "27b" => "Qwen/Qwen3.8-27B",
                 _ => panic!("source model"),
             }
         );
@@ -50,10 +54,19 @@ impl ContextReference {
                 && r.all_original_source_and_mapped_bytes_unchanged
                 && !r.rust_or_gpu_parity
         );
-        assert_eq!(r.active_context, 16384);
-        assert_eq!(r.prompts.len(), 5);
-        assert_eq!(r.calls.len(), 1012);
+        let scope = ReferenceScope::for_repository(&r.repository).unwrap();
+        assert_eq!(r.active_context, scope.active_context());
+        assert_eq!(r.prompts.len(), scope.contexts.len());
+        assert_eq!(r.calls.len(), scope.populated_counts().0);
         r
+    }
+    pub(super) fn case(&self, capacity: usize) -> usize {
+        ReferenceScope::for_repository(&self.repository)
+            .unwrap()
+            .contexts
+            .iter()
+            .position(|context| *context == capacity)
+            .expect("context present in the independently audited reference scope")
     }
     pub(super) fn trajectory(
         &self,
@@ -112,14 +125,11 @@ impl ContextReference {
 fn public_source_populated_context_completion_cancel_and_replay() {
     let label = std::env::var("ZG_QWEN_HIP_SDK_MODEL").unwrap();
     let capacity: usize = std::env::var("ZG_QWEN_CONTEXT").unwrap().parse().unwrap();
-    let case = [1024, 2048, 4096, 8192, 16384]
-        .iter()
-        .position(|n| *n == capacity)
-        .unwrap();
+    let r = ContextReference::open(&label);
+    let case = r.case(capacity);
     let mode = std::env::var("ZG_QWEN_HIP_POPULATION").unwrap();
     assert!(matches!(mode.as_str(), "complete" | "cancel"));
     let h = Harness::open(&label, 2, capacity, 3, 3);
-    let r = ContextReference::open(&label);
     let (prompt, expected) = r.trajectory(case, capacity, h.tokenizer.as_ref());
     let first = h.runtime.request_text(request("source", &prompt)).unwrap();
     let peer = h.runtime.request_text(request("alias", &prompt)).unwrap();
@@ -172,11 +182,7 @@ fn public_source_populated_context_completion_cancel_and_replay() {
 #[ignore = "approved canonical source, fresh isolated process; no native context allowed"]
 fn public_source_32k_capacity_refuses_before_native_creation() {
     let label = std::env::var("ZG_QWEN_HIP_SDK_MODEL").unwrap();
-    let snapshot = match label.as_str() {
-        "08" => "d7c7bf56e176bd70a8190acb9873cc719e65b6b306181039f2896d6f9387b36c",
-        "2b" => "88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52",
-        _ => panic!("approved model"),
-    };
+    let snapshot = source_snapshot(&label);
     let arbiter = ResourceArbiter::process_shared();
     let host = PhysicalDeviceKey::new("host", "system-ram").unwrap();
     let device = PhysicalDeviceKey::new("pci", "0000:c6:00.0").unwrap();
@@ -216,7 +222,11 @@ fn public_source_32k_capacity_refuses_before_native_creation() {
     assert_eq!(error.code, "inference_error");
     assert_eq!(
         error.message,
-        "resource limit: source-call complete host preflight"
+        if label == "27b" {
+            "resource limit: source-call workspace/native/root device admission"
+        } else {
+            "resource limit: source-call complete host preflight"
+        }
     );
     assert!(runtime.models().list().unwrap().is_empty());
     assert_eq!(runtime.status().execution_adapters, 0);

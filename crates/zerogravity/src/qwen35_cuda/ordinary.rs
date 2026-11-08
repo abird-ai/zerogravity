@@ -8,7 +8,7 @@ use super::*;
 use crate::gpu::cuda::ordinary_text::{
     Access, BufferRole, DefinitionContract, Geometry, PlanPrimitive, Program, Step,
 };
-use crate::qwen35::plan::{OrdinaryQwenInvocation, OrdinaryQwenPlan, QwenSourceProfile};
+use crate::qwen35::plan::{OrdinaryQwenInvocation, OrdinaryQwenPlan};
 use zerogravity_core::accelerator::program::{
     PlanOperation, SourceGamma, SourceNumericalContract, SourceOperatorKind, TensorView,
 };
@@ -43,9 +43,15 @@ fn audit(plan: &OrdinaryQwenPlan, invocation: &OrdinaryQwenInvocation) -> Result
             "ordinary Qwen plan/invocation/source owner differs".into(),
         ));
     }
-    let geometry = match plan.model_profile() {
-        QwenSourceProfile::Qwen08 => Geometry::qwen35_08(),
-        QwenSourceProfile::Qwen2B => Geometry::qwen35_2b(),
+    let source = plan.model_profile();
+    let geometry = Geometry {
+        hidden_width: source.hidden_size(),
+        intermediate_width: source.intermediate_size(),
+        vocabulary: source.vocabulary_size(),
+        query_heads: source.query_heads(),
+        kv_heads: source.kv_heads(),
+        head_width: 256,
+        rotary_width: 64,
     };
     let program = Program::new(geometry)?;
     let step = Step::new(

@@ -16,9 +16,14 @@ use zerogravity::resource_arbiter::{
 use zerogravity::{Error, Result};
 #[path = "qwen_source_calls_reference/checkpoint.rs"]
 mod checkpoint;
+#[path = "qwen_source_calls_reference/geometry.rs"]
+mod geometry;
 #[path = "qwen_source_calls_reference/observer.rs"]
 mod observation;
+#[path = "qwen_source_reference_scope.rs"]
+mod scope;
 pub use observation::{ObservationMap, Observer};
+pub use scope::ReferenceScope;
 
 #[derive(Deserialize)]
 struct Record {
@@ -91,6 +96,9 @@ pub struct Expected {
     index: BTreeMap<Key, usize>,
     raw: File,
     stamp: [u64; 7],
+    layers: usize,
+    domains: usize,
+    planes: usize,
     _host: GlobalResourceLease,
 }
 pub(super) fn stamp(f: &File) -> Result<[u64; 7]> {
@@ -127,6 +135,15 @@ impl Expected {
                 3_010_809_504,
                 "Qwen/Qwen3.5-2B",
             ),
+            "27b" => {
+                let digest =
+                    std::env::var("ZG_QWEN_SOURCE_CALLS_MANIFEST_SHA256").map_err(|_| {
+                        Error::Malformed(
+                            "separately audited original27B manifest digest required".into(),
+                        )
+                    })?;
+                return Self::open_pinned(directory, "Qwen/Qwen3.8-27B", &digest, None, false);
+            }
             _ => return Err(Error::Unsupported("source-call reference model".into())),
         };
         Self::open_pinned(
@@ -146,16 +163,32 @@ impl Expected {
         raw_pin: Option<(&str, u64)>,
         populated: bool,
     ) -> Result<Self> {
+        let scope = ReferenceScope::for_repository(repository)?;
+        let layers = scope.layers;
+        let planes = 2 * layers;
+        let domains = layers / 4 * 7;
+        let archive_cap = if layers == 64 { 64 } else { 16 } * 1024 * 1024 * 1024u64;
+        need(
+            manifest_sha.len() == 64 && manifest_sha.bytes().all(|b| b.is_ascii_hexdigit()),
+            "explicit original reference digest",
+        )?;
         let (schema, capacity, cases, calls_count, records_count) = if populated {
+            let (calls, records) = scope.populated_counts();
             (
                 "zg.original-hf-source-context-reference.v1",
-                16384,
-                5,
-                1012,
-                3720,
+                scope.active_context(),
+                scope.contexts.len(),
+                calls,
+                records,
             )
         } else {
-            ("zg.original-hf-source-call-reference.v1", 514, 6, 66, 7608)
+            (
+                "zg.original-hf-source-call-reference.v1",
+                514,
+                6,
+                66,
+                2 * (6 * (layers + 4 + planes) + 27 * (layers + 4 + 2 * planes)),
+            )
         };
         let arbiter = ResourceArbiter::process_shared();
         let key = PhysicalDeviceKey::new("host", "system-ram")?;
@@ -189,7 +222,7 @@ impl Expected {
                 && doc.active_context == capacity
                 && doc.repeats == 2
                 && !doc.rust_or_gpu_parity
-                && (0 < doc.raw_bytes && doc.raw_bytes <= 16 * 1024 * 1024 * 1024)
+                && (0 < doc.raw_bytes && doc.raw_bytes <= archive_cap)
                 && raw_pin
                     .is_none_or(|(sha, bytes)| doc.raw_bytes == bytes && doc.raw_sha256 == sha)
                 && doc.calls.len() == calls_count
@@ -289,10 +322,13 @@ impl Expected {
             index,
             raw,
             stamp: before,
+            layers,
+            domains,
+            planes,
             _host: host,
         };
         if populated {
-            for (case, capacity) in [1024, 2048, 4096, 8192, 16384].into_iter().enumerate() {
+            for (case, &capacity) in scope.contexts.iter().enumerate() {
                 need(
                     result.prompt(case).is_some_and(|p| !p.is_empty()),
                     "original context text present",
@@ -334,6 +370,12 @@ impl Expected {
     pub fn prompt(&self, case: usize) -> Option<&str> {
         self.doc.prompts.get(case).map(String::as_str)
     }
+    pub fn domain_count(&self) -> usize {
+        self.domains
+    }
+    pub fn plane_count(&self) -> usize {
+        self.planes
+    }
     pub fn calls(&self) -> &[Call] {
         &self.doc.calls
     }
@@ -347,7 +389,8 @@ impl Expected {
                     .zip(&loaded.members)
                     .all(|(a, b)| a.name == b.name && a.bytes == b.bytes && a.sha256 == b.sha),
             "source-call same approved source members",
-        )
+        )?;
+        self.require_geometry(loaded.model.owner().config())
     }
     pub fn unchanged(&self) -> Result<()> {
         need(

@@ -491,6 +491,31 @@ impl ResidentModel {
         device_cap: u64,
         cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<Arc<Self>> {
+        Self::load_ordinary_cuda_roots(
+            device,
+            source,
+            plan,
+            provider_cap,
+            device_cap,
+            2,
+            None,
+            cancelled,
+        )
+        .await
+    }
+
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+    #[allow(clippy::too_many_arguments)]
+    async fn load_ordinary_cuda_roots(
+        device: Device,
+        source: VerifiedTensorSource,
+        plan: Arc<ForwardPlan>,
+        provider_cap: usize,
+        device_cap: u64,
+        roots: usize,
+        source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
+        cancelled: Option<&std::sync::atomic::AtomicBool>,
+    ) -> Result<Arc<Self>> {
         validate_provider(&device)?;
         if !matches!(device, Device::Cuda(_)) {
             return Err(Error::Unsupported(
@@ -500,7 +525,9 @@ impl ResidentModel {
 
         // Pure source-plan/resource analysis. This MUST precede physical owner
         // creation, source attachment, cleanup, queue work, or allocation.
-        let admission = ordinary_cuda::OrdinaryCudaAdmission::analyze(plan)?;
+        let admission = ordinary_cuda::OrdinaryCudaAdmission::analyze(plan)?
+            .with_roots(roots)?
+            .fit(provider_cap)?;
         let total = admission.total_bytes()?;
         if total > provider_cap {
             return Err(Error::Limit(format!(
@@ -524,8 +551,14 @@ impl ResidentModel {
         };
         let service =
             physical.attach_model(ResidentSource::Windows(source.clone()), owner, provider_cap)?;
-        let prepared =
-            ordinary_cuda::prepare_program(service.clone(), admission, source, cancelled).await?;
+        let prepared = ordinary_cuda::prepare_program(
+            service.clone(),
+            admission,
+            source,
+            source_owner,
+            cancelled,
+        )
+        .await?;
         let program = prepared.program;
         if program.source_identity() != source_identity
             || program.plan().source() != source_identity
@@ -873,7 +906,11 @@ impl ResidentModel {
     {
         if let Some(storage) = self.state_pool.get() {
             #[cfg(all(
-                any(feature = "qualification", feature = "hip-source"),
+                any(
+                    feature = "qualification",
+                    feature = "hip-source",
+                    feature = "cuda-cublas"
+                ),
                 target_os = "linux"
             ))]
             let host = if zero {
@@ -891,7 +928,11 @@ impl ResidentModel {
             };
             return state_pool::allocate_pooled_state(self, &storage.pool, zero, None, |init| {
                 #[cfg(all(
-                    any(feature = "qualification", feature = "hip-source"),
+                    any(
+                        feature = "qualification",
+                        feature = "hip-source",
+                        feature = "cuda-cublas"
+                    ),
                     target_os = "linux"
                 ))]
                 if let Some(host) = host {
@@ -1662,7 +1703,8 @@ impl ResidentModel {
         workspace
             .program
             .validate_source_call_states(request, &bindings)?;
-        let wait_on_cancel = workspace.program.source_call_waits_on_cancel();
+        let wait_on_cancel =
+            workspace.program.source_call_waits_on_cancel() || completion_owner.is_some();
 
         let mut accesses = match output {
             ResidentOutput::StateOnly => workspace.state_accesses.clone(),
@@ -1697,7 +1739,14 @@ impl ResidentModel {
         }
         let submitted = workspace
             .program
-            .launch_ordinary_source(&mut flight, request, &bindings, output, cancelled, observer)
+            .launch_ordinary_source(
+                &mut flight,
+                request,
+                &bindings,
+                output,
+                if wait_on_cancel { None } else { cancelled },
+                observer,
+            )
             .await?;
         #[cfg(feature = "hardware-abort-probe")]
         self.qualification_after_launch(flight.handles().len())
@@ -2295,11 +2344,12 @@ impl ResidentSession {
         ordinary_not_cancelled(cancelled)?;
         let candidate = self.model.allocate_state(false).await?;
         ordinary_not_cancelled(cancelled)?;
+        let retained_call = options.completion_owner.is_some();
         let (domains, ready, readback) = self
             .model
             .execute_ordinary_source(base, &self.domains, candidate, &request, options)
             .await?;
-        if contract != zerogravity_core::accelerator::program::SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1 {
+        if !retained_call {
             ordinary_not_cancelled(cancelled)?;
         }
         Ok(PreparedInference {
@@ -2811,12 +2861,18 @@ mod ordinary_shutdown_owner_tests {
     }
 }
 
-#[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
 mod source_call;
-#[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
 pub use source_call::{
-    SourceCallInventory, SourceCallModel, SourceCallPending, SourceCallPreparation,
-    SourceCallPublication, SourceCallReadback, SourceCallSession, SourceCallSnapshot,
+    SourceCallModel, SourceCallPending, SourceCallPreparation, SourceCallPublication,
+    SourceCallReadback, SourceCallSession, SourceCallSnapshot,
 };
 
 #[cfg(all(
@@ -2834,3 +2890,6 @@ pub use source_call::{SourceCallFinalReader, SourceCallReaderObservation};
     target_os = "linux"
 ))]
 pub(crate) mod source_native_probe;
+
+#[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+pub use source_call::SourceCallInventory;

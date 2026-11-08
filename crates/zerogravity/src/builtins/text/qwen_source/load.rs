@@ -11,6 +11,44 @@ use futures_lite::future::block_on;
 use std::collections::BTreeMap;
 use zerogravity_engine::{model_instance::execution::*, router::Router};
 
+#[derive(Clone, Copy)]
+pub(crate) enum SourceBackend {
+    #[cfg(feature = "qwen35-hip")]
+    Hip,
+    #[cfg(feature = "qwen35-cuda")]
+    Cuda {
+        provider_bytes: usize,
+        device_bytes: u64,
+    },
+}
+impl SourceBackend {
+    fn validate(self) -> Result<(), ServiceError> {
+        #[cfg(feature = "qwen35-cuda")]
+        if let Self::Cuda {
+            provider_bytes,
+            device_bytes,
+        } = self
+            && (provider_bytes == 0
+                || u64::try_from(provider_bytes).map_or(true, |n| n > device_bytes))
+        {
+            return Err(ServiceError::new(
+                400,
+                "invalid_source_budget",
+                "CUDA requires a positive provider capacity within physical device admission",
+            ));
+        }
+        Ok(())
+    }
+    fn contract(self) -> SourceNumericalContract {
+        match self {
+            #[cfg(feature = "qwen35-hip")]
+            Self::Hip => SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1,
+            #[cfg(feature = "qwen35-cuda")]
+            Self::Cuda { .. } => SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        }
+    }
+}
+
 fn validate_aliases(aliases: &[String]) -> Result<(), ServiceError> {
     if aliases.is_empty()
         || aliases.len() > 16
@@ -35,9 +73,11 @@ pub(crate) fn load_router(
     aliases: Vec<String>,
     cache: CacheOptions,
     snapshot: String,
-    profile: QwenHipProfile,
+    profile: QwenSourceProfile,
+    backend: SourceBackend,
 ) -> Result<Router, ServiceError> {
     profile.validate()?;
+    backend.validate()?;
     validate_aliases(&aliases)?;
     crate::cache::paths::validate_digest(&snapshot).map_err(ServiceError::inference)?;
     let arbiter = ResourceArbiter::process_shared();
@@ -57,17 +97,41 @@ pub(crate) fn load_router(
         tokenizer,
         max_token_bytes,
         metadata,
-    } = open_source(&aliases[0], cache, &snapshot, profile.context, &host)?;
+    } = open_source(
+        &aliases[0],
+        cache,
+        &snapshot,
+        profile.context,
+        &host,
+        backend.contract(),
+    )?;
     // Exact original source/template/owner. No qualification loader or program
     // reconstruction and no alternate scheduler/publisher.
-    let resident = block_on(ResidentModel::load_ordinary_cpu_source(
-        Device::Hip(Default::default()),
-        source.plan.source().clone(),
-        source.clone(),
-        source.plan.plan().clone(),
-        profile.active,
-        None,
-    ))
+    let resident = match backend {
+        #[cfg(feature = "qwen35-hip")]
+        SourceBackend::Hip => block_on(ResidentModel::load_ordinary_cpu_source(
+            Device::Hip(Default::default()),
+            source.plan.source().clone(),
+            source.clone(),
+            source.plan.plan().clone(),
+            profile.active,
+            None,
+        )),
+        #[cfg(feature = "qwen35-cuda")]
+        SourceBackend::Cuda {
+            provider_bytes,
+            device_bytes,
+        } => block_on(ResidentModel::load_ordinary_cuda_source(
+            Device::Cuda(Default::default()),
+            source.plan.source().clone(),
+            source.clone(),
+            source.plan.plan().clone(),
+            profile.active,
+            provider_bytes,
+            device_bytes,
+            None,
+        )),
+    }
     .map_err(ServiceError::inference)?;
     let model = Arc::new(Model {
         resident: Mutex::new(Some(resident)),
@@ -108,12 +172,13 @@ fn open_source(
     snapshot: &str,
     context: usize,
     host: &ServingHost,
+    contract: SourceNumericalContract,
 ) -> Result<SourceParts, ServiceError> {
     let admission = host.transfer_admission(alias, "original-source")?;
     // Bounds and real credit precede cache metadata, source parsing and plan.
     // A smaller caller cap remains smaller; never broaden cache authority.
     cache.limits.max_manifest_bytes = cache.limits.max_manifest_bytes.min(1024 * 1024);
-    cache.limits.max_files = cache.limits.max_files.min(16);
+    cache.limits.max_files = cache.limits.max_files.min(64);
     let control = host.admit(
         alias,
         "source-and-plan",
@@ -126,13 +191,8 @@ fn open_source(
             .open_snapshot(snapshot)
             .map_err(ServiceError::inference)?,
     );
-    let mut opened = qwen35_source::open(
-        Inputs::Snapshot(&snapshot),
-        SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1,
-        &admission,
-        None,
-    )
-    .map_err(ServiceError::inference)?;
+    let mut opened = qwen35_source::open(Inputs::Snapshot(&snapshot), contract, &admission, None)
+        .map_err(ServiceError::inference)?;
     let tokenizer_bytes = opened.tokenizer.take().ok_or_else(|| {
         ServiceError::new(
             500,
@@ -140,7 +200,8 @@ fn open_source(
             "authenticated tokenizer bytes absent",
         )
     })?;
-    let bootstrap = crate::tokenize_admission::approve_arbiter(&admission, "bootstrap")?;
+    let bootstrap = crate::tokenize_admission::approve_arbiter(&admission, "bootstrap")?
+        .for_source(&tokenizer_bytes)?;
     let retained = bootstrap.retain_arbiter(&admission, "tokenizer-inventory")?;
     let tokenizer = {
         let _constructor = bootstrap.constructor_of_arbiter(
@@ -181,7 +242,7 @@ fn open_source(
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "qwen35-hip"))]
 mod tests {
     use super::*;
     #[test]
@@ -210,6 +271,7 @@ mod tests {
             &snapshot,
             514,
             &host,
+            SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1,
         )
         .unwrap();
         let plan = &parts.source.plan;
@@ -226,6 +288,30 @@ mod tests {
         )
         .unwrap();
         assert_eq!(inventory.root_count, 6);
+        let geometry = plan.model_profile();
+        assert_eq!(plan.boundaries().len(), geometry.layer_count());
+        assert_eq!(
+            plan.plan().required_domains().len(),
+            geometry.state_domains()
+        );
+        assert_eq!(
+            plan.plan().proposed_domains().len(),
+            geometry.state_domains()
+        );
+        assert!(inventory.source_weight_bytes > 0);
+        assert!(
+            inventory.resident_weight_bytes == 0
+                || inventory.resident_weight_bytes == inventory.source_weight_bytes
+        );
+        assert_eq!(inventory.context_device_bytes, 4 * 1024 * 1024 * 1024);
+        assert!(inventory.physical_device_upper_bytes <= 24 * 1024 * 1024 * 1024);
+        assert!(inventory.host_upper_bytes <= 16 * 1024 * 1024 * 1024);
+        if inventory.source_weight_bytes > 20 * 1024 * 1024 * 1024 {
+            assert_eq!(inventory.resident_weight_bytes, 0);
+        }
+        eprintln!(
+            "SOURCE_SDK_CANONICAL_HOST_INVENTORY geometry={geometry:?} inventory={inventory:?}"
+        );
         assert_eq!(
             plan.source().source_identity(),
             plan.source_seal().source_identity()

@@ -102,7 +102,7 @@ impl Expected {
             }
         }
         need(
-            seen.len() == 42 && planes == 48,
+            seen.len() == self.domains && planes == self.planes,
             "all original post-commit domains/planes",
         )?;
         self.unchanged()?;

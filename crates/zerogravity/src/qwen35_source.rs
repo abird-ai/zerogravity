@@ -46,7 +46,7 @@ pub(crate) struct Metadata {
 pub(crate) struct Opened {
     pub(crate) seal: OrdinarySourceSeal,
     pub(crate) metadata: Metadata,
-    #[cfg(feature = "qwen35-hip")]
+    #[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
     pub(crate) tokenizer: Option<Vec<u8>>,
 }
 
@@ -64,7 +64,7 @@ pub(crate) fn open(
     cancelled: Option<&AtomicBool>,
 ) -> Result<Opened> {
     not_cancelled(cancelled)?;
-    let config = dir.bounded("config.json", 4096, cancelled)?;
+    let config = dir.bounded("config.json", 64 * 1024, cancelled)?;
     let spec = select(&config)?;
     if Sha256::digest(spec.inventory.as_bytes())[..] != digest(spec.manifest_sha) {
         return Err(Error::State(
@@ -73,30 +73,29 @@ pub(crate) fn open(
     }
     let inventory: serde_json::Value = serde_json::from_str(spec.inventory)
         .map_err(|error| Error::Malformed(format!("compiled source inventory: {error}")))?;
-    let small = spec.family == "0.8b";
     let files = inventory["files"]
         .as_array()
-        .filter(|rows| rows.len() == if small { 11 } else { 12 })
+        .filter(|rows| rows.len() == spec.member_count)
         .ok_or_else(|| Error::Malformed("complete compiled source membership".into()))?;
     dir.require_inventory(spec, files.len(), cancelled)?;
 
-    #[cfg(feature = "qwen35-hip")]
+    #[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
     let mut tokenizer = None;
     let mut index = None;
-    let mut shard = None;
+    let mut shards = Vec::with_capacity(spec.shard_count);
     let mut names = std::collections::BTreeSet::new();
     for row in files {
-        let (name, bytes, sha) = member(row, small)?;
+        let (name, bytes, sha) = member(row, spec.named_members)?;
         if !names.insert(name) {
             return Err(Error::Malformed("duplicate original source member".into()));
         }
         if name.ends_with(".safetensors") {
-            if shard.is_some() || name != "model.safetensors-00001-of-00001.safetensors" {
-                return Err(Error::Unsupported(
-                    "ordinary Qwen CUDA exact one-shard source".into(),
+            if shards.len() >= spec.shard_count {
+                return Err(Error::Malformed(
+                    "ordinary Qwen original shard count".into(),
                 ));
             }
-            shard = Some(ExpectedSourceShard::new(
+            shards.push(ExpectedSourceShard::new(
                 name.into(),
                 Artifact::from_file(dir.file(name)?, Path::new(name))?,
                 bytes as u64,
@@ -110,7 +109,7 @@ pub(crate) fn open(
                 return Err(Error::State("held selected config changed".into()));
             }
             "model.safetensors.index.json" => index = Some(raw),
-            #[cfg(feature = "qwen35-hip")]
+            #[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
             "tokenizer.json" if dir.retains_tokenizer() => tokenizer = Some(raw),
             _ => {}
         }
@@ -130,16 +129,21 @@ pub(crate) fn open(
         ));
     }
 
+    if shards.len() != spec.shard_count {
+        return Err(Error::Malformed(
+            "ordinary Qwen original shards absent".into(),
+        ));
+    }
     let index = index.ok_or_else(|| Error::Malformed("original source index absent".into()))?;
     let plan = SourceWeights::prepare_verified_windows(
         &index,
         spec.index_sha,
-        vec![shard.ok_or_else(|| Error::Malformed("original source shard absent".into()))?],
+        shards,
         WindowOpenLimits {
             max_source_bytes: spec.max_source,
             max_metadata_bytes: (64 * MIB) as u64,
-            max_shards: 1,
-            max_tensors: 1024,
+            max_shards: spec.shard_count,
+            max_tensors: spec.tensor_limit,
             scan_chunk_bytes: MIB,
         },
         host,
@@ -175,7 +179,7 @@ pub(crate) fn open(
     }
     Ok(Opened {
         seal,
-        #[cfg(feature = "qwen35-hip")]
+        #[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
         tokenizer,
         metadata: Metadata {
             family: spec.family,

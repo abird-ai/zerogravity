@@ -425,6 +425,10 @@ pub(crate) fn begin_qwen_qualification(
     begin_single_source(device, source, source_owner, SingleSourceProfile::Qwen)
 }
 #[cfg(feature = "hip-source")]
+pub(crate) fn resident_source_model_limit_bytes() -> usize {
+    SingleSourceProfile::ResidentText.provider_cap() - CONTEXT_DEVICE as usize
+}
+#[cfg(feature = "hip-source")]
 pub(crate) fn resident_source_device_inventory(model_upper: usize) -> Result<(usize, usize)> {
     let context = CONTEXT_DEVICE as usize;
     let total = model_upper

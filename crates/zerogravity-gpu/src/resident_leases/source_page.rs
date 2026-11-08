@@ -774,9 +774,20 @@ impl ResidentSourcePage {
     /// this page's per-flight run reference while the source/owner/service are
     /// still usable, so event retirement cannot follow native SET retirement.
     pub(crate) fn finish(&self) -> Result<()> {
+        self.drain()?;
+        {
+            let p = self
+                .progress
+                .lock()
+                .map_err(|_| Error::State("source page progress poisoned".into()))?;
+            if p.pending.is_some() || p.submitted != p.completed {
+                return Err(Error::State(
+                    "source page terminal consumer is incomplete".into(),
+                ));
+            }
+        }
         #[cfg(feature = "hip")]
         {
-            self.reap(true)?;
             let run = {
                 let p = self
                     .progress
@@ -1725,6 +1736,9 @@ impl ResidentSourcePage {
             .map(ResidentLease::handle)
             .collect::<Vec<_>>();
         barriers.push(handle);
+        // Diagnostic suspension after real consumers, before their completion proof.
+        #[cfg(feature = "hardware-abort-probe")]
+        futures_lite::future::yield_now().await;
         self.service
             .client()
             .sync_buffers(barriers.iter())
@@ -1802,7 +1816,8 @@ mod transport_tests {
     test,
     any(
         feature = "qwen-source-qualification",
-        feature = "gemma-bf16-qualification"
+        feature = "gemma-bf16-qualification",
+        feature = "cuda-cublas"
     )
 ))]
 mod source_fixture {
@@ -1903,7 +1918,11 @@ mod source_fixture {
 /// Serial (non-HIP) source transport has no ring: one ordinary window is
 /// staged by whole intersecting integrity chunks. The host charge must be that
 /// source-derived amount on top of the unchanged three-page family baseline.
-#[cfg(all(test, not(feature = "hip"), feature = "gemma-bf16-qualification"))]
+#[cfg(all(
+    test,
+    not(feature = "hip"),
+    any(feature = "gemma-bf16-qualification", feature = "cuda-cublas")
+))]
 mod serial_transport_tests {
     use super::source_fixture::{Fixture, admission};
     use super::*;

@@ -215,6 +215,7 @@ impl PreparedProjection {
                 arg(&self.status, self.shape.outputs),
                 self.shape.rows,
                 self.shape.columns,
+                self.shape.rows,
             );
         }
         Ok(flight)

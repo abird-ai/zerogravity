@@ -123,7 +123,7 @@ impl Layout {
                 max_nodes: 8192,
                 max_values: 8192,
                 max_slots: 512,
-                max_slot_bytes: 4 * 1024 * 1024,
+                max_slot_bytes: 16 * 1024 * 1024,
                 max_total_bytes: 256 * 1024 * 1024,
                 alignment: ALIGNMENT,
                 reuse_policy: ValueStorageReusePolicy::ExactAlignedSize,

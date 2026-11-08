@@ -18,7 +18,7 @@ pub use ordinary::diagnostic_ordinary_plan;
 pub use ordinary::{
     ORDINARY_CUDA_MAX_CHUNK_ROWS, ORDINARY_CUDA_MAX_CONTEXT, ORDINARY_CUDA_MIN_CONTEXT,
     ORDINARY_SOURCE_MAX_CHUNK_ROWS, ORDINARY_SOURCE_MAX_CONTEXT, ORDINARY_SOURCE_MIN_CONTEXT,
-    OrdinaryQwenInvocation, OrdinaryQwenPlan,
+    OrdinaryQwenGeometry, OrdinaryQwenInvocation, OrdinaryQwenPlan,
 };
 mod prompt;
 pub use prompt::{PromptCall, PromptSpan, PromptWorkload};

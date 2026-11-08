@@ -12,18 +12,18 @@ use zerogravity_engine::{
 };
 mod execute;
 mod load;
-pub(crate) use load::load_router;
+pub(crate) use load::{SourceBackend, load_router};
 
 /// One cold raw-text source, shared by aliases. No native cross-session batching or warm
 /// runtime reconfiguration. Host/provider/context bounds remain backend-owned.
 #[derive(Clone, Copy, Debug)]
-pub struct QwenHipProfile {
+pub struct QwenSourceProfile {
     pub active: usize,
     pub context: usize,
     pub output: usize,
     pub max_pending: Option<usize>,
 }
-impl QwenHipProfile {
+impl QwenSourceProfile {
     pub(crate) fn validate(self) -> Result<(), ServiceError> {
         use crate::qwen35::plan::{ORDINARY_SOURCE_MAX_CONTEXT, ORDINARY_SOURCE_MIN_CONTEXT};
         if !(1..=zerogravity_engine::router::MAX_ACTIVE_PER_WORKER).contains(&self.active)
@@ -36,7 +36,7 @@ impl QwenHipProfile {
             return Err(ServiceError::new(
                 400,
                 "invalid_source_profile",
-                "source HIP requires active=1..8, context=512..32768, output=1..512, positive pending bound",
+                "source GPU requires active=1..8, context=512..32768, output=1..512, positive pending bound",
             ));
         }
         // Keep every shared worker refusal before source IO or device creation.
@@ -82,7 +82,7 @@ impl PreparedModel for Model {
         Err(ServiceError::new(
             400,
             "unsupported_chat",
-            "original source HIP currently accepts raw text only",
+            "original source GPU currently accepts raw text only",
         ))
     }
     fn validate_request(
@@ -117,7 +117,7 @@ mod tests {
     use super::*;
     #[test]
     fn source_profile_refuses_unsupported_limits_before_io() {
-        let good = QwenHipProfile {
+        let good = QwenSourceProfile {
             active: 2,
             context: 514,
             output: 2,
@@ -125,29 +125,29 @@ mod tests {
         };
         assert!(good.validate().is_ok());
         for context in [8192, 16384, 32768] {
-            assert!(QwenHipProfile { context, ..good }.validate().is_ok());
+            assert!(QwenSourceProfile { context, ..good }.validate().is_ok());
         }
         for bad in [
-            QwenHipProfile { active: 0, ..good },
-            QwenHipProfile { active: 9, ..good },
-            QwenHipProfile {
+            QwenSourceProfile { active: 0, ..good },
+            QwenSourceProfile { active: 9, ..good },
+            QwenSourceProfile {
                 context: 511,
                 ..good
             },
-            QwenHipProfile {
+            QwenSourceProfile {
                 context: 32769,
                 ..good
             },
-            QwenHipProfile {
+            QwenSourceProfile {
                 context: 16384,
                 output: 513,
                 ..good
             },
-            QwenHipProfile {
+            QwenSourceProfile {
                 output: 515,
                 ..good
             },
-            QwenHipProfile {
+            QwenSourceProfile {
                 max_pending: Some(0),
                 ..good
             },

@@ -1,6 +1,8 @@
 //! Source-priced lifetimes around the original resident execution/publication.
 use super::*;
+#[cfg(all(feature = "hip-source", feature = "hip"))]
 use crate::resident_program::source_call as program;
+#[cfg(all(feature = "hip-source", feature = "hip"))]
 pub use program::SourceCallInventory;
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_artifacts::source_weights::WindowWorkspace;
@@ -10,12 +12,16 @@ use zerogravity_core::accelerator::program::{
 
 #[cfg(all(
     feature = "hardware-abort-probe",
-    feature = "qwen-source-qualification"
+    feature = "qwen-source-qualification",
+    feature = "hip-source",
+    feature = "hip"
 ))]
 mod probe;
 #[cfg(all(
     feature = "hardware-abort-probe",
-    feature = "qwen-source-qualification"
+    feature = "qwen-source-qualification",
+    feature = "hip-source",
+    feature = "hip"
 ))]
 pub use probe::{SourceCallFinalReader, SourceCallReaderObservation};
 
@@ -28,6 +34,8 @@ pub struct SourceCallModel {
     source: VerifiedTensorSource,
     sessions: Arc<async_lock::Semaphore>,
     _control: WindowWorkspace,
+    contract: SourceNumericalContract,
+    _source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
 }
 pub struct SourceCallSession {
     inner: ResidentSession,
@@ -104,6 +112,7 @@ impl SourceCallSnapshot {
     }
 }
 
+#[cfg(all(feature = "hip-source", feature = "hip"))]
 impl ResidentModel {
     pub fn ordinary_cpu_source_preflight(
         source: VerifiedTensorSource,
@@ -164,6 +173,50 @@ impl ResidentModel {
             source,
             sessions: Arc::new(async_lock::Semaphore::new(max_sessions)),
             _control: control,
+            contract: SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1,
+            _source_owner: None,
+        }))
+    }
+}
+#[cfg(feature = "cuda-cublas")]
+impl ResidentModel {
+    #[allow(clippy::too_many_arguments)]
+    pub async fn load_ordinary_cuda_source(
+        device: Device,
+        source: VerifiedTensorSource,
+        source_owner: Arc<dyn std::any::Any + Send + Sync>,
+        plan: Arc<ForwardPlan>,
+        max_sessions: usize,
+        provider_cap: usize,
+        device_cap: u64,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<Arc<SourceCallModel>> {
+        ordinary_not_cancelled(cancelled)?;
+        if !(1..=64).contains(&max_sessions) {
+            return Err(Error::Limit("source-call session capacity".into()));
+        }
+        let roots = max_sessions * 2 + 2;
+        let control = source.reserve_workspace(CONTROL_BYTES)?;
+        let model = Self::load_ordinary_cuda_roots(
+            device,
+            source.clone(),
+            plan,
+            provider_cap,
+            device_cap,
+            roots,
+            Some(source_owner.clone()),
+            cancelled,
+        )
+        .await?;
+        model.install_window_root_pool(source.clone(), roots)?;
+        ordinary_not_cancelled(cancelled)?;
+        Ok(Arc::new(SourceCallModel {
+            inner: model,
+            source,
+            sessions: Arc::new(async_lock::Semaphore::new(max_sessions)),
+            _control: control,
+            contract: SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            _source_owner: Some(source_owner),
         }))
     }
 }
@@ -195,6 +248,9 @@ impl SourceCallModel {
         })
     }
     pub async fn shutdown_ordinary_cpu_source(self: Arc<Self>) -> Result<()> {
+        self.shutdown().await
+    }
+    pub async fn shutdown(self: Arc<Self>) -> Result<()> {
         if Arc::strong_count(&self) != 1 || Arc::strong_count(&self.inner) != 1 {
             return Err(Error::State(
                 "source-call shutdown has original session/snapshot/result owners".into(),
@@ -202,10 +258,35 @@ impl SourceCallModel {
         }
         self.inner.service.ensure_usable()?;
         let service = self.inner.service.clone();
+        #[cfg(feature = "cuda-cublas")]
+        let cuda = {
+            let workspace = self.inner.workspace.lock().await;
+            let cuda = workspace.program.is_ordinary_cuda();
+            if cuda {
+                workspace.program.retire_ordinary_cuda().await?;
+            }
+            cuda
+        };
         drop(self);
+        #[cfg(feature = "cuda-cublas")]
+        if cuda {
+            service
+                .client()
+                .memory_cleanup()
+                .map_err(|error| Error::State(format!("source-call CUDA cleanup: {error}")))?;
+            if service.resident_bytes()? != 0 || service.model_events()? != 0 {
+                return Err(Error::State(
+                    "source-call CUDA shutdown left bytes or events".into(),
+                ));
+            }
+        }
         service.close_model_namespace()
     }
-    #[cfg(feature = "hardware-abort-probe")]
+    #[cfg(all(
+        feature = "hardware-abort-probe",
+        feature = "hip-source",
+        feature = "hip"
+    ))]
     pub async fn ordinary_cpu_source_native_probe(
         &self,
     ) -> Result<super::source_native_probe::SourceTextNativeProbe> {
@@ -295,7 +376,7 @@ impl SourceCallSession {
             .inner
             .prepare_ordinary_source_mode(
                 request,
-                SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1,
+                self.model.contract,
                 OrdinarySourceOptions {
                     output,
                     cancelled: cancelled.as_deref(),

@@ -1,12 +1,12 @@
 //! Authenticated ordinary original-HF source seal and static plan factory.
 //! No native backend, session root, invocation IDs or completion authority.
 use super::*;
-use crate::plan::{OrdinaryQwenPlan, QwenSourceProfile, build_ordinary_plan};
+use crate::plan::{OrdinaryQwenGeometry, OrdinaryQwenPlan, QwenSourceProfile, build_ordinary_plan};
 use zerogravity_core::numerics::SourceNumericalContract;
 
 struct OrdinarySourceOwner {
     model: Arc<OriginalWindowModelSource>,
-    profile: QwenSourceProfile,
+    profile: OrdinaryQwenGeometry,
     numerical: SourceNumericalContract,
     _metadata: WindowWorkspace,
 }
@@ -31,7 +31,7 @@ impl OrdinarySourceSeal {
     pub fn source_identity(&self) -> crate::accelerator::SourceIdentity {
         self.0.model.source_identity()
     }
-    pub fn model_profile(&self) -> QwenSourceProfile {
+    pub fn model_profile(&self) -> OrdinaryQwenGeometry {
         self.0.profile
     }
     pub fn numerical_contract(&self) -> SourceNumericalContract {
@@ -65,7 +65,7 @@ impl OrdinarySourceSeal {
         let metadata = model.source().reserve_workspace(64 * 1024)?;
         Ok(Self(Arc::new(OrdinarySourceOwner {
             model,
-            profile,
+            profile: profile.into(),
             numerical: SourceNumericalContract::ReferenceCudaSm86Bf16V1,
             _metadata: metadata,
         })))
@@ -86,12 +86,29 @@ impl OriginalWindowModelSource {
         self: &Arc<Self>,
         numerical: SourceNumericalContract,
     ) -> Result<OrdinarySourceSeal> {
-        let profile = if self.owner().config_sha256() == super::full_model_source::CONFIG2B {
+        let profile = if self.owner().config_sha256() == CONFIG_LARGE {
+            require_large_pins(self)?;
+            let geometry = OrdinaryQwenGeometry::from_config(self.owner().config())?;
+            // Original large-source A_log and GDN norm are stored as BF16.
+            super::source_geometry::require_roles(
+                self,
+                geometry,
+                zerogravity_core::encoding::ScalarDType::Bf16,
+            )?;
+            return self.seal_ordinary_source(geometry, numerical);
+        } else if self.owner().config_sha256() == super::full_model_source::CONFIG2B {
             QwenSourceProfile::Qwen2B
         } else {
             QwenSourceProfile::Qwen08
         };
         super::full_model_source::require_source(self, profile)?;
+        self.seal_ordinary_source(profile.into(), numerical)
+    }
+    fn seal_ordinary_source(
+        self: &Arc<Self>,
+        profile: OrdinaryQwenGeometry,
+        numerical: SourceNumericalContract,
+    ) -> Result<OrdinarySourceSeal> {
         let metadata = self.source().reserve_workspace(64 * 1024)?;
         Ok(OrdinarySourceSeal(Arc::new(OrdinarySourceOwner {
             model: self.clone(),
@@ -100,4 +117,21 @@ impl OriginalWindowModelSource {
             _metadata: metadata,
         })))
     }
+}
+
+const CONFIG_LARGE: &str = "191e0af232104ed8b65258cf3fb2b842e288008baca7633c11b82a1ac7203aab";
+fn require_large_pins(model: &OriginalWindowModelSource) -> Result<()> {
+    if model.owner().config_sha256() != CONFIG_LARGE
+        || model.owner().verified_index_sha256()
+            != "77042094076611b69791a610065f28b7013b8c621795fa86ddccc8bac7d1b9df"
+        || model.source().source_bytes() != 55_563_006_776
+        || model.source().staging_chunk_bytes() != 1024 * 1024
+        || model.owner().text_tensor_count() != 851
+        || model.owner().other_tensor_count() != 348
+    {
+        return Err(Error::Unsupported(
+            "closed original large-model source/config/index/extent/1MiB".into(),
+        ));
+    }
+    Ok(())
 }

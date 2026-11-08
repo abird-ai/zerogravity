@@ -1,4 +1,6 @@
 //! Explicit populated-context qualification; source/physical owners stay original.
+#[path = "../tests/support/qwen_source_capacity.rs"]
+mod capacity;
 #[path = "../tests/support/qwen_source_context_run.rs"]
 mod context_run;
 #[path = "../tests/support/qwen_source_context_timing.rs"]
@@ -32,7 +34,7 @@ fn run() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     need(
         matches!(args.len(), 3 | 5 | 6),
-        "usage: qwen_source_contexts_hip preflight|cache-preflight 08|2b SOURCE; reference-preflight|parity|diagnose-latency|diagnose-kernels 08|2b SOURCE REFERENCE CONTEXT MANIFEST_SHA256; trig 08|2b SOURCE REFERENCE MANIFEST_SHA256",
+        "usage: qwen_source_contexts_hip preflight|cache-preflight 08|2b|27b SOURCE; reference-preflight|parity|diagnose-latency|diagnose-kernels 08|2b|27b SOURCE REFERENCE CONTEXT MANIFEST_SHA256; trig 08|2b SOURCE REFERENCE MANIFEST_SHA256",
     )?;
     let mode = args[0].as_str();
     let matrix = args.len() == 3;
@@ -71,25 +73,7 @@ fn run() -> Result<()> {
         return trig::run(loaded, plan, &PathBuf::from(&args[3]), &args[4]);
     }
     if matrix {
-        for context in [512, 1024, 2048, 4096, 8192, 16384, 32768] {
-            let plan = seal.build_plan(context)?;
-            for active in [1, 2, 4, 8] {
-                match ResidentModel::ordinary_cpu_source_preflight(
-                    plan.source().clone(),
-                    plan.plan().clone(),
-                    active,
-                ) {
-                    Ok(inventory) => println!(
-                        "SOURCE_CONTEXT_PREFLIGHT model={} context={context} active={active} admitted=true gpu=false inventory={inventory:?}",
-                        args[1]
-                    ),
-                    Err(error) => println!(
-                        "SOURCE_CONTEXT_PREFLIGHT model={} context={context} active={active} admitted=false gpu=false refusal={error}",
-                        args[1]
-                    ),
-                }
-            }
-        }
+        capacity::inspect(&seal.build_plan(512)?, &args[1])?;
         loaded.verify_after()?;
         println!(
             "SOURCE_CONTEXT_PREFLIGHT_DONE model={} gpu=false source_unchanged=true",
@@ -100,6 +84,7 @@ fn run() -> Result<()> {
     let repository = match args[1].as_str() {
         "08" => "Qwen/Qwen3.5-0.8B",
         "2b" => "Qwen/Qwen3.5-2B",
+        "27b" => "Qwen/Qwen3.8-27B",
         _ => {
             return Err(zerogravity::Error::Unsupported(
                 "context source model".into(),
@@ -109,7 +94,9 @@ fn run() -> Result<()> {
     let capacity: usize = args[4]
         .parse()
         .map_err(|_| zerogravity::Error::Malformed("context integer".into()))?;
-    let case = [1024, 2048, 4096, 8192, 16384]
+    let scope = reference::ReferenceScope::for_repository(repository)?;
+    let case = scope
+        .contexts
         .iter()
         .position(|n| *n == capacity)
         .ok_or_else(|| zerogravity::Error::Unsupported("context reference case".into()))?;

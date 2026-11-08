@@ -3,148 +3,12 @@
 mod progress;
 
 use super::{population::Harness, *};
-use serde_json::{Value, json};
-use std::{
-    collections::BTreeSet,
-    io::{BufRead, BufReader, Write},
-    net::{Shutdown, SocketAddr, TcpStream},
-    sync::Barrier,
-};
+use serde_json::json;
+use std::{collections::BTreeSet, net::TcpStream, sync::Barrier};
 
-fn connect(address: SocketAddr, path: &str, body: &Value, id: &str) -> TcpStream {
-    let body = serde_json::to_vec(body).unwrap();
-    let mut socket = TcpStream::connect(address).unwrap();
-    socket
-        .set_read_timeout(Some(Duration::from_secs(1200)))
-        .unwrap();
-    socket
-        .set_write_timeout(Some(Duration::from_secs(30)))
-        .unwrap();
-    write!(socket, "POST {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nX-Request-ID: {id}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
-    socket.write_all(&body).unwrap();
-    socket
-}
-fn headers(reader: &mut impl BufRead) -> String {
-    let mut result = String::new();
-    loop {
-        let mut line = String::new();
-        assert!(reader.read_line(&mut line).unwrap() > 0);
-        assert!(result.len() + line.len() <= 8192);
-        result.push_str(&line);
-        if line == "\r\n" {
-            return result;
-        }
-    }
-}
-fn chunk(reader: &mut impl BufRead) -> Option<String> {
-    let mut size = String::new();
-    reader.read_line(&mut size).unwrap();
-    let n = usize::from_str_radix(size.trim(), 16).unwrap();
-    assert!(n <= 64 * 1024);
-    let mut body = vec![0; n];
-    reader.read_exact(&mut body).unwrap();
-    let mut end = [0; 2];
-    reader.read_exact(&mut end).unwrap();
-    assert_eq!(end, *b"\r\n");
-    (n != 0).then(|| String::from_utf8(body).unwrap())
-}
-fn verify(document: &Value, expected: &[u32], id: &str, prompt_tokens: usize) -> u64 {
-    assert!(document.get("error").is_none(), "{document}");
-    assert_eq!(document["usage"]["prompt_tokens"], prompt_tokens);
-    assert_eq!(document["usage"]["completion_tokens"], expected.len());
-    assert_eq!(
-        document["usage"]["total_tokens"],
-        prompt_tokens + expected.len()
-    );
-    let metrics = &document["zerogravity_token_metrics"];
-    assert_eq!(metrics["wire_request_id"], id);
-    let tokens = metrics["tokens"].as_array().unwrap();
-    assert_eq!(tokens.len(), expected.len());
-    let first = &tokens[0]["gpu"]["producer_root"];
-    for (i, token) in tokens.iter().enumerate() {
-        assert_eq!(token["token_id"], expected[i]);
-        assert_eq!(token["gpu"]["producer_frontier"], prompt_tokens + i);
-        assert_eq!(
-            token["gpu"]["producer_root"]["session_id"],
-            first["session_id"]
-        );
-        assert_eq!(
-            token["gpu"]["producer_root"]["session_epoch"],
-            first["session_epoch"]
-        );
-        assert!(token["gpu"]["native_cohort"].is_null());
-        if i != 0 {
-            assert_ne!(
-                token["gpu"]["producer_root"]["root"],
-                tokens[i - 1]["gpu"]["producer_root"]["root"]
-            );
-        }
-    }
-    first["session_id"].as_u64().unwrap()
-}
-fn completion(
-    address: SocketAddr,
-    body: Value,
-    expected: &[u32],
-    text: &str,
-    id: &str,
-    disconnect: bool,
-    prompt_tokens: usize,
-) -> Option<(String, u64)> {
-    let streaming = body["stream"] == true;
-    let socket = connect(address, "/v1/completions", &body, id);
-    let mut reader = BufReader::new(socket);
-    let head = headers(&mut reader);
-    assert!(head.starts_with("HTTP/1.1 200"), "{head}");
-    if !streaming {
-        let mut raw = Vec::new();
-        reader.take(64 * 1024 + 1).read_to_end(&mut raw).unwrap();
-        assert!(raw.len() <= 64 * 1024);
-        let doc: Value = serde_json::from_slice(&raw).unwrap();
-        assert_eq!(doc["choices"][0]["text"], text);
-        assert_eq!(doc["choices"][0]["token_ids"], json!(expected));
-        let session = verify(&doc, expected, id, prompt_tokens);
-        return Some((doc["id"].as_str().unwrap().into(), session));
-    }
-    assert!(head.contains("Transfer-Encoding: chunked\r\n"));
-    let mut ids = Vec::new();
-    let mut output = String::new();
-    let mut terminal = None;
-    let mut done = 0;
-    let mut total = 0;
-    while let Some(data) = chunk(&mut reader) {
-        total += data.len();
-        assert!(total <= 64 * 1024);
-        if data.starts_with(':') {
-            continue;
-        }
-        let data = data.strip_prefix("data: ").unwrap().trim_end();
-        if data == "[DONE]" {
-            done += 1;
-            continue;
-        }
-        let doc: Value = serde_json::from_str(data).unwrap();
-        assert!(doc.get("error").is_none(), "{doc}");
-        if let Some(tokens) = doc["choices"][0]["token_ids"].as_array() {
-            ids.extend(tokens.iter().map(|v| v.as_u64().unwrap() as u32));
-            output.push_str(doc["choices"][0]["text"].as_str().unwrap());
-            if disconnect {
-                assert_eq!(ids, expected[..ids.len()]);
-                reader.get_ref().shutdown(Shutdown::Both).unwrap();
-                return None;
-            }
-        }
-        if doc.get("usage").is_some() {
-            assert!(terminal.is_none());
-            let session = verify(&doc, expected, id, prompt_tokens);
-            terminal = Some((doc["id"].as_str().unwrap().into(), session));
-        }
-    }
-    assert_eq!(done, 1);
-    assert_eq!(ids, expected);
-    assert_eq!(output, text);
-    Some(terminal.expect("one terminal usage/root record"))
-}
+#[path = "qwen_source_http.rs"]
+mod protocol;
+use protocol::*;
 
 #[test]
 #[ignore = "approved gfx1151/source, private loopback netns, fresh release process"]
@@ -177,20 +41,7 @@ fn public_source_http_population_json_sse_disconnect_and_replay() {
         .start()
         .unwrap();
     let address = server.local_addr();
-    // HTTP's already-framed chat must not bypass the original raw-text policy.
-    let mut refused = BufReader::new(connect(
-        address,
-        "/v1/chat/completions",
-        &json!({"model":"source", "messages":[{"role":"user","content":"hi"}],"max_tokens":3}),
-        "chat-refusal",
-    ));
-    assert!(headers(&mut refused).starts_with("HTTP/1.1 400"));
-    let mut body = String::new();
-    refused.take(64 * 1024).read_to_string(&mut body).unwrap();
-    assert_eq!(
-        serde_json::from_str::<Value>(&body).unwrap()["error"]["code"],
-        "unsupported_chat"
-    );
+    refuse_chat(address);
     let barrier = Barrier::new(clients);
     let outcomes = std::thread::scope(|scope| {
         let mut handles = Vec::new();
@@ -254,19 +105,82 @@ fn public_source_http_population_json_sse_disconnect_and_replay() {
 }
 
 #[test]
+#[ignore = "approved original reference, gfx1151, private loopback, fresh release process"]
+fn public_source_http_completion_disconnect_and_replay() {
+    if cfg!(debug_assertions) {
+        panic!("release physical target required");
+    }
+    assert_eq!(std::env::var("ZG_PRIVATE_LOOPBACK").as_deref(), Ok("1"));
+    let label = std::env::var("ZG_QWEN_HIP_SDK_MODEL").unwrap();
+    let h = Harness::open(&label, 1, 514, 3, 2);
+    let (prompt, expected) = h.canonical();
+    let text = h.tokenizer.decode(&expected, true).unwrap();
+    let server = h
+        .runtime
+        .server()
+        .bind("127.0.0.1:0".parse().unwrap())
+        .limits(zerogravity::serving::ingress::IngressLimits {
+            connections: 2,
+            body_bytes: 64 * 1024,
+            output_bytes: 64 * 1024,
+        })
+        .enable_per_request_metrics(true)
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let address = server.local_addr();
+    refuse_chat(address);
+    let mut responses = BTreeSet::new();
+    let mut sessions = BTreeSet::new();
+    for (id, alias, streaming, disconnect) in [
+        ("json", "source", false, false),
+        ("sse", "alias", true, false),
+        ("disconnect", "source", true, true),
+    ] {
+        let body = json!({"model":alias,"prompt":prompt,"max_tokens":3,"stream":streaming,"return_token_ids":true});
+        let outcome = completion(address, body, &expected, &text, id, disconnect, 47);
+        if disconnect {
+            assert!(outcome.is_none());
+        } else {
+            let (response, session) = outcome.unwrap();
+            assert!(responses.insert(response));
+            assert!(sessions.insert(session));
+        }
+    }
+    assert_eq!(responses.len(), 2);
+    server.shutdown().unwrap();
+    assert!(TcpStream::connect(address).is_err());
+    assert!(!h.runtime.status().closed);
+    let replay = complete(
+        h.runtime.request_text(request("alias", &prompt)).unwrap(),
+        47,
+        h.tokenizer.as_ref(),
+    );
+    assert_eq!(replay.ids, expected);
+    assert!(sessions.insert(replay.roots[0].producer_root.unwrap().session_id));
+    let admission = h.admission();
+    assert_eq!(admission["failed_gpu_quanta"], 0);
+    assert_eq!(admission["queued_requests"], 0);
+    assert_eq!(admission["gpu_fused_batches"], 0);
+    println!(
+        "SOURCE_HTTP_SEQUENTIAL_OUTCOME model={label} concurrent_clients=1 active_limit=1 completed_readers=2 disconnect_requested=1 json=true sse=true original_ids=true sdk_replay=true native_cohorts=false full_float_comparisons=0 admission={admission}"
+    );
+    h.retire();
+    println!("SOURCE_HTTP_SEQUENTIAL_PASS model={label}");
+}
+
+#[test]
 #[ignore = "approved populated original, gfx1151, private loopback, fresh release process"]
 fn public_source_populated_http_json_sse_disconnect_and_replay() {
     let label = std::env::var("ZG_QWEN_HIP_SDK_MODEL").unwrap();
     let capacity: usize = std::env::var("ZG_QWEN_CONTEXT").unwrap().parse().unwrap();
-    let case = [1024, 2048, 4096, 8192, 16384]
-        .iter()
-        .position(|n| *n == capacity)
-        .unwrap();
+    let reference = super::contexts::ContextReference::open(&label);
+    let case = reference.case(capacity);
     let mode = std::env::var("ZG_QWEN_HIP_POPULATION").unwrap();
     assert!(matches!(mode.as_str(), "complete" | "disconnect"));
     assert_eq!(std::env::var("ZG_PRIVATE_LOOPBACK").as_deref(), Ok("1"));
     let h = Harness::open(&label, 2, capacity, 3, 3);
-    let reference = super::contexts::ContextReference::open(&label);
     let (prompt, expected) = reference.trajectory(case, capacity, h.tokenizer.as_ref());
     let expected_text = h.tokenizer.decode(&expected, true).unwrap();
     let server = h

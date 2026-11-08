@@ -28,15 +28,15 @@ struct PackedSourceOwner {
     members: Arc<[SourceTensor]>,
 }
 
-/// One exact packed [sum(output), input] BF16 matrix, retaining the authenticated
-/// source owner and every original member binding.
-pub(crate) struct PackedSourceMatrices {
+/// Ordered authenticated matrix members, with optional packed resident storage.
+/// A streamed binding retains source identity, not a whole-matrix device lease.
+pub(crate) struct BoundSourceMatrices {
     owner: Arc<PackedSourceOwner>,
-    lease: ResidentLease,
+    lease: Option<ResidentLease>,
     rows: usize,
     columns: usize,
 }
-impl PackedSourceMatrices {
+impl BoundSourceMatrices {
     pub(crate) fn source_identity(&self) -> SourceIdentity {
         self.owner.source.source_identity()
     }
@@ -46,9 +46,13 @@ impl PackedSourceMatrices {
     pub(crate) fn columns(&self) -> usize {
         self.columns
     }
-    pub(crate) fn lease(&self) -> &ResidentLease {
-        &self.lease
+    pub(crate) fn lease(&self) -> Option<&ResidentLease> {
+        self.lease.as_ref()
     }
+    pub(crate) fn matrices(&self) -> &[VerifiedMatrix] {
+        &self.owner.matrices
+    }
+
     pub(crate) fn require_members(&self, members: &[SourceTensor]) -> Result<()> {
         if members != self.owner.members.as_ref() || members.len() != self.owner.matrices.len() {
             return Err(Error::State(
@@ -90,13 +94,14 @@ impl ResidentInitialization<'_> {
     /// Pack one to three source-declared full matrices in order into one resident
     /// allocation. Each bounded source window is copied then physically synced
     /// before the next window; the full source owner remains a completion owner.
-    pub(crate) async fn upload_ordinary_matrices(
+    pub(crate) async fn prepare_ordinary_matrices(
         &mut self,
         service: &Arc<ResidentService>,
         source: VerifiedTensorSource,
         members: &[SourceTensor],
+        resident: bool,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<PackedSourceMatrices>> {
+    ) -> Result<Arc<BoundSourceMatrices>> {
         self.require_service(service)?;
         not_cancelled(cancelled)?;
         if members.is_empty()
@@ -161,21 +166,29 @@ impl ResidentInitialization<'_> {
         }
         let columns = columns
             .ok_or_else(|| Error::State("ordinary CUDA source matrix columns absent".into()))?;
-        if total_bytes as u64 > service.client().properties().memory.max_page_size {
-            return Err(Error::Unsupported(
-                "ordinary CUDA packed source matrix exceeds device allocation page".into(),
-            ));
-        }
-
-        let lease = self.allocate_empty(total_bytes, BufferRole::ImmutableWeights)?;
         let owner = Arc::new(PackedSourceOwner {
             source: source.clone(),
             matrices: matrices.clone().into(),
             members: members.to_vec().into(),
         });
-        // Source ownership precedes the first H2D. Unknown initialization keeps
-        // both the destination lease and source owner behind the service fence.
         self.retain_completion_owner(owner.clone())?;
+        if !resident {
+            for matrix in &matrices {
+                super::source_page::PageGeometry::new(matrix.rows(), matrix.columns())?;
+            }
+            return Ok(Arc::new(BoundSourceMatrices {
+                owner,
+                lease: None,
+                rows,
+                columns,
+            }));
+        }
+        if total_bytes as u64 > service.client().properties().memory.max_page_size {
+            return Err(Error::Unsupported(
+                "packed source matrix exceeds device allocation page".into(),
+            ));
+        }
+        let lease = self.allocate_empty(total_bytes, BufferRole::ImmutableWeights)?;
 
         let mut destination_offset = 0usize;
         for matrix in &matrices {
@@ -260,9 +273,9 @@ impl ResidentInitialization<'_> {
         }
         self.uploaded.insert(lease.id());
 
-        Ok(Arc::new(PackedSourceMatrices {
+        Ok(Arc::new(BoundSourceMatrices {
             owner,
-            lease,
+            lease: Some(lease),
             rows,
             columns,
         }))
@@ -274,8 +287,8 @@ impl ResidentInitialization<'_> {
         source: VerifiedTensorSource,
         members: &[SourceTensor],
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<PackedSourceMatrices>> {
-        self.upload_ordinary_matrices(service, source, members, cancelled)
+    ) -> Result<Arc<BoundSourceMatrices>> {
+        self.prepare_ordinary_matrices(service, source, members, true, cancelled)
             .await
     }
 }

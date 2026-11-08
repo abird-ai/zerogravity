@@ -27,6 +27,19 @@ fn output_index(group: usize, requests: usize, #[comptime] rows: usize) -> usize
     (group % requests) * rows + group / requests
 }
 
+#[cube]
+fn rounded_index(
+    output: usize,
+    #[comptime] rows: usize,
+    #[comptime] output_row_stride: usize,
+) -> usize {
+    if comptime!(rows == output_row_stride) {
+        output
+    } else {
+        (output / rows) * output_row_stride + output % rows
+    }
+}
+
 /// One [request,original output row] per64-thread workgroup. The lane index
 /// is exactly CPU register*8+lane; no subgroup reduction or TensorCore math.
 #[cube(launch_unchecked)]
@@ -39,8 +52,13 @@ pub(crate) fn project_cpu_bf16(
     status: &mut [u32],
     #[comptime] rows: usize,
     #[comptime] columns: usize,
+    #[comptime] output_row_stride: usize,
 ) {
-    let output = output_index(usize::cast_from(CUBE_POS_X), rounded.len() / rows, rows);
+    let output = output_index(
+        usize::cast_from(CUBE_POS_X),
+        accumulation.len() / rows,
+        rows,
+    );
     let request = output / rows;
     let row = output % rows;
     let lane = usize::cast_from(UNIT_POS);
@@ -116,7 +134,7 @@ pub(crate) fn project_cpu_bf16(
             combined |= 16u32;
         }
         accumulation[output] = result;
-        rounded[output] = f32::reinterpret(rounded_bits);
+        rounded[rounded_index(output, rows, output_row_stride)] = f32::reinterpret(rounded_bits);
         status[output] = combined;
     }
 }

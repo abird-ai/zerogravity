@@ -23,6 +23,7 @@ use std::mem::size_of;
 
 use regex_automata::meta;
 
+use super::source::{self, Source};
 use crate::{Error, Result};
 use regex_automata::util::primitives::{PatternID, StateID};
 use zerogravity_artifacts::json_allocation::census_scratch_peak;
@@ -30,15 +31,17 @@ use zerogravity_artifacts::json_allocation::census_scratch_peak;
 /// Pinned approved source facts. `F` is the exact `tokenizer.json` length; the
 /// decoded string masses below are bounded by it because a JSON string value
 /// cannot be longer than the document that encodes it.
-pub const APPROVED_TOKENIZER_LEN: u64 = 12_807_982;
+#[cfg(test)]
+const APPROVED_TOKENIZER_LEN: u64 = source::BASE.bytes;
 pub const VOCAB_ENTRIES: u64 = 248_044;
 pub const MERGE_ENTRIES: u64 = 247_587;
-pub const ADDED_TOKENS: u64 = 26;
-/// `AddPrefix` of the BPE model in the approved source is `""` and the
-/// added-token content is at most 20 bytes (approved metadata); longest
-/// vocabulary entry is 256 bytes.
+#[cfg(test)]
+const ADDED_TOKENS: u64 = source::BASE.added_tokens;
+/// Shared BPE vocabulary: empty affixes, longest entry 256 bytes.
+/// Added-token count/width and document extent come from the exact source.
 pub const MAX_VOCAB_ENTRY_BYTES: u64 = 256;
-pub const MAX_ADDED_ENTRY_BYTES: u64 = 20;
+#[cfg(test)]
+const MAX_ADDED_ENTRY_BYTES: u64 = source::BASE.max_added_bytes;
 /// `BPE::default_cache` capacity (`models/bpe/model.rs`: `with_capacity(10_000)`).
 pub const BPE_DEFAULT_CACHE: u64 = 10_000;
 /// `BPE` merge scratch string (`String::with_capacity(512)`) and the
@@ -938,9 +941,9 @@ fn aho_nfa_build(patterns: u64, pattern_bytes: u64) -> Result<u64> {
 /// One normalized and one non-normalized `AhoCorasick`; both use
 /// `MatchKind::LeftmostLongest`, which rejects overlapping/stream searches, so
 /// no overlapping-match vectors are live. Retained storage is two DFAs.
-fn split_automata_retained() -> Result<u64> {
-    let patterns = ADDED_TOKENS;
-    let bytes = cmul(patterns, MAX_ADDED_ENTRY_BYTES)?;
+fn split_automata_retained(source: &Source) -> Result<u64> {
+    let patterns = source.added_tokens;
+    let bytes = cmul(patterns, source.max_added_bytes)?;
     let first = aho_dfa_retained(patterns, bytes)?;
     let second = aho_dfa_retained(0, 0)?;
     cadd(cadd(first, second)?, checked_regrow(4, patterns)?)
@@ -949,9 +952,9 @@ fn split_automata_retained() -> Result<u64> {
 /// Constructor peak adds the builder NFA, a second complete DFA and the
 /// non-normalized empty automaton while the earlier refresh may still own two
 /// tries; the retained row is charged in addition by the retained ledger.
-fn split_automata_peak() -> Result<u64> {
-    let patterns = ADDED_TOKENS;
-    let bytes = cmul(patterns, MAX_ADDED_ENTRY_BYTES)?;
+fn split_automata_peak(source: &Source) -> Result<u64> {
+    let patterns = source.added_tokens;
+    let bytes = cmul(patterns, source.max_added_bytes)?;
     let first = aho_dfa_retained(patterns, bytes)?;
     let empty = aho_dfa_retained(0, 0)?;
     let build = aho_nfa_build(patterns, bytes)?;
@@ -971,20 +974,20 @@ fn split_automata_peak() -> Result<u64> {
 /// `String` mass each), merge table, added-token vocabulary (maps, ordered
 /// token vectors, special-token set, split automata) and the two empty affix
 /// strings. The default merge cache is shrunk to zero capacity before use.
-fn bpe_retained() -> Result<u64> {
+fn bpe_retained(source: &Source) -> Result<u64> {
     let vocab_forward = checked_hash_of(STRING, U32, VOCAB_ENTRIES)?;
     let vocab_reverse = checked_hash_of(U32, STRING, VOCAB_ENTRIES)?;
     let merge_key = cmul(2, U32)?;
     let merges = checked_hash_of(merge_key, merge_key, MERGE_ENTRIES)?;
-    let strings = cmul(2, APPROVED_TOKENIZER_LEN)?;
+    let strings = cmul(2, source.bytes)?;
     let added = csum(&[
-        checked_hash_of(STRING, U32, ADDED_TOKENS)?,
-        checked_hash_of(U32, ADDED_TOKEN, ADDED_TOKENS)?,
-        checked_regrow(ADDED_TOKEN, ADDED_TOKENS)?,
-        checked_regrow(ADDED_TOKEN, ADDED_TOKENS)?,
-        checked_table(STRING, ADDED_TOKENS)?,
-        cmul(exact_bytes(MAX_ADDED_ENTRY_BYTES, ADDED_TOKENS)?, 3)?,
-        split_automata_retained()?,
+        checked_hash_of(STRING, U32, source.added_tokens)?,
+        checked_hash_of(U32, ADDED_TOKEN, source.added_tokens)?,
+        checked_regrow(ADDED_TOKEN, source.added_tokens)?,
+        checked_regrow(ADDED_TOKEN, source.added_tokens)?,
+        checked_table(STRING, source.added_tokens)?,
+        cmul(exact_bytes(source.max_added_bytes, source.added_tokens)?, 3)?,
+        split_automata_retained(source)?,
     ])?;
     csum(&[
         vocab_forward,
@@ -1001,15 +1004,12 @@ fn bpe_retained() -> Result<u64> {
 /// pair), merges as a `Vec<Content>` whose two-element child sequences are
 /// independently allocated, and one `Content` per scalar. This is a source
 /// fallback only; the accepted constructor charges the censused tree `C`.
-fn content_tree() -> Result<u64> {
-    let vocab_pairs = cadd(
-        checked_regrow(CONTENT_PAIR, VOCAB_ENTRIES)?,
-        APPROVED_TOKENIZER_LEN,
-    )?;
+fn content_tree(source: &Source) -> Result<u64> {
+    let vocab_pairs = cadd(checked_regrow(CONTENT_PAIR, VOCAB_ENTRIES)?, source.bytes)?;
     let merge_outer = checked_regrow(CONTENT, MERGE_ENTRIES)?;
     let merge_children = fragment_bytes(CONTENT, cmul(2, MERGE_ENTRIES)?, MERGE_ENTRIES)?;
-    let merges = csum(&[merge_outer, merge_children, APPROVED_TOKENIZER_LEN])?;
-    let added = checked_regrow(CONTENT, cmul(ADDED_TOKENS, 8)?)?;
+    let merges = csum(&[merge_outer, merge_children, source.bytes])?;
+    let added = checked_regrow(CONTENT, cmul(source.added_tokens, 8)?)?;
     csum(&[vocab_pairs, merges, added])
 }
 
@@ -1017,7 +1017,7 @@ fn content_tree() -> Result<u64> {
 /// while the BPE `MergeType` untagged buffer and the typed merges are built.
 /// `members` counts the vocabulary and small model fields; `arrays` is the
 /// merges outer array plus one minimum-capacity child per merge.
-fn value_tree() -> Result<u64> {
+fn value_tree(source: &Source) -> Result<u64> {
     let members = cadd(VOCAB_ENTRIES, 8)?;
     let objects = 2;
     let nodes = cadd(members, objects)?;
@@ -1027,7 +1027,7 @@ fn value_tree() -> Result<u64> {
     )?;
     let nodes_bytes = cmul(nodes, BTREE_NODE)?;
     let arrays_bytes = cmul(arrays, 2 * VALUE)?;
-    csum(&[nodes_bytes, arrays_bytes, APPROVED_TOKENIZER_LEN])
+    csum(&[nodes_bytes, arrays_bytes, source.bytes])
 }
 
 /// `(B,J,F)`: extracted byte length, syntax-tree node capacity and fancy HIR
@@ -1186,7 +1186,7 @@ fn compiler_scratch(literal_bytes: u64, delegates: &[Delegate], instructions: u6
 /// Non-Value constructor rows (vocabularies, typed and legacy merges, cache,
 /// added tokens, the split automata construction peak and one compiler
 /// envelope). The Value/Content trees are charged separately.
-fn bpe_constructor_static(plan: &TokenizerPlan) -> Result<u64> {
+fn bpe_constructor_static(plan: &TokenizerPlan, source: &Source) -> Result<u64> {
     let vocab_forward = checked_hash_of(STRING, U32, VOCAB_ENTRIES)?;
     let vocab_reverse = checked_hash_of(U32, STRING, VOCAB_ENTRIES)?;
     let merge_key = cmul(2, U32)?;
@@ -1197,13 +1197,13 @@ fn bpe_constructor_static(plan: &TokenizerPlan) -> Result<u64> {
     let reverse_merges = checked_hash_of(merge_key, merge_key, MERGE_ENTRIES)?;
     // Both `(String,String)` masses plus the legacy copy that may still be
     // alive while the typed merges are built.
-    let owned_strings = cmul(4, APPROVED_TOKENIZER_LEN)?;
+    let owned_strings = cmul(4, source.bytes)?;
     let added = csum(&[
-        checked_hash_of(STRING, U32, ADDED_TOKENS)?,
-        checked_hash_of(U32, ADDED_TOKEN, ADDED_TOKENS)?,
-        cmul(exact_bytes(MAX_ADDED_ENTRY_BYTES, ADDED_TOKENS)?, 3)?,
-        split_automata_retained()?,
-        split_automata_peak()?,
+        checked_hash_of(STRING, U32, source.added_tokens)?,
+        checked_hash_of(U32, ADDED_TOKEN, source.added_tokens)?,
+        cmul(exact_bytes(source.max_added_bytes, source.added_tokens)?, 3)?,
+        split_automata_retained(source)?,
+        split_automata_peak(source)?,
     ])?;
     csum(&[
         vocab_forward,
@@ -1231,9 +1231,9 @@ pub fn constructor_tree_bytes(census_tree: u64, source_len: u64) -> Result<u64> 
 
 /// Source fallback for an API without the inspected bytes. The real
 /// `constructor_of_arbiter` path uses the censused `C`, never this envelope.
-fn bpe_constructor_value() -> Result<u64> {
-    let c = value_tree()?.max(content_tree()?);
-    constructor_tree_bytes(c, APPROVED_TOKENIZER_LEN)
+fn bpe_constructor_value(source: &Source) -> Result<u64> {
+    let c = value_tree(source)?.max(content_tree(source)?);
+    constructor_tree_bytes(c, source.bytes)
 }
 
 // ---------------------------------------------------------------------------
@@ -1451,6 +1451,10 @@ const MAX_POOL_STACKS: usize = 1 << 12;
 
 /// `P` from the pinned meta configuration; `1` if the crate reports zero.
 pub fn plan(pool_stacks: usize) -> Result<TokenizerPlan> {
+    plan_for_source(pool_stacks, &source::BASE)
+}
+
+pub(super) fn plan_for_source(pool_stacks: usize, source: &Source) -> Result<TokenizerPlan> {
     if pool_stacks > MAX_POOL_STACKS {
         return Err(Error::Limit(format!(
             "tokenizer pool capacity {pool_stacks} exceeds {MAX_POOL_STACKS}"
@@ -1474,7 +1478,7 @@ pub fn plan(pool_stacks: usize) -> Result<TokenizerPlan> {
     // profile: program plus idle pool headers, one owner.
     let byte_level_retained =
         byte_level_program.saturating_add(literal_idle_pools(&BYTE_LEVEL_DELEGATES, stacks));
-    let bpe_retained = bpe_retained()?;
+    let bpe_retained = bpe_retained(source)?;
     // Bootstrap: the process-global ByteLevel compiler scratch, its permanent
     // program, idle pool headers and the two 256-entry alphabet maps. The
     // compiler scratch is released before the permanent owner is published.
@@ -1508,8 +1512,8 @@ pub fn plan(pool_stacks: usize) -> Result<TokenizerPlan> {
         split_program_bytes: split_program,
         byte_level_program_bytes: byte_level_program,
     };
-    plan.bpe_constructor_static_bytes = bpe_constructor_static(&plan)?;
-    plan.bpe_constructor_value_bytes = bpe_constructor_value()?;
+    plan.bpe_constructor_static_bytes = bpe_constructor_static(&plan, source)?;
+    plan.bpe_constructor_value_bytes = bpe_constructor_value(source)?;
     plan.bpe_constructor_peak_bytes = cadd(
         plan.bpe_constructor_static_bytes,
         plan.bpe_constructor_value_bytes,
@@ -1844,7 +1848,8 @@ mod tests {
         assert!(aho_dfa_retained(ADDED_TOKENS, pattern_bytes).unwrap() > 0);
         assert!(aho_dfa_retained(0, 0).unwrap() > 0);
         assert!(
-            split_automata_peak().unwrap() > split_automata_retained().unwrap(),
+            split_automata_peak(&source::BASE).unwrap()
+                > split_automata_retained(&source::BASE).unwrap(),
             "constructor peak includes retained automata plus build rows"
         );
     }

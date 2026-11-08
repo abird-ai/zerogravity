@@ -897,13 +897,13 @@ impl SourceOperator {
                 }
                 Self::product(geometry.key_heads, geometry.key_width)?;
                 Self::product(geometry.value_heads, geometry.value_width)?;
-                self.parameter(
-                    0,
-                    &[StoredTensorEncoding::Scalar(
-                        crate::encoding::ScalarDType::F32,
-                    )],
-                    &[geometry.value_heads],
-                )?;
+                // Preserve actual source storage; backends validate or convert
+                // each parameter to their executable ABI without changing this descriptor.
+                let scalar_kinds = &[
+                    StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
+                    StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
+                ];
+                self.parameter(0, scalar_kinds, &[geometry.value_heads])?;
                 self.parameter(
                     1,
                     &[StoredTensorEncoding::Scalar(
@@ -911,13 +911,7 @@ impl SourceOperator {
                     )],
                     &[geometry.value_heads],
                 )?;
-                self.parameter(
-                    2,
-                    &[StoredTensorEncoding::Scalar(
-                        crate::encoding::ScalarDType::F32,
-                    )],
-                    &[geometry.value_width],
-                )?;
+                self.parameter(2, scalar_kinds, &[geometry.value_width])?;
                 (0, 3)
             }
             QkRmsRotaryGated(geometry) => {

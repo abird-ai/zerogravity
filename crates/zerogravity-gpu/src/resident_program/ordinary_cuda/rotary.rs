@@ -16,18 +16,12 @@ use zerogravity_core::{
 const WIDTH: usize = 256;
 const ROTARY: usize = 64;
 const HALF: usize = ROTARY / 2;
-const QUERY_HEADS: usize = 8;
-const KV_HEADS: usize = 2;
-const QUERY_ELEMENTS: usize = QUERY_HEADS * WIDTH;
-const KEY_ELEMENTS: usize = KV_HEADS * WIDTH;
-const QUERY_F32_BYTES: usize = QUERY_ELEMENTS * 4;
-const KEY_F32_BYTES: usize = KEY_ELEMENTS * 4;
 const ANGLE_BYTES: usize = HALF * 4;
 const TRIG_BYTES: usize = HALF * 2 * 4;
 const TABLE_BYTES: usize = crate::source_trig::TRIG_TABLES.len() * 8;
 
-pub(super) const fn scratch_bytes() -> usize {
-    QUERY_F32_BYTES + KEY_F32_BYTES + ANGLE_BYTES + TRIG_BYTES
+pub(super) const fn scratch_bytes(query_heads: usize, kv_heads: usize) -> usize {
+    (query_heads + kv_heads) * WIDTH * 4 + ANGLE_BYTES + TRIG_BYTES
 }
 pub(super) const fn immutable_bytes() -> usize {
     TABLE_BYTES
@@ -47,6 +41,8 @@ fn arg(handle: &cubecl::server::Handle, elements: usize) -> BufferArg {
 
 pub(super) struct OrdinaryCudaRotary {
     service: Arc<ResidentService>,
+    query_heads: usize,
+    kv_heads: usize,
     query: ResidentLease,
     key: ResidentLease,
     angles: ResidentLease,
@@ -57,8 +53,11 @@ impl OrdinaryCudaRotary {
     pub(super) fn prepare(
         service: Arc<ResidentService>,
         init: &mut ResidentInitialization<'_>,
+        query_heads: usize,
+        kv_heads: usize,
     ) -> Result<Arc<Self>> {
         init.require_service(&service)?;
+        require_heads(query_heads, kv_heads)?;
         let tables = crate::source_trig::TRIG_TABLES
             .iter()
             .flat_map(|value| value.to_ne_bytes())
@@ -70,8 +69,10 @@ impl OrdinaryCudaRotary {
         }
         let owner = Arc::new(Self {
             service,
-            query: init.allocate_empty(QUERY_F32_BYTES, BufferRole::Scratch)?,
-            key: init.allocate_empty(KEY_F32_BYTES, BufferRole::Scratch)?,
+            query_heads,
+            kv_heads,
+            query: init.allocate_empty(query_heads * WIDTH * 4, BufferRole::Scratch)?,
+            key: init.allocate_empty(kv_heads * WIDTH * 4, BufferRole::Scratch)?,
             angles: init.allocate_empty(ANGLE_BYTES, BufferRole::Scratch)?,
             trig: init.allocate_empty(TRIG_BYTES, BufferRole::Scratch)?,
             tables: init.upload_bytes(&tables, BufferRole::ImmutableWeights)?,
@@ -114,6 +115,8 @@ impl OrdinaryCudaRotary {
             &status.handle(),
             base,
             rows,
+            self.query_heads,
+            self.kv_heads,
         )
     }
 }
@@ -132,20 +135,25 @@ pub(crate) fn enqueue_source_exact_raw(
     status: &cubecl::server::Handle,
     base: usize,
     rows: usize,
+    query_heads: usize,
+    kv_heads: usize,
 ) -> Result<usize> {
+    require_heads(query_heads, kv_heads)?;
+    let query_elements = query_heads * WIDTH;
+    let key_elements = kv_heads * WIDTH;
     let service = client.service_id();
     let query_bytes = rows
-        .checked_mul(QUERY_ELEMENTS * 2)
+        .checked_mul(query_elements * 2)
         .ok_or_else(|| Error::Limit("ordinary rotary query batch bytes".into()))?;
     let key_bytes = rows
-        .checked_mul(KEY_ELEMENTS * 2)
+        .checked_mul(key_elements * 2)
         .ok_or_else(|| Error::Limit("ordinary rotary key batch bytes".into()))?;
     let exact = [
         (query, query_bytes),
         (key, key_bytes),
         (inverse_frequency, HALF * 4),
-        (query_f32, QUERY_F32_BYTES),
-        (key_f32, KEY_F32_BYTES),
+        (query_f32, query_heads * WIDTH * 4),
+        (key_f32, kv_heads * WIDTH * 4),
         (angles, ANGLE_BYTES),
         (trig, TRIG_BYTES),
         (tables, TABLE_BYTES),
@@ -170,19 +178,19 @@ pub(crate) fn enqueue_source_exact_raw(
             .ok_or_else(|| Error::Limit("ordinary rotary position".into()))?;
         let query_row = exact_handle_view(
             query,
-            row * QUERY_ELEMENTS * 2,
-            QUERY_ELEMENTS * 2,
+            row * query_elements * 2,
+            query_elements * 2,
             "ordinary rotary query row",
         )?;
         let key_row = exact_handle_view(
             key,
-            row * KEY_ELEMENTS * 2,
-            KEY_ELEMENTS * 2,
+            row * key_elements * 2,
+            key_elements * 2,
             "ordinary rotary key row",
         )?;
 
-        launches += attention::widen(client, &query_row, query_f32, status, QUERY_ELEMENTS)?;
-        launches += attention::widen(client, &key_row, key_f32, status, KEY_ELEMENTS)?;
+        launches += attention::widen(client, &query_row, query_f32, status, query_elements)?;
+        launches += attention::widen(client, &key_row, key_f32, status, key_elements)?;
 
         // SAFETY: all raw handles were validated to exact service/extent above.
         unsafe {
@@ -206,34 +214,43 @@ pub(crate) fn enqueue_source_exact_raw(
             );
             crate::source_rotary::kernels::apply_fp32_fma::launch_unchecked(
                 client,
-                grid(QUERY_HEADS * HALF),
+                grid(query_heads * HALF),
                 threads(),
-                arg(query_f32, QUERY_ELEMENTS),
+                arg(query_f32, query_elements),
                 arg(trig, HALF * 2),
-                arg(query_f32, QUERY_ELEMENTS),
+                arg(query_f32, query_elements),
                 arg(status, 1),
                 WIDTH,
-                QUERY_ELEMENTS,
+                query_elements,
                 ROTARY,
             );
             crate::source_rotary::kernels::apply_fp32_fma::launch_unchecked(
                 client,
-                grid(KV_HEADS * HALF),
+                grid(kv_heads * HALF),
                 threads(),
-                arg(key_f32, KEY_ELEMENTS),
+                arg(key_f32, key_elements),
                 arg(trig, HALF * 2),
-                arg(key_f32, KEY_ELEMENTS),
+                arg(key_f32, key_elements),
                 arg(status, 1),
                 WIDTH,
-                KEY_ELEMENTS,
+                key_elements,
                 ROTARY,
             );
         }
         launches += 4;
-        launches += attention::pack(client, query_f32, &query_row, status, QUERY_ELEMENTS)?;
-        launches += attention::pack(client, key_f32, &key_row, status, KEY_ELEMENTS)?;
+        launches += attention::pack(client, query_f32, &query_row, status, query_elements)?;
+        launches += attention::pack(client, key_f32, &key_row, status, key_elements)?;
     }
     Ok(launches)
+}
+
+fn require_heads(query: usize, kv: usize) -> Result<()> {
+    if !(1..=64).contains(&query) || !(1..=64).contains(&kv) || !query.is_multiple_of(kv) {
+        return Err(Error::Unsupported(
+            "source CUDA rotary grouped heads".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn exact_handle_view(
@@ -260,7 +277,8 @@ mod tests {
 
     #[test]
     fn source_exact_rotary_inventory_is_constant_and_small() {
-        assert_eq!(scratch_bytes(), 10_624);
+        assert_eq!(scratch_bytes(8, 2), 10_624);
+        assert_eq!(scratch_bytes(24, 4), 29_056);
         assert_eq!(immutable_bytes(), 280);
     }
 }

@@ -1,6 +1,8 @@
 //! Source-bound cold registration through the runtime's one engine/catalog.
 #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
 pub use crate::builtins::text::QwenHipProfile;
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+pub use crate::builtins::text::QwenSourceProfile;
 pub use crate::model::DeclaredModel;
 pub use zerogravity_core::model::{ModelAssembly, ModelDefinition, ModelProgram, ProgramRequest};
 pub use zerogravity_core::provider::{PreparedExecutable, RegionExecutionProvider};
@@ -13,6 +15,18 @@ pub use zerogravity_engine::{
 /// One complete cold route set. This is not live model replacement or residency.
 /// Aliases share the original source; an already configured runtime refuses.
 pub enum ModelLoadRequest {
+    /// Canonical original source; shared CUDA worker and bounded matrix placement.
+    #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+    QwenCuda {
+        aliases: Vec<String>,
+        cache: crate::cache::CacheOptions,
+        snapshot: String,
+        profile: QwenSourceProfile,
+        /// Provider capacity, not total device memory.
+        provider_bytes: usize,
+        /// Physical device admission, including the backend's context owners.
+        device_bytes: u64,
+    },
     /// Canonical original HF source through the shared worker; cold HIP only.
     #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
     QwenHip {

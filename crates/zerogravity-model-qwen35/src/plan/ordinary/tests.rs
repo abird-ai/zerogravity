@@ -3,12 +3,16 @@ use zerogravity_core::encoding::StoredTensorEncoding;
 
 pub(super) fn matrix(
     source: SourceIdentity,
-    profile: QwenSourceProfile,
+    profile: impl Into<OrdinaryQwenGeometry>,
     role: QwenMatrixRole,
 ) -> SourceTensor {
+    let profile = profile.into();
     let h = profile.hidden_size();
     let m = profile.intermediate_size();
     let (name, rows, columns) = match role {
+        QwenMatrixRole::Output if !profile.tied_embeddings() => {
+            ("lm_head.weight".into(), 248_320, h)
+        }
         QwenMatrixRole::Embedding | QwenMatrixRole::Output => (
             "model.language_model.embed_tokens.weight".into(),
             248_320,
@@ -17,15 +21,19 @@ pub(super) fn matrix(
         QwenMatrixRole::FfnGate(i) => (format!("layer.{i}.gate"), m, h),
         QwenMatrixRole::FfnUp(i) => (format!("layer.{i}.up"), m, h),
         QwenMatrixRole::FfnDown(i) => (format!("layer.{i}.down"), h, m),
-        QwenMatrixRole::GdnQkv(i) => (format!("layer.{i}.qkv"), 6144, h),
-        QwenMatrixRole::GdnGate(i) => (format!("layer.{i}.z"), 2048, h),
-        QwenMatrixRole::GdnAlpha(i) => (format!("layer.{i}.a"), 16, h),
-        QwenMatrixRole::GdnBeta(i) => (format!("layer.{i}.b"), 16, h),
-        QwenMatrixRole::GdnOutput(i) => (format!("layer.{i}.gdn_out"), h, 2048),
-        QwenMatrixRole::Query(i) => (format!("layer.{i}.q"), 4096, h),
-        QwenMatrixRole::Key(i) => (format!("layer.{i}.k"), 512, h),
-        QwenMatrixRole::Value(i) => (format!("layer.{i}.v"), 512, h),
-        QwenMatrixRole::AttentionOutput(i) => (format!("layer.{i}.attn_out"), h, 2048),
+        QwenMatrixRole::GdnQkv(i) => (format!("layer.{i}.qkv"), profile.conv_channels(), h),
+        QwenMatrixRole::GdnGate(i) => (format!("layer.{i}.z"), profile.recurrent_width(), h),
+        QwenMatrixRole::GdnAlpha(i) => (format!("layer.{i}.a"), profile.value_heads(), h),
+        QwenMatrixRole::GdnBeta(i) => (format!("layer.{i}.b"), profile.value_heads(), h),
+        QwenMatrixRole::GdnOutput(i) => {
+            (format!("layer.{i}.gdn_out"), h, profile.recurrent_width())
+        }
+        QwenMatrixRole::Query(i) => (format!("layer.{i}.q"), 2 * profile.query_width(), h),
+        QwenMatrixRole::Key(i) => (format!("layer.{i}.k"), profile.kv_width(), h),
+        QwenMatrixRole::Value(i) => (format!("layer.{i}.v"), profile.kv_width(), h),
+        QwenMatrixRole::AttentionOutput(i) => {
+            (format!("layer.{i}.attn_out"), h, profile.query_width())
+        }
     };
     SourceTensor {
         source,
@@ -39,9 +47,10 @@ pub(super) fn matrix(
 
 pub(super) fn parameter(
     source: SourceIdentity,
-    profile: QwenSourceProfile,
+    profile: impl Into<OrdinaryQwenGeometry>,
     role: QwenParameterRole,
 ) -> SourceParameter {
+    let profile = profile.into();
     let h = profile.hidden_size();
     let (name, kind, shape) = match role {
         QwenParameterRole::FinalNorm => (
@@ -62,7 +71,7 @@ pub(super) fn parameter(
         QwenParameterRole::GdnConvolution(i) => (
             format!("layer.{i}.conv"),
             StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
-            vec![6144, 1, 4],
+            vec![profile.conv_channels() as u64, 1, 4],
         ),
         QwenParameterRole::GdnNorm(i) => (
             format!("layer.{i}.gdn_norm"),
@@ -72,12 +81,12 @@ pub(super) fn parameter(
         QwenParameterRole::GdnA(i) => (
             format!("layer.{i}.A_log"),
             StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
-            vec![16],
+            vec![profile.value_heads() as u64],
         ),
         QwenParameterRole::GdnDt(i) => (
             format!("layer.{i}.dt"),
             StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
-            vec![16],
+            vec![profile.value_heads() as u64],
         ),
         QwenParameterRole::QueryNorm(i) => (
             format!("layer.{i}.q_norm"),
@@ -151,7 +160,7 @@ fn one_static_plan_serves_runtime_lengths_ids_and_emit_policy_for_both_profiles(
             let plan = plan(source, profile, capacity).unwrap();
             assert_eq!(plan.plan.prefix_capacity(), capacity);
             assert_eq!(ORDINARY_CUDA_MAX_CHUNK_ROWS, 64);
-            let expected = domains()
+            let expected = domains(profile.into())
                 .unwrap()
                 .into_iter()
                 .collect::<std::collections::BTreeSet<_>>();
@@ -461,4 +470,120 @@ fn cpu_source_cached_one_cannot_be_relabelled_as_chunk_prefill() {
         )
         .is_ok()
     );
+}
+
+#[test]
+fn source_geometry_extends_the_same_plan_without_extending_captured_cuda() {
+    let profile = geometry::large_fixture();
+    assert!(QwenSourceProfile::try_from(profile).is_err());
+    for small in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+        assert_eq!(
+            QwenSourceProfile::try_from(OrdinaryQwenGeometry::from(small)).unwrap(),
+            small
+        );
+    }
+    for numerical in [
+        SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1,
+        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+    ] {
+        let source = SourceIdentity::for_new_allocation().unwrap();
+        let recorded = record_ordinary_plan(
+            source,
+            profile,
+            numerical,
+            1024,
+            |role| Ok(matrix(source, profile, role)),
+            |role| {
+                let mut p = parameter(source, profile, role);
+                if matches!(
+                    role,
+                    QwenParameterRole::GdnA(_) | QwenParameterRole::GdnNorm(_)
+                ) {
+                    p.kind =
+                        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16);
+                    p.bytes /= 2;
+                }
+                Ok(p)
+            },
+        )
+        .unwrap();
+        let plan = &recorded.plan;
+        assert_eq!(recorded.boundaries.len(), 64);
+        assert_eq!(plan.required_domains().len(), 112);
+        assert_eq!(plan.proposed_domains().len(), 112);
+        assert_eq!(plan.frontier_delta(), 0);
+        assert!(plan.source_call().is_none());
+        let mut recurrent = 0;
+        let mut attention = 0;
+        let mut untied_head = 0;
+        for node in plan.nodes() {
+            let PlanOperation::SourceOperatorTemplate { descriptor, .. } = &node.operation else {
+                panic!("non-template node")
+            };
+            match descriptor.kind() {
+                SourceOperatorKind::GatedDelta { geometry, .. } => {
+                    assert_eq!((geometry.key_heads, geometry.value_heads), (16, 48));
+                    for p in descriptor.parameters() {
+                        assert_eq!(
+                            p.kind,
+                            StoredTensorEncoding::Scalar(
+                                zerogravity_core::encoding::ScalarDType::Bf16
+                            )
+                        );
+                        assert_eq!(p.bytes, 2 * p.shape.iter().product::<u64>() as usize);
+                    }
+                    recurrent += 1;
+                }
+                SourceOperatorKind::FlashAttention { geometry, .. } => {
+                    assert_eq!(
+                        (geometry.query_heads, geometry.kv_heads, geometry.width),
+                        (24, 4, 256)
+                    );
+                    attention += 1;
+                }
+                SourceOperatorKind::CausalConvSplit { geometry, .. } => {
+                    assert_eq!(
+                        (
+                            geometry.qkv_channels,
+                            geometry.z_channels,
+                            geometry.coefficient_channels
+                        ),
+                        (10240, 6144, 96)
+                    );
+                }
+                _ => {}
+            }
+            untied_head += descriptor
+                .matrices()
+                .iter()
+                .filter(|m| m.name == "lm_head.weight")
+                .count();
+        }
+        assert_eq!((recurrent, attention, untied_head), (48, 16, 1));
+        for (base, rows) in [(0, 47), (47, 64), (495, 17), (512, 1)] {
+            let invocation = plan
+                .bind_source_invocation(
+                    SourceInvocation::new(
+                        TextCallGeometry::new(source, profile.vocabulary_size(), 1024).unwrap(),
+                        base,
+                        vec![11; rows].into(),
+                        true,
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+            let mode = if rows == 1 {
+                SourceCallMode::Decode
+            } else {
+                SourceCallMode::Prefill
+            };
+            let materialized = invocation.materialize_source_plan(mode).unwrap();
+            assert_eq!(materialized.required_domains().len(), 112);
+            assert_eq!(materialized.frontier_delta(), 0);
+            let call = materialized.source_call().unwrap();
+            assert_eq!(call.rows().base(), base);
+            assert_eq!(call.rows().len(), rows);
+            assert_eq!(call.rows().frontier(), base + rows);
+        }
+    }
 }

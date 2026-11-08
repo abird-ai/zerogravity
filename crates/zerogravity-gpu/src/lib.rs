@@ -243,12 +243,18 @@ pub use hip::native::{HipSourceSetIdentity, SharedHipColdPlan, SharedHipNative};
     target_os = "linux"
 ))]
 pub use resident_inference::{SourceCallFinalReader, SourceCallReaderObservation};
-#[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
 pub use resident_inference::{
-    SourceCallInventory, SourceCallModel, SourceCallPending, SourceCallPreparation,
-    SourceCallPublication, SourceCallReadback, SourceCallSession, SourceCallSnapshot,
+    SourceCallModel, SourceCallPending, SourceCallPreparation, SourceCallPublication,
+    SourceCallReadback, SourceCallSession, SourceCallSnapshot,
 };
-#[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
 pub use resident_program::ResidentOutput;
 
 #[cfg(all(
@@ -265,3 +271,6 @@ pub use resident_program::source_observation::{
     target_os = "linux"
 ))]
 pub use resident_inference::source_native_probe::{SourceTextNativeProbe, SourceTextNativeState};
+
+#[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+pub use resident_inference::SourceCallInventory;

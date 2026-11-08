@@ -2,7 +2,9 @@
 //! The shared core plan owns math/SSA/state effects only; source authentication
 //! and family roles stay with the model, while roots/completion stay external.
 use super::*;
+mod geometry;
 use crate::source::binding::{OrdinarySourceSeal, QwenMatrixRole, QwenParameterRole};
+pub use geometry::OrdinaryQwenGeometry;
 
 #[derive(Debug)]
 struct OrdinaryQwenPlanOwner {
@@ -21,7 +23,7 @@ pub use ORDINARY_SOURCE_MIN_CONTEXT as ORDINARY_CUDA_MIN_CONTEXT;
 #[derive(Clone, Debug)]
 pub struct OrdinaryQwenPlan {
     owner: Arc<OrdinaryQwenPlanOwner>,
-    profile: QwenSourceProfile,
+    profile: OrdinaryQwenGeometry,
     boundaries: Arc<[[ValueId; 2]]>,
     normalized: ValueId,
     logits: ValueId,
@@ -38,7 +40,7 @@ impl OrdinaryQwenPlan {
     pub fn source(&self) -> &zerogravity_artifacts::source_weights::VerifiedTensorSource {
         self.owner.source.source()
     }
-    pub fn model_profile(&self) -> QwenSourceProfile {
+    pub fn model_profile(&self) -> OrdinaryQwenGeometry {
         self.profile
     }
     pub fn context_capacity_tokens(&self) -> usize {
@@ -96,7 +98,7 @@ impl OrdinaryQwenPlan {
 pub struct OrdinaryQwenInvocation {
     bound: BoundSourceInvocation,
     owner: Arc<OrdinaryQwenPlanOwner>,
-    profile: QwenSourceProfile,
+    profile: OrdinaryQwenGeometry,
     mode: SourceCallMode,
 }
 impl OrdinaryQwenInvocation {
@@ -113,7 +115,7 @@ impl OrdinaryQwenInvocation {
     pub fn source(&self) -> &zerogravity_artifacts::source_weights::VerifiedTensorSource {
         self.owner.source.source()
     }
-    pub fn model_profile(&self) -> QwenSourceProfile {
+    pub fn model_profile(&self) -> OrdinaryQwenGeometry {
         self.profile
     }
     pub fn mode(&self) -> SourceCallMode {
@@ -165,8 +167,8 @@ fn require_source_phase(
     Ok(())
 }
 
-fn domains() -> Result<Vec<StateSlot>> {
-    hybrid_state_domains((0..24).map(|index| index % 4 == 3))
+fn domains(profile: OrdinaryQwenGeometry) -> Result<Vec<StateSlot>> {
+    hybrid_state_domains((0..profile.layer_count()).map(|index| index % 4 == 3))
 }
 
 struct RecordedOrdinaryPlan {
@@ -205,12 +207,13 @@ pub(crate) fn build_ordinary_plan(
 
 fn record_ordinary_plan(
     identity: SourceIdentity,
-    profile: QwenSourceProfile,
+    profile: impl Into<OrdinaryQwenGeometry>,
     numerical: SourceNumericalContract,
     context_capacity_tokens: usize,
     mut matrix: impl FnMut(QwenMatrixRole) -> Result<SourceTensor>,
     mut parameter: impl FnMut(QwenParameterRole) -> Result<SourceParameter>,
 ) -> Result<RecordedOrdinaryPlan> {
+    let profile = profile.into();
     if !(ORDINARY_SOURCE_MIN_CONTEXT..=ORDINARY_SOURCE_MAX_CONTEXT)
         .contains(&context_capacity_tokens)
     {
@@ -230,16 +233,16 @@ fn record_ordinary_plan(
         geometry,
         builder: CorePlanBuilder::new_source_template_with_contract(
             geometry,
-            domains()?,
+            domains(profile)?,
             numerical,
         )?,
         matrix: &mut matrix,
         parameter: &mut parameter,
-        boundaries: Vec::with_capacity(24),
+        boundaries: Vec::with_capacity(profile.layer_count()),
         normalized: None,
     };
-    // The shared traversal receives the authenticated fixed 24-layer schedule.
-    let layers = (0..24)
+    // The source seal authenticated this model's complete hybrid schedule.
+    let layers = (0..profile.layer_count())
         .map(|index| {
             if index % 4 == 3 {
                 crate::config::LayerKind::FullAttention
@@ -252,14 +255,14 @@ fn record_ordinary_plan(
     let normalized = recorder
         .normalized
         .ok_or_else(|| Error::State("ordinary final normalization absent".into()))?;
-    if recorder.boundaries.len() != 24 || recorder.boundaries.capacity() > 24 {
+    if recorder.boundaries.len() != profile.layer_count() {
         return Err(Error::State(
-            "ordinary plan exact 24 layer boundaries".into(),
+            "ordinary plan complete source layer boundaries".into(),
         ));
     }
     let plan = recorder.builder.finish_source_template(logits)?;
-    if plan.required_domains().len() != 42
-        || plan.proposed_domains().len() != 42
+    if plan.required_domains().len() != profile.state_domains()
+        || plan.proposed_domains().len() != profile.state_domains()
         || plan.logits() != Some(logits.id)
         || plan.frontier_delta() != 0
         || plan.source_call().is_some()
@@ -287,7 +290,7 @@ fn record_ordinary_plan(
 type MatrixResolver<'a> = &'a mut dyn FnMut(QwenMatrixRole) -> Result<SourceTensor>;
 type ParameterResolver<'a> = &'a mut dyn FnMut(QwenParameterRole) -> Result<SourceParameter>;
 struct OrdinaryRecorder<'a> {
-    profile: QwenSourceProfile,
+    profile: OrdinaryQwenGeometry,
     numerical: SourceNumericalContract,
     geometry: SourcePlanGeometry,
     builder: CorePlanBuilder,
@@ -516,7 +519,7 @@ impl crate::hybrid_decoder::HybridDecoder for OrdinaryRecorder<'_> {
 }
 
 fn mathematical_kind(
-    profile: QwenSourceProfile,
+    profile: OrdinaryQwenGeometry,
     numerical: SourceNumericalContract,
     layer: Option<usize>,
     operation: QwenOperation,
@@ -534,17 +537,17 @@ fn mathematical_kind(
         QwenOperation::GdnConv => SourceOperatorKind::CausalConvSplit {
             domain: ConvDomain(index),
             geometry: SourceConvGeometry {
-                qkv_channels: 6144,
-                z_channels: 2048,
-                coefficient_channels: 32,
+                qkv_channels: profile.conv_channels(),
+                z_channels: profile.recurrent_width(),
+                coefficient_channels: 2 * profile.value_heads(),
                 kernel: 4,
             },
         },
         QwenOperation::GdnRecurrent => SourceOperatorKind::GatedDelta {
             domain: RecurrentDomain(index),
             geometry: SourceGdnGeometry {
-                key_heads: 16,
-                value_heads: 16,
+                key_heads: profile.key_heads(),
+                value_heads: profile.value_heads(),
                 key_width: 128,
                 value_width: 128,
                 epsilon: 1e-6,
@@ -559,8 +562,8 @@ fn mathematical_kind(
             SourceOperatorKind::QkRmsRotaryGated(SourceQkRotaryGeometry {
                 attention: AttentionGeometry {
                     width: 256,
-                    query_heads: 8,
-                    kv_heads: 2,
+                    query_heads: profile.query_heads(),
+                    kv_heads: profile.kv_heads(),
                 },
                 rotary_dimensions: 64,
                 theta: 10_000_000.0,
@@ -569,26 +572,30 @@ fn mathematical_kind(
         }
         QwenOperation::KvAppend => SourceOperatorKind::KvAppend {
             domain: KvDomain(index),
-            key_width: 512,
+            key_width: profile.kv_width(),
             packed_value: TensorView {
-                offset: 4608,
+                offset: 2 * profile.query_width() + profile.kv_width(),
                 rows: ORDINARY_SOURCE_MAX_CHUNK_ROWS,
-                width: 512,
-                row_stride: 5120,
+                width: profile.kv_width(),
+                row_stride: 2 * (profile.query_width() + profile.kv_width()),
             },
         },
         QwenOperation::FlashAttention => SourceOperatorKind::FlashAttention {
             domain: KvDomain(index),
             geometry: AttentionGeometry {
                 width: 256,
-                query_heads: 8,
-                kv_heads: 2,
+                query_heads: profile.query_heads(),
+                kv_heads: profile.kv_heads(),
             },
             scale: 0.0625,
             mask: SourceAttentionMask::Causal,
         },
-        QwenOperation::Sigmoid => SourceOperatorKind::Sigmoid { width: 2048 },
-        QwenOperation::Multiply => SourceOperatorKind::Multiply { width: 2048 },
+        QwenOperation::Sigmoid => SourceOperatorKind::Sigmoid {
+            width: profile.query_width(),
+        },
+        QwenOperation::Multiply => SourceOperatorKind::Multiply {
+            width: profile.query_width(),
+        },
         QwenOperation::SiluAndMul => SourceOperatorKind::SiluAndMul {
             width: profile.intermediate_size(),
         },
@@ -634,6 +641,7 @@ pub fn diagnostic_ordinary_plan(
     context_capacity_tokens: usize,
 ) -> Result<Arc<ForwardPlan>> {
     let source = SourceIdentity::for_new_allocation()?;
+    let profile = OrdinaryQwenGeometry::from(profile);
     let recorded = record_ordinary_plan(
         source,
         profile,
@@ -648,7 +656,7 @@ pub fn diagnostic_ordinary_plan(
 #[cfg(feature = "diagnostic-cpu-checkpoint")]
 fn diagnostic_matrix(
     source: SourceIdentity,
-    profile: QwenSourceProfile,
+    profile: OrdinaryQwenGeometry,
     role: QwenMatrixRole,
 ) -> SourceTensor {
     let hidden = profile.hidden_size();
@@ -662,15 +670,39 @@ fn diagnostic_matrix(
         QwenMatrixRole::FfnGate(index) => (format!("layer.{index}.gate"), intermediate, hidden),
         QwenMatrixRole::FfnUp(index) => (format!("layer.{index}.up"), intermediate, hidden),
         QwenMatrixRole::FfnDown(index) => (format!("layer.{index}.down"), hidden, intermediate),
-        QwenMatrixRole::GdnQkv(index) => (format!("layer.{index}.qkv"), 6144, hidden),
-        QwenMatrixRole::GdnGate(index) => (format!("layer.{index}.z"), 2048, hidden),
-        QwenMatrixRole::GdnAlpha(index) => (format!("layer.{index}.a"), 16, hidden),
-        QwenMatrixRole::GdnBeta(index) => (format!("layer.{index}.b"), 16, hidden),
-        QwenMatrixRole::GdnOutput(index) => (format!("layer.{index}.gdn_out"), hidden, 2048),
-        QwenMatrixRole::Query(index) => (format!("layer.{index}.q"), 4096, hidden),
-        QwenMatrixRole::Key(index) => (format!("layer.{index}.k"), 512, hidden),
-        QwenMatrixRole::Value(index) => (format!("layer.{index}.v"), 512, hidden),
-        QwenMatrixRole::AttentionOutput(index) => (format!("layer.{index}.attn_out"), hidden, 2048),
+        QwenMatrixRole::GdnQkv(index) => (
+            format!("layer.{index}.qkv"),
+            profile.conv_channels(),
+            hidden,
+        ),
+        QwenMatrixRole::GdnGate(index) => (
+            format!("layer.{index}.z"),
+            profile.recurrent_width(),
+            hidden,
+        ),
+        QwenMatrixRole::GdnAlpha(index) => {
+            (format!("layer.{index}.a"), profile.value_heads(), hidden)
+        }
+        QwenMatrixRole::GdnBeta(index) => {
+            (format!("layer.{index}.b"), profile.value_heads(), hidden)
+        }
+        QwenMatrixRole::GdnOutput(index) => (
+            format!("layer.{index}.gdn_out"),
+            hidden,
+            profile.recurrent_width(),
+        ),
+        QwenMatrixRole::Query(index) => (
+            format!("layer.{index}.q"),
+            2 * profile.query_width(),
+            hidden,
+        ),
+        QwenMatrixRole::Key(index) => (format!("layer.{index}.k"), profile.kv_width(), hidden),
+        QwenMatrixRole::Value(index) => (format!("layer.{index}.v"), profile.kv_width(), hidden),
+        QwenMatrixRole::AttentionOutput(index) => (
+            format!("layer.{index}.attn_out"),
+            hidden,
+            profile.query_width(),
+        ),
     };
     SourceTensor {
         source,
@@ -685,7 +717,7 @@ fn diagnostic_matrix(
 #[cfg(feature = "diagnostic-cpu-checkpoint")]
 fn diagnostic_parameter(
     source: SourceIdentity,
-    profile: QwenSourceProfile,
+    profile: OrdinaryQwenGeometry,
     role: QwenParameterRole,
 ) -> SourceParameter {
     let hidden = profile.hidden_size();
@@ -708,7 +740,7 @@ fn diagnostic_parameter(
         QwenParameterRole::GdnConvolution(index) => (
             format!("layer.{index}.conv"),
             StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
-            vec![6144, 1, 4],
+            vec![profile.conv_channels() as u64, 1, 4],
         ),
         QwenParameterRole::GdnNorm(index) => (
             format!("layer.{index}.gdn_norm"),
@@ -718,12 +750,12 @@ fn diagnostic_parameter(
         QwenParameterRole::GdnA(index) => (
             format!("layer.{index}.A_log"),
             StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
-            vec![16],
+            vec![profile.value_heads() as u64],
         ),
         QwenParameterRole::GdnDt(index) => (
             format!("layer.{index}.dt"),
             StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
-            vec![16],
+            vec![profile.value_heads() as u64],
         ),
         QwenParameterRole::QueryNorm(index) => (
             format!("layer.{index}.q_norm"),

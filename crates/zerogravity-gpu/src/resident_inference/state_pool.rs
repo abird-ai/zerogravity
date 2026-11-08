@@ -2,6 +2,7 @@
 use super::*;
 #[cfg(any(
     feature = "cuda-native-qualification",
+    feature = "cuda-cublas",
     feature = "gemma-bf16-qualification",
     feature = "hip-source"
 ))]
@@ -12,7 +13,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub(super) struct PooledStates {
     pub pool: Arc<ResidentPool>,
     #[cfg(all(
-        any(feature = "qualification", feature = "hip-source"),
+        any(
+            feature = "qualification",
+            feature = "hip-source",
+            feature = "cuda-cublas"
+        ),
         target_os = "linux"
     ))]
     pub source: Option<zerogravity_artifacts::source_weights::VerifiedTensorSource>,
@@ -90,6 +95,7 @@ where
 impl ResidentModel {
     #[cfg(any(
         feature = "cuda-native-qualification",
+        feature = "cuda-cublas",
         feature = "gemma-bf16-qualification",
         feature = "hip-source"
     ))]
@@ -119,7 +125,11 @@ impl ResidentModel {
         Ok(layout)
     }
     #[cfg(all(
-        any(feature = "gemma-bf16-qualification", feature = "hip-source"),
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "hip-source",
+            feature = "cuda-cublas"
+        ),
         target_os = "linux"
     ))]
     pub(crate) fn install_window_root_pool(

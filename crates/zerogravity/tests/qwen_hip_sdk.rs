@@ -44,7 +44,21 @@ struct Call {
 }
 #[derive(Deserialize)]
 struct Reference {
+    repository: String,
+    status: String,
+    numerical_profile: String,
+    original_full_forward: bool,
+    rust_or_gpu_parity: bool,
+    active_context: usize,
     calls: Vec<Call>,
+}
+fn source_snapshot(label: &str) -> &'static str {
+    match label {
+        "08" => "d7c7bf56e176bd70a8190acb9873cc719e65b6b306181039f2896d6f9387b36c",
+        "2b" => "88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52",
+        "27b" => "98cea13c169310196c4d8a113765f8fe58ab7a7961f0d1be69212c70dba8015e",
+        _ => panic!("explicit approved model required"),
+    }
 }
 fn stamp(file: &File) -> (u64, u64, u64, i64, i64, i64, i64) {
     let m = file.metadata().unwrap();
@@ -60,13 +74,37 @@ fn stamp(file: &File) -> (u64, u64, u64, i64, i64, i64, i64) {
     )
 }
 fn reference(path: &Path, label: &str) -> Reference {
-    let expected = match label {
-        "08" => "492fd2b361f79cec3b2443c5454850dc91aef6d881e3c41330e2d50f3c544d3d",
-        "2b" => "1a299081a66d386c9f86e8b6e71e44fd653ae6424a1709a93184d3cda48e8c96",
+    let (expected, repository) = match label {
+        "08" => (
+            "492fd2b361f79cec3b2443c5454850dc91aef6d881e3c41330e2d50f3c544d3d".to_owned(),
+            "Qwen/Qwen3.5-0.8B",
+        ),
+        "2b" => (
+            "1a299081a66d386c9f86e8b6e71e44fd653ae6424a1709a93184d3cda48e8c96".to_owned(),
+            "Qwen/Qwen3.5-2B",
+        ),
+        "27b" => (
+            std::env::var("ZG_QWEN_SOURCE_CALLS_MANIFEST_SHA256")
+                .expect("separately audited original27B manifest digest"),
+            "Qwen/Qwen3.8-27B",
+        ),
         _ => panic!("explicit approved model required"),
     };
-    let bytes = manifest_bytes(path, expected, 8 * 1024 * 1024);
+    assert!(expected.len() == 64 && expected.bytes().all(|b| b.is_ascii_hexdigit()));
+    let bytes = manifest_bytes(
+        path,
+        &expected,
+        if label == "27b" { 16 } else { 8 } * 1024 * 1024,
+    );
     let result: Reference = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(result.repository, repository);
+    assert_eq!(
+        result.status,
+        "CAPTURED_ORIGINAL_SOURCE_CALL_REFERENCE_ONLY"
+    );
+    assert_eq!(result.numerical_profile, "TorchCpuBf16Avx2MixedSourceV1");
+    assert!(result.original_full_forward && !result.rust_or_gpu_parity);
+    assert_eq!(result.active_context, 514);
     assert_eq!(result.calls.len(), 66);
     result
 }
@@ -173,11 +211,7 @@ fn original_source_public_sdk_completion_cancellation_and_retirement() {
     let label = std::env::var("ZG_QWEN_HIP_SDK_MODEL").expect("explicit model");
     let mode = std::env::var("ZG_QWEN_HIP_SDK_MODE").expect("explicit mode");
     assert!(matches!(mode.as_str(), "complete" | "disconnect"));
-    let snapshot = match label.as_str() {
-        "08" => "d7c7bf56e176bd70a8190acb9873cc719e65b6b306181039f2896d6f9387b36c",
-        "2b" => "88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52",
-        _ => panic!("approved model"),
-    };
+    let snapshot = source_snapshot(&label);
     let arbiter = ResourceArbiter::process_shared();
     let host = PhysicalDeviceKey::new("host", "system-ram").unwrap();
     let device = PhysicalDeviceKey::new("pci", "0000:c6:00.0").unwrap();

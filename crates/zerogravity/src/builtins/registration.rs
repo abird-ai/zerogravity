@@ -10,6 +10,28 @@ pub(crate) fn load_text(
     limits: SchedulerLimits,
 ) -> Result<Router, ServiceError> {
     match request {
+        #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+        ModelLoadRequest::QwenCuda {
+            aliases,
+            cache,
+            snapshot,
+            profile,
+            provider_bytes,
+            device_bytes,
+        } => {
+            profile.validate()?;
+            validate_limits(1, profile.active, profile.max_pending, limits)?;
+            super::text::qwen_source::load_router(
+                aliases,
+                cache,
+                snapshot,
+                profile,
+                super::text::qwen_source::SourceBackend::Cuda {
+                    provider_bytes,
+                    device_bytes,
+                },
+            )
+        }
         #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
         ModelLoadRequest::QwenHip {
             aliases,
@@ -19,7 +41,13 @@ pub(crate) fn load_text(
         } => {
             profile.validate()?;
             validate_limits(1, profile.active, profile.max_pending, limits)?;
-            super::text::qwen_hip::load_router(aliases, cache, snapshot, profile)
+            super::text::qwen_source::load_router(
+                aliases,
+                cache,
+                snapshot,
+                profile,
+                super::text::qwen_source::SourceBackend::Hip,
+            )
         }
         #[cfg(feature = "serve")]
         ModelLoadRequest::ServingText { declared, profile } => {
