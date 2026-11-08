@@ -1,28 +1,106 @@
 # ZeroGravity current comprehensive handoff
 
-This is the canonical cross-window handoff for the repository.
+Canonical cross-window entry point. Read [plan rules](../plans/README.md),
+[queue](../plans/TODO.md), [model execution](../plans/model-execution/TODO.md)
+and [correctness policy](../plans/numerics-and-context/CORRECTNESS_POLICY.md).
+Live source/tests and the current queue outrank the retained historical sections.
 
-It is deliberately not a generated concatenation of every historical plan, run log, source snapshot or per-file SHA catalogue. Those mechanisms were retired. Current source and tests are the implementation truth, the four maintained planning/status files are the navigation spine, the maintained subsystem and Fabric plans hold detailed design/work items, and Git history retains superseded material.
+## Resume here — signed implementation, no live campaign
 
-A successor should be able to start here without prior chat history, understand how the project evolved, identify what is implemented versus merely designed, and continue either the current Qwen correctness critical path or the separately authorized Fabric vNext transition.
+- Latest implementation: signed`d16f096` explicit HIP total budget/resident27B;
+  preceding signed`4f1e827` shared-source/CUDA composition. Both signatures G.
+  This handoff checkpoint changes documentation only, including the user's
+  existing `AGENTS.md` eight-Cargo-job guidance. No new inference acceptance.
+- No active session job, build or device campaign to inherit. Original HIP budget
+  R1/R2 semantics and retirement independently verified. Do not restart them.
+  Recurrence`17aafa71` remains cancelled; watch`960f23ca` expired. No push.
+- Work on `main`; preserve root `README.md` and the pre-existing protected detached
+  checkout under `/home/pvl/.local/share/kilo/worktree-pool/zerogravity-0f30d37a09c9/curse-artichoke`.
+  No new/resumed subagents under the current owner direction.
 
-## Active — finish CUDA and ordinary27B
+### Roadmap disposition
 
-Owner resumed items2/3: finish implementation quickly, use real numerical/state/
-serving checks and accepted results; no extensive synthetic expansion.
+| Item | Accepted scope / remaining work |
+|---|---|
+|1 — small HIP|Signed`8ffb511`: populated1K–16K native/SDK/HTTP;32K refused|
+|2 — CUDA|Small exact resident/streamed trajectories and shared serving/lifecycle pass; broader populated contexts and large numerical accuracy open|
+|3 — ordinary27B HIP|Original66-call reference/state, SDK/lifecycle and resident C1–C64 pass; HTTP504 and populated1K/2K closure open|
+|4 — batching|Genuine inter-session native batching absent; physical width1|
+|5 — population|Short native sweeps complete within admission; broader HTTP/context/fault campaigns separate|
+|6 — baselines|Collected; ROCm2B C4/16/32/64 mismatch, API/arithmetic/resource differences remain|
+|7 — performance|Scoped CUDA0.8B C1 win; resident HIP27B improves historical streaming, still slower than vLLM; no general superiority|
+|8 — checkpoint|Implementation signed and final gate passed; broader roadmap unfinished|
 
-**Roadmap:1/8 complete.** Signed`8ffb511` closes populated0.8B/2B HIP.
-Owner prioritizes item2 (CUDA0.8B/2B). Main owns edits, devices, supervision
-and acceptance. No subagents, new or resumed; the last existing reviewer finished.
-Assemble substantial implementation surfaces, then batch numerical/state/lifecycle/
-serving checks; narrow diagnostics only for concrete blockers. Full gate last.
-Owner correction: implementation + quick matched-vLLM feedback over finer-grained
-fixtures/checks/evidence machinery. Reuse existing checks/results; add tests only
-for concrete bugs or uncovered contracts. Benchmark completed, qualified comparable
-paths without waiting for other models/backends or batching; report limits/losses.
-Prefer simple shared fixes and measured hot-path optimization. Work is resumed.
-Approved sources/runtime/devices only; no downloads, source repins, privilege
-changes, gfx90c, recovery, push or recurrence restart.
+### Next work, not launched by this closeout
+
+1. Large CUDA accuracy (session task44): genuine47-row prefill/two decodes execute,
+   IDs343/288/830 match,112 state domains finite; CPU-logit NMSE
+   0.124241/0.090048/0.043837 is diagnostic across numerical profiles. Establish
+   independent distribution/state acceptance under declared contracts; no post-hoc
+   tolerance, repin or renewed search for the exhausted legacy CUDA runtime.
+   Small CUDA populated-context qualification also remains separate.
+2. ROCm2B divergence (task39): C1/C8 whole cells match. C4 has one warmup mismatch
+   despite0/8 timed mismatches; C16/C32/C64 have2/32,2/64,6/128 timed mismatches
+   plus1/1/3 warmup mismatches. Expected[95726,26516,220], observed
+   [95726,98019,271]. Preserve failed cells; cause unlocalized, not a proven
+   ROCm kernel bug. Warmup failures count against matched-performance acceptance.
+3. HIP27B HTTP/context (task11): R10 independently audited14 passing scopes and
+   the HTTP504 failure; original BrokenPipe remains. R11 is staged, not launched;
+   inspect its older binary/budget before any fresh successor. Both104-call1K/2K
+   captures were interrupted and remain unaccepted. Resident SDK success does
+   not close HTTP/context debt. The old12GiB available-host guard was waived;
+   it is not the current blocker, and neither old watch should restart.
+4. Shared continuous batching, then measured hot-path optimization/controlled
+   comparisons. Keep queue, active-session, batch-member and token limits distinct;
+   preserve independent roots, cancellation, publication and final-reader owners.
+
+### Evidence and execution entry points
+
+Retained local state base: `/home/pvl/.local/state/abird/zerogravity/`.
+
+- `qwen-cuda-regeneration-tDW0EJ1I/`: `composable-small-results-r2.json`,
+  `composition-serving-results-r2.json`, `composition-large-tail-results-r3.json`,
+  `composition-final-gate-r2.log`; each original scope has invocation/execution/
+  retirement files. `composition-semantic-batch-r1.log` is mixed, not a batch pass.
+- `qwen-rocm-benchmark-3gteresx/`: `budget-c1-reviewed-r1b.json`,
+  `budget-populations-reviewed-r2b.json`, `budget-final-gate-r1.log`,
+  `vllm-2b-summary-r1.json`; original receipts/logs in `budget-retrieved-r{1,2}/`.
+  Both original budget campaigns finished; manifests, frozen binaries and failed
+  auditors remain unchanged. SDK binary is qualification-free.
+- `qwen-ordinary-large-rHMls4mk/`: `original-reviewed-r1.json`,
+  `ordinary-semantic-disposition-r10.json`, staged `ordinary-semantic-r11.py` and
+  its supervisor; original reference in `original-calls-r1/` (x2 `refs-original-r1/`).
+- Resident HIP policy:75GiB TOTAL=4GiB context+71GiB native/weights/roots/workspace,
+  16GiB host. Default24GiB TOTAL=4+20GiB, default physical ceiling64GiB unchanged.
+  75GiB reservation, opaque-inclusive resident ledger and sampled52.57/54.94GiB
+  device peaks are different quantities. C1 mean5515.281ms,0.543943tok/s;
+  C64 0.529817tok/s, active≤8/physical batch1. Historical streaming43.76× slower;
+  retained vLLM7.08×/22.78× faster at C1/C64. Not controlled ABBA/same-budget tuning.
+- Latest implementation gate:2360 Rust passes/0 failures/101 ignored,309 suites;
+  17 Python suites/182 cases. Separate19 budget/accounting/owner controls and
+  physical/reference scopes passed. Reuse unchanged evidence; this documentation
+  closeout does not rerun GPU campaigns or claim a new implementation gate.
+- For new source changes: locked/offline builds, `PYTHONDONTWRITEBYTECODE=1`,
+  `CARGO_NET_OFFLINE=true`, `RAYON_NUM_THREADS=4`, `RUST_TEST_THREADS=1`;
+  Cargo defaults to8 jobs per `AGENTS.md` (latest budget batch used2).
+  Approved CUDA SDK is `qwen-cuda-regeneration-tDW0EJ1I/native-cuda-sdk-r1`;
+  set `CUDA_PATH` to that absolute path and `CUDARC_CUDA_VERSION=12090` when needed.
+  Use `python3 -B scripts/native-gpu.py -- ...`; full isolated `scripts/check.sh`
+  last after assembling relevant numerical/state/physical/serving checks.
+- Fresh physical work needs current device/owner guard, original lock and fresh
+  exclusive successor paths. Old session IDs/retirement files are not ownership
+  transfers. Original-owner pidfd cancellation only; no systemd stop/kill or
+  unrelated signals; preserve≥90s TERM grace for newly observed members.
+  No new model/SDK acquisition, reference repin, privileges/recovery or gfx90c.
+  Semantics and cleanup are separate; retain `qualification=false` and
+  `full_reference_acceptance=false` for the scopes that carry those limits.
+
+## Recent implementation detail — scoped evidence, not live jobs
+
+Owner direction: substantial shared implementation and compact real-model
+feedback; reuse accepted evidence, add diagnostics only for concrete gaps.
+Benchmark qualified comparable paths without waiting for unrelated models or
+batching. Current checkpoints are complete; remaining work is listed above.
 
 ### Latest CUDA composition feedback
 
@@ -71,7 +149,7 @@ changes, gfx90c, recovery, push or recurrence restart.
   Large numerical qualification stays open; no full27B/new-family support claim.
   Signed shared-source/CUDA checkpoint`4f1e827` (signatureG), user AGENTS/root README
   preserved, no push. Approved75GiB-total HIP C1..C64 comparison now completes
-  with matching outputs; final HIP-budget gate passes, signed checkpoint pending.
+  with matching outputs; final HIP-budget gate passes, signed`d16f096` (signatureG).
 - HIP accounting correction from live original owners: legacy24GiB envelope
   INCLUDES4GiB context (20GiB model remainder), with64GiB physical-admission ceiling.
   Earlier24+4 narrative was inaccurate; original receipts/timings stay unchanged.
@@ -126,8 +204,10 @@ changes, gfx90c, recovery, push or recurrence restart.
   actual vLLM0.23.1.dev1/Transformers5.16.1. Native HIP small C1..64 and27B C1
   completed; all outputs/original retirement verified. Native~12/6.8/0.01243tok/s.
   vLLM0.8B57.81→154.04tok/s and27B3.85→12.07tok/s across offeredC1..64, all IDs match.
-  vLLM2B C1/4/8 match34.14/60.23/74.85tok/s; C16/32/64 have2/2/6 timed output
-  mismatches, retained as failed comparisons. Every original owner retired.
+  vLLM2B C1/C8 whole cells match34.14/74.85tok/s. C4's60.23tok/s has one
+  warmup mismatch despite matching timed requests; C16/32/64 have2/2/6 timed
+  mismatches (also1/1/3 warmup mismatches). All four cells remain failed matched
+  comparisons. Every original owner retired.
   Full table/limits in model-execution TODO; results `qwen-rocm-benchmark-3gteresx`.
   Both active limits8, native physical batch1.47input/3output, two timed waves.
   Native27B streams under24GiB total envelope(including4GiB context), vLLM uses~75GiB total:
@@ -148,7 +228,7 @@ changes, gfx90c, recovery, push or recurrence restart.
   Live75GiB includes4GiB context; sampled C1/population peaks52.57/54.94GiB,
   NOT75GiB use. Resident ledger also includes opaque native charges. Final isolated
   `budget-final-gate-r1.log`:2360 Rust passes/0 failures/101 ignored/309 suites;
-  17 Python suites/182 cases. Signed HIP-budget checkpoint pending.
+  17 Python suites/182 cases. Signed HIP-budget checkpoint`d16f096` (signatureG), no push.
   API/arithmetic/actual-memory differences remain; physical batch1, no full
   qualification or closure of HTTP/context/large-CUDA numerical debt.
   Current architecture correction: remove small-model assumptions through shared
@@ -258,8 +338,9 @@ Evidence root: XDG state `qwen-cuda-regeneration-tDW0EJ1I`.
 Evidence root: XDG state `qwen-ordinary-large-rHMls4mk`.
 
 - Shared source-derived64-layer/112-domain plans, additive BF16/F32 storage,
-  authenticated tokenizer pricing and bounded streaming remain uncommitted.
-  Preserve16GiB host/24GiB provider/4GiB device-context limits. Host capacityR3
+  authenticated tokenizer pricing and bounded streaming landed by`4f1e827`.
+  This historical scope used16GiB host/24GiB total including4GiB context;
+  explicit75GiB-total residency is separately signed`d16f096`. Host capacityR3
   admits512–2K estimates and refuses4K–32K; estimates are not physical inference.
 - Original66-call CPU reference independently accepted (`f226ad21` manifest).
   ObservedR4 and observer-freeR7 numerics are separately accepted; R4's supervisor
@@ -275,22 +356,23 @@ Evidence root: XDG state `qwen-ordinary-large-rHMls4mk`.
   invocation`6448edba84244c1b9eb339908a7a2618`, nonce
   `42cfc1bc2aa8407ba8b1ceb07143254c`, absent owned cgroup/KFD[]/busy0, but also
   `BrokenPipeError(32, 'Broken pipe')` in output errors. Independent retrieval/
-  semantic audit remains pending; do not claim clean supervision or batch pass.
-  No restaging, relaunch or overwrite of R10. HTTP180s/SDK1200s unchanged.
+  semantic audit completed: `ordinary-semantic-disposition-r10.json` verifies
+  14 passing scopes and original retirement, preserving HTTP504/BrokenPipe.
+  No clean-supervision or batch-pass claim; no R10 overwrite/relaunch.
+  Historical HTTP180s/SDK1200s limits remain part of that original evidence.
 - CPU populated-context capturesR1 and host-private successorR2 both interrupted:
   SIGTERM/child137. R2 logged11/104 calls; cleanup recorded, no accepted context
   reference. Preserve both partial archives and R1's missing original-name absence
   evidence. Any successor needs fresh identity and reviewed supervision.
-- Remaining: independent R10 disposition, measured shared HTTP latency repair,
-  populated1K/2K reference/native/serving acceptance, current-tree full gate/signing.
+- Remaining: shared HTTP completion and populated1K/2K reference/native/serving
+  acceptance. R10 disposition, assembled gates, signed implementation and resident
+  C1–C64 comparison are complete; genuine native batching remains open.
   Dispatch reduction alone is not measured latency or superiority.
 
-Native batching, feasible C1/4/8/16/32/64, matched vLLM baselines, measured gains/
-losses and the signed cross-backend checkpoint remain open. No new full gate,
-commit or push. Accepted small-model results below apply to their frozen checkpoint,
-not automatically to the dirty27B tree. Details: [model plan](../plans/model-execution/TODO.md).
+Accepted scopes remain tied to their original source/binary/reference, not every
+later revision. Details: [model plan](../plans/model-execution/TODO.md).
 
-## Current checkpoint — populated Qwen HIP serving
+## Prior signed checkpoint — populated Qwen HIP serving
 
 Fabric migration remains accepted (`8c43844`, closeout`1c99929`); signed
 `bb400c4` remains the previous ordinary multi-row HIP baseline. The current
@@ -1776,14 +1858,11 @@ Final topology after cleanup:
 
 ## 22. How to continue safely
 
-Latest owner direction is Fabric, not autonomous Qwen resumption. Read current
-source/status, the two Fabric packets and source reconciliation. Continue the
-active S/F phase with one implementation writer, exact source/state/resource
-ownership and explicit Unsupported stubs. Preserve existing runtime paths until
-replaced coherently; never claim the skeleton migrated or qualified them.
-Resume Qwen only after this prioritized structural/feature-preserving work or a
-new explicit priority change. Cancelled recurrences and stale receipts do not
-change this order.
+Use “Resume here” at the top and the live model-execution queue. Fabric-first
+instructions in older sections are historical: the transition is accepted and
+Qwen shared CUDA/HIP checkpoints are signed. Preserve exact source/state/resource
+ownership and unsupported boundaries. No active job or recurrence is handed off;
+new execution requires fresh ownership checks, not an old session ID.
 
 ## 23. Do not do
 
@@ -1796,15 +1875,16 @@ change this order.
 - Do not download/substitute model sources without authorization.
 - Do not infer physical GPU support from compilation.
 - Do not enable ordinary Qwen CUDA production routing before real source+native qualification.
-- Do not benchmark before parity/lifecycle/context gates.
+- Do not count mismatched or unqualified scopes as accepted benchmark wins.
 - Do not weaken source/state/resource semantics to make a context or benchmark fit.
 - Do not modify the root README unless the user explicitly asks.
 
 ## 24. Current continuation
 
-Fabric source resync → S0 → S1/S2/S3 → F0/F1/F2/F3/F4 → Q0/Q1/Q2,
-then the preserved Qwen mission. Track accepted and uncommitted phase work in
-`../plans/fabric-vnext-transition/TODO.md`; don't reset to historical design
-snapshots or expand finite qualification catalogues into a production engine.
+Continue from the signed shared-source/CUDA and HIP-budget checkpoints, not the
+historical Fabric implementation sequence. Remaining CUDA numerical/context,
+HIP27B HTTP/context, ROCm2B divergence and genuine batching work are listed at the
+top and in `../plans/model-execution/TODO.md`. Do not redo accepted campaigns or
+expand finite qualification catalogues into a production engine.
 
 This document should remain concise enough to load in one window while still carrying the complete continuity story. Detailed facts belong in the maintained linked plans, not duplicated here. When a fact changes, update the owning plan/status file first and this handoff only when the cross-window continuation materially changes.

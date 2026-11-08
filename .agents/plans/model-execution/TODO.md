@@ -21,7 +21,7 @@ Prefer simple shared fixes; optimize measured hot paths. Benchmark each complete
 qualified comparable path without waiting for all models/backends/batching.
 Owner resumed items2/3: finish implementation quickly with real-model/serving
 feedback, reusing accepted results and avoiding extensive synthetics.
-Existing approved model inputs/devices; x2 ROCm vLLM acquisition now owner-approved.
+Existing approved model inputs/devices; approved x2 ROCm vLLM runtime retained.
 No gfx90c, recovery, push or recurrence restart. Recurrence`17aafa71` remains cancelled.
 
 Owner architecture correction: models compose established shared primitives; do
@@ -41,8 +41,13 @@ Owner approved a fresh approximately75GiB total native27B HIP GPU budget for the
 resident comparison;16GiB host and4GiB context remain. Explicit budget plumbing
 is implemented. Resident C1 and all66 original observer-free state/logit calls
 pass with independently verified original retirement. Offered C1..64 completes
-with matching outputs; final isolated gate passes, signed checkpoint pending.
+with matching outputs; final isolated gate passes. Signed`d16f096` (signatureG),
+no push; larger CUDA/HTTP/context/batching debt remains separate.
 
+Closeout: no live build/device campaign or owner to inherit. The latest user
+request is a signed all-changes/handoff checkpoint, not a new physical launch.
+Original budget R1/R2 are complete; do not rerun them or restart cancelled watches.
+Use the continuation queue below over historical milestone notes later in this file.
 
 Provenance commit: `6d74f76`.
 Scope: P02/P03/P08/P11–P14/P17; CPU truth before GPU specialization.
@@ -52,81 +57,26 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-### Explicit HIP device budget — approved resident comparison
+### Next continuation — no live campaign
 
-- [x] Thread an explicit total-device budget through source admission, native
-  context/cache, physical service and the existing shared serving adapter.
-  Approximately75GiB total, including4GiB context; retain16GiB host. No changed
-  historical defaults, numerical profile, source pins or recovery permissions.
-- Implemented `HipSourceBudget`, explicit source preflight/load and
-  `ModelLoadRequest::QwenHipWithBudget` through the existing owners.75GiB includes
-  4GiB context;71GiB remainder includes native cache, weights, roots and workspace.
-  Default API/24GiB total/64GiB physical admission remain unchanged.
-- Initial controls:3 budget/placement tests and production HIP/SDK/Gemma-HIP
-  strict checks pass;16 original physical/native/foreign-owner controls also pass.
-  R1 exposed legacy-wrapper feature gating, fixed without enabling qualification
-  in production. Mixed checkR3 uses the approved CUDA SDK path (R2's copied path
-  typo preserved). Frozen SDK`9009f874` is qualification-free; diagnostic`57376b34`.
-  No large-CUDA numerical acceptance implied.
-- Authoritative correction: `ResidentPhysical::new_with_native_context` partitions
-  context from the original provider envelope. Legacy `ResidentText` envelope is
-  24GiB TOTAL (20GiB model remainder +4GiB context), with64GiB physical-admission
-  ceiling. Earlier24+4 narrative was inaccurate; preserve original receipts and
-  timings, but do not use that narrative as resource accounting.
-- [x] Verify resident C1 and the unchanged66-call source/state reference; original
-  invocation/binaries/nonces, per-case EOF/reap/group and device retirement joined.
-  `qwen-rocm-benchmark-3gteresx/budget-c1-reviewed-r1b.json`; initial auditR1 missed
-  the exact libtest prefix, preserved and fixed in a fresh auditor, not by changing
-  outputs/references.66 calls,3137737728 state/logit words +611450880 KV-tail words,
-  zero mismatches; source/ref unchanged, independent roots and genuine feedback.
-- Actual source:53786705920B weights resident. Live total envelope80530636800B
-  includes4294967296B context; model/native/root/workspace remainder76235669504B.
-  Original resident ledger62502630529B includes opaque native charges; it is NOT
-  measured VRAM. Observed C1 device peak56445587456B (~52.57GiB), returned to the
-  original274448384B baseline. Host policy16GiB, cgroup12GiB RAM+8GiB swap.
-- C1:5517.731/5512.832ms (mean5515.281ms),0.543943outputtok/s; load189657.308ms.
-  Historical streamed mean241346.590ms →43.76x latency ratio; retained vLLM
-  mean779.270ms →native7.08x slower. Historical contrast, NOT controlled ABBA.
-  Native raw-text SDK/full-logit host sampling/CPU-source arithmetic differs from
-  stock ROCm token-ID API/arithmetic.75GiB cap vs~74.88GiB baseline, actual usage
-  differs; active8 and physical batch1. No full qualification/vendor parity claim.
-- [x] Offered C1/4/8/16/32/64 completes with unchanged production SDK binary;
-  all375 requests/1125 output IDs (250 timed requests) match. All original scopes
-  independently retired: matching binaries/nonces/invocations, no signals, reaped
-  children, absent groups/cgroups, closed writers/EOF, KFD empty/busy0.
-  `budget-populations-reviewed-r2b.json`; R2b clarifies “two timed waves”, retaining
-  R2's correct measurements. PopulationR2 starts only after accepted C1/stateR1.
-- Output tok/s (47-input/3-output; one warmup +two timed waves per offered count):
-
-  | Offered | Native HIP | Retained ROCm vLLM |
-  |---:|---:|---:|
-  |1|0.543943|3.849756|
-  |4|0.542490|7.183117|
-  |8|0.537208|9.248896|
-  |16|0.534479|10.742837|
-  |32|0.531398|11.720846|
-  |64|0.529817|12.071477|
-
-- Native active limit8, actual physical batch1 throughout; no fused throughput
-  scaling. C64 baseline22.78x faster. Population device peak58989559808B
-  (~54.94GiB), back to274448384B; startup189504.319ms separate from timing.
-  Resident buffers/native opaque ledger/75GiB reservation/measured device use
-  remain distinct. Diagnostic label corrected to `resident_ledger_bytes` after
-  review; original frozen logs retain their old label, no arithmetic/allocation
-  change. Affected strict example check passes.
-- [x] Final isolated/offline `scripts/check.sh` runs last and passes:2360 Rust
-  passes/0 failures/101 ignored across309 suites;17 Python suites/182 cases.
-  `budget-final-gate-r1.log`; separate19 accounting/owner controls and physical
-  source/population scopes above. No new source/fault/serving claims from CPU gate.
-- Signed owned checkpoint pending. `qualification=false`,
-  `full_reference_acceptance=false`; HTTP504 and populated1K/2K closure remain
-  separate. No new download, recovery, subagents or push.
-
-### Remaining CUDA qualification
-
-- [ ] Establish independent large-source distribution/state accuracy under its
-  declared numerical contract before claiming full large CUDA qualification.
-  Current smoke data is diagnostic, not a post-hoc tolerance grant.
+- [ ] Establish independent large-CUDA distribution/state accuracy (session task44)
+  under its declared numerical contract. Three matching IDs/112 finite domains
+  and CPU-logit NMSE0.124241/0.090048/0.043837 are diagnostic, not a post-hoc
+  tolerance grant. Preserve exact small-model references and original failures.
+- [ ] Extend small CUDA to genuine populated contexts; short resident/streamed
+  trajectories,65-token tail replay and SDK/HTTP lifecycle coverage do not suffice.
+- [ ] Localize ROCm2B C4 warmup and C16/32/64 warmup/timed divergence (task39),
+  without repinning expected IDs or attributing an unlocalized failure to kernels.
+- [ ] Close ordinary27B HIP HTTP504 and populated1K/2K references/serving (task11).
+  R10 audit is complete and mixed; R11 remains staged/unlaunched. Review its older
+  binary/budget before any fresh successor. Both context captures remain interrupted;
+  the waived12GiB host-available threshold is not a current blocker.
+- [ ] Implement genuine shared inter-session batching with independent roots,
+  cancellation/publication and separately configurable queue/active/batch/token
+  limits; physical batch1 remains the current measured implementation.
+- [ ] Optimize measured CUDA2B/HIP hot paths and run controlled comparisons after
+  relevant correctness. Existing short eager/direct-API rates are not general
+  HTTP/context/graph performance or proof of vLLM superiority.
 
 ### Current real-model feedback — items2/3
 
@@ -195,31 +145,36 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   verified. Native27B timed requests243.61/239.08s; higher populations not run,
   not memory refusals. No native fused batching.
 - [x] ROCm vLLM0.8B/27B offered C1..64: all outputs and original retirement
-  verified.2B C1/4/8 match; higher populations below remain failed.
-- [ ] Resolve ROCm2B batch-dependent output mismatch. C16/C32 each2 timed
-  requests differ; C64 has6. Expected[95726,26516,220], actual[95726,98019,271].
+  verified.2B C1/C8 whole cells match; C4/16/32/64 remain failed comparisons.
+- [ ] Resolve ROCm2B batch-dependent output mismatch. Retained
+  `qwen-rocm-benchmark-3gteresx/vllm-2b-summary-r1.json` confirms C4 warmup
+  wave0/request_index3 differs, despite0/8 timed mismatches. C16/C32/C64 have
+  2/32,2/64,6/128 timed mismatches, plus1/1/3 warmup mismatches. Expected
+  [95726,26516,220], actual[95726,98019,271]. Warmup failures count; earlier
+  “C1/C4/C8 match” shorthand was incorrect. Original summaries/logs unchanged.
   Failed run/source bytes/shutdown/original retirement retained. Cause unlocalized;
   not established as a ROCm kernel bug. Do not repin expected IDs or count these
   cells as accepted matched speedups.
 
-Output tok/s, including prefill; offered clients:
+Historical24GiB-total native sweep; output tok/s including prefill, offered clients.
+Resident27B75GiB results are separate under signed`d16f096` below:
 
 | C | HIP0.8B | vLLM0.8B | HIP2B | vLLM2B | HIP27B | vLLM27B |
 |---|---:|---:|---:|---:|---:|---:|
 |1|12.51|57.81|6.85|34.14|0.01243|3.85|
-|4|12.28|79.12|6.96|60.23|not run|7.18|
+|4|12.28|79.12|6.96|60.23†|not run|7.18|
 |8|12.14|125.70|6.86|74.85|not run|9.25|
 |16|12.02|140.86|6.83|86.51†|not run|10.74|
 |32|12.07|150.25|6.77|92.56†|not run|11.72|
 |64|12.01|154.04|6.77|95.35†|not run|12.07|
 
-- † Measured but output-mismatched, not an accepted matched comparison.
+- † Warmup or timed output mismatch; whole cell is not an accepted matched comparison.
 - Same canonical47 input/3 greedy outputs/model, context1024, one warmup and two
   timed waves/cell. Both active limits8; above8 queues. Native physical batch1;
   vLLM actual peak-active/batch width uninstrumented.
 - Native raw-text SDK delivery vs vLLM token-ID direct API; native CPU-source
   arithmetic vs stock ROCm BF16 execution. Not bitwise equivalence/full qualification.
-- Native27B unchanged24GiB provider(+4GiB context) streams weights; vLLM uses78%
+- Native27B default24GiB TOTAL (including4GiB context) streams weights; vLLM uses78%
   of96GiB and loads50.22GiB weights. Not resource-matched. Native small scopes
   overlap runtime acquisition; device-free probes overlap part of27B. Exploratory.
 - Load timers native/vLLM seconds:0.8B19.54/183.41,2B26.78/187.11,
@@ -227,11 +182,17 @@ Output tok/s, including prefill; offered clients:
 - Native summary: `qwen-cuda-regeneration-tDW0EJ1I/hip-native-benchmark-summary-r1.json`.
   Runtime/results/audits: XDG state `qwen-rocm-benchmark-3gteresx`,
   `vllm-{08,2b,27b}-summary-r1.json`. All GPU owners retired; no active campaign.
-  Benchmark helpers release-built/executed; last complete gate predates them.
-  Reader preallocation repair now passes; helper landing still requires the
-  assembled final gate and contained ownership/dependency review.
+  Benchmark helpers release-built/executed; subsequent assembled CPU gates passed
+  (`composition-final-gate-r2.log`, `budget-final-gate-r1.log`).
+  Reader preallocation repair passed and landed in`4f1e827` with its assembled
+  final gate and ownership/dependency review.
 
-### Ordinary27B — active, unqualified
+### Ordinary27B — retained qualification chronology
+
+Source/geometry/storage/streaming and numerical/SDK/lifecycle work below landed
+by`4f1e827`; resident-budget qualification is signed`d16f096`. Preserve historical
+failures and scope limits, but use the current continuation queue above rather
+than old “remaining” milestones to select work. HTTP/context closure is still open.
 
 - [ ] Complete actual27B ordinary HIP/SDK/serve, not the finite two-position route.
   Authenticated `Qwen/Qwen3.8-27B` geometry now drives the same ordinary template:
@@ -240,7 +201,8 @@ Output tok/s, including prefill; offered clients:
 - [ ] Qualify bounded weight streaming and source/physical final readers.
   Whole-source BF16 storage is priced before upload; use existing source-page
   transport when resident weights plus workspace/roots/native owners exceed the
-  unchanged24GiB provider/4GiB context plan. Host ledger remains16GiB. Original
+  default24GiB total including4GiB context. Explicit residency uses the separately
+  admitted75GiB total; host ledger remains16GiB. Original
   source extent is separate from resident allocation; no float kernels changed.
 - [ ] Independently audit the original CPU capture before native comparison.
   Existing approved source/image,66 genuine calls/two repeats, full64layers,
@@ -281,7 +243,8 @@ Output tok/s, including prefill; offered clients:
   including retained finite-source boundaries and exact managed manifest.
   Two earlier host failures (stale helper argument/new frontier assertion) are
   retained and corrected; call-free frontier stays0, runtime calls own extents.
-  Evidence: XDG state `qwen-ordinary-large-rHMls4mk`; changes remain uncommitted.
+  Evidence: XDG state `qwen-ordinary-large-rHMls4mk`; implementation integrated
+  by`4f1e827`, with HTTP/context exceptions preserved above.
 - [ ] Finish additive BF16/F32 GDN source storage qualification. Canonical host
   and x2 hostR2 exposed the same exact-type refusal: all48 original large-source
   `A_log` and GDN norm tensors are BF16; small-source F32 remains required.
@@ -1050,6 +1013,76 @@ or model support. Qwen parity/short benchmark/long→dense27B→Gemma remains bi
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### `d16f096` — explicit HIP total budget and resident comparison
+
+- [x] Thread an explicit total-device budget through source admission, native
+  context/cache, physical service and the existing shared serving adapter.
+  Approximately75GiB total, including4GiB context; retain16GiB host. No changed
+  historical defaults, numerical profile, source pins or recovery permissions.
+- Implemented `HipSourceBudget`, explicit source preflight/load and
+  `ModelLoadRequest::QwenHipWithBudget` through the existing owners.75GiB includes
+  4GiB context;71GiB remainder includes native cache, weights, roots and workspace.
+  Default API/24GiB total/64GiB physical admission remain unchanged.
+- Initial controls:3 budget/placement tests and production HIP/SDK/Gemma-HIP
+  strict checks pass;16 original physical/native/foreign-owner controls also pass.
+  R1 exposed legacy-wrapper feature gating, fixed without enabling qualification
+  in production. Mixed checkR3 uses the approved CUDA SDK path (R2's copied path
+  typo preserved). Frozen SDK`9009f874` is qualification-free; diagnostic`57376b34`.
+  No large-CUDA numerical acceptance implied.
+- Authoritative correction: `ResidentPhysical::new_with_native_context` partitions
+  context from the original provider envelope. Legacy `ResidentText` envelope is
+  24GiB TOTAL (20GiB model remainder +4GiB context), with64GiB physical-admission
+  ceiling. Earlier24+4 narrative was inaccurate; preserve original receipts and
+  timings, but do not use that narrative as resource accounting.
+- [x] Verify resident C1 and the unchanged66-call source/state reference; original
+  invocation/binaries/nonces, per-case EOF/reap/group and device retirement joined.
+  `qwen-rocm-benchmark-3gteresx/budget-c1-reviewed-r1b.json`; initial auditR1 missed
+  the exact libtest prefix, preserved and fixed in a fresh auditor, not by changing
+  outputs/references.66 calls,3137737728 state/logit words +611450880 KV-tail words,
+  zero mismatches; source/ref unchanged, independent roots and genuine feedback.
+- Actual source:53786705920B weights resident. Live total envelope80530636800B
+  includes4294967296B context; model/native/root/workspace remainder76235669504B.
+  Original resident ledger62502630529B includes opaque native charges; it is NOT
+  measured VRAM. Observed C1 device peak56445587456B (~52.57GiB), returned to the
+  original274448384B baseline. Host policy16GiB, cgroup12GiB RAM+8GiB swap.
+- C1:5517.731/5512.832ms (mean5515.281ms),0.543943outputtok/s; load189657.308ms.
+  Historical streamed mean241346.590ms →43.76x latency ratio; retained vLLM
+  mean779.270ms →native7.08x slower. Historical contrast, NOT controlled ABBA.
+  Native raw-text SDK/full-logit host sampling/CPU-source arithmetic differs from
+  stock ROCm token-ID API/arithmetic.75GiB cap vs~74.88GiB baseline, actual usage
+  differs; active8 and physical batch1. No full qualification/vendor parity claim.
+- [x] Offered C1/4/8/16/32/64 completes with unchanged production SDK binary;
+  all375 requests/1125 output IDs (250 timed requests) match. All original scopes
+  independently retired: matching binaries/nonces/invocations, no signals, reaped
+  children, absent groups/cgroups, closed writers/EOF, KFD empty/busy0.
+  `budget-populations-reviewed-r2b.json`; R2b clarifies “two timed waves”, retaining
+  R2's correct measurements. PopulationR2 starts only after accepted C1/stateR1.
+- Output tok/s (47-input/3-output; one warmup +two timed waves per offered count):
+
+  | Offered | Native HIP | Retained ROCm vLLM |
+  |---:|---:|---:|
+  |1|0.543943|3.849756|
+  |4|0.542490|7.183117|
+  |8|0.537208|9.248896|
+  |16|0.534479|10.742837|
+  |32|0.531398|11.720846|
+  |64|0.529817|12.071477|
+
+- Native active limit8, actual physical batch1 throughout; no fused throughput
+  scaling. C64 baseline22.78x faster. Population device peak58989559808B
+  (~54.94GiB), back to274448384B; startup189504.319ms separate from timing.
+  Resident buffers/native opaque ledger/75GiB reservation/measured device use
+  remain distinct. Diagnostic label corrected to `resident_ledger_bytes` after
+  review; original frozen logs retain their old label, no arithmetic/allocation
+  change. Affected strict example check passes.
+- [x] Final isolated/offline `scripts/check.sh` runs last and passes:2360 Rust
+  passes/0 failures/101 ignored across309 suites;17 Python suites/182 cases.
+  `budget-final-gate-r1.log`; separate19 accounting/owner controls and physical
+  source/population scopes above. No new source/fault/serving claims from CPU gate.
+- Signed checkpoint`d16f096` (signatureG), no push. `qualification=false`,
+  `full_reference_acceptance=false`; HTTP504 and populated1K/2K closure remain
+  separate. No new download, recovery, subagents or push.
 
 ### `4f1e827` — shared source geometry, CUDA composition and serving
 

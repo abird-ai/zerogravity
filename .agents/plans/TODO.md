@@ -3,18 +3,21 @@
 Current source, tests, and this queue are authoritative; Git retains retired history.
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 
-## Owner priority — 31 Oct
+## Owner priority — current continuation
 
 **Fabric functional transition accepted:** source `8c43844`, CUDA repair
 `8d761c4`; scoped model/GPU/SDK/HTTP/cache acceptance and final isolated gate pass.
 Original unsupported/unavailable cells and Qwen expansion remain explicit.
 Main only; no new or resumed subagents or recurrence restart.
-Owner now approves x2 ROCm vLLM runtime acquisition and running below the former
-12GiB available-host guard with swap; native budgets/device safeguards unchanged.
+Approved x2 ROCm vLLM acquisition is complete. The former12GiB available-host
+guard was waived with swap for fresh scopes; device safeguards remain unchanged.
+Explicit75GiB-total HIP admission is signed`d16f096`; historical defaults unchanged.
 Complete substantial implementation batches before combined validation; full gate last.
 Prioritize working paths + early matched-vLLM feedback; reuse checks/evidence,
 add fixtures only for concrete gaps. Baselines need not await all models/batching.
-Owner resumed items2/3: CUDA + ordinary27B, quick real-model/serving feedback.
+Owner direction: CUDA + ordinary27B, quick real-model/serving feedback. Shared
+CUDA and resident HIP checkpoints are signed; no build/device campaign is live.
+This closeout reconciles notes and commits current changes, without a new launch.
 
 Fabric migration is complete; the unfinished Qwen campaign remains next.
 Preserve signed native GDN`e2559b6`/pause`1c35172` and all accepted bounded
@@ -31,7 +34,7 @@ activating held routes.
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)
 - [~] P1 pipeline-composition — @pvl — recursive primitives/pipelines/profiles; shared execution adapters active, reuse current adapters in Fabric; Qwen expansion deferred — [details](pipeline-composition/TODO.md)
 - [~] P1 cli-device-routing — @pvl — unified run/config/source/device selection; preserve behavior through Fabric SDK/CLI migration — [details](cli-device-routing/TODO.md)
-- [~] P2 model-execution — @pvl — shared CUDA signed; small resident/streamed exact logits/state,8 shared SDK/HTTP scopes and4 streamed lifecycle scopes pass; grouped large-source smoke/final gate pass; large numerical qualification stays open, signed`4f1e827`; 75GiB-total HIP C1..C64 outputs/state/retirement verified; physical batch1, slower than vLLM; final budget gate passes, signed checkpoint pending. Populated small HIP signed`8ffb511`;27B numerical/state/SDK/lifecycle audited, HTTP504/context closure open; legacy24GiB envelope includes4GiB context — [details](model-execution/TODO.md)
+- [~] P2 model-execution — @pvl — shared CUDA signed; small resident/streamed exact logits/state,8 shared SDK/HTTP scopes and4 streamed lifecycle scopes pass; grouped large-source smoke/final gate pass; large numerical qualification stays open, signed`4f1e827`; 75GiB-total HIP C1..C64 outputs/state/retirement verified; physical batch1, slower than vLLM; final budget gate passes, signed`d16f096`. Populated small HIP signed`8ffb511`;27B numerical/state/SDK/lifecycle audited, HTTP504/context closure open; ROCm2B C4 warmup/C16+ timed mismatches remain unlocalized; legacy24GiB envelope includes4GiB context — [details](model-execution/TODO.md)
 - [~] P2 model-acquisition — @pvl — [details](model-acquisition/TODO.md)
 
 ## Icebox

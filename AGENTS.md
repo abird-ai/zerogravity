@@ -193,8 +193,10 @@ Preserve one Rust mathematical engine, immutable source identity, independent
 StateRoot ownership, the physical ResourceArbiter, fair workers and actual
 completion/quarantine. Run checks appropriate to the change and the complete
 `scripts/check.sh` gate before accepting an implementation phase. Use
-`CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py -- bash scripts/check.sh`
-for actual user/network isolation with already approved inputs. GPU/model
+`CARGO_BUILD_JOBS=8 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py -- bash scripts/check.sh`
+for actual user/network isolation with already approved inputs. Allow up to eight
+Cargo build jobs by default; reduce for observed memory pressure or explicit
+resource-sharing constraints. Runtime/test thread limits remain separate. GPU/model
 changes also require their relevant real source, state, cancellation and
 physical tests; compilation or mocks do not establish inference support. Inspect
 changed code and failed/interrupted tests when resuming; Git IDs are source
