@@ -16,6 +16,9 @@ use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 /// and extra snapshot readers require their own original host admission.
 #[derive(Clone, Debug)]
 pub struct SourceCallInventory {
+    pub total_device_budget_bytes: usize,
+    pub model_device_budget_bytes: usize,
+    pub physical_admission_bytes: u64,
     pub source_weight_bytes: usize,
     pub resident_weight_bytes: usize,
     pub workspace_bytes: usize,
@@ -28,6 +31,7 @@ pub struct SourceCallInventory {
 }
 
 pub(crate) struct Admission {
+    pub(super) budget: crate::hip::native::HipSourceBudget,
     pub(super) source: VerifiedTensorSource,
     pub(super) layout: Arc<layout::Layout>,
     pub(super) operands: BTreeMap<String, Arc<PreparedBf16Projection>>,
@@ -39,6 +43,19 @@ impl Admission {
         source: VerifiedTensorSource,
         plan: Arc<ForwardPlan>,
         max_sessions: usize,
+    ) -> Result<Self> {
+        Self::with_budget(
+            source,
+            plan,
+            max_sessions,
+            crate::hip::native::HipSourceBudget::default(),
+        )
+    }
+    pub(crate) fn with_budget(
+        source: VerifiedTensorSource,
+        plan: Arc<ForwardPlan>,
+        max_sessions: usize,
+        budget: crate::hip::native::HipSourceBudget,
     ) -> Result<Self> {
         if !(1..=64).contains(&max_sessions) || source.source_identity() != plan.source() {
             return Err(Error::State(
@@ -59,7 +76,7 @@ impl Admission {
         let storage = weight_storage(
             source_weight_bytes,
             fixed_device_bytes,
-            crate::hip::native::resident_source_model_limit_bytes(),
+            budget.model_device_bytes(),
         )?;
         if storage == Bf16ProjectionStorage::Streamed {
             // Immutable source extent is unchanged. Only the original bounded
@@ -124,8 +141,11 @@ impl Admission {
             native_device,
         ])?;
         let (context_device_bytes, physical_device_upper_bytes) =
-            crate::hip::native::resident_source_device_inventory(model_device_upper_bytes)?;
+            budget.inventory(model_device_upper_bytes)?;
         let inventory = SourceCallInventory {
+            total_device_budget_bytes: budget.total_device_bytes(),
+            model_device_budget_bytes: budget.model_device_bytes(),
+            physical_admission_bytes: budget.physical_admission_bytes(),
             source_weight_bytes,
             resident_weight_bytes: layout.preflight.source_bytes,
             workspace_bytes: layout.preflight.owned_bytes()? - layout.preflight.source_bytes,
@@ -137,6 +157,7 @@ impl Admission {
             host_upper_bytes,
         };
         Ok(Self {
+            budget,
             source,
             layout,
             operands,
@@ -406,6 +427,37 @@ fn weight_storage(weights: usize, fixed: usize, limit: usize) -> Result<Bf16Proj
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn explicit_total_prices_context_native_and_roots_before_weight_placement() {
+        use crate::hip::native::HipSourceBudget;
+        const GIB: usize = 1024 * 1024 * 1024;
+        let (weights, fixed) = (50 * GIB, 12 * GIB);
+        assert_eq!(
+            weight_storage(
+                weights,
+                fixed,
+                HipSourceBudget::default().model_device_bytes()
+            )
+            .unwrap(),
+            Bf16ProjectionStorage::Streamed
+        );
+        let exact = (weights + fixed + 4 * GIB) as u64;
+        for total in [exact, 75 * GIB as u64] {
+            let budget = HipSourceBudget::new(total).unwrap();
+            assert_eq!(
+                weight_storage(weights, fixed, budget.model_device_bytes()).unwrap(),
+                Bf16ProjectionStorage::Resident
+            );
+            assert_eq!(budget.inventory(weights + fixed).unwrap().1 as u64, exact);
+        }
+        let short = HipSourceBudget::new(exact - 1).unwrap();
+        assert_eq!(
+            weight_storage(weights, fixed, short.model_device_bytes()).unwrap(),
+            Bf16ProjectionStorage::Streamed
+        );
+        let floor = HipSourceBudget::new((fixed + 4 * GIB - 1) as u64).unwrap();
+        assert!(weight_storage(weights, fixed, floor.model_device_bytes()).is_err());
+    }
     #[test]
     fn storage_selection_preserves_actual_caps_and_never_omits_fixed_owners() {
         assert_eq!(

@@ -78,11 +78,12 @@ pub(crate) async fn prepare(
     };
     check()?;
     let inventory = admission.inventory().clone();
-    let native = crate::hip::native::begin_resident_source(
+    let native = crate::hip::native::begin_resident_source_with_budget(
         device,
         &admission.source,
         source_owner,
         inventory.model_device_upper_bytes,
+        admission.budget,
     )?;
     let catalogue = admission.catalogue(native.client())?;
     let service = native.service();

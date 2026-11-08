@@ -14,7 +14,7 @@ use zerogravity_engine::{model_instance::execution::*, router::Router};
 #[derive(Clone, Copy)]
 pub(crate) enum SourceBackend {
     #[cfg(feature = "qwen35-hip")]
-    Hip,
+    Hip(crate::gpu::HipSourceBudget),
     #[cfg(feature = "qwen35-cuda")]
     Cuda {
         provider_bytes: usize,
@@ -42,7 +42,7 @@ impl SourceBackend {
     fn contract(self) -> SourceNumericalContract {
         match self {
             #[cfg(feature = "qwen35-hip")]
-            Self::Hip => SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1,
+            Self::Hip(_) => SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1,
             #[cfg(feature = "qwen35-cuda")]
             Self::Cuda { .. } => SourceNumericalContract::ReferenceCudaSm86Bf16V1,
         }
@@ -109,14 +109,17 @@ pub(crate) fn load_router(
     // reconstruction and no alternate scheduler/publisher.
     let resident = match backend {
         #[cfg(feature = "qwen35-hip")]
-        SourceBackend::Hip => block_on(ResidentModel::load_ordinary_cpu_source(
-            Device::Hip(Default::default()),
-            source.plan.source().clone(),
-            source.clone(),
-            source.plan.plan().clone(),
-            profile.active,
-            None,
-        )),
+        SourceBackend::Hip(budget) => {
+            block_on(ResidentModel::load_ordinary_cpu_source_with_budget(
+                Device::Hip(Default::default()),
+                source.plan.source().clone(),
+                source.clone(),
+                source.plan.plan().clone(),
+                profile.active,
+                budget,
+                None,
+            ))
+        }
         #[cfg(feature = "qwen35-cuda")]
         SourceBackend::Cuda {
             provider_bytes,

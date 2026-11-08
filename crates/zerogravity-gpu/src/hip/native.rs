@@ -74,6 +74,11 @@ impl HipColdOwner {
     }
 }
 
+#[cfg(feature = "hip-source")]
+mod source_budget;
+#[cfg(feature = "hip-source")]
+pub use source_budget::HipSourceBudget;
+
 const GIB: usize = 1024 * 1024 * 1024;
 pub(crate) const SOURCE_HOST_BYTES: u64 = (16 * GIB) as u64;
 #[cfg(any(
@@ -121,7 +126,7 @@ enum SingleSourceProfile {
     #[cfg(feature = "qwen-source-qualification")]
     Qwen,
     #[cfg(feature = "hip-source")]
-    ResidentText,
+    ResidentText(HipSourceBudget),
 }
 impl SingleSourceProfile {
     fn provider_cap(self) -> usize {
@@ -131,7 +136,17 @@ impl SingleSourceProfile {
             #[cfg(feature = "qwen-source-qualification")]
             Self::Qwen => PROVIDER_CAP,
             #[cfg(feature = "hip-source")]
-            Self::ResidentText => 24 * GIB,
+            Self::ResidentText(budget) => budget.total_device_bytes(),
+        }
+    }
+    fn device_cap(self) -> u64 {
+        match self {
+            #[cfg(feature = "hip-source")]
+            Self::ResidentText(budget) => budget.physical_admission_bytes(),
+            #[cfg(feature = "gemma-bf16-qualification")]
+            Self::Gemma(_) => DEVICE_CAP,
+            #[cfg(feature = "qwen-source-qualification")]
+            Self::Qwen => DEVICE_CAP,
         }
     }
     fn policy(self) -> &'static str {
@@ -141,7 +156,13 @@ impl SingleSourceProfile {
             #[cfg(feature = "qwen-source-qualification")]
             Self::Qwen => "x2-gfx1151-qwen27b-initial-cached-full-catalogue-provisional-v1",
             #[cfg(feature = "hip-source")]
-            Self::ResidentText => "gfx1151-source-bf16-resident-projections-v1",
+            Self::ResidentText(budget) => {
+                if budget == HipSourceBudget::default() {
+                    "gfx1151-source-bf16-resident-projections-v1"
+                } else {
+                    "gfx1151-source-bf16-explicit-total-device-budget-v1"
+                }
+            }
         }
     }
 }
@@ -424,36 +445,39 @@ pub(crate) fn begin_qwen_qualification(
 ) -> Result<ColdNativePreparation> {
     begin_single_source(device, source, source_owner, SingleSourceProfile::Qwen)
 }
-#[cfg(feature = "hip-source")]
-pub(crate) fn resident_source_model_limit_bytes() -> usize {
-    SingleSourceProfile::ResidentText.provider_cap() - CONTEXT_DEVICE as usize
-}
-#[cfg(feature = "hip-source")]
+#[cfg(feature = "qwen-source-qualification")]
 pub(crate) fn resident_source_device_inventory(model_upper: usize) -> Result<(usize, usize)> {
-    let context = CONTEXT_DEVICE as usize;
-    let total = model_upper
-        .checked_add(context)
-        .ok_or_else(|| Error::Limit("resident source physical upper overflow".into()))?;
-    if total > SingleSourceProfile::ResidentText.provider_cap() {
-        return Err(Error::Limit(
-            "resident source pre-client device/native/root admission".into(),
-        ));
-    }
-    Ok((context, total))
+    HipSourceBudget::default().inventory(model_upper)
 }
-#[cfg(feature = "hip-source")]
+#[cfg(feature = "qwen-source-qualification")]
 pub(crate) fn begin_resident_source(
     device: Device,
     source: &VerifiedTensorSource,
     source_owner: crate::physical_quarantine::CompletionOwner,
     model_device_upper: usize,
 ) -> Result<ColdNativePreparation> {
-    resident_source_device_inventory(model_device_upper)?;
+    begin_resident_source_with_budget(
+        device,
+        source,
+        source_owner,
+        model_device_upper,
+        HipSourceBudget::default(),
+    )
+}
+#[cfg(feature = "hip-source")]
+pub(crate) fn begin_resident_source_with_budget(
+    device: Device,
+    source: &VerifiedTensorSource,
+    source_owner: crate::physical_quarantine::CompletionOwner,
+    model_device_upper: usize,
+    budget: HipSourceBudget,
+) -> Result<ColdNativePreparation> {
+    budget.inventory(model_device_upper)?;
     begin_single_source(
         device,
         source,
         source_owner,
-        SingleSourceProfile::ResidentText,
+        SingleSourceProfile::ResidentText(budget),
     )
 }
 fn begin_single_source(
@@ -478,7 +502,7 @@ fn begin_single_source(
         crate::resident_leases::ResidentPhysical::new_with_native_context(
             device,
             profile.provider_cap(),
-            DEVICE_CAP,
+            profile.device_cap(),
             Arc::from(profile.policy()),
             CONTEXT_DEVICE,
         )?;

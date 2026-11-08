@@ -31,7 +31,7 @@ activating held routes.
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)
 - [~] P1 pipeline-composition — @pvl — recursive primitives/pipelines/profiles; shared execution adapters active, reuse current adapters in Fabric; Qwen expansion deferred — [details](pipeline-composition/TODO.md)
 - [~] P1 cli-device-routing — @pvl — unified run/config/source/device selection; preserve behavior through Fabric SDK/CLI migration — [details](cli-device-routing/TODO.md)
-- [~] P2 model-execution — @pvl — CUDA first: small resident/streamed exact logits/state,8 shared SDK/HTTP scopes and4 streamed lifecycle scopes pass; grouped large-source smoke/final gate pass; large numerical qualification stays open, signed checkpoint next. Populated small HIP signed`8ffb511`;27B numerical/state/SDK/lifecycle audited, HTTP504/context closure open; approved~75GiB-total native comparison deferred behind CUDA — [details](model-execution/TODO.md)
+- [~] P2 model-execution — @pvl — shared CUDA signed; small resident/streamed exact logits/state,8 shared SDK/HTTP scopes and4 streamed lifecycle scopes pass; grouped large-source smoke/final gate pass; large numerical qualification stays open, signed`4f1e827`; 75GiB-total HIP C1..C64 outputs/state/retirement verified; physical batch1, slower than vLLM; final budget gate passes, signed checkpoint pending. Populated small HIP signed`8ffb511`;27B numerical/state/SDK/lifecycle audited, HTTP504/context closure open; legacy24GiB envelope includes4GiB context — [details](model-execution/TODO.md)
 - [~] P2 model-acquisition — @pvl — [details](model-acquisition/TODO.md)
 
 ## Icebox

@@ -1,6 +1,6 @@
 # Model execution
 
-## Current direction — shared CUDA composition, then HIP
+## Current direction — signed shared composition; resident HIP comparison
 
 [Fabric transition](../fabric-vnext-transition/TODO.md) is accepted through source
 `8c43844`, docs `1c99929`. Genuine multi-row and populated1K–16K0.8B/2B HIP now pass native/SDK/HTTP
@@ -29,7 +29,7 @@ not build another per-size engine. Family source/config owns geometry, roles,
 ties and traversal; backend implementations own explicit numerical/layout domains.
 Reuse accepted primitive/ownership evidence; compact real-model composition and
 state checks first, deeper diagnostics for concrete gaps or changed optimizations.
-CUDA composition is assembled: source-derived layouts/geometry, parameterized
+CUDA composition is signed in`4f1e827` (signatureG): source-derived layouts/geometry, parameterized
 attention/rotary, grouped-head GDN using existing16-head leaves, and bounded
 source-page weight streaming on the6GiB l5 device. Fresh small-model resident
 and streamed numerical/state diagnostics pass. Shared public SDK/HTTP and streamed
@@ -38,7 +38,10 @@ assembled final gate pass; independent large numerical qualification stays open.
 remove guards without implementing their capability. New-shape vendor bitwise
 parity is separate from correctness under an established operator contract.
 Owner approved a fresh approximately75GiB total native27B HIP GPU budget for the
-resident comparison;16GiB host and4GiB context remain. Not implemented/launched.
+resident comparison;16GiB host and4GiB context remain. Explicit budget plumbing
+is implemented. Resident C1 and all66 original observer-free state/logit calls
+pass with independently verified original retirement. Offered C1..64 completes
+with matching outputs; final isolated gate passes, signed checkpoint pending.
 
 
 Provenance commit: `6d74f76`.
@@ -49,108 +52,81 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-### Shared CUDA composition — small numerical/state and public serving verified
+### Explicit HIP device budget — approved resident comparison
 
-- Source geometry retained through the facade; backend layout/state/alias counts
-  derive from typed operators. Attention, rotary and KV extents use actual heads.
-- Grouped GDN composes existing16-head leaves with word-exact gather/scatter;
-  direct16/16 path retained. A_log supports exact BF16→F32 widening; dt_bias stays
-  BF16 per executable ABI. This is a new transport domain, not accepted evidence.
-- Resident/streamed matrix bindings share authenticated sources. Admission can
-  select one bounded page; strided GEMM keeps full-projection reduction selection.
-  Streamed calls retain the original flight through completion/candidate discard.
-- Isolated facade/test compilation passed (`composable-cuda-check-r4.log`,42.04s).
-  Earlier API errors retained; R2 was intentionally stopped by owner to raise
-  Cargo parallelism. Current default8 build jobs; runtime/test limits unchanged.
-  25 focused host checks passed;2 physical tests remained ignored. The initial
-  serial-transport filter matched zero tests; enabling the existing test support
-  for CUDA produced6 executed page/cache/charge passes. Strict R1 found a kernel
-  `is_multiple_of` lint; corrected using the supported CubeCL operation.
-  Shared GPU and facade/test strict checks then passed with `-D warnings`
-  (`composable-cuda-strict-r2.log`). Subsequent physical results below; the final
-  assembled gate and wider qualification remain. No new performance claim.
-- [x] Reader preallocation debt repaired: regular-file size checked before fallible
-  allocation; exact read plus EOF growth probe. Review/reference JSON and32MiB
-  state manifest use the same bound. Exact/oversize/sparse/hash controls pass
-  (`reference-bounds-r1.log`); original reference pins unchanged.
-- [x] Fresh release composition R2 passes both48-call resident trajectories and
-  both3-call streamed trajectories (47-row prefill + two nonzero-state decodes).
-  Streaming uses512MiB provider capacity, not a512MiB total-GPU claim. All248320
-  vocabulary words and42 state domains/call match unchanged references exactly:
-  102 calls/25328640 vocabulary words, zero logit/state mismatches. Original
-  invocation/group/EOF/GPU retirement verified separately for every scope.
-  `composition-{resident,streamed}-{08,2b}-r2/`, `composable-small-results-r2.json`;
-  frozen binary`9a67353f`. Diagnostic evidence, not full serving qualification.
-- First streamed2B scope failed before its first result; original failed scope
-  and successful process/GPU retirement retained.85-column pages exposed a
-  four-byte binding-alignment assumption at BF16 output byte170. GEMM now declares
-  natural two-byte alignment; other pinned kernels retain four-byte checks.
-  Alignment participates in ABI identity; exact extent/service checks remain.
-  Diagnostic helper now reports initiating and shutdown errors separately.
-  Seven pinned-kernel host controls, shared GPU/facade strict checks and the fresh
-  release build pass (`composition-align-r2.log`); all four successor scopes pass.
-- [x] Reuse the existing source-call session/root/readback/publication owner for
-  production CUDA. Shared `qwen_source` adapter serves both backends; public
-  `ModelLoadRequest::QwenCuda`, `QwenSourceProfile`, compatible `QwenHipProfile`.
-  Raw text only; aliases cannot bypass chat refusal. Admission prices all
-  `2*max_sessions+2` roots before resident/streamed placement. Original source owner
-  survives uncertain cold initialization; retained calls finish before discard.
-- [x] Eight small-model public scopes pass:0.8B/2B × resident/streamed × SDK/HTTP.
-  Unchanged47-token/3-output reference; independent sessions/roots, shared aliases,
-  chat refusal, SDK cancel/replay, HTTP JSON/SSE/disconnect/replay and final-reader
-  source lifetime. Worker active limit2; physical batch1, not fused batching.
-  Model/namespace retirement leaves the intended process-retained compiler
-  reservations:512MiB device/384MiB host. Every original log and invocation,
-  group/reap/EOF/GPU boundary inspected independently. R7 binary`3987e38b`;
-  `composition-serving-results-r2.json`. No full-reference/performance claim.
-- [x] Four streamed lifecycle scopes pass:0.8B actual-page cancellation/completed
-  discard/replay and unknown-completion quarantine;2B normal state/restore and
-  one-byte-provider prelaunch refusal. Unknown retains282 quarantined owners/
-  89293157 bytes; peer reuse refused, no recovery. Original retirement verified.
-  `composition-semantic-batch-r1.log` retains these passes and separate failures.
-- Preserve failed scopes: first page-cut test never suspended after real launch;
-  a diagnostic-only yield now cuts after queued consumers, before completion.
-  Cancellation must return its exact expected error. Initial0.8B SDK scopes lacked
-  the canonical snapshot; existing approved local bytes were subsequently imported
-  through CacheStore, no download/repin. First HTTP launcher had a `Path` NameError
-  before invocation; no HTTP execution/retirement claim for that empty scope.
-- [x] Qualification-free CUDA serving build, strict facade/GPU tests and three
-  root-accounting controls pass. HIP-only/mixed-feature strict checks plus six
-  page/cache/charge controls and one source-call refusal control pass; no new HIP
-  physical campaign. `composition-checks-build-r7.log`,
-  `composition-shared-features-r1.log`.
-- Large CUDA R1 refused a stale sharded-source routing guard; R2 refused core GDN
-  parameter storage before inference. Both failures/retirement remain. Source
-  routing now preserves the approved inventory; core accepts authentic BF16/F32
-  A_log/norm storage for both arithmetic contracts, retaining BF16-only dt_bias,
-  exact source/shape/bytes and F16 rejection. Backend conversion stays explicit;
-  storage permission is not vendor parity. Core/large-plan regressions, strict
-  checks and R8 release build pass (`composition-checks-build-r8.log`).
-- [x] R8 binary`81ffe668`: approved large-source composition smoke passes genuine
-  47-row prefill and feedback at48/49; IDs343/288/830,112 populated finite state
-  domains, exact immutable-prior digests and clean shutdown/original retirement.
-  Load83648ms; calls115707/110039/110078ms, not a performance qualification.
-  `composition-large-tail-results-r3.json`. This is not full27B accuracy acceptance:
-  CPU-reference logit NMSE0.124241/0.090048/0.043837, maxabs9.34375/5.494141/4.570313.
-  Different declared arithmetic profiles; no distribution bound or vendor parity
-  inferred from matching IDs. Grouped transport executes; numerical scope stays
-  explicit, `qualification=false`, `full_reference_acceptance=false`.
-- [x] Public generic `run` and65-token (64+1) chunk-tail independent replay pass
-  for0.8B resident/2B streamed on R8, including normal serving retirement. Tail
-  replay has no independent numerical reference;47-token checks retain theirs.
+- [x] Thread an explicit total-device budget through source admission, native
+  context/cache, physical service and the existing shared serving adapter.
+  Approximately75GiB total, including4GiB context; retain16GiB host. No changed
+  historical defaults, numerical profile, source pins or recovery permissions.
+- Implemented `HipSourceBudget`, explicit source preflight/load and
+  `ModelLoadRequest::QwenHipWithBudget` through the existing owners.75GiB includes
+  4GiB context;71GiB remainder includes native cache, weights, roots and workspace.
+  Default API/24GiB total/64GiB physical admission remain unchanged.
+- Initial controls:3 budget/placement tests and production HIP/SDK/Gemma-HIP
+  strict checks pass;16 original physical/native/foreign-owner controls also pass.
+  R1 exposed legacy-wrapper feature gating, fixed without enabling qualification
+  in production. Mixed checkR3 uses the approved CUDA SDK path (R2's copied path
+  typo preserved). Frozen SDK`9009f874` is qualification-free; diagnostic`57376b34`.
+  No large-CUDA numerical acceptance implied.
+- Authoritative correction: `ResidentPhysical::new_with_native_context` partitions
+  context from the original provider envelope. Legacy `ResidentText` envelope is
+  24GiB TOTAL (20GiB model remainder +4GiB context), with64GiB physical-admission
+  ceiling. Earlier24+4 narrative was inaccurate; preserve original receipts and
+  timings, but do not use that narrative as resource accounting.
+- [x] Verify resident C1 and the unchanged66-call source/state reference; original
+  invocation/binaries/nonces, per-case EOF/reap/group and device retirement joined.
+  `qwen-rocm-benchmark-3gteresx/budget-c1-reviewed-r1b.json`; initial auditR1 missed
+  the exact libtest prefix, preserved and fixed in a fresh auditor, not by changing
+  outputs/references.66 calls,3137737728 state/logit words +611450880 KV-tail words,
+  zero mismatches; source/ref unchanged, independent roots and genuine feedback.
+- Actual source:53786705920B weights resident. Live total envelope80530636800B
+  includes4294967296B context; model/native/root/workspace remainder76235669504B.
+  Original resident ledger62502630529B includes opaque native charges; it is NOT
+  measured VRAM. Observed C1 device peak56445587456B (~52.57GiB), returned to the
+  original274448384B baseline. Host policy16GiB, cgroup12GiB RAM+8GiB swap.
+- C1:5517.731/5512.832ms (mean5515.281ms),0.543943outputtok/s; load189657.308ms.
+  Historical streamed mean241346.590ms →43.76x latency ratio; retained vLLM
+  mean779.270ms →native7.08x slower. Historical contrast, NOT controlled ABBA.
+  Native raw-text SDK/full-logit host sampling/CPU-source arithmetic differs from
+  stock ROCm token-ID API/arithmetic.75GiB cap vs~74.88GiB baseline, actual usage
+  differs; active8 and physical batch1. No full qualification/vendor parity claim.
+- [x] Offered C1/4/8/16/32/64 completes with unchanged production SDK binary;
+  all375 requests/1125 output IDs (250 timed requests) match. All original scopes
+  independently retired: matching binaries/nonces/invocations, no signals, reaped
+  children, absent groups/cgroups, closed writers/EOF, KFD empty/busy0.
+  `budget-populations-reviewed-r2b.json`; R2b clarifies “two timed waves”, retaining
+  R2's correct measurements. PopulationR2 starts only after accepted C1/stateR1.
+- Output tok/s (47-input/3-output; one warmup +two timed waves per offered count):
+
+  | Offered | Native HIP | Retained ROCm vLLM |
+  |---:|---:|---:|
+  |1|0.543943|3.849756|
+  |4|0.542490|7.183117|
+  |8|0.537208|9.248896|
+  |16|0.534479|10.742837|
+  |32|0.531398|11.720846|
+  |64|0.529817|12.071477|
+
+- Native active limit8, actual physical batch1 throughout; no fused throughput
+  scaling. C64 baseline22.78x faster. Population device peak58989559808B
+  (~54.94GiB), back to274448384B; startup189504.319ms separate from timing.
+  Resident buffers/native opaque ledger/75GiB reservation/measured device use
+  remain distinct. Diagnostic label corrected to `resident_ledger_bytes` after
+  review; original frozen logs retain their old label, no arithmetic/allocation
+  change. Affected strict example check passes.
+- [x] Final isolated/offline `scripts/check.sh` runs last and passes:2360 Rust
+  passes/0 failures/101 ignored across309 suites;17 Python suites/182 cases.
+  `budget-final-gate-r1.log`; separate19 accounting/owner controls and physical
+  source/population scopes above. No new source/fault/serving claims from CPU gate.
+- Signed owned checkpoint pending. `qualification=false`,
+  `full_reference_acceptance=false`; HTTP504 and populated1K/2K closure remain
+  separate. No new download, recovery, subagents or push.
+
+### Remaining CUDA qualification
+
 - [ ] Establish independent large-source distribution/state accuracy under its
   declared numerical contract before claiming full large CUDA qualification.
   Current smoke data is diagnostic, not a post-hoc tolerance grant.
-- [x] Complete isolated final gate R2 passes:2360 Rust passes/0 failures/101 ignored
-  across309 suites;17 Python suites/182 cases. `composition-final-gate-r2.log`.
-  GPU feature/physical results are the separate scopes above, not inferred from
-  this CPU workspace gate. R1 formatting failure retained; only the owned
-  `head_tile` declaration ordering changed before R2.
-- [ ] Reconcile the contained signed shared-source/CUDA checkpoint after owned-path
-  dependency review. Preserve user AGENTS bytes; no push; root README unchanged.
-- Keep backend capabilities reusable for Gemma/DeepSeek/Mistral; source family
-  semantics stay in model crates. Concrete prepared types/static dispatch;
-  no per-size engine or speculative universal framework. HIP follows CUDA.
 
 ### Current real-model feedback — items2/3
 
@@ -1074,6 +1050,106 @@ or model support. Qwen parity/short benchmark/long→dense27B→Gemma remains bi
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### `4f1e827` — shared source geometry, CUDA composition and serving
+
+- Source geometry retained through the facade; backend layout/state/alias counts
+  derive from typed operators. Attention, rotary and KV extents use actual heads.
+- Grouped GDN composes existing16-head leaves with word-exact gather/scatter;
+  direct16/16 path retained. A_log supports exact BF16→F32 widening; dt_bias stays
+  BF16 per executable ABI. This is a new transport domain, not accepted evidence.
+- Resident/streamed matrix bindings share authenticated sources. Admission can
+  select one bounded page; strided GEMM keeps full-projection reduction selection.
+  Streamed calls retain the original flight through completion/candidate discard.
+- Isolated facade/test compilation passed (`composable-cuda-check-r4.log`,42.04s).
+  Earlier API errors retained; R2 was intentionally stopped by owner to raise
+  Cargo parallelism. Current default8 build jobs; runtime/test limits unchanged.
+  25 focused host checks passed;2 physical tests remained ignored. The initial
+  serial-transport filter matched zero tests; enabling the existing test support
+  for CUDA produced6 executed page/cache/charge passes. Strict R1 found a kernel
+  `is_multiple_of` lint; corrected using the supported CubeCL operation.
+  Shared GPU and facade/test strict checks then passed with `-D warnings`
+  (`composable-cuda-strict-r2.log`). Subsequent physical results below; the final
+  assembled gate and wider qualification remain. No new performance claim.
+- [x] Reader preallocation debt repaired: regular-file size checked before fallible
+  allocation; exact read plus EOF growth probe. Review/reference JSON and32MiB
+  state manifest use the same bound. Exact/oversize/sparse/hash controls pass
+  (`reference-bounds-r1.log`); original reference pins unchanged.
+- [x] Fresh release composition R2 passes both48-call resident trajectories and
+  both3-call streamed trajectories (47-row prefill + two nonzero-state decodes).
+  Streaming uses512MiB provider capacity, not a512MiB total-GPU claim. All248320
+  vocabulary words and42 state domains/call match unchanged references exactly:
+  102 calls/25328640 vocabulary words, zero logit/state mismatches. Original
+  invocation/group/EOF/GPU retirement verified separately for every scope.
+  `composition-{resident,streamed}-{08,2b}-r2/`, `composable-small-results-r2.json`;
+  frozen binary`9a67353f`. Diagnostic evidence, not full serving qualification.
+- First streamed2B scope failed before its first result; original failed scope
+  and successful process/GPU retirement retained.85-column pages exposed a
+  four-byte binding-alignment assumption at BF16 output byte170. GEMM now declares
+  natural two-byte alignment; other pinned kernels retain four-byte checks.
+  Alignment participates in ABI identity; exact extent/service checks remain.
+  Diagnostic helper now reports initiating and shutdown errors separately.
+  Seven pinned-kernel host controls, shared GPU/facade strict checks and the fresh
+  release build pass (`composition-align-r2.log`); all four successor scopes pass.
+- [x] Reuse the existing source-call session/root/readback/publication owner for
+  production CUDA. Shared `qwen_source` adapter serves both backends; public
+  `ModelLoadRequest::QwenCuda`, `QwenSourceProfile`, compatible `QwenHipProfile`.
+  Raw text only; aliases cannot bypass chat refusal. Admission prices all
+  `2*max_sessions+2` roots before resident/streamed placement. Original source owner
+  survives uncertain cold initialization; retained calls finish before discard.
+- [x] Eight small-model public scopes pass:0.8B/2B × resident/streamed × SDK/HTTP.
+  Unchanged47-token/3-output reference; independent sessions/roots, shared aliases,
+  chat refusal, SDK cancel/replay, HTTP JSON/SSE/disconnect/replay and final-reader
+  source lifetime. Worker active limit2; physical batch1, not fused batching.
+  Model/namespace retirement leaves the intended process-retained compiler
+  reservations:512MiB device/384MiB host. Every original log and invocation,
+  group/reap/EOF/GPU boundary inspected independently. R7 binary`3987e38b`;
+  `composition-serving-results-r2.json`. No full-reference/performance claim.
+- [x] Four streamed lifecycle scopes pass:0.8B actual-page cancellation/completed
+  discard/replay and unknown-completion quarantine;2B normal state/restore and
+  one-byte-provider prelaunch refusal. Unknown retains282 quarantined owners/
+  89293157 bytes; peer reuse refused, no recovery. Original retirement verified.
+  `composition-semantic-batch-r1.log` retains these passes and separate failures.
+- Preserve failed scopes: first page-cut test never suspended after real launch;
+  a diagnostic-only yield now cuts after queued consumers, before completion.
+  Cancellation must return its exact expected error. Initial0.8B SDK scopes lacked
+  the canonical snapshot; existing approved local bytes were subsequently imported
+  through CacheStore, no download/repin. First HTTP launcher had a `Path` NameError
+  before invocation; no HTTP execution/retirement claim for that empty scope.
+- [x] Qualification-free CUDA serving build, strict facade/GPU tests and three
+  root-accounting controls pass. HIP-only/mixed-feature strict checks plus six
+  page/cache/charge controls and one source-call refusal control pass; no new HIP
+  physical campaign. `composition-checks-build-r7.log`,
+  `composition-shared-features-r1.log`.
+- Large CUDA R1 refused a stale sharded-source routing guard; R2 refused core GDN
+  parameter storage before inference. Both failures/retirement remain. Source
+  routing now preserves the approved inventory; core accepts authentic BF16/F32
+  A_log/norm storage for both arithmetic contracts, retaining BF16-only dt_bias,
+  exact source/shape/bytes and F16 rejection. Backend conversion stays explicit;
+  storage permission is not vendor parity. Core/large-plan regressions, strict
+  checks and R8 release build pass (`composition-checks-build-r8.log`).
+- [x] R8 binary`81ffe668`: approved large-source composition smoke passes genuine
+  47-row prefill and feedback at48/49; IDs343/288/830,112 populated finite state
+  domains, exact immutable-prior digests and clean shutdown/original retirement.
+  Load83648ms; calls115707/110039/110078ms, not a performance qualification.
+  `composition-large-tail-results-r3.json`. This is not full27B accuracy acceptance:
+  CPU-reference logit NMSE0.124241/0.090048/0.043837, maxabs9.34375/5.494141/4.570313.
+  Different declared arithmetic profiles; no distribution bound or vendor parity
+  inferred from matching IDs. Grouped transport executes; numerical scope stays
+  explicit, `qualification=false`, `full_reference_acceptance=false`.
+- [x] Public generic `run` and65-token (64+1) chunk-tail independent replay pass
+  for0.8B resident/2B streamed on R8, including normal serving retirement. Tail
+  replay has no independent numerical reference;47-token checks retain theirs.
+- [x] Complete isolated final gate R2 passes:2360 Rust passes/0 failures/101 ignored
+  across309 suites;17 Python suites/182 cases. `composition-final-gate-r2.log`.
+  GPU feature/physical results are the separate scopes above, not inferred from
+  this CPU workspace gate. R1 formatting failure retained; only the owned
+  `head_tile` declaration ordering changed before R2.
+- [x] Signed checkpoint`4f1e827` (signatureG); only reviewed owned paths.
+  User AGENTS and root README preserved; no push.
+- Keep backend capabilities reusable for Gemma/DeepSeek/Mistral; source family
+  semantics stay in model crates. Concrete prepared types/static dispatch;
+  no per-size engine or speculative universal framework. HIP follows CUDA.
 
 ### `a57590e` — CUDA output-reduction repair
 

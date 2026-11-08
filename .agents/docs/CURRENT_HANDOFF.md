@@ -69,8 +69,14 @@ changes, gfx90c, recovery, push or recurrence restart.
   formatting failure retained; only module declaration order corrected. Separate
   GPU feature/physical scopes above establish their own narrower evidence.
   Large numerical qualification stays open; no full27B/new-family support claim.
-  Owned-path review/signed shared-CUDA checkpoint next, then approved~75GiB-total
-  HIP comparison. Preserve user AGENTS bytes and root README; no push.
+  Signed shared-source/CUDA checkpoint`4f1e827` (signatureG), user AGENTS/root README
+  preserved, no push. Approved75GiB-total HIP C1..C64 comparison now completes
+  with matching outputs; final HIP-budget gate passes, signed checkpoint pending.
+- HIP accounting correction from live original owners: legacy24GiB envelope
+  INCLUDES4GiB context (20GiB model remainder), with64GiB physical-admission ceiling.
+  Earlier24+4 narrative was inaccurate; original receipts/timings stay unchanged.
+  New explicit75GiB total must include context and retain16GiB host; no default
+  budget change, metadata-only admission or extra context added on top.
 
 ### Current real-model feedback — items2/3
 
@@ -124,12 +130,27 @@ changes, gfx90c, recovery, push or recurrence restart.
   mismatches, retained as failed comparisons. Every original owner retired.
   Full table/limits in model-execution TODO; results `qwen-rocm-benchmark-3gteresx`.
   Both active limits8, native physical batch1.47input/3output, two timed waves.
-  Native27B streams under24GiB provider(+4GiB context), vLLM uses~75GiB total:
+  Native27B streams under24GiB total envelope(including4GiB context), vLLM uses~75GiB total:
   not resource-matched. Native timings overlap acquisition/CPU probes in part.
-  Higher native27B populations not run, not capacity refusals. No full gate since
-  benchmark helpers/current composition; reader preallocation repair now passes.
+  Higher native27B populations not run, not capacity refusals. The signed
+  composition gate passes; the new HIP-budget final gate now also passes.
   Owner subsequently approved approximately75GiB total GPU for a fresh native27B
-  resident comparison;16GiB host/4GiB context remain. Not implemented/launched.
+  resident comparison;16GiB host/4GiB context remain. Explicit budget plumbing
+  is implemented;19 accounting/placement/owner controls and feature checks pass.
+  Resident C1 now5515.281ms/3outputs (0.543943tok/s),43.76x versus historical
+  streamed run but7.08x slower than retained vLLM; no controlled ABBA claim.
+  All66 original state/logit calls and original retirement independently verified.
+  `budget-c1-reviewed-r1b.json`; all C1/4/8/16/32/64 complete:375 requests match,
+  original retirement independently audited (`budget-populations-reviewed-r2b.json`).
+  Native outputtok/s0.543943/0.542490/0.537208/0.534479/0.531398/0.529817;
+  retained vLLM3.849756/7.183117/9.248896/10.742837/11.720846/12.071477.
+  C64 baseline22.78x faster; no throughput scaling, physical batch1, active≤8.
+  Live75GiB includes4GiB context; sampled C1/population peaks52.57/54.94GiB,
+  NOT75GiB use. Resident ledger also includes opaque native charges. Final isolated
+  `budget-final-gate-r1.log`:2360 Rust passes/0 failures/101 ignored/309 suites;
+  17 Python suites/182 cases. Signed HIP-budget checkpoint pending.
+  API/arithmetic/actual-memory differences remain; physical batch1, no full
+  qualification or closure of HTTP/context/large-CUDA numerical debt.
   Current architecture correction: remove small-model assumptions through shared
   primitive/geometry/storage composition, not a bespoke27B CUDA engine. Concrete
   gaps and proportionate validation direction are in model-execution TODO.

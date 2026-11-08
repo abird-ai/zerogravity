@@ -3,6 +3,8 @@
 pub use crate::builtins::text::QwenHipProfile;
 #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
 pub use crate::builtins::text::QwenSourceProfile;
+#[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
+pub use crate::gpu::HipSourceBudget;
 pub use crate::model::DeclaredModel;
 pub use zerogravity_core::model::{ModelAssembly, ModelDefinition, ModelProgram, ProgramRequest};
 pub use zerogravity_core::provider::{PreparedExecutable, RegionExecutionProvider};
@@ -34,6 +36,15 @@ pub enum ModelLoadRequest {
         cache: crate::cache::CacheOptions,
         snapshot: String,
         profile: QwenHipProfile,
+    },
+    /// Same cold HIP route with an explicit total device envelope, including context.
+    #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
+    QwenHipWithBudget {
+        aliases: Vec<String>,
+        cache: crate::cache::CacheOptions,
+        snapshot: String,
+        profile: QwenHipProfile,
+        budget: HipSourceBudget,
     },
     /// Existing serving source profiles, including explicitly finite diagnostics.
     #[cfg(feature = "serve")]

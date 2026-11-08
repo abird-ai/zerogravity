@@ -273,4 +273,6 @@ pub use resident_program::source_observation::{
 pub use resident_inference::source_native_probe::{SourceTextNativeProbe, SourceTextNativeState};
 
 #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+pub use hip::native::HipSourceBudget;
+#[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
 pub use resident_inference::SourceCallInventory;

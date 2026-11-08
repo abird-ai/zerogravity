@@ -123,6 +123,18 @@ impl ResidentModel {
             .inventory()
             .clone())
     }
+    pub fn ordinary_cpu_source_preflight_with_budget(
+        source: VerifiedTensorSource,
+        plan: Arc<ForwardPlan>,
+        max_sessions: usize,
+        budget: crate::hip::native::HipSourceBudget,
+    ) -> Result<SourceCallInventory> {
+        Ok(
+            program::Admission::with_budget(source, plan, max_sessions, budget)?
+                .inventory()
+                .clone(),
+        )
+    }
     pub async fn load_ordinary_cpu_source(
         device: Device,
         source: VerifiedTensorSource,
@@ -131,10 +143,32 @@ impl ResidentModel {
         max_sessions: usize,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<SourceCallModel>> {
+        Self::load_ordinary_cpu_source_with_budget(
+            device,
+            source,
+            source_owner,
+            plan,
+            max_sessions,
+            crate::hip::native::HipSourceBudget::default(),
+            cancelled,
+        )
+        .await
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub async fn load_ordinary_cpu_source_with_budget(
+        device: Device,
+        source: VerifiedTensorSource,
+        source_owner: Arc<dyn std::any::Any + Send + Sync>,
+        plan: Arc<ForwardPlan>,
+        max_sessions: usize,
+        budget: crate::hip::native::HipSourceBudget,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<Arc<SourceCallModel>> {
         ordinary_not_cancelled(cancelled)?;
         let control = source.reserve_workspace(CONTROL_BYTES)?;
         let capacity = plan.prefix_capacity();
-        let admission = program::Admission::new(source.clone(), plan, max_sessions)?;
+        let admission =
+            program::Admission::with_budget(source.clone(), plan, max_sessions, budget)?;
         let prepared = program::prepare(device, admission, source_owner, cancelled).await?;
         let preflight = prepared.program.budget().clone();
         let vocabulary = prepared.program.plan().values()[prepared

@@ -1,10 +1,13 @@
 //! Real offered populations on the public source route; no native cohort claim.
 use super::*;
+#[path = "qwen_source_budget.rs"]
+mod source_budget;
 use std::collections::BTreeSet;
 use zerogravity::{models::ModelInstance, runtime::text::pending::ServingHost};
 
 pub(super) struct Harness {
     pub runtime: Runtime,
+    pub budget: zerogravity::models::HipSourceBudget,
     model: ModelInstance,
     alias: ModelInstance,
     pub tokenizer: Arc<dyn TextTokenizer>,
@@ -69,26 +72,44 @@ impl Harness {
             })
             .build()
             .unwrap();
-        runtime
-            .models()
-            .load(ModelLoadRequest::QwenHip {
-                aliases: vec!["source".into(), "alias".into()],
-                cache: CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
+        let explicit = source_budget::explicit().unwrap();
+        let budget = explicit.unwrap_or_default();
+        let profile = QwenHipProfile {
+            active,
+            context,
+            output,
+            max_pending: Some(pending),
+        };
+        let aliases = vec!["source".into(), "alias".into()];
+        let cache = CacheOptions::new(None, 96 * 1024 * 1024 * 1024);
+        let request = if let Some(budget) = explicit {
+            ModelLoadRequest::QwenHipWithBudget {
+                aliases,
+                cache,
                 snapshot: snapshot.into(),
-                profile: QwenHipProfile {
-                    active,
-                    context,
-                    output,
-                    max_pending: Some(pending),
-                },
-            })
-            .unwrap();
+                profile,
+                budget,
+            }
+        } else {
+            ModelLoadRequest::QwenHip {
+                aliases,
+                cache,
+                snapshot: snapshot.into(),
+                profile,
+            }
+        };
+        runtime.models().load(request).unwrap();
+        let physical = arbiter.snapshot(&device).unwrap();
+        assert_eq!(physical.reserved, budget.total_device_bytes() as u64);
+        assert_eq!(physical.limit, budget.physical_admission_bytes());
+        assert!(!physical.fenced);
         let model = runtime.models().resolve("source").unwrap();
         let alias = runtime.models().resolve("alias").unwrap();
         assert!(model.shares_source(&alias));
         let tokenizer = model.prepared().tokenizer();
         Self {
             runtime,
+            budget,
             model,
             alias,
             tokenizer,
@@ -257,7 +278,12 @@ fn public_source_population_benchmark() {
     println!(
         "HIP_BENCH_LOAD {}",
         serde_json::json!({"model":label,"load_ms":load.elapsed().as_secs_f64()*1000.0,
-        "active_limit":8,"context":1024,"output":3})
+        "active_limit":8,"context":1024,"output":3,
+        "total_device_budget_bytes":h.budget.total_device_bytes(),
+        "context_device_bytes":h.budget.context_device_bytes(),
+        "model_device_capacity_bytes":h.budget.model_device_bytes(),
+        "physical_admission_bytes":h.budget.physical_admission_bytes(),
+        "physical_reserved_bytes":h.arbiter.snapshot(&h.device).unwrap().reserved})
     );
     let (prompt, expected) = h.canonical();
     println!(

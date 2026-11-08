@@ -33,6 +33,24 @@ pub(crate) fn load_text(
             )
         }
         #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
+        ModelLoadRequest::QwenHipWithBudget {
+            aliases,
+            cache,
+            snapshot,
+            profile,
+            budget,
+        } => {
+            profile.validate()?;
+            validate_limits(1, profile.active, profile.max_pending, limits)?;
+            super::text::qwen_source::load_router(
+                aliases,
+                cache,
+                snapshot,
+                profile,
+                super::text::qwen_source::SourceBackend::Hip(budget),
+            )
+        }
+        #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
         ModelLoadRequest::QwenHip {
             aliases,
             cache,
@@ -46,7 +64,7 @@ pub(crate) fn load_text(
                 cache,
                 snapshot,
                 profile,
-                super::text::qwen_source::SourceBackend::Hip,
+                super::text::qwen_source::SourceBackend::Hip(Default::default()),
             )
         }
         #[cfg(feature = "serve")]

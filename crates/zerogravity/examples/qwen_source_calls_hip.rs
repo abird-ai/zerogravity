@@ -8,6 +8,8 @@ mod reference;
 #[allow(dead_code)]
 #[path = "../tests/support/qwen_source.rs"]
 mod source;
+#[path = "../tests/support/qwen_source_budget.rs"]
+mod source_budget;
 #[allow(dead_code)]
 #[path = "../tests/support/qwen_source_import.rs"]
 mod source_import;
@@ -248,10 +250,19 @@ fn run() -> Result<()> {
         invocation.materialize_source_plan()?;
         Observer::new(&expected, &map, call)?;
     }
-    let inventory = ResidentModel::ordinary_cpu_source_preflight(
+    let budget = source_budget::explicit()?.unwrap_or_default();
+    let inventory = ResidentModel::ordinary_cpu_source_preflight_with_budget(
         plan.source().clone(),
         plan.plan().clone(),
         2,
+        budget,
+    )?;
+    need(
+        inventory.total_device_budget_bytes == budget.total_device_bytes()
+            && inventory.model_device_budget_bytes + inventory.context_device_bytes
+                == budget.total_device_bytes()
+            && inventory.physical_admission_bytes == budget.physical_admission_bytes(),
+        "preflight prices the complete original device envelope",
     )?;
     println!(
         "SOURCE_CALL_PREFLIGHT model={} calls={} inventory={inventory:?} gpu_execution=false",
@@ -275,12 +286,13 @@ fn run() -> Result<()> {
     drop(original);
     let label = args[1].as_str();
     drive::block_on(async move {
-        let resident = ResidentModel::load_ordinary_cpu_source(
+        let resident = ResidentModel::load_ordinary_cpu_source_with_budget(
             Device::Hip(Default::default()),
             plan.source().clone(),
             loaded.clone(),
             plan.plan().clone(),
             2,
+            budget,
             None,
         )
         .await?;
@@ -297,6 +309,29 @@ fn run() -> Result<()> {
         println!(
             "SOURCE_CALL_COLD modules={} resident_bytes={} model_inference=false",
             active.modules, active.resident_bytes
+        );
+        let physical = zerogravity::resource_arbiter::ResourceArbiter::process_shared()
+            .snapshot(&active.physical)?;
+        need(
+            physical.reserved == budget.total_device_bytes() as u64
+                && physical.limit == budget.physical_admission_bytes()
+                && !physical.fenced,
+            "live original envelope includes, not adds, context",
+        )?;
+        need(
+            active.resident_bytes >= inventory.resident_weight_bytes + inventory.workspace_bytes,
+            "original resident ledger covers declared weights and workspace",
+        )?;
+        println!(
+            "SOURCE_CALL_BUDGET total_bytes={} context_bytes={} model_capacity_bytes={} source_weight_bytes={} resident_weight_bytes={} resident_ledger_bytes={} physical_reserved={} physical_limit={}",
+            budget.total_device_bytes(),
+            budget.context_device_bytes(),
+            budget.model_device_bytes(),
+            inventory.source_weight_bytes,
+            inventory.resident_weight_bytes,
+            active.resident_bytes,
+            physical.reserved,
+            physical.limit
         );
         if lifecycle::supported(mode) {
             let owner = Arc::downgrade(&loaded);
