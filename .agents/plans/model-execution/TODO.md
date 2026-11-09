@@ -132,6 +132,13 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   exact-SM cubin under the finite compiler context, avoiding driver PTX-ISA refusal
   without SDK acquisition or driver change. Feedback only; no broader speed claim.
   Next measured optimization target remains2B execution; prior native decode averaged30.97ms/token.
+- [x] Shared BF16 GEMV now specializes the common16-lane256/512-term reductions
+  at compile time while preserving the exact FMA/segment/lane order. Quick release
+  feedback (LTO disabled only to shorten iteration):0.8B62.306ms vs retained
+  vLLM90.64ms;2B85.383ms vs retained vLLM84.34ms, with identical IDs/output.
+  Existing physical GEMM arithmetic/guard/retirement coverage passes. This closes
+  the measured2B kernel gap to ~1.2% at C1; do not add complexity merely to chase
+  the remaining ~1ms. Controlled standard-release/batched comparisons stay separate.
 - [x] CUDA offered C1/4/8/16/32/64 sweep:0.8B native45.59/45.04/45.46/45.55/44.80/refused,
   vLLM36.94/60.85/72.20/87.79/91.22/95.56 output tok/s;2B native26.24/26.26/26.32/
   refused/refused/refused, vLLM34.88/60.55/73.70/87.17/90.55/88.01. All measured

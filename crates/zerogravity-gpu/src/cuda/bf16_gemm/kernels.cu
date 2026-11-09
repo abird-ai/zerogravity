@@ -175,8 +175,42 @@ __device__ __forceinline__ float lane_down(float value, unsigned delta, unsigned
 
 // SIMT alternatives retain explicit FMA grouping rather than substituting MMA.
 // Each power-of-two lane group owns one output; all lanes reach every shuffle.
+template<unsigned LANES, unsigned TERMS>
+__device__ __forceinline__ void lane_strided_fixed(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
+    constexpr unsigned CONTROL = ((32 - LANES) << 8) | 31;
+    constexpr unsigned ITEMS = TERMS / LANES;
+    const unsigned lane = threadIdx.x & (LANES - 1);
+    const unsigned long long col = (unsigned long long)blockIdx.x * (128 / LANES)
+        + (threadIdx.x / LANES);
+    const unsigned long long row = blockIdx.y;
+    float total = 0;
+    for (unsigned long long start = 0; start < s.inner; start += TERMS) {
+        float partial = 0;
+        #pragma unroll
+        for (unsigned item = 0; item < ITEMS; ++item) {
+            const unsigned long long k = start + lane + item * LANES;
+            if (col < s.columns && k < s.inner) partial = add_product(partial,
+                widen_bf16(w[col * s.inner + k]), widen_bf16(x[row * s.inner + k]));
+        }
+        total += partial;
+    }
+    float result = lane_value(total, 0, CONTROL);
+    #pragma unroll
+    for (unsigned i = 1; i < LANES; ++i) result += lane_value(total, i, CONTROL);
+    if (lane == 0 && col < s.columns) y[row * s.output_stride + col] = round_bf16(result);
+}
+
 extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided(
     const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
+    if (s.lane_shift == 4 && s.reduction_terms == 512) {
+        lane_strided_fixed<16, 512>(w, x, y, s);
+        return;
+    }
+    if (s.lane_shift == 4 && s.reduction_terms == 256) {
+        lane_strided_fixed<16, 256>(w, x, y, s);
+        return;
+    }
     const unsigned lanes = 1u << s.lane_shift;
     const unsigned lane = threadIdx.x & (lanes - 1);
     const unsigned control = ((32 - lanes) << 8) | 31;
