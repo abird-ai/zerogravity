@@ -281,6 +281,7 @@ impl SourceCallModel {
             _control: control,
         })
     }
+
     pub async fn shutdown_ordinary_cpu_source(self: Arc<Self>) -> Result<()> {
         self.shutdown().await
     }
@@ -334,6 +335,19 @@ impl SourceCallModel {
     }
 }
 impl SourceCallSession {
+    pub fn supports_device_greedy(&self) -> bool {
+        #[cfg(feature = "cuda-cublas")]
+        {
+            matches!(
+                self.model.contract,
+                SourceNumericalContract::ReferenceCudaSm86Bf16V1
+            )
+        }
+        #[cfg(not(feature = "cuda-cublas"))]
+        {
+            false
+        }
+    }
     pub fn binding(&self) -> RootBinding {
         self.inner.binding()
     }
@@ -366,8 +380,64 @@ impl SourceCallSession {
         output: ResidentOutput,
         cancelled: Option<Arc<AtomicBool>>,
     ) -> Result<SourceCallPreparation> {
-        self.prepare_inner(invocation, mode, output, cancelled, None)
+        let readout = match output {
+            ResidentOutput::StateOnly => Readout::None,
+            ResidentOutput::Logits => Readout::Logits,
+        };
+        self.prepare_inner(invocation, mode, output, readout, cancelled, None, None)
             .await
+    }
+    pub async fn prepare_greedy(
+        &self,
+        invocation: &BoundSourceInvocation,
+        mode: SourceCallMode,
+        cancelled: Option<Arc<AtomicBool>>,
+    ) -> Result<SourceCallPreparation> {
+        if !self.supports_device_greedy() {
+            return Err(Error::Unsupported(
+                "source-call device greedy requires ordinary CUDA".into(),
+            ));
+        }
+        self.prepare_inner(
+            invocation,
+            mode,
+            ResidentOutput::Logits,
+            Readout::Greedy,
+            cancelled,
+            None,
+            None,
+        )
+        .await
+    }
+    pub async fn prepare_greedy_device_token(
+        &self,
+        invocation: &BoundSourceInvocation,
+        mode: SourceCallMode,
+        token: &ResidentToken,
+        cancelled: Option<Arc<AtomicBool>>,
+    ) -> Result<SourceCallPreparation> {
+        if !self.supports_device_greedy()
+            || mode != SourceCallMode::Decode
+            || token.producer != Some(self.binding())
+            || token.lease.bytes() != 12
+            || !Arc::ptr_eq(token.lease.service(), &self.model.inner.service)
+            || invocation.invocation().rows() != 1
+            || invocation.invocation().ids() != [token.id]
+        {
+            return Err(Error::State(
+                "source-call device token differs from committed decode root/input".into(),
+            ));
+        }
+        self.prepare_inner(
+            invocation,
+            mode,
+            ResidentOutput::Logits,
+            Readout::Greedy,
+            cancelled,
+            Some(token),
+            None,
+        )
+        .await
     }
     pub async fn prepare_observed(
         &self,
@@ -377,15 +447,30 @@ impl SourceCallSession {
         cancelled: Option<Arc<AtomicBool>>,
         observer: &mut dyn crate::resident_program::source_observation::SourceCallObserver,
     ) -> Result<SourceCallPreparation> {
-        self.prepare_inner(invocation, mode, output, cancelled, Some(observer))
-            .await
+        let readout = match output {
+            ResidentOutput::StateOnly => Readout::None,
+            ResidentOutput::Logits => Readout::Logits,
+        };
+        self.prepare_inner(
+            invocation,
+            mode,
+            output,
+            readout,
+            cancelled,
+            None,
+            Some(observer),
+        )
+        .await
     }
+    #[allow(clippy::too_many_arguments)] // Keep publication/readout/token ownership explicit at this boundary.
     async fn prepare_inner(
         &self,
         invocation: &BoundSourceInvocation,
         mode: SourceCallMode,
         output: ResidentOutput,
+        readout: Readout,
         cancelled: Option<Arc<AtomicBool>>,
+        device_token: Option<&ResidentToken>,
         observer: Option<&mut dyn crate::resident_program::source_observation::SourceCallObserver>,
     ) -> Result<SourceCallPreparation> {
         if cancelled
@@ -413,6 +498,8 @@ impl SourceCallSession {
                 self.model.contract,
                 OrdinarySourceOptions {
                     output,
+                    readout,
+                    device_token: device_token.cloned(),
                     cancelled: cancelled.as_deref(),
                     observer,
                     completion_owner: Some(scope.clone()),

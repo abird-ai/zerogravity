@@ -174,7 +174,7 @@ impl ResidentProgram {
                 "ordinary CUDA launch requested from another resident body".into(),
             ));
         };
-        body.execute(flight, request, states, output, cancelled)
+        body.execute(flight, request, states, output, false, None, cancelled)
             .await
     }
 }

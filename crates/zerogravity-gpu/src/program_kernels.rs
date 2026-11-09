@@ -389,7 +389,8 @@ pub(crate) fn argmax_logits(
 #[cfg(all(
     any(
         feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification"
+        feature = "qwen-source-qualification",
+        feature = "cuda-cublas"
     ),
     target_os = "linux"
 ))]
@@ -413,6 +414,73 @@ pub(crate) fn argmax_logits_numeric_zero(
         tile,
         true,
     );
+}
+
+/// Select directly from packed BF16 source logits. The emitted max bits are
+/// the exact widened BF16 bits, matching widen-then-greedy without the full
+/// vocabulary conversion write.
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+#[allow(clippy::manual_range_contains)] // CubeCL does not lower RangeInclusive::contains.
+#[cube(launch_unchecked)]
+pub(crate) fn argmax_bf16_logits_numeric_zero(
+    source: &[u32],
+    partials: &mut [u32],
+    status: &[Atomic<u32>],
+    #[comptime] count: usize,
+    #[comptime] tile: usize,
+) {
+    let group = ABSOLUTE_POS;
+    if count == 0usize || count > MAX_WORD_OPS || tile < 32usize || tile > 1024usize {
+        if group == 0usize {
+            status[0].fetch_or(INVALID_REDUCTION);
+        }
+    } else if group < count.div_ceil(tile) {
+        let mut found = false;
+        let mut best_id = 0xffffffffu32;
+        let mut best_bits = 0u32;
+        let mut best_key = 0u32;
+        let mut flags = 0u32;
+        for lane in 0..tile {
+            let id = group * tile + lane;
+            if id < count {
+                let word = id / 2usize;
+                if word < source.len() {
+                    let shift = u32::cast_from(id % 2usize) * 16u32;
+                    let bf16 = (source[word] >> shift) & 0xffffu32;
+                    if (bf16 & 0x7f80u32) == 0x7f80u32 {
+                        flags |= NONFINITE_VALUE;
+                    } else {
+                        let bits = bf16 << 16u32;
+                        let key = finite_numeric_sortable_key(bits);
+                        let token = u32::cast_from(id);
+                        if !found || key > best_key || (key == best_key && token < best_id) {
+                            found = true;
+                            best_id = token;
+                            best_bits = bits;
+                            best_key = key;
+                        }
+                    }
+                } else {
+                    flags |= VIEW_OUT_OF_BOUNDS;
+                }
+            }
+        }
+        if !found {
+            flags |= INVALID_REDUCTION;
+        }
+        let dst = u64::cast_from(group) * 3u64;
+        if dst + 2u64 < u64::cast_from(partials.len()) {
+            let d = usize::cast_from(dst);
+            partials[d] = best_id;
+            partials[d + 1] = best_bits;
+            partials[d + 2] = flags;
+        } else {
+            flags |= VIEW_OUT_OF_BOUNDS;
+        }
+        if flags != 0u32 {
+            status[0].fetch_or(flags);
+        }
+    }
 }
 
 #[cube(launch_unchecked)]
@@ -442,7 +510,8 @@ pub(crate) fn argmax_partials(
 #[cfg(all(
     any(
         feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification"
+        feature = "qwen-source-qualification",
+        feature = "cuda-cublas"
     ),
     target_os = "linux"
 ))]

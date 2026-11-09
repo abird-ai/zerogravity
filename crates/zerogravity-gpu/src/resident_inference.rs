@@ -525,13 +525,31 @@ impl ResidentModel {
 
         // Pure source-plan/resource analysis. This MUST precede physical owner
         // creation, source attachment, cleanup, queue work, or allocation.
-        let admission = ordinary_cuda::OrdinaryCudaAdmission::analyze(plan)?
-            .with_roots(roots)?
-            .fit(provider_cap)?;
-        let total = admission.total_bytes()?;
+        let admission = ordinary_cuda::OrdinaryCudaAdmission::analyze(plan)?.with_roots(roots)?;
+        let greedy_workspace = crate::resident_greedy::workspace_bytes(admission.vocabulary())?
+            .into_iter()
+            .try_fold(0usize, |sum, bytes| {
+                sum.checked_add(bytes)
+                    .ok_or_else(|| Error::Limit("ordinary CUDA greedy workspace overflow".into()))
+            })?;
+        let greedy_reserve = greedy_workspace
+            .checked_add(
+                roots
+                    .checked_mul(12)
+                    .ok_or_else(|| Error::Limit("ordinary CUDA greedy packet reserve".into()))?,
+            )
+            .ok_or_else(|| Error::Limit("ordinary CUDA greedy reserve overflow".into()))?;
+        let fit_cap = provider_cap.checked_sub(greedy_reserve).ok_or_else(|| {
+            Error::Limit("ordinary CUDA greedy reserve exceeds provider cap".into())
+        })?;
+        let admission = admission.fit(fit_cap)?;
+        let total = admission
+            .total_bytes()?
+            .checked_add(greedy_reserve)
+            .ok_or_else(|| Error::Limit("ordinary CUDA total admission overflow".into()))?;
         if total > provider_cap {
             return Err(Error::Limit(format!(
-                "ordinary CUDA exact cold plus two-root plan does not fit provider cap: {total} > {provider_cap}"
+                "ordinary CUDA exact cold/root/greedy plan does not fit provider cap: {total} > {provider_cap}"
             )));
         }
         let source_identity = admission.source();
@@ -581,6 +599,9 @@ impl ResidentModel {
         }
         let states = program.budget().states.clone();
         let state_bytes = program.budget().prior_state_bytes;
+        let greedy = prepared.greedy;
+        let mut leases = prepared.owned_accesses;
+        leases.extend(prepared.greedy_accesses);
 
         Ok(Arc::new(Self {
             service,
@@ -596,8 +617,8 @@ impl ResidentModel {
             launch_seen: std::sync::atomic::AtomicUsize::new(0),
             workspace: Mutex::new(Workspace {
                 program,
-                greedy: None,
-                leases: prepared.owned_accesses,
+                greedy: Some(greedy),
+                leases,
                 state_accesses: prepared.state_accesses,
                 logit_accesses: prepared.logit_accesses,
                 batch: None,
@@ -1651,6 +1672,8 @@ impl ResidentModel {
     ) -> Result<(Vec<Domain>, ResidentReady, InferenceReadback)> {
         let OrdinarySourceOptions {
             output,
+            readout,
+            device_token,
             cancelled,
             observer,
             completion_owner,
@@ -1658,6 +1681,16 @@ impl ResidentModel {
         } = options;
         ordinary_not_cancelled(cancelled)?;
         self.service.ensure_usable()?;
+        if !matches!(
+            (output, readout),
+            (ResidentOutput::StateOnly, Readout::None)
+                | (ResidentOutput::Logits, Readout::Logits)
+                | (ResidentOutput::Logits, Readout::Greedy)
+        ) {
+            return Err(Error::State(
+                "ordinary CUDA execution/readout policy differs".into(),
+            ));
+        }
         let call = request
             .source_call()
             .ok_or_else(|| Error::State("ordinary CUDA materialized call absent".into()))?;
@@ -1670,6 +1703,18 @@ impl ResidentModel {
         {
             return Err(Error::State(
                 "ordinary CUDA session root/call geometry differs".into(),
+            ));
+        }
+        if let Some(token) = &device_token
+            && (!matches!(readout, Readout::Greedy)
+                || call.rows().len() != 1
+                || token.producer != Some(base)
+                || token.id != call.rows().ids()[0]
+                || token.lease.bytes() != 12
+                || !Arc::ptr_eq(token.lease.service(), &self.service))
+        {
+            return Err(Error::State(
+                "ordinary CUDA device token differs from request root/input".into(),
             ));
         }
         self.validate_domains(prior, true)?;
@@ -1705,10 +1750,27 @@ impl ResidentModel {
             .validate_source_call_states(request, &bindings)?;
         let wait_on_cancel =
             workspace.program.source_call_waits_on_cancel() || completion_owner.is_some();
-
         let mut accesses = match output {
             ResidentOutput::StateOnly => workspace.state_accesses.clone(),
             ResidentOutput::Logits => workspace.logit_accesses.clone(),
+        };
+        let packet = if matches!(readout, Readout::Greedy) {
+            let greedy = workspace.greedy.as_ref().ok_or_else(|| {
+                Error::Unsupported("ordinary CUDA model has no greedy workspace".into())
+            })?;
+            for handle in greedy {
+                accesses.push((
+                    lease_for(&workspace.leases, handle)?.clone(),
+                    DeviceAccess::Write,
+                ));
+            }
+            let packet = self
+                .service
+                .allocate_uninitialized(12, BufferRole::Output)?;
+            accesses.push((packet.clone(), DeviceAccess::Write));
+            Some(packet)
+        } else {
+            None
         };
         for domain in prior {
             accesses.extend(
@@ -1728,6 +1790,9 @@ impl ResidentModel {
                     .map(|lease| (lease, DeviceAccess::Write)),
             );
         }
+        if let Some(token) = &device_token {
+            accesses.push((token.lease.clone(), DeviceAccess::Read));
+        }
         ordinary_not_cancelled(cancelled)?;
         slot.begin_submission()?;
         let mut flight = self.service.submit(base.root(), &accesses)?;
@@ -1744,10 +1809,50 @@ impl ResidentModel {
                 request,
                 &bindings,
                 output,
+                matches!(readout, Readout::Greedy),
+                device_token
+                    .as_ref()
+                    .map(|token| token.lease.handle().offset_end(8)),
                 if wait_on_cancel { None } else { cancelled },
                 observer,
             )
             .await?;
+        #[cfg(feature = "cuda-cublas")]
+        let mut submitted = submitted;
+        #[cfg(not(feature = "cuda-cublas"))]
+        let submitted = submitted;
+        if let Some(packet) = &packet {
+            let logits = submitted
+                .logits
+                .as_ref()
+                .ok_or_else(|| Error::State("ordinary CUDA greedy logits absent".into()))?;
+            let greedy = workspace.greedy.as_ref().ok_or_else(|| {
+                Error::Unsupported("ordinary CUDA model has no greedy workspace".into())
+            })?;
+            #[cfg(feature = "cuda-cublas")]
+            {
+                logits.require_layout(ResidentBufferLayout::new(
+                    ResidentPhysicalType::Bf16,
+                    self.vocab as usize,
+                )?)?;
+                submitted.dispatches += crate::resident_greedy::launch_bf16_numeric_zero(
+                    self.service.client(),
+                    &logits.handle,
+                    self.vocab as usize,
+                    &greedy[0],
+                    &greedy[1],
+                    &packet.handle(),
+                    &submitted.status,
+                )?;
+            }
+            #[cfg(not(feature = "cuda-cublas"))]
+            {
+                let _ = (logits, greedy, packet);
+                return Err(Error::Unsupported(
+                    "ordinary source device greedy requires CUDA".into(),
+                ));
+            }
+        }
         #[cfg(feature = "hardware-abort-probe")]
         self.qualification_after_launch(flight.handles().len())
             .await;
@@ -1779,43 +1884,84 @@ impl ResidentModel {
             }
         }
 
-        let status_lease = lease_for(&accesses, &submitted.status)?;
-        let mut cohort = vec![status_lease.readback(0, 4)?];
-        if output == ResidentOutput::Logits {
-            let logits = submitted
-                .logits
-                .as_ref()
-                .ok_or_else(|| Error::State("ordinary CUDA logits receipt absent".into()))?;
-            let lease = lease_for(&accesses, &logits.handle)?;
-            cohort.push(logits.readback(
-                lease,
-                ResidentBufferLayout::new(ResidentPhysicalType::F32, logits.elements)?,
-            )?);
-        } else if submitted.logits.is_some() {
-            return Err(Error::State(
-                "ordinary CUDA state-only execution returned logits".into(),
-            ));
+        let mut cohort = Vec::with_capacity(2);
+        match readout {
+            Readout::Logits => {
+                cohort.push(lease_for(&accesses, &submitted.status)?.readback(0, 4)?);
+                let logits = submitted
+                    .logits
+                    .as_ref()
+                    .ok_or_else(|| Error::State("ordinary CUDA logits receipt absent".into()))?;
+                let lease = lease_for(&accesses, &logits.handle)?;
+                cohort.push(logits.readback(
+                    lease,
+                    ResidentBufferLayout::new(ResidentPhysicalType::F32, logits.elements)?,
+                )?);
+            }
+            Readout::Greedy => {
+                // finish_argmax folds the shared status into packet[2] after
+                // every model/argmax launch, so a second status readback is redundant.
+                cohort.push(
+                    packet
+                        .as_ref()
+                        .ok_or_else(|| Error::State("ordinary CUDA greedy packet absent".into()))?
+                        .readback(0, 12)?,
+                );
+            }
+            Readout::None => {
+                if submitted.logits.is_some() {
+                    return Err(Error::State(
+                        "ordinary CUDA state-only execution returned logits".into(),
+                    ));
+                }
+                cohort.push(lease_for(&accesses, &submitted.status)?.readback(0, 4)?);
+            }
         }
 
-        let promoted = candidate
+        let mut promoted = candidate
             .iter()
             .flat_map(|domain| domain.leases.iter().cloned())
             .collect::<Vec<_>>();
+        promoted.extend(packet.iter().cloned());
         let expected_readback_bytes = cohort.iter().map(|item| item.bytes()).sum();
         if !wait_on_cancel {
             ordinary_not_cancelled(cancelled)?;
         }
         let (ready, read) = flight
             .complete_with_readback(&promoted, &cohort, |values| {
-                if !all_zero(&values[0]) {
-                    return Err(Error::State(
-                        "ordinary CUDA shared status rejected proposed graph".into(),
-                    ));
-                }
-                if output == ResidentOutput::Logits
-                    && !words(&values[1])?.iter().all(|value| value.is_finite())
-                {
-                    return Err(Error::State("ordinary CUDA nonfinite F32 logits".into()));
+                match readout {
+                    Readout::Logits => {
+                        if !all_zero(&values[0]) {
+                            return Err(Error::State(
+                                "ordinary CUDA shared status rejected proposed graph".into(),
+                            ));
+                        }
+                        if !words(&values[1])?.iter().all(|value| value.is_finite()) {
+                            return Err(Error::State("ordinary CUDA nonfinite F32 logits".into()));
+                        }
+                    }
+                    Readout::Greedy => {
+                        let packet = &values[0];
+                        if packet.len() != 12 {
+                            return Err(Error::State("ordinary CUDA greedy packet extent".into()));
+                        }
+                        let id = u32::from_ne_bytes(packet[0..4].try_into().unwrap());
+                        let bits = u32::from_ne_bytes(packet[4..8].try_into().unwrap());
+                        let flags = u32::from_ne_bytes(packet[8..12].try_into().unwrap());
+                        if u64::from(id) >= self.vocab
+                            || !f32::from_bits(bits).is_finite()
+                            || flags != 0
+                        {
+                            return Err(Error::State("ordinary CUDA invalid greedy packet".into()));
+                        }
+                    }
+                    Readout::None => {
+                        if !all_zero(&values[0]) {
+                            return Err(Error::State(
+                                "ordinary CUDA shared status rejected proposed graph".into(),
+                            ));
+                        }
+                    }
                 }
                 Ok(())
             })
@@ -1825,15 +1971,28 @@ impl ResidentModel {
             ordinary_not_cancelled(cancelled)?;
         }
 
+        let device_token = if matches!(readout, Readout::Greedy) {
+            Some(ResidentToken {
+                lease: packet.ok_or_else(|| {
+                    Error::State("ordinary CUDA greedy packet absent after completion".into())
+                })?,
+                producer: None,
+                id: u32::from_ne_bytes(read[0][0..4].try_into().unwrap()),
+                max_bits: u32::from_ne_bytes(read[0][4..8].try_into().unwrap()),
+            })
+        } else {
+            None
+        };
         Ok((
             candidate,
             ready,
             InferenceReadback {
-                logits: if output == ResidentOutput::Logits {
+                logits: if matches!(readout, Readout::Logits) {
                     words(&read[1])?
                 } else {
                     Vec::new()
                 },
+                device_token,
                 dispatches: submitted.dispatches,
                 bytes: expected_readback_bytes,
                 chunk_bytes: expected_readback_bytes,
@@ -2252,7 +2411,7 @@ impl ResidentSession {
     pub async fn prepare_ordinary_cuda(&self, request: ForwardPlan) -> Result<PreparedInference> {
         self.prepare_ordinary_source_mode(request,
             zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1,
-            OrdinarySourceOptions { output: ResidentOutput::Logits, cancelled: None, observer: None, completion_owner: None, submitted: None })
+            OrdinarySourceOptions { output: ResidentOutput::Logits, readout: Readout::Logits, device_token: None, cancelled: None, observer: None, completion_owner: None, submitted: None })
             .await
     }
 
@@ -2264,7 +2423,7 @@ impl ResidentSession {
     ) -> Result<PreparedInference> {
         self.prepare_ordinary_source_mode(request,
             zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1,
-            OrdinarySourceOptions { output: ResidentOutput::Logits, cancelled: Some(cancelled), observer: None, completion_owner: None, submitted: None })
+            OrdinarySourceOptions { output: ResidentOutput::Logits, readout: Readout::Logits, device_token: None, cancelled: Some(cancelled), observer: None, completion_owner: None, submitted: None })
             .await
     }
 
@@ -2275,7 +2434,7 @@ impl ResidentSession {
     ) -> Result<PreparedInference> {
         self.prepare_ordinary_source_mode(request,
             zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1,
-            OrdinarySourceOptions { output: ResidentOutput::StateOnly, cancelled: None, observer: None, completion_owner: None, submitted: None })
+            OrdinarySourceOptions { output: ResidentOutput::StateOnly, readout: Readout::None, device_token: None, cancelled: None, observer: None, completion_owner: None, submitted: None })
             .await
     }
 
@@ -2287,7 +2446,7 @@ impl ResidentSession {
     ) -> Result<PreparedInference> {
         self.prepare_ordinary_source_mode(request,
             zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1,
-            OrdinarySourceOptions { output: ResidentOutput::StateOnly, cancelled: Some(cancelled), observer: None, completion_owner: None, submitted: None })
+            OrdinarySourceOptions { output: ResidentOutput::StateOnly, readout: Readout::None, device_token: None, cancelled: Some(cancelled), observer: None, completion_owner: None, submitted: None })
             .await
     }
 
@@ -2764,6 +2923,8 @@ impl CheckpointFixture for ResidentSession {
 ))]
 struct OrdinarySourceOptions<'a, 'b> {
     output: ResidentOutput,
+    readout: Readout,
+    device_token: Option<ResidentToken>,
     cancelled: Option<&'a std::sync::atomic::AtomicBool>,
     observer: Option<&'b mut dyn crate::resident_program::source_observation::SourceCallObserver>,
     completion_owner: Option<crate::physical_quarantine::CompletionOwner>,

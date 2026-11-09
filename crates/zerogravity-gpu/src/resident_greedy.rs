@@ -72,6 +72,7 @@ pub(crate) fn launch(
         private_packet,
         status,
         false,
+        false,
     )
 }
 
@@ -100,6 +101,35 @@ pub(crate) fn launch_numeric_zero(
         private_packet,
         status,
         true,
+        false,
+    )
+}
+
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+pub(crate) fn launch_bf16_numeric_zero(
+    client: &Client,
+    logits: &Handle,
+    vocabulary: usize,
+    partial0: &Handle,
+    partial1: &Handle,
+    private_packet: &Handle,
+    status: &Handle,
+) -> Result<usize> {
+    if !vocabulary.is_multiple_of(2) {
+        return Err(Error::Unsupported(
+            "packed BF16 greedy requires an even vocabulary".into(),
+        ));
+    }
+    launch_ordered(
+        client,
+        logits,
+        vocabulary,
+        partial0,
+        partial1,
+        private_packet,
+        status,
+        true,
+        true,
     )
 }
 
@@ -113,18 +143,20 @@ fn launch_ordered(
     private_packet: &Handle,
     status: &Handle,
     numeric_zero_ties: bool,
+    packed_bf16: bool,
 ) -> Result<usize> {
     #[cfg(not(all(
         any(
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification"
+            feature = "qwen-source-qualification",
+            feature = "cuda-cublas"
         ),
         target_os = "linux"
     )))]
     let _ = numeric_zero_ties;
     let sizes = workspace_bytes(vocabulary)?;
     let logits_bytes = vocabulary
-        .checked_mul(4)
+        .checked_mul(if packed_bf16 { 2 } else { 4 })
         .ok_or_else(|| Error::Limit("resident greedy logits byte overflow".into()))?;
     let buffers = [logits, partial0, partial1, private_packet, status];
     let required = [logits_bytes, sizes[0], sizes[1], 12usize, 4usize];
@@ -170,11 +202,28 @@ fn launch_ordered(
         #[cfg(all(
             any(
                 feature = "gemma-bf16-qualification",
-                feature = "qwen-source-qualification"
+                feature = "qwen-source-qualification",
+                feature = "cuda-cublas"
             ),
             target_os = "linux"
         ))]
-        if numeric_zero_ties {
+        if packed_bf16 {
+            #[cfg(feature = "cuda-cublas")]
+            program_kernels::argmax_bf16_logits_numeric_zero::launch_unchecked(
+                client,
+                grid(count),
+                threads,
+                BufferArg::from_raw_parts(logits.clone(), vocabulary.div_ceil(2)),
+                BufferArg::from_raw_parts(partial0.clone(), words[0]),
+                BufferArg::from_raw_parts(status.clone(), 1),
+                vocabulary,
+                TILE,
+            );
+            #[cfg(not(feature = "cuda-cublas"))]
+            return Err(Error::Unsupported(
+                "resident BF16 greedy requires CUDA source execution".into(),
+            ));
+        } else if numeric_zero_ties {
             program_kernels::argmax_logits_numeric_zero::launch_unchecked(
                 client,
                 grid(count),
@@ -204,7 +253,8 @@ fn launch_ordered(
         #[cfg(not(all(
             any(
                 feature = "gemma-bf16-qualification",
-                feature = "qwen-source-qualification"
+                feature = "qwen-source-qualification",
+                feature = "cuda-cublas"
             ),
             target_os = "linux"
         )))]
@@ -226,7 +276,8 @@ fn launch_ordered(
             #[cfg(all(
                 any(
                     feature = "gemma-bf16-qualification",
-                    feature = "qwen-source-qualification"
+                    feature = "qwen-source-qualification",
+                    feature = "cuda-cublas"
                 ),
                 target_os = "linux"
             ))]
@@ -262,7 +313,8 @@ fn launch_ordered(
             #[cfg(not(all(
                 any(
                     feature = "gemma-bf16-qualification",
-                    feature = "qwen-source-qualification"
+                    feature = "qwen-source-qualification",
+                    feature = "cuda-cublas"
                 ),
                 target_os = "linux"
             )))]

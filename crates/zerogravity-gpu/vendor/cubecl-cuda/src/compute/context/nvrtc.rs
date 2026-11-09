@@ -9,6 +9,12 @@ struct NvrtcProgram {
     handle: cudarc::nvrtc::sys::nvrtcProgram,
     _source: CString,
 }
+
+pub(super) struct NvrtcModule {
+    pub(super) bytes: Vec<c_char>,
+    pub(super) ptx: bool,
+}
+
 impl ProgramResource for NvrtcProgram {
     type Error = cudarc::nvrtc::result::NvrtcError;
     fn destroy(&mut self) -> Result<(), Self::Error> {
@@ -47,7 +53,10 @@ impl CudaContext {
         cubecl_server::driver::DevicePoison::new(reason).into()
     }
 
-    pub(super) fn compile_to_ptx(&mut self, source: &str) -> Result<Vec<c_char>, CompilationError> {
+    pub(super) fn compile_to_module(
+        &mut self,
+        source: &str,
+    ) -> Result<NvrtcModule, CompilationError> {
         self.check_compiler()?;
         let arch = if self.arch.version >= 90 {
             format!("--gpu-architecture=sm_{}a", self.arch)
@@ -93,7 +102,7 @@ impl CudaContext {
             Ok(()) => compiled,
             Err(cleanup) => {
                 let earlier = match compiled {
-                    Ok(_) => "PTX extraction succeeded".to_owned(),
+                    Ok(_) => "CUDA module extraction succeeded".to_owned(),
                     Err(err) => format!("earlier compiler failure: {err}"),
                 };
                 Err(self.compiler_failure(format!(
@@ -109,7 +118,7 @@ fn compile(
     options: &[&str],
     source: &str,
     context: Option<&mut CompilerContextState>,
-) -> Result<Vec<c_char>, CompilationError> {
+) -> Result<NvrtcModule, CompilationError> {
     // SAFETY: ProgramGuard retains the sole live program and its CString
     // through this call; the guard performs destruction after the result.
     unsafe {
@@ -131,18 +140,25 @@ fn compile(
             return Err(error(format!("{message}\n[Source]  \n{source}")));
         }
         if let Some(context) = context {
+            // The admitted finite compiler targets the exact observed SM and
+            // disables persistent code caching. Return cubin/SASS so a newer
+            // local NVRTC does not require the driver to understand its PTX ISA.
             let mut size = 0usize;
-            cudarc::nvrtc::sys::nvrtcGetPTXSize(program, &mut size)
+            cudarc::nvrtc::sys::nvrtcGetCUBINSize(program, &mut size)
                 .result()
-                .map_err(|err| error(format!("nvrtcGetPTXSize: {err}")))?;
+                .map_err(|err| error(format!("nvrtcGetCUBINSize: {err}")))?;
             context.ptx(size).map_err(error)?;
-            let mut ptx = vec![0; size];
-            cudarc::nvrtc::sys::nvrtcGetPTX(program, ptx.as_mut_ptr())
+            let mut cubin = vec![0; size];
+            cudarc::nvrtc::sys::nvrtcGetCUBIN(program, cubin.as_mut_ptr())
                 .result()
-                .map_err(|err| error(format!("nvrtcGetPTX: {err}")))?;
-            Ok(ptx)
+                .map_err(|err| error(format!("nvrtcGetCUBIN: {err}")))?;
+            Ok(NvrtcModule {
+                bytes: cubin,
+                ptx: false,
+            })
         } else {
             cudarc::nvrtc::result::get_ptx(program)
+                .map(|bytes| NvrtcModule { bytes, ptx: true })
                 .map_err(|err| error(format!("nvrtcGetPTX: {err}")))
         }
     }

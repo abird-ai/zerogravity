@@ -41,12 +41,15 @@ fn require_not_cancelled(cancelled: Option<&std::sync::atomic::AtomicBool>) -> R
 }
 
 impl OrdinaryCudaBody {
+    #[allow(clippy::too_many_arguments)] // Physical readout/token/cancellation bindings stay explicit.
     pub(in crate::resident_program) async fn execute(
         &self,
         flight: &mut PhysicalSubmission<'_>,
         request: &ForwardPlan,
         states: &[StateBinding],
         output: ResidentOutput,
+        compact_greedy: bool,
+        device_token: Option<&Handle>,
         cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<ProgramSubmission> {
         require_not_cancelled(cancelled)?;
@@ -76,7 +79,16 @@ impl OrdinaryCudaBody {
         };
 
         let client = self.cold().service().client();
-        self.clear_and_bind_call(client, call)?;
+        if let Some(token) = device_token
+            && (call.rows().len() != 1
+                || token.service != client.service_id()
+                || token.size_in_used() != 4)
+        {
+            return Err(Error::State(
+                "ordinary CUDA device-token binding differs".into(),
+            ));
+        }
+        self.clear_and_bind_call(client, call, device_token.is_some())?;
         let step = Step::new(
             call.rows().len(),
             call.rows().base(),
@@ -136,6 +148,7 @@ impl OrdinaryCudaBody {
                     descriptor,
                     &state_map,
                     step,
+                    device_token,
                     &mut gate_alias,
                 )
                 .await?;
@@ -160,25 +173,38 @@ impl OrdinaryCudaBody {
             let id = request
                 .logits()
                 .ok_or_else(|| Error::State("ordinary CUDA logits value absent".into()))?;
-            let source =
-                self.value_handle(request, id, self.cold().layout().geometry().vocabulary)?;
-            let target = self.cold().logits_f32().handle();
-            dispatches += attention::widen(
-                client,
-                &source,
-                &target,
-                &self.cold().status().handle(),
-                self.cold().layout().geometry().vocabulary,
-            )?;
-            Some(DeviceBuffer::from_lease(
-                self.cold().logits_f32().clone(),
-                ResidentBufferLayout::new(
-                    ResidentPhysicalType::F32,
+            if compact_greedy {
+                let physical = ResidentBufferLayout::new(
+                    ResidentPhysicalType::Bf16,
                     self.cold().layout().geometry().vocabulary,
-                )?,
-                BufferRole::Output,
-                DeviceAccess::Write,
-            )?)
+                )?;
+                Some(DeviceBuffer::from_lease(
+                    self.cold().value_lease(id.0 as usize)?.clone(),
+                    physical,
+                    BufferRole::Activation,
+                    DeviceAccess::Read,
+                )?)
+            } else {
+                let source =
+                    self.value_handle(request, id, self.cold().layout().geometry().vocabulary)?;
+                let target = self.cold().logits_f32().handle();
+                dispatches += attention::widen(
+                    client,
+                    &source,
+                    &target,
+                    &self.cold().status().handle(),
+                    self.cold().layout().geometry().vocabulary,
+                )?;
+                Some(DeviceBuffer::from_lease(
+                    self.cold().logits_f32().clone(),
+                    ResidentBufferLayout::new(
+                        ResidentPhysicalType::F32,
+                        self.cold().layout().geometry().vocabulary,
+                    )?,
+                    BufferRole::Output,
+                    DeviceAccess::Write,
+                )?)
+            }
         } else {
             None
         };
@@ -331,11 +357,18 @@ impl OrdinaryCudaBody {
         &self,
         client: &cubecl::client::Client,
         call: &SourceCall,
+        device_token: bool,
     ) -> Result<()> {
         client.write(
             &self.cold().status().handle(),
             Bytes::from_bytes_vec(vec![0u8; 4]),
         );
+        // Streamed embedding uses the authenticated host row directly. A
+        // committed device token can likewise feed resident embedding without
+        // copying its ID back to this scratch buffer.
+        if device_token || self.cold().embedding().lease().is_none() {
+            return Ok(());
+        }
         let ids = call
             .rows()
             .ids()
@@ -362,6 +395,7 @@ impl OrdinaryCudaBody {
         descriptor: &SourceOperator,
         states: &BTreeMap<StateSlot, &StateBinding>,
         step: Step,
+        device_token: Option<&Handle>,
         gate_alias: &mut BTreeMap<u32, u32>,
     ) -> Result<(usize, usize)> {
         use SourceOperatorKind::*;
@@ -410,12 +444,22 @@ impl OrdinaryCudaBody {
                     return Ok((step.rows, 0));
                 }
                 let out = self.value_handle(request, *output, outputs[0])?;
-                let tokens = exact_view(
-                    self.cold().token_ids(),
-                    0,
-                    step.rows * 4,
-                    "ordinary embedding token IDs",
-                )?;
+                let tokens = match device_token {
+                    Some(token) => {
+                        if step.rows != 1 || token.size_in_used() != 4 {
+                            return Err(Error::State(
+                                "ordinary embedding device-token extent".into(),
+                            ));
+                        }
+                        token.clone()
+                    }
+                    None => exact_view(
+                        self.cold().token_ids(),
+                        0,
+                        step.rows * 4,
+                        "ordinary embedding token IDs",
+                    )?,
+                };
                 self.enqueue_primitive(
                     self.cold().program().embedding(step.rows)?,
                     vec![

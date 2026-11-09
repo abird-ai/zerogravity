@@ -1,7 +1,10 @@
 use super::*;
 use crate::{
     accelerator::program::SourceCallMode,
-    gpu::{InferenceReadback, ResidentOutput, SourceCallPreparation, SourceCallPublication},
+    gpu::{
+        InferenceReadback, ResidentOutput, ResidentToken, SourceCallPreparation,
+        SourceCallPublication,
+    },
     numerics::{ActivationPrecision, greedy_finite},
     session_root::RootBinding,
 };
@@ -19,10 +22,15 @@ use zerogravity_engine::{
     },
 };
 pub(super) struct SourceText;
+struct Feedback {
+    root: RootBinding,
+    id: u32,
+    device: Option<ResidentToken>,
+}
 pub(super) struct State {
     session: SourceCallSession,
     // Computed from this original committed readback; never presentation IDs.
-    feedback: Option<(RootBinding, u32)>,
+    feedback: Option<Feedback>,
 }
 fn cancelled() -> ServiceError {
     ServiceError::new(499, "cancelled", "request cancelled")
@@ -87,8 +95,9 @@ impl Executor for SourceText {
     fn selected(state: &mut State) -> Result<u32, ServiceError> {
         state
             .feedback
-            .filter(|(root, _)| *root == state.session.binding())
-            .map(|(_, id)| id)
+            .as_ref()
+            .filter(|feedback| feedback.root == state.session.binding())
+            .map(|feedback| feedback.id)
             .ok_or_else(|| {
                 ServiceError::new(
                     500,
@@ -113,6 +122,16 @@ impl Executor for SourceText {
         };
         let base = Self::frontier(&row.state);
         let mode = phase(base, consumed);
+        let device_greedy = readout && row.state.session.supports_device_greedy();
+        let device_input = if mode == SourceCallMode::Decode {
+            row.state
+                .feedback
+                .as_ref()
+                .filter(|feedback| feedback.root == row.state.session.binding())
+                .and_then(|feedback| feedback.device.clone())
+        } else {
+            None
+        };
         let invocation = row
             .model
             .source
@@ -121,16 +140,44 @@ impl Executor for SourceText {
             .map_err(ServiceError::inference)?;
         // Always drive submitted work to original completion/quarantine. No
         // cancellation race, dropped submitted future, or retry after an error.
-        let pending = match block_on(row.state.session.prepare(
-            invocation.bound_invocation(),
-            mode,
-            if readout {
-                ResidentOutput::Logits
+        let pending = match block_on(async {
+            if device_greedy {
+                if let Some(token) = device_input.as_ref() {
+                    row.state
+                        .session
+                        .prepare_greedy_device_token(
+                            invocation.bound_invocation(),
+                            mode,
+                            token,
+                            Some(row.cancelled.clone()),
+                        )
+                        .await
+                } else {
+                    row.state
+                        .session
+                        .prepare_greedy(
+                            invocation.bound_invocation(),
+                            mode,
+                            Some(row.cancelled.clone()),
+                        )
+                        .await
+                }
             } else {
-                ResidentOutput::StateOnly
-            },
-            Some(row.cancelled.clone()),
-        ))
+                row.state
+                    .session
+                    .prepare(
+                        invocation.bound_invocation(),
+                        mode,
+                        if readout {
+                            ResidentOutput::Logits
+                        } else {
+                            ResidentOutput::StateOnly
+                        },
+                        Some(row.cancelled.clone()),
+                    )
+                    .await
+            }
+        })
         .map_err(ServiceError::inference)?
         {
             SourceCallPreparation::Ready(pending) => pending,
@@ -147,7 +194,17 @@ impl Executor for SourceText {
         // Validate actual completed logits before publishing. Failed selection
         // drops only a known-completed candidate and still counts its work.
         let selected = if readout {
-            match select(&pending.readback().logits, row.model.vocabulary_size()) {
+            let selected = if device_greedy {
+                pending
+                    .readback()
+                    .device_token
+                    .as_ref()
+                    .map(|token| token.id)
+                    .ok_or_else(|| crate::Error::State("ordinary CUDA greedy packet absent".into()))
+            } else {
+                select(&pending.readback().logits, row.model.vocabulary_size())
+            };
+            match selected {
                 Ok(id) => Some(id),
                 Err(error) => {
                     return Ok(SingleCompleted {
@@ -162,10 +219,14 @@ impl Executor for SourceText {
         let published = match row.state.session.commit(pending) {
             Err(error) => Err(ServiceError::inference(error)),
             Ok(SourceCallPublication::Discarded(_readback)) => Err(cancelled()),
-            Ok(SourceCallPublication::Committed(_readback)) => {
+            Ok(SourceCallPublication::Committed(readback)) => {
                 completed.committed_roots = 1;
                 let root = row.state.session.binding();
-                row.state.feedback = selected.map(|id| (root, id));
+                row.state.feedback = selected.map(|id| Feedback {
+                    root,
+                    id,
+                    device: readback.device_token.clone(),
+                });
                 Ok(Published {
                     consumed,
                     readout,

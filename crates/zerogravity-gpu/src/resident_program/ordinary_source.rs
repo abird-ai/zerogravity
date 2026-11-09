@@ -48,12 +48,15 @@ impl ResidentProgram {
         let _ = (request, states);
         Ok(())
     }
+    #[allow(clippy::too_many_arguments)] // Shared backend seam keeps execution ownership explicit.
     pub(crate) async fn launch_ordinary_source(
         &self,
         flight: &mut Flight<'_>,
         request: &ForwardPlan,
         states: &[StateBinding],
         output: ResidentOutput,
+        compact_greedy: bool,
+        device_token: Option<cubecl::server::Handle>,
         cancelled: Option<&std::sync::atomic::AtomicBool>,
         observer: Option<&mut dyn super::source_observation::SourceCallObserver>,
     ) -> Result<ResidentSubmission> {
@@ -66,11 +69,24 @@ impl ResidentProgram {
                         "CUDA source-call observer is not implemented".into(),
                     ));
                 }
-                body.execute(flight, request, states, output, cancelled)
-                    .await
+                body.execute(
+                    flight,
+                    request,
+                    states,
+                    output,
+                    compact_greedy,
+                    device_token.as_ref(),
+                    cancelled,
+                )
+                .await
             }
             #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
             ResidentProgramBody::SourceCall(body) => {
+                if compact_greedy || device_token.is_some() {
+                    return Err(Error::Unsupported(
+                        "HIP source call has no compact CUDA greedy readout".into(),
+                    ));
+                }
                 body.execute(flight, request, states, output, observer)
                     .await
             }

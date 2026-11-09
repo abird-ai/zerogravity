@@ -348,6 +348,8 @@ impl OrdinaryCudaAdmission {
 pub(crate) struct PreparedOrdinaryCuda {
     pub(crate) program: crate::resident_program::ResidentProgram,
     pub(crate) owned_accesses: Vec<(ResidentLease, DeviceAccess)>,
+    pub(crate) greedy: [cubecl::server::Handle; 2],
+    pub(crate) greedy_accesses: Vec<(ResidentLease, DeviceAccess)>,
     pub(crate) state_accesses: Vec<(ResidentLease, DeviceAccess)>,
     pub(crate) logit_accesses: Vec<(ResidentLease, DeviceAccess)>,
 }
@@ -396,12 +398,21 @@ pub(crate) async fn prepare_program(
             "ordinary CUDA preparation source/service differs".into(),
         ));
     }
+    let greedy_sizes = crate::resident_greedy::workspace_bytes(admission.vocabulary())?;
+    let greedy_bytes = greedy_sizes.into_iter().try_fold(0usize, |sum, bytes| {
+        sum.checked_add(bytes)
+            .ok_or_else(|| Error::Limit("ordinary CUDA greedy workspace overflow".into()))
+    })?;
     let cold_bytes = admission.preflight().owned_bytes()?;
-    if admission.total_bytes()? > service.remaining_capacity()?
-        || cold_bytes > service.remaining_capacity()?
+    let remaining = service.remaining_capacity()?;
+    if admission
+        .total_bytes()?
+        .checked_add(greedy_bytes)
+        .is_none_or(|bytes| bytes > remaining)
+        || cold_bytes > remaining
     {
         return Err(Error::Limit(
-            "ordinary CUDA complete cold/two-root admission exceeds model capacity".into(),
+            "ordinary CUDA complete cold/root/greedy admission exceeds model capacity".into(),
         ));
     }
 
@@ -436,6 +447,16 @@ pub(crate) async fn prepare_program(
         cancelled,
     )
     .await?;
+    let mut greedy_accesses = Vec::with_capacity(greedy_sizes.len());
+    let mut greedy_handles = Vec::with_capacity(greedy_sizes.len());
+    for bytes in greedy_sizes {
+        let lease = init.allocate_empty(bytes, BufferRole::Scratch)?;
+        greedy_handles.push(lease.handle());
+        greedy_accesses.push((lease, DeviceAccess::Write));
+    }
+    let greedy = greedy_handles
+        .try_into()
+        .map_err(|_| Error::State("ordinary CUDA greedy workspace coverage".into()))?;
     drop(init.complete_sync().await?);
     slot.finish()?;
 
@@ -451,6 +472,8 @@ pub(crate) async fn prepare_program(
     Ok(PreparedOrdinaryCuda {
         program,
         owned_accesses: body.owned_accesses().to_vec(),
+        greedy,
+        greedy_accesses,
         state_accesses: body
             .accesses(crate::resident_program::ResidentOutput::StateOnly)
             .to_vec(),

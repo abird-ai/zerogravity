@@ -123,7 +123,15 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   (native includes source validation). Short direct-API comparison, not HTTP,
   compiled/CUDA-graph vLLM, long context, batching or general superiority.
   `qwen-cuda-regeneration-tDW0EJ1I/c1-benchmark-summary-r1.json` retains samples.
-  Next measured optimization target:2B; its native decode averages30.97ms/token.
+- [x] CUDA serving hot path now selects directly from packed BF16 logits, returns
+  a12-byte greedy packet and reuses the committed device token for decode embedding;
+  full-logit readback remains for diagnostics. Same current optimized0.8B feedback
+  binary: compact65.944ms vs legacy67.614ms mean, identical IDs/output (~2.5% win).
+  Current2B compact feedback111.865ms versus retained native114.29ms/vLLM84.34ms:
+  readback helps but is not the principal2B gap. Installed CUDA13.4 NVRTC now emits
+  exact-SM cubin under the finite compiler context, avoiding driver PTX-ISA refusal
+  without SDK acquisition or driver change. Feedback only; no broader speed claim.
+  Next measured optimization target remains2B execution; prior native decode averaged30.97ms/token.
 - [x] CUDA offered C1/4/8/16/32/64 sweep:0.8B native45.59/45.04/45.46/45.55/44.80/refused,
   vLLM36.94/60.85/72.20/87.79/91.22/95.56 output tok/s;2B native26.24/26.26/26.32/
   refused/refused/refused, vLLM34.88/60.55/73.70/87.17/90.55/88.01. All measured

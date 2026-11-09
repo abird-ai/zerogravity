@@ -425,11 +425,16 @@ impl CudaContext {
                 .source(jitc_kernel.source.len())
                 .map_err(|e| self.compiler_limit(e))?;
         }
-        let ptx = self.compile_to_ptx(&jitc_kernel.source)?;
+        let module = self.compile_to_module(&jitc_kernel.source)?;
 
         let cube_dim = jitc_kernel.cube_dim;
         let io = jitc_kernel.io.take();
 
+        if !module.ptx && self.ptx_cache.is_some() {
+            return Err(self
+                .compiler_limit("CUDA cubin output requires the non-persistent admitted compiler")
+                .into());
+        }
         let stored = match &mut self.ptx_cache {
             Some(cache) => {
                 let second_line_cache = self.second_line_ptx_cache.as_mut().unwrap();
@@ -440,7 +445,7 @@ impl CudaContext {
                     PtxCacheEntry {
                         entrypoint_name: jitc_kernel.entrypoint_name.clone(),
                         shared_mem_bytes,
-                        ptx: ptx.clone(),
+                        ptx: module.bytes.clone(),
                         io: io.clone(),
                     },
                 );
@@ -450,8 +455,9 @@ impl CudaContext {
             None => false,
         };
 
-        self.load_ptx(
-            ptx,
+        self.load_module(
+            module.bytes,
+            module.ptx,
             kernel_id.clone(),
             jitc_kernel.entrypoint_name,
             cube_dim,
@@ -471,22 +477,45 @@ impl CudaContext {
         shared_mem_bytes: usize,
         io: Option<Arc<[BufferIOAttr]>>,
     ) -> Result<(), CompilationError> {
+        self.load_module(
+            ptx,
+            true,
+            kernel_id,
+            entrypoint_name,
+            cube_dim,
+            shared_mem_bytes,
+            io,
+        )
+    }
+
+    fn load_module(
+        &mut self,
+        module_bytes: Vec<c_char>,
+        ptx: bool,
+        kernel_id: KernelId,
+        entrypoint_name: String,
+        cube_dim: CubeDim,
+        shared_mem_bytes: usize,
+        io: Option<Arc<[BufferIOAttr]>>,
+    ) -> Result<(), CompilationError> {
         if shared_mem_bytes > self.properties.hardware.max_shared_memory_size {
             return Err(CompilationError::Generic {
                 reason: "cached CUDA dynamic shared memory exceeds reported hardware".into(),
                 backtrace: BackTrace::capture(),
             });
         }
-        dump_ptx(&kernel_id, &ptx);
+        if ptx {
+            dump_ptx(&kernel_id, &module_bytes);
+        }
 
         let func_name = CString::new(entrypoint_name).map_err(|err| CompilationError::Generic {
             reason: format!("CUDA entry point: {err}"),
             backtrace: BackTrace::capture(),
         })?;
-        // SAFETY: `ptx` is a valid null-terminated PTX binary from NVRTC. `func_name` is a
-        // null-terminated `CString` matching the kernel entry point in the compiled module.
+        // SAFETY: `module_bytes` is either null-terminated PTX or an NVRTC
+        // cubin for this exact SM. `func_name` matches its entry point.
         let func = unsafe {
-            let module = cudarc::driver::result::module::load_data(ptx.as_ptr() as *const _)
+            let module = cudarc::driver::result::module::load_data(module_bytes.as_ptr() as *const _)
                 .map_err(|err| self.compiler_failure(format!(
                     "cuModuleLoadData failed with uncertain module lifetime: {err}; original submitting owners must remain retained"
                 )))?;
