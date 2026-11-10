@@ -33,13 +33,13 @@ impl QwenSourceProfile {
             || self.output > self.context
             || self.output > zerogravity_engine::router::MAX_OUTPUT_TOKENS
             || self.max_pending == Some(0)
-            || !matches!(self.native_rows, 0 | 4)
+            || !matches!(self.native_rows, 0 | 4 | 8)
             || (self.native_rows != 0 && self.active < self.native_rows)
         {
             return Err(ServiceError::new(
                 400,
                 "invalid_source_profile",
-                "source GPU requires active=1..8, context=512..32768, output=1..512, positive pending bound, native_rows=0|4 with active>=native_rows",
+                "source GPU requires active=1..8, context=512..32768, output=1..512, positive pending bound, native_rows=0|4|8 with active>=native_rows",
             ));
         }
         // Keep every shared worker refusal before source IO or device creation.

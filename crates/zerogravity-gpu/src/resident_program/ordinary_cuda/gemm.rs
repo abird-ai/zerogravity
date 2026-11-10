@@ -25,9 +25,9 @@ impl OrdinaryCudaGemm {
         geometry: crate::cuda::ordinary_text::Geometry,
     ) -> Result<Arc<Self>> {
         service.ensure_usable()?;
-        if !matches!(native_rows, 0 | 4) {
+        if !matches!(native_rows, 0 | 4 | 8) {
             return Err(Error::Unsupported(
-                "ordinary CUDA native decode rows must be zero or four".into(),
+                "ordinary CUDA native decode rows must be zero, four or eight".into(),
             ));
         }
         let context = service.admit_cuda_compiler_context(source)?;
@@ -55,10 +55,10 @@ impl OrdinaryCudaGemm {
         // Shared attention code uses the same admitted compiler/context owner.
         crate::cuda::bf16_attention::Bf16CausalAttention::new(1, 0, 1, 8, 2, 256, 0.0625)?
             .prepare_code(service.pinned_cuda_queue()?)?;
-        if native_rows == 4 {
+        if matches!(native_rows, 4 | 8) {
             Bf16Gemm::with_reduction_certified(
                 64,
-                4,
+                native_rows,
                 32,
                 Bf16GemmReduction::LaneStrided {
                     lanes: 16,

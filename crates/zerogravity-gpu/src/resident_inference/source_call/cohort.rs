@@ -51,18 +51,18 @@ impl SourceCallCohortPending {
 }
 
 impl SourceCallModel {
-    /// First shared batch milestone: four aligned cached-decode calls. Prompt
-    /// work remains singleton and the scheduler regroups any non-aligned rows.
+    /// Aligned native cached-decode calls. Stateful CUDA kernels may internally
+    /// split a wider cohort while preserving private roots.
     pub async fn prepare_greedy_decode_cohort_admitted(
         self: &Arc<Self>,
         rows: &[(&SourceCallSession, &BoundSourceInvocation, &ResidentToken)],
     ) -> Result<SourceCallCohortPreparation> {
-        if self.native_rows != 4
+        if !matches!(self.native_rows, 4 | 8)
             || rows.len() != self.native_rows
             || self.contract != SourceNumericalContract::ReferenceCudaSm86Bf16V1
         {
             return Err(Error::Unsupported(
-                "source CUDA decode cohort requires an admitted four-row model".into(),
+                "source CUDA decode cohort requires an admitted four- or eight-row model".into(),
             ));
         }
         let mut requests = Vec::with_capacity(rows.len());
@@ -97,18 +97,18 @@ impl SourceCallModel {
         ))
     }
 
-    /// Four equal full prompts. Prompt chunks/ragged prefixes remain on the
+    /// Equal native full prompts. Prompt chunks/ragged prefixes remain on the
     /// existing singleton path; this cohort shares projection work only.
     pub async fn prepare_greedy_prefill_cohort_admitted(
         self: &Arc<Self>,
         rows: &[(&SourceCallSession, &BoundSourceInvocation)],
     ) -> Result<SourceCallCohortPreparation> {
-        if self.native_rows != 4
+        if !matches!(self.native_rows, 4 | 8)
             || rows.len() != self.native_rows
             || self.contract != SourceNumericalContract::ReferenceCudaSm86Bf16V1
         {
             return Err(Error::Unsupported(
-                "source CUDA prefill cohort requires an admitted four-row model".into(),
+                "source CUDA prefill cohort requires an admitted four- or eight-row model".into(),
             ));
         }
         let prompt_rows = rows[0].1.invocation().rows();
@@ -156,9 +156,9 @@ impl ResidentModel {
         scopes: &[Arc<ReaderScope>],
     ) -> Result<Option<PreparedResidentCohort>> {
         let width = sessions.len();
-        if width != 4 || requests.len() != width || scopes.len() != width {
+        if !matches!(width, 4 | 8) || requests.len() != width || scopes.len() != width {
             return Err(Error::Unsupported(
-                "ordinary source prefill cohort requires four rows".into(),
+                "ordinary source prefill cohort requires four or eight rows".into(),
             ));
         }
         self.service.ensure_usable()?;
@@ -486,9 +486,9 @@ impl ResidentModel {
         scopes: &[Arc<ReaderScope>],
     ) -> Result<Option<PreparedResidentCohort>> {
         let width = sessions.len();
-        if width != 4 || requests.len() != width || scopes.len() != width {
+        if !matches!(width, 4 | 8) || requests.len() != width || scopes.len() != width {
             return Err(Error::Unsupported(
-                "ordinary source decode cohort requires four rows".into(),
+                "ordinary source decode cohort requires four or eight rows".into(),
             ));
         }
         self.service.ensure_usable()?;

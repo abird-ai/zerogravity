@@ -237,7 +237,7 @@ impl ResidentModel {
     ) -> Result<Arc<SourceCallModel>> {
         ordinary_not_cancelled(cancelled)?;
         if !(1..=64).contains(&max_sessions)
-            || !matches!(native_rows, 0 | 4)
+            || !matches!(native_rows, 0 | 4 | 8)
             || (native_rows != 0 && max_sessions < native_rows)
         {
             return Err(Error::Limit("source-call session capacity".into()));

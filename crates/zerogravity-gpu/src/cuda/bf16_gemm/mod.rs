@@ -160,9 +160,17 @@ impl Bf16Gemm {
                 terms: 512
             }
         ) && rows == 4;
+        let batch8_lane_strided = matches!(
+            reduction,
+            Bf16GemmReduction::LaneStrided {
+                lanes: 16,
+                terms: 512
+            }
+        ) && rows == 8;
         let mma_tile_rows = if rows <= 8 { 8 } else { 32 };
         let (tile_columns, tile_rows) = match reduction {
             Bf16GemmReduction::LaneStrided { lanes, .. } if batch4_lane_strided => (128 / lanes, 4),
+            Bf16GemmReduction::LaneStrided { lanes, .. } if batch8_lane_strided => (128 / lanes, 8),
             Bf16GemmReduction::LaneStrided { .. } | Bf16GemmReduction::LaneBlocked { .. } => {
                 (128 / lanes, 1)
             }
@@ -202,6 +210,12 @@ impl Bf16Gemm {
                 "bf16_gemm_lane_strided_batch4_certified"
             } else {
                 "bf16_gemm_lane_strided_batch4"
+            }
+        } else if batch8_lane_strided {
+            if certified {
+                "bf16_gemm_lane_strided_batch8_certified"
+            } else {
+                "bf16_gemm_lane_strided_batch8"
             }
         } else {
             match (certified, reduction, tile_rows == 8) {

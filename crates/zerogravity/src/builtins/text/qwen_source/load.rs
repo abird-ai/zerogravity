@@ -177,7 +177,11 @@ pub(crate) fn load_router(
                     unequal_decode: false,
                     native_rows: profile.native_rows,
                     cohorts: Cohorts::Native {
-                        widths: &[4, 1],
+                        widths: if profile.native_rows == 8 {
+                            &[8, 4, 1]
+                        } else {
+                            &[4, 1]
+                        },
                         split_prefix: false,
                         retry: RetryOrder::Regroup,
                     },

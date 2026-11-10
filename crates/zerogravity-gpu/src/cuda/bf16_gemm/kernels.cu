@@ -259,6 +259,48 @@ __device__ __forceinline__ void lane_strided_batch4_fixed(
     }
 }
 
+__device__ __forceinline__ void lane_strided_batch8_fixed(
+    const unsigned short* w, const unsigned short* x, unsigned short* y,
+    unsigned* status, GemmShape s) {
+    constexpr unsigned LANES = 16, TERMS = 512, ITEMS = TERMS / LANES;
+    constexpr unsigned CONTROL = ((32 - LANES) << 8) | 31;
+    const unsigned lane = threadIdx.x & (LANES - 1);
+    const unsigned long long col = (unsigned long long)blockIdx.x * (128 / LANES)
+        + (threadIdx.x / LANES);
+    float total[8] = {};
+    for (unsigned long long start = 0; start < s.inner; start += TERMS) {
+        float partial[8] = {};
+        #pragma unroll
+        for (unsigned item = 0; item < ITEMS; ++item) {
+            const unsigned long long k = start + lane + item * LANES;
+            if (col < s.columns && k < s.inner) {
+                const float weight = widen_bf16(w[col * s.inner + k]);
+                #pragma unroll
+                for (unsigned row = 0; row < 8; ++row) {
+                    partial[row] = add_product(
+                        partial[row], weight, widen_bf16(x[row * s.inner + k]));
+                }
+            }
+        }
+        #pragma unroll
+        for (unsigned row = 0; row < 8; ++row) total[row] += partial[row];
+    }
+    float result[8];
+    #pragma unroll
+    for (unsigned row = 0; row < 8; ++row) result[row] = lane_value(total[row], 0, CONTROL);
+    #pragma unroll
+    for (unsigned i = 1; i < LANES; ++i) {
+        #pragma unroll
+        for (unsigned row = 0; row < 8; ++row) result[row] += lane_value(total[row], i, CONTROL);
+    }
+    if (lane == 0 && col < s.columns) {
+        #pragma unroll
+        for (unsigned row = 0; row < 8; ++row) {
+            store_bf16(y, row * s.output_stride + col, result[row], status);
+        }
+    }
+}
+
 __device__ __forceinline__ void lane_strided_body(
     const unsigned short* w, const unsigned short* x, unsigned short* y,
     unsigned* status, GemmShape s) {
@@ -306,6 +348,14 @@ extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch4(
 extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch4_certified(
     const unsigned short* w, const unsigned short* x, unsigned short* y, unsigned* status, GemmShape s) {
     lane_strided_batch4_fixed(w, x, y, status, s);
+}
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch8(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
+    lane_strided_batch8_fixed(w, x, y, nullptr, s);
+}
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch8_certified(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, unsigned* status, GemmShape s) {
+    lane_strided_batch8_fixed(w, x, y, status, s);
 }
 
 __device__ __forceinline__ void lane_blocked_body(

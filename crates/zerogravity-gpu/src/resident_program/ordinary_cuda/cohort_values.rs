@@ -1,4 +1,4 @@
-//! Private four-session activation arena using the ordinary plan's liveness slots.
+//! Private native-cohort activation arena using the ordinary plan's liveness slots.
 use super::layout::{self, OrdinaryCudaLayout};
 use crate::resident_leases::{ResidentInitialization, ResidentLease};
 use std::sync::Arc;
@@ -23,9 +23,9 @@ impl OrdinaryCudaCohortValues {
         if width == 0 {
             return Ok(0);
         }
-        if width != 4 {
+        if !matches!(width, 4 | 8) {
             return Err(Error::Unsupported(
-                "ordinary CUDA cohort activation width must be four".into(),
+                "ordinary CUDA cohort activation width must be four or eight".into(),
             ));
         }
         let value_bytes = layout.slot_bytes().iter().try_fold(0usize, |sum, &bytes| {
