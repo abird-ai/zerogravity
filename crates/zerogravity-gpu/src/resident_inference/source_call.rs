@@ -10,6 +10,11 @@ use zerogravity_core::accelerator::program::{
     BoundSourceInvocation, SourceCallMode, SourceNumericalContract,
 };
 
+#[cfg(feature = "cuda-cublas")]
+mod cohort;
+#[cfg(feature = "cuda-cublas")]
+pub use cohort::{SourceCallCohortPending, SourceCallCohortPreparation};
+
 #[cfg(all(
     feature = "hardware-abort-probe",
     feature = "qwen-source-qualification",

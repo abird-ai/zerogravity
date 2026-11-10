@@ -24,7 +24,9 @@ pub(crate) mod blas_reference;
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 mod attention;
 pub(super) mod body;
+mod cohort;
 mod cold;
+pub(crate) use cohort::OrdinaryCudaDecodeCohort;
 mod execute;
 mod geometry;
 mod grouped_gdn;
@@ -264,6 +266,81 @@ impl OrdinaryCudaProjection {
                     {
                         return Err(Error::State("CUDA streamed GEMM page geometry".into()));
                     }
+                    gemm.enqueue_page(
+                        shape,
+                        reduction,
+                        view.handle().clone(),
+                        input.clone(),
+                        target,
+                        operation.columns,
+                    )?;
+                    Ok(vec![output.clone()])
+                })
+                .await?;
+                launches += 1;
+            }
+            base += matrix.rows();
+        }
+        Ok(launches)
+    }
+
+    /// Batched independent decode rows for a last-active projection. Every row
+    /// is logically the last row of its own session, so the shared GEMM emits
+    /// one output row per session rather than selecting one row from the band.
+    async fn enqueue_decode_rows(
+        &self,
+        rows: usize,
+        gemm: &OrdinaryCudaGemm,
+        flight: &mut ResidentSubmission<'_>,
+        input: &ResidentLease,
+        output: &ResidentLease,
+        page: Option<&Arc<crate::resident_leases::source_page::ResidentSourcePage>>,
+    ) -> Result<usize> {
+        if rows == 0
+            || rows > self.template.max_rows()
+            || self.template.row_selection() != SourceRowSelection::LastActive
+            || !matches!(self.template.kind(), SourceOperatorKind::Projection { .. })
+        {
+            return Err(Error::State(
+                "ordinary CUDA decode projection row geometry differs".into(),
+            ));
+        }
+        self.weights.require_members(self.template.matrices())?;
+        let operation = Bf16GemmShape::new(self.weights.rows(), rows, self.weights.columns())?;
+        if input.bytes() < operation.input_bytes() || output.bytes() < operation.output_bytes() {
+            return Err(Error::State(
+                "ordinary CUDA decode projection input/output extent differs".into(),
+            ));
+        }
+        let reduction = self.arithmetic.reduction(operation);
+        if let Some(weights) = self.weights.lease() {
+            gemm.enqueue(flight, operation, reduction, weights, input, 0, output, 0)?;
+            return Ok(1);
+        }
+        let page = page.ok_or_else(|| {
+            Error::State("ordinary CUDA streamed decode projection has no page".into())
+        })?;
+        flight.require_accesses([(input, DeviceAccess::Read), (output, DeviceAccess::Write)])?;
+        let input = exact_view(input, 0, operation.input_bytes(), "decode GEMM input")?;
+        let mut base = 0;
+        let mut launches = 0;
+        for matrix in self.weights.matrices() {
+            let geometry = crate::resident_leases::source_page::PageGeometry::new(
+                matrix.rows(),
+                matrix.columns(),
+            )?;
+            for first in (0..geometry.rows).step_by(geometry.rows_per_page) {
+                let source_rows =
+                    first..first + (geometry.rows - first).min(geometry.rows_per_page);
+                let shape = Bf16GemmShape::new(source_rows.len(), rows, operation.inner)?;
+                let offset = (base + source_rows.start) * 2;
+                let extent = crate::cuda::bf16_gemm::output_span(
+                    shape.columns,
+                    shape.rows,
+                    operation.columns,
+                )?;
+                let target = exact_view(output, offset, extent, "streamed decode GEMM output")?;
+                page.with_rows(flight, matrix, source_rows, None, |view| {
                     gemm.enqueue_page(
                         shape,
                         reduction,

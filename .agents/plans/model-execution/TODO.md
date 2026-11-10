@@ -71,9 +71,10 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   R10 audit is complete and mixed; R11 remains staged/unlaunched. Review its older
   binary/budget before any fresh successor. Both context captures remain interrupted;
   the waived12GiB host-available threshold is not a current blocker.
-- [ ] Implement genuine shared inter-session batching with independent roots,
-  cancellation/publication and separately configurable queue/active/batch/token
-  limits; physical batch1 remains the current measured implementation.
+- [ ] Continue genuine shared inter-session batching beyond the current B4 decode
+  cohort. Independent roots, atomic publication and stateless row-4 CUDA math are
+  implemented; prefill and stateful GDN/KV/attention still use the qualified
+  per-session primitives, so full-model continuous batching remains open.
 - [ ] Optimize measured CUDA2B/HIP hot paths and run controlled comparisons after
   relevant correctness. Existing short eager/direct-API rates are not general
   HTTP/context/graph performance or proof of vLLM superiority.
@@ -140,6 +141,14 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   coverage passes. The measured2B C1 gap is now only low-single-digit percent;
   do not add complexity merely to chase ~1–3ms. Controlled standard-release/
   batched comparisons stay separate.
+- [x] First ordinary CUDA inter-session decode cohort batches stateless math and
+  the vocabulary head across four independent roots while retaining existing
+  singleton stateful GDN/KV/attention primitives and atomic publication. Public
+  Runtime feedback produced identical `[248068,198,90700]` on every lane:0.8B
+  C4 50.50 tok/s vs prior45.04/vLLM60.85;2B C4 41.23 vs prior26.26/vLLM60.55.
+  These are quick non-LTO feedback rates, not final matched benchmarks. A B8
+  extension was exact on0.8B but flat at50.74 tok/s and was not retained; an
+  experimental batched-GDN path diverged after the first token and was removed.
 - [x] CUDA offered C1/4/8/16/32/64 sweep:0.8B native45.59/45.04/45.46/45.55/44.80/refused,
   vLLM36.94/60.85/72.20/87.79/91.22/95.56 output tok/s;2B native26.24/26.26/26.32/
   refused/refused/refused, vLLM34.88/60.55/73.70/87.17/90.55/88.01. All measured

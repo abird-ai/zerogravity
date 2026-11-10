@@ -300,7 +300,7 @@ impl BoundSourceInvocation {
                     "source materialization template geometry differs".into(),
                 ));
             }
-            let descriptor = template.bind_call(&call)?;
+            let descriptor = template.bind_runtime_call(&call)?;
             let input_elements = descriptor.input_elements()?;
             let output_elements = descriptor.output_elements()?;
             if input_elements.len() != node.inputs.len()
@@ -626,7 +626,9 @@ impl SourceOperatorTemplate {
         )
     }
 
-    fn bind_call(&self, call: &SourceCall) -> Result<SourceOperator> {
+    /// Bind runtime row geometry to this immutable source operator template.
+    /// This grants mathematical geometry only, never execution or publication authority.
+    pub fn bind_runtime_call(&self, call: &SourceCall) -> Result<SourceOperator> {
         if call.source() != self.source
             || call.rows().vocabulary() != self.vocabulary
             || call.rows().len() > self.max_rows

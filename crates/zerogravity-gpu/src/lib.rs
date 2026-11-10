@@ -235,6 +235,8 @@ pub use vulkan::native::retained_partial_native_modules;
 ))]
 pub use hip::native::{HipSourceSetIdentity, SharedHipColdPlan, SharedHipNative};
 
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+pub use resident_inference::{SourceCallCohortPending, SourceCallCohortPreparation};
 #[cfg(all(
     feature = "hip-source",
     feature = "hip",

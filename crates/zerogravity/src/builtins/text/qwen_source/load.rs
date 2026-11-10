@@ -78,6 +78,14 @@ pub(crate) fn load_router(
 ) -> Result<Router, ServiceError> {
     profile.validate()?;
     backend.validate()?;
+    #[cfg(feature = "qwen35-hip")]
+    if profile.native_rows != 0 && matches!(backend, SourceBackend::Hip(_)) {
+        return Err(ServiceError::new(
+            400,
+            "unsupported_source_batch",
+            "source native_rows currently requires CUDA",
+        ));
+    }
     validate_aliases(&aliases)?;
     crate::cache::paths::validate_digest(&snapshot).map_err(ServiceError::inference)?;
     let arbiter = ResourceArbiter::process_shared();
@@ -156,9 +164,24 @@ pub(crate) fn load_router(
             context: profile.context,
             output: profile.output,
             max_pending: profile.max_pending,
-            // Source chunks use the ordinary fair worker; finite wave/cohort
-            // policy has its own bounded context, not source-call admission.
-            policy: WorkPolicy::Sequential,
+            policy: if profile.native_rows == 0 {
+                WorkPolicy::Sequential
+            } else {
+                WorkPolicy::Waves(WavePolicy {
+                    max_members: profile.native_rows,
+                    max_tokens: 64,
+                    max_scratch: 256 * 1024 * 1024,
+                    prefill_quantum: 64,
+                    unequal_prefill: false,
+                    unequal_decode: false,
+                    native_rows: profile.native_rows,
+                    cohorts: Cohorts::Native {
+                        widths: &[4, 1],
+                        split_prefix: false,
+                        retry: RetryOrder::Regroup,
+                    },
+                })
+            },
         },
     )
 }

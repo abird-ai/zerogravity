@@ -14,14 +14,15 @@ mod execute;
 mod load;
 pub(crate) use load::{SourceBackend, load_router};
 
-/// One cold raw-text source, shared by aliases. No native cross-session batching or warm
-/// runtime reconfiguration. Host/provider/context bounds remain backend-owned.
+/// One cold raw-text source, shared by aliases. CUDA may opt into an aligned
+/// four-row decode cohort; host/provider/context bounds remain backend-owned.
 #[derive(Clone, Copy, Debug)]
 pub struct QwenSourceProfile {
     pub active: usize,
     pub context: usize,
     pub output: usize,
     pub max_pending: Option<usize>,
+    pub native_rows: usize,
 }
 impl QwenSourceProfile {
     pub(crate) fn validate(self) -> Result<(), ServiceError> {
@@ -32,11 +33,13 @@ impl QwenSourceProfile {
             || self.output > self.context
             || self.output > zerogravity_engine::router::MAX_OUTPUT_TOKENS
             || self.max_pending == Some(0)
+            || !matches!(self.native_rows, 0 | 4)
+            || (self.native_rows != 0 && self.active < self.native_rows)
         {
             return Err(ServiceError::new(
                 400,
                 "invalid_source_profile",
-                "source GPU requires active=1..8, context=512..32768, output=1..512, positive pending bound",
+                "source GPU requires active=1..8, context=512..32768, output=1..512, positive pending bound, native_rows=0|4 with active>=native_rows",
             ));
         }
         // Keep every shared worker refusal before source IO or device creation.
@@ -122,6 +125,7 @@ mod tests {
             context: 514,
             output: 2,
             max_pending: Some(4),
+            native_rows: 0,
         };
         assert!(good.validate().is_ok());
         for context in [8192, 16384, 32768] {
@@ -149,6 +153,15 @@ mod tests {
             },
             QwenSourceProfile {
                 max_pending: Some(0),
+                ..good
+            },
+            QwenSourceProfile {
+                native_rows: 2,
+                ..good
+            },
+            QwenSourceProfile {
+                active: 2,
+                native_rows: 4,
                 ..good
             },
         ] {

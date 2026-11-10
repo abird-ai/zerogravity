@@ -104,6 +104,7 @@ fn copy_values(
 }
 
 impl OrdinaryCudaBody {
+    #[allow(clippy::too_many_arguments)] // Keep row/state/source bindings explicit.
     pub(super) fn enqueue_grouped_convolution(
         &self,
         request: &ForwardPlan,
@@ -112,6 +113,7 @@ impl OrdinaryCudaBody {
         descriptor: &SourceOperator,
         state: &StateBinding,
         step: Step,
+        workspace_row: usize,
     ) -> Result<(usize, usize)> {
         let ([qkvz, ba], [conv, z]) = (node.inputs.as_slice(), node.outputs.as_slice()) else {
             return Err(Error::State("CUDA grouped convolution SSA arity".into()));
@@ -145,10 +147,10 @@ impl OrdinaryCudaBody {
                 .get(&role)
                 .ok_or_else(|| Error::State("CUDA grouped tile absent".into()))
         };
-        let full_input = self.value_handle(request, *qkvz, inputs[0])?;
-        let full_ba = self.value_handle(request, *ba, inputs[1])?;
-        let full_conv = self.value_handle(request, *conv, outputs[0])?;
-        let full_z = self.value_handle(request, *z, outputs[1])?;
+        let full_input = self.value_handle_at(request, *qkvz, inputs[0], workspace_row)?;
+        let full_ba = self.value_handle_at(request, *ba, inputs[1], workspace_row)?;
+        let full_conv = self.value_handle_at(request, *conv, outputs[0], workspace_row)?;
+        let full_z = self.value_handle_at(request, *z, outputs[1], workspace_row)?;
         let mut dispatches = 0;
         for tile in 0..groups.tiles() {
             let first = tile * 16;
@@ -252,6 +254,7 @@ impl OrdinaryCudaBody {
         Ok((dispatches, 0))
     }
 
+    #[allow(clippy::too_many_arguments)] // Keep row/state/source bindings explicit.
     pub(super) fn enqueue_grouped_recurrent(
         &self,
         request: &ForwardPlan,
@@ -260,6 +263,7 @@ impl OrdinaryCudaBody {
         descriptor: &SourceOperator,
         state: &StateBinding,
         step: Step,
+        workspace_row: usize,
     ) -> Result<(usize, usize)> {
         let ([conv, z, ba], [output]) = (node.inputs.as_slice(), node.outputs.as_slice()) else {
             return Err(Error::State("CUDA grouped recurrent SSA arity".into()));
@@ -292,10 +296,10 @@ impl OrdinaryCudaBody {
         )?;
         let mut handles = self.gdn_internal_handles()?;
         handles.insert(B::GatedGamma, gamma.lease().handle());
-        let full_conv = self.value_handle(request, *conv, inputs[0])?;
-        let full_z = self.value_handle(request, *z, inputs[1])?;
-        let full_ba = self.value_handle(request, *ba, inputs[2])?;
-        let full_output = self.value_handle(request, *output, outputs[0])?;
+        let full_conv = self.value_handle_at(request, *conv, inputs[0], workspace_row)?;
+        let full_z = self.value_handle_at(request, *z, inputs[1], workspace_row)?;
+        let full_ba = self.value_handle_at(request, *ba, inputs[2], workspace_row)?;
+        let full_output = self.value_handle_at(request, *output, outputs[0], workspace_row)?;
         let mut dispatches = 0;
         for tile in 0..groups.tiles() {
             let first = tile * 16;

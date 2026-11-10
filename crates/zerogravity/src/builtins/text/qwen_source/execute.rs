@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(feature = "qwen35-cuda")]
+use crate::gpu::{SourceCallCohortPending, SourceCallCohortPreparation};
 use crate::{
     accelerator::program::SourceCallMode,
     gpu::{
@@ -14,6 +16,8 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
     time::Instant,
 };
+#[cfg(feature = "qwen35-cuda")]
+use zerogravity_engine::router::waves::Phase;
 use zerogravity_engine::{
     model_instance::execution::*,
     router::{
@@ -22,6 +26,10 @@ use zerogravity_engine::{
     },
 };
 pub(super) struct SourceText;
+#[cfg(feature = "qwen35-cuda")]
+type CohortReady = SourceCallCohortPending;
+#[cfg(not(feature = "qwen35-cuda"))]
+type CohortReady = std::convert::Infallible;
 struct Feedback {
     root: RootBinding,
     id: u32,
@@ -64,7 +72,7 @@ impl Executor for SourceText {
     type Model = Arc<Model>;
     type State = State;
     type Lease = Arc<Model>;
-    type Ready = std::convert::Infallible;
+    type Ready = CohortReady;
     fn open(
         model: &Self::Model,
         _: &str,
@@ -108,6 +116,156 @@ impl Executor for SourceText {
     }
     fn has_feedback(state: &State) -> bool {
         state.feedback.is_some()
+    }
+    #[cfg(feature = "qwen35-cuda")]
+    fn cohort_eligible(row: &Active<Self>) -> bool {
+        row.cursor == row.prompt.len()
+            && row.packet_presented
+            && row.blocked_since.is_none()
+            && row.state.feedback.as_ref().is_some_and(|feedback| {
+                feedback.root == row.state.session.binding() && feedback.device.is_some()
+            })
+    }
+    #[cfg(feature = "qwen35-cuda")]
+    fn compatible(first: &Active<Self>, row: &Active<Self>) -> bool {
+        Arc::ptr_eq(&first.model, &row.model)
+            && first.state.session.binding().frontier() == row.state.session.binding().frontier()
+    }
+    #[cfg(feature = "qwen35-cuda")]
+    fn validate_cohort(rows: &[Active<Self>], work: CohortWork) -> Result<(), ServiceError> {
+        if work.phase != Phase::Decode
+            || work.state_only
+            || work.native_rows != 4
+            || rows.len() != 4
+            || rows.iter().any(|row| !Self::cohort_eligible(row))
+            || rows[1..].iter().any(|row| !Self::compatible(&rows[0], row))
+        {
+            return Err(ServiceError::new(
+                500,
+                "source_cohort",
+                "source CUDA cohort requires four aligned cached-decode rows",
+            ));
+        }
+        Ok(())
+    }
+    #[cfg(feature = "qwen35-cuda")]
+    fn prepare(
+        rows: &mut [Active<Self>],
+        work: CohortWork,
+    ) -> Result<Preparation<Self::Ready>, ServiceError> {
+        Self::validate_cohort(rows, work)?;
+        let model = rows[0].model.resident()?;
+        let invocations = rows
+            .iter()
+            .map(|row| {
+                let feedback = row.state.feedback.as_ref().expect("validated feedback");
+                row.model.source.plan.bind_invocation(
+                    SourceCallMode::Decode,
+                    Self::frontier(&row.state),
+                    Arc::from([feedback.id]),
+                    true,
+                )
+            })
+            .collect::<crate::Result<Vec<_>>>()
+            .map_err(ServiceError::inference)?;
+        let inputs = rows
+            .iter()
+            .zip(&invocations)
+            .map(|(row, invocation)| {
+                (
+                    &row.state.session,
+                    invocation.bound_invocation(),
+                    row.state
+                        .feedback
+                        .as_ref()
+                        .and_then(|feedback| feedback.device.as_ref())
+                        .expect("validated device feedback"),
+                )
+            })
+            .collect::<Vec<_>>();
+        let ready = match block_on(model.prepare_greedy_decode_cohort_admitted(&inputs))
+            .map_err(ServiceError::inference)?
+        {
+            SourceCallCohortPreparation::Capacity => return Ok(Preparation::Capacity),
+            SourceCallCohortPreparation::Ready(ready) => ready,
+        };
+        let native = ready.fused_dispatches() != 0;
+        Ok(Preparation::Ready(Completed {
+            completion: Completion {
+                quanta: 4,
+                forwards: 1,
+                dispatches: ready.dispatches() as u64,
+                model_tokens: 4,
+                committed_roots: 0,
+                native_projections: ready.fused_dispatches() as u64,
+                native_sampler: 0,
+                native_rows: if native { 4 } else { 0 },
+                state_only: false,
+            },
+            ready,
+            native,
+        }))
+    }
+    #[cfg(feature = "qwen35-cuda")]
+    fn commit(
+        ready: Self::Ready,
+        rows: &mut [Active<Self>],
+        work: CohortWork,
+    ) -> Result<Publication, ServiceError> {
+        Self::validate_cohort(rows, work)?;
+        let mut sessions = rows
+            .iter_mut()
+            .map(|row| &mut row.state.session)
+            .collect::<Vec<_>>();
+        let receipts = ready
+            .commit(&mut sessions)
+            .map_err(ServiceError::inference)?;
+        drop(sessions);
+        if receipts.len() != rows.len() {
+            return Err(ServiceError::new(
+                500,
+                "source_cohort_receipts",
+                "source cohort publisher returned a different row count",
+            ));
+        }
+        let committed = Instant::now();
+        let published = rows
+            .iter_mut()
+            .zip(receipts)
+            .map(|(row, read)| {
+                let token = read.device_token.clone().ok_or_else(|| {
+                    ServiceError::new(
+                        500,
+                        "source_cohort_token",
+                        "source cohort completion has no device token",
+                    )
+                })?;
+                if read.logit_steps != 1 || !read.logits.is_empty() {
+                    return Err(ServiceError::new(
+                        500,
+                        "source_cohort_readout",
+                        "source cohort completion returned invalid readout",
+                    ));
+                }
+                let root = row.state.session.binding();
+                row.state.feedback = Some(Feedback {
+                    root,
+                    id: token.id,
+                    device: Some(token),
+                });
+                Ok(Published {
+                    consumed: 1,
+                    readout: true,
+                    observed_at: committed,
+                    observation: Some(GpuTokenObservation {
+                        producer_frontier: root.frontier(),
+                        producer_root: Some(GpuRootObservation::committed(root)),
+                        native_cohort: None,
+                    }),
+                })
+            })
+            .collect();
+        Ok(Publication::Committed(published))
     }
     fn single(row: &mut Active<Self>) -> Result<SingleCompleted, ServiceError> {
         let (ids, consumed, readout): (Arc<[u32]>, usize, bool) = if row.cursor < row.prompt.len() {
@@ -273,7 +431,7 @@ impl Executor for SourceText {
             let metadata = &model.source.metadata;
             serde_json::json!({"alias": alias, "family": metadata.family, "repository": metadata.repository,
                 "revision": metadata.revision, "hidden_width": metadata.hidden_width,
-                "context": model.max_context(), "prefill_rows": 64, "native_session_rows": 0,
+                "context": model.max_context(), "prefill_rows": 64,
                 "numerical_contract": format!("{:?}", model.source.plan.source_seal().numerical_contract())})
         }).collect());
         Ok(report)

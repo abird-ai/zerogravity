@@ -3027,6 +3027,8 @@ mod ordinary_shutdown_owner_tests {
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
 mod source_call;
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+pub use source_call::{SourceCallCohortPending, SourceCallCohortPreparation};
 #[cfg(all(
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))

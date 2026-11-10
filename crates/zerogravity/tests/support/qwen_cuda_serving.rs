@@ -189,6 +189,7 @@ fn public_completion_cancellation_and_retirement() {
                 context: 1024,
                 output: 3,
                 max_pending: Some(4),
+                native_rows: 0,
             },
             provider_bytes: if streamed { 512 * MIB } else { 4608 * MIB },
             device_bytes: 5120 * MIB as u64,

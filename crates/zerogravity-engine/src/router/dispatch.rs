@@ -607,7 +607,6 @@ impl Router {
                 || !(1..=512).contains(&policy.max_tokens)
                 || !(1..=512 * 1024 * 1024).contains(&policy.max_scratch)
                 || !(1..=512).contains(&policy.prefill_quantum)
-                || config.context > 512
             {
                 return Err(ServiceError::new(
                     400,
