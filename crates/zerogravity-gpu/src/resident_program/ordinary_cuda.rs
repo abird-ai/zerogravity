@@ -25,8 +25,10 @@ use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 mod attention;
 pub(super) mod body;
 mod cohort;
+mod cohort_values;
 mod cold;
 pub(crate) use cohort::OrdinaryCudaDecodeCohort;
+pub(crate) use cohort_values::OrdinaryCudaCohortValues;
 mod execute;
 mod geometry;
 mod grouped_gdn;
@@ -437,11 +439,16 @@ impl OrdinaryCudaAdmission {
     pub(crate) fn preflight(&self) -> &crate::resident_program::ResidentPreflight {
         self.layout.preflight()
     }
+    pub(crate) fn cohort_value_bytes(&self, native_rows: usize) -> Result<usize> {
+        OrdinaryCudaCohortValues::required_bytes(&self.layout, native_rows)
+    }
 }
 
 pub(crate) struct PreparedOrdinaryCuda {
     pub(crate) program: crate::resident_program::ResidentProgram,
     pub(crate) owned_accesses: Vec<(ResidentLease, DeviceAccess)>,
+    pub(crate) cohort_values: Option<Arc<OrdinaryCudaCohortValues>>,
+    pub(crate) cohort_value_accesses: Vec<(ResidentLease, DeviceAccess)>,
     pub(crate) greedy: [cubecl::server::Handle; 2],
     pub(crate) greedy_accesses: Vec<(ResidentLease, DeviceAccess)>,
     pub(crate) state_accesses: Vec<(ResidentLease, DeviceAccess)>,
@@ -498,11 +505,13 @@ pub(crate) async fn prepare_program(
         sum.checked_add(bytes)
             .ok_or_else(|| Error::Limit("ordinary CUDA greedy workspace overflow".into()))
     })?;
+    let cohort_value_bytes = admission.cohort_value_bytes(native_rows)?;
     let cold_bytes = admission.preflight().owned_bytes()?;
     let remaining = service.remaining_capacity()?;
     if admission
         .total_bytes()?
         .checked_add(greedy_bytes)
+        .and_then(|bytes| bytes.checked_add(cohort_value_bytes))
         .is_none_or(|bytes| bytes > remaining)
         || cold_bytes > remaining
     {
@@ -547,6 +556,13 @@ pub(crate) async fn prepare_program(
         cancelled,
     )
     .await?;
+    let (cohort_values, cohort_value_accesses) = if native_rows == 0 {
+        (None, Vec::new())
+    } else {
+        let (values, accesses) =
+            OrdinaryCudaCohortValues::allocate(&admission.layout, native_rows, &mut init)?;
+        (Some(values), accesses)
+    };
     let mut greedy_accesses = Vec::with_capacity(greedy_sizes.len());
     let mut greedy_handles = Vec::with_capacity(greedy_sizes.len());
     for bytes in greedy_sizes {
@@ -572,6 +588,8 @@ pub(crate) async fn prepare_program(
     Ok(PreparedOrdinaryCuda {
         program,
         owned_accesses: body.owned_accesses().to_vec(),
+        cohort_values,
+        cohort_value_accesses,
         greedy,
         greedy_accesses,
         state_accesses: body
@@ -590,6 +608,32 @@ mod admission_matrix_tests {
 
     const MIB: usize = 1024 * 1024;
     const PROVIDER_CAP: usize = 4608 * MIB;
+
+    #[test]
+    fn b4_activation_reserve_is_bounded_and_priced_before_residency() {
+        for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+            let plan = diagnostic_ordinary_plan(profile, 1024).unwrap();
+            let admission = OrdinaryCudaAdmission::analyze(plan.clone())
+                .unwrap()
+                .with_roots(10)
+                .unwrap();
+            let cohort = admission.cohort_value_bytes(4).unwrap();
+            assert!(cohort > 0 && cohort <= 64 * MIB);
+            let greedy = crate::resident_greedy::workspace_bytes(admission.vocabulary())
+                .unwrap()
+                .into_iter()
+                .sum::<usize>()
+                + 10 * 12;
+            let fit_cap = PROVIDER_CAP - cohort - greedy;
+            let fitted = OrdinaryCudaAdmission::analyze(plan)
+                .unwrap()
+                .with_roots(10)
+                .unwrap()
+                .fit(fit_cap)
+                .unwrap();
+            assert!(fitted.total_bytes().unwrap() <= fit_cap);
+        }
+    }
 
     #[test]
     fn placement_streams_only_weights_and_preserves_two_root_inventory() {
@@ -685,26 +729,26 @@ mod admission_matrix_tests {
             (
                 QwenSourceProfile::Qwen08,
                 [
-                    1_652_916_585usize,
-                    1_667_662_185,
-                    1_697_153_385,
-                    1_756_135_785,
-                    1_874_100_585,
-                    2_110_030_185,
-                    2_581_889_385,
+                    1_652_916_597usize,
+                    1_667_662_197,
+                    1_697_153_397,
+                    1_756_135_797,
+                    1_874_100_597,
+                    2_110_030_197,
+                    2_581_889_397,
                 ],
                 [true; 7],
             ),
             (
                 QwenSourceProfile::Qwen2B,
                 [
-                    3_911_846_249usize,
-                    3_926_591_849,
-                    3_956_083_049,
-                    4_015_065_449,
-                    4_133_030_249,
-                    4_368_959_849,
-                    4_840_819_049,
+                    3_911_846_261usize,
+                    3_926_591_861,
+                    3_956_083_061,
+                    4_015_065_461,
+                    4_133_030_261,
+                    4_368_959_861,
+                    4_840_819_061,
                 ],
                 [true, true, true, true, true, true, false],
             ),

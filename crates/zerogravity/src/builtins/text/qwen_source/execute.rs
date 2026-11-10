@@ -119,31 +119,48 @@ impl Executor for SourceText {
     }
     #[cfg(feature = "qwen35-cuda")]
     fn cohort_eligible(row: &Active<Self>) -> bool {
-        row.cursor == row.prompt.len()
-            && row.packet_presented
-            && row.blocked_since.is_none()
-            && row.state.feedback.as_ref().is_some_and(|feedback| {
-                feedback.root == row.state.session.binding() && feedback.device.is_some()
-            })
+        if row.cursor < row.prompt.len() {
+            row.cursor == 0
+                && row.prompt.len() <= 64
+                && row.prefill_count() == row.prompt.len()
+                && !row.packet_presented
+                && row.blocked_since.is_none()
+                && row.state.feedback.is_none()
+                && row.state.session.binding().frontier() == 0
+        } else {
+            row.packet_presented
+                && row.blocked_since.is_none()
+                && row.state.feedback.as_ref().is_some_and(|feedback| {
+                    feedback.root == row.state.session.binding() && feedback.device.is_some()
+                })
+        }
     }
     #[cfg(feature = "qwen35-cuda")]
     fn compatible(first: &Active<Self>, row: &Active<Self>) -> bool {
         Arc::ptr_eq(&first.model, &row.model)
             && first.state.session.binding().frontier() == row.state.session.binding().frontier()
+            && ((first.cursor < first.prompt.len()
+                && row.cursor < row.prompt.len()
+                && first.prompt.len() == row.prompt.len())
+                || (first.cursor == first.prompt.len() && row.cursor == row.prompt.len()))
     }
     #[cfg(feature = "qwen35-cuda")]
     fn validate_cohort(rows: &[Active<Self>], work: CohortWork) -> Result<(), ServiceError> {
-        if work.phase != Phase::Decode
-            || work.state_only
+        let phase_matches = match work.phase {
+            Phase::Prefill => rows.iter().all(|row| row.cursor < row.prompt.len()),
+            Phase::Decode => rows.iter().all(|row| row.cursor == row.prompt.len()),
+        };
+        if work.state_only
             || work.native_rows != 4
             || rows.len() != 4
+            || !phase_matches
             || rows.iter().any(|row| !Self::cohort_eligible(row))
             || rows[1..].iter().any(|row| !Self::compatible(&rows[0], row))
         {
             return Err(ServiceError::new(
                 500,
                 "source_cohort",
-                "source CUDA cohort requires four aligned cached-decode rows",
+                "source CUDA cohort requires four aligned full-prompt or cached-decode rows",
             ));
         }
         Ok(())
@@ -154,48 +171,93 @@ impl Executor for SourceText {
         work: CohortWork,
     ) -> Result<Preparation<Self::Ready>, ServiceError> {
         Self::validate_cohort(rows, work)?;
+        let tokens_per_row = match work.phase {
+            Phase::Prefill => rows[0]
+                .prompt
+                .len()
+                .checked_sub(rows[0].cursor)
+                .ok_or_else(|| {
+                    ServiceError::new(500, "source_cohort", "prefill cursor exceeds prompt")
+                })?,
+            Phase::Decode => 1,
+        };
+        let model_tokens = tokens_per_row
+            .checked_mul(rows.len())
+            .and_then(|tokens| u64::try_from(tokens).ok())
+            .ok_or_else(|| {
+                ServiceError::new(500, "source_cohort", "cohort model-token count overflow")
+            })?;
         let model = rows[0].model.resident()?;
-        let invocations = rows
-            .iter()
-            .map(|row| {
-                let feedback = row.state.feedback.as_ref().expect("validated feedback");
-                row.model.source.plan.bind_invocation(
-                    SourceCallMode::Decode,
-                    Self::frontier(&row.state),
-                    Arc::from([feedback.id]),
-                    true,
-                )
-            })
-            .collect::<crate::Result<Vec<_>>>()
-            .map_err(ServiceError::inference)?;
-        let inputs = rows
-            .iter()
-            .zip(&invocations)
-            .map(|(row, invocation)| {
-                (
-                    &row.state.session,
-                    invocation.bound_invocation(),
-                    row.state
-                        .feedback
-                        .as_ref()
-                        .and_then(|feedback| feedback.device.as_ref())
-                        .expect("validated device feedback"),
-                )
-            })
-            .collect::<Vec<_>>();
-        let ready = match block_on(model.prepare_greedy_decode_cohort_admitted(&inputs))
-            .map_err(ServiceError::inference)?
-        {
-            SourceCallCohortPreparation::Capacity => return Ok(Preparation::Capacity),
-            SourceCallCohortPreparation::Ready(ready) => ready,
+        let ready = match work.phase {
+            Phase::Prefill => {
+                let invocations = rows
+                    .iter()
+                    .map(|row| {
+                        row.model.source.plan.bind_invocation(
+                            SourceCallMode::Prefill,
+                            0,
+                            Arc::from(row.prompt.as_slice()),
+                            true,
+                        )
+                    })
+                    .collect::<crate::Result<Vec<_>>>()
+                    .map_err(ServiceError::inference)?;
+                let inputs = rows
+                    .iter()
+                    .zip(&invocations)
+                    .map(|(row, invocation)| (&row.state.session, invocation.bound_invocation()))
+                    .collect::<Vec<_>>();
+                match block_on(model.prepare_greedy_prefill_cohort_admitted(&inputs))
+                    .map_err(ServiceError::inference)?
+                {
+                    SourceCallCohortPreparation::Capacity => return Ok(Preparation::Capacity),
+                    SourceCallCohortPreparation::Ready(ready) => ready,
+                }
+            }
+            Phase::Decode => {
+                let invocations = rows
+                    .iter()
+                    .map(|row| {
+                        let feedback = row.state.feedback.as_ref().expect("validated feedback");
+                        row.model.source.plan.bind_invocation(
+                            SourceCallMode::Decode,
+                            Self::frontier(&row.state),
+                            Arc::from([feedback.id]),
+                            true,
+                        )
+                    })
+                    .collect::<crate::Result<Vec<_>>>()
+                    .map_err(ServiceError::inference)?;
+                let inputs = rows
+                    .iter()
+                    .zip(&invocations)
+                    .map(|(row, invocation)| {
+                        (
+                            &row.state.session,
+                            invocation.bound_invocation(),
+                            row.state
+                                .feedback
+                                .as_ref()
+                                .and_then(|feedback| feedback.device.as_ref())
+                                .expect("validated device feedback"),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                match block_on(model.prepare_greedy_decode_cohort_admitted(&inputs))
+                    .map_err(ServiceError::inference)?
+                {
+                    SourceCallCohortPreparation::Capacity => return Ok(Preparation::Capacity),
+                    SourceCallCohortPreparation::Ready(ready) => ready,
+                }
+            }
         };
         let native = ready.fused_dispatches() != 0;
         Ok(Preparation::Ready(Completed {
             completion: Completion {
-                quanta: 4,
+                quanta: rows.len() as u64,
                 forwards: 1,
                 dispatches: ready.dispatches() as u64,
-                model_tokens: 4,
+                model_tokens,
                 committed_roots: 0,
                 native_projections: ready.fused_dispatches() as u64,
                 native_sampler: 0,
@@ -213,6 +275,16 @@ impl Executor for SourceText {
         work: CohortWork,
     ) -> Result<Publication, ServiceError> {
         Self::validate_cohort(rows, work)?;
+        let consumed = match work.phase {
+            Phase::Prefill => rows[0]
+                .prompt
+                .len()
+                .checked_sub(rows[0].cursor)
+                .ok_or_else(|| {
+                    ServiceError::new(500, "source_cohort", "prefill cursor exceeds prompt")
+                })?,
+            Phase::Decode => 1,
+        };
         let mut sessions = rows
             .iter_mut()
             .map(|row| &mut row.state.session)
@@ -254,7 +326,7 @@ impl Executor for SourceText {
                     device: Some(token),
                 });
                 Ok(Published {
-                    consumed: 1,
+                    consumed,
                     readout: true,
                     observed_at: committed,
                     observation: Some(GpuTokenObservation {

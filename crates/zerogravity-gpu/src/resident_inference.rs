@@ -116,6 +116,8 @@ mod state_pool;
 struct Workspace {
     greedy: Option<[Handle; 2]>,
     batch: Option<BatchWorkspace>,
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+    ordinary_cohort_values: Option<Arc<ordinary_cuda::OrdinaryCudaCohortValues>>,
     program: ResidentProgram,
     // Raw aliases/programs drop before final leases trigger source cleanup.
     leases: Vec<(ResidentLease, DeviceAccess)>,
@@ -534,6 +536,7 @@ impl ResidentModel {
                 sum.checked_add(bytes)
                     .ok_or_else(|| Error::Limit("ordinary CUDA greedy workspace overflow".into()))
             })?;
+        let cohort_value_reserve = admission.cohort_value_bytes(native_rows)?;
         let greedy_reserve = greedy_workspace
             .checked_add(
                 roots
@@ -541,17 +544,20 @@ impl ResidentModel {
                     .ok_or_else(|| Error::Limit("ordinary CUDA greedy packet reserve".into()))?,
             )
             .ok_or_else(|| Error::Limit("ordinary CUDA greedy reserve overflow".into()))?;
-        let fit_cap = provider_cap.checked_sub(greedy_reserve).ok_or_else(|| {
-            Error::Limit("ordinary CUDA greedy reserve exceeds provider cap".into())
+        let runtime_reserve = greedy_reserve
+            .checked_add(cohort_value_reserve)
+            .ok_or_else(|| Error::Limit("ordinary CUDA runtime reserve overflow".into()))?;
+        let fit_cap = provider_cap.checked_sub(runtime_reserve).ok_or_else(|| {
+            Error::Limit("ordinary CUDA runtime reserve exceeds provider cap".into())
         })?;
         let admission = admission.fit(fit_cap)?;
         let total = admission
             .total_bytes()?
-            .checked_add(greedy_reserve)
+            .checked_add(runtime_reserve)
             .ok_or_else(|| Error::Limit("ordinary CUDA total admission overflow".into()))?;
         if total > provider_cap {
             return Err(Error::Limit(format!(
-                "ordinary CUDA exact cold/root/greedy plan does not fit provider cap: {total} > {provider_cap}"
+                "ordinary CUDA exact cold/root/runtime plan does not fit provider cap: {total} > {provider_cap}"
             )));
         }
         let source_identity = admission.source();
@@ -603,7 +609,9 @@ impl ResidentModel {
         let states = program.budget().states.clone();
         let state_bytes = program.budget().prior_state_bytes;
         let greedy = prepared.greedy;
+        let ordinary_cohort_values = prepared.cohort_values;
         let mut leases = prepared.owned_accesses;
+        leases.extend(prepared.cohort_value_accesses);
         leases.extend(prepared.greedy_accesses);
 
         Ok(Arc::new(Self {
@@ -621,6 +629,7 @@ impl ResidentModel {
             workspace: Mutex::new(Workspace {
                 program,
                 greedy: Some(greedy),
+                ordinary_cohort_values,
                 leases,
                 state_accesses: prepared.state_accesses,
                 logit_accesses: prepared.logit_accesses,
@@ -824,6 +833,8 @@ impl ResidentModel {
             workspace: Mutex::new(Workspace {
                 program,
                 greedy: Some(greedy),
+                #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+                ordinary_cohort_values: None,
                 leases,
                 state_accesses,
                 logit_accesses,

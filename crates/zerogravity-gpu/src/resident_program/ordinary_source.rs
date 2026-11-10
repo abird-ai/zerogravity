@@ -97,6 +97,26 @@ impl ResidentProgram {
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+    pub(crate) async fn launch_ordinary_source_prefill_cohort(
+        &self,
+        flight: &mut Flight<'_>,
+        requests: &[ForwardPlan],
+        states: &[Vec<StateBinding>],
+        logits: crate::resident_leases::ResidentLease,
+        values: &super::ordinary_cuda::OrdinaryCudaCohortValues,
+    ) -> Result<super::ordinary_cuda::OrdinaryCudaDecodeCohort> {
+        match &self.body {
+            ResidentProgramBody::OrdinaryCuda(body) => {
+                body.execute_prefill_cohort(flight, requests, states, logits, values)
+                    .await
+            }
+            _ => Err(Error::Unsupported(
+                "ordinary source prefill cohort requires CUDA".into(),
+            )),
+        }
+    }
+
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
     pub(crate) async fn launch_ordinary_source_decode_cohort(
         &self,
         flight: &mut Flight<'_>,

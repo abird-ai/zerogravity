@@ -1,7 +1,10 @@
-//! Aligned independent-session decode batching over the ordinary CUDA body.
-use super::{attention, body::OrdinaryCudaBody, exact_view};
+//! Aligned independent-session batching over the ordinary CUDA body.
+use super::{
+    OrdinaryCudaGemm, OrdinaryCudaProjection, attention, body::OrdinaryCudaBody, exact_view,
+};
 use crate::{
     cuda::{
+        bf16_gemm::Bf16GemmShape,
         gdn::{
             CONV_STATE_BYTES, CachedConvBatch, CachedDecodeBatch, CachedGatedBatch, GdnBuffer,
             GdnPhase, GdnRuntimeBuffer, GdnRuntimeCacheSlot,
@@ -32,6 +35,103 @@ pub(crate) struct OrdinaryCudaDecodeCohort {
     pub(crate) proposals: Vec<Vec<(StateVersion, StateBuffers)>>,
     pub(crate) dispatches: usize,
     pub(crate) fused_dispatches: usize,
+}
+
+impl OrdinaryCudaProjection {
+    /// Share one projection over aligned independent prompt lanes while retaining
+    /// the exact per-lane reduction contract. Rows are independent GEMM columns;
+    /// only the physical row count is widened.
+    #[allow(clippy::too_many_arguments)]
+    async fn enqueue_prefill_cohort_rows(
+        &self,
+        descriptor: &zerogravity_core::accelerator::program::SourceOperator,
+        lanes: usize,
+        gemm: &OrdinaryCudaGemm,
+        flight: &mut PhysicalSubmission<'_>,
+        input: &ResidentLease,
+        output: &ResidentLease,
+        status: &ResidentLease,
+        page: Option<&std::sync::Arc<crate::resident_leases::source_page::ResidentSourcePage>>,
+    ) -> Result<usize> {
+        let (lane_shape, input_offset) = self.operation(descriptor)?;
+        if lanes != 4
+            || input_offset != 0
+            || self.template.row_selection() != SourceRowSelection::AllActive
+        {
+            return Err(Error::State(
+                "ordinary CUDA prefill projection cohort geometry differs".into(),
+            ));
+        }
+        let rows = lane_shape
+            .rows
+            .checked_mul(lanes)
+            .ok_or_else(|| Error::Limit("ordinary CUDA prefill projection rows".into()))?;
+        let operation = Bf16GemmShape::new(lane_shape.columns, rows, lane_shape.inner)?;
+        if input.bytes() < operation.input_bytes() || output.bytes() < operation.output_bytes() {
+            return Err(Error::State(
+                "ordinary CUDA prefill projection cohort extent differs".into(),
+            ));
+        }
+        // Reduction grouping belongs to one original prompt lane. Reusing that
+        // row-independent contract across more physical rows is exact.
+        let reduction = self.arithmetic.reduction(lane_shape);
+        if let Some(weights) = self.weights.lease() {
+            gemm.enqueue(
+                flight, operation, reduction, weights, input, 0, output, 0, status,
+            )?;
+            return Ok(1);
+        }
+        let page = page.ok_or_else(|| {
+            Error::State("ordinary CUDA streamed prefill cohort has no source page".into())
+        })?;
+        flight.require_accesses([
+            (input, DeviceAccess::Read),
+            (output, DeviceAccess::Write),
+            (status, DeviceAccess::Write),
+        ])?;
+        let input = exact_view(
+            input,
+            0,
+            operation.input_bytes(),
+            "prefill cohort GEMM input",
+        )?;
+        let mut base = 0;
+        let mut launches = 0;
+        for matrix in self.weights.matrices() {
+            let geometry = crate::resident_leases::source_page::PageGeometry::new(
+                matrix.rows(),
+                matrix.columns(),
+            )?;
+            for first in (0..geometry.rows).step_by(geometry.rows_per_page) {
+                let source_rows =
+                    first..first + (geometry.rows - first).min(geometry.rows_per_page);
+                let shape = Bf16GemmShape::new(source_rows.len(), rows, operation.inner)?;
+                let offset = (base + source_rows.start) * 2;
+                let extent = crate::cuda::bf16_gemm::output_span(
+                    shape.columns,
+                    shape.rows,
+                    operation.columns,
+                )?;
+                let target = exact_view(output, offset, extent, "prefill cohort GEMM output")?;
+                page.with_rows(flight, matrix, source_rows, None, |view| {
+                    gemm.enqueue_page(
+                        shape,
+                        reduction,
+                        view.handle().clone(),
+                        input.clone(),
+                        target,
+                        operation.columns,
+                        status.handle(),
+                    )?;
+                    Ok(vec![output.clone()])
+                })
+                .await?;
+                launches += 1;
+            }
+            base += matrix.rows();
+        }
+        Ok(launches)
+    }
 }
 
 impl OrdinaryCudaBody {
@@ -355,6 +455,221 @@ impl OrdinaryCudaBody {
             dispatches += 1;
         }
         Ok((dispatches, 0))
+    }
+
+    /// Aligned full-prompt cohort: private causal/stateful execution per lane,
+    /// with only row-independent projection GEMMs shared physically.
+    pub(crate) async fn execute_prefill_cohort(
+        &self,
+        flight: &mut PhysicalSubmission<'_>,
+        requests: &[ForwardPlan],
+        states: &[Vec<StateBinding>],
+        logits: ResidentLease,
+        values: &super::OrdinaryCudaCohortValues,
+    ) -> Result<OrdinaryCudaDecodeCohort> {
+        let lanes = requests.len();
+        if lanes != 4 || states.len() != lanes || values.width() != lanes {
+            return Err(Error::Unsupported(
+                "ordinary CUDA prefill cohort requires four private lanes".into(),
+            ));
+        }
+        let calls = requests
+            .iter()
+            .map(|request| self.validate_request(request))
+            .collect::<Result<Vec<_>>>()?;
+        let first = calls[0];
+        let lane_rows = first.rows().len();
+        if first.mode() != SourceCallMode::Prefill
+            || first.rows().base() != 0
+            || !(1..=64).contains(&lane_rows)
+            || calls.iter().any(|call| {
+                call.mode() != SourceCallMode::Prefill
+                    || call.rows().base() != first.rows().base()
+                    || call.rows().len() != lane_rows
+                    || call.rows().capacity() != first.rows().capacity()
+                    || call.rows().vocabulary() != first.rows().vocabulary()
+                    || call.source() != first.source()
+            })
+        {
+            return Err(Error::Unsupported(
+                "ordinary CUDA prefill cohort requires aligned full prompts".into(),
+            ));
+        }
+        let state_maps = calls
+            .iter()
+            .zip(states)
+            .map(|(call, state)| self.validate_states(call, state))
+            .collect::<Result<Vec<_>>>()?;
+        flight.require_accesses(
+            self.accesses(crate::resident_program::ResidentOutput::Logits)
+                .iter()
+                .map(|(lease, access)| (lease, *access)),
+        )?;
+        flight.require_accesses([(&logits, DeviceAccess::Write)])?;
+        for lease in values.leases() {
+            flight.require_accesses([(lease, DeviceAccess::Write)])?;
+        }
+        for row in states {
+            for binding in row {
+                for buffer in binding.prior.buffers() {
+                    flight.require_accesses([(buffer.original_lease()?, DeviceAccess::Read)])?;
+                }
+                for buffer in binding.candidate.buffers() {
+                    flight.require_accesses([(buffer.original_lease()?, DeviceAccess::Write)])?;
+                }
+            }
+        }
+        flight.retain_completion_owner(self.cold().clone())?;
+        flight.retain_completion_owner(self.gemm().clone())?;
+
+        let client = self.cold().service().client();
+        self.clear_and_bind_call(client, first, false)?;
+        let lane_step = Step::new(lane_rows, 0, first.rows().capacity())?;
+        let cold = self.cold().plan();
+        let mut dispatches = 0usize;
+        let mut fused_dispatches = 0usize;
+        let mut gate_alias = (0..lanes)
+            .map(|_| BTreeMap::<u32, u32>::new())
+            .collect::<Vec<_>>();
+
+        for (node_index, node) in cold.nodes().iter().enumerate() {
+            let PlanOperation::SourceOperatorTemplate {
+                descriptor: template,
+                ..
+            } = &node.operation
+            else {
+                return Err(Error::State(
+                    "ordinary CUDA prefill cohort contains non-source template".into(),
+                ));
+            };
+            if matches!(template.kind(), SourceOperatorKind::Projection { .. }) {
+                let ([input], [output]) = (node.inputs.as_slice(), node.outputs.as_slice()) else {
+                    return Err(Error::State(
+                        "ordinary CUDA prefill cohort projection SSA arity".into(),
+                    ));
+                };
+                let descriptor = template.bind_runtime_call(calls[0])?;
+                let projection = self.cold().projection(node_index)?;
+                if template.row_selection() == SourceRowSelection::AllActive {
+                    let launched = projection
+                        .enqueue_prefill_cohort_rows(
+                            &descriptor,
+                            lanes,
+                            self.gemm(),
+                            flight,
+                            values.lease(*input)?,
+                            values.lease(*output)?,
+                            self.cold().status(),
+                            self.cold().source_page(),
+                        )
+                        .await?;
+                    dispatches += launched;
+                    fused_dispatches += launched;
+                    continue;
+                }
+                if template.row_selection() != SourceRowSelection::LastActive {
+                    return Err(Error::State(
+                        "ordinary CUDA prefill cohort projection row selection".into(),
+                    ));
+                }
+                let inputs = descriptor.input_elements()?;
+                let hidden = self.cold().layout().geometry().hidden_width;
+                if inputs.as_slice() != [lane_rows * hidden] {
+                    return Err(Error::State(
+                        "ordinary CUDA prefill cohort head input geometry".into(),
+                    ));
+                }
+                for lane in 0..lanes {
+                    let source = values.lane_handle(*input, inputs[0], lane)?;
+                    let source = Self::exact_handle_view(
+                        &source,
+                        (lane_rows - 1) * hidden * 2,
+                        hidden * 2,
+                        "ordinary CUDA prefill last hidden row",
+                    )?;
+                    let target = exact_view(
+                        values.head_rows(),
+                        lane * hidden * 2,
+                        hidden * 2,
+                        "ordinary CUDA prefill gathered head row",
+                    )?;
+                    dispatches += attention::copy_bf16_prefix(
+                        client,
+                        &source,
+                        &target,
+                        &self.cold().status().handle(),
+                        hidden,
+                    )?;
+                }
+                let launched = projection
+                    .enqueue_decode_rows(
+                        lanes,
+                        self.gemm(),
+                        flight,
+                        values.head_rows(),
+                        &logits,
+                        self.cold().status(),
+                        self.cold().source_page(),
+                    )
+                    .await?;
+                dispatches += launched;
+                fused_dispatches += launched;
+                continue;
+            }
+
+            for lane in 0..lanes {
+                let descriptor = template.bind_runtime_call(calls[lane])?;
+                let (launched, fused) = self
+                    .enqueue_node_with_values(
+                        flight,
+                        cold,
+                        node_index,
+                        node,
+                        &descriptor,
+                        &state_maps[lane],
+                        lane_step,
+                        lane,
+                        &mut gate_alias[lane],
+                        values,
+                    )
+                    .await?;
+                dispatches += launched;
+                fused_dispatches += fused;
+            }
+        }
+        if let Some(page) = self.cold().source_page() {
+            page.finish()?;
+        }
+        if gate_alias.iter().any(|aliases| !aliases.is_empty()) {
+            return Err(Error::State(
+                "ordinary CUDA prefill cohort attention gate alias not consumed".into(),
+            ));
+        }
+        let expected = cold.proposed_domains();
+        let proposals = states
+            .iter()
+            .map(|row| {
+                expected
+                    .iter()
+                    .map(|version| {
+                        let state = row
+                            .iter()
+                            .find(|state| state.slot == version.slot)
+                            .ok_or_else(|| {
+                                Error::State("ordinary CUDA prefill cohort proposal absent".into())
+                            })?;
+                        Ok((*version, state.candidate.clone()))
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(OrdinaryCudaDecodeCohort {
+            logits,
+            status: self.cold().status().handle(),
+            proposals,
+            dispatches,
+            fused_dispatches,
+        })
     }
 
     /// One physical traversal for aligned cached-decode rows. Stateless work is

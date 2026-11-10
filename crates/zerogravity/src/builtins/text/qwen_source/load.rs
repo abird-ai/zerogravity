@@ -170,7 +170,7 @@ pub(crate) fn load_router(
             } else {
                 WorkPolicy::Waves(WavePolicy {
                     max_members: profile.native_rows,
-                    max_tokens: 64,
+                    max_tokens: profile.native_rows * 64,
                     max_scratch: 256 * 1024 * 1024,
                     prefill_quantum: 64,
                     unequal_prefill: false,
