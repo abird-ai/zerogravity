@@ -498,7 +498,12 @@ pub(crate) async fn prepare_program(
     if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
         return Err(Error::State("ordinary CUDA preparation cancelled".into()));
     }
-    let gemm = OrdinaryCudaGemm::prepare(service.clone(), &source, native_rows)?;
+    let gemm = OrdinaryCudaGemm::prepare(
+        service.clone(),
+        &source,
+        native_rows,
+        admission.layout.geometry(),
+    )?;
     service
         .client()
         .memory_cleanup()

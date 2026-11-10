@@ -162,6 +162,13 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   exact `[248068,198,90700]`:0.8B B4 63.90 tok/s versus58.08/vLLM60.85;2B B4
   45.50 tok/s, effectively flat versus~45.8 and still below vLLM60.55. Quick
   non-LTO feedback; full-attention/KV remains the next per-session CUDA lane.
+- [x] Aligned cached full-attention now shares one B4 physical launch while each
+  lane retains its own candidate K/V buffers and publication root. `blockIdx.z`
+  selects the private K/V owner; the existing online-softmax arithmetic is unchanged.
+  Public Runtime is exact `[248068,198,90700]`:0.8B B4 peaked65.03 tok/s and2B
+  46.30 tok/s versus prior63.90/45.50 and eager-vLLM60.85/60.55. The B4 entry is
+  precompiled only for `native_rows=4`; sequential loads keep the original path.
+  Remaining2B gap is predominantly dense projection/GEMM scaling, not attention launch count.
 - [x] CUDA offered C1/4/8/16/32/64 sweep:0.8B native45.59/45.04/45.46/45.55/44.80/refused,
   vLLM36.94/60.85/72.20/87.79/91.22/95.56 output tok/s;2B native26.24/26.26/26.32/
   refused/refused/refused, vLLM34.88/60.55/73.70/87.17/90.55/88.01. All measured

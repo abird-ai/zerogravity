@@ -477,6 +477,103 @@ impl OrdinaryCudaAttention {
         debug_assert_eq!(end, base + rows);
         Ok(1)
     }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn enqueue_cohort(
+        &self,
+        client: &cubecl::client::Client,
+        operator: &zerogravity_core::accelerator::program::SourceOperator,
+        query: &cubecl::server::Handle,
+        states: &[(
+            &crate::resident_program::DeviceBuffer,
+            &crate::resident_program::DeviceBuffer,
+        )],
+        output: &cubecl::server::Handle,
+        status: &ResidentLease,
+    ) -> Result<usize> {
+        use crate::resident_program::{ResidentBufferLayout, ResidentPhysicalType};
+        self.require_operator(operator)?;
+        self.service.ensure_usable()?;
+        if states.len() != 4
+            || operator.call().rows().len() != 1
+            || client.service_id() != self.service.client().service_id()
+            || query.service != client.service_id()
+            || output.service != client.service_id()
+            || !Arc::ptr_eq(status.service(), &self.service)
+            || status.bytes() != 4
+        {
+            return Err(Error::State(
+                "ordinary CUDA attention batch4 service/geometry differs".into(),
+            ));
+        }
+        let base = operator.call().rows().base();
+        if base >= self.capacity {
+            return Err(Error::Limit(
+                "ordinary attention batch4 active prefix".into(),
+            ));
+        }
+        let query_row = self.geometry.query_width()?;
+        let query_elements = query_row
+            .checked_mul(4)
+            .ok_or_else(|| Error::Limit("ordinary attention batch4 query extent".into()))?;
+        if query.size_in_used() != (query_elements * 2) as u64
+            || output.size_in_used() != (query_elements * 2) as u64
+        {
+            return Err(Error::State(
+                "ordinary attention batch4 BF16 query/output extent differs".into(),
+            ));
+        }
+        let state_elements = self
+            .capacity
+            .checked_mul(self.geometry.kv_width()?)
+            .ok_or_else(|| Error::Limit("ordinary attention batch4 state extent".into()))?;
+        let layout = ResidentBufferLayout::new(ResidentPhysicalType::Bf16, state_elements)?;
+        let mut keys = Vec::with_capacity(4);
+        let mut values = Vec::with_capacity(4);
+        for (key, value) in states {
+            key.require_layout(layout)?;
+            value.require_layout(layout)?;
+            let key = key.original_lease()?;
+            let value = value.original_lease()?;
+            if !Arc::ptr_eq(key.service(), &self.service)
+                || !Arc::ptr_eq(value.service(), &self.service)
+                || key.bytes() != state_elements * 2
+                || value.bytes() != state_elements * 2
+            {
+                return Err(Error::State(
+                    "ordinary attention batch4 candidate KV owner/extent differs".into(),
+                ));
+            }
+            keys.push(key.handle());
+            values.push(value.handle());
+        }
+        let launch = crate::cuda::bf16_attention::Bf16CausalAttentionBatch4::new(
+            base,
+            self.capacity,
+            self.geometry.query_heads,
+            self.geometry.kv_heads,
+            WIDTH,
+            SCALE,
+        )?
+        .prepare(
+            client,
+            [
+                query.clone(),
+                keys[0].clone(),
+                keys[1].clone(),
+                keys[2].clone(),
+                keys[3].clone(),
+                values[0].clone(),
+                values[1].clone(),
+                values[2].clone(),
+                values[3].clone(),
+                output.clone(),
+                status.handle(),
+            ],
+        )?;
+        launch.launch_on(client)?;
+        Ok(1)
+    }
 }
 
 #[cfg(test)]

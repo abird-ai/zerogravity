@@ -22,6 +22,7 @@ impl OrdinaryCudaGemm {
         service: Arc<ResidentService>,
         source: &VerifiedTensorSource,
         native_rows: usize,
+        geometry: crate::cuda::ordinary_text::Geometry,
     ) -> Result<Arc<Self>> {
         service.ensure_usable()?;
         if !matches!(native_rows, 0 | 4) {
@@ -55,6 +56,15 @@ impl OrdinaryCudaGemm {
         crate::cuda::bf16_attention::Bf16CausalAttention::new(1, 0, 1, 8, 2, 256, 0.0625)?
             .prepare_code(service.pinned_cuda_queue()?)?;
         if native_rows == 4 {
+            crate::cuda::bf16_attention::Bf16CausalAttentionBatch4::new(
+                0,
+                1,
+                geometry.query_heads,
+                geometry.kv_heads,
+                256,
+                0.0625,
+            )?
+            .prepare_code(service.pinned_cuda_queue()?)?;
             crate::cuda::gdn::CachedConvBatch::prepare(4)?
                 .prepare_code(service.pinned_cuda_queue()?)?;
             crate::cuda::gdn::CachedDecodeBatch::prepare(4)?

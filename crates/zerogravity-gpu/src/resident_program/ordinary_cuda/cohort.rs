@@ -540,6 +540,47 @@ impl OrdinaryCudaBody {
                     fused_dispatches += fused;
                     continue;
                 }
+                if let SourceOperatorKind::FlashAttention { domain, .. } = template.kind() {
+                    let ([query], [output]) = (node.inputs.as_slice(), node.outputs.as_slice())
+                    else {
+                        return Err(Error::State(
+                            "ordinary CUDA cohort attention SSA arity".into(),
+                        ));
+                    };
+                    let descriptor = template.bind_runtime_call(calls[0])?;
+                    let inputs = descriptor.input_elements()?;
+                    let outputs = descriptor.output_elements()?;
+                    let query =
+                        self.cohort_value_handle(cold, *query, inputs[0], batch_step.rows)?;
+                    let output =
+                        self.cohort_value_handle(cold, *output, outputs[0], batch_step.rows)?;
+                    let kv = state_maps
+                        .iter()
+                        .map(|states| {
+                            let state =
+                                states.get(&StateSlot::Kv(domain)).copied().ok_or_else(|| {
+                                    Error::State(
+                                        "ordinary CUDA cohort attention state absent".into(),
+                                    )
+                                })?;
+                            let StateBuffers::Kv { keys, values } = &state.candidate else {
+                                return Err(Error::State(
+                                    "ordinary CUDA cohort attention KV layout".into(),
+                                ));
+                            };
+                            Ok((keys, values))
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    dispatches += self.cold().attention().enqueue_cohort(
+                        client,
+                        &descriptor,
+                        &query,
+                        &kv,
+                        &output,
+                        self.cold().status(),
+                    )?;
+                    continue;
+                }
                 for row in 0..requests.len() {
                     let descriptor = template.bind_runtime_call(calls[row])?;
                     let (launched, fused) = self
