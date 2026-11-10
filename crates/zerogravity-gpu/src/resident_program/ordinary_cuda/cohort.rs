@@ -1,17 +1,24 @@
 //! Aligned independent-session decode batching over the ordinary CUDA body.
-use super::{attention, body::OrdinaryCudaBody};
+use super::{attention, body::OrdinaryCudaBody, exact_view};
 use crate::{
-    cuda::ordinary_text::Step,
+    cuda::{
+        gdn::{
+            CONV_STATE_BYTES, CachedConvBatch, GdnRuntimeBuffer, GdnRuntimeCacheSlot,
+            state_transport::{CONV_ELEMENTS, StateCopy, StateTransport, plane_handle},
+        },
+        ordinary_text::Step,
+    },
     resident_leases::{ResidentLease, ResidentSubmission as PhysicalSubmission},
-    resident_program::{StateBinding, StateBuffers},
+    resident_program::{ResidentBufferLayout, ResidentPhysicalType, StateBinding, StateBuffers},
 };
+use cubecl::bytes::Bytes;
 use cubecl::server::Handle;
 use std::collections::BTreeMap;
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{
         ForwardPlan, PlanOperation, SourceCall, SourceCallMode, SourceOperatorKind,
-        SourceRowSelection, SourceRows, StateVersion, TextCallGeometry,
+        SourceRowSelection, SourceRows, StateSlot, StateVersion, TextCallGeometry,
     },
     device_events::DeviceAccess,
 };
@@ -25,6 +32,24 @@ pub(crate) struct OrdinaryCudaDecodeCohort {
 }
 
 impl OrdinaryCudaBody {
+    fn exact_handle_view(
+        handle: &Handle,
+        offset: usize,
+        bytes: usize,
+        role: &str,
+    ) -> Result<Handle> {
+        let available = usize::try_from(handle.size_in_used())
+            .map_err(|_| Error::Limit(format!("{role} handle extent")))?;
+        let end = offset
+            .checked_add(bytes)
+            .filter(|end| *end <= available)
+            .ok_or_else(|| Error::State(format!("{role} handle range")))?;
+        Ok(handle
+            .clone()
+            .offset_start(offset as u64)
+            .offset_end((available - end) as u64))
+    }
+
     fn cohort_value_handle(
         &self,
         request: &ForwardPlan,
@@ -40,6 +65,131 @@ impl OrdinaryCudaBody {
                 .ok_or_else(|| Error::Limit("ordinary CUDA cohort value extent".into()))?,
             0,
         )
+    }
+
+    fn enqueue_gdn_convolution_cohort(
+        &self,
+        request: &ForwardPlan,
+        node_index: usize,
+        node: &zerogravity_core::accelerator::program::PlanNode,
+        descriptor: &zerogravity_core::accelerator::program::SourceOperator,
+        states: &[&StateBinding],
+        step: Step,
+    ) -> Result<(usize, usize)> {
+        let ([packed_qkvz, _packed_ba], [conv_output, z]) =
+            (node.inputs.as_slice(), node.outputs.as_slice())
+        else {
+            return Err(Error::State(
+                "ordinary CUDA cohort GDN conv SSA arity".into(),
+            ));
+        };
+        if states.len() != 4 || step.rows != 4 || !self.cold().layout().groups().direct() {
+            return Err(Error::Unsupported(
+                "ordinary CUDA direct four-row GDN conv cohort".into(),
+            ));
+        }
+        let inputs = descriptor.input_elements()?;
+        let outputs = descriptor.output_elements()?;
+        let [conv_weights] = self.cold().node_parameters(node_index)? else {
+            return Err(Error::State(
+                "ordinary CUDA cohort GDN conv parameters".into(),
+            ));
+        };
+        let state_layout = ResidentBufferLayout::new(ResidentPhysicalType::F32, CONV_ELEMENTS)?;
+        let service = self.cold().service();
+        let client = service.client();
+        let cache = self.cold().gdn_internal(GdnRuntimeBuffer::CacheArena)?;
+        let status = self.cold().status().handle();
+        let mut dispatches = 0usize;
+
+        for (row, state) in states.iter().enumerate() {
+            let (StateBuffers::Vector(prior), StateBuffers::Vector(candidate)) =
+                (&state.prior, &state.candidate)
+            else {
+                return Err(Error::State(
+                    "ordinary CUDA cohort GDN conv state layout".into(),
+                ));
+            };
+            prior.require_layout(state_layout)?;
+            candidate.require_layout(state_layout)?;
+            let slot = GdnRuntimeCacheSlot::new(row + 1)?;
+            let native = plane_handle(cache, slot.convolution_offset(), CONV_STATE_BYTES)?;
+            StateTransport::prepare(
+                service,
+                StateCopy::ConvIn,
+                prior.handle.clone(),
+                native,
+                self.cold().status(),
+            )?
+            .launch(service)?;
+            dispatches += 1;
+        }
+
+        let full_packed = self.cohort_value_handle(request, *packed_qkvz, inputs[0], step.rows)?;
+        let batch_bytes = inputs[0]
+            .checked_mul(step.rows)
+            .and_then(|elements| elements.checked_mul(2))
+            .ok_or_else(|| Error::Limit("ordinary CUDA cohort GDN scratch bytes".into()))?;
+        let output_scratch = exact_view(
+            self.cold().gdn_internal(GdnRuntimeBuffer::HChunks)?,
+            0,
+            batch_bytes,
+            "ordinary GDN batch conv output scratch",
+        )?;
+        let full_conv = self.cohort_value_handle(request, *conv_output, outputs[0], step.rows)?;
+        let full_z = self.cohort_value_handle(request, *z, outputs[1], step.rows)?;
+        let indices_lease = self.cold().gdn_internal(GdnRuntimeBuffer::CacheIndices)?;
+        let indices = exact_view(indices_lease, 0, 16, "ordinary GDN batch cache indices")?;
+        let index_bytes = (1_i32..=4).flat_map(i32::to_le_bytes).collect::<Vec<_>>();
+        client.write(&indices, Bytes::from_bytes_vec(index_bytes));
+        CachedConvBatch::prepare(4)?.launch(
+            client,
+            &full_packed,
+            &output_scratch,
+            &conv_weights.lease().handle(),
+            &cache.handle(),
+            &indices,
+        )?;
+        dispatches += 1;
+
+        for (row, state) in states.iter().enumerate() {
+            let packed = self.value_handle_at(request, *packed_qkvz, inputs[0], row)?;
+            let conv = self.value_handle_at(request, *conv_output, outputs[0], row)?;
+            let z_out = self.value_handle_at(request, *z, outputs[1], row)?;
+            let conv_source = Self::exact_handle_view(
+                &output_scratch,
+                row * inputs[0] * 2,
+                outputs[0] * 2,
+                "ordinary CUDA cohort conv prefix",
+            )?;
+            let z_source = Self::exact_handle_view(
+                &packed,
+                outputs[0] * 2,
+                outputs[1] * 2,
+                "ordinary CUDA cohort z suffix",
+            )?;
+            dispatches +=
+                attention::copy_bf16_prefix(client, &conv_source, &conv, &status, outputs[0])?;
+            dispatches +=
+                attention::copy_bf16_prefix(client, &z_source, &z_out, &status, outputs[1])?;
+            let StateBuffers::Vector(candidate) = &state.candidate else {
+                unreachable!();
+            };
+            let slot = GdnRuntimeCacheSlot::new(row + 1)?;
+            let native = plane_handle(cache, slot.convolution_offset(), CONV_STATE_BYTES)?;
+            StateTransport::prepare(
+                service,
+                StateCopy::ConvOut,
+                native,
+                candidate.handle.clone(),
+                self.cold().status(),
+            )?
+            .launch(service)?;
+            dispatches += 1;
+        }
+        dispatches += attention::certify(client, &full_conv, &status, outputs[0] * step.rows)?;
+        dispatches += attention::certify(client, &full_z, &status, outputs[1] * step.rows)?;
+        Ok((dispatches, 0))
     }
 
     /// One physical traversal for aligned cached-decode rows. Stateless work is
@@ -169,6 +319,33 @@ impl OrdinaryCudaBody {
                 zerogravity_core::accelerator::program::SourceStateAccess::None
             );
             if stateful {
+                if let SourceOperatorKind::CausalConvSplit { domain, .. } = template.kind()
+                    && self.cold().layout().groups().direct()
+                {
+                    let descriptor = template.bind_runtime_call(calls[0])?;
+                    let bound = state_maps
+                        .iter()
+                        .map(|states| {
+                            states
+                                .get(&StateSlot::Conv(domain))
+                                .copied()
+                                .ok_or_else(|| {
+                                    Error::State("ordinary CUDA cohort conv state absent".into())
+                                })
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    let (launched, fused) = self.enqueue_gdn_convolution_cohort(
+                        cold,
+                        node_index,
+                        node,
+                        &descriptor,
+                        &bound,
+                        batch_step,
+                    )?;
+                    dispatches += launched;
+                    fused_dispatches += fused;
+                    continue;
+                }
                 for row in 0..requests.len() {
                     let descriptor = template.bind_runtime_call(calls[row])?;
                     let (launched, fused) = self

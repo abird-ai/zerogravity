@@ -112,6 +112,43 @@ pub(super) fn prepare(phase: GdnPhase, slot: GdnCacheSlot, stage: GdnStage) -> R
     prepare_checked(phase, slot, stage, CachedLayout::retained(phase, slot))
 }
 
+pub(super) fn prepare_batch_conv(rows: usize) -> Result<Definition> {
+    if rows != 4 {
+        return Err(Error::Unsupported(
+            "parameterized cached GDN conv batch requires four rows".into(),
+        ));
+    }
+    let schema = StaticScalarSchema::new(
+        &[
+            (StaticScalarType::U32, 0),
+            (StaticScalarType::U32, 8),
+            (StaticScalarType::U64, 16),
+            (StaticScalarType::U64, 24),
+        ],
+        32,
+        8,
+    )?;
+    Ok(Definition {
+        asset: assets::Asset {
+            entry: CONV_ENTRY,
+            source: CONV_SOURCE,
+            threads: 128,
+            grid: [4, 24, 1],
+            shared: 0,
+            ptx_sha256: CONV_ORIGINAL_PTX_SHA256,
+        },
+        scalars: StaticScalarBlock::new(
+            schema,
+            &[
+                StaticScalarValue::U32(4),
+                StaticScalarValue::U32(CACHE_SLOTS as u64),
+                StaticScalarValue::U64(1),
+                StaticScalarValue::U64(1),
+            ],
+        )?,
+    })
+}
+
 #[cfg(test)]
 pub(super) fn prepare_with_layout(
     phase: GdnPhase,

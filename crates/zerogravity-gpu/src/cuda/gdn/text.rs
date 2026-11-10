@@ -122,6 +122,13 @@ pub(super) fn select(
     Err(Error::Unsupported("configured text GDN stage".into()))
 }
 
+pub(super) fn cached_conv_batch(
+    rows: usize,
+) -> Result<(assets::Asset, crate::cuda::kernel::StaticScalarBlock)> {
+    let definition = parameterized_cached::prepare_batch_conv(rows)?;
+    Ok((definition.asset, definition.scalars))
+}
+
 mod config;
 #[cfg(all(test, feature = "cuda-native-qualification"))]
 mod observed;

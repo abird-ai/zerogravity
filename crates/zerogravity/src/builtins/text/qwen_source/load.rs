@@ -138,6 +138,7 @@ pub(crate) fn load_router(
             source.clone(),
             source.plan.plan().clone(),
             profile.active,
+            profile.native_rows,
             provider_bytes,
             device_bytes,
             None,

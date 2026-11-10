@@ -465,6 +465,7 @@ pub(crate) async fn prepare_program(
     admission: OrdinaryCudaAdmission,
     source: VerifiedTensorSource,
     source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
+    native_rows: usize,
     cancelled: Option<&AtomicBool>,
 ) -> Result<PreparedOrdinaryCuda> {
     service.ensure_usable()?;
@@ -497,7 +498,7 @@ pub(crate) async fn prepare_program(
     if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
         return Err(Error::State("ordinary CUDA preparation cancelled".into()));
     }
-    let gemm = OrdinaryCudaGemm::prepare(service.clone(), &source)?;
+    let gemm = OrdinaryCudaGemm::prepare(service.clone(), &source, native_rows)?;
     service
         .client()
         .memory_cleanup()

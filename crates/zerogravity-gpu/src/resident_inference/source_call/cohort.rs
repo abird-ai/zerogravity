@@ -57,9 +57,12 @@ impl SourceCallModel {
         self: &Arc<Self>,
         rows: &[(&SourceCallSession, &BoundSourceInvocation, &ResidentToken)],
     ) -> Result<SourceCallCohortPreparation> {
-        if rows.len() != 4 || self.contract != SourceNumericalContract::ReferenceCudaSm86Bf16V1 {
+        if self.native_rows != 4
+            || rows.len() != self.native_rows
+            || self.contract != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+        {
             return Err(Error::Unsupported(
-                "source CUDA decode cohort requires four rows".into(),
+                "source CUDA decode cohort requires an admitted four-row model".into(),
             ));
         }
         let mut requests = Vec::with_capacity(rows.len());

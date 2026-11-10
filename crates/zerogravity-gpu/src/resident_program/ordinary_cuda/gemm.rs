@@ -21,8 +21,14 @@ impl OrdinaryCudaGemm {
     pub(super) fn prepare(
         service: Arc<ResidentService>,
         source: &VerifiedTensorSource,
+        native_rows: usize,
     ) -> Result<Arc<Self>> {
         service.ensure_usable()?;
+        if !matches!(native_rows, 0 | 4) {
+            return Err(Error::Unsupported(
+                "ordinary CUDA native decode rows must be zero or four".into(),
+            ));
+        }
         let context = service.admit_cuda_compiler_context(source)?;
         let preparation =
             context.begin_preparation(service.budget(), source, vec![service.clone()])?;
@@ -48,6 +54,10 @@ impl OrdinaryCudaGemm {
         // Shared attention code uses the same admitted compiler/context owner.
         crate::cuda::bf16_attention::Bf16CausalAttention::new(1, 0, 1, 8, 2, 256, 0.0625)?
             .prepare_code(service.pinned_cuda_queue()?)?;
+        if native_rows == 4 {
+            crate::cuda::gdn::CachedConvBatch::prepare(4)?
+                .prepare_code(service.pinned_cuda_queue()?)?;
+        }
         preparation.complete()?;
         Ok(Arc::new(Self {
             service,

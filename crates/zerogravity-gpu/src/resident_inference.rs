@@ -498,6 +498,7 @@ impl ResidentModel {
             provider_cap,
             device_cap,
             2,
+            0,
             None,
             cancelled,
         )
@@ -513,6 +514,7 @@ impl ResidentModel {
         provider_cap: usize,
         device_cap: u64,
         roots: usize,
+        native_rows: usize,
         source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
         cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<Arc<Self>> {
@@ -574,6 +576,7 @@ impl ResidentModel {
             admission,
             source,
             source_owner,
+            native_rows,
             cancelled,
         )
         .await?;

@@ -322,6 +322,79 @@ pub(crate) fn kernel(phase: GdnPhase, stage: GdnStage) -> Result<LaunchSpec> {
 pub(crate) fn kernel_with_typed_outputs(phase: GdnPhase, stage: GdnStage) -> Result<LaunchSpec> {
     kernel_impl(phase, stage, true)
 }
+
+#[cfg(feature = "cuda-cublas")]
+pub(crate) struct CachedConvBatch {
+    kernel: PinnedKernel,
+    grid: [u32; 3],
+}
+#[cfg(feature = "cuda-cublas")]
+impl CachedConvBatch {
+    pub(crate) fn prepare(rows: usize) -> Result<Self> {
+        use BufferIOAttr::{ReadOnly as R, ReadWrite as RW};
+        let (asset, scalars) = text::cached_conv_batch(rows)?;
+        if !asset
+            .source
+            .starts_with("// cubecl.cuda.dynamic_shared_bytes=0\n")
+            || !asset.source.contains(asset.ptx_sha256)
+        {
+            return Err(Error::State("cached GDN conv batch source identity".into()));
+        }
+        // The retained kernel indexes ctaid.x with the original 8192-BF16
+        // packed-QKVZ stride even though it reads/writes only the conv prefix.
+        let row_bytes = GdnBuffer::PackedQkvz.bytes(GdnPhase::CachedDecode);
+        let io_bytes = row_bytes
+            .checked_mul(rows)
+            .ok_or_else(|| Error::Limit("cached GDN conv batch row bytes".into()))?;
+        let index_bytes = rows
+            .checked_mul(4)
+            .ok_or_else(|| Error::Limit("cached GDN conv batch index bytes".into()))?;
+        let bindings = Arc::from([
+            (io_bytes, RW),
+            (GdnBuffer::ConvWeights.bytes(GdnPhase::CachedDecode), R),
+            (GdnBuffer::CacheArena.bytes(GdnPhase::CachedDecode), RW),
+            (index_bytes, R),
+            (io_bytes, RW),
+        ]);
+        Ok(Self {
+            kernel: PinnedKernel::new_with_static_scalars(
+                asset.entry,
+                Arc::from(asset.source),
+                asset.threads,
+                bindings,
+                scalars,
+            )?,
+            grid: asset.grid,
+        })
+    }
+
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    pub(crate) fn prepare_code(&self, queue: &cubecl::cuda::OwnedCudaQueue) -> Result<()> {
+        self.kernel.prepare_code(queue)
+    }
+
+    pub(crate) fn launch(
+        &self,
+        client: &cubecl::client::Client,
+        packed_qkvz: &cubecl::server::Handle,
+        output_scratch: &cubecl::server::Handle,
+        weights: &cubecl::server::Handle,
+        cache: &cubecl::server::Handle,
+        indices: &cubecl::server::Handle,
+    ) -> Result<()> {
+        self.kernel.launch(
+            client,
+            self.grid,
+            &[
+                packed_qkvz.clone(),
+                weights.clone(),
+                cache.clone(),
+                indices.clone(),
+                output_scratch.clone(),
+            ],
+        )
+    }
+}
 fn kernel_impl(phase: GdnPhase, stage: GdnStage, typed_outputs: bool) -> Result<LaunchSpec> {
     kernel_from_asset(
         phase,

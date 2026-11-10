@@ -149,6 +149,13 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   These are quick non-LTO feedback rates, not final matched benchmarks. A B8
   extension was exact on0.8B but flat at50.74 tok/s and was not retained; an
   experimental batched-GDN path diverged after the first token and was removed.
+- [x] Narrow cached-GDN convolution batching preserves private recurrent state:
+  four decode lanes use distinct retained cache slots for Conv only, then return
+  to the existing per-session recurrent path. Rebuilt public Runtime feedback is
+  exact `[248068,198,90700]`;0.8B B4 58.08 tok/s,2B warmed B4 ~45.8 tok/s versus
+  prior committed50.50/41.23 and vLLM60.85/60.55. Batch code is admitted/prepared
+  only when `native_rows=4`; sequential CUDA loads keep the original cold path.
+  Quick non-LTO feedback only; broader stateful attention/recurrent batching remains open.
 - [x] CUDA offered C1/4/8/16/32/64 sweep:0.8B native45.59/45.04/45.46/45.55/44.80/refused,
   vLLM36.94/60.85/72.20/87.79/91.22/95.56 output tok/s;2B native26.24/26.26/26.32/
   refused/refused/refused, vLLM34.88/60.55/73.70/87.17/90.55/88.01. All measured

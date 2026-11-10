@@ -40,6 +40,8 @@ pub struct SourceCallModel {
     sessions: Arc<async_lock::Semaphore>,
     _control: WindowWorkspace,
     contract: SourceNumericalContract,
+    #[cfg(feature = "cuda-cublas")]
+    native_rows: usize,
     _source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
 }
 pub struct SourceCallSession {
@@ -213,6 +215,8 @@ impl ResidentModel {
             sessions: Arc::new(async_lock::Semaphore::new(max_sessions)),
             _control: control,
             contract: SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1,
+            #[cfg(feature = "cuda-cublas")]
+            native_rows: 0,
             _source_owner: None,
         }))
     }
@@ -226,12 +230,16 @@ impl ResidentModel {
         source_owner: Arc<dyn std::any::Any + Send + Sync>,
         plan: Arc<ForwardPlan>,
         max_sessions: usize,
+        native_rows: usize,
         provider_cap: usize,
         device_cap: u64,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<SourceCallModel>> {
         ordinary_not_cancelled(cancelled)?;
-        if !(1..=64).contains(&max_sessions) {
+        if !(1..=64).contains(&max_sessions)
+            || !matches!(native_rows, 0 | 4)
+            || (native_rows != 0 && max_sessions < native_rows)
+        {
             return Err(Error::Limit("source-call session capacity".into()));
         }
         let roots = max_sessions * 2 + 2;
@@ -243,6 +251,7 @@ impl ResidentModel {
             provider_cap,
             device_cap,
             roots,
+            native_rows,
             Some(source_owner.clone()),
             cancelled,
         )
@@ -255,6 +264,7 @@ impl ResidentModel {
             sessions: Arc::new(async_lock::Semaphore::new(max_sessions)),
             _control: control,
             contract: SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            native_rows,
             _source_owner: Some(source_owner),
         }))
     }

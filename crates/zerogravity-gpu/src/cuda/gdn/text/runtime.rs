@@ -368,6 +368,9 @@ impl GdnRuntimeWorkspaceLayout {
                 .and_modify(|bytes: &mut usize| *bytes = (*bytes).max(role.bytes(phase)))
                 .or_insert_with(|| role.bytes(phase));
         }
+        roles
+            .entry(GdnBuffer::CacheIndices)
+            .and_modify(|bytes: &mut usize| *bytes = (*bytes).max(4 * 4));
         let buffers = roles
             .into_iter()
             .map(|(role, bytes)| GdnRuntimeBufferLayout {
