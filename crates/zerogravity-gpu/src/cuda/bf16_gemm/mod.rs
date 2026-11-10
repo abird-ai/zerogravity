@@ -153,12 +153,20 @@ impl Bf16Gemm {
             .checked_mul(lanes)
             .filter(|n| *n <= isize::MAX as usize)
             .ok_or_else(|| Error::Limit("BF16 GEMM reduction span overflow".into()))?;
-        let tile_rows = if rows <= 8 { 8 } else { 32 };
+        let batch4_lane_strided = matches!(
+            reduction,
+            Bf16GemmReduction::LaneStrided {
+                lanes: 16,
+                terms: 512
+            }
+        ) && rows == 4;
+        let mma_tile_rows = if rows <= 8 { 8 } else { 32 };
         let (tile_columns, tile_rows) = match reduction {
+            Bf16GemmReduction::LaneStrided { lanes, .. } if batch4_lane_strided => (128 / lanes, 4),
             Bf16GemmReduction::LaneStrided { .. } | Bf16GemmReduction::LaneBlocked { .. } => {
                 (128 / lanes, 1)
             }
-            _ => (64, tile_rows),
+            _ => (64, mma_tile_rows),
         };
         let grid = [columns.div_ceil(tile_columns), rows.div_ceil(tile_rows), 1].map(u32::try_from);
         let grid = match grid {
@@ -189,37 +197,51 @@ impl Bf16Gemm {
             ]
             .map(|n| StaticScalarValue::U64(n as u64)),
         )?;
-        let entry = match (certified, reduction, tile_rows == 8) {
-            (false, Bf16GemmReduction::Ordered, true) => "bf16_gemm_narrow",
-            (false, Bf16GemmReduction::Ordered, false) => "bf16_gemm_wide",
-            (false, Bf16GemmReduction::InterleavedPair { .. }, true) => {
-                "bf16_gemm_interleaved_narrow"
+        let entry = if batch4_lane_strided {
+            if certified {
+                "bf16_gemm_lane_strided_batch4_certified"
+            } else {
+                "bf16_gemm_lane_strided_batch4"
             }
-            (false, Bf16GemmReduction::InterleavedPair { .. }, false) => {
-                "bf16_gemm_interleaved_wide"
+        } else {
+            match (certified, reduction, tile_rows == 8) {
+                (false, Bf16GemmReduction::Ordered, true) => "bf16_gemm_narrow",
+                (false, Bf16GemmReduction::Ordered, false) => "bf16_gemm_wide",
+                (false, Bf16GemmReduction::InterleavedPair { .. }, true) => {
+                    "bf16_gemm_interleaved_narrow"
+                }
+                (false, Bf16GemmReduction::InterleavedPair { .. }, false) => {
+                    "bf16_gemm_interleaved_wide"
+                }
+                (false, Bf16GemmReduction::RoundedSegments { .. }, true) => {
+                    "bf16_gemm_segmented_narrow"
+                }
+                (false, Bf16GemmReduction::RoundedSegments { .. }, false) => {
+                    "bf16_gemm_segmented_wide"
+                }
+                (false, Bf16GemmReduction::LaneStrided { .. }, _) => "bf16_gemm_lane_strided",
+                (false, Bf16GemmReduction::LaneBlocked { .. }, _) => "bf16_gemm_lane_blocked",
+                (true, Bf16GemmReduction::Ordered, true) => "bf16_gemm_narrow_certified",
+                (true, Bf16GemmReduction::Ordered, false) => "bf16_gemm_wide_certified",
+                (true, Bf16GemmReduction::InterleavedPair { .. }, true) => {
+                    "bf16_gemm_interleaved_narrow_certified"
+                }
+                (true, Bf16GemmReduction::InterleavedPair { .. }, false) => {
+                    "bf16_gemm_interleaved_wide_certified"
+                }
+                (true, Bf16GemmReduction::RoundedSegments { .. }, true) => {
+                    "bf16_gemm_segmented_narrow_certified"
+                }
+                (true, Bf16GemmReduction::RoundedSegments { .. }, false) => {
+                    "bf16_gemm_segmented_wide_certified"
+                }
+                (true, Bf16GemmReduction::LaneStrided { .. }, _) => {
+                    "bf16_gemm_lane_strided_certified"
+                }
+                (true, Bf16GemmReduction::LaneBlocked { .. }, _) => {
+                    "bf16_gemm_lane_blocked_certified"
+                }
             }
-            (false, Bf16GemmReduction::RoundedSegments { .. }, true) => {
-                "bf16_gemm_segmented_narrow"
-            }
-            (false, Bf16GemmReduction::RoundedSegments { .. }, false) => "bf16_gemm_segmented_wide",
-            (false, Bf16GemmReduction::LaneStrided { .. }, _) => "bf16_gemm_lane_strided",
-            (false, Bf16GemmReduction::LaneBlocked { .. }, _) => "bf16_gemm_lane_blocked",
-            (true, Bf16GemmReduction::Ordered, true) => "bf16_gemm_narrow_certified",
-            (true, Bf16GemmReduction::Ordered, false) => "bf16_gemm_wide_certified",
-            (true, Bf16GemmReduction::InterleavedPair { .. }, true) => {
-                "bf16_gemm_interleaved_narrow_certified"
-            }
-            (true, Bf16GemmReduction::InterleavedPair { .. }, false) => {
-                "bf16_gemm_interleaved_wide_certified"
-            }
-            (true, Bf16GemmReduction::RoundedSegments { .. }, true) => {
-                "bf16_gemm_segmented_narrow_certified"
-            }
-            (true, Bf16GemmReduction::RoundedSegments { .. }, false) => {
-                "bf16_gemm_segmented_wide_certified"
-            }
-            (true, Bf16GemmReduction::LaneStrided { .. }, _) => "bf16_gemm_lane_strided_certified",
-            (true, Bf16GemmReduction::LaneBlocked { .. }, _) => "bf16_gemm_lane_blocked_certified",
         };
         let mut bindings = vec![
             (shape.weight_bytes(), BufferIOAttr::ReadOnly),

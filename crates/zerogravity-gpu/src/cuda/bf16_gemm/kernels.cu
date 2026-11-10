@@ -213,6 +213,52 @@ __device__ __forceinline__ void lane_strided_fixed(
     if (lane == 0 && col < s.columns) store_bf16(y, row * s.output_stride + col, result, status);
 }
 
+__device__ __forceinline__ void lane_strided_batch4_fixed(
+    const unsigned short* w, const unsigned short* x, unsigned short* y,
+    unsigned* status, GemmShape s) {
+    constexpr unsigned LANES = 16, TERMS = 512, ITEMS = TERMS / LANES;
+    constexpr unsigned CONTROL = ((32 - LANES) << 8) | 31;
+    const unsigned lane = threadIdx.x & (LANES - 1);
+    const unsigned long long col = (unsigned long long)blockIdx.x * (128 / LANES)
+        + (threadIdx.x / LANES);
+    float total0 = 0, total1 = 0, total2 = 0, total3 = 0;
+    for (unsigned long long start = 0; start < s.inner; start += TERMS) {
+        float partial0 = 0, partial1 = 0, partial2 = 0, partial3 = 0;
+        #pragma unroll
+        for (unsigned item = 0; item < ITEMS; ++item) {
+            const unsigned long long k = start + lane + item * LANES;
+            if (col < s.columns && k < s.inner) {
+                const float weight = widen_bf16(w[col * s.inner + k]);
+                partial0 = add_product(partial0, weight, widen_bf16(x[k]));
+                partial1 = add_product(partial1, weight, widen_bf16(x[s.inner + k]));
+                partial2 = add_product(partial2, weight, widen_bf16(x[2 * s.inner + k]));
+                partial3 = add_product(partial3, weight, widen_bf16(x[3 * s.inner + k]));
+            }
+        }
+        total0 += partial0;
+        total1 += partial1;
+        total2 += partial2;
+        total3 += partial3;
+    }
+    float result0 = lane_value(total0, 0, CONTROL);
+    float result1 = lane_value(total1, 0, CONTROL);
+    float result2 = lane_value(total2, 0, CONTROL);
+    float result3 = lane_value(total3, 0, CONTROL);
+    #pragma unroll
+    for (unsigned i = 1; i < LANES; ++i) {
+        result0 += lane_value(total0, i, CONTROL);
+        result1 += lane_value(total1, i, CONTROL);
+        result2 += lane_value(total2, i, CONTROL);
+        result3 += lane_value(total3, i, CONTROL);
+    }
+    if (lane == 0 && col < s.columns) {
+        store_bf16(y, col, result0, status);
+        store_bf16(y, s.output_stride + col, result1, status);
+        store_bf16(y, 2 * s.output_stride + col, result2, status);
+        store_bf16(y, 3 * s.output_stride + col, result3, status);
+    }
+}
+
 __device__ __forceinline__ void lane_strided_body(
     const unsigned short* w, const unsigned short* x, unsigned short* y,
     unsigned* status, GemmShape s) {
@@ -252,6 +298,14 @@ extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided(
 extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_certified(
     const unsigned short* w, const unsigned short* x, unsigned short* y, unsigned* status, GemmShape s) {
     lane_strided_body(w, x, y, status, s);
+}
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch4(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
+    lane_strided_batch4_fixed(w, x, y, nullptr, s);
+}
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch4_certified(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, unsigned* status, GemmShape s) {
+    lane_strided_batch4_fixed(w, x, y, status, s);
 }
 
 __device__ __forceinline__ void lane_blocked_body(

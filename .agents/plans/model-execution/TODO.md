@@ -174,6 +174,13 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   Legacy three-buffer GEMM entries remain unchanged for other callers. Public B4
   Runtime remains exact `[248068,198,90700]`:0.8B65.63 tok/s vs65.03 and2B47.17
   vs46.30; eager-vLLM C4 remains60.85/60.55. Quick non-LTO feedback only.
+- [x] B4 lane-strided output projection now reuses each BF16 weight load across
+  four independent rows while preserving the exact16-lane/512-term per-row FMA
+  and lane-add order. Existing physical GEMM qualification passes every synthetic
+  case, including N=4/K=1024 at aligned/+4B views with zero mismatches and clean
+  retirement. Public Runtime stays exact `[248068,198,90700]`:0.8B67.59 tok/s
+  vs65.63/vLLM60.85;2B49.89 vs47.17/vLLM60.55. Quick non-LTO feedback only;
+  the remaining2B gap is in broader dense projection execution, not output readback.
 - [x] CUDA offered C1/4/8/16/32/64 sweep:0.8B native45.59/45.04/45.46/45.55/44.80/refused,
   vLLM36.94/60.85/72.20/87.79/91.22/95.56 output tok/s;2B native26.24/26.26/26.32/
   refused/refused/refused, vLLM34.88/60.55/73.70/87.17/90.55/88.01. All measured
