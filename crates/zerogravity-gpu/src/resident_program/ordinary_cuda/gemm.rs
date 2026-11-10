@@ -57,6 +57,10 @@ impl OrdinaryCudaGemm {
         if native_rows == 4 {
             crate::cuda::gdn::CachedConvBatch::prepare(4)?
                 .prepare_code(service.pinned_cuda_queue()?)?;
+            crate::cuda::gdn::CachedDecodeBatch::prepare(4)?
+                .prepare_code(service.pinned_cuda_queue()?)?;
+            crate::cuda::gdn::CachedGatedBatch::prepare(4)?
+                .prepare_code(service.pinned_cuda_queue()?)?;
         }
         preparation.complete()?;
         Ok(Arc::new(Self {

@@ -66,6 +66,50 @@ pub(super) fn prepare(phase: GdnPhase, slot: GdnCacheSlot) -> Result<Definition>
     prepare_checked(phase, slot, GatedLayout::retained(phase)?)
 }
 
+pub(super) fn prepare_batch_cached(tokens: usize) -> Result<Definition> {
+    if tokens != 4 {
+        return Err(Error::Unsupported(
+            "parameterized cached GDN gated batch requires four rows".into(),
+        ));
+    }
+    let rows = tokens
+        .checked_mul(16)
+        .ok_or_else(|| Error::Limit("parameterized cached GDN gated batch rows".into()))?;
+    let rows_u32 = u32::try_from(rows)
+        .map_err(|_| Error::Limit("parameterized cached GDN gated batch grid".into()))?;
+    let schema = StaticScalarSchema::new(
+        &[
+            (StaticScalarType::U32, 0),
+            (StaticScalarType::U32, 8),
+            (StaticScalarType::U32, 16),
+            (StaticScalarType::U32, 24),
+            (StaticScalarType::F32Bits, 32),
+        ],
+        40,
+        8,
+    )?;
+    Ok(Definition {
+        asset: assets::Asset {
+            entry: CACHED_ENTRY,
+            source: CACHED_SOURCE,
+            threads: 32,
+            grid: [rows_u32, 1, 1],
+            shared: 0,
+            ptx_sha256: CACHED_ORIGINAL_PTX_SHA256,
+        },
+        scalars: StaticScalarBlock::new(
+            schema,
+            &[
+                StaticScalarValue::U32(128),
+                StaticScalarValue::U32(128),
+                StaticScalarValue::U32(128),
+                StaticScalarValue::U32(u64::from(rows_u32)),
+                StaticScalarValue::F32Bits(EPS_BITS),
+            ],
+        )?,
+    })
+}
+
 #[cfg(test)]
 pub(super) fn prepare_with_layout(
     phase: GdnPhase,

@@ -395,6 +395,179 @@ impl CachedConvBatch {
         )
     }
 }
+
+#[cfg(feature = "cuda-cublas")]
+pub(crate) struct CachedDecodeBatch {
+    kernel: PinnedKernel,
+    grid: [u32; 3],
+}
+#[cfg(feature = "cuda-cublas")]
+impl CachedDecodeBatch {
+    pub(crate) fn prepare(rows: usize) -> Result<Self> {
+        use BufferIOAttr::{ReadOnly as R, ReadWrite as RW, WriteOnly as W};
+        let (asset, scalars) = text::cached_decode_batch(rows)?;
+        if !asset
+            .source
+            .starts_with("// cubecl.cuda.dynamic_shared_bytes=64\n")
+            || !asset.source.contains(asset.ptx_sha256)
+        {
+            return Err(Error::State(
+                "cached GDN decode batch source identity".into(),
+            ));
+        }
+        let conv_bytes = GdnBuffer::PackedQkvz
+            .bytes(GdnPhase::CachedDecode)
+            .checked_mul(rows)
+            .ok_or_else(|| Error::Limit("cached GDN decode batch conv bytes".into()))?;
+        let packed_ba = GdnBuffer::PackedBa
+            .bytes(GdnPhase::CachedDecode)
+            .checked_mul(rows)
+            .ok_or_else(|| Error::Limit("cached GDN decode batch BA bytes".into()))?;
+        let ba_view = packed_ba
+            .checked_sub(32)
+            .ok_or_else(|| Error::Limit("cached GDN decode batch BA view".into()))?;
+        let core_bytes = GdnBuffer::Core
+            .bytes(GdnPhase::CachedDecode)
+            .checked_mul(rows)
+            .ok_or_else(|| Error::Limit("cached GDN decode batch core bytes".into()))?;
+        let state_bytes = GdnBuffer::CacheArena
+            .bytes(GdnPhase::CachedDecode)
+            .checked_sub(CONV_STATE_BYTES)
+            .ok_or_else(|| Error::Limit("cached GDN decode batch state bytes".into()))?;
+        let index_bytes = rows
+            .checked_mul(4)
+            .ok_or_else(|| Error::Limit("cached GDN decode batch index bytes".into()))?;
+        Ok(Self {
+            kernel: PinnedKernel::new_with_static_scalars(
+                asset.entry,
+                Arc::from(asset.source),
+                asset.threads,
+                Arc::from([
+                    (conv_bytes, R),
+                    (ba_view, R),
+                    (ba_view, R),
+                    (GdnBuffer::ALog.bytes(GdnPhase::CachedDecode), R),
+                    (GdnBuffer::DtBias.bytes(GdnPhase::CachedDecode), R),
+                    (core_bytes, W),
+                    (state_bytes, RW),
+                    (state_bytes, RW),
+                    (index_bytes, R),
+                ]),
+                scalars,
+            )?,
+            grid: asset.grid,
+        })
+    }
+
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    pub(crate) fn prepare_code(&self, queue: &cubecl::cuda::OwnedCudaQueue) -> Result<()> {
+        self.kernel.prepare_code(queue)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn launch(
+        &self,
+        client: &cubecl::client::Client,
+        conv: &cubecl::server::Handle,
+        a: &cubecl::server::Handle,
+        beta: &cubecl::server::Handle,
+        a_log: &cubecl::server::Handle,
+        dt_bias: &cubecl::server::Handle,
+        core: &cubecl::server::Handle,
+        state: &cubecl::server::Handle,
+        indices: &cubecl::server::Handle,
+    ) -> Result<()> {
+        self.kernel.launch(
+            client,
+            self.grid,
+            &[
+                conv.clone(),
+                a.clone(),
+                beta.clone(),
+                a_log.clone(),
+                dt_bias.clone(),
+                core.clone(),
+                state.clone(),
+                state.clone(),
+                indices.clone(),
+            ],
+        )
+    }
+}
+
+#[cfg(feature = "cuda-cublas")]
+pub(crate) struct CachedGatedBatch {
+    kernel: PinnedKernel,
+    grid: [u32; 3],
+}
+#[cfg(feature = "cuda-cublas")]
+impl CachedGatedBatch {
+    pub(crate) fn prepare(rows: usize) -> Result<Self> {
+        use BufferIOAttr::{ReadOnly as R, WriteOnly as W};
+        let (asset, scalars) = text::cached_gated_batch(rows)?;
+        if !asset
+            .source
+            .starts_with("// cubecl.cuda.dynamic_shared_bytes=0\n")
+            || !asset.source.contains(asset.ptx_sha256)
+        {
+            return Err(Error::State(
+                "cached GDN gated batch source identity".into(),
+            ));
+        }
+        let row_bytes = GdnBuffer::Core.bytes(GdnPhase::CachedDecode);
+        let io_bytes = row_bytes
+            .checked_mul(rows)
+            .ok_or_else(|| Error::Limit("cached GDN gated batch row bytes".into()))?;
+        let rstd_bytes = GdnBuffer::Rstd
+            .bytes(GdnPhase::CachedDecode)
+            .checked_mul(rows)
+            .ok_or_else(|| Error::Limit("cached GDN gated batch rstd bytes".into()))?;
+        Ok(Self {
+            kernel: PinnedKernel::new_with_static_scalars(
+                asset.entry,
+                Arc::from(asset.source),
+                asset.threads,
+                Arc::from([
+                    (io_bytes, R),
+                    (io_bytes, W),
+                    (GdnBuffer::GatedGamma.bytes(GdnPhase::CachedDecode), R),
+                    (io_bytes, R),
+                    (rstd_bytes, W),
+                ]),
+                scalars,
+            )?,
+            grid: asset.grid,
+        })
+    }
+
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    pub(crate) fn prepare_code(&self, queue: &cubecl::cuda::OwnedCudaQueue) -> Result<()> {
+        self.kernel.prepare_code(queue)
+    }
+
+    pub(crate) fn launch(
+        &self,
+        client: &cubecl::client::Client,
+        core: &cubecl::server::Handle,
+        gated: &cubecl::server::Handle,
+        gamma: &cubecl::server::Handle,
+        z: &cubecl::server::Handle,
+        rstd: &cubecl::server::Handle,
+    ) -> Result<()> {
+        self.kernel.launch(
+            client,
+            self.grid,
+            &[
+                core.clone(),
+                gated.clone(),
+                gamma.clone(),
+                z.clone(),
+                rstd.clone(),
+            ],
+        )
+    }
+}
+
 fn kernel_impl(phase: GdnPhase, stage: GdnStage, typed_outputs: bool) -> Result<LaunchSpec> {
     kernel_from_asset(
         phase,

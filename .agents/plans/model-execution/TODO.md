@@ -156,6 +156,12 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   prior committed50.50/41.23 and vLLM60.85/60.55. Batch code is admitted/prepared
   only when `native_rows=4`; sequential CUDA loads keep the original cold path.
   Quick non-LTO feedback only; broader stateful attention/recurrent batching remains open.
+- [x] Cached GDN Decode+Gated now batches the same four cache slots while recurrent
+  StateRoot copies stay private. Retained Decode uses gridY batch (`[4,64,1]`),
+  Gated uses dense64 head rows; no arithmetic replacement. Public Runtime remains
+  exact `[248068,198,90700]`:0.8B B4 63.90 tok/s versus58.08/vLLM60.85;2B B4
+  45.50 tok/s, effectively flat versus~45.8 and still below vLLM60.55. Quick
+  non-LTO feedback; full-attention/KV remains the next per-session CUDA lane.
 - [x] CUDA offered C1/4/8/16/32/64 sweep:0.8B native45.59/45.04/45.46/45.55/44.80/refused,
   vLLM36.94/60.85/72.20/87.79/91.22/95.56 output tok/s;2B native26.24/26.26/26.32/
   refused/refused/refused, vLLM34.88/60.55/73.70/87.17/90.55/88.01. All measured

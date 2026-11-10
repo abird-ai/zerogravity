@@ -149,6 +149,33 @@ pub(super) fn prepare_batch_conv(rows: usize) -> Result<Definition> {
     })
 }
 
+pub(super) fn prepare_batch_decode(rows: usize) -> Result<Definition> {
+    if rows != 4 {
+        return Err(Error::Unsupported(
+            "parameterized cached GDN decode batch requires four rows".into(),
+        ));
+    }
+    let grid_y = u32::try_from(
+        rows.checked_mul(16)
+            .ok_or_else(|| Error::Limit("cached GDN decode batch grid".into()))?,
+    )
+    .map_err(|_| Error::Limit("cached GDN decode batch grid".into()))?;
+    Ok(Definition {
+        asset: assets::Asset {
+            entry: DECODE_ENTRY,
+            source: DECODE_SOURCE,
+            threads: 32,
+            grid: [4, grid_y, 1],
+            shared: 64,
+            ptx_sha256: DECODE_ORIGINAL_PTX_SHA256,
+        },
+        scalars: StaticScalarBlock::new(
+            StaticScalarSchema::new(&[(StaticScalarType::F32Bits, 0)], 8, 8)?,
+            &[StaticScalarValue::F32Bits(DECODE_SCALE_BITS)],
+        )?,
+    })
+}
+
 #[cfg(test)]
 pub(super) fn prepare_with_layout(
     phase: GdnPhase,

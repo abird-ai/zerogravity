@@ -3,8 +3,11 @@ use super::{attention, body::OrdinaryCudaBody, exact_view};
 use crate::{
     cuda::{
         gdn::{
-            CONV_STATE_BYTES, CachedConvBatch, GdnRuntimeBuffer, GdnRuntimeCacheSlot,
-            state_transport::{CONV_ELEMENTS, StateCopy, StateTransport, plane_handle},
+            CONV_STATE_BYTES, CachedConvBatch, CachedDecodeBatch, CachedGatedBatch, GdnBuffer,
+            GdnPhase, GdnRuntimeBuffer, GdnRuntimeCacheSlot,
+            state_transport::{
+                CONV_ELEMENTS, RECURRENT_ELEMENTS, StateCopy, StateTransport, plane_handle,
+            },
         },
         ordinary_text::Step,
     },
@@ -192,6 +195,168 @@ impl OrdinaryCudaBody {
         Ok((dispatches, 0))
     }
 
+    fn enqueue_gdn_recurrent_cohort(
+        &self,
+        request: &ForwardPlan,
+        node_index: usize,
+        node: &zerogravity_core::accelerator::program::PlanNode,
+        descriptor: &zerogravity_core::accelerator::program::SourceOperator,
+        states: &[&StateBinding],
+        step: Step,
+    ) -> Result<(usize, usize)> {
+        let ([_conv_output, z, packed_ba], [output]) =
+            (node.inputs.as_slice(), node.outputs.as_slice())
+        else {
+            return Err(Error::State(
+                "ordinary CUDA cohort GDN recurrent SSA arity".into(),
+            ));
+        };
+        if states.len() != 4 || step.rows != 4 || !self.cold().layout().groups().direct() {
+            return Err(Error::Unsupported(
+                "ordinary CUDA direct four-row GDN recurrent cohort".into(),
+            ));
+        }
+        let inputs = descriptor.input_elements()?;
+        let outputs = descriptor.output_elements()?;
+        let [a_log, dt_bias, gamma] = self.cold().node_parameters(node_index)? else {
+            return Err(Error::State(
+                "ordinary CUDA cohort GDN recurrent parameters".into(),
+            ));
+        };
+        let recurrent_layout =
+            ResidentBufferLayout::new(ResidentPhysicalType::F32, RECURRENT_ELEMENTS)?;
+        let service = self.cold().service();
+        let client = service.client();
+        let cache = self.cold().gdn_internal(GdnRuntimeBuffer::CacheArena)?;
+        let status = self.cold().status().handle();
+        let mut dispatches = 0usize;
+
+        for (row, state) in states.iter().enumerate() {
+            let (StateBuffers::Vector(prior), StateBuffers::Vector(candidate)) =
+                (&state.prior, &state.candidate)
+            else {
+                return Err(Error::State(
+                    "ordinary CUDA cohort GDN recurrent state layout".into(),
+                ));
+            };
+            prior.require_layout(recurrent_layout)?;
+            candidate.require_layout(recurrent_layout)?;
+            let slot = GdnRuntimeCacheSlot::new(row + 1)?;
+            let native = plane_handle(cache, slot.recurrent_offset(), RECURRENT_ELEMENTS * 4)?;
+            StateTransport::prepare(
+                service,
+                StateCopy::RecurrentIn,
+                prior.handle.clone(),
+                native,
+                self.cold().status(),
+            )?
+            .launch(service)?;
+            dispatches += 1;
+        }
+
+        let rows = step.rows;
+        let packed_row_bytes = GdnBuffer::PackedQkvz.bytes(GdnPhase::CachedDecode);
+        let conv_scratch_bytes = packed_row_bytes
+            .checked_mul(rows)
+            .ok_or_else(|| Error::Limit("ordinary GDN batch decode conv scratch".into()))?;
+        let core_bytes = GdnBuffer::Core
+            .bytes(GdnPhase::CachedDecode)
+            .checked_mul(rows)
+            .ok_or_else(|| Error::Limit("ordinary GDN batch decode core scratch".into()))?;
+        let rstd_bytes = GdnBuffer::Rstd
+            .bytes(GdnPhase::CachedDecode)
+            .checked_mul(rows)
+            .ok_or_else(|| Error::Limit("ordinary GDN batch gated rstd scratch".into()))?;
+        let scratch = self.cold().gdn_internal(GdnRuntimeBuffer::HChunks)?;
+        let conv_scratch = exact_view(
+            scratch,
+            0,
+            conv_scratch_bytes,
+            "ordinary GDN batch decode conv scratch",
+        )?;
+        let core_scratch = exact_view(
+            scratch,
+            conv_scratch_bytes,
+            core_bytes,
+            "ordinary GDN batch decode core scratch",
+        )?;
+        let rstd_offset = conv_scratch_bytes
+            .checked_add(core_bytes)
+            .ok_or_else(|| Error::Limit("ordinary GDN batch rstd offset".into()))?;
+        let rstd_scratch = exact_view(
+            scratch,
+            rstd_offset,
+            rstd_bytes,
+            "ordinary GDN batch gated rstd scratch",
+        )?;
+        let full_ba = self.cohort_value_handle(request, *packed_ba, inputs[2], rows)?;
+        let ba_total = inputs[2]
+            .checked_mul(rows)
+            .and_then(|words| words.checked_mul(2))
+            .ok_or_else(|| Error::Limit("ordinary GDN batch BA bytes".into()))?;
+        let ba_view = ba_total
+            .checked_sub(32)
+            .ok_or_else(|| Error::Limit("ordinary GDN batch BA view".into()))?;
+        let a = Self::exact_handle_view(&full_ba, 32, ba_view, "ordinary GDN batch A")?;
+        let beta = Self::exact_handle_view(&full_ba, 0, ba_view, "ordinary GDN batch beta")?;
+        let full_z = self.cohort_value_handle(request, *z, inputs[1], rows)?;
+        let full_output = self.cohort_value_handle(request, *output, outputs[0], rows)?;
+        let recurrent_cache = exact_view(
+            cache,
+            CONV_STATE_BYTES,
+            cache
+                .bytes()
+                .checked_sub(CONV_STATE_BYTES)
+                .ok_or_else(|| Error::Limit("ordinary GDN recurrent cache view".into()))?,
+            "ordinary GDN batch recurrent cache",
+        )?;
+        let indices_lease = self.cold().gdn_internal(GdnRuntimeBuffer::CacheIndices)?;
+        let indices = exact_view(indices_lease, 0, 16, "ordinary GDN batch cache indices")?;
+        let index_bytes = (1_i32..=4).flat_map(i32::to_le_bytes).collect::<Vec<_>>();
+        client.write(&indices, Bytes::from_bytes_vec(index_bytes));
+
+        CachedDecodeBatch::prepare(4)?.launch(
+            client,
+            &conv_scratch,
+            &a,
+            &beta,
+            &a_log.lease().handle(),
+            &dt_bias.lease().handle(),
+            &core_scratch,
+            &recurrent_cache,
+            &indices,
+        )?;
+        dispatches += 1;
+        CachedGatedBatch::prepare(4)?.launch(
+            client,
+            &core_scratch,
+            &full_output,
+            &gamma.lease().handle(),
+            &full_z,
+            &rstd_scratch,
+        )?;
+        dispatches += 1;
+        dispatches += attention::certify(client, &full_output, &status, outputs[0] * rows)?;
+
+        for (row, state) in states.iter().enumerate() {
+            let StateBuffers::Vector(candidate) = &state.candidate else {
+                unreachable!();
+            };
+            let slot = GdnRuntimeCacheSlot::new(row + 1)?;
+            let native = plane_handle(cache, slot.recurrent_offset(), RECURRENT_ELEMENTS * 4)?;
+            StateTransport::prepare(
+                service,
+                StateCopy::RecurrentOut,
+                native,
+                candidate.handle.clone(),
+                self.cold().status(),
+            )?
+            .launch(service)?;
+            dispatches += 1;
+        }
+        Ok((dispatches, 0))
+    }
+
     /// One physical traversal for aligned cached-decode rows. Stateless work is
     /// row-batched; stateful operators retain each session's private root/state.
     pub(crate) async fn execute_decode_cohort(
@@ -335,6 +500,35 @@ impl OrdinaryCudaBody {
                         })
                         .collect::<Result<Vec<_>>>()?;
                     let (launched, fused) = self.enqueue_gdn_convolution_cohort(
+                        cold,
+                        node_index,
+                        node,
+                        &descriptor,
+                        &bound,
+                        batch_step,
+                    )?;
+                    dispatches += launched;
+                    fused_dispatches += fused;
+                    continue;
+                }
+                if let SourceOperatorKind::GatedDelta { domain, .. } = template.kind()
+                    && self.cold().layout().groups().direct()
+                {
+                    let descriptor = template.bind_runtime_call(calls[0])?;
+                    let bound = state_maps
+                        .iter()
+                        .map(|states| {
+                            states
+                                .get(&StateSlot::Recurrent(domain))
+                                .copied()
+                                .ok_or_else(|| {
+                                    Error::State(
+                                        "ordinary CUDA cohort recurrent state absent".into(),
+                                    )
+                                })
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    let (launched, fused) = self.enqueue_gdn_recurrent_cohort(
                         cold,
                         node_index,
                         node,

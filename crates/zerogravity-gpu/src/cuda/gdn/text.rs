@@ -129,6 +129,20 @@ pub(super) fn cached_conv_batch(
     Ok((definition.asset, definition.scalars))
 }
 
+pub(super) fn cached_decode_batch(
+    rows: usize,
+) -> Result<(assets::Asset, crate::cuda::kernel::StaticScalarBlock)> {
+    let definition = parameterized_cached::prepare_batch_decode(rows)?;
+    Ok((definition.asset, definition.scalars))
+}
+
+pub(super) fn cached_gated_batch(
+    rows: usize,
+) -> Result<(assets::Asset, crate::cuda::kernel::StaticScalarBlock)> {
+    let definition = parameterized_gated::prepare_batch_cached(rows)?;
+    Ok((definition.asset, definition.scalars))
+}
+
 mod config;
 #[cfg(all(test, feature = "cuda-native-qualification"))]
 mod observed;
