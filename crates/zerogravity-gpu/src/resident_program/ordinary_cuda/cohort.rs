@@ -466,17 +466,12 @@ impl OrdinaryCudaBody {
                         flight,
                         input,
                         &logits,
+                        self.cold().status(),
                         self.cold().source_page(),
                     )
                     .await?;
                 dispatches += launched;
                 fused_dispatches += launched;
-                dispatches += attention::certify(
-                    client,
-                    &logits.handle(),
-                    &self.cold().status().handle(),
-                    requests.len() * first.rows().vocabulary(),
-                )?;
                 continue;
             }
             let stateful = !matches!(

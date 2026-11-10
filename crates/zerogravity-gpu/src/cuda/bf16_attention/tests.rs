@@ -45,14 +45,14 @@ fn output_and_status_aliases_refuse() -> Result<()> {
         )
     };
     let mut handles = [h(), h(), h(), h(), h()];
-    require_disjoint_writes(&handles)?;
+    require_disjoint_writes(&handles, &[3, 4])?;
     handles[1] = handles[0].clone();
-    require_disjoint_writes(&handles)?;
+    require_disjoint_writes(&handles, &[3, 4])?;
     handles[3] = handles[0].clone();
-    assert!(require_disjoint_writes(&handles).is_err());
+    assert!(require_disjoint_writes(&handles, &[3, 4]).is_err());
     handles[3] = h();
     handles[4] = handles[3].clone();
-    assert!(require_disjoint_writes(&handles).is_err());
+    assert!(require_disjoint_writes(&handles, &[3, 4]).is_err());
     Ok(())
 }
 

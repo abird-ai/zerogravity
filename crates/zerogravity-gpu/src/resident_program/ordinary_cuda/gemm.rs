@@ -48,7 +48,7 @@ impl OrdinaryCudaGemm {
                     terms: 32,
                 },
             ] {
-                Bf16Gemm::with_reduction(64, rows, 32, reduction)?
+                Bf16Gemm::with_reduction_certified(64, rows, 32, reduction)?
                     .prepare_code(service.pinned_cuda_queue()?)?;
             }
         }
@@ -101,6 +101,7 @@ impl OrdinaryCudaGemm {
         input_offset: usize,
         output: &ResidentLease,
         output_offset: usize,
+        status: &ResidentLease,
     ) -> Result<()> {
         self.require_service(&self.service)?;
         if weights.bytes() != shape.weight_bytes() {
@@ -112,18 +113,22 @@ impl OrdinaryCudaGemm {
             (weights, DeviceAccess::Read),
             (input, DeviceAccess::Read),
             (output, DeviceAccess::Write),
+            (status, DeviceAccess::Write),
         ])?;
-        let launch = Bf16Gemm::with_reduction(shape.columns, shape.rows, shape.inner, reduction)?
-            .prepare(
-            self.service.client(),
-            weights.handle(),
-            exact_view(input, input_offset, shape.input_bytes(), "GEMM input")?,
-            exact_view(output, output_offset, shape.output_bytes(), "GEMM output")?,
-        )?;
+        let launch =
+            Bf16Gemm::with_reduction_certified(shape.columns, shape.rows, shape.inner, reduction)?
+                .prepare_certified(
+                    self.service.client(),
+                    weights.handle(),
+                    exact_view(input, input_offset, shape.input_bytes(), "GEMM input")?,
+                    exact_view(output, output_offset, shape.output_bytes(), "GEMM output")?,
+                    status.handle(),
+                )?;
         flight.retain_completion_owner(self.context.clone())?;
         launch.launch_on(self.service.client())
     }
 
+    #[allow(clippy::too_many_arguments)] // Physical source/output/status bindings stay explicit.
     pub(super) fn enqueue_page(
         &self,
         shape: Bf16GemmShape,
@@ -132,16 +137,17 @@ impl OrdinaryCudaGemm {
         input: cubecl::server::Handle,
         output: cubecl::server::Handle,
         output_stride: usize,
+        status: cubecl::server::Handle,
     ) -> Result<()> {
         self.require_service(&self.service)?;
-        Bf16Gemm::with_output_stride(
+        Bf16Gemm::with_output_stride_certified(
             shape.columns,
             shape.rows,
             shape.inner,
             reduction,
             output_stride,
         )?
-        .prepare(self.service.client(), weights, input, output)?
+        .prepare_certified(self.service.client(), weights, input, output, status)?
         .launch_on(self.service.client())
     }
 

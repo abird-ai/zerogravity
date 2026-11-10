@@ -208,6 +208,7 @@ impl OrdinaryCudaProjection {
         Ok(accesses)
     }
 
+    #[allow(clippy::too_many_arguments)] // Projection/source/status ownership stays explicit.
     async fn enqueue(
         &self,
         descriptor: &SourceOperator,
@@ -215,6 +216,7 @@ impl OrdinaryCudaProjection {
         flight: &mut ResidentSubmission<'_>,
         input: &ResidentLease,
         output: &ResidentLease,
+        status: &ResidentLease,
         page: Option<&Arc<crate::resident_leases::source_page::ResidentSourcePage>>,
     ) -> Result<usize> {
         let (operation, input_offset) = self.operation(descriptor)?;
@@ -230,12 +232,17 @@ impl OrdinaryCudaProjection {
                 input_offset,
                 output,
                 0,
+                status,
             )?;
             return Ok(1);
         }
         let page = page
             .ok_or_else(|| Error::State("ordinary CUDA streamed projection has no page".into()))?;
-        flight.require_accesses([(input, DeviceAccess::Read), (output, DeviceAccess::Write)])?;
+        flight.require_accesses([
+            (input, DeviceAccess::Read),
+            (output, DeviceAccess::Write),
+            (status, DeviceAccess::Write),
+        ])?;
         let input = exact_view(
             input,
             input_offset,
@@ -273,6 +280,7 @@ impl OrdinaryCudaProjection {
                         input.clone(),
                         target,
                         operation.columns,
+                        status.handle(),
                     )?;
                     Ok(vec![output.clone()])
                 })
@@ -287,6 +295,7 @@ impl OrdinaryCudaProjection {
     /// Batched independent decode rows for a last-active projection. Every row
     /// is logically the last row of its own session, so the shared GEMM emits
     /// one output row per session rather than selecting one row from the band.
+    #[allow(clippy::too_many_arguments)] // Cohort projection/status ownership stays explicit.
     async fn enqueue_decode_rows(
         &self,
         rows: usize,
@@ -294,6 +303,7 @@ impl OrdinaryCudaProjection {
         flight: &mut ResidentSubmission<'_>,
         input: &ResidentLease,
         output: &ResidentLease,
+        status: &ResidentLease,
         page: Option<&Arc<crate::resident_leases::source_page::ResidentSourcePage>>,
     ) -> Result<usize> {
         if rows == 0
@@ -314,13 +324,19 @@ impl OrdinaryCudaProjection {
         }
         let reduction = self.arithmetic.reduction(operation);
         if let Some(weights) = self.weights.lease() {
-            gemm.enqueue(flight, operation, reduction, weights, input, 0, output, 0)?;
+            gemm.enqueue(
+                flight, operation, reduction, weights, input, 0, output, 0, status,
+            )?;
             return Ok(1);
         }
         let page = page.ok_or_else(|| {
             Error::State("ordinary CUDA streamed decode projection has no page".into())
         })?;
-        flight.require_accesses([(input, DeviceAccess::Read), (output, DeviceAccess::Write)])?;
+        flight.require_accesses([
+            (input, DeviceAccess::Read),
+            (output, DeviceAccess::Write),
+            (status, DeviceAccess::Write),
+        ])?;
         let input = exact_view(input, 0, operation.input_bytes(), "decode GEMM input")?;
         let mut base = 0;
         let mut launches = 0;
@@ -348,6 +364,7 @@ impl OrdinaryCudaProjection {
                         input.clone(),
                         target,
                         operation.columns,
+                        status.handle(),
                     )?;
                     Ok(vec![output.clone()])
                 })

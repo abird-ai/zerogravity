@@ -491,23 +491,17 @@ impl OrdinaryCudaBody {
                 let projection = self.cold().projection(node_index)?;
                 let input_lease = self.cold().value_lease(input.0 as usize)?;
                 let output_lease = self.cold().value_lease(output.0 as usize)?;
-                let mut launches = projection
+                let launches = projection
                     .enqueue(
                         descriptor,
                         self.gemm(),
                         flight,
                         input_lease,
                         output_lease,
+                        self.cold().status(),
                         self.cold().source_page(),
                     )
                     .await?;
-                let output_handle = self.value_handle(request, *output, outputs[0])?;
-                launches += attention::certify(
-                    client,
-                    &output_handle,
-                    &self.cold().status().handle(),
-                    outputs[0],
-                )?;
                 Ok((
                     launches,
                     usize::from(selected_row.is_none() && step.rows > 1),

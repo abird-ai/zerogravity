@@ -169,6 +169,11 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   46.30 tok/s versus prior63.90/45.50 and eager-vLLM60.85/60.55. The B4 entry is
   precompiled only for `native_rows=4`; sequential loads keep the original path.
   Remaining2B gap is predominantly dense projection/GEMM scaling, not attention launch count.
+- [x] Ordinary BF16 projection GEMMs now certify finite BF16 at the existing
+  rounded store and OR the same status flag, removing the separate post-GEMM scan.
+  Legacy three-buffer GEMM entries remain unchanged for other callers. Public B4
+  Runtime remains exact `[248068,198,90700]`:0.8B65.63 tok/s vs65.03 and2B47.17
+  vs46.30; eager-vLLM C4 remains60.85/60.55. Quick non-LTO feedback only.
 - [x] CUDA offered C1/4/8/16/32/64 sweep:0.8B native45.59/45.04/45.46/45.55/44.80/refused,
   vLLM36.94/60.85/72.20/87.79/91.22/95.56 output tok/s;2B native26.24/26.26/26.32/
   refused/refused/refused, vLLM34.88/60.55/73.70/87.17/90.55/88.01. All measured

@@ -15,6 +15,12 @@ __device__ __forceinline__ unsigned short round_bf16(float x) {
     asm("cvt.rn.bf16.f32 %0, %1;" : "=h"(out) : "f"(x));
     return out;
 }
+__device__ __forceinline__ void store_bf16(
+    unsigned short* output, unsigned long long index, float value, unsigned* status) {
+    const unsigned short rounded = round_bf16(value);
+    if (status != nullptr && (rounded & 0x7f80u) == 0x7f80u) atomicOr(status, 2u);
+    output[index] = rounded;
+}
 __device__ __forceinline__ void copy16(unsigned short* dst, const unsigned short* src, unsigned bytes) {
     unsigned address = static_cast<unsigned>(__cvta_generic_to_shared(dst));
     asm volatile("cp.async.ca.shared.global [%0], [%1], 16, %2;"
@@ -71,7 +77,7 @@ __device__ __forceinline__ void mma_fragment(
 template<int BN, int MODE>
 __device__ __forceinline__ void gemm_body(
     const unsigned short* w, const unsigned short* x, unsigned short* y,
-    GemmShape s, unsigned short* shared) {
+    unsigned* status, GemmShape s, unsigned short* shared) {
     constexpr int STRIDE = 40, STAGE = (64 + BN) * STRIDE, FRAGMENTS = BN / 8;
     const unsigned lane = threadIdx.x % 32, warp = threadIdx.x / 32;
     const unsigned row = lane / 4, pair = (lane % 4) * 2;
@@ -138,7 +144,7 @@ __device__ __forceinline__ void gemm_body(
             const auto n = base_n + j * 8 + pair + i % 2;
             const float result = MODE == 2 ? second[j][i]
                 : MODE == 1 ? d[j][i] + second[j][i] : d[j][i];
-            if (m < s.columns && n < s.rows) y[n * s.output_stride + m] = round_bf16(result);
+            if (m < s.columns && n < s.rows) store_bf16(y, n * s.output_stride + m, result, status);
         }
     }
 }
@@ -147,7 +153,12 @@ __device__ __forceinline__ void gemm_body(
 extern "C" __global__ __launch_bounds__(128) void NAME( \
     const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) { \
     __shared__ __align__(16) unsigned short shared[2 * (64 + BN) * 40]; \
-    gemm_body<BN, MODE>(w, x, y, s, shared); \
+    gemm_body<BN, MODE>(w, x, y, nullptr, s, shared); \
+} \
+extern "C" __global__ __launch_bounds__(128) void NAME##_certified( \
+    const unsigned short* w, const unsigned short* x, unsigned short* y, unsigned* status, GemmShape s) { \
+    __shared__ __align__(16) unsigned short shared[2 * (64 + BN) * 40]; \
+    gemm_body<BN, MODE>(w, x, y, status, s, shared); \
 }
 GEMM_ENTRY(bf16_gemm_narrow, 8, 0)
 GEMM_ENTRY(bf16_gemm_wide, 32, 0)
@@ -177,7 +188,8 @@ __device__ __forceinline__ float lane_down(float value, unsigned delta, unsigned
 // Each power-of-two lane group owns one output; all lanes reach every shuffle.
 template<unsigned LANES, unsigned TERMS>
 __device__ __forceinline__ void lane_strided_fixed(
-    const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
+    const unsigned short* w, const unsigned short* x, unsigned short* y,
+    unsigned* status, GemmShape s) {
     constexpr unsigned CONTROL = ((32 - LANES) << 8) | 31;
     constexpr unsigned ITEMS = TERMS / LANES;
     const unsigned lane = threadIdx.x & (LANES - 1);
@@ -198,17 +210,18 @@ __device__ __forceinline__ void lane_strided_fixed(
     float result = lane_value(total, 0, CONTROL);
     #pragma unroll
     for (unsigned i = 1; i < LANES; ++i) result += lane_value(total, i, CONTROL);
-    if (lane == 0 && col < s.columns) y[row * s.output_stride + col] = round_bf16(result);
+    if (lane == 0 && col < s.columns) store_bf16(y, row * s.output_stride + col, result, status);
 }
 
-extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided(
-    const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
+__device__ __forceinline__ void lane_strided_body(
+    const unsigned short* w, const unsigned short* x, unsigned short* y,
+    unsigned* status, GemmShape s) {
     if (s.lane_shift == 4 && s.reduction_terms == 512) {
-        lane_strided_fixed<16, 512>(w, x, y, s);
+        lane_strided_fixed<16, 512>(w, x, y, status, s);
         return;
     }
     if (s.lane_shift == 4 && s.reduction_terms == 256) {
-        lane_strided_fixed<16, 256>(w, x, y, s);
+        lane_strided_fixed<16, 256>(w, x, y, status, s);
         return;
     }
     const unsigned lanes = 1u << s.lane_shift;
@@ -230,10 +243,20 @@ extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided(
     }
     float result = lane_value(total, 0, control);
     for (unsigned i = 1; i < lanes; ++i) result += lane_value(total, i, control);
-    if (lane == 0 && col < s.columns) y[row * s.output_stride + col] = round_bf16(result);
+    if (lane == 0 && col < s.columns) store_bf16(y, row * s.output_stride + col, result, status);
 }
-extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_blocked(
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided(
     const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
+    lane_strided_body(w, x, y, nullptr, s);
+}
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_certified(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, unsigned* status, GemmShape s) {
+    lane_strided_body(w, x, y, status, s);
+}
+
+__device__ __forceinline__ void lane_blocked_body(
+    const unsigned short* w, const unsigned short* x, unsigned short* y,
+    unsigned* status, GemmShape s) {
     const unsigned lanes = 1u << s.lane_shift;
     const unsigned lane = threadIdx.x & (lanes - 1);
     const unsigned control = ((32 - lanes) << 8) | 31;
@@ -255,5 +278,13 @@ extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_blocked(
         const float other = lane_down(total, delta, control);
         if (lane < delta) total += other;
     }
-    if (lane == 0 && col < s.columns) y[row * s.output_stride + col] = round_bf16(total);
+    if (lane == 0 && col < s.columns) store_bf16(y, row * s.output_stride + col, total, status);
+}
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_blocked(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
+    lane_blocked_body(w, x, y, nullptr, s);
+}
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_blocked_certified(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, unsigned* status, GemmShape s) {
+    lane_blocked_body(w, x, y, status, s);
 }

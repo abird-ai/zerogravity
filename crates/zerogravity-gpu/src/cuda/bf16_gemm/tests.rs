@@ -11,6 +11,12 @@ fn output_stride_preserves_operands_and_checks_the_complete_view() -> Result<()>
         strided.kernel.binding_sizes(),
         [17 * 49 * 2, 3 * 49 * 2, (2 * 83 + 17) * 2]
     );
+    assert_eq!(
+        Bf16Gemm::with_output_stride_certified(17, 3, 49, Bf16GemmReduction::Ordered, 83)?
+            .kernel
+            .binding_sizes(),
+        [17 * 49 * 2, 3 * 49 * 2, (2 * 83 + 17) * 2, 4]
+    );
     assert_eq!(output_span(17, 1, 83)?, 34);
     assert!(output_span(17, 3, 16).is_err());
     assert!(output_span(17, 3, usize::MAX).is_err());
