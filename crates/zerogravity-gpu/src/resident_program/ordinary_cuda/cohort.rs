@@ -5,6 +5,7 @@ use super::{
 use crate::{
     cuda::{
         bf16_gemm::Bf16GemmShape,
+        bf16_rows::{RowSegment, TwoSegmentRows, launch_two_segment_rows},
         gdn::{
             CONV_STATE_BYTES, CachedConvBatch, CachedDecodeBatch, CachedGatedBatch, GdnBuffer,
             GdnPhase, GdnRuntimeBuffer, GdnRuntimeCacheSlot,
@@ -295,27 +296,29 @@ impl OrdinaryCudaBody {
         )?;
         dispatches += 1;
 
+        dispatches += launch_two_segment_rows(
+            client,
+            TwoSegmentRows {
+                rows: lanes,
+                first: RowSegment {
+                    stride: inputs[0],
+                    offset: 0,
+                    elements: outputs[0],
+                },
+                second: RowSegment {
+                    stride: inputs[0],
+                    offset: outputs[0],
+                    elements: outputs[1],
+                },
+            },
+            &output_scratch,
+            &full_packed,
+            &full_conv,
+            &full_z,
+            &status,
+        )?;
+
         for (row, state) in states.iter().enumerate() {
-            let physical_row = row_base + row;
-            let packed = self.value_handle_at(request, *packed_qkvz, inputs[0], physical_row)?;
-            let conv = self.value_handle_at(request, *conv_output, outputs[0], physical_row)?;
-            let z_out = self.value_handle_at(request, *z, outputs[1], physical_row)?;
-            let conv_source = Self::exact_handle_view(
-                &output_scratch,
-                row * inputs[0] * 2,
-                outputs[0] * 2,
-                "ordinary CUDA cohort conv prefix",
-            )?;
-            let z_source = Self::exact_handle_view(
-                &packed,
-                outputs[0] * 2,
-                outputs[1] * 2,
-                "ordinary CUDA cohort z suffix",
-            )?;
-            dispatches +=
-                attention::copy_bf16_prefix(client, &conv_source, &conv, &status, outputs[0])?;
-            dispatches +=
-                attention::copy_bf16_prefix(client, &z_source, &z_out, &status, outputs[1])?;
             let StateBuffers::Vector(candidate) = &state.candidate else {
                 unreachable!();
             };
@@ -331,8 +334,6 @@ impl OrdinaryCudaBody {
             .launch(service)?;
             dispatches += 1;
         }
-        dispatches += attention::certify(client, &full_conv, &status, outputs[0] * lanes)?;
-        dispatches += attention::certify(client, &full_z, &status, outputs[1] * lanes)?;
         Ok((dispatches, 0))
     }
 

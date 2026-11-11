@@ -276,7 +276,14 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   Host admission requires even BF16 word boundaries, exact service/extents, bounded rows
   and nonaliasing writable ranges. Physical RTX3060 qualification passes B2/B4/B8 exact
   bytes and destination guards; the B4 case injects BF16 +inf and observes status bit2.
-  Selection remains consumer-specific pending a same-HEAD serving measurement.
+  The ordinary direct-B4 GDN Conv adapter now uses it only for post-kernel row splitting:
+  eight per-row BF16 copies plus two certificate launches become one checked launch, while
+  the already-qualified/rejected state-transport architecture and GDN arithmetic remain
+  unchanged. This saves9 launches per B4 Conv group (18 per B8 GDN layer). Same-HEAD
+  non-LTO public canonical47+16 stayed bit-exact. Normal-clock2B paired A/B measured
+  156.83->158.15 tok/s (+0.84%); reversed order measured156.01->157.60 (+1.02%). A
+  lower-clock pair was also positive151.52->156.06, and0.8B measured204.83->207.54
+  (+1.32%). Keep the adapter while these repeatable cross-profile gains hold.
 - [x] Retained a model-neutral packed-BF16 private-B4 KV transition primitive, but
   rejected selecting it in the current ordinary CUDA serving path. The primitive owns
   no model/root/publication policy: caller-supplied geometry defines base/chunk/context,
