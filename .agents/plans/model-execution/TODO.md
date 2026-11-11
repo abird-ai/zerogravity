@@ -276,6 +276,14 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   kernel ABI/code was removed. Keep the accepted singleton/B4 attention primitives;
   revisit wider attention only with profiling evidence or a materially different fused
   design that removes more than one launch boundary.
+- [x] Rejected widening the accepted ordered B8 K64 GEMM from a64-column/4-warp tile
+  to a128-column/8-warp tile. The generic candidate passed physical RTX3060
+  M=256/N=8/K=2048 qualification at aligned and+4-byte views with zero mismatches,
+  intact guards and clean retirement, and preserved the accepted2B47+16 token sequence.
+  Controlled same-HEAD non-LTO serving regressed158.25->154.81 output tok/s (~2.17%).
+  The specialization and temporary qualifier/runner were removed. Keep the accepted M64
+  K64 primitive; do not trade occupancy/scheduling headroom for a wider M tile without
+  new profiling evidence.
 - [x] Small CUDA populated-context qualification now covers0.8B/2B at1K and2K.
   Each cell starts from the accepted47-token prefill, advances by genuine64-token
   state-only chunks to the exact context frontier, emits finite terminal vocabulary
