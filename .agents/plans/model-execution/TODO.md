@@ -284,6 +284,14 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   The specialization and temporary qualifier/runner were removed. Keep the accepted M64
   K64 primitive; do not trade occupancy/scheduling headroom for a wider M tile without
   new profiling evidence.
+- [x] Rejected replacing the accepted B8 lane-strided eight-row accumulator with two
+  four-row CTA groups inside one launch. The shared candidate preserved the exact
+  16-lane/512-term reduction and passed physical N=8/K=1024 aligned/+4-byte qualification
+  with zero mismatches and clean retirement. Direct synchronized M=8192/N=8/K=2048
+  timing was slower: candidate681.9us mean/679.8us median on the first pass and
+  716.5/696.2us on the second, versus the accepted B8 kernel604.4/663.6us. The candidate,
+  timing-only harness and temporary serving runner were removed; retain the current B8
+  weight-sharing primitive and do not split its row accumulators without new evidence.
 - [x] Small CUDA populated-context qualification now covers0.8B/2B at1K and2K.
   Each cell starts from the accepted47-token prefill, advances by genuine64-token
   state-only chunks to the exact context frontier, emits finite terminal vocabulary
