@@ -283,6 +283,21 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   158.00 tok/s baseline versus157.90 candidate (~0.07% slower). Production integration
   was removed; keep the qualified shared primitive for other model/layout consumers
   where fewer transition boundaries may provide a measured win.
+- [x] Retained source-exact batched rotary core primitives for future heterogeneous
+  inter-session grouping, but rejected selecting them in the current ordinary CUDA B8
+  decode path. The shared kernels accept independent per-row positions (plus an
+  equal-position specialization) and preserve the existing FP32-FMA/BF16-boundary
+  arithmetic without owning model/root/scheduler policy. Physical RTX3060 qualification
+  compares B4 positions `[0,7,511,1023]` and repeated `[37,37,37,37]` against four
+  independent source-exact rows bit-for-bit; rotary core launches reduce12->3. A
+  temporary full BF16 adapter also qualified exact at8 launches versus32 per-row
+  launches. The first serving adapter used host position writes and badly regressed;
+  the equal-position specialization removed that regression, but controlled public2B
+  B8 canonical47+16 pairs were not robustly positive: one normal-clock pair measured
+  156.999->158.878 tok/s (~+1.2%) while a lower-clock pair measured126.135->124.736
+  (~-1.1%), with all continuations exact. Production allocation/selection was removed.
+  Keep the qualified batch math for future ragged decode or another model/backend, and
+  only re-enable a hot-path adapter with a clearly repeatable measured win.
 - [x] Rejected collapsing the two B4 cached full-attention launches in B8 decode into a
   new additive B8 attention kernel. The candidate preserved the accepted2B 47+16 output
   exactly, but controlled non-LTO feedback was only156.21->157.37 output tok/s (~0.74%)
