@@ -91,6 +91,10 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   (78.389 vs79.380 tok/s), while2B B16 regressed catastrophically (~44.9s/~42.0s
   warm waves). `MAX_ACTIVE_PER_WORKER=8` and native4|8 therefore remain deliberate
   until a materially different architecture/measurement justifies revisiting them.
+  Bounded queueing already handles larger offered populations without widening the
+  resident/native ceiling: same non-LTO2B47+3 run stayed exact/native-width8 at
+  offered8/16/32 with66.24/68.10/69.06 output tok/s respectively;16 and32 are
+  simply two/four queued B8 groups, not hidden B16/B32 execution.
 - [ ] Optimize measured CUDA2B/HIP hot paths and run controlled comparisons after
   relevant correctness. Existing short eager/direct-API rates are not general
   HTTP/context/graph performance or proof of vLLM superiority.
