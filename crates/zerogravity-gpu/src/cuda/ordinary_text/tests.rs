@@ -11,7 +11,7 @@ fn program() -> Program {
 #[test]
 fn complete_family_has_source_derived_entries_and_no_capture_coordinates() -> Result<()> {
     let definitions = program().definitions(Step::new(64, 32_704, 32_768)?, 1e-6)?;
-    assert_eq!(definitions.len(), 13);
+    assert_eq!(definitions.len(), 14);
     assert_eq!(
         definitions
             .iter()
@@ -25,6 +25,7 @@ fn complete_family_has_source_derived_entries_and_no_capture_coordinates() -> Re
             Primitive::ResidualRms,
             Primitive::SiluUp,
             Primitive::Sigmoid,
+            Primitive::SigmoidMultiply,
             Primitive::Multiply,
             Primitive::Residual,
             Primitive::KvAppend,
@@ -57,7 +58,8 @@ fn complete_family_has_source_derived_entries_and_no_capture_coordinates() -> Re
     );
     assert_eq!(definitions[5].scalar_words(), [64, 0, 3584, 7168]);
     assert_eq!(definitions[6].scalar_words(), [64, 256, 512, 5120]);
-    assert_eq!(definitions[7].scalar_words(), [64]);
+    assert_eq!(definitions[7].scalar_words(), [64, 256, 512, 5120]);
+    assert_eq!(definitions[8].scalar_words(), [64]);
     Ok(())
 }
 
@@ -146,6 +148,24 @@ fn canonical_buffer_schemas_are_exact() -> Result<()> {
             (Status, 4, RW),
         ])
     );
+    assert_eq!(
+        p.sigmoid_multiply(2)?.bindings(),
+        expected(&[
+            (PackedAttention, 2 * 5120 * 2, R),
+            (Input, plan.query_batch_bytes, R),
+            (Gate, plan.query_batch_bytes, W),
+            (Output, plan.query_batch_bytes, W),
+            (Status, 4, RW),
+        ])
+    );
+    let fused_contract = p.contract(PlanPrimitive::SigmoidMultiply, step)?;
+    assert_eq!(fused_contract.primitive, PrimitiveKind::SigmoidMultiply);
+    assert_eq!(fused_contract.entry, "zg_ot_sigmoid_multiply_v1");
+    assert_eq!(
+        fused_contract.bindings.as_ref(),
+        p.sigmoid_multiply(2)?.bindings()
+    );
+    assert_eq!(fused_contract.scalar_words.as_ref(), &[2, 256, 512, 5120]);
     assert_eq!(
         p.unqualified_online_fp32_attention(step)?.bindings(),
         expected(&[
@@ -302,6 +322,7 @@ fn selectable_contract_is_raw_gamma_headwise_and_excludes_unqualified_attention(
     assert!(source.contains("head * head_stride + gate_offset + lane"));
     assert!(source.contains("UNQUALIFIED causal online-FP32 softmax diagnostic"));
     assert!(source.contains("void zg_ot_sigmoid_v1"));
+    assert!(source.contains("void zg_ot_sigmoid_multiply_v1"));
     assert!(source.contains("void zg_ot_multiply_v1"));
     assert!(source.contains("const float sigmoid = 1.0f / (1.0f + expf(-gate));"));
     assert!(source.contains("const float y = input_value * rounded_sigmoid;"));
@@ -616,6 +637,152 @@ fn status_owner_identity_requires_same_exact_four_byte_range() -> Result<()> {
     Ok(())
 }
 
+#[cfg(all(
+    feature = "qualification",
+    feature = "cuda-cublas",
+    target_os = "linux"
+))]
+#[test]
+#[ignore = "physical SM86 sigmoid+multiply fused-vs-sequential qualification"]
+fn physical_sigmoid_multiply_matches_sequential_exactly() -> Result<()> {
+    futures_lite::future::block_on(async {
+        let diagnostic = crate::cuda::test_support::CudaDiagnostic::new("sigmoid-multiply")?;
+        let service = diagnostic.service.clone();
+        let client = service.client();
+        let program = program();
+        let geometry = program.geometry();
+        let query_width = geometry.query_width()?;
+        let packed_stride = 2 * (geometry.query_width()? + geometry.kv_width()?);
+        let gate_offset = geometry.head_width;
+        let head_stride = 2 * geometry.head_width;
+
+        let bytes_from_words = |words: &[u16]| {
+            words
+                .iter()
+                .flat_map(|word| word.to_ne_bytes())
+                .collect::<Vec<_>>()
+        };
+        let word = |i: usize, seed: usize| -> u16 {
+            match (i + seed) % 8 {
+                0 => 0x3f80, // 1.0
+                1 => 0xbf00, // -0.5
+                2 => 0x3e80, // 0.25
+                3 => 0x4000, // 2.0
+                4 => 0xbe00, // -0.125
+                5 => 0x3f00, // 0.5
+                6 => 0xc000, // -2.0
+                _ => 0x0000,
+            }
+        };
+
+        for rows in [1usize, 2, 8, 17, 64] {
+            let packed_elements = rows * packed_stride;
+            let mut packed_words = (0..packed_elements)
+                .map(|i| word(i, rows))
+                .collect::<Vec<_>>();
+            let input_words = (0..rows * query_width)
+                .map(|i| word(i, rows + 3))
+                .collect::<Vec<_>>();
+            if rows == 17 {
+                let poison = 3 * packed_stride + 2 * head_stride + gate_offset + 7;
+                packed_words[poison] = 0x7f80; // +inf: both paths must flag nonfinite.
+            }
+
+            let packed = client.create_from_slice(&bytes_from_words(&packed_words));
+            let input = client.create_from_slice(&bytes_from_words(&input_words));
+            let value_bytes = rows * query_width * 2;
+            let zeros = vec![0u8; value_bytes];
+            let sequential_gate = client.create_from_slice(&zeros);
+            let sequential_output = client.create_from_slice(&zeros);
+            let fused_gate = client.create_from_slice(&zeros);
+            let fused_output = client.create_from_slice(&zeros);
+            let sequential_status = client.create_from_slice(&0u32.to_ne_bytes());
+            let fused_status = client.create_from_slice(&0u32.to_ne_bytes());
+
+            let status_binding =
+                |handle: Handle| LaunchBinding::new(BufferRole::Status, Access::ReadWrite, handle);
+            let sigmoid = program.sigmoid(rows)?;
+            let prepared = sigmoid.prepare_owned(
+                client,
+                vec![
+                    LaunchBinding::new(BufferRole::PackedAttention, Access::Read, packed.clone()),
+                    LaunchBinding::new(BufferRole::Output, Access::Write, sequential_gate.clone()),
+                ],
+                status_binding(sequential_status.clone()),
+            )?;
+            prepared.enqueue_owned(client, &sequential_status)?;
+
+            let multiply = program.multiply(rows)?;
+            let prepared = multiply.prepare_owned(
+                client,
+                vec![
+                    LaunchBinding::new(BufferRole::Input, Access::Read, input.clone()),
+                    LaunchBinding::new(BufferRole::Gate, Access::Read, sequential_gate.clone()),
+                    LaunchBinding::new(
+                        BufferRole::Output,
+                        Access::Write,
+                        sequential_output.clone(),
+                    ),
+                ],
+                status_binding(sequential_status.clone()),
+            )?;
+            prepared.enqueue_owned(client, &sequential_status)?;
+
+            let fused = program.sigmoid_multiply(rows)?;
+            let prepared = fused.prepare_owned(
+                client,
+                vec![
+                    LaunchBinding::new(BufferRole::PackedAttention, Access::Read, packed.clone()),
+                    LaunchBinding::new(BufferRole::Input, Access::Read, input.clone()),
+                    LaunchBinding::new(BufferRole::Gate, Access::Write, fused_gate.clone()),
+                    LaunchBinding::new(BufferRole::Output, Access::Write, fused_output.clone()),
+                ],
+                status_binding(fused_status.clone()),
+            )?;
+            prepared.enqueue_owned(client, &fused_status)?;
+
+            client
+                .sync()
+                .await
+                .map_err(|error| Error::State(format!("sigmoid-multiply sync: {error}")))?;
+            let read = |handle: Handle, role: &str| {
+                client
+                    .read_one(handle)
+                    .map_err(|error| Error::State(format!("sigmoid-multiply {role}: {error}")))
+            };
+            let sequential_gate_bytes = read(sequential_gate, "sequential gate")?;
+            let fused_gate_bytes = read(fused_gate, "fused gate")?;
+            let sequential_output_bytes = read(sequential_output, "sequential output")?;
+            let fused_output_bytes = read(fused_output, "fused output")?;
+            let sequential_status_bytes = read(sequential_status, "sequential status")?;
+            let fused_status_bytes = read(fused_status, "fused status")?;
+            if sequential_gate_bytes != fused_gate_bytes
+                || sequential_output_bytes != fused_output_bytes
+                || sequential_status_bytes != fused_status_bytes
+            {
+                return Err(Error::State(format!(
+                    "sigmoid-multiply physical mismatch rows={rows}"
+                )));
+            }
+            let expected_status = if rows == 17 { 2u32 } else { 0 };
+            if &sequential_status_bytes[..] != expected_status.to_ne_bytes().as_slice() {
+                return Err(Error::State(format!(
+                    "sigmoid-multiply status rows={rows}: {sequential_status_bytes:?}"
+                )));
+            }
+            println!(
+                "SIGMOID_MULTIPLY_PASS rows={rows} exact_gate=true exact_output=true status={expected_status}"
+            );
+        }
+
+        client
+            .memory_cleanup()
+            .map_err(|error| Error::State(format!("sigmoid-multiply cleanup: {error}")))?;
+        service.close_model_namespace()?;
+        Ok(())
+    })
+}
+
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 #[test]
 #[ignore = "SM86 CUDA compiler/driver reflection diagnostic; compile and load only"]
@@ -643,6 +810,6 @@ fn all_ordinary_text_driver_formals_compile_and_load() -> Result<()> {
             "ordinary text compiler owner was not adopted".into(),
         ));
     }
-    assert_eq!(compile_reflection_diagnostic(&queue)?, 28);
+    assert_eq!(compile_reflection_diagnostic(&queue)?, 30);
     Ok(())
 }

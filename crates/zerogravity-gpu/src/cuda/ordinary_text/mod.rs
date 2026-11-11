@@ -293,6 +293,7 @@ pub(crate) enum Primitive {
     ResidualRms,
     SiluUp,
     Sigmoid,
+    SigmoidMultiply,
     Multiply,
     Residual,
     KvAppend,
@@ -314,6 +315,7 @@ impl Primitive {
             Self::ResidualRms => "zg_ot_residual_rms_v1",
             Self::SiluUp => "zg_ot_silu_up_v1",
             Self::Sigmoid => "zg_ot_sigmoid_v1",
+            Self::SigmoidMultiply => "zg_ot_sigmoid_multiply_v1",
             Self::Multiply => "zg_ot_multiply_v1",
             Self::Residual => "zg_ot_residual_v1",
             Self::KvAppend => "zg_ot_kv_append_v1",
@@ -336,6 +338,7 @@ pub enum PrimitiveKind {
     ResidualRms,
     SiluUp,
     Sigmoid,
+    SigmoidMultiply,
     Multiply,
     Residual,
     KvAppend,
@@ -365,6 +368,7 @@ pub enum PlanPrimitive {
     ResidualRms { epsilon: f32 },
     SiluAndMul,
     Sigmoid,
+    SigmoidMultiply,
     Multiply,
     Residual,
     KvAppend,
@@ -582,6 +586,7 @@ impl Definition {
             Primitive::ResidualRms => PrimitiveKind::ResidualRms,
             Primitive::SiluUp => PrimitiveKind::SiluUp,
             Primitive::Sigmoid => PrimitiveKind::Sigmoid,
+            Primitive::SigmoidMultiply => PrimitiveKind::SigmoidMultiply,
             Primitive::Multiply => PrimitiveKind::Multiply,
             Primitive::Residual => PrimitiveKind::Residual,
             Primitive::KvAppend => PrimitiveKind::KvAppend,
@@ -738,6 +743,7 @@ impl Program {
             PlanPrimitive::ResidualRms { epsilon } => self.residual_rms(step.rows, epsilon)?,
             PlanPrimitive::SiluAndMul => self.silu_up(step.rows)?,
             PlanPrimitive::Sigmoid => self.sigmoid(step.rows)?,
+            PlanPrimitive::SigmoidMultiply => self.sigmoid_multiply(step.rows)?,
             PlanPrimitive::Multiply => self.multiply(step.rows)?,
             PlanPrimitive::Residual => self.residual(step.rows)?,
             PlanPrimitive::KvAppend => self.kv_append(step)?,
@@ -978,6 +984,46 @@ impl Program {
                 self.attention_row_stride()?,
             ])?,
             element_grid(checked_mul(rows, width, "sigmoid grid")?)?,
+        )
+    }
+
+    /// Fuse the existing attention sigmoid and multiply while retaining the
+    /// exact intermediate BF16 value as an explicit output. This preserves the
+    /// unfused numerical/SSA contract and is reusable by any compatible graph.
+    pub(crate) fn sigmoid_multiply(&self, rows: usize) -> Result<Definition> {
+        require_rows(rows)?;
+        let packed = self.packed_attention_bytes(rows)?;
+        let width = self.geometry.query_width()?;
+        let head_stride =
+            checked_mul(2, self.geometry.head_width, "packed query/gate head stride")?;
+        require_strided_view(
+            rows,
+            self.attention_row_stride()?,
+            self.geometry.query_heads,
+            head_stride,
+            self.geometry.head_width,
+            self.geometry.head_width,
+            packed / BF16_BYTES,
+            "interleaved attention gate",
+        )?;
+        let bytes = extent(rows, width, BF16_BYTES, "sigmoid-multiply batch")?;
+        self.definition_with_aliases(
+            Primitive::SigmoidMultiply,
+            vec![
+                binding(BufferRole::PackedAttention, packed, Access::Read),
+                binding(BufferRole::Input, bytes, Access::Read),
+                binding(BufferRole::Gate, bytes, Access::Write),
+                binding(BufferRole::Output, bytes, Access::Write),
+                status(),
+            ],
+            &[(BufferRole::Input, BufferRole::Output)],
+            u32_words(&[
+                rows,
+                self.geometry.head_width,
+                head_stride,
+                self.attention_row_stride()?,
+            ])?,
+            element_grid(checked_mul(rows, width, "sigmoid-multiply grid")?)?,
         )
     }
 
@@ -1242,6 +1288,7 @@ impl Program {
             self.residual_rms(step.rows, epsilon)?,
             self.silu_up(step.rows)?,
             self.sigmoid(step.rows)?,
+            self.sigmoid_multiply(step.rows)?,
             self.multiply(step.rows)?,
             self.residual(step.rows)?,
             self.kv_append(step)?,

@@ -382,6 +382,22 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   716.5/696.2us on the second, versus the accepted B8 kernel604.4/663.6us. The candidate,
   timing-only harness and temporary serving runner were removed; retain the current B8
   weight-sharing primitive and do not split its row accumulators without new evidence.
+- [x] Added a reusable ordinary-CUDA `SigmoidMultiply` primitive without coupling it to
+  Qwen scheduling. It performs the existing sigmoid, writes the same BF16-rounded gate
+  as an explicit output, widens that exact rounded value, then performs the existing
+  multiply and writes the final BF16 output in one launch. Its public source-neutral
+  primitive/plan contract retains both SSA outputs and only the already-valid exact
+  Input<->Output alias. RTX3060 physical qualification against the original two-launch
+  sequence passes rows1/2/8/17/64 with bit-exact gate bytes, bit-exact final bytes and
+  identical status; row17 deliberately injects +inf and both paths report status2.
+- [x] Rejected selecting that fused primitive for the current2B B8 cached-decode
+  sigmoid->multiply pair. Exact canonical47+16 output IDs were preserved, but paired
+  non-LTO public-runtime measurements reversed with execution order: baseline158.943 vs
+  fused156.946 tok/s (-1.26%), then fused159.035 vs baseline157.030 (+1.28%). Averaging
+  both orders is effectively identical (baseline157.9865, fused157.9905 tok/s). The
+  cohort peephole/adapter and temporary runner were removed; keep the independently
+  qualified primitive for other models/graphs. Singleton selection was never enabled,
+  because it would collapse the existing cancellation cut between the two logical nodes.
 - [x] Small CUDA populated-context qualification now covers0.8B/2B at1K and2K.
   Each cell starts from the accepted47-token prefill, advances by genuine64-token
   state-only chunks to the exact context frontier, emits finite terminal vocabulary

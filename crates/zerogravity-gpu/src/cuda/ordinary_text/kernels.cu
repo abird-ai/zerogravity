@@ -346,6 +346,43 @@ void zg_ot_sigmoid_v1(void* packed_raw, void* output_raw,
     }
 }
 
+// Same sigmoid BF16 materialization as zg_ot_sigmoid_v1, immediately consumed
+// by the same BF16 multiply semantics as zg_ot_multiply_v1. The rounded gate
+// remains a real output so callers retain the unfused SSA/value contract.
+extern "C" __global__ __launch_bounds__(ZG_THREADS)
+void zg_ot_sigmoid_multiply_v1(void* packed_raw, void* input_raw,
+                               void* gate_output_raw, void* output_raw,
+                               void* status_raw, ZgWords4 scalars) {
+    const __nv_bfloat16* packed = (const __nv_bfloat16*)packed_raw;
+    const __nv_bfloat16* input = (const __nv_bfloat16*)input_raw;
+    __nv_bfloat16* gate_output = (__nv_bfloat16*)gate_output_raw;
+    __nv_bfloat16* output = (__nv_bfloat16*)output_raw;
+    unsigned* status = (unsigned*)status_raw;
+    const size_t width = (size_t)ZG_QUERY_HEADS * ZG_HEAD_DIM;
+    const unsigned rows = zg_u32(scalars.words[0]);
+    const unsigned gate_offset = zg_u32(scalars.words[1]);
+    const unsigned head_stride = zg_u32(scalars.words[2]);
+    const unsigned row_stride = zg_u32(scalars.words[3]);
+    const size_t count = (size_t)rows * width;
+    const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < count) {
+        const size_t row = i / width;
+        const size_t column = i % width;
+        const size_t head = column / ZG_HEAD_DIM;
+        const size_t lane = column % ZG_HEAD_DIM;
+        const float gate = zg_load(packed + row * row_stride + head * head_stride + gate_offset + lane);
+        const float sigmoid = 1.0f / (1.0f + expf(-gate));
+        const __nv_bfloat16 rounded_gate = zg_store(sigmoid);
+        gate_output[i] = rounded_gate;
+        const float rounded_sigmoid = __bfloat162float(rounded_gate);
+        const float input_value = zg_load(input + i);
+        const float y = input_value * rounded_sigmoid;
+        output[i] = zg_store(y);
+        if (!isfinite(gate) || !isfinite(sigmoid) || !isfinite(input_value) ||
+            !isfinite(rounded_sigmoid) || !isfinite(y)) zg_bad(status, 2u);
+    }
+}
+
 // Multiply consumes the separately BF16-rounded sigmoid output.
 extern "C" __global__ __launch_bounds__(ZG_THREADS)
 void zg_ot_multiply_v1(void* input_raw, void* gate_raw, void* output_raw,
