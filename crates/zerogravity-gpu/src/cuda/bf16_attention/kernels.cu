@@ -6,6 +6,12 @@ struct __align__(8) AttentionShape {
     float scale_log2;
     unsigned padding;
 };
+struct __align__(8) AttentionBatch4Shape {
+    unsigned long long capacity, query_heads, kv_heads;
+    unsigned long long base0, base1, base2, base3;
+    float scale_log2;
+    unsigned padding;
+};
 __device__ __forceinline__ unsigned pair(const unsigned short* p) {
     return static_cast<unsigned>(p[0]) | (static_cast<unsigned>(p[1]) << 16);
 }
@@ -168,7 +174,7 @@ extern "C" __global__ __launch_bounds__(128) void bf16_causal_attention_batch4(
     const unsigned short* keys2, const unsigned short* keys3,
     const unsigned short* values0, const unsigned short* values1,
     const unsigned short* values2, const unsigned short* values3,
-    unsigned short* output, unsigned* status, AttentionShape s) {
+    unsigned short* output, unsigned* status, AttentionBatch4Shape s) {
     __shared__ unsigned short q[16 * 256], kv[64 * 256], p[16 * 64];
     __shared__ float scores[16 * 64], maxima[16], sums[64], rescale[16], inverse[16];
     const unsigned tid = threadIdx.x, lane = tid % 32, warp = tid / 32;
@@ -176,19 +182,20 @@ extern "C" __global__ __launch_bounds__(128) void bf16_causal_attention_batch4(
     const unsigned long long first = static_cast<unsigned long long>(blockIdx.x) * 16;
     const unsigned long long head = blockIdx.y, kh = head / (s.query_heads / s.kv_heads);
     const unsigned long long batch = blockIdx.z;
+    const unsigned long long base = batch == 0 ? s.base0 : batch == 1 ? s.base1 : batch == 2 ? s.base2 : s.base3;
     const unsigned short* keys = batch == 0 ? keys0 : batch == 1 ? keys1 : batch == 2 ? keys2 : keys3;
     const unsigned short* values = batch == 0 ? values0 : batch == 1 ? values1 : batch == 2 ? values2 : values3;
-    const unsigned long long end = s.base + s.rows;
+    const unsigned long long end = base + 1;
     const float neg_inf = __int_as_float(0xff800000);
     for (unsigned i = tid; i < 16 * 256; i += 128) {
         const auto row = first + i / 256;
-        q[i] = row < s.rows ? checked(query[((batch * s.rows + row) * s.query_heads + head) * 256 + i % 256], status) : 0;
+        q[i] = row < 1 ? checked(query[(batch * s.query_heads + head) * 256 + i % 256], status) : 0;
     }
     if (tid < 16) maxima[tid] = neg_inf;
     if (tid < 64) sums[tid] = 0;
     float acc[8][4] = {};
-    const auto last_query = first + 16 < s.rows ? first + 16 : s.rows;
-    for (long long start = ((s.base + last_query - 1) / 64) * 64; start >= 0; start -= 64) {
+    const auto last_query = first + 16 < 1 ? first + 16 : 1;
+    for (long long start = ((base + last_query - 1) / 64) * 64; start >= 0; start -= 64) {
         for (unsigned i = tid; i < 64 * 256; i += 128) {
             const auto row = static_cast<unsigned long long>(start) + i / 256;
             kv[i] = row < end ? checked(keys[(row * s.kv_heads + kh) * 256 + i % 256], status) : 0;
@@ -209,7 +216,7 @@ extern "C" __global__ __launch_bounds__(128) void bf16_causal_attention_batch4(
             #pragma unroll
             for (unsigned i = 0; i < 4; ++i) {
                 const unsigned row = r + (i / 2) * 8, col = warp * 16 + j * 8 + c + i % 2;
-                const bool valid = first + row < s.rows && start + col <= s.base + first + row;
+                const bool valid = first + row < 1 && start + col <= base + first + row;
                 scores[row * 64 + col] = valid ? dot[j][i] : neg_inf;
                 if (valid && !isfinite(dot[j][i])) atomicOr(status, 2u);
             }
@@ -275,11 +282,11 @@ extern "C" __global__ __launch_bounds__(128) void bf16_causal_attention_batch4(
         #pragma unroll
         for (unsigned i = 0; i < 4; ++i) {
             const unsigned row = r + (i / 2) * 8, col = warp * 64 + j * 8 + c + i % 2;
-            if (first + row < s.rows) {
+            if (first + row < 1) {
                 const float result = mul(acc[j][i], inverse[row]);
                 const auto rounded = bf16(result);
                 if (!isfinite(result) || (rounded & 0x7f80) == 0x7f80) atomicOr(status, 2u);
-                output[((batch * s.rows + first + row) * s.query_heads + head) * 256 + col] = rounded;
+                output[(batch * s.query_heads + head) * 256 + col] = rounded;
             }
         }
     }

@@ -298,6 +298,13 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   (~-1.1%), with all continuations exact. Production allocation/selection was removed.
   Keep the qualified batch math for future ragged decode or another model/backend, and
   only re-enable a hot-path adapter with a clearly repeatable measured win.
+- [x] Retained a model-neutral ragged private-B4 cached-attention primitive. The aligned
+  constructor remains a convenience wrapper, while the physical kernel can bind four
+  independent causal frontiers and four independent private K/V owners without owning
+  session/root admission policy. Physical RTX3060 qualification at bases
+  `[0,17,63,127]` matched four accepted B1 launches bit-for-bit with zero BF16 mismatches
+  and zero status flags. Keep this primitive available for dynamic/ragged model schedulers;
+  higher layers must still authenticate each base against its own committed private root.
 - [x] Rejected collapsing the two B4 cached full-attention launches in B8 decode into a
   new additive B8 attention kernel. The candidate preserved the accepted2B 47+16 output
   exactly, but controlled non-LTO feedback was only156.21->157.37 output tok/s (~0.74%)

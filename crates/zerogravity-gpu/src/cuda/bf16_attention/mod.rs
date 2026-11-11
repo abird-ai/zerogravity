@@ -124,13 +124,27 @@ impl Bf16CausalAttentionBatch4 {
         width: usize,
         scale: f32,
     ) -> Result<Self> {
+        Self::new_ragged([base; 4], capacity, query_heads, kv_heads, width, scale)
+    }
+
+    /// Four private cached-decode rows with independent causal frontiers.
+    /// This owns only physical attention geometry; session/root admission and
+    /// the association between each base and private K/V owner stay upstream.
+    pub(crate) fn new_ragged(
+        bases: [usize; 4],
+        capacity: usize,
+        query_heads: usize,
+        kv_heads: usize,
+        width: usize,
+        scale: f32,
+    ) -> Result<Self> {
         if kv_heads == 0
             || query_heads == 0
             || !query_heads.is_multiple_of(kv_heads)
             || width != 256
             || !scale.is_finite()
             || scale <= 0.0
-            || base >= capacity
+            || bases.iter().any(|&base| base >= capacity)
         {
             return Err(Error::Unsupported(
                 "BF16 CUDA attention batch4 geometry/scale".into(),
@@ -165,19 +179,23 @@ impl Bf16CausalAttentionBatch4 {
                 (StaticScalarType::U64, 16),
                 (StaticScalarType::U64, 24),
                 (StaticScalarType::U64, 32),
-                (StaticScalarType::F32Bits, 40),
+                (StaticScalarType::U64, 40),
+                (StaticScalarType::U64, 48),
+                (StaticScalarType::F32Bits, 56),
             ],
-            48,
+            64,
             8,
         )?;
         let scalars = StaticScalarBlock::new(
             schema,
             &[
-                StaticScalarValue::U64(1),
-                StaticScalarValue::U64(base as u64),
                 StaticScalarValue::U64(capacity as u64),
                 StaticScalarValue::U64(query_heads as u64),
                 StaticScalarValue::U64(kv_heads as u64),
+                StaticScalarValue::U64(bases[0] as u64),
+                StaticScalarValue::U64(bases[1] as u64),
+                StaticScalarValue::U64(bases[2] as u64),
+                StaticScalarValue::U64(bases[3] as u64),
                 StaticScalarValue::F32Bits(scale_log2.to_bits()),
             ],
         )?;

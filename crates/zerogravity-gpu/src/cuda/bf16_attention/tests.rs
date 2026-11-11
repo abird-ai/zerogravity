@@ -34,6 +34,33 @@ fn geometry_and_causal_extents_are_checked() -> Result<()> {
 }
 
 #[test]
+fn batch4_ragged_geometry_keeps_private_frontiers_and_aligned_convenience() -> Result<()> {
+    let aligned = Bf16CausalAttentionBatch4::new(17, 128, 8, 2, 256, 0.0625)?;
+    let ragged = Bf16CausalAttentionBatch4::new_ragged([0, 17, 63, 127], 128, 8, 2, 256, 0.0625)?;
+    let expected = [
+        4 * 8 * 256 * 2,
+        128 * 2 * 256 * 2,
+        128 * 2 * 256 * 2,
+        128 * 2 * 256 * 2,
+        128 * 2 * 256 * 2,
+        128 * 2 * 256 * 2,
+        128 * 2 * 256 * 2,
+        128 * 2 * 256 * 2,
+        128 * 2 * 256 * 2,
+        4 * 8 * 256 * 2,
+        4,
+    ];
+    assert_eq!(aligned.grid, [1, 8, 4]);
+    assert_eq!(ragged.grid, [1, 8, 4]);
+    assert_eq!(aligned.kernel.binding_sizes(), expected);
+    assert_eq!(ragged.kernel.binding_sizes(), expected);
+    assert!(Bf16CausalAttentionBatch4::new_ragged([0, 1, 2, 128], 128, 8, 2, 256, 0.0625).is_err());
+    assert!(Bf16CausalAttentionBatch4::new_ragged([0; 4], 0, 8, 2, 256, 0.0625).is_err());
+    assert!(Bf16CausalAttentionBatch4::new_ragged([0; 4], 128, 3, 2, 256, 0.0625).is_err());
+    Ok(())
+}
+
+#[test]
 fn output_and_status_aliases_refuse() -> Result<()> {
     use cubecl_common::device::{DeviceId, ServiceId};
     use cubecl_core::environment::stream::StreamId;
@@ -76,6 +103,175 @@ mod physical {
     #[ignore = "isolated causal/multitile/masked-tail/nonfinite/retirement attention coverage"]
     fn causal_boundaries_on_nvidia() -> Result<()> {
         futures_lite::future::block_on(run(false))
+    }
+
+    #[test]
+    #[ignore = "physical ragged B4 attention versus four accepted private B1 launches"]
+    fn ragged_batch4_matches_private_b1_on_nvidia() -> Result<()> {
+        futures_lite::future::block_on(ragged_batch4_matches_private_b1())
+    }
+
+    async fn ragged_batch4_matches_private_b1() -> Result<()> {
+        const CAPACITY: usize = 128;
+        const QH: usize = 8;
+        const KH: usize = 2;
+        const WIDTH: usize = 256;
+        const BASES: [usize; 4] = [0, 17, 63, 127];
+        let diagnostic =
+            crate::cuda::test_support::CudaDiagnostic::new("bf16-attention-ragged-b4")?;
+        let service = diagnostic.service.clone();
+        let client = service.client();
+        let queue = service.pinned_cuda_queue()?.clone();
+        let batch = Bf16CausalAttentionBatch4::new_ragged(BASES, CAPACITY, QH, KH, WIDTH, 0.0625)?;
+        batch.prepare_code(&queue)?;
+        let singles = BASES
+            .into_iter()
+            .map(|base| Bf16CausalAttention::new(1, base, CAPACITY, QH, KH, WIDTH, 0.0625))
+            .collect::<Result<Vec<_>>>()?;
+        for single in &singles {
+            single.prepare_code(&queue)?;
+        }
+
+        let bf16 = |value: f32| {
+            let bits = value.to_bits();
+            ((bits + 0x7fff + ((bits >> 16) & 1)) >> 16) as u16
+        };
+        let query_row_bytes = QH * WIDTH * 2;
+        let kv_bytes = CAPACITY * KH * WIDTH * 2;
+        let mut query_rows = Vec::with_capacity(4);
+        let mut keys = Vec::with_capacity(4);
+        let mut values = Vec::with_capacity(4);
+        for lane in 0..4 {
+            let query = (0..QH * WIDTH)
+                .flat_map(|i| {
+                    let v = (((i * 11 + lane * 5) % 13) as f32 - 6.0) / 16.0;
+                    bf16(v).to_le_bytes()
+                })
+                .collect::<Vec<_>>();
+            let mut key = Vec::with_capacity(kv_bytes);
+            let mut value = Vec::with_capacity(kv_bytes);
+            for row in 0..CAPACITY {
+                for i in 0..KH * WIDTH {
+                    if row > BASES[lane] {
+                        key.extend_from_slice(&0x7fc0u16.to_le_bytes());
+                        value.extend_from_slice(&0x7fc0u16.to_le_bytes());
+                    } else {
+                        let k = (((row * 7 + i * 3 + lane) % 17) as f32 - 8.0) / 32.0;
+                        let v = (((row * 5 + i * 13 + lane * 7) % 19) as f32 - 9.0) / 16.0;
+                        key.extend_from_slice(&bf16(k).to_le_bytes());
+                        value.extend_from_slice(&bf16(v).to_le_bytes());
+                    }
+                }
+            }
+            query_rows.push(query);
+            keys.push(key);
+            values.push(value);
+        }
+        let batch_query_bytes = query_rows.concat();
+        let batch_query = client.create_from_slice(&batch_query_bytes);
+        let key_handles = keys
+            .iter()
+            .map(|bytes| client.create_from_slice(bytes))
+            .collect::<Vec<_>>();
+        let value_handles = values
+            .iter()
+            .map(|bytes| client.create_from_slice(bytes))
+            .collect::<Vec<_>>();
+        let batch_output = client.create_from_slice(&vec![0xa5; 4 * query_row_bytes]);
+        let batch_status = client.create_from_slice(&0u32.to_ne_bytes());
+        batch
+            .prepare(
+                client,
+                [
+                    batch_query,
+                    key_handles[0].clone(),
+                    key_handles[1].clone(),
+                    key_handles[2].clone(),
+                    key_handles[3].clone(),
+                    value_handles[0].clone(),
+                    value_handles[1].clone(),
+                    value_handles[2].clone(),
+                    value_handles[3].clone(),
+                    batch_output.clone(),
+                    batch_status.clone(),
+                ],
+            )?
+            .launch_on(client)?;
+
+        let mut single_outputs = Vec::with_capacity(4);
+        let mut single_statuses = Vec::with_capacity(4);
+        for lane in 0..4 {
+            let query = client.create_from_slice(&query_rows[lane]);
+            let output = client.create_from_slice(&vec![0xa5; query_row_bytes]);
+            let status = client.create_from_slice(&0u32.to_ne_bytes());
+            singles[lane]
+                .prepare(
+                    client,
+                    [
+                        query,
+                        key_handles[lane].clone(),
+                        value_handles[lane].clone(),
+                        output.clone(),
+                        status.clone(),
+                    ],
+                )?
+                .launch_on(client)?;
+            single_outputs.push(output);
+            single_statuses.push(status);
+        }
+        client
+            .sync()
+            .await
+            .map_err(|e| Error::State(format!("ragged B4 attention sync: {e}")))?;
+        let actual = client
+            .read_one(batch_output)
+            .map_err(|e| Error::State(format!("ragged B4 attention output: {e}")))?;
+        let status = client
+            .read_one(batch_status)
+            .map_err(|e| Error::State(format!("ragged B4 attention status: {e}")))?;
+        if &status[..] != 0u32.to_ne_bytes().as_slice() {
+            return Err(Error::State(format!(
+                "ragged B4 attention status differs: {status:?}"
+            )));
+        }
+        let mut mismatches = 0usize;
+        for lane in 0..4 {
+            let expected = client
+                .read_one(single_outputs[lane].clone())
+                .map_err(|e| Error::State(format!("private B1 attention output: {e}")))?;
+            let one_status = client
+                .read_one(single_statuses[lane].clone())
+                .map_err(|e| Error::State(format!("private B1 attention status: {e}")))?;
+            if &one_status[..] != 0u32.to_ne_bytes().as_slice() {
+                return Err(Error::State(format!(
+                    "private B1 attention lane {lane} status differs: {one_status:?}"
+                )));
+            }
+            mismatches += actual[lane * query_row_bytes..(lane + 1) * query_row_bytes]
+                .chunks_exact(2)
+                .zip(expected.chunks_exact(2))
+                .filter(|(a, b)| a != b)
+                .count();
+        }
+        if mismatches != 0 {
+            return Err(Error::State(format!(
+                "ragged B4 attention differs from private B1: {mismatches} BF16 words"
+            )));
+        }
+        println!("RAGGED_B4_ATTENTION_PASS bases={BASES:?} mismatches=0 status=0 private_b1=true");
+        drop((
+            batch,
+            singles,
+            key_handles,
+            value_handles,
+            single_outputs,
+            single_statuses,
+        ));
+        client
+            .memory_cleanup()
+            .map_err(|e| Error::State(format!("ragged B4 attention cleanup: {e}")))?;
+        service.close_model_namespace()?;
+        Ok(())
     }
 
     type Case = (Bf16CausalAttention, [Vec<u8>; 3], Vec<u8>, u32);
