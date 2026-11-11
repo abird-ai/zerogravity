@@ -330,6 +330,15 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   (~42.5% slower by mean). Shared staging/synchronization cost dominates the repeated
   cached BF16 input loads/widens here. The candidate and timing-only harness were removed;
   retain the accepted direct-input B8 lane-strided primitive.
+- [x] Rejected a register-only paired-column B8 lane-strided mapping. Each 16-lane
+  subgroup computed two independent output columns and reused each loaded BF16 input
+  value across those columns without shared memory or synchronization; the exact
+  16-lane/512-term segment, FMA and lane-add order was unchanged. Physical RTX3060
+  M=8192/N=8/K=2048 A/B was bit-exact with zero status flags, but regressed on both
+  alternating synchronized passes: 0.5825ms -> 0.6598ms mean (~13.3% slower), then
+  0.5319ms -> 0.6917ms (~30.0% slower). The doubled independent accumulator pressure
+  outweighs the saved input loads. Candidate kernel/qualification code was removed;
+  keep the accepted one-column-per-subgroup B8 primitive.
 - [x] Rejected replacing the accepted B8 lane-strided eight-row accumulator with two
   four-row CTA groups inside one launch. The shared candidate preserved the exact
   16-lane/512-term reduction and passed physical N=8/K=1024 aligned/+4-byte qualification
