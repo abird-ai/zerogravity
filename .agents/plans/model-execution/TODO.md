@@ -85,7 +85,12 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 - [ ] Continue genuine shared inter-session batching beyond current B8 decode/chunked
   prefill cohorts. Aligned prompt chunks up to the model's admitted chunk size share
   projection GEMMs while retaining private roots; B8 decode reuses the qualified B4
-  stateful kernels as two groups. Wider/dynamic cohort ceilings remain open.
+  stateful kernels as two groups. Dynamic grouping remains open, but do **not**
+  resurrect the rejected global-active/native-B16 experiment as the next step: a
+  same-path0.8B B16 measurement was slightly worse than two B8 groups
+  (78.389 vs79.380 tok/s), while2B B16 regressed catastrophically (~44.9s/~42.0s
+  warm waves). `MAX_ACTIVE_PER_WORKER=8` and native4|8 therefore remain deliberate
+  until a materially different architecture/measurement justifies revisiting them.
 - [ ] Optimize measured CUDA2B/HIP hot paths and run controlled comparisons after
   relevant correctness. Existing short eager/direct-API rates are not general
   HTTP/context/graph performance or proof of vLLM superiority.
@@ -215,7 +220,10 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   than a hardcoded512-token frontier. Quick non-LTO153-token x8 A/B stayed exact:0.8B
   777.87ms native8 vs961.53ms sequential (~19.1% faster);2B808.91ms vs1204.58ms
   (~32.8% faster). Ragged140/140/155/155/170/170/185/185-token prompts matched
-  sequential lane-for-lane. No new numerical tolerance or permanent fixture.
+  sequential lane-for-lane. A separate public-serving0.8B641-token x8 check crossed the
+  former512 frontier and stayed exact `[561,10993,12681]`/`" The execution fabric"`;
+  observed native width8 and warm3072.58ms sequential vs2903.86ms native8 (~5.5%).
+  No new numerical tolerance or permanent fixture.
 - [x] Partial offered populations now regroup through a shared B2 subcohort instead
   of failing when an admitted B8/B4 wave leaves two aligned rows. B2 shares only
   stateless projection work; stateful GDN/KV/attention stay on the existing private
