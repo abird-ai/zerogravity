@@ -214,6 +214,13 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   non-LTO2B B8 A/B on `67586eb` stayed lane-exact:47+3 rose68.31->69.11 tok/s;
   decode-heavier47+16 rose147.62->153.61 tok/s (~4.1%). This is a shared shape
   specialization, not a model selector; retain only while longer decode keeps the gain.
+- [x] Rounded-segment B8 GEMMs with64-aligned segment boundaries now reuse the same
+  K64 staging while preserving the original MMA order and BF16 rounding points.
+  C1/B4, interleaved/ordered/lane reductions and non-64-aligned segments keep their
+  previous entries. Existing physical GEMM qualification with an added N=8/K=1024
+  selected case passes aligned/+4B views with zero mismatches and clean retirement.
+  Same-HEAD non-LTO2B B8 feedback stayed exact:47+3 68.83->69.49 tok/s and47+16
+  152.93->157.28 tok/s (~2.8% on the decode-heavier run). Shared shape specialization only.
 - [x] Small CUDA populated-context qualification now covers0.8B/2B at1K and2K.
   Each cell starts from the accepted47-token prefill, advances by genuine64-token
   state-only chunks to the exact context frontier, emits finite terminal vocabulary

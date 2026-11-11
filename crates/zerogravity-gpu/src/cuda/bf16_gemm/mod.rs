@@ -169,6 +169,11 @@ impl Bf16Gemm {
         ) && rows == 8;
         let ordered_narrow_k64 =
             reduction == Bf16GemmReduction::Ordered && rows == 8 && inner >= 2048;
+        let segmented_narrow_k64 = matches!(
+            reduction,
+            Bf16GemmReduction::RoundedSegments { terms }
+                if rows == 8 && inner >= 128 && terms.is_multiple_of(64)
+        );
         let ordered_rows64 = reduction == Bf16GemmReduction::Ordered && rows > 64 && inner >= 2048;
         let mma_tile_rows = if rows <= 8 {
             8
@@ -219,6 +224,12 @@ impl Bf16Gemm {
                 "bf16_gemm_ordered_narrow_k64_certified"
             } else {
                 "bf16_gemm_ordered_narrow_k64"
+            }
+        } else if segmented_narrow_k64 {
+            if certified {
+                "bf16_gemm_segmented_narrow_k64_certified"
+            } else {
+                "bf16_gemm_segmented_narrow_k64"
             }
         } else if ordered_rows64 {
             if certified {

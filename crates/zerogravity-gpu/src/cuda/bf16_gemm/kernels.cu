@@ -243,6 +243,74 @@ extern "C" __global__ __launch_bounds__(128) void bf16_gemm_ordered_narrow_k64_c
     gemm_ordered_k64_body<8>(w, x, y, status, s, shared);
 }
 
+__device__ __forceinline__ void gemm_segmented_narrow_k64_body(
+    const unsigned short* w, const unsigned short* x, unsigned short* y,
+    unsigned* status, GemmShape s, unsigned short* shared) {
+    constexpr int BN = 8, STRIDE = 72, STAGE = (64 + BN) * STRIDE;
+    const unsigned lane = threadIdx.x % 32, warp = threadIdx.x / 32;
+    const unsigned row = lane / 4, pair = (lane % 4) * 2;
+    const unsigned long long base_m = static_cast<unsigned long long>(blockIdx.x) * 64;
+    const unsigned long long base_n = static_cast<unsigned long long>(blockIdx.y) * BN;
+    const bool aligned = ((reinterpret_cast<unsigned long long>(w) |
+                           reinterpret_cast<unsigned long long>(x)) & 15) == 0 && s.inner % 8 == 0;
+    float d[4] = {}, rounded[4] = {};
+    stage64<BN>(shared, shared + 64 * STRIDE, w, x, s, base_m, base_n, 0, aligned);
+    asm volatile("cp.async.wait_group 0;" ::: "memory");
+    __syncthreads();
+    unsigned current = 0;
+    unsigned long long remaining = s.reduction_terms;
+    for (unsigned long long k = 0; k < s.inner; k += 64) {
+        unsigned short* sw = shared + current * STAGE;
+        unsigned short* sx = sw + 64 * STRIDE;
+        if (k + 64 < s.inner) {
+            unsigned short* next = shared + (current ^ 1) * STAGE;
+            stage64<BN>(next, next + 64 * STRIDE, w, x, s, base_m, base_n, k + 64, aligned);
+        }
+        #pragma unroll
+        for (unsigned kk = 0; kk < 64; kk += 16) {
+            const auto* a = sw + (warp * 16 + row) * STRIDE + kk + pair;
+            const unsigned a0 = pack(a), a1 = pack(a + 8 * STRIDE);
+            const unsigned a2 = pack(a + 8), a3 = pack(a + 8 * STRIDE + 8);
+            const auto* b = sx + row * STRIDE + kk + pair;
+            const unsigned b0 = pack(b), b1 = pack(b + 8);
+            mma_fragment(d, a0, a1, a2, a3, b0, b1);
+        }
+        remaining -= 64;
+        if (remaining == 0 || k + 64 >= s.inner) {
+            #pragma unroll
+            for (unsigned i = 0; i < 4; ++i) {
+                rounded[i] += widen_bf16(round_bf16(d[i]));
+                d[i] = 0;
+            }
+            remaining = s.reduction_terms;
+        }
+        if (k + 64 < s.inner) {
+            asm volatile("cp.async.wait_group 0;" ::: "memory");
+            __syncthreads();
+        }
+        current ^= 1;
+    }
+    #pragma unroll
+    for (unsigned i = 0; i < 4; ++i) {
+        const auto m = base_m + warp * 16 + row + (i / 2) * 8;
+        const auto n = base_n + pair + i % 2;
+        if (m < s.columns && n < s.rows) {
+            store_bf16(y, n * s.output_stride + m, rounded[i], status);
+        }
+    }
+}
+
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_segmented_narrow_k64(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
+    __shared__ __align__(16) unsigned short shared[2 * (64 + 8) * 72];
+    gemm_segmented_narrow_k64_body(w, x, y, nullptr, s, shared);
+}
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_segmented_narrow_k64_certified(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, unsigned* status, GemmShape s) {
+    __shared__ __align__(16) unsigned short shared[2 * (64 + 8) * 72];
+    gemm_segmented_narrow_k64_body(w, x, y, status, s, shared);
+}
+
 #define GEMM_ENTRY(NAME, BN, MODE) \
 extern "C" __global__ __launch_bounds__(128) void NAME( \
     const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) { \

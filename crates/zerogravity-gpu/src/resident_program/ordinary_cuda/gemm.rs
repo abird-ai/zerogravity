@@ -72,6 +72,15 @@ impl OrdinaryCudaGemm {
                 },
             )?
             .prepare_code(service.pinned_cuda_queue()?)?;
+            if native_rows == 8 {
+                Bf16Gemm::with_reduction_certified(
+                    64,
+                    8,
+                    128,
+                    Bf16GemmReduction::RoundedSegments { terms: 64 },
+                )?
+                .prepare_code(service.pinned_cuda_queue()?)?;
+            }
             crate::cuda::bf16_attention::Bf16CausalAttentionBatch4::new(
                 0,
                 1,
