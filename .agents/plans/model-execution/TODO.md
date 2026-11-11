@@ -204,6 +204,12 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   0.8B138.10->136.25ms and2B147.42->141.21ms, with the same public output. Geometry,
   CUDA-serving compile and strict GPU Clippy pass. This is a shape capability, not a
   Qwen-model selector; keep further row/K tuning measurement-driven.
+- [x] Ordered B8 decode GEMMs with K>=2048 now stage64 K terms per tile instead of32,
+  preserving the exact MMA sequence while halving K-stage synchronization. C1/B4,
+  smaller-K and non-ordered reductions keep the prior kernels. Controlled same-HEAD
+  non-LTO2B B8 A/B on `67586eb` stayed lane-exact:47+3 rose68.31->69.11 tok/s;
+  decode-heavier47+16 rose147.62->153.61 tok/s (~4.1%). This is a shared shape
+  specialization, not a model selector; retain only while longer decode keeps the gain.
 - [x] CUDA offered C1/4/8/16/32/64 sweep:0.8B native45.59/45.04/45.46/45.55/44.80/refused,
   vLLM36.94/60.85/72.20/87.79/91.22/95.56 output tok/s;2B native26.24/26.26/26.32/
   refused/refused/refused, vLLM34.88/60.55/73.70/87.17/90.55/88.01. All measured

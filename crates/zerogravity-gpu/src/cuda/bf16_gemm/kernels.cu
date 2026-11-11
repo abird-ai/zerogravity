@@ -56,6 +56,35 @@ __device__ __forceinline__ void stage(
     asm volatile("cp.async.commit_group;" ::: "memory");
 }
 
+template<int BN>
+__device__ __forceinline__ void stage64(
+    unsigned short* sw, unsigned short* sx,
+    const unsigned short* w, const unsigned short* x,
+    GemmShape s, unsigned long long base_m, unsigned long long base_n,
+    unsigned long long base_k, bool aligned) {
+    constexpr int BK = 64, STRIDE = BK + 8;
+    for (unsigned vector = threadIdx.x; vector < (64 + BN) * BK / 8; vector += 128) {
+        const bool weight = vector < 64 * BK / 8;
+        const unsigned local = weight ? vector : vector - 64 * BK / 8;
+        const unsigned row = local / (BK / 8), col = (local % (BK / 8)) * 8;
+        const auto global_row = (weight ? base_m : base_n) + row;
+        const auto global_col = base_k + col;
+        const auto limit = weight ? s.columns : s.rows;
+        auto* target = (weight ? sw : sx) + row * STRIDE + col;
+        const auto* source = weight ? w : x;
+        const unsigned valid = global_row < limit && global_col < s.inner
+            ? static_cast<unsigned>((s.inner - global_col) < 8 ? (s.inner - global_col) : 8) : 0;
+        if (valid) source += global_row * s.inner + global_col;
+        if (aligned) {
+            copy16(target, source, valid * 2);
+        } else {
+            #pragma unroll
+            for (unsigned i = 0; i < 8; ++i) target[i] = i < valid ? source[i] : 0;
+        }
+    }
+    asm volatile("cp.async.commit_group;" ::: "memory");
+}
+
 __device__ __forceinline__ float widen_bf16(unsigned short value) {
     float result;
     unsigned bits = static_cast<unsigned>(value) << 16;
@@ -147,6 +176,71 @@ __device__ __forceinline__ void gemm_body(
             if (m < s.columns && n < s.rows) store_bf16(y, n * s.output_stride + m, result, status);
         }
     }
+}
+
+template<int BN>
+__device__ __forceinline__ void gemm_ordered_k64_body(
+    const unsigned short* w, const unsigned short* x, unsigned short* y,
+    unsigned* status, GemmShape s, unsigned short* shared) {
+    constexpr int STRIDE = 72, STAGE = (64 + BN) * STRIDE, FRAGMENTS = BN / 8;
+    const unsigned lane = threadIdx.x % 32, warp = threadIdx.x / 32;
+    const unsigned row = lane / 4, pair = (lane % 4) * 2;
+    const unsigned long long base_m = static_cast<unsigned long long>(blockIdx.x) * 64;
+    const unsigned long long base_n = static_cast<unsigned long long>(blockIdx.y) * BN;
+    const bool aligned = ((reinterpret_cast<unsigned long long>(w) |
+                           reinterpret_cast<unsigned long long>(x)) & 15) == 0 && s.inner % 8 == 0;
+    float d[FRAGMENTS][4] = {};
+    stage64<BN>(shared, shared + 64 * STRIDE, w, x, s, base_m, base_n, 0, aligned);
+    asm volatile("cp.async.wait_group 0;" ::: "memory");
+    __syncthreads();
+    unsigned current = 0;
+    for (unsigned long long k = 0; k < s.inner; k += 64) {
+        unsigned short* sw = shared + current * STAGE;
+        unsigned short* sx = sw + 64 * STRIDE;
+        if (k + 64 < s.inner) {
+            unsigned short* next = shared + (current ^ 1) * STAGE;
+            stage64<BN>(next, next + 64 * STRIDE, w, x, s, base_m, base_n, k + 64, aligned);
+        }
+        #pragma unroll
+        for (unsigned kk = 0; kk < 64; kk += 16) {
+            const auto* a = sw + (warp * 16 + row) * STRIDE + kk + pair;
+            const unsigned a0 = pack(a), a1 = pack(a + 8 * STRIDE);
+            const unsigned a2 = pack(a + 8), a3 = pack(a + 8 * STRIDE + 8);
+            #pragma unroll
+            for (unsigned j = 0; j < FRAGMENTS; ++j) {
+                const auto* b = sx + (j * 8 + row) * STRIDE + kk + pair;
+                const unsigned b0 = pack(b), b1 = pack(b + 8);
+                mma_fragment(d[j], a0, a1, a2, a3, b0, b1);
+            }
+        }
+        if (k + 64 < s.inner) {
+            asm volatile("cp.async.wait_group 0;" ::: "memory");
+            __syncthreads();
+        }
+        current ^= 1;
+    }
+    #pragma unroll
+    for (unsigned j = 0; j < FRAGMENTS; ++j) {
+        #pragma unroll
+        for (unsigned i = 0; i < 4; ++i) {
+            const auto m = base_m + warp * 16 + row + (i / 2) * 8;
+            const auto n = base_n + j * 8 + pair + i % 2;
+            if (m < s.columns && n < s.rows) {
+                store_bf16(y, n * s.output_stride + m, d[j][i], status);
+            }
+        }
+    }
+}
+
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_ordered_narrow_k64(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
+    __shared__ __align__(16) unsigned short shared[2 * (64 + 8) * 72];
+    gemm_ordered_k64_body<8>(w, x, y, nullptr, s, shared);
+}
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_ordered_narrow_k64_certified(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, unsigned* status, GemmShape s) {
+    __shared__ __align__(16) unsigned short shared[2 * (64 + 8) * 72];
+    gemm_ordered_k64_body<8>(w, x, y, status, s, shared);
 }
 
 #define GEMM_ENTRY(NAME, BN, MODE) \
