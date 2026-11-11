@@ -284,6 +284,15 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   The specialization and temporary qualifier/runner were removed. Keep the accepted M64
   K64 primitive; do not trade occupancy/scheduling headroom for a wider M tile without
   new profiling evidence.
+- [x] Rejected widening the generic ordered K64 row tile from N8 to N16 for large-K
+  projections. The candidate reused the exact ordered MMA sequence and only doubled
+  independent row fragments/staging; physical RTX3060 M=256/N=16/K=2048 qualification
+  passed aligned and +4-byte views with zero mismatches, intact guards and clean
+  retirement. Direct synchronized M=8192/N=16/K=2048 timing was materially worse than
+  two accepted N8 launches: 362.4us mean/363.1us median versus 300.1/296.9us (~20.7%
+  slower by mean). The specialization and temporary qualification/timing harness were
+  removed. Keep N8 as the reusable small-row ordered K64 primitive; a future N16 path
+  should use a materially different kernel/occupancy strategy rather than wider staging.
 - [x] Rejected replacing the accepted B8 lane-strided eight-row accumulator with two
   four-row CTA groups inside one launch. The shared candidate preserved the exact
   16-lane/512-term reduction and passed physical N=8/K=1024 aligned/+4-byte qualification
