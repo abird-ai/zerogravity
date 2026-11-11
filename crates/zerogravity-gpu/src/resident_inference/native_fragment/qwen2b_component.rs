@@ -258,6 +258,8 @@ where
             state_accesses: Vec::new(),
             logit_accesses: Vec::new(),
             batch: None,
+            #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+            ordinary_cohort_values: None,
         }),
         allocation: Mutex::new(()),
         states,

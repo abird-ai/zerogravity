@@ -63,8 +63,12 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   under its declared numerical contract. Three matching IDs/112 finite domains
   and CPU-logit NMSE0.124241/0.090048/0.043837 are diagnostic, not a post-hoc
   tolerance grant. Preserve exact small-model references and original failures.
-- [ ] Extend small CUDA to genuine populated contexts; short resident/streamed
-  trajectories,65-token tail replay and SDK/HTTP lifecycle coverage do not suffice.
+- [x] Extend small CUDA to genuine populated contexts. Qualification-only resident
+  trajectories now populate both0.8B and2B through exact1K/2K frontiers using the
+  existing64-row chunk contract: all four cells finish with finite terminal logits,
+  all42 state domains present/finite and clean model retirement. This closes the
+  prior short-trajectory/65-token-tail gap; existing SDK/HTTP lifecycle evidence is
+  unchanged and no new numerical tolerance/pinning was introduced.
 - [ ] Localize ROCm2B C4 warmup and C16/32/64 warmup/timed divergence (task39),
   without repinning expected IDs or attributing an unlocalized failure to kernels.
 - [ ] Close ordinary27B HIP HTTP504 and populated1K/2K references/serving (task11).
@@ -210,6 +214,13 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   non-LTO2B B8 A/B on `67586eb` stayed lane-exact:47+3 rose68.31->69.11 tok/s;
   decode-heavier47+16 rose147.62->153.61 tok/s (~4.1%). This is a shared shape
   specialization, not a model selector; retain only while longer decode keeps the gain.
+- [x] Small CUDA populated-context qualification now covers0.8B/2B at1K and2K.
+  Each cell starts from the accepted47-token prefill, advances by genuine64-token
+  state-only chunks to the exact context frontier, emits finite terminal vocabulary
+  logits, reads all42 finite state domains, and shuts down cleanly. Initial greedy
+  token remained248068 and terminal greedy token248046 in all four cells. The0.8B
+  legacy directory used its already-retained source receipt;2B used the compiled
+  inventory-authenticated source directory. Temporary feedback runner was not retained.
 - [x] CUDA offered C1/4/8/16/32/64 sweep:0.8B native45.59/45.04/45.46/45.55/44.80/refused,
   vLLM36.94/60.85/72.20/87.79/91.22/95.56 output tok/s;2B native26.24/26.26/26.32/
   refused/refused/refused, vLLM34.88/60.55/73.70/87.17/90.55/88.01. All measured
