@@ -28,4 +28,4 @@ pub mod rms;
     feature = "cuda-cublas",
     target_os = "linux"
 ))]
-mod test_support;
+pub(crate) mod test_support;

@@ -269,6 +269,20 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   state transport and the already-qualified grouped transport primitives available for
   other model/layout consumers; do not retry this exact launch consolidation without a
   materially different transport/fusion architecture and measurement.
+- [x] Retained a model-neutral packed-BF16 private-B4 KV transition primitive, but
+  rejected selecting it in the current ordinary CUDA serving path. The primitive owns
+  no model/root/publication policy: caller-supplied geometry defines base/chunk/context,
+  KV slab and packed-value offset/stride; one launch copies the exact committed prefix,
+  appends current BF16 rows, zeros the future candidate tail and reports nonfinite BF16
+  through shared status. Guarded RTX3060 qualification passes base/chunk cells
+  0+1/64,7+1/64,31+8/64,511+1/1024 and960+64/1024 bit-exactly; the7+1 case injects
+  BF16 +inf and observes the expected status bit2 while preserving payload/guards.
+  A temporary B4 adapter derived all geometry from authenticated `KvAppend` descriptors
+  and composed B8 as two B4 groups, leaving B1/B2 unchanged. Same-HEAD non-LTO public
+  2B B8 canonical47+16 stayed exact on all eight lanes, but steady throughput was
+  158.00 tok/s baseline versus157.90 candidate (~0.07% slower). Production integration
+  was removed; keep the qualified shared primitive for other model/layout consumers
+  where fewer transition boundaries may provide a measured win.
 - [x] Rejected collapsing the two B4 cached full-attention launches in B8 decode into a
   new additive B8 attention kernel. The candidate preserved the accepted2B 47+16 output
   exactly, but controlled non-LTO feedback was only156.21->157.37 output tok/s (~0.74%)

@@ -7,6 +7,10 @@
 
 use zerogravity_core::{Error, Result};
 
+// Qualified shared capability retained for future model/backend adoption.
+// Production selection deliberately remains outside this module.
+pub(crate) mod private_bf16;
+
 #[derive(Clone, Copy)]
 pub(crate) struct Shape {
     batch: usize,
@@ -199,6 +203,7 @@ pub fn qualify(device: cubecl::Device) -> Result<()> {
             );
         }
     }
+    private_bf16::qualify(&client)?;
     Ok(())
 }
 #[cfg(test)]
