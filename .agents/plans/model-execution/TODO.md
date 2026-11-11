@@ -293,6 +293,14 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   slower by mean). The specialization and temporary qualification/timing harness were
   removed. Keep N8 as the reusable small-row ordered K64 primitive; a future N16 path
   should use a materially different kernel/occupancy strategy rather than wider staging.
+- [x] Rejected cooperatively caching/widening the B8 lane-strided input slice in shared
+  memory. The candidate preserved the accepted 16-lane/512-term FMA and lane-reduction
+  order and kept the original direct-input B8 kernel as a separate primitive; only input
+  transport changed. On the representative M=8192/N=8/K=2048 head-page geometry,
+  synchronized RTX3060 timing regressed613.1us mean/665.7us median ->873.5/875.9us
+  (~42.5% slower by mean). Shared staging/synchronization cost dominates the repeated
+  cached BF16 input loads/widens here. The candidate and timing-only harness were removed;
+  retain the accepted direct-input B8 lane-strided primitive.
 - [x] Rejected replacing the accepted B8 lane-strided eight-row accumulator with two
   four-row CTA groups inside one launch. The shared candidate preserved the exact
   16-lane/512-term reduction and passed physical N=8/K=1024 aligned/+4-byte qualification
