@@ -53,8 +53,8 @@ impl SourceCallCohortPending {
 }
 
 impl SourceCallModel {
-    /// Aligned native cached-decode calls. Stateful CUDA kernels may internally
-    /// split a wider cohort while preserving private roots.
+    /// Compatible native cached-decode calls. Stateful CUDA kernels may internally
+    /// split a wider cohort while preserving each session's private frontier/root.
     pub async fn prepare_greedy_decode_cohort_admitted(
         self: &Arc<Self>,
         rows: &[(&SourceCallSession, &BoundSourceInvocation, &ResidentToken)],
@@ -76,6 +76,7 @@ impl SourceCallModel {
             if !Arc::ptr_eq(&session.model, self)
                 || !invocation.invocation().emit_logits()
                 || invocation.invocation().rows() != 1
+                || invocation.invocation().base() as u64 != session.binding().frontier()
                 || invocation.invocation().ids() != [token.id]
                 || token.producer != Some(session.binding())
                 || token.lease.bytes() != 12
@@ -595,18 +596,16 @@ impl ResidentModel {
                     .ok_or_else(|| Error::State("source cohort materialized call absent".into()))
             })
             .collect::<Result<Vec<_>>>()?;
-        let frontier = bases[0].frontier();
         if calls.iter().zip(&bases).any(|(call, base)| {
             call.mode() != SourceCallMode::Decode
                 || call.rows().len() != 1
-                || call.rows().base() as u64 != frontier
-                || base.frontier() != frontier
+                || call.rows().base() as u64 != base.frontier()
                 || call.source() != base.source()
                 || call.rows().capacity() != self.capacity
                 || call.rows().vocabulary() as u64 != self.vocab
         }) {
             return Err(Error::Unsupported(
-                "ordinary source cohort requires aligned cached-decode roots".into(),
+                "ordinary source cohort requires cached-decode rows bound to private roots".into(),
             ));
         }
         let mut attempts = Vec::with_capacity(width);
@@ -652,7 +651,11 @@ impl ResidentModel {
             .iter()
             .zip(&candidates)
             .map(|(session, candidate)| {
-                bind_domains(&session.domains, candidate, frontier as usize)
+                bind_domains(
+                    &session.domains,
+                    candidate,
+                    session.binding().frontier() as usize,
+                )
             })
             .collect::<Result<Vec<_>>>()?;
         let logits = self

@@ -35,6 +35,17 @@ struct Feedback {
     id: u32,
     device: Option<ResidentToken>,
 }
+#[cfg(feature = "qwen35-cuda")]
+fn native_phase_compatible(
+    first_prefill: Option<(u64, usize)>,
+    row_prefill: Option<(u64, usize)>,
+) -> bool {
+    match (first_prefill, row_prefill) {
+        (Some(first), Some(row)) => first == row,
+        (None, None) => true,
+        _ => false,
+    }
+}
 pub(super) struct State {
     session: SourceCallSession,
     // Computed from this original committed readback; never presentation IDs.
@@ -141,12 +152,12 @@ impl Executor for SourceText {
     }
     #[cfg(feature = "qwen35-cuda")]
     fn compatible(first: &Active<Self>, row: &Active<Self>) -> bool {
+        let prefill = |row: &Active<Self>| {
+            (row.cursor < row.prompt.len())
+                .then(|| (row.state.session.binding().frontier(), row.prefill_count()))
+        };
         Arc::ptr_eq(&first.model, &row.model)
-            && first.state.session.binding().frontier() == row.state.session.binding().frontier()
-            && ((first.cursor < first.prompt.len()
-                && row.cursor < row.prompt.len()
-                && first.prefill_count() == row.prefill_count())
-                || (first.cursor == first.prompt.len() && row.cursor == row.prompt.len()))
+            && native_phase_compatible(prefill(first), prefill(row))
     }
     #[cfg(feature = "qwen35-cuda")]
     fn validate_cohort(rows: &[Active<Self>], work: CohortWork) -> Result<(), ServiceError> {
@@ -170,7 +181,7 @@ impl Executor for SourceText {
             return Err(ServiceError::new(
                 500,
                 "source_cohort",
-                "source CUDA cohort requires aligned native prefill chunks or cached-decode rows",
+                "source CUDA cohort requires aligned native prefill chunks or compatible cached-decode rows",
             ));
         }
         Ok(())
@@ -538,6 +549,15 @@ mod tests {
         assert_eq!(phase(64, 1), SourceCallMode::Decode);
         assert_eq!(phase(64, 17), SourceCallMode::Prefill);
         assert_eq!(phase(47, 64), SourceCallMode::Prefill);
+    }
+    #[cfg(feature = "qwen35-cuda")]
+    #[test]
+    fn native_prefill_stays_aligned_while_decode_accepts_private_frontiers() {
+        assert!(native_phase_compatible(Some((47, 17)), Some((47, 17))));
+        assert!(!native_phase_compatible(Some((47, 17)), Some((48, 17))));
+        assert!(!native_phase_compatible(Some((47, 17)), Some((47, 16))));
+        assert!(!native_phase_compatible(Some((47, 17)), None));
+        assert!(native_phase_compatible(None, None));
     }
     #[test]
     fn feedback_uses_complete_finite_bf16_logits_with_original_zero_tie() {

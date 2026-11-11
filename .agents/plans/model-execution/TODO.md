@@ -305,6 +305,19 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   `[0,17,63,127]` matched four accepted B1 launches bit-for-bit with zero BF16 mismatches
   and zero status flags. Keep this primitive available for dynamic/ragged model schedulers;
   higher layers must still authenticate each base against its own committed private root.
+- [x] Enabled genuine ragged native cached-decode cohorts through the shared ordinary-source
+  execution path without weakening prefill alignment. CUDA source wave policy now permits
+  unequal decode frontiers only; source-call admission authenticates each invocation base
+  against that session's committed private root before reader/workspace admission. Ordinary
+  CUDA carries explicit per-lane positions for rotary and private stateful fallback, passes
+  per-lane bases to the retained ragged B4 attention primitive, and no longer abuses a
+  contiguous-token `Step` to represent four independent GDN sessions. Public RTX3060 source
+  acceptance compared every generated token against serial B1 on distinct prompt frontiers:
+  0.8B B8 counts `[47..54]` published width8 with producer frontiers `[48..55]`; 2B B8
+  reproduced the same exact result; 0.8B B4 counts `[47..50]` published frontiers `[48..51]`;
+  and the B2 fallback counts `[47,48]` published `[48,49]`. All eight-token continuations
+  matched B1 exactly and each run observed native publication sequence1 plus seven native
+  publications total. This is correctness/admission qualification, not a standalone perf claim.
 - [x] Rejected collapsing the two B4 cached full-attention launches in B8 decode into a
   new additive B8 attention kernel. The candidate preserved the accepted2B 47+16 output
   exactly, but controlled non-LTO feedback was only156.21->157.37 output tok/s (~0.74%)

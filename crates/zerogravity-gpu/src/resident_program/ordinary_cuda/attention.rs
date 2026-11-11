@@ -483,6 +483,7 @@ impl OrdinaryCudaAttention {
         &self,
         client: &cubecl::client::Client,
         operator: &zerogravity_core::accelerator::program::SourceOperator,
+        bases: [usize; 4],
         query: &cubecl::server::Handle,
         states: &[(
             &crate::resident_program::DeviceBuffer,
@@ -496,6 +497,8 @@ impl OrdinaryCudaAttention {
         self.service.ensure_usable()?;
         if states.len() != 4
             || operator.call().rows().len() != 1
+            || operator.call().rows().base() != bases[0]
+            || bases.iter().any(|&base| base >= self.capacity)
             || client.service_id() != self.service.client().service_id()
             || query.service != client.service_id()
             || output.service != client.service_id()
@@ -504,12 +507,6 @@ impl OrdinaryCudaAttention {
         {
             return Err(Error::State(
                 "ordinary CUDA attention batch4 service/geometry differs".into(),
-            ));
-        }
-        let base = operator.call().rows().base();
-        if base >= self.capacity {
-            return Err(Error::Limit(
-                "ordinary attention batch4 active prefix".into(),
             ));
         }
         let query_row = self.geometry.query_width()?;
@@ -547,8 +544,8 @@ impl OrdinaryCudaAttention {
             keys.push(key.handle());
             values.push(value.handle());
         }
-        let launch = crate::cuda::bf16_attention::Bf16CausalAttentionBatch4::new(
-            base,
+        let launch = crate::cuda::bf16_attention::Bf16CausalAttentionBatch4::new_ragged(
+            bases,
             self.capacity,
             self.geometry.query_heads,
             self.geometry.kv_heads,

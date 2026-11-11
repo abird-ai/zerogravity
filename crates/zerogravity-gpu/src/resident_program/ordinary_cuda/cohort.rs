@@ -211,7 +211,6 @@ impl OrdinaryCudaBody {
         node: &zerogravity_core::accelerator::program::PlanNode,
         descriptor: &zerogravity_core::accelerator::program::SourceOperator,
         states: &[&StateBinding],
-        step: Step,
         row_base: usize,
     ) -> Result<(usize, usize)> {
         let ([packed_qkvz, _packed_ba], [conv_output, z]) =
@@ -221,11 +220,12 @@ impl OrdinaryCudaBody {
                 "ordinary CUDA cohort GDN conv SSA arity".into(),
             ));
         };
-        if states.len() != 4 || step.rows != 4 || !self.cold().layout().groups().direct() {
+        if states.len() != 4 || !self.cold().layout().groups().direct() {
             return Err(Error::Unsupported(
                 "ordinary CUDA direct four-row GDN conv cohort".into(),
             ));
         }
+        let lanes = states.len();
         let inputs = descriptor.input_elements()?;
         let outputs = descriptor.output_elements()?;
         let [conv_weights] = self.cold().node_parameters(node_index)? else {
@@ -264,9 +264,9 @@ impl OrdinaryCudaBody {
         }
 
         let full_packed =
-            self.cohort_value_handle_range(request, *packed_qkvz, inputs[0], row_base, step.rows)?;
+            self.cohort_value_handle_range(request, *packed_qkvz, inputs[0], row_base, lanes)?;
         let batch_bytes = inputs[0]
-            .checked_mul(step.rows)
+            .checked_mul(lanes)
             .and_then(|elements| elements.checked_mul(2))
             .ok_or_else(|| Error::Limit("ordinary CUDA cohort GDN scratch bytes".into()))?;
         let output_scratch = exact_view(
@@ -279,9 +279,8 @@ impl OrdinaryCudaBody {
             "ordinary GDN batch conv output scratch",
         )?;
         let full_conv =
-            self.cohort_value_handle_range(request, *conv_output, outputs[0], row_base, step.rows)?;
-        let full_z =
-            self.cohort_value_handle_range(request, *z, outputs[1], row_base, step.rows)?;
+            self.cohort_value_handle_range(request, *conv_output, outputs[0], row_base, lanes)?;
+        let full_z = self.cohort_value_handle_range(request, *z, outputs[1], row_base, lanes)?;
         let indices_lease = self.cold().gdn_internal(GdnRuntimeBuffer::CacheIndices)?;
         let indices = exact_view(indices_lease, 0, 16, "ordinary GDN batch cache indices")?;
         let index_bytes = (1_i32..=4).flat_map(i32::to_le_bytes).collect::<Vec<_>>();
@@ -332,8 +331,8 @@ impl OrdinaryCudaBody {
             .launch(service)?;
             dispatches += 1;
         }
-        dispatches += attention::certify(client, &full_conv, &status, outputs[0] * step.rows)?;
-        dispatches += attention::certify(client, &full_z, &status, outputs[1] * step.rows)?;
+        dispatches += attention::certify(client, &full_conv, &status, outputs[0] * lanes)?;
+        dispatches += attention::certify(client, &full_z, &status, outputs[1] * lanes)?;
         Ok((dispatches, 0))
     }
 
@@ -345,7 +344,6 @@ impl OrdinaryCudaBody {
         node: &zerogravity_core::accelerator::program::PlanNode,
         descriptor: &zerogravity_core::accelerator::program::SourceOperator,
         states: &[&StateBinding],
-        step: Step,
         row_base: usize,
         cohort_rows: usize,
     ) -> Result<(usize, usize)> {
@@ -356,7 +354,7 @@ impl OrdinaryCudaBody {
                 "ordinary CUDA cohort GDN recurrent SSA arity".into(),
             ));
         };
-        if states.len() != 4 || step.rows != 4 || !self.cold().layout().groups().direct() {
+        if states.len() != 4 || !self.cold().layout().groups().direct() {
             return Err(Error::Unsupported(
                 "ordinary CUDA direct four-row GDN recurrent cohort".into(),
             ));
@@ -399,7 +397,7 @@ impl OrdinaryCudaBody {
             dispatches += 1;
         }
 
-        let rows = step.rows;
+        let rows = states.len();
         let packed_row_bytes = GdnBuffer::PackedQkvz.bytes(GdnPhase::CachedDecode);
         let conv_scratch_bytes = packed_row_bytes
             .checked_mul(rows)
@@ -740,8 +738,9 @@ impl OrdinaryCudaBody {
         })
     }
 
-    /// One physical traversal for aligned cached-decode rows. Stateless work is
-    /// row-batched; stateful operators retain each session's private root/state.
+    /// One physical traversal for cached-decode rows. Stateless work is
+    /// row-batched; position-sensitive/stateful operators retain each session's
+    /// private causal position and root/state.
     pub(crate) async fn execute_decode_cohort(
         &self,
         flight: &mut PhysicalSubmission<'_>,
@@ -764,14 +763,13 @@ impl OrdinaryCudaBody {
             || calls.iter().any(|call| {
                 call.mode() != SourceCallMode::Decode
                     || call.rows().len() != 1
-                    || call.rows().base() != first.rows().base()
                     || call.rows().capacity() != first.rows().capacity()
                     || call.rows().vocabulary() != first.rows().vocabulary()
                     || call.source() != first.source()
             })
         {
             return Err(Error::Unsupported(
-                "ordinary CUDA decode cohort requires aligned cached rows".into(),
+                "ordinary CUDA decode cohort requires compatible cached rows".into(),
             ));
         }
         let geometry = TextCallGeometry::new(
@@ -783,8 +781,15 @@ impl OrdinaryCudaBody {
             .iter()
             .map(|call| call.rows().ids()[0])
             .collect::<Vec<_>>();
+        let positions = calls
+            .iter()
+            .map(|call| call.rows().base())
+            .collect::<Vec<_>>();
+        // This synthetic call owns only dense row shape/token packing for
+        // position-independent operators. Position-sensitive operators bind
+        // `positions` explicitly below; no causal/root authority comes from it.
         let batch_call = SourceCall::new(
-            SourceRows::new(geometry, first.rows().base(), ids.into())?,
+            SourceRows::new(geometry, 0, ids.into())?,
             SourceCallMode::Prefill,
         )?;
         let state_maps = calls
@@ -813,8 +818,7 @@ impl OrdinaryCudaBody {
 
         let client = self.cold().service().client();
         self.clear_and_bind_call(client, &batch_call, false)?;
-        let batch_step = Step::new(requests.len(), first.rows().base(), first.rows().capacity())?;
-        let single_step = Step::new(1, first.rows().base(), first.rows().capacity())?;
+        let batch_step = Step::new(requests.len(), 0, first.rows().capacity())?;
         let cold = self.cold().plan();
         let mut dispatches = 0usize;
         let mut fused_dispatches = 0usize;
@@ -879,15 +883,12 @@ impl OrdinaryCudaBody {
                         .collect::<Result<Vec<_>>>()?;
                     for row_base in (0..requests.len()).step_by(4) {
                         let descriptor = template.bind_runtime_call(calls[row_base])?;
-                        let group_step =
-                            Step::new(4, first.rows().base(), first.rows().capacity())?;
                         let (launched, fused) = self.enqueue_gdn_convolution_cohort(
                             cold,
                             node_index,
                             node,
                             &descriptor,
                             &bound[row_base..row_base + 4],
-                            group_step,
                             row_base,
                         )?;
                         dispatches += launched;
@@ -914,15 +915,12 @@ impl OrdinaryCudaBody {
                         .collect::<Result<Vec<_>>>()?;
                     for row_base in (0..requests.len()).step_by(4) {
                         let descriptor = template.bind_runtime_call(calls[row_base])?;
-                        let group_step =
-                            Step::new(4, first.rows().base(), first.rows().capacity())?;
                         let (launched, fused) = self.enqueue_gdn_recurrent_cohort(
                             cold,
                             node_index,
                             node,
                             &descriptor,
                             &bound[row_base..row_base + 4],
-                            group_step,
                             row_base,
                             requests.len(),
                         )?;
@@ -959,6 +957,7 @@ impl OrdinaryCudaBody {
                         .collect::<Result<Vec<_>>>()?;
                     for row_base in (0..requests.len()).step_by(4) {
                         let descriptor = template.bind_runtime_call(calls[row_base])?;
+                        let bases = std::array::from_fn(|lane| positions[row_base + lane]);
                         let inputs = descriptor.input_elements()?;
                         let outputs = descriptor.output_elements()?;
                         let query =
@@ -968,6 +967,7 @@ impl OrdinaryCudaBody {
                         dispatches += self.cold().attention().enqueue_cohort(
                             client,
                             &descriptor,
+                            bases,
                             &query,
                             &kv[row_base..row_base + 4],
                             &output,
@@ -978,6 +978,7 @@ impl OrdinaryCudaBody {
                 }
                 for row in 0..requests.len() {
                     let descriptor = template.bind_runtime_call(calls[row])?;
+                    let single_step = Step::new(1, positions[row], first.rows().capacity())?;
                     let (launched, fused) = self
                         .enqueue_node(
                             flight,
@@ -988,7 +989,7 @@ impl OrdinaryCudaBody {
                             &state_maps[row],
                             single_step,
                             row,
-                            false,
+                            None,
                             None,
                             &mut gate_alias,
                         )
@@ -998,8 +999,9 @@ impl OrdinaryCudaBody {
                 }
             } else {
                 let descriptor = template.bind_runtime_call(&batch_call)?;
-                let repeated_position =
-                    matches!(template.kind(), SourceOperatorKind::QkRmsRotaryGated(_));
+                let row_positions =
+                    matches!(template.kind(), SourceOperatorKind::QkRmsRotaryGated(_))
+                        .then_some(positions.as_slice());
                 let (launched, fused) = self
                     .enqueue_node(
                         flight,
@@ -1010,7 +1012,7 @@ impl OrdinaryCudaBody {
                         &state_maps[0],
                         batch_step,
                         0,
-                        repeated_position,
+                        row_positions,
                         None,
                         &mut gate_alias,
                     )

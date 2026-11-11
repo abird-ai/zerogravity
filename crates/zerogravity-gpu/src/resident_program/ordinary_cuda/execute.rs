@@ -149,7 +149,7 @@ impl OrdinaryCudaBody {
                     &state_map,
                     step,
                     0,
-                    false,
+                    None,
                     device_token,
                     &mut gate_alias,
                 )
@@ -398,7 +398,7 @@ impl OrdinaryCudaBody {
         states: &BTreeMap<StateSlot, &StateBinding>,
         step: Step,
         workspace_row: usize,
-        repeated_position: bool,
+        row_positions: Option<&[usize]>,
         device_token: Option<&Handle>,
         gate_alias: &mut BTreeMap<u32, u32>,
     ) -> Result<(usize, usize)> {
@@ -411,7 +411,7 @@ impl OrdinaryCudaBody {
             states,
             step,
             workspace_row,
-            repeated_position,
+            row_positions,
             device_token,
             gate_alias,
             None,
@@ -442,7 +442,7 @@ impl OrdinaryCudaBody {
             states,
             step,
             workspace_row,
-            false,
+            None,
             None,
             gate_alias,
             Some(values),
@@ -461,7 +461,7 @@ impl OrdinaryCudaBody {
         states: &BTreeMap<StateSlot, &StateBinding>,
         step: Step,
         workspace_row: usize,
-        repeated_position: bool,
+        row_positions: Option<&[usize]>,
         device_token: Option<&Handle>,
         gate_alias: &mut BTreeMap<u32, u32>,
         values: Option<&OrdinaryCudaCohortValues>,
@@ -770,10 +770,10 @@ impl OrdinaryCudaBody {
                         ),
                     ],
                 )?;
-                let rotary_launches = if repeated_position {
-                    if workspace_row != 0 || step.rows < 2 {
+                let rotary_launches = if let Some(positions) = row_positions {
+                    if workspace_row != 0 || positions.len() != step.rows {
                         return Err(Error::State(
-                            "ordinary CUDA repeated-position rotary geometry".into(),
+                            "ordinary CUDA explicit rotary position coverage".into(),
                         ));
                     }
                     let query_elements = outputs[0]
@@ -783,13 +783,13 @@ impl OrdinaryCudaBody {
                         .checked_div(step.rows)
                         .ok_or_else(|| Error::State("ordinary CUDA key row extent".into()))?;
                     let mut launches = 0;
-                    for row in 0..step.rows {
+                    for (row, &position) in positions.iter().enumerate() {
                         launches += self.cold().rotary().enqueue(
                             &self.value_handle_in(values, request, *query, query_elements, row)?,
                             &self.value_handle_in(values, request, *key, key_elements, row)?,
                             self.cold().inverse_frequency(),
                             self.cold().status(),
-                            step.base,
+                            position,
                             1,
                         )?;
                     }

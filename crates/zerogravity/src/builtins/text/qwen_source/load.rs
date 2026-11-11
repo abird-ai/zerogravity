@@ -174,7 +174,7 @@ pub(crate) fn load_router(
                     max_scratch: 256 * 1024 * 1024,
                     prefill_quantum: 64,
                     unequal_prefill: false,
-                    unequal_decode: false,
+                    unequal_decode: true,
                     native_rows: profile.native_rows,
                     cohorts: Cohorts::Native {
                         widths: if profile.native_rows == 8 {
