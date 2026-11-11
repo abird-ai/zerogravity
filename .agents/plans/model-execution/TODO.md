@@ -269,6 +269,13 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   state transport and the already-qualified grouped transport primitives available for
   other model/layout consumers; do not retry this exact launch consolidation without a
   materially different transport/fusion architecture and measurement.
+- [x] Rejected collapsing the two B4 cached full-attention launches in B8 decode into a
+  new additive B8 attention kernel. The candidate preserved the accepted2B 47+16 output
+  exactly, but controlled non-LTO feedback was only156.21->157.37 output tok/s (~0.74%)
+  and overlapped normal clean-run variation (~157.5 observed separately). The extra
+  kernel ABI/code was removed. Keep the accepted singleton/B4 attention primitives;
+  revisit wider attention only with profiling evidence or a materially different fused
+  design that removes more than one launch boundary.
 - [x] Small CUDA populated-context qualification now covers0.8B/2B at1K and2K.
   Each cell starts from the accepted47-token prefill, advances by genuine64-token
   state-only chunks to the exact context frontier, emits finite terminal vocabulary
