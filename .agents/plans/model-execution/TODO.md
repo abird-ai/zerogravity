@@ -63,6 +63,13 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   under its declared numerical contract. Three matching IDs/112 finite domains
   and CPU-logit NMSE0.124241/0.090048/0.043837 are diagnostic, not a post-hoc
   tolerance grant. Preserve exact small-model references and original failures.
+  The existing large composition diagnostic now reuses the independently accepted
+  source-call archive reader to measure full-vocabulary and all112 state-domain
+  cross-profile error together; CUDA Conv3 is compared explicitly with the retained
+  history tail of original Conv4, while recurrent/KV retain their logical mappings.
+  Results remain `same_contract_reference=false`/`full_reference_acceptance=false`:
+  no27B CUDA-contract oracle exists on l5, and the retained22,126,120,608B original
+  archive needed for the physical rerun is no longer present on this host.
 - [x] Extend small CUDA to genuine populated contexts. Qualification-only resident
   trajectories now populate both0.8B and2B through exact1K/2K frontiers using the
   existing64-row chunk contract: all four cells finish with finite terminal logits,

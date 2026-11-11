@@ -1,5 +1,6 @@
 //! Compact large-source composition check; CPU model agreement is not CUDA vendor parity.
 use super::*;
+use crate::source_calls_reference::Expected;
 
 fn state_digest(domains: &[(StateSlot, Vec<f32>)]) -> Result<String> {
     let mut hash = Sha256::new();
@@ -35,17 +36,16 @@ fn large_source_prefill_and_decode() -> Result<()> {
         "f226ad211bc3ded7377046ef777186950ae3d2a0c3957449da7e5e5066f958cf",
         16 * MIB,
     )?;
+    let expected = Expected::open_pinned(
+        &reference,
+        "Qwen/Qwen3.8-27B",
+        "f226ad211bc3ded7377046ef777186950ae3d2a0c3957449da7e5e5066f958cf",
+        None,
+        false,
+    )?;
     let calls = original["calls"]
         .as_array()
         .ok_or_else(|| fail("original calls"))?;
-    let records = original["records"]
-        .as_array()
-        .ok_or_else(|| fail("original records"))?;
-    let mut raw_file = File::open(reference.join("raw.bin"))?;
-    ensure(
-        raw_file.metadata()?.len() == 22_126_120_608,
-        "original raw extent",
-    )?;
     block_on(async {
         let now = Instant::now();
         let model = Model::load(
@@ -75,9 +75,15 @@ fn large_source_prefill_and_decode() -> Result<()> {
             for (step, call) in calls.iter().take(3).enumerate() {
                 ensure(call["repeat"] == 0 && call["case"] == 0 && call["call"] == step,
                     "original first trajectory")?;
+                let expected_call = expected
+                    .calls()
+                    .iter()
+                    .find(|candidate| candidate.key() == (0, 0, step))
+                    .ok_or_else(|| fail("original expected call"))?;
                 let ids: Vec<u32> = call["input_ids"].as_array().ok_or_else(|| fail("original IDs"))?
                     .iter().map(|id| id.as_u64().and_then(|n| u32::try_from(n).ok())
                         .ok_or_else(|| fail("original token"))).collect::<Result<_>>()?;
+                ensure(expected_call.input_ids == ids, "shared reference call identity")?;
                 if let Some(previous) = selected { ensure(ids == [previous], "genuine greedy feedback")?; }
                 let prior = session.snapshot();
                 let before = state_digest(&prior.read_domains().await?)?;
@@ -93,20 +99,22 @@ fn large_source_prefill_and_decode() -> Result<()> {
                 ensure(state.len() == model.model_profile().state_domains()
                     && state.iter().all(|(_, words)| words.iter().any(|&x| x != 0.0)), "all composed state domains populated")?;
                 let state_hash = state_digest(&state)?;
-                let logit_record = records.iter().find(|r| r["repeat"] == 0 && r["case"] == 0
-                    && r["call"] == step && r["label"] == "logits").ok_or_else(|| fail("original logits"))?;
-                ensure(logit_record["dtype"] == "BF16" && logit_record["shape"] == serde_json::json!([1,1,248320]), "original logits layout")?;
-                let bytes = raw(&mut raw_file, logit_record, false)?;
-                let (mut error, mut energy, mut max) = (0.0f64, 0.0f64, 0.0f64);
-                for (i, &actual) in output.logits.iter().enumerate() {
-                    let expected = float(&bytes, i, true) as f64;
-                    ensure(expected.is_finite(), "finite original logits")?;
-                    let delta = actual as f64 - expected;
-                    error += delta * delta; energy += (actual as f64).powi(2); max = max.max(delta.abs());
-                }
-                ensure(energy > 0.0 && session.binding().frontier() == (47 + step) as u64, "frontier and distribution energy")?;
-                println!("CUDA_COMPOSITION_CALL step={step} selected={token} expected={} domains={} prior_unchanged=true state_sha256={state_hash} cpu_logit_nmse={} cpu_logit_max_abs={max} elapsed_ms={} vendor_bitwise_parity=false",
-                    call["selected"], state.len(), error/energy, now.elapsed().as_millis());
+                let metrics = expected.measure_cuda_cross_profile(
+                    expected_call,
+                    &output.logits,
+                    &state,
+                    model.context_capacity_tokens(),
+                )?;
+                ensure(
+                    metrics.logits.actual_energy > 0.0
+                        && metrics.state.actual_energy > 0.0
+                        && session.binding().frontier() == (47 + step) as u64,
+                    "frontier and cross-profile numerical energy",
+                )?;
+                println!("CUDA_COMPOSITION_CALL step={step} selected={token} expected={} domains={} prior_unchanged=true state_sha256={state_hash} cpu_logit_words={} cpu_logit_nmse={} cpu_logit_max_abs={} cpu_state_words={} cpu_state_nmse={} cpu_state_max_abs={} runtime_checked_kv_tail_words={} elapsed_ms={} cross_profile=true same_contract_reference=false vendor_bitwise_parity=false full_reference_acceptance=false",
+                    call["selected"], state.len(), metrics.logits.words, metrics.logits.nmse(), metrics.logits.max_abs,
+                    metrics.state.words, metrics.state.nmse(), metrics.state.max_abs, metrics.state_tail_words,
+                    now.elapsed().as_millis());
                 ensure(call["selected"] == token, "independent original greedy IDs")?;
             }
             Ok(())

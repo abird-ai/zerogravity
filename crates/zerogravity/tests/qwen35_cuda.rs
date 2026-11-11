@@ -38,6 +38,9 @@ mod gemm_differential;
 mod oracle;
 #[path = "support/qwen_cuda_regenerated.rs"]
 mod regenerated;
+#[allow(dead_code, unused_imports)]
+#[path = "support/qwen_source_calls_reference.rs"]
+mod source_calls_reference;
 fn fail(message: impl Into<String>) -> Error {
     Error::State(message.into())
 }

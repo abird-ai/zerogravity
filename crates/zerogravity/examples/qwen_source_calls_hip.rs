@@ -215,7 +215,13 @@ fn run() -> Result<()> {
         mode != "preflight",
         1024 * 1024,
     )?;
-    expected.require_source(&loaded)?;
+    expected.require_source(
+        loaded
+            .members
+            .iter()
+            .map(|member| (member.name.as_str(), member.bytes, member.sha.as_str())),
+        loaded.model.owner().config(),
+    )?;
     let original = OriginalWindowModelSource::from_owner(loaded.model.owner().clone())?;
     need(
         Arc::ptr_eq(original.owner(), loaded.model.owner()),

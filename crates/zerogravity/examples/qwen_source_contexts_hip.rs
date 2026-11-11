@@ -102,7 +102,13 @@ fn run() -> Result<()> {
         .ok_or_else(|| zerogravity::Error::Unsupported("context reference case".into()))?;
     let expected =
         Expected::open_pinned(&PathBuf::from(&args[3]), repository, &args[5], None, true)?;
-    expected.require_source(&loaded)?;
+    expected.require_source(
+        loaded
+            .members
+            .iter()
+            .map(|member| (member.name.as_str(), member.bytes, member.sha.as_str())),
+        loaded.model.owner().config(),
+    )?;
     let plan = seal.build_plan(capacity)?;
     let map = reference::ObservationMap::new(&plan)?;
     for call in expected.calls().iter().filter(|c| c.case == case) {

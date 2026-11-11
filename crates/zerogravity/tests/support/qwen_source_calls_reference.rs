@@ -1,5 +1,4 @@
 //! Retained original multi-row calls. Reference bytes are read-only assertions.
-use super::source::{Loaded, need};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -14,6 +13,7 @@ use zerogravity::resource_arbiter::{
     ResourceOwner,
 };
 use zerogravity::{Error, Result};
+#[allow(dead_code)]
 #[path = "qwen_source_calls_reference/checkpoint.rs"]
 mod checkpoint;
 #[path = "qwen_source_calls_reference/geometry.rs"]
@@ -24,6 +24,14 @@ mod observation;
 mod scope;
 pub use observation::{ObservationMap, Observer};
 pub use scope::ReferenceScope;
+
+fn need(ok: bool, message: &str) -> Result<()> {
+    if ok {
+        Ok(())
+    } else {
+        Err(Error::State(message.into()))
+    }
+}
 
 #[derive(Deserialize)]
 struct Record {
@@ -379,18 +387,26 @@ impl Expected {
     pub fn calls(&self) -> &[Call] {
         &self.doc.calls
     }
-    pub fn require_source(&self, loaded: &Loaded) -> Result<()> {
+    pub fn require_source<'a, I>(
+        &self,
+        members: I,
+        config: &zerogravity::qwen35::source::safetensors::QwenTextConfig,
+    ) -> Result<()>
+    where
+        I: IntoIterator<Item = (&'a str, u64, &'a str)>,
+    {
+        let members = members.into_iter().collect::<Vec<_>>();
         need(
-            self.doc.members.len() == loaded.members.len()
+            self.doc.members.len() == members.len()
                 && self
                     .doc
                     .members
                     .iter()
-                    .zip(&loaded.members)
-                    .all(|(a, b)| a.name == b.name && a.bytes == b.bytes && a.sha256 == b.sha),
+                    .zip(&members)
+                    .all(|(a, b)| a.name == b.0 && a.bytes == b.1 && a.sha256 == b.2),
             "source-call same approved source members",
         )?;
-        self.require_geometry(loaded.model.owner().config())
+        self.require_geometry(config)
     }
     pub fn unchanged(&self) -> Result<()> {
         need(
