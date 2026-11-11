@@ -269,6 +269,14 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   state transport and the already-qualified grouped transport primitives available for
   other model/layout consumers; do not retry this exact launch consolidation without a
   materially different transport/fusion architecture and measurement.
+- [x] Retained a model-neutral row-strided BF16 two-segment copy+certificate primitive.
+  Caller-owned geometry supplies independent source stride/offset/length for each segment;
+  the primitive performs one allocation-free raw-bit copy into two dense row-major outputs
+  and certifies exactly the copied BF16 words without owning model/session/root policy.
+  Host admission requires even BF16 word boundaries, exact service/extents, bounded rows
+  and nonaliasing writable ranges. Physical RTX3060 qualification passes B2/B4/B8 exact
+  bytes and destination guards; the B4 case injects BF16 +inf and observes status bit2.
+  Selection remains consumer-specific pending a same-HEAD serving measurement.
 - [x] Retained a model-neutral packed-BF16 private-B4 KV transition primitive, but
   rejected selecting it in the current ordinary CUDA serving path. The primitive owns
   no model/root/publication policy: caller-supplied geometry defines base/chunk/context,

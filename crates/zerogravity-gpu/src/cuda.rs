@@ -8,6 +8,9 @@ pub(crate) mod bf16_attention;
 #[cfg(all(feature = "cuda-native", target_os = "linux"))]
 #[allow(dead_code)] // Internal execution candidate; physical qualification remains required.
 pub(crate) mod bf16_gemm;
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[allow(dead_code)] // Qualified transport primitive; selection remains consumer-specific.
+pub(crate) mod bf16_rows;
 pub mod compiler;
 #[cfg(feature = "cuda-native")]
 pub mod gdn;
