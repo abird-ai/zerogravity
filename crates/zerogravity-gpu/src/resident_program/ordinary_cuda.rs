@@ -27,7 +27,7 @@ pub(super) mod body;
 mod cohort;
 mod cohort_values;
 mod cold;
-pub(crate) use cohort::OrdinaryCudaDecodeCohort;
+pub(crate) use cohort::OrdinaryCudaCohort;
 pub(crate) use cohort_values::OrdinaryCudaCohortValues;
 mod execute;
 mod geometry;

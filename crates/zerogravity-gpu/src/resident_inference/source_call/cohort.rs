@@ -99,9 +99,9 @@ impl SourceCallModel {
         ))
     }
 
-    /// Equal native full prompts. Prompt chunks/ragged prefixes remain on the
-    /// existing singleton path; this cohort shares projection work only.
-    pub async fn prepare_greedy_prefill_cohort_admitted(
+    /// Equal native prompt chunks at one committed frontier. Intermediate
+    /// chunks are state-only; the terminal chunk may produce greedy readout.
+    pub async fn prepare_prefill_cohort_admitted(
         self: &Arc<Self>,
         rows: &[(&SourceCallSession, &BoundSourceInvocation)],
     ) -> Result<SourceCallCohortPreparation> {
@@ -116,14 +116,15 @@ impl SourceCallModel {
             ));
         }
         let prompt_rows = rows[0].1.invocation().rows();
+        let emit_logits = rows[0].1.invocation().emit_logits();
         if !(1..=64).contains(&prompt_rows)
             || rows.iter().any(|(_, invocation)| {
-                !invocation.invocation().emit_logits()
+                invocation.invocation().emit_logits() != emit_logits
                     || invocation.invocation().rows() != prompt_rows
             })
         {
             return Err(Error::Unsupported(
-                "source CUDA prefill cohort requires equal full prompts".into(),
+                "source CUDA prefill cohort requires equal aligned chunks".into(),
             ));
         }
         let mut requests = Vec::with_capacity(rows.len());
@@ -141,7 +142,7 @@ impl SourceCallModel {
         }
         let Some(inner) = self
             .inner
-            .prepare_ordinary_source_prefill_cohort(&sessions, &requests, &scopes)
+            .prepare_ordinary_source_prefill_cohort(&sessions, &requests, &scopes, emit_logits)
             .await?
         else {
             return Ok(SourceCallCohortPreparation::Capacity);
@@ -158,6 +159,7 @@ impl ResidentModel {
         sessions: &[&ResidentSession],
         requests: &[ForwardPlan],
         scopes: &[Arc<ReaderScope>],
+        emit_logits: bool,
     ) -> Result<Option<PreparedResidentCohort>> {
         let width = sessions.len();
         if !matches!(width, 2 | 4 | 8) || requests.len() != width || scopes.len() != width {
@@ -189,19 +191,20 @@ impl ResidentModel {
             })
             .collect::<Result<Vec<_>>>()?;
         let prompt_rows = calls[0].rows().len();
+        let frontier = bases[0].frontier();
         if !(1..=64).contains(&prompt_rows)
             || calls.iter().zip(&bases).any(|(call, base)| {
                 call.mode() != SourceCallMode::Prefill
-                    || call.rows().base() != 0
+                    || call.rows().base() as u64 != frontier
                     || call.rows().len() != prompt_rows
-                    || base.frontier() != 0
+                    || base.frontier() != frontier
                     || call.source() != base.source()
                     || call.rows().capacity() != self.capacity
                     || call.rows().vocabulary() as u64 != self.vocab
             })
         {
             return Err(Error::Unsupported(
-                "ordinary source prefill cohort requires aligned full-prompt roots".into(),
+                "ordinary source prefill cohort requires aligned chunk roots".into(),
             ));
         }
 
@@ -216,13 +219,21 @@ impl ResidentModel {
             .state_bytes
             .checked_mul(width)
             .ok_or_else(|| Error::Limit("ordinary source prefill cohort staging bytes".into()))?;
-        let logits_bytes = (self.vocab as usize)
-            .checked_mul(width)
-            .and_then(|words| words.checked_mul(2))
-            .ok_or_else(|| Error::Limit("ordinary source prefill cohort logit bytes".into()))?;
-        let packet_bytes = width
-            .checked_mul(12)
-            .ok_or_else(|| Error::Limit("ordinary source prefill cohort packet bytes".into()))?;
+        let logits_bytes = if emit_logits {
+            (self.vocab as usize)
+                .checked_mul(width)
+                .and_then(|words| words.checked_mul(2))
+                .ok_or_else(|| Error::Limit("ordinary source prefill cohort logit bytes".into()))?
+        } else {
+            0
+        };
+        let packet_bytes = if emit_logits {
+            width
+                .checked_mul(12)
+                .ok_or_else(|| Error::Limit("ordinary source prefill cohort packet bytes".into()))?
+        } else {
+            0
+        };
         let allocation = self.allocation.lock().await;
         let remaining = self.service.remaining_capacity()?;
         if logits_bytes
@@ -250,14 +261,23 @@ impl ResidentModel {
         let bindings = sessions
             .iter()
             .zip(&candidates)
-            .map(|(session, candidate)| bind_domains(&session.domains, candidate, 0))
+            .map(|(session, candidate)| {
+                bind_domains(&session.domains, candidate, frontier as usize)
+            })
             .collect::<Result<Vec<_>>>()?;
-        let logits = self
-            .service
-            .allocate_uninitialized(logits_bytes, BufferRole::Output)?;
-        let packets = (0..width)
-            .map(|_| self.service.allocate_uninitialized(12, BufferRole::Output))
-            .collect::<Result<Vec<_>>>()?;
+        let logits = emit_logits
+            .then(|| {
+                self.service
+                    .allocate_uninitialized(logits_bytes, BufferRole::Output)
+            })
+            .transpose()?;
+        let packets = if emit_logits {
+            (0..width)
+                .map(|_| self.service.allocate_uninitialized(12, BufferRole::Output))
+                .collect::<Result<Vec<_>>>()?
+        } else {
+            Vec::new()
+        };
         let ticket = self.service.queue().submit(
             self.service.budget(),
             ResourceOwner {
@@ -292,23 +312,35 @@ impl ResidentModel {
             .ok_or_else(|| {
                 Error::State("ordinary source prefill cohort activation arena absent".into())
             })?;
-        let greedy = workspace.greedy.as_ref().ok_or_else(|| {
-            Error::Unsupported("ordinary CUDA model has no greedy workspace".into())
-        })?;
-        let mut accesses = workspace.logit_accesses.clone();
+        let greedy = if emit_logits {
+            Some(workspace.greedy.as_ref().ok_or_else(|| {
+                Error::Unsupported("ordinary CUDA model has no greedy workspace".into())
+            })?)
+        } else {
+            None
+        };
+        let mut accesses = if emit_logits {
+            workspace.logit_accesses.clone()
+        } else {
+            workspace.state_accesses.clone()
+        };
         accesses.extend(
             values
                 .leases()
                 .cloned()
                 .map(|lease| (lease, DeviceAccess::Write)),
         );
-        for handle in greedy {
-            accesses.push((
-                lease_for(&workspace.leases, handle)?.clone(),
-                DeviceAccess::Write,
-            ));
+        if let Some(greedy) = greedy {
+            for handle in greedy {
+                accesses.push((
+                    lease_for(&workspace.leases, handle)?.clone(),
+                    DeviceAccess::Write,
+                ));
+            }
         }
-        accesses.push((logits.clone(), DeviceAccess::Write));
+        if let Some(logits) = &logits {
+            accesses.push((logits.clone(), DeviceAccess::Write));
+        }
         accesses.extend(
             packets
                 .iter()
@@ -378,66 +410,90 @@ impl ResidentModel {
             }
         }
 
-        let row_bytes = self.vocab as usize * 2;
-        for (row, packet) in packets.iter().enumerate() {
-            let start = row * row_bytes;
-            let view = submitted
-                .logits
-                .handle()
-                .offset_start(start as u64)
-                .offset_end((logits_bytes - start - row_bytes) as u64);
-            submitted.dispatches += crate::resident_greedy::launch_bf16_numeric_zero(
-                self.service.client(),
-                &view,
-                self.vocab as usize,
-                &greedy[0],
-                &greedy[1],
-                &packet.handle(),
-                &submitted.status,
-            )?;
+        if submitted.logits.is_some() != emit_logits {
+            return Err(Error::State(
+                "ordinary source prefill cohort output policy differs".into(),
+            ));
         }
-        let reads = packets
-            .iter()
-            .map(|packet| packet.readback(0, 12))
-            .collect::<Result<Vec<_>>>()?;
+        let row_bytes = self.vocab as usize * 2;
+        if emit_logits {
+            let logits = submitted.logits.as_ref().ok_or_else(|| {
+                Error::State("ordinary source prefill cohort logits absent".into())
+            })?;
+            let greedy = greedy.ok_or_else(|| {
+                Error::State("ordinary source prefill cohort greedy workspace absent".into())
+            })?;
+            for (row, packet) in packets.iter().enumerate() {
+                let start = row * row_bytes;
+                let view = logits
+                    .handle()
+                    .offset_start(start as u64)
+                    .offset_end((logits_bytes - start - row_bytes) as u64);
+                submitted.dispatches += crate::resident_greedy::launch_bf16_numeric_zero(
+                    self.service.client(),
+                    &view,
+                    self.vocab as usize,
+                    &greedy[0],
+                    &greedy[1],
+                    &packet.handle(),
+                    &submitted.status,
+                )?;
+            }
+        }
+        let reads = if emit_logits {
+            packets
+                .iter()
+                .map(|packet| packet.readback(0, 12))
+                .collect::<Result<Vec<_>>>()?
+        } else {
+            vec![lease_for(&workspace.leases, &submitted.status)?.readback(0, 4)?]
+        };
         let outputs = bases
             .iter()
             .copied()
             .zip(&candidates)
-            .zip(&packets)
-            .map(|((base, candidate), packet)| {
+            .enumerate()
+            .map(|(row, (base, candidate))| {
                 let mut leases = candidate
                     .iter()
                     .flat_map(|domain| domain.leases.iter().cloned())
                     .collect::<Vec<_>>();
-                leases.push(packet.clone());
+                if let Some(packet) = packets.get(row) {
+                    leases.push(packet.clone());
+                }
                 (base, leases)
             })
             .collect::<Vec<_>>();
         let (ready, read) = flight
             .complete_cohort_with_readback(&outputs, &reads, |values| {
-                if values.len() != width {
+                if emit_logits {
+                    if values.len() != width {
+                        return Err(Error::State(
+                            "ordinary source prefill cohort packet coverage".into(),
+                        ));
+                    }
+                    for packet in values {
+                        if packet.len() != 12 {
+                            return Err(Error::State(
+                                "ordinary source prefill cohort packet extent".into(),
+                            ));
+                        }
+                        let id = u32::from_ne_bytes(packet[0..4].try_into().unwrap());
+                        let bits = u32::from_ne_bytes(packet[4..8].try_into().unwrap());
+                        let flags = u32::from_ne_bytes(packet[8..12].try_into().unwrap());
+                        if u64::from(id) >= self.vocab
+                            || !f32::from_bits(bits).is_finite()
+                            || flags != 0
+                        {
+                            return Err(Error::State(
+                                "ordinary source prefill cohort invalid greedy packet".into(),
+                            ));
+                        }
+                    }
+                } else if values.len() != 1 || !all_zero(&values[0]) {
                     return Err(Error::State(
-                        "ordinary source prefill cohort packet coverage".into(),
+                        "ordinary source prefill cohort state-only status refused".into(),
                     ));
-                }
-                for packet in values {
-                    if packet.len() != 12 {
-                        return Err(Error::State(
-                            "ordinary source prefill cohort packet extent".into(),
-                        ));
-                    }
-                    let id = u32::from_ne_bytes(packet[0..4].try_into().unwrap());
-                    let bits = u32::from_ne_bytes(packet[4..8].try_into().unwrap());
-                    let flags = u32::from_ne_bytes(packet[8..12].try_into().unwrap());
-                    if u64::from(id) >= self.vocab
-                        || !f32::from_bits(bits).is_finite()
-                        || flags != 0
-                    {
-                        return Err(Error::State(
-                            "ordinary source prefill cohort invalid greedy packet".into(),
-                        ));
-                    }
                 }
                 Ok(())
             })
@@ -446,32 +502,51 @@ impl ResidentModel {
 
         let dispatches = submitted.dispatches;
         let fused_dispatches = submitted.fused_dispatches;
+        let mut packets = packets.into_iter();
         let mut prepared = Vec::with_capacity(width);
-        for (row, (((attempt, domains), ready), packet)) in attempts
-            .into_iter()
-            .zip(candidates)
-            .zip(ready)
-            .zip(packets)
-            .enumerate()
+        for (row, ((attempt, domains), ready)) in
+            attempts.into_iter().zip(candidates).zip(ready).enumerate()
         {
+            let device_token = if emit_logits {
+                let packet = packets.next().ok_or_else(|| {
+                    Error::State("ordinary source prefill cohort packet missing".into())
+                })?;
+                Some(ResidentToken {
+                    lease: packet,
+                    producer: None,
+                    id: u32::from_ne_bytes(read[row][0..4].try_into().unwrap()),
+                    max_bits: u32::from_ne_bytes(read[row][4..8].try_into().unwrap()),
+                })
+            } else {
+                None
+            };
             prepared.push(PreparedInference {
                 attempt,
                 domains,
                 ready,
                 readback: InferenceReadback {
                     dispatches: if row == 0 { dispatches } else { 0 },
-                    bytes: 12,
-                    chunk_bytes: 12,
-                    logit_steps: 1,
-                    device_token: Some(ResidentToken {
-                        lease: packet,
-                        producer: None,
-                        id: u32::from_ne_bytes(read[row][0..4].try_into().unwrap()),
-                        max_bits: u32::from_ne_bytes(read[row][4..8].try_into().unwrap()),
-                    }),
+                    bytes: if emit_logits {
+                        12
+                    } else {
+                        usize::from(row == 0) * 4
+                    },
+                    chunk_bytes: if emit_logits {
+                        12
+                    } else {
+                        usize::from(row == 0) * 4
+                    },
+                    state_only_steps: usize::from(!emit_logits),
+                    logit_steps: usize::from(emit_logits),
+                    device_token,
                     ..Default::default()
                 },
             });
+        }
+        if packets.next().is_some() {
+            return Err(Error::State(
+                "ordinary source prefill cohort packet surplus".into(),
+            ));
         }
         Ok(Some(PreparedResidentCohort {
             model: Arc::clone(self),
@@ -683,10 +758,13 @@ impl ResidentModel {
             }
         }
         let row_bytes = self.vocab as usize * 2;
+        let submitted_logits = submitted
+            .logits
+            .as_ref()
+            .ok_or_else(|| Error::State("ordinary source decode cohort logits absent".into()))?;
         for (row, packet) in packets.iter().enumerate() {
             let start = row * row_bytes;
-            let view = submitted
-                .logits
+            let view = submitted_logits
                 .handle()
                 .offset_start(start as u64)
                 .offset_end((logits_bytes - start - row_bytes) as u64);

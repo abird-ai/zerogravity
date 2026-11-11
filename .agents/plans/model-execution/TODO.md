@@ -82,10 +82,10 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   R10 audit is complete and mixed; R11 remains staged/unlaunched. Review its older
   binary/budget before any fresh successor. Both context captures remain interrupted;
   the waived12GiB host-available threshold is not a current blocker.
-- [ ] Continue genuine shared inter-session batching beyond current aligned B8
-  decode/full-prompt cohorts. Equal full prompts up to64 rows share projection GEMMs;
-  B8 decode reuses the qualified stateful B4 kernels as two private-root groups.
-  Ragged/chunked prefill and wider/dynamic cohorts remain open.
+- [ ] Continue genuine shared inter-session batching beyond current B8 decode/chunked
+  prefill cohorts. Aligned prompt chunks up to the model's admitted chunk size share
+  projection GEMMs while retaining private roots; B8 decode reuses the qualified B4
+  stateful kernels as two groups. Wider/dynamic cohort ceilings remain open.
 - [ ] Optimize measured CUDA2B/HIP hot paths and run controlled comparisons after
   relevant correctness. Existing short eager/direct-API rates are not general
   HTTP/context/graph performance or proof of vLLM superiority.
@@ -199,15 +199,23 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   returned the same `"<think>"` as sequential on0.8B/2B; quick non-LTO paired warm
   waves:0.8B144.8vs203.2ms and182.3vs330.9ms across two runs,2B186.2vs230.5ms.
   Four distinct equal-length prompts also matched sequential 16-token continuations.
-  Only equal full prompts<=64 are admitted; ragged/chunked prefill remains open.
+  This initial checkpoint covered equal full prompts<=64; generalized chunking is below.
 - [x] B8 extends the same aligned decode/full-prompt path without inventing B8 state
   math: stateless projections and the exact lane-strided output head widen to8 rows,
   while GDN and full-attention run as two qualified B4 subcohorts over distinct roots.
   Quick non-LTO eight-request47+3 feedback is exact `[248068,198,90700]`:0.8B
   76.77 tok/s vs native4 71.90/vLLM-C8 72.20;2B62.59 vs native4 58.22/vLLM-C8
   73.70. Eight equal-length one-token-different prompts matched native4 lane-for-lane
-  through16-token continuations. Activation/admission supports only4|8; wider/ragged
-  dynamic batching remains open.
+  through16-token continuations. Activation/admission supports only4|8; wider dynamic
+  cohort ceilings remain open.
+- [x] Chunked/ragged CUDA prefill keeps intermediate native chunks state-only and emits
+  compact greedy readout only on each prompt's terminal tail. Scheduler bands are
+  compatibility-aware (same frontier/chunk geometry), so unequal tails regroup/fall back
+  without padding or root aliasing; shared wave admission uses each model's context rather
+  than a hardcoded512-token frontier. Quick non-LTO153-token x8 A/B stayed exact:0.8B
+  777.87ms native8 vs961.53ms sequential (~19.1% faster);2B808.91ms vs1204.58ms
+  (~32.8% faster). Ragged140/140/155/155/170/170/185/185-token prompts matched
+  sequential lane-for-lane. No new numerical tolerance or permanent fixture.
 - [x] Partial offered populations now regroup through a shared B2 subcohort instead
   of failing when an admitted B8/B4 wave leaves two aligned rows. B2 shares only
   stateless projection work; stateful GDN/KV/attention stay on the existing private

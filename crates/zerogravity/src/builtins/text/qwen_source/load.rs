@@ -182,7 +182,7 @@ pub(crate) fn load_router(
                         } else {
                             &[4, 2, 1]
                         },
-                        split_prefix: false,
+                        split_prefix: true,
                         retry: RetryOrder::Regroup,
                     },
                 })

@@ -24,11 +24,13 @@ struct Control {
     next: AtomicUsize,
     live: AtomicUsize,
     actions: Mutex<VecDeque<Action>>,
+    state_only: Mutex<Vec<bool>>,
     log: Log,
 }
 struct Model {
     source: SourceIdentity,
     control: Arc<Control>,
+    prefill_chunk: usize,
 }
 struct Tokenizer;
 impl TextTokenizer for Tokenizer {
@@ -124,8 +126,8 @@ impl Executor for StatusOnly {
             (),
         ))
     }
-    fn prefill(_: &Self::Model) -> Prefill {
-        Prefill::Chunks(1)
+    fn prefill(model: &Self::Model) -> Prefill {
+        Prefill::Chunks(model.prefill_chunk)
     }
     fn group(model: &Self::Model) -> usize {
         model.control.group
@@ -155,6 +157,7 @@ impl Executor for StatusOnly {
         work: CohortWork,
     ) -> Result<Preparation<Ticket>, ServiceError> {
         let control = rows[0].state.control.clone();
+        control.state_only.lock().unwrap().push(work.state_only);
         assert_eq!(
             control.live.load(Ordering::Acquire),
             0,
@@ -255,13 +258,26 @@ impl Rig {
         policy: WavePolicy,
         log: &Log,
     ) -> VecDeque<Active<StatusOnly>> {
+        self.rows_with_prefill(group, count, actions, policy, log, 1)
+    }
+    fn rows_with_prefill(
+        &mut self,
+        group: usize,
+        count: usize,
+        actions: Vec<Action>,
+        policy: WavePolicy,
+        log: &Log,
+        prefill_chunk: usize,
+    ) -> VecDeque<Active<StatusOnly>> {
         let model = Arc::new(Model {
             source: SourceIdentity::for_new_allocation().unwrap(),
+            prefill_chunk,
             control: Arc::new(Control {
                 group,
                 next: AtomicUsize::new(0),
                 live: AtomicUsize::new(0),
                 actions: Mutex::new(actions.into()),
+                state_only: Mutex::new(Vec::new()),
                 log: log.clone(),
             }),
         });
@@ -603,6 +619,32 @@ fn non_fused_prompt_tails_still_enter_one_complete_cohort() {
     assert_eq!(operations(&log), ["prepare:1:3"]);
     rig.close();
 }
+
+#[test]
+fn chunked_prefill_split_marks_only_nonterminal_chunks_state_only() {
+    let mut rig = Rig::new();
+    let log = Arc::default();
+    let mut policy = policy(2, RetryOrder::Regroup);
+    policy.unequal_prefill = false;
+
+    // The fixture prompt has two tokens. With a two-token chunk this is the
+    // terminal prefill span and must request readout, not state-only output.
+    let mut terminal = rig.rows_with_prefill(1, 2, vec![Action::Fatal], policy, &log, 2);
+    let terminal_control = terminal[0].state.control.clone();
+    turn(&mut terminal, &rig, policy);
+    assert!(terminal.is_empty());
+    assert_eq!(*terminal_control.state_only.lock().unwrap(), [false]);
+
+    // With one-token chunks the same prompt has another prefill span pending,
+    // so the first cohort is correctly state-only.
+    let mut prefix = rig.rows_with_prefill(2, 2, vec![Action::Fatal], policy, &log, 1);
+    let prefix_control = prefix[0].state.control.clone();
+    turn(&mut prefix, &rig, policy);
+    assert!(prefix.is_empty());
+    assert_eq!(*prefix_control.state_only.lock().unwrap(), [true]);
+    rig.close();
+}
+
 #[test]
 fn malformed_discard_cannot_recurse_without_removing_a_member() {
     let mut rig = Rig::new();

@@ -601,12 +601,21 @@ impl Router {
             }
         }
         if let WorkPolicy::Waves(policy) = config.policy {
+            let max_wave_tokens =
+                config
+                    .context
+                    .checked_mul(policy.max_members)
+                    .ok_or_else(|| {
+                        ServiceError::new(400, "invalid_config", "wave token budget overflow")
+                    })?;
             if config.workers != 1
                 || policy.max_members == 0
                 || policy.max_members > config.active
-                || !(1..=512).contains(&policy.max_tokens)
+                || policy.max_tokens == 0
+                || policy.max_tokens > max_wave_tokens
                 || !(1..=512 * 1024 * 1024).contains(&policy.max_scratch)
-                || !(1..=512).contains(&policy.prefill_quantum)
+                || policy.prefill_quantum == 0
+                || policy.prefill_quantum > config.context
             {
                 return Err(ServiceError::new(
                     400,

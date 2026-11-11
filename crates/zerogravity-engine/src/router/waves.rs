@@ -16,6 +16,9 @@ pub struct Ready {
     pub source: usize,
     pub phase: Phase,
     pub frontier: usize,
+    /// Exact configured context bound for this row. Wave formation owns no
+    /// model-specific context constant and never widens this admission.
+    pub capacity: usize,
     pub tokens: usize,
     pub scratch_bytes: usize,
 }
@@ -113,20 +116,16 @@ pub fn form_with_prefill_quantum(
     bounds: Limits,
     prefill_quantum: usize,
 ) -> Result<Vec<Wave>, ServiceError> {
-    if !(1..=512).contains(&prefill_quantum)
+    if prefill_quantum == 0
         || slots.len() > 64
-        || slots.iter().any(|row| {
-            row.phase == Phase::Prefill
-                && row
-                    .frontier
-                    .checked_add(row.tokens)
-                    .is_none_or(|end| end > 512)
-        })
+        || slots
+            .iter()
+            .any(|row| row.capacity == 0 || prefill_quantum > row.capacity)
     {
         return Err(ServiceError::new(
             400,
             "invalid_wave",
-            "atomic prefill quantum/span exceeds bounded context",
+            "atomic prefill quantum exceeds admitted row context",
         ));
     }
     form_with_frontiers(slots, bounds, false, false, prefill_quantum)
@@ -180,7 +179,6 @@ pub(crate) fn form_with_frontiers(
         || bounds.max_members == 0
         || bounds.max_members > 64
         || bounds.max_tokens == 0
-        || bounds.max_tokens > 512
         || bounds.max_scratch == 0
         || bounds.max_scratch > 512 * 1024 * 1024
     {
@@ -193,10 +191,11 @@ pub(crate) fn form_with_frontiers(
     let mut waves = Vec::<Wave>::new();
     let mut heads = Vec::<(usize, Phase, Option<usize>)>::new();
     for (index, ready) in slots.iter().enumerate() {
-        if ready
-            .frontier
-            .checked_add(ready.tokens)
-            .is_none_or(|end| end > 512)
+        if ready.capacity == 0
+            || ready
+                .frontier
+                .checked_add(ready.tokens)
+                .is_none_or(|end| end > ready.capacity)
             || ready.tokens == 0
             || ready.tokens > prefill_quantum
             || ready.scratch_bytes == 0
@@ -412,6 +411,7 @@ mod tests {
             source,
             phase,
             frontier,
+            capacity: 512,
             tokens,
             scratch_bytes: 1024,
         }
@@ -654,7 +654,7 @@ mod tests {
     }
 
     #[test]
-    fn every_phase_refuses_to_schedule_past_the_512_token_context() {
+    fn every_phase_respects_each_rows_admitted_context() {
         for phase in [Phase::Prefill, Phase::Decode] {
             let last = r(1, phase, 511, 1);
             assert!(form_native(&[last], atomic_bounds(64)).is_ok());
@@ -667,6 +667,21 @@ mod tests {
         let invalid_decode = [r(1, Phase::Decode, 512, 1)];
         assert!(form(&invalid_decode, atomic_bounds(64)).is_err());
         assert!(form_decode(&invalid_decode, atomic_bounds(64)).is_err());
+
+        let long = Ready {
+            source: 1,
+            phase: Phase::Prefill,
+            frontier: 16_384,
+            capacity: 32_768,
+            tokens: 64,
+            scratch_bytes: 1024,
+        };
+        assert!(form_with_prefill_quantum(&[long], atomic_bounds(64), 64).is_ok());
+        let exhausted = Ready {
+            frontier: 32_705,
+            ..long
+        };
+        assert!(form_with_prefill_quantum(&[exhausted], atomic_bounds(64), 64).is_err());
     }
 
     #[test]
@@ -717,6 +732,7 @@ mod qwen35_cuda_atomic_tests {
             source: 3,
             phase: Phase::Prefill,
             frontier: 0,
+            capacity: 512,
             tokens,
             scratch_bytes: 32 * 1024 * 1024,
         });
@@ -736,6 +752,7 @@ mod qwen35_cuda_atomic_tests {
                 source: 3,
                 phase: Phase::Decode,
                 frontier: 72,
+                capacity: 512,
                 tokens: 1,
                 scratch_bytes: 32 * 1024 * 1024,
             },
@@ -743,6 +760,7 @@ mod qwen35_cuda_atomic_tests {
                 source: 4,
                 phase: Phase::Decode,
                 frontier: 72,
+                capacity: 512,
                 tokens: 1,
                 scratch_bytes: 32 * 1024 * 1024,
             },
@@ -750,6 +768,7 @@ mod qwen35_cuda_atomic_tests {
                 source: 3,
                 phase: Phase::Decode,
                 frontier: 73,
+                capacity: 512,
                 tokens: 1,
                 scratch_bytes: 32 * 1024 * 1024,
             },

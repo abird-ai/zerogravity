@@ -51,6 +51,7 @@ pub struct Active<A: Executor> {
     pub blocked_since: Option<Instant>,
     pub token_commit_observed_at: Option<Instant>,
     pub token_observation: Option<GpuTokenObservation>,
+    context: usize,
     policy: WorkPolicy,
     _active: ActiveCharge,
     _prompt_charge: Option<ServingCharge>,
@@ -129,6 +130,7 @@ impl<A: Executor> Active<A> {
             blocked_since: None,
             token_commit_observed_at: None,
             token_observation: None,
+            context: config.context,
             policy: config.policy,
             _active: active,
             _prompt_charge: prompt_charge,
@@ -144,6 +146,11 @@ impl<A: Executor> Active<A> {
             Prefill::Atomic => remaining,
         }
     }
+    /// Whether the current admitted prefill span is followed by another
+    /// prefill span. This is scheduler semantics, independent of model/backend.
+    pub fn prefill_has_successor(&self) -> bool {
+        self.prompt.len().saturating_sub(self.cursor) > self.prefill_count()
+    }
     pub fn ready(&self) -> Ready {
         Ready {
             source: A::group(&self.model),
@@ -153,6 +160,7 @@ impl<A: Executor> Active<A> {
                 Phase::Decode
             },
             frontier: A::frontier(&self.state),
+            capacity: self.context,
             tokens: if self.cursor < self.prompt.len() {
                 self.prefill_count()
             } else {

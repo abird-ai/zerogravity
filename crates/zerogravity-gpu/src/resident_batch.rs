@@ -13,7 +13,6 @@ use zerogravity_core::{Error, Result};
 
 const MAX_ROWS: usize = 8;
 const MAX_ELEMENTS: usize = 1_048_576;
-const MAX_PREFIX: u64 = 512;
 
 /// Immutable logical rows in one proposed native GPU operator batch.
 #[derive(Clone, Debug)]
@@ -56,11 +55,6 @@ impl ResidentBatchRows {
         }
         let mut seen = BTreeSet::new();
         for binding in bindings {
-            if binding.frontier() >= MAX_PREFIX {
-                return Err(Error::Limit(
-                    "resident batch model context exhausted".into(),
-                ));
-            }
             if binding.source() != source || !seen.insert(binding.session().get()) {
                 return Err(Error::State(
                     "resident batch has foreign source or duplicate session".into(),
@@ -218,7 +212,7 @@ mod tests {
         assert_eq!(other.binding().root(), 0);
     }
     #[test]
-    fn differing_frontiers_preserve_exact_roots_and_exhausted_capacity_refuses() {
+    fn differing_and_large_frontiers_remain_model_agnostic() {
         let id = source();
         let a = SessionAuthority::new(id).unwrap();
         let mut b = SessionAuthority::new(id).unwrap();
@@ -231,10 +225,13 @@ mod tests {
         rows.require_current(&original).unwrap();
         assert!(rows.require_current(&[original[1], original[0]]).is_err());
         let mut c = SessionAuthority::new(id).unwrap();
-        let advance = c.begin_advance(512).unwrap();
+        let advance = c.begin_advance(32_768).unwrap();
         c.prepare_publish(advance).unwrap().commit();
-        assert!(ResidentBatchRows::new(&[c.binding()], 32).is_err());
-        assert!(ResidentBatchRows::new(&[a.binding(), c.binding()], 32).is_err());
+        let large = ResidentBatchRows::new(&[c.binding()], 32).unwrap();
+        assert_eq!(large.frontier(), Some(32_768));
+        let mixed = ResidentBatchRows::new(&[a.binding(), c.binding()], 32).unwrap();
+        assert_eq!(mixed.frontier(), None);
+        assert_eq!(mixed.frontiers().collect::<Vec<_>>(), [0, 32_768]);
     }
 
     #[test]

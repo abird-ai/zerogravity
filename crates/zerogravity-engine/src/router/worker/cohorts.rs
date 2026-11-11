@@ -56,30 +56,11 @@ pub(super) fn advance<A: Executor>(
             split_prefix: false,
             ..
         } => {
-            let mut groups: Vec<Vec<Active<A>>> = Vec::new();
-            for row in rows
+            let eligible = rows
                 .into_iter()
                 .filter_map(|r| eligible(r, active, stats))
-                .collect::<Vec<_>>()
-            {
-                if !A::cohort_eligible(&row) {
-                    advance_single(row, active, stats);
-                    continue;
-                }
-                if let Some(group) = groups.iter_mut().find(|g| A::compatible(&g[0], &row)) {
-                    group.push(row);
-                } else {
-                    groups.push(vec![row]);
-                }
-            }
-            for group in groups {
-                let phase = if group[0].cursor < group[0].prompt.len() {
-                    Phase::Prefill
-                } else {
-                    Phase::Decode
-                };
-                bands(group, active, stats, policy, phase, ceiling, false);
-            }
+                .collect::<Vec<_>>();
+            compatible_bands(eligible, active, stats, policy, ceiling, false);
         }
     }
 }
@@ -127,11 +108,43 @@ fn regroup<A: Executor>(
     {
         let (prefix, tail) = eligible
             .into_iter()
-            .partition(|r: &Active<A>| r.prompt.len().saturating_sub(r.cursor) > 1);
-        bands(prefix, active, stats, policy, phase, ceiling, true);
-        bands(tail, active, stats, policy, phase, ceiling, false);
+            .partition(|r: &Active<A>| r.prefill_has_successor());
+        compatible_bands(prefix, active, stats, policy, ceiling, true);
+        compatible_bands(tail, active, stats, policy, ceiling, false);
     } else {
         bands(eligible, active, stats, policy, phase, ceiling, false);
+    }
+}
+fn compatible_bands<A: Executor>(
+    rows: Vec<Active<A>>,
+    active: &mut VecDeque<Active<A>>,
+    stats: &WorkStats,
+    policy: Cohorts,
+    ceiling: usize,
+    state_only: bool,
+) {
+    let mut groups: Vec<Vec<Active<A>>> = Vec::new();
+    for row in rows {
+        if !A::cohort_eligible(&row) {
+            advance_single(row, active, stats);
+            continue;
+        }
+        if let Some(group) = groups
+            .iter_mut()
+            .find(|group| A::compatible(&group[0], &row))
+        {
+            group.push(row);
+        } else {
+            groups.push(vec![row]);
+        }
+    }
+    for group in groups {
+        let phase = if group[0].cursor < group[0].prompt.len() {
+            Phase::Prefill
+        } else {
+            Phase::Decode
+        };
+        bands(group, active, stats, policy, phase, ceiling, state_only);
     }
 }
 fn bands<A: Executor>(

@@ -29,8 +29,8 @@ use zerogravity_core::{
     device_events::DeviceAccess,
 };
 
-pub(crate) struct OrdinaryCudaDecodeCohort {
-    pub(crate) logits: ResidentLease,
+pub(crate) struct OrdinaryCudaCohort {
+    pub(crate) logits: Option<ResidentLease>,
     pub(crate) status: Handle,
     pub(crate) proposals: Vec<Vec<(StateVersion, StateBuffers)>>,
     pub(crate) dispatches: usize,
@@ -516,9 +516,9 @@ impl OrdinaryCudaBody {
         flight: &mut PhysicalSubmission<'_>,
         requests: &[ForwardPlan],
         states: &[Vec<StateBinding>],
-        logits: ResidentLease,
+        logits: Option<ResidentLease>,
         values: &super::OrdinaryCudaCohortValues,
-    ) -> Result<OrdinaryCudaDecodeCohort> {
+    ) -> Result<OrdinaryCudaCohort> {
         let lanes = requests.len();
         if !matches!(lanes, 2 | 4 | 8) || states.len() != lanes || values.width() < lanes {
             return Err(Error::Unsupported(
@@ -532,7 +532,6 @@ impl OrdinaryCudaBody {
         let first = calls[0];
         let lane_rows = first.rows().len();
         if first.mode() != SourceCallMode::Prefill
-            || first.rows().base() != 0
             || !(1..=64).contains(&lane_rows)
             || calls.iter().any(|call| {
                 call.mode() != SourceCallMode::Prefill
@@ -544,7 +543,7 @@ impl OrdinaryCudaBody {
             })
         {
             return Err(Error::Unsupported(
-                "ordinary CUDA prefill cohort requires aligned full prompts".into(),
+                "ordinary CUDA prefill cohort requires aligned prompt chunks".into(),
             ));
         }
         let state_maps = calls
@@ -552,12 +551,19 @@ impl OrdinaryCudaBody {
             .zip(states)
             .map(|(call, state)| self.validate_states(call, state))
             .collect::<Result<Vec<_>>>()?;
+        let output = if logits.is_some() {
+            crate::resident_program::ResidentOutput::Logits
+        } else {
+            crate::resident_program::ResidentOutput::StateOnly
+        };
         flight.require_accesses(
-            self.accesses(crate::resident_program::ResidentOutput::Logits)
+            self.accesses(output)
                 .iter()
                 .map(|(lease, access)| (lease, *access)),
         )?;
-        flight.require_accesses([(&logits, DeviceAccess::Write)])?;
+        if let Some(logits) = &logits {
+            flight.require_accesses([(logits, DeviceAccess::Write)])?;
+        }
         for lease in values.leases() {
             flight.require_accesses([(lease, DeviceAccess::Write)])?;
         }
@@ -576,15 +582,20 @@ impl OrdinaryCudaBody {
 
         let client = self.cold().service().client();
         self.clear_and_bind_call(client, first, false)?;
-        let lane_step = Step::new(lane_rows, 0, first.rows().capacity())?;
+        let lane_step = Step::new(lane_rows, first.rows().base(), first.rows().capacity())?;
         let cold = self.cold().plan();
         let mut dispatches = 0usize;
         let mut fused_dispatches = 0usize;
         let mut gate_alias = (0..lanes)
             .map(|_| BTreeMap::<u32, u32>::new())
             .collect::<Vec<_>>();
+        let nodes = if logits.is_some() {
+            cold.nodes()
+        } else {
+            cold.state_nodes()
+        };
 
-        for (node_index, node) in cold.nodes().iter().enumerate() {
+        for (node_index, node) in nodes.iter().enumerate() {
             let PlanOperation::SourceOperatorTemplate {
                 descriptor: template,
                 ..
@@ -653,13 +664,16 @@ impl OrdinaryCudaBody {
                         hidden,
                     )?;
                 }
+                let logits = logits.as_ref().ok_or_else(|| {
+                    Error::State("ordinary CUDA prefill head has no logits target".into())
+                })?;
                 let launched = projection
                     .enqueue_decode_rows(
                         lanes,
                         self.gemm(),
                         flight,
                         values.head_rows(),
-                        &logits,
+                        logits,
                         self.cold().status(),
                         self.cold().source_page(),
                     )
@@ -715,7 +729,7 @@ impl OrdinaryCudaBody {
                     .collect::<Result<Vec<_>>>()
             })
             .collect::<Result<Vec<_>>>()?;
-        Ok(OrdinaryCudaDecodeCohort {
+        Ok(OrdinaryCudaCohort {
             logits,
             status: self.cold().status().handle(),
             proposals,
@@ -732,7 +746,7 @@ impl OrdinaryCudaBody {
         requests: &[ForwardPlan],
         states: &[Vec<StateBinding>],
         logits: ResidentLease,
-    ) -> Result<OrdinaryCudaDecodeCohort> {
+    ) -> Result<OrdinaryCudaCohort> {
         if !matches!(requests.len(), 2 | 4 | 8) || states.len() != requests.len() {
             return Err(Error::Unsupported(
                 "ordinary CUDA decode cohort requires two, four or eight rows".into(),
@@ -1029,8 +1043,8 @@ impl OrdinaryCudaBody {
                     .collect::<Result<Vec<_>>>()
             })
             .collect::<Result<Vec<_>>>()?;
-        Ok(OrdinaryCudaDecodeCohort {
-            logits,
+        Ok(OrdinaryCudaCohort {
+            logits: Some(logits),
             status: self.cold().status().handle(),
             proposals,
             dispatches,

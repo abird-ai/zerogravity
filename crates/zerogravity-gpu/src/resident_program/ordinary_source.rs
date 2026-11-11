@@ -102,9 +102,9 @@ impl ResidentProgram {
         flight: &mut Flight<'_>,
         requests: &[ForwardPlan],
         states: &[Vec<StateBinding>],
-        logits: crate::resident_leases::ResidentLease,
+        logits: Option<crate::resident_leases::ResidentLease>,
         values: &super::ordinary_cuda::OrdinaryCudaCohortValues,
-    ) -> Result<super::ordinary_cuda::OrdinaryCudaDecodeCohort> {
+    ) -> Result<super::ordinary_cuda::OrdinaryCudaCohort> {
         match &self.body {
             ResidentProgramBody::OrdinaryCuda(body) => {
                 body.execute_prefill_cohort(flight, requests, states, logits, values)
@@ -123,7 +123,7 @@ impl ResidentProgram {
         requests: &[ForwardPlan],
         states: &[Vec<StateBinding>],
         logits: crate::resident_leases::ResidentLease,
-    ) -> Result<super::ordinary_cuda::OrdinaryCudaDecodeCohort> {
+    ) -> Result<super::ordinary_cuda::OrdinaryCudaCohort> {
         match &self.body {
             ResidentProgramBody::OrdinaryCuda(body) => {
                 body.execute_decode_cohort(flight, requests, states, logits)

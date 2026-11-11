@@ -91,8 +91,8 @@ impl Executor for SourceText {
             model.clone(),
         ))
     }
-    fn prefill(_: &Self::Model) -> Prefill {
-        Prefill::Chunks(64)
+    fn prefill(model: &Self::Model) -> Prefill {
+        Prefill::Chunks(model.source.plan.max_chunk_rows())
     }
     fn group(_: &Self::Model) -> usize {
         0
@@ -120,13 +120,17 @@ impl Executor for SourceText {
     #[cfg(feature = "qwen35-cuda")]
     fn cohort_eligible(row: &Active<Self>) -> bool {
         if row.cursor < row.prompt.len() {
-            row.cursor == 0
-                && row.prompt.len() <= 64
-                && row.prefill_count() == row.prompt.len()
+            let rows = row.prefill_count();
+            let frontier = row.state.session.binding().frontier() as usize;
+            rows != 0
+                && rows <= row.model.source.plan.max_chunk_rows()
                 && !row.packet_presented
                 && row.blocked_since.is_none()
                 && row.state.feedback.is_none()
-                && row.state.session.binding().frontier() == 0
+                && frontier == row.cursor
+                && frontier
+                    .checked_add(rows)
+                    .is_some_and(|end| end <= row.model.source.plan.context_capacity_tokens())
         } else {
             row.packet_presented
                 && row.blocked_since.is_none()
@@ -141,7 +145,7 @@ impl Executor for SourceText {
             && first.state.session.binding().frontier() == row.state.session.binding().frontier()
             && ((first.cursor < first.prompt.len()
                 && row.cursor < row.prompt.len()
-                && first.prompt.len() == row.prompt.len())
+                && first.prefill_count() == row.prefill_count())
                 || (first.cursor == first.prompt.len() && row.cursor == row.prompt.len()))
     }
     #[cfg(feature = "qwen35-cuda")]
@@ -150,17 +154,23 @@ impl Executor for SourceText {
             Phase::Prefill => rows.iter().all(|row| row.cursor < row.prompt.len()),
             Phase::Decode => rows.iter().all(|row| row.cursor == row.prompt.len()),
         };
-        if work.state_only
-            || !matches!(work.native_rows, 2 | 4 | 8)
+        let output_matches = match work.phase {
+            Phase::Prefill => rows
+                .iter()
+                .all(|row| work.state_only == row.prefill_has_successor()),
+            Phase::Decode => !work.state_only,
+        };
+        if !matches!(work.native_rows, 2 | 4 | 8)
             || rows.len() != work.native_rows
             || !phase_matches
+            || !output_matches
             || rows.iter().any(|row| !Self::cohort_eligible(row))
             || rows[1..].iter().any(|row| !Self::compatible(&rows[0], row))
         {
             return Err(ServiceError::new(
                 500,
                 "source_cohort",
-                "source CUDA cohort requires two/four/eight aligned full-prompt or cached-decode rows",
+                "source CUDA cohort requires aligned native prefill chunks or cached-decode rows",
             ));
         }
         Ok(())
@@ -172,13 +182,7 @@ impl Executor for SourceText {
     ) -> Result<Preparation<Self::Ready>, ServiceError> {
         Self::validate_cohort(rows, work)?;
         let tokens_per_row = match work.phase {
-            Phase::Prefill => rows[0]
-                .prompt
-                .len()
-                .checked_sub(rows[0].cursor)
-                .ok_or_else(|| {
-                    ServiceError::new(500, "source_cohort", "prefill cursor exceeds prompt")
-                })?,
+            Phase::Prefill => rows[0].prefill_count(),
             Phase::Decode => 1,
         };
         let model_tokens = tokens_per_row
@@ -193,11 +197,14 @@ impl Executor for SourceText {
                 let invocations = rows
                     .iter()
                     .map(|row| {
+                        let end = row.cursor.checked_add(row.prefill_count()).ok_or_else(|| {
+                            crate::Error::Limit("source cohort prefill cursor".into())
+                        })?;
                         row.model.source.plan.bind_invocation(
                             SourceCallMode::Prefill,
-                            0,
-                            Arc::from(row.prompt.as_slice()),
-                            true,
+                            Self::frontier(&row.state),
+                            Arc::from(&row.prompt[row.cursor..end]),
+                            !work.state_only,
                         )
                     })
                     .collect::<crate::Result<Vec<_>>>()
@@ -207,7 +214,7 @@ impl Executor for SourceText {
                     .zip(&invocations)
                     .map(|(row, invocation)| (&row.state.session, invocation.bound_invocation()))
                     .collect::<Vec<_>>();
-                match block_on(model.prepare_greedy_prefill_cohort_admitted(&inputs))
+                match block_on(model.prepare_prefill_cohort_admitted(&inputs))
                     .map_err(ServiceError::inference)?
                 {
                     SourceCallCohortPreparation::Capacity => return Ok(Preparation::Capacity),
@@ -262,7 +269,7 @@ impl Executor for SourceText {
                 native_projections: ready.fused_dispatches() as u64,
                 native_sampler: 0,
                 native_rows: if native { rows.len() } else { 0 },
-                state_only: false,
+                state_only: work.state_only,
             },
             ready,
             native,
@@ -276,13 +283,7 @@ impl Executor for SourceText {
     ) -> Result<Publication, ServiceError> {
         Self::validate_cohort(rows, work)?;
         let consumed = match work.phase {
-            Phase::Prefill => rows[0]
-                .prompt
-                .len()
-                .checked_sub(rows[0].cursor)
-                .ok_or_else(|| {
-                    ServiceError::new(500, "source_cohort", "prefill cursor exceeds prompt")
-                })?,
+            Phase::Prefill => rows[0].prefill_count(),
             Phase::Decode => 1,
         };
         let mut sessions = rows
@@ -305,6 +306,25 @@ impl Executor for SourceText {
             .iter_mut()
             .zip(receipts)
             .map(|(row, read)| {
+                if work.state_only {
+                    if read.state_only_steps != 1
+                        || read.logit_steps != 0
+                        || !read.logits.is_empty()
+                        || read.device_token.is_some()
+                    {
+                        return Err(ServiceError::new(
+                            500,
+                            "source_cohort_prefix_readout",
+                            "state-only source cohort produced a generated readout",
+                        ));
+                    }
+                    return Ok(Published {
+                        consumed,
+                        readout: false,
+                        observed_at: committed,
+                        observation: None,
+                    });
+                }
                 let token = read.device_token.clone().ok_or_else(|| {
                     ServiceError::new(
                         500,
