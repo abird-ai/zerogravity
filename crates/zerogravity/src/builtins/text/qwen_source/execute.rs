@@ -151,7 +151,7 @@ impl Executor for SourceText {
             Phase::Decode => rows.iter().all(|row| row.cursor == row.prompt.len()),
         };
         if work.state_only
-            || !matches!(work.native_rows, 4 | 8)
+            || !matches!(work.native_rows, 2 | 4 | 8)
             || rows.len() != work.native_rows
             || !phase_matches
             || rows.iter().any(|row| !Self::cohort_eligible(row))
@@ -160,7 +160,7 @@ impl Executor for SourceText {
             return Err(ServiceError::new(
                 500,
                 "source_cohort",
-                "source CUDA cohort requires four or eight aligned full-prompt or cached-decode rows",
+                "source CUDA cohort requires two/four/eight aligned full-prompt or cached-decode rows",
             ));
         }
         Ok(())
@@ -261,7 +261,7 @@ impl Executor for SourceText {
                 committed_roots: 0,
                 native_projections: ready.fused_dispatches() as u64,
                 native_sampler: 0,
-                native_rows: if native { 4 } else { 0 },
+                native_rows: if native { rows.len() } else { 0 },
                 state_only: false,
             },
             ready,

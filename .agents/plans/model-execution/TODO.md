@@ -208,6 +208,14 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   73.70. Eight equal-length one-token-different prompts matched native4 lane-for-lane
   through16-token continuations. Activation/admission supports only4|8; wider/ragged
   dynamic batching remains open.
+- [x] Partial offered populations now regroup through a shared B2 subcohort instead
+  of failing when an admitted B8/B4 wave leaves two aligned rows. B2 shares only
+  stateless projection work; stateful GDN/KV/attention stay on the existing private
+  singleton path, while B4/B8 retain their qualified stateful cohorts.2B47+3 quick
+  feedback stayed exact `[248068,198,90700]`: Count2 45.27 tok/s vs prior singleton
+  36.12, Count6 now completes at49.50 tok/s instead of the previous unsupported
+  refusal, and Count7 (4+2+1) completes at51.01 tok/s. Router/cohort unit gates,
+  CUDA-serving compile and strict Clippy pass. Native model admission remains4|8.
 - [x] Ordered large-K prefill GEMMs now use a64-row MMA tile only when rows>64 and
   K>=2048; smaller-K and all rounded/interleaved/lane reductions keep their existing
   kernels. The K/MMA accumulation order is unchanged; only independent physical rows

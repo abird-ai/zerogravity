@@ -54,7 +54,7 @@ impl OrdinaryCudaProjection {
         page: Option<&std::sync::Arc<crate::resident_leases::source_page::ResidentSourcePage>>,
     ) -> Result<usize> {
         let (lane_shape, input_offset) = self.operation(descriptor)?;
-        if !matches!(lanes, 4 | 8)
+        if !matches!(lanes, 2 | 4 | 8)
             || input_offset != 0
             || self.template.row_selection() != SourceRowSelection::AllActive
         {
@@ -520,9 +520,9 @@ impl OrdinaryCudaBody {
         values: &super::OrdinaryCudaCohortValues,
     ) -> Result<OrdinaryCudaDecodeCohort> {
         let lanes = requests.len();
-        if !matches!(lanes, 4 | 8) || states.len() != lanes || values.width() != lanes {
+        if !matches!(lanes, 2 | 4 | 8) || states.len() != lanes || values.width() < lanes {
             return Err(Error::Unsupported(
-                "ordinary CUDA prefill cohort requires four or eight private lanes".into(),
+                "ordinary CUDA prefill cohort requires two, four or eight private lanes".into(),
             ));
         }
         let calls = requests
@@ -733,9 +733,9 @@ impl OrdinaryCudaBody {
         states: &[Vec<StateBinding>],
         logits: ResidentLease,
     ) -> Result<OrdinaryCudaDecodeCohort> {
-        if !matches!(requests.len(), 4 | 8) || states.len() != requests.len() {
+        if !matches!(requests.len(), 2 | 4 | 8) || states.len() != requests.len() {
             return Err(Error::Unsupported(
-                "ordinary CUDA decode cohort requires four or eight rows".into(),
+                "ordinary CUDA decode cohort requires two, four or eight rows".into(),
             ));
         }
         let calls = requests
@@ -848,6 +848,7 @@ impl OrdinaryCudaBody {
             if stateful {
                 if let SourceOperatorKind::CausalConvSplit { domain, .. } = template.kind()
                     && self.cold().layout().groups().direct()
+                    && requests.len() >= 4
                 {
                     let bound = state_maps
                         .iter()
@@ -880,6 +881,7 @@ impl OrdinaryCudaBody {
                 }
                 if let SourceOperatorKind::GatedDelta { domain, .. } = template.kind()
                     && self.cold().layout().groups().direct()
+                    && requests.len() >= 4
                 {
                     let bound = state_maps
                         .iter()
@@ -913,7 +915,9 @@ impl OrdinaryCudaBody {
                     }
                     continue;
                 }
-                if let SourceOperatorKind::FlashAttention { domain, .. } = template.kind() {
+                if let SourceOperatorKind::FlashAttention { domain, .. } = template.kind()
+                    && requests.len() >= 4
+                {
                     let ([query], [output]) = (node.inputs.as_slice(), node.outputs.as_slice())
                     else {
                         return Err(Error::State(

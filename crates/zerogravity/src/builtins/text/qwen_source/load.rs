@@ -178,9 +178,9 @@ pub(crate) fn load_router(
                     native_rows: profile.native_rows,
                     cohorts: Cohorts::Native {
                         widths: if profile.native_rows == 8 {
-                            &[8, 4, 1]
+                            &[8, 4, 2, 1]
                         } else {
-                            &[4, 1]
+                            &[4, 2, 1]
                         },
                         split_prefix: false,
                         retry: RetryOrder::Regroup,

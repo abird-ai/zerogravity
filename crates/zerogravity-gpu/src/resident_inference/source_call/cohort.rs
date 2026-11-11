@@ -58,11 +58,13 @@ impl SourceCallModel {
         rows: &[(&SourceCallSession, &BoundSourceInvocation, &ResidentToken)],
     ) -> Result<SourceCallCohortPreparation> {
         if !matches!(self.native_rows, 4 | 8)
-            || rows.len() != self.native_rows
+            || !matches!(rows.len(), 2 | 4 | 8)
+            || rows.len() > self.native_rows
             || self.contract != SourceNumericalContract::ReferenceCudaSm86Bf16V1
         {
             return Err(Error::Unsupported(
-                "source CUDA decode cohort requires an admitted four- or eight-row model".into(),
+                "source CUDA decode cohort requires a qualified width under the admitted model"
+                    .into(),
             ));
         }
         let mut requests = Vec::with_capacity(rows.len());
@@ -104,11 +106,13 @@ impl SourceCallModel {
         rows: &[(&SourceCallSession, &BoundSourceInvocation)],
     ) -> Result<SourceCallCohortPreparation> {
         if !matches!(self.native_rows, 4 | 8)
-            || rows.len() != self.native_rows
+            || !matches!(rows.len(), 2 | 4 | 8)
+            || rows.len() > self.native_rows
             || self.contract != SourceNumericalContract::ReferenceCudaSm86Bf16V1
         {
             return Err(Error::Unsupported(
-                "source CUDA prefill cohort requires an admitted four- or eight-row model".into(),
+                "source CUDA prefill cohort requires a qualified width under the admitted model"
+                    .into(),
             ));
         }
         let prompt_rows = rows[0].1.invocation().rows();
@@ -156,9 +160,9 @@ impl ResidentModel {
         scopes: &[Arc<ReaderScope>],
     ) -> Result<Option<PreparedResidentCohort>> {
         let width = sessions.len();
-        if !matches!(width, 4 | 8) || requests.len() != width || scopes.len() != width {
+        if !matches!(width, 2 | 4 | 8) || requests.len() != width || scopes.len() != width {
             return Err(Error::Unsupported(
-                "ordinary source prefill cohort requires four or eight rows".into(),
+                "ordinary source prefill cohort requires two, four or eight rows".into(),
             ));
         }
         self.service.ensure_usable()?;
@@ -284,7 +288,7 @@ impl ResidentModel {
         let values = workspace
             .ordinary_cohort_values
             .as_ref()
-            .filter(|values| values.width() == width)
+            .filter(|values| values.width() >= width)
             .ok_or_else(|| {
                 Error::State("ordinary source prefill cohort activation arena absent".into())
             })?;
@@ -486,9 +490,9 @@ impl ResidentModel {
         scopes: &[Arc<ReaderScope>],
     ) -> Result<Option<PreparedResidentCohort>> {
         let width = sessions.len();
-        if !matches!(width, 4 | 8) || requests.len() != width || scopes.len() != width {
+        if !matches!(width, 2 | 4 | 8) || requests.len() != width || scopes.len() != width {
             return Err(Error::Unsupported(
-                "ordinary source decode cohort requires four or eight rows".into(),
+                "ordinary source decode cohort requires two, four or eight rows".into(),
             ));
         }
         self.service.ensure_usable()?;

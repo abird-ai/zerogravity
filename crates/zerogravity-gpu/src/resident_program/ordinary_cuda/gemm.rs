@@ -58,13 +58,9 @@ impl OrdinaryCudaGemm {
         crate::cuda::bf16_attention::Bf16CausalAttention::new(1, 0, 1, 8, 2, 256, 0.0625)?
             .prepare_code(service.pinned_cuda_queue()?)?;
         if matches!(native_rows, 4 | 8) {
-            if native_rows == 8 {
-                Bf16Gemm::with_reduction_certified(64, 8, 2048, Bf16GemmReduction::Ordered)?
-                    .prepare_code(service.pinned_cuda_queue()?)?;
-            }
             Bf16Gemm::with_reduction_certified(
                 64,
-                native_rows,
+                4,
                 32,
                 Bf16GemmReduction::LaneStrided {
                     lanes: 16,
@@ -73,6 +69,18 @@ impl OrdinaryCudaGemm {
             )?
             .prepare_code(service.pinned_cuda_queue()?)?;
             if native_rows == 8 {
+                Bf16Gemm::with_reduction_certified(64, 8, 2048, Bf16GemmReduction::Ordered)?
+                    .prepare_code(service.pinned_cuda_queue()?)?;
+                Bf16Gemm::with_reduction_certified(
+                    64,
+                    8,
+                    32,
+                    Bf16GemmReduction::LaneStrided {
+                        lanes: 16,
+                        terms: 512,
+                    },
+                )?
+                .prepare_code(service.pinned_cuda_queue()?)?;
                 Bf16Gemm::with_reduction_certified(
                     64,
                     8,
