@@ -52,6 +52,8 @@ impl OrdinaryCudaGemm {
                     .prepare_code(service.pinned_cuda_queue()?)?;
             }
         }
+        Bf16Gemm::with_reduction_certified(64, 65, 2048, Bf16GemmReduction::Ordered)?
+            .prepare_code(service.pinned_cuda_queue()?)?;
         // Shared attention code uses the same admitted compiler/context owner.
         crate::cuda::bf16_attention::Bf16CausalAttention::new(1, 0, 1, 8, 2, 256, 0.0625)?
             .prepare_code(service.pinned_cuda_queue()?)?;

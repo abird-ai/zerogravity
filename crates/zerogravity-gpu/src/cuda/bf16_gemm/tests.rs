@@ -30,6 +30,7 @@ fn geometry_checks_extents_and_tiles_without_case_whitelists() -> Result<()> {
         (65, 8, 17, [2, 1, 1]),
         (65, 9, 31, [2, 1, 1]),
         (128, 65, 33, [2, 3, 1]),
+        (128, 65, 2048, [2, 2, 1]),
         (248_320, 1, 1024, [3880, 1, 1]),
     ] {
         let gemm = Bf16Gemm::new(columns, rows, inner)?;

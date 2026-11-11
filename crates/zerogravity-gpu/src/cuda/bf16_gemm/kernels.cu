@@ -162,6 +162,7 @@ extern "C" __global__ __launch_bounds__(128) void NAME##_certified( \
 }
 GEMM_ENTRY(bf16_gemm_narrow, 8, 0)
 GEMM_ENTRY(bf16_gemm_wide, 32, 0)
+GEMM_ENTRY(bf16_gemm_ordered_rows64, 64, 0)
 GEMM_ENTRY(bf16_gemm_interleaved_narrow, 8, 1)
 GEMM_ENTRY(bf16_gemm_interleaved_wide, 32, 1)
 GEMM_ENTRY(bf16_gemm_segmented_narrow, 8, 2)

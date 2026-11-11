@@ -197,6 +197,13 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   73.70. Eight equal-length one-token-different prompts matched native4 lane-for-lane
   through16-token continuations. Activation/admission supports only4|8; wider/ragged
   dynamic batching remains open.
+- [x] Ordered large-K prefill GEMMs now use a64-row MMA tile only when rows>64 and
+  K>=2048; smaller-K and all rounded/interleaved/lane reductions keep their existing
+  kernels. The K/MMA accumulation order is unchanged; only independent physical rows
+  share a larger tile. Controlled same-HEAD/non-LTO B4 47+1 prefill A/B on `ccf441d`:
+  0.8B138.10->136.25ms and2B147.42->141.21ms, with the same public output. Geometry,
+  CUDA-serving compile and strict GPU Clippy pass. This is a shape capability, not a
+  Qwen-model selector; keep further row/K tuning measurement-driven.
 - [x] CUDA offered C1/4/8/16/32/64 sweep:0.8B native45.59/45.04/45.46/45.55/44.80/refused,
   vLLM36.94/60.85/72.20/87.79/91.22/95.56 output tok/s;2B native26.24/26.26/26.32/
   refused/refused/refused, vLLM34.88/60.55/73.70/87.17/90.55/88.01. All measured
