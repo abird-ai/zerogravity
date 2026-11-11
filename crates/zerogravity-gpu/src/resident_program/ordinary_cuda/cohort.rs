@@ -509,8 +509,10 @@ impl OrdinaryCudaBody {
         Ok((dispatches, 0))
     }
 
-    /// Aligned full-prompt cohort: private causal/stateful execution per lane,
-    /// with only row-independent projection GEMMs shared physically.
+    /// Aligned prompt-chunk cohort: private causal/stateful execution per lane,
+    /// with only row-independent projection GEMMs shared physically. A caller
+    /// may request state-only execution for an intermediate chunk by omitting
+    /// the logits target.
     pub(crate) async fn execute_prefill_cohort(
         &self,
         flight: &mut PhysicalSubmission<'_>,

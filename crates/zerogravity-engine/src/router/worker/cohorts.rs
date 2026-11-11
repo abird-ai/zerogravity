@@ -131,7 +131,7 @@ fn compatible_bands<A: Executor>(
         }
         if let Some(group) = groups
             .iter_mut()
-            .find(|group| A::compatible(&group[0], &row))
+            .find(|group| group.iter().all(|member| A::compatible(member, &row)))
         {
             group.push(row);
         } else {

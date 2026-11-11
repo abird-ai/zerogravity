@@ -1,4 +1,6 @@
-//! Genuine aligned cached-decode cohorts for the ordinary CUDA source path.
+//! Independent-session native cohorts for the ordinary CUDA source path.
+//! Prefill chunks may publish state only or terminal readout; decode retains
+//! each session's private committed root while sharing qualified physical work.
 use super::*;
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
 

@@ -160,6 +160,9 @@ pub trait Executor: Sized + Send + Sync + 'static {
     fn cohort_eligible(_row: &Active<Self>) -> bool {
         false
     }
+    /// Pairwise physical compatibility for native cohort formation. The
+    /// scheduler may compare a candidate with every already-admitted member;
+    /// implementations must not rely on one distinguished anchor row.
     fn compatible(_first: &Active<Self>, _row: &Active<Self>) -> bool {
         true
     }
