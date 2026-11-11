@@ -261,6 +261,14 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   Physical GEMM qualification passes the added N=8/K=64 case at aligned/+4B views
   with zero mismatches and clean retirement. Same-HEAD non-LTO2B47+16 stayed exact
   and improved155.36->158.08 tok/s (~1.75%). C1/B2/B4 and other reductions are unchanged.
+- [x] Rejected consolidating the four B4 canonical<->native GDN state-copy launches
+  into one grouped typed-transport launch in the ordinary CUDA hot path. The candidate
+  stayed lane-exact for the accepted2B B8 47+16 continuation, but a same-HEAD non-LTO
+  A/B regressed157.47->151.82 output tok/s (~3.6%). The production integration was
+  removed rather than retaining slower complexity. Keep the existing checked per-row
+  state transport and the already-qualified grouped transport primitives available for
+  other model/layout consumers; do not retry this exact launch consolidation without a
+  materially different transport/fusion architecture and measurement.
 - [x] Small CUDA populated-context qualification now covers0.8B/2B at1K and2K.
   Each cell starts from the accepted47-token prefill, advances by genuine64-token
   state-only chunks to the exact context frontier, emits finite terminal vocabulary
