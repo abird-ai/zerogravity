@@ -236,6 +236,11 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   selected case passes aligned/+4B views with zero mismatches and clean retirement.
   Same-HEAD non-LTO2B B8 feedback stayed exact:47+3 68.83->69.49 tok/s and47+16
   152.93->157.28 tok/s (~2.8% on the decode-heavier run). Shared shape specialization only.
+- [x] Interleaved-pair B8 GEMMs now use the same K64 staging for64-aligned K while
+  preserving the two original FP32 accumulation chains and32-term chain-switch points.
+  Physical GEMM qualification passes the added N=8/K=64 case at aligned/+4B views
+  with zero mismatches and clean retirement. Same-HEAD non-LTO2B47+16 stayed exact
+  and improved155.36->158.08 tok/s (~1.75%). C1/B2/B4 and other reductions are unchanged.
 - [x] Small CUDA populated-context qualification now covers0.8B/2B at1K and2K.
   Each cell starts from the accepted47-token prefill, advances by genuine64-token
   state-only chunks to the exact context frontier, emits finite terminal vocabulary

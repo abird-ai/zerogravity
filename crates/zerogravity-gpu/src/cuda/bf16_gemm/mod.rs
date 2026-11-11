@@ -174,6 +174,11 @@ impl Bf16Gemm {
             Bf16GemmReduction::RoundedSegments { terms }
                 if rows == 8 && inner >= 128 && terms.is_multiple_of(64)
         );
+        let interleaved_narrow_k64 = matches!(
+            reduction,
+            Bf16GemmReduction::InterleavedPair { terms }
+                if rows == 8 && inner >= 64 && inner.is_multiple_of(64) && terms.is_multiple_of(32)
+        );
         let ordered_rows64 = reduction == Bf16GemmReduction::Ordered && rows > 64 && inner >= 2048;
         let mma_tile_rows = if rows <= 8 {
             8
@@ -230,6 +235,12 @@ impl Bf16Gemm {
                 "bf16_gemm_segmented_narrow_k64_certified"
             } else {
                 "bf16_gemm_segmented_narrow_k64"
+            }
+        } else if interleaved_narrow_k64 {
+            if certified {
+                "bf16_gemm_interleaved_narrow_k64_certified"
+            } else {
+                "bf16_gemm_interleaved_narrow_k64"
             }
         } else if ordered_rows64 {
             if certified {

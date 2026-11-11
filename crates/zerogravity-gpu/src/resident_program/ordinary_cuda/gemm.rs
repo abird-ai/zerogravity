@@ -74,6 +74,13 @@ impl OrdinaryCudaGemm {
                 Bf16Gemm::with_reduction_certified(
                     64,
                     8,
+                    64,
+                    Bf16GemmReduction::InterleavedPair { terms: 32 },
+                )?
+                .prepare_code(service.pinned_cuda_queue()?)?;
+                Bf16Gemm::with_reduction_certified(
+                    64,
+                    8,
                     32,
                     Bf16GemmReduction::LaneStrided {
                         lanes: 16,
