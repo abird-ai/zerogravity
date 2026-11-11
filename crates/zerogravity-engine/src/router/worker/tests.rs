@@ -11,6 +11,7 @@ use std::{
 use zerogravity_core::{Error, identity::SourceIdentity, resource_arbiter::AllocationClass};
 
 type Log = Arc<Mutex<Vec<String>>>;
+type Compatibility = fn(usize, usize) -> bool;
 #[derive(Clone, Copy)]
 enum Action {
     Capacity,
@@ -25,6 +26,7 @@ struct Control {
     live: AtomicUsize,
     actions: Mutex<VecDeque<Action>>,
     state_only: Mutex<Vec<bool>>,
+    compatibility: Mutex<Option<Compatibility>>,
     log: Log,
 }
 struct Model {
@@ -152,6 +154,15 @@ impl Executor for StatusOnly {
     fn cohort_eligible(_: &Active<Self>) -> bool {
         true
     }
+    fn compatible(first: &Active<Self>, row: &Active<Self>) -> bool {
+        first
+            .state
+            .control
+            .compatibility
+            .lock()
+            .unwrap()
+            .is_none_or(|compatible| compatible(first.state.id, row.state.id))
+    }
     fn prepare(
         rows: &mut [Active<Self>],
         work: CohortWork,
@@ -278,6 +289,7 @@ impl Rig {
                 live: AtomicUsize::new(0),
                 actions: Mutex::new(actions.into()),
                 state_only: Mutex::new(Vec::new()),
+                compatibility: Mutex::new(None),
                 log: log.clone(),
             }),
         });
@@ -642,6 +654,23 @@ fn chunked_prefill_split_marks_only_nonterminal_chunks_state_only() {
     turn(&mut prefix, &rig, policy);
     assert!(prefix.is_empty());
     assert_eq!(*prefix_control.state_only.lock().unwrap(), [true]);
+    rig.close();
+}
+
+#[test]
+fn asymmetric_compatibility_never_forms_an_order_dependent_cohort() {
+    let mut rig = Rig::new();
+    let log = Arc::default();
+    let policy = policy(2, RetryOrder::Regroup);
+    let mut rows = rig.rows(1, 2, vec![Action::Fatal], policy, &log);
+    let control = rows[0].state.control.clone();
+    *control.compatibility.lock().unwrap() = Some(|first, row| first < row);
+
+    turn(&mut rows, &rig, policy);
+
+    assert!(rows.is_empty());
+    assert_eq!(operations(&log), ["single:1:0", "single:1:1"]);
+    assert_eq!(rig.stats.snapshot().failed, 2);
     rig.close();
 }
 

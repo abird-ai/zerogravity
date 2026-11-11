@@ -129,10 +129,11 @@ fn compatible_bands<A: Executor>(
             advance_single(row, active, stats);
             continue;
         }
-        if let Some(group) = groups
-            .iter_mut()
-            .find(|group| group.iter().all(|member| A::compatible(member, &row)))
-        {
+        if let Some(group) = groups.iter_mut().find(|group| {
+            group
+                .iter()
+                .all(|member| A::compatible(member, &row) && A::compatible(&row, member))
+        }) {
             group.push(row);
         } else {
             groups.push(vec![row]);
