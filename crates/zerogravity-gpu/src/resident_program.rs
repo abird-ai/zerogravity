@@ -48,6 +48,8 @@ fn supported_prefix_capacity(capacity: usize) -> bool {
 mod physical_layout;
 pub use physical_layout::{ResidentBufferLayout, ResidentPhysicalType};
 
+pub(crate) mod cohort_rows;
+
 mod batch;
 pub(crate) use batch::BatchProgram;
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]

@@ -428,6 +428,33 @@ impl GdnRuntimeWorkspaceLayout {
     }
 }
 
+fn bounded_stage_abi_bindings(
+    phase: GdnPhase,
+    workspace: &GdnRuntimeWorkspaceLayout,
+    logical: &[GdnRuntimeBinding],
+) -> Result<Vec<GdnRuntimeBinding>> {
+    if !matches!(phase, GdnPhase::TextPrefill(_)) {
+        return Ok(logical.to_vec());
+    }
+    logical
+        .iter()
+        .map(|binding| {
+            let available = workspace
+                .bytes(binding.role)
+                .ok_or_else(|| Error::State("parameterized GDN bounded ABI role absent".into()))?;
+            let bytes = available.checked_sub(binding.offset).ok_or_else(|| {
+                Error::State("parameterized GDN bounded ABI offset exceeds workspace".into())
+            })?;
+            if bytes < binding.bytes || bytes == 0 {
+                return Err(Error::State(
+                    "parameterized GDN bounded ABI narrows logical binding".into(),
+                ));
+            }
+            Ok(GdnRuntimeBinding { bytes, ..*binding })
+        })
+        .collect()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum GdnRuntimeStageKind {
     Conv,
@@ -590,6 +617,7 @@ impl GdnRuntimeStageIdentity {
 pub struct GdnRuntimeStage {
     identity: GdnRuntimeStageIdentity,
     pub(super) spec: LaunchSpec,
+    abi_bindings: Vec<GdnRuntimeBinding>,
 }
 impl GdnRuntimeStage {
     pub fn identity(&self) -> &GdnRuntimeStageIdentity {
@@ -671,6 +699,10 @@ pub struct GdnRuntimeScheduleStep {
     threads: u32,
     shared_bytes: usize,
     grid: [u32; 3],
+    // Logical bindings stay exact in `bindings`; this separate physical ABI may
+    // retain a wider admitted workspace view so one compiled kernel serves
+    // multiple active row counts without changing arithmetic or launch grids.
+    abi_bindings: Vec<GdnRuntimeBinding>,
     bindings: Vec<GdnRuntimeBinding>,
     _kernel: crate::cuda::kernel::PinnedKernel,
 }
@@ -908,7 +940,7 @@ impl GdnRuntimePlan {
         }
         let mut stages = Vec::with_capacity(phase.stages().len());
         for &stage in phase.stages() {
-            let (spec, asset, scalars) = build_stage(config, phase, stage)?;
+            let (mut spec, asset, scalars) = build_stage(config, phase, stage)?;
             workspace.require_spec(&spec)?;
             let scalar_fields = scalars
                 .schema()
@@ -933,7 +965,22 @@ impl GdnRuntimePlan {
                     bytes: binding.physical_bytes,
                     access: binding.io.into(),
                 })
-                .collect();
+                .collect::<Vec<_>>();
+            let abi_bindings = bounded_stage_abi_bindings(phase, &workspace, &bindings)?;
+            if geometry.mode == GdnRuntimeMode::Prefill {
+                spec.kernel = crate::cuda::kernel::PinnedKernel::new_with_static_scalars(
+                    asset.entry,
+                    Arc::from(asset.source),
+                    asset.threads,
+                    abi_bindings
+                        .iter()
+                        .zip(&spec.bindings)
+                        .map(|(abi, logical)| (abi.bytes, logical.io))
+                        .collect::<Vec<_>>()
+                        .into(),
+                    scalars,
+                )?;
+            }
             stages.push(GdnRuntimeStage {
                 identity: GdnRuntimeStageIdentity {
                     config,
@@ -949,11 +996,12 @@ impl GdnRuntimePlan {
                     scalar_words: scalars.words().to_vec(),
                 },
                 spec,
+                abi_bindings,
             });
         }
         let initial_state = runtime_initial_state(slot, geometry);
         let final_state = runtime_final_state(slot, geometry);
-        let schedule = build_schedule(phase, geometry, slot, &stages)?;
+        let schedule = build_schedule(phase, geometry, slot, &stages, &workspace)?;
         let result = Self {
             config,
             slot,
@@ -1055,7 +1103,7 @@ impl GdnRuntimePlan {
         &self,
         handles: &BTreeMap<GdnRuntimeBuffer, cubecl::server::Handle>,
     ) -> Result<Vec<Vec<cubecl::server::Handle>>> {
-        self.bind_schedule_range_handles(handles, 0..self.schedule.len())
+        self.bind_schedule_range_handles_with(handles, 0..self.schedule.len(), false)
     }
 
     #[cfg(any(test, feature = "cuda-cublas"))]
@@ -1064,22 +1112,37 @@ impl GdnRuntimePlan {
         handles: &BTreeMap<GdnRuntimeBuffer, cubecl::server::Handle>,
         range: std::ops::Range<usize>,
     ) -> Result<Vec<Vec<cubecl::server::Handle>>> {
+        self.bind_schedule_range_handles_with(handles, range, false)
+    }
+
+    #[cfg(any(test, feature = "cuda-cublas"))]
+    fn bind_schedule_range_handles_with(
+        &self,
+        handles: &BTreeMap<GdnRuntimeBuffer, cubecl::server::Handle>,
+        range: std::ops::Range<usize>,
+        compiled_abi: bool,
+    ) -> Result<Vec<Vec<cubecl::server::Handle>>> {
         self.require_schedule()?;
         let schedule = self
             .schedule
             .get(range)
             .filter(|steps| !steps.is_empty())
             .ok_or_else(|| Error::State("GDN runtime binding schedule range".into()))?;
-        let binds_recurrent_state =
-            schedule
-                .iter()
-                .flat_map(|step| &step.bindings)
-                .any(|binding| {
-                    matches!(
-                        binding.role,
-                        GdnRuntimeBuffer::InitialState | GdnRuntimeBuffer::FinalState
-                    )
-                });
+        let binds_recurrent_state = schedule
+            .iter()
+            .flat_map(|step| {
+                if compiled_abi {
+                    &step.abi_bindings
+                } else {
+                    &step.bindings
+                }
+            })
+            .any(|binding| {
+                matches!(
+                    binding.role,
+                    GdnRuntimeBuffer::InitialState | GdnRuntimeBuffer::FinalState
+                )
+            });
         if self.geometry.mode == GdnRuntimeMode::Prefill && binds_recurrent_state {
             let state_handle = |role| {
                 handles
@@ -1101,7 +1164,12 @@ impl GdnRuntimePlan {
         schedule
             .iter()
             .map(|step| {
-                step.bindings
+                let bindings = if compiled_abi {
+                    &step.abi_bindings
+                } else {
+                    &step.bindings
+                };
+                bindings
                     .iter()
                     .map(|binding| {
                         let layout = self
@@ -1123,7 +1191,17 @@ impl GdnRuntimePlan {
                             .offset
                             .checked_add(binding.bytes)
                             .filter(|end| *end <= layout.bytes && *end <= available)
-                            .ok_or_else(|| Error::State("GDN runtime handle view extent".into()))?;
+                            .ok_or_else(|| {
+                                Error::State(format!(
+                                    "GDN runtime handle view extent: stage={:?} role={:?} offset={} bytes={} layout={} available={} compiled_abi={compiled_abi}",
+                                    step.kind,
+                                    binding.role,
+                                    binding.offset,
+                                    binding.bytes,
+                                    layout.bytes,
+                                    available
+                                ))
+                            })?;
                         Ok(handle
                             .clone()
                             .offset_start(binding.offset as u64)
@@ -1143,7 +1221,8 @@ impl GdnRuntimePlan {
         client: &cubecl::client::Client,
         handles: &BTreeMap<GdnRuntimeBuffer, cubecl::server::Handle>,
     ) -> Result<GdnRuntimeLaunchSchedule> {
-        let handles = self.bind_schedule_handles(handles)?;
+        let handles =
+            self.bind_schedule_range_handles_with(handles, 0..self.schedule.len(), true)?;
         let launches = self
             .schedule
             .iter()
@@ -1161,7 +1240,7 @@ impl GdnRuntimePlan {
         partition: GdnRuntimePartition,
     ) -> Result<GdnRuntimeLaunchSchedule> {
         let range = self.partition_range(partition)?;
-        let handles = self.bind_schedule_range_handles(handles, range.clone())?;
+        let handles = self.bind_schedule_range_handles_with(handles, range.clone(), true)?;
         let launches = self.schedule[range]
             .iter()
             .zip(handles)
@@ -1327,6 +1406,7 @@ fn stage_step(stage: &GdnRuntimeStage) -> GdnRuntimeScheduleStep {
         threads: identity.threads(),
         shared_bytes: identity.shared_bytes(),
         grid: identity.grid(),
+        abi_bindings: stage.abi_bindings.clone(),
         bindings: identity.bindings().to_vec(),
         _kernel: stage.spec.kernel.clone(),
     }
@@ -1481,6 +1561,7 @@ fn build_copy_step(
     phase: GdnPhase,
     slot: GdnRuntimeCacheSlot,
     kind: GdnRuntimeScheduleKind,
+    workspace: &GdnRuntimeWorkspaceLayout,
 ) -> Result<GdnRuntimeScheduleStep> {
     let geometry = runtime_copy_geometry(phase, slot, kind)?;
     let mut bindings = Vec::with_capacity(2);
@@ -1502,76 +1583,34 @@ fn build_copy_step(
         geometry.words,
         GdnRuntimeAccess::WriteOnly,
     )?);
-    let entry = match kind {
-        GdnRuntimeScheduleKind::PackA => "zg_gdn_runtime_pack_a",
-        GdnRuntimeScheduleKind::PackB => "zg_gdn_runtime_pack_b",
-        GdnRuntimeScheduleKind::PackZ => "zg_gdn_runtime_pack_z",
-        GdnRuntimeScheduleKind::CopyQkvPrefix => "zg_gdn_runtime_copy_qkv_prefix",
-        GdnRuntimeScheduleKind::ZeroInverse => "zg_gdn_runtime_zero_inverse",
-        GdnRuntimeScheduleKind::ZeroInitialState => "zg_gdn_runtime_zero_initial",
-        GdnRuntimeScheduleKind::GatherInitialState => "zg_gdn_runtime_gather_initial",
-        GdnRuntimeScheduleKind::ScatterFinalState => "zg_gdn_runtime_scatter_final",
-        _ => {
-            return Err(Error::Unsupported(
-                "parameterized GDN runtime copy operation".into(),
-            ));
-        }
-    };
-    let total = geometry
-        .rows
-        .checked_mul(geometry.words)
-        .ok_or_else(|| Error::Limit("GDN runtime copy launch overflow".into()))?;
-    let total_u32 = u32::try_from(total)
-        .map_err(|_| Error::Limit("GDN runtime copy launch exceeds u32".into()))?;
-    let (parameters, statement) = if geometry.source.is_some() {
-        (
-            "const unsigned int* source, unsigned int* destination",
-            format!(
-                "unsigned int row = index / {words}u; unsigned int col = index % {words}u; destination[row * {destination_stride}u + col] = source[row * {source_stride}u + col];",
-                words = geometry.words,
-                destination_stride = geometry.destination_stride,
-                source_stride = geometry.source_stride,
-            ),
-        )
+    let abi_bindings = bounded_stage_abi_bindings(phase, workspace, &bindings)?;
+    let transport = if geometry.source.is_some() {
+        crate::cuda::word_transport::RuntimeWordTransport::copy(
+            abi_bindings[0].bytes,
+            abi_bindings[1].bytes,
+            geometry.rows,
+            geometry.words,
+            geometry.source_stride,
+            geometry.destination_stride,
+        )?
     } else {
-        (
-            "unsigned int* destination",
-            "destination[index] = 0u;".into(),
-        )
+        crate::cuda::word_transport::RuntimeWordTransport::zero(
+            abi_bindings[0].bytes,
+            geometry.rows,
+            geometry.words,
+            geometry.destination_stride,
+        )?
     };
-    let source: Arc<str> = format!(
-        "// cubecl.cuda.dynamic_shared_bytes=0\n#if __CUDA_ARCH__ != 860\n#error Closed SM86 GDN runtime copy\n#endif\nextern \"C\" __global__ __launch_bounds__(128) void {entry}({parameters}) {{ unsigned int index = blockIdx.x * blockDim.x + threadIdx.x; if (index < {total_u32}u) {{ {statement} }} }}\n"
-    )
-    .into();
-    let kernel = crate::cuda::kernel::PinnedKernel::new(
-        entry,
-        source.clone(),
-        128,
-        bindings
-            .iter()
-            .map(|binding| {
-                (
-                    binding.bytes,
-                    match binding.access {
-                        GdnRuntimeAccess::ReadOnly => BufferIOAttr::ReadOnly,
-                        GdnRuntimeAccess::WriteOnly => BufferIOAttr::WriteOnly,
-                        GdnRuntimeAccess::ReadWrite => BufferIOAttr::ReadWrite,
-                        GdnRuntimeAccess::Dead => BufferIOAttr::Dead,
-                    },
-                )
-            })
-            .collect::<Vec<_>>()
-            .into(),
-    )?;
     Ok(GdnRuntimeScheduleStep {
         kind,
-        entry,
-        source: GdnRuntimeScheduleSource::Owned(source),
+        entry: transport.entry,
+        source: GdnRuntimeScheduleSource::Static(transport.source),
         threads: 128,
         shared_bytes: 0,
-        grid: [total_u32.div_ceil(128), 1, 1],
+        grid: transport.grid,
+        abi_bindings,
         bindings,
-        _kernel: kernel,
+        _kernel: transport.kernel,
     })
 }
 
@@ -1580,6 +1619,7 @@ fn build_schedule(
     geometry: GdnRuntimeGeometry,
     slot: GdnRuntimeCacheSlot,
     stages: &[GdnRuntimeStage],
+    workspace: &GdnRuntimeWorkspaceLayout,
 ) -> Result<Vec<GdnRuntimeScheduleStep>> {
     let mut result = Vec::new();
     if geometry.mode == GdnRuntimeMode::CachedDecode {
@@ -1587,14 +1627,35 @@ fn build_schedule(
             phase,
             slot,
             GdnRuntimeScheduleKind::CopyQkvPrefix,
+            workspace,
         )?);
-        result.push(build_copy_step(phase, slot, GdnRuntimeScheduleKind::PackZ)?);
+        result.push(build_copy_step(
+            phase,
+            slot,
+            GdnRuntimeScheduleKind::PackZ,
+            workspace,
+        )?);
     } else {
         if geometry.rows > 1 {
-            result.push(build_copy_step(phase, slot, GdnRuntimeScheduleKind::PackA)?);
-            result.push(build_copy_step(phase, slot, GdnRuntimeScheduleKind::PackB)?);
+            result.push(build_copy_step(
+                phase,
+                slot,
+                GdnRuntimeScheduleKind::PackA,
+                workspace,
+            )?);
+            result.push(build_copy_step(
+                phase,
+                slot,
+                GdnRuntimeScheduleKind::PackB,
+                workspace,
+            )?);
         }
-        result.push(build_copy_step(phase, slot, GdnRuntimeScheduleKind::PackZ)?);
+        result.push(build_copy_step(
+            phase,
+            slot,
+            GdnRuntimeScheduleKind::PackZ,
+            workspace,
+        )?);
     }
     for stage in stages {
         match stage.identity.kind {
@@ -1602,6 +1663,7 @@ fn build_schedule(
                 phase,
                 slot,
                 GdnRuntimeScheduleKind::ZeroInverse,
+                workspace,
             )?),
             GdnRuntimeStageKind::State => result.push(build_copy_step(
                 phase,
@@ -1611,6 +1673,7 @@ fn build_schedule(
                 } else {
                     GdnRuntimeScheduleKind::ZeroInitialState
                 },
+                workspace,
             )?),
             _ => {}
         }
@@ -1620,6 +1683,7 @@ fn build_schedule(
                 phase,
                 slot,
                 GdnRuntimeScheduleKind::ScatterFinalState,
+                workspace,
             )?);
         }
     }
@@ -1699,7 +1763,7 @@ fn require_schedule(plan: &GdnRuntimePlan) -> Result<()> {
                 | GdnRuntimeScheduleKind::GatherInitialState
                 | GdnRuntimeScheduleKind::ScatterFinalState
         ) {
-            let expected = build_copy_step(phase, plan.slot, step.kind)?;
+            let expected = build_copy_step(phase, plan.slot, step.kind, &plan.workspace)?;
             if step.bindings != expected.bindings {
                 return Err(Error::State("GDN runtime copy access contract".into()));
             }

@@ -17,6 +17,95 @@ pub(crate) enum ProjectionUse {
     LastRow,
 }
 
+/// Structural compatibility classes for sharing all-row prefill projections.
+///
+/// Classes are derived from the authenticated static plan's projection roles,
+/// matrix geometry and exact reduction schedules. They contain no model-family
+/// thresholds, scheduler policy, session/root identity or launch authority.
+#[derive(Clone, Debug)]
+pub(crate) struct PrefillProjectionClasses {
+    classes: Box<[usize]>,
+}
+
+impl PrefillProjectionClasses {
+    pub(crate) fn from_plan(plan: &ForwardPlan) -> Result<Self> {
+        let geometry = plan.source_plan_geometry().ok_or_else(|| {
+            Error::State("prefill projection classes require source template".into())
+        })?;
+        let max_rows = geometry.max_rows();
+        if max_rows == 0 {
+            return Err(Error::Limit("prefill projection class row bound".into()));
+        }
+        let mut signatures: Vec<Vec<Bf16GemmReduction>> = Vec::new();
+        let mut classes = vec![0usize; max_rows + 1];
+        for (rows, slot) in classes.iter_mut().enumerate().take(max_rows + 1).skip(1) {
+            let signature = prefill_reduction_signature(plan, rows)?;
+            let class = if let Some(index) = signatures.iter().position(|known| known == &signature)
+            {
+                index
+            } else {
+                signatures.push(signature);
+                signatures.len() - 1
+            };
+            *slot = class + 1;
+        }
+        Ok(Self {
+            classes: classes.into_boxed_slice(),
+        })
+    }
+
+    pub(crate) fn compatible(&self, left: usize, right: usize) -> bool {
+        self.classes
+            .get(left)
+            .copied()
+            .is_some_and(|class| class != 0 && self.classes.get(right).copied() == Some(class))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn class(&self, rows: usize) -> Option<usize> {
+        self.classes.get(rows).copied().filter(|class| *class != 0)
+    }
+}
+
+fn prefill_reduction_signature(plan: &ForwardPlan, rows: usize) -> Result<Vec<Bf16GemmReduction>> {
+    let geometry = plan.source_plan_geometry().ok_or_else(|| {
+        Error::State("prefill reduction signature requires source template".into())
+    })?;
+    if rows == 0 || rows > geometry.max_rows() {
+        return Err(Error::Malformed(
+            "prefill reduction signature row extent".into(),
+        ));
+    }
+    let mut signature = Vec::new();
+    for (index, node) in plan.nodes().iter().enumerate() {
+        let PlanOperation::SourceOperatorTemplate { descriptor, .. } = &node.operation else {
+            continue;
+        };
+        if !matches!(descriptor.kind(), SourceOperatorKind::Projection { .. })
+            || descriptor.row_selection() != SourceRowSelection::AllActive
+        {
+            continue;
+        }
+        let matrices = descriptor.matrices();
+        let first = matrices
+            .first()
+            .ok_or_else(|| Error::State("prefill projection class matrix set absent".into()))?;
+        let inner = first.columns;
+        let columns = matrices.iter().try_fold(0usize, |sum, matrix| {
+            if matrix.columns != inner {
+                return Err(Error::State(
+                    "prefill projection class inner geometry differs".into(),
+                ));
+            }
+            sum.checked_add(matrix.rows)
+                .ok_or_else(|| Error::Limit("prefill projection class rows overflow".into()))
+        })?;
+        let shape = Bf16GemmShape::new(columns, rows, inner)?;
+        signature.push(projection_use(plan, index)?.reduction(shape));
+    }
+    Ok(signature)
+}
+
 pub(super) fn projection_use(plan: &ForwardPlan, index: usize) -> Result<ProjectionUse> {
     let node = plan
         .nodes()
@@ -125,6 +214,7 @@ impl ProjectionUse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zerogravity_model_qwen35::plan::{QwenSourceProfile, diagnostic_ordinary_plan};
 
     #[test]
     fn source_reductions_preserve_partial_precision_and_k_grouping() -> Result<()> {
@@ -218,6 +308,37 @@ mod tests {
                 expected
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn prefill_projection_classes_follow_complete_static_reduction_signatures() -> Result<()> {
+        for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+            let plan = diagnostic_ordinary_plan(profile, 1024)?;
+            let classes = PrefillProjectionClasses::from_plan(&plan)?;
+            assert!(classes.compatible(48, 49));
+            assert!(classes.compatible(63, 64));
+            assert!(!classes.compatible(0, 1));
+            assert!(!classes.compatible(64, 65));
+            assert_eq!(
+                classes.compatible(47, 48),
+                prefill_reduction_signature(&plan, 47)? == prefill_reduction_signature(&plan, 48)?
+            );
+            assert!(classes.class(48).is_some());
+        }
+
+        // Vector rows are a genuine arithmetic class of their own in the
+        // current 2B plan. The classifier discovers that boundary from the
+        // complete plan; importantly, it does *not* invent a 47/48 boundary
+        // from an isolated projection geometry that is absent here.
+        let plan = diagnostic_ordinary_plan(QwenSourceProfile::Qwen2B, 1024)?;
+        assert_ne!(
+            prefill_reduction_signature(&plan, 1)?,
+            prefill_reduction_signature(&plan, 2)?
+        );
+        let classes = PrefillProjectionClasses::from_plan(&plan)?;
+        assert!(!classes.compatible(1, 2));
+        assert!(classes.compatible(47, 48));
         Ok(())
     }
 }

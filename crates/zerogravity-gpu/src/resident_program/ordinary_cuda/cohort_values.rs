@@ -1,6 +1,9 @@
 //! Private native-cohort activation arena using the ordinary plan's liveness slots.
 use super::layout::{self, OrdinaryCudaLayout};
-use crate::resident_leases::{ResidentInitialization, ResidentLease};
+use crate::{
+    resident_leases::{ResidentInitialization, ResidentLease},
+    resident_program::cohort_rows::CohortRowSpans,
+};
 use std::sync::Arc;
 use zerogravity_core::{
     Error, Result,
@@ -148,6 +151,32 @@ impl OrdinaryCudaCohortValues {
         )
     }
 
+    /// Fixed-capacity token view for a bounded-row kernel ABI. Only the active
+    /// prefix is semantically readable; the kernel receives that active count
+    /// separately and must not touch the remaining capacity.
+    pub(super) fn token_handle_bounded(
+        &self,
+        lane: usize,
+        active_rows: usize,
+        bound_rows: usize,
+    ) -> Result<cubecl::server::Handle> {
+        if lane >= self.width
+            || active_rows == 0
+            || active_rows > bound_rows
+            || bound_rows > layout::MAX_ROWS
+        {
+            return Err(Error::State(
+                "ordinary CUDA bounded token lane geometry".into(),
+            ));
+        }
+        super::exact_view(
+            &self.token_ids,
+            lane * layout::MAX_ROWS * 4,
+            bound_rows * 4,
+            "cohort bounded token IDs",
+        )
+    }
+
     pub(crate) fn head_rows(&self) -> &ResidentLease {
         &self.head_rows
     }
@@ -199,5 +228,97 @@ impl OrdinaryCudaCohortValues {
             .checked_mul(2)
             .ok_or_else(|| Error::Limit("ordinary CUDA cohort lane value bytes".into()))?;
         super::exact_view(self.lease(value)?, offset, bytes, "cohort lane BF16 value")
+    }
+
+    /// Exact packed active region for a row-proportional value across ragged
+    /// independent lanes. The span object owns only checked row geometry; this
+    /// arena still owns the physical allocation and value-slot lifetime.
+    pub(crate) fn packed_row_handle(
+        &self,
+        value: ValueId,
+        elements_per_row: usize,
+        spans: &CohortRowSpans,
+    ) -> Result<cubecl::server::Handle> {
+        if spans.len() > self.width {
+            return Err(Error::State(
+                "ordinary CUDA cohort row spans exceed activation width".into(),
+            ));
+        }
+        let elements = spans.packed_elements(elements_per_row)?;
+        let bytes = elements
+            .checked_mul(2)
+            .ok_or_else(|| Error::Limit("ordinary CUDA packed row BF16 bytes".into()))?;
+        super::exact_view(self.lease(value)?, 0, bytes, "cohort packed BF16 rows")
+    }
+
+    /// One lane view within a packed ragged row-proportional value.
+    pub(crate) fn lane_row_handle(
+        &self,
+        value: ValueId,
+        elements_per_row: usize,
+        spans: &CohortRowSpans,
+        lane: usize,
+    ) -> Result<cubecl::server::Handle> {
+        if spans.len() > self.width {
+            return Err(Error::State(
+                "ordinary CUDA cohort row spans exceed activation width".into(),
+            ));
+        }
+        let elements = spans.element_span(lane, elements_per_row)?;
+        let offset = elements
+            .start
+            .checked_mul(2)
+            .ok_or_else(|| Error::Limit("ordinary CUDA packed row BF16 offset".into()))?;
+        let bytes = (elements.end - elements.start)
+            .checked_mul(2)
+            .ok_or_else(|| Error::Limit("ordinary CUDA packed row lane BF16 bytes".into()))?;
+        super::exact_view(
+            self.lease(value)?,
+            offset,
+            bytes,
+            "cohort packed lane BF16 rows",
+        )
+    }
+
+    /// Capacity-sized view beginning at one packed lane. Bounded-row kernels
+    /// may see overlapping *capacity* views, but execute sequentially and are
+    /// required to touch only their active prefix. This stabilizes physical
+    /// pointer extents without padding mathematical rows.
+    pub(crate) fn lane_row_bounded_handle(
+        &self,
+        value: ValueId,
+        elements_per_row: usize,
+        spans: &CohortRowSpans,
+        lane: usize,
+        bound_rows: usize,
+    ) -> Result<cubecl::server::Handle> {
+        let active_rows = spans.lane_rows(lane)?;
+        if spans.len() > self.width
+            || elements_per_row == 0
+            || active_rows > bound_rows
+            || bound_rows > layout::MAX_ROWS
+        {
+            return Err(Error::State(
+                "ordinary CUDA bounded cohort lane geometry".into(),
+            ));
+        }
+        let start = spans
+            .row_span(lane)?
+            .start
+            .checked_mul(elements_per_row)
+            .ok_or_else(|| Error::Limit("ordinary CUDA bounded lane offset".into()))?;
+        let offset = start
+            .checked_mul(2)
+            .ok_or_else(|| Error::Limit("ordinary CUDA bounded lane BF16 offset".into()))?;
+        let bytes = bound_rows
+            .checked_mul(elements_per_row)
+            .and_then(|elements| elements.checked_mul(2))
+            .ok_or_else(|| Error::Limit("ordinary CUDA bounded lane BF16 bytes".into()))?;
+        super::exact_view(
+            self.lease(value)?,
+            offset,
+            bytes,
+            "cohort bounded lane BF16 rows",
+        )
     }
 }

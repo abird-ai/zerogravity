@@ -23,6 +23,8 @@ pub mod native;
 pub mod ordinary_text;
 #[cfg(feature = "cuda-native-qualification")]
 pub mod rms;
+#[cfg(feature = "cuda-native")]
+pub(crate) mod word_transport;
 
 #[cfg(all(
     test,

@@ -430,6 +430,30 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   cohort peephole/adapter and temporary runner were removed; keep the independently
   qualified primitive for other models/graphs. Singleton selection was never enabled,
   because it would collapse the existing cancellation cut between the two logical nodes.
+- [x] Retained model-neutral ragged prefill cohort execution without broadening compiler
+  or numerical authority. `CohortRowSpans` owns only checked packed-lane geometry;
+  ordinary-text `RowExtent` separates mathematical active rows from a stable plan-bounded
+  pointer ABI; `PrefillProjectionClasses` derives compatibility from the complete
+  authenticated static plan's exact all-row GEMM reduction signature; and
+  `RuntimeWordTransport` provides one source/ABI for runtime-strided checked word copy/zero.
+  No primitive contains model-family row thresholds, session/root policy or scheduler
+  authority. Qwen's adapter only requires the same committed base and asks the source model
+  whether row counts are structurally compatible. Each lane advances its own private root
+  by its actual prompt rows; state-only/terminal grouping remains the generic scheduler's
+  `prefill_has_successor` contract. Bounded activation/GDN views use the already-admitted
+  max-row workspace and runtime active-row scalars, so mathematical rows are never padded.
+  Host regression coverage proves active47 and active64 reuse one physical ordinary-text
+  pointer ABI and that all GDN prefill stages reuse one bounded compiled ABI. A direct
+  RTX3060 physical qualifier proved runtime-strided copy/zero exact with untouched gaps and
+  outer guards. Public0.8B physical parity covered terminal ragged rows48..55 and the harder
+  nonzero-frontier case112..119: all eight sessions first committed the same64-token
+  state-only prefix, then ragged48..55 tails at frontier64; B8 outputs matched independent
+  B4/sequential references exactly (`[264,264,264]` each lane) with clean shutdown. Fair
+  same-tree non-LTO2B public serving on prompts47..50/16 outputs improved B4
+  48.688->108.883 tok/s (~2.24x), and prompts47..54 improved B8
+  48.290->178.399 tok/s (~3.69x), with identical IDs/text. An eight-shape same-process
+  singleton reference stress can exhaust the existing cumulative PTX budget; native B8
+  itself does not. References were split rather than weakening that compiler bound.
 - [x] Small CUDA populated-context qualification now covers0.8B/2B at1K and2K.
   Each cell starts from the accepted47-token prefill, advances by genuine64-token
   state-only chunks to the exact context frontier, emits finite terminal vocabulary

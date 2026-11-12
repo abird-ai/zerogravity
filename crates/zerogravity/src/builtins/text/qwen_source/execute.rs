@@ -39,9 +39,12 @@ struct Feedback {
 fn native_phase_compatible(
     first_prefill: Option<(u64, usize)>,
     row_prefill: Option<(u64, usize)>,
+    prefill_rows_compatible: bool,
 ) -> bool {
     match (first_prefill, row_prefill) {
-        (Some(first), Some(row)) => first == row,
+        (Some((first_base, _)), Some((row_base, _))) => {
+            first_base == row_base && prefill_rows_compatible
+        }
         (None, None) => true,
         _ => false,
     }
@@ -156,8 +159,19 @@ impl Executor for SourceText {
             (row.cursor < row.prompt.len())
                 .then(|| (row.state.session.binding().frontier(), row.prefill_count()))
         };
-        Arc::ptr_eq(&first.model, &row.model)
-            && native_phase_compatible(prefill(first), prefill(row))
+        if !Arc::ptr_eq(&first.model, &row.model) {
+            return false;
+        }
+        let first_prefill = prefill(first);
+        let row_prefill = prefill(row);
+        let rows_compatible = match (first_prefill, row_prefill) {
+            (Some((_, left)), Some((_, right))) => first
+                .model
+                .resident()
+                .is_ok_and(|model| model.prefill_rows_compatible(left, right)),
+            _ => false,
+        };
+        native_phase_compatible(first_prefill, row_prefill, rows_compatible)
     }
     #[cfg(feature = "qwen35-cuda")]
     fn validate_cohort(rows: &[Active<Self>], work: CohortWork) -> Result<(), ServiceError> {
@@ -192,16 +206,18 @@ impl Executor for SourceText {
         work: CohortWork,
     ) -> Result<Preparation<Self::Ready>, ServiceError> {
         Self::validate_cohort(rows, work)?;
-        let tokens_per_row = match work.phase {
-            Phase::Prefill => rows[0].prefill_count(),
-            Phase::Decode => 1,
-        };
-        let model_tokens = tokens_per_row
-            .checked_mul(rows.len())
-            .and_then(|tokens| u64::try_from(tokens).ok())
+        let model_tokens = rows.iter().try_fold(0u64, |sum, row| {
+            let tokens = match work.phase {
+                Phase::Prefill => row.prefill_count(),
+                Phase::Decode => 1,
+            };
+            sum.checked_add(u64::try_from(tokens).map_err(|_| {
+                ServiceError::new(500, "source_cohort", "cohort model-token count overflow")
+            })?)
             .ok_or_else(|| {
                 ServiceError::new(500, "source_cohort", "cohort model-token count overflow")
-            })?;
+            })
+        })?;
         let model = rows[0].model.resident()?;
         let ready = match work.phase {
             Phase::Prefill => {
@@ -293,10 +309,6 @@ impl Executor for SourceText {
         work: CohortWork,
     ) -> Result<Publication, ServiceError> {
         Self::validate_cohort(rows, work)?;
-        let consumed = match work.phase {
-            Phase::Prefill => rows[0].prefill_count(),
-            Phase::Decode => 1,
-        };
         let mut sessions = rows
             .iter_mut()
             .map(|row| &mut row.state.session)
@@ -317,6 +329,10 @@ impl Executor for SourceText {
             .iter_mut()
             .zip(receipts)
             .map(|(row, read)| {
+                let consumed = match work.phase {
+                    Phase::Prefill => row.prefill_count(),
+                    Phase::Decode => 1,
+                };
                 if work.state_only {
                     if read.state_only_steps != 1
                         || read.logit_steps != 0
@@ -552,12 +568,20 @@ mod tests {
     }
     #[cfg(feature = "qwen35-cuda")]
     #[test]
-    fn native_prefill_stays_aligned_while_decode_accepts_private_frontiers() {
-        assert!(native_phase_compatible(Some((47, 17)), Some((47, 17))));
-        assert!(!native_phase_compatible(Some((47, 17)), Some((48, 17))));
-        assert!(!native_phase_compatible(Some((47, 17)), Some((47, 16))));
-        assert!(!native_phase_compatible(Some((47, 17)), None));
-        assert!(native_phase_compatible(None, None));
+    fn native_prefill_requires_same_base_and_reduction_compatible_rows() {
+        assert!(native_phase_compatible(Some((0, 48)), Some((0, 49)), true));
+        assert!(!native_phase_compatible(
+            Some((0, 47)),
+            Some((0, 48)),
+            false
+        ));
+        assert!(!native_phase_compatible(
+            Some((47, 17)),
+            Some((48, 17)),
+            true
+        ));
+        assert!(!native_phase_compatible(Some((47, 17)), None, true));
+        assert!(native_phase_compatible(None, None, false));
     }
     #[test]
     fn feedback_uses_complete_finite_bf16_logits_with_original_zero_tie() {

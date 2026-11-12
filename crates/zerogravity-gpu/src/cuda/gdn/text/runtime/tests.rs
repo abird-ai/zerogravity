@@ -201,6 +201,36 @@ fn arbitrary_rows_have_checked_grids_abis_and_workspace_extents() -> Result<()> 
 }
 
 #[test]
+fn ragged_prefill_stages_keep_one_bounded_compiled_pointer_abi() -> Result<()> {
+    let config = runtime_config()?;
+    let slot = GdnRuntimeCacheSlot::new(1)?;
+    let short = GdnRuntimePlan::prefill_chunk(config, slot, 0, 47, false)?;
+    let full = GdnRuntimePlan::prefill_chunk(config, slot, 0, 64, false)?;
+    for kind in [
+        GdnRuntimeStageKind::Conv,
+        GdnRuntimeStageKind::Prep,
+        GdnRuntimeStageKind::Cumsum,
+        GdnRuntimeStageKind::Kkt,
+        GdnRuntimeStageKind::Solve,
+        GdnRuntimeStageKind::Recompute,
+        GdnRuntimeStageKind::State,
+        GdnRuntimeStageKind::Output,
+        GdnRuntimeStageKind::Gated,
+    ] {
+        let short = short.stage(kind).unwrap();
+        let full = full.stage(kind).unwrap();
+        assert_eq!(short.identity().entry(), full.identity().entry());
+        assert_eq!(short.identity().source(), full.identity().source());
+        assert_eq!(short.abi_bindings, full.abi_bindings);
+        assert_eq!(
+            short.spec.kernel.binding_sizes(),
+            full.spec.kernel.binding_sizes()
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn source_abi_config_and_geometry_form_execution_identity() -> Result<()> {
     let base = runtime_config()?;
     let alternate = GdnRuntimeConfig::new(

@@ -207,6 +207,49 @@ fn canonical_buffer_schemas_are_exact() -> Result<()> {
 }
 
 #[test]
+fn bounded_row_definitions_keep_one_physical_abi_across_ragged_active_rows() -> Result<()> {
+    let p = program();
+    let short = RowExtent::bounded(47, 64)?;
+    let full = RowExtent::bounded(64, 64)?;
+    let pairs = vec![
+        (p.embedding_bounded(short)?, p.embedding_bounded(full)?),
+        (p.rms_bounded(short, 1e-6)?, p.rms_bounded(full, 1e-6)?),
+        (
+            p.residual_rms_bounded(short, 1e-6)?,
+            p.residual_rms_bounded(full, 1e-6)?,
+        ),
+        (p.silu_up_bounded(short)?, p.silu_up_bounded(full)?),
+        (p.sigmoid_bounded(short)?, p.sigmoid_bounded(full)?),
+        (
+            p.sigmoid_multiply_bounded(short)?,
+            p.sigmoid_multiply_bounded(full)?,
+        ),
+        (p.multiply_bounded(short)?, p.multiply_bounded(full)?),
+        (p.residual_bounded(short)?, p.residual_bounded(full)?),
+        (
+            p.kv_append_bounded(Step::new(47, 7, 512)?, short)?,
+            p.kv_append_bounded(Step::new(64, 7, 512)?, full)?,
+        ),
+        (
+            p.query_head_rms_bounded(short, 1e-6)?,
+            p.query_head_rms_bounded(full, 1e-6)?,
+        ),
+        (
+            p.key_head_rms_bounded(short, 1e-6)?,
+            p.key_head_rms_bounded(full, 1e-6)?,
+        ),
+    ];
+    for (short, full) in pairs {
+        assert_eq!(short.entry(), full.entry());
+        assert_eq!(short.source(), full.source());
+        assert_eq!(short.bindings(), full.bindings());
+        assert_eq!(short.kernel.binding_sizes(), full.kernel.binding_sizes());
+        assert_ne!(short.scalar_words(), full.scalar_words());
+    }
+    Ok(())
+}
+
+#[test]
 fn memory_plan_covers_both_sm86_qwen_geometries_without_allocating() -> Result<()> {
     assert_eq!(Geometry::qwen35_08().validate()?, geometry());
     let two_b = Geometry::qwen35_2b().validate()?;

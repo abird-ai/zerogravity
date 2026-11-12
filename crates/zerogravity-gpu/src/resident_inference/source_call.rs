@@ -42,6 +42,9 @@ pub struct SourceCallModel {
     contract: SourceNumericalContract,
     #[cfg(feature = "cuda-cublas")]
     native_rows: usize,
+    #[cfg(feature = "cuda-cublas")]
+    prefill_projection_classes:
+        Option<crate::resident_program::ordinary_cuda::PrefillProjectionClasses>,
     _source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
 }
 pub struct SourceCallSession {
@@ -217,6 +220,8 @@ impl ResidentModel {
             contract: SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1,
             #[cfg(feature = "cuda-cublas")]
             native_rows: 0,
+            #[cfg(feature = "cuda-cublas")]
+            prefill_projection_classes: None,
             _source_owner: None,
         }))
     }
@@ -244,6 +249,9 @@ impl ResidentModel {
         }
         let roots = max_sessions * 2 + 2;
         let control = source.reserve_workspace(CONTROL_BYTES)?;
+        let prefill_projection_classes = Some(
+            crate::resident_program::ordinary_cuda::PrefillProjectionClasses::from_plan(&plan)?,
+        );
         let model = Self::load_ordinary_cuda_roots(
             device,
             source.clone(),
@@ -265,11 +273,21 @@ impl ResidentModel {
             _control: control,
             contract: SourceNumericalContract::ReferenceCudaSm86Bf16V1,
             native_rows,
+            prefill_projection_classes,
             _source_owner: Some(source_owner),
         }))
     }
 }
 impl SourceCallModel {
+    #[cfg(feature = "cuda-cublas")]
+    pub fn prefill_rows_compatible(&self, left: usize, right: usize) -> bool {
+        self.native_rows != 0
+            && self
+                .prefill_projection_classes
+                .as_ref()
+                .is_some_and(|classes| classes.compatible(left, right))
+    }
+
     fn reader_scope(self: &Arc<Self>, bytes: usize) -> Result<Arc<ReaderScope>> {
         Ok(Arc::new(ReaderScope {
             model: self.clone(),

@@ -102,8 +102,9 @@ impl SourceCallModel {
         ))
     }
 
-    /// Equal native prompt chunks at one committed frontier. Intermediate
-    /// chunks are state-only; the terminal chunk may produce greedy readout.
+    /// Reduction-compatible native prompt chunks at one committed frontier.
+    /// Intermediate chunks are state-only; terminal chunks may produce greedy
+    /// readout. Compatibility is derived from the source plan, not model names.
     pub async fn prepare_prefill_cohort_admitted(
         self: &Arc<Self>,
         rows: &[(&SourceCallSession, &BoundSourceInvocation)],
@@ -123,11 +124,12 @@ impl SourceCallModel {
         if !(1..=64).contains(&prompt_rows)
             || rows.iter().any(|(_, invocation)| {
                 invocation.invocation().emit_logits() != emit_logits
-                    || invocation.invocation().rows() != prompt_rows
+                    || !(1..=64).contains(&invocation.invocation().rows())
+                    || !self.prefill_rows_compatible(prompt_rows, invocation.invocation().rows())
             })
         {
             return Err(Error::Unsupported(
-                "source CUDA prefill cohort requires equal aligned chunks".into(),
+                "source CUDA prefill cohort requires reduction-compatible prompt chunks".into(),
             ));
         }
         let mut requests = Vec::with_capacity(rows.len());
@@ -199,7 +201,7 @@ impl ResidentModel {
             || calls.iter().zip(&bases).any(|(call, base)| {
                 call.mode() != SourceCallMode::Prefill
                     || call.rows().base() as u64 != frontier
-                    || call.rows().len() != prompt_rows
+                    || !(1..=64).contains(&call.rows().len())
                     || base.frontier() != frontier
                     || call.source() != base.source()
                     || call.rows().capacity() != self.capacity
@@ -207,15 +209,15 @@ impl ResidentModel {
             })
         {
             return Err(Error::Unsupported(
-                "ordinary source prefill cohort requires aligned chunk roots".into(),
+                "ordinary source prefill cohort requires aligned compatible chunk roots".into(),
             ));
         }
 
-        let prompt_advance = u64::try_from(prompt_rows)
-            .map_err(|_| Error::Limit("ordinary source prefill cohort prompt rows".into()))?;
         let mut attempts = Vec::with_capacity(width);
-        for session in sessions {
+        for (session, call) in sessions.iter().zip(&calls) {
             self.validate_domains(&session.domains, true)?;
+            let prompt_advance = u64::try_from(call.rows().len())
+                .map_err(|_| Error::Limit("ordinary source prefill cohort prompt rows".into()))?;
             attempts.push(session.authority.begin_advance(prompt_advance)?);
         }
         let staging_bytes = self

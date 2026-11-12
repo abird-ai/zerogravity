@@ -140,6 +140,41 @@ impl Step {
     }
 }
 
+/// Active mathematical rows plus a stable physical pointer-capacity row bound.
+/// Exact execution uses `active == bound`; cohort execution may use a larger
+/// bound so compiled pointer ABIs are reusable across ragged row counts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct RowExtent {
+    active: usize,
+    bound: usize,
+}
+
+impl RowExtent {
+    pub(crate) fn exact(rows: usize) -> Result<Self> {
+        Self::bounded(rows, rows)
+    }
+
+    pub(crate) fn bounded(active: usize, bound: usize) -> Result<Self> {
+        if !(1..=MAX_RUNTIME_ROWS).contains(&active)
+            || !(1..=MAX_RUNTIME_ROWS).contains(&bound)
+            || active > bound
+        {
+            return Err(Error::Unsupported(
+                "ordinary text active/bounded row extent".into(),
+            ));
+        }
+        Ok(Self { active, bound })
+    }
+
+    pub(crate) fn active(self) -> usize {
+        self.active
+    }
+
+    pub(crate) fn bound(self) -> usize {
+        self.bound
+    }
+}
+
 /// Exact internal pointer role; order comes from each crate-private definition.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum BufferRole {
@@ -835,7 +870,11 @@ impl Program {
     }
 
     pub(crate) fn embedding(&self, rows: usize) -> Result<Definition> {
-        let plan = self.memory_plan(rows, rows)?;
+        self.embedding_bounded(RowExtent::exact(rows)?)
+    }
+
+    pub(crate) fn embedding_bounded(&self, rows: RowExtent) -> Result<Definition> {
+        let plan = self.memory_plan(rows.bound(), rows.bound())?;
         self.definition(
             Primitive::Embedding,
             vec![
@@ -848,9 +887,9 @@ impl Program {
                 binding(BufferRole::Output, plan.hidden_batch_bytes, Access::Write),
                 status(),
             ],
-            u32_words(&[rows])?,
+            u32_words(&[rows.active()])?,
             element_grid(checked_mul(
-                rows,
+                rows.active(),
                 self.geometry.hidden_width,
                 "embedding grid",
             )?)?,
@@ -858,24 +897,36 @@ impl Program {
     }
 
     pub(crate) fn rms(&self, rows: usize, epsilon: f32) -> Result<Definition> {
+        self.rms_definition(Primitive::Rms, RowExtent::exact(rows)?, epsilon)
+    }
+
+    pub(crate) fn rms_bounded(&self, rows: RowExtent, epsilon: f32) -> Result<Definition> {
         self.rms_definition(Primitive::Rms, rows, epsilon)
     }
 
     pub(crate) fn residual_rms(&self, rows: usize, epsilon: f32) -> Result<Definition> {
+        self.rms_definition(Primitive::ResidualRms, RowExtent::exact(rows)?, epsilon)
+    }
+
+    pub(crate) fn residual_rms_bounded(&self, rows: RowExtent, epsilon: f32) -> Result<Definition> {
         self.rms_definition(Primitive::ResidualRms, rows, epsilon)
     }
 
     fn rms_definition(
         &self,
         primitive: Primitive,
-        rows: usize,
+        rows: RowExtent,
         epsilon: f32,
     ) -> Result<Definition> {
-        require_rows(rows)?;
         if !epsilon.is_finite() || epsilon <= 0.0 {
             return Err(Error::Unsupported("ordinary text RMS epsilon".into()));
         }
-        let bytes = extent(rows, self.geometry.hidden_width, BF16_BYTES, "RMS batch")?;
+        let bytes = extent(
+            rows.bound(),
+            self.geometry.hidden_width,
+            BF16_BYTES,
+            "RMS batch",
+        )?;
         let gamma = checked_mul(self.geometry.hidden_width, BF16_BYTES, "RMS gamma")?;
         let mut bindings = vec![binding(BufferRole::Input, bytes, Access::Read)];
         if primitive == Primitive::ResidualRms {
@@ -891,26 +942,37 @@ impl Program {
             bindings,
             &[(BufferRole::Input, BufferRole::Output)],
             words(&[
-                (StaticScalarType::U32, StaticScalarValue::U32(rows as u64)),
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(rows.active() as u64),
+                ),
                 (
                     StaticScalarType::F32Bits,
                     StaticScalarValue::F32Bits(epsilon.to_bits()),
                 ),
             ])?,
-            [rows as u32, 1, 1],
+            [rows.active() as u32, 1, 1],
         )
     }
 
     pub(crate) fn silu_up(&self, rows: usize) -> Result<Definition> {
-        require_rows(rows)?;
+        self.silu_up_bounded(RowExtent::exact(rows)?)
+    }
+
+    pub(crate) fn silu_up_bounded(&self, rows: RowExtent) -> Result<Definition> {
         let packed_width = checked_mul(
             self.geometry.intermediate_width,
             2,
             "packed gate/up row stride",
         )?;
-        let packed = extent(rows, packed_width, BF16_BYTES, "packed gate/up batch")?;
+        let packed = extent(
+            rows.bound(),
+            packed_width,
+            BF16_BYTES,
+            "packed gate/up batch",
+        )?;
         require_strided_view(
-            rows,
+            rows.active(),
             packed_width,
             1,
             0,
@@ -920,7 +982,7 @@ impl Program {
             "packed gate",
         )?;
         require_strided_view(
-            rows,
+            rows.active(),
             packed_width,
             1,
             0,
@@ -930,7 +992,7 @@ impl Program {
             "packed up",
         )?;
         let output = extent(
-            rows,
+            rows.bound(),
             self.geometry.intermediate_width,
             BF16_BYTES,
             "SiLU output batch",
@@ -942,9 +1004,14 @@ impl Program {
                 binding(BufferRole::Output, output, Access::Write),
                 status(),
             ],
-            u32_words(&[rows, 0, self.geometry.intermediate_width, packed_width])?,
+            u32_words(&[
+                rows.active(),
+                0,
+                self.geometry.intermediate_width,
+                packed_width,
+            ])?,
             element_grid(checked_mul(
-                rows,
+                rows.active(),
                 self.geometry.intermediate_width,
                 "SiLU grid",
             )?)?,
@@ -954,13 +1021,16 @@ impl Program {
     /// Qwen attention gate is a strided view of the packed Q/G/K/V projection.
     /// Sigmoid stores BF16 first; [`Self::multiply`] consumes that rounded value.
     pub(crate) fn sigmoid(&self, rows: usize) -> Result<Definition> {
-        require_rows(rows)?;
-        let packed = self.packed_attention_bytes(rows)?;
+        self.sigmoid_bounded(RowExtent::exact(rows)?)
+    }
+
+    pub(crate) fn sigmoid_bounded(&self, rows: RowExtent) -> Result<Definition> {
+        let packed = self.packed_attention_bytes(rows.bound())?;
         let width = self.geometry.query_width()?;
         let head_stride =
             checked_mul(2, self.geometry.head_width, "packed query/gate head stride")?;
         require_strided_view(
-            rows,
+            rows.active(),
             self.attention_row_stride()?,
             self.geometry.query_heads,
             head_stride,
@@ -969,7 +1039,7 @@ impl Program {
             packed / BF16_BYTES,
             "interleaved attention gate",
         )?;
-        let output = extent(rows, width, BF16_BYTES, "sigmoid output batch")?;
+        let output = extent(rows.bound(), width, BF16_BYTES, "sigmoid output batch")?;
         self.definition(
             Primitive::Sigmoid,
             vec![
@@ -978,12 +1048,12 @@ impl Program {
                 status(),
             ],
             u32_words(&[
-                rows,
+                rows.active(),
                 self.geometry.head_width,
                 head_stride,
                 self.attention_row_stride()?,
             ])?,
-            element_grid(checked_mul(rows, width, "sigmoid grid")?)?,
+            element_grid(checked_mul(rows.active(), width, "sigmoid grid")?)?,
         )
     }
 
@@ -991,13 +1061,16 @@ impl Program {
     /// exact intermediate BF16 value as an explicit output. This preserves the
     /// unfused numerical/SSA contract and is reusable by any compatible graph.
     pub(crate) fn sigmoid_multiply(&self, rows: usize) -> Result<Definition> {
-        require_rows(rows)?;
-        let packed = self.packed_attention_bytes(rows)?;
+        self.sigmoid_multiply_bounded(RowExtent::exact(rows)?)
+    }
+
+    pub(crate) fn sigmoid_multiply_bounded(&self, rows: RowExtent) -> Result<Definition> {
+        let packed = self.packed_attention_bytes(rows.bound())?;
         let width = self.geometry.query_width()?;
         let head_stride =
             checked_mul(2, self.geometry.head_width, "packed query/gate head stride")?;
         require_strided_view(
-            rows,
+            rows.active(),
             self.attention_row_stride()?,
             self.geometry.query_heads,
             head_stride,
@@ -1006,7 +1079,7 @@ impl Program {
             packed / BF16_BYTES,
             "interleaved attention gate",
         )?;
-        let bytes = extent(rows, width, BF16_BYTES, "sigmoid-multiply batch")?;
+        let bytes = extent(rows.bound(), width, BF16_BYTES, "sigmoid-multiply batch")?;
         self.definition_with_aliases(
             Primitive::SigmoidMultiply,
             vec![
@@ -1018,16 +1091,26 @@ impl Program {
             ],
             &[(BufferRole::Input, BufferRole::Output)],
             u32_words(&[
-                rows,
+                rows.active(),
                 self.geometry.head_width,
                 head_stride,
                 self.attention_row_stride()?,
             ])?,
-            element_grid(checked_mul(rows, width, "sigmoid-multiply grid")?)?,
+            element_grid(checked_mul(rows.active(), width, "sigmoid-multiply grid")?)?,
         )
     }
 
     pub(crate) fn multiply(&self, rows: usize) -> Result<Definition> {
+        self.contiguous_elementwise(
+            Primitive::Multiply,
+            RowExtent::exact(rows)?,
+            self.geometry.query_width()?,
+            BufferRole::Input,
+            BufferRole::Gate,
+        )
+    }
+
+    pub(crate) fn multiply_bounded(&self, rows: RowExtent) -> Result<Definition> {
         self.contiguous_elementwise(
             Primitive::Multiply,
             rows,
@@ -1040,6 +1123,16 @@ impl Program {
     pub(crate) fn residual(&self, rows: usize) -> Result<Definition> {
         self.contiguous_elementwise(
             Primitive::Residual,
+            RowExtent::exact(rows)?,
+            self.geometry.hidden_width,
+            BufferRole::Input,
+            BufferRole::Residual,
+        )
+    }
+
+    pub(crate) fn residual_bounded(&self, rows: RowExtent) -> Result<Definition> {
+        self.contiguous_elementwise(
+            Primitive::Residual,
             rows,
             self.geometry.hidden_width,
             BufferRole::Input,
@@ -1050,13 +1143,12 @@ impl Program {
     fn contiguous_elementwise(
         &self,
         primitive: Primitive,
-        rows: usize,
+        rows: RowExtent,
         width: usize,
         first: BufferRole,
         second: BufferRole,
     ) -> Result<Definition> {
-        require_rows(rows)?;
-        let bytes = extent(rows, width, BF16_BYTES, "elementwise batch")?;
+        let bytes = extent(rows.bound(), width, BF16_BYTES, "elementwise batch")?;
         self.definition_with_aliases(
             primitive,
             vec![
@@ -1066,14 +1158,23 @@ impl Program {
                 status(),
             ],
             &[(first, BufferRole::Output)],
-            u32_words(&[rows])?,
-            element_grid(checked_mul(rows, width, "elementwise grid")?)?,
+            u32_words(&[rows.active()])?,
+            element_grid(checked_mul(rows.active(), width, "elementwise grid")?)?,
         )
     }
 
     pub(crate) fn kv_append(&self, step: Step) -> Result<Definition> {
+        self.kv_append_bounded(step, RowExtent::exact(step.rows)?)
+    }
+
+    pub(crate) fn kv_append_bounded(&self, step: Step, rows: RowExtent) -> Result<Definition> {
         let step = Step::new(step.rows, step.base, step.capacity)?;
-        let plan = self.memory_plan(step.rows, step.capacity)?;
+        if rows.active() != step.rows {
+            return Err(Error::State(
+                "ordinary text KV active/bounded rows differ from step".into(),
+            ));
+        }
+        let plan = self.memory_plan(rows.bound(), step.capacity)?;
         let value_offset = checked_mul(
             2,
             self.geometry.query_width()?,
@@ -1088,7 +1189,7 @@ impl Program {
             0,
             value_offset,
             self.geometry.kv_width()?,
-            self.packed_attention_bytes(step.rows)? / BF16_BYTES,
+            self.packed_attention_bytes(rows.bound())? / BF16_BYTES,
             "packed attention value",
         )?;
         self.definition(
@@ -1097,7 +1198,7 @@ impl Program {
                 binding(BufferRole::Key, plan.kv_batch_bytes, Access::Read),
                 binding(
                     BufferRole::PackedAttention,
-                    self.packed_attention_bytes(step.rows)?,
+                    self.packed_attention_bytes(rows.bound())?,
                     Access::Read,
                 ),
                 binding(
@@ -1119,11 +1220,26 @@ impl Program {
                 value_offset,
                 self.attention_row_stride()?,
             ])?,
-            element_grid(plan.kv_batch_bytes / BF16_BYTES)?,
+            element_grid(
+                extent(
+                    step.rows,
+                    self.geometry.kv_width()?,
+                    BF16_BYTES,
+                    "KV append active batch",
+                )? / BF16_BYTES,
+            )?,
         )
     }
 
     pub(crate) fn query_head_rms(&self, rows: usize, epsilon: f32) -> Result<Definition> {
+        self.query_head_rms_bounded(RowExtent::exact(rows)?, epsilon)
+    }
+
+    pub(crate) fn query_head_rms_bounded(
+        &self,
+        rows: RowExtent,
+        epsilon: f32,
+    ) -> Result<Definition> {
         self.head_rms_definition(
             Primitive::QueryHeadRms,
             rows,
@@ -1135,6 +1251,10 @@ impl Program {
     }
 
     pub(crate) fn key_head_rms(&self, rows: usize, epsilon: f32) -> Result<Definition> {
+        self.key_head_rms_bounded(RowExtent::exact(rows)?, epsilon)
+    }
+
+    pub(crate) fn key_head_rms_bounded(&self, rows: RowExtent, epsilon: f32) -> Result<Definition> {
         self.head_rms_definition(
             Primitive::KeyHeadRms,
             rows,
@@ -1149,18 +1269,17 @@ impl Program {
     fn head_rms_definition(
         &self,
         primitive: Primitive,
-        rows: usize,
+        rows: RowExtent,
         heads: usize,
         raw_gamma: BufferRole,
         output: BufferRole,
         epsilon: f32,
     ) -> Result<Definition> {
-        require_rows(rows)?;
         if !epsilon.is_finite() || epsilon <= 0.0 {
             return Err(Error::Unsupported("ordinary text head RMS epsilon".into()));
         }
         let bytes = extent(
-            rows,
+            rows.bound(),
             heads * self.geometry.head_width,
             BF16_BYTES,
             "head RMS",
@@ -1181,9 +1300,9 @@ impl Program {
             ),
             _ => return Err(Error::State("ordinary text head RMS primitive".into())),
         };
-        let packed = self.packed_attention_bytes(rows)?;
+        let packed = self.packed_attention_bytes(rows.bound())?;
         require_strided_view(
-            rows,
+            rows.active(),
             self.attention_row_stride()?,
             heads,
             input_head_stride,
@@ -1201,7 +1320,10 @@ impl Program {
                 status(),
             ],
             words(&[
-                (StaticScalarType::U32, StaticScalarValue::U32(rows as u64)),
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(rows.active() as u64),
+                ),
                 (
                     StaticScalarType::U32,
                     StaticScalarValue::U32(input_offset as u64),
@@ -1220,7 +1342,7 @@ impl Program {
                 ),
             ])?,
             [
-                u32::try_from(rows * heads)
+                u32::try_from(rows.active() * heads)
                     .map_err(|_| Error::Limit("ordinary text head RMS grid".into()))?,
                 1,
                 1,

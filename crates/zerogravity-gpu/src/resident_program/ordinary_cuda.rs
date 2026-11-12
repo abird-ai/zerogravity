@@ -16,6 +16,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 mod arithmetic;
+pub(crate) use arithmetic::PrefillProjectionClasses;
 use arithmetic::ProjectionUse;
 mod gemm;
 use gemm::OrdinaryCudaGemm;

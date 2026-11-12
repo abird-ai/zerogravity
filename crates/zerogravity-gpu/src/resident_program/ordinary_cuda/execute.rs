@@ -10,13 +10,15 @@ use crate::{
                 CONV_ELEMENTS, RECURRENT_ELEMENTS, StateCopy, StateTransport, plane_handle,
             },
         },
-        ordinary_text::{Access, BufferRole as OrdinaryRole, Definition, LaunchBinding, Step},
+        ordinary_text::{
+            Access, BufferRole as OrdinaryRole, Definition, LaunchBinding, RowExtent, Step,
+        },
     },
     resident_leases::{ResidentLease, ResidentSubmission as PhysicalSubmission},
     resident_program::{
         DeviceBuffer, ResidentBufferLayout, ResidentOutput, ResidentPhysicalType,
         ResidentSubmission as ProgramSubmission, StateBinding, StateBuffers, StateLayout,
-        StateRequirement,
+        StateRequirement, cohort_rows::CohortRowSpans,
     },
 };
 use cubecl::{bytes::Bytes, server::Handle};
@@ -38,6 +40,12 @@ fn require_not_cancelled(cancelled: Option<&std::sync::atomic::AtomicBool>) -> R
         return Err(Error::State("ordinary CUDA request cancelled".into()));
     }
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+struct CohortValues<'a> {
+    arena: &'a OrdinaryCudaCohortValues,
+    spans: &'a CohortRowSpans,
 }
 
 impl OrdinaryCudaBody {
@@ -432,6 +440,7 @@ impl OrdinaryCudaBody {
         workspace_row: usize,
         gate_alias: &mut BTreeMap<u32, u32>,
         values: &OrdinaryCudaCohortValues,
+        spans: &CohortRowSpans,
     ) -> Result<(usize, usize)> {
         self.enqueue_node_inner(
             flight,
@@ -445,7 +454,10 @@ impl OrdinaryCudaBody {
             None,
             None,
             gate_alias,
-            Some(values),
+            Some(CohortValues {
+                arena: values,
+                spans,
+            }),
         )
         .await
     }
@@ -464,7 +476,7 @@ impl OrdinaryCudaBody {
         row_positions: Option<&[usize]>,
         device_token: Option<&Handle>,
         gate_alias: &mut BTreeMap<u32, u32>,
-        values: Option<&OrdinaryCudaCohortValues>,
+        values: Option<CohortValues<'_>>,
     ) -> Result<(usize, usize)> {
         use SourceOperatorKind::*;
         let client = self.cold().service().client();
@@ -489,10 +501,25 @@ impl OrdinaryCudaBody {
                     };
                     let target = self.value_lease_in(values, *output)?;
                     let width = self.cold().layout().geometry().hidden_width;
-                    let lane_base = workspace_row
-                        .checked_mul(outputs[0])
-                        .and_then(|elements| elements.checked_mul(2))
-                        .ok_or_else(|| Error::Limit("streamed embedding lane offset".into()))?;
+                    let lane_base = if let Some(values) = values {
+                        let rows = descriptor.call().rows().len();
+                        if outputs[0] % rows != 0 {
+                            return Err(Error::State(
+                                "streamed cohort embedding row geometry".into(),
+                            ));
+                        }
+                        values
+                            .spans
+                            .element_span(workspace_row, outputs[0] / rows)?
+                            .start
+                            .checked_mul(2)
+                            .ok_or_else(|| Error::Limit("streamed embedding lane offset".into()))?
+                    } else {
+                        workspace_row
+                            .checked_mul(outputs[0])
+                            .and_then(|elements| elements.checked_mul(2))
+                            .ok_or_else(|| Error::Limit("streamed embedding lane offset".into()))?
+                    };
                     for (row, &token) in descriptor.call().rows().ids().iter().enumerate() {
                         let token = token as usize;
                         let destination = exact_view(
@@ -515,8 +542,15 @@ impl OrdinaryCudaBody {
                     }
                     return Ok((step.rows, 0));
                 }
-                let out =
-                    self.value_handle_in(values, request, *output, outputs[0], workspace_row)?;
+                let row_extent = self.row_extent_in(values, request, step.rows)?;
+                let out = self.value_handle_extent_in(
+                    values,
+                    request,
+                    *output,
+                    outputs[0],
+                    workspace_row,
+                    row_extent,
+                )?;
                 let tokens = if let Some(values) = values {
                     if device_token.is_some() {
                         return Err(Error::State(
@@ -530,9 +564,13 @@ impl OrdinaryCudaBody {
                         .iter()
                         .flat_map(|id| id.to_ne_bytes())
                         .collect::<Vec<_>>();
-                    let handle = values.token_handle(workspace_row, step.rows)?;
-                    client.write(&handle, Bytes::from_bytes_vec(token_bytes));
-                    handle
+                    let active = values.arena.token_handle(workspace_row, step.rows)?;
+                    client.write(&active, Bytes::from_bytes_vec(token_bytes));
+                    values.arena.token_handle_bounded(
+                        workspace_row,
+                        step.rows,
+                        row_extent.bound(),
+                    )?
                 } else {
                     match device_token {
                         Some(token) => {
@@ -552,7 +590,7 @@ impl OrdinaryCudaBody {
                     }
                 };
                 self.enqueue_primitive(
-                    self.cold().program().embedding(step.rows)?,
+                    self.cold().program().embedding_bounded(row_extent)?,
                     vec![
                         LaunchBinding::new(OrdinaryRole::TokenIds, Access::Read, tokens),
                         LaunchBinding::new(
@@ -603,22 +641,26 @@ impl OrdinaryCudaBody {
                 let ([input], [output]) = (node.inputs.as_slice(), node.outputs.as_slice()) else {
                     return Err(Error::State("ordinary CUDA RMS SSA arity".into()));
                 };
+                let row_extent = self.row_extent_in(values, request, step.rows)?;
                 let parameters = self.cold().node_parameters(node_index)?;
                 let [gamma] = parameters else {
                     return Err(Error::State("ordinary CUDA RMS gamma arity".into()));
                 };
                 self.enqueue_primitive(
-                    self.cold().program().rms(step.rows, geometry.epsilon)?,
+                    self.cold()
+                        .program()
+                        .rms_bounded(row_extent, geometry.epsilon)?,
                     vec![
                         LaunchBinding::new(
                             OrdinaryRole::Input,
                             Access::Read,
-                            self.value_handle_in(
+                            self.value_handle_extent_in(
                                 values,
                                 request,
                                 *input,
                                 inputs[0],
                                 workspace_row,
+                                row_extent,
                             )?,
                         ),
                         LaunchBinding::new(
@@ -629,12 +671,13 @@ impl OrdinaryCudaBody {
                         LaunchBinding::new(
                             OrdinaryRole::Output,
                             Access::Write,
-                            self.value_handle_in(
+                            self.value_handle_extent_in(
                                 values,
                                 request,
                                 *output,
                                 outputs[0],
                                 workspace_row,
+                                row_extent,
                             )?,
                         ),
                     ],
@@ -663,31 +706,34 @@ impl OrdinaryCudaBody {
                         "ordinary CUDA residual RMS gamma arity".into(),
                     ));
                 };
+                let row_extent = self.row_extent_in(values, request, step.rows)?;
                 self.enqueue_primitive(
                     self.cold()
                         .program()
-                        .residual_rms(step.rows, geometry.epsilon)?,
+                        .residual_rms_bounded(row_extent, geometry.epsilon)?,
                     vec![
                         LaunchBinding::new(
                             OrdinaryRole::Input,
                             Access::Read,
-                            self.value_handle_in(
+                            self.value_handle_extent_in(
                                 values,
                                 request,
                                 *input,
                                 inputs[0],
                                 workspace_row,
+                                row_extent,
                             )?,
                         ),
                         LaunchBinding::new(
                             OrdinaryRole::Residual,
                             Access::ReadWrite,
-                            self.value_handle_in(
+                            self.value_handle_extent_in(
                                 values,
                                 request,
                                 *residual,
                                 inputs[1],
                                 workspace_row,
+                                row_extent,
                             )?,
                         ),
                         LaunchBinding::new(
@@ -698,12 +744,13 @@ impl OrdinaryCudaBody {
                         LaunchBinding::new(
                             OrdinaryRole::Output,
                             Access::Write,
-                            self.value_handle_in(
+                            self.value_handle_extent_in(
                                 values,
                                 request,
                                 *output,
                                 outputs[0],
                                 workspace_row,
+                                row_extent,
                             )?,
                         ),
                     ],
@@ -720,8 +767,33 @@ impl OrdinaryCudaBody {
                 let [query_gamma, key_gamma] = parameters else {
                     return Err(Error::State("ordinary CUDA QK gamma arity".into()));
                 };
-                let packed_handle =
-                    self.value_handle_in(values, request, *packed, inputs[0], workspace_row)?;
+                let row_extent = self.row_extent_in(values, request, step.rows)?;
+                let packed_bounded = self.value_handle_extent_in(
+                    values,
+                    request,
+                    *packed,
+                    inputs[0],
+                    workspace_row,
+                    row_extent,
+                )?;
+                let query_bounded = self.value_handle_extent_in(
+                    values,
+                    request,
+                    *query,
+                    outputs[0],
+                    workspace_row,
+                    row_extent,
+                )?;
+                let key_bounded = self.value_handle_extent_in(
+                    values,
+                    request,
+                    *key,
+                    outputs[1],
+                    workspace_row,
+                    row_extent,
+                )?;
+                // Rotary consumes exact active extents; only the ordinary-text
+                // RMS kernels use capacity-sized cohort ABI views.
                 let query_handle =
                     self.value_handle_in(values, request, *query, outputs[0], workspace_row)?;
                 let key_handle =
@@ -729,12 +801,12 @@ impl OrdinaryCudaBody {
                 self.enqueue_primitive(
                     self.cold()
                         .program()
-                        .query_head_rms(step.rows, geometry.epsilon)?,
+                        .query_head_rms_bounded(row_extent, geometry.epsilon)?,
                     vec![
                         LaunchBinding::new(
                             OrdinaryRole::PackedAttention,
                             Access::Read,
-                            packed_handle.clone(),
+                            packed_bounded.clone(),
                         ),
                         LaunchBinding::new(
                             OrdinaryRole::QueryRawGamma,
@@ -744,30 +816,26 @@ impl OrdinaryCudaBody {
                         LaunchBinding::new(
                             OrdinaryRole::QueryNormalized,
                             Access::Write,
-                            query_handle.clone(),
+                            query_bounded,
                         ),
                     ],
                 )?;
                 self.enqueue_primitive(
                     self.cold()
                         .program()
-                        .key_head_rms(step.rows, geometry.epsilon)?,
+                        .key_head_rms_bounded(row_extent, geometry.epsilon)?,
                     vec![
                         LaunchBinding::new(
                             OrdinaryRole::PackedAttention,
                             Access::Read,
-                            packed_handle,
+                            packed_bounded,
                         ),
                         LaunchBinding::new(
                             OrdinaryRole::KeyRawGamma,
                             Access::Read,
                             key_gamma.lease().handle(),
                         ),
-                        LaunchBinding::new(
-                            OrdinaryRole::KeyNormalized,
-                            Access::Write,
-                            key_handle.clone(),
-                        ),
+                        LaunchBinding::new(OrdinaryRole::KeyNormalized, Access::Write, key_bounded),
                     ],
                 )?;
                 let rotary_launches = if let Some(positions) = row_positions {
@@ -869,23 +937,32 @@ impl OrdinaryCudaBody {
                         )?;
                     }
                 }
+                let row_extent = self.row_extent_in(values, request, step.rows)?;
                 self.enqueue_primitive(
-                    self.cold().program().kv_append(step)?,
+                    self.cold().program().kv_append_bounded(step, row_extent)?,
                     vec![
                         LaunchBinding::new(
                             OrdinaryRole::Key,
                             Access::Read,
-                            self.value_handle_in(values, request, *key, inputs[0], workspace_row)?,
+                            self.value_handle_extent_in(
+                                values,
+                                request,
+                                *key,
+                                inputs[0],
+                                workspace_row,
+                                row_extent,
+                            )?,
                         ),
                         LaunchBinding::new(
                             OrdinaryRole::PackedAttention,
                             Access::Read,
-                            self.value_handle_in(
+                            self.value_handle_extent_in(
                                 values,
                                 request,
                                 *packed,
                                 inputs[1],
                                 workspace_row,
+                                row_extent,
                             )?,
                         ),
                         LaunchBinding::new(
@@ -937,13 +1014,14 @@ impl OrdinaryCudaBody {
                 let packed = gate_alias.remove(&gate.0).map(ValueId).ok_or_else(|| {
                     Error::State("ordinary CUDA sigmoid gate producer alias absent".into())
                 })?;
+                let row_extent = self.row_extent_in(values, request, step.rows)?;
                 self.enqueue_primitive(
-                    self.cold().program().sigmoid(step.rows)?,
+                    self.cold().program().sigmoid_bounded(row_extent)?,
                     vec![
                         LaunchBinding::new(
                             OrdinaryRole::PackedAttention,
                             Access::Read,
-                            self.value_handle_in(
+                            self.value_handle_extent_in(
                                 values,
                                 request,
                                 packed,
@@ -952,17 +1030,19 @@ impl OrdinaryCudaBody {
                                     * (self.cold().layout().geometry().query_width()?
                                         + self.cold().layout().geometry().kv_width()?),
                                 workspace_row,
+                                row_extent,
                             )?,
                         ),
                         LaunchBinding::new(
                             OrdinaryRole::Output,
                             Access::Write,
-                            self.value_handle_in(
+                            self.value_handle_extent_in(
                                 values,
                                 request,
                                 *output,
                                 outputs[0],
                                 workspace_row,
+                                row_extent,
                             )?,
                         ),
                     ],
@@ -974,34 +1054,44 @@ impl OrdinaryCudaBody {
                 else {
                     return Err(Error::State("ordinary CUDA multiply SSA arity".into()));
                 };
+                let row_extent = self.row_extent_in(values, request, step.rows)?;
                 self.enqueue_primitive(
-                    self.cold().program().multiply(step.rows)?,
+                    self.cold().program().multiply_bounded(row_extent)?,
                     vec![
                         LaunchBinding::new(
                             OrdinaryRole::Input,
                             Access::Read,
-                            self.value_handle_in(
+                            self.value_handle_extent_in(
                                 values,
                                 request,
                                 *input,
                                 inputs[0],
                                 workspace_row,
+                                row_extent,
                             )?,
                         ),
                         LaunchBinding::new(
                             OrdinaryRole::Gate,
                             Access::Read,
-                            self.value_handle_in(values, request, *gate, inputs[1], workspace_row)?,
+                            self.value_handle_extent_in(
+                                values,
+                                request,
+                                *gate,
+                                inputs[1],
+                                workspace_row,
+                                row_extent,
+                            )?,
                         ),
                         LaunchBinding::new(
                             OrdinaryRole::Output,
                             Access::Write,
-                            self.value_handle_in(
+                            self.value_handle_extent_in(
                                 values,
                                 request,
                                 *output,
                                 outputs[0],
                                 workspace_row,
+                                row_extent,
                             )?,
                         ),
                     ],
@@ -1012,29 +1102,32 @@ impl OrdinaryCudaBody {
                 let ([input], [output]) = (node.inputs.as_slice(), node.outputs.as_slice()) else {
                     return Err(Error::State("ordinary CUDA SiLU SSA arity".into()));
                 };
+                let row_extent = self.row_extent_in(values, request, step.rows)?;
                 self.enqueue_primitive(
-                    self.cold().program().silu_up(step.rows)?,
+                    self.cold().program().silu_up_bounded(row_extent)?,
                     vec![
                         LaunchBinding::new(
                             OrdinaryRole::PackedGateUp,
                             Access::Read,
-                            self.value_handle_in(
+                            self.value_handle_extent_in(
                                 values,
                                 request,
                                 *input,
                                 inputs[0],
                                 workspace_row,
+                                row_extent,
                             )?,
                         ),
                         LaunchBinding::new(
                             OrdinaryRole::Output,
                             Access::Write,
-                            self.value_handle_in(
+                            self.value_handle_extent_in(
                                 values,
                                 request,
                                 *output,
                                 outputs[0],
                                 workspace_row,
+                                row_extent,
                             )?,
                         ),
                     ],
@@ -1080,7 +1173,7 @@ impl OrdinaryCudaBody {
         state: &StateBinding,
         step: Step,
         workspace_row: usize,
-        values: Option<&OrdinaryCudaCohortValues>,
+        values: Option<CohortValues<'_>>,
     ) -> Result<(usize, usize)> {
         if !self.cold().layout().groups().direct() {
             if values.is_some() {
@@ -1146,20 +1239,55 @@ impl OrdinaryCudaBody {
         )?
         .launch(self.cold().service())?;
 
+        let row_extent = self.gdn_row_extent(request, descriptor.call().mode(), step.rows)?;
         let mut handles = self.gdn_internal_handles()?;
         handles.insert(
             GdnRuntimeBuffer::PackedQkvz,
-            self.value_handle_in(values, request, *packed_qkvz, inputs[0], workspace_row)?,
+            self.value_handle_extent_in(
+                values,
+                request,
+                *packed_qkvz,
+                inputs[0],
+                workspace_row,
+                row_extent,
+            )?,
         );
         handles.insert(
             GdnRuntimeBuffer::PackedBa,
-            self.value_handle_in(values, request, *packed_ba, inputs[1], workspace_row)?,
+            self.value_handle_extent_in(
+                values,
+                request,
+                *packed_ba,
+                inputs[1],
+                workspace_row,
+                row_extent,
+            )?,
         );
         let conv_handle =
             self.value_handle_in(values, request, *conv_output, outputs[0], workspace_row)?;
         let z_handle = self.value_handle_in(values, request, *z, outputs[1], workspace_row)?;
-        handles.insert(GdnRuntimeBuffer::ConvOutput, conv_handle.clone());
-        handles.insert(GdnRuntimeBuffer::ZCompact, z_handle.clone());
+        handles.insert(
+            GdnRuntimeBuffer::ConvOutput,
+            self.value_handle_extent_in(
+                values,
+                request,
+                *conv_output,
+                outputs[0],
+                workspace_row,
+                row_extent,
+            )?,
+        );
+        handles.insert(
+            GdnRuntimeBuffer::ZCompact,
+            self.value_handle_extent_in(
+                values,
+                request,
+                *z,
+                outputs[1],
+                workspace_row,
+                row_extent,
+            )?,
+        );
         handles.insert(GdnRuntimeBuffer::ConvWeights, conv_weights.lease().handle());
         let launches = runtime
             .prepare_partition_launches(
@@ -1205,7 +1333,7 @@ impl OrdinaryCudaBody {
         state: &StateBinding,
         step: Step,
         workspace_row: usize,
-        values: Option<&OrdinaryCudaCohortValues>,
+        values: Option<CohortValues<'_>>,
     ) -> Result<(usize, usize)> {
         if !self.cold().layout().groups().direct() {
             if values.is_some() {
@@ -1268,22 +1396,47 @@ impl OrdinaryCudaBody {
         )?
         .launch(self.cold().service())?;
 
+        let row_extent = self.gdn_row_extent(request, descriptor.call().mode(), step.rows)?;
         let mut handles = self.gdn_internal_handles()?;
         handles.insert(
             GdnRuntimeBuffer::ConvOutput,
-            self.value_handle_in(values, request, *conv_output, inputs[0], workspace_row)?,
+            self.value_handle_extent_in(
+                values,
+                request,
+                *conv_output,
+                inputs[0],
+                workspace_row,
+                row_extent,
+            )?,
         );
         handles.insert(
             GdnRuntimeBuffer::ZCompact,
-            self.value_handle_in(values, request, *z, inputs[1], workspace_row)?,
+            self.value_handle_extent_in(values, request, *z, inputs[1], workspace_row, row_extent)?,
         );
         handles.insert(
             GdnRuntimeBuffer::PackedBa,
-            self.value_handle_in(values, request, *packed_ba, inputs[2], workspace_row)?,
+            self.value_handle_extent_in(
+                values,
+                request,
+                *packed_ba,
+                inputs[2],
+                workspace_row,
+                row_extent,
+            )?,
         );
         let output_handle =
             self.value_handle_in(values, request, *output, outputs[0], workspace_row)?;
-        handles.insert(GdnRuntimeBuffer::Gated, output_handle.clone());
+        handles.insert(
+            GdnRuntimeBuffer::Gated,
+            self.value_handle_extent_in(
+                values,
+                request,
+                *output,
+                outputs[0],
+                workspace_row,
+                row_extent,
+            )?,
+        );
         handles.insert(GdnRuntimeBuffer::ALog, a_log.lease().handle());
         handles.insert(GdnRuntimeBuffer::DtBias, dt_bias.lease().handle());
         handles.insert(GdnRuntimeBuffer::GatedGamma, gamma.lease().handle());
@@ -1378,18 +1531,18 @@ impl OrdinaryCudaBody {
 
     fn value_lease_in<'a>(
         &'a self,
-        values: Option<&'a OrdinaryCudaCohortValues>,
+        values: Option<CohortValues<'a>>,
         id: ValueId,
     ) -> Result<&'a ResidentLease> {
         match values {
-            Some(values) => values.lease(id),
+            Some(values) => values.arena.lease(id),
             None => self.cold().value_lease(id.0 as usize),
         }
     }
 
     fn value_handle_in(
         &self,
-        values: Option<&OrdinaryCudaCohortValues>,
+        values: Option<CohortValues<'_>>,
         request: &ForwardPlan,
         id: ValueId,
         elements: usize,
@@ -1405,8 +1558,117 @@ impl OrdinaryCudaBody {
             ));
         }
         match values {
-            Some(values) => values.lane_handle(id, elements, lane),
+            Some(values) => {
+                let rows = values.spans.lane_rows(lane)?;
+                if !elements.is_multiple_of(rows) {
+                    return Err(Error::State(
+                        "ordinary CUDA cohort value is not row-proportional".into(),
+                    ));
+                }
+                values
+                    .arena
+                    .lane_row_handle(id, elements / rows, values.spans, lane)
+            }
             None => self.value_handle_at(request, id, elements, lane),
+        }
+    }
+
+    fn row_extent_in(
+        &self,
+        values: Option<CohortValues<'_>>,
+        request: &ForwardPlan,
+        active_rows: usize,
+    ) -> Result<RowExtent> {
+        let bound_rows = if values.is_some() {
+            request
+                .source_plan_geometry()
+                .ok_or_else(|| Error::State("ordinary CUDA cohort source geometry absent".into()))?
+                .max_rows()
+        } else {
+            active_rows
+        };
+        RowExtent::bounded(active_rows, bound_rows)
+    }
+
+    fn gdn_row_extent(
+        &self,
+        request: &ForwardPlan,
+        mode: SourceCallMode,
+        active_rows: usize,
+    ) -> Result<RowExtent> {
+        match mode {
+            SourceCallMode::Prefill => {
+                let bound_rows = request
+                    .source_plan_geometry()
+                    .ok_or_else(|| Error::State("ordinary CUDA GDN source geometry absent".into()))?
+                    .max_rows();
+                RowExtent::bounded(active_rows, bound_rows)
+            }
+            SourceCallMode::Decode => RowExtent::exact(active_rows),
+        }
+    }
+
+    fn value_handle_extent_in(
+        &self,
+        values: Option<CohortValues<'_>>,
+        request: &ForwardPlan,
+        id: ValueId,
+        active_elements: usize,
+        lane: usize,
+        rows: RowExtent,
+    ) -> Result<Handle> {
+        if active_elements == 0 || !active_elements.is_multiple_of(rows.active()) {
+            return Err(Error::State(
+                "ordinary CUDA bounded value is not row-proportional".into(),
+            ));
+        }
+        let shape = request
+            .values()
+            .get(id.0 as usize)
+            .ok_or_else(|| Error::State("ordinary CUDA bounded value ID absent".into()))?;
+        let elements_per_row = active_elements / rows.active();
+        let bound_elements = elements_per_row
+            .checked_mul(rows.bound())
+            .ok_or_else(|| Error::Limit("ordinary CUDA bounded value extent".into()))?;
+        if active_elements > shape.capacity_elements()?
+            || bound_elements > shape.capacity_elements()?
+        {
+            return Err(Error::State(
+                "ordinary CUDA bounded value exceeds static capacity".into(),
+            ));
+        }
+        match values {
+            Some(values) => {
+                if values.spans.lane_rows(lane)? != rows.active() {
+                    return Err(Error::State(
+                        "ordinary CUDA bounded lane active rows differ".into(),
+                    ));
+                }
+                values.arena.lane_row_bounded_handle(
+                    id,
+                    elements_per_row,
+                    values.spans,
+                    lane,
+                    rows.bound(),
+                )
+            }
+            None if rows.active() == rows.bound() => {
+                self.value_handle_at(request, id, active_elements, lane)
+            }
+            None if lane == 0 => {
+                let bytes = bound_elements
+                    .checked_mul(2)
+                    .ok_or_else(|| Error::Limit("ordinary CUDA bounded BF16 bytes".into()))?;
+                exact_view(
+                    self.cold().value_lease(id.0 as usize)?,
+                    0,
+                    bytes,
+                    "ordinary bounded BF16 value",
+                )
+            }
+            None => Err(Error::State(
+                "ordinary CUDA wider singleton value requires row zero".into(),
+            )),
         }
     }
 

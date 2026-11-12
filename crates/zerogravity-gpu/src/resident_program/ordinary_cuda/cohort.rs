@@ -19,7 +19,10 @@ use crate::{
         ordinary_text::Step,
     },
     resident_leases::{ResidentLease, ResidentSubmission as PhysicalSubmission},
-    resident_program::{ResidentBufferLayout, ResidentPhysicalType, StateBinding, StateBuffers},
+    resident_program::{
+        ResidentBufferLayout, ResidentPhysicalType, StateBinding, StateBuffers,
+        cohort_rows::CohortRowSpans,
+    },
 };
 use cubecl::bytes::Bytes;
 use cubecl::server::Handle;
@@ -27,7 +30,7 @@ use std::collections::BTreeMap;
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{
-        ForwardPlan, PlanOperation, SourceCall, SourceCallMode, SourceOperatorKind,
+        ForwardPlan, PlanOperation, SourceCall, SourceCallMode, SourceOperator, SourceOperatorKind,
         SourceRowSelection, SourceRows, StateSlot, StateVersion, TextCallGeometry,
     },
     device_events::DeviceAccess,
@@ -48,8 +51,8 @@ impl OrdinaryCudaProjection {
     #[allow(clippy::too_many_arguments)]
     async fn enqueue_prefill_cohort_rows(
         &self,
-        descriptor: &zerogravity_core::accelerator::program::SourceOperator,
-        lanes: usize,
+        descriptors: &[SourceOperator],
+        spans: &CohortRowSpans,
         gemm: &OrdinaryCudaGemm,
         flight: &mut PhysicalSubmission<'_>,
         input: &ResidentLease,
@@ -57,28 +60,56 @@ impl OrdinaryCudaProjection {
         status: &ResidentLease,
         page: Option<&std::sync::Arc<crate::resident_leases::source_page::ResidentSourcePage>>,
     ) -> Result<usize> {
-        let (lane_shape, input_offset) = self.operation(descriptor)?;
+        let lanes = descriptors.len();
         if !matches!(lanes, 2 | 4 | 8)
-            || input_offset != 0
+            || spans.len() != lanes
             || self.template.row_selection() != SourceRowSelection::AllActive
         {
             return Err(Error::State(
                 "ordinary CUDA prefill projection cohort geometry differs".into(),
             ));
         }
-        let rows = lane_shape
-            .rows
-            .checked_mul(lanes)
-            .ok_or_else(|| Error::Limit("ordinary CUDA prefill projection rows".into()))?;
-        let operation = Bf16GemmShape::new(lane_shape.columns, rows, lane_shape.inner)?;
+        let mut lane_shape: Option<Bf16GemmShape> = None;
+        let mut reduction = None;
+        for (lane, descriptor) in descriptors.iter().enumerate() {
+            let (shape, input_offset) = self.operation(descriptor)?;
+            if input_offset != 0 || shape.rows != spans.lane_rows(lane)? {
+                return Err(Error::State(
+                    "ordinary CUDA prefill projection lane span differs".into(),
+                ));
+            }
+            let lane_reduction = self.arithmetic.reduction(shape);
+            if let Some(first) = lane_shape {
+                if shape.columns != first.columns || shape.inner != first.inner {
+                    return Err(Error::State(
+                        "ordinary CUDA prefill projection lane geometry differs".into(),
+                    ));
+                }
+            } else {
+                lane_shape = Some(shape);
+            }
+            if reduction.is_some_and(|first| first != lane_reduction) {
+                return Err(Error::Unsupported(
+                    "ordinary CUDA ragged prefill projection reductions differ".into(),
+                ));
+            }
+            reduction = Some(lane_reduction);
+        }
+        let lane_shape = lane_shape
+            .ok_or_else(|| Error::State("ordinary CUDA prefill projection cohort empty".into()))?;
+        let reduction = reduction.ok_or_else(|| {
+            Error::State("ordinary CUDA prefill projection reduction absent".into())
+        })?;
+        let operation =
+            Bf16GemmShape::new(lane_shape.columns, spans.total_rows(), lane_shape.inner)?;
         if input.bytes() < operation.input_bytes() || output.bytes() < operation.output_bytes() {
             return Err(Error::State(
                 "ordinary CUDA prefill projection cohort extent differs".into(),
             ));
         }
-        // Reduction grouping belongs to one original prompt lane. Reusing that
-        // row-independent contract across more physical rows is exact.
-        let reduction = self.arithmetic.reduction(lane_shape);
+        // Reduction grouping belongs to each original prompt lane. We share one
+        // physical GEMM only after proving every lane chose the exact same
+        // reduction contract from its own authenticated row geometry.
         if let Some(weights) = self.weights.lease() {
             gemm.enqueue(
                 flight, operation, reduction, weights, input, 0, output, 0, status,
@@ -109,7 +140,7 @@ impl OrdinaryCudaProjection {
             for first in (0..geometry.rows).step_by(geometry.rows_per_page) {
                 let source_rows =
                     first..first + (geometry.rows - first).min(geometry.rows_per_page);
-                let shape = Bf16GemmShape::new(source_rows.len(), rows, operation.inner)?;
+                let shape = Bf16GemmShape::new(source_rows.len(), operation.rows, operation.inner)?;
                 let offset = (base + source_rows.start) * 2;
                 let extent = crate::cuda::bf16_gemm::output_span(
                     shape.columns,
@@ -511,10 +542,10 @@ impl OrdinaryCudaBody {
         Ok((dispatches, 0))
     }
 
-    /// Aligned prompt-chunk cohort: private causal/stateful execution per lane,
-    /// with only row-independent projection GEMMs shared physically. A caller
-    /// may request state-only execution for an intermediate chunk by omitting
-    /// the logits target.
+    /// Same-base prompt-chunk cohort: private causal/stateful execution per
+    /// lane, with only reduction-compatible row-independent projection GEMMs
+    /// shared physically. A caller may request state-only execution for an
+    /// intermediate chunk by omitting the logits target.
     pub(crate) async fn execute_prefill_cohort(
         &self,
         flight: &mut PhysicalSubmission<'_>,
@@ -534,20 +565,23 @@ impl OrdinaryCudaBody {
             .map(|request| self.validate_request(request))
             .collect::<Result<Vec<_>>>()?;
         let first = calls[0];
-        let lane_rows = first.rows().len();
+        let row_counts = calls
+            .iter()
+            .map(|call| call.rows().len())
+            .collect::<Vec<_>>();
+        let spans = CohortRowSpans::new(&row_counts)?;
         if first.mode() != SourceCallMode::Prefill
-            || !(1..=64).contains(&lane_rows)
             || calls.iter().any(|call| {
                 call.mode() != SourceCallMode::Prefill
                     || call.rows().base() != first.rows().base()
-                    || call.rows().len() != lane_rows
+                    || !(1..=64).contains(&call.rows().len())
                     || call.rows().capacity() != first.rows().capacity()
                     || call.rows().vocabulary() != first.rows().vocabulary()
                     || call.source() != first.source()
             })
         {
             return Err(Error::Unsupported(
-                "ordinary CUDA prefill cohort requires aligned prompt chunks".into(),
+                "ordinary CUDA prefill cohort requires same-base prompt chunks".into(),
             ));
         }
         let state_maps = calls
@@ -586,7 +620,16 @@ impl OrdinaryCudaBody {
 
         let client = self.cold().service().client();
         self.clear_and_bind_call(client, first, false)?;
-        let lane_step = Step::new(lane_rows, first.rows().base(), first.rows().capacity())?;
+        let lane_steps = calls
+            .iter()
+            .map(|call| {
+                Step::new(
+                    call.rows().len(),
+                    call.rows().base(),
+                    call.rows().capacity(),
+                )
+            })
+            .collect::<Result<Vec<_>>>()?;
         let cold = self.cold().plan();
         let mut dispatches = 0usize;
         let mut fused_dispatches = 0usize;
@@ -615,13 +658,16 @@ impl OrdinaryCudaBody {
                         "ordinary CUDA prefill cohort projection SSA arity".into(),
                     ));
                 };
-                let descriptor = template.bind_runtime_call(calls[0])?;
                 let projection = self.cold().projection(node_index)?;
                 if template.row_selection() == SourceRowSelection::AllActive {
+                    let descriptors = calls
+                        .iter()
+                        .map(|call| template.bind_runtime_call(call))
+                        .collect::<Result<Vec<_>>>()?;
                     let launched = projection
                         .enqueue_prefill_cohort_rows(
-                            &descriptor,
-                            lanes,
+                            &descriptors,
+                            &spans,
                             self.gemm(),
                             flight,
                             values.lease(*input)?,
@@ -639,15 +685,17 @@ impl OrdinaryCudaBody {
                         "ordinary CUDA prefill cohort projection row selection".into(),
                     ));
                 }
-                let inputs = descriptor.input_elements()?;
                 let hidden = self.cold().layout().geometry().hidden_width;
-                if inputs.as_slice() != [lane_rows * hidden] {
-                    return Err(Error::State(
-                        "ordinary CUDA prefill cohort head input geometry".into(),
-                    ));
-                }
                 for lane in 0..lanes {
-                    let source = values.lane_handle(*input, inputs[0], lane)?;
+                    let descriptor = template.bind_runtime_call(calls[lane])?;
+                    let inputs = descriptor.input_elements()?;
+                    let lane_rows = row_counts[lane];
+                    if inputs.as_slice() != [lane_rows * hidden] {
+                        return Err(Error::State(
+                            "ordinary CUDA prefill cohort head input geometry".into(),
+                        ));
+                    }
+                    let source = values.lane_row_handle(*input, hidden, &spans, lane)?;
                     let source = Self::exact_handle_view(
                         &source,
                         (lane_rows - 1) * hidden * 2,
@@ -698,10 +746,11 @@ impl OrdinaryCudaBody {
                         node,
                         &descriptor,
                         &state_maps[lane],
-                        lane_step,
+                        lane_steps[lane],
                         lane,
                         &mut gate_alias[lane],
                         values,
+                        &spans,
                     )
                     .await?;
                 dispatches += launched;
