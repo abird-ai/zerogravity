@@ -312,7 +312,19 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   156.999->158.878 tok/s (~+1.2%) while a lower-clock pair measured126.135->124.736
   (~-1.1%), with all continuations exact. Production allocation/selection was removed.
   Keep the qualified batch math for future ragged decode or another model/backend, and
-  only re-enable a hot-path adapter with a clearly repeatable measured win.
+  only re-enable a hot-path adapter with a clearly repeatable measured win. A follow-up
+  shared `angles_batched_explicit` primitive now carries up to eight independent positions
+  directly in the launch packet, avoiding both a device position buffer and an H2D position
+  write while still owning no model/session/root policy. Physical RTX3060 qualification is
+  bit-exact against both the existing position-buffer batch form and independent source-exact
+  rows for B2 `[0,1023]`/repeated11, B4 `[0,7,511,1023]`/repeated37, and B8
+  `[0,1,7,37,511,512,1023,2047]`/repeated73; the rotary core remains3 launches versus6/12/24
+  per-row oracle launches. A temporary cohort-owned BF16 adapter for the new primitive was
+  again rejected and fully removed: the current `0f0af04` 2B ragged baseline completed
+  exactly at160.678 output tok/s, while enabling the adapter repeatedly exceeded the same
+  execution window during model load (at both2B and0.8B) and therefore produced no controlled
+  positive serving evidence; an earlier exploratory candidate was only151.559 tok/s and noisy.
+  Retain the allocation-free scalar-position primitive, not the unproven production adapter.
 - [x] Retained a model-neutral ragged private-B4 cached-attention primitive. The aligned
   constructor remains a convenience wrapper, while the physical kernel can bind four
   independent causal frontiers and four independent private K/V owners without owning

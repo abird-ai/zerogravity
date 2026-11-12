@@ -123,6 +123,55 @@ pub(crate) fn angles_batched_repeated(
     }
 }
 
+/// Row-indexed angle generation with the bounded positions carried directly in
+/// the launch packet. This keeps heterogeneous small cohorts allocation-free:
+/// no device position buffer and no host-to-device position write are needed.
+/// The caller still owns all session/root admission and causal policy.
+#[cube(launch_unchecked)]
+pub(crate) fn angles_batched_explicit(
+    frequencies: &[f32],
+    output: &mut [f32],
+    p0: u32,
+    p1: u32,
+    p2: u32,
+    p3: u32,
+    p4: u32,
+    p5: u32,
+    p6: u32,
+    p7: u32,
+    #[comptime] half: usize,
+    #[comptime] rows: usize,
+) {
+    let i = ABSOLUTE_POS;
+    if i < rows * half {
+        let row = i / half;
+        let lane = i % half;
+        let mut position = p0;
+        if row == 1usize {
+            position = p1;
+        }
+        if row == 2usize {
+            position = p2;
+        }
+        if row == 3usize {
+            position = p3;
+        }
+        if row == 4usize {
+            position = p4;
+        }
+        if row == 5usize {
+            position = p5;
+        }
+        if row == 6usize {
+            position = p6;
+        }
+        if row == 7usize {
+            position = p7;
+        }
+        output[i] = mul(frequencies[lane], f32::cast_from(position));
+    }
+}
+
 #[cube(launch_unchecked)]
 pub(crate) fn apply(
     input: &[f32],
@@ -164,7 +213,6 @@ mod batch_qualification {
     use cubecl::{client::Client, server::Handle};
     use zerogravity_core::{Error, Result};
 
-    const ROWS: usize = 4;
     const HEADS: usize = 8;
     const WIDTH: usize = 256;
     const ROTATION: usize = 64;
@@ -217,11 +265,17 @@ mod batch_qualification {
             .collect()
     }
 
-    fn run_case(client: &Client, positions: [u32; ROWS], repeated: bool) -> Result<()> {
+    fn run_case(client: &Client, positions: &[u32], repeated: bool) -> Result<()> {
+        let rows = positions.len();
+        if !matches!(rows, 2 | 4 | 8) || repeated && positions.iter().any(|p| *p != positions[0]) {
+            return Err(Error::Malformed(
+                "source rotary batch qualification row/position shape".into(),
+            ));
+        }
         let frequencies = (0..HALF)
             .map(|i| 1.0f32 / (1.0 + i as f32 * 0.125))
             .collect::<Vec<_>>();
-        let input = (0..ROWS * HEADS * WIDTH)
+        let input = (0..rows * HEADS * WIDTH)
             .map(|i| {
                 let bf16 = 0x3f00u32 + (i as u32 % 0x40);
                 f32::from_bits(bf16 << 16)
@@ -229,15 +283,19 @@ mod batch_qualification {
             .collect::<Vec<_>>();
         let input_bytes = f32_bytes(&input);
         let batch = client.create_from_slice(&input_bytes);
+        let explicit = client.create_from_slice(&input_bytes);
         let oracle = client.create_from_slice(&input_bytes);
         let frequency = client.create_from_slice(&f32_bytes(&frequencies));
-        let position_handle = client.create_from_slice(&u32_bytes(&positions));
+        let position_handle = client.create_from_slice(&u32_bytes(positions));
         let tables = client.create_from_slice(&f64_bytes(&crate::source_trig::TRIG_TABLES));
-        let batch_angles = client.create_from_slice(&[0u8; ROWS * HALF * 4]);
-        let batch_trig = client.create_from_slice(&[0u8; ROWS * HALF * 2 * 4]);
+        let batch_angles = client.create_from_slice(&vec![0u8; rows * HALF * 4]);
+        let batch_trig = client.create_from_slice(&vec![0u8; rows * HALF * 2 * 4]);
+        let explicit_angles = client.create_from_slice(&vec![0u8; rows * HALF * 4]);
+        let explicit_trig = client.create_from_slice(&vec![0u8; rows * HALF * 2 * 4]);
         let oracle_angles = client.create_from_slice(&[0u8; HALF * 4]);
         let oracle_trig = client.create_from_slice(&[0u8; HALF * 2 * 4]);
         let batch_status = client.create_from_slice(&0u32.to_ne_bytes());
+        let explicit_status = client.create_from_slice(&0u32.to_ne_bytes());
         let oracle_status = client.create_from_slice(&0u32.to_ne_bytes());
 
         // SAFETY: every launch below uses exact service-local extents created
@@ -247,46 +305,88 @@ mod batch_qualification {
             if repeated {
                 angles_batched_repeated::launch_unchecked(
                     client,
-                    grid(ROWS * HALF),
+                    grid(rows * HALF),
                     threads(),
                     arg(&frequency, HALF),
-                    arg(&batch_angles, ROWS * HALF),
+                    arg(&batch_angles, rows * HALF),
                     positions[0],
                     HALF,
-                    ROWS,
+                    rows,
                 );
             } else {
                 angles_batched::launch_unchecked(
                     client,
-                    grid(ROWS * HALF),
+                    grid(rows * HALF),
                     threads(),
                     arg(&frequency, HALF),
-                    arg(&position_handle, ROWS),
-                    arg(&batch_angles, ROWS * HALF),
+                    arg(&position_handle, rows),
+                    arg(&batch_angles, rows * HALF),
                     HALF,
-                    ROWS,
+                    rows,
                 );
             }
             crate::source_trig::sincos_angles::launch_unchecked(
                 client,
-                grid(ROWS * HALF),
+                grid(rows * HALF),
                 threads(),
-                arg(&batch_angles, ROWS * HALF),
+                arg(&batch_angles, rows * HALF),
                 arg(&tables, crate::source_trig::TRIG_TABLES.len()),
-                arg(&batch_trig, ROWS * HALF * 2),
-                ROWS * HALF,
+                arg(&batch_trig, rows * HALF * 2),
+                rows * HALF,
             );
             apply_fp32_fma_batched::launch_unchecked(
                 client,
-                grid(ROWS * HEADS * HALF),
+                grid(rows * HEADS * HALF),
                 threads(),
-                arg(&batch, ROWS * HEADS * WIDTH),
-                arg(&batch_trig, ROWS * HALF * 2),
-                arg(&batch, ROWS * HEADS * WIDTH),
+                arg(&batch, rows * HEADS * WIDTH),
+                arg(&batch_trig, rows * HALF * 2),
+                arg(&batch, rows * HEADS * WIDTH),
                 arg(&batch_status, 1),
                 WIDTH,
                 HEADS,
-                ROWS,
+                rows,
+                ROTATION,
+            );
+
+            let p = |index: usize| positions.get(index).copied().unwrap_or(0);
+
+            angles_batched_explicit::launch_unchecked(
+                client,
+                grid(rows * HALF),
+                threads(),
+                arg(&frequency, HALF),
+                arg(&explicit_angles, rows * HALF),
+                p(0),
+                p(1),
+                p(2),
+                p(3),
+                p(4),
+                p(5),
+                p(6),
+                p(7),
+                HALF,
+                rows,
+            );
+            crate::source_trig::sincos_angles::launch_unchecked(
+                client,
+                grid(rows * HALF),
+                threads(),
+                arg(&explicit_angles, rows * HALF),
+                arg(&tables, crate::source_trig::TRIG_TABLES.len()),
+                arg(&explicit_trig, rows * HALF * 2),
+                rows * HALF,
+            );
+            apply_fp32_fma_batched::launch_unchecked(
+                client,
+                grid(rows * HEADS * HALF),
+                threads(),
+                arg(&explicit, rows * HEADS * WIDTH),
+                arg(&explicit_trig, rows * HALF * 2),
+                arg(&explicit, rows * HEADS * WIDTH),
+                arg(&explicit_status, 1),
+                WIDTH,
+                HEADS,
+                rows,
                 ROTATION,
             );
         }
@@ -333,8 +433,10 @@ mod batch_qualification {
                 .map(|bytes| bytes.to_vec())
                 .map_err(|e| Error::State(format!("source rotary batch {role} readback: {e}")))
         };
-        if read(batch, "batch")? != read(oracle, "oracle")?
+        if read(batch, "batch")? != read(oracle.clone(), "oracle")?
             || read(batch_status, "batch status")? != 0u32.to_ne_bytes()
+            || read(explicit, "explicit")? != read(oracle, "explicit oracle")?
+            || read(explicit_status, "explicit status")? != 0u32.to_ne_bytes()
             || read(oracle_status, "oracle status")? != 0u32.to_ne_bytes()
         {
             return Err(Error::State(format!(
@@ -342,8 +444,8 @@ mod batch_qualification {
             )));
         }
         eprintln!(
-            "SOURCE_ROTARY_CORE_BATCH_PASS positions={positions:?} repeated={repeated} exact=true launches=3 oracle_launches={}",
-            ROWS * 3
+            "SOURCE_ROTARY_CORE_BATCH_PASS positions={positions:?} repeated={repeated} explicit=true exact=true launches=3 oracle_launches={}",
+            rows * 3
         );
         Ok(())
     }
@@ -354,8 +456,12 @@ mod batch_qualification {
         let diagnostic =
             crate::cuda::test_support::CudaDiagnostic::new("source-rotary-core-batch")?;
         let client = diagnostic.service.client();
-        run_case(client, [0, 7, 511, 1_023], false)?;
-        run_case(client, [37; ROWS], true)?;
+        run_case(client, &[0, 1_023], false)?;
+        run_case(client, &[11; 2], true)?;
+        run_case(client, &[0, 7, 511, 1_023], false)?;
+        run_case(client, &[37; 4], true)?;
+        run_case(client, &[0, 1, 7, 37, 511, 512, 1_023, 2_047], false)?;
+        run_case(client, &[73; 8], true)?;
         Ok(())
     }
 }
