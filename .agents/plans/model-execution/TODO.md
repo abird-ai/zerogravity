@@ -495,6 +495,22 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   0.8B 199.451->210.127 tok/s (~5.35%) and2B 168.949->177.566 tok/s (~5.10%), with
   identical IDs. A reconstructed post-baseline0.8B run reconfirmed208.038 tok/s and exact
   outputs before the temporary benchmark harness was removed.
+- [x] Ordinary CUDA rotary now consumes the already-retained source-exact B2/B4/B8
+  batched rotary primitives instead of replaying the scalar eight-launch sequence for
+  every token row. The wrapper greedily decomposes each contiguous causal span into
+  8/4/2/1 physical groups; `Step`, session/root admission and the <=64-token causal-call
+  contract are unchanged, and the underlying `angles_batched_explicit` primitive remains
+  independently useful for heterogeneous positions in other models/graphs. Scratch grows
+  only to one reusable B8 working set and is reused sequentially across groups. The direct
+  RTX3060 wrapper qualifier exercised a47-row 8+8+8+8+8+4+2+1 span and matched the old
+  scalar path bit-for-bit for query, key and status while reducing rotary launches
+  376->64. The retained core qualifier also passes heterogeneous/repeated B2/B4/B8
+  positions exactly. Same-HEAD non-LTO public serving on ragged prompts47..54 with16
+  outputs preserved every ID (sixteen `264`s on all eight lanes):0.8B measured
+  202.112->239.989 tok/s (+18.7%) in the first A/B and197.228->215.264 (+9.1%) after
+  reversing build order;2B measured175.777->191.677 tok/s (+9.0%). Retain the shared
+  wrapper integration; no Qwen-specific mathematical primitive or scheduler policy was
+  added.
 - [x] Small CUDA populated-context qualification now covers0.8B/2B at1K and2K.
   Each cell starts from the accepted47-token prefill, advances by genuine64-token
   state-only chunks to the exact context frontier, emits finite terminal vocabulary
