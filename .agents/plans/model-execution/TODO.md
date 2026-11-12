@@ -511,6 +511,14 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   reversing build order;2B measured175.777->191.677 tok/s (+9.0%). Retain the shared
   wrapper integration; no Qwen-specific mathematical primitive or scheduler policy was
   added.
+- [x] Evaluated selecting the retained heterogeneous-position B2/B4/B8 rotary primitive
+  for ordinary unequal-frontier decode cohorts. The source primitive itself remains
+  retained/qualified (`265e970`) for other models/graphs, but the ordinary decode
+  consumer was rejected: public0.8B prompts47..54/16-output B8 preserved identical IDs,
+  yet same-HEAD non-LTO A/B was order-sensitive and effectively neutral
+  (224.499->226.805 tok/s first order, then225.880->225.249 after reversing build order;
+  ~+0.37% averaged). The temporary `enqueue_positions` wrapper selection and benchmark
+  harness were removed rather than adding maintenance surface without a stable gain.
 - [x] Small CUDA populated-context qualification now covers0.8B/2B at1K and2K.
   Each cell starts from the accepted47-token prefill, advances by genuine64-token
   state-only chunks to the exact context frontier, emits finite terminal vocabulary
