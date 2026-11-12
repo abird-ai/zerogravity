@@ -1498,6 +1498,21 @@ impl OrdinaryCudaBody {
 
     pub(super) fn write_gdn_controls(&self, plan: &GdnRuntimePlan) -> Result<()> {
         for control in plan.controls() {
+            if self
+                .cold()
+                .layout()
+                .gdn()
+                .retained_control_bytes(control.role())
+                .is_some()
+            {
+                if control.retained_offset(self.cold().layout().gdn()) != Some(0) {
+                    return Err(Error::State(
+                        "ordinary CUDA GDN control is not retained at its bound workspace offset"
+                            .into(),
+                    ));
+                }
+                continue;
+            }
             let lease = self.cold().gdn_internal(control.role())?;
             let handle = exact_view(lease, 0, control.bytes().len(), "ordinary GDN control")?;
             self.cold()
@@ -1717,7 +1732,7 @@ impl OrdinaryCudaBody {
         )
     }
 
-    fn enqueue_primitive(
+    pub(super) fn enqueue_primitive(
         &self,
         definition: Definition,
         bindings: Vec<LaunchBinding>,

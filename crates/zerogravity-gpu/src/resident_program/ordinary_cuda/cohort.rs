@@ -17,7 +17,9 @@ use crate::{
                 CONV_ELEMENTS, RECURRENT_ELEMENTS, StateCopy, StateTransport, plane_handle,
             },
         },
-        ordinary_text::Step,
+        ordinary_text::{
+            Access, BufferRole as OrdinaryRole, LaunchBinding, StatelessRowExtent, Step,
+        },
     },
     resident_leases::{ResidentLease, ResidentSubmission as PhysicalSubmission},
     resident_program::{
@@ -25,14 +27,14 @@ use crate::{
         cohort_rows::CohortRowSpans,
     },
 };
-use cubecl::bytes::Bytes;
 use cubecl::server::Handle;
 use std::collections::BTreeMap;
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{
-        ForwardPlan, PlanOperation, SourceCall, SourceCallMode, SourceOperator, SourceOperatorKind,
-        SourceRowSelection, SourceRows, StateSlot, StateVersion, TextCallGeometry,
+        ForwardPlan, PlanNode, PlanOperation, SourceCall, SourceCallMode, SourceOperator,
+        SourceOperatorKind, SourceOperatorTemplate, SourceRowSelection, SourceRows, StateSlot,
+        StateVersion, TextCallGeometry,
     },
     device_events::DeviceAccess,
 };
@@ -319,8 +321,6 @@ impl OrdinaryCudaBody {
         let full_z = self.cohort_value_handle_range(request, *z, outputs[1], row_base, lanes)?;
         let indices_lease = self.cold().gdn_internal(GdnRuntimeBuffer::CacheIndices)?;
         let indices = exact_view(indices_lease, 0, 16, "ordinary GDN batch cache indices")?;
-        let index_bytes = (1_i32..=4).flat_map(i32::to_le_bytes).collect::<Vec<_>>();
-        client.write(&indices, Bytes::from_bytes_vec(index_bytes));
         CachedConvBatch::prepare(4)?.launch(
             client,
             &full_packed,
@@ -498,8 +498,6 @@ impl OrdinaryCudaBody {
         )?;
         let indices_lease = self.cold().gdn_internal(GdnRuntimeBuffer::CacheIndices)?;
         let indices = exact_view(indices_lease, 0, 16, "ordinary GDN batch cache indices")?;
-        let index_bytes = (1_i32..=4).flat_map(i32::to_le_bytes).collect::<Vec<_>>();
-        client.write(&indices, Bytes::from_bytes_vec(index_bytes));
 
         CachedDecodeBatch::prepare(4)?.launch(
             client,
@@ -541,6 +539,153 @@ impl OrdinaryCudaBody {
             dispatches += 1;
         }
         Ok((dispatches, 0))
+    }
+
+    /// Concatenate row-independent ordinary RMS work only when every original
+    /// source call has the same Torch reduction class. This shares physical
+    /// launch geometry, not numerical/session/root authority.
+    fn enqueue_prefill_stateless_rms(
+        &self,
+        node_index: usize,
+        node: &PlanNode,
+        template: &SourceOperatorTemplate,
+        calls: &[&SourceCall],
+        spans: &CohortRowSpans,
+        values: &super::OrdinaryCudaCohortValues,
+    ) -> Result<Option<(usize, usize)>> {
+        let (geometry, residual) = match template.kind() {
+            SourceOperatorKind::Rms(geometry) => (geometry, false),
+            SourceOperatorKind::ResidualRms(geometry) => (geometry, true),
+            _ => return Ok(None),
+        };
+        if template.row_selection() != SourceRowSelection::AllActive
+            || !matches!(
+                template.state_access(),
+                zerogravity_core::accelerator::program::SourceStateAccess::None
+            )
+            || spans.len() != calls.len()
+        {
+            return Err(Error::State(
+                "ordinary CUDA stateless RMS cohort semantics differ".into(),
+            ));
+        }
+        let program = self.cold().program();
+        let hidden = program.geometry().hidden_width;
+        if geometry.width != hidden {
+            return Err(Error::State(
+                "ordinary CUDA stateless RMS hidden width differs".into(),
+            ));
+        }
+
+        let mut reduction = None;
+        for (lane, call) in calls.iter().enumerate() {
+            let descriptor = template.bind_runtime_call(call)?;
+            let rows = spans.lane_rows(lane)?;
+            let expected = rows
+                .checked_mul(hidden)
+                .ok_or_else(|| Error::Limit("ordinary CUDA stateless RMS lane extent".into()))?;
+            let inputs = descriptor.input_elements()?;
+            let outputs = descriptor.output_elements()?;
+            let shape_matches = if residual {
+                inputs.as_slice() == [expected, expected]
+                    && outputs.as_slice() == [expected, expected]
+            } else {
+                inputs.as_slice() == [expected] && outputs.as_slice() == [expected]
+            };
+            if !shape_matches {
+                return Err(Error::State(
+                    "ordinary CUDA stateless RMS lane geometry differs".into(),
+                ));
+            }
+            let class = program.rms_reduction_class(rows)?;
+            if reduction.is_some_and(|first| first != class) {
+                return Ok(None);
+            }
+            reduction.get_or_insert(class);
+        }
+        let reduction = reduction.ok_or_else(|| {
+            Error::State("ordinary CUDA stateless RMS reduction class absent".into())
+        })?;
+        let bound_rows = template
+            .max_rows()
+            .checked_mul(spans.len())
+            .ok_or_else(|| Error::Limit("ordinary CUDA stateless RMS row bound".into()))?;
+        let physical = StatelessRowExtent::bounded(spans.total_rows(), bound_rows)?;
+        let parameters = self.cold().node_parameters(node_index)?;
+        let [gamma] = parameters else {
+            return Err(Error::State(
+                "ordinary CUDA stateless RMS gamma arity".into(),
+            ));
+        };
+
+        if residual {
+            let ([input, residual], [output, carried]) =
+                (node.inputs.as_slice(), node.outputs.as_slice())
+            else {
+                return Err(Error::State(
+                    "ordinary CUDA stateless residual RMS SSA arity".into(),
+                ));
+            };
+            let residual_lease = values.lease(*residual)?;
+            let carried_lease = values.lease(*carried)?;
+            if residual_lease.id() != carried_lease.id()
+                || residual_lease.allocation_generation() != carried_lease.allocation_generation()
+            {
+                return Err(Error::State(
+                    "ordinary CUDA stateless residual RMS carried owner differs".into(),
+                ));
+            }
+            self.enqueue_primitive(
+                program.residual_rms_stateless(physical, reduction, geometry.epsilon)?,
+                vec![
+                    LaunchBinding::new(
+                        OrdinaryRole::Input,
+                        Access::Read,
+                        values.packed_row_bounded_handle(*input, hidden, spans, bound_rows)?,
+                    ),
+                    LaunchBinding::new(
+                        OrdinaryRole::Residual,
+                        Access::ReadWrite,
+                        values.packed_row_bounded_handle(*residual, hidden, spans, bound_rows)?,
+                    ),
+                    LaunchBinding::new(
+                        OrdinaryRole::RawGamma,
+                        Access::Read,
+                        gamma.lease().handle(),
+                    ),
+                    LaunchBinding::new(
+                        OrdinaryRole::Output,
+                        Access::Write,
+                        values.packed_row_bounded_handle(*output, hidden, spans, bound_rows)?,
+                    ),
+                ],
+            )?;
+        } else {
+            let ([input], [output]) = (node.inputs.as_slice(), node.outputs.as_slice()) else {
+                return Err(Error::State("ordinary CUDA stateless RMS SSA arity".into()));
+            };
+            self.enqueue_primitive(
+                program.rms_stateless(physical, reduction, geometry.epsilon)?,
+                vec![
+                    LaunchBinding::new(
+                        OrdinaryRole::Input,
+                        Access::Read,
+                        values.packed_row_bounded_handle(*input, hidden, spans, bound_rows)?,
+                    ),
+                    LaunchBinding::new(
+                        OrdinaryRole::RawGamma,
+                        Access::Read,
+                        gamma.lease().handle(),
+                    ),
+                    LaunchBinding::new(
+                        OrdinaryRole::Output,
+                        Access::Write,
+                        values.packed_row_bounded_handle(*output, hidden, spans, bound_rows)?,
+                    ),
+                ],
+            )?;
+        }
+        Ok(Some((1, 0)))
     }
 
     /// Same-base prompt-chunk cohort: private causal/stateful execution per
@@ -740,6 +885,14 @@ impl OrdinaryCudaBody {
                     .await?;
                 dispatches += launched;
                 fused_dispatches += launched;
+                continue;
+            }
+
+            if let Some((launched, fused)) = self
+                .enqueue_prefill_stateless_rms(node_index, node, template, &calls, &spans, values)?
+            {
+                dispatches += launched;
+                fused_dispatches += fused;
                 continue;
             }
 

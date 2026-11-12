@@ -133,6 +133,26 @@ impl GdnRuntimeCacheSlot {
     pub fn recurrent_offset(self) -> usize {
         self.convolution_offset() + CONV_STATE_BYTES
     }
+
+    /// Canonical little-endian control table for every retained non-null cache
+    /// slot. This is workspace geometry only; it grants no state/root authority.
+    pub const NON_NULL_CONTROL_TABLE: [u8; (CACHE_SLOTS - 1) * 4] = {
+        let mut table = [0_u8; (CACHE_SLOTS - 1) * 4];
+        let mut slot = 1;
+        while slot < CACHE_SLOTS {
+            let word = (slot as i32).to_le_bytes();
+            let mut byte = 0;
+            while byte < 4 {
+                table[(slot - 1) * 4 + byte] = word[byte];
+                byte += 1;
+            }
+            slot += 1;
+        }
+        table
+    };
+    pub fn non_null_control_table() -> &'static [u8] {
+        &Self::NON_NULL_CONTROL_TABLE
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -407,6 +427,17 @@ impl GdnRuntimeWorkspaceLayout {
     }
     pub fn cache_slot_bytes(&self) -> usize {
         CACHE_SLOT_BYTES
+    }
+    /// Immutable workspace control bytes that may be uploaded once with the
+    /// retained workspace and reused by every compatible invocation.
+    ///
+    /// This is a runtime-level contract rather than backend/model policy:
+    /// consumers still validate each request-local control against this data.
+    pub fn retained_control_bytes(&self, role: GdnRuntimeBuffer) -> Option<&'static [u8]> {
+        match role {
+            GdnRuntimeBuffer::CacheIndices => Some(GdnRuntimeCacheSlot::non_null_control_table()),
+            _ => None,
+        }
     }
 
     fn require_spec(&self, spec: &LaunchSpec) -> Result<()> {
@@ -797,6 +828,18 @@ impl GdnRuntimeControl {
     }
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
+    }
+    /// Byte offset of this exact control within an immutable retained workspace
+    /// table. Returning the offset (rather than a boolean) keeps reuse correct
+    /// for consumers that bind a single cache slot instead of the whole table.
+    pub fn retained_offset(&self, workspace: &GdnRuntimeWorkspaceLayout) -> Option<usize> {
+        let table = workspace.retained_control_bytes(self.role)?;
+        if self.bytes.is_empty() || table.len() < self.bytes.len() {
+            return None;
+        }
+        (0..=table.len() - self.bytes.len())
+            .step_by(self.bytes.len())
+            .find(|&offset| table[offset..offset + self.bytes.len()] == self.bytes)
     }
 }
 

@@ -145,13 +145,17 @@ impl OrdinaryCudaCold {
             ) {
                 continue;
             }
-            if gdn_internal
-                .insert(
-                    buffer.role(),
-                    init.allocate_empty(buffer.bytes(), BufferRole::Scratch)?,
-                )
-                .is_some()
-            {
+            let lease = if let Some(bytes) = layout.gdn().retained_control_bytes(buffer.role()) {
+                if bytes.len() != buffer.bytes() {
+                    return Err(Error::State(
+                        "ordinary CUDA retained GDN control extent differs".into(),
+                    ));
+                }
+                init.upload_bytes(bytes, BufferRole::Scratch)?
+            } else {
+                init.allocate_empty(buffer.bytes(), BufferRole::Scratch)?
+            };
+            if gdn_internal.insert(buffer.role(), lease).is_some() {
                 return Err(Error::State(
                     "ordinary CUDA duplicate GDN internal role".into(),
                 ));

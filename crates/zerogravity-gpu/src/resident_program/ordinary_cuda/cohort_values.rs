@@ -251,6 +251,40 @@ impl OrdinaryCudaCohortValues {
         super::exact_view(self.lease(value)?, 0, bytes, "cohort packed BF16 rows")
     }
 
+    /// Stable-capacity view over one packed row-proportional cohort value.
+    /// Active rows remain exactly `spans.total_rows()`; the extra pointer extent
+    /// is only for a bounded physical ABI and grants no padded mathematical rows.
+    pub(crate) fn packed_row_bounded_handle(
+        &self,
+        value: ValueId,
+        elements_per_row: usize,
+        spans: &CohortRowSpans,
+        bound_rows: usize,
+    ) -> Result<cubecl::server::Handle> {
+        let maximum = layout::MAX_ROWS
+            .checked_mul(self.width)
+            .ok_or_else(|| Error::Limit("ordinary CUDA cohort row capacity".into()))?;
+        if spans.len() > self.width
+            || elements_per_row == 0
+            || spans.total_rows() > bound_rows
+            || bound_rows > maximum
+        {
+            return Err(Error::State(
+                "ordinary CUDA bounded packed cohort geometry".into(),
+            ));
+        }
+        let bytes = bound_rows
+            .checked_mul(elements_per_row)
+            .and_then(|elements| elements.checked_mul(2))
+            .ok_or_else(|| Error::Limit("ordinary CUDA bounded packed BF16 bytes".into()))?;
+        super::exact_view(
+            self.lease(value)?,
+            0,
+            bytes,
+            "cohort bounded packed BF16 rows",
+        )
+    }
+
     /// One lane view within a packed ragged row-proportional value.
     pub(crate) fn lane_row_handle(
         &self,

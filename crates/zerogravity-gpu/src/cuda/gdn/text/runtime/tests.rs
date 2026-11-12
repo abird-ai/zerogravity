@@ -28,6 +28,44 @@ fn i32s(bytes: &[u8]) -> Vec<i32> {
 }
 
 #[test]
+fn non_null_cache_slot_control_table_covers_the_retained_workspace() {
+    let table = GdnRuntimeCacheSlot::non_null_control_table();
+    assert_eq!(i32s(table), [1, 2, 3, 4]);
+    assert_eq!(table.len(), (CACHE_SLOTS - 1) * 4);
+
+    for slot in 1..CACHE_SLOTS {
+        let decode = GdnRuntimePlan::cached_decode(
+            runtime_config().unwrap(),
+            GdnRuntimeCacheSlot::new(slot).unwrap(),
+            7,
+        )
+        .unwrap();
+        assert_eq!(
+            decode
+                .workspace()
+                .retained_control_bytes(GdnRuntimeBuffer::CacheIndices),
+            Some(table)
+        );
+        let cache_indices = decode
+            .controls()
+            .iter()
+            .find(|control| control.role() == GdnRuntimeBuffer::CacheIndices)
+            .unwrap();
+        assert_eq!(
+            cache_indices.retained_offset(decode.workspace()),
+            Some((slot - 1) * 4)
+        );
+        assert!(
+            decode
+                .controls()
+                .iter()
+                .filter(|control| control.role() != GdnRuntimeBuffer::CacheIndices)
+                .all(|control| control.retained_offset(decode.workspace()).is_none())
+        );
+    }
+}
+
+#[test]
 fn chunk64_and_tail_share_one_workspace_and_advance_explicit_state() -> Result<()> {
     let slot = GdnRuntimeCacheSlot::new(3)?;
     let prefill = GdnRuntimePrefill::new(runtime_config()?, slot, 0, 69, false)?;

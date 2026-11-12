@@ -163,10 +163,9 @@ __device__ __forceinline__ float zg_square_lane(
     return __fadd_rn(__fadd_rn(__fadd_rn(accum[0], accum[1]), accum[2]), accum[3]);
 }
 template<unsigned WIDTH, bool ADD>
-__device__ __forceinline__ float zg_square_mean(
+__device__ __forceinline__ float zg_square_mean_width(
     const __nv_bfloat16* input, const __nv_bfloat16* residual,
-    unsigned rows, unsigned* status, float* reduction) {
-    const unsigned width = zg_mean_width(rows, WIDTH);
+    unsigned width, unsigned* status, float* reduction) {
     const unsigned lane = threadIdx.x;
     float value = lane < width ? zg_square_lane<WIDTH, ADD>(input, residual, lane, width, status) : 0.0f;
     // A 512-lane source reduction folds its upper half before the 256-lane tree.
@@ -180,6 +179,13 @@ __device__ __forceinline__ float zg_square_mean(
         __syncthreads();
     }
     return __fmul_rn(reduction[0], 1.0f / (float)WIDTH);
+}
+template<unsigned WIDTH, bool ADD>
+__device__ __forceinline__ float zg_square_mean(
+    const __nv_bfloat16* input, const __nv_bfloat16* residual,
+    unsigned rows, unsigned* status, float* reduction) {
+    return zg_square_mean_width<WIDTH, ADD>(
+        input, residual, zg_mean_width(rows, WIDTH), status, reduction);
 }
 
 // words = [rows, epsilon_f32_bits].
@@ -224,6 +230,67 @@ void zg_ot_residual_rms_v1(void* input_raw, void* residual_raw, void* raw_gamma_
     const size_t base = (size_t)row * ZG_HIDDEN_WIDTH;
     const float mean = zg_square_mean<ZG_HIDDEN_WIDTH, true>(input + base, residual + base, rows, status, reduction);
     const float inverse = rsqrtf(__fadd_rn(mean, zg_f32(scalars.words[1])));
+    if (threadIdx.x == 0 && (!isfinite(mean) || !isfinite(inverse) || inverse == 0.0f)) zg_bad(status, 2u);
+    for (unsigned c = threadIdx.x; c < ZG_HIDDEN_WIDTH; c += blockDim.x) {
+        const size_t i = base + c;
+        const float input_value = zg_load(input + i);
+        const float residual_value = zg_load(residual + i);
+        const float x = __fadd_rn(input_value, residual_value);
+        residual[i] = zg_store(x);
+        const float gamma = zg_load(raw_gamma + c);
+        const float y = __fmul_rn(__fmul_rn(x, inverse), __fadd_rn(1.0f, gamma));
+        output[i] = zg_store(y);
+        if (!isfinite(input_value) || !isfinite(residual_value) || !isfinite(gamma) || !isfinite(y)) zg_bad(status, 2u);
+    }
+}
+
+// Stateless physical-row variants. words = [physical_rows, reduction_width,
+// epsilon_f32_bits]. reduction_width is authenticated from each original
+// source call's Torch reduction class before independent rows are concatenated.
+extern "C" __global__ __launch_bounds__(ZG_THREADS)
+void zg_ot_rms_stateless_v1(void* input_raw, void* raw_gamma_raw, void* output_raw,
+                            void* status_raw, ZgWords3 scalars) {
+    const __nv_bfloat16* input = (const __nv_bfloat16*)input_raw;
+    const __nv_bfloat16* raw_gamma = (const __nv_bfloat16*)raw_gamma_raw;
+    __nv_bfloat16* output = (__nv_bfloat16*)output_raw;
+    unsigned* status = (unsigned*)status_raw;
+    __shared__ float reduction[ZG_THREADS];
+    const unsigned row = blockIdx.x;
+    const unsigned rows = zg_u32(scalars.words[0]);
+    const unsigned reduction_width = zg_u32(scalars.words[1]);
+    if (row >= rows) return;
+    const size_t base = (size_t)row * ZG_HIDDEN_WIDTH;
+    const float mean = zg_square_mean_width<ZG_HIDDEN_WIDTH, false>(
+        input + base, nullptr, reduction_width, status, reduction);
+    const float inverse = rsqrtf(__fadd_rn(mean, zg_f32(scalars.words[2])));
+    if (threadIdx.x == 0 && (!isfinite(mean) || !isfinite(inverse) || inverse == 0.0f)) zg_bad(status, 2u);
+    for (unsigned c = threadIdx.x; c < ZG_HIDDEN_WIDTH; c += blockDim.x) {
+        const float x = zg_load(input + base + c);
+        const float gamma = zg_load(raw_gamma + c);
+        const float y = __fmul_rn(__fmul_rn(x, inverse), __fadd_rn(1.0f, gamma));
+        output[base + c] = zg_store(y);
+        if (!isfinite(x) || !isfinite(gamma) || !isfinite(y)) zg_bad(status, 2u);
+    }
+}
+
+extern "C" __global__ __launch_bounds__(ZG_THREADS)
+void zg_ot_residual_rms_stateless_v1(void* input_raw, void* residual_raw,
+                                     void* raw_gamma_raw, void* output_raw,
+                                     void* status_raw, ZgWords3 scalars) {
+    const __nv_bfloat16* input = (const __nv_bfloat16*)input_raw;
+    __nv_bfloat16* residual = (__nv_bfloat16*)residual_raw;
+    const __nv_bfloat16* raw_gamma = (const __nv_bfloat16*)raw_gamma_raw;
+    __nv_bfloat16* output = (__nv_bfloat16*)output_raw;
+    unsigned* status = (unsigned*)status_raw;
+    __shared__ float reduction[ZG_THREADS];
+    const unsigned row = blockIdx.x;
+    const unsigned rows = zg_u32(scalars.words[0]);
+    const unsigned reduction_width = zg_u32(scalars.words[1]);
+    if (row >= rows) return;
+    const size_t base = (size_t)row * ZG_HIDDEN_WIDTH;
+    const float mean = zg_square_mean_width<ZG_HIDDEN_WIDTH, true>(
+        input + base, residual + base, reduction_width, status, reduction);
+    const float inverse = rsqrtf(__fadd_rn(mean, zg_f32(scalars.words[2])));
     if (threadIdx.x == 0 && (!isfinite(mean) || !isfinite(inverse) || inverse == 0.0f)) zg_bad(status, 2u);
     for (unsigned c = threadIdx.x; c < ZG_HIDDEN_WIDTH; c += blockDim.x) {
         const size_t i = base + c;

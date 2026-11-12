@@ -275,6 +275,40 @@ fn stateless_rows_can_cross_causal_bound_without_widening_source_steps() -> Resu
 }
 
 #[test]
+fn stateless_rms_separates_physical_rows_from_exact_reduction_class() -> Result<()> {
+    let p = program();
+    assert_eq!(p.rms_reduction_class(1)?.lanes(), 256);
+    assert_eq!(p.rms_reduction_class(3)?.lanes(), 256);
+    assert_eq!(p.rms_reduction_class(4)?.lanes(), 128);
+    assert_eq!(p.rms_reduction_class(8)?.lanes(), 64);
+    assert_eq!(p.rms_reduction_class(16)?.lanes(), 32);
+    let reduction = p.rms_reduction_class(47)?;
+    for rows in 48..=64 {
+        assert_eq!(p.rms_reduction_class(rows)?, reduction);
+    }
+
+    let physical = StatelessRowExtent::bounded(404, 513)?;
+    let rms = p.rms_stateless(physical, reduction, 1e-6)?;
+    let residual = p.residual_rms_stateless(physical, reduction, 1e-6)?;
+    assert_eq!(rms.primitive(), Primitive::RmsStateless);
+    assert_eq!(residual.primitive(), Primitive::ResidualRmsStateless);
+    assert_eq!(rms.scalar_words(), [404, 32, 1e-6f32.to_bits() as u64]);
+    assert_eq!(residual.scalar_words(), [404, 32, 1e-6f32.to_bits() as u64]);
+    assert_eq!(rms.grid(), [404, 1, 1]);
+    assert_eq!(residual.grid(), [404, 1, 1]);
+
+    let two_b = Program::new(Geometry::qwen35_2b())?;
+    assert_eq!(two_b.rms_reduction_class(1)?.lanes(), 512);
+    assert_eq!(two_b.rms_reduction_class(2)?.lanes(), 256);
+    assert_eq!(two_b.rms_reduction_class(47)?.lanes(), 32);
+    assert!(
+        p.rms_stateless(physical, two_b.rms_reduction_class(47)?, 1e-6)
+            .is_err()
+    );
+    Ok(())
+}
+
+#[test]
 fn memory_plan_covers_both_sm86_qwen_geometries_without_allocating() -> Result<()> {
     assert_eq!(Geometry::qwen35_08().validate()?, geometry());
     let two_b = Geometry::qwen35_2b().validate()?;
@@ -458,8 +492,18 @@ fn kernel_source_flags_nonfinite_gate_embedding_and_all_arithmetic_inputs() {
     assert!(source.contains("if (!isfinite(gate) || !isfinite(sigmoid)) zg_bad(status, 2u);"));
     assert!(source.contains("!isfinite(input_value) || !isfinite(residual_value)"));
     assert!(source.contains("!isfinite(key_value) || !isfinite(value_value)"));
-    assert_eq!(source.matches("!isfinite(mean)").count(), 3);
-    assert_eq!(source.matches("inverse == 0.0f").count(), 3);
+    for entry in [
+        "void zg_ot_rms_v1",
+        "void zg_ot_residual_rms_v1",
+        "void zg_ot_rms_stateless_v1",
+        "void zg_ot_residual_rms_stateless_v1",
+    ] {
+        assert!(source.contains(entry));
+    }
+    // Four vector RMS kernels plus the shared head-RMS macro all fail closed
+    // on nonfinite/zero inverse normalization.
+    assert_eq!(source.matches("!isfinite(mean)").count(), 5);
+    assert_eq!(source.matches("inverse == 0.0f").count(), 5);
     for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         assert!(!value.is_finite());
     }
@@ -842,6 +886,331 @@ fn physical_stateless_silu_rows_match_causal_chunks_exactly() -> Result<()> {
         client
             .memory_cleanup()
             .map_err(|error| Error::State(format!("stateless SiLU cleanup: {error}")))?;
+        service.close_model_namespace()?;
+        Ok(())
+    })
+}
+
+#[cfg(all(
+    feature = "qualification",
+    feature = "cuda-cublas",
+    target_os = "linux"
+))]
+#[test]
+#[ignore = "physical SM86 stateless RMS-vs-ragged-causal qualification"]
+fn physical_stateless_rms_matches_ragged_causal_calls_exactly() -> Result<()> {
+    futures_lite::future::block_on(async {
+        let diagnostic = crate::cuda::test_support::CudaDiagnostic::new("stateless-rms-rows")?;
+        let service = diagnostic.service.clone();
+        let client = service.client();
+        let program = program();
+        let hidden = program.geometry().hidden_width;
+        let lane_rows = [47usize, 48, 49, 50, 51, 52, 53, 54];
+        let active_rows = lane_rows.iter().sum::<usize>();
+        let bound_rows = 513usize;
+        let epsilon = 1e-6f32;
+        let reduction = program.rms_reduction_class(lane_rows[0])?;
+        if lane_rows
+            .iter()
+            .any(|&rows| program.rms_reduction_class(rows).ok() != Some(reduction))
+        {
+            return Err(Error::State(
+                "ragged RMS fixture reduction classes differ".into(),
+            ));
+        }
+
+        let word = |i: usize, seed: usize| -> u16 {
+            match (i + seed) % 8 {
+                0 => 0x3f80, // 1.0
+                1 => 0xbf00, // -0.5
+                2 => 0x3e80, // 0.25
+                3 => 0x4000, // 2.0
+                4 => 0xbe00, // -0.125
+                5 => 0x3f00, // 0.5
+                6 => 0xc000, // -2.0
+                _ => 0x0000,
+            }
+        };
+        let bytes_from_words = |words: &[u16]| {
+            words
+                .iter()
+                .flat_map(|word| word.to_ne_bytes())
+                .collect::<Vec<_>>()
+        };
+        let view = |handle: &Handle, total: usize, offset: usize, bytes: usize| {
+            handle
+                .clone()
+                .offset_start(offset as u64)
+                .offset_end((total - offset - bytes) as u64)
+        };
+        let status_binding =
+            |handle: Handle| LaunchBinding::new(BufferRole::Status, Access::ReadWrite, handle);
+
+        let total_bytes = bound_rows * hidden * 2;
+        let active_bytes = active_rows * hidden * 2;
+        let mut input_words = (0..bound_rows * hidden)
+            .map(|i| word(i, 3))
+            .collect::<Vec<_>>();
+        input_words[(active_rows / 2) * hidden + 7] = 0x7f80; // +inf.
+        let residual_words = (0..bound_rows * hidden)
+            .map(|i| word(i, 11))
+            .collect::<Vec<_>>();
+        let gamma_words = (0..hidden).map(|i| word(i, 19)).collect::<Vec<_>>();
+        let input = client.create_from_slice(&bytes_from_words(&input_words));
+        let gamma = client.create_from_slice(&bytes_from_words(&gamma_words));
+        let residual_bytes = bytes_from_words(&residual_words);
+        let output_seed = vec![0x5au8; total_bytes];
+
+        let sequential_rms = client.create_from_slice(&output_seed);
+        let wide_rms = client.create_from_slice(&output_seed);
+        let sequential_residual = client.create_from_slice(&residual_bytes);
+        let wide_residual = client.create_from_slice(&residual_bytes);
+        let sequential_residual_output = client.create_from_slice(&output_seed);
+        let wide_residual_output = client.create_from_slice(&output_seed);
+        let sequential_rms_status = client.create_from_slice(&0u32.to_ne_bytes());
+        let wide_rms_status = client.create_from_slice(&0u32.to_ne_bytes());
+        let sequential_residual_status = client.create_from_slice(&0u32.to_ne_bytes());
+        let wide_residual_status = client.create_from_slice(&0u32.to_ne_bytes());
+
+        let mut row = 0usize;
+        for rows in lane_rows {
+            let offset = row * hidden * 2;
+            let bytes = rows * hidden * 2;
+            let rms = program.rms(rows, epsilon)?;
+            rms.prepare_owned(
+                client,
+                vec![
+                    LaunchBinding::new(
+                        BufferRole::Input,
+                        Access::Read,
+                        view(&input, total_bytes, offset, bytes),
+                    ),
+                    LaunchBinding::new(BufferRole::RawGamma, Access::Read, gamma.clone()),
+                    LaunchBinding::new(
+                        BufferRole::Output,
+                        Access::Write,
+                        view(&sequential_rms, total_bytes, offset, bytes),
+                    ),
+                ],
+                status_binding(sequential_rms_status.clone()),
+            )?
+            .enqueue_owned(client, &sequential_rms_status)?;
+
+            let residual = program.residual_rms(rows, epsilon)?;
+            residual
+                .prepare_owned(
+                    client,
+                    vec![
+                        LaunchBinding::new(
+                            BufferRole::Input,
+                            Access::Read,
+                            view(&input, total_bytes, offset, bytes),
+                        ),
+                        LaunchBinding::new(
+                            BufferRole::Residual,
+                            Access::ReadWrite,
+                            view(&sequential_residual, total_bytes, offset, bytes),
+                        ),
+                        LaunchBinding::new(BufferRole::RawGamma, Access::Read, gamma.clone()),
+                        LaunchBinding::new(
+                            BufferRole::Output,
+                            Access::Write,
+                            view(&sequential_residual_output, total_bytes, offset, bytes),
+                        ),
+                    ],
+                    status_binding(sequential_residual_status.clone()),
+                )?
+                .enqueue_owned(client, &sequential_residual_status)?;
+            row += rows;
+        }
+        if row != active_rows {
+            return Err(Error::State("ragged RMS fixture row coverage".into()));
+        }
+
+        let physical = StatelessRowExtent::bounded(active_rows, bound_rows)?;
+        program
+            .rms_stateless(physical, reduction, epsilon)?
+            .prepare_owned(
+                client,
+                vec![
+                    LaunchBinding::new(BufferRole::Input, Access::Read, input.clone()),
+                    LaunchBinding::new(BufferRole::RawGamma, Access::Read, gamma.clone()),
+                    LaunchBinding::new(BufferRole::Output, Access::Write, wide_rms.clone()),
+                ],
+                status_binding(wide_rms_status.clone()),
+            )?
+            .enqueue_owned(client, &wide_rms_status)?;
+        program
+            .residual_rms_stateless(physical, reduction, epsilon)?
+            .prepare_owned(
+                client,
+                vec![
+                    LaunchBinding::new(BufferRole::Input, Access::Read, input.clone()),
+                    LaunchBinding::new(
+                        BufferRole::Residual,
+                        Access::ReadWrite,
+                        wide_residual.clone(),
+                    ),
+                    LaunchBinding::new(BufferRole::RawGamma, Access::Read, gamma.clone()),
+                    LaunchBinding::new(
+                        BufferRole::Output,
+                        Access::Write,
+                        wide_residual_output.clone(),
+                    ),
+                ],
+                status_binding(wide_residual_status.clone()),
+            )?
+            .enqueue_owned(client, &wide_residual_status)?;
+
+        client
+            .sync()
+            .await
+            .map_err(|error| Error::State(format!("stateless RMS sync: {error}")))?;
+        let sequential_rms = client
+            .read_one(sequential_rms)
+            .map_err(|error| Error::State(format!("causal RMS read: {error}")))?;
+        let wide_rms = client
+            .read_one(wide_rms)
+            .map_err(|error| Error::State(format!("stateless RMS read: {error}")))?;
+        let sequential_residual = client
+            .read_one(sequential_residual)
+            .map_err(|error| Error::State(format!("causal residual read: {error}")))?;
+        let wide_residual = client
+            .read_one(wide_residual)
+            .map_err(|error| Error::State(format!("stateless residual read: {error}")))?;
+        let sequential_residual_output = client
+            .read_one(sequential_residual_output)
+            .map_err(|error| Error::State(format!("causal residual RMS read: {error}")))?;
+        let wide_residual_output = client
+            .read_one(wide_residual_output)
+            .map_err(|error| Error::State(format!("stateless residual RMS read: {error}")))?;
+        let sequential_rms_status = client
+            .read_one(sequential_rms_status)
+            .map_err(|error| Error::State(format!("causal RMS status: {error}")))?;
+        let wide_rms_status = client
+            .read_one(wide_rms_status)
+            .map_err(|error| Error::State(format!("stateless RMS status: {error}")))?;
+        let sequential_residual_status = client
+            .read_one(sequential_residual_status)
+            .map_err(|error| Error::State(format!("causal residual RMS status: {error}")))?;
+        let wide_residual_status = client
+            .read_one(wide_residual_status)
+            .map_err(|error| Error::State(format!("stateless residual RMS status: {error}")))?;
+
+        if sequential_rms != wide_rms
+            || sequential_residual != wide_residual
+            || sequential_residual_output != wide_residual_output
+            || sequential_rms_status != wide_rms_status
+            || sequential_residual_status != wide_residual_status
+        {
+            return Err(Error::State(
+                "stateless RMS differs from ragged causal calls".into(),
+            ));
+        }
+        if &wide_rms_status[..] != 2u32.to_ne_bytes().as_slice()
+            || &wide_residual_status[..] != 2u32.to_ne_bytes().as_slice()
+            || wide_rms[active_bytes..] != output_seed[active_bytes..]
+            || wide_residual_output[active_bytes..] != output_seed[active_bytes..]
+            || wide_residual[active_bytes..] != residual_bytes[active_bytes..]
+        {
+            return Err(Error::State(
+                "stateless RMS status/tail preservation".into(),
+            ));
+        }
+        println!(
+            "STATELESS_RMS_PASS lanes=47..54 active_rows={active_rows} bound_rows={bound_rows} reduction_width={} exact=true status=2",
+            reduction.lanes()
+        );
+
+        // Exercise the width>physical-thread fold independently on the 2B
+        // geometry: one-row causal RMS uses 512 logical reduction lanes.
+        let two_b = Program::new(Geometry::qwen35_2b())?;
+        let hidden = two_b.geometry().hidden_width;
+        let active_rows = 65usize;
+        let total_bytes = active_rows * hidden * 2;
+        let mut input_words = (0..active_rows * hidden)
+            .map(|i| word(i, 29))
+            .collect::<Vec<_>>();
+        input_words[31 * hidden + 5] = 0x7f80;
+        let gamma_words = (0..hidden).map(|i| word(i, 37)).collect::<Vec<_>>();
+        let input = client.create_from_slice(&bytes_from_words(&input_words));
+        let gamma = client.create_from_slice(&bytes_from_words(&gamma_words));
+        let sequential = client.create_from_slice(&vec![0u8; total_bytes]);
+        let wide = client.create_from_slice(&vec![0u8; total_bytes]);
+        let sequential_status = client.create_from_slice(&0u32.to_ne_bytes());
+        let wide_status = client.create_from_slice(&0u32.to_ne_bytes());
+        for row in 0..active_rows {
+            let offset = row * hidden * 2;
+            two_b
+                .rms(1, epsilon)?
+                .prepare_owned(
+                    client,
+                    vec![
+                        LaunchBinding::new(
+                            BufferRole::Input,
+                            Access::Read,
+                            view(&input, total_bytes, offset, hidden * 2),
+                        ),
+                        LaunchBinding::new(BufferRole::RawGamma, Access::Read, gamma.clone()),
+                        LaunchBinding::new(
+                            BufferRole::Output,
+                            Access::Write,
+                            view(&sequential, total_bytes, offset, hidden * 2),
+                        ),
+                    ],
+                    status_binding(sequential_status.clone()),
+                )?
+                .enqueue_owned(client, &sequential_status)?;
+        }
+        let reduction = two_b.rms_reduction_class(1)?;
+        two_b
+            .rms_stateless(
+                StatelessRowExtent::bounded(active_rows, active_rows)?,
+                reduction,
+                epsilon,
+            )?
+            .prepare_owned(
+                client,
+                vec![
+                    LaunchBinding::new(BufferRole::Input, Access::Read, input),
+                    LaunchBinding::new(BufferRole::RawGamma, Access::Read, gamma),
+                    LaunchBinding::new(BufferRole::Output, Access::Write, wide.clone()),
+                ],
+                status_binding(wide_status.clone()),
+            )?
+            .enqueue_owned(client, &wide_status)?;
+        client
+            .sync()
+            .await
+            .map_err(|error| Error::State(format!("stateless 2B RMS sync: {error}")))?;
+        let sequential = client
+            .read_one(sequential)
+            .map_err(|error| Error::State(format!("causal 2B RMS read: {error}")))?;
+        let wide = client
+            .read_one(wide)
+            .map_err(|error| Error::State(format!("stateless 2B RMS read: {error}")))?;
+        let sequential_status = client
+            .read_one(sequential_status)
+            .map_err(|error| Error::State(format!("causal 2B RMS status: {error}")))?;
+        let wide_status = client
+            .read_one(wide_status)
+            .map_err(|error| Error::State(format!("stateless 2B RMS status: {error}")))?;
+        if sequential != wide
+            || sequential_status != wide_status
+            || &wide_status[..] != 2u32.to_ne_bytes().as_slice()
+        {
+            return Err(Error::State(
+                "stateless 2B one-row RMS reduction differs".into(),
+            ));
+        }
+        println!(
+            "STATELESS_RMS_PASS geometry=2B source_rows=1 physical_rows={active_rows} reduction_width={} exact=true status=2",
+            reduction.lanes()
+        );
+
+        client
+            .memory_cleanup()
+            .map_err(|error| Error::State(format!("stateless RMS cleanup: {error}")))?;
         service.close_model_namespace()?;
         Ok(())
     })

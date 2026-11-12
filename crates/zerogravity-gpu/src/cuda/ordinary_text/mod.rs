@@ -220,6 +220,42 @@ impl From<RowExtent> for StatelessRowExtent {
     }
 }
 
+/// Exact Torch-compatible reduction grouping for ordinary vector RMS. This is
+/// numerical geometry only: it owns no source call, model/session/root or
+/// physical launch authority. Independent calls may share one stateless launch
+/// only when their reduction classes compare equal.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct RmsReductionClass {
+    columns: usize,
+    lanes: usize,
+}
+
+impl RmsReductionClass {
+    fn for_rows(rows: usize, columns: usize) -> Result<Self> {
+        if rows == 0 || u32::try_from(rows).is_err() || columns < 4 || !columns.is_multiple_of(4) {
+            return Err(Error::Unsupported(
+                "ordinary text RMS reduction geometry".into(),
+            ));
+        }
+        let mut height = 1usize;
+        while height < 16 && height.saturating_mul(2) <= rows {
+            height *= 2;
+        }
+        let available = 512 / height;
+        let lanes = (columns / 4).min(available);
+        if lanes == 0 || u32::try_from(lanes).is_err() {
+            return Err(Error::Unsupported(
+                "ordinary text RMS reduction lanes".into(),
+            ));
+        }
+        Ok(Self { columns, lanes })
+    }
+
+    pub(crate) fn lanes(self) -> usize {
+        self.lanes
+    }
+}
+
 /// Exact internal pointer role; order comes from each crate-private definition.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum BufferRole {
@@ -371,6 +407,8 @@ pub(crate) enum Primitive {
     Embedding,
     Rms,
     ResidualRms,
+    RmsStateless,
+    ResidualRmsStateless,
     SiluUp,
     Sigmoid,
     SigmoidMultiply,
@@ -393,6 +431,8 @@ impl Primitive {
             Self::Embedding => "zg_ot_embedding_v1",
             Self::Rms => "zg_ot_rms_v1",
             Self::ResidualRms => "zg_ot_residual_rms_v1",
+            Self::RmsStateless => "zg_ot_rms_stateless_v1",
+            Self::ResidualRmsStateless => "zg_ot_residual_rms_stateless_v1",
             Self::SiluUp => "zg_ot_silu_up_v1",
             Self::Sigmoid => "zg_ot_sigmoid_v1",
             Self::SigmoidMultiply => "zg_ot_sigmoid_multiply_v1",
@@ -664,6 +704,8 @@ impl Definition {
             Primitive::Embedding => PrimitiveKind::Embedding,
             Primitive::Rms => PrimitiveKind::Rms,
             Primitive::ResidualRms => PrimitiveKind::ResidualRms,
+            Primitive::RmsStateless => PrimitiveKind::Rms,
+            Primitive::ResidualRmsStateless => PrimitiveKind::ResidualRms,
             Primitive::SiluUp => PrimitiveKind::SiluUp,
             Primitive::Sigmoid => PrimitiveKind::Sigmoid,
             Primitive::SigmoidMultiply => PrimitiveKind::SigmoidMultiply,
@@ -949,12 +991,37 @@ impl Program {
         self.rms_definition(Primitive::Rms, rows, epsilon)
     }
 
+    pub(crate) fn rms_reduction_class(&self, source_rows: usize) -> Result<RmsReductionClass> {
+        RmsReductionClass::for_rows(source_rows, self.geometry.hidden_width)
+    }
+
+    /// Row-independent RMS over a checked physical span using an explicitly
+    /// authenticated source reduction class. Physical rows and source numerical
+    /// grouping remain separate so concatenation cannot silently change math.
+    pub(crate) fn rms_stateless(
+        &self,
+        rows: StatelessRowExtent,
+        reduction: RmsReductionClass,
+        epsilon: f32,
+    ) -> Result<Definition> {
+        self.rms_stateless_definition(Primitive::RmsStateless, rows, reduction, epsilon)
+    }
+
     pub(crate) fn residual_rms(&self, rows: usize, epsilon: f32) -> Result<Definition> {
         self.rms_definition(Primitive::ResidualRms, RowExtent::exact(rows)?, epsilon)
     }
 
     pub(crate) fn residual_rms_bounded(&self, rows: RowExtent, epsilon: f32) -> Result<Definition> {
         self.rms_definition(Primitive::ResidualRms, rows, epsilon)
+    }
+
+    pub(crate) fn residual_rms_stateless(
+        &self,
+        rows: StatelessRowExtent,
+        reduction: RmsReductionClass,
+        epsilon: f32,
+    ) -> Result<Definition> {
+        self.rms_stateless_definition(Primitive::ResidualRmsStateless, rows, reduction, epsilon)
     }
 
     fn rms_definition(
@@ -990,6 +1057,62 @@ impl Program {
                 (
                     StaticScalarType::U32,
                     StaticScalarValue::U32(rows.active() as u64),
+                ),
+                (
+                    StaticScalarType::F32Bits,
+                    StaticScalarValue::F32Bits(epsilon.to_bits()),
+                ),
+            ])?,
+            [rows.active() as u32, 1, 1],
+        )
+    }
+
+    fn rms_stateless_definition(
+        &self,
+        primitive: Primitive,
+        rows: StatelessRowExtent,
+        reduction: RmsReductionClass,
+        epsilon: f32,
+    ) -> Result<Definition> {
+        if !matches!(
+            primitive,
+            Primitive::RmsStateless | Primitive::ResidualRmsStateless
+        ) || reduction.columns != self.geometry.hidden_width
+            || !epsilon.is_finite()
+            || epsilon <= 0.0
+        {
+            return Err(Error::Unsupported(
+                "ordinary text stateless RMS geometry/epsilon".into(),
+            ));
+        }
+        let bytes = extent(
+            rows.bound(),
+            self.geometry.hidden_width,
+            BF16_BYTES,
+            "stateless RMS batch",
+        )?;
+        let gamma = checked_mul(self.geometry.hidden_width, BF16_BYTES, "RMS gamma")?;
+        let mut bindings = vec![binding(BufferRole::Input, bytes, Access::Read)];
+        if primitive == Primitive::ResidualRmsStateless {
+            bindings.push(binding(BufferRole::Residual, bytes, Access::ReadWrite));
+        }
+        bindings.extend([
+            binding(BufferRole::RawGamma, gamma, Access::Read),
+            binding(BufferRole::Output, bytes, Access::Write),
+            status(),
+        ]);
+        self.definition_with_aliases(
+            primitive,
+            bindings,
+            &[(BufferRole::Input, BufferRole::Output)],
+            words(&[
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(rows.active() as u64),
+                ),
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(reduction.lanes() as u64),
                 ),
                 (
                     StaticScalarType::F32Bits,

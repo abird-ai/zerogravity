@@ -3292,3 +3292,39 @@ build or general model/backend grant. Historical failures keep their source scop
   tests for other models/operators whose row counts or launch economics differ.
   Any future consumer must prove its own exact semantics and measured end-to-end
   win; a lower dispatch count alone is not acceptance evidence.
+
+### 12 Nov 2026 — stateless RMS cohort + retained GDN controls accepted
+
+- [x] Extended the model-neutral `StatelessRowExtent` surface to RMS without
+  widening causal `Step`/`RowExtent` or attaching model/session/root identity.
+  `RmsReductionClass` authenticates the exact source reduction grouping
+  separately from the physical row count; `rms_stateless` and
+  `residual_rms_stateless` reuse that contract for row-independent work.
+  The ragged prefill consumer only coalesces lanes when every original source
+  call has the same reduction class and exact per-lane SSA geometry; otherwise
+  it falls back to the existing private-lane execution. Bounded packed views
+  provide stable physical ABI capacity without inventing padded mathematical
+  rows.
+- [x] Physical RTX 3060 qualification compares one stateless RMS launch against
+  the original ragged causal sequence for lanes 47..54 (404 active rows,
+  reduction width 32) and matches RMS output, residual-RMS output, in-place
+  residual bytes, nonfinite status `2`, and inactive-tail sentinels exactly.
+  A separate Qwen3.5-2B geometry case proves a one-row source reduction class
+  can execute 65 physical stateless rows exactly with reduction width 512.
+- [x] GDN `CacheIndices` control bytes are now a retained runtime-level table
+  `[1,2,3,4]` uploaded once with the ordinary CUDA workspace. The reusable
+  control API returns the exact retained byte offset (0/4/8/12 for slots 1..4)
+  rather than a lossy boolean. Singleton ordinary execution skips a write only
+  when its slot-1 control is retained at the bound offset 0; B4 cohort kernels
+  reuse the complete retained table. Other request-varying controls remain
+  request-local. The physical generic GDN runtime smoke passes initial prefill
+  rows 1/2/17/64, continued prefill frontier64+17, and cached decode frontier71.
+- [x] Public-serving output remained exact for B8 ragged .8B prompts 47..54 /
+  output1: every lane repeatedly produced token ID 799. A clean warmed non-LTO
+  run improved the signed `f92ed9a` baseline from 245.057 ms / 1648.594 input
+  tok/s to 241.285 ms / 1674.370 input tok/s (~1.54% lower latency, ~1.56%
+  higher throughput). An earlier 18-wave run had late baseline clock/thermal
+  drift, so its means are not used; its medians independently agree at
+  247.089 ms baseline vs 243.100 ms candidate (~1.6%). The measured candidate
+  contains both shared overhead reductions, so the gain is intentionally not
+  attributed to either optimization in isolation.
