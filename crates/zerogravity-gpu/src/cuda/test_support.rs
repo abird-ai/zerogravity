@@ -20,9 +20,15 @@ pub(crate) struct CudaDiagnostic {
 }
 impl CudaDiagnostic {
     pub(crate) fn new(label: &'static str) -> Result<Self> {
-        const MIB: usize = 1024 * 1024;
         let device =
             cubecl::Device::cuda(0).map_err(|e| Error::State(format!("{label} CUDA: {e}")))?;
+        Self::new_on(label, device)
+    }
+    /// Same finite diagnostic ownership for an explicitly selected CUDA
+    /// device. Keep qualification code on one compiler/charge path rather than
+    /// constructing ad-hoc clients that silently fall back to PTX.
+    pub(crate) fn new_on(label: &'static str, device: cubecl::Device) -> Result<Self> {
+        const MIB: usize = 1024 * 1024;
         let service = ResidentService::new_pinned_cuda(
             device,
             SourceIdentity::for_new_allocation()?,

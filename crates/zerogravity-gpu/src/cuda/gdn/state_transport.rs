@@ -176,12 +176,8 @@ pub(crate) fn prepare_code(queue: &cubecl::cuda::OwnedCudaQueue) -> Result<usize
 
 #[cfg(all(test, feature = "cuda-cublas"))]
 pub(crate) async fn qualify_roundtrip_on_nvidia(device: cubecl::Device) -> Result<()> {
-    use crate::resident_leases::ResidentService;
-    use zerogravity_core::{
-        accelerator::SourceIdentity, device_events::BufferRole, resource_arbiter::ResourceOwner,
-    };
+    use zerogravity_core::device_events::BufferRole;
 
-    const MIB: usize = 1024 * 1024;
     const PATTERNS: [u32; 10] = [
         0x0000_0000,
         0x8000_0000,
@@ -204,14 +200,9 @@ pub(crate) async fn qualify_roundtrip_on_nvidia(device: cubecl::Device) -> Resul
         Ok(u32::from_le_bytes(bytes))
     }
 
-    let source = SourceIdentity::for_new_allocation()?;
-    let service = ResidentService::new_pinned_cuda(
-        device,
-        source,
-        ResourceOwner::new("ordinary-state-transport", "roundtrip")?,
-        16 * MIB,
-        (32 * MIB) as u64,
-    )?;
+    let diagnostic =
+        crate::cuda::test_support::CudaDiagnostic::new_on("ordinary-state-transport", device)?;
+    let service = diagnostic.service.clone();
     let client = service.client().clone();
 
     let conv_words = (0..CONV_ELEMENTS)

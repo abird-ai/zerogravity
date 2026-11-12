@@ -2023,7 +2023,9 @@ pub(crate) fn qualify_zero_runtime_on_nvidia(device: cubecl::Device) -> Result<(
         result
     }
 
-    let client = device.client();
+    let diagnostic =
+        crate::cuda::test_support::CudaDiagnostic::new_on("ordinary-gdn-runtime", device)?;
+    let client = diagnostic.service.client().clone();
     let config = config()?;
     let workspace = GdnRuntimeWorkspaceLayout::new(config)?;
     let mut handles = BTreeMap::new();
