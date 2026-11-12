@@ -15,7 +15,9 @@ use std::sync::Arc;
 use zerogravity_core::{Error, Result};
 
 const THREADS: u32 = 256;
-pub const MAX_RUNTIME_ROWS: usize = 64;
+/// Maximum rows in one authenticated causal source call/chunk. This is a
+/// semantic call bound, not a limit on row-independent physical work.
+pub const MAX_CAUSAL_ROWS: usize = 64;
 pub const MAX_CONTEXT_CAPACITY: usize = 32_768;
 /// Device status: runtime token or position exceeded its admitted extent.
 pub const STATUS_OUT_OF_RANGE: u32 = 1;
@@ -122,7 +124,7 @@ pub struct Step {
 
 impl Step {
     pub fn new(rows: usize, base: usize, capacity: usize) -> Result<Self> {
-        if !(1..=MAX_RUNTIME_ROWS).contains(&rows)
+        if !(1..=MAX_CAUSAL_ROWS).contains(&rows)
             || !(1..=MAX_CONTEXT_CAPACITY).contains(&capacity)
             || base.checked_add(rows).is_none_or(|end| end > capacity)
             || u32::try_from(base).is_err()
@@ -155,8 +157,8 @@ impl RowExtent {
     }
 
     pub(crate) fn bounded(active: usize, bound: usize) -> Result<Self> {
-        if !(1..=MAX_RUNTIME_ROWS).contains(&active)
-            || !(1..=MAX_RUNTIME_ROWS).contains(&bound)
+        if !(1..=MAX_CAUSAL_ROWS).contains(&active)
+            || !(1..=MAX_CAUSAL_ROWS).contains(&bound)
             || active > bound
         {
             return Err(Error::Unsupported(
@@ -172,6 +174,49 @@ impl RowExtent {
 
     pub(crate) fn bound(self) -> usize {
         self.bound
+    }
+}
+
+/// Active rows in a row-independent physical launch plus its stable pointer
+/// bound. Unlike [`RowExtent`], this carries no source-call, cache-frontier or
+/// session semantics, so callers may concatenate independently authenticated
+/// rows before invoking a stateless primitive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct StatelessRowExtent {
+    active: usize,
+    bound: usize,
+}
+
+impl StatelessRowExtent {
+    pub(crate) fn bounded(active: usize, bound: usize) -> Result<Self> {
+        if active == 0
+            || bound == 0
+            || active > bound
+            || u32::try_from(active).is_err()
+            || u32::try_from(bound).is_err()
+        {
+            return Err(Error::Unsupported(
+                "ordinary text stateless active/bounded row extent".into(),
+            ));
+        }
+        Ok(Self { active, bound })
+    }
+
+    pub(crate) fn active(self) -> usize {
+        self.active
+    }
+
+    pub(crate) fn bound(self) -> usize {
+        self.bound
+    }
+}
+
+impl From<RowExtent> for StatelessRowExtent {
+    fn from(rows: RowExtent) -> Self {
+        Self {
+            active: rows.active(),
+            bound: rows.bound(),
+        }
     }
 }
 
@@ -960,6 +1005,16 @@ impl Program {
     }
 
     pub(crate) fn silu_up_bounded(&self, rows: RowExtent) -> Result<Definition> {
+        self.silu_up_definition(rows.into())
+    }
+
+    /// Row-independent SiLU×up over a checked physical row span. This retains
+    /// the numerical contract while deliberately carrying no causal call authority.
+    pub(crate) fn silu_up_stateless(&self, rows: StatelessRowExtent) -> Result<Definition> {
+        self.silu_up_definition(rows)
+    }
+
+    fn silu_up_definition(&self, rows: StatelessRowExtent) -> Result<Definition> {
         let packed_width = checked_mul(
             self.geometry.intermediate_width,
             2,
@@ -1596,7 +1651,7 @@ fn require_same_status(expected: &Handle, actual: &LaunchBinding) -> Result<()> 
 }
 
 fn require_rows(rows: usize) -> Result<()> {
-    if !(1..=MAX_RUNTIME_ROWS).contains(&rows) {
+    if !(1..=MAX_CAUSAL_ROWS).contains(&rows) {
         return Err(Error::Unsupported("ordinary text runtime rows".into()));
     }
     Ok(())

@@ -3267,3 +3267,28 @@ build or general model/backend grant. Historical failures keep their source scop
   A future retry must first expose and qualify an explicit per-lane position/base
   primitive for every position-sensitive/stateful consumer; do not infer that
   projection compatibility alone makes independent-frontier cohorts exact.
+
+### 12 Nov 2026 — wide stateless-row primitive retained; SiLU cohort consumer rejected
+
+- [x] Separated the ordinary CUDA causal-call row bound from row-independent
+  physical work. `Step` and `RowExtent` remain capped by `MAX_CAUSAL_ROWS=64`;
+  the new `StatelessRowExtent { active, bound }` carries only checked physical
+  row geometry and deliberately owns no source call, session, root, frontier or
+  model identity. `silu_up_stateless` reuses the exact existing SiLU×up kernel
+  and numerical contract with that model-neutral row extent.
+- [x] Physical RTX 3060 qualification compared one stateless launch against the
+  original sequence of <=64-row launches at active rows 65, 404, 512 and 513.
+  Output bytes matched exactly in every case, including a deliberately injected
+  BF16 +inf gate and the identical nonfinite status value `2`.
+- [x] Evaluated the first serving consumer by concatenating same-frontier ragged
+  prefill SiLU×up rows across B8 lanes. Correctness held at the public serving
+  surface (all eight lanes repeatedly produced token ID 264), but the controlled
+  non-LTO .8B benchmark on prompts 112..119 / output1 regressed: signed baseline
+  `cffd78e` averaged 413.924 ms / 2232.294 input tok/s over 16 timed waves;
+  candidate averaged 428.399 ms / 2156.866 input tok/s, about 3.5% slower in
+  latency. The earlier short sample was noisy and did not reproduce.
+- [x] Rejected and fully reverted the cohort consumer and its activation-arena
+  plumbing. Retain only the independently qualified stateless-row primitive and
+  tests for other models/operators whose row counts or launch economics differ.
+  Any future consumer must prove its own exact semantics and measured end-to-end
+  win; a lower dispatch count alone is not acceptance evidence.

@@ -250,6 +250,31 @@ fn bounded_row_definitions_keep_one_physical_abi_across_ragged_active_rows() -> 
 }
 
 #[test]
+fn stateless_rows_can_cross_causal_bound_without_widening_source_steps() -> Result<()> {
+    assert!(Step::new(65, 0, 1024).is_err());
+    assert!(RowExtent::bounded(65, 65).is_err());
+    assert!(StatelessRowExtent::bounded(0, 1).is_err());
+    assert!(StatelessRowExtent::bounded(2, 1).is_err());
+
+    let short = StatelessRowExtent::bounded(404, 513)?;
+    let full = StatelessRowExtent::bounded(513, 513)?;
+    assert_eq!((short.active(), short.bound()), (404, 513));
+    assert_eq!((full.active(), full.bound()), (513, 513));
+    #[cfg(target_pointer_width = "64")]
+    assert!(StatelessRowExtent::bounded(u32::MAX as usize + 1, u32::MAX as usize + 1).is_err());
+
+    let p = program();
+    let short = p.silu_up_stateless(short)?;
+    let full = p.silu_up_stateless(full)?;
+    assert_eq!(short.entry(), full.entry());
+    assert_eq!(short.source(), full.source());
+    assert_eq!(short.bindings(), full.bindings());
+    assert_eq!(short.kernel.binding_sizes(), full.kernel.binding_sizes());
+    assert_ne!(short.scalar_words(), full.scalar_words());
+    Ok(())
+}
+
+#[test]
 fn memory_plan_covers_both_sm86_qwen_geometries_without_allocating() -> Result<()> {
     assert_eq!(Geometry::qwen35_08().validate()?, geometry());
     let two_b = Geometry::qwen35_2b().validate()?;
@@ -678,6 +703,148 @@ fn status_owner_identity_requires_same_exact_four_byte_range() -> Result<()> {
         .is_err()
     );
     Ok(())
+}
+
+#[cfg(all(
+    feature = "qualification",
+    feature = "cuda-cublas",
+    target_os = "linux"
+))]
+#[test]
+#[ignore = "physical SM86 stateless SiLU-vs-causal-chunks qualification"]
+fn physical_stateless_silu_rows_match_causal_chunks_exactly() -> Result<()> {
+    futures_lite::future::block_on(async {
+        let diagnostic = crate::cuda::test_support::CudaDiagnostic::new("stateless-silu-rows")?;
+        let service = diagnostic.service.clone();
+        let client = service.client();
+        let program = program();
+        let intermediate = program.geometry().intermediate_width;
+        let packed_width = intermediate * 2;
+        let bound_rows = 513usize;
+        let packed_bytes = bound_rows * packed_width * 2;
+        let output_bytes = bound_rows * intermediate * 2;
+
+        let word = |i: usize, seed: usize| -> u16 {
+            match (i + seed) % 8 {
+                0 => 0x3f80, // 1.0
+                1 => 0xbf00, // -0.5
+                2 => 0x3e80, // 0.25
+                3 => 0x4000, // 2.0
+                4 => 0xbe00, // -0.125
+                5 => 0x3f00, // 0.5
+                6 => 0xc000, // -2.0
+                _ => 0x0000,
+            }
+        };
+        let bytes_from_words = |words: &[u16]| {
+            words
+                .iter()
+                .flat_map(|word| word.to_ne_bytes())
+                .collect::<Vec<_>>()
+        };
+        let view = |handle: &Handle, total: usize, offset: usize, bytes: usize| {
+            handle
+                .clone()
+                .offset_start(offset as u64)
+                .offset_end((total - offset - bytes) as u64)
+        };
+        let status_binding =
+            |handle: Handle| LaunchBinding::new(BufferRole::Status, Access::ReadWrite, handle);
+
+        for active_rows in [65usize, 404, 512, 513] {
+            let mut packed_words = (0..bound_rows * packed_width)
+                .map(|i| word(i, active_rows))
+                .collect::<Vec<_>>();
+            packed_words[(active_rows / 2) * packed_width + 7] = 0x7f80; // +inf gate.
+            let packed = client.create_from_slice(&bytes_from_words(&packed_words));
+            let zeros = vec![0u8; output_bytes];
+            let sequential_output = client.create_from_slice(&zeros);
+            let wide_output = client.create_from_slice(&zeros);
+            let sequential_status = client.create_from_slice(&0u32.to_ne_bytes());
+            let wide_status = client.create_from_slice(&0u32.to_ne_bytes());
+
+            let mut row = 0usize;
+            while row < active_rows {
+                let rows = (active_rows - row).min(MAX_CAUSAL_ROWS);
+                let packed_offset = row * packed_width * 2;
+                let packed_chunk_bytes = rows * packed_width * 2;
+                let output_offset = row * intermediate * 2;
+                let output_chunk_bytes = rows * intermediate * 2;
+                let definition = program.silu_up(rows)?;
+                let prepared = definition.prepare_owned(
+                    client,
+                    vec![
+                        LaunchBinding::new(
+                            BufferRole::PackedGateUp,
+                            Access::Read,
+                            view(&packed, packed_bytes, packed_offset, packed_chunk_bytes),
+                        ),
+                        LaunchBinding::new(
+                            BufferRole::Output,
+                            Access::Write,
+                            view(
+                                &sequential_output,
+                                output_bytes,
+                                output_offset,
+                                output_chunk_bytes,
+                            ),
+                        ),
+                    ],
+                    status_binding(sequential_status.clone()),
+                )?;
+                prepared.enqueue_owned(client, &sequential_status)?;
+                row += rows;
+            }
+
+            let definition =
+                program.silu_up_stateless(StatelessRowExtent::bounded(active_rows, bound_rows)?)?;
+            let prepared = definition.prepare_owned(
+                client,
+                vec![
+                    LaunchBinding::new(BufferRole::PackedGateUp, Access::Read, packed.clone()),
+                    LaunchBinding::new(BufferRole::Output, Access::Write, wide_output.clone()),
+                ],
+                status_binding(wide_status.clone()),
+            )?;
+            prepared.enqueue_owned(client, &wide_status)?;
+
+            client
+                .sync()
+                .await
+                .map_err(|error| Error::State(format!("stateless SiLU sync: {error}")))?;
+            let sequential = client
+                .read_one(sequential_output)
+                .map_err(|error| Error::State(format!("stateless SiLU sequential: {error}")))?;
+            let wide = client
+                .read_one(wide_output)
+                .map_err(|error| Error::State(format!("stateless SiLU wide: {error}")))?;
+            let sequential_status = client.read_one(sequential_status).map_err(|error| {
+                Error::State(format!("stateless SiLU sequential status: {error}"))
+            })?;
+            let wide_status = client
+                .read_one(wide_status)
+                .map_err(|error| Error::State(format!("stateless SiLU wide status: {error}")))?;
+            if sequential != wide || sequential_status != wide_status {
+                return Err(Error::State(format!(
+                    "stateless SiLU physical mismatch active_rows={active_rows}"
+                )));
+            }
+            if &wide_status[..] != 2u32.to_ne_bytes().as_slice() {
+                return Err(Error::State(format!(
+                    "stateless SiLU nonfinite status active_rows={active_rows}: {wide_status:?}"
+                )));
+            }
+            println!(
+                "STATELESS_SILU_PASS active_rows={active_rows} bound_rows={bound_rows} exact=true status=2"
+            );
+        }
+
+        client
+            .memory_cleanup()
+            .map_err(|error| Error::State(format!("stateless SiLU cleanup: {error}")))?;
+        service.close_model_namespace()?;
+        Ok(())
+    })
 }
 
 #[cfg(all(
