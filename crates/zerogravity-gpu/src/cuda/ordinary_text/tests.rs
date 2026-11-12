@@ -1222,6 +1222,222 @@ fn physical_stateless_rms_matches_ragged_causal_calls_exactly() -> Result<()> {
     target_os = "linux"
 ))]
 #[test]
+#[ignore = "physical SM86 stateless Q/K head-RMS-vs-ragged-causal qualification"]
+fn physical_stateless_qk_rms_matches_ragged_causal_calls_exactly() -> Result<()> {
+    futures_lite::future::block_on(async {
+        let diagnostic = crate::cuda::test_support::CudaDiagnostic::new("stateless-qk-rms")?;
+        let service = diagnostic.service.clone();
+        let client = service.client();
+        let program = program();
+        let query_width = program.geometry().query_width()?;
+        let key_width = program.geometry().kv_width()?;
+        let head_width = program.geometry().head_width;
+        let packed_width = program.attention_row_stride()?;
+        let lane_rows = [47usize, 48, 49, 50, 51, 52, 53, 54];
+        let active_rows = lane_rows.iter().sum::<usize>();
+        let bound_rows = 513usize;
+        let epsilon = 1e-6f32;
+
+        let word = |i: usize, seed: usize| -> u16 {
+            match (i + seed) % 8 {
+                0 => 0x3f80,
+                1 => 0xbf00,
+                2 => 0x3e80,
+                3 => 0x4000,
+                4 => 0xbe00,
+                5 => 0x3f00,
+                6 => 0xc000,
+                _ => 0x0000,
+            }
+        };
+        let bytes_from_words = |words: &[u16]| {
+            words
+                .iter()
+                .flat_map(|word| word.to_ne_bytes())
+                .collect::<Vec<_>>()
+        };
+        let view = |handle: &Handle, total: usize, offset: usize, bytes: usize| {
+            handle
+                .clone()
+                .offset_start(offset as u64)
+                .offset_end((total - offset - bytes) as u64)
+        };
+        let status_binding =
+            |handle: Handle| LaunchBinding::new(BufferRole::Status, Access::ReadWrite, handle);
+
+        let packed_bytes = bound_rows * packed_width * 2;
+        let query_bytes = bound_rows * query_width * 2;
+        let key_bytes = bound_rows * key_width * 2;
+        let active_query_bytes = active_rows * query_width * 2;
+        let active_key_bytes = active_rows * key_width * 2;
+        let packed_words = (0..bound_rows * packed_width)
+            .map(|i| word(i, 5))
+            .collect::<Vec<_>>();
+        let mut query_gamma_words = (0..head_width).map(|i| word(i, 11)).collect::<Vec<_>>();
+        query_gamma_words[3] = 0x7f80; // +inf drives the shared status bit.
+        let key_gamma_words = (0..head_width).map(|i| word(i, 17)).collect::<Vec<_>>();
+
+        let packed = client.create_from_slice(&bytes_from_words(&packed_words));
+        let query_gamma = client.create_from_slice(&bytes_from_words(&query_gamma_words));
+        let key_gamma = client.create_from_slice(&bytes_from_words(&key_gamma_words));
+        let query_seed = vec![0x5au8; query_bytes];
+        let key_seed = vec![0xa5u8; key_bytes];
+        let sequential_query = client.create_from_slice(&query_seed);
+        let wide_query = client.create_from_slice(&query_seed);
+        let sequential_key = client.create_from_slice(&key_seed);
+        let wide_key = client.create_from_slice(&key_seed);
+        let sequential_status = client.create_from_slice(&0u32.to_ne_bytes());
+        let wide_status = client.create_from_slice(&0u32.to_ne_bytes());
+
+        let mut row = 0usize;
+        for rows in lane_rows {
+            let packed_offset = row * packed_width * 2;
+            let packed_extent = rows * packed_width * 2;
+            let query_offset = row * query_width * 2;
+            let query_extent = rows * query_width * 2;
+            let key_offset = row * key_width * 2;
+            let key_extent = rows * key_width * 2;
+
+            program
+                .query_head_rms(rows, epsilon)?
+                .prepare_owned(
+                    client,
+                    vec![
+                        LaunchBinding::new(
+                            BufferRole::PackedAttention,
+                            Access::Read,
+                            view(&packed, packed_bytes, packed_offset, packed_extent),
+                        ),
+                        LaunchBinding::new(
+                            BufferRole::QueryRawGamma,
+                            Access::Read,
+                            query_gamma.clone(),
+                        ),
+                        LaunchBinding::new(
+                            BufferRole::QueryNormalized,
+                            Access::Write,
+                            view(&sequential_query, query_bytes, query_offset, query_extent),
+                        ),
+                    ],
+                    status_binding(sequential_status.clone()),
+                )?
+                .enqueue_owned(client, &sequential_status)?;
+            program
+                .key_head_rms(rows, epsilon)?
+                .prepare_owned(
+                    client,
+                    vec![
+                        LaunchBinding::new(
+                            BufferRole::PackedAttention,
+                            Access::Read,
+                            view(&packed, packed_bytes, packed_offset, packed_extent),
+                        ),
+                        LaunchBinding::new(
+                            BufferRole::KeyRawGamma,
+                            Access::Read,
+                            key_gamma.clone(),
+                        ),
+                        LaunchBinding::new(
+                            BufferRole::KeyNormalized,
+                            Access::Write,
+                            view(&sequential_key, key_bytes, key_offset, key_extent),
+                        ),
+                    ],
+                    status_binding(sequential_status.clone()),
+                )?
+                .enqueue_owned(client, &sequential_status)?;
+            row += rows;
+        }
+        if row != active_rows {
+            return Err(Error::State("ragged Q/K RMS fixture row coverage".into()));
+        }
+
+        let physical = StatelessRowExtent::bounded(active_rows, bound_rows)?;
+        program
+            .query_head_rms_stateless(physical, epsilon)?
+            .prepare_owned(
+                client,
+                vec![
+                    LaunchBinding::new(BufferRole::PackedAttention, Access::Read, packed.clone()),
+                    LaunchBinding::new(
+                        BufferRole::QueryRawGamma,
+                        Access::Read,
+                        query_gamma.clone(),
+                    ),
+                    LaunchBinding::new(
+                        BufferRole::QueryNormalized,
+                        Access::Write,
+                        wide_query.clone(),
+                    ),
+                ],
+                status_binding(wide_status.clone()),
+            )?
+            .enqueue_owned(client, &wide_status)?;
+        program
+            .key_head_rms_stateless(physical, epsilon)?
+            .prepare_owned(
+                client,
+                vec![
+                    LaunchBinding::new(BufferRole::PackedAttention, Access::Read, packed.clone()),
+                    LaunchBinding::new(BufferRole::KeyRawGamma, Access::Read, key_gamma.clone()),
+                    LaunchBinding::new(BufferRole::KeyNormalized, Access::Write, wide_key.clone()),
+                ],
+                status_binding(wide_status.clone()),
+            )?
+            .enqueue_owned(client, &wide_status)?;
+
+        client
+            .sync()
+            .await
+            .map_err(|error| Error::State(format!("stateless Q/K RMS sync: {error}")))?;
+        let sequential_query = client
+            .read_one(sequential_query)
+            .map_err(|error| Error::State(format!("causal Q RMS read: {error}")))?;
+        let wide_query = client
+            .read_one(wide_query)
+            .map_err(|error| Error::State(format!("stateless Q RMS read: {error}")))?;
+        let sequential_key = client
+            .read_one(sequential_key)
+            .map_err(|error| Error::State(format!("causal K RMS read: {error}")))?;
+        let wide_key = client
+            .read_one(wide_key)
+            .map_err(|error| Error::State(format!("stateless K RMS read: {error}")))?;
+        let sequential_status = client
+            .read_one(sequential_status)
+            .map_err(|error| Error::State(format!("causal Q/K RMS status: {error}")))?;
+        let wide_status = client
+            .read_one(wide_status)
+            .map_err(|error| Error::State(format!("stateless Q/K RMS status: {error}")))?;
+
+        if sequential_query != wide_query
+            || sequential_key != wide_key
+            || sequential_status != wide_status
+            || &wide_status[..] != 2u32.to_ne_bytes().as_slice()
+            || wide_query[active_query_bytes..] != query_seed[active_query_bytes..]
+            || wide_key[active_key_bytes..] != key_seed[active_key_bytes..]
+        {
+            return Err(Error::State(
+                "stateless Q/K RMS differs from ragged causal calls".into(),
+            ));
+        }
+        println!(
+            "STATELESS_QK_RMS_PASS lanes=47..54 active_rows={active_rows} bound_rows={bound_rows} exact=true status=2"
+        );
+
+        client
+            .memory_cleanup()
+            .map_err(|error| Error::State(format!("stateless Q/K RMS cleanup: {error}")))?;
+        service.close_model_namespace()?;
+        Ok(())
+    })
+}
+
+#[cfg(all(
+    feature = "qualification",
+    feature = "cuda-cublas",
+    target_os = "linux"
+))]
+#[test]
 #[ignore = "physical SM86 stateless sigmoid/multiply-vs-ragged-causal qualification"]
 fn physical_stateless_sigmoid_multiply_matches_ragged_causal_calls_exactly() -> Result<()> {
     futures_lite::future::block_on(async {

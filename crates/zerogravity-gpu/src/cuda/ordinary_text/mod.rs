@@ -1453,6 +1453,16 @@ impl Program {
         rows: RowExtent,
         epsilon: f32,
     ) -> Result<Definition> {
+        self.query_head_rms_stateless(rows.into(), epsilon)
+    }
+
+    /// Source-neutral Q-head RMS over a checked physical row span. This owns
+    /// only row/head geometry; caller/session/root/position policy stays above.
+    pub(crate) fn query_head_rms_stateless(
+        &self,
+        rows: StatelessRowExtent,
+        epsilon: f32,
+    ) -> Result<Definition> {
         self.head_rms_definition(
             Primitive::QueryHeadRms,
             rows,
@@ -1468,6 +1478,16 @@ impl Program {
     }
 
     pub(crate) fn key_head_rms_bounded(&self, rows: RowExtent, epsilon: f32) -> Result<Definition> {
+        self.key_head_rms_stateless(rows.into(), epsilon)
+    }
+
+    /// Source-neutral K-head RMS over a checked physical row span. See the Q
+    /// variant above; the primitive carries no model-family execution policy.
+    pub(crate) fn key_head_rms_stateless(
+        &self,
+        rows: StatelessRowExtent,
+        epsilon: f32,
+    ) -> Result<Definition> {
         self.head_rms_definition(
             Primitive::KeyHeadRms,
             rows,
@@ -1482,7 +1502,7 @@ impl Program {
     fn head_rms_definition(
         &self,
         primitive: Primitive,
-        rows: RowExtent,
+        rows: StatelessRowExtent,
         heads: usize,
         raw_gamma: BufferRole,
         output: BufferRole,

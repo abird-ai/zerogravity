@@ -3352,3 +3352,28 @@ build or general model/backend grant. Historical failures keep their source scop
   651.419ms versus653.166ms candidate (~0.27% slower). The cohort adapter was
   fully removed; retain only the independently qualified primitives/tests for
   another model, graph or execution geometry where the launch economics differ.
+
+### 12 Nov 2026 — stateless Q/K head-RMS primitives retained; ragged consumer rejected
+
+- [x] Extended the existing ordinary-text query/key head-RMS definitions onto
+  the model-neutral `StatelessRowExtent` contract without adding CUDA math or
+  carrying source/model/session/root/position policy. The original causal
+  `RowExtent` entrypoints now delegate to `query_head_rms_stateless` and
+  `key_head_rms_stateless`; head geometry, packed-attention offsets/strides,
+  BF16 arithmetic and nonfinite status remain the exact existing kernels.
+- [x] Physical RTX3060 qualification compares eight ragged causal Q/K RMS pairs
+  at rows `[47..54]` (404 active rows) against one wide Q-RMS plus one wide
+  K-RMS over a 513-row bounded ABI. Query bytes, key bytes, inactive tails and
+  status match bit-for-bit; an injected BF16 +inf in query gamma produces the
+  same status `2` on both paths. This keeps the wider primitive available to
+  another model/graph/execution geometry without selecting it here.
+- [x] Rejected selecting those primitives in the current ragged-prefill QK
+  consumer. The temporary adapter widened only Q/K normalization; each lane
+  retained its original authenticated base, grouped contiguous rotary call and
+  gate alias. Same-tree non-LTO public 2B B8 prompts47..54 +1 output preserved
+  all eight token IDs (`264`) exactly, but paired means were only
+  236.410->235.663ms in the first order (~0.32% faster) and
+  235.502->240.379ms after reversing order (~2.07% slower; candidate median
+  237.659ms vs baseline235.704ms). Across both orders the candidate averaged
+  ~0.88% slower. The production cohort adapter and temporary runner were fully
+  removed; retain only the independently qualified shared primitives/tests.
