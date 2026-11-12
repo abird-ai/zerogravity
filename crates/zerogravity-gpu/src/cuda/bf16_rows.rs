@@ -117,6 +117,54 @@ impl DenseRows {
     }
 }
 
+/// Gather independently selected BF16 source rows into `[column, row]` storage.
+/// Row indices are caller-owned geometry; this primitive owns no model/session
+/// policy, allocation, queue completion or publication authority.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct InnerMajorRowGather {
+    rows: usize,
+    columns: usize,
+    indices: [usize; 8],
+    source_words: usize,
+    output_words: usize,
+}
+
+impl InnerMajorRowGather {
+    pub(crate) fn new(source_rows: usize, columns: usize, indices: &[usize]) -> Result<Self> {
+        if source_rows == 0
+            || columns == 0
+            || !columns.is_multiple_of(2)
+            || !(2..=8).contains(&indices.len())
+            || !indices.len().is_multiple_of(2)
+            || indices.iter().any(|&row| row >= source_rows)
+        {
+            return Err(Error::Unsupported(
+                "BF16 inner-major row gather geometry".into(),
+            ));
+        }
+        let source_words = source_rows
+            .checked_mul(columns)
+            .filter(|&elements| elements <= MAX_TOTAL_ELEMENTS)
+            .map(|elements| elements / 2)
+            .ok_or_else(|| Error::Limit("BF16 row gather source extent".into()))?;
+        let output_words = indices
+            .len()
+            .checked_mul(columns)
+            .filter(|&elements| elements <= MAX_TOTAL_ELEMENTS)
+            .map(|elements| elements / 2)
+            .ok_or_else(|| Error::Limit("BF16 row gather output extent".into()))?;
+        let mut packed = [0usize; 8];
+        packed[..indices.len()].copy_from_slice(indices);
+        Ok(Self {
+            rows: indices.len(),
+            columns,
+            indices: packed,
+            source_words,
+            output_words,
+        })
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Validated {
     rows: usize,
@@ -226,6 +274,65 @@ fn row_major_to_inner_major_certified(
     }
 }
 
+#[cube(launch_unchecked)]
+fn indexed_rows_to_inner_major_certified(
+    source: &[u32],
+    output: &mut [u32],
+    status: &[Atomic<u32>],
+    rows: u32,
+    columns: u32,
+    row0: u32,
+    row1: u32,
+    row2: u32,
+    row3: u32,
+    row4: u32,
+    row5: u32,
+    row6: u32,
+    row7: u32,
+) {
+    let i = ABSOLUTE_POS;
+    let rows = usize::cast_from(rows);
+    let columns = usize::cast_from(columns);
+    let row_pairs = rows / 2;
+    let words = rows * columns / 2;
+    if i < words {
+        let column = i / row_pairs;
+        let pair = i % row_pairs;
+        let lane0 = pair * 2;
+        let lane1 = lane0 + 1;
+        let source_row0 = if lane0 == 0 {
+            usize::cast_from(row0)
+        } else if lane0 == 2 {
+            usize::cast_from(row2)
+        } else if lane0 == 4 {
+            usize::cast_from(row4)
+        } else {
+            usize::cast_from(row6)
+        };
+        let source_row1 = if lane1 == 1 {
+            usize::cast_from(row1)
+        } else if lane1 == 3 {
+            usize::cast_from(row3)
+        } else if lane1 == 5 {
+            usize::cast_from(row5)
+        } else {
+            usize::cast_from(row7)
+        };
+        let source_element0 = source_row0 * columns + column;
+        let source_element1 = source_row1 * columns + column;
+        let word0 = source[source_element0 / 2];
+        let word1 = source[source_element1 / 2];
+        let shift0 = u32::cast_from((source_element0 % 2) * 16);
+        let shift1 = u32::cast_from((source_element1 % 2) * 16);
+        let lo = (word0 >> shift0) & 0xffffu32;
+        let hi = (word1 >> shift1) & 0xffffu32;
+        if (lo & 0x7f80u32) == 0x7f80u32 || (hi & 0x7f80u32) == 0x7f80u32 {
+            status[0].fetch_or(crate::program_kernels::NONFINITE_VALUE);
+        }
+        output[i] = lo | (hi << 16u32);
+    }
+}
+
 fn arg(handle: &Handle, words: usize) -> BufferArg {
     // SAFETY: launch() checks the exact visible byte extent for every binding.
     unsafe { BufferArg::from_raw_parts(handle.clone(), words) }
@@ -235,13 +342,13 @@ fn bytes(words: usize) -> Result<u64> {
     words
         .checked_mul(4)
         .and_then(|n| u64::try_from(n).ok())
-        .ok_or_else(|| Error::Limit("BF16 row-split byte extent".into()))
+        .ok_or_else(|| Error::Limit("BF16 row transport byte extent".into()))
 }
 
 fn require_exact(client: &Client, handle: &Handle, words: usize, role: &str) -> Result<()> {
     if handle.service != client.service_id() || handle.size_in_used() != bytes(words)? {
         return Err(Error::State(format!(
-            "BF16 row-split {role} service/extent"
+            "BF16 row transport {role} service/extent"
         )));
     }
     Ok(())
@@ -359,6 +466,63 @@ pub(crate) fn launch_row_major_to_inner_major(
     Ok(1)
 }
 
+/// One allocation-free launch gathers arbitrary caller-selected source rows
+/// into inner-major BF16 storage. Source and output expose exact checked extents.
+pub(crate) fn launch_indexed_rows_to_inner_major(
+    client: &Client,
+    geometry: InnerMajorRowGather,
+    source: &Handle,
+    output: &Handle,
+    status: &Handle,
+) -> Result<usize> {
+    require_exact(client, source, geometry.source_words, "row gather source")?;
+    require_exact(client, output, geometry.output_words, "row gather output")?;
+    require_exact(client, status, 1, "row gather status")?;
+    let source_range = BufferRange::new(source)?;
+    let output_range = BufferRange::new(output)?;
+    let status_range = BufferRange::new(status)?;
+    if source_range.overlaps(&output_range)
+        || source_range.overlaps(&status_range)
+        || output_range.overlaps(&status_range)
+    {
+        return Err(Error::State(
+            "BF16 row gather writable range aliases another binding".into(),
+        ));
+    }
+    let as_u32 = |n: usize, role: &str| {
+        u32::try_from(n).map_err(|_| Error::Limit(format!("BF16 row gather {role} u32")))
+    };
+    let mut indices = [0u32; 8];
+    for (target, &row) in indices.iter_mut().zip(&geometry.indices) {
+        *target = as_u32(row, "row offset")?;
+    }
+    let grid = CubeCount::Static(as_u32(geometry.output_words, "grid")?.div_ceil(LANES), 1, 1);
+    let threads = CubeDim::new_1d(LANES);
+    // SAFETY: exact service/extents, bounded source rows and writable
+    // non-aliasing are checked above. The kernel only gathers/certifies BF16.
+    unsafe {
+        indexed_rows_to_inner_major_certified::launch_unchecked(
+            client,
+            grid,
+            threads,
+            arg(source, geometry.source_words),
+            arg(output, geometry.output_words),
+            arg(status, 1),
+            as_u32(geometry.rows, "rows")?,
+            as_u32(geometry.columns, "columns")?,
+            indices[0],
+            indices[1],
+            indices[2],
+            indices[3],
+            indices[4],
+            indices[5],
+            indices[6],
+            indices[7],
+        );
+    }
+    Ok(1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -391,6 +555,23 @@ mod tests {
             .unwrap(),
             16_384
         );
+        let gather = InnerMajorRowGather::new(13, 2048, &[12, 0, 7, 3, 5, 8, 1, 11]).unwrap();
+        assert_eq!(gather.rows, 8);
+        assert_eq!(gather.columns, 2048);
+        assert_eq!(gather.source_words, 13 * 1024);
+        assert_eq!(gather.output_words, 8 * 1024);
+        assert_eq!(&gather.indices[..8], &[12, 0, 7, 3, 5, 8, 1, 11]);
+        for (source_rows, columns, indices) in [
+            (0, 2048, &[][..]),
+            (13, 0, &[0, 1][..]),
+            (13, 2047, &[0, 1][..]),
+            (13, 2048, &[0][..]),
+            (13, 2048, &[0, 1, 2][..]),
+            (13, 2048, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9][..]),
+            (13, 2048, &[0, 13][..]),
+        ] {
+            assert!(InnerMajorRowGather::new(source_rows, columns, indices).is_err());
+        }
         for dense in [
             DenseRows {
                 rows: 0,
@@ -637,6 +818,69 @@ mod tests {
                 ));
             }
             println!("BF16_DENSE_TRANSPOSE_PASS rows=8 columns=16 exact=true status=nonfinite");
+        }
+        for indices in [
+            vec![12usize, 0],
+            vec![1, 10, 4, 7],
+            vec![12, 1, 10, 4, 7, 3],
+            vec![12, 11, 7, 0, 2, 3, 8, 5],
+        ] {
+            let source_rows = 13usize;
+            let columns = 16usize;
+            let mut source_words = (0..source_rows * columns)
+                .map(|i| 0x3e00u16.wrapping_add((i % 0x80) as u16))
+                .collect::<Vec<_>>();
+            source_words[7 * columns + 9] = 0x7f80;
+            let selected_has_poison = indices.contains(&7);
+            let mut expected = Vec::with_capacity(indices.len() * columns);
+            for column in 0..columns {
+                for &row in &indices {
+                    expected.push(source_words[row * columns + column]);
+                }
+            }
+            let encode = |words: &[u16]| {
+                words
+                    .iter()
+                    .flat_map(|word| word.to_ne_bytes())
+                    .collect::<Vec<_>>()
+            };
+            let source = client.create_from_slice(&encode(&source_words));
+            let output = client.empty(expected.len() * 2);
+            let status = client.create_from_slice(&0u32.to_ne_bytes());
+            launch_indexed_rows_to_inner_major(
+                client,
+                InnerMajorRowGather::new(source_rows, columns, &indices)?,
+                &source,
+                &output,
+                &status,
+            )?;
+            client
+                .sync()
+                .await
+                .map_err(|e| Error::State(format!("BF16 indexed gather sync: {e}")))?;
+            let actual = client
+                .read_one(output)
+                .map_err(|e| Error::State(format!("BF16 indexed gather output: {e}")))?;
+            let flags = client
+                .read_one(status)
+                .map_err(|e| Error::State(format!("BF16 indexed gather status: {e}")))?;
+            let expected_status = if selected_has_poison {
+                crate::program_kernels::NONFINITE_VALUE
+            } else {
+                0
+            };
+            if &actual[..] != encode(&expected).as_slice()
+                || &flags[..] != expected_status.to_ne_bytes().as_slice()
+            {
+                return Err(Error::State(format!(
+                    "BF16 indexed gather differs rows={} status={flags:?}",
+                    indices.len()
+                )));
+            }
+            println!(
+                "BF16_INDEXED_GATHER_PASS rows={} columns={columns} exact=true status={expected_status}",
+                indices.len()
+            );
         }
         client
             .memory_cleanup()

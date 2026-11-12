@@ -482,6 +482,19 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   48.290->178.399 tok/s (~3.69x), with identical IDs/text. An eight-shape same-process
   singleton reference stress can exhaust the existing cumulative PTX budget; native B8
   itself does not. References were split rather than weakening that compiler bound.
+- [x] Ragged prefill terminal-head collection now reuses a model-neutral indexed BF16
+  row-gather primitive instead of launching one last-row copy per lane. The primitive owns
+  only exact source/output geometry, caller-supplied row indices, BF16 nonfinite
+  certification and inner-major storage; it has no Qwen/session/root/scheduler policy and
+  independently accepts every even width 2..8. The ordinary cohort derives each selected
+  row from `CohortRowSpans`, gathers all terminal hidden rows in one launch, and feeds the
+  already-qualified B2/B4/B8 inner-major head GEMM directly. RTX3060 physical qualification
+  passes widths2/4/6/8 with exact BF16 output bits and expected status. Public0.8B
+  prompts47..54/16-output B8 matched the eight independent singleton references exactly
+  (all lanes emitted sixteen token IDs 264). Controlled same-HEAD non-LTO serving improved
+  0.8B 199.451->210.127 tok/s (~5.35%) and2B 168.949->177.566 tok/s (~5.10%), with
+  identical IDs. A reconstructed post-baseline0.8B run reconfirmed208.038 tok/s and exact
+  outputs before the temporary benchmark harness was removed.
 - [x] Small CUDA populated-context qualification now covers0.8B/2B at1K and2K.
   Each cell starts from the accepted47-token prefill, advances by genuine64-token
   state-only chunks to the exact context frontier, emits finite terminal vocabulary

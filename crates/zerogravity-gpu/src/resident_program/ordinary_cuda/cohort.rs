@@ -6,7 +6,8 @@ use crate::{
     cuda::{
         bf16_gemm::{Bf16GemmInputLayout, Bf16GemmShape},
         bf16_rows::{
-            DenseRows, RowSegment, TwoSegmentRows, launch_row_major_to_inner_major,
+            DenseRows, InnerMajorRowGather, RowSegment, TwoSegmentRows,
+            launch_indexed_rows_to_inner_major, launch_row_major_to_inner_major,
             launch_two_segment_rows,
         },
         gdn::{
@@ -686,6 +687,7 @@ impl OrdinaryCudaBody {
                     ));
                 }
                 let hidden = self.cold().layout().geometry().hidden_width;
+                let mut last_rows = Vec::with_capacity(lanes);
                 for lane in 0..lanes {
                     let descriptor = template.bind_runtime_call(calls[lane])?;
                     let inputs = descriptor.input_elements()?;
@@ -695,27 +697,32 @@ impl OrdinaryCudaBody {
                             "ordinary CUDA prefill cohort head input geometry".into(),
                         ));
                     }
-                    let source = values.lane_row_handle(*input, hidden, &spans, lane)?;
-                    let source = Self::exact_handle_view(
-                        &source,
-                        (lane_rows - 1) * hidden * 2,
-                        hidden * 2,
-                        "ordinary CUDA prefill last hidden row",
-                    )?;
-                    let target = exact_view(
-                        values.head_rows(),
-                        lane * hidden * 2,
-                        hidden * 2,
-                        "ordinary CUDA prefill gathered head row",
-                    )?;
-                    dispatches += attention::copy_bf16_prefix(
-                        client,
-                        &source,
-                        &target,
-                        &self.cold().status().handle(),
-                        hidden,
-                    )?;
+                    last_rows.push(
+                        spans
+                            .row_span(lane)?
+                            .end
+                            .checked_sub(1)
+                            .ok_or_else(|| Error::State("empty cohort lane span".into()))?,
+                    );
                 }
+                let source = values.packed_row_handle(*input, hidden, &spans)?;
+                let packed_bytes = lanes
+                    .checked_mul(hidden)
+                    .and_then(|elements| elements.checked_mul(2))
+                    .ok_or_else(|| Error::Limit("ordinary CUDA prefill head bytes".into()))?;
+                let packed = exact_view(
+                    values.head_rows(),
+                    0,
+                    packed_bytes,
+                    "ordinary CUDA prefill head inner-major rows",
+                )?;
+                dispatches += launch_indexed_rows_to_inner_major(
+                    client,
+                    InnerMajorRowGather::new(spans.total_rows(), hidden, &last_rows)?,
+                    &source,
+                    &packed,
+                    &self.cold().status().handle(),
+                )?;
                 let logits = logits.as_ref().ok_or_else(|| {
                     Error::State("ordinary CUDA prefill head has no logits target".into())
                 })?;
@@ -725,7 +732,7 @@ impl OrdinaryCudaBody {
                         self.gemm(),
                         flight,
                         values.head_rows(),
-                        Bf16GemmInputLayout::RowMajor,
+                        Bf16GemmInputLayout::InnerMajor,
                         logits,
                         self.cold().status(),
                         self.cold().source_page(),
