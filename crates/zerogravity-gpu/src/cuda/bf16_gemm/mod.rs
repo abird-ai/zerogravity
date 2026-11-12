@@ -67,6 +67,15 @@ pub(crate) enum Bf16GemmReduction {
     LaneBlocked { lanes: usize, terms: usize },
 }
 
+/// Physical input storage only; mathematical rows/reduction are unchanged.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Bf16GemmInputLayout {
+    /// X[row, inner], the canonical dense matrix layout.
+    RowMajor,
+    /// X[inner, row], useful when a narrow batch consumes all rows per k.
+    InnerMajor,
+}
+
 /// W[columns, inner], X[rows, inner], Y[rows, columns], all contiguous BF16.
 /// FP32 accumulation with an explicit reduction/rounding schedule.
 pub(crate) struct Bf16Gemm {
@@ -107,6 +116,42 @@ impl Bf16Gemm {
         Self::with_output_stride_mode(columns, rows, inner, reduction, columns, true)
     }
 
+    pub(crate) fn with_reduction_input_layout_certified(
+        columns: usize,
+        rows: usize,
+        inner: usize,
+        reduction: Bf16GemmReduction,
+        input_layout: Bf16GemmInputLayout,
+    ) -> Result<Self> {
+        Self::with_output_stride_layout_mode(
+            columns,
+            rows,
+            inner,
+            reduction,
+            columns,
+            input_layout,
+            true,
+        )
+    }
+
+    pub(crate) fn with_reduction_input_layout(
+        columns: usize,
+        rows: usize,
+        inner: usize,
+        reduction: Bf16GemmReduction,
+        input_layout: Bf16GemmInputLayout,
+    ) -> Result<Self> {
+        Self::with_output_stride_layout_mode(
+            columns,
+            rows,
+            inner,
+            reduction,
+            columns,
+            input_layout,
+            false,
+        )
+    }
+
     pub(crate) fn with_output_stride_certified(
         columns: usize,
         rows: usize,
@@ -117,12 +162,51 @@ impl Bf16Gemm {
         Self::with_output_stride_mode(columns, rows, inner, reduction, output_stride, true)
     }
 
+    pub(crate) fn with_output_stride_input_layout_certified(
+        columns: usize,
+        rows: usize,
+        inner: usize,
+        reduction: Bf16GemmReduction,
+        output_stride: usize,
+        input_layout: Bf16GemmInputLayout,
+    ) -> Result<Self> {
+        Self::with_output_stride_layout_mode(
+            columns,
+            rows,
+            inner,
+            reduction,
+            output_stride,
+            input_layout,
+            true,
+        )
+    }
+
     fn with_output_stride_mode(
         columns: usize,
         rows: usize,
         inner: usize,
         reduction: Bf16GemmReduction,
         output_stride: usize,
+        certified: bool,
+    ) -> Result<Self> {
+        Self::with_output_stride_layout_mode(
+            columns,
+            rows,
+            inner,
+            reduction,
+            output_stride,
+            Bf16GemmInputLayout::RowMajor,
+            certified,
+        )
+    }
+
+    fn with_output_stride_layout_mode(
+        columns: usize,
+        rows: usize,
+        inner: usize,
+        reduction: Bf16GemmReduction,
+        output_stride: usize,
+        input_layout: Bf16GemmInputLayout,
         certified: bool,
     ) -> Result<Self> {
         let shape = Bf16GemmShape::new(columns, rows, inner)?;
@@ -167,6 +251,13 @@ impl Bf16Gemm {
                 terms: 512
             }
         ) && rows == 8;
+        let inner_major_batch8_lane_strided =
+            input_layout == Bf16GemmInputLayout::InnerMajor && batch8_lane_strided;
+        if input_layout == Bf16GemmInputLayout::InnerMajor && !inner_major_batch8_lane_strided {
+            return Err(Error::Unsupported(
+                "BF16 inner-major input currently requires B8 lane-strided 16x512 reduction".into(),
+            ));
+        }
         let ordered_narrow_k64 =
             reduction == Bf16GemmReduction::Ordered && rows == 8 && inner >= 2048;
         let segmented_narrow_k64 = matches!(
@@ -254,6 +345,12 @@ impl Bf16Gemm {
             } else {
                 "bf16_gemm_lane_strided_batch4"
             }
+        } else if inner_major_batch8_lane_strided {
+            if certified {
+                "bf16_gemm_lane_strided_batch8_inner_major_certified"
+            } else {
+                "bf16_gemm_lane_strided_batch8_inner_major"
+            }
         } else if batch8_lane_strided {
             if certified {
                 "bf16_gemm_lane_strided_batch8_certified"
@@ -315,7 +412,11 @@ impl Bf16Gemm {
             bindings.into(),
             scalars,
         )?
-        .with_binding_alignment(2)?;
+        .with_binding_alignment(if input_layout == Bf16GemmInputLayout::InnerMajor {
+            16
+        } else {
+            2
+        })?;
         Ok(Self {
             kernel,
             grid,

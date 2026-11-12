@@ -123,10 +123,11 @@ impl ResidentProgram {
         requests: &[ForwardPlan],
         states: &[Vec<StateBinding>],
         logits: crate::resident_leases::ResidentLease,
+        values: &super::ordinary_cuda::OrdinaryCudaCohortValues,
     ) -> Result<super::ordinary_cuda::OrdinaryCudaCohort> {
         match &self.body {
             ResidentProgramBody::OrdinaryCuda(body) => {
-                body.execute_decode_cohort(flight, requests, states, logits)
+                body.execute_decode_cohort(flight, requests, states, logits, values)
                     .await
             }
             _ => Err(Error::Unsupported(

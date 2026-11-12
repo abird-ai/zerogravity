@@ -382,6 +382,26 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   716.5/696.2us on the second, versus the accepted B8 kernel604.4/663.6us. The candidate,
   timing-only harness and temporary serving runner were removed; retain the current B8
   weight-sharing primitive and do not split its row accumulators without new evidence.
+- [x] Added reusable model-neutral BF16 layout transport and explicit GEMM input-layout
+  primitives, then selected them only for the matching ordinary-CUDA B8 decode head.
+  `DenseRows`/`launch_row_major_to_inner_major` bit-preserve `[rows,inner] -> [inner,rows]`
+  into caller-owned scratch with bounded geometry, non-aliasing and nonfinite status;
+  `Bf16GemmInputLayout::{RowMajor,InnerMajor}` keeps layout independent of reduction math.
+  The inner-major kernel is currently admitted only for the already-qualified B8
+  `LaneStrided{lanes:16,terms:512}` reduction: one aligned16-byte load supplies the eight
+  independent BF16 row values at each inner position while preserving every per-row FMA,
+  512-term segment and final lane-add order. Physical RTX3060 qualification proves the
+  packer exact (including nonfinite certification), proves inner-major output/status
+  byte-identical to row-major, and the full existing GEMM matrix remains zero-mismatch with
+  guards/retirement intact. Alternating synchronized M=8192/N=8/K=2048 timing measured
+  row-major0.4476/0.4534ms versus inner-major0.1351/0.1352ms; the pack is0.0377ms. A
+  31-page head proxy including one pack measured13.696->4.557ms (~3.0x faster). Controlled
+  same-tree non-LTO public2B B8 canonical47+16 serving preserved exact IDs/text and improved
+  853.507ms/149.969 tok/s ->728.439ms/175.718 tok/s (~14.7% lower latency, ~17.2% higher
+  throughput). A noisier hot-clock repeat remained non-regressing but narrowed to
+  824.670ms/155.214 versus811.779ms/157.678. Production selection is geometry-only, reuses
+  the existing cohort activation arena (no request allocation), and leaves B2/B4/prefill
+  on the existing row-major path so the primitives remain available to other models/graphs.
 - [x] Added a reusable ordinary-CUDA `SigmoidMultiply` primitive without coupling it to
   Qwen scheduling. It performs the existing sigmoid, writes the same BF16-rounded gate
   as an explicit output, widens that exact rounded value, then performs the existing

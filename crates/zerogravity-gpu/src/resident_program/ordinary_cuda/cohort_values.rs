@@ -148,7 +148,7 @@ impl OrdinaryCudaCohortValues {
         )
     }
 
-    pub(super) fn head_rows(&self) -> &ResidentLease {
+    pub(crate) fn head_rows(&self) -> &ResidentLease {
         &self.head_rows
     }
 

@@ -1,7 +1,7 @@
 //! Original-flight adapter for the shared allocation-free GEMM primitive.
 use super::exact_view;
 use crate::{
-    cuda::bf16_gemm::{Bf16Gemm, Bf16GemmReduction, Bf16GemmShape},
+    cuda::bf16_gemm::{Bf16Gemm, Bf16GemmInputLayout, Bf16GemmReduction, Bf16GemmShape},
     physical_service::CudaCompilerContextBudget,
     resident_leases::{ResidentLease, ResidentService, ResidentSubmission},
 };
@@ -88,6 +88,17 @@ impl OrdinaryCudaGemm {
                     },
                 )?
                 .prepare_code(service.pinned_cuda_queue()?)?;
+                Bf16Gemm::with_reduction_input_layout_certified(
+                    64,
+                    8,
+                    32,
+                    Bf16GemmReduction::LaneStrided {
+                        lanes: 16,
+                        terms: 512,
+                    },
+                    Bf16GemmInputLayout::InnerMajor,
+                )?
+                .prepare_code(service.pinned_cuda_queue()?)?;
                 Bf16Gemm::with_reduction_certified(
                     64,
                     8,
@@ -143,6 +154,34 @@ impl OrdinaryCudaGemm {
         output_offset: usize,
         status: &ResidentLease,
     ) -> Result<()> {
+        self.enqueue_with_input_layout(
+            flight,
+            shape,
+            reduction,
+            Bf16GemmInputLayout::RowMajor,
+            weights,
+            input,
+            input_offset,
+            output,
+            output_offset,
+            status,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn enqueue_with_input_layout(
+        &self,
+        flight: &mut ResidentSubmission<'_>,
+        shape: Bf16GemmShape,
+        reduction: Bf16GemmReduction,
+        input_layout: Bf16GemmInputLayout,
+        weights: &ResidentLease,
+        input: &ResidentLease,
+        input_offset: usize,
+        output: &ResidentLease,
+        output_offset: usize,
+        status: &ResidentLease,
+    ) -> Result<()> {
         self.require_service(&self.service)?;
         if weights.bytes() != shape.weight_bytes() {
             return Err(Error::State(
@@ -155,15 +194,20 @@ impl OrdinaryCudaGemm {
             (output, DeviceAccess::Write),
             (status, DeviceAccess::Write),
         ])?;
-        let launch =
-            Bf16Gemm::with_reduction_certified(shape.columns, shape.rows, shape.inner, reduction)?
-                .prepare_certified(
-                    self.service.client(),
-                    weights.handle(),
-                    exact_view(input, input_offset, shape.input_bytes(), "GEMM input")?,
-                    exact_view(output, output_offset, shape.output_bytes(), "GEMM output")?,
-                    status.handle(),
-                )?;
+        let launch = Bf16Gemm::with_reduction_input_layout_certified(
+            shape.columns,
+            shape.rows,
+            shape.inner,
+            reduction,
+            input_layout,
+        )?
+        .prepare_certified(
+            self.service.client(),
+            weights.handle(),
+            exact_view(input, input_offset, shape.input_bytes(), "GEMM input")?,
+            exact_view(output, output_offset, shape.output_bytes(), "GEMM output")?,
+            status.handle(),
+        )?;
         flight.retain_completion_owner(self.context.clone())?;
         launch.launch_on(self.service.client())
     }
@@ -179,13 +223,38 @@ impl OrdinaryCudaGemm {
         output_stride: usize,
         status: cubecl::server::Handle,
     ) -> Result<()> {
+        self.enqueue_page_with_input_layout(
+            shape,
+            reduction,
+            Bf16GemmInputLayout::RowMajor,
+            weights,
+            input,
+            output,
+            output_stride,
+            status,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)] // Physical source/output/status bindings stay explicit.
+    pub(super) fn enqueue_page_with_input_layout(
+        &self,
+        shape: Bf16GemmShape,
+        reduction: Bf16GemmReduction,
+        input_layout: Bf16GemmInputLayout,
+        weights: cubecl::server::Handle,
+        input: cubecl::server::Handle,
+        output: cubecl::server::Handle,
+        output_stride: usize,
+        status: cubecl::server::Handle,
+    ) -> Result<()> {
         self.require_service(&self.service)?;
-        Bf16Gemm::with_output_stride_certified(
+        Bf16Gemm::with_output_stride_input_layout_certified(
             shape.columns,
             shape.rows,
             shape.inner,
             reduction,
             output_stride,
+            input_layout,
         )?
         .prepare_certified(self.service.client(), weights, input, output, status)?
         .launch_on(self.service.client())

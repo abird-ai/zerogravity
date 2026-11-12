@@ -4,8 +4,11 @@ use super::{
 };
 use crate::{
     cuda::{
-        bf16_gemm::Bf16GemmShape,
-        bf16_rows::{RowSegment, TwoSegmentRows, launch_two_segment_rows},
+        bf16_gemm::{Bf16GemmInputLayout, Bf16GemmShape},
+        bf16_rows::{
+            DenseRows, RowSegment, TwoSegmentRows, launch_row_major_to_inner_major,
+            launch_two_segment_rows,
+        },
         gdn::{
             CONV_STATE_BYTES, CachedConvBatch, CachedDecodeBatch, CachedGatedBatch, GdnBuffer,
             GdnPhase, GdnRuntimeBuffer, GdnRuntimeCacheSlot,
@@ -674,6 +677,7 @@ impl OrdinaryCudaBody {
                         self.gemm(),
                         flight,
                         values.head_rows(),
+                        Bf16GemmInputLayout::RowMajor,
                         logits,
                         self.cold().status(),
                         self.cold().source_page(),
@@ -748,8 +752,12 @@ impl OrdinaryCudaBody {
         requests: &[ForwardPlan],
         states: &[Vec<StateBinding>],
         logits: ResidentLease,
+        values: &super::OrdinaryCudaCohortValues,
     ) -> Result<OrdinaryCudaCohort> {
-        if !matches!(requests.len(), 2 | 4 | 8) || states.len() != requests.len() {
+        if !matches!(requests.len(), 2 | 4 | 8)
+            || states.len() != requests.len()
+            || values.width() < requests.len()
+        {
             return Err(Error::Unsupported(
                 "ordinary CUDA decode cohort requires two, four or eight rows".into(),
             ));
@@ -845,6 +853,35 @@ impl OrdinaryCudaBody {
                     ));
                 }
                 let input = self.cold().value_lease(node.inputs[0].0 as usize)?;
+                let (input, input_layout) = if requests.len() == 8 {
+                    flight.require_accesses([(values.head_rows(), DeviceAccess::Write)])?;
+                    let hidden = self.cold().layout().geometry().hidden_width;
+                    let bytes = hidden
+                        .checked_mul(requests.len())
+                        .and_then(|elements| elements.checked_mul(2))
+                        .ok_or_else(|| Error::Limit("ordinary CUDA B8 head input bytes".into()))?;
+                    let source =
+                        exact_view(input, 0, bytes, "ordinary CUDA B8 head row-major input")?;
+                    let packed = exact_view(
+                        values.head_rows(),
+                        0,
+                        bytes,
+                        "ordinary CUDA B8 head inner-major input",
+                    )?;
+                    dispatches += launch_row_major_to_inner_major(
+                        client,
+                        DenseRows {
+                            rows: requests.len(),
+                            columns: hidden,
+                        },
+                        &source,
+                        &packed,
+                        &self.cold().status().handle(),
+                    )?;
+                    (values.head_rows(), Bf16GemmInputLayout::InnerMajor)
+                } else {
+                    (input, Bf16GemmInputLayout::RowMajor)
+                };
                 let launched = self
                     .cold()
                     .projection(node_index)?
@@ -853,6 +890,7 @@ impl OrdinaryCudaBody {
                         self.gemm(),
                         flight,
                         input,
+                        input_layout,
                         &logits,
                         self.cold().status(),
                         self.cold().source_page(),

@@ -91,6 +91,32 @@ impl TwoSegmentRows {
     }
 }
 
+/// Dense BF16 matrix whose logical rows are independent values. The transpose
+/// primitive changes only storage order from [rows, columns] to [columns, rows].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DenseRows {
+    pub(crate) rows: usize,
+    pub(crate) columns: usize,
+}
+impl DenseRows {
+    fn validate(self) -> Result<usize> {
+        if self.rows == 0
+            || self.rows > MAX_ROWS
+            || !self.rows.is_multiple_of(2)
+            || self.columns == 0
+            || !self.columns.is_multiple_of(2)
+        {
+            return Err(Error::Unsupported(
+                "BF16 dense-row transpose requires positive even geometry".into(),
+            ));
+        }
+        self.rows
+            .checked_mul(self.columns)
+            .filter(|&elements| elements <= MAX_TOTAL_ELEMENTS)
+            .ok_or_else(|| Error::Limit("BF16 dense-row transpose element bound".into()))
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Validated {
     rows: usize,
@@ -166,6 +192,37 @@ fn copy_two_segments_certified(
                 status[0].fetch_or(crate::program_kernels::VIEW_OUT_OF_BOUNDS);
             }
         }
+    }
+}
+
+#[cube(launch_unchecked)]
+fn row_major_to_inner_major_certified(
+    source: &[u32],
+    output: &mut [u32],
+    status: &[Atomic<u32>],
+    rows: u32,
+    columns: u32,
+) {
+    let i = ABSOLUTE_POS;
+    let rows = usize::cast_from(rows);
+    let columns = usize::cast_from(columns);
+    let row_pairs = rows / 2;
+    let words = rows * columns / 2;
+    if i < words {
+        let column = i / row_pairs;
+        let pair = i % row_pairs;
+        let row0 = pair * 2;
+        let row1 = row0 + 1;
+        let words_per_row = columns / 2;
+        let source_word0 = source[row0 * words_per_row + column / 2];
+        let source_word1 = source[row1 * words_per_row + column / 2];
+        let shift = u32::cast_from((column % 2) * 16);
+        let lo = (source_word0 >> shift) & 0xffffu32;
+        let hi = (source_word1 >> shift) & 0xffffu32;
+        if (lo & 0x7f80u32) == 0x7f80u32 || (hi & 0x7f80u32) == 0x7f80u32 {
+            status[0].fetch_or(crate::program_kernels::NONFINITE_VALUE);
+        }
+        output[i] = lo | (hi << 16u32);
     }
 }
 
@@ -255,6 +312,53 @@ pub(crate) fn launch_two_segment_rows(
     Ok(1)
 }
 
+/// Allocation-free storage transpose for dense BF16 rows. Source and output
+/// expose the same exact extent and must not alias. The destination is laid out
+/// as [column, row], making independent batch rows contiguous for one inner k.
+pub(crate) fn launch_row_major_to_inner_major(
+    client: &Client,
+    geometry: DenseRows,
+    source: &Handle,
+    output: &Handle,
+    status: &Handle,
+) -> Result<usize> {
+    let elements = geometry.validate()?;
+    let words = elements / 2;
+    require_exact(client, source, words, "transpose source")?;
+    require_exact(client, output, words, "transpose output")?;
+    require_exact(client, status, 1, "transpose status")?;
+    let source_range = BufferRange::new(source)?;
+    let output_range = BufferRange::new(output)?;
+    let status_range = BufferRange::new(status)?;
+    if source_range.overlaps(&output_range)
+        || source_range.overlaps(&status_range)
+        || output_range.overlaps(&status_range)
+    {
+        return Err(Error::State(
+            "BF16 dense-row transpose writable range aliases another binding".into(),
+        ));
+    }
+    let as_u32 = |n: usize, role: &str| {
+        u32::try_from(n).map_err(|_| Error::Limit(format!("BF16 transpose {role} u32")))
+    };
+    let grid = CubeCount::Static(as_u32(words, "grid")?.div_ceil(LANES), 1, 1);
+    let threads = CubeDim::new_1d(LANES);
+    // SAFETY: exact service/extents and writable non-aliasing were checked.
+    unsafe {
+        row_major_to_inner_major_certified::launch_unchecked(
+            client,
+            grid,
+            threads,
+            arg(source, words),
+            arg(output, words),
+            arg(status, 1),
+            as_u32(geometry.rows, "rows")?,
+            as_u32(geometry.columns, "columns")?,
+        );
+    }
+    Ok(1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,6 +382,39 @@ mod tests {
         assert_eq!(v.source0_words, 8 * 4096);
         assert_eq!(v.output0_words, 8 * 3072);
         assert_eq!(v.output1_words, 8 * 1024);
+        assert_eq!(
+            DenseRows {
+                rows: 8,
+                columns: 2048
+            }
+            .validate()
+            .unwrap(),
+            16_384
+        );
+        for dense in [
+            DenseRows {
+                rows: 0,
+                columns: 2048,
+            },
+            DenseRows {
+                rows: 3,
+                columns: 2048,
+            },
+            DenseRows {
+                rows: 66,
+                columns: 2048,
+            },
+            DenseRows {
+                rows: 8,
+                columns: 0,
+            },
+            DenseRows {
+                rows: 8,
+                columns: 2047,
+            },
+        ] {
+            assert!(dense.validate().is_err());
+        }
         for bad in [
             TwoSegmentRows { rows: 0, ..good },
             TwoSegmentRows { rows: 65, ..good },
@@ -452,6 +589,54 @@ mod tests {
             println!(
                 "BF16_ROW_SPLIT_PASS rows={rows} exact=true status={expected_status} guards=true"
             );
+        }
+
+        {
+            let geometry = DenseRows {
+                rows: 8,
+                columns: 16,
+            };
+            let mut row_major = (0..geometry.rows * geometry.columns)
+                .map(|i| 0x3e00u16.wrapping_add((i % 0x80) as u16))
+                .collect::<Vec<_>>();
+            row_major[2 * geometry.columns + 5] = 0x7f80;
+            let mut expected = Vec::with_capacity(row_major.len());
+            for column in 0..geometry.columns {
+                for row in 0..geometry.rows {
+                    expected.push(row_major[row * geometry.columns + column]);
+                }
+            }
+            let encode = |words: &[u16]| {
+                words
+                    .iter()
+                    .flat_map(|word| word.to_ne_bytes())
+                    .collect::<Vec<_>>()
+            };
+            let source = client.create_from_slice(&encode(&row_major));
+            let output = client.empty(expected.len() * 2);
+            let status = client.create_from_slice(&0u32.to_ne_bytes());
+            launch_row_major_to_inner_major(client, geometry, &source, &output, &status)?;
+            client
+                .sync()
+                .await
+                .map_err(|e| Error::State(format!("BF16 dense transpose sync: {e}")))?;
+            let actual = client
+                .read_one(output)
+                .map_err(|e| Error::State(format!("BF16 dense transpose output: {e}")))?;
+            let flags = client
+                .read_one(status)
+                .map_err(|e| Error::State(format!("BF16 dense transpose status: {e}")))?;
+            if &actual[..] != encode(&expected).as_slice()
+                || &flags[..]
+                    != crate::program_kernels::NONFINITE_VALUE
+                        .to_ne_bytes()
+                        .as_slice()
+            {
+                return Err(Error::State(
+                    "BF16 dense transpose bits/status differ".into(),
+                ));
+            }
+            println!("BF16_DENSE_TRANSPOSE_PASS rows=8 columns=16 exact=true status=nonfinite");
         }
         client
             .memory_cleanup()

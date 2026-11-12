@@ -691,10 +691,20 @@ impl ResidentModel {
                 .program
                 .validate_source_call_states(request, binding)?;
         }
+        let values = workspace
+            .ordinary_cohort_values
+            .as_ref()
+            .filter(|values| values.width() >= width)
+            .ok_or_else(|| {
+                Error::State("ordinary source decode cohort activation arena absent".into())
+            })?;
         let greedy = workspace.greedy.as_ref().ok_or_else(|| {
             Error::Unsupported("ordinary CUDA model has no greedy workspace".into())
         })?;
         let mut accesses = workspace.logit_accesses.clone();
+        if width == 8 {
+            accesses.push((values.head_rows().clone(), DeviceAccess::Write));
+        }
         for handle in greedy {
             accesses.push((
                 lease_for(&workspace.leases, handle)?.clone(),
@@ -731,7 +741,13 @@ impl ResidentModel {
         }
         let mut submitted = workspace
             .program
-            .launch_ordinary_source_decode_cohort(&mut flight, requests, &bindings, logits.clone())
+            .launch_ordinary_source_decode_cohort(
+                &mut flight,
+                requests,
+                &bindings,
+                logits.clone(),
+                values,
+            )
             .await?;
         if submitted.proposals.len() != width {
             return Err(Error::State(

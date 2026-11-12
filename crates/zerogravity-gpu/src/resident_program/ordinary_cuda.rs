@@ -6,7 +6,7 @@
 //! actual completion or quarantine.
 #![allow(dead_code)] // Private unselected implementation until the full body lands.
 
-use crate::cuda::bf16_gemm::Bf16GemmShape;
+use crate::cuda::bf16_gemm::{Bf16GemmInputLayout, Bf16GemmShape};
 use crate::resident_leases::{
     ResidentInitialization, ResidentLease, ResidentService, ResidentSubmission,
     ordinary_projection_upload::BoundSourceMatrices,
@@ -304,6 +304,7 @@ impl OrdinaryCudaProjection {
         gemm: &OrdinaryCudaGemm,
         flight: &mut ResidentSubmission<'_>,
         input: &ResidentLease,
+        input_layout: Bf16GemmInputLayout,
         output: &ResidentLease,
         status: &ResidentLease,
         page: Option<&Arc<crate::resident_leases::source_page::ResidentSourcePage>>,
@@ -326,8 +327,17 @@ impl OrdinaryCudaProjection {
         }
         let reduction = self.arithmetic.reduction(operation);
         if let Some(weights) = self.weights.lease() {
-            gemm.enqueue(
-                flight, operation, reduction, weights, input, 0, output, 0, status,
+            gemm.enqueue_with_input_layout(
+                flight,
+                operation,
+                reduction,
+                input_layout,
+                weights,
+                input,
+                0,
+                output,
+                0,
+                status,
             )?;
             return Ok(1);
         }
@@ -359,9 +369,10 @@ impl OrdinaryCudaProjection {
                 )?;
                 let target = exact_view(output, offset, extent, "streamed decode GEMM output")?;
                 page.with_rows(flight, matrix, source_rows, None, |view| {
-                    gemm.enqueue_page(
+                    gemm.enqueue_page_with_input_layout(
                         shape,
                         reduction,
+                        input_layout,
                         view.handle().clone(),
                         input.clone(),
                         target,
