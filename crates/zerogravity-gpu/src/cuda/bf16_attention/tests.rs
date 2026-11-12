@@ -141,7 +141,7 @@ mod physical {
         let mut query_rows = Vec::with_capacity(4);
         let mut keys = Vec::with_capacity(4);
         let mut values = Vec::with_capacity(4);
-        for lane in 0..4 {
+        for (lane, &base) in BASES.iter().enumerate() {
             let query = (0..QH * WIDTH)
                 .flat_map(|i| {
                     let v = (((i * 11 + lane * 5) % 13) as f32 - 6.0) / 16.0;
@@ -152,7 +152,7 @@ mod physical {
             let mut value = Vec::with_capacity(kv_bytes);
             for row in 0..CAPACITY {
                 for i in 0..KH * WIDTH {
-                    if row > BASES[lane] {
+                    if row > base {
                         key.extend_from_slice(&0x7fc0u16.to_le_bytes());
                         value.extend_from_slice(&0x7fc0u16.to_le_bytes());
                     } else {

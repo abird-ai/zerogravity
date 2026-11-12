@@ -493,7 +493,7 @@ mod tests {
                 .map(|i| make_word(i / 10, i % 10, 3))
                 .collect::<Vec<_>>();
             if rows == 4 {
-                let poison = 1 * 10 + 5 + 1;
+                let poison = 10 + 5 + 1;
                 source1_words[poison] = 0x7f80_3f80;
             }
             let to_bytes = |words: &[u32]| {
