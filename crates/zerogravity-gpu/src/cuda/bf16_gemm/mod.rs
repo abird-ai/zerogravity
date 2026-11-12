@@ -237,6 +237,13 @@ impl Bf16Gemm {
             .checked_mul(lanes)
             .filter(|n| *n <= isize::MAX as usize)
             .ok_or_else(|| Error::Limit("BF16 GEMM reduction span overflow".into()))?;
+        let batch2_lane_strided = matches!(
+            reduction,
+            Bf16GemmReduction::LaneStrided {
+                lanes: 16,
+                terms: 512
+            }
+        ) && rows == 2;
         let batch4_lane_strided = matches!(
             reduction,
             Bf16GemmReduction::LaneStrided {
@@ -251,16 +258,19 @@ impl Bf16Gemm {
                 terms: 512
             }
         ) && rows == 8;
+        let inner_major_batch2_lane_strided =
+            input_layout == Bf16GemmInputLayout::InnerMajor && batch2_lane_strided;
         let inner_major_batch4_lane_strided =
             input_layout == Bf16GemmInputLayout::InnerMajor && batch4_lane_strided;
         let inner_major_batch8_lane_strided =
             input_layout == Bf16GemmInputLayout::InnerMajor && batch8_lane_strided;
         if input_layout == Bf16GemmInputLayout::InnerMajor
+            && !inner_major_batch2_lane_strided
             && !inner_major_batch4_lane_strided
             && !inner_major_batch8_lane_strided
         {
             return Err(Error::Unsupported(
-                "BF16 inner-major input currently requires B4/B8 lane-strided 16x512 reduction"
+                "BF16 inner-major input currently requires B2/B4/B8 lane-strided 16x512 reduction"
                     .into(),
             ));
         }
@@ -285,6 +295,9 @@ impl Bf16Gemm {
             32
         };
         let (tile_columns, tile_rows) = match reduction {
+            Bf16GemmReduction::LaneStrided { lanes, .. } if inner_major_batch2_lane_strided => {
+                (128 / lanes, 2)
+            }
             Bf16GemmReduction::LaneStrided { lanes, .. } if batch4_lane_strided => (128 / lanes, 4),
             Bf16GemmReduction::LaneStrided { lanes, .. } if batch8_lane_strided => (128 / lanes, 8),
             Bf16GemmReduction::LaneStrided { .. } | Bf16GemmReduction::LaneBlocked { .. } => {
@@ -344,6 +357,12 @@ impl Bf16Gemm {
                 "bf16_gemm_ordered_rows64_certified"
             } else {
                 "bf16_gemm_ordered_rows64"
+            }
+        } else if inner_major_batch2_lane_strided {
+            if certified {
+                "bf16_gemm_lane_strided_batch2_inner_major_certified"
+            } else {
+                "bf16_gemm_lane_strided_batch2_inner_major"
             }
         } else if inner_major_batch4_lane_strided {
             if certified {
@@ -425,6 +444,7 @@ impl Bf16Gemm {
             scalars,
         )?
         .with_binding_alignment(match (input_layout, rows) {
+            (Bf16GemmInputLayout::InnerMajor, 2) => 4,
             (Bf16GemmInputLayout::InnerMajor, 4) => 8,
             (Bf16GemmInputLayout::InnerMajor, 8) => 16,
             _ => 2,

@@ -902,7 +902,7 @@ impl OrdinaryCudaBody {
                     ));
                 }
                 let input = self.cold().value_lease(node.inputs[0].0 as usize)?;
-                let (input, input_layout) = if matches!(requests.len(), 4 | 8) {
+                let (input, input_layout) = if matches!(requests.len(), 2 | 4 | 8) {
                     flight.require_accesses([(values.head_rows(), DeviceAccess::Write)])?;
                     let hidden = self.cold().layout().geometry().hidden_width;
                     let bytes = hidden

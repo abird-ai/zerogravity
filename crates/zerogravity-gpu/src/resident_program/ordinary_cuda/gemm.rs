@@ -58,6 +58,17 @@ impl OrdinaryCudaGemm {
         crate::cuda::bf16_attention::Bf16CausalAttention::new(1, 0, 1, 8, 2, 256, 0.0625)?
             .prepare_code(service.pinned_cuda_queue()?)?;
         if matches!(native_rows, 4 | 8) {
+            Bf16Gemm::with_reduction_input_layout_certified(
+                64,
+                2,
+                32,
+                Bf16GemmReduction::LaneStrided {
+                    lanes: 16,
+                    terms: 512,
+                },
+                Bf16GemmInputLayout::InnerMajor,
+            )?
+            .prepare_code(service.pinned_cuda_queue()?)?;
             Bf16Gemm::with_reduction_certified(
                 64,
                 4,

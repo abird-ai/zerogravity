@@ -430,6 +430,18 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   output tok/s (618.755->564.521ms); after restoring the candidate following baseline,
   a fresh reverse-side run measured115.015tok/s/556.447ms. Keep both the primitive and
   adapter while this repeatable gain holds; neither owns Qwen/session/root policy.
+- [x] Extended the same inner-major `LaneStrided { lanes:16, terms:512 }` family to B2.
+  The shared B2 kernel reads the two independent BF16 rows as one aligned4-byte word per
+  inner position, shares each weight load, and preserves two independent FP32 chains,
+  512-term segmentation, lane-add order and BF16/status behavior. Geometry selection now
+  admits InnerMajor at B2/B4/B8 with natural4/8/16-byte alignment respectively; no model
+  identity or scheduler policy enters the GEMM primitive. The permanent RTX3060 qualifier
+  passes B2/B4/B8 bit-for-bit against row-major with zero status. The ordinary CUDA decode
+  head selects the packer for genuine width2 leftovers as well, while B1 and prefill remain
+  unchanged. Same-tree non-LTO public2B two-request47/48 +16-output A/B preserved identical
+  IDs/text and measured60.264->66.784 output tok/s (530.998->479.158ms); after restoring
+  candidate following baseline, the reverse-side run reached68.943tok/s/464.151ms. Retain
+  the B2 primitive and adapter while this repeated ~10%+ gain holds.
 - [x] Added a reusable ordinary-CUDA `SigmoidMultiply` primitive without coupling it to
   Qwen scheduling. It performs the existing sigmoid, writes the same BF16-rounded gate
   as an explicit output, widens that exact rounded value, then performs the existing

@@ -125,7 +125,7 @@ fn tensor_core_gemm_on_nvidia() -> Result<()> {
 
 #[cfg(all(feature = "qualification", feature = "cuda-cublas"))]
 #[test]
-#[ignore = "isolated SM86 inner-major B4/B8 lane-strided exactness qualification"]
+#[ignore = "isolated SM86 inner-major B2/B4/B8 lane-strided exactness qualification"]
 fn lane_strided_batch_inner_major_matches_row_major() -> Result<()> {
     futures_lite::future::block_on(async {
         use crate::cuda::bf16_rows::{DenseRows, launch_row_major_to_inner_major};
@@ -158,7 +158,7 @@ fn lane_strided_batch_inner_major_matches_row_major() -> Result<()> {
                 .flat_map(|word| word.to_ne_bytes())
                 .collect::<Vec<_>>()
         };
-        for rows in [4usize, 8] {
+        for rows in [2usize, 4, 8] {
             let weights = (0..columns * inner).map(|i| bf16(i, 3)).collect::<Vec<_>>();
             let row_major = (0..rows * inner).map(|i| bf16(i, 5)).collect::<Vec<_>>();
 
