@@ -251,11 +251,17 @@ impl Bf16Gemm {
                 terms: 512
             }
         ) && rows == 8;
+        let inner_major_batch4_lane_strided =
+            input_layout == Bf16GemmInputLayout::InnerMajor && batch4_lane_strided;
         let inner_major_batch8_lane_strided =
             input_layout == Bf16GemmInputLayout::InnerMajor && batch8_lane_strided;
-        if input_layout == Bf16GemmInputLayout::InnerMajor && !inner_major_batch8_lane_strided {
+        if input_layout == Bf16GemmInputLayout::InnerMajor
+            && !inner_major_batch4_lane_strided
+            && !inner_major_batch8_lane_strided
+        {
             return Err(Error::Unsupported(
-                "BF16 inner-major input currently requires B8 lane-strided 16x512 reduction".into(),
+                "BF16 inner-major input currently requires B4/B8 lane-strided 16x512 reduction"
+                    .into(),
             ));
         }
         let ordered_narrow_k64 =
@@ -339,6 +345,12 @@ impl Bf16Gemm {
             } else {
                 "bf16_gemm_ordered_rows64"
             }
+        } else if inner_major_batch4_lane_strided {
+            if certified {
+                "bf16_gemm_lane_strided_batch4_inner_major_certified"
+            } else {
+                "bf16_gemm_lane_strided_batch4_inner_major"
+            }
         } else if batch4_lane_strided {
             if certified {
                 "bf16_gemm_lane_strided_batch4_certified"
@@ -412,10 +424,10 @@ impl Bf16Gemm {
             bindings.into(),
             scalars,
         )?
-        .with_binding_alignment(if input_layout == Bf16GemmInputLayout::InnerMajor {
-            16
-        } else {
-            2
+        .with_binding_alignment(match (input_layout, rows) {
+            (Bf16GemmInputLayout::InnerMajor, 4) => 8,
+            (Bf16GemmInputLayout::InnerMajor, 8) => 16,
+            _ => 2,
         })?;
         Ok(Self {
             kernel,

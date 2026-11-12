@@ -902,20 +902,22 @@ impl OrdinaryCudaBody {
                     ));
                 }
                 let input = self.cold().value_lease(node.inputs[0].0 as usize)?;
-                let (input, input_layout) = if requests.len() == 8 {
+                let (input, input_layout) = if matches!(requests.len(), 4 | 8) {
                     flight.require_accesses([(values.head_rows(), DeviceAccess::Write)])?;
                     let hidden = self.cold().layout().geometry().hidden_width;
                     let bytes = hidden
                         .checked_mul(requests.len())
                         .and_then(|elements| elements.checked_mul(2))
-                        .ok_or_else(|| Error::Limit("ordinary CUDA B8 head input bytes".into()))?;
+                        .ok_or_else(|| {
+                            Error::Limit("ordinary CUDA native head input bytes".into())
+                        })?;
                     let source =
-                        exact_view(input, 0, bytes, "ordinary CUDA B8 head row-major input")?;
+                        exact_view(input, 0, bytes, "ordinary CUDA native head row-major input")?;
                     let packed = exact_view(
                         values.head_rows(),
                         0,
                         bytes,
-                        "ordinary CUDA B8 head inner-major input",
+                        "ordinary CUDA native head inner-major input",
                     )?;
                     dispatches += launch_row_major_to_inner_major(
                         client,

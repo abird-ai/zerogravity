@@ -414,6 +414,22 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   824.670ms/155.214 versus811.779ms/157.678. Production selection is geometry-only, reuses
   the existing cohort activation arena (no request allocation), and leaves B2/B4/prefill
   on the existing row-major path so the primitives remain available to other models/graphs.
+- [x] Extended that same model-neutral inner-major lane-strided GEMM contract to B4
+  without changing its `LaneStrided { lanes:16, terms:512 }` arithmetic. The new B4
+  entry reads four independent BF16 rows from one aligned8-byte `uint2` load per inner
+  position, while preserving the existing four FP32 accumulation chains, 512-term
+  segmentation, lane-add order and BF16 output/status semantics. The shared selector
+  admits `InnerMajor` by reduction geometry at B4/B8 rather than model identity, and
+  the existing generic row-major->inner-major transport supplies the packed input.
+  Physical RTX3060 qualification now checks B4 and B8 against their row-major kernels
+  bit-for-bit with zero status. Direct M=8192/K=2048 B4 timing including the pack was
+  0.272618ms row-major versus0.124513ms pack+inner-major. The ordinary CUDA B4 decode
+  head therefore selects the same shared layout path using its existing cohort scratch;
+  B1/B2 and prefill remain unchanged. Same-tree non-LTO public2B B4 ragged47..50 +16
+  output A/B preserved identical IDs/text on all lanes and measured103.434->113.370
+  output tok/s (618.755->564.521ms); after restoring the candidate following baseline,
+  a fresh reverse-side run measured115.015tok/s/556.447ms. Keep both the primitive and
+  adapter while this repeatable gain holds; neither owns Qwen/session/root policy.
 - [x] Added a reusable ordinary-CUDA `SigmoidMultiply` primitive without coupling it to
   Qwen scheduling. It performs the existing sigmoid, writes the same BF16-rounded gate
   as an explicit output, widens that exact rounded value, then performs the existing

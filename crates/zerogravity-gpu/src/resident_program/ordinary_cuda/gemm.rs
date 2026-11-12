@@ -68,6 +68,17 @@ impl OrdinaryCudaGemm {
                 },
             )?
             .prepare_code(service.pinned_cuda_queue()?)?;
+            Bf16Gemm::with_reduction_input_layout_certified(
+                64,
+                4,
+                32,
+                Bf16GemmReduction::LaneStrided {
+                    lanes: 16,
+                    terms: 512,
+                },
+                Bf16GemmInputLayout::InnerMajor,
+            )?
+            .prepare_code(service.pinned_cuda_queue()?)?;
             if native_rows == 8 {
                 Bf16Gemm::with_reduction_certified(64, 8, 2048, Bf16GemmReduction::Ordered)?
                     .prepare_code(service.pinned_cuda_queue()?)?;

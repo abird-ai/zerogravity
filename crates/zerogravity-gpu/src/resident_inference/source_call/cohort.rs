@@ -704,7 +704,7 @@ impl ResidentModel {
             Error::Unsupported("ordinary CUDA model has no greedy workspace".into())
         })?;
         let mut accesses = workspace.logit_accesses.clone();
-        if width == 8 {
+        if matches!(width, 4 | 8) {
             accesses.push((values.head_rows().clone(), DeviceAccess::Write));
         }
         for handle in greedy {

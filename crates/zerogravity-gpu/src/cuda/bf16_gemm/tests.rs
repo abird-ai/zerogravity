@@ -125,8 +125,8 @@ fn tensor_core_gemm_on_nvidia() -> Result<()> {
 
 #[cfg(all(feature = "qualification", feature = "cuda-cublas"))]
 #[test]
-#[ignore = "isolated SM86 inner-major B8 lane-strided exactness qualification"]
-fn lane_strided_batch8_inner_major_matches_row_major() -> Result<()> {
+#[ignore = "isolated SM86 inner-major B4/B8 lane-strided exactness qualification"]
+fn lane_strided_batch_inner_major_matches_row_major() -> Result<()> {
     futures_lite::future::block_on(async {
         use crate::cuda::bf16_rows::{DenseRows, launch_row_major_to_inner_major};
 
@@ -136,7 +136,6 @@ fn lane_strided_batch8_inner_major_matches_row_major() -> Result<()> {
         let queue = service.pinned_cuda_queue()?.clone();
         let columns = 256usize;
         let inner = 2048usize;
-        let rows = 8usize;
         let reduction = Bf16GemmReduction::LaneStrided {
             lanes: 16,
             terms: 512,
@@ -159,86 +158,85 @@ fn lane_strided_batch8_inner_major_matches_row_major() -> Result<()> {
                 .flat_map(|word| word.to_ne_bytes())
                 .collect::<Vec<_>>()
         };
-        let weights = (0..columns * inner).map(|i| bf16(i, 3)).collect::<Vec<_>>();
-        let row_major = (0..rows * inner).map(|i| bf16(i, 5)).collect::<Vec<_>>();
+        for rows in [4usize, 8] {
+            let weights = (0..columns * inner).map(|i| bf16(i, 3)).collect::<Vec<_>>();
+            let row_major = (0..rows * inner).map(|i| bf16(i, 5)).collect::<Vec<_>>();
 
-        let weights = client.create_from_slice(&encode(&weights));
-        let row_major = client.create_from_slice(&encode(&row_major));
-        let inner_major = client.empty(rows * inner * 2);
-        let output_bytes = rows * columns * 2;
-        let accepted_output = client.create_from_slice(&vec![0xa5; output_bytes]);
-        let candidate_output = client.create_from_slice(&vec![0xa5; output_bytes]);
-        let pack_status = client.create_from_slice(&0u32.to_ne_bytes());
-        let accepted_status = client.create_from_slice(&0u32.to_ne_bytes());
-        let candidate_status = client.create_from_slice(&0u32.to_ne_bytes());
+            let weights = client.create_from_slice(&encode(&weights));
+            let row_major = client.create_from_slice(&encode(&row_major));
+            let inner_major = client.empty(rows * inner * 2);
+            let output_bytes = rows * columns * 2;
+            let accepted_output = client.create_from_slice(&vec![0xa5; output_bytes]);
+            let candidate_output = client.create_from_slice(&vec![0xa5; output_bytes]);
+            let pack_status = client.create_from_slice(&0u32.to_ne_bytes());
+            let accepted_status = client.create_from_slice(&0u32.to_ne_bytes());
+            let candidate_status = client.create_from_slice(&0u32.to_ne_bytes());
 
-        launch_row_major_to_inner_major(
-            client,
-            DenseRows {
+            launch_row_major_to_inner_major(
+                client,
+                DenseRows {
+                    rows,
+                    columns: inner,
+                },
+                &row_major,
+                &inner_major,
+                &pack_status,
+            )?;
+            let accepted = Bf16Gemm::with_reduction_certified(columns, rows, inner, reduction)?;
+            let candidate = Bf16Gemm::with_reduction_input_layout_certified(
+                columns,
                 rows,
-                columns: inner,
-            },
-            &row_major,
-            &inner_major,
-            &pack_status,
-        )?;
-        let accepted = Bf16Gemm::with_reduction_certified(columns, rows, inner, reduction)?;
-        let candidate = Bf16Gemm::with_reduction_input_layout_certified(
-            columns,
-            rows,
-            inner,
-            reduction,
-            Bf16GemmInputLayout::InnerMajor,
-        )?;
-        accepted.prepare_code(&queue)?;
-        candidate.prepare_code(&queue)?;
-        accepted
-            .prepare_certified(
+                inner,
+                reduction,
+                Bf16GemmInputLayout::InnerMajor,
+            )?;
+            accepted.prepare_code(&queue)?;
+            candidate.prepare_code(&queue)?;
+            let accepted_launch = accepted.prepare_certified(
                 client,
                 weights.clone(),
-                row_major,
+                row_major.clone(),
                 accepted_output.clone(),
                 accepted_status.clone(),
-            )?
-            .launch_on(client)?;
-        candidate
-            .prepare_certified(
+            )?;
+            let candidate_launch = candidate.prepare_certified(
                 client,
                 weights,
-                inner_major,
+                inner_major.clone(),
                 candidate_output.clone(),
                 candidate_status.clone(),
-            )?
-            .launch_on(client)?;
+            )?;
+            accepted_launch.launch_on(client)?;
+            candidate_launch.launch_on(client)?;
 
-        client
-            .sync()
-            .await
-            .map_err(|error| Error::State(format!("inner-major GEMM exactness sync: {error}")))?;
-        let accepted_bytes = client
-            .read_one(accepted_output)
-            .map_err(|error| Error::State(format!("inner-major accepted read: {error}")))?;
-        let candidate_bytes = client
-            .read_one(candidate_output)
-            .map_err(|error| Error::State(format!("inner-major candidate read: {error}")))?;
-        let pack_flags = client
-            .read_one(pack_status)
-            .map_err(|error| Error::State(format!("inner-major pack status: {error}")))?;
-        let accepted_flags = client
-            .read_one(accepted_status)
-            .map_err(|error| Error::State(format!("inner-major accepted status: {error}")))?;
-        let candidate_flags = client
-            .read_one(candidate_status)
-            .map_err(|error| Error::State(format!("inner-major candidate status: {error}")))?;
-        let zero = 0u32.to_ne_bytes();
-        if accepted_bytes != candidate_bytes
-            || &pack_flags[..] != zero.as_slice()
-            || accepted_flags != candidate_flags
-            || &accepted_flags[..] != zero.as_slice()
-        {
-            return Err(Error::State(
-                "inner-major B8 lane-strided path differs from row-major contract".into(),
-            ));
+            client.sync().await.map_err(|error| {
+                Error::State(format!("inner-major GEMM exactness sync: {error}"))
+            })?;
+            let accepted_bytes = client
+                .read_one(accepted_output)
+                .map_err(|error| Error::State(format!("inner-major accepted read: {error}")))?;
+            let candidate_bytes = client
+                .read_one(candidate_output)
+                .map_err(|error| Error::State(format!("inner-major candidate read: {error}")))?;
+            let pack_flags = client
+                .read_one(pack_status.clone())
+                .map_err(|error| Error::State(format!("inner-major pack status: {error}")))?;
+            let accepted_flags = client
+                .read_one(accepted_status)
+                .map_err(|error| Error::State(format!("inner-major accepted status: {error}")))?;
+            let candidate_flags = client
+                .read_one(candidate_status)
+                .map_err(|error| Error::State(format!("inner-major candidate status: {error}")))?;
+            let zero = 0u32.to_ne_bytes();
+            if accepted_bytes != candidate_bytes
+                || &pack_flags[..] != zero.as_slice()
+                || accepted_flags != candidate_flags
+                || &accepted_flags[..] != zero.as_slice()
+            {
+                return Err(Error::State(format!(
+                    "inner-major B{rows} lane-strided path differs from row-major contract"
+                )));
+            }
         }
 
         client
