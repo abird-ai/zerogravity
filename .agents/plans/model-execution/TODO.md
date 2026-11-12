@@ -3183,3 +3183,22 @@ build or general model/backend grant. Historical failures keep their source scop
   with an existing file advances to artifact authentication. Release integration
   cargo check, strict qualification Clippy, parity unit tests, bash syntax and
   shell checks all pass with CARGO_BUILD_JOBS=8 / RAYON_NUM_THREADS=8.
+
+### 12 Nov 2026 — unequal-frontier ragged prefill cohort experiment rejected
+
+- [x] Evaluated extending the accepted ragged native prefill cohort so lanes
+  could also carry independent committed bases/frontiers while still sharing
+  only reduction-compatible row-independent projection GEMMs. The attempted
+  surface preserved private state roots and per-lane `Step { rows, base,
+  capacity }` values, and kept model identity out of the shared GPU contracts.
+- [x] Generic scheduler/unit gates and qwen35-cuda compile gates passed, but the
+  release physical CUDA parity test against two private singleton executions
+  found a real exactness regression: lane/base64 retained the same greedy token
+  ID but changed max-logit bits (`0x41c80000` cohort vs `0x41be0000` singleton)
+  and diverged immediately in `Conv(2)` state (`0x3f3e0000` vs `0x3f3d0000`).
+  The base0 lane remained exact (`0x41b20000` in both paths).
+- [x] Rejected and fully reverted the unequal-frontier extension. The accepted
+  same-frontier ragged-prefill implementation at `be1cd9e` remains unchanged.
+  A future retry must first expose and qualify an explicit per-lane position/base
+  primitive for every position-sensitive/stateful consumer; do not infer that
+  projection compatibility alone makes independent-frontier cohorts exact.
