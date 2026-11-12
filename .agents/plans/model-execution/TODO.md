@@ -3328,3 +3328,27 @@ build or general model/backend grant. Historical failures keep their source scop
   247.089 ms baseline vs 243.100 ms candidate (~1.6%). The measured candidate
   contains both shared overhead reductions, so the gain is intentionally not
   attributed to either optimization in isolation.
+
+### 12 Nov 2026 — stateless gate primitives retained; ragged consumer rejected
+
+- [x] Extended the existing ordinary-text sigmoid and multiply definitions onto
+  the model-neutral `StatelessRowExtent` contract without adding new CUDA math,
+  widening causal `Step`/`RowExtent`, or fusing graph nodes. The reusable
+  `sigmoid_stateless` and `multiply_stateless` adapters invoke the exact existing
+  kernels; the separately BF16-rounded sigmoid gate remains a real SSA value and
+  cancellation/publication boundaries are unchanged. `attention_row_stride()` is
+  exposed only as source-neutral physical geometry so other compatible model
+  plans can bind the packed Q/G/K/V row without duplicating layout constants.
+- [x] Physical RTX3060 qualification compares eight ragged causal
+  sigmoid->multiply pairs at rows `[47..54]` (404 active rows) against one wide
+  sigmoid followed by one wide multiply over a 513-row bounded ABI. Gate bytes,
+  final output bytes, inactive tails and nonfinite status are bit-exact; an
+  injected BF16 +inf produces the same status `2` on both paths.
+- [x] Rejected selecting these primitives in the current ragged-prefill cohort
+  hot path. Same-tree non-LTO public 2B B8 prompts47..54 with16 outputs preserved
+  all 128 generated IDs (`264` in every lane) but showed no repeatable gain:
+  baseline/candidate means were651.620/655.472ms in one order and
+  651.217/650.860ms in the reverse-side sample. Across both, baseline averaged
+  651.419ms versus653.166ms candidate (~0.27% slower). The cohort adapter was
+  fully removed; retain only the independently qualified primitives/tests for
+  another model, graph or execution geometry where the launch economics differ.

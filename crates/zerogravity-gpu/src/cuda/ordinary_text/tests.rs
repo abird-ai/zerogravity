@@ -1222,6 +1222,200 @@ fn physical_stateless_rms_matches_ragged_causal_calls_exactly() -> Result<()> {
     target_os = "linux"
 ))]
 #[test]
+#[ignore = "physical SM86 stateless sigmoid/multiply-vs-ragged-causal qualification"]
+fn physical_stateless_sigmoid_multiply_matches_ragged_causal_calls_exactly() -> Result<()> {
+    futures_lite::future::block_on(async {
+        let diagnostic =
+            crate::cuda::test_support::CudaDiagnostic::new("stateless-gate-elementwise")?;
+        let service = diagnostic.service.clone();
+        let client = service.client();
+        let program = program();
+        let width = program.geometry().query_width()?;
+        let row_stride = program.attention_row_stride()?;
+        let lane_rows = [47usize, 48, 49, 50, 51, 52, 53, 54];
+        let active_rows = lane_rows.iter().sum::<usize>();
+        let bound_rows = 513usize;
+        let packed_bytes = bound_rows * row_stride * 2;
+        let value_bytes = bound_rows * width * 2;
+
+        let word = |i: usize, seed: usize| -> u16 {
+            match (i + seed) % 8 {
+                0 => 0x3f80,
+                1 => 0xbf00,
+                2 => 0x3e80,
+                3 => 0x4000,
+                4 => 0xbe00,
+                5 => 0x3f00,
+                6 => 0xc000,
+                _ => 0x0000,
+            }
+        };
+        let bytes_from_words = |words: &[u16]| {
+            words
+                .iter()
+                .flat_map(|word| word.to_ne_bytes())
+                .collect::<Vec<_>>()
+        };
+        let view = |handle: &Handle, total: usize, offset: usize, bytes: usize| {
+            handle
+                .clone()
+                .offset_start(offset as u64)
+                .offset_end((total - offset - bytes) as u64)
+        };
+        let status_binding =
+            |handle: Handle| LaunchBinding::new(BufferRole::Status, Access::ReadWrite, handle);
+
+        let mut packed_words = (0..bound_rows * row_stride)
+            .map(|i| word(i, 5))
+            .collect::<Vec<_>>();
+        packed_words[(active_rows / 2) * row_stride + program.geometry().head_width] = 0x7f80;
+        let input_words = (0..bound_rows * width)
+            .map(|i| word(i, 13))
+            .collect::<Vec<_>>();
+        let packed = client.create_from_slice(&bytes_from_words(&packed_words));
+        let input = client.create_from_slice(&bytes_from_words(&input_words));
+        let seed = vec![0x5au8; value_bytes];
+        let sequential_gate = client.create_from_slice(&seed);
+        let wide_gate = client.create_from_slice(&seed);
+        let sequential_output = client.create_from_slice(&seed);
+        let wide_output = client.create_from_slice(&seed);
+        let sequential_status = client.create_from_slice(&0u32.to_ne_bytes());
+        let wide_status = client.create_from_slice(&0u32.to_ne_bytes());
+
+        let mut row = 0usize;
+        for rows in lane_rows {
+            let packed_offset = row * row_stride * 2;
+            let packed_extent = rows * row_stride * 2;
+            let value_offset = row * width * 2;
+            let value_extent = rows * width * 2;
+            program
+                .sigmoid(rows)?
+                .prepare_owned(
+                    client,
+                    vec![
+                        LaunchBinding::new(
+                            BufferRole::PackedAttention,
+                            Access::Read,
+                            view(&packed, packed_bytes, packed_offset, packed_extent),
+                        ),
+                        LaunchBinding::new(
+                            BufferRole::Output,
+                            Access::Write,
+                            view(&sequential_gate, value_bytes, value_offset, value_extent),
+                        ),
+                    ],
+                    status_binding(sequential_status.clone()),
+                )?
+                .enqueue_owned(client, &sequential_status)?;
+            program
+                .multiply(rows)?
+                .prepare_owned(
+                    client,
+                    vec![
+                        LaunchBinding::new(
+                            BufferRole::Input,
+                            Access::Read,
+                            view(&input, value_bytes, value_offset, value_extent),
+                        ),
+                        LaunchBinding::new(
+                            BufferRole::Gate,
+                            Access::Read,
+                            view(&sequential_gate, value_bytes, value_offset, value_extent),
+                        ),
+                        LaunchBinding::new(
+                            BufferRole::Output,
+                            Access::Write,
+                            view(&sequential_output, value_bytes, value_offset, value_extent),
+                        ),
+                    ],
+                    status_binding(sequential_status.clone()),
+                )?
+                .enqueue_owned(client, &sequential_status)?;
+            row += rows;
+        }
+        if row != active_rows {
+            return Err(Error::State(
+                "ragged stateless gate fixture row coverage".into(),
+            ));
+        }
+
+        let physical = StatelessRowExtent::bounded(active_rows, bound_rows)?;
+        program
+            .sigmoid_stateless(physical)?
+            .prepare_owned(
+                client,
+                vec![
+                    LaunchBinding::new(BufferRole::PackedAttention, Access::Read, packed.clone()),
+                    LaunchBinding::new(BufferRole::Output, Access::Write, wide_gate.clone()),
+                ],
+                status_binding(wide_status.clone()),
+            )?
+            .enqueue_owned(client, &wide_status)?;
+        program
+            .multiply_stateless(physical)?
+            .prepare_owned(
+                client,
+                vec![
+                    LaunchBinding::new(BufferRole::Input, Access::Read, input.clone()),
+                    LaunchBinding::new(BufferRole::Gate, Access::Read, wide_gate.clone()),
+                    LaunchBinding::new(BufferRole::Output, Access::Write, wide_output.clone()),
+                ],
+                status_binding(wide_status.clone()),
+            )?
+            .enqueue_owned(client, &wide_status)?;
+
+        client
+            .sync()
+            .await
+            .map_err(|error| Error::State(format!("stateless sigmoid/multiply sync: {error}")))?;
+        let sequential_gate = client
+            .read_one(sequential_gate)
+            .map_err(|error| Error::State(format!("causal sigmoid gate read: {error}")))?;
+        let wide_gate = client
+            .read_one(wide_gate)
+            .map_err(|error| Error::State(format!("stateless sigmoid gate read: {error}")))?;
+        let sequential_output = client
+            .read_one(sequential_output)
+            .map_err(|error| Error::State(format!("causal multiply output read: {error}")))?;
+        let wide_output = client
+            .read_one(wide_output)
+            .map_err(|error| Error::State(format!("stateless multiply output read: {error}")))?;
+        let sequential_status = client
+            .read_one(sequential_status)
+            .map_err(|error| Error::State(format!("causal gate status read: {error}")))?;
+        let wide_status = client
+            .read_one(wide_status)
+            .map_err(|error| Error::State(format!("stateless gate status read: {error}")))?;
+        let active_bytes = active_rows * width * 2;
+        if sequential_gate != wide_gate
+            || sequential_output != wide_output
+            || sequential_status != wide_status
+            || wide_gate[active_bytes..] != seed[active_bytes..]
+            || wide_output[active_bytes..] != seed[active_bytes..]
+            || &wide_status[..] != 2u32.to_ne_bytes().as_slice()
+        {
+            return Err(Error::State(
+                "stateless sigmoid/multiply differs from ragged causal calls".into(),
+            ));
+        }
+        println!(
+            "STATELESS_GATE_PASS lanes=47..54 active_rows={active_rows} bound_rows={bound_rows} exact=true status=2"
+        );
+
+        client.memory_cleanup().map_err(|error| {
+            Error::State(format!("stateless sigmoid/multiply cleanup: {error}"))
+        })?;
+        service.close_model_namespace()?;
+        Ok(())
+    })
+}
+
+#[cfg(all(
+    feature = "qualification",
+    feature = "cuda-cublas",
+    target_os = "linux"
+))]
+#[test]
 #[ignore = "physical SM86 sigmoid+multiply fused-vs-sequential qualification"]
 fn physical_sigmoid_multiply_matches_sequential_exactly() -> Result<()> {
     futures_lite::future::block_on(async {

@@ -1203,6 +1203,17 @@ impl Program {
     }
 
     pub(crate) fn sigmoid_bounded(&self, rows: RowExtent) -> Result<Definition> {
+        self.sigmoid_definition(rows.into())
+    }
+
+    /// Row-independent attention-gate sigmoid over a checked physical row span.
+    /// This reuses the exact causal kernel/arithmetic while carrying no source
+    /// call, session, root or frontier authority.
+    pub(crate) fn sigmoid_stateless(&self, rows: StatelessRowExtent) -> Result<Definition> {
+        self.sigmoid_definition(rows)
+    }
+
+    fn sigmoid_definition(&self, rows: StatelessRowExtent) -> Result<Definition> {
         let packed = self.packed_attention_bytes(rows.bound())?;
         let width = self.geometry.query_width()?;
         let head_stride =
@@ -1298,6 +1309,19 @@ impl Program {
         )
     }
 
+    /// Row-independent elementwise multiply over a checked physical row span.
+    /// The separately rounded gate remains an explicit input; this does not
+    /// fuse graph nodes or alter cancellation/publication boundaries.
+    pub(crate) fn multiply_stateless(&self, rows: StatelessRowExtent) -> Result<Definition> {
+        self.contiguous_elementwise_stateless(
+            Primitive::Multiply,
+            rows,
+            self.geometry.query_width()?,
+            BufferRole::Input,
+            BufferRole::Gate,
+        )
+    }
+
     pub(crate) fn residual(&self, rows: usize) -> Result<Definition> {
         self.contiguous_elementwise(
             Primitive::Residual,
@@ -1322,6 +1346,17 @@ impl Program {
         &self,
         primitive: Primitive,
         rows: RowExtent,
+        width: usize,
+        first: BufferRole,
+        second: BufferRole,
+    ) -> Result<Definition> {
+        self.contiguous_elementwise_stateless(primitive, rows.into(), width, first, second)
+    }
+
+    fn contiguous_elementwise_stateless(
+        &self,
+        primitive: Primitive,
+        rows: StatelessRowExtent,
         width: usize,
         first: BufferRole,
         second: BufferRole,
@@ -1598,7 +1633,9 @@ impl Program {
         ])
     }
 
-    fn attention_row_stride(&self) -> Result<usize> {
+    /// Physical BF16 elements in one packed Q/G/K/V row. Geometry only; no
+    /// source-call or model-family policy is attached to this value.
+    pub(crate) fn attention_row_stride(&self) -> Result<usize> {
         checked_mul(
             2,
             self.geometry.query_width()?,
