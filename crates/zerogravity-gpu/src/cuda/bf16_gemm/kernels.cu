@@ -450,10 +450,11 @@ __device__ __forceinline__ void lane_strided_fixed(
 
 // Inner-major B2 input view: X[inner, row]. Arithmetic/reduction order
 // matches two independent lane-strided rows while sharing each weight load.
-__device__ __forceinline__ void lane_strided_batch2_inner_major_fixed(
+template <unsigned TERMS>
+__device__ __forceinline__ void lane_strided_batch2_inner_major_fixed_terms(
     const unsigned short* w, const unsigned short* x, unsigned short* y,
     unsigned* status, GemmShape s) {
-    constexpr unsigned LANES = 16, TERMS = 512, ITEMS = TERMS / LANES;
+    constexpr unsigned LANES = 16, ITEMS = TERMS / LANES;
     constexpr unsigned CONTROL = ((32 - LANES) << 8) | 31;
     const unsigned lane = threadIdx.x & (LANES - 1);
     const unsigned long long col = (unsigned long long)blockIdx.x * (128 / LANES)
@@ -487,6 +488,12 @@ __device__ __forceinline__ void lane_strided_batch2_inner_major_fixed(
         store_bf16(y, col, result0, status);
         store_bf16(y, s.output_stride + col, result1, status);
     }
+}
+
+__device__ __forceinline__ void lane_strided_batch2_inner_major_fixed(
+    const unsigned short* w, const unsigned short* x, unsigned short* y,
+    unsigned* status, GemmShape s) {
+    lane_strided_batch2_inner_major_fixed_terms<512>(w, x, y, status, s);
 }
 
 __device__ __forceinline__ void lane_strided_batch4_fixed(
@@ -538,10 +545,11 @@ __device__ __forceinline__ void lane_strided_batch4_fixed(
 // Inner-major B4 input view: X[inner, row]. Arithmetic/reduction order is
 // identical to lane_strided_batch4_fixed; each inner position contributes one
 // aligned 8-byte load containing the four independent BF16 row values.
-__device__ __forceinline__ void lane_strided_batch4_inner_major_fixed(
+template <unsigned TERMS>
+__device__ __forceinline__ void lane_strided_batch4_inner_major_fixed_terms(
     const unsigned short* w, const unsigned short* x, unsigned short* y,
     unsigned* status, GemmShape s) {
-    constexpr unsigned LANES = 16, TERMS = 512, ITEMS = TERMS / LANES;
+    constexpr unsigned LANES = 16, ITEMS = TERMS / LANES;
     constexpr unsigned CONTROL = ((32 - LANES) << 8) | 31;
     const unsigned lane = threadIdx.x & (LANES - 1);
     const unsigned long long col = (unsigned long long)blockIdx.x * (128 / LANES)
@@ -589,6 +597,12 @@ __device__ __forceinline__ void lane_strided_batch4_inner_major_fixed(
     }
 }
 
+__device__ __forceinline__ void lane_strided_batch4_inner_major_fixed(
+    const unsigned short* w, const unsigned short* x, unsigned short* y,
+    unsigned* status, GemmShape s) {
+    lane_strided_batch4_inner_major_fixed_terms<512>(w, x, y, status, s);
+}
+
 __device__ __forceinline__ void lane_strided_batch8_fixed(
     const unsigned short* w, const unsigned short* x, unsigned short* y,
     unsigned* status, GemmShape s) {
@@ -634,10 +648,11 @@ __device__ __forceinline__ void lane_strided_batch8_fixed(
 // Inner-major B8 input view: X[inner, row]. The reduction arithmetic is
 // identical to lane_strided_batch8_fixed; only the eight independent BF16 row
 // loads for one inner position use one aligned 16-byte load.
-__device__ __forceinline__ void lane_strided_batch8_inner_major_fixed(
+template <unsigned TERMS>
+__device__ __forceinline__ void lane_strided_batch8_inner_major_fixed_terms(
     const unsigned short* w, const unsigned short* x, unsigned short* y,
     unsigned* status, GemmShape s) {
-    constexpr unsigned LANES = 16, TERMS = 512, ITEMS = TERMS / LANES;
+    constexpr unsigned LANES = 16, ITEMS = TERMS / LANES;
     constexpr unsigned CONTROL = ((32 - LANES) << 8) | 31;
     const unsigned lane = threadIdx.x & (LANES - 1);
     const unsigned long long col = (unsigned long long)blockIdx.x * (128 / LANES)
@@ -678,6 +693,12 @@ __device__ __forceinline__ void lane_strided_batch8_inner_major_fixed(
             store_bf16(y, row * s.output_stride + col, result[row], status);
         }
     }
+}
+
+__device__ __forceinline__ void lane_strided_batch8_inner_major_fixed(
+    const unsigned short* w, const unsigned short* x, unsigned short* y,
+    unsigned* status, GemmShape s) {
+    lane_strided_batch8_inner_major_fixed_terms<512>(w, x, y, status, s);
 }
 
 __device__ __forceinline__ void lane_strided_body(
@@ -728,6 +749,14 @@ extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch2_
     const unsigned short* w, const unsigned short* x, unsigned short* y, unsigned* status, GemmShape s) {
     lane_strided_batch2_inner_major_fixed(w, x, y, status, s);
 }
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch2_inner_major_terms256(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
+    lane_strided_batch2_inner_major_fixed_terms<256>(w, x, y, nullptr, s);
+}
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch2_inner_major_terms256_certified(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, unsigned* status, GemmShape s) {
+    lane_strided_batch2_inner_major_fixed_terms<256>(w, x, y, status, s);
+}
 extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch4(
     const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
     lane_strided_batch4_fixed(w, x, y, nullptr, s);
@@ -744,6 +773,14 @@ extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch4_
     const unsigned short* w, const unsigned short* x, unsigned short* y, unsigned* status, GemmShape s) {
     lane_strided_batch4_inner_major_fixed(w, x, y, status, s);
 }
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch4_inner_major_terms256(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
+    lane_strided_batch4_inner_major_fixed_terms<256>(w, x, y, nullptr, s);
+}
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch4_inner_major_terms256_certified(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, unsigned* status, GemmShape s) {
+    lane_strided_batch4_inner_major_fixed_terms<256>(w, x, y, status, s);
+}
 extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch8(
     const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
     lane_strided_batch8_fixed(w, x, y, nullptr, s);
@@ -759,6 +796,14 @@ extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch8_
 extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch8_inner_major_certified(
     const unsigned short* w, const unsigned short* x, unsigned short* y, unsigned* status, GemmShape s) {
     lane_strided_batch8_inner_major_fixed(w, x, y, status, s);
+}
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch8_inner_major_terms256(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
+    lane_strided_batch8_inner_major_fixed_terms<256>(w, x, y, nullptr, s);
+}
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_strided_batch8_inner_major_terms256_certified(
+    const unsigned short* w, const unsigned short* x, unsigned short* y, unsigned* status, GemmShape s) {
+    lane_strided_batch8_inner_major_fixed_terms<256>(w, x, y, status, s);
 }
 
 __device__ __forceinline__ void lane_blocked_body(
@@ -787,6 +832,64 @@ __device__ __forceinline__ void lane_blocked_body(
     }
     if (lane == 0 && col < s.columns) store_bf16(y, row * s.output_stride + col, total, status);
 }
+
+// Independent physical rows with the exact B1 LaneBlocked<32,32> arithmetic.
+// Weight loads are shared across rows; every row retains the original per-lane
+// contiguous accumulation order and the same warp reduction tree.
+template <unsigned ROWS>
+__device__ __forceinline__ void lane_blocked_rows_fixed(
+    const unsigned short* w, const unsigned short* x, unsigned short* y,
+    unsigned* status, GemmShape s) {
+    constexpr unsigned LANES = 32, TERMS = 32, CONTROL = 31;
+    const unsigned lane = threadIdx.x & (LANES - 1);
+    const unsigned long long col = (unsigned long long)blockIdx.x * (128 / LANES)
+        + (threadIdx.x / LANES);
+    float total[ROWS] = {};
+    constexpr unsigned long long STEP = LANES * TERMS;
+    for (unsigned long long start = 0; start < s.inner; start += STEP) {
+        const unsigned long long first = start + lane * TERMS;
+        const unsigned long long end = s.inner < first + TERMS ? s.inner : first + TERMS;
+        for (unsigned long long k = first; k < end; ++k) {
+            if (col < s.columns) {
+                const float weight = widen_bf16(w[col * s.inner + k]);
+                #pragma unroll
+                for (unsigned row = 0; row < ROWS; ++row) {
+                    total[row] = add_product(
+                        total[row], weight, widen_bf16(x[row * s.inner + k]));
+                }
+            }
+        }
+    }
+    for (unsigned delta = LANES >> 1; delta; delta >>= 1) {
+        #pragma unroll
+        for (unsigned row = 0; row < ROWS; ++row) {
+            const float other = lane_down(total[row], delta, CONTROL);
+            if (lane < delta) total[row] += other;
+        }
+    }
+    if (lane == 0 && col < s.columns) {
+        #pragma unroll
+        for (unsigned row = 0; row < ROWS; ++row) {
+            store_bf16(y, row * s.output_stride + col, total[row], status);
+        }
+    }
+}
+
+#define ZG_LANE_BLOCKED_ROWS_ENTRY(ROWS) \
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_blocked_batch##ROWS( \
+    const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) { \
+    lane_blocked_rows_fixed<ROWS>(w, x, y, nullptr, s); \
+} \
+extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_blocked_batch##ROWS##_certified( \
+    const unsigned short* w, const unsigned short* x, unsigned short* y, unsigned* status, GemmShape s) { \
+    lane_blocked_rows_fixed<ROWS>(w, x, y, status, s); \
+}
+
+ZG_LANE_BLOCKED_ROWS_ENTRY(2)
+ZG_LANE_BLOCKED_ROWS_ENTRY(4)
+ZG_LANE_BLOCKED_ROWS_ENTRY(8)
+#undef ZG_LANE_BLOCKED_ROWS_ENTRY
+
 extern "C" __global__ __launch_bounds__(128) void bf16_gemm_lane_blocked(
     const unsigned short* w, const unsigned short* x, unsigned short* y, GemmShape s) {
     lane_blocked_body(w, x, y, nullptr, s);

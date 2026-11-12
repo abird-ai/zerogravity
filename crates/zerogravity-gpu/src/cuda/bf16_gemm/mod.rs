@@ -237,13 +237,6 @@ impl Bf16Gemm {
             .checked_mul(lanes)
             .filter(|n| *n <= isize::MAX as usize)
             .ok_or_else(|| Error::Limit("BF16 GEMM reduction span overflow".into()))?;
-        let batch2_lane_strided = matches!(
-            reduction,
-            Bf16GemmReduction::LaneStrided {
-                lanes: 16,
-                terms: 512
-            }
-        ) && rows == 2;
         let batch4_lane_strided = matches!(
             reduction,
             Bf16GemmReduction::LaneStrided {
@@ -258,19 +251,55 @@ impl Bf16Gemm {
                 terms: 512
             }
         ) && rows == 8;
-        let inner_major_batch2_lane_strided =
-            input_layout == Bf16GemmInputLayout::InnerMajor && batch2_lane_strided;
-        let inner_major_batch4_lane_strided =
-            input_layout == Bf16GemmInputLayout::InnerMajor && batch4_lane_strided;
-        let inner_major_batch8_lane_strided =
-            input_layout == Bf16GemmInputLayout::InnerMajor && batch8_lane_strided;
+        let inner_major_batch2_lane_strided = input_layout == Bf16GemmInputLayout::InnerMajor
+            && rows == 2
+            && matches!(
+                reduction,
+                Bf16GemmReduction::LaneStrided {
+                    lanes: 16,
+                    terms: 256 | 512
+                }
+            );
+        let inner_major_batch4_lane_strided = input_layout == Bf16GemmInputLayout::InnerMajor
+            && rows == 4
+            && matches!(
+                reduction,
+                Bf16GemmReduction::LaneStrided {
+                    lanes: 16,
+                    terms: 256 | 512
+                }
+            );
+        let inner_major_batch8_lane_strided = input_layout == Bf16GemmInputLayout::InnerMajor
+            && rows == 8
+            && matches!(
+                reduction,
+                Bf16GemmReduction::LaneStrided {
+                    lanes: 16,
+                    terms: 256 | 512
+                }
+            );
+        let inner_major_lane_strided_terms256 = input_layout == Bf16GemmInputLayout::InnerMajor
+            && matches!(
+                reduction,
+                Bf16GemmReduction::LaneStrided {
+                    lanes: 16,
+                    terms: 256
+                }
+            );
+        let batch_lane_blocked = matches!(
+            reduction,
+            Bf16GemmReduction::LaneBlocked {
+                lanes: 32,
+                terms: 32
+            }
+        ) && matches!(rows, 2 | 4 | 8);
         if input_layout == Bf16GemmInputLayout::InnerMajor
             && !inner_major_batch2_lane_strided
             && !inner_major_batch4_lane_strided
             && !inner_major_batch8_lane_strided
         {
             return Err(Error::Unsupported(
-                "BF16 inner-major input currently requires B2/B4/B8 lane-strided 16x512 reduction"
+                "BF16 inner-major input currently requires B2/B4/B8 lane-strided 16x256/512 reduction"
                     .into(),
             ));
         }
@@ -298,8 +327,17 @@ impl Bf16Gemm {
             Bf16GemmReduction::LaneStrided { lanes, .. } if inner_major_batch2_lane_strided => {
                 (128 / lanes, 2)
             }
+            Bf16GemmReduction::LaneStrided { lanes, .. } if inner_major_batch4_lane_strided => {
+                (128 / lanes, 4)
+            }
+            Bf16GemmReduction::LaneStrided { lanes, .. } if inner_major_batch8_lane_strided => {
+                (128 / lanes, 8)
+            }
             Bf16GemmReduction::LaneStrided { lanes, .. } if batch4_lane_strided => (128 / lanes, 4),
             Bf16GemmReduction::LaneStrided { lanes, .. } if batch8_lane_strided => (128 / lanes, 8),
+            Bf16GemmReduction::LaneBlocked { lanes, .. } if batch_lane_blocked => {
+                (128 / lanes, rows)
+            }
             Bf16GemmReduction::LaneStrided { .. } | Bf16GemmReduction::LaneBlocked { .. } => {
                 (128 / lanes, 1)
             }
@@ -359,13 +397,21 @@ impl Bf16Gemm {
                 "bf16_gemm_ordered_rows64"
             }
         } else if inner_major_batch2_lane_strided {
-            if certified {
+            if certified && inner_major_lane_strided_terms256 {
+                "bf16_gemm_lane_strided_batch2_inner_major_terms256_certified"
+            } else if inner_major_lane_strided_terms256 {
+                "bf16_gemm_lane_strided_batch2_inner_major_terms256"
+            } else if certified {
                 "bf16_gemm_lane_strided_batch2_inner_major_certified"
             } else {
                 "bf16_gemm_lane_strided_batch2_inner_major"
             }
         } else if inner_major_batch4_lane_strided {
-            if certified {
+            if certified && inner_major_lane_strided_terms256 {
+                "bf16_gemm_lane_strided_batch4_inner_major_terms256_certified"
+            } else if inner_major_lane_strided_terms256 {
+                "bf16_gemm_lane_strided_batch4_inner_major_terms256"
+            } else if certified {
                 "bf16_gemm_lane_strided_batch4_inner_major_certified"
             } else {
                 "bf16_gemm_lane_strided_batch4_inner_major"
@@ -377,7 +423,11 @@ impl Bf16Gemm {
                 "bf16_gemm_lane_strided_batch4"
             }
         } else if inner_major_batch8_lane_strided {
-            if certified {
+            if certified && inner_major_lane_strided_terms256 {
+                "bf16_gemm_lane_strided_batch8_inner_major_terms256_certified"
+            } else if inner_major_lane_strided_terms256 {
+                "bf16_gemm_lane_strided_batch8_inner_major_terms256"
+            } else if certified {
                 "bf16_gemm_lane_strided_batch8_inner_major_certified"
             } else {
                 "bf16_gemm_lane_strided_batch8_inner_major"
@@ -387,6 +437,16 @@ impl Bf16Gemm {
                 "bf16_gemm_lane_strided_batch8_certified"
             } else {
                 "bf16_gemm_lane_strided_batch8"
+            }
+        } else if batch_lane_blocked {
+            match (certified, rows) {
+                (false, 2) => "bf16_gemm_lane_blocked_batch2",
+                (true, 2) => "bf16_gemm_lane_blocked_batch2_certified",
+                (false, 4) => "bf16_gemm_lane_blocked_batch4",
+                (true, 4) => "bf16_gemm_lane_blocked_batch4_certified",
+                (false, 8) => "bf16_gemm_lane_blocked_batch8",
+                (true, 8) => "bf16_gemm_lane_blocked_batch8_certified",
+                _ => unreachable!("validated lane-blocked batch width"),
             }
         } else {
             match (certified, reduction, tile_rows == 8) {

@@ -705,7 +705,7 @@ impl ResidentModel {
         })?;
         let mut accesses = workspace.logit_accesses.clone();
         if matches!(width, 2 | 4 | 8) {
-            accesses.push((values.head_rows().clone(), DeviceAccess::Write));
+            accesses.push((values.row_scratch().clone(), DeviceAccess::Write));
         }
         for handle in greedy {
             accesses.push((

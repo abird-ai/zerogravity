@@ -18,7 +18,9 @@ pub(crate) struct OrdinaryCudaCohortValues {
     slots: Arc<[ResidentLease]>,
     bindings: Arc<[ValueStorageBinding]>,
     token_ids: ResidentLease,
-    head_rows: ResidentLease,
+    // Generic hidden-width BF16 staging for cohort row transforms. The head
+    // projection and any compatible independent projection share it serially.
+    row_scratch: ResidentLease,
 }
 
 impl OrdinaryCudaCohortValues {
@@ -53,7 +55,7 @@ impl OrdinaryCudaCohortValues {
                     .hidden_width
                     .checked_mul(width)
                     .and_then(|n| n.checked_mul(2))
-                    .and_then(|head| tokens.checked_add(head))
+                    .and_then(|row_scratch| tokens.checked_add(row_scratch))
             })
             .ok_or_else(|| Error::Limit("ordinary CUDA cohort control bytes".into()))?;
         value_bytes
@@ -87,7 +89,7 @@ impl OrdinaryCudaCohortValues {
             .collect::<Result<Vec<_>>>()?;
         let token_ids =
             init.allocate_empty(layout::MAX_ROWS * width * 4, BufferRole::Activation)?;
-        let head_rows = init.allocate_empty(
+        let row_scratch = init.allocate_empty(
             layout.geometry().hidden_width * width * 2,
             BufferRole::Activation,
         )?;
@@ -98,7 +100,7 @@ impl OrdinaryCudaCohortValues {
                     .ok_or_else(|| Error::Limit("ordinary CUDA cohort activation byte sum".into()))
             })?
             .checked_add(token_ids.bytes())
-            .and_then(|sum| sum.checked_add(head_rows.bytes()))
+            .and_then(|sum| sum.checked_add(row_scratch.bytes()))
             .ok_or_else(|| {
                 Error::Limit("ordinary CUDA cohort activation/control byte sum".into())
             })?;
@@ -113,14 +115,14 @@ impl OrdinaryCudaCohortValues {
             .map(|lease| (lease, DeviceAccess::Write))
             .collect::<Vec<_>>();
         accesses.push((token_ids.clone(), DeviceAccess::Write));
-        accesses.push((head_rows.clone(), DeviceAccess::Write));
+        accesses.push((row_scratch.clone(), DeviceAccess::Write));
         Ok((
             Arc::new(Self {
                 width,
                 slots: slots.into(),
                 bindings: layout.value_bindings().to_vec().into(),
                 token_ids,
-                head_rows,
+                row_scratch,
             }),
             accesses,
         ))
@@ -134,7 +136,7 @@ impl OrdinaryCudaCohortValues {
         self.slots
             .iter()
             .chain(std::iter::once(&self.token_ids))
-            .chain(std::iter::once(&self.head_rows))
+            .chain(std::iter::once(&self.row_scratch))
     }
 
     pub(super) fn token_handle(&self, lane: usize, rows: usize) -> Result<cubecl::server::Handle> {
@@ -177,8 +179,8 @@ impl OrdinaryCudaCohortValues {
         )
     }
 
-    pub(crate) fn head_rows(&self) -> &ResidentLease {
-        &self.head_rows
+    pub(crate) fn row_scratch(&self) -> &ResidentLease {
+        &self.row_scratch
     }
 
     pub(crate) fn lease(&self, value: ValueId) -> Result<&ResidentLease> {

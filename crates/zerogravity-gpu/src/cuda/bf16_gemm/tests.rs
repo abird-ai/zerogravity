@@ -136,10 +136,6 @@ fn lane_strided_batch_inner_major_matches_row_major() -> Result<()> {
         let queue = service.pinned_cuda_queue()?.clone();
         let columns = 256usize;
         let inner = 2048usize;
-        let reduction = Bf16GemmReduction::LaneStrided {
-            lanes: 16,
-            terms: 512,
-        };
         let bf16 = |i: usize, seed: usize| -> u16 {
             match (i * 13 + seed * 7) % 8 {
                 0 => 0x3f80,
@@ -158,90 +154,244 @@ fn lane_strided_batch_inner_major_matches_row_major() -> Result<()> {
                 .flat_map(|word| word.to_ne_bytes())
                 .collect::<Vec<_>>()
         };
-        for rows in [2usize, 4, 8] {
-            let weights = (0..columns * inner).map(|i| bf16(i, 3)).collect::<Vec<_>>();
-            let row_major = (0..rows * inner).map(|i| bf16(i, 5)).collect::<Vec<_>>();
+        for terms in [256usize, 512] {
+            let reduction = Bf16GemmReduction::LaneStrided { lanes: 16, terms };
+            for rows in [2usize, 4, 8] {
+                let weights = (0..columns * inner).map(|i| bf16(i, 3)).collect::<Vec<_>>();
+                let row_major = (0..rows * inner).map(|i| bf16(i, 5)).collect::<Vec<_>>();
 
-            let weights = client.create_from_slice(&encode(&weights));
-            let row_major = client.create_from_slice(&encode(&row_major));
-            let inner_major = client.empty(rows * inner * 2);
-            let output_bytes = rows * columns * 2;
-            let accepted_output = client.create_from_slice(&vec![0xa5; output_bytes]);
-            let candidate_output = client.create_from_slice(&vec![0xa5; output_bytes]);
-            let pack_status = client.create_from_slice(&0u32.to_ne_bytes());
-            let accepted_status = client.create_from_slice(&0u32.to_ne_bytes());
-            let candidate_status = client.create_from_slice(&0u32.to_ne_bytes());
+                let weights = client.create_from_slice(&encode(&weights));
+                let row_major = client.create_from_slice(&encode(&row_major));
+                let inner_major = client.empty(rows * inner * 2);
+                let output_bytes = rows * columns * 2;
+                let accepted_output = client.create_from_slice(&vec![0xa5; output_bytes]);
+                let candidate_output = client.create_from_slice(&vec![0xa5; output_bytes]);
+                let pack_status = client.create_from_slice(&0u32.to_ne_bytes());
+                let accepted_status = client.create_from_slice(&0u32.to_ne_bytes());
+                let candidate_status = client.create_from_slice(&0u32.to_ne_bytes());
 
-            launch_row_major_to_inner_major(
-                client,
-                DenseRows {
+                launch_row_major_to_inner_major(
+                    client,
+                    DenseRows {
+                        rows,
+                        columns: inner,
+                    },
+                    &row_major,
+                    &inner_major,
+                    &pack_status,
+                )?;
+                let accepted = Bf16Gemm::with_reduction_certified(columns, rows, inner, reduction)?;
+                let candidate = Bf16Gemm::with_reduction_input_layout_certified(
+                    columns,
                     rows,
-                    columns: inner,
-                },
-                &row_major,
-                &inner_major,
-                &pack_status,
-            )?;
-            let accepted = Bf16Gemm::with_reduction_certified(columns, rows, inner, reduction)?;
-            let candidate = Bf16Gemm::with_reduction_input_layout_certified(
-                columns,
-                rows,
-                inner,
-                reduction,
-                Bf16GemmInputLayout::InnerMajor,
-            )?;
-            accepted.prepare_code(&queue)?;
-            candidate.prepare_code(&queue)?;
-            let accepted_launch = accepted.prepare_certified(
-                client,
-                weights.clone(),
-                row_major.clone(),
-                accepted_output.clone(),
-                accepted_status.clone(),
-            )?;
-            let candidate_launch = candidate.prepare_certified(
-                client,
-                weights,
-                inner_major.clone(),
-                candidate_output.clone(),
-                candidate_status.clone(),
-            )?;
-            accepted_launch.launch_on(client)?;
-            candidate_launch.launch_on(client)?;
+                    inner,
+                    reduction,
+                    Bf16GemmInputLayout::InnerMajor,
+                )?;
+                accepted.prepare_code(&queue)?;
+                candidate.prepare_code(&queue)?;
+                let accepted_launch = accepted.prepare_certified(
+                    client,
+                    weights.clone(),
+                    row_major.clone(),
+                    accepted_output.clone(),
+                    accepted_status.clone(),
+                )?;
+                let candidate_launch = candidate.prepare_certified(
+                    client,
+                    weights,
+                    inner_major.clone(),
+                    candidate_output.clone(),
+                    candidate_status.clone(),
+                )?;
+                accepted_launch.launch_on(client)?;
+                candidate_launch.launch_on(client)?;
 
-            client.sync().await.map_err(|error| {
-                Error::State(format!("inner-major GEMM exactness sync: {error}"))
-            })?;
-            let accepted_bytes = client
-                .read_one(accepted_output)
-                .map_err(|error| Error::State(format!("inner-major accepted read: {error}")))?;
-            let candidate_bytes = client
-                .read_one(candidate_output)
-                .map_err(|error| Error::State(format!("inner-major candidate read: {error}")))?;
-            let pack_flags = client
-                .read_one(pack_status.clone())
-                .map_err(|error| Error::State(format!("inner-major pack status: {error}")))?;
-            let accepted_flags = client
-                .read_one(accepted_status)
-                .map_err(|error| Error::State(format!("inner-major accepted status: {error}")))?;
-            let candidate_flags = client
-                .read_one(candidate_status)
-                .map_err(|error| Error::State(format!("inner-major candidate status: {error}")))?;
-            let zero = 0u32.to_ne_bytes();
-            if accepted_bytes != candidate_bytes
-                || &pack_flags[..] != zero.as_slice()
-                || accepted_flags != candidate_flags
-                || &accepted_flags[..] != zero.as_slice()
-            {
-                return Err(Error::State(format!(
-                    "inner-major B{rows} lane-strided path differs from row-major contract"
-                )));
+                client.sync().await.map_err(|error| {
+                    Error::State(format!("inner-major GEMM exactness sync: {error}"))
+                })?;
+                let accepted_bytes = client
+                    .read_one(accepted_output)
+                    .map_err(|error| Error::State(format!("inner-major accepted read: {error}")))?;
+                let candidate_bytes = client.read_one(candidate_output).map_err(|error| {
+                    Error::State(format!("inner-major candidate read: {error}"))
+                })?;
+                let pack_flags = client
+                    .read_one(pack_status.clone())
+                    .map_err(|error| Error::State(format!("inner-major pack status: {error}")))?;
+                let accepted_flags = client.read_one(accepted_status).map_err(|error| {
+                    Error::State(format!("inner-major accepted status: {error}"))
+                })?;
+                let candidate_flags = client.read_one(candidate_status).map_err(|error| {
+                    Error::State(format!("inner-major candidate status: {error}"))
+                })?;
+                let zero = 0u32.to_ne_bytes();
+                if accepted_bytes != candidate_bytes
+                    || &pack_flags[..] != zero.as_slice()
+                    || accepted_flags != candidate_flags
+                    || &accepted_flags[..] != zero.as_slice()
+                {
+                    return Err(Error::State(format!(
+                        "inner-major B{rows} lane-strided terms={terms} path differs from row-major contract"
+                    )));
+                }
             }
         }
 
         client
             .memory_cleanup()
             .map_err(|error| Error::State(format!("inner-major GEMM cleanup: {error}")))?;
+        service.close_model_namespace()?;
+        Ok(())
+    })
+}
+
+#[cfg(all(feature = "qualification", feature = "cuda-cublas"))]
+#[test]
+#[ignore = "isolated SM86 B2/B4/B8 physical rows preserve original B1 reduction exactness"]
+fn batch_rows_preserve_single_row_reduction_exactly() -> Result<()> {
+    futures_lite::future::block_on(async {
+        let diagnostic =
+            crate::cuda::test_support::CudaDiagnostic::new("bf16-gemm-independent-rows")?;
+        let service = diagnostic.service.clone();
+        let client = service.client();
+        let queue = service.pinned_cuda_queue()?.clone();
+        let cases = [
+            (
+                64usize,
+                1024usize,
+                Bf16GemmReduction::LaneStrided {
+                    lanes: 16,
+                    terms: 512,
+                },
+            ),
+            (
+                64usize,
+                2048usize,
+                Bf16GemmReduction::LaneStrided {
+                    lanes: 16,
+                    terms: 256,
+                },
+            ),
+            (
+                64usize,
+                1024usize,
+                Bf16GemmReduction::LaneBlocked {
+                    lanes: 32,
+                    terms: 32,
+                },
+            ),
+            (
+                64usize,
+                3584usize,
+                Bf16GemmReduction::RoundedSegments { terms: 1216 },
+            ),
+        ];
+        let bf16 = |i: usize, seed: usize| -> u16 {
+            match (i * 17 + seed * 11) % 8 {
+                0 => 0x3f80,
+                1 => 0xbf00,
+                2 => 0x3e80,
+                3 => 0x4000,
+                4 => 0xbe00,
+                5 => 0x3f00,
+                6 => 0xc000,
+                _ => 0x0000,
+            }
+        };
+        let encode = |words: &[u16]| {
+            words
+                .iter()
+                .flat_map(|word| word.to_ne_bytes())
+                .collect::<Vec<_>>()
+        };
+
+        for rows in [2usize, 4, 8] {
+            for &(columns, inner, reduction) in &cases {
+                let weights_words = (0..columns * inner).map(|i| bf16(i, 3)).collect::<Vec<_>>();
+                let input_words = (0..rows * inner).map(|i| bf16(i, 5)).collect::<Vec<_>>();
+                let weights = client.create_from_slice(&encode(&weights_words));
+                let input = client.create_from_slice(&encode(&input_words));
+                let wide_output = client.create_from_slice(&vec![0xa5; rows * columns * 2]);
+                let wide_status = client.create_from_slice(&0u32.to_ne_bytes());
+                let wide = Bf16Gemm::with_reduction_certified(columns, rows, inner, reduction)?;
+                let single = Bf16Gemm::with_reduction_certified(columns, 1, inner, reduction)?;
+                wide.prepare_code(&queue)?;
+                single.prepare_code(&queue)?;
+
+                wide.prepare_certified(
+                    client,
+                    weights.clone(),
+                    input.clone(),
+                    wide_output.clone(),
+                    wide_status.clone(),
+                )?
+                .launch_on(client)?;
+
+                let mut single_outputs = Vec::with_capacity(rows);
+                let mut single_statuses = Vec::with_capacity(rows);
+                for row in 0..rows {
+                    let input_offset = row * inner * 2;
+                    let row_input = input
+                        .clone()
+                        .offset_start(input_offset as u64)
+                        .offset_end(((rows - row - 1) * inner * 2) as u64);
+                    let output = client.create_from_slice(&vec![0xa5; columns * 2]);
+                    let status = client.create_from_slice(&0u32.to_ne_bytes());
+                    single
+                        .prepare_certified(
+                            client,
+                            weights.clone(),
+                            row_input,
+                            output.clone(),
+                            status.clone(),
+                        )?
+                        .launch_on(client)?;
+                    single_outputs.push(output);
+                    single_statuses.push(status);
+                }
+
+                client.sync().await.map_err(|error| {
+                    Error::State(format!("independent-row GEMM exactness sync: {error}"))
+                })?;
+                let wide_bytes = client.read_one(wide_output).map_err(|error| {
+                    Error::State(format!("wide independent GEMM read: {error}"))
+                })?;
+                let wide_flags = client.read_one(wide_status).map_err(|error| {
+                    Error::State(format!("wide independent GEMM status: {error}"))
+                })?;
+                let mut singles = Vec::<u8>::with_capacity(wide_bytes.len());
+                for output in single_outputs {
+                    let bytes = client.read_one(output).map_err(|error| {
+                        Error::State(format!("single independent GEMM read: {error}"))
+                    })?;
+                    singles.extend_from_slice(&bytes);
+                }
+                let zero = 0u32.to_ne_bytes();
+                if &wide_bytes[..] != singles.as_slice() || &wide_flags[..] != zero.as_slice() {
+                    return Err(Error::State(format!(
+                        "B{rows} physical rows differ from B1 reductions: inner={inner} reduction={reduction:?}"
+                    )));
+                }
+                for status in single_statuses {
+                    let flags = client.read_one(status).map_err(|error| {
+                        Error::State(format!("single independent GEMM status: {error}"))
+                    })?;
+                    if &flags[..] != zero.as_slice() {
+                        return Err(Error::State(
+                            "single independent GEMM reported nonfinite status".into(),
+                        ));
+                    }
+                }
+                println!(
+                    "INDEPENDENT_GEMM_ROWS_PASS rows={rows} columns={columns} inner={inner} reduction={reduction:?} exact=true"
+                );
+            }
+        }
+
+        client
+            .memory_cleanup()
+            .map_err(|error| Error::State(format!("independent-row GEMM cleanup: {error}")))?;
         service.close_model_namespace()?;
         Ok(())
     })

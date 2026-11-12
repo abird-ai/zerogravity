@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     cuda::{
-        bf16_gemm::{Bf16GemmInputLayout, Bf16GemmShape},
+        bf16_gemm::{Bf16GemmInputLayout, Bf16GemmReduction, Bf16GemmShape},
         bf16_rows::{
             DenseRows, InnerMajorRowGather, RowSegment, TwoSegmentRows,
             launch_indexed_rows_to_inner_major, launch_row_major_to_inner_major,
@@ -48,44 +48,34 @@ pub(crate) struct OrdinaryCudaCohort {
 }
 
 impl OrdinaryCudaProjection {
-    /// Share one projection over aligned independent prompt lanes while retaining
-    /// the exact per-lane reduction contract. Rows are independent GEMM columns;
-    /// only the physical row count is widened.
-    #[allow(clippy::too_many_arguments)]
-    async fn enqueue_prefill_cohort_rows(
+    fn independent_operation(
         &self,
         descriptors: &[SourceOperator],
-        spans: &CohortRowSpans,
-        gemm: &OrdinaryCudaGemm,
-        flight: &mut PhysicalSubmission<'_>,
-        input: &ResidentLease,
-        output: &ResidentLease,
-        status: &ResidentLease,
-        page: Option<&std::sync::Arc<crate::resident_leases::source_page::ResidentSourcePage>>,
-    ) -> Result<usize> {
+        row_counts: &[usize],
+    ) -> Result<(Bf16GemmShape, Bf16GemmReduction)> {
         let lanes = descriptors.len();
         if !matches!(lanes, 2 | 4 | 8)
-            || spans.len() != lanes
+            || row_counts.len() != lanes
             || self.template.row_selection() != SourceRowSelection::AllActive
         {
             return Err(Error::State(
-                "ordinary CUDA prefill projection cohort geometry differs".into(),
+                "ordinary CUDA independent projection cohort geometry differs".into(),
             ));
         }
         let mut lane_shape: Option<Bf16GemmShape> = None;
         let mut reduction = None;
         for (lane, descriptor) in descriptors.iter().enumerate() {
             let (shape, input_offset) = self.operation(descriptor)?;
-            if input_offset != 0 || shape.rows != spans.lane_rows(lane)? {
+            if input_offset != 0 || shape.rows != row_counts[lane] {
                 return Err(Error::State(
-                    "ordinary CUDA prefill projection lane span differs".into(),
+                    "ordinary CUDA independent projection lane span differs".into(),
                 ));
             }
             let lane_reduction = self.arithmetic.reduction(shape);
             if let Some(first) = lane_shape {
                 if shape.columns != first.columns || shape.inner != first.inner {
                     return Err(Error::State(
-                        "ordinary CUDA prefill projection lane geometry differs".into(),
+                        "ordinary CUDA independent projection lane geometry differs".into(),
                     ));
                 }
             } else {
@@ -93,34 +83,70 @@ impl OrdinaryCudaProjection {
             }
             if reduction.is_some_and(|first| first != lane_reduction) {
                 return Err(Error::Unsupported(
-                    "ordinary CUDA ragged prefill projection reductions differ".into(),
+                    "ordinary CUDA independent projection reductions differ".into(),
                 ));
             }
             reduction = Some(lane_reduction);
         }
-        let lane_shape = lane_shape
-            .ok_or_else(|| Error::State("ordinary CUDA prefill projection cohort empty".into()))?;
-        let reduction = reduction.ok_or_else(|| {
-            Error::State("ordinary CUDA prefill projection reduction absent".into())
+        let lane_shape = lane_shape.ok_or_else(|| {
+            Error::State("ordinary CUDA independent projection cohort empty".into())
         })?;
-        let operation =
-            Bf16GemmShape::new(lane_shape.columns, spans.total_rows(), lane_shape.inner)?;
+        let reduction = reduction.ok_or_else(|| {
+            Error::State("ordinary CUDA independent projection reduction absent".into())
+        })?;
+        let physical_rows = row_counts.iter().try_fold(0usize, |total, rows| {
+            total
+                .checked_add(*rows)
+                .ok_or_else(|| Error::Limit("ordinary CUDA independent projection rows".into()))
+        })?;
+        Ok((
+            Bf16GemmShape::new(lane_shape.columns, physical_rows, lane_shape.inner)?,
+            reduction,
+        ))
+    }
+
+    /// Share one projection over independent source calls while retaining each
+    /// call's exact reduction contract. `row_counts` is mathematical source
+    /// geometry; the summed row count is only physical GEMM batching geometry.
+    #[allow(clippy::too_many_arguments)]
+    async fn enqueue_independent_rows(
+        &self,
+        descriptors: &[SourceOperator],
+        row_counts: &[usize],
+        gemm: &OrdinaryCudaGemm,
+        flight: &mut PhysicalSubmission<'_>,
+        input: &ResidentLease,
+        input_layout: Bf16GemmInputLayout,
+        output: &ResidentLease,
+        status: &ResidentLease,
+        page: Option<&std::sync::Arc<crate::resident_leases::source_page::ResidentSourcePage>>,
+    ) -> Result<usize> {
+        let (operation, reduction) = self.independent_operation(descriptors, row_counts)?;
         if input.bytes() < operation.input_bytes() || output.bytes() < operation.output_bytes() {
             return Err(Error::State(
-                "ordinary CUDA prefill projection cohort extent differs".into(),
+                "ordinary CUDA independent projection cohort extent differs".into(),
             ));
         }
-        // Reduction grouping belongs to each original prompt lane. We share one
-        // physical GEMM only after proving every lane chose the exact same
-        // reduction contract from its own authenticated row geometry.
+        // Reduction grouping belongs to each original source call. Never derive
+        // it from the widened physical operation: row count can select a
+        // different arithmetic family even when the GEMM rows are independent.
         if let Some(weights) = self.weights.lease() {
-            gemm.enqueue(
-                flight, operation, reduction, weights, input, 0, output, 0, status,
+            gemm.enqueue_with_input_layout(
+                flight,
+                operation,
+                reduction,
+                input_layout,
+                weights,
+                input,
+                0,
+                output,
+                0,
+                status,
             )?;
             return Ok(1);
         }
         let page = page.ok_or_else(|| {
-            Error::State("ordinary CUDA streamed prefill cohort has no source page".into())
+            Error::State("ordinary CUDA streamed independent cohort has no source page".into())
         })?;
         flight.require_accesses([
             (input, DeviceAccess::Read),
@@ -131,7 +157,7 @@ impl OrdinaryCudaProjection {
             input,
             0,
             operation.input_bytes(),
-            "prefill cohort GEMM input",
+            "independent cohort GEMM input",
         )?;
         let mut base = 0;
         let mut launches = 0;
@@ -150,11 +176,12 @@ impl OrdinaryCudaProjection {
                     shape.rows,
                     operation.columns,
                 )?;
-                let target = exact_view(output, offset, extent, "prefill cohort GEMM output")?;
+                let target = exact_view(output, offset, extent, "independent cohort GEMM output")?;
                 page.with_rows(flight, matrix, source_rows, None, |view| {
-                    gemm.enqueue_page(
+                    gemm.enqueue_page_with_input_layout(
                         shape,
                         reduction,
+                        input_layout,
                         view.handle().clone(),
                         input.clone(),
                         target,
@@ -169,6 +196,41 @@ impl OrdinaryCudaProjection {
             base += matrix.rows();
         }
         Ok(launches)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn enqueue_prefill_cohort_rows(
+        &self,
+        descriptors: &[SourceOperator],
+        spans: &CohortRowSpans,
+        gemm: &OrdinaryCudaGemm,
+        flight: &mut PhysicalSubmission<'_>,
+        input: &ResidentLease,
+        output: &ResidentLease,
+        status: &ResidentLease,
+        page: Option<&std::sync::Arc<crate::resident_leases::source_page::ResidentSourcePage>>,
+    ) -> Result<usize> {
+        let mut row_counts = [0usize; 8];
+        if spans.len() > row_counts.len() {
+            return Err(Error::State(
+                "ordinary CUDA prefill projection cohort width differs".into(),
+            ));
+        }
+        for (lane, count) in row_counts.iter_mut().take(spans.len()).enumerate() {
+            *count = spans.lane_rows(lane)?;
+        }
+        self.enqueue_independent_rows(
+            descriptors,
+            &row_counts[..spans.len()],
+            gemm,
+            flight,
+            input,
+            Bf16GemmInputLayout::RowMajor,
+            output,
+            status,
+            page,
+        )
+        .await
     }
 }
 
@@ -856,7 +918,7 @@ impl OrdinaryCudaBody {
                     .and_then(|elements| elements.checked_mul(2))
                     .ok_or_else(|| Error::Limit("ordinary CUDA prefill head bytes".into()))?;
                 let packed = exact_view(
-                    values.head_rows(),
+                    values.row_scratch(),
                     0,
                     packed_bytes,
                     "ordinary CUDA prefill head inner-major rows",
@@ -876,7 +938,7 @@ impl OrdinaryCudaBody {
                         lanes,
                         self.gemm(),
                         flight,
-                        values.head_rows(),
+                        values.row_scratch(),
                         Bf16GemmInputLayout::InnerMajor,
                         logits,
                         self.cold().status(),
@@ -1063,7 +1125,7 @@ impl OrdinaryCudaBody {
                 }
                 let input = self.cold().value_lease(node.inputs[0].0 as usize)?;
                 let (input, input_layout) = if matches!(requests.len(), 2 | 4 | 8) {
-                    flight.require_accesses([(values.head_rows(), DeviceAccess::Write)])?;
+                    flight.require_accesses([(values.row_scratch(), DeviceAccess::Write)])?;
                     let hidden = self.cold().layout().geometry().hidden_width;
                     let bytes = hidden
                         .checked_mul(requests.len())
@@ -1074,7 +1136,7 @@ impl OrdinaryCudaBody {
                     let source =
                         exact_view(input, 0, bytes, "ordinary CUDA native head row-major input")?;
                     let packed = exact_view(
-                        values.head_rows(),
+                        values.row_scratch(),
                         0,
                         bytes,
                         "ordinary CUDA native head inner-major input",
@@ -1089,7 +1151,7 @@ impl OrdinaryCudaBody {
                         &packed,
                         &self.cold().status().handle(),
                     )?;
-                    (values.head_rows(), Bf16GemmInputLayout::InnerMajor)
+                    (values.row_scratch(), Bf16GemmInputLayout::InnerMajor)
                 } else {
                     (input, Bf16GemmInputLayout::RowMajor)
                 };
@@ -1248,6 +1310,78 @@ impl OrdinaryCudaBody {
                     fused_dispatches += fused;
                 }
             } else {
+                if matches!(template.kind(), SourceOperatorKind::Projection { .. }) {
+                    let ([input], [output]) = (node.inputs.as_slice(), node.outputs.as_slice())
+                    else {
+                        return Err(Error::State(
+                            "ordinary CUDA independent decode projection SSA arity".into(),
+                        ));
+                    };
+                    let descriptors = calls
+                        .iter()
+                        .map(|call| template.bind_runtime_call(call))
+                        .collect::<Result<Vec<_>>>()?;
+                    let row_counts = [1usize; 8];
+                    let row_counts = &row_counts[..calls.len()];
+                    let projection = self.cold().projection(node_index)?;
+                    let (operation, reduction) =
+                        projection.independent_operation(&descriptors, row_counts)?;
+                    let source = self.cold().value_lease(input.0 as usize)?;
+                    let (projection_input, input_layout) =
+                        if matches!(
+                            reduction,
+                            Bf16GemmReduction::LaneStrided {
+                                lanes: 16,
+                                terms: 256 | 512
+                            }
+                        ) && matches!(operation.rows, 2 | 4 | 8)
+                            && values.row_scratch().bytes() >= operation.input_bytes()
+                        {
+                            flight
+                                .require_accesses([(values.row_scratch(), DeviceAccess::Write)])?;
+                            let source = exact_view(
+                                source,
+                                0,
+                                operation.input_bytes(),
+                                "ordinary CUDA exact decode row-major input",
+                            )?;
+                            let packed = exact_view(
+                                values.row_scratch(),
+                                0,
+                                operation.input_bytes(),
+                                "ordinary CUDA exact decode inner-major input",
+                            )?;
+                            dispatches += launch_row_major_to_inner_major(
+                                client,
+                                DenseRows {
+                                    rows: operation.rows,
+                                    columns: operation.inner,
+                                },
+                                &source,
+                                &packed,
+                                &self.cold().status().handle(),
+                            )?;
+                            (values.row_scratch(), Bf16GemmInputLayout::InnerMajor)
+                        } else {
+                            (source, Bf16GemmInputLayout::RowMajor)
+                        };
+                    let launched = projection
+                        .enqueue_independent_rows(
+                            &descriptors,
+                            row_counts,
+                            self.gemm(),
+                            flight,
+                            projection_input,
+                            input_layout,
+                            self.cold().value_lease(output.0 as usize)?,
+                            self.cold().status(),
+                            self.cold().source_page(),
+                        )
+                        .await?;
+                    dispatches += launched;
+                    fused_dispatches += launched;
+                    continue;
+                }
                 let descriptor = template.bind_runtime_call(&batch_call)?;
                 let row_positions =
                     matches!(template.kind(), SourceOperatorKind::QkRmsRotaryGated(_))

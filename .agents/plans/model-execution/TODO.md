@@ -3377,3 +3377,50 @@ build or general model/backend grant. Historical failures keep their source scop
   237.659ms vs baseline235.704ms). Across both orders the candidate averaged
   ~0.88% slower. The production cohort adapter and temporary runner were fully
   removed; retain only the independently qualified shared primitives/tests.
+
+### 12 Nov 2026 — exact independent decode reductions + reusable B2/B4/B8 row kernels
+
+- [x] Fixed a cached-decode cohort correctness bug at the shared ordinary-CUDA
+  projection layer. The old path materialized one synthetic B8 source call for
+  row-independent projections, then selected arithmetic from that widened row
+  count. Several source reductions are deliberately row-count-sensitive, so B8
+  could silently change the authenticated B1 contract (for example
+  LaneStrided/LaneBlocked vector reductions becoming Ordered, InterleavedPair or
+  RoundedSegments). `OrdinaryCudaProjection::independent_operation` now derives
+  and requires the same reduction independently from every original source call;
+  `enqueue_independent_rows` widens only the physical GEMM rows. Ragged prefill
+  reuses the same primitive. No model, session, root or scheduler identity was
+  added to the GEMM contract.
+- [x] Retained reusable exact row primitives rather than special-casing Qwen.
+  B2/B4/B8 inner-major LaneStrided now supports both exact 16x256 and 16x512
+  reduction families, using the existing generic row-major->inner-major BF16 row
+  transport. Added exact B2/B4/B8 LaneBlocked<32,32> shared-weight kernels that
+  preserve each row's original contiguous 32-term accumulation and warp
+  reduction tree. The cohort's hidden-width staging lease is now named generic
+  `row_scratch`; the final head and any compatible independent projection reuse
+  it serially. Cold CUDA preparation covers the retained families so partial
+  cohorts do not pay first-use compilation.
+- [x] Physical RTX 3060 qualification proves widened physical execution preserves
+  B1 arithmetic byte-for-byte for rows 2/4/8 across LaneStrided<16,512>,
+  LaneStrided<16,256>, LaneBlocked<32,32> and RoundedSegments<1216>, with clean
+  status. A separate physical qualifier proves row-major versus packed
+  inner-major LaneStrided parity for rows 2/4/8 and terms 256/512. These are
+  source/model-neutral CUDA primitive tests, not serving-token proxies.
+- [x] Public serving integration agrees with the exact contract. On Qwen3.5-2B
+  prompts 47..54 with 16 outputs, exact B8 matched the native_rows=0 sequential
+  8x16 token trajectory (ID 264 throughout). The first exact implementation was
+  1116.5 ms / 114.6 output tok/s; reusing inner-major 16x512 reached ~755.7 ms /
+  169.4 tok/s; adding exact 16x256 support recovered a stabilized 684.5 ms /
+  187.0 tok/s. The old synthetic-reduction same-binary reference was 674.3 ms /
+  189.8 tok/s, so exact arithmetic recovered nearly all of the previous speed
+  without restoring the numerical bug. Repeated runs showed host/GPU variance
+  (late warmed waves around 693 ms), so no smaller residual is claimed as a
+  stable regression yet.
+- [x] Qwen3.5-.8B cross-width serving also remained consistent: B8 produced the
+  same 8x16 ID-264 trajectory as B4 while improving a warmed sample from about
+  700.8 ms / 182.6 output tok/s to 562.7 ms / 227.5 tok/s. A separate
+  native_rows=0 .8B attempt hit the pre-existing source-call shutdown owner
+  fence before a wave and is not used as numerical evidence; the physical B1
+  byte-parity qualifiers plus B4/B8 integration parity cover this checkpoint.
+  Do not restore synthetic widened-call reduction selection for speed; future
+  decode optimizations must preserve each original call's arithmetic contract.
