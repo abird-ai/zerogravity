@@ -3754,3 +3754,35 @@ build or general model/backend grant. Historical failures keep their source scop
   baseline mean722.432ms (~1.78% lower latency), or180.39 versus177.20 output
   tok/s (~1.80% higher throughput). This is a controlled short-workload result,
   not a general HTTP/context/vLLM performance claim.
+
+### 13 Nov 2026 — grouped B8 recurrent transport primitive retained; serving consumer rejected
+
+- [x] Retained a model-neutral exact B8 recurrent-state transport primitive in
+  the shared CUDA GDN transport layer. One launch transposes eight independently
+  authenticated canonical F32 recurrent roots to/from eight native H/V/K planes
+  using the same exact U32 source-index mapping and nonfinite status bits as the
+  established scalar `StateTransport`. Its ABI is explicit: eight read planes,
+  eight write planes and status (17 bindings, below the existing32-binding CUDA
+  compiler cap). It owns no model/session/root/frontier/publication authority and
+  does not replace canonical roots.
+- [x] Extended the existing physical RTX3060 state-transport qualification to
+  compare grouped B8 import/export against eight scalar production transports
+  and the independent CPU `source_index` oracle. Patterned finite payloads plus a
+  lane6 nonfinite payload preserve exact native bytes, exact round-trip canonical
+  bytes and identical status `0x0c`; cleanup leaves zero resident bytes/events.
+  Production `zerogravity-gpu cuda-cublas` compilation passes.
+- [x] Rejected selecting the grouped transport in ordinary B8 serving. The
+  candidate replaced eight recurrent imports plus eight exports per GDN site
+  with one grouped import plus one grouped export while leaving the accepted B8
+  recurrent core/gated/certification/root semantics unchanged. Public
+  Qwen3.5-2B ragged prompts47..54 with16 outputs, non-LTO/opt1/codegen64, kept
+  every generated ID at264 and every observed native cohort at width8. Signed
+  `775dfa6` baseline-first samples were688.765/692.501/687.755/693.720ms
+  (mean690.685ms); candidate was692.630/689.677/691.798/690.313ms
+  (mean691.105ms); reverse-side baseline was701.500/688.477/690.255/699.197ms
+  (mean694.857ms). The two-sided baseline mean692.771ms versus candidate691.105ms
+  is only ~0.24% lower latency/~0.24% higher throughput, while candidate was
+  slightly slower than the first baseline side. That is noise-level for this
+  workload, so the ordinary consumer was removed. Keep the independently useful
+  primitive; do not retry this same serving selection without a materially
+  different composition or measurement.

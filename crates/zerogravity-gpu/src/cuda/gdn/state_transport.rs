@@ -1,5 +1,5 @@
 //! Exact canonical-root <-> GDN-cache bit transport. No StateRoot/Ready authority.
-use crate::cuda::kernel::PinnedKernel;
+use crate::cuda::kernel::{PinnedKernel, PreparedPinnedLaunch};
 use crate::resident_leases::{ResidentLease, ResidentService};
 use cubecl::server::Handle;
 use cubecl_runtime::kernel::BufferIOAttr;
@@ -7,8 +7,10 @@ use std::sync::Arc;
 use zerogravity_core::{Error, Result};
 
 const STATE_COPY_SOURCE: &str = include_str!("resident/state_copy.cu");
+const RECURRENT_B8_SOURCE: &str = include_str!("resident/state_copy_recurrent_b8.cu");
 pub(crate) const CONV_ELEMENTS: usize = 6144 * 3;
 pub(crate) const RECURRENT_ELEMENTS: usize = 16 * 128 * 128;
+const RECURRENT_B8_ROWS: usize = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum StateCopy {
@@ -78,6 +80,9 @@ pub(crate) struct StateTransport {
     kernel: PinnedKernel,
     grid: [u32; 3],
     handles: Vec<Handle>,
+}
+pub(crate) struct RecurrentB8Transport {
+    launch: PreparedPinnedLaunch,
 }
 
 pub(crate) fn plane_handle(cache: &ResidentLease, offset: usize, bytes: usize) -> Result<Handle> {
@@ -157,6 +162,108 @@ impl StateTransport {
     pub(crate) fn launch(&self, service: &Arc<ResidentService>) -> Result<()> {
         self.kernel
             .launch(service.client(), self.grid, &self.handles)
+    }
+}
+
+impl RecurrentB8Transport {
+    /// One exact recurrent transpose launch across eight independent canonical
+    /// roots. This batches only the physical row selector; each source and
+    /// destination remains a separately authenticated handle.
+    pub(crate) fn prepare(
+        service: &Arc<ResidentService>,
+        kind: StateCopy,
+        sources: &[Handle],
+        destinations: &[Handle],
+        status: &ResidentLease,
+    ) -> Result<Self> {
+        if !matches!(kind, StateCopy::RecurrentIn | StateCopy::RecurrentOut)
+            || sources.len() != RECURRENT_B8_ROWS
+            || destinations.len() != RECURRENT_B8_ROWS
+        {
+            return Err(Error::Unsupported(
+                "recurrent B8 transport requires eight recurrent rows".into(),
+            ));
+        }
+        let client = service.client();
+        let state_bytes = RECURRENT_ELEMENTS
+            .checked_mul(4)
+            .ok_or_else(|| Error::Limit("recurrent B8 transport byte extent".into()))?;
+        let mut ranges = Vec::with_capacity(2 * RECURRENT_B8_ROWS + 1);
+        for (handle, role) in sources
+            .iter()
+            .map(|handle| (handle, "source"))
+            .chain(destinations.iter().map(|handle| (handle, "destination")))
+        {
+            if handle.service != client.service_id() || handle.size_in_used() != state_bytes as u64
+            {
+                return Err(Error::State(format!(
+                    "recurrent B8 transport {role} service/extent differs"
+                )));
+            }
+            let range = crate::resident_program::BufferRange::new(handle)?;
+            if ranges
+                .iter()
+                .any(|prior: &crate::resident_program::BufferRange| range.overlaps(prior))
+            {
+                return Err(Error::State(
+                    "recurrent B8 transport independent planes alias".into(),
+                ));
+            }
+            ranges.push(range);
+        }
+        let status_handle = status.handle();
+        if status_handle.service != client.service_id() || status_handle.size_in_used() != 4 {
+            return Err(Error::State(
+                "recurrent B8 transport status service/extent differs".into(),
+            ));
+        }
+        let status_range = crate::resident_program::BufferRange::new(&status_handle)?;
+        if ranges.iter().any(|range| status_range.overlaps(range)) {
+            return Err(Error::State(
+                "recurrent B8 transport status aliases state".into(),
+            ));
+        }
+
+        let entry = match kind {
+            StateCopy::RecurrentIn => "zg_vllm_root_h_in_b8",
+            StateCopy::RecurrentOut => "zg_vllm_root_h_out_b8",
+            _ => unreachable!(),
+        };
+        let source: Arc<str> = format!(
+            "{}
+#define ZG_ENTRY {}
+#define ZG_COPY {}
+#define ZG_ELEMENTS {}u
+{}",
+            "// cubecl.cuda.dynamic_shared_bytes=0",
+            entry,
+            kind.tag(),
+            RECURRENT_ELEMENTS,
+            RECURRENT_B8_SOURCE,
+        )
+        .into();
+        let mut bindings = Vec::with_capacity(17);
+        bindings.extend((0..RECURRENT_B8_ROWS).map(|_| (state_bytes, BufferIOAttr::ReadOnly)));
+        bindings.extend((0..RECURRENT_B8_ROWS).map(|_| (state_bytes, BufferIOAttr::WriteOnly)));
+        bindings.push((4, BufferIOAttr::ReadWrite));
+        let kernel = PinnedKernel::new(entry, source, 128, bindings.into())?;
+        let mut handles = Vec::with_capacity(17);
+        handles.extend(sources.iter().cloned());
+        handles.extend(destinations.iter().cloned());
+        handles.push(status_handle);
+        let grid = [
+            (RECURRENT_ELEMENTS as u32).div_ceil(128),
+            RECURRENT_B8_ROWS as u32,
+            1,
+        ];
+        Ok(Self {
+            launch: kernel.prepare(client, grid, handles)?,
+        })
+    }
+
+    pub(crate) fn launch(&self, service: &Arc<ResidentService>) -> Result<usize> {
+        self.launch.launch_on(service.client())?;
+        Ok(1)
     }
 }
 
@@ -350,6 +457,164 @@ pub(crate) async fn qualify_roundtrip_on_nvidia(device: cubecl::Device) -> Resul
         ));
     }
 
+    // B8 recurrent batching must remain exact against both eight independent
+    // production transports and the CPU source-index oracle. Include a
+    // nonfinite payload so import/export status bits are compared too.
+    let recurrent_b8_words = (0..RECURRENT_B8_ROWS)
+        .map(|lane| {
+            let mut words = (0..RECURRENT_ELEMENTS)
+                .map(|index| {
+                    let base = PATTERNS[(index * 23 + lane * 11 + 5) % PATTERNS.len()];
+                    base | u32::try_from((index + lane * 17) % 251).unwrap()
+                })
+                .collect::<Vec<_>>();
+            if lane == 6 {
+                words[17] = 0x7f80_0042;
+            }
+            words
+        })
+        .collect::<Vec<_>>();
+    let (
+        recurrent_b8_prior,
+        scalar_native,
+        grouped_native,
+        scalar_out,
+        grouped_out,
+        scalar_status,
+        grouped_status,
+    ) = {
+        let mut init = service.begin_initialization(0)?;
+        let mut prior = Vec::with_capacity(RECURRENT_B8_ROWS);
+        let mut scalar_native = Vec::with_capacity(RECURRENT_B8_ROWS);
+        let mut grouped_native = Vec::with_capacity(RECURRENT_B8_ROWS);
+        let mut scalar_out = Vec::with_capacity(RECURRENT_B8_ROWS);
+        let mut grouped_out = Vec::with_capacity(RECURRENT_B8_ROWS);
+        for words in &recurrent_b8_words {
+            prior.push(init.upload_bytes(&f32_bytes(words), BufferRole::RecurrentState)?);
+            scalar_native.push(init.allocate_empty(RECURRENT_ELEMENTS * 4, BufferRole::Scratch)?);
+            grouped_native.push(init.allocate_empty(RECURRENT_ELEMENTS * 4, BufferRole::Scratch)?);
+            scalar_out
+                .push(init.allocate_empty(RECURRENT_ELEMENTS * 4, BufferRole::RecurrentState)?);
+            grouped_out
+                .push(init.allocate_empty(RECURRENT_ELEMENTS * 4, BufferRole::RecurrentState)?);
+        }
+        let scalar_status = init.upload_zeroed(4, BufferRole::Scratch)?;
+        let grouped_status = init.upload_zeroed(4, BufferRole::Scratch)?;
+        drop(init.complete_sync().await?);
+        (
+            prior,
+            scalar_native,
+            grouped_native,
+            scalar_out,
+            grouped_out,
+            scalar_status,
+            grouped_status,
+        )
+    };
+
+    for lane in 0..RECURRENT_B8_ROWS {
+        StateTransport::prepare(
+            &service,
+            StateCopy::RecurrentIn,
+            recurrent_b8_prior[lane].handle(),
+            scalar_native[lane].handle(),
+            &scalar_status,
+        )?
+        .launch(&service)?;
+    }
+    let grouped_prior = recurrent_b8_prior
+        .iter()
+        .map(ResidentLease::handle)
+        .collect::<Vec<_>>();
+    let grouped_native_handles = grouped_native
+        .iter()
+        .map(ResidentLease::handle)
+        .collect::<Vec<_>>();
+    RecurrentB8Transport::prepare(
+        &service,
+        StateCopy::RecurrentIn,
+        &grouped_prior,
+        &grouped_native_handles,
+        &grouped_status,
+    )?
+    .launch(&service)?;
+
+    for lane in 0..RECURRENT_B8_ROWS {
+        StateTransport::prepare(
+            &service,
+            StateCopy::RecurrentOut,
+            scalar_native[lane].handle(),
+            scalar_out[lane].handle(),
+            &scalar_status,
+        )?
+        .launch(&service)?;
+    }
+    let grouped_out_handles = grouped_out
+        .iter()
+        .map(ResidentLease::handle)
+        .collect::<Vec<_>>();
+    RecurrentB8Transport::prepare(
+        &service,
+        StateCopy::RecurrentOut,
+        &grouped_native_handles,
+        &grouped_out_handles,
+        &grouped_status,
+    )?
+    .launch(&service)?;
+
+    client
+        .sync()
+        .await
+        .map_err(|error| Error::State(format!("recurrent B8 transport sync: {error}")))?;
+    let scalar_flags = status_word(
+        &client
+            .read_one(scalar_status.handle())
+            .map_err(|error| Error::State(format!("scalar recurrent B8 status: {error}")))?,
+    )?;
+    let grouped_flags = status_word(
+        &client
+            .read_one(grouped_status.handle())
+            .map_err(|error| Error::State(format!("grouped recurrent B8 status: {error}")))?,
+    )?;
+    if scalar_flags != 0x0c || grouped_flags != scalar_flags {
+        return Err(Error::State(format!(
+            "recurrent B8 transport status differs scalar={scalar_flags:#x} grouped={grouped_flags:#x}"
+        )));
+    }
+
+    for lane in 0..RECURRENT_B8_ROWS {
+        let expected_native = (0..RECURRENT_ELEMENTS)
+            .map(|index| {
+                StateCopy::RecurrentIn
+                    .source_index(index)
+                    .map(|source| recurrent_b8_words[lane][source])
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let scalar_native_actual = client
+            .read_one(scalar_native[lane].handle())
+            .map_err(|error| Error::State(format!("scalar recurrent B8 native: {error}")))?;
+        let grouped_native_actual = client
+            .read_one(grouped_native[lane].handle())
+            .map_err(|error| Error::State(format!("grouped recurrent B8 native: {error}")))?;
+        let scalar_out_actual = client
+            .read_one(scalar_out[lane].handle())
+            .map_err(|error| Error::State(format!("scalar recurrent B8 output: {error}")))?;
+        let grouped_out_actual = client
+            .read_one(grouped_out[lane].handle())
+            .map_err(|error| Error::State(format!("grouped recurrent B8 output: {error}")))?;
+        let expected_native = f32_bytes(&expected_native);
+        let expected_out = f32_bytes(&recurrent_b8_words[lane]);
+        if &scalar_native_actual[..] != expected_native.as_slice()
+            || grouped_native_actual != scalar_native_actual
+            || &scalar_out_actual[..] != expected_out.as_slice()
+            || grouped_out_actual != scalar_out_actual
+        {
+            return Err(Error::State(format!(
+                "recurrent B8 grouped/scalar/oracle bytes differ lane={lane}"
+            )));
+        }
+    }
+
     drop((
         conv_in,
         conv_native,
@@ -361,6 +626,13 @@ pub(crate) async fn qualify_roundtrip_on_nvidia(device: cubecl::Device) -> Resul
         bad_in,
         bad_native,
         bad_status,
+        recurrent_b8_prior,
+        scalar_native,
+        grouped_native,
+        scalar_out,
+        grouped_out,
+        scalar_status,
+        grouped_status,
     ));
     client
         .memory_cleanup()
