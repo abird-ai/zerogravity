@@ -1,13 +1,14 @@
 //! Private native-cohort activation arena using the ordinary plan's liveness slots.
 use super::layout::{self, OrdinaryCudaLayout};
 use crate::{
+    cuda::gdn::RECURRENT_STATE_BYTES,
     resident_leases::{ResidentInitialization, ResidentLease},
     resident_program::cohort_rows::CohortRowSpans,
 };
 use std::sync::Arc;
 use zerogravity_core::{
     Error, Result,
-    accelerator::program::{ValueId, ValueStorageBinding},
+    accelerator::program::{StateSlot, ValueId, ValueStorageBinding},
     device_events::{BufferRole, DeviceAccess},
 };
 
@@ -21,9 +22,30 @@ pub(crate) struct OrdinaryCudaCohortValues {
     // Generic hidden-width BF16 staging for cohort row transforms. The head
     // projection and any compatible independent projection share it serially.
     row_scratch: ResidentLease,
+    // Optional width-8 native recurrent scratch. Canonical session state remains
+    // authoritative; this only supplies four additional private physical rows
+    // so a qualified B8 GDN core can execute between exact import/export edges.
+    gdn_private_recurrent: Option<ResidentLease>,
+    gdn_private_indices: Option<ResidentLease>,
 }
 
 impl OrdinaryCudaCohortValues {
+    fn gdn_private_bytes(layout: &OrdinaryCudaLayout, width: usize) -> Result<usize> {
+        let recurrent = width == 8
+            && layout.groups().direct()
+            && layout.states().iter().any(|state| {
+                matches!(state.slot, StateSlot::Recurrent(_))
+                    && state.bytes == RECURRENT_STATE_BYTES
+            });
+        if !recurrent {
+            return Ok(0);
+        }
+        RECURRENT_STATE_BYTES
+            .checked_mul(4)
+            .and_then(|bytes| bytes.checked_add(width * 4))
+            .ok_or_else(|| Error::Limit("ordinary CUDA private GDN cohort scratch".into()))
+    }
+
     pub(super) fn required_bytes(layout: &OrdinaryCudaLayout, width: usize) -> Result<usize> {
         if width == 0 {
             return Ok(0);
@@ -58,8 +80,10 @@ impl OrdinaryCudaCohortValues {
                     .and_then(|row_scratch| tokens.checked_add(row_scratch))
             })
             .ok_or_else(|| Error::Limit("ordinary CUDA cohort control bytes".into()))?;
+        let private_bytes = Self::gdn_private_bytes(layout, width)?;
         value_bytes
             .checked_add(control_bytes)
+            .and_then(|bytes| bytes.checked_add(private_bytes))
             .filter(|&total| total <= 64 * 1024 * 1024)
             .ok_or_else(|| Error::Limit("ordinary CUDA cohort activation/control total".into()))
     }
@@ -93,6 +117,17 @@ impl OrdinaryCudaCohortValues {
             layout.geometry().hidden_width * width * 2,
             BufferRole::Activation,
         )?;
+        let private_bytes = Self::gdn_private_bytes(layout, width)?;
+        let (gdn_private_recurrent, gdn_private_indices) = if private_bytes == 0 {
+            (None, None)
+        } else {
+            let recurrent = init.allocate_empty(RECURRENT_STATE_BYTES * 4, BufferRole::Scratch)?;
+            let indices = init.upload_bytes(
+                &(1i32..=8).flat_map(i32::to_ne_bytes).collect::<Vec<_>>(),
+                BufferRole::Scratch,
+            )?;
+            (Some(recurrent), Some(indices))
+        };
         let actual = slots
             .iter()
             .try_fold(0usize, |sum, lease| {
@@ -101,6 +136,20 @@ impl OrdinaryCudaCohortValues {
             })?
             .checked_add(token_ids.bytes())
             .and_then(|sum| sum.checked_add(row_scratch.bytes()))
+            .and_then(|sum| {
+                sum.checked_add(
+                    gdn_private_recurrent
+                        .as_ref()
+                        .map_or(0, |lease| lease.bytes()),
+                )
+            })
+            .and_then(|sum| {
+                sum.checked_add(
+                    gdn_private_indices
+                        .as_ref()
+                        .map_or(0, |lease| lease.bytes()),
+                )
+            })
             .ok_or_else(|| {
                 Error::Limit("ordinary CUDA cohort activation/control byte sum".into())
             })?;
@@ -116,6 +165,18 @@ impl OrdinaryCudaCohortValues {
             .collect::<Vec<_>>();
         accesses.push((token_ids.clone(), DeviceAccess::Write));
         accesses.push((row_scratch.clone(), DeviceAccess::Write));
+        accesses.extend(
+            gdn_private_recurrent
+                .iter()
+                .cloned()
+                .map(|lease| (lease, DeviceAccess::Write)),
+        );
+        accesses.extend(
+            gdn_private_indices
+                .iter()
+                .cloned()
+                .map(|lease| (lease, DeviceAccess::Read)),
+        );
         Ok((
             Arc::new(Self {
                 width,
@@ -123,6 +184,8 @@ impl OrdinaryCudaCohortValues {
                 bindings: layout.value_bindings().to_vec().into(),
                 token_ids,
                 row_scratch,
+                gdn_private_recurrent,
+                gdn_private_indices,
             }),
             accesses,
         ))
@@ -137,6 +200,8 @@ impl OrdinaryCudaCohortValues {
             .iter()
             .chain(std::iter::once(&self.token_ids))
             .chain(std::iter::once(&self.row_scratch))
+            .chain(self.gdn_private_recurrent.iter())
+            .chain(self.gdn_private_indices.iter())
     }
 
     pub(super) fn token_handle(&self, lane: usize, rows: usize) -> Result<cubecl::server::Handle> {
@@ -181,6 +246,35 @@ impl OrdinaryCudaCohortValues {
 
     pub(crate) fn row_scratch(&self) -> &ResidentLease {
         &self.row_scratch
+    }
+
+    pub(crate) fn gdn_private_recurrent_handle(
+        &self,
+        lane: usize,
+    ) -> Result<cubecl::server::Handle> {
+        if self.width != 8 || !(4..8).contains(&lane) {
+            return Err(Error::State(
+                "ordinary CUDA private GDN recurrent lane".into(),
+            ));
+        }
+        let scratch = self.gdn_private_recurrent.as_ref().ok_or_else(|| {
+            Error::State("ordinary CUDA private GDN recurrent scratch absent".into())
+        })?;
+        let offset = (lane - 4)
+            .checked_mul(RECURRENT_STATE_BYTES)
+            .ok_or_else(|| Error::Limit("ordinary CUDA private GDN recurrent offset".into()))?;
+        super::exact_view(
+            scratch,
+            offset,
+            RECURRENT_STATE_BYTES,
+            "ordinary CUDA private GDN recurrent row",
+        )
+    }
+
+    pub(crate) fn gdn_private_indices(&self) -> Result<&ResidentLease> {
+        self.gdn_private_indices
+            .as_ref()
+            .ok_or_else(|| Error::State("ordinary CUDA private GDN B8 indices absent".into()))
     }
 
     pub(crate) fn lease(&self, value: ValueId) -> Result<&ResidentLease> {

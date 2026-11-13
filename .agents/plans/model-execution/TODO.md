@@ -3678,3 +3678,41 @@ build or general model/backend grant. Historical failures keep their source scop
   temporary qualification path; prove greedy/max-logit bits plus all42 state
   domains against private singleton execution; then and only then consider
   `unequal_prefill` scheduler/serving admission and measure end-to-end value.
+
+### 13 Nov 2026 — canonical-boundary private B8 GDN recurrent core accepted
+
+- [x] Selected the already-qualified private cached-GDN B8 recurrent core without
+  selecting persistent/derived native session state. Canonical F32 recurrent roots
+  remain the only checkpoint/rollback/publication authority: all eight lanes still
+  import through the exact `StateTransport::RecurrentIn` mapping before the core
+  and export through `RecurrentOut` into the ordinary candidate roots before
+  Ready/publication. The existing four retained cache slots serve lanes0..3; the
+  width-8 cohort arena conditionally admits four additional native recurrent rows
+  plus the eight-word private control table only for a direct GDN plan with the
+  exact recurrent-state extent. No source/model/session/root/frontier policy enters
+  the reusable private primitive, and B4/B2/B1 paths are unchanged.
+- [x] B8 decode now executes one retained `CachedDecodePrivateBatch::prepare(8)`
+  recurrent core in place across those eight temporary native rows instead of two
+  B4 recurrent cores. Gated output deliberately remains the accepted two B4
+  launches; canonical state transport remains eight imports + eight exports. The
+  complete B8 output is certified once after both gated groups. This is therefore
+  materially different from the rejected persistent-derived-state consumer: it
+  removes no canonical boundary and retains no native state across tokens.
+- [x] Real-model public-runtime feedback used the existing cached
+  Qwen3.5-2B snapshot `88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52`,
+  B8,47-token prompt,16 outputs, non-LTO/opt1/codegen64 on the l5 RTX3060. Every
+  lane produced the same sixteen ID-264 continuation in candidate, signed
+  `2f651b7` baseline and reverse-side candidate runs. Warmed candidate samples
+  were729.452/723.807ms then702.714/709.535ms after the baseline; baseline was
+  759.614/730.590ms. Candidate mean716.377ms versus baseline745.102ms (~3.86%
+  lower latency), equivalent to ~178.68 versus171.79 output tok/s (~4.01%
+  higher throughput). Treat the magnitude as this controlled short workload, not
+  a general performance claim.
+- [x] Checkpoint hygiene: production `zerogravity-gpu cuda-cublas` compilation
+  passed before measurement; the exact candidate also built successfully through
+  the public `zerogravity qwen35-cuda` runner used for the A/B. Formatting and
+  diff checks are clean. A broader cold rebuild was intentionally not turned into
+  a new qualification campaign at this checkpoint. The temporary `_tmp` runner,
+  its patch copy and generated runner artifacts were removed. B16 remains rejected,
+  unequal-frontier prefill remains held, and the retained generic derived-state
+  cache remains unselected by this path.
