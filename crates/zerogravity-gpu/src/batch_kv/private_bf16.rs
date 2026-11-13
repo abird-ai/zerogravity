@@ -11,6 +11,8 @@ const PRIVATE_B4_ROWS: usize = 4;
 const PRIVATE_B8_ROWS: usize = 8;
 #[cfg(feature = "cuda-cublas")]
 const PRIVATE_THREADS: u32 = 32;
+#[cfg(feature = "cuda-cublas")]
+const PRIVATE_B8_THREADS: u32 = 256;
 
 /// Model-free packed-BF16 transition for independent private KV roots.
 ///
@@ -305,11 +307,12 @@ impl<const ROWS: usize> PreparedBf16PrivateKv<ROWS> {
                     .checked_mul(self.words.state)
                     .ok_or_else(|| Error::Limit("packed BF16 private KV B8 plane words".into()))?;
                 let plane_grid =
-                    CubeCount::Static((plane_total as u32).div_ceil(PRIVATE_THREADS), 1, 1);
+                    CubeCount::Static((plane_total as u32).div_ceil(PRIVATE_B8_THREADS), 1, 1);
+                let plane_threads = CubeDim::new_1d(PRIVATE_B8_THREADS);
                 append_private_b8_plane_bf16::launch_unchecked(
                     client,
                     plane_grid.clone(),
-                    threads,
+                    plane_threads,
                     arg(&self.prior_key[0], self.words.state),
                     arg(&self.prior_key[1], self.words.state),
                     arg(&self.prior_key[2], self.words.state),
@@ -345,7 +348,7 @@ impl<const ROWS: usize> PreparedBf16PrivateKv<ROWS> {
                 append_private_b8_plane_bf16::launch_unchecked(
                     client,
                     plane_grid,
-                    threads,
+                    plane_threads,
                     arg(&self.prior_value[0], self.words.state),
                     arg(&self.prior_value[1], self.words.state),
                     arg(&self.prior_value[2], self.words.state),

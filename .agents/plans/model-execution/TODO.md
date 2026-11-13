@@ -3945,3 +3945,31 @@ build or general model/backend grant. Historical failures keep their source scop
   The temporary selector and serving integration were removed. Keep the exact
   primitive for another graph where certification can amortize differently; do
   not select this same ordinary consumer without materially different evidence.
+
+### 14 Nov 2026 — B8 private-KV CTA256 accepted
+
+- [x] Revisited the remaining state-boundary cost without weakening canonical
+  roots. Direct canonical-state execution inside the retained private recurrent
+  core was not implemented: its frozen PTX gets its memory behavior from
+  contiguous native H/V/K vector loads/stores, while canonical H/K/V transposes
+  the final 128x128 axes and would turn those accesses into gathers/scatters.
+  Likewise, pooled candidate-root backing is intentionally checked out as fresh
+  uninitialized logical storage and retains no prior RootBinding/frontier
+  provenance, so incremental KV patching would require a new state-cache
+  authority rather than a local kernel optimization.
+- [x] Tuned only the physical CTA width of the already-accepted model-neutral B8
+  packed-BF16 private KV plane kernel. Every thread still owns exactly one U32
+  (two BF16 values) with the same prefix-copy/current-append/future-zero branch,
+  input addressing, nonfinite check and candidate write. B4 remains at32
+  threads; B8 now uses256 threads, reducing block count8x without changing the
+  two-plane ABI, binding cap, root semantics or arithmetic.
+- [x] Physical RTX3060 qualification passed unchanged at B8 widths32/64/128/256
+  across the complete guarded matrix: ragged bases [0,1,7,17,31,63,95,127],
+  injected +inf/status2, tokens8/base31 and base511/capacity1024 all remained
+  bit/guard/status exact. Same-binary/one-model forward/reverse serving sweeps on
+  public Qwen3.5-2B ragged prompts47..54 with16 outputs preserved every ID264
+  and native width8. Four measured samples per width averaged:32=687.760ms,
+  64=678.130ms,128=678.374ms and256=675.905ms. CTA256 was also the most stable
+  (675.148--676.997ms), about1.72% lower latency /1.75% higher throughput than
+  CTA32. Retain CTA256 as the generic B8 private-KV geometry; no model selector
+  or new primitive was added.
