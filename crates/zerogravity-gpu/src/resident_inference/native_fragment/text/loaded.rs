@@ -342,11 +342,7 @@ impl TextLoaded {
             },
         )
         .await?;
-        let original = ResidentSession {
-            model: self.model.clone(),
-            authority,
-            domains,
-        };
+        let original = ResidentSession::new(self.model.clone(), authority, domains);
         request_not_cancelled(cancelled)?;
         Ok(TextSession {
             original,

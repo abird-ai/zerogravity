@@ -196,7 +196,11 @@ impl ResidentModel {
             })
             .collect::<Result<Vec<_>>>()?;
         let prompt_rows = calls[0].rows().len();
-        let frontier = bases[0].frontier();
+        let frontier = roots.frontier().ok_or_else(|| {
+            Error::Unsupported(
+                "ordinary source prefill cohort requires aligned compatible chunk roots".into(),
+            )
+        })?;
         if !(1..=64).contains(&prompt_rows)
             || calls.iter().zip(&bases).any(|(call, base)| {
                 call.mode() != SourceCallMode::Prefill
@@ -212,6 +216,13 @@ impl ResidentModel {
                 "ordinary source prefill cohort requires aligned compatible chunk roots".into(),
             ));
         }
+        let lane_bases = roots
+            .frontiers()
+            .map(|frontier| {
+                usize::try_from(frontier)
+                    .map_err(|_| Error::Limit("ordinary source prefill cohort frontier".into()))
+            })
+            .collect::<Result<Vec<_>>>()?;
 
         let mut attempts = Vec::with_capacity(width);
         for (session, call) in sessions.iter().zip(&calls) {
@@ -266,9 +277,8 @@ impl ResidentModel {
         let bindings = sessions
             .iter()
             .zip(&candidates)
-            .map(|(session, candidate)| {
-                bind_domains(&session.domains, candidate, frontier as usize)
-            })
+            .zip(&lane_bases)
+            .map(|((session, candidate), &base)| bind_domains(&session.domains, candidate, base))
             .collect::<Result<Vec<_>>>()?;
         let logits = emit_logits
             .then(|| {

@@ -872,12 +872,7 @@ impl ResidentModel {
     {
         let authority = SessionAuthority::new(self.service.source_identity())?;
         let domains = self.allocate_state_with(true, retain).await?;
-        Ok(ResidentSession {
-            model: self.clone(),
-            authority,
-            domains,
-            derived: DerivedStateCache::default(),
-        })
+        Ok(ResidentSession::new(self.clone(), authority, domains))
     }
     /// Prepare a set of SAME-source, SAME-frontier sessions. One immutable
     /// original ForwardPlan, weight owner and queue are reused; private
@@ -2239,6 +2234,15 @@ impl ResidentSnapshot {
 }
 
 impl ResidentSession {
+    fn new(model: Arc<ResidentModel>, authority: SessionAuthority, domains: Vec<Domain>) -> Self {
+        Self {
+            model,
+            authority,
+            domains,
+            derived: DerivedStateCache::default(),
+        }
+    }
+
     pub fn binding(&self) -> RootBinding {
         self.authority.binding()
     }

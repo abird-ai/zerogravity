@@ -3647,3 +3647,34 @@ build or general model/backend grant. Historical failures keep their source scop
   alias primitive and the generic derived-state cache, but do not select the
   current private GDN representation for ordinary serving without a materially
   different end-to-end layout/measurement.
+
+### 13 Nov 2026 — prefill root-binding and session-construction hardening checkpoint
+
+- [x] Audited the previously rejected unequal-frontier CUDA prefill extension and
+  found the shared first-lane coupling that must be removed before any future
+  retry: source-call prefill candidate `StateBinding::prior_tokens` was derived
+  from one `bases[0].frontier()` value for every lane. Current production was
+  protected by same-frontier admission, so this is not claimed as a serving
+  numerical fix. The binding path now takes the common-frontier admission from
+  `ResidentBatchRows::frontier()` and derives each lane's state-binding position
+  from `ResidentBatchRows::frontiers()`. The existing fail-closed policy remains
+  intact: Qwen keeps `unequal_prefill: false`, executor compatibility still
+  requires the same prefill base, and ordinary CUDA still rejects mixed-base
+  prefill cohorts. No unequal-frontier serving capability is enabled here.
+- [x] The CUDA qualification build exposed a real cross-feature regression from
+  the newly retained derived-state cache: two direct `ResidentSession` struct
+  literals had not acquired the new `derived` field. Centralized session creation
+  in `ResidentSession::new` and routed the ordinary allocator, BF16 text candidate
+  and native text loader through it, so future resident-session fields cannot be
+  omitted by those construction paths.
+- [x] Checkpoint gates: formatting/diff checks are clean; the default GPU library
+  suite passes 134/134 non-ignored tests (3 ignored); `zerogravity-gpu` compiles
+  its `qualification,cuda-cublas` test surface and `zerogravity` compiles the
+  `qwen35-cuda-qualification` test surface. Exact physical base0/base64 prefill
+  parity is deliberately still pending: l5 does not currently contain the
+  approved HF source tree, and `target/models/qwen35-0.8b` is the GGUF fixture
+  tree that the existing source preflight intentionally rejects. When the held
+  HF source returns, the next phase is: relax the same-frontier guards only in a
+  temporary qualification path; prove greedy/max-logit bits plus all42 state
+  domains against private singleton execution; then and only then consider
+  `unequal_prefill` scheduler/serving admission and measure end-to-end value.

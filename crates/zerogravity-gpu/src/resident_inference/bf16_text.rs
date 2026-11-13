@@ -379,11 +379,7 @@ impl Bf16TextCandidate {
         });
         model.install_window_root_pool(source.clone(), 6)?;
         let domains = model.allocate_state(true).await?;
-        let inner = ResidentSession {
-            model: model.clone(),
-            authority,
-            domains,
-        };
+        let inner = ResidentSession::new(model.clone(), authority, domains);
         let loaded = Arc::new(Self {
             model,
             source,
