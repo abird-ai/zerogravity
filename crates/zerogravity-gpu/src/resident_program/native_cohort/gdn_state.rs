@@ -18,7 +18,10 @@ use zerogravity_artifacts::source_weights::WindowWorkspace;
 use zerogravity_core::accelerator::program::StateEffect;
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 
-const SOURCE: &str = include_str!("../../cuda/gdn/resident/state_copy.cu");
+// Frozen scalar-index equations are an intentionally independent physical
+// oracle for grouped transport. Do not point this at the optimized production
+// StateTransport source: otherwise an implementation bug could certify itself.
+const SOURCE: &str = include_str!("gdn_state_reference.cu");
 const CONV: usize = 6144 * 3;
 const RECURRENT: usize = 16 * 128 * 128;
 const SLOT_BYTES: usize = 278_528 * 4;

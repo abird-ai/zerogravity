@@ -290,14 +290,25 @@ pub(crate) async fn qualify_roundtrip_on_nvidia(device: cubecl::Device) -> Resul
     let conv_actual = client
         .read_one(conv_out.handle())
         .map_err(|error| Error::State(format!("conv state roundtrip readback: {error}")))?;
+    let recurrent_native_actual = client
+        .read_one(recurrent_native.handle())
+        .map_err(|error| Error::State(format!("recurrent native state readback: {error}")))?;
     let recurrent_actual = client
         .read_one(recurrent_out.handle())
         .map_err(|error| Error::State(format!("recurrent state roundtrip readback: {error}")))?;
+    let recurrent_native_expected = (0..RECURRENT_ELEMENTS)
+        .map(|index| {
+            StateCopy::RecurrentIn
+                .source_index(index)
+                .map(|source| recurrent_words[source])
+        })
+        .collect::<Result<Vec<_>>>()?;
     if &conv_actual[..] != f32_bytes(&conv_words).as_slice()
+        || &recurrent_native_actual[..] != f32_bytes(&recurrent_native_expected).as_slice()
         || &recurrent_actual[..] != f32_bytes(&recurrent_words).as_slice()
     {
         return Err(Error::State(
-            "canonical GDN state transport roundtrip bytes differ".into(),
+            "canonical/native GDN state transport bytes differ".into(),
         ));
     }
 

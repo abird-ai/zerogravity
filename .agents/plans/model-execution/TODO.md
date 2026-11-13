@@ -3536,3 +3536,33 @@ build or general model/backend grant. Historical failures keep their source scop
   no stable gain. All candidate kernel/timing code was removed. Keep the
   accepted generic inner-major primitive; further work should target another
   measured decode region rather than add shape-specific selector complexity.
+- [x] Profiled the remaining warm CUDA2B B8 decode by shared ordinary-CUDA
+  operator family after removing projection time. Across the18 GDN layers / two
+  private B4 groups, GDN recurrent was the largest remaining region at about
+  6.17ms/token, followed by KV append ~2.85ms, GDN convolution ~1.86ms,
+  QK/RMS/rotary ~1.60ms and flash attention ~1.32ms. A second temporary probe
+  split the GDN recurrent region into decode core ~2.93ms, recurrent export
+  ~2.33ms, recurrent import ~1.96ms, gated output ~0.66ms and certification
+  ~0.61ms. Both probes were removed; generated IDs stayed exact.
+- [x] Evaluated a model-neutral padded-shared-memory32x32 U32 transpose for
+  `StateTransport::{RecurrentIn,RecurrentOut}`. The candidate preserved the
+  canonical/native bit mapping and status exactly and improved isolated warm B8
+  recurrent import/export by roughly13%/12% (~0.55ms total per decode), but it
+  did not survive sustained public-serving qualification. Equal-temperature
+  short runs were noisy; the longer12-wave controlled run made the rejection
+  clear: accepted naive transport reached178.149 mean /179.772 median /179.207
+  trimmed tok/s, while tiled transport reached170.336 /176.044 /173.483 with
+  deeper late-run stalls. All production tiled-kernel/grid and benchmark code
+  was removed. Keep the existing exact transport implementation; do not trade
+  isolated copy timing for worse end-to-end serving stability.
+- [x] Strengthened reusable transport qualification while rejecting the tiled
+  consumer. The physical `StateTransport` qualifier now compares the imported
+  recurrent native plane directly against the CPU `source_index` oracle before
+  also checking the canonical round trip, so two identical wrong involutions
+  cannot cancel. Native grouped-transport qualification now retains a frozen
+  scalar-index per-row CUDA oracle separate from the production transport
+  source, preventing a future optimized implementation from becoming its own
+  physical reference. The strengthened ordinary NVIDIA qualifier passes. The
+  broader grouped release qualifier remains independently blocked on l5 by its
+  existing `CUDA_ERROR_UNSUPPORTED_PTX_VERSION` native-SDK mismatch; no grouped
+  numerical/performance claim is inferred from that environment failure.
