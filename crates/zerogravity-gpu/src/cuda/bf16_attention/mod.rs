@@ -230,6 +230,133 @@ impl Bf16CausalAttentionBatch4 {
     }
 }
 
+pub(crate) struct Bf16CausalAttentionBatch8 {
+    kernel: PinnedKernel,
+    grid: [u32; 3],
+}
+impl Bf16CausalAttentionBatch8 {
+    pub(crate) fn new(
+        base: usize,
+        capacity: usize,
+        query_heads: usize,
+        kv_heads: usize,
+        width: usize,
+        scale: f32,
+    ) -> Result<Self> {
+        Self::new_ragged([base; 8], capacity, query_heads, kv_heads, width, scale)
+    }
+
+    /// Eight private cached-decode rows with independent causal frontiers.
+    /// This primitive owns only physical geometry and private buffer bindings;
+    /// session/root admission and model policy remain upstream.
+    pub(crate) fn new_ragged(
+        bases: [usize; 8],
+        capacity: usize,
+        query_heads: usize,
+        kv_heads: usize,
+        width: usize,
+        scale: f32,
+    ) -> Result<Self> {
+        if kv_heads == 0
+            || query_heads == 0
+            || !query_heads.is_multiple_of(kv_heads)
+            || width != 256
+            || !scale.is_finite()
+            || scale <= 0.0
+            || bases.iter().any(|&base| base >= capacity)
+        {
+            return Err(Error::Unsupported(
+                "BF16 CUDA attention batch8 geometry/scale".into(),
+            ));
+        }
+        let scale_log2 = scale * std::f32::consts::LOG2_E;
+        if !scale_log2.is_finite() || scale_log2 == 0.0 {
+            return Err(Error::Unsupported(
+                "BF16 CUDA attention batch8 scale overflow/underflow".into(),
+            ));
+        }
+        let row_bytes = query_heads
+            .checked_mul(width * 2)
+            .ok_or_else(|| Error::Limit("BF16 attention batch8 row extent".into()))?;
+        let q_bytes = row_bytes
+            .checked_mul(8)
+            .ok_or_else(|| Error::Limit("BF16 attention batch8 query extent".into()))?;
+        let kv_bytes = capacity
+            .checked_mul(kv_heads)
+            .and_then(|n| n.checked_mul(width * 2))
+            .filter(|n| *n <= isize::MAX as usize)
+            .ok_or_else(|| Error::Limit("BF16 attention batch8 KV extent".into()))?;
+        let query_heads_u32 = u32::try_from(query_heads)
+            .map_err(|_| Error::Limit("BF16 attention batch8 head grid".into()))?;
+        if query_heads_u32 > 65_535 {
+            return Err(Error::Limit("BF16 attention batch8 head grid".into()));
+        }
+        let schema = StaticScalarSchema::new(
+            &[
+                (StaticScalarType::U64, 0),
+                (StaticScalarType::U64, 8),
+                (StaticScalarType::U64, 16),
+                (StaticScalarType::U64, 24),
+                (StaticScalarType::U64, 32),
+                (StaticScalarType::U64, 40),
+                (StaticScalarType::U64, 48),
+                (StaticScalarType::U64, 56),
+                (StaticScalarType::U64, 64),
+                (StaticScalarType::U64, 72),
+                (StaticScalarType::U64, 80),
+                (StaticScalarType::F32Bits, 88),
+            ],
+            96,
+            8,
+        )?;
+        let scalars = StaticScalarBlock::new(
+            schema,
+            &[
+                StaticScalarValue::U64(capacity as u64),
+                StaticScalarValue::U64(query_heads as u64),
+                StaticScalarValue::U64(kv_heads as u64),
+                StaticScalarValue::U64(bases[0] as u64),
+                StaticScalarValue::U64(bases[1] as u64),
+                StaticScalarValue::U64(bases[2] as u64),
+                StaticScalarValue::U64(bases[3] as u64),
+                StaticScalarValue::U64(bases[4] as u64),
+                StaticScalarValue::U64(bases[5] as u64),
+                StaticScalarValue::U64(bases[6] as u64),
+                StaticScalarValue::U64(bases[7] as u64),
+                StaticScalarValue::F32Bits(scale_log2.to_bits()),
+            ],
+        )?;
+        let mut bindings = Vec::with_capacity(19);
+        bindings.push((q_bytes, BufferIOAttr::ReadOnly));
+        bindings.extend(std::iter::repeat_n((kv_bytes, BufferIOAttr::ReadOnly), 16));
+        bindings.push((q_bytes, BufferIOAttr::WriteOnly));
+        bindings.push((4, BufferIOAttr::ReadWrite));
+        Ok(Self {
+            kernel: PinnedKernel::new_with_static_scalars(
+                "bf16_causal_attention_batch8",
+                SOURCE.into(),
+                128,
+                bindings.into(),
+                scalars,
+            )?,
+            grid: [1, query_heads_u32, 8],
+        })
+    }
+
+    pub(crate) fn prepare_code(&self, queue: &cubecl::cuda::OwnedCudaQueue) -> Result<()> {
+        self.kernel.prepare_code(queue)
+    }
+
+    pub(crate) fn prepare(
+        &self,
+        client: &Client,
+        handles: [Handle; 19],
+    ) -> Result<PreparedPinnedLaunch> {
+        require_disjoint_writes(&handles, &[17, 18])?;
+        self.kernel.prepare(client, self.grid, handles.into())
+    }
+}
+
 fn require_disjoint_writes<const N: usize>(handles: &[Handle; N], writes: &[usize]) -> Result<()> {
     let ranges = handles
         .iter()

@@ -47,7 +47,10 @@ impl fmt::Debug for SourceKey {
     }
 }
 
-const MAX_STATIC_SCALARS: usize = 8;
+// Fixed inline launch metadata. Keep enough room for wider/ragged batch
+// geometry without forcing otherwise-static shape data into device buffers.
+// The encoded byte size remains bounded by the u8 ABI field below.
+const MAX_STATIC_SCALARS: usize = 16;
 const STATIC_SCALAR_ALIGNMENT: usize = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -816,7 +819,7 @@ mod tests {
         assert!(
             StaticScalarSchema::new(
                 &[(StaticScalarType::U64, 0); MAX_STATIC_SCALARS + 1],
-                usize::MAX,
+                (MAX_STATIC_SCALARS + 1) * STATIC_SCALAR_ALIGNMENT,
                 8,
             )
             .is_err()

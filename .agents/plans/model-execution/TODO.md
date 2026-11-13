@@ -3566,3 +3566,14 @@ build or general model/backend grant. Historical failures keep their source scop
   broader grouped release qualifier remains independently blocked on l5 by its
   existing `CUDA_ERROR_UNSUPPORTED_PTX_VERSION` native-SDK mismatch; no grouped
   numerical/performance claim is inferred from that environment failure.
+- [x] Retained the wider ragged private-B8 cached-attention primitive without
+  re-enabling the previously rejected CUDA2B consumer. `Bf16CausalAttentionBatch8`
+  owns only physical geometry and eight private K/V bindings; model/session/root
+  admission remains upstream, matching the retained B4 boundary. Its exact
+  physical oracle compares every lane against an independent accepted B1 launch:
+  bases `[0,1,7,17,31,63,95,127]` passed with zero BF16 mismatches and status=0;
+  the refactored B4 oracle also re-passed bases `[0,17,63,127]` bit-for-bit.
+  Supporting this cleanly widened the shared closed CUDA static-scalar packet from
+  8 to 16 typed 64-bit words; it remains fixed-size/aligned and rejects a 17th
+  field. Do not select B8 for the current 2B hot path without new end-to-end
+  evidence: the earlier controlled consumer test (~0.74%) overlapped run noise.

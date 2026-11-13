@@ -12,6 +12,13 @@ struct __align__(8) AttentionBatch4Shape {
     float scale_log2;
     unsigned padding;
 };
+struct __align__(8) AttentionBatch8Shape {
+    unsigned long long capacity, query_heads, kv_heads;
+    unsigned long long base0, base1, base2, base3;
+    unsigned long long base4, base5, base6, base7;
+    float scale_log2;
+    unsigned padding;
+};
 __device__ __forceinline__ unsigned pair(const unsigned short* p) {
     return static_cast<unsigned>(p[0]) | (static_cast<unsigned>(p[1]) << 16);
 }
@@ -185,6 +192,140 @@ extern "C" __global__ __launch_bounds__(128) void bf16_causal_attention_batch4(
     const unsigned long long base = batch == 0 ? s.base0 : batch == 1 ? s.base1 : batch == 2 ? s.base2 : s.base3;
     const unsigned short* keys = batch == 0 ? keys0 : batch == 1 ? keys1 : batch == 2 ? keys2 : keys3;
     const unsigned short* values = batch == 0 ? values0 : batch == 1 ? values1 : batch == 2 ? values2 : values3;
+    const unsigned long long end = base + 1;
+    const float neg_inf = __int_as_float(0xff800000);
+    for (unsigned i = tid; i < 16 * 256; i += 128) {
+        const auto row = first + i / 256;
+        q[i] = row < 1 ? checked(query[(batch * s.query_heads + head) * 256 + i % 256], status) : 0;
+    }
+    if (tid < 16) maxima[tid] = neg_inf;
+    if (tid < 64) sums[tid] = 0;
+    float acc[8][4] = {};
+    const auto last_query = first + 16 < 1 ? first + 16 : 1;
+    for (long long start = ((base + last_query - 1) / 64) * 64; start >= 0; start -= 64) {
+        for (unsigned i = tid; i < 64 * 256; i += 128) {
+            const auto row = static_cast<unsigned long long>(start) + i / 256;
+            kv[i] = row < end ? checked(keys[(row * s.kv_heads + kh) * 256 + i % 256], status) : 0;
+        }
+        __syncthreads();
+        float dot[2][4] = {};
+        #pragma unroll
+        for (unsigned k = 0; k < 256; k += 16) {
+            const auto* a = q + r * 256 + k + c;
+            #pragma unroll
+            for (unsigned j = 0; j < 2; ++j) {
+                const auto* b = kv + (warp * 16 + j * 8 + r) * 256 + k + c;
+                mma(dot[j], pair(a), pair(a + 8 * 256), pair(a + 8), pair(a + 8 * 256 + 8), pair(b), pair(b + 8));
+            }
+        }
+        #pragma unroll
+        for (unsigned j = 0; j < 2; ++j) {
+            #pragma unroll
+            for (unsigned i = 0; i < 4; ++i) {
+                const unsigned row = r + (i / 2) * 8, col = warp * 16 + j * 8 + c + i % 2;
+                const bool valid = first + row < 1 && start + col <= base + first + row;
+                scores[row * 64 + col] = valid ? dot[j][i] : neg_inf;
+                if (valid && !isfinite(dot[j][i])) atomicOr(status, 2u);
+            }
+        }
+        __syncthreads();
+        if (tid < 64) {
+            const unsigned row = tid / 4, group = tid % 4;
+            float x[16];
+            float m = maxima[row];
+            #pragma unroll
+            for (unsigned j = 0; j < 16; ++j) {
+                x[j] = scores[row * 64 + (j / 2) * 8 + group * 2 + j % 2];
+                m = maximum(m, x[j]);
+            }
+            m = maximum(m, __shfl_xor_sync(0xffffffff, m, 2));
+            m = maximum(m, __shfl_xor_sync(0xffffffff, m, 1));
+            const float decay = m == neg_inf ? 1.0f : ex2(mul(add(maxima[row], -m), s.scale_log2));
+            const float scaled_max = m == neg_inf ? 0.0f : mul(m, s.scale_log2);
+            float sum = mul(sums[tid], decay);
+            #pragma unroll
+            for (unsigned j = 0; j < 16; ++j) {
+                const float e = ex2(fma(x[j], s.scale_log2, -scaled_max));
+                sum = add(sum, e);
+                p[row * 64 + (j / 2) * 8 + group * 2 + j % 2] = bf16(e);
+            }
+            sums[tid] = sum;
+            if (group == 0) { maxima[row] = m; rescale[row] = decay; }
+        }
+        __syncthreads();
+        for (unsigned i = tid; i < 64 * 256; i += 128) {
+            const auto row = static_cast<unsigned long long>(start) + i / 256;
+            kv[i] = row < end ? checked(values[(row * s.kv_heads + kh) * 256 + i % 256], status) : 0;
+        }
+        #pragma unroll
+        for (unsigned j = 0; j < 8; ++j) {
+            #pragma unroll
+            for (unsigned i = 0; i < 4; ++i) acc[j][i] = mul(acc[j][i], rescale[r + (i / 2) * 8]);
+        }
+        __syncthreads();
+        #pragma unroll
+        for (unsigned k = 0; k < 64; k += 16) {
+            const auto* a = p + r * 64 + k + c;
+            #pragma unroll
+            for (unsigned j = 0; j < 8; ++j) {
+                const unsigned col = warp * 64 + j * 8 + r;
+                const auto* b = kv + (k + c) * 256 + col;
+                const unsigned b0 = static_cast<unsigned>(b[0]) | (static_cast<unsigned>(b[256]) << 16);
+                const unsigned b1 = static_cast<unsigned>(b[8 * 256]) | (static_cast<unsigned>(b[9 * 256]) << 16);
+                mma(acc[j], pair(a), pair(a + 8 * 64), pair(a + 8), pair(a + 8 * 64 + 8), b0, b1);
+            }
+        }
+        __syncthreads();
+    }
+    if (tid < 64) {
+        float sum = sums[tid];
+        sum = add(sum, __shfl_xor_sync(0xffffffff, sum, 2));
+        sum = add(sum, __shfl_xor_sync(0xffffffff, sum, 1));
+        if (tid % 4 == 0) inverse[tid / 4] = sum == 0.0f ? 1.0f : reciprocal(sum);
+    }
+    __syncthreads();
+    #pragma unroll
+    for (unsigned j = 0; j < 8; ++j) {
+        #pragma unroll
+        for (unsigned i = 0; i < 4; ++i) {
+            const unsigned row = r + (i / 2) * 8, col = warp * 64 + j * 8 + c + i % 2;
+            if (first + row < 1) {
+                const float result = mul(acc[j][i], inverse[row]);
+                const auto rounded = bf16(result);
+                if (!isfinite(result) || (rounded & 0x7f80) == 0x7f80) atomicOr(status, 2u);
+                output[(batch * s.query_heads + head) * 256 + col] = rounded;
+            }
+        }
+    }
+}
+
+extern "C" __global__ __launch_bounds__(128) void bf16_causal_attention_batch8(
+    const unsigned short* query,
+    const unsigned short* keys0, const unsigned short* keys1,
+    const unsigned short* keys2, const unsigned short* keys3,
+    const unsigned short* keys4, const unsigned short* keys5,
+    const unsigned short* keys6, const unsigned short* keys7,
+    const unsigned short* values0, const unsigned short* values1,
+    const unsigned short* values2, const unsigned short* values3,
+    const unsigned short* values4, const unsigned short* values5,
+    const unsigned short* values6, const unsigned short* values7,
+    unsigned short* output, unsigned* status, AttentionBatch8Shape s) {
+    __shared__ unsigned short q[16 * 256], kv[64 * 256], p[16 * 64];
+    __shared__ float scores[16 * 64], maxima[16], sums[64], rescale[16], inverse[16];
+    const unsigned tid = threadIdx.x, lane = tid % 32, warp = tid / 32;
+    const unsigned r = lane / 4, c = (lane % 4) * 2;
+    const unsigned long long first = static_cast<unsigned long long>(blockIdx.x) * 16;
+    const unsigned long long head = blockIdx.y, kh = head / (s.query_heads / s.kv_heads);
+    const unsigned long long batch = blockIdx.z;
+    const unsigned long long base =
+        batch == 0 ? s.base0 : batch == 1 ? s.base1 : batch == 2 ? s.base2 : batch == 3 ? s.base3 :
+        batch == 4 ? s.base4 : batch == 5 ? s.base5 : batch == 6 ? s.base6 : s.base7;
+    const unsigned short* keys =
+        batch == 0 ? keys0 : batch == 1 ? keys1 : batch == 2 ? keys2 : batch == 3 ? keys3 :
+        batch == 4 ? keys4 : batch == 5 ? keys5 : batch == 6 ? keys6 : keys7;
+    const unsigned short* values =
+        batch == 0 ? values0 : batch == 1 ? values1 : batch == 2 ? values2 : batch == 3 ? values3 :
+        batch == 4 ? values4 : batch == 5 ? values5 : batch == 6 ? values6 : values7;
     const unsigned long long end = base + 1;
     const float neg_inf = __int_as_float(0xff800000);
     for (unsigned i = tid; i < 16 * 256; i += 128) {
