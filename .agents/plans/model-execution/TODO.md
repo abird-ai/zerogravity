@@ -3786,3 +3786,37 @@ build or general model/backend grant. Historical failures keep their source scop
   workload, so the ordinary consumer was removed. Keep the independently useful
   primitive; do not retry this same serving selection without a materially
   different composition or measurement.
+
+### 13 Nov 2026 — packed-BF16 batch greedy retained; B8 serving selection rejected
+
+- [x] Re-profiled the current warm Qwen3.5-2B ragged B8 cached-decode path after
+  the accepted B8 recurrent-core and KV changes. Complete device traversal is
+  now roughly27.7--28.1ms/token. Projections dominate at about15.5--15.8ms:
+  output head ~3.35ms, 24x12288x2048 LaneStrided ~4.6ms,
+  24x2048x6144 RoundedSegments ~3.0ms, 18x8192x2048 Ordered ~2.35ms,
+  with the remaining projection families smaller. Recurrent remains ~6ms;
+  B8 KV is now ~1.3--1.4ms versus the older ~2.85ms, confirming the accepted
+  private KV transition moved that region materially. Temporary device-event
+  probes were removed.
+- [x] Extended the shared native batch-greedy reducer with an exact packed-BF16
+  numeric-zero mode for bounded 2/4/8-row geometry. The first stage reads
+  row-major packed BF16 directly, widens the selected max bits exactly, preserves
+  signed-zero numeric ties and BF16 subnormal order, and carries the same
+  numeric-zero comparison through partial reductions. Existing F32 batch greedy
+  and single-row BF16 greedy paths are unchanged; the primitive owns no
+  model/root/publication policy.
+- [x] Physical RTX3060 B8 qualification passes against an independent host
+  numeric-zero oracle with repeated maxima, -0/+0 ties and positive BF16
+  subnormals. Exact token/max/status packets match; the 512-token fixture uses
+  three native reduction dispatches plus eight packet transports and leaves zero
+  resident bytes/events after readback cleanup.
+- [x] Rejected selecting transient batch-BF16 greedy in ordinary B8 serving.
+  Public Qwen3.5-2B ragged prompts47..54 with16 outputs preserved every ID264
+  and native width8. Signed `c12acab` baseline samples were
+  686.935/683.515/683.572/685.292ms (mean684.829ms); candidate samples were
+  687.189/679.726/684.235/676.050ms (mean681.800ms), only ~0.44% lower latency.
+  Two reverse-side baseline attempts were interrupted before model startup and
+  provide no evidence. The gain is too small to accept without a clean bracket,
+  so the serving consumer and its transient scratch allocation were removed.
+  Keep the independently qualified primitive for future composition, especially
+  a materially different head-to-greedy path.

@@ -71,7 +71,7 @@ pub(crate) fn finite_sortable_key(bits: u32) -> u32 {
 }
 
 #[cube]
-fn finite_numeric_sortable_key(bits: u32) -> u32 {
+pub(crate) fn finite_numeric_sortable_key(bits: u32) -> u32 {
     let mut key = finite_sortable_key(bits);
     if (bits & 0x7fffffffu32) == 0u32 {
         key = 0x80000000u32;

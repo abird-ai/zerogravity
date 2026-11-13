@@ -43,6 +43,33 @@ fn check_buffer(client: &Client, handle: &Handle, bytes: usize) -> Result<()> {
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+enum LogitLayout {
+    F32,
+    #[allow(dead_code)]
+    PackedBf16NumericZero,
+}
+
+impl LogitLayout {
+    fn bytes(self, vocabulary: usize, rows: usize) -> Result<usize> {
+        if matches!(self, Self::PackedBf16NumericZero) && !vocabulary.is_multiple_of(2) {
+            return Err(Error::Unsupported(
+                "native packed BF16 greedy requires even vocabulary".into(),
+            ));
+        }
+        vocabulary
+            .checked_mul(rows)
+            .and_then(|n| {
+                n.checked_mul(match self {
+                    Self::F32 => 4,
+                    Self::PackedBf16NumericZero => 2,
+                })
+            })
+            .filter(|n| u32::try_from(n.div_ceil(4)).is_ok())
+            .ok_or_else(|| Error::Limit("native greedy logits overflow".into()))
+    }
+}
+
 /// Check the complete closed reduction/transport before the enclosing launch.
 /// Every binding names a distinct allocation, including independent packets.
 pub(crate) fn validate(
@@ -54,15 +81,34 @@ pub(crate) fn validate(
     private_packets: &[Handle],
     status: &Handle,
 ) -> Result<()> {
+    validate_layout(
+        client,
+        logits,
+        vocabulary,
+        rows,
+        workspace,
+        private_packets,
+        status,
+        LogitLayout::F32,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_layout(
+    client: &Client,
+    logits: &Handle,
+    vocabulary: usize,
+    rows: usize,
+    workspace: &[Handle; 3],
+    private_packets: &[Handle],
+    status: &Handle,
+    layout: LogitLayout,
+) -> Result<()> {
     let sizes = workspace_bytes(vocabulary, rows)?;
     if private_packets.len() != rows {
         return Err(Error::Malformed("native greedy packet row count".into()));
     }
-    let logits_bytes = vocabulary
-        .checked_mul(rows)
-        .and_then(|n| n.checked_mul(4))
-        .filter(|n| u32::try_from(n / 4).is_ok())
-        .ok_or_else(|| Error::Limit("native greedy logits overflow".into()))?;
+    let logits_bytes = layout.bytes(vocabulary, rows)?;
     let mut buffers = vec![(logits, logits_bytes), (status, 4)];
     buffers.extend(workspace.iter().zip(sizes));
     buffers.extend(private_packets.iter().map(|packet| (packet, 12)));
@@ -105,7 +151,7 @@ pub(crate) fn launch(
     private_packets: &[Handle],
     status: &Handle,
 ) -> Result<GreedySubmission> {
-    validate(
+    launch_layout(
         client,
         logits,
         vocabulary,
@@ -113,6 +159,52 @@ pub(crate) fn launch(
         workspace,
         private_packets,
         status,
+        LogitLayout::F32,
+    )
+}
+
+#[allow(dead_code)]
+pub(crate) fn launch_bf16_numeric_zero(
+    client: &Client,
+    logits: &Handle,
+    vocabulary: usize,
+    rows: usize,
+    workspace: &[Handle; 3],
+    private_packets: &[Handle],
+    status: &Handle,
+) -> Result<GreedySubmission> {
+    launch_layout(
+        client,
+        logits,
+        vocabulary,
+        rows,
+        workspace,
+        private_packets,
+        status,
+        LogitLayout::PackedBf16NumericZero,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn launch_layout(
+    client: &Client,
+    logits: &Handle,
+    vocabulary: usize,
+    rows: usize,
+    workspace: &[Handle; 3],
+    private_packets: &[Handle],
+    status: &Handle,
+    layout: LogitLayout,
+) -> Result<GreedySubmission> {
+    validate_layout(
+        client,
+        logits,
+        vocabulary,
+        rows,
+        workspace,
+        private_packets,
+        status,
+        layout,
     )?;
     let sizes = workspace_bytes(vocabulary, rows)?;
     let strides = [sizes[0] / 4 / rows, sizes[1] / 4 / rows];
@@ -125,17 +217,32 @@ pub(crate) fn launch(
     // SAFETY: all layouts, complete stage capacities, source service and
     // distinct physical bindings pass the closed preflight above.
     unsafe {
-        batch_argmax_logits::launch_unchecked(
-            client,
-            grid(rows * count),
-            threads,
-            BufferArg::from_raw_parts(logits.clone(), rows * vocabulary),
-            BufferArg::from_raw_parts(workspace[0].clone(), words[0]),
-            BufferArg::from_raw_parts(status.clone(), 1),
-            vocabulary,
-            rows,
-            strides[0],
-        );
+        match layout {
+            LogitLayout::F32 => batch_argmax_logits::launch_unchecked(
+                client,
+                grid(rows * count),
+                threads,
+                BufferArg::from_raw_parts(logits.clone(), rows * vocabulary),
+                BufferArg::from_raw_parts(workspace[0].clone(), words[0]),
+                BufferArg::from_raw_parts(status.clone(), 1),
+                vocabulary,
+                rows,
+                strides[0],
+            ),
+            LogitLayout::PackedBf16NumericZero => {
+                batch_argmax_bf16_logits_numeric_zero::launch_unchecked(
+                    client,
+                    grid(rows * count),
+                    threads,
+                    BufferArg::from_raw_parts(logits.clone(), rows * vocabulary.div_ceil(2)),
+                    BufferArg::from_raw_parts(workspace[0].clone(), words[0]),
+                    BufferArg::from_raw_parts(status.clone(), 1),
+                    vocabulary,
+                    rows,
+                    strides[0],
+                )
+            }
+        }
         native_dispatches += 1;
         while count > 1 {
             let next = count.div_ceil(TILE);
@@ -152,6 +259,7 @@ pub(crate) fn launch(
                 rows,
                 strides[current],
                 strides[destination],
+                matches!(layout, LogitLayout::PackedBf16NumericZero),
             );
             native_dispatches += 1;
             count = next;
@@ -258,6 +366,76 @@ fn batch_argmax_logits(
     }
 }
 
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+#[cube(launch_unchecked)]
+fn batch_argmax_bf16_logits_numeric_zero(
+    source: &[u32],
+    partials: &mut [u32],
+    status: &[Atomic<u32>],
+    #[comptime] count: usize,
+    #[comptime] rows: usize,
+    #[comptime] destination_stride: usize,
+) {
+    let absolute = ABSOLUTE_POS;
+    let groups = count.div_ceil(TILE);
+    if count == 0usize || count > program_kernels::MAX_WORD_OPS || !count.is_multiple_of(2usize) {
+        if absolute == 0usize {
+            status[0].fetch_or(program_kernels::INVALID_REDUCTION);
+        }
+    } else if absolute < rows * groups {
+        let row = absolute / groups;
+        let group = absolute % groups;
+        let row_words = count.div_ceil(2usize);
+        let mut found = false;
+        let mut best_id = 0xffffffffu32;
+        let mut best_bits = 0u32;
+        let mut best_key = 0u32;
+        let mut flags = 0u32;
+        for lane in 0..TILE {
+            let id = group * TILE + lane;
+            if id < count {
+                let word =
+                    u64::cast_from(row) * u64::cast_from(row_words) + u64::cast_from(id / 2usize);
+                if word < u64::cast_from(source.len()) {
+                    let shift = u32::cast_from(id % 2usize) * 16u32;
+                    let bf16 = (source[usize::cast_from(word)] >> shift) & 0xffffu32;
+                    if (bf16 & 0x7f80u32) == 0x7f80u32 {
+                        flags |= program_kernels::NONFINITE_VALUE;
+                    } else {
+                        let bits = bf16 << 16u32;
+                        let key = program_kernels::finite_numeric_sortable_key(bits);
+                        let token = u32::cast_from(id);
+                        if !found || key > best_key || (key == best_key && token < best_id) {
+                            found = true;
+                            best_id = token;
+                            best_bits = bits;
+                            best_key = key;
+                        }
+                    }
+                } else {
+                    flags |= program_kernels::VIEW_OUT_OF_BOUNDS;
+                }
+            }
+        }
+        if !found {
+            flags |= program_kernels::INVALID_REDUCTION;
+        }
+        let dst = u64::cast_from(row) * u64::cast_from(destination_stride)
+            + u64::cast_from(group) * u64::cast_from(ARGMAX_RECORD_WORDS);
+        if dst + 2u64 < u64::cast_from(partials.len()) {
+            let d = usize::cast_from(dst);
+            partials[d] = best_id;
+            partials[d + 1] = best_bits;
+            partials[d + 2] = flags;
+        } else {
+            flags |= program_kernels::VIEW_OUT_OF_BOUNDS;
+        }
+        if flags != 0u32 {
+            status[0].fetch_or(flags);
+        }
+    }
+}
+
 #[cube(launch_unchecked)]
 fn batch_argmax_partials(
     source: &[u32],
@@ -268,6 +446,7 @@ fn batch_argmax_partials(
     #[comptime] rows: usize,
     #[comptime] source_stride: usize,
     #[comptime] destination_stride: usize,
+    #[comptime] numeric_zero_ties: bool,
 ) {
     let absolute = ABSOLUTE_POS;
     let groups = count.div_ceil(TILE);
@@ -302,7 +481,10 @@ fn batch_argmax_partials(
                     } else if (bits & 0x7f800000u32) == 0x7f800000u32 {
                         flags |= program_kernels::NONFINITE_VALUE;
                     } else {
-                        let key = program_kernels::finite_sortable_key(bits);
+                        let mut key = program_kernels::finite_sortable_key(bits);
+                        if comptime!(numeric_zero_ties) {
+                            key = program_kernels::finite_numeric_sortable_key(bits);
+                        }
                         if !found || key > best_key || (key == best_key && token < best_id) {
                             found = true;
                             best_id = token;
@@ -404,5 +586,165 @@ mod tests {
         for vocabulary in [0, program_kernels::MAX_WORD_OPS + 1, usize::MAX] {
             assert!(workspace_bytes(vocabulary, 2).is_err());
         }
+    }
+
+    #[cfg(all(
+        feature = "qualification",
+        feature = "cuda-cublas",
+        target_os = "linux"
+    ))]
+    #[test]
+    #[ignore = "actual NVIDIA packed-BF16 B8 greedy versus independent numeric-zero oracle"]
+    fn bf16_numeric_zero_b8_on_nvidia() -> Result<()> {
+        use crate::resident_leases::ResidentLease;
+        use zerogravity_core::device_events::{BufferRole, DeviceAccess};
+
+        fn key(bits: u32) -> u32 {
+            if bits & 0x7fff_ffff == 0 {
+                0x8000_0000
+            } else if bits & 0x8000_0000 != 0 {
+                !bits
+            } else {
+                bits ^ 0x8000_0000
+            }
+        }
+        fn expected(row: &[u16]) -> (u32, u32) {
+            row.iter()
+                .enumerate()
+                .map(|(id, &bf16)| (id as u32, u32::from(bf16) << 16))
+                .max_by(|(a_id, a_bits), (b_id, b_bits)| {
+                    key(*a_bits).cmp(&key(*b_bits)).then_with(|| b_id.cmp(a_id))
+                })
+                .unwrap()
+        }
+
+        futures_lite::future::block_on(async {
+            const ROWS: usize = 8;
+            const VOCABULARY: usize = 512;
+            let diagnostic = crate::cuda::test_support::CudaDiagnostic::new_on(
+                "batch-bf16-greedy",
+                cubecl::Device::cuda(0)
+                    .map_err(|error| Error::State(format!("CUDA device 0 unavailable: {error}")))?,
+            )?;
+            let service = diagnostic.service.clone();
+            let client = service.client().clone();
+            let mut rows = vec![vec![0xbf80u16; VOCABULARY]; ROWS];
+            rows[0][3] = 0x8000;
+            rows[0][5] = 0x0000;
+            rows[1][17] = 0x4080;
+            rows[1][256] = 0x4080;
+            rows[2][511] = 0x0001;
+            rows[3][7] = 0x3f80;
+            rows[4][31] = 0x4000;
+            rows[5][63] = 0x4040;
+            rows[6][127] = 0x40a0;
+            rows[7][255] = 0x40c0;
+            let expected = rows.iter().map(|row| expected(row)).collect::<Vec<_>>();
+            let packed = rows
+                .iter()
+                .flat_map(|row| row.iter().flat_map(|word| word.to_ne_bytes()))
+                .collect::<Vec<_>>();
+            let sizes = workspace_bytes(VOCABULARY, ROWS)?;
+
+            let (input, workspace, packets, status) = {
+                let mut init = service.begin_initialization(0)?;
+                let input = init.upload_bytes(&packed, BufferRole::ImmutableWeights)?;
+                let workspace = sizes
+                    .into_iter()
+                    .map(|bytes| init.allocate_empty(bytes, BufferRole::Scratch))
+                    .collect::<Result<Vec<_>>>()?;
+                let packets = (0..ROWS)
+                    .map(|_| init.allocate_empty(12, BufferRole::Output))
+                    .collect::<Result<Vec<_>>>()?;
+                let status = init.upload_zeroed(4, BufferRole::Scratch)?;
+                drop(init.complete_sync().await?);
+                (input, workspace, packets, status)
+            };
+            let workspace_handles: [Handle; 3] =
+                std::array::from_fn(|index| workspace[index].handle());
+            let packet_handles = packets
+                .iter()
+                .map(ResidentLease::handle)
+                .collect::<Vec<_>>();
+            let mut accesses = vec![
+                (input.clone(), DeviceAccess::Read),
+                (status.clone(), DeviceAccess::Write),
+            ];
+            accesses.extend(
+                workspace
+                    .iter()
+                    .cloned()
+                    .map(|lease| (lease, DeviceAccess::Write)),
+            );
+            accesses.extend(
+                packets
+                    .iter()
+                    .cloned()
+                    .map(|lease| (lease, DeviceAccess::Write)),
+            );
+            let flight = service.submit(0, &accesses)?;
+            let receipt = launch_bf16_numeric_zero(
+                &client,
+                &input.handle(),
+                VOCABULARY,
+                ROWS,
+                &workspace_handles,
+                &packet_handles,
+                &status.handle(),
+            )?;
+            if receipt.native_dispatches != 3 || receipt.dispatches != 3 + ROWS {
+                return Err(Error::State(
+                    "packed-BF16 B8 greedy physical dispatch count".into(),
+                ));
+            }
+            let mut reads = vec![status.readback(0, 4)?];
+            reads.extend(
+                packets
+                    .iter()
+                    .map(|packet| packet.readback(0, 12))
+                    .collect::<Result<Vec<_>>>()?,
+            );
+            let (ready, readback) = flight
+                .complete_with_readback(&packets, &reads, |read| {
+                    if &read[0][..] != 0u32.to_ne_bytes().as_slice() {
+                        return Err(Error::State("packed-BF16 B8 greedy status".into()));
+                    }
+                    for (packet, &(id, bits)) in read[1..].iter().zip(&expected) {
+                        let actual_id = u32::from_ne_bytes(packet[0..4].try_into().unwrap());
+                        let actual_bits = u32::from_ne_bytes(packet[4..8].try_into().unwrap());
+                        let flags = u32::from_ne_bytes(packet[8..12].try_into().unwrap());
+                        if (actual_id, actual_bits, flags) != (id, bits, 0) {
+                            return Err(Error::State(
+                                "packed-BF16 B8 greedy packet differs".into(),
+                            ));
+                        }
+                    }
+                    Ok(())
+                })
+                .await?;
+            drop(reads);
+            drop(readback);
+            drop(ready);
+            drop(accesses);
+            drop(packet_handles);
+            drop(workspace_handles);
+            drop(input);
+            drop(workspace);
+            drop(packets);
+            drop(status);
+            client
+                .memory_cleanup()
+                .map_err(|error| Error::State(format!("batch BF16 greedy cleanup: {error}")))?;
+            let resident_bytes = service.resident_bytes()?;
+            let events = service.model_events()?;
+            if resident_bytes != 0 || events != 0 {
+                return Err(Error::State(format!(
+                    "batch BF16 greedy left resident bytes/events bytes={resident_bytes} events={events}"
+                )));
+            }
+            service.close_model_namespace()?;
+            println!("batch-bf16-greedy B8 PASS");
+            Ok(())
+        })
     }
 }
