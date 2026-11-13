@@ -3466,3 +3466,41 @@ build or general model/backend grant. Historical failures keep their source scop
   timing harness were fully removed. Keep the accepted row-major shared-weight
   B2/B4/B8 LaneBlocked primitive; revisit only if an upstream producer already
   owns the activation in inner-major form and profiling shows material value.
+
+### 13 Nov 2026 — measured 2B B8 decode projection concentration + occupancy rejections
+
+- [x] Traced one genuine Qwen3.5-2B B8 cached-decode traversal after each
+  original-call reduction had been authenticated, then removed the trace. Across
+  24 layers the large repeated families are: 24x B8 `2048x2048`
+  LaneStrided<16,256> inner-major, 24x `12288x2048` LaneStrided<16,512>
+  inner-major, and 24x `2048x6144` RoundedSegments<2048> row-major. Eighteen
+  layers additionally use `8192x2048` Ordered plus the small `32x2048`
+  LaneBlocked<32,64>; the other six use `5120x2048` LaneStrided<16,512>.
+- [x] Timed those exact accepted physical families on the RTX3060, including the
+  existing row-major->inner-major transport for LaneStrided. Forward/reverse
+  per-call timings and projected per-token totals were: Ordered8192
+  134.461/125.412us (2.420/2.312ms across18); Rounded2048x6144
+  110.392/113.886us (2.649/2.733ms across24); LaneStrided12288 terms512
+  240.718/240.575us (5.777/5.774ms across24); LaneStrided2048 terms256
+  52.170/52.312us including pack (1.252/1.255ms across24); LaneStrided5120
+  terms512 98.868/98.523us (0.593/0.591ms across6); LaneBlocked32 terms64
+  28.406/28.362us (0.511/0.511ms across18). Thus the 12288-column B8
+  LaneStrided<16,512> family alone accounts for ~5.78ms, about44% of these
+  measured recurrent projection costs; its pack overhead is effectively lost in
+  the noise, so the kernel itself is the current dense-projection target.
+- [x] Rejected changing only the B8 LaneStrided CTA width. Temporary 64- and
+  256-thread entries preserved the exact 16-lane/512-term per-row arithmetic and
+  matched the accepted 128-thread kernel byte-for-byte with zero status. At the
+  dominant 12288-column shape a long repeat gave accepted259.909/267.291us,
+  CTA64 255.761/260.339us and CTA256 264.834/260.751us, only a small CTA64
+  advantage. It did not generalize: at8192 columns accepted161.000/174.795us
+  versus CTA64 175.717/174.581us, and at5120 accepted97.866/110.863us versus
+  CTA64 112.923/99.874us; order effects crossed. The candidate entries and
+  timing harness were fully removed rather than adding width-specific selector
+  complexity for an unstable ~2% result.
+- [x] Rejected a two-warp/32-column `RoundedSegments<2048>` K64 tile intended to
+  halve the accepted four-warp/64-column CTA shared-memory footprint. Patterned
+  physical qualification at B8/256x6144 matched output/status bit-for-bit and
+  preserved every MMA and BF16 segment-rounding boundary, but the real
+  2048x6144 timing was flat: accepted116.608/116.555us versus M32
+  118.163/116.506us. Candidate staging/kernel/test code was fully removed.
