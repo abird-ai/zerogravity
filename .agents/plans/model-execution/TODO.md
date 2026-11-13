@@ -3856,3 +3856,33 @@ build or general model/backend grant. Historical failures keep their source scop
   changes and transient serving allocations were removed. Keep the exact shared
   primitives for other compositions/models, but do not retry these same tilings
   without a materially different architecture.
+
+### 14 Nov 2026 — grouped ConvB4 state transport retained; serving consumer rejected
+
+- [x] Added a model-neutral exact ConvB4 state-transport primitive at the shared
+  CUDA GDN state layer. One launch batches four independently authenticated
+  canonical ConvIn or ConvOut roots with explicit bindings (four sources, four
+  destinations, one status), preserving the scalar canonical
+  F32[channel,frame] <-> native BF16[frame,channel] mapping, exact BF16-widening
+  requirement and existing ConvIn/ConvOut status bits. It owns no cache-slot,
+  model, session, root, frontier or publication policy.
+- [x] Extended the existing RTX3060 state-transport qualifier. Four patterned
+  convolution roots, including an infinity payload, compare grouped ConvIn/Out
+  against four scalar production transports plus the CPU source-index oracle.
+  Native BF16 bytes, round-trip canonical F32 bytes and combined status 0x03
+  match exactly; the full state-transport qualifier still retires with zero
+  resident bytes/events.
+- [x] Rejected selecting grouped ConvB4 transport in ordinary B8 serving. The
+  candidate changed only each existing B4 convolution group from four scalar
+  imports + unchanged B4 conv core + unchanged row split + four scalar exports
+  to one grouped import + the same core/split + one grouped export, reducing a
+  B8 convolution stage from20 launches to8 without changing cache/state math.
+  Because cross-process GPU timing was unstable, the final decision used one
+  binary/one loaded model with a temporary runtime selector and same-process
+  ABBA waves on public Qwen3.5-2B ragged prompts47..54,16 outputs. Every token
+  remained ID264 and native cohort width8. Baseline samples were
+  692.766/693.022/683.367/686.523ms (mean688.920ms); grouped samples were
+  696.666/687.608/686.689/685.816ms (mean689.195ms), ~0.04% slower/noise.
+  The temporary selector and serving consumer were removed. Keep the exact
+  shared primitive for other compositions/models; do not select this same
+  ordinary consumer without materially different evidence.

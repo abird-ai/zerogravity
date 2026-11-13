@@ -7,9 +7,11 @@ use std::sync::Arc;
 use zerogravity_core::{Error, Result};
 
 const STATE_COPY_SOURCE: &str = include_str!("resident/state_copy.cu");
+const CONV_B4_SOURCE: &str = include_str!("resident/state_copy_conv_b4.cu");
 const RECURRENT_B8_SOURCE: &str = include_str!("resident/state_copy_recurrent_b8.cu");
 pub(crate) const CONV_ELEMENTS: usize = 6144 * 3;
 pub(crate) const RECURRENT_ELEMENTS: usize = 16 * 128 * 128;
+const CONV_B4_ROWS: usize = 4;
 const RECURRENT_B8_ROWS: usize = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -80,6 +82,10 @@ pub(crate) struct StateTransport {
     kernel: PinnedKernel,
     grid: [u32; 3],
     handles: Vec<Handle>,
+}
+#[allow(dead_code)]
+pub(crate) struct ConvB4Transport {
+    launch: PreparedPinnedLaunch,
 }
 pub(crate) struct RecurrentB8Transport {
     launch: PreparedPinnedLaunch,
@@ -162,6 +168,109 @@ impl StateTransport {
     pub(crate) fn launch(&self, service: &Arc<ResidentService>) -> Result<()> {
         self.kernel
             .launch(service.client(), self.grid, &self.handles)
+    }
+}
+
+#[allow(dead_code)]
+impl ConvB4Transport {
+    /// One exact ConvIn/ConvOut launch across four independent canonical roots.
+    /// No cache-slot/session/root authority enters this physical batching layer.
+    pub(crate) fn prepare(
+        service: &Arc<ResidentService>,
+        kind: StateCopy,
+        sources: &[Handle],
+        destinations: &[Handle],
+        status: &ResidentLease,
+    ) -> Result<Self> {
+        if !matches!(kind, StateCopy::ConvIn | StateCopy::ConvOut)
+            || sources.len() != CONV_B4_ROWS
+            || destinations.len() != CONV_B4_ROWS
+        {
+            return Err(Error::Unsupported(
+                "convolution B4 transport requires four convolution rows".into(),
+            ));
+        }
+        let client = service.client();
+        let (input_width, output_width) = kind.widths();
+        let source_bytes = CONV_ELEMENTS
+            .checked_mul(input_width)
+            .ok_or_else(|| Error::Limit("convolution B4 source byte extent".into()))?;
+        let destination_bytes = CONV_ELEMENTS
+            .checked_mul(output_width)
+            .ok_or_else(|| Error::Limit("convolution B4 destination byte extent".into()))?;
+        let mut ranges = Vec::with_capacity(2 * CONV_B4_ROWS + 1);
+        for (handle, bytes, role) in sources
+            .iter()
+            .map(|handle| (handle, source_bytes, "source"))
+            .chain(
+                destinations
+                    .iter()
+                    .map(|handle| (handle, destination_bytes, "destination")),
+            )
+        {
+            if handle.service != client.service_id() || handle.size_in_used() != bytes as u64 {
+                return Err(Error::State(format!(
+                    "convolution B4 transport {role} service/extent differs"
+                )));
+            }
+            let range = crate::resident_program::BufferRange::new(handle)?;
+            if ranges
+                .iter()
+                .any(|prior: &crate::resident_program::BufferRange| range.overlaps(prior))
+            {
+                return Err(Error::State(
+                    "convolution B4 transport independent planes alias".into(),
+                ));
+            }
+            ranges.push(range);
+        }
+        let status_handle = status.handle();
+        if status_handle.service != client.service_id() || status_handle.size_in_used() != 4 {
+            return Err(Error::State(
+                "convolution B4 transport status service/extent differs".into(),
+            ));
+        }
+        let status_range = crate::resident_program::BufferRange::new(&status_handle)?;
+        if ranges.iter().any(|range| status_range.overlaps(range)) {
+            return Err(Error::State(
+                "convolution B4 transport status aliases state".into(),
+            ));
+        }
+
+        let (entry, input, output) = match kind {
+            StateCopy::ConvIn => ("zg_vllm_root_conv_in_b4", "unsigned int", "unsigned short"),
+            StateCopy::ConvOut => ("zg_vllm_root_conv_out_b4", "unsigned short", "unsigned int"),
+            _ => unreachable!(),
+        };
+        let source: Arc<str> = format!(
+            "{}\n#define ZG_ENTRY {}\n#define ZG_COPY {}\n#define ZG_ELEMENTS {}u\n#define ZG_INPUT {}\n#define ZG_OUTPUT {}\n{}",
+            "// cubecl.cuda.dynamic_shared_bytes=0",
+            entry,
+            kind.tag(),
+            CONV_ELEMENTS,
+            input,
+            output,
+            CONV_B4_SOURCE,
+        )
+        .into();
+        let mut bindings = Vec::with_capacity(9);
+        bindings.extend((0..CONV_B4_ROWS).map(|_| (source_bytes, BufferIOAttr::ReadOnly)));
+        bindings.extend((0..CONV_B4_ROWS).map(|_| (destination_bytes, BufferIOAttr::WriteOnly)));
+        bindings.push((4, BufferIOAttr::ReadWrite));
+        let kernel = PinnedKernel::new(entry, source, 128, bindings.into())?;
+        let mut handles = Vec::with_capacity(9);
+        handles.extend(sources.iter().cloned());
+        handles.extend(destinations.iter().cloned());
+        handles.push(status_handle);
+        let grid = [(CONV_ELEMENTS as u32).div_ceil(128), CONV_B4_ROWS as u32, 1];
+        Ok(Self {
+            launch: kernel.prepare(client, grid, handles)?,
+        })
+    }
+
+    pub(crate) fn launch(&self, service: &Arc<ResidentService>) -> Result<usize> {
+        self.launch.launch_on(service.client())?;
+        Ok(1)
     }
 }
 
@@ -298,6 +407,9 @@ pub(crate) async fn qualify_roundtrip_on_nvidia(device: cubecl::Device) -> Resul
         0xbf80_0000,
     ];
     fn f32_bytes(words: &[u32]) -> Vec<u8> {
+        words.iter().flat_map(|word| word.to_le_bytes()).collect()
+    }
+    fn bf16_bytes(words: &[u16]) -> Vec<u8> {
         words.iter().flat_map(|word| word.to_le_bytes()).collect()
     }
     fn status_word(raw: &[u8]) -> Result<u32> {
@@ -455,6 +567,154 @@ pub(crate) async fn qualify_roundtrip_on_nvidia(device: cubecl::Device) -> Resul
         return Err(Error::State(
             "non-BF16 canonical conv root was not rejected".into(),
         ));
+    }
+
+    // B4 convolution batching must be exact against four independent scalar
+    // ConvIn/ConvOut transports and the CPU canonical/native index mapping.
+    let conv_b4_words = (0..CONV_B4_ROWS)
+        .map(|lane| {
+            let mut words = (0..CONV_ELEMENTS)
+                .map(|index| PATTERNS[(index * 29 + lane * 13 + 7) % PATTERNS.len()])
+                .collect::<Vec<_>>();
+            if lane == 2 {
+                words[17] = 0x7f80_0000;
+            }
+            words
+        })
+        .collect::<Vec<_>>();
+    let (
+        conv_b4_prior,
+        scalar_conv_native,
+        grouped_conv_native,
+        scalar_conv_out,
+        grouped_conv_out,
+        scalar_conv_status,
+        grouped_conv_status,
+    ) = {
+        let mut init = service.begin_initialization(0)?;
+        let mut prior = Vec::with_capacity(CONV_B4_ROWS);
+        let mut scalar_native = Vec::with_capacity(CONV_B4_ROWS);
+        let mut grouped_native = Vec::with_capacity(CONV_B4_ROWS);
+        let mut scalar_out = Vec::with_capacity(CONV_B4_ROWS);
+        let mut grouped_out = Vec::with_capacity(CONV_B4_ROWS);
+        for words in &conv_b4_words {
+            prior.push(init.upload_bytes(&f32_bytes(words), BufferRole::RecurrentState)?);
+            scalar_native.push(init.allocate_empty(CONV_ELEMENTS * 2, BufferRole::Scratch)?);
+            grouped_native.push(init.allocate_empty(CONV_ELEMENTS * 2, BufferRole::Scratch)?);
+            scalar_out.push(init.allocate_empty(CONV_ELEMENTS * 4, BufferRole::RecurrentState)?);
+            grouped_out.push(init.allocate_empty(CONV_ELEMENTS * 4, BufferRole::RecurrentState)?);
+        }
+        let scalar_status = init.upload_zeroed(4, BufferRole::Scratch)?;
+        let grouped_status = init.upload_zeroed(4, BufferRole::Scratch)?;
+        drop(init.complete_sync().await?);
+        (
+            prior,
+            scalar_native,
+            grouped_native,
+            scalar_out,
+            grouped_out,
+            scalar_status,
+            grouped_status,
+        )
+    };
+    for lane in 0..CONV_B4_ROWS {
+        StateTransport::prepare(
+            &service,
+            StateCopy::ConvIn,
+            conv_b4_prior[lane].handle(),
+            scalar_conv_native[lane].handle(),
+            &scalar_conv_status,
+        )?
+        .launch(&service)?;
+    }
+    let grouped_conv_prior = conv_b4_prior
+        .iter()
+        .map(ResidentLease::handle)
+        .collect::<Vec<_>>();
+    let grouped_conv_native_handles = grouped_conv_native
+        .iter()
+        .map(ResidentLease::handle)
+        .collect::<Vec<_>>();
+    ConvB4Transport::prepare(
+        &service,
+        StateCopy::ConvIn,
+        &grouped_conv_prior,
+        &grouped_conv_native_handles,
+        &grouped_conv_status,
+    )?
+    .launch(&service)?;
+    for lane in 0..CONV_B4_ROWS {
+        StateTransport::prepare(
+            &service,
+            StateCopy::ConvOut,
+            scalar_conv_native[lane].handle(),
+            scalar_conv_out[lane].handle(),
+            &scalar_conv_status,
+        )?
+        .launch(&service)?;
+    }
+    let grouped_conv_out_handles = grouped_conv_out
+        .iter()
+        .map(ResidentLease::handle)
+        .collect::<Vec<_>>();
+    ConvB4Transport::prepare(
+        &service,
+        StateCopy::ConvOut,
+        &grouped_conv_native_handles,
+        &grouped_conv_out_handles,
+        &grouped_conv_status,
+    )?
+    .launch(&service)?;
+    client
+        .sync()
+        .await
+        .map_err(|error| Error::State(format!("convolution B4 transport sync: {error}")))?;
+    let scalar_conv_flags = status_word(
+        &client
+            .read_one(scalar_conv_status.handle())
+            .map_err(|error| Error::State(format!("scalar convolution B4 status: {error}")))?,
+    )?;
+    let grouped_conv_flags = status_word(
+        &client
+            .read_one(grouped_conv_status.handle())
+            .map_err(|error| Error::State(format!("grouped convolution B4 status: {error}")))?,
+    )?;
+    if scalar_conv_flags != 0x03 || grouped_conv_flags != scalar_conv_flags {
+        return Err(Error::State(format!(
+            "convolution B4 transport status differs scalar={scalar_conv_flags:#x} grouped={grouped_conv_flags:#x}"
+        )));
+    }
+    for lane in 0..CONV_B4_ROWS {
+        let expected_native = (0..CONV_ELEMENTS)
+            .map(|index| {
+                StateCopy::ConvIn
+                    .source_index(index)
+                    .map(|source| (conv_b4_words[lane][source] >> 16) as u16)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let scalar_native_actual = client
+            .read_one(scalar_conv_native[lane].handle())
+            .map_err(|error| Error::State(format!("scalar convolution B4 native: {error}")))?;
+        let grouped_native_actual = client
+            .read_one(grouped_conv_native[lane].handle())
+            .map_err(|error| Error::State(format!("grouped convolution B4 native: {error}")))?;
+        let scalar_out_actual = client
+            .read_one(scalar_conv_out[lane].handle())
+            .map_err(|error| Error::State(format!("scalar convolution B4 output: {error}")))?;
+        let grouped_out_actual = client
+            .read_one(grouped_conv_out[lane].handle())
+            .map_err(|error| Error::State(format!("grouped convolution B4 output: {error}")))?;
+        let expected_native = bf16_bytes(&expected_native);
+        let expected_out = f32_bytes(&conv_b4_words[lane]);
+        if &scalar_native_actual[..] != expected_native.as_slice()
+            || grouped_native_actual != scalar_native_actual
+            || &scalar_out_actual[..] != expected_out.as_slice()
+            || grouped_out_actual != scalar_out_actual
+        {
+            return Err(Error::State(format!(
+                "convolution B4 grouped/scalar/oracle bytes differ lane={lane}"
+            )));
+        }
     }
 
     // B8 recurrent batching must remain exact against both eight independent
@@ -626,6 +886,13 @@ pub(crate) async fn qualify_roundtrip_on_nvidia(device: cubecl::Device) -> Resul
         bad_in,
         bad_native,
         bad_status,
+        conv_b4_prior,
+        scalar_conv_native,
+        grouped_conv_native,
+        scalar_conv_out,
+        grouped_conv_out,
+        scalar_conv_status,
+        grouped_conv_status,
         recurrent_b8_prior,
         scalar_native,
         grouped_native,
