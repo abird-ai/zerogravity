@@ -109,7 +109,6 @@ fn physical_cached_decode_private_state_matches_transport_pipeline() -> Result<(
             baseline_canonical,
             direct_canonical,
             private_prior,
-            private_candidate,
             baseline_core,
             direct_core,
         ) = {
@@ -138,7 +137,6 @@ fn physical_cached_decode_private_state_matches_transport_pipeline() -> Result<(
             let mut baseline_canonical = Vec::with_capacity(ROWS);
             let mut direct_canonical = Vec::with_capacity(ROWS);
             let mut private_prior = Vec::with_capacity(ROWS);
-            let mut private_candidate = Vec::with_capacity(ROWS);
             for lane in 0..ROWS {
                 canonical_prior
                     .push(init.upload_bytes(&recurrent_bytes(lane), BufferRole::RecurrentState)?);
@@ -147,7 +145,6 @@ fn physical_cached_decode_private_state_matches_transport_pipeline() -> Result<(
                 direct_canonical
                     .push(init.allocate_empty(state_bytes, BufferRole::RecurrentState)?);
                 private_prior.push(init.allocate_empty(state_bytes, BufferRole::Scratch)?);
-                private_candidate.push(init.allocate_empty(state_bytes, BufferRole::Scratch)?);
             }
             let baseline_core = init.allocate_empty(core_bytes, BufferRole::Scratch)?;
             let direct_core = init.allocate_empty(core_bytes, BufferRole::Scratch)?;
@@ -164,7 +161,6 @@ fn physical_cached_decode_private_state_matches_transport_pipeline() -> Result<(
                 baseline_canonical,
                 direct_canonical,
                 private_prior,
-                private_candidate,
                 baseline_core,
                 direct_core,
             )
@@ -181,12 +177,7 @@ fn physical_cached_decode_private_state_matches_transport_pipeline() -> Result<(
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
-        let candidate_handles: [cubecl::server::Handle; 4] = private_candidate
-            .iter()
-            .map(|lease| lease.handle())
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
+        let candidate_handles = prior_handles.clone();
 
         let import_baseline = || -> Result<()> {
             for lane in 0..ROWS {
@@ -236,7 +227,7 @@ fn physical_cached_decode_private_state_matches_transport_pipeline() -> Result<(
                 StateTransport::prepare(
                     &service,
                     StateCopy::RecurrentOut,
-                    private_candidate[lane].handle(),
+                    private_prior[lane].handle(),
                     direct_canonical[lane].handle(),
                     &status,
                 )?
@@ -362,7 +353,6 @@ fn physical_cached_decode_private_state_matches_transport_pipeline() -> Result<(
             baseline_canonical,
             direct_canonical,
             private_prior,
-            private_candidate,
             baseline_core,
             direct_core,
         ));
@@ -405,7 +395,7 @@ fn physical_cached_decode_private_b8_matches_two_b4() -> Result<()> {
         let row_ba = GdnBuffer::PackedBa.bytes(GdnPhase::CachedDecode);
         let row_core = GdnBuffer::Core.bytes(GdnPhase::CachedDecode);
         let state_bytes = RECURRENT_STATE_BYTES;
-        let (conv, ba, a_log, dt, indices, prior, candidate_b4, candidate_b8, core_b4, core_b8) = {
+        let (conv, ba, a_log, dt, indices, prior, candidate_b4, core_b4, core_b8) = {
             let mut init = service.begin_initialization(0)?;
             let conv = init.upload_bytes(&bf16(row_conv * ROWS / 2, 1), BufferRole::Scratch)?;
             let ba = init.upload_bytes(&bf16(row_ba * ROWS / 2, 3), BufferRole::Scratch)?;
@@ -423,13 +413,11 @@ fn physical_cached_decode_private_b8_matches_two_b4() -> Result<()> {
             )?;
             let mut prior = Vec::with_capacity(ROWS);
             let mut candidate_b4 = Vec::with_capacity(ROWS);
-            let mut candidate_b8 = Vec::with_capacity(ROWS);
             for lane in 0..ROWS {
                 prior.push(
                     init.upload_bytes(&f32s(state_bytes / 4, 11 + lane), BufferRole::Scratch)?,
                 );
                 candidate_b4.push(init.allocate_empty(state_bytes, BufferRole::Scratch)?);
-                candidate_b8.push(init.allocate_empty(state_bytes, BufferRole::Scratch)?);
             }
             let core_b4 = init.allocate_empty(row_core * ROWS, BufferRole::Scratch)?;
             let core_b8 = init.allocate_empty(row_core * ROWS, BufferRole::Scratch)?;
@@ -442,7 +430,6 @@ fn physical_cached_decode_private_b8_matches_two_b4() -> Result<()> {
                 indices,
                 prior,
                 candidate_b4,
-                candidate_b8,
                 core_b4,
                 core_b8,
             )
@@ -493,10 +480,7 @@ fn physical_cached_decode_private_b8_matches_two_b4() -> Result<()> {
             Ok(())
         };
         let prior_b8 = prior.iter().map(|lease| lease.handle()).collect::<Vec<_>>();
-        let candidate_b8_handles = candidate_b8
-            .iter()
-            .map(|lease| lease.handle())
-            .collect::<Vec<_>>();
+        let candidate_b8_handles = prior_b8.clone();
         let launch_b8 = || {
             b8.launch(
                 &client,
@@ -532,9 +516,9 @@ fn physical_cached_decode_private_b8_matches_two_b4() -> Result<()> {
             if client
                 .read_one(candidate_b4[lane].handle())
                 .map_err(|error| Error::State(format!("private GDN B4 state read: {error}")))?
-                != client
-                    .read_one(candidate_b8[lane].handle())
-                    .map_err(|error| Error::State(format!("private GDN B8 state read: {error}")))?
+                != client.read_one(prior[lane].handle()).map_err(|error| {
+                    Error::State(format!("private GDN B8 in-place state read: {error}"))
+                })?
             {
                 return Err(Error::State(format!(
                     "private GDN B8 state differs at lane {lane}"
@@ -573,7 +557,6 @@ fn physical_cached_decode_private_b8_matches_two_b4() -> Result<()> {
             indices,
             prior,
             candidate_b4,
-            candidate_b8,
             core_b4,
             core_b8,
         ));

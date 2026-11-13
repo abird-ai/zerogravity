@@ -3610,3 +3610,17 @@ build or general model/backend grant. Historical failures keep their source scop
   Persistent native CUDA roots/checkpoint/export semantics need separate
   qualification before removing that boundary from the live decode loop; the B8
   result is a physical opportunity, not an end-to-end serving claim.
+- [x] Qualified in-place private recurrent-state mutation as a reusable property of
+  the retained private cached-GDN primitive. The private kernel reads each lane's
+  complete native H/V/K prior slice before its terminal stores, so prior/candidate
+  may be the same exact handle without changing the frozen arithmetic source or
+  ABI. RTX3060 physical B4 qualification against the canonical
+  import->core->export pipeline remained bit-exact with the aliased private buffer
+  (full core plus exported canonical state); the transport pipeline measured
+  348.127/319.051 us forward/reverse versus direct in-place 62.804/64.425 us in
+  this run. Independent B8 in-place qualification matched two out-of-place B4
+  launches bit-for-bit across core and all eight recurrent states, while one B8
+  measured 83.883/82.486 us versus two B4 144.963/134.889 us. This grants only
+  the physical alias property. Canonical roots remain authoritative; serving may
+  exploit a derived native cache only when it is keyed to the exact committed
+  root, invalidated before mutation and retagged after successful publication.
