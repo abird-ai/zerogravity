@@ -3,6 +3,9 @@
 struct __align__(8) GemmShape {
     unsigned long long columns, rows, inner, reduction_terms, lane_shift, output_stride;
 };
+struct __align__(8) GemmPairShape {
+    GemmShape primary, secondary;
+};
 
 __device__ __forceinline__ unsigned pack(const unsigned short* p) {
     unsigned value;
@@ -990,6 +993,59 @@ __device__ __forceinline__ void lane_blocked_rows_fixed(
             store_bf16(y, row * s.output_stride + col, total[row], status);
         }
     }
+}
+
+// Two independent B8 projections sharing one row-major activation. The primary
+// projection keeps the accepted Ordered K64 tensor-core arithmetic. The
+// secondary projection keeps the ordinary one-row-per-CTA LaneBlocked<32,T>
+// arithmetic; it deliberately does not share weights across rows.
+__device__ __forceinline__ void lane_blocked_one_row(
+    const unsigned short* w, const unsigned short* x, unsigned short* y,
+    unsigned* status, GemmShape s, unsigned long long local_block,
+    unsigned long long row) {
+    constexpr unsigned LANES = 32, CONTROL = 31, COLUMNS_PER_BLOCK = 4;
+    const unsigned lane = threadIdx.x & (LANES - 1);
+    const unsigned long long col = local_block * COLUMNS_PER_BLOCK
+        + (threadIdx.x / LANES);
+    float total = 0;
+    const unsigned long long step = s.reduction_terms * LANES;
+    for (unsigned long long start = 0; start < s.inner; start += step) {
+        const unsigned long long first = start + lane * s.reduction_terms;
+        const unsigned long long end = s.inner < first + s.reduction_terms
+            ? s.inner : first + s.reduction_terms;
+        for (unsigned long long k = first; k < end; ++k) {
+            if (col < s.columns) total = add_product(total,
+                widen_bf16(w[col * s.inner + k]),
+                widen_bf16(x[row * s.inner + k]));
+        }
+    }
+    for (unsigned delta = LANES >> 1; delta; delta >>= 1) {
+        const float other = lane_down(total, delta, CONTROL);
+        if (lane < delta) total += other;
+    }
+    if (lane == 0 && col < s.columns) {
+        store_bf16(y, row * s.output_stride + col, total, status);
+    }
+}
+
+extern "C" __global__ __launch_bounds__(128)
+void bf16_gemm_shared_input_pair_batch8_ordered_k64_certified(
+    const unsigned short* primary_w, const unsigned short* secondary_w,
+    const unsigned short* x, unsigned short* primary_y, unsigned short* secondary_y,
+    unsigned* status, GemmPairShape pair) {
+    __shared__ __align__(16) unsigned short shared[2 * (64 + 8) * 72];
+    const GemmShape primary = pair.primary;
+    const GemmShape secondary = pair.secondary;
+    const unsigned long long primary_blocks = (primary.columns + 63) / 64;
+    if ((unsigned long long)blockIdx.x < primary_blocks) {
+        gemm_ordered_k64_body<8>(primary_w, x, primary_y, status, primary, shared);
+        return;
+    }
+    const unsigned long long column_blocks = (secondary.columns + 3) / 4;
+    const unsigned long long tail = (unsigned long long)blockIdx.x - primary_blocks;
+    const unsigned long long row = tail / column_blocks;
+    if (row < 8) lane_blocked_one_row(secondary_w, x, secondary_y,
+        status, secondary, tail % column_blocks, row);
 }
 
 #define ZG_LANE_BLOCKED_ROWS_ENTRY(ROWS) \

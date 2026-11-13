@@ -211,6 +211,158 @@ impl Bf16HeadGreedyPartials {
     }
 }
 
+/// Two exact B8 projections sharing one row-major activation binding.
+///
+/// The primary projection retains the accepted Ordered K64 arithmetic and the
+/// secondary projection retains its independent LaneBlocked reduction. This is
+/// a physical composition primitive only: no source/model/graph/session/root or
+/// publication policy is encoded here.
+pub(crate) struct Bf16SharedInputProjectionPair {
+    kernel: PinnedKernel,
+    grid: [u32; 3],
+}
+
+impl Bf16SharedInputProjectionPair {
+    pub(crate) fn new(
+        primary: Bf16GemmShape,
+        primary_reduction: Bf16GemmReduction,
+        secondary: Bf16GemmShape,
+        secondary_reduction: Bf16GemmReduction,
+    ) -> Result<Self> {
+        if primary.rows != 8
+            || secondary.rows != 8
+            || primary.inner != secondary.inner
+            || primary.inner < 2048
+            || primary_reduction != Bf16GemmReduction::Ordered
+        {
+            return Err(Error::Unsupported(
+                "BF16 shared-input pair primary geometry/reduction".into(),
+            ));
+        }
+        let secondary_terms = match secondary_reduction {
+            Bf16GemmReduction::LaneBlocked { lanes: 32, terms } if terms != 0 => terms,
+            _ => {
+                return Err(Error::Unsupported(
+                    "BF16 shared-input pair secondary reduction".into(),
+                ));
+            }
+        };
+        secondary_terms
+            .checked_mul(32)
+            .filter(|span| *span <= isize::MAX as usize)
+            .ok_or_else(|| Error::Limit("BF16 shared-input pair reduction span".into()))?;
+        let blocks = primary
+            .columns
+            .div_ceil(64)
+            .checked_add(
+                secondary
+                    .columns
+                    .div_ceil(4)
+                    .checked_mul(8)
+                    .ok_or_else(|| Error::Limit("BF16 shared-input pair grid overflow".into()))?,
+            )
+            .ok_or_else(|| Error::Limit("BF16 shared-input pair grid overflow".into()))?;
+        let x = u32::try_from(blocks)
+            .ok()
+            .filter(|blocks| *blocks <= i32::MAX as u32)
+            .ok_or_else(|| Error::Limit("BF16 shared-input pair grid overflow".into()))?;
+        let schema = StaticScalarSchema::new(
+            &[
+                (StaticScalarType::U64, 0),
+                (StaticScalarType::U64, 8),
+                (StaticScalarType::U64, 16),
+                (StaticScalarType::U64, 24),
+                (StaticScalarType::U64, 32),
+                (StaticScalarType::U64, 40),
+                (StaticScalarType::U64, 48),
+                (StaticScalarType::U64, 56),
+                (StaticScalarType::U64, 64),
+                (StaticScalarType::U64, 72),
+                (StaticScalarType::U64, 80),
+                (StaticScalarType::U64, 88),
+            ],
+            96,
+            8,
+        )?;
+        let scalars = StaticScalarBlock::new(
+            schema,
+            &[
+                primary.columns,
+                primary.rows,
+                primary.inner,
+                32,
+                0,
+                primary.columns,
+                secondary.columns,
+                secondary.rows,
+                secondary.inner,
+                secondary_terms,
+                5,
+                secondary.columns,
+            ]
+            .map(|value| StaticScalarValue::U64(value as u64)),
+        )?;
+        let kernel = PinnedKernel::new_with_static_scalars(
+            "bf16_gemm_shared_input_pair_batch8_ordered_k64_certified",
+            SOURCE.into(),
+            128,
+            vec![
+                (primary.weight_bytes(), BufferIOAttr::ReadOnly),
+                (secondary.weight_bytes(), BufferIOAttr::ReadOnly),
+                (primary.input_bytes(), BufferIOAttr::ReadOnly),
+                (primary.output_bytes(), BufferIOAttr::WriteOnly),
+                (secondary.output_bytes(), BufferIOAttr::WriteOnly),
+                (4, BufferIOAttr::ReadWrite),
+            ]
+            .into(),
+            scalars,
+        )?
+        .with_binding_alignment(2)?;
+        Ok(Self {
+            kernel,
+            grid: [x, 1, 1],
+        })
+    }
+
+    pub(crate) fn prepare_code(&self, queue: &cubecl::cuda::OwnedCudaQueue) -> Result<()> {
+        self.kernel.prepare_code(queue)
+    }
+
+    pub(crate) fn prepare(
+        &self,
+        client: &Client,
+        primary_weights: Handle,
+        secondary_weights: Handle,
+        input: Handle,
+        primary_output: Handle,
+        secondary_output: Handle,
+        status: Handle,
+    ) -> Result<PreparedPinnedLaunch> {
+        if status.service != client.service_id() || status.size_in_used() != 4 {
+            return Err(Error::State(
+                "BF16 shared-input pair status service/extent".into(),
+            ));
+        }
+        require_pair_disjoint(
+            [&primary_weights, &secondary_weights, &input],
+            [&primary_output, &secondary_output],
+            &status,
+        )?;
+        self.kernel.prepare(
+            client,
+            self.grid,
+            vec![
+                primary_weights,
+                secondary_weights,
+                input,
+                primary_output,
+                secondary_output,
+                status,
+            ],
+        )
+    }
+}
+
 impl Bf16Gemm {
     pub(crate) fn new(columns: usize, rows: usize, inner: usize) -> Result<Self> {
         Self::with_reduction(columns, rows, inner, Bf16GemmReduction::Ordered)
@@ -725,6 +877,53 @@ fn require_disjoint_output(weights: &Handle, input: &Handle, output: &Handle) ->
             && ws < re
         {
             return Err(Error::State("BF16 GEMM output overlaps an input".into()));
+        }
+    }
+    Ok(())
+}
+
+fn require_pair_disjoint(
+    reads: [&Handle; 3],
+    outputs: [&Handle; 2],
+    status: &Handle,
+) -> Result<()> {
+    for output in outputs {
+        let (os, oe) = range(output)?;
+        for read in reads {
+            let (rs, re) = range(read)?;
+            if read.service == output.service
+                && read.memory.descriptor().id == output.memory.descriptor().id
+                && rs < oe
+                && os < re
+            {
+                return Err(Error::State(
+                    "BF16 shared-input pair output overlaps an input".into(),
+                ));
+            }
+        }
+    }
+    let (a0, a1) = range(outputs[0])?;
+    let (b0, b1) = range(outputs[1])?;
+    if outputs[0].service == outputs[1].service
+        && outputs[0].memory.descriptor().id == outputs[1].memory.descriptor().id
+        && a0 < b1
+        && b0 < a1
+    {
+        return Err(Error::State(
+            "BF16 shared-input pair outputs overlap".into(),
+        ));
+    }
+    let (ss, se) = range(status)?;
+    for output in outputs {
+        let (os, oe) = range(output)?;
+        if output.service == status.service
+            && output.memory.descriptor().id == status.memory.descriptor().id
+            && os < se
+            && ss < oe
+        {
+            return Err(Error::State(
+                "BF16 shared-input pair output overlaps status".into(),
+            ));
         }
     }
     Ok(())

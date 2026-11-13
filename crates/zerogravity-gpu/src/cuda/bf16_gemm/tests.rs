@@ -248,6 +248,152 @@ fn lane_strided_batch_inner_major_matches_row_major() -> Result<()> {
 
 #[cfg(all(feature = "qualification", feature = "cuda-cublas"))]
 #[test]
+#[ignore = "isolated SM86 shared-input B8 pair preserves both independent reductions exactly"]
+fn shared_input_projection_pair_matches_separate_gemms() -> Result<()> {
+    futures_lite::future::block_on(async {
+        let diagnostic = crate::cuda::test_support::CudaDiagnostic::new("bf16-gemm-shared-pair")?;
+        let service = diagnostic.service.clone();
+        let client = service.client();
+        let queue = service.pinned_cuda_queue()?.clone();
+        let rows = 8usize;
+        let inner = 2048usize;
+        let primary_columns = 256usize;
+        let secondary_columns = 32usize;
+        let encode = |words: Vec<u16>| {
+            words
+                .into_iter()
+                .flat_map(u16::to_ne_bytes)
+                .collect::<Vec<_>>()
+        };
+        let value = |i: usize, seed: usize| match (i * 17 + seed * 11) % 8 {
+            0 => 0x3f80,
+            1 => 0xbf00,
+            2 => 0x3e80,
+            3 => 0xbe80,
+            4 => 0x3f00,
+            5 => 0xbf80,
+            6 => 0x3d80,
+            _ => 0,
+        };
+        let input =
+            client.create_from_slice(&encode((0..rows * inner).map(|i| value(i, 1)).collect()));
+        let primary_weights = client.create_from_slice(&encode(
+            (0..primary_columns * inner).map(|i| value(i, 3)).collect(),
+        ));
+        let secondary_weights = client.create_from_slice(&encode(
+            (0..secondary_columns * inner)
+                .map(|i| value(i, 5))
+                .collect(),
+        ));
+        let primary_shape = Bf16GemmShape::new(primary_columns, rows, inner)?;
+        let secondary_shape = Bf16GemmShape::new(secondary_columns, rows, inner)?;
+        let secondary_reduction = Bf16GemmReduction::LaneBlocked {
+            lanes: 32,
+            terms: 64,
+        };
+        let primary = Bf16Gemm::with_reduction_certified(
+            primary_columns,
+            rows,
+            inner,
+            Bf16GemmReduction::Ordered,
+        )?;
+        let secondary = Bf16Gemm::with_reduction_certified(
+            secondary_columns,
+            rows,
+            inner,
+            secondary_reduction,
+        )?;
+        let pair = Bf16SharedInputProjectionPair::new(
+            primary_shape,
+            Bf16GemmReduction::Ordered,
+            secondary_shape,
+            secondary_reduction,
+        )?;
+        primary.prepare_code(&queue)?;
+        secondary.prepare_code(&queue)?;
+        pair.prepare_code(&queue)?;
+
+        let primary_expected = client.empty(primary_shape.output_bytes());
+        let secondary_expected = client.empty(secondary_shape.output_bytes());
+        let primary_actual = client.empty(primary_shape.output_bytes());
+        let secondary_actual = client.empty(secondary_shape.output_bytes());
+        let primary_status = client.create_from_slice(&0u32.to_ne_bytes());
+        let secondary_status = client.create_from_slice(&0u32.to_ne_bytes());
+        let pair_status = client.create_from_slice(&0u32.to_ne_bytes());
+        primary
+            .prepare_certified(
+                client,
+                primary_weights.clone(),
+                input.clone(),
+                primary_expected.clone(),
+                primary_status.clone(),
+            )?
+            .launch_on(client)?;
+        secondary
+            .prepare_certified(
+                client,
+                secondary_weights.clone(),
+                input.clone(),
+                secondary_expected.clone(),
+                secondary_status.clone(),
+            )?
+            .launch_on(client)?;
+        pair.prepare(
+            client,
+            primary_weights,
+            secondary_weights,
+            input,
+            primary_actual.clone(),
+            secondary_actual.clone(),
+            pair_status.clone(),
+        )?
+        .launch_on(client)?;
+        client
+            .sync()
+            .await
+            .map_err(|error| Error::State(format!("shared-input pair sync: {error}")))?;
+        let primary_expected = client
+            .read_one(primary_expected)
+            .map_err(|error| Error::State(format!("shared-input primary reference: {error}")))?;
+        let secondary_expected = client
+            .read_one(secondary_expected)
+            .map_err(|error| Error::State(format!("shared-input secondary reference: {error}")))?;
+        let primary_actual = client
+            .read_one(primary_actual)
+            .map_err(|error| Error::State(format!("shared-input primary candidate: {error}")))?;
+        let secondary_actual = client
+            .read_one(secondary_actual)
+            .map_err(|error| Error::State(format!("shared-input secondary candidate: {error}")))?;
+        let zero = 0u32.to_ne_bytes();
+        for status in [primary_status, secondary_status, pair_status] {
+            let status = client
+                .read_one(status)
+                .map_err(|error| Error::State(format!("shared-input status read: {error}")))?;
+            if &status[..] != zero.as_slice() {
+                return Err(Error::State(
+                    "shared-input projection status differs".into(),
+                ));
+            }
+        }
+        if primary_actual != primary_expected || secondary_actual != secondary_expected {
+            return Err(Error::State(
+                "shared-input projection pair differs from independent reductions".into(),
+            ));
+        }
+
+        client
+            .memory_cleanup()
+            .map_err(|error| Error::State(format!("shared-input pair cleanup: {error}")))?;
+        service.close_model_namespace()?;
+        println!(
+            "BF16_SHARED_INPUT_PAIR_PASS rows=8 exact=true reductions=ordered_k64+lane_blocked"
+        );
+        Ok(())
+    })
+}
+
+#[cfg(all(feature = "qualification", feature = "cuda-cublas"))]
+#[test]
 #[ignore = "isolated SM86 B8 head greedy partials match full BF16 head plus batch greedy"]
 fn head_greedy_partials_match_full_head() -> Result<()> {
     futures_lite::future::block_on(async {

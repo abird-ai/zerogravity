@@ -4053,3 +4053,22 @@ build or general model/backend grant. Historical failures keep their source scop
   selectors for this noise-level/non-general effect. All candidate helpers,
   entries, selectors and timing code were removed; production remains byte-for-
   byte on the accepted .ca K64 path.
+
+### 14 Nov 2026 — shared-input B8 projection-pair primitive retained; consumer held
+
+- [x] Added one model-neutral B8 shared-input projection primitive that composes
+  an exact Ordered K64 projection with an independent LaneBlocked<32,T>
+  projection under one launch while preserving both original reduction orders,
+  row-major activation semantics, separate outputs/status and no
+  model/source/session/root/publication authority. The secondary remains one row
+  per CTA, so this does not resurrect the rejected LaneBlocked64 row-sharing
+  specialization. Physical RTX3060 qualification matches both accepted GEMMs
+  byte-for-byte with zero status.
+- [x] Direct alternating timing at the real2B hot shape
+  8192x8x2048 + 32x8x2048 measured separate accepted launches at
+  168.230us mean versus155.752us for the composed primitive (~7.42% lower).
+  Keep the reusable primitive and focused exactness test. Do not select it in
+  ordinary Qwen serving yet: the same-process loaded-model A/B did not reach a
+  completed measurement before the bounded checkpoint. Temporary selector,
+  runner, timing hooks and CUDA include views were removed; the accepted
+  ordinary CUDA path remains unchanged.
