@@ -3517,3 +3517,22 @@ build or general model/backend grant. Historical failures keep their source scop
   provider cap therefore retains this 2B profile's weights; CUDA's serial 1MiB
   source-page checkpoint path is important for larger streamed profiles but is
   not responsible for the present 2B decode gap.
+- [x] Measured the complete warm B8 cached-decode GPU traversal with a temporary
+  device-event envelope, then removed the probe. After the first compile/warm
+  traversal, genuine2B B8 decode stayed around25.0--27.4ms per token (about
+  25.5ms typical). The separately measured dense projection families account
+  for about13.18ms (~52%) of that device time; the24x12288x2048
+  `LaneStrided<16,512>` inner-major family alone contributes about5.77ms
+  (~23% of the complete GPU traversal). This confirms the shared GEMM is a
+  material hot path without claiming it explains the whole remaining gap.
+- [x] Rejected three further exact B8 `LaneStrided<16,512>` inner-major load/
+  scheduling variants after same-device physical qualification. Warp-sharing
+  each packed B8 activation between the two16-lane groups in a warp preserved
+  output/status exactly but regressed the dominant12288x8x2048 kernel from the
+  accepted ~193--254us thermal/DVFS range to ~626--647us. Computing two output
+  columns per16-lane group to reuse each packed activation also stayed exact but
+  measured ~405us. Reducing the32-item loop to `#pragma unroll 8` stayed exact
+  but lost the accepted fast passes (~228--257us versus ~193--254us) and showed
+  no stable gain. All candidate kernel/timing code was removed. Keep the
+  accepted generic inner-major primitive; further work should target another
+  measured decode region rather than add shape-specific selector complexity.
