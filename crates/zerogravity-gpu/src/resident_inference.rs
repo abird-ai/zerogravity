@@ -79,6 +79,7 @@ mod range_qualification;
 mod view_qualification;
 use crate::backend::validate_provider;
 use crate::resident_batch::ResidentBatchRows;
+use crate::resident_derived_state::{DerivedStateCache, DerivedStateUse};
 use crate::resident_leases::{
     ResidentLease, ResidentPhysical, ResidentReady, ResidentService, ResidentSource,
 };
@@ -163,6 +164,7 @@ pub struct ResidentSnapshot {
 pub struct ResidentSession {
     authority: SessionAuthority,
     domains: Vec<Domain>,
+    derived: DerivedStateCache,
     // Last model/native owner must outlive this session's actual root handles.
     model: Arc<ResidentModel>,
 }
@@ -214,6 +216,7 @@ struct StepInput<'a> {
 pub struct PreparedInference {
     attempt: RootAttempt,
     domains: Vec<Domain>,
+    derived: Vec<DerivedStateUse>,
     ready: ResidentReady,
     readback: InferenceReadback,
 }
@@ -298,7 +301,7 @@ fn publish_prepared_cohort(
         session.validate_prepared(prepared)?;
     }
     let service = Arc::clone(&model.service);
-    service.publish_if_usable(|| {
+    let published = service.publish_if_usable(|| {
         // Split these disjoint struct fields so all mutable logical
         // authority guards can exist simultaneously with state slabs.
         let (mut authorities, mut states): (Vec<_>, Vec<_>) = sessions
@@ -313,6 +316,7 @@ fn publish_prepared_cohort(
         // Everything above is fallible; everything below is infallible.
         // Existing ResourceArbiter's with_unfenced keeps the atomic
         // logical cohort publication fenced with respect to GPU poison.
+        let mut published = Vec::with_capacity(prepared.len());
         for ((state, prepared), guard) in
             states.iter_mut().zip(prepared.iter_mut()).zip(transitions)
         {
@@ -321,9 +325,17 @@ fn publish_prepared_cohort(
             if let Some(token) = prepared.readback.device_token.as_mut() {
                 token.producer = Some(root);
             }
+            published.push(root);
         }
-        Ok(())
+        Ok(published)
     })?;
+    // Derived representations are optimization-only. Canonical publication is
+    // already complete, so a failed cache retag can only turn into a miss.
+    for (prepared, root) in prepared.iter_mut().zip(published) {
+        for derived in &mut prepared.derived {
+            let _ = derived.retag_after_publish(root);
+        }
+    }
     Ok(())
 }
 
@@ -864,6 +876,7 @@ impl ResidentModel {
             model: self.clone(),
             authority,
             domains,
+            derived: DerivedStateCache::default(),
         })
     }
     /// Prepare a set of SAME-source, SAME-frontier sessions. One immutable
@@ -2417,6 +2430,7 @@ impl ResidentSession {
         Ok(PreparedInference {
             attempt,
             domains,
+            derived: Vec::new(),
             ready,
             readback,
         })
@@ -2528,6 +2542,7 @@ impl ResidentSession {
         Ok(PreparedInference {
             attempt,
             domains,
+            derived: Vec::new(),
             ready,
             readback,
         })
@@ -2599,21 +2614,40 @@ impl ResidentSession {
                 "foreign/incomplete resident Ready proposal".into(),
             ));
         }
+        for derived in &prepared.derived {
+            if derived.base() != prepared.attempt.base()
+                || !Arc::ptr_eq(derived.lease().service(), &self.model.service)
+                || derived.lease().role() != BufferRole::RecurrentState
+                || derived.lease().bytes() != derived.layout().bytes()?
+                || !derived.lease().is_initialized()
+            {
+                return Err(Error::State(
+                    "derived resident state lacks exact-root physical ownership".into(),
+                ));
+            }
+        }
         self.model.validate_domains(&prepared.domains, true)?;
-        let mut outputs = prepared
+        let mut canonical_outputs = prepared
             .domains
             .iter()
             .flat_map(|d| d.leases.iter())
             .collect::<Vec<_>>();
-        outputs.extend(prepared.readback.device_token.iter().map(|t| &t.lease));
-        if outputs.len() != prepared.ready.outputs().len()
-            || outputs
+        canonical_outputs.extend(prepared.readback.device_token.iter().map(|t| &t.lease));
+        let ready_outputs = prepared.ready.outputs();
+        let canonical_len = canonical_outputs.len();
+        if ready_outputs.len() != canonical_len + prepared.derived.len()
+            || canonical_outputs
                 .iter()
-                .zip(prepared.ready.outputs())
+                .zip(&ready_outputs[..canonical_len])
                 .any(|(a, b)| a.id() != b.id())
+            || prepared
+                .derived
+                .iter()
+                .zip(&ready_outputs[canonical_len..])
+                .any(|(derived, output)| derived.lease().id() != output.id())
         {
             return Err(Error::State(
-                "resident promoted domain cohort mismatch".into(),
+                "resident promoted canonical/derived output cohort mismatch".into(),
             ));
         }
         Ok(())
@@ -2628,6 +2662,9 @@ impl ResidentSession {
             Ok(transition.commit())
         })?;
         drop(displaced);
+        for derived in &mut prepared.derived {
+            let _ = derived.retag_after_publish(published);
+        }
         if let Some(token) = prepared.readback.device_token.as_mut() {
             token.producer = Some(published);
         }
@@ -2681,6 +2718,7 @@ impl ResidentSession {
         self.commit(PreparedInference {
             attempt,
             domains,
+            derived: Vec::new(),
             ready,
             readback,
         })
@@ -2703,6 +2741,7 @@ impl ResidentSession {
             transition.commit();
             Ok(())
         })?;
+        self.derived.invalidate();
         drop(displaced);
         Ok(())
     }
@@ -2721,6 +2760,7 @@ impl ResidentSession {
             transition.commit();
             Ok(())
         })?;
+        self.derived.invalidate();
         drop(displaced);
         Ok(())
     }

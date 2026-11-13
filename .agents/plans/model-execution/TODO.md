@@ -3624,3 +3624,26 @@ build or general model/backend grant. Historical failures keep their source scop
   the physical alias property. Canonical roots remain authoritative; serving may
   exploit a derived native cache only when it is keyed to the exact committed
   root, invalidated before mutation and retagged after successful publication.
+- [x] Retained a model-neutral exact-root derived-state cache primitive while
+  rejecting its first ordinary-CUDA GDN consumer. The shared cache is keyed by
+  `StateSlot` + opaque backend encoding + physical layout + exact committed
+  `RootBinding`; it is bounded to256 entries/session, treats busy/capacity/poison
+  as a cache miss and invalidates abandoned mutable uses. Retagging is strictly a
+  normal forward transition: same source/session/epoch, exactly `root+1`, and a
+  strictly advanced frontier. Restore/reset/replacement timelines therefore cannot
+  reuse a derivative. `PreparedInference` keeps canonical Ready outputs exact and
+  separately requires every retained derivative as a completed-Write suffix in the
+  same `ResidentReady`, so initialized-but-stale bytes cannot be retagged. The full
+  default GPU lib suite passes134/134 non-ignored tests, all-target check passes,
+  and the RTX3060 physical lifecycle qualifier passes exact-root hit/busy/retag/
+  abandon/reallocate behavior. Canonical state remains the sole checkpoint/rollback/
+  publication authority. The current GDN adapter was
+  removed after a same-binary non-LTO public0.8B B8 47+16 A/B stayed byte-exact
+  but regressed from542.939ms /235.754 output tok/s with the cache disabled to
+  729.544ms /175.452 tok/s enabled (~25.6% slower). A temporary trace, also
+  removed, proved this was not lifecycle churn: each wave imported all144
+  recurrent derivatives on the first decode, then the next14 B8 decodes hit all
+  144 exact-root entries with zero imports. Keep the independent private-GDN
+  alias primitive and the generic derived-state cache, but do not select the
+  current private GDN representation for ordinary serving without a materially
+  different end-to-end layout/measurement.

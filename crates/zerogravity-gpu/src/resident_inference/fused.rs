@@ -678,6 +678,7 @@ impl ResidentModel {
             prepared.push(PreparedInference {
                 attempt,
                 domains,
+                derived: Vec::new(),
                 ready,
                 readback: InferenceReadback {
                     // Shared physical work is counted once across the cohort.

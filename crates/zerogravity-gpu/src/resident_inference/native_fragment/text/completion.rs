@@ -333,6 +333,7 @@ impl ResidentSession {
         let inference = PreparedInference {
             attempt: input.attempt().clone(),
             domains: state.candidate().to_vec(),
+            derived: Vec::new(),
             ready,
             readback,
         };

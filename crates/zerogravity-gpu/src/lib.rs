@@ -50,6 +50,11 @@ mod residency;
 pub mod resident_batch;
 mod resident_batch_greedy;
 mod resident_bindings;
+#[expect(
+    dead_code,
+    reason = "retained model-neutral exact-root cache; first GDN consumer was rejected by A/B"
+)]
+mod resident_derived_state;
 mod resident_greedy;
 #[cfg(feature = "qualification")]
 mod resident_greedy_qualification;

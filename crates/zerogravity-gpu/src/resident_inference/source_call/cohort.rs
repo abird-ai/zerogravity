@@ -528,6 +528,7 @@ impl ResidentModel {
             prepared.push(PreparedInference {
                 attempt,
                 domains,
+                derived: Vec::new(),
                 ready,
                 readback: InferenceReadback {
                     dispatches: if row == 0 { dispatches } else { 0 },
@@ -859,6 +860,7 @@ impl ResidentModel {
             prepared.push(PreparedInference {
                 attempt,
                 domains,
+                derived: Vec::new(),
                 ready,
                 readback: InferenceReadback {
                     dispatches: if row == 0 { dispatches } else { 0 },
