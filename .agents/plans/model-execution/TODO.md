@@ -3973,3 +3973,41 @@ build or general model/backend grant. Historical failures keep their source scop
   (675.148--676.997ms), about1.72% lower latency /1.75% higher throughput than
   CTA32. Retain CTA256 as the generic B8 private-KV geometry; no model selector
   or new primitive was added.
+
+### 14 Nov 2026 — post-CTA256 profile refreshed; recurrent-CTA and Rounded-pair variants rejected
+
+- [x] Re-profiled the current signed B8 CUDA path after the accepted private-KV
+  CTA256 change using temporary per-GEMM device events, then removed the probe.
+  The probe resolved each event immediately, so these numbers are for relative
+  kernel ranking only, not end-to-end throughput. The repeated decode families
+  remain concentrated in the same places: 24x12288x2048
+  LaneStrided<16,512> inner-major =5252.096us total /218.837us mean;
+  24x2048x6144 RoundedSegments<2048> =3336.128/139.005us;
+  18x8192x2048 Ordered =2639.872/146.660us;
+  24x2048x2048 LaneStrided<16,256> =1148.160/47.840us;
+  18x32x2048 LaneBlocked<32,64> =1124.352/62.464us; and
+  6x5120x2048 LaneStrided<16,512> =682.080/113.680us. Two observed
+  248320-head launches (prefill terminal + cached decode) measured7068.768us
+  total. CTA256 KV therefore did not change the dense-projection priority map.
+- [x] Rejected changing only scalar recurrent StateTransport CTA width. Exact
+  RecurrentIn/RecurrentOut index equations and status semantics passed the full
+  physical state-transport qualifier at128/256/512 threads, but same-process
+  public Qwen3.5-2B B8 forward/reverse waves were not stable or positive:
+  128-thread samples were733.083/699.858/693.904/703.012ms;
+  256-thread samples859.339/699.015/693.199/704.745ms; and512-thread samples
+  707.643/709.477/699.956/694.774ms. The 256-thread path showed a severe stall
+  and order effects crossed for512. Restore/keep the exact128-thread transport;
+  do not add a width selector for this path.
+- [x] Rejected paired BF16 segment-boundary conversion in the B8 K64 Rounded
+  kernel. A temporary SM86 candidate replaced four scalar cvt.rn.bf16.f32
+  conversions at each RoundedSegments boundary with two
+  cvt.rn.bf16x2.f32 conversions, then widened the exact packed BF16 bits and
+  accumulated them in the original scalar order. It changed no MMA, K64 stage,
+  segment boundary or output rounding. The focused hot-shape RTX3060 qualifier
+  at M256/N8/K6144/terms2048 matched the accepted scalar kernel output/status
+  bit-for-bit; earlier broad synthetic cases also matched until that intentionally
+  large suite hit the cumulative PTX budget. Two same-process real-model device
+  profile waves were flat: accepted48-call aggregate6049.312us /126.027us mean
+  versus paired6042.144us /125.878us mean (~0.12%). Candidate entries, selector,
+  qualifier, profiler and runners were removed. Keep the accepted Rounded K64
+  kernel and pursue a materially different bottleneck rather than this conversion.
