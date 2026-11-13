@@ -3449,3 +3449,20 @@ build or general model/backend grant. Historical failures keep their source scop
   The production cohort adapter and B8 cold-precompile selection were reverted;
   retain only the independently qualified B4/B8 primitive/tests for another
   model, graph or execution geometry where the launch economics justify it.
+
+### 13 Nov 2026 — lane-blocked inner-major GEMM experiment rejected
+
+- [x] Evaluated an exact inner-major input specialization for the existing shared
+  B2/B4/B8 `LaneBlocked { lanes:32, terms:32 }` GEMM family. The candidate used
+  one naturally aligned 4/8/16-byte input load per inner position while preserving
+  every row's original contiguous 32-term accumulation and warp reduction tree.
+  Physical RTX 3060 qualification at the captured 32x1024 geometry matched the
+  accepted row-major B2/B4/B8 outputs and status bit-for-bit.
+- [x] Rejected the specialization before any serving integration because it did
+  not provide useful primitive-level economics. B8 row-major measured
+  27.696/28.328 us across forward/reverse timing passes; prepacked inner-major was
+  effectively flat at 27.601/27.706 us, while the required row-major->inner-major
+  pack plus GEMM regressed to 52.226/51.749 us. The kernel/selector/qualifier and
+  timing harness were fully removed. Keep the accepted row-major shared-weight
+  B2/B4/B8 LaneBlocked primitive; revisit only if an upstream producer already
+  owns the activation in inner-major form and profiling shows material value.
