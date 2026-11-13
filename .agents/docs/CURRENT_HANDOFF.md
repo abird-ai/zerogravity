@@ -1,1046 +1,706 @@
-# ZeroGravity current comprehensive handoff
-
-Canonical cross-window entry point. Read [plan rules](../plans/README.md),
-[queue](../plans/TODO.md), [model execution](../plans/model-execution/TODO.md)
-and [correctness policy](../plans/numerics-and-context/CORRECTNESS_POLICY.md).
-Live source/tests and the current queue outrank the retained historical sections.
-
-## Resume here — signed implementation, no live campaign
-
-- Latest implementation: signed`d16f096` explicit HIP total budget/resident27B;
-  preceding signed`4f1e827` shared-source/CUDA composition. Both signatures G.
-  This handoff checkpoint changes documentation only, including the user's
-  existing `AGENTS.md` eight-Cargo-job guidance. No new inference acceptance.
-- No active session job, build or device campaign to inherit. Original HIP budget
-  R1/R2 semantics and retirement independently verified. Do not restart them.
-  Recurrence`17aafa71` remains cancelled; watch`960f23ca` expired. No push.
-- Work on `main`; preserve root `README.md` and the pre-existing protected detached
-  checkout under `/home/pvl/.local/share/kilo/worktree-pool/zerogravity-0f30d37a09c9/curse-artichoke`.
-  No new/resumed subagents under the current owner direction.
-
-### Roadmap disposition
-
-| Item | Accepted scope / remaining work |
-|---|---|
-|1 — small HIP|Signed`8ffb511`: populated1K–16K native/SDK/HTTP;32K refused|
-|2 — CUDA|Small exact resident/streamed trajectories and shared serving/lifecycle pass; broader populated contexts and large numerical accuracy open|
-|3 — ordinary27B HIP|Original66-call reference/state, SDK/lifecycle and resident C1–C64 pass; HTTP504 and populated1K/2K closure open|
-|4 — batching|Genuine inter-session native batching absent; physical width1|
-|5 — population|Short native sweeps complete within admission; broader HTTP/context/fault campaigns separate|
-|6 — baselines|Collected; ROCm2B C4/16/32/64 mismatch, API/arithmetic/resource differences remain|
-|7 — performance|Scoped CUDA0.8B C1 win; resident HIP27B improves historical streaming, still slower than vLLM; no general superiority|
-|8 — checkpoint|Implementation signed and final gate passed; broader roadmap unfinished|
-
-### Next work, not launched by this closeout
-
-1. Large CUDA accuracy (session task44): genuine47-row prefill/two decodes execute,
-   IDs343/288/830 match,112 state domains finite; CPU-logit NMSE
-   0.124241/0.090048/0.043837 is diagnostic across numerical profiles. Establish
-   independent distribution/state acceptance under declared contracts; no post-hoc
-   tolerance, repin or renewed search for the exhausted legacy CUDA runtime.
-   Small CUDA populated-context qualification also remains separate.
-2. ROCm2B divergence (task39): C1/C8 whole cells match. C4 has one warmup mismatch
-   despite0/8 timed mismatches; C16/C32/C64 have2/32,2/64,6/128 timed mismatches
-   plus1/1/3 warmup mismatches. Expected[95726,26516,220], observed
-   [95726,98019,271]. Preserve failed cells; cause unlocalized, not a proven
-   ROCm kernel bug. Warmup failures count against matched-performance acceptance.
-3. HIP27B HTTP/context (task11): R10 independently audited14 passing scopes and
-   the HTTP504 failure; original BrokenPipe remains. R11 is staged, not launched;
-   inspect its older binary/budget before any fresh successor. Both104-call1K/2K
-   captures were interrupted and remain unaccepted. Resident SDK success does
-   not close HTTP/context debt. The old12GiB available-host guard was waived;
-   it is not the current blocker, and neither old watch should restart.
-4. Shared continuous batching, then measured hot-path optimization/controlled
-   comparisons. Keep queue, active-session, batch-member and token limits distinct;
-   preserve independent roots, cancellation, publication and final-reader owners.
-
-### Evidence and execution entry points
-
-Retained local state base: `/home/pvl/.local/state/abird/zerogravity/`.
-
-- `qwen-cuda-regeneration-tDW0EJ1I/`: `composable-small-results-r2.json`,
-  `composition-serving-results-r2.json`, `composition-large-tail-results-r3.json`,
-  `composition-final-gate-r2.log`; each original scope has invocation/execution/
-  retirement files. `composition-semantic-batch-r1.log` is mixed, not a batch pass.
-- `qwen-rocm-benchmark-3gteresx/`: `budget-c1-reviewed-r1b.json`,
-  `budget-populations-reviewed-r2b.json`, `budget-final-gate-r1.log`,
-  `vllm-2b-summary-r1.json`; original receipts/logs in `budget-retrieved-r{1,2}/`.
-  Both original budget campaigns finished; manifests, frozen binaries and failed
-  auditors remain unchanged. SDK binary is qualification-free.
-- `qwen-ordinary-large-rHMls4mk/`: `original-reviewed-r1.json`,
-  `ordinary-semantic-disposition-r10.json`, staged `ordinary-semantic-r11.py` and
-  its supervisor; original reference in `original-calls-r1/` (x2 `refs-original-r1/`).
-- Resident HIP policy:75GiB TOTAL=4GiB context+71GiB native/weights/roots/workspace,
-  16GiB host. Default24GiB TOTAL=4+20GiB, default physical ceiling64GiB unchanged.
-  75GiB reservation, opaque-inclusive resident ledger and sampled52.57/54.94GiB
-  device peaks are different quantities. C1 mean5515.281ms,0.543943tok/s;
-  C64 0.529817tok/s, active≤8/physical batch1. Historical streaming43.76× slower;
-  retained vLLM7.08×/22.78× faster at C1/C64. Not controlled ABBA/same-budget tuning.
-- Latest implementation gate:2360 Rust passes/0 failures/101 ignored,309 suites;
-  17 Python suites/182 cases. Separate19 budget/accounting/owner controls and
-  physical/reference scopes passed. Reuse unchanged evidence; this documentation
-  closeout does not rerun GPU campaigns or claim a new implementation gate.
-- For new source changes: locked/offline builds, `PYTHONDONTWRITEBYTECODE=1`,
-  `CARGO_NET_OFFLINE=true`, `RAYON_NUM_THREADS=4`, `RUST_TEST_THREADS=1`;
-  Cargo defaults to8 jobs per `AGENTS.md` (latest budget batch used2).
-  Approved CUDA SDK is `qwen-cuda-regeneration-tDW0EJ1I/native-cuda-sdk-r1`;
-  set `CUDA_PATH` to that absolute path and `CUDARC_CUDA_VERSION=12090` when needed.
-  Use `python3 -B scripts/native-gpu.py -- ...`; full isolated `scripts/check.sh`
-  last after assembling relevant numerical/state/physical/serving checks.
-- Fresh physical work needs current device/owner guard, original lock and fresh
-  exclusive successor paths. Old session IDs/retirement files are not ownership
-  transfers. Original-owner pidfd cancellation only; no systemd stop/kill or
-  unrelated signals; preserve≥90s TERM grace for newly observed members.
-  No new model/SDK acquisition, reference repin, privileges/recovery or gfx90c.
-  Semantics and cleanup are separate; retain `qualification=false` and
-  `full_reference_acceptance=false` for the scopes that carry those limits.
-
-## Recent implementation detail — scoped evidence, not live jobs
-
-Owner direction: substantial shared implementation and compact real-model
-feedback; reuse accepted evidence, add diagnostics only for concrete gaps.
-Benchmark qualified comparable paths without waiting for unrelated models or
-batching. Current checkpoints are complete; remaining work is listed above.
-
-### Latest CUDA composition feedback
-
-- Fresh release`9a67353f`:0.8B/2B each pass48 resident calls and3 forced-streamed
-  calls against unchanged references.512MiB streaming provider cap; not total
-  GPU usage. All248320 logits and42 state domains/call exact;102 calls total.
-  Every original invocation/group/EOF/GPU retirement verified independently.
-  Evidence: `qwen-cuda-regeneration-tDW0EJ1I/composable-small-results-r2.json`.
-- Streamed2B R1 failed before its first result; failed scope/retirement preserved.
-  85-column BF16 pages exposed blanket four-byte alignment. GEMM now uses its
-  actual two-byte pointer ABI; other kernels retain their checks. Seven host
-  controls and shared GPU/facade strict checks pass. Initiating errors are no
-  longer masked by shutdown errors. Reader preallocation repair also passes.
-- CUDA now shares the existing source-call owner and Qwen adapter with HIP;
-  `ModelLoadRequest::QwenCuda` compiles without qualification. All serving roots
-  are priced before placement; original source ownership survives initialization
-  uncertainty and completed cancellation/discard.
-- Eight small SDK/HTTP resident/streamed scopes pass, including alias/chat refusal,
-  independent sessions, cancellation/disconnect/replay and final-reader retirement.
-  Four streamed lifecycle scopes pass: page cancellation/replay, unknown quarantine,
-  normal2B state/restore and one-byte-provider prelaunch refusal. Every original
-  semantic log and invocation/group/reap/EOF/GPU boundary inspected independently.
-  `composition-serving-results-r2.json`, `composition-semantic-batch-r1.log`.
-  Active limit2; physical batch1. Compiler reservations remain512MiB device/384MiB
-  host until process retirement. `qualification=false`; no performance claim.
-- Preserve initial unsuspended cancellation, absent0.8B canonical snapshot and
-  pre-invocation HTTP launcher failures. Approved local0.8B bytes were imported
-  through CacheStore; no new download/repin. HIP-only/mixed-feature strict and7
-  affected host controls pass, without a new HIP physical campaign.
-- Large R1/R2 routing/parameter refusals retired cleanly but did not infer. Core now
-  preserves authentic BF16/F32 A_log/norm storage under the CUDA contract, with
-  exact source/shape/bytes and BF16-only bias; core/large-plan regressions pass.
-  R8 binary`81ffe668` executes grouped large-source prefill/feedback: IDs343/288/830,
-  112 finite populated state domains and exact immutable prior roots. Original
-  shutdown/invocation/group/reap/EOF/GPU retirement verified. CPU-logit NMSE is
-  0.124241/0.090048/0.043837, maxabs9.34375/5.494141/4.570313: smoke/greedy agreement,
-  NOT full large-model distribution/state accuracy or vendor parity. Load83.648s;
-  calls115.707/110.039/110.078s. No measured superiority claim.
-  Generic `run` and65-token chunk-tail replay also pass for0.8B resident/2B streamed;
-  tail replay lacks an independent numerical reference.
-  Evidence: `composition-large-tail-results-r3.json`; original failures remain.
-- Full isolated final gate R2 passes:2360 Rust passes/0 failures/101 ignored,
-  309 suites;17 Python suites/182 cases (`composition-final-gate-r2.log`). R1
-  formatting failure retained; only module declaration order corrected. Separate
-  GPU feature/physical scopes above establish their own narrower evidence.
-  Large numerical qualification stays open; no full27B/new-family support claim.
-  Signed shared-source/CUDA checkpoint`4f1e827` (signatureG), user AGENTS/root README
-  preserved, no push. Approved75GiB-total HIP C1..C64 comparison now completes
-  with matching outputs; final HIP-budget gate passes, signed`d16f096` (signatureG).
-- HIP accounting correction from live original owners: legacy24GiB envelope
-  INCLUDES4GiB context (20GiB model remainder), with64GiB physical-admission ceiling.
-  Earlier24+4 narrative was inaccurate; original receipts/timings stay unchanged.
-  New explicit75GiB total must include context and retain16GiB host; no default
-  budget change, metadata-only admission or extra context added on top.
-
-### Current real-model feedback — items2/3
-
-- CUDA0.8B/2B: both48-call native schedules now match the unchanged accepted
-  references exactly:11919360 vocabulary words/model, all42 state domains/call,
-  genuine feedback/frontiers and two repeats. Every case and original invocation/
-  group/EOF/device retirement inspected. `native-output-fix-{08,2b}-r1/`;
-  frozen binary`ac3b55e3`. Diagnostic milestone, not serving/full-reference or
-  matched-performance acceptance. Earlier2B pass and0.8B failure remain.
-- Fixed shared output-projection arithmetic: the source uses two interleaved
-  K slices below three-quarter64-row tile occupancy, ordered accumulation above.
-  Actual47-row output projection matched;48-row projection had43 BF16 differences.
-  Typed handle/lifetime/resource/image joins and associated SASS confirm the two
-  accumulation chains; no name-only kernel substitution or token-value patches.
-  `output-projection-lineage-r{1,2}/`, `output-projection-images-r1/` retain evidence.
-  Current recorder's standalone launches still have unsupported-schema argument
-  gaps (zero ENTRY bytes); no aggregate-ABI/model-wide lineage grant.
-- Extra early-operator capture failed atstep20 when its unchanged GPU snapshot
-  arena filled. Its GDN autotuning/state differs from the accepted reference;
-  it was not adopted as a replacement. Only fully persisted/hash-checked actual
-  projection operands were used diagnostically. `early-operators-08-r1/` and both
-  failed/passing native projection scopes retained. First disassembly dependency
-  failure and first build-feature error retained; no SDK acquisition.
-- Old Nix NVRTC/header paths no longer exist. Fresh native runners use retained
-  approved CUDA12.9 package headers/libraries plus installed host C++ runtime.
-  Both pre-inference loader failures remain; no SDK download or source repin.
-- Original27B latest validation audited: both66-call numerical/state trajectories,
-  SDK completion/disconnect and10 lifecycle scopes verified. HTTP504 and original
-  BrokenPipe remain. `ordinary-semantic-disposition-r10.json`; not an overall pass.
-- Shared source cache now reuses authenticated integrity chunks for adjacent
-  page windows within its unchanged budget.30 existing integration tests pass;
-  CUDA/HIP release builds pass. No measured serving speedup yet.
-- Fresh27B HTTP/SDK scope is staged (`ordinary-semantic-inputs-r11.json`), not
-  launched: latest read-only x2 guard12130418688B <12884901888B required.
-  Watch`960f23ca` timed out. Owner now waives the12GiB host-available threshold
-  and permits swap for new scopes; original guard failures retained. No device change. CUDA regressions
-  and the complete assembled gate pass. Signed fixes: CUDA`a57590e`, cache`b9d8355`.
-- CUDA C1 benchmark complete:0.8B65.22ms vs eager vLLM90.64ms;2B114.29ms
-  vs84.34ms. Same short inputs, greedy3;8 warmups/16 measurements; outputs and
-  original retirement pass.2B loss retained. Details/limits in model-execution
-  TODO and `qwen-cuda-regeneration-tDW0EJ1I/c1-benchmark-summary-r1.json`.
-- CUDA C1..64 offered-wave sweep completed; native singleton throughput stays
-  ~45tok/s(0.8B)/26tok/s(2B), vLLM active8 scales to~96/88tok/s at offered64.
-  Native0.8B C64 and2B C16+ refuse unchanged private-root budgets. Every measured
-  output/original retirement verified; see `population-benchmark-summary-r1.json`.
-- x2 ROCm runtime acquired: official RDNA digest`19ad8dc5`, Torch2.11.0+ROCm7.14.1,
-  actual vLLM0.23.1.dev1/Transformers5.16.1. Native HIP small C1..64 and27B C1
-  completed; all outputs/original retirement verified. Native~12/6.8/0.01243tok/s.
-  vLLM0.8B57.81→154.04tok/s and27B3.85→12.07tok/s across offeredC1..64, all IDs match.
-  vLLM2B C1/C8 whole cells match34.14/74.85tok/s. C4's60.23tok/s has one
-  warmup mismatch despite matching timed requests; C16/32/64 have2/2/6 timed
-  mismatches (also1/1/3 warmup mismatches). All four cells remain failed matched
-  comparisons. Every original owner retired.
-  Full table/limits in model-execution TODO; results `qwen-rocm-benchmark-3gteresx`.
-  Both active limits8, native physical batch1.47input/3output, two timed waves.
-  Native27B streams under24GiB total envelope(including4GiB context), vLLM uses~75GiB total:
-  not resource-matched. Native timings overlap acquisition/CPU probes in part.
-  Higher native27B populations not run, not capacity refusals. The signed
-  composition gate passes; the new HIP-budget final gate now also passes.
-  Owner subsequently approved approximately75GiB total GPU for a fresh native27B
-  resident comparison;16GiB host/4GiB context remain. Explicit budget plumbing
-  is implemented;19 accounting/placement/owner controls and feature checks pass.
-  Resident C1 now5515.281ms/3outputs (0.543943tok/s),43.76x versus historical
-  streamed run but7.08x slower than retained vLLM; no controlled ABBA claim.
-  All66 original state/logit calls and original retirement independently verified.
-  `budget-c1-reviewed-r1b.json`; all C1/4/8/16/32/64 complete:375 requests match,
-  original retirement independently audited (`budget-populations-reviewed-r2b.json`).
-  Native outputtok/s0.543943/0.542490/0.537208/0.534479/0.531398/0.529817;
-  retained vLLM3.849756/7.183117/9.248896/10.742837/11.720846/12.071477.
-  C64 baseline22.78x faster; no throughput scaling, physical batch1, active≤8.
-  Live75GiB includes4GiB context; sampled C1/population peaks52.57/54.94GiB,
-  NOT75GiB use. Resident ledger also includes opaque native charges. Final isolated
-  `budget-final-gate-r1.log`:2360 Rust passes/0 failures/101 ignored/309 suites;
-  17 Python suites/182 cases. Signed HIP-budget checkpoint`d16f096` (signatureG), no push.
-  API/arithmetic/actual-memory differences remain; physical batch1, no full
-  qualification or closure of HTTP/context/large-CUDA numerical debt.
-  Current architecture correction: remove small-model assumptions through shared
-  primitive/geometry/storage composition, not a bespoke27B CUDA engine. Concrete
-  gaps and proportionate validation direction are in model-execution TODO.
-  Shared CUDA layout/rotary/grouped-GDN/streamed-weight implementation now exists;
-  small numerical/state and public SDK/HTTP/lifecycle scopes pass as above;
-  large-source smoke and the assembled final gate pass; independent large
-  distribution/state qualification remains open.
-  Owner raised Cargo parallelism to8 and intentionally stopped the prior compile;
-  runtime/test limits remain separate. No new model-support/performance claim.
-  Native batching and ROCm2B output mismatch remain open.
-
-### CUDA — immediate audit/transport blockers resolved
-
-Evidence root: XDG state `qwen-cuda-regeneration-tDW0EJ1I`.
-
-- Both models' actual-consumer scopes now independently audited:48calls/
-  16requests each, genuine fresh47–50/decode, uniform/alphabet, two repeats.
-  `consumer-08-reviewed-r3.json`:37848records/6873374472B.
-  `consumer-2b-reviewed-r4.json`:38102records/11209912072B.
-  All24 layer boundaries,4032 physical state snapshots,320 original parameter
-  associations, vocabulary bits, feedback and source/retirement checked/model.
-- Actual consumed mappings, classification counters/flags, conv history mutation,
-  gather/mask/chunk/scatter values and ordering audited:8432events/model.
-  Nineteen schedule/attribution adversaries pass; the executed2B scatter contract
-  passes288 real links and7 adversaries. `consumer-boundaries-reviewed-r5.json`
-  binds reports/controls and preserves explicit acceptance limits.
-- Initial08 audit assumptions were wrong: GPU conv schedules include a padded
-  `-1` suffix; CPU prompt progress differs from total decode progress. Corrected
-  audits check both full allocations and source-derived roles. Failed audits stay.
-- Both failed2B capturesR2/R3 are retained; original tracebacks prove host-ring
-  admission failures. GPU retirement was already independent of disk writes.
-  Corrected bounded transport separates GPU snapshot admission, coordinator-owned
-  host admission/copy, raw consumption and manifest credits. No producer wait,
-  async change, cap increase or discarded consumer bytes.
-- Fresh2B captureR4 completed and retired its original foreground/group/container/
-  name/EOF. No errors or quarantine; GPU before/after41MiB. Transport peaks:
-  GPU11034368B/40MiB, host90827008B/128MiB; all38102 records and GPU/host/manifest
-  stages retired. Minimal snapshots retain their separate24MiB cap.
-- Transport controls:24 host scopes/20000 allocator operations/600records;
-  independent actual-CUDA9 native-bit/stride/mutation records plus3 stalled-writer
-  records. Latest candidate `tensor-archive-r6.py` /
-  `expanded-consumer-observation-r7.py` fixes a subsequently identified minimal-
-  error publication race. Its deterministic interleaving/fallback controls pass;
-  normal GPU transport and producer paths are byte-identical to the successful
-  capture. Physical success-path evidence is explicitly reused, not recaptured;
-  no new model execution or physical uncertainty test is claimed for that delta.
-- Source/runtime: retained approved CPU-codec image`f57d77f5`, Torch2.13/cu129,
-  vLLM0.31/V2/FA2/Triton-GDN, unchanged eager/async/options.18 original F32 GDN
-  norms/model are loaded BF16 by the producer; native source contracts unchanged.
-  Earlier public-output/unobserved and expandedR3 audits remain separate evidence.
-- Native callback-only recorder and checked offline lineage/ELF readers now run
-  in qualification support. Approved-runtime build fixes the retained host-libc
-  loader failure. R3 also fixes rejected nested callbacks popping admitted frames;
-  15 host scopes/400 concurrent calls/eight wire adversaries pass. No CUDA calls,
-  Python/GIL callbacks, filesystem writes or capacity waits inside callbacks.
-- `cuda-parameter-lineage-reviewed-r4.json` independently accepts the standalone
-  RTX3060 diagnostic:13 GEMV/GEMM/Triton cases/launches, three witnessed images,
-  5544 callback records and authentic foreground/group/container/name/EOF retirement.
-  Public library/module/kernel/function edges—not name matching—bind each image.
-  Cubin parameter extents match eight successful driver queries plus three terminal
-  invalid-index results.34 metadata/eight query adversaries pass. Constructor/input
-  staging precedes this batch; no inter-case synchronization in the driver trace.
-  R2's earlier inter-case control staging waits remain recorded, not erased.
-- Original constructors now independently regenerated on CUDA from both pinned
-  configs and original source functions:268435488 fresh bytes, matching all30
-  named buffers/model before and after capture (25 unique,5 aliases/phase).
-  `constructors-lineage-reviewed-r3.json` verifies source/config, complete fresh
-  archive and original foreground/group/container/name/EOF retirement; accepted
-  consumer raw-byte audits are explicitly reused. No captured tensors were inputs.
-- That constructor trace resolves all24 launches/10 original images, but captures
-  **no argument bytes**: CUDA producer-version129 was explicitly unsupported.
-  All24 ENTRY gaps remain; later schema support cannot backfill them. Retain the
-  initial missing-config-context and enum-check failures, both before kernels;
-  neither failed run has a contemporaneous GPU-after receipt.
-- New `cuda-lineage-r6/` / `cuda-lineage-build-r5/` implements bounded native
-  ENTRY argument capture from associated cubin schemas, typed live handles,
-  `kernelParams`/packed `extra`, Ex attributes and explicit unmarked threads.
-  Approved-runtime **CPU-only** batch passes32 native scopes,400 concurrent calls,
-  14 real parameter schemas,166 malformed metadata cases and8 wire adversaries.
-  Source/binary pins and original retirement independently inspected. It supports
-  the witnessed CUDA123/128/129 variants; the first native parser refusal remains.
-  Latest binary SHA256`22a8dcaa2bc33f6e96a5bb141c4f60a0631b3ff96999a78d682f9730b8309f5f`.
-  No GPU/model execution of this successor; worker bootstrap/event attribution
-  integration is still unimplemented. `argument-wire-r1.py` remains a candidate
-  reader tied to R5 source paths; update/test a successor before new captures.
-- This is not model-wide ABI acceptance: actual GPU launch argument bytes and
-  aggregate parameter semantics remain open. No native model/serving/performance
-  grant. First decoder refusal, failed unload fixture and failed builds/probe stay.
-- Raw K/V candidate `expanded-consumer-observation-r8.py` and its audit integration
-  add actual entry arguments using the unchanged bounded transport. Both actual
-  cache layouts,24 mutation adversaries and original-once/same-return wrapper
-  checks pass on host. No fresh model execution or padding/readset acceptance.
-- **Resume item2:** combine model-worker bootstrap/event attribution with native
-  argument/image capture and raw K/V observation; finish effective state read/write
-  and recurrent-axis proof, then native CUDA/serving. Constructor regeneration is
-  accepted separately; it does not close these remaining requirements. Producer
-  and native CUDA already use conv history3; CPU/HIP history4 is a separate
-  contract, not a required conversion here. Captured KV remains
-  head×token×(K256|V256); fresh Mamba backing is not assumed zero.
-  No full-reference/native/legacy-authority/performance acceptance. Legacy search
-  is exhausted; do not repeat it or substitute another captured kernel.
-
-### Ordinary27B — finished mixed campaign, not live
-
-Evidence root: XDG state `qwen-ordinary-large-rHMls4mk`.
-
-- Shared source-derived64-layer/112-domain plans, additive BF16/F32 storage,
-  authenticated tokenizer pricing and bounded streaming landed by`4f1e827`.
-  This historical scope used16GiB host/24GiB total including4GiB context;
-  explicit75GiB-total residency is separately signed`d16f096`. Host capacityR3
-  admits512–2K estimates and refuses4K–32K; estimates are not physical inference.
-- Original66-call CPU reference independently accepted (`f226ad21` manifest).
-  ObservedR4 and observer-freeR7 numerics are separately accepted; R4's supervisor
-  failure/missing original terminal remain. R7 has authentic clean retirement.
-- R9 independently dispositioned:12 verified semantic scopes, HTTP101/504,
-  authentic retirement, no supervision errors. Whole-cell303.74s is not request
-  latency. `ordinary-semantic-disposition-r9.json`; no whole-campaign pass.
-- Shared projection grouping preserves float/reduction/BF16, source pages,
-  owners and budgets. Corrected release assemblyR14 passed; frozenR5 executed
-  in R10. Grouping is within one invocation, not native continuous batching.
-- R10 finished all15 scopes:14 exited0, HTTP101/504. Logs report66 observed plus
-  66 observer-free calls with zero mismatches. Original terminal records exact
-  invocation`6448edba84244c1b9eb339908a7a2618`, nonce
-  `42cfc1bc2aa8407ba8b1ceb07143254c`, absent owned cgroup/KFD[]/busy0, but also
-  `BrokenPipeError(32, 'Broken pipe')` in output errors. Independent retrieval/
-  semantic audit completed: `ordinary-semantic-disposition-r10.json` verifies
-  14 passing scopes and original retirement, preserving HTTP504/BrokenPipe.
-  No clean-supervision or batch-pass claim; no R10 overwrite/relaunch.
-  Historical HTTP180s/SDK1200s limits remain part of that original evidence.
-- CPU populated-context capturesR1 and host-private successorR2 both interrupted:
-  SIGTERM/child137. R2 logged11/104 calls; cleanup recorded, no accepted context
-  reference. Preserve both partial archives and R1's missing original-name absence
-  evidence. Any successor needs fresh identity and reviewed supervision.
-- Remaining: shared HTTP completion and populated1K/2K reference/native/serving
-  acceptance. R10 disposition, assembled gates, signed implementation and resident
-  C1–C64 comparison are complete; genuine native batching remains open.
-  Dispatch reduction alone is not measured latency or superiority.
-
-Accepted scopes remain tied to their original source/binary/reference, not every
-later revision. Details: [model plan](../plans/model-execution/TODO.md).
-
-## Prior signed checkpoint — populated Qwen HIP serving
-
-Fabric migration remains accepted (`8c43844`, closeout`1c99929`); signed
-`bb400c4` remains the previous ordinary multi-row HIP baseline. The current
-0.8B/2B populated-context repair now passes native and public SDK/HTTP correctness.
-
-- NativeR28 independently accepts both original66-call schedules and both
-  516-call16K trajectories, exact full-vocabulary digests, sparse state/KV tails,
-  original feedback IDs, source/native retirement and exact physical cleanup.
-- ServingR29 independently accepts **26/26**, no failed/unrun cases: both models'
-  SDK1K/2K/4K/8K/16K completion/cancel/replay,16K HTTP JSON/SSE/disconnect/replay,
-  and32K pre-native capacity refusals. Both16K SDK cases observe one actual
-  cancellation,7accepted tokens/49150model-token steps. Original roots, aliases,
-  counters, native/source/tokenizer final readers verified. HTTP180s and SDK1200s
-  remain unchanged; whole-cell durations include several sequential requests.
-- R29's monitor stopped before its final receipt. Audit2417 authenticates every
-  case and the unchanged R27 executable/receipt/scripts, then accepts a clearly
-  labelled **later observation of the same invocation**: exit0, exact owned
-  cgroup absent, KFD empty, GPU idle. The continuous-monitor terminal receipt is
-  missing and the supervision gap remains explicit; no rerun or fabricated
-  contemporaneous receipt. No old monitor/watch is armed.
-- Twenty earlier small-context population cases remain separately accepted:
-  offeredC1..C64, active≤8, singleton execution. This is not native batching.
-  32K refusal is not32K inference support. Original capture reap/EOF gaps, R12's
-  stale precheck and every failed/rejected scope remain retained.
-- Repairs preserve original numerical/source/owner contracts: source trig,
-  digest coverage, bounded attention and RMS row work, weight-local traversal,
-  integer-only status reduction. R26four-row tiling was rejected, not promoted.
-  Diagnostic178.825s includes readback; no matched performance or GPU-time claim.
-- Final gateR1 caught five stale shared RMS constructor arguments in the separate
-  `bf16_text` preparation consumer. Removed obsolete count/groups arguments;
-  exact geometry, kernels, launch semantics and the qualified Qwen path unchanged.
-  Corrected complete isolated gateR2 passes:2350Rust/0failed/101ignored,309suites
-  including74empty;17Python suites/182cases/10skips. Signed checkpoint`8ffb511`,
-  `fix(hip): qualify populated Qwen serving`.
-
-Next: ordinary27B correctness and independent CUDA reference regeneration in
-parallel, then configurable native continuous batching and matched performance.
-No new kernel-tuning campaign. [Model plan](../plans/model-execution/TODO.md)
-retains the detailed accepted scopes and historical failures.
-
-Main only; approved sources/devices; owner now authorizes x2 ROCm vLLM runtime
-acquisition. No gfx90c, recovery, push or recurrence restart. Recurrences`7cddc6c9`/`17aafa71` stay cancelled.
-
-## Retained earlier checkpoints
-
-- CPU-contract resident body now connects the original template traversal,
-  native kernels, root pool and prepared publication; HIP strict compilation
-  passes. Cancellation waits for submitted work before discarding publication.
-- Bounded original-flight observation and retained66-call consumer added.
-  Both real-model preflights pass: original data/owner/plan identities, all66
-  materializations, capacity514/six roots. HIP/examples and CUDA strict checks
-  plus two helper geometry tests pass. Fixed the diagnostic's2B4MiB/1MiB owner
-  mismatch, not the source guard. Last-row/full-vocabulary readout unchanged.
-  This was host-only evidence; later native acceptance is scoped below.
-- Original resident objects now have source-priced model/session/pending/snapshot/
-  immutable-readback owners. Guards follow actual flights and final readers;
-  completed cancellation keeps completion metrics without publication. HIP/CUDA/
-  minimal HIP strict and one failure-classification test pass (ownership R2).
-  These compiled lifetimes still need physical final-reader/fault qualification.
-- Runtime `hip-source` now compiles without qualification/CPU/model dependencies.
-  Runtime-only and weak-probe all-target, combined CUDA/Vulkan library, original
-  shared/source examples and CUDA all-target strict pass. Finite harnesses,
-  fault cuts and injected kernels stay diagnostic; original weak observation is
-  shared.
-- Canonical source/SDK now assembled behind `qwen35-hip`: original authentication
-  shared with CUDA, actual snapshot/source/host ownership, existing registry and
-  worker. Explicit cold raw-text route; no chat/warm/native-cohort grant. Runtime,
-  mixed and legacy-only strict checks pass. Canonical2B host source/tokenizer/
-  plan/last-reader and public SDK pre-IO refusal tests pass; dependency closure
-  has no CPU/qualification edge. These are not native inference/SDK acceptance.
-- Native observed trajectories pass:66calls/7608records per model, full24layers/
-  fullV/all42domains through populated514, true chunks and actual feedback.
-  Exact float words0.8B873,649,152 /2B939,144,192; initial/tail zeros and position
-  metadata remain separate. Both original native sets retire (95/90modules),
-  resident bytes0, persistent4GiB context/unfenced. Every case checked; terminal
-  KFD/cgroups empty. R4 immediate sampled-utilization guard stopped only the
-  supervisor after successful0.8B; R5 ran2B alone. Setup failures retained.
-- Public native SDK found two integration gaps: finite waves reject context514;
-  original sequential presentation omitted supplied GPU publication metadata.
-  Adapter now reuses the sequential/fair worker with64-row chunks; shared
-  presentation forwards original observations and counts accepted tokens.
-  Engine strict/regression and four fresh native SDK cases now pass: both models
-  × complete/disconnect, exact IDs/generic run/aliases/65-token tail replay and
-  native/tokenizer/source/cache/host final readers. Runtime-only executable.
-  SDK R1/R2 failures retained. First R3 test passed; immediate KFD retirement
-  sampling stopped its batch supervisor. Remaining cells passed R4; terminal
-  ownership verified empty/idle throughout. No observed trajectory repeated.
-- Observer-free66-call trajectories and20lifecycle cells now pass both models:
-  450,794,496 post-commit state/full-logit words/model exact; original readers
-  check114,647,040 KV-tail words separately. Capacity/cancel/completed discard,
-  snapshots/reset/restore, independent roots, final readers and release faults
-  retain/retire original owners correctly. Known paths leave device4GiB/host2GiB
-  (+64MiB reference support); faults retain originals and fence24GiB.
-  Unknown retains495/491submitted and543/539quarantined handles/1pending event;
-  post-fence state/readout remains unavailable. R1's two invalid post-fence
-  diagnostic reads were refused correctly; that path was removed and only the
-  two unknown cells rerun successfully. Every case/terminal ownership inspected.
-- Final complete isolated gate passes:2348Rust passes/0failures/101ignored,
-  309suites including74empty;17Python suites/182cases/10skips. Two existing
-  Vulkan-peer HIP probe-hook warnings remain; no suppression or runtime change.
-- Signed checkpoint`bb400c42136a798e177be82d3a1e6ca40b3b8431` verified; no push.
-  Next: populated contexts/serving concurrency and matched performance.
-  Post-commit tracking and the new populated-context/serving source/tests are
-  uncommitted; the new batch has not passed its final assembled gate.
-
-## Functional transition accepted — `8d761c4` / `8c43844`
-
-S0–S3/F0–F4 and scoped Q0/Q1/Q2 are complete. This closes migration of existing
-functionality, not deferred Qwen contexts/concurrency/performance or future tasks.
-The final reconciliation changes docs only; source remains the tested `8c43844`.
-
-
-- User confirmed lifting GPU/trained-source test holds for existing approved
-  sources/devices. Main only; no new subagents, acquisition, resets, privilege/
-  recovery changes, gfx90c launches, pushes or recurrence restarts.
-- CUDA repair signed `8d761c4`; Gemma diagnostics/SDK and accepted scopes signed
-  `8c43844`, following `1f40880` / `fef7123`. Do not repeat extraction; older held
-  statements describe historical checkpoints.
-- Trained Gemma CPU SDK lifecycle passes91.78s: real completion/root, presentation
-  failure, pre-cancel and original-owner retirement. Not independent numerical
-  or serving qualification. CUDA/HIP/Vulkan scopes remain separate below.
-- CUDA0.8B four-step cached47–50 full-logit/all42-domain natural-feedback parity
-  passes against the original captured payload. Normal/cancel/unknown lifecycle
-  pass, including exact restore, original quarantine/charges and final retirement.
-  Fresh processes; no populated long-context or wider-model claim.
-- Local RTX3060 and remote PCI `0000:c6:00.0` / gfx1151 identities inspected.
-  Nix CUDA12.9 paths are absent; installed13.4 fails unsupported PTX. Existing
-  sealed baseline12.9 compiler/headers plus installed GCC15 runtime resolve this
-  without downloads/patching/driver changes. Failed environment scopes retained.
-  Remote approved ROCm7.2.4 remains; current-source HIP build verified.
-- HIP0.8B/2B:16 fresh-process numerical/lifetime cells verified, including all256
-  call records, fullV/all-state, independent roots/reset/restore, final readers,
-  known release faults and unknown quarantine. Each model128 calls at context64;
-  1,396,408,320/1,399,816,192 exact words. Unit success/MainPID0/empty cgroup.
-  Healthy model owners retire; original process context remains. Not serving.
-- CUDA worker acceptance discovered a pre-existing strict-layout regression:
-  12-byte greedy packet described as one word. Fresh B2 reports exact binding
-  refusal. Signed `8d761c4` validates full3-word packets in single/cohort
-  paths; one-word kernel read and all original owners/strict checks unchanged.
-  All14 isolated workers now pass (R3 ten, R4 four corrected wide EOS cases),
-  including exact prefix/tail/width/token accounting and final physical-device
-  reservation0/unfenced. HTTP R4 stopped before execution on an obsolete direct-GPU
-  CLI feature argument; corrected facade-only R5 passes all12 guarded HTTP cases:
-  JSON/SSE, disconnect/replay, unequal arrivals and native prefix rows2/4/8.
-  Original failed/panic-contaminated scopes retained; final host gate passes below.
-- Trained Gemma CPU matrix:7 prompt cases,50 natural calls plus completed refusal/
-  cancel; all52 comparisons exact, full boundaries/KV/logits/actual IDs through
-  frontier64, source closed/final host0. Not serving/performance qualification.
-- HIP SDK passes separate fresh completion/presentation-error children, exact
-  pre-cancel and unchanged2GiB host/4GiB device baseline. Original cold-only warm
-  refusal is asserted, not disabled. Caller wrapper retains matched ld.so via
-  original argv executable. Loader/fixture/constant-assert lint failures retained;
-  release guard preserved, cancellation assertion strengthened.
-- Gemma HIP8/Vulkan10 matrix/unknown/final-reader/partial-native/same-PCI scopes
-  independently verified. Both resident matrices preserve full35/all KV/fullV,
-  actual source IDs,50 observer-free state checks and selected-row reuse. Known
-  final readers unload184/183 modules; faults retain originals/fence20GiB; streamed
-  HIP unknown fences16GiB. Vulkan retains two actually constructed partial modules;
-  both same-PCI directions refuse peer work without root/queue/upload effects.
-  Healthy Vulkan host baseline is10GiB (2GiB context+8GiB compiler), not global0.
-  One unobserved Vulkan hit makes no observed-full35 claim. Initial stale BF16
-  cancellation-label failure retained; production cancellation/math unchanged.
-- Approved cache/private HF-import routes pass both GGUF models: fullV/all42
-  domains, source mutation/reclamation isolation, independent sessions and final
-  raw-source lease release. No acquisition or original input mutation.
-- Finite CUDA SDK/CLI dry-run and whole-card pre-Client controls pass. Fresh legacy
-  0.8B cached47–50 result is byte-identical to the original captured evidence;
-  no reference repinning. Thin CLI→SDK47-row/raw2-token generation emits ` a a`
-  and retires cleanly. Missing exact legacy2B CUDA image remains an explicit limit.
-- Finite27B teacher/unknown/final-reader6 cases inspected:240,896,000 exact words,
-  full64/fullV/all128 physical planes (112 logical domains), independent sessions;
-  separate Ready-discard/cancel preserve root. Known retires117 modules; faults
-  retain117/1,602 handles/source and fence16GiB.
-- Finite27B natural6 modes independently verified: genuine11→220→16, four main
-  comparisons240,896,000 words, restore/late-cancel80,114,176 each, committed112
-  domains exact. Healthy9 full64 calls; cached unknown keeps its80,103,936
-  unavailable words explicitly unqualified. Known final readers unload121 modules;
-  faults retain121/1,477 handles/source/fence16GiB. No serving/general-context claim.
-- All six shared-HIP scopes verified. Known reload preserves live Gemma while
-  retiring/reloading Qwen:3 full64 comparisons/160,781,824 words; Gemma1 observed
-  full35 plus3 ordinary packet/full-KV calls. Final native sets/resident bytes0,
-  device4GiB; host26GiB+128MiB+64KiB includes24GiB compiler, not global zero.
-  Both final-reader faults retain117/184 original modules and fence32GiB. Actual
-  source-page query/wait/destroy injections refuse both sources/reentry before
-  publication, with unchanged bindings/ledgers/native state. Those three cases
-  complete no full model; destroy has no pending-window witness claim.
-- Final19-case supervisor (SDK+18 finite scopes) succeeds/exit0. Unit collected,
-  inactive/MainPID0/cgroup absent; no owned executable and GPU idle. Monitor stopped.
-- Combined CUDA/HIP and shared-HIP strict pass; Vulkan examples retain two known
-  unused-probe warnings. Final isolated gate passes2,340 Rust/0fail/97ignored/
-  307 suites (72 empty); Python17/182/10skips. Source review complete; CUDA repair
-  signed `8d761c4`, Gemma diagnostics/SDK signed `8c43844`. No math/owner/timeout/
-  tolerance relaxation. All19 S/F/repair signatures through `8c43844` verified.
-- Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
-  Owning transition TODO records exact acceptance and remaining unsupported cells.
-  No new matched performance or broader serving claim; deferred mission preserved.
-
-## Previous signed checkpoint — source/host parity `fef7123`
-
-- SDK `run::config::resolve` and typed PipelinePatch/ChatContextPatch now own run
-  precedence, graph overrides, path anchoring and provenance. CLI keeps argv/XDG/
-  environment/signals/presentation. Public example and genuine tiny CPU planning
-  fixture use the same resolver; no source/device/network IO from config resolution.
-- Current feature matrix source audit reconciles S1–S3/F0–F4 ownership: original
-  codecs/numerics/layout, typed CPU/window/Gemma/resident/captured adapters, one
-  ForwardPlan/source issuer, SessionAuthority/arbiter, shared worker and transport.
-  No forced TensorSource for windows, shadow interpreter, scheduler or publisher.
-- Whole API/provider/status/alias/CLI review found and closed the config policy gap.
-  Per-model unload, paged restore, partial-region/placement compilation, derived
-  quantization and future tasks remain unsupported/descriptive, not new capability.
-- Seven SDK controls pass default/minimal; thirteen existing CLI controls pass;
-  combined CUDA/HIP, shared-HIP and minimal strict pass, CPU-free/cache-free Vulkan
-  compiles. Approved direct CPU18.19s and HTTP18.55s pass; cold example help passes.
-- Final isolated host gate: 2,340 Rust executions/0fail/97ignored/305 suite runs (70 empty); 17 Python suites/182 cases/10 skips.
-  RUST_TEST_THREADS=4. Counts are suite executions; ignored/empty scopes are not
-  model/device proof. Initial new context-fixture failure retained and corrected
-  without weakening validation. No timeout/assertion was relaxed.
-- Source review preserves existing merge/validation bodies after provenance and
-  formatting normalization. Model/CPU/GPU math, roots/resources, workers, serving,
-  kernel images and source pins unchanged. Historical physical evidence stays old.
-- **Fabric remains unfinished:** applicable Q0/Q2 trained-source and physical GPU
-  numerical/state/cancel/fault/final-reader/serving acceptance needs separate
-  authority. No current compile/host/source-ownership blocker is known; do not
-  redo extraction or fabricate future features while physical acceptance is held.
-- Main only; both recurrences cancelled. No GPU/trained-Gemma execution,
-  acquisition, push, agent restart or recovery/privilege change. Protected README
-  and external detached checkout unchanged. Qwen/context/C1..C64/matched-vLLM and
-  E01–E10 remain deferred. Logs: `abird/zerogravity/fabric-config-eJobTiNW/`.
-
-## Previous checkpoint — source-owned preparation `860ce38`
-
-- Follows `83060e5`/`2f19224`/`51cd294`; earlier numerical/layout, catalog, serving,
-  SDK/artifact and shared-scheduler ownership remains accepted.
-- ModelProgram retains the actual family/source and original ForwardPlan Arcs.
-  Typed provider/ExecutableBundle preparation invokes the existing resident loader;
-  ordinary GGUF catalog loading consumes it. Equal source IDs or copied graphs
-  cannot substitute for either original Arc. No second IR, scheduler or publisher.
-- ModelDefinition stays storage-neutral; only the existing tensor-provider binding
-  requires TensorSource. Window-bound/Gemma/finite execution keeps original adapters;
-  generic partial-region/placement compilation is not implemented. CPU keeps its
-  existing source-bound TextSession/Executor, not a replacement graph interpreter.
-- Fixed standalone text+GPU without cache: tokenizer admission depends on text;
-  its original physical ledger/body is unchanged. No new acquisition dependency.
-- Four host owner-routing controls pass; combined CUDA/HIP strict and CPU-free,
-  cache-free Vulkan compilation pass. Approved sparse GGUF recording/direct CPU/
-  audit/final-reader case passes17.42s; SDK/catalog/HTTP lifecycle passes18.48s.
-- Final isolated source/host gate: 2,326 Rust executions/0fail/97ignored/303 suites (70 empty); 17 Python suites/182 cases/10 skips.
-  RUST_TEST_THREADS=4 bounds harness concurrency. An earlier full gate failed the
-  unchanged50ms HTTP header test; exact+25 HTTP controls and the bounded full rerun
-  pass without weakening deadlines. Failed log retained, not accepted.
-  Ignored/empty suites are not execution evidence; counts are suite executions.
-- Source review retains original Qwen traversal/recording and resident preflight,
-  initialization, lowering/math/event bodies after cold Arc normalization only.
-  CPU math, workers/cohorts, serving, root/arbiter and kernel/image pins unchanged.
-- **Fabric remains unfinished:** remaining family/provider and whole-feature/
-  root/transport/API/CLI reconciliation plus F4/Q acceptance. Per-model unload,
-  paged restore and future tasks still refuse; status/admin intent is not capability.
-- No GPU/trained-Gemma execution, acquisition, agents/recurrences, push or recovery
-  change. Physical numerical/state/cancel/fault/final-reader/serving acceptance
-  needs separate authority; no historical evidence retagged or speedup claimed.
-- Logs: XDG state `abird/zerogravity/fabric-parity-A94JdkGR/`. Failed compile and
-  feature scopes retained separately. Protected README/external checkout untouched;
-  Qwen/context/C1..C64/vLLM and E01–E10 remain deferred, not discarded.
-
-## Previous checkpoint — shared scheduler `ae7ec11`
-
-- Signed source/host checkpoint `ae7ec11` follows foundation `7fc5d17`/`8591b52`
-  and lifecycle `d78eb55`. CPU and GPU use one engine Router, alias registry,
-  admission/event path, fair worker, parking and cohort policy. CLI scheduler
-  copies and CPU/GPU transport dispatch are removed.
-- Facade owns ordinary GGUF and separate captured-diagnostic typed adapters;
-  original source/session/Ready/commit/feedback and physical arbiter remain the
-  authority. Public `load_gpu_text` shares the runtime; cold refusals stay early.
-  This is shared implementation, not simultaneous heterogeneous/multi-model support.
-- New controls/scratch are admitted. Final-reader credit survives the model
-  handle; tokenizer and retained inventory share one owner. CPU32-token quanta,
-  original GPU wave limits/bands, cancellation/discard/fatal distinctions and
-  complete publication remain explicit. No kernel/math/image/manifest changes.
-- 85 engine controls, GPU loader/reader4, tokenizer6 and public GPU SDK3 pass;
-  CUDA/captured and HIP strict scopes, Vulkan compilation and25 source-free GPU
-  feature controls pass (2 physical cases ignored). Genuine CPU GGUF fixture
-  cases4 pass: SDK/tasks, aliases, JSON/SSE, cancellation, server stop and retirement.
-- Final isolated gate: 2,306 Rust passes/0fail/94ignored/300 suite runs;
-  17 Python suites/182 cases/10 skips.
-  Architecture, feature/minimal/strict, release/installer/shell/Nix pass. The two
-  existing Vulkan diagnostic source-page warnings remain. Failed compile/lint
-  attempts are retained; empty targets provide no execution evidence.
-- **Physical GPU regression is unrun and required before qualifying moved
-  execution.** No GPU launch, model acquisition, privilege/recovery change or push;
-  no old source/ABI evidence retagged, trained-model or speedup claim.
-- Main-only; no new subagents. Both recurrences remain cancelled; root README
-  and protected external checkout unchanged. Remaining SDK/CLI business logic,
-  active contracts, F4/Q0/Q1/Q2 and original Qwen/context/C1..C64/vLLM work stay open.
-
-Recovery: [transition TODO](../plans/fabric-vnext-transition/TODO.md).
-Evidence: XDG state `abird/zerogravity/fabric-scheduler-YeCrPeT8/`, especially
-`assembled-gate-r1.log`, `cpu-http-r1.log`, `backend-feature-r1.log`,
-`shared-strict-r4.log` and `source-review-r1.txt`. Earlier foundation/lifecycle
-logs remain separate. Direct Router/implicit self-drop still need external
-retirement; arbitrary callback reentrancy and caller deadlines remain open.
-
-The following sections retain earlier checkpoints/design context. Latest source,
-tests and the transition TODO outrank their superseded continuation instructions.
-
-## Historical direction — Fabric first (31 Oct)
-
-Owner authorizes [Fabric transition](../plans/fabric-vnext-transition/TODO.md): reconcile
-both plans against signed`1c35172`, then complete compilable S0 and
-feature-preserving S/F migration. Qwen remains deferred, not completed;
-recurrence`17aafa71` stays cancelled. No new hardware campaign or production
-route. Plan 1's full design is retained in Plan 2's S0–S3/F0–F4/Q0–Q2 ordering.
-See [source delta](../plans/fabric-vnext-transition/CURRENT_SOURCE_RECONCILIATION.md) and
-[feature preservation](../plans/fabric-vnext-transition/FEATURE_PARITY_MATRIX.md).
-Signed`7396984` lands verified S0;`c853ebb` records reconciled recovery.
-Owner now requests continuing until the full runtime transition is finished.
-S1/F0/F1 implementation is active; no new accepted milestone yet.
-
-## Interruption recovery — active contracts after SDK/CLI ownership
-
-Start with the transition TODO and current `main`/diff. The source/host checkpoint
-above supersedes old S0/lane instructions below. No new agent or recurrence;
-source/build ownership stays with main. Do not restart GPU work without separate
-authority. Continue active-contract/provider/root and final parity work without redoing
-accepted scheduler or SDK extraction. Physical/trained cases stay held; source
-compilation and existing local files never substitute for execution authority.
-
-## Historical Qwen pause — 31 Oct 2026
-
-- Owner requested a pause at the next reasonable checkpoint; direction may change.
-- Signed implementation checkpoint: `e2559b6` (native chunk GDN); CPU predecessor
-  `55536ce`. Final native/operator, strict-feature and isolated full gates pass.
-- Recurring mission`17aafa71` cancelled, not completed. No owned native/build job
-  remains running; terminal evidence saved and owned native units stopped.
-- Do not resume implementation, re-arm recurrences or rerun accepted scopes from
-  stale automatic receipts. Fabric is now the explicit direction; Qwen stays deferred.
-- Functional CPU/CUDA model coverage is the user's meaning of parity; numerical
-  contracts may differ. Blanket coverage is not verified. Original HF CPU captures
-  are reference evidence, not ZeroGravity CPU execution qualification.
-- If resumed: multi-row source-model composition/call-free lowering is next;
-  broader contexts, general27B, C1..C64 serving and matched vLLM remain open.
-  Production stays disabled. Preserve exact CUDA reference/runtime authority gaps.
-
-## 1. Authority and read order
-
-Authority, highest first:
-
-1. Current source and current tests.
-2. AGENTS.md repository rules.
-3. The four-file maintained planning/status spine:
-   - ../plans/README.md
-   - ../plans/TODO.md
-   - ../plans/CURRENT_STATUS_AND_TRACKING.md
-   - ../plans/REQUIREMENTS_AND_TEST_TRACEABILITY.md
-4. This handoff, for cross-window context and ordered navigation.
-5. The owning subsystem plan/specification for the work being changed.
-6. Fabric vNext / transition plans when the user explicitly asks for that architecture work.
-7. Git history for superseded plans, old handoffs, removed run artifacts and old branches.
-
-Do not resurrect deleted handoff archives, transient .agents/runs trees, old side branches or old worktrees as live provenance.
-
-Current owned CUDA implementation checkpoint: `2983bb7` (signed). Exact `.8B`
-cached47→50, lifecycle/capacity and source gates pass; broader reference scopes
-remain open. Shared source binding `99f0232` and finite27B HIP natural/lifetime
-checkpoint `825ade8` are signed. New signed `d4d5df4` fixes CPU attention PV;
-`f6fa4b9` shares source traversal and actual HIP attention. Independent CPU/HIP
-operator comparisons pass1,774,240 words through64 active tokens;150 native
-modules retire and the durable parent exits0/empty cgroup. Final source gate
-passes2,135 Rust/17 Python suites. Ordinary HIP/model contexts/serving/performance
-remain open; operator data is not trained-model evidence. Signed `8a1c6b1`
-restores initial GDN empty-state addition; `1f29a42` adds actual source-bound
-0.8B/2B HIP through64 populated single-row positions, fullV/all state/two natural
-replays and healthy lifetime controls. Final gate passes2,136 Rust/17 Python
-suites. Canonical cache/native unknown/fault lifetimes now pass the inspected
-r1/r2 qualification below and the final gate; signed checkpoint `85f33c7` landed.
-Signed `55536ce` CPU padded GDN matches64,345,520 original words; its final gate
-passes2,142 Rust/17 Python suites. Signed `e2559b6` adds native chunk GDN:
-64,345,520 original words exact, four status-only Ready controls and native
-retirement pass; final source gate passes. Full-model multi-row integration,
-scalable ordinary execution, general27B, contexts/concurrency/vLLM remain open.
-No pushes. Re-read git status/log.
-
-## 2. Preserved Qwen checkpoint (deferred behind Fabric)
-
-Immediate continuation is Fabric S1 in the transition TODO. The Qwen details
-below preserve accepted evidence and future work; they are not restart orders.
-
-**Paused owner mission (resume only on explicit direction):** finish CUDA `.8B`/`2B` on `pvl-l5`, ROCm `.8B`/`2B`/`27B`
-on `pvl-x2`, genuine active-context fit, then C1/C4/C8/C16/C32/C64 serving and
-measured vLLM superiority in every required feasible run. Use high concurrency
-on sufficiently capable hardware, especially x2. Routine x2 resource use needs
-no further permission. Correctness precedes timing; do not cherry-pick losses.
-Check cached models first; needed2B/9B/27B model downloads into canonical XDG cache
-are authorized. No subagents; stop to ask only for consequential external inputs
-or decisions. The earlier blanket benchmark deferral is superseded, not numerical,
-source/device or ownership requirements. Missing wider CUDA references do not
-block independent ROCm work. Finite27B diagnostics alone do not finish the mission.
-Current results are in section8 and the status/numerics TODO.
-
-**Next lane if resumed:** ordinary0.8B/2B HIP. Signed `1f29a42`
-assembles typed-SSA state lowering, shared resident matrices/workspace, cold
-pricing and the original session/root machinery. Source arithmetic remains
-bounded to64 positions; finite27B guards stay separate. Strict standalone/HIP
-and shared Vulkan checks pass. Both actual-source cold plans pass64 positions
-and11 refusal/accounting controls; this does not qualify C64 execution. The first
-native attempt prepares785 modules, then refuses binding before initialization
-Ready. Its exit1/empty cgroup remains failed. Post-Ready binding reaches actual
-0.8B full-model comparison:303 mismatches, first after.recurrent/layer0 word50816
-(`80000000` vs `00000000`). All785 modules retire, namespace/source close; parent
-exit1/empty cgroup verified. The initial recurrence omitted original empty-state
-addition; CPU/HIP now retain it, without canonicalizing observations. Four host
-controls and standalone strict check pass. Fresh r3 passes both actual models:
-64 populated positions × two natural replays, fullV/all24 layer outputs/all
-populated state, all15,776 records/model.0.8B/2B compare1,396,408,320/
-1,399,816,192 words exactly;785/781 native modules retire. Known cancellation,
-discard, pressure, independent roots, restore/reset and shutdown pass. Final
-assembled gate passes2,136 Rust/0fail/85ignored/283 suites,17 Python suites/178
-cases plus release/installer/shell/Nix. Signed arithmetic repair:`8a1c6b1`;
-source-bound execution checkpoint:`1f29a42`. New source/cache and unknown/fault
-qualification follows below. Scalable ordinary paths and production/serving
-remain unaccepted.
-Independent original HF captures are now complete: each small model has64
-populated positions × two exact replays, fullV/all layers/all populated state;
-all15,776 records/model inspected, original source and parent/group/container/
-EOF closure verified. The durable local reference unit completed and stopped.
-Evidence:`ordinary-hip-20261031.Jc5XWh/small-original-r1-{08,2b}`. Do not repeat
-finite27B/attention/reference capture for activity. All29 approved source/reference
-members are transferred/verified on x2;0.8B is imported canonically with original
-legacy provenance. `2B` is now canonically imported as the unchanged snapshot
-`88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52`,12 exact
-members, no download. Failed r1/r2 units remain stopped; r2 invocation
-`cd0d5df490124e75b5f3ed7dc7884a79`, watch`e8a1de06` completed. Preserve
-`source-model-physical-r2-08.log` and its source/binary/parent identities.
-Completed r3 unit:`zg-source-models-20261031-r3.service`, invocation
-`3839671566394ffa83c111b9d3c3dcb6`; watch`fa8b160b` succeeded. Archive SHA256
-`1f79d6e982b62534a89a2632b8de6a42179145d6d8f567d28f87433c7df4bbef`.
-`source-model-physical-r3-{08,2b}.log` and every call/control/retirement inspected
-against original references in `source-model-all-scopes-r3.log`; parent exits0,
-MainPID0/empty descendants. Completed owned r3 unit stopped. This is
-single-row position-bound execution through64, not call-free scalable prefill,
-concurrent serving or performance acceptance. Final local gate job766 passes:
-CPU/diagnostic/HIP/shared-Vulkan strict checks, both actual-source cold-control
-sets and isolated `scripts/check.sh`. Only the fail-closed identical-capacity
-check changed after physical r3; fresh cold controls cover it, with valid model
-arithmetic/storage/ownership unchanged. No physical replay claim for that guard.
-**Qualified source-lifetime unit:** native source loading retains the actual
-canonical `SnapshotLease` and duplicates its pinned descriptors. Native staging
-refuses; cold preflight still permits staging. New diagnostic controls reuse
-original pending-flight abandonment and final-reader release faults. Two host
-schema/provenance/path controls and standalone/shared-HIP/shared-Vulkan strict
-checks pass. All14 r1 scopes are now independently inspected: both models,
-Session/Snapshot/Pending known/fault readers, unknown completion and canonical
-pins. Healthy readers release785/781 modules and all11/12 pins; unknown/fault
-retain original source/cache/native/service with a24GiB physical fence. Unknown
-retains752/747 handles,189 completion owners and one pending event, no cached
-root publication or logits claim. Parent exits0/MainPID0/empty descendants;
-completed owned unit stopped. Watch`264d971a` succeeded after63 checks; a later
-receipt is stale. Evidence:`source-lifetime-all-scopes-r1.log`.
-Closed unit:`zg-source-lifetimes-20261031-r1.service`, invocation
-`ce8715bf40f0403fbb4a01f916f5115c`. Source archive SHA256
-`bdae47d11bbd8a1bf2c5f9a6815cca3a6bb7f0b46f88c005824ea5d7f3fa5395`;
-binary`17e767bc9e21f9558d51543083c62507d04f7b529b1ac8c0599fc01e7440e3a5`.
-Current main additionally checks healthy physical-fence clearance/other-owner
-admission. That control was added after r1 froze; all six healthy-only r2 scopes
-pass and are independently inspected. Original4GiB context charge remains,
-physical fence is clear and other-owner admission succeeds. Source/cache/native
-owners retire; parent exits0/MainPID0/empty descendants. Completed owned unit
-stopped; x2 is free. Closed unit:`zg-source-lifetimes-20261031-r2.service`,
-invocation`cad7ee91e0f44e83a7fbf284bed7661b`; watch`9a53c915` succeeded after25
-checks, later receipt stale. Source archive
-`82de51f7eb7207cbc784f07314a62cd02a1d7846dbdc9968397ad698b3ffc61b`;
-binary`55f49e93ce190fd1f3b96370bdc0ef1628059786764b4fee38001c61a54d1b6a`.
-Evidence:`source-lifetime-all-scopes-r2.log`. Final isolated gate job810 passes
-2,136 Rust/0fail/85ignored/283 suites and17 Python suites/178 cases; existing
-non-strict warnings/skips remain scoped. Signed checkpoint:`85f33c7`. Landing
-plan reconciliation and the next arithmetic/test-support unit remain dirty; no push.
-Lifetime arithmetic is unchanged; accepted r1 fault/unknown and full64/finite27B/
-attention evidence is reused. Preserve historical failures/unrun scopes. Scalable ordinary execution
-remains next: CPU GDN currently has only `InitialOne`/`CachedOne`; source records
-and attention arithmetic cap64. Extending metadata/capacity alone is not prefill
-or multichunk support. Production/serving remain disabled.
-
-**Next implementation unit:** genuine multi-row source math and call-free HIP
-lowering. Its independent original CPU references now pass complete inspection:
-fresh47/48/49/50 plus two natural decode calls; uniform64-row and ragged47/64/17
-prefill consume identical512 input IDs, then512→513→514. Two replays/model,
-66 forwards/7,608 records each, full last-row V/all24 layers/all populated state.
-0.8B/2B contain873,649,152/939,144,192 float words; every record/selection/source
-mapping/replay and child/group/container/EOF closure inspected. No HIP claim.
-Case/input data:`crates/zerogravity/tests/support/qwen_source_calls.json`.
-Closed local unit:`zg-source-calls-original-20261031-r1.service`, invocation
-`dca08936d8e649b686a6e0b06e758d0e`; watch`d35de2b5` succeeded33 checks.
-Both child/parent exits0, MainPID0/empty recursive descendants saved; owned unit
-stopped. Later receipt is stale. Run:`ordinary-hip-20261031.Jc5XWh`;
-`source-calls-original-all-scopes-r1.log`, `source-calls-original-r1-{08,2b}/`
-and `validate-source-calls-r1.py`. Original chunk-sensitivity analysis is separate:
-uniform/ragged512 prefixes differ in7,563,855/7,532,508 state/logit words despite
-both choosing11; same-plan replays are exact. No chunk-invariance/quality claim
-or relaxed contract. No active local/x2 model supervisor remains.
-Next backend work must reuse call-free source invocations/original owners,
-not widen the64-body diagnostic catalogue. Actual multi-row GDN includes the
-original padded64 triangular solves; CPU-source eager attention/BF16 residuals
-also differ from CUDA contracts. Production/serving remain disabled.
-**Current internal arithmetic work:** original padded-GDN capture is now fully
-inspected:19 synthetic cases,484 stage/input/output records,74,948,432 float words,
-exact two-replay results. r1 traced the wrapper rather than the original body and
-failed; its exit1/closed ownership remains preserved. r2 observes
-`inspect.unwrap(fn).__code__`, invokes the unchanged public function and succeeds.
-Closed unit:`zg-gdn-chunk-original-20261031-r2.service`, invocation
-`1deb9d18708b468282d3c78c406e4ab1`; child/parent0, empty descendants and complete
-container/group/reap/EOF closure saved; owned unit stopped. Watch`9906f901` belongs
-only to failed/closed r1. Evidence:`gdn-chunk-original-validation-r2.log`,
-`gdn-chunk-original-r2/`, terminal/stop files under the same ordinary-HIP run.
-New CPU `numerics/torch_cpu/gdn/chunk.rs` implements the padded unit-lower solve:
-nonfused products, four lanes, `(s0+s2)+(s1+s3)`, scalar tail, one RHS subtraction.
-Four host/refusal controls, strict CPU checks and all38 original solves/
-7,077,888 words pass. Test data stays under Rust test support.
-Matrix comparison matches114 source stages/21,233,664 words, including state
-updates. Raw-dot attempt failed685 signed-zero words in stressed initialized
-inter-chunk output. Original Zen GEMM loads/adds initialized C after its FMA
-chain; retaining that arithmetic resolves them without normalizing observations.
-Every stage inspected in `gdn-gemm-inspection-r2.log`; initial mode/ordinal
-inspector mistake preserved.
-Connected CPU `gdn/chunk/core.rs` now implements the whole padded chunk core:
-source L2/scale, FP64 cumsum, causal decay, both solves, all matrix/state updates
-and BF16 output. New nonpositive exp includes the original rare FP64 path
-(`vsexp_cout_rare`, ELF0xb41a130), not scalar-libm substitution. Its64 exp2 split
-pairs are independently derived at180 digits and match all128 original words.
-Existing normal-profile guard |x|<=87 is unchanged. Original -inf causal masks
-are explicit; supplied log-decay remains finite/nonpositive.
-All19 cases/380 computed/returned fields/64,345,520 words compare exactly from
-original inputs, including initialized state/strong decay; no intermediate
-reference is used as an operand. Strict CPU and60 host tests pass/8ignored.
-Retain initial iterator lint failure. Final review aligns observer order and
-adds cumulative-overflow/observer-refusal controls. Fresh r3 original comparison
-and CPU/diagnostic strict pass. Final isolated `scripts/check.sh` passes2,142
-Rust/0fail/87ignored/283 suites,17 Python suites/178 cases plus release/installer/
-shell/Nix. Existing feature warnings and skips remain scoped; no physical replay
-is inferred. Signed checkpoint `55536ce` contains only this arithmetic, test support and
-plans. Post-commit plan grouping is carried into the next substantive unit.
-Evidence:`gdn-connected-{original,host,strict}-r{2,3}.log`,
-`gdn-connected-diagnostic-strict-r1.log`, `gdn-connected-assembled-gate-r1.log`.
-No model/call-free/HIP integration yet. Next implement actual HIP chunk math,
-then multi-row projection/Conv4/attention and call-free lowering. Source
-machine-code inspections are run-local, not a replacement runtime or permission
-to call private ABIs. Local gate job875 completed0; no owned build/model job
-remains. Production/serving stay disabled.
-Read-only x2 inventory additionally resolves all25 dangling images' public name
-histories: application/database/Ollama images, no named vLLM candidate. Only
-public repository/name fields requested, no container/device work or download.
-`x2-untagged-runtime-inventory-r1.log` is name metadata, not exhaustive package
-inspection or baseline authority; compatible approved ROCm vLLM remains open.
-
-**Native chunk continuation:** shared `source_gdn/chunk.rs` and separate rare-exp
-GPU arithmetic now compile; no model lowering/production selection exists.
-Test-only composition uses original source/native/service/queue/flight owners,
-256MiB admitted host workspace and64MiB case scratch, streams independent input
-records and compares all stages/returned state. It also reads back all inputs/
-prior state and tests four numerical refusals without exporting math through Ready.
-Original transport only widens BF16 bits/reorders records; SHA256
-`0b314ec242346caec8d7f2ed2d0e45647cf8eed37649f97c66f907c5a657a071`,
-299,795,904 bytes. R1 macro path and r3 ambiguous slice type compile failures
-are retained; strict r4 passes. Frozen source archive SHA256
-`79dac12c18259f5dea34b1199b15b0f6e32232a9050850b99551fd384cc0d5ad`,
-40,560,640 bytes/2,148 files, base55536ce plus dirty implementation, transferred
-with all bytes authenticated to bounded non-Git x2 scratch. Durable unit:
-`zg-source-gdn-chunk-20261031-r1.service`, invocation
-`fc0379a845354d57be6cc34f23ee5174`, initial MainPID974422. Watch`fba2bb67`
-observed terminal failure: release build passed, native refused `HIP original
-complete source catalogue metadata owner` before all19 cases. The diagnostic
-requested4MiB against the exact1MiB original contract. Parent101/MainPID0/empty
-recursive descendants, source/binary/log identities saved; unit stopped (failed
-state retained), starter905 closed. No numerical/in-process retirement pass.
-Caller now requests1MiB; original guard/arithmetic unchanged. R2 frozen archive
-`e3387a9ed607518c54f8425e6c39f7d2484811222f2b92222e2aa2ff476543b2`,
-invocation`ee5c37a887b94376a9c2e7837110f81b`, watch`39fc9f3d`: all19 cases/
-380 fields/64,345,520 words exact; every input/prior unchanged, per-case resident
-baseline restored. Independent all-scope inspector reconciles the pinned original
-manifest. First negative control fails a fixture mistake: completed Writes are
-physically initialized regardless of Ready export selection. Remaining3 controls
-and final retirement unverified. Preserve failed101/empty descendants/evidence;
-owned unit stopped. Fix diagnostic only: exact original service/event/root context
-and export cohort, negative Ready contains only status/no math. No completion or
-arithmetic change. R3 archive
-`2afc28f5a1987ec04e84e4b858f2672a848fb625e499336ab533c0fc1ffa5715`, binary
-`3c5db98e1c2dfdff7cc279aa6734d2d63aa5df85d99304a998e521fb6a69db79`, unit
-`zg-source-gdn-chunk-20261031-r3.service`, invocation
-`01091a34a8f54d6c92a2bb95ee11b8f0`, watch`90ef500e`: all19 cases/380 fields/
-64,345,520 words exact; all4 numerical status controls retain inputs and export
-only status, never math, through original Ready. Physical writes complete as
-specified; no model publication exists. Per-case resident baseline intact, all20
-native modules/code/host/device retire, namespace closes. All scopes independently
-inspected; parent0/MainPID0/empty recursive descendants saved; unit stopped.
-Shared HIP/Vulkan strict checks pass. Final isolated `scripts/check.sh` r2 passes
-2,142 Rust/0fail/87ignored/283 suites,17 Python suites/178 cases plus packaging.
-R1 formatting-only refusal retained; module declaration order corrected without
-math/ownership changes. Signed implementation checkpoint:`e2559b6`. Existing dotlink.service GPU context
-was idle at inspection and remains untouched; preserve the initial overbroad
-empty-FD preflight refusal. Non-timed operator run only, no performance or
-exclusive-device claim. No full-model, serving or Vulkan physical grant.
-Old receipts d35de2b5/9906f901 are closed captures; fba2bb67/39fc9f3d are closed
-native failures. R3 is inspected/stopped; do not repeat it on a stale receipt.
-Details remain in model-execution/numerics plans.
-
-Repository:
-
-    /home/pvl/spaces/abird/src/zerogravity
-
-Persistent topology:
-
-- main is the only persistent local branch.
-- main is the only authorized implementation checkout; do not create another.
-- 31Oct preflight also found an external detached Kilo scratch checkout; it was
-  not created, read or modified by this lane. Preserve other owners' work.
-- origin/main is the only remote branch currently relevant.
-- no stashes.
-- do not create durable side branches/checkouts as coordination state.
-- do not push/tag/release unless the user explicitly authorizes it.
-
-Recommended startup:
-
-    export CARGO_BUILD_JOBS=8
-    export RAYON_NUM_THREADS=8
-    export PYTHONDONTWRITEBYTECODE=1
-    git status --short --branch
-    git log --show-signature --oneline -20
-    git worktree list --porcelain
-    nvidia-smi
-
-Then read, in order:
-
-1. AGENTS.md
-2. this file
-3. ../plans/README.md
-4. ../plans/TODO.md
-5. ../plans/CURRENT_STATUS_AND_TRACKING.md
-6. ../plans/REQUIREMENTS_AND_TEST_TRACEABILITY.md
-
-For the current Qwen correctness critical path also read:
-
-7. ../plans/serving-and-speculation/TODO.md
-8. ../plans/numerics-and-context/CORRECTNESS_POLICY.md
-9. ../plans/numerics-and-context/TODO.md
-10. ../plans/model-execution/TODO.md
-11. ../plans/cpu-gpu-optimization/TODO.md
-12. ../plans/memory-and-streaming/TODO.md
-13. ../plans/serving-and-speculation/BENCHMARK_CAMPAIGN_2026-10-27.md
-
-For Fabric vNext work also read:
-
-14. ../plans/fabric-vnext/HANDOFF.md
-15. ../plans/fabric-vnext/README.md
-16. ../plans/fabric-vnext/DECISIONS_AND_OPEN_QUESTIONS.md
-17. ../plans/fabric-vnext/IMPLEMENTATION_AND_ACCEPTANCE.md
-18. ../plans/fabric-vnext/PRIOR_ART_AND_REVALIDATION.md
-19. ../plans/fabric-vnext-transition/HANDOFF.md
-20. ../plans/fabric-vnext-transition/README.md
-21. ../plans/fabric-vnext-transition/CURRENT_SOURCE_RECONCILIATION.md
-22. ../plans/fabric-vnext-transition/ARCHITECTURE_AND_CRATE_CONTRACTS.md
-23. ../plans/fabric-vnext-transition/STRUCTURAL_SKELETON.md
-24. ../plans/fabric-vnext-transition/PHASED_IMPLEMENTATION.md
-25. ../plans/fabric-vnext-transition/FEATURE_PARITY_MATRIX.md
-26. ../plans/fabric-vnext-transition/QUANTIZATION_AND_NUMERICS.md
-27. ../plans/fabric-vnext-transition/QUALIFICATION_AND_COMMIT_POLICY.md
-28. ../plans/fabric-vnext-transition/ROADMAP_AFTER_TRANSITION.md
-29. ../plans/fabric-vnext-transition/DECISIONS_RISKS_AND_ACCEPTANCE.md
-30. ../plans/fabric-vnext-transition/TODO.md
-
-That is the intended next-window set. Do not load every historical document up front.
+# ZeroGravity current comprehensive handoff — 14 Nov 2026
+
+Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
+
+This file is the complete takeover map and a pointer into maintained source, tests
+and plans. It is deliberately **not** the retired monolithic SHA/archive/evidence
+handoff model. Git history retains superseded checkpoints; current source, tests
+and live TODOs are authoritative.
+
+## Resume here
+
+### Repository/topology checkpoint
+
+- Use **`dotlink---l5` only** unless the user explicitly changes the host/tunnel
+  instruction.
+- Work strictly in `/home/pvl/spaces/abird/src/zerogravity`.
+- Branch/checkout: `main`; it is the only persistent Git worktree.
+- Last implementation/probe-bearing signed checkpoint before this handoff refresh:
+  `cb9e349946c6daceff7d58ff28df1005dfa3ece4`
+  (`docs(cuda): record projection cache probes`). The handoff refresh itself may be
+  a newer docs-only signed commit; always revalidate live `HEAD` on takeover.
+- `origin/main` is `c12acab60c357e0742ad4ecd2f00295cd9b6bb0a`
+  (`feat(cuda): retain grouped B8 recurrent transport`).
+- Before this handoff refresh, local `main` was **8 commits ahead of origin**.
+  The handoff refresh itself may add one docs-only commit. Nothing newer than
+  `c12acab` is pushed. Never push unless the user explicitly asks.
+- Local commits after origin, oldest → newest:
+  - `85f458f` — packed BF16 batch greedy retained.
+  - `f303bca` — exact head→greedy partials retained.
+  - `68ac810` — grouped ConvB4 transport retained.
+  - `da3eae5` — dual Q/K head RMS retained.
+  - `ee347d9` — certified recurrent export retained.
+  - `399e43a` — accepted B8 private-KV CTA256.
+  - `de2eed8` — post-KV optimization probes recorded.
+  - `cb9e349` — projection/cache-policy probes recorded.
+- Important accepted commits immediately before origin:
+  - `60b048d` — canonical-boundary private B8 GDN recurrent core accepted.
+  - `775dfa6` — ragged private B8 KV transition accepted.
+  - `c12acab` — grouped B8 recurrent transport primitive retained, serving
+    consumer rejected.
+- At the last CUDA checkpoint no Cargo/model process was active, the RTX3060 was
+  idle at ~41 MiB, and all temporary benchmark/include-view artifacts were removed.
+- Root `README.md` is user-authored. Leave it unchanged unless explicitly asked.
+- Do not create another Git worktree on l5. Reuse the canonical target/tmp/model
+  cache state; previous extra worktrees duplicated very large build trees and were
+  intentionally removed.
+- Commits are signed. Inspect `git diff --cached --stat` before every commit and
+  stage only owned paths.
+- `git log --show-signature` reports a good ED25519 signature while also printing
+  a missing local allowed-signers principal warning. That warning is not a bad
+  signature.
+
+### Read order / authority
+
+A new agent should read in this order:
+
+1. Current source/tests for the surface being changed.
+2. `AGENTS.md`.
+3. `.agents/plans/README.md`.
+4. `.agents/docs/CURRENT_HANDOFF.md`.
+5. `.agents/plans/TODO.md`.
+6. `.agents/plans/model-execution/TODO.md`.
+7. `.agents/plans/numerics-and-context/CORRECTNESS_POLICY.md`.
+8. The owning plan(s), especially:
+   - `serving-and-speculation/TODO.md`
+   - `cpu-gpu-optimization/TODO.md`
+   - `memory-and-streaming/TODO.md`
+   - `pipeline-composition/TODO.md`
+   - `numerics-and-context/TODO.md`
+   - `cli-device-routing/TODO.md`
+   - `model-acquisition/TODO.md`
+9. Relevant architecture docs under `.agents/docs/`.
+10. Git history for removed experiments and superseded handoffs.
+
+Current source/tests and live TODOs outrank this handoff if main advances.
+
+### Tracking / handoff method
+
+The old generated handoff/SHA/archive workflow is retired.
+
+- `CURRENT_HANDOFF.md` is the canonical cross-window pointer.
+- `.agents/plans/TODO.md` is the global queue.
+- Per-plan TODOs are the detailed accepted/rejected/open-work ledgers.
+- Git history is the archive and provenance record.
+- Do not recreate `.agents/runs`, source snapshots, monolithic receipts, per-file
+  hash catalogues or durable side-worktree coordination state.
+- Actual model/content identities, numerical contracts and physical acceptance
+  limits still belong in source/tests/plans where semantically required.
+- Historical failures stay failures. A later pass/cleanup cannot relabel them.
+
+## Owner direction / working style
+
+The user has repeatedly steered the project toward implementation-first,
+shared-primitives-first work:
+
+- Prefer **implementation → quick real-model feedback → controlled comparison**.
+- Solve cleanly at shared layers when the semantics genuinely benefit multiple
+  models/backends/tools.
+- Model/source policy belongs in model/source layers. Reusable numerical, layout,
+  transport, state and physical execution primitives belong in shared runtime/GPU
+  layers.
+- Keep independently useful model-neutral primitives even when their first Qwen
+  serving consumer is rejected; remove the slow consumer, not the clean primitive.
+- Exact source/reduction/state/root/resource/cancellation semantics are never
+  weakened to chase benchmark numbers.
+- Unsupported capability fails closed. Never silently select another arithmetic
+  profile, captured case or model-specific fallback.
+- Rust preference: explicit ownership, simple robust APIs, zero-cost abstractions
+  where natural, targeted hot-path optimization only when repeatably material.
+- Do not over-engineer tests, evidence, receipts, pinning or phase granularity.
+- Reuse accepted validation for unchanged primitives.
+- Validate in coherent checkpoints rather than after every helper.
+- Treat fewer launches/loads/instructions as a hypothesis, not acceptance evidence.
+- For small expected gains use one-binary/one-model forward/reverse or ABBA
+  measurement; cross-process clock/thermal drift repeatedly produced false wins.
+- Remove all temporary selectors, profiling hooks, `_tmp` runners and include
+  views after the decision is recorded.
+- Recent CUDA work has used ~30-minute coherent checkpoints; continue that unless
+  the user changes the cadence.
+- Do not ask the user to reconfirm already-authorized continuation steps.
+- Never push unless explicitly asked.
+
+## Canonical architecture / non-negotiable invariants
+
+ZeroGravity is one Rust-owned execution fabric, not a per-model collection of
+engines/servers.
+
+- One semantic/model definition per family/source contract.
+- One logical `StateRoot` publication authority.
+- Canonical roots remain checkpoint/rollback/publication authority even when
+  private/native/derived representations exist.
+- One process-shared physical `ResourceArbiter`.
+- Device workers own real asynchronous compute/events, but cannot invent logical
+  commits.
+- Release follows actual completion/fence/event state; completion-unknown work is
+  quarantined.
+- Source/weight owners survive until the real final consumer retires.
+- Cancellation cannot publish partial candidate state.
+- Independent sessions/roots remain independent through physical batching.
+- Physical batch width is separate from each source call's authenticated numerical
+  reduction contract.
+- Finite captured cases are qualification evidence, never production selectors.
+- Metadata/registry slugs never grant execution support.
+- CPU/CUDA/HIP/Vulkan and quant/source profiles remain separate qualification
+  claims.
+- Performance follows semantic/source/state/ownership correctness.
+
+The Fabric transition is complete and now forms the shared architecture:
+`zerogravity-core` owns semantic/state/provider/physical contracts;
+`zerogravity-artifacts` owns immutable formats/source/acquisition/store; model
+crates own family semantics; CPU/GPU crates own physical providers;
+`zerogravity-engine` owns model-neutral runtime/session/scheduling/residency;
+`zerogravity-serving` owns reusable protocol/server behavior; `zerogravity` is the
+public composition root; CLI stays presentation/arguments/signals. Do not restart
+the old Fabric S/F/Q transition sequence.
+
+## Design/spec navigation
+
+Do not read all design docs for every kernel change. Use the relevant map:
+
+- Product/vision: `VISION_SCOPE_AND_PRINCIPLES.md`,
+  `MODULAR_AI_SYSTEMS_REFERENCE_ARCHITECTURE.md`,
+  `PRODUCT_MODEL_PIPELINE_AND_EXTENSIONS.md`.
+- Engine/IR: `ENGINE_CORE_EXECUTION_AND_PROTOCOL.md`,
+  `MINIMAL_EXECUTION_SPINE_AND_PROTOCOL_V4.md`,
+  `TASK_PROGRAM_AND_COMPILER_REFINEMENT_V4.md`,
+  `SEMANTIC_IR_AND_COMPILER.md`.
+- Model/formats/numerics: `MODEL_SEMANTICS_AND_COMPATIBILITY.md`,
+  `FORMATS_QUANTIZATION_AND_LOADING.md`,
+  `NUMERICS_QUALITY_AND_BENCHMARKS.md` and the correctness policy.
+- Scheduling/state/memory: `SCHEDULER_BATCHING_AND_SPECULATION.md`,
+  `STATE_CACHE_AND_TRANSACTIONS.md`, `MEMORY_RESIDENCY_AND_IO.md` and
+  `UNIFIED_VIRTUAL_TENSOR_RESIDENCY_AND_SSD_STREAMING_2026-10-15.md`.
+- GPU/device: `DEVICE_KERNEL_AND_CODEGEN.md`,
+  `ACCELERATOR_EXECUTION_FAMILIES_AND_BACKEND_CONTRACT.md`,
+  `OPERATOR_AND_FUSION_CATALOG.md`, `COST_MODEL_AND_AUTOTUNING.md`.
+- Serving/routing: `RUNTIME_SERVING_AND_UX.md`,
+  `ZERO_CONFIG_CLI_CONFIG_AND_OPENAI_API_CONTRACT.md`,
+  `MODEL_ROUTING_RESIDENCY_AND_MULTI_MODEL_SERVING_CONTRACT.md`.
+- Composition: `COMPOSITION_AND_EXTENSION_CONTRACTS.md` and
+  `pipeline-composition/STRUCTURE_AND_NAMING.md`.
+- Distributed/multimodal: the distributed-placement/transport docs and the
+  universal/realtime multimodal contracts.
+- Historical Fabric rationale lives under `.agents/plans/fabric-vnext/` and
+  `fabric-vnext-transition/`; those plans are closed.
+
+## Global plan ownership / pending-work map
+
+The global queue in `.agents/plans/TODO.md` is authoritative. At handoff creation
+the work ledgers are:
+
+- **serving-and-speculation** — active P1: serving correctness/context fit,
+  population/batching/paged-state/speculation, matched vLLM campaigns and shutdown/
+  cancellation behavior. Its TODO retains the full serving chronology from the
+  initial CPU/OpenAI router through resident GPU cohorts.
+- **numerics-and-context** — active P1: independent numerical/source acceptance,
+  genuine context progression, reference capture, ordinary CUDA/HIP parity and
+  remaining long-context/backend cells. The common acceptance rules are in
+  `CORRECTNESS_POLICY.md`.
+- **memory-and-streaming** — active P1: exact admission/fit, source windows,
+  complete-domain state/prefix/COW/persistence, SSD streaming and residency
+  boundaries.
+- **cpu-gpu-optimization** — active P1: backend parity and measured performance,
+  with correctness-first gates before matched optimization claims.
+- **pipeline-composition** — active P1: recursive programs/profiles, component
+  reuse, format/model/provider boundaries and production/test separation.
+- **cli-device-routing** — active P1: unified run/config/source/device selection,
+  exact device identity and future local spill/peer routing.
+- **model-execution** — active P2: the detailed CUDA/HIP/Qwen implementation,
+  qualification, performance and rejection ledger summarized above.
+- **model-acquisition** — active P2: authenticated source location/cache/provider
+  flows, HF/Xet/cloud/object acquisition, aliases and source rights.
+- **multimodal** — icebox: multimodal execution/product work; do not infer current
+  implementation from architecture docs.
+- **distributed-execution** — icebox: remote/distributed placement/transport work.
+- **platform-and-release** — icebox: assembled platform/release acceptance work.
+- **fabric-vnext-transition** — closed: historical architecture/migration rationale
+  and acceptance; do not reopen as the current queue.
+
+When work crosses plans, update the lowest owning TODO(s) rather than creating a
+parallel status ledger. The handoff is a navigation layer, not a replacement for
+those work-item files.
+
+## Current signed implementation state
+
+### Fabric / shared runtime
+
+Accepted milestones include `860ce38`, `fef7123`, `8d761c4` / `8c43844` and
+`1c99929`. The transition is complete; expansion belongs to the active model,
+serving, memory and composition plans.
+
+### HIP / ordinary Qwen
+
+- `8ffb511`: populated 0.8B/2B HIP serving accepted through qualified scopes.
+- `d16f096`: explicit total HIP device-budget admission and resident 27B
+  comparison.
+- Resident 27B C1..C64 output/state/retirement is verified under the declared
+  large budget.
+- HTTP504 and populated 1K/2K HTTP/context closure remain open.
+- ROCm2B C4 warmup plus C16/C32/C64 warmup/timed mismatches remain unlocalized.
+  Preserve failed cells; do not repin expectations.
+- Those remaining campaigns are x2 work. Current user instruction is l5-only, so
+  do not jump to x2 without a new instruction.
+
+### CUDA composition / serving foundation
+
+The CUDA route is a real source-derived resident path, not a finite-case
+dispatcher.
+
+Important foundation commits:
+
+- `4f1e827` shared source-derived CUDA composition.
+- `a57590e` output-reduction repair.
+- `9d73d46` compact on-device greedy/token feedback.
+- `9f45471` exact decode GEMV specialization.
+- `55e195c` onward: genuine ordinary inter-session cohorts.
+- `b191fc6`: exact independent source reductions survive physical row widening.
+- `fa703fa` / `96a7ac7`: same-frontier chunked/ragged prefill and mutual cohort
+  compatibility.
+
+Current serving uses genuine B4/B8 physical cohorts with B2 partial regrouping.
+Same-frontier ragged/chunked prefill is accepted. Unequal-frontier prefill remains
+fail-closed.
+
+## CUDA execution/performance chronology
+
+The exact measurements/tests live in `model-execution/TODO.md`. This is the
+takeover map.
+
+### 9–10 Nov — C1 to genuine B4/B8
+
+- Compact greedy feedback moved to a tiny device packet instead of full-vocab host
+  readback.
+- Exact decode GEMV specializations landed.
+- B4 ordinary source cohorts shared stateless projection/head while preserving
+  private state.
+- B4 GDN convolution, recurrent core and full attention became genuine physical
+  batching primitives.
+- BF16 finite certification was folded into GEMM stores where legal.
+- B4 lane-strided output head shared weights across rows without changing per-row
+  arithmetic.
+- Full-prompt prefill cohorts landed.
+- Native width widened to B8 while stateful GDN/attention initially remained
+  composed from qualified B4 groups.
+
+### 11 Nov — dense B8, chunking and partial populations
+
+Accepted generic K64 families:
+`67586eb` ordered large-K prefill row64, `77ffc23` ordered B8 decode,
+`5a75a70` RoundedSegments B8 and `2b8e90f` interleaved-pair B8.
+
+Other work:
+`74f6422` populated small contexts; `597da3f` cross-profile measurement support;
+`b95acdc` B2 partial regrouping; `fa703fa` chunked/ragged state-only intermediate
+prefill; `0d9a56d` / `96a7ac7` mutual cohort compatibility.
+
+Decisions:
+- B4/B8 remain native widths; B2 handles partial populations.
+- Larger offered populations become multiple B8 groups, not hidden B16.
+- **B16 is rejected**: 0.8B was slightly worse than two B8 groups; 2B regressed
+  catastrophically. Do not resurrect without materially different architecture.
+- Unequal-frontier prefill previously diverged and remains held.
+
+### 12 Nov — exact arithmetic + reusable stateless primitives
+
+`b191fc6` fixed the key correctness boundary: physical widening must not select a
+different source reduction. Exact B2/B4/B8 row kernels, ragged cohorts, inner-major
+head packing, two-segment row split, sigmoid×multiply, stateless row spans,
+RMS/residual-RMS, gate, Q/K RMS and source-exact rotary primitives followed.
+Several consumers were rejected because lower dispatch count did not yield
+repeatable serving gain; the clean primitives remain.
+
+### 13 Nov — stateful primitives, roots and hot-path profiling
+
+Important decisions before the current selected B8 state path:
+
+- B8 gated GDN primitive retained; ordinary consumer rejected.
+- LaneBlocked inner-major rejected once pack cost was included.
+- Multiple dominant LaneStrided<16,512> CTA/load/unpack/warp/unroll variants were
+  exact but flat/unstable/slower and removed.
+- A shared-memory tiled recurrent transpose was ~12–13% faster in isolated copy
+  timing but slower under sustained serving; removed.
+- `fe3b122` strengthened transport oracles with an independent CPU index oracle.
+- `0cdfaad` retained private ragged B8 attention; current ordinary selection held.
+- `d196c1b` / `bad4713` qualified private cached-GDN state binding and in-place
+  alias behavior.
+- `16fba0e` retained an exact-root model-neutral derived-state cache; its first
+  private-GDN serving representation was ~25.6% slower despite exact-root hits,
+  so that consumer is rejected.
+- `2f651b7` centralized session construction and removed first-lane prefill-binding
+  coupling while keeping same-frontier admission.
+
+### Selected: `60b048d` canonical-boundary private B8 recurrent core
+
+Current serving selects this.
+
+- Canonical F32 recurrent roots stay the only publication/checkpoint authority.
+- Eight lanes still import exact canonical state, execute one private B8 recurrent
+  core in-place, then export exact canonical candidates.
+- Gated output remains two accepted B4 groups.
+- No native recurrent state persists across tokens.
+- Qwen3.5-2B B8 47+16 kept sixteen ID264 tokens/lane.
+- Controlled candidate mean ~716.377 ms vs `2f651b7` baseline ~745.102 ms:
+  ~3.86% lower latency / ~4.01% higher throughput in that short workload.
+
+### Selected: `775dfa6` ragged private B8 KV
+
+Current serving selects this.
+
+- Extends packed-BF16 private KV from B4 to independent ragged B8 bases.
+- Canonical BF16 K/V roots remain publication authority.
+- Candidate fully writes prefix copy + append + future zero tail + nonfinite status.
+- A single 32-root launch was rejected because it exceeded
+  `MAX_BINDINGS=32`; the cap was not widened and no opaque pointer table was added.
+- B8 therefore uses two reusable plane launches, key then value.
+- Physical ragged bases/guards/nonfinite/multi-token/capacity1024 qualifier passes.
+- Controlled candidate mean ~709.600 ms vs bracketed `60b048d` baseline
+  ~722.432 ms: ~1.78% lower latency / ~1.80% higher throughput.
+
+### Retained: `c12acab` grouped B8 recurrent transport; consumer rejected
+
+This is the current remote origin.
+
+- Exact model-neutral 8-root recurrent transport, 17 explicit bindings.
+- Qualified against scalar transport and CPU index oracle.
+- Serving grouped import/export was only ~0.24% better against a two-sided
+  baseline and slower than the first baseline side; rejected.
+- Primitive remains; serving does not select it.
+
+### 13–14 Nov retained primitives; serving consumers rejected
+
+These signed local commits are **retained shared primitives**, not selected
+ordinary serving paths:
+
+- `85f458f` packed BF16 batch greedy:
+  exact B2/B4/B8 numeric-zero ordering; serving evidence only ~0.44% one-sided and
+  lacked a clean reverse bracket, so not selected.
+- `f303bca` exact B8 head→greedy partials:
+  exact accepted logit arithmetic and packets; serial variants were ~8.8% and
+  ~2.9% slower, CTA-preserving path ~0.12% slower/noise. Full head + greedy stays.
+- `68ac810` grouped ConvB4 transport:
+  exact grouped/scalar/CPU-oracle parity; ordinary 20→8 launch composition was
+  flat/slightly slower (~688.920 vs 689.195 ms).
+- `da3eae5` dual Q/K head RMS:
+  exact physical composition; serving ~0.28% slower (~692.004 vs 693.917 ms).
+- `ee347d9` certified recurrent export:
+  exact RecurrentOut + gated BF16 certification, including exact status 0x0a
+  combined fault case; serving composition ~0.33% slower (~679.122 vs 681.355 ms).
+
+### Selected: `399e43a` B8 private-KV CTA256
+
+Latest selected performance change.
+
+- Only B8 private-KV CTA width changes 32 → **256 threads**; B4 remains 32.
+- One U32/two BF16 values per thread remains unchanged.
+- No arithmetic, root/state, ABI, prefix/append/tail/status change.
+- Full guarded physical matrix passes at widths 32/64/128/256.
+- Same-process Qwen3.5-2B B8 means:
+  - 32: 687.760 ms
+  - 64: 678.130 ms
+  - 128: 678.374 ms
+  - 256: **675.905 ms**, stable 675.148–676.997 ms
+- Accepted benefit vs CTA32: ~1.72% lower latency / ~1.75% higher throughput.
+
+### 14 Nov post-KV probes: `de2eed8` / `cb9e349`
+
+These commits record rejections only; production source was restored.
+
+Fresh relative post-CTA256 projection ranking from temporary serialized device
+events:
+
+- 24× 12288×2048 LaneStrided<16,512>: 5252.096 µs total / 218.837 mean.
+- 24× 2048×6144 RoundedSegments<2048>: 3336.128 / 139.005 µs.
+- 18× 8192×2048 Ordered: 2639.872 / 146.660 µs.
+- 24× 2048×2048 LaneStrided<16,256>: 1148.160 / 47.840 µs.
+- 18× 32×2048 LaneBlocked<32,64>: 1124.352 / 62.464 µs.
+- 6× 5120×2048 LaneStrided<16,512>: 682.080 / 113.680 µs.
+- Two observed 248320-head launches totalled ~7068.768 µs.
+
+Use these as relative family ranking only; the probe serialized kernels.
+
+Rejected after CTA256:
+- recurrent transport CTA128/256/512: exact, no stable gain; CTA256 had a severe
+  stall and CTA512 order effects crossed.
+- Rounded paired BF16x2 segment conversion: exact, ~0.12% device-time difference.
+- LaneBlocked<32,64> B2/B4/B8 shared-weight specialization: exact, but direct
+  kernel timing showed accepted ~91.9 µs after first outlier vs candidate
+  ~107.5 µs; apparent whole-model ~0.74% win was noise.
+- weight-only `cp.async.cg` for K64 Ordered/Rounded: exact; Ordered repeatedly
+  ~1.2% slower and Rounded flipped direction between repeats.
+- All experimental helpers/selectors/tests/runners were removed.
+
+## Current ordinary CUDA selected path
+
+### Selected
+
+- Exact independent source reduction contracts (`b191fc6`).
+- B4/B8 cohorts with B2 partial regrouping.
+- Same-frontier chunked/ragged prefill.
+- Accepted K64 Ordered/Rounded/Interleaved GEMM families.
+- Exact row-split GDN consumer (`d1ec723`).
+- Canonical-boundary private B8 recurrent core (`60b048d`).
+- Ragged private B8 KV (`775dfa6`).
+- B8 private-KV CTA256 (`399e43a`).
+- Existing B4 GDN gated path.
+- Existing B4 attention composition for ordinary B8 serving.
+- Full BF16 output head + existing greedy path.
+- Canonical state/root publication.
+
+### Retained but not selected in ordinary serving
+
+- Private ragged B8 attention (`0cdfaad`).
+- Cached-GDN B8 gated primitive.
+- Exact-root derived-state cache (`16fba0e`).
+- Grouped B8 recurrent transport (`c12acab`).
+- Packed BF16 batch greedy (`85f458f`).
+- Exact B8 head→greedy partials (`f303bca`).
+- Grouped ConvB4 transport (`68ac810`).
+- Dual Q/K head RMS (`da3eae5`).
+- Certified recurrent export (`ee347d9`).
+- Other stateless row/RMS/gate/QK/rotary primitives whose current consumer
+  economics were rejected.
+
+Never infer “primitive exists” == “serving selects it”.
+
+## Reusable shared primitives that must not be lost
+
+Retain model-neutral:
+exact BF16 GEMM reductions; B2/B4/B8 physical rows; K64
+Ordered/Rounded/Interleaved staging; row-major↔inner-major BF16 transport;
+StatelessRowExtent/RMS/residual-RMS/SiLU/gate/QK-RMS; sigmoid×multiply;
+two-segment row split; B4/B8 packed-BF16 KV; source-exact rotary; private
+B4/B8 GDN recurrent + alias properties; B4/B8 gated; ragged B4/B8 attention;
+exact-root derived state; scalar/grouped recurrent and Conv transports; packed
+BF16 greedy/continuation; head→greedy partials; dual Q/K RMS; certified recurrent
+export; compiler/transport/oracle utilities.
+
+A rejected Qwen consumer is not a reason to delete these primitives.
+
+## Important rejected experiments / do not casually repeat
+
+Exact data is in the owning TODO. Major rejections:
+
+- B16/native16.
+- Unequal-frontier serving admission without new per-lane source qualification.
+- Persistent/derived native GDN serving representation.
+- Grouped B8 recurrent transport consumer.
+- Tiled recurrent transpose consumer.
+- recurrent CTA width sweep.
+- grouped ConvB4 consumer.
+- B8 gated consumer.
+- private B8 attention consumer without materially new composition.
+- certified export consumer.
+- dual Q/K RMS consumer.
+- packed BF16 greedy selection on weak/noisy evidence.
+- existing head→greedy tilings.
+- LaneBlocked inner-major with pack cost.
+- LaneBlocked64 shared-weight specialization.
+- Ordered M128/N16.
+- Rounded M32/two-warp and paired-BF16 segment boundary.
+- K64 weight-only `.cg` cache hint.
+- dominant LaneStrided CTA-only/shared-input/paired-column/warp-sharing/
+  paired-unpack/unroll variants.
+- full broad requalification of unchanged primitives.
+- large CUDA acceptance from cross-profile NMSE/greedy-token equality alone.
+
+## Current performance frontier
+
+Do not generalize quick non-LTO/direct API numbers to HTTP, long context, graph
+capture, another GPU or another model.
+
+- Original C1 anchor: 0.8B native ~65.22 ms vs eager vLLM ~90.64 ms; 2B native
+  ~114.29 ms vs eager vLLM ~84.34 ms.
+- Warm 2B B8 cached-decode traversal has historically been ~25–28 ms/token
+  depending clocks/build state.
+- Dense projection remains the largest measured region; the fresh family ranking
+  above is the current local guide.
+- B8 recurrent core, B8 KV transition and CTA256 are accepted material wins.
+- Recent 47..54 +16 whole-model waves commonly land ~675–705 ms depending
+  clock/thermal state.
+- Cross-process timing has repeatedly reversed sub-1% conclusions.
+- For sub-1% candidates, direct device timing + same-process ABBA/reverse order is
+  the minimum useful evidence.
+
+## Numerical / state / ownership rules
+
+- Exact source identity/geometry explicit.
+- No backend grant from metadata, registry names or another target.
+- Every numerical profile owns its arithmetic contract; no universal epsilon.
+- Physical widening preserves original source reduction order.
+- Canonical roots remain publication/checkpoint/rollback authority.
+- Derived representations are subordinate exact-root caches only.
+- Restore/reset/replacement cannot reuse stale derivatives.
+- Private in-place mutation is only a physical primitive property until a
+  lifecycle explicitly qualifies/selects it.
+- One ResourceArbiter; no hidden second allocator/budget system.
+- Completion/event/fence governs release/quarantine.
+- Cancellation cannot publish candidate state.
+- Sessions remain independent through cohorts.
+- Canonical future KV tail stays exact zero where required.
+- Passing cleanup/final cases do not relabel earlier failures.
+- Compilation, synthetic fixtures and token equality alone do not establish full
+  model/backend acceptance.
+- Operator correctness, model distribution quality and determinism are separate
+  claims. Follow `CORRECTNESS_POLICY.md`.
+
+## Current blockers / open work
+
+### l5-local
+
+1. **CUDA2B optimization only with materially new architecture or fresh profile
+   evidence.**
+   - Easy launch/CTA/cache/instruction variants are heavily exhausted.
+   - Re-profile before another micro-optimization.
+   - A possible next investigation is higher-level composition of adjacent
+     projections sharing an activation/read boundary, only if the real graph has
+     independent outputs whose exact reductions can remain unchanged. Inspect
+     graph/source calls first; QKVZ/gate-up may already be packed.
+   - A recurrent-state improvement would need a genuinely different layout or
+     composition, not another transport grouping/CTA/cache tweak.
+   - Do not force a change simply because a measured family is large.
+2. **Large CUDA same-contract distribution/state acceptance is open.**
+   - Cross-profile diagnostics are not acceptance.
+   - Approved original reference/archive material needed for the intended rerun is
+     currently missing on l5. Do not invent tolerances, repin or substitute.
+3. **Unequal-frontier prefill remains held.**
+   - First-lane coupling was hardened, but admission stays same-frontier.
+   - Per-lane source position/base/state semantics need approved HF source and
+     private-singleton physical comparison before scheduler admission changes.
+4. Broader HTTP/context/graph/vLLM campaigns remain separate from quick CUDA
+   direct feedback.
+5. If local CUDA micro-surfaces are exhausted, prefer the next larger runtime/
+   product capability from the live queue over endless sub-percent kernel churn.
+
+### x2 work, unavailable while l5-only remains active
+
+- ROCm2B C4/C16/C32/C64 divergence localization.
+- Ordinary 27B HIP HTTP504 and populated 1K/2K context closure.
+- Do not switch hosts without explicit user direction.
+
+## Validation / execution cadence
+
+1. Revalidate status, signed HEAD, one-worktree topology, active processes and GPU.
+2. Read the latest owning TODO section.
+3. Implement one substantial shared unit.
+4. Use rustfmt/diff/compile/narrow checks during implementation.
+5. Add physical qualification only for a genuinely new numerical/layout/ownership
+   contract.
+6. Get quick real-model feedback.
+7. Use same-process ABBA/reverse order/device events when the expected effect is
+   small.
+8. Reject marginal/unstable complexity and remove its selector/consumer.
+9. Keep independently useful shared primitives where justified.
+10. Remove all temporary profiling/runners/include views.
+11. Run strict Clippy/focused checks for changed surfaces.
+12. Run `scripts/check.sh` only at an assembled acceptance phase.
+13. Stage only owned paths, inspect cached diff, signed commit.
+14. Never push without explicit user instruction.
+
+## l5 build/GPU operational notes
+
+Defaults:
+`CARGO_BUILD_JOBS=8`, `RAYON_NUM_THREADS=4`, `RUST_TEST_THREADS=1` where useful,
+`CARGO_NET_OFFLINE=true`, `PYTHONDONTWRITEBYTECODE=1` and `python3 -B`.
+
+Physical GPU checks use `python3 -B scripts/native-gpu.py -- <command>`.
+
+Connector behavior:
+- dotlink bash timeout is adjustable; there is no fixed 114-second wall.
+- Long Cargo/test calls can return ambiguous null exit/success false responses.
+  Never treat that as success; check processes and binary timestamp/size/executable
+  bit/marker strings.
+- Prefer durable `job_start` / `job_get` / `job_output` for long builds.
+- Heavy debug test links have occasionally been killed without a compiler error;
+  `CARGO_PROFILE_TEST_DEBUG=0` is a build-only linker-pressure workaround.
+- Warmed second link attempts often succeed; verify the actual executable.
+
+Temporary CUDA include view, recreate only when required:
+- cudart:
+  `/nix/store/41094qrkxhkz9311pvpj2wj0hb9ygd8r-cuda13.4-cuda_cudart-13.4.92/include`
+- CCCL:
+  `/nix/store/gfmsqzs0x894ni7ddq4cp5wgpijddpvb-cuda13.4-cccl-13.3.4.3.1/include`
+- NVRTC:
+  `/nix/store/jjpa3v76wd7275agp79nscyvb2fdbnq2-cuda13.4-cuda_nvrtc-13.4.92-lib/lib`
+- view: `tmp/_tmp_cuda_include_view`
+- helper: `scripts/cuda-nix-include-view.sh`
+- set CUDA_PATH to the view and LD_LIBRARY_PATH to NVRTC + driver lib.
+- remove the view after use.
+
+Do not download models/SDKs, alter privileges/recovery or activate held gfx90c
+paths without applicable user authorization.
+
+## Worktree / disk discipline
+
+- `main` is the only persistent checkout.
+- No second l5 Git worktree for implementation/profiling/review.
+- Reuse canonical target/cache state.
+- Temporary `_tmp` runners and profiling files are disposable.
+- Do not recreate old worktree pools or `.agents/runs`.
+- Preserve unrelated dirty work.
+- No destructive Git operations without explicit authorization.
+
+## Next agent must not redo
+
+Do not replay:
+Fabric transition; cancelled recurrence/watch campaigns; B16; unequal-frontier
+admission without new source qualification; persistent derived GDN consumer;
+grouped recurrent transport consumer; tiled recurrent transpose; recurrent CTA
+sweep; grouped ConvB4; B8 gated; dual Q/K RMS; certified export consumer;
+existing head→greedy tilings; packed greedy selection on old weak evidence;
+LaneBlocked inner-major/terms64; Ordered M128/N16; Rounded M32/paired BF16;
+K64 .cg; dominant LaneStrided CTA/shared-input/paired-column/warp-sharing/
+paired-unpack/unroll variants; broad unchanged requalification; large CUDA
+acceptance from cross-profile metrics; or x2 work while l5-only is active.
+
+## Copy/paste next-agent prompt
+
+> Use `dotlink---l5` only. Work strictly inside
+> `/home/pvl/spaces/abird/src/zerogravity` on `main`; do not create another Git
+> worktree. First read `AGENTS.md`, `.agents/plans/README.md`,
+> `.agents/docs/CURRENT_HANDOFF.md`, `.agents/plans/TODO.md`,
+> `.agents/plans/model-execution/TODO.md` and
+> `.agents/plans/numerics-and-context/CORRECTNESS_POLICY.md`, then revalidate
+> source/tests, status, signed HEAD, worktree topology, active processes and GPU.
+> The last implementation/probe-bearing signed checkpoint before the handoff
+> refresh is `cb9e349`; `origin/main` is `c12acab`. The handoff refresh may be a
+> newer docs-only signed commit, so revalidate live HEAD/ahead count immediately;
+> nothing newer than `c12acab` is pushed at handoff creation.
+> Source/tests/live TODOs outrank the handoff if main advanced. Preserve the
+> accepted CUDA path: exact independent reductions; B4/B8 cohorts with B2 partial
+> regrouping; same-frontier chunked/ragged prefill; selected canonical-boundary
+> private B8 recurrent core `60b048d`; selected ragged private B8 KV `775dfa6`;
+> selected B8 private-KV CTA256 `399e43a`; canonical roots remain publication
+> authority. Keep retained model-neutral primitives available even when their
+> current Qwen consumer was rejected: grouped recurrent transport, packed BF16
+> greedy, head-greedy partials, grouped ConvB4, dual Q/K RMS, certified recurrent
+> export, private B8 attention/gated GDN, stateless row/RMS/gate/rotary and
+> exact-root derived-state cache. Do not resurrect B16 or unequal-frontier
+> prefill; do not replay rejected recurrent/head/Conv/QK/LaneBlocked/K64/Rounded/
+> LaneStrided micro-variants unless architecture is materially different. Large
+> CUDA same-contract acceptance is still blocked by missing approved reference
+> material on l5. ROCm2B and HIP27B HTTP/context are x2 work and unavailable under
+> the current l5-only instruction. For local CUDA work, re-profile before
+> optimizing and pursue only materially new shared architecture or a clearly
+> measured hot path; easy launch/CTA/cache/instruction variants are heavily
+> exhausted. Prefer implementation → quick real-model feedback → controlled
+> same-process comparison. Reuse accepted checks, add tests only for concrete new
+> contracts/bugs, do not repeatedly requalify unchanged primitives, and preserve
+> exact source/reduction/state/root/resource/cancellation semantics. Use
+> `CARGO_BUILD_JOBS=8`, `python3 -B`, the existing canonical build/cache trees and
+> `scripts/native-gpu.py` for physical checks. Connector build replies can be
+> ambiguous; verify processes/binary timestamps/executable bits and use durable
+> jobs for long builds. Remove `_tmp` runners/include views after measurement.
+> Inspect staged paths before a signed commit. Never push unless explicitly asked.
+
+---
+
+## Historical design foundation — retained context, not current execution instructions
+
+The sections below preserve the original product/architecture evolution and enduring design
+context from earlier handoffs. **Do not treat old “next step”, worktree, campaign or status
+phrasing inside historical material as current instructions.** The current continuation is
+entirely above and in the live TODOs.
 
 ## 3. Original mission and enduring product design
 
@@ -1662,9 +1322,11 @@ They are separate claims.
 
 Future/target families and tasks discussed in the design include broader Qwen, Gemma4, Llama/Mistral, GLM, DeepSeek, image, ASR, TTS, Whisper/Canary/Parakeet-style audio systems and multimodal pipelines. Treat these as roadmap targets unless current source/tests explicitly implement and qualify them.
 
-## 17. Fabric vNext — current canonical design
+## 17. Fabric vNext — historical design that led to the completed transition
 
-Fabric vNext is active: S0 is signed in`7396984`; S1–S3/F0–F4/Q0–Q2 remain open.
+Historical state when this section was written: S0 was signed in `7396984` and
+S1–S3/F0–F4/Q0–Q2 were still open. The transition is now complete; use the
+current resume section and closed `fabric-vnext-transition` plan for present status.
 
 User intent:
 
@@ -1736,155 +1398,3 @@ Only after transition:
 - calibrated autotuning/benchmarking.
 
 The vNext documents no longer require or promise a monolithic archive or documentation SHA index. This handoff is the cross-window pointer. Git history is the archive.
-
-## 18. Current plan queue
-
-`../plans/TODO.md` is authoritative. Owner promoted Fabric transition to P0:
-S0 architecture-visible skeleton, S1–S3 lower-layer moves, F0–F4 complete
-engine/SDK/serving/thin CLI, Q0/Q1/Q2 assembled acceptance. Preserve all current
-Qwen outcomes and unfinished mission in their existing owning plans.
-The original Fabric packet supplies full architecture, the transition packet
-is its implementation superset. Historical “not authorized” wording is not a
-current stop condition. No physical campaign or recurrence was restarted.
-
-## 19. Fresh review findings and fixes immediately before this handoff
-
-Fresh review found and resolved:
-
-1. Serving shutdown test portability:
-   - nested PID1 bubblewrap was assumed universally available;
-   - capability is now preflighted;
-   - ordinary TERM/INT always run;
-   - PID1 skip is explicit and limited to permission/namespace unavailability;
-   - unexpected bubblewrap errors still fail.
-
-2. Shared check coverage:
-   - qwen27b-layer9-prefix-reference source-contract tests were maintained but absent from scripts/check.sh;
-   - they are now part of the shared source-only gate.
-
-3. Repository policy contradiction:
-   - repo-specific instructions said main-only topology but later recommended persistent side worktrees;
-   - repo-specific policy now consistently uses main-only persistence, explicit file ownership and ephemeral external scratch.
-
-4. Fabric vNext handoff drift:
-   - live docs still promised combined single-file archives / documentation SHA catalogues;
-   - those instructions are retired;
-   - canonical handoff method is this file + four-file spine + maintained vNext plans + Git history.
-
-5. Active Qwen plan drift:
-   - three plans still said the approved .8B safetensor was inaccessible;
-   - it is now visible and hash-verified;
-   - plans now identify the true missing input: qualified native/reference bundle.
-
-6. Active plan completion drift:
-   - older top sections still listed non-GDN ordinary lowering and context-fit derivation as open;
-   - later accepted implementation had already closed those;
-   - the top open-work statements are reconciled.
-
-7. Source hygiene:
-   - ignored Python bytecode left by earlier tooling was removed.
-
-No additional source/Cargo correctness regression was found in the fresh pass after those fixes.
-
-## 20. Validation state
-
-The repository was comprehensively exercised during the cleanup/review sequence.
-
-Important passing scopes include:
-
-- formatting;
-- architecture dependency/DAG checks;
-- architecture checker self-tests;
-- HIP/Vulkan/CUDA feature-boundary compiles;
-- ordinary Qwen route/refusal feature-boundary tests;
-- Qwen qualification route tests;
-- CPU dependency isolation;
-- strict CPU clippy;
-- full CPU workspace tests;
-- minimal no-default feature checks;
-- cache transaction tests;
-- diagnostic cache process-exit/reclamation/by-name recovery tests;
-- source-only model/reference contracts;
-- CLI cache-only tests;
-- shared CPU preparation/cache tests including real local CPU inference;
-- acquisition base and diagnostic artifact/CLI tests;
-- release CPU CLI build;
-- installer integrity/idempotency/version fixture;
-- shellcheck;
-- Nix formatting;
-- serving benchmark/comparator/matrix self-tests;
-- numerical layer/attention/cpu-qualification/native-GPU script controls.
-
-After the PID1 harness fix:
-
-- full serve all-targets: 89 passed, 0 failed, 4 intentionally ignored;
-- qwen27 initial-core source contract: 7 passed;
-- qwen27 layer9-prefix source contract: 6 passed.
-
-A previous monolithic scripts/check.sh invocation exceeded the connector's single-call wall while compiling, so the same sections were executed in bounded groups. Do not interpret the connector wall as a source failure.
-
-The 29-Oct continuation recovered `.8B` native inputs and passed fresh reference
-capture. The old opaque-provider startup still refuses a private driver
-export-table call. The30-Oct driver-only path supersedes that blocker and passes
-exact `.8B` cached47→50; broader physical scopes remain open (section8).
-
-## 21. Git/topology cleanup history
-
-Recent normalization commits include:
-
-- 768b724 — serving Qwen CUDA qualification-boundary test alignment
-- 932f564 — GDN recipe capture-tool migration
-- 734d29f — retire obsolete Qwen27 replay examples
-- 2ff3d49 — add Fabric vNext transition design
-- 15f5bd3 — document retired worktree/run cleanup
-- 9abd936 — retire machine-local capture dependencies
-- ace934b — prune superseded handoff archives
-- 7b5e50e — normalize current planning provenance
-- 379d91d — capability-aware PID1 serving shutdown control
-- ae8cd89 — Qwen27 layer9 source contract added to shared gate
-
-The large archive prune removed hundreds of superseded handoff/sourcebook/run-history files. That material remains in Git history.
-
-Final topology after cleanup:
-
-- one persistent checkout;
-- one local branch: main;
-- origin/main remote;
-- no stashes;
-- no old pi-web-agent branches;
-- no old worktree-pool references;
-- no tracked .agents/runs provenance;
-- root README remained byte-identical during cleanup.
-
-## 22. How to continue safely
-
-Use “Resume here” at the top and the live model-execution queue. Fabric-first
-instructions in older sections are historical: the transition is accepted and
-Qwen shared CUDA/HIP checkpoints are signed. Preserve exact source/state/resource
-ownership and unsupported boundaries. No active job or recurrence is handed off;
-new execution requires fresh ownership checks, not an old session ID.
-
-## 23. Do not do
-
-- Do not push automatically.
-- Do not tag/release automatically.
-- Do not recreate old worktrees/branches.
-- Do not recreate .agents/runs as tracked provenance.
-- Do not rebuild the retired monolithic handoff archive.
-- Do not make per-document SHA catalogues.
-- Do not download/substitute model sources without authorization.
-- Do not infer physical GPU support from compilation.
-- Do not enable ordinary Qwen CUDA production routing before real source+native qualification.
-- Do not count mismatched or unqualified scopes as accepted benchmark wins.
-- Do not weaken source/state/resource semantics to make a context or benchmark fit.
-- Do not modify the root README unless the user explicitly asks.
-
-## 24. Current continuation
-
-Continue from the signed shared-source/CUDA and HIP-budget checkpoints, not the
-historical Fabric implementation sequence. Remaining CUDA numerical/context,
-HIP27B HTTP/context, ROCm2B divergence and genuine batching work are listed at the
-top and in `../plans/model-execution/TODO.md`. Do not redo accepted campaigns or
-expand finite qualification catalogues into a production engine.
-
-This document should remain concise enough to load in one window while still carrying the complete continuity story. Detailed facts belong in the maintained linked plans, not duplicated here. When a fact changes, update the owning plan/status file first and this handoff only when the cross-window continuation materially changes.

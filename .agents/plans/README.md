@@ -97,10 +97,13 @@ Light plans can skip it; the commits are the history.
 
 ## Parallel work
 
-main is the only persistent checkout and branch. Parallel agents may inspect the
-same checkout or use ephemeral external scratch, but durable repository
-checkouts/branches are not coordination state. Reconcile finished work into
-main, commit logical units, and keep transient logs/artifacts out of tracked
+`main` is the only persistent checkout and branch. On l5, do not create additional
+Git worktrees for normal implementation, profiling or review: the canonical
+`target/` and `tmp/` trees are very large and must not be duplicated. Parallel
+agents may inspect the same checkout or use bounded ephemeral external scratch,
+but durable repository checkouts/branches are not coordination state. Reconcile
+finished work into main, remove temporary `_tmp` runners/isolated build output
+when done, commit logical units, and keep transient logs/artifacts out of tracked
 documentation unless they become stable fixtures.
 
 ## Closeout
