@@ -248,6 +248,180 @@ fn lane_strided_batch_inner_major_matches_row_major() -> Result<()> {
 
 #[cfg(all(feature = "qualification", feature = "cuda-cublas"))]
 #[test]
+#[ignore = "isolated SM86 B8 head greedy partials match full BF16 head plus batch greedy"]
+fn head_greedy_partials_match_full_head() -> Result<()> {
+    futures_lite::future::block_on(async {
+        use crate::cuda::bf16_rows::{DenseRows, launch_row_major_to_inner_major};
+
+        const ROWS: usize = 8;
+        let diagnostic = crate::cuda::test_support::CudaDiagnostic::new("bf16-head-greedy")?;
+        let service = diagnostic.service.clone();
+        let client = service.client();
+        let queue = service.pinned_cuda_queue()?.clone();
+        let columns = 512usize;
+        let inner = 2048usize;
+        let reduction = Bf16GemmReduction::LaneStrided {
+            lanes: 16,
+            terms: 512,
+        };
+        let bf16 = |i: usize, seed: usize| -> u16 {
+            match (i * 17 + seed * 11) % 10 {
+                0 => 0x3f80,
+                1 => 0xbf00,
+                2 => 0x3e80,
+                3 => 0x4000,
+                4 => 0xbe00,
+                5 => 0x3f00,
+                6 => 0xc000,
+                7 => 0x0001,
+                8 => 0x8000,
+                _ => 0x0000,
+            }
+        };
+        let encode = |words: &[u16]| {
+            words
+                .iter()
+                .flat_map(|word| word.to_ne_bytes())
+                .collect::<Vec<_>>()
+        };
+
+        for inject_nonfinite in [false, true] {
+            let mut weights = (0..columns * inner).map(|i| bf16(i, 3)).collect::<Vec<_>>();
+            if inject_nonfinite {
+                weights[17 * inner] = 0x7f80;
+            }
+            let row_major = (0..ROWS * inner).map(|i| bf16(i, 5)).collect::<Vec<_>>();
+            let weights = client.create_from_slice(&encode(&weights));
+            let row_major = client.create_from_slice(&encode(&row_major));
+            let inner_major = client.empty(ROWS * inner * 2);
+            let pack_status = client.create_from_slice(&0u32.to_ne_bytes());
+            launch_row_major_to_inner_major(
+                client,
+                DenseRows {
+                    rows: ROWS,
+                    columns: inner,
+                },
+                &row_major,
+                &inner_major,
+                &pack_status,
+            )?;
+
+            let full_output = client.empty(ROWS * columns * 2);
+            let full_status = client.create_from_slice(&0u32.to_ne_bytes());
+            let full = Bf16Gemm::with_reduction_input_layout_certified(
+                columns,
+                ROWS,
+                inner,
+                reduction,
+                Bf16GemmInputLayout::InnerMajor,
+            )?;
+            full.prepare_code(&queue)?;
+            full.prepare_certified(
+                client,
+                weights.clone(),
+                inner_major.clone(),
+                full_output.clone(),
+                full_status.clone(),
+            )?
+            .launch_on(client)?;
+
+            let full_sizes = crate::resident_batch_greedy::workspace_bytes(columns, ROWS)?;
+            let full_workspace: [Handle; 3] =
+                std::array::from_fn(|index| client.empty(full_sizes[index]));
+            let full_packets = (0..ROWS).map(|_| client.empty(12)).collect::<Vec<_>>();
+            crate::resident_batch_greedy::launch_bf16_numeric_zero(
+                client,
+                &full_output,
+                columns,
+                ROWS,
+                &full_workspace,
+                &full_packets,
+                &full_status,
+            )?;
+
+            let candidate = Bf16HeadGreedyPartials::new(columns, inner)?;
+            candidate.prepare_code(&queue)?;
+            let candidate_partials = client.empty(candidate.output_bytes());
+            let candidate_status = client.create_from_slice(&0u32.to_ne_bytes());
+            candidate
+                .prepare(
+                    client,
+                    weights,
+                    inner_major,
+                    candidate_partials.clone(),
+                    candidate_status.clone(),
+                )?
+                .launch_on(client)?;
+            let continuation_sizes = crate::resident_batch_greedy::continuation_workspace_bytes(
+                candidate.record_count(),
+                ROWS,
+            )?;
+            let continuation: [Handle; 3] =
+                std::array::from_fn(|index| client.empty(continuation_sizes[index]));
+            let candidate_packets = (0..ROWS).map(|_| client.empty(12)).collect::<Vec<_>>();
+            let source_stride = candidate.record_count() * 3;
+            crate::resident_batch_greedy::launch_partials_numeric_zero(
+                client,
+                &candidate_partials,
+                candidate.record_count(),
+                source_stride,
+                columns,
+                ROWS,
+                &continuation,
+                &candidate_packets,
+                &candidate_status,
+            )?;
+
+            client
+                .sync()
+                .await
+                .map_err(|error| Error::State(format!("head greedy exactness sync: {error}")))?;
+            let pack_flags = client
+                .read_one(pack_status)
+                .map_err(|error| Error::State(format!("head greedy pack status: {error}")))?;
+            let full_flags = client
+                .read_one(full_status)
+                .map_err(|error| Error::State(format!("head greedy full status: {error}")))?;
+            let candidate_flags = client
+                .read_one(candidate_status)
+                .map_err(|error| Error::State(format!("head greedy candidate status: {error}")))?;
+            let zero = 0u32.to_ne_bytes();
+            if &pack_flags[..] != zero.as_slice()
+                || full_flags != candidate_flags
+                || (!inject_nonfinite && &full_flags[..] != zero.as_slice())
+            {
+                return Err(Error::State(format!(
+                    "head greedy status differs nonfinite={inject_nonfinite}"
+                )));
+            }
+            for (row, (full_packet, candidate_packet)) in
+                full_packets.into_iter().zip(candidate_packets).enumerate()
+            {
+                let full_bytes = client.read_one(full_packet).map_err(|error| {
+                    Error::State(format!("head greedy full packet row={row}: {error}"))
+                })?;
+                let candidate_bytes = client.read_one(candidate_packet).map_err(|error| {
+                    Error::State(format!("head greedy candidate packet row={row}: {error}"))
+                })?;
+                if full_bytes != candidate_bytes {
+                    return Err(Error::State(format!(
+                        "head greedy packet differs row={row} nonfinite={inject_nonfinite}"
+                    )));
+                }
+            }
+        }
+
+        client
+            .memory_cleanup()
+            .map_err(|error| Error::State(format!("head greedy cleanup: {error}")))?;
+        service.close_model_namespace()?;
+        println!("bf16-head-greedy B8 PASS");
+        Ok(())
+    })
+}
+
+#[cfg(all(feature = "qualification", feature = "cuda-cublas"))]
+#[test]
 #[ignore = "isolated SM86 B2/B4/B8 physical rows preserve original B1 reduction exactness"]
 fn batch_rows_preserve_single_row_reduction_exactly() -> Result<()> {
     futures_lite::future::block_on(async {

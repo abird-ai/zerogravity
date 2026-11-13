@@ -3820,3 +3820,39 @@ build or general model/backend grant. Historical failures keep their source scop
   so the serving consumer and its transient scratch allocation were removed.
   Keep the independently qualified primitive for future composition, especially
   a materially different head-to-greedy path.
+
+### 13 Nov 2026 — exact B8 head-to-greedy partial primitive retained; serving fusion rejected
+
+- [x] Built a reusable CUDA head-to-greedy partial primitive at the shared BF16
+  GEMM layer. It preserves the accepted B8 inner-major
+  `LaneStrided<16,512>` per-logit arithmetic and BF16 round-to-nearest exactly,
+  then emits row-major three-word `[token,max_bits,flags]` greedy records rather
+  than requiring a complete BF16 vocabulary tensor. Numeric-zero ordering,
+  lowest-ID ties, BF16 subnormal ordering and the existing nonfinite status bit
+  are explicit. The companion shared batch-greedy continuation reduces arbitrary
+  exact partial records to the existing private packets. Neither primitive owns
+  model/source/session/root/publication policy.
+- [x] Physical RTX3060 qualification compares the retained partial path against
+  the accepted full B8 inner-major BF16 head followed by packed-BF16 batch greedy.
+  Final token/max/status packets match byte-for-byte for both finite patterned
+  operands and an injected-nonfinite case. The final retained physical geometry
+  preserves the original head CTA parallelism: each 128-thread CTA computes the
+  same eight vocabulary columns as the accepted head, reduces those eight
+  already-computed BF16 values to one record per row using 768B static shared
+  scratch, and writes one record/row/CTA. The primitive remains geometry-derived
+  and is not selected by ordinary serving.
+- [x] Rejected three serving compositions on the same public Qwen3.5-2B ragged
+  B8 prompts47..54,16 outputs, non-LTO/opt1/codegen64 workload. Signed
+  `85f458f` baseline samples were
+  680.971/686.813/678.765/678.938ms (mean681.372ms), with every generated ID264
+  and native cohort width8. A 32-column-per-group serial head was
+  725.202/736.571/761.847/742.572ms (mean741.548ms, ~8.8% slower). An
+  8-column-per-group serial head was
+  701.286/699.647/701.111/702.707ms (mean701.188ms, ~2.9% slower). The
+  CTA-preserving design was
+  683.249/675.755/683.421/686.327ms (mean682.188ms), ~0.12% slower/noise.
+  All variants retained exact packet/ID behavior. Ordinary decode therefore
+  remains on the full BF16 head plus existing greedy path; all selector/plumbing
+  changes and transient serving allocations were removed. Keep the exact shared
+  primitives for other compositions/models, but do not retry these same tilings
+  without a materially different architecture.

@@ -34,6 +34,37 @@ pub(crate) fn workspace_bytes(vocabulary: usize, rows: usize) -> Result<[usize; 
     Ok([scale(original[0])?, scale(original[1])?, scale(12)?])
 }
 
+/// Ping-pong scratch plus dense terminal records for continuing an already
+/// source-exact greedy reduction from a row of three-word records.
+#[allow(dead_code)]
+pub(crate) fn continuation_workspace_bytes(source_count: usize, rows: usize) -> Result<[usize; 3]> {
+    if !matches!(rows, 2 | 4 | 8)
+        || source_count == 0
+        || source_count > program_kernels::MAX_WORD_OPS
+    {
+        return Err(Error::Unsupported(
+            "native greedy continuation geometry".into(),
+        ));
+    }
+    let mut maxima = [1usize, 1usize];
+    let mut count = source_count;
+    let mut destination = 0usize;
+    while count > 1 {
+        let next = program_kernels::argmax_partial_count(count, TILE)?;
+        maxima[destination] = maxima[destination].max(next);
+        count = next;
+        destination ^= 1;
+    }
+    let bytes = |records: usize| {
+        records
+            .checked_mul(rows)
+            .and_then(|n| n.checked_mul(ARGMAX_RECORD_WORDS * 4))
+            .filter(|n| u32::try_from(n / 4).is_ok())
+            .ok_or_else(|| Error::Limit("native greedy continuation workspace overflow".into()))
+    };
+    Ok([bytes(maxima[0])?, bytes(maxima[1])?, bytes(1)?])
+}
+
 fn check_buffer(client: &Client, handle: &Handle, bytes: usize) -> Result<()> {
     if handle.service != client.service_id() || handle.size_in_used() < bytes as u64 {
         return Err(Error::State(
@@ -183,6 +214,119 @@ pub(crate) fn launch_bf16_numeric_zero(
         status,
         LogitLayout::PackedBf16NumericZero,
     )
+}
+
+#[allow(clippy::too_many_arguments, dead_code)]
+pub(crate) fn launch_partials_numeric_zero(
+    client: &Client,
+    source: &Handle,
+    source_count: usize,
+    source_stride: usize,
+    vocabulary: usize,
+    rows: usize,
+    workspace: &[Handle; 3],
+    private_packets: &[Handle],
+    status: &Handle,
+) -> Result<GreedySubmission> {
+    let sizes = continuation_workspace_bytes(source_count, rows)?;
+    let required_source_stride = source_count
+        .checked_mul(ARGMAX_RECORD_WORDS)
+        .ok_or_else(|| Error::Limit("native greedy continuation source stride".into()))?;
+    if source_stride < required_source_stride || private_packets.len() != rows {
+        return Err(Error::Malformed(
+            "native greedy continuation source/packet geometry".into(),
+        ));
+    }
+    let source_bytes = source_stride
+        .checked_mul(rows)
+        .and_then(|n| n.checked_mul(4))
+        .ok_or_else(|| Error::Limit("native greedy continuation source bytes".into()))?;
+    let mut buffers = vec![(source, source_bytes), (status, 4)];
+    buffers.extend(workspace.iter().zip(sizes));
+    buffers.extend(private_packets.iter().map(|packet| (packet, 12)));
+    for (index, &(handle, bytes)) in buffers.iter().enumerate() {
+        check_buffer(client, handle, bytes)?;
+        let allocation = handle.clone().binding().memory.id();
+        if buffers[..index]
+            .iter()
+            .any(|(prior, _)| (*prior).clone().binding().memory.id() == allocation)
+        {
+            return Err(Error::State(
+                "native greedy continuation bindings share an allocation".into(),
+            ));
+        }
+    }
+    let scratch_strides = [sizes[0] / 4 / rows, sizes[1] / 4 / rows];
+    let scratch_words = [sizes[0] / 4, sizes[1] / 4];
+    let mut count = source_count;
+    let mut current_source = source.clone();
+    let mut current_words = source_bytes / 4;
+    let mut current_stride = source_stride;
+    let mut destination = 0usize;
+    let mut native_dispatches = 0usize;
+    let grid = |n: usize| CubeCount::Static((n as u32).div_ceil(32), 1, 1);
+    let threads = CubeDim::new_1d(32);
+    unsafe {
+        while count > 1 {
+            let next = count.div_ceil(TILE);
+            batch_argmax_partials::launch_unchecked(
+                client,
+                grid(rows * next),
+                threads,
+                BufferArg::from_raw_parts(current_source, current_words),
+                BufferArg::from_raw_parts(
+                    workspace[destination].clone(),
+                    scratch_words[destination],
+                ),
+                BufferArg::from_raw_parts(status.clone(), 1),
+                count,
+                vocabulary,
+                rows,
+                current_stride,
+                scratch_strides[destination],
+                true,
+            );
+            current_source = workspace[destination].clone();
+            current_words = scratch_words[destination];
+            current_stride = scratch_strides[destination];
+            count = next;
+            destination ^= 1;
+            native_dispatches += 1;
+        }
+        batch_finish_argmax::launch_unchecked(
+            client,
+            grid(rows),
+            threads,
+            BufferArg::from_raw_parts(current_source, current_words),
+            BufferArg::from_raw_parts(workspace[2].clone(), sizes[2] / 4),
+            BufferArg::from_raw_parts(status.clone(), 1),
+            vocabulary,
+            rows,
+            current_stride,
+        );
+        native_dispatches += 1;
+        for (row, packet) in private_packets.iter().enumerate() {
+            program_kernels::copy_strided_words::launch_unchecked(
+                client,
+                grid(ARGMAX_RECORD_WORDS),
+                threads,
+                BufferArg::from_raw_parts(workspace[2].clone(), sizes[2] / 4),
+                BufferArg::from_raw_parts(packet.clone(), ARGMAX_RECORD_WORDS),
+                BufferArg::from_raw_parts(status.clone(), 1),
+                (row * ARGMAX_RECORD_WORDS) as u32,
+                0,
+                ARGMAX_RECORD_WORDS as u32,
+                ARGMAX_RECORD_WORDS as u32,
+                1,
+                ARGMAX_RECORD_WORDS,
+                false,
+            );
+        }
+    }
+    Ok(GreedySubmission {
+        dispatches: native_dispatches + rows,
+        native_dispatches,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
