@@ -4011,3 +4011,45 @@ build or general model/backend grant. Historical failures keep their source scop
   versus paired6042.144us /125.878us mean (~0.12%). Candidate entries, selector,
   qualifier, profiler and runners were removed. Keep the accepted Rounded K64
   kernel and pursue a materially different bottleneck rather than this conversion.
+
+
+### 14 Nov 2026 — LaneBlocked64 row sharing and K64 weight-cache hints rejected
+
+- [x] Evaluated the real 18x 32x2048 LaneBlocked<32,64> decode family rather
+  than extending the already-rejected LaneBlocked inner-major path. The current
+  B2/B4/B8 shared-weight specialization only covers terms=32; terms=64
+  therefore falls back to the generic per-row kernel. A temporary generic
+  lane_blocked_rows_fixed<ROWS,TERMS> candidate added exact B2/B4/B8
+  terms=64 entries, sharing each weight load across independent physical rows
+  while preserving every row's original contiguous64-term accumulation and the
+  same32-lane halving reduction tree. The existing physical independent-row
+  qualifier passed B2/B4/B8 at K2048 against the accepted B1
+  LaneBlocked<32,64> kernel exactly.
+- [x] Rejected selecting that terms64 shared-weight specialization. Same-binary
+  public Qwen3.5-2B B8 ABBA on ragged prompts47..54 with16 outputs preserved
+  every ID264/native width8 and initially looked modestly positive: baseline
+  715.561/700.660/692.570/695.971ms (mean701.191ms) versus candidate
+  693.613/696.617/697.776/695.979ms (mean695.996ms), ~0.74% lower latency.
+  Direct alternating device timing of the exact production-certified
+  32x8x2048 LaneBlocked<32,64> kernel showed the opposite and is the stronger
+  primitive evidence: accepted mean96.252us / median93.184us
+  (91.863us mean after the first-pass outlier), candidate mean107.904us /
+  median108.032us (107.520us after first pass). The whole-model difference was
+  therefore order/thermal noise. Candidate entries, selector, qualifier
+  extension, timing harness and runner were removed; retain the existing generic
+  terms64 path.
+- [x] Evaluated weight-only cp.async.cg.shared.global cache policy for the two
+  hot B8 K64 tensor-core families while leaving activation copies on
+  cp.async.ca, shared-memory layout, MMA sequence, reduction and rounding
+  unchanged. Separate candidate entries for 8192x8x2048 Ordered and
+  2048x8x6144 RoundedSegments<2048> matched accepted output/status exactly on
+  patterned operands at the real hot shapes.
+- [x] Rejected the .cg candidates after two alternating device-timing repeats.
+  Ordered was consistently worse after removing each repeat's first-pass
+  outlier: accepted/candidate211.383/214.016us in repeat1 and
+  181.979/184.174us in repeat2 (~1.25%/~1.21% slower candidate). Rounded was
+  not stable: repeat1 favored .cg196.901/193.682us (~1.63%), while repeat2
+  reversed to221.029/222.048us (~0.46% slower). Do not add cache-policy
+  selectors for this noise-level/non-general effect. All candidate helpers,
+  entries, selectors and timing code were removed; production remains byte-for-
+  byte on the accepted .ca K64 path.
