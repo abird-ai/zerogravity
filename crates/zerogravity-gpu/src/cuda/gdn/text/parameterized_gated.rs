@@ -66,16 +66,16 @@ pub(super) fn prepare(phase: GdnPhase, slot: GdnCacheSlot) -> Result<Definition>
     prepare_checked(phase, slot, GatedLayout::retained(phase)?)
 }
 
-pub(super) fn prepare_batch_cached(tokens: usize) -> Result<Definition> {
-    if tokens != 4 {
+pub(super) fn prepare_batch_cached(batch_rows: usize) -> Result<Definition> {
+    if !matches!(batch_rows, 4 | 8) {
         return Err(Error::Unsupported(
-            "parameterized cached GDN gated batch requires four rows".into(),
+            "parameterized cached GDN gated batch requires four or eight rows".into(),
         ));
     }
-    let rows = tokens
+    let kernel_rows = batch_rows
         .checked_mul(16)
         .ok_or_else(|| Error::Limit("parameterized cached GDN gated batch rows".into()))?;
-    let rows_u32 = u32::try_from(rows)
+    let kernel_rows_u32 = u32::try_from(kernel_rows)
         .map_err(|_| Error::Limit("parameterized cached GDN gated batch grid".into()))?;
     let schema = StaticScalarSchema::new(
         &[
@@ -93,7 +93,7 @@ pub(super) fn prepare_batch_cached(tokens: usize) -> Result<Definition> {
             entry: CACHED_ENTRY,
             source: CACHED_SOURCE,
             threads: 32,
-            grid: [rows_u32, 1, 1],
+            grid: [kernel_rows_u32, 1, 1],
             shared: 0,
             ptx_sha256: CACHED_ORIGINAL_PTX_SHA256,
         },
@@ -103,7 +103,7 @@ pub(super) fn prepare_batch_cached(tokens: usize) -> Result<Definition> {
                 StaticScalarValue::U32(128),
                 StaticScalarValue::U32(128),
                 StaticScalarValue::U32(128),
-                StaticScalarValue::U32(u64::from(rows_u32)),
+                StaticScalarValue::U32(u64::from(kernel_rows_u32)),
                 StaticScalarValue::F32Bits(EPS_BITS),
             ],
         )?,
@@ -242,6 +242,28 @@ mod tests {
         let prefill = prepare(GdnPhase::TextPrefill(47), GdnCacheSlot::One)?;
         assert_eq!(prefill.asset.grid, [188, 1, 1]);
         assert_eq!(prefill.asset.ptx_sha256, PREFILL_ORIGINAL_PTX_SHA256);
+        Ok(())
+    }
+
+    #[test]
+    fn cached_batch_reuses_the_retained_kernel_for_b4_and_b8_rows() -> Result<()> {
+        let b4 = prepare_batch_cached(4)?;
+        let b8 = prepare_batch_cached(8)?;
+        assert_eq!(b4.asset.entry, CACHED_ENTRY);
+        assert_eq!(b8.asset.entry, CACHED_ENTRY);
+        assert_eq!(b4.asset.source, CACHED_SOURCE);
+        assert_eq!(b8.asset.source, CACHED_SOURCE);
+        assert_eq!(b4.asset.ptx_sha256, CACHED_ORIGINAL_PTX_SHA256);
+        assert_eq!(b8.asset.ptx_sha256, CACHED_ORIGINAL_PTX_SHA256);
+        assert_eq!(b4.asset.threads, 32);
+        assert_eq!(b8.asset.threads, 32);
+        assert_eq!(b4.asset.grid, [64, 1, 1]);
+        assert_eq!(b8.asset.grid, [128, 1, 1]);
+        assert_eq!(b4.scalars.words(), [128, 128, 128, 64, EPS_BITS as u64]);
+        assert_eq!(b8.scalars.words(), [128, 128, 128, 128, EPS_BITS as u64]);
+        for rows in [0, 1, 2, 3, 5, 6, 7, 9, 16] {
+            assert!(prepare_batch_cached(rows).is_err());
+        }
         Ok(())
     }
 }

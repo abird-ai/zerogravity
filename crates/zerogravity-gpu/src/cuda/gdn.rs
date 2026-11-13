@@ -879,6 +879,124 @@ pub(crate) fn metadata(phase: GdnPhase, slot: GdnCacheSlot) -> Result<Vec<(GdnBu
     Ok(values)
 }
 
+#[cfg(all(
+    test,
+    feature = "qualification",
+    feature = "cuda-cublas",
+    target_os = "linux"
+))]
+mod batch_qualification_tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "physical SM86 cached GDN gated B8-vs-two-B4 qualification"]
+    fn physical_cached_gated_b8_matches_two_b4_launches_exactly() -> Result<()> {
+        futures_lite::future::block_on(async {
+            let diagnostic = crate::cuda::test_support::CudaDiagnostic::new("cached-gdn-gated-b8")?;
+            let service = diagnostic.service.clone();
+            let client = service.client();
+            let rows = 8usize;
+            let half_rows = 4usize;
+            let io_row_bytes = GdnBuffer::Core.bytes(GdnPhase::CachedDecode);
+            let rstd_row_bytes = GdnBuffer::Rstd.bytes(GdnPhase::CachedDecode);
+            let io_bytes = rows * io_row_bytes;
+            let half_io_bytes = half_rows * io_row_bytes;
+            let rstd_bytes = rows * rstd_row_bytes;
+            let half_rstd_bytes = half_rows * rstd_row_bytes;
+
+            let bf16 = |i: usize, seed: usize| -> u16 {
+                match (i + seed) % 8 {
+                    0 => 0x3f80,
+                    1 => 0xbf00,
+                    2 => 0x3e80,
+                    3 => 0x4000,
+                    4 => 0xbe00,
+                    5 => 0x3f00,
+                    6 => 0xc000,
+                    _ => 0x0000,
+                }
+            };
+            let bytes_from_words = |words: &[u16]| {
+                words
+                    .iter()
+                    .flat_map(|word| word.to_ne_bytes())
+                    .collect::<Vec<_>>()
+            };
+            let view =
+                |handle: &cubecl::server::Handle, total: usize, offset: usize, bytes: usize| {
+                    handle
+                        .clone()
+                        .offset_start(offset as u64)
+                        .offset_end((total - offset - bytes) as u64)
+                };
+
+            let core_words = (0..io_bytes / 2).map(|i| bf16(i, 3)).collect::<Vec<_>>();
+            let z_words = (0..io_bytes / 2).map(|i| bf16(i, 11)).collect::<Vec<_>>();
+            let gamma_words = (0..128).map(|i| bf16(i, 19)).collect::<Vec<_>>();
+            let core = client.create_from_slice(&bytes_from_words(&core_words));
+            let z = client.create_from_slice(&bytes_from_words(&z_words));
+            let gamma = client.create_from_slice(&bytes_from_words(&gamma_words));
+            let seed_output = vec![0x5au8; io_bytes];
+            let seed_rstd = vec![0xa5u8; rstd_bytes];
+            let sequential_output = client.create_from_slice(&seed_output);
+            let wide_output = client.create_from_slice(&seed_output);
+            let sequential_rstd = client.create_from_slice(&seed_rstd);
+            let wide_rstd = client.create_from_slice(&seed_rstd);
+
+            let b4 = CachedGatedBatch::prepare(half_rows)?;
+            for half in 0..2 {
+                let io_offset = half * half_io_bytes;
+                let rstd_offset = half * half_rstd_bytes;
+                b4.launch(
+                    client,
+                    &view(&core, io_bytes, io_offset, half_io_bytes),
+                    &view(&sequential_output, io_bytes, io_offset, half_io_bytes),
+                    &gamma,
+                    &view(&z, io_bytes, io_offset, half_io_bytes),
+                    &view(&sequential_rstd, rstd_bytes, rstd_offset, half_rstd_bytes),
+                )?;
+            }
+            CachedGatedBatch::prepare(rows)?.launch(
+                client,
+                &core,
+                &wide_output,
+                &gamma,
+                &z,
+                &wide_rstd,
+            )?;
+
+            client
+                .sync()
+                .await
+                .map_err(|error| Error::State(format!("cached GDN gated B8 sync: {error}")))?;
+            let sequential_output = client.read_one(sequential_output).map_err(|error| {
+                Error::State(format!("cached GDN gated B4 output read: {error}"))
+            })?;
+            let wide_output = client.read_one(wide_output).map_err(|error| {
+                Error::State(format!("cached GDN gated B8 output read: {error}"))
+            })?;
+            let sequential_rstd = client
+                .read_one(sequential_rstd)
+                .map_err(|error| Error::State(format!("cached GDN gated B4 rstd read: {error}")))?;
+            let wide_rstd = client
+                .read_one(wide_rstd)
+                .map_err(|error| Error::State(format!("cached GDN gated B8 rstd read: {error}")))?;
+            if sequential_output != wide_output || sequential_rstd != wide_rstd {
+                return Err(Error::State(
+                    "cached GDN gated B8 differs from two B4 launches".into(),
+                ));
+            }
+            println!("CACHED_GDN_GATED_B8_PASS exact_output=true exact_rstd=true");
+
+            client
+                .memory_cleanup()
+                .map_err(|error| Error::State(format!("cached GDN gated B8 cleanup: {error}")))?;
+            service.close_model_namespace()?;
+            Ok(())
+        })
+    }
+}
+
 #[cfg(all(test, feature = "cuda-native-qualification"))]
 mod tests;
 

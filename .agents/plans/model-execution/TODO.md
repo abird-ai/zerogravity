@@ -3424,3 +3424,28 @@ build or general model/backend grant. Historical failures keep their source scop
   byte-parity qualifiers plus B4/B8 integration parity cover this checkpoint.
   Do not restore synthetic widened-call reduction selection for speed; future
   decode optimizations must preserve each original call's arithmetic contract.
+
+### 13 Nov 2026 — cached-GDN B8 gated primitive retained; serving consumer rejected
+
+- [x] Retained the reusable cached-GDN gated batch primitive at both B4 and B8
+  without widening recurrent/cache ownership. `prepare_batch_cached` and
+  `CachedGatedBatch` reuse the same pinned cached-GDN gated source/PTX and exact
+  BF16 arithmetic; only the checked physical row/grid/scalar extent changes.
+  The existing five-slot GDN cache contract remains untouched, so private
+  convolution/recurrent state is still processed in B4 groups. No model,
+  session, root, frontier or scheduler identity was added to the primitive.
+- [x] Added independent primitive qualification rather than relying on serving
+  tokens. Host coverage proves B4/B8 share the retained entry/source/PTX and
+  reject unqualified widths. Physical SM86 RTX 3060 qualification compares one
+  B8 launch against two offset B4 launches and matches both the complete gated
+  BF16 output and FP32 `rstd` bytes exactly (`CACHED_GDN_GATED_B8_PASS`).
+- [x] Rejected the current ordinary-CUDA B8 serving consumer after controlled
+  same-profile, reverse-order A/B on Qwen3.5-2B (prompt49, B8, 16 output tokens,
+  non-LTO/opt1/codegen64). All lanes and both binaries produced the same 16-token
+  trajectory. Candidate-first measured 720.318 ms versus signed-`b191fc6`
+  baseline 729.908 ms (~1.31% faster), but reverse order measured baseline
+  701.770 ms versus candidate 768.108 ms (~9.45% slower). Across both orders the
+  baseline averaged 715.839 ms versus candidate 744.213 ms (~3.96% slower).
+  The production cohort adapter and B8 cold-precompile selection were reverted;
+  retain only the independently qualified B4/B8 primitive/tests for another
+  model, graph or execution geometry where the launch economics justify it.
