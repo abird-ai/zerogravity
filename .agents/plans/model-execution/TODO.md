@@ -3716,3 +3716,41 @@ build or general model/backend grant. Historical failures keep their source scop
   its patch copy and generated runner artifacts were removed. B16 remains rejected,
   unequal-frontier prefill remains held, and the retained generic derived-state
   cache remains unselected by this path.
+
+### 13 Nov 2026 — ragged private B8 KV transition accepted
+
+- [x] Generalized the retained model-neutral packed-BF16 private KV transition to
+  independent B4/B8 causal bases and made only that capability available to the
+  ordinary CUDA runtime. It still owns no model/session/root/publication policy:
+  caller-authenticated geometry supplies each base, token count, context/slab and
+  packed value offset/stride; canonical private BF16 K/V roots remain the only
+  checkpoint/rollback/publication state. Every candidate word is written: exact
+  committed prefix copy, current append, future-tail zero and appended-BF16
+  nonfinite certification. B4 keeps its one-launch path.
+- [x] The first explicit B8 single-kernel ABI was rejected before execution:
+  32 private K/V root buffers plus activation/status bindings exceeded the existing
+  finite CUDA compiler `MAX_BINDINGS=32` contract. The bound was not widened and
+  no opaque device-pointer table was introduced. B8 instead uses two reusable
+  plane launches (key then value), each with eight private priors, one activation,
+  eight candidates and status; per-lane bases/stride/offset stay scalar metadata.
+  This preserves the exact ownership/numerical contract while reducing ordinary
+  B8 KV transition work from per-lane zero/copy/append launches to two launches.
+- [x] Physical RTX3060 qualification is exact with guards/status: legacy B4 cells
+  include 0+1/64,7+1/64(+inf),31+8/64,511+1/1024 and960+64/1024; new ragged B4
+  bases `[0,17,31,63]` pass; B8 passes ragged
+  `[0,1,7,17,31,63,95,127]`, +inf at base7, tokens8/base31 and
+  base511/capacity1024. B4 reports one launch and B8 two. The bounded host geometry
+  test passes; production `cuda-cublas` check and strict
+  `qualification,cuda-cublas` library Clippy pass.
+- [x] Ordinary CUDA selects the new transition only for genuine width-8 cached
+  decode after independently binding all eight source-call KV descriptors and
+  exact BF16 state layouts. B4/B2/B1 and prefill paths are unchanged; the already
+  qualified private attention grouping remains separate. Public Qwen3.5-2B ragged
+  prompts47..54 with16 outputs, non-LTO/opt1/codegen64, preserved all128 ID-264
+  tokens and native width-8 observations. Signed-`60b048d` baseline-first samples
+  were716.388/720.154/715.424/715.748ms; candidate samples were
+  705.274/715.922/708.475/708.728ms; reverse-side baseline was
+  740.553/719.726/720.386/731.080ms. Candidate mean709.600ms versus the two-sided
+  baseline mean722.432ms (~1.78% lower latency), or180.39 versus177.20 output
+  tok/s (~1.80% higher throughput). This is a controlled short-workload result,
+  not a general HTTP/context/vLLM performance claim.

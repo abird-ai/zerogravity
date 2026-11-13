@@ -12,7 +12,7 @@ mod backend;
 mod batch_attention;
 #[cfg(any(feature = "qualification", test))]
 mod batch_elementwise;
-#[cfg(any(feature = "qualification", test))]
+#[cfg(any(feature = "qualification", feature = "cuda-cublas", test))]
 mod batch_kv;
 mod batch_projection;
 #[cfg(any(feature = "qualification", test))]

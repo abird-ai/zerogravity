@@ -3,6 +3,7 @@ use super::{
     OrdinaryCudaGemm, OrdinaryCudaProjection, attention, body::OrdinaryCudaBody, exact_view,
 };
 use crate::{
+    batch_kv::private_bf16::{Bf16PrivateKvGeometry, Bf16PrivateKvRow, PreparedBf16PrivateKv},
     cuda::{
         bf16_gemm::{Bf16GemmInputLayout, Bf16GemmReduction, Bf16GemmShape},
         bf16_rows::{
@@ -1313,6 +1314,102 @@ impl OrdinaryCudaBody {
                             fused_dispatches += fused;
                         }
                     }
+                    continue;
+                }
+                if let SourceOperatorKind::KvAppend { domain, .. } = template.kind()
+                    && requests.len() == 8
+                {
+                    let ([key, packed], []) = (node.inputs.as_slice(), node.outputs.as_slice())
+                    else {
+                        return Err(Error::State("ordinary CUDA B8 KV append SSA arity".into()));
+                    };
+                    let descriptors = calls
+                        .iter()
+                        .map(|call| template.bind_runtime_call(call))
+                        .collect::<Result<Vec<_>>>()?;
+                    let inputs = descriptors[0].input_elements()?;
+                    for descriptor in &descriptors[1..] {
+                        if descriptor.input_elements()? != inputs {
+                            return Err(Error::State(
+                                "ordinary CUDA B8 KV input geometry differs".into(),
+                            ));
+                        }
+                    }
+                    let program = self.cold().program();
+                    let geometry = program.geometry();
+                    let kv_width = geometry.kv_width()?;
+                    let packed_row_stride = program.attention_row_stride()?;
+                    if inputs != [kv_width, packed_row_stride] {
+                        return Err(Error::State(
+                            "ordinary CUDA B8 KV source geometry differs".into(),
+                        ));
+                    }
+                    let value_offset = geometry
+                        .query_width()?
+                        .checked_mul(2)
+                        .and_then(|offset| offset.checked_add(kv_width))
+                        .ok_or_else(|| Error::Limit("ordinary CUDA B8 KV value offset".into()))?;
+                    let state_layout = ResidentBufferLayout::new(
+                        ResidentPhysicalType::Bf16,
+                        first
+                            .rows()
+                            .capacity()
+                            .checked_mul(kv_width)
+                            .ok_or_else(|| {
+                                Error::Limit("ordinary CUDA B8 KV state extent".into())
+                            })?,
+                    )?;
+                    let mut kv_rows = Vec::with_capacity(8);
+                    for states in &state_maps {
+                        let state =
+                            states.get(&StateSlot::Kv(domain)).copied().ok_or_else(|| {
+                                Error::State("ordinary CUDA B8 KV state absent".into())
+                            })?;
+                        let (
+                            StateBuffers::Kv {
+                                keys: prior_key,
+                                values: prior_value,
+                            },
+                            StateBuffers::Kv {
+                                keys: candidate_key,
+                                values: candidate_value,
+                            },
+                        ) = (&state.prior, &state.candidate)
+                        else {
+                            return Err(Error::State("ordinary CUDA B8 KV state layout".into()));
+                        };
+                        for buffer in [prior_key, prior_value, candidate_key, candidate_value] {
+                            buffer.require_layout(state_layout)?;
+                        }
+                        kv_rows.push(Bf16PrivateKvRow {
+                            prior_key: &prior_key.handle,
+                            prior_value: &prior_value.handle,
+                            candidate_key: &candidate_key.handle,
+                            candidate_value: &candidate_value.handle,
+                        });
+                    }
+                    let key = self.cohort_value_handle_range(cold, *key, inputs[0], 0, 8)?;
+                    let packed = self.cohort_value_handle_range(cold, *packed, inputs[1], 0, 8)?;
+                    let bases: [usize; 8] = positions
+                        .as_slice()
+                        .try_into()
+                        .map_err(|_| Error::State("ordinary CUDA B8 KV bases".into()))?;
+                    dispatches += PreparedBf16PrivateKv::<8>::prepare(
+                        client,
+                        &kv_rows,
+                        &key,
+                        &packed,
+                        &self.cold().status().handle(),
+                        Bf16PrivateKvGeometry::<8> {
+                            bases,
+                            tokens: 1,
+                            capacity: first.rows().capacity(),
+                            slab: kv_width,
+                            value_offset,
+                            packed_row_stride,
+                        },
+                    )?
+                    .launch(client)?;
                     continue;
                 }
                 if let SourceOperatorKind::FlashAttention { domain, .. } = template.kind()

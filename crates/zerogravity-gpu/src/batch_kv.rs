@@ -5,12 +5,14 @@
 //! append_kv kernel remains the one-row reference (including padding).
 //! Device buffer leases/StateRoot publication remain with ResidentService.
 
+#[cfg(any(feature = "qualification", test))]
 use zerogravity_core::{Error, Result};
 
 // Qualified shared capability retained for future model/backend adoption.
 // Production selection deliberately remains outside this module.
 pub(crate) mod private_bf16;
 
+#[cfg(any(feature = "qualification", test))]
 #[derive(Clone, Copy)]
 pub(crate) struct Shape {
     batch: usize,
@@ -18,6 +20,7 @@ pub(crate) struct Shape {
     capacity: usize,
     position: usize,
 }
+#[cfg(any(feature = "qualification", test))]
 impl Shape {
     fn validate(self, prior: usize, token: usize, output: usize) -> Result<usize> {
         if !(1..=8).contains(&self.batch)
