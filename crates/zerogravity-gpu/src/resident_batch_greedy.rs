@@ -510,7 +510,6 @@ fn batch_argmax_logits(
     }
 }
 
-#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
 #[cube(launch_unchecked)]
 fn batch_argmax_bf16_logits_numeric_zero(
     source: &[u32],

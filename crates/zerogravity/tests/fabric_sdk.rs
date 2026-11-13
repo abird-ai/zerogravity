@@ -58,6 +58,7 @@ fn canonical_hip_registration_checks_runtime_limits_and_aliases_before_source_io
             context: 514,
             output: 2,
             max_pending: Some(1),
+            native_rows: 0,
         },
     };
     let error = runtime

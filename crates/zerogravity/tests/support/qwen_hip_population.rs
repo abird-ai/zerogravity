@@ -79,6 +79,7 @@ impl Harness {
             context,
             output,
             max_pending: Some(pending),
+            native_rows: 0,
         };
         let aliases = vec!["source".into(), "alias".into()];
         let cache = CacheOptions::new(None, 96 * 1024 * 1024 * 1024);

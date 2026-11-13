@@ -216,6 +216,7 @@ fn public_source_32k_capacity_refuses_before_native_creation() {
                 context: 32768,
                 output: 3,
                 max_pending: Some(4),
+                native_rows: 0,
             },
         })
         .unwrap_err();

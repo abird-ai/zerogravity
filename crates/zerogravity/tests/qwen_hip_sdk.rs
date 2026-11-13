@@ -268,6 +268,7 @@ fn original_source_public_sdk_completion_cancellation_and_retirement() {
                 context: 514,
                 output: 3,
                 max_pending: Some(4),
+                native_rows: 0,
             },
         })
         .unwrap();
