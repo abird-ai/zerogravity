@@ -3914,3 +3914,34 @@ build or general model/backend grant. Historical failures keep their source scop
   The temporary selector and serving integration were removed. Retain the exact
   shared primitive for another graph/model where eliminating the launch boundary
   has material value; do not select this same consumer without new evidence.
+
+### 14 Nov 2026 — certified recurrent export retained; serving composition rejected
+
+- [x] Added a reusable shared GDN transport primitive that composes exact
+  RecurrentOut canonical-state export with finiteness certification of one
+  final 2,048-element BF16 GDN output row. The recurrent H/V/K -> canonical
+  H/K/V U32 transpose and its status bit8 are unchanged; the first2,048 export
+  threads additionally inspect the independent BF16 certificate payload and OR
+  only the existing final-output nonfinite bit2. The ABI remains explicit
+  (recurrent source, canonical destination, read-only certificate, status) and
+  owns no model/session/root/frontier/publication policy.
+- [x] Extended the existing physical RTX3060 state-transport qualifier. A finite
+  recurrent row plus finite certificate matches scalar RecurrentOut bytes and
+  leaves status0. The existing lane6 recurrent +inf fixture plus an injected BF16
+  +inf certificate matches the scalar canonical export exactly and reports
+  0x0a (= recurrent-out bit8 | final-output bit2). The complete qualifier still
+  retires with zero resident bytes/events. Test compilation was also checked
+  separately with cargo check --tests; the heavy debug test link required only
+  disabling test debuginfo to avoid an environment/linker kill, not a code change.
+- [x] Rejected selecting the fused export/certificate path in ordinary B8
+  serving. The candidate replaced one whole-B8 gated-output certificate plus
+  eight normal recurrent exports with eight certified exports, leaving the two
+  accepted B4 gated kernels, canonical roots, recurrent arithmetic and
+  publication ordering unchanged. Same-binary/one-model ABBA on public
+  Qwen3.5-2B ragged prompts47..54 with16 outputs preserved every ID264 and
+  native width8. Baseline samples were
+  675.811/680.222/677.530/682.926ms (mean679.122ms); fused samples were
+  678.941/679.050/683.398/684.030ms (mean681.355ms), ~0.33% slower.
+  The temporary selector and serving integration were removed. Keep the exact
+  primitive for another graph where certification can amortize differently; do
+  not select this same ordinary consumer without materially different evidence.

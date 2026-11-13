@@ -9,8 +9,11 @@ use zerogravity_core::{Error, Result};
 const STATE_COPY_SOURCE: &str = include_str!("resident/state_copy.cu");
 const CONV_B4_SOURCE: &str = include_str!("resident/state_copy_conv_b4.cu");
 const RECURRENT_B8_SOURCE: &str = include_str!("resident/state_copy_recurrent_b8.cu");
+const RECURRENT_OUT_CERTIFIED_SOURCE: &str =
+    include_str!("resident/state_copy_recurrent_out_certified.cu");
 pub(crate) const CONV_ELEMENTS: usize = 6144 * 3;
 pub(crate) const RECURRENT_ELEMENTS: usize = 16 * 128 * 128;
+const GATED_CERTIFICATE_ELEMENTS: usize = 2048;
 const CONV_B4_ROWS: usize = 4;
 const RECURRENT_B8_ROWS: usize = 8;
 
@@ -88,6 +91,10 @@ pub(crate) struct ConvB4Transport {
     launch: PreparedPinnedLaunch,
 }
 pub(crate) struct RecurrentB8Transport {
+    launch: PreparedPinnedLaunch,
+}
+#[allow(dead_code)]
+pub(crate) struct RecurrentOutCertified {
     launch: PreparedPinnedLaunch,
 }
 
@@ -367,6 +374,87 @@ impl RecurrentB8Transport {
         ];
         Ok(Self {
             launch: kernel.prepare(client, grid, handles)?,
+        })
+    }
+
+    pub(crate) fn launch(&self, service: &Arc<ResidentService>) -> Result<usize> {
+        self.launch.launch_on(service.client())?;
+        Ok(1)
+    }
+}
+
+#[allow(dead_code)]
+impl RecurrentOutCertified {
+    /// Exact canonical recurrent export plus finiteness certification of one
+    /// final GDN BF16 row. This composes two physical checks only; canonical
+    /// roots and publication authority remain with the caller.
+    pub(crate) fn prepare(
+        service: &Arc<ResidentService>,
+        source: Handle,
+        destination: Handle,
+        certificate: Handle,
+        status: &ResidentLease,
+    ) -> Result<Self> {
+        let client = service.client();
+        let recurrent_bytes = RECURRENT_ELEMENTS
+            .checked_mul(4)
+            .ok_or_else(|| Error::Limit("certified recurrent byte extent".into()))?;
+        let certificate_bytes = GATED_CERTIFICATE_ELEMENTS
+            .checked_mul(2)
+            .ok_or_else(|| Error::Limit("certified recurrent payload extent".into()))?;
+        let status_handle = status.handle();
+        for (handle, bytes, role) in [
+            (&source, recurrent_bytes, "source"),
+            (&destination, recurrent_bytes, "destination"),
+            (&certificate, certificate_bytes, "certificate"),
+            (&status_handle, 4, "status"),
+        ] {
+            if handle.service != client.service_id() || handle.size_in_used() != bytes as u64 {
+                return Err(Error::State(format!(
+                    "certified recurrent {role} service/extent differs"
+                )));
+            }
+        }
+        let ranges = [
+            crate::resident_program::BufferRange::new(&source)?,
+            crate::resident_program::BufferRange::new(&destination)?,
+            crate::resident_program::BufferRange::new(&certificate)?,
+            crate::resident_program::BufferRange::new(&status_handle)?,
+        ];
+        for left in 0..ranges.len() {
+            for right in left + 1..ranges.len() {
+                if ranges[left].overlaps(&ranges[right]) {
+                    return Err(Error::State("certified recurrent bindings alias".into()));
+                }
+            }
+        }
+        let source_text: Arc<str> = format!(
+            "{}\n#define ZG_COPY {}\n#define ZG_ELEMENTS {}u\n#define ZG_CERTIFY_ELEMENTS {}u\n{}",
+            "// cubecl.cuda.dynamic_shared_bytes=0",
+            StateCopy::RecurrentOut.tag(),
+            RECURRENT_ELEMENTS,
+            GATED_CERTIFICATE_ELEMENTS,
+            RECURRENT_OUT_CERTIFIED_SOURCE,
+        )
+        .into();
+        let kernel = PinnedKernel::new(
+            "zg_vllm_root_h_out_certified",
+            source_text,
+            128,
+            Arc::from([
+                (recurrent_bytes, BufferIOAttr::ReadOnly),
+                (recurrent_bytes, BufferIOAttr::WriteOnly),
+                (certificate_bytes, BufferIOAttr::ReadOnly),
+                (4, BufferIOAttr::ReadWrite),
+            ]),
+        )?;
+        let grid = [(RECURRENT_ELEMENTS as u32).div_ceil(128), 1, 1];
+        Ok(Self {
+            launch: kernel.prepare(
+                client,
+                grid,
+                vec![source, destination, certificate, status_handle],
+            )?,
         })
     }
 
@@ -875,6 +963,87 @@ pub(crate) async fn qualify_roundtrip_on_nvidia(device: cubecl::Device) -> Resul
         }
     }
 
+    // Fused recurrent export + final-BF16 certification must preserve the
+    // scalar recurrent bytes while OR-ing exactly the certificate bit.
+    let mut certified_fixtures = Vec::new();
+    for (lane, inject_certificate_nonfinite) in [(0usize, false), (6usize, true)] {
+        let mut certificate_words = (0..GATED_CERTIFICATE_ELEMENTS)
+            .map(|index| {
+                let bits = PATTERNS[(index * 31 + lane * 7 + 3) % PATTERNS.len()];
+                (bits >> 16) as u16
+            })
+            .collect::<Vec<_>>();
+        if inject_certificate_nonfinite {
+            certificate_words[29] = 0x7f80;
+        }
+        let (certificate, scalar_output, fused_output, scalar_status, fused_status) = {
+            let mut init = service.begin_initialization(0)?;
+            let certificate =
+                init.upload_bytes(&bf16_bytes(&certificate_words), BufferRole::Scratch)?;
+            let scalar_output =
+                init.allocate_empty(RECURRENT_ELEMENTS * 4, BufferRole::RecurrentState)?;
+            let fused_output =
+                init.allocate_empty(RECURRENT_ELEMENTS * 4, BufferRole::RecurrentState)?;
+            let scalar_status = init.upload_zeroed(4, BufferRole::Scratch)?;
+            let fused_status = init.upload_zeroed(4, BufferRole::Scratch)?;
+            drop(init.complete_sync().await?);
+            (
+                certificate,
+                scalar_output,
+                fused_output,
+                scalar_status,
+                fused_status,
+            )
+        };
+        StateTransport::prepare(
+            &service,
+            StateCopy::RecurrentOut,
+            grouped_native[lane].handle(),
+            scalar_output.handle(),
+            &scalar_status,
+        )?
+        .launch(&service)?;
+        RecurrentOutCertified::prepare(
+            &service,
+            grouped_native[lane].handle(),
+            fused_output.handle(),
+            certificate.handle(),
+            &fused_status,
+        )?
+        .launch(&service)?;
+        client
+            .sync()
+            .await
+            .map_err(|error| Error::State(format!("certified recurrent sync: {error}")))?;
+        let scalar_flags =
+            status_word(&client.read_one(scalar_status.handle()).map_err(|error| {
+                Error::State(format!("scalar certified recurrent status: {error}"))
+            })?)?;
+        let fused_flags =
+            status_word(&client.read_one(fused_status.handle()).map_err(|error| {
+                Error::State(format!("fused certified recurrent status: {error}"))
+            })?)?;
+        let expected = scalar_flags | if inject_certificate_nonfinite { 2 } else { 0 };
+        let scalar_bytes = client
+            .read_one(scalar_output.handle())
+            .map_err(|error| Error::State(format!("scalar certified recurrent output: {error}")))?;
+        let fused_bytes = client
+            .read_one(fused_output.handle())
+            .map_err(|error| Error::State(format!("fused certified recurrent output: {error}")))?;
+        if fused_flags != expected || fused_bytes != scalar_bytes {
+            return Err(Error::State(format!(
+                "certified recurrent differs lane={lane} scalar={scalar_flags:#x} fused={fused_flags:#x} expected={expected:#x}"
+            )));
+        }
+        certified_fixtures.push((
+            certificate,
+            scalar_output,
+            fused_output,
+            scalar_status,
+            fused_status,
+        ));
+    }
+
     drop((
         conv_in,
         conv_native,
@@ -900,6 +1069,7 @@ pub(crate) async fn qualify_roundtrip_on_nvidia(device: cubecl::Device) -> Resul
         grouped_out,
         scalar_status,
         grouped_status,
+        certified_fixtures,
     ));
     client
         .memory_cleanup()
