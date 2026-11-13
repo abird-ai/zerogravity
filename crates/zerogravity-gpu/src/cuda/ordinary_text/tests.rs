@@ -1284,10 +1284,13 @@ fn physical_stateless_qk_rms_matches_ragged_causal_calls_exactly() -> Result<()>
         let key_seed = vec![0xa5u8; key_bytes];
         let sequential_query = client.create_from_slice(&query_seed);
         let wide_query = client.create_from_slice(&query_seed);
+        let dual_query = client.create_from_slice(&query_seed);
         let sequential_key = client.create_from_slice(&key_seed);
         let wide_key = client.create_from_slice(&key_seed);
+        let dual_key = client.create_from_slice(&key_seed);
         let sequential_status = client.create_from_slice(&0u32.to_ne_bytes());
         let wide_status = client.create_from_slice(&0u32.to_ne_bytes());
+        let dual_status = client.create_from_slice(&0u32.to_ne_bytes());
 
         let mut row = 0usize;
         for rows in lane_rows {
@@ -1385,6 +1388,28 @@ fn physical_stateless_qk_rms_matches_ragged_causal_calls_exactly() -> Result<()>
                 status_binding(wide_status.clone()),
             )?
             .enqueue_owned(client, &wide_status)?;
+        program
+            .query_key_head_rms_stateless(physical, epsilon)?
+            .prepare_owned(
+                client,
+                vec![
+                    LaunchBinding::new(BufferRole::PackedAttention, Access::Read, packed.clone()),
+                    LaunchBinding::new(
+                        BufferRole::QueryRawGamma,
+                        Access::Read,
+                        query_gamma.clone(),
+                    ),
+                    LaunchBinding::new(BufferRole::KeyRawGamma, Access::Read, key_gamma.clone()),
+                    LaunchBinding::new(
+                        BufferRole::QueryNormalized,
+                        Access::Write,
+                        dual_query.clone(),
+                    ),
+                    LaunchBinding::new(BufferRole::KeyNormalized, Access::Write, dual_key.clone()),
+                ],
+                status_binding(dual_status.clone()),
+            )?
+            .enqueue_owned(client, &dual_status)?;
 
         client
             .sync()
@@ -1396,32 +1421,46 @@ fn physical_stateless_qk_rms_matches_ragged_causal_calls_exactly() -> Result<()>
         let wide_query = client
             .read_one(wide_query)
             .map_err(|error| Error::State(format!("stateless Q RMS read: {error}")))?;
+        let dual_query = client
+            .read_one(dual_query)
+            .map_err(|error| Error::State(format!("dual Q RMS read: {error}")))?;
         let sequential_key = client
             .read_one(sequential_key)
             .map_err(|error| Error::State(format!("causal K RMS read: {error}")))?;
         let wide_key = client
             .read_one(wide_key)
             .map_err(|error| Error::State(format!("stateless K RMS read: {error}")))?;
+        let dual_key = client
+            .read_one(dual_key)
+            .map_err(|error| Error::State(format!("dual K RMS read: {error}")))?;
         let sequential_status = client
             .read_one(sequential_status)
             .map_err(|error| Error::State(format!("causal Q/K RMS status: {error}")))?;
         let wide_status = client
             .read_one(wide_status)
             .map_err(|error| Error::State(format!("stateless Q/K RMS status: {error}")))?;
+        let dual_status = client
+            .read_one(dual_status)
+            .map_err(|error| Error::State(format!("dual Q/K RMS status: {error}")))?;
 
         if sequential_query != wide_query
+            || dual_query != wide_query
             || sequential_key != wide_key
+            || dual_key != wide_key
             || sequential_status != wide_status
+            || dual_status != wide_status
             || &wide_status[..] != 2u32.to_ne_bytes().as_slice()
             || wide_query[active_query_bytes..] != query_seed[active_query_bytes..]
+            || dual_query[active_query_bytes..] != query_seed[active_query_bytes..]
             || wide_key[active_key_bytes..] != key_seed[active_key_bytes..]
+            || dual_key[active_key_bytes..] != key_seed[active_key_bytes..]
         {
             return Err(Error::State(
-                "stateless Q/K RMS differs from ragged causal calls".into(),
+                "stateless/dual Q/K RMS differs from ragged causal calls".into(),
             ));
         }
         println!(
-            "STATELESS_QK_RMS_PASS lanes=47..54 active_rows={active_rows} bound_rows={bound_rows} exact=true status=2"
+            "STATELESS_QK_RMS_PASS lanes=47..54 active_rows={active_rows} bound_rows={bound_rows} dual=true exact=true status=2"
         );
 
         client

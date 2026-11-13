@@ -13,11 +13,13 @@ struct alignas(8) ZgWords2 { unsigned long long words[2]; };
 struct alignas(8) ZgWords3 { unsigned long long words[3]; };
 struct alignas(8) ZgWords4 { unsigned long long words[4]; };
 struct alignas(8) ZgWords5 { unsigned long long words[5]; };
+struct alignas(8) ZgWords7 { unsigned long long words[7]; };
 static_assert(sizeof(ZgWords1) == 8 && alignof(ZgWords1) == 8, "words1 ABI");
 static_assert(sizeof(ZgWords2) == 16 && alignof(ZgWords2) == 8, "words2 ABI");
 static_assert(sizeof(ZgWords3) == 24 && alignof(ZgWords3) == 8, "words3 ABI");
 static_assert(sizeof(ZgWords4) == 32 && alignof(ZgWords4) == 8, "words4 ABI");
 static_assert(sizeof(ZgWords5) == 40 && alignof(ZgWords5) == 8, "words5 ABI");
+static_assert(sizeof(ZgWords7) == 56 && alignof(ZgWords7) == 8, "words7 ABI");
 
 static __device__ __forceinline__ unsigned zg_u32(unsigned long long word) {
     return (unsigned)word;
@@ -361,6 +363,62 @@ void NAME(void* input_raw, void* raw_gamma_raw, void* output_raw, \
 ZG_DEFINE_HEAD_RMS(zg_ot_query_head_rms_v1, ZG_QUERY_HEADS)
 ZG_DEFINE_HEAD_RMS(zg_ot_key_head_rms_v1, ZG_KV_HEADS)
 #undef ZG_DEFINE_HEAD_RMS
+
+// Exact composition of the two head-RMS kernels above. Each block still owns
+// exactly one 256-wide query or key head and uses the identical reduction tree,
+// epsilon, gamma multiply, BF16 store and status semantics.
+// words = [rows, q_offset, k_offset, input_row_stride,
+//          q_head_stride, k_head_stride, epsilon_f32_bits].
+extern "C" __global__ __launch_bounds__(ZG_THREADS)
+void zg_ot_query_key_head_rms_v1(
+    void* input_raw, void* query_gamma_raw, void* key_gamma_raw,
+    void* query_output_raw, void* key_output_raw,
+    void* status_raw, ZgWords7 scalars) {
+    const __nv_bfloat16* input = (const __nv_bfloat16*)input_raw;
+    const __nv_bfloat16* query_gamma =
+        (const __nv_bfloat16*)query_gamma_raw;
+    const __nv_bfloat16* key_gamma =
+        (const __nv_bfloat16*)key_gamma_raw;
+    __nv_bfloat16* query_output = (__nv_bfloat16*)query_output_raw;
+    __nv_bfloat16* key_output = (__nv_bfloat16*)key_output_raw;
+    unsigned* status = (unsigned*)status_raw;
+    __shared__ float reduction[ZG_THREADS];
+
+    const unsigned rows = zg_u32(scalars.words[0]);
+    const unsigned query_groups = rows * ZG_QUERY_HEADS;
+    const unsigned key_groups = rows * ZG_KV_HEADS;
+    const unsigned group = blockIdx.x;
+    if (group >= query_groups + key_groups) return;
+
+    const bool is_query = group < query_groups;
+    const unsigned local_group = is_query ? group : group - query_groups;
+    const unsigned heads = is_query ? ZG_QUERY_HEADS : ZG_KV_HEADS;
+    const unsigned row = local_group / heads;
+    const unsigned head = local_group % heads;
+    const unsigned input_offset =
+        zg_u32(scalars.words[is_query ? 1 : 2]);
+    const unsigned input_stride = zg_u32(scalars.words[3]);
+    const unsigned input_head_stride =
+        zg_u32(scalars.words[is_query ? 4 : 5]);
+    const size_t base =
+        (size_t)row * input_stride + input_offset +
+        (size_t)head * input_head_stride;
+    const float sum = zg_head_square_sum(input + base, status, reduction);
+    const float mean = __fmaf_rn(
+        sum, 1.0f / (float)ZG_HEAD_DIM, zg_f32(scalars.words[6]));
+    const float inverse = rsqrtf(mean);
+    const unsigned lane = threadIdx.x;
+    const float x = zg_load(input + base + lane);
+    const __nv_bfloat16* gamma = is_query ? query_gamma : key_gamma;
+    __nv_bfloat16* output = is_query ? query_output : key_output;
+    const float g = zg_load(gamma + lane);
+    const float y =
+        __fmul_rn(__fmul_rn(x, inverse), __fadd_rn(1.0f, g));
+    output[(size_t)local_group * ZG_HEAD_DIM + lane] = zg_store(y);
+    if (!isfinite(x) || !isfinite(g) || !isfinite(mean) ||
+        !isfinite(inverse) || inverse == 0.0f || !isfinite(y))
+        zg_bad(status, 2u);
+}
 
 // Packed GateUp words = [rows, gate_offset, up_offset, row_stride] in elements.
 extern "C" __global__ __launch_bounds__(ZG_THREADS)

@@ -3886,3 +3886,31 @@ build or general model/backend grant. Historical failures keep their source scop
   The temporary selector and serving consumer were removed. Keep the exact
   shared primitive for other compositions/models; do not select this same
   ordinary consumer without materially different evidence.
+
+### 14 Nov 2026 — dual Q/K head-RMS primitive retained; serving fusion rejected
+
+- [x] Added a private model-neutral ordinary-text primitive that composes the
+  already-selected query-head and key-head RMS operations into one physical
+  launch. Each CUDA block still owns exactly one256-wide Q or K head and uses
+  the identical existing square-sum reduction tree, epsilon addition, rsqrt,
+  raw-gamma multiply, BF16 rounding and nonfinite status semantics. The ABI is
+  explicit: one packed-attention input, independent Q/K gamma inputs, independent
+  Q/K outputs and shared status. No public PlanPrimitive/PrimitiveKind, model,
+  session, root, position or publication policy was added.
+- [x] Extended the existing physical stateless-Q/K RMS qualifier rather than
+  adding a token-only proxy. On RTX3060 the original ragged causal path, the
+  retained wide two-launch stateless Q+K path and the new one-launch dual path
+  all match query bytes, key bytes, inactive bounded tails and status bit-for-bit
+  over lane rows47..54 (404 active rows in a513-row bounded ABI). The existing
+  injected BF16 +inf query-gamma fixture reports status2 identically
+  (`STATELESS_QK_RMS_PASS ... dual=true exact=true status=2`).
+- [x] Rejected selecting the dual primitive in current ordinary B8 serving.
+  Final evidence used one binary and one loaded public Qwen3.5-2B model with a
+  temporary runtime selector and same-process ABBA waves on ragged prompts47..54,
+  16 output tokens. Every lane retained sixteen ID264 tokens and native width8.
+  Baseline samples were691.784/694.114/688.952/693.164ms
+  (mean692.004ms); dual-Q/K samples were
+  689.787/696.268/693.418/696.194ms (mean693.917ms), about0.28% slower.
+  The temporary selector and serving integration were removed. Retain the exact
+  shared primitive for another graph/model where eliminating the launch boundary
+  has material value; do not select this same consumer without new evidence.

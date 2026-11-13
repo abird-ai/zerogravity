@@ -417,6 +417,7 @@ pub(crate) enum Primitive {
     KvAppend,
     QueryHeadRms,
     KeyHeadRms,
+    QueryKeyHeadRms,
     /// Diagnostic online-FP32 arithmetic; not Qwen numerical authority and
     /// never selected by [`Program::definitions`].
     UnqualifiedOnlineFp32Attention,
@@ -441,6 +442,7 @@ impl Primitive {
             Self::KvAppend => "zg_ot_kv_append_v1",
             Self::QueryHeadRms => "zg_ot_query_head_rms_v1",
             Self::KeyHeadRms => "zg_ot_key_head_rms_v1",
+            Self::QueryKeyHeadRms => "zg_ot_query_key_head_rms_v1",
             Self::UnqualifiedOnlineFp32Attention => "zg_ot_unqualified_online_fp32_attention_v1",
             Self::Greedy => "zg_ot_greedy_v1",
         }
@@ -714,6 +716,11 @@ impl Definition {
             Primitive::KvAppend => PrimitiveKind::KvAppend,
             Primitive::QueryHeadRms => PrimitiveKind::QueryHeadRms,
             Primitive::KeyHeadRms => PrimitiveKind::KeyHeadRms,
+            Primitive::QueryKeyHeadRms => {
+                return Err(Error::Unsupported(
+                    "private dual Q/K head RMS has no selectable contract".into(),
+                ));
+            }
             Primitive::Greedy => PrimitiveKind::Greedy,
             Primitive::UnqualifiedOnlineFp32Attention => {
                 return Err(Error::Unsupported(
@@ -1495,6 +1502,117 @@ impl Program {
             BufferRole::KeyRawGamma,
             BufferRole::KeyNormalized,
             epsilon,
+        )
+    }
+
+    /// Exact physical composition of query-head and key-head RMS. This does
+    /// not define a new model operator; it only removes one launch boundary
+    /// between two independently selected source-exact head reductions.
+    #[allow(dead_code)]
+    pub(crate) fn query_key_head_rms_stateless(
+        &self,
+        rows: StatelessRowExtent,
+        epsilon: f32,
+    ) -> Result<Definition> {
+        if !epsilon.is_finite() || epsilon <= 0.0 {
+            return Err(Error::Unsupported(
+                "ordinary text dual head RMS epsilon".into(),
+            ));
+        }
+        let query_bytes = extent(
+            rows.bound(),
+            self.geometry.query_width()?,
+            BF16_BYTES,
+            "dual query head RMS",
+        )?;
+        let key_bytes = extent(
+            rows.bound(),
+            self.geometry.kv_width()?,
+            BF16_BYTES,
+            "dual key head RMS",
+        )?;
+        let packed = self.packed_attention_bytes(rows.bound())?;
+        let gamma = self.geometry.head_width * BF16_BYTES;
+        let query_offset = 0usize;
+        let key_offset = checked_mul(
+            2,
+            self.geometry.query_width()?,
+            "packed attention dual key offset",
+        )?;
+        let query_head_stride =
+            checked_mul(2, self.geometry.head_width, "dual query/gate head stride")?;
+        let key_head_stride = self.geometry.head_width;
+        let input_stride = self.attention_row_stride()?;
+        require_strided_view(
+            rows.active(),
+            input_stride,
+            self.geometry.query_heads,
+            query_head_stride,
+            query_offset,
+            self.geometry.head_width,
+            packed / BF16_BYTES,
+            "packed attention dual query RMS",
+        )?;
+        require_strided_view(
+            rows.active(),
+            input_stride,
+            self.geometry.kv_heads,
+            key_head_stride,
+            key_offset,
+            self.geometry.head_width,
+            packed / BF16_BYTES,
+            "packed attention dual key RMS",
+        )?;
+        self.definition(
+            Primitive::QueryKeyHeadRms,
+            vec![
+                binding(BufferRole::PackedAttention, packed, Access::Read),
+                binding(BufferRole::QueryRawGamma, gamma, Access::Read),
+                binding(BufferRole::KeyRawGamma, gamma, Access::Read),
+                binding(BufferRole::QueryNormalized, query_bytes, Access::Write),
+                binding(BufferRole::KeyNormalized, key_bytes, Access::Write),
+                status(),
+            ],
+            words(&[
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(rows.active() as u64),
+                ),
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(query_offset as u64),
+                ),
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(key_offset as u64),
+                ),
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(input_stride as u64),
+                ),
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(query_head_stride as u64),
+                ),
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(key_head_stride as u64),
+                ),
+                (
+                    StaticScalarType::F32Bits,
+                    StaticScalarValue::F32Bits(epsilon.to_bits()),
+                ),
+            ])?,
+            [
+                u32::try_from(
+                    rows.active()
+                        .checked_mul(self.geometry.query_heads + self.geometry.kv_heads)
+                        .ok_or_else(|| Error::Limit("ordinary text dual head RMS grid".into()))?,
+                )
+                .map_err(|_| Error::Limit("ordinary text dual head RMS grid".into()))?,
+                1,
+                1,
+            ],
         )
     }
 
