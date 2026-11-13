@@ -495,6 +495,115 @@ impl CachedDecodeBatch {
     }
 }
 
+/// Cached GDN decode over caller-owned private native recurrent state.
+///
+/// This is a physical CUDA primitive only: it owns no model/session/root policy
+/// and assumes each state handle already uses the retained native H/V/K layout.
+#[cfg(feature = "cuda-cublas")]
+pub(crate) struct CachedDecodePrivateBatch {
+    kernel: PinnedKernel,
+    grid: [u32; 3],
+    rows: usize,
+}
+#[cfg(feature = "cuda-cublas")]
+impl CachedDecodePrivateBatch {
+    pub(crate) fn prepare(rows: usize) -> Result<Self> {
+        use BufferIOAttr::{ReadOnly as R, WriteOnly as W};
+        let definition = text::cached_decode_private_batch(rows)?;
+        if !definition
+            .source
+            .starts_with("// cubecl.cuda.dynamic_shared_bytes=64\n")
+            || !definition.source.contains(definition.ptx_sha256)
+        {
+            return Err(Error::State(
+                "private cached GDN decode source identity".into(),
+            ));
+        }
+        let conv_bytes = GdnBuffer::PackedQkvz
+            .bytes(GdnPhase::CachedDecode)
+            .checked_mul(rows)
+            .ok_or_else(|| Error::Limit("private cached GDN decode conv bytes".into()))?;
+        let packed_ba = GdnBuffer::PackedBa
+            .bytes(GdnPhase::CachedDecode)
+            .checked_mul(rows)
+            .ok_or_else(|| Error::Limit("private cached GDN decode BA bytes".into()))?;
+        let ba_view = packed_ba
+            .checked_sub(32)
+            .ok_or_else(|| Error::Limit("private cached GDN decode BA view".into()))?;
+        let core_bytes = GdnBuffer::Core
+            .bytes(GdnPhase::CachedDecode)
+            .checked_mul(rows)
+            .ok_or_else(|| Error::Limit("private cached GDN decode core bytes".into()))?;
+        let index_bytes = rows
+            .checked_mul(4)
+            .ok_or_else(|| Error::Limit("private cached GDN decode index bytes".into()))?;
+        let mut bindings = vec![
+            (conv_bytes, R),
+            (ba_view, R),
+            (ba_view, R),
+            (GdnBuffer::ALog.bytes(GdnPhase::CachedDecode), R),
+            (GdnBuffer::DtBias.bytes(GdnPhase::CachedDecode), R),
+            (core_bytes, W),
+            (RECURRENT_STATE_BYTES, R),
+            (RECURRENT_STATE_BYTES, W),
+            (index_bytes, R),
+        ];
+        for _ in 1..rows {
+            bindings.push((RECURRENT_STATE_BYTES, R));
+            bindings.push((RECURRENT_STATE_BYTES, W));
+        }
+        Ok(Self {
+            kernel: PinnedKernel::new_with_static_scalars(
+                definition.entry,
+                definition.source,
+                definition.threads,
+                bindings.into(),
+                definition.scalars,
+            )?,
+            grid: definition.grid,
+            rows,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn launch(
+        &self,
+        client: &cubecl::client::Client,
+        conv: &cubecl::server::Handle,
+        a: &cubecl::server::Handle,
+        beta: &cubecl::server::Handle,
+        a_log: &cubecl::server::Handle,
+        dt_bias: &cubecl::server::Handle,
+        core: &cubecl::server::Handle,
+        prior: &[cubecl::server::Handle],
+        candidate: &[cubecl::server::Handle],
+        indices: &cubecl::server::Handle,
+    ) -> Result<()> {
+        if prior.len() != self.rows || candidate.len() != self.rows {
+            return Err(Error::State(
+                "private cached GDN decode state coverage".into(),
+            ));
+        }
+        let mut arguments = Vec::with_capacity(9 + 2 * self.rows.saturating_sub(1));
+        arguments.extend([
+            conv.clone(),
+            a.clone(),
+            beta.clone(),
+            a_log.clone(),
+            dt_bias.clone(),
+            core.clone(),
+            prior[0].clone(),
+            candidate[0].clone(),
+            indices.clone(),
+        ]);
+        for lane in 1..self.rows {
+            arguments.push(prior[lane].clone());
+            arguments.push(candidate[lane].clone());
+        }
+        self.kernel.launch(client, self.grid, &arguments)
+    }
+}
+
 #[cfg(feature = "cuda-cublas")]
 pub(crate) struct CachedGatedBatch {
     kernel: PinnedKernel,
@@ -996,6 +1105,14 @@ mod batch_qualification_tests {
         })
     }
 }
+
+#[cfg(all(
+    test,
+    feature = "qualification",
+    feature = "cuda-cublas",
+    target_os = "linux"
+))]
+mod private_decode_tests;
 
 #[cfg(all(test, feature = "cuda-native-qualification"))]
 mod tests;

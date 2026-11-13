@@ -136,6 +136,27 @@ pub(super) fn cached_decode_batch(
     Ok((definition.asset, definition.scalars))
 }
 
+pub(super) struct CachedDecodePrivateSource {
+    pub entry: &'static str,
+    pub source: Arc<str>,
+    pub threads: u32,
+    pub grid: [u32; 3],
+    pub ptx_sha256: &'static str,
+    pub scalars: crate::cuda::kernel::StaticScalarBlock,
+}
+
+pub(super) fn cached_decode_private_batch(rows: usize) -> Result<CachedDecodePrivateSource> {
+    let definition = parameterized_cached::prepare_private_decode(rows)?;
+    Ok(CachedDecodePrivateSource {
+        entry: definition.entry,
+        source: definition.source,
+        threads: definition.threads,
+        grid: definition.grid,
+        ptx_sha256: definition.ptx_sha256,
+        scalars: definition.scalars,
+    })
+}
+
 pub(super) fn cached_gated_batch(
     rows: usize,
 ) -> Result<(assets::Asset, crate::cuda::kernel::StaticScalarBlock)> {

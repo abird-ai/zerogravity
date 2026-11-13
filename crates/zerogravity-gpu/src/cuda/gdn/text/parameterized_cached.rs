@@ -108,6 +108,115 @@ pub(super) struct Definition {
     pub scalars: StaticScalarBlock,
 }
 
+pub(super) struct PrivateDecodeDefinition {
+    pub entry: &'static str,
+    pub source: Arc<str>,
+    pub threads: u32,
+    pub grid: [u32; 3],
+    pub ptx_sha256: &'static str,
+    pub scalars: StaticScalarBlock,
+}
+
+fn replace_exact_once(source: &mut String, from: &str, to: &str, label: &str) -> Result<()> {
+    if source.matches(from).count() != 1 {
+        return Err(Error::State(format!(
+            "private cached GDN source marker differs: {label}"
+        )));
+    }
+    *source = source.replacen(from, to, 1);
+    Ok(())
+}
+
+fn private_pointer_expression(rows: usize, candidate: bool) -> String {
+    let argument = |lane: usize| {
+        if lane == 0 {
+            if candidate { 7 } else { 6 }
+        } else if candidate {
+            8 + lane * 2
+        } else {
+            7 + lane * 2
+        }
+    };
+    let mut expression = format!("zg_arg{}", argument(rows - 1));
+    for lane in (0..rows - 1).rev() {
+        expression = format!(
+            "zg_private_row == {lane} ? zg_arg{} : ({expression})",
+            argument(lane)
+        );
+    }
+    expression
+}
+
+pub(super) fn prepare_private_decode(rows: usize) -> Result<PrivateDecodeDefinition> {
+    if !matches!(rows, 4 | 8) {
+        return Err(Error::Unsupported(
+            "private cached GDN decode batch requires four or eight rows".into(),
+        ));
+    }
+    let mut source = DECODE_SOURCE.to_owned();
+    let extra_args = (9..=6 + rows * 2)
+        .map(|index| format!("void* zg_arg{index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    replace_exact_once(
+        &mut source,
+        "void* zg_arg8, ZgGdnCachedDecodeScalarWords zg_scalars) {",
+        &format!("void* zg_arg8, {extra_args}, ZgGdnCachedDecodeScalarWords zg_scalars) {{"),
+        "signature",
+    )?;
+    let selector = format!(
+        "extern __shared__ __align__(16) unsigned char zg_shared[];\nconst unsigned int zg_private_row = blockIdx.y >> 4;\nvoid* zg_private_prior = {};\nvoid* zg_private_candidate = {};",
+        private_pointer_expression(rows, false),
+        private_pointer_expression(rows, true),
+    );
+    replace_exact_once(
+        &mut source,
+        "extern __shared__ __align__(16) unsigned char zg_shared[];",
+        &selector,
+        "lane-private state selector",
+    )?;
+    replace_exact_once(
+        &mut source,
+        "\\tmov.b64 %%zg_orig_rd12, %8;\\n",
+        "\\tmov.b64 %%zg_orig_rd12, %12;\\n",
+        "candidate pointer operand",
+    )?;
+    replace_exact_once(
+        &mut source,
+        "\\tmov.b64 %%zg_orig_rd11, %7;\\n",
+        "\\tmov.b64 %%zg_orig_rd11, %11;\\n",
+        "prior pointer operand",
+    )?;
+    replace_exact_once(
+        &mut source,
+        "\\tmul.wide.u32 \\t%%zg_orig_rd2, %%zg_orig_r52, 278528;\\n",
+        "\\tmov.u64 \\t%%zg_orig_rd2, 0;\\n",
+        "private zero state stride",
+    )?;
+    replace_exact_once(
+        &mut source,
+        ", \"r\"(static_cast<unsigned int>(zg_scalars.words[0])) : \"memory\");",
+        ", \"r\"(static_cast<unsigned int>(zg_scalars.words[0])), \"l\"(zg_private_prior), \"l\"(zg_private_candidate) : \"memory\");",
+        "private pointer operands",
+    )?;
+    let grid_y = u32::try_from(
+        rows.checked_mul(16)
+            .ok_or_else(|| Error::Limit("private cached GDN decode grid".into()))?,
+    )
+    .map_err(|_| Error::Limit("private cached GDN decode grid".into()))?;
+    Ok(PrivateDecodeDefinition {
+        entry: DECODE_ENTRY,
+        source: source.into(),
+        threads: 32,
+        grid: [4, grid_y, 1],
+        ptx_sha256: DECODE_ORIGINAL_PTX_SHA256,
+        scalars: StaticScalarBlock::new(
+            StaticScalarSchema::new(&[(StaticScalarType::F32Bits, 0)], 8, 8)?,
+            &[StaticScalarValue::F32Bits(DECODE_SCALE_BITS)],
+        )?,
+    })
+}
+
 pub(super) fn prepare(phase: GdnPhase, slot: GdnCacheSlot, stage: GdnStage) -> Result<Definition> {
     prepare_checked(phase, slot, stage, CachedLayout::retained(phase, slot))
 }

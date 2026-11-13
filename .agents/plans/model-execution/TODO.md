@@ -3577,3 +3577,36 @@ build or general model/backend grant. Historical failures keep their source scop
   8 to 16 typed 64-bit words; it remains fixed-size/aligned and rejects a 17th
   field. Do not select B8 for the current 2B hot path without new end-to-end
   evidence: the earlier controlled consumer test (~0.74%) overlapped run noise.
+- [x] Rejected compiler-occupancy retuning of the retained cached-GDN B4 decode
+  core. A physical patterned-state harness changed only the CUDA
+  `__launch_bounds__(32, minBlocksPerSM)` hint while keeping the complete frozen
+  inline-PTX body, scalar ABI, grid and buffers unchanged; candidates at 8/16/24
+  blocks/SM matched both recurrent-state and core output bytes exactly. Forward/
+  reverse 160-launch timings were baseline 47.685/47.366 us, min8 47.726/47.313,
+  min16 47.888/47.507 and min24 48.053/47.272. The min8 average is effectively
+  identical to baseline (~47.52 us), while stronger occupancy pressure is slightly
+  worse. The temporary candidate/source/timing harness was removed; keep the
+  retained source unchanged and target different GDN work rather than register
+  pressure hints.
+- [x] Retained reusable private-state cached-GDN B4/B8 primitives without changing
+  the accepted arena-backed B4 consumer. A first generalized ABI was numerically
+  exact but slowed the live B4 core in a same-process old/new A/B (old
+  53.175/48.973 us forward/reverse versus generalized 58.322/59.057 us), so that
+  production ABI change was rejected and the original one-scalar source/argument
+  packet was restored byte-for-byte (SHA256 `e0bd77f...`). The retained private
+  specialization is derived fail-closed from that frozen arithmetic source and owns
+  only physical row/state binding: explicit native H/V/K prior/candidate handles,
+  B4/B8 grid geometry and the original decode scale. It carries no model/session/
+  root/scheduler policy and leaves canonical<->native transport available as a
+  reusable boundary primitive. RTX3060 patterned-state qualification imports the
+  same canonical B4 roots into both paths and matches core plus all exported
+  canonical candidate states bit-for-bit; the canonical import+core+export path
+  measured301.431/303.228 us versus direct private59.677/59.536 us. Independent
+  B8 qualification also matches two private B4 launches byte-for-byte across core
+  and all eight candidate states while one B8 core measures76.842/78.676 us versus
+  two B4 cores118.570/129.384 us (~35-39% faster). Keep both reusable primitives,
+  but do not select direct-private serving yet: ordinary resident recurrent roots
+  are canonical F32 while the cached core consumes native H/V/K-transposed state.
+  Persistent native CUDA roots/checkpoint/export semantics need separate
+  qualification before removing that boundary from the live decode loop; the B8
+  result is a physical opportunity, not an end-to-end serving claim.
