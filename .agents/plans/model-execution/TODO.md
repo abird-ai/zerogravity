@@ -3504,3 +3504,16 @@ build or general model/backend grant. Historical failures keep their source scop
   preserved every MMA and BF16 segment-rounding boundary, but the real
   2048x6144 timing was flat: accepted116.608/116.555us versus M32
   118.163/116.506us. Candidate staging/kernel/test code was fully removed.
+- [x] Rejected a paired-BF16 unpack specialization for the dominant B8
+  LaneStrided<16,512> inner-major kernel. The candidate formed both exact FP32
+  bit patterns directly from each packed 32-bit BF16 pair while preserving all
+  FMAs and reduction edges. Patterned physical output/status matched exactly,
+  but 12288x8x2048 timing was flat: accepted256.103/262.027us versus candidate
+  258.633/259.709us. The helper/kernel/test were fully removed.
+- [x] Ruled out streamed source-page transport as the current CUDA2B B8 hot
+  path. A temporary production decode probe (removed immediately after the run)
+  reported `streamed=false`, resident uploaded bytes=4,025,926,508 before the
+  B8 decode, and upload delta=0 for the complete decode traversal. The 4608MiB
+  provider cap therefore retains this 2B profile's weights; CUDA's serial 1MiB
+  source-page checkpoint path is important for larger streamed profiles but is
+  not responsible for the present 2B decode gap.
