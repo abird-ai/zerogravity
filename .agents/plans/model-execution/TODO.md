@@ -4152,15 +4152,39 @@ build or general model/backend grant. Historical failures keep their source scop
   descriptor candidate took57.24s, but this is cache/order-sensitive diagnostic
   timing, **not** a controlled performance claim. The structural claim is only one
   complete snapshot payload hash removed while exact source authentication remains.
-- [ ] The full runtime host-only test now reaches the **single required**
-  `ExtentSource::scan_verified` pass, then can still be externally terminated
-  during the first3.97GiB shard with no Rust error or OOM evidence. The same
-  authoritative scan succeeds across all18 shards in the smaller exact-source
-  probe, so do not weaken/skip it or invent an extent manifest/pin. Next localize
-  the external full-runtime process termination around this source-scan boundary.
-  Do not relaunch27B GPU/HTTP until that host path is stable. Accepted66-call and
-  populated1K/2K references remain absent from current X2; never fabricate/repin.
-  ROCm2B mismatch localization remains the independent fallback.
+- [x] Closed the apparent full-runtime host-load blocker without changing source.
+  Release thin-LTO test links and silent long-running X2 jobs had been conflated with
+  runtime failure. A warmed optimized test-profile build
+  (`opt-level=3`,debug0,16 codegen units) produced the full runtime unit-test
+  binary; running that exact binary under a wrapper that emitted only an external
+  2s progress heartbeat let the unchanged canonical host test complete in75.20s.
+  RSS stayed about16..37MiB while the same authoritative shard scan ran. It printed
+  `SOURCE_SDK_CANONICAL_HOST_PASS ... source_plan=true tokenizer=true
+  final_reader=true gpu=false` and exited0. The heartbeat is connector execution
+  plumbing only; it is not a ZeroGravity runtime requirement. Do not describe the
+  prior silent termination as a Qwen/source correctness bug.
+- [x] After host closure, attempted one reference-free **liveness-only** 27B public
+  HTTP diagnostic with exact snapshot, explicit75GiB `QwenHipWithBudget`,
+  active1/context1K/output3, an exact synthesized47-token raw prompt and the
+  unchanged serving180s response deadline. It ran only through
+  `scripts/native-gpu.py` with guarded private-loopback setup and an external5s
+  heartbeat. No numerical/reference acceptance was claimed because the approved
+  66-call material remains absent.
+- [x] That physical diagnostic reached real HIP allocation before any HTTP result:
+  VRAM rose from the clean ~272MiB baseline to ~31.376GB and GPU busy reached6%.
+  Despite the heartbeat the complete isolated process disappeared about10..12s
+  after model-load start with no Rust panic/error, no cgroup/kernel/systemd-oomd OOM
+  evidence and no AMDGPU/KFD reset/fault log. Therefore **no HTTP status or serving
+  liveness result follows**.
+- [ ] X2 is now physically dirty: after the failed isolated process disappeared,
+  `mem_info_vram_used` remains about31,375,962,112 bytes with busy0, no surviving
+  model/Cargo process and no non-current DRM/KFD owner visible from the connector.
+  Do not launch another27B **or the ROCm2B fallback** while this accounting remains
+  above the clean baseline. First revalidate whether VRAM naturally returns; if it
+  does not, localize/reclaim the GPU/connector/driver ownership boundary safely
+  before any further model execution. Do not reset the GPU, restart dotlink or
+  force driver reclamation implicitly. Accepted66-call and populated1K/2K references
+  remain absent; never fabricate/repin them.
 
 ### 14 Nov 2026 — shared-input B8 projection-pair primitive retained; consumer held
 

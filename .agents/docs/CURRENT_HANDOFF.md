@@ -27,12 +27,11 @@ and live TODOs are authoritative.
   (`fix(hip): isolate CUDA private KV qualification`), `874e67d`
   (`feat(cuda): retain shared-input projection pair`) and `c282f20`
   (`fix(hip): restore source profile compilation`). Docs checkpoints include
-  `2caf304`, `52c8a16` and `ca6e99f`.
+  `2caf304`, `52c8a16`, `ca6e99f` and `f5d2a88`.
 - `origin/main` remains `c12acab60c357e0742ad4ecd2f00295cd9b6bb0a`
   (`feat(cuda): retain grouped B8 recurrent transport`). Immediately before this
-  docs refresh l5 is clean at `b0cf0b2`, **16 commits ahead of origin**; X2 still
-  needs the final implementation/docs sync after candidate validation. This refresh
-  may add one docs-only commit. Nothing newer is pushed.
+  docs refresh both tracked checkouts are clean at `f5d2a88`, **17 commits ahead
+  of origin**. This refresh may add one docs-only commit. Nothing newer is pushed.
   Never push unless the user explicitly asks.
 - Before any new physical X2 run, sync it to the exact current l5 `main`
   bytes/commit without using a push merely as transport, then revalidate
@@ -61,9 +60,12 @@ and live TODOs are authoritative.
   - `775dfa6` — ragged private B8 KV transition accepted.
   - `c12acab` — grouped B8 recurrent transport primitive retained, serving
     consumer rejected.
-- At this refresh no Cargo/model process is active on either host. l5 RTX3060 is
-  idle at ~41 MiB; X2 reports ~272 MiB of ~96 GiB VRAM through sysfs and no KFD
-  client. These are takeover observations, not acceptance evidence.
+- At this refresh no Cargo/model process is active on either host and l5 RTX3060
+  is idle at ~41 MiB. X2 is **not** at its clean GPU baseline: after the latest
+  failed physical27B attempt sysfs still reports ~31.376GB of ~96GiB VRAM used,
+  busy0, with no surviving model process or non-current DRM/KFD owner visible from
+  the connector and no OOM/AMDGPU-fault evidence. Do not launch another model on X2
+  until that state returns to baseline or is safely localized/reclaimed.
 - Root `README.md` is user-authored. Leave it unchanged unless explicitly asked.
 - Keep one persistent `main` checkout per host. Reuse canonical target/cache state;
   do not recreate old worktree pools or `.agents/runs`.
@@ -302,12 +304,24 @@ serving, memory and composition plans.
   that claims no payload verification; every non-shard payload keeps its existing
   compiled SHA check and every shard keeps the authoritative whole-file
   `ExtentSource::scan_verified`. Normal `SnapshotLease` remains fully verified.
-- The full runtime process is **still not stable**: with the redundant first hash
-  removed it reaches the single required authoritative shard scan, but can still
-  be externally terminated during the first3.97GiB shard with no Rust error or OOM
-  evidence. That same scan succeeds across all18 shards in the smaller exact-source
-  process. Do not weaken/skip it or invent an extent manifest/pin. Localize the
-  external full-runtime process boundary before another 27B GPU launch.
+- The full canonical runtime host path is now green. A warmed optimized test-profile
+  build produced the full runtime unit-test binary; running that exact binary under
+  an external2s heartbeat wrapper completed the canonical source/tokenizer/final-
+  reader test in75.20s with about16..37MiB RSS and `gpu=false`. The heartbeat only
+  kept the connector execution envelope alive; it is not part of ZeroGravity.
+  Therefore the earlier silent first-shard termination was not evidence of a Qwen
+  source/runtime correctness bug.
+- After that closure, one reference-free exact75GiB public-HTTP liveness probe was
+  launched under `native-gpu.py`, private loopback and the unchanged180s server
+  deadline. It reached real HIP allocation (~31.376GB VRAM, busy6%) but the entire
+  isolated process disappeared after ~10..12s despite an external5s heartbeat,
+  before any HTTP response. No numerical/reference acceptance follows.
+- X2 did **not** return to the clean GPU baseline after that process disappeared:
+  `mem_info_vram_used` remains ~31,375,962,112 bytes, busy0, with no surviving
+  model/Cargo process, no non-current DRM/KFD owner visible through the connector,
+  no cgroup OOM, and no kernel AMDGPU/KFD reset/fault evidence. Treat X2 as
+  physically dirty. Do not launch27B or ROCm2B again until baseline/reclamation is
+  safely understood; do not implicitly reset GPU or dotlink service state.
 - Historical R9/R10 HTTP504 ran 5 Nov; `d16f096` explicit75GiB resident-budget
   plumbing landed 8 Nov. The old ~240s streamed path exceeded the unchanged180s
   deadline; the later resident C1 path was ~5.5s. Preserve that chronology rather
@@ -678,19 +692,21 @@ capture, another GPU or another model.
 
 1. **Tiny physical HIP health stays green.** The isolated `gfx1151` smoke passed
    and returned to baseline; do not repeat it unless host/runtime state changes.
-2. **Do not relaunch 27B GPU/HTTP yet.** Exact tokenizer construction and the
-   complete isolated27B source binding/seal/1K plan are green. Signed `b0cf0b2`
-   removes one redundant complete cache-snapshot hash while preserving the single
-   authoritative source scan. The full runtime process can still be externally
-   terminated during that required first-shard scan before HIP allocation.
-3. Localize that external full-runtime process boundary without weakening
-   `ExtentSource::scan_verified` or inventing extent authority. Once stable, retry
-   the exact explicit75GiB resident route
-   under the unchanged180s HTTP deadline. Numerical/populated-context acceptance
-   still requires the missing approved 27B reference material.
-4. ROCm2B C4/C16/C32/C64 divergence localization remains independently open if
-   the 27B host path remains externally blocked. Preserve expected IDs and every
-   failed warmup/timed cell; no repinning.
+2. **Canonical27B host loading is green.** Exact tokenizer construction,
+   isolated source binding/seal/1K plan and the full runtime host test all pass.
+   The full-runtime test needed only an external progress heartbeat to keep the X2
+   connector execution alive; do not mistake that transport behavior for a model
+   requirement or source bug.
+3. **Do not launch another physical model on X2 yet.** The first post-host-closure
+   explicit75GiB public HTTP liveness attempt reached HIP allocation
+   (~31.376GB VRAM/busy6%) then lost its isolated process before HTTP status.
+   VRAM accounting remains ~31.376GB with busy0/no visible model/KFD owner.
+4. Revalidate for natural reclamation first. If the clean baseline does not return,
+   safely localize the GPU/connector/driver ownership boundary before any27B or
+   ROCm2B run. Do not implicitly reset GPU/dotlink. Once X2 is clean, retry the
+   exact explicit75GiB resident route under the unchanged180s HTTP deadline.
+   Numerical/populated-context acceptance still requires the missing approved27B
+   reference material; ROCm2B mismatch localization remains a later fallback.
 5. Before every X2 physical run, sync X2 to the exact current l5 `main`, confirm
    one checkout, no active Cargo/model/KFD owner and current VRAM state. X2 is not
    an independent source-authoring branch.
@@ -833,22 +849,29 @@ existing bounded contract.
 >
 > `c282f20` and `134a571` repair two separate HIP-only cross-feature compile
 > boundaries; neither grants a new HIP kernel capability. Tiny physical HIP health
-> is independently green. Exact canonical27B tokenizer construction now passes, and
-> a smaller host-only exact-source process authenticates all18 shards and completes
-> the full Qwen binding/seal/1K plan. Signed `b0cf0b2` removes a redundant
-> cache-wide payload hash by introducing an explicitly non-authoritative
-> `SnapshotDescriptorLease`; normal `SnapshotLease` remains fully verified, while
-> Qwen's existing metadata SHA checks and authoritative whole-shard
-> `ExtentSource::scan_verified` remain unchanged. The full runtime process can still
-> be externally terminated during the first shard of that single required scan,
-> before HIP allocation, with no Rust error/GPU/OOM evidence. Do **not** weaken that
-> scan or invent extent pins, and do **not** relaunch27B GPU/HTTP until the external
-> full-runtime process boundary is stable. Historical R9/R10 HTTP504 predates
-> `d16f096` resident-budget support and reflects the ~240s streamed path, not the
-> later ~5.5s resident C1 path. The accepted66-call and populated1K/2K reference
-> material is also absent
-> from current X2, so full acceptance remains blocked without exact approved
-> recovery/successor capture. ROCm2B mismatch localization is the fallback.
+> is independently green. Exact tokenizer, isolated source binding/seal/1K plan and
+> the **full canonical27B host runtime test** now pass. The full-runtime host test
+> completed in75.20s when an external2s progress heartbeat kept the X2 connector
+> execution envelope alive, with ~16..37MiB RSS and `gpu=false`; this closes the
+> former host/source blocker without weakening `ExtentSource::scan_verified`.
+> Signed `b0cf0b2` remains the duplicate-hash optimization: its explicitly
+> non-authoritative `SnapshotDescriptorLease` leaves every Qwen metadata/shard SHA
+> check and ordinary verified `SnapshotLease` semantics intact.
+>
+> The next exact75GiB public HTTP **liveness-only** attempt ran through
+> `native-gpu.py`, private loopback and the unchanged180s server deadline. It reached
+> real HIP allocation (~31.376GB VRAM, busy6%) but the complete isolated process
+> disappeared after ~10..12s despite an external5s heartbeat, before any HTTP
+> status. No Rust panic, cgroup/kernel OOM, AMDGPU/KFD reset or VM-fault log was
+> found. X2 VRAM accounting remains ~31.376GB with busy0 and no visible surviving
+> model/KFD owner, so treat the GPU as physically dirty. Do **not** launch27B or
+> ROCm2B again until the clean baseline returns or this ownership/reclamation
+> boundary is safely localized; do not implicitly reset GPU/dotlink service state.
+> Historical R9/R10 HTTP504 predates `d16f096` resident-budget support and reflects
+> the ~240s streamed path, not the later ~5.5s resident C1 path. The accepted66-call
+> and populated1K/2K reference material remains absent from current X2, so full
+> numerical/context acceptance is separately blocked without exact approved
+> recovery/successor capture.
 > Preserve the existing180s HTTP contract, expected IDs and failed cells; do not
 > repin or extend a deadline to create a pass.
 >

@@ -62,14 +62,23 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   an explicitly non-authoritative descriptor lease; all consumed metadata/shards
   keep their downstream SHA authentication and normal `SnapshotLease` stays fully
   verified.
-- [ ] The full runtime process can still be externally terminated during the first
-  shard of the **single required** authoritative `ExtentSource::scan_verified`
-  pass, before HIP allocation. That same scan passes all18 shards in the smaller
-  exact-source process, so do not weaken it or invent an extent pin. Localize the
-  external process boundary next; only then retry exact75GiB 27B HTTP under the
-  unchanged180s contract. Full27B/populated1K/2K acceptance still needs approved
-  reference material currently absent on X2. ROCm2B mismatch localization remains
-  fallback.
+- [x] The full runtime host path is stable when the X2 execution wrapper remains
+  alive: an optimized full-runtime unit-test binary completed the exact canonical
+  source/tokenizer/final-reader test in75.20s with source plan true and no GPU.
+  Earlier silent deaths were execution-envelope/build artifacts, not evidence of a
+  Qwen source bug; no source weakening followed.
+- [x] Retried the next authorized reference-free liveness gate: exact snapshot +
+  explicit75GiB resident budget + public HTTP route + exact47-token synthesized raw
+  prompt, under the unchanged180s server deadline and private native-GPU namespace.
+  The run reached HIP allocation (~31.376GB VRAM, busy6%) but the entire isolated
+  process disappeared after ~10..12s despite an external heartbeat, before any HTTP
+  status. This establishes allocation progress only, not HTTP/numerical acceptance.
+- [ ] X2 VRAM accounting remains stranded around31.376GB with busy0 and no surviving
+  model/KFD owner or OOM/driver-fault log. Stop all physical Qwen campaigns,
+  including ROCm2B fallback, until a clean baseline is re-established or the
+  GPU/connector/driver ownership boundary is safely localized. Do not implicitly
+  reset hardware/service state. Missing27B/populated1K/2K references remain a
+  separate acceptance blocker.
 - [ ] L5 remains the source/repository authority. X2 is execution/testing only and
   must be synced to the exact current l5 `main` before physical work; do not push
   merely to transfer local commits.
