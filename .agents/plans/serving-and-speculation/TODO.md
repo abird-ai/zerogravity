@@ -590,15 +590,20 @@ or a change to the active correctness/benchmark/27B order.
   incompatible Logits->StateOnly Native fallback with zero graph replay/retirement,
   unchanged roots/state, retained15,356,224-byte graph charge, explicit retirement,
   fresh-workspace recapture, trusted B2->B4 replacement and final reserved0/41MiB.
-- [~] Matched same-process B2 timing is positive but modest, so public serving still
-  selects `FusedExecution::Native`: 4 AB/BA warm pairs +12 samples each measured
-  Native mean273,933us / median267,847us versus selected-Graph mean264,881us /
-  median263,238us (~3.3% mean, ~1.7% median). The first fresh physical selector
-  invocation disappeared with no Rust error/exit code and is recorded incomplete;
-  the supervised direct rerun passed. Do not claim a serving win from this B2 result.
-  Next measure B4/B8 under the same contract and decide whether capture/selection
-  policy earns its retained resource/lifecycle complexity before any public route is
-  changed. CUDA driver-internal graph bytes/node enumeration remain unqualified.
+- [x] Signed `599cb28` closes matched production-selector timing through B4/B8
+  without rerunning the already accepted wide-graph arithmetic/state suite. Same
+  process/model/workspace/full-logit readback, 4 AB/BA warm pairs +12 samples/path:
+  B2 Native mean273,933us / median267,847us vs Graph264,881/263,238
+  (~3.30%/~1.72%); B4 273,801/273,910 vs270,766/270,805
+  (~1.11%/~1.13%); B8 362,559/360,951 vs359,915/359,649
+  (~0.73%/~0.36%). Exact graph replay deltas are12; B2/B4/B8 retained policy charges
+  are15,356,224/15,405,376/15,458,624 bytes; trusted retirement and final
+  reserved0/41MiB pass. Earlier direct B4/B8 invocations that disappeared without a
+  Rust result remain incomplete; supervised in-namespace reruns passed. The gain
+  shrinks with useful width and does **not** justify enabling public graph serving,
+  so ordinary serving stays `FusedExecution::Native`. Keep the private graph
+  cache/selector as a reusable qualified capability for materially different future
+  graph regions. CUDA driver-internal graph bytes/node enumeration remain unqualified.
 
 - [ ] **P12 prefix scheduling performance:** measure concurrent native prefix
   cold-process throughput/TTFT against the accepted max32-prefix implementation.

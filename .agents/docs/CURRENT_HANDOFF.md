@@ -28,8 +28,13 @@ and live TODOs are authoritative.
   incompatible typed profile or device-token route -> pre-enqueue Native; runtime
   identity/lifecycle drift or replay failure -> Error with no unsafe retry. External
   graph APIs remain qualification-only and ordinary serving still selects Native.
-  Physical B2 qualification passes this selector and lifecycle contract; no public
-  graph-serving permit follows from the modest B2 timing result.
+  Physical B2 qualification passes this selector/lifecycle contract. Signed
+  `599cb28945bee79ef70dc48ea35566c526a7f049` adds retained B4/B8 selector timing:
+  B2/B4/B8 mean gains are ~3.30%/~1.11%/~0.73% and median gains
+  ~1.72%/~1.13%/~0.36%, with exact replay-count/resource-retirement witnesses.
+  The gain shrinks with useful width, so public graph serving is deliberately not
+  enabled; ordinary serving remains Native and the private selector/cache stays
+  available for materially different future graph regions.
 - Earlier key implementation checkpoints include `f1ce532`
   (exact graph replay storage/access authority), `b0cf0b2`
   (`fix(cache): avoid duplicate Qwen snapshot hashing`), `134a571`
@@ -41,10 +46,11 @@ and live TODOs are authoritative.
   Their docs checkpoints through `b12e8f5` are pushed.
 - Pushed `origin/main` is `4502f5678e8cb1641848be62cd0fb5068bae1d09`
   (`docs: record resident graph lifecycle checkpoint`). Local history above it now
-  includes signed `9d6613c` (private fail-closed production selector + B2 matched
-  timing); this refresh may add another docs-only commit. X2 is synced to the exact
-  current local tip after each checkpoint even when its remote-tracking ref is stale.
-  Never push unless the user explicitly asks.
+  includes signed `9d6613c` (private fail-closed production selector), docs
+  `bc76312`, and signed `599cb28` (B4/B8 selector timing diagnostic); this refresh
+  may add another docs-only commit. X2 is synced to the exact current local tip after
+  each checkpoint even when its remote-tracking ref is stale. Never push unless the
+  user explicitly asks.
 - Before any new physical X2 run, sync it to the exact current l5 `main`
   bytes/commit without using a push merely as transport, then revalidate
   status/process/GPU state.
