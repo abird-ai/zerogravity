@@ -3,13 +3,15 @@
 Current source, tests, and this queue are authoritative; Git retains retired history.
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 
-Latest implementation checkpoint is signed `5bf440d`
-(`refactor(cuda): admit graph substrate in native builds`). It makes the existing
-CUDA graph identity/pin/replay/owner substrate compile in production
-`cuda-native` while keeping external capture/replay APIs qualification-only and
-ordinary serving on Native execution. Earlier implementation checkpoints include
-`b0cf0b2`, `134a571`, `874e67d` and `c282f20`; pushed history is through
-`d68b649`, with local docs checkpoints `5c8f143` / `3cadc3b` above it.
+Latest implementation checkpoint is signed `db7be60`
+(`feat(cuda): admit captured graph resources`). Above `5bf440d`, it preprices
+captured CUDA graph opaque resources inside the existing resident ledger/provider
+envelope, retains the charge through capture/quarantine/replay ownership and
+trusted retirement, and still leaves all production serving on Native execution.
+The charge is an explicit conservative policy reserve, not a claim about measured
+CUDA driver bytes. Earlier implementation checkpoints include `b0cf0b2`,
+`134a571`, `874e67d` and `c282f20`; pushed history remains through
+`d68b649`, with local docs `5c8f143` / `3cadc3b` / `bc9a1b3`.
 `origin/main` is `d68b649` at this refresh; revalidate live l5 `HEAD`/ahead
 count because this plan refresh may add a docs-only commit. X2 is
 the approved AMD large-VRAM execution/test host. Tiny-HIP runtime health is green;
@@ -45,10 +47,12 @@ Explicit75GiB-total HIP admission is signed`d16f096`; historical defaults unchan
 Complete substantial implementation batches before combined validation; full gate last.
 Prioritize working paths + early matched-vLLM feedback; reuse checks/evidence,
 add fixtures only for concrete gaps. Baselines need not await all models/batching.
-On l5, `5bf440d` begins the broader production CUDA graph-admission work at the
-shared ownership layer only; graph driver-resource pricing/admission and any
-production serving selector remain open. Do not infer graph participation from
-compile availability.
+On l5, `5bf440d` opened the broader production CUDA graph ownership substrate
+and `db7be60` adds prepaid opaque graph-resource admission in the same shared
+resident ledger. No serving selector is enabled. Physical charge qualification is
+still open because both fresh qualifier attempts hit the pre-graph CUDA
+compiler/module-lifetime poison boundary before resource admission; do not infer
+graph participation or physical acceptance from compile/host evidence.
 Owner direction: l5 owns repository/source changes; x2 is only for AMD
 large-VRAM execution/testing. Tiny HIP health is green and the full canonical27B
 host runtime source/tokenizer path now passes. The next explicit75GiB public HTTP

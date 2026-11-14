@@ -512,27 +512,42 @@ or a change to the active correctness/benchmark/27B order.
   and physical counts;
   this bounded observation does not establish numerical or serving parity.
 
-- [ ] **Production CUDA graph admission:** signed `5bf440d` closes the first
-  production compile/ownership boundary without selecting graphs. The existing
-  batch graph generation/profile/pin/replay machinery, captured-graph owner,
-  capture-window quarantine, live-graph band-replacement guards and completion-
-  owner retention now compile under the actual `cuda-native` capability used by
-  production Qwen CUDA. Generic `cuda` remains unchanged because graph ownership
-  requires the pinned native CUDA queue. External `ResidentModel::capture_*` /
-  `prepare_graph_*` entrypoints and qualification mutation helpers remain
-  `qualification`-only, and ordinary fused serving still constructs only
-  `FusedExecution::Native`; this does **not** enable production graph selection.
-  Production `cuda-cublas` check + strict Clippy, qualification strict Clippy,
-  generic-CUDA check, real `zerogravity --features qwen35-cuda` check and the
-  existing three graph topology/identity host tests pass. A strict production
-  Clippy run also exposed/fixed only a missing explicit-bindings lint annotation
-  on the retained shared-input BF16 pair; arithmetic/ABI are unchanged.
-  Still open: explicitly price/admit CUDA graph metadata/driver resources and
-  complete same-card constructor/transport/allocation/external-event/storage/
-  prepaid-retirement/final-drop integration before any production selector.
-  Private graph replay does not grant serving participation or performance.
-  Historical test-only host protocol14 cases/three ownership negatives and
-  transport14 cases/two intended ownership failures remain retained evidence.
+- [ ] **Production CUDA graph admission:** signed `5bf440d` first made the
+  graph identity/pin/replay/owner substrate available to production `cuda-native`
+  without selecting it. Signed `db7be60` now adds explicit opaque graph-resource
+  admission through the **same** resident ledger/provider envelope used by managed
+  buffers and other foreign driver resources; no second ResourceArbiter domain was
+  added. The policy reserve is deliberately labeled policy, not measured CUDA
+  internals:64KiB control + one4KiB page per prepaid source-dispatch slot + Rust
+  graph/receipt/lease-vector metadata. It is reserved before `graph_prepare`,
+  can grow only before capture starts, must cover the captured dispatch count,
+  travels with CaptureWindow/CapturedResidentGraph/quarantine owners, and releases
+  only after the existing trusted retirement path. Capture and retirement queue
+  work declare that already-prepaid footprint as `AllocationClass::Other`; the
+  physical queue remains scheduling-only and never charges the global envelope
+  twice. Actual CUDA driver graph bytes/node enumeration remain **unqualified**.
+- [x] Graph resource host/compile gates for `db7be60`: plain production `cuda`
+  remains graph-free; historical `qualification,cuda` and production
+  `cuda-native` share the graph substrate. Production `cuda-cublas` and
+  qualification+`cuda-cublas` strict Clippy pass, real
+  `zerogravity --features qwen35-cuda` and qualifier feature-union checks pass,
+  graph policy1 + topology/identity3 host tests pass, and existing opaque-resource
+  ownership tests pass7 foreign-charge +3 detached-budget cases including
+  shared-cap concurrency and poison/fence retention. External
+  `ResidentModel::capture_*` / `prepare_graph_*` remain qualification-only and
+  ordinary serving still constructs only `FusedExecution::Native`.
+- [ ] Physical requalification of the new charge is **not established**. Two
+  isolated RTX3060 attempts using the approved original0.8B GGUF—first historical
+  `qualification,cuda`, then a production-capable `cuda-cublas` feature
+  union—both failed in the initial ordinary session readback *before*
+  `GraphResourceAdmission::initial` / graph prepare, with the existing
+  `CUDA compiler/module lifetime is uncertain; process restart required` poison
+  boundary. Both processes exited and the card returned to41MiB. Do not attribute
+  those failures to the graph charge or call them graph acceptance. Next graph
+  work must first regain a clean physical qualifier path, then prove the prepaid
+  charge through capture/replay/retirement. Same-card external-event/storage and
+  complete production selector integration remain separate; private graph replay
+  still grants no serving participation/performance.
 
 - [ ] **P12 prefix scheduling performance:** measure concurrent native prefix
   cold-process throughput/TTFT against the accepted max32-prefix implementation.

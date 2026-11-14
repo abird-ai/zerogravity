@@ -18,12 +18,15 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation** checkpoint is
-  `5bf440d7f891111feac63f50d04a4333b40286bb`
-  (`refactor(cuda): admit graph substrate in native builds`). The existing CUDA
-  graph generation/profile/pin/replay owner path now compiles under production
-  `cuda-native`, the actual capability that owns a pinned CUDA queue. External
-  capture/replay entrypoints remain qualification-only and ordinary production
-  serving still selects only Native execution; no graph-serving permit follows.
+  `db7be604addc4f908efb8172eb51306ec436104f`
+  (`feat(cuda): admit captured graph resources`). Above `5bf440d`, captured CUDA
+  graphs now pre-admit opaque control/dispatch/owned-metadata resources inside the
+  same resident ledger/provider envelope and retain that charge across capture,
+  graph ownership, quarantine and trusted retirement. This is a conservative
+  policy reserve (64KiB control +4KiB per source-dispatch slot + Rust-owned
+  metadata), **not** measured driver memory. External capture/replay entrypoints
+  remain qualification-only and ordinary production serving still selects only
+  Native execution; no graph-serving permit follows.
 - Previous key implementation checkpoints include `b0cf0b2`
   (`fix(cache): avoid duplicate Qwen snapshot hashing`), `134a571`
   (`fix(hip): isolate CUDA private KV qualification`), `874e67d`
@@ -34,8 +37,9 @@ and live TODOs are authoritative.
 - `origin/main` is `d68b649031ac89ddfb88f6880cb7185208b25c09`
   (`docs: record X2 27B physical allocation blocker`). Local history above it is
   `5c8f143` (X2 KFD localization), `3cadc3b` (shared-pair Qwen consumer
-  rejection) and implementation `5bf440d` (production cuda-native graph
-  substrate); this refresh may add another docs-only commit. X2 is synced to the
+  rejection), implementation `5bf440d` (production cuda-native graph substrate),
+  docs `bc9a1b3`, and implementation `db7be60` (prepaid graph resources); this
+  refresh may add another docs-only commit. X2 is synced to the
   exact current local tip after each checkpoint even when its remote-tracking ref
   is stale. Never push unless the user explicitly asks.
 - Before any new physical X2 run, sync it to the exact current l5 `main`
@@ -701,27 +705,36 @@ capture, another GPU or another model.
    has now been measured and rejected because order/thermal drift dwarfed the
    ~1.04% favorable two-sided aggregate. Do not retry the same selection without a
    materially different composition.
-2. **Production CUDA graph admission is now the active broader l5 boundary.**
-   Signed `5bf440d` makes the existing graph workspace generation/profile/pin,
-   replay validation, captured owner/quarantine and fused graph ownership path
-   compile in normal `cuda-native` production builds. It deliberately keeps all
-   external capture/replay entrypoints qualification-only and ordinary serving
-   still constructs only `FusedExecution::Native`. Generic `cuda` is unchanged.
-   Production `cuda-cublas` check/strict Clippy, qualification strict Clippy,
-   generic-CUDA check, `zerogravity qwen35-cuda` check and three graph
-   topology/identity host tests pass. **Still open before any production graph
-   selector:** explicit graph metadata/driver-resource pricing/admission and the
-   remaining same-card external-event/storage/prepaid-retirement/final-drop
+2. **Production CUDA graph admission is the active broader l5 boundary.**
+   `5bf440d` made graph identity/pin/replay/owner plumbing production-compilable;
+   `db7be60` now pre-admits graph opaque resources through the same local ledger
+   and global provider envelope. Policy is64KiB control +4KiB per prepaid
+   source-dispatch slot + Rust graph/receipt/lease-vector metadata; actual CUDA
+   driver bytes remain unqualified. The charge is acquired before `graph_prepare`,
+   may grow only before capture starts, must cover the recorded body, survives
+   CaptureWindow/CapturedResidentGraph/quarantine ownership and releases only after
+   trusted retirement. Queue work uses prepaid `AllocationClass::Other`; there is
+   no second global charge. External graph APIs remain qualification-only and
+   production serving remains `FusedExecution::Native`.
+3. Compile/host acceptance for `db7be60` is green: plain CUDA remains graph-free;
+   production/qualification CUDA-cublas strict Clippy and real Qwen production
+   checks pass; graph policy1 + graph identity/topology3 + foreign ownership7 +
+   detached-budget3 host tests pass. **Physical graph charge acceptance is still
+   open.** Both approved0.8B RTX3060 qualifier attempts failed during the initial
+   ordinary session readback, before graph resource admission/capture, at the
+   existing CUDA compiler/module-lifetime poison boundary; both returned the card
+   to41MiB. Regain that physical qualifier boundary before claiming the new charge
+   exercised. Then finish remaining same-card external-event/storage and selector
    integration. Compile availability is not participation/performance acceptance.
-3. **Large CUDA same-contract distribution/state acceptance is open but blocked.**
+4. **Large CUDA same-contract distribution/state acceptance is open but blocked.**
    Cross-profile diagnostics are not acceptance. Approved original reference/archive
    material needed for the intended rerun is missing on l5; do not invent
    tolerances, repin or substitute another model/reference.
-4. **Unequal-frontier prefill remains held.** First-lane coupling was hardened, but
+5. **Unequal-frontier prefill remains held.** First-lane coupling was hardened, but
    admission stays same-frontier. Per-lane source position/base/state semantics
    still need approved HF source plus private-singleton physical comparison before
    scheduler admission changes.
-5. Broader HTTP/context/vLLM campaigns remain separate from quick CUDA direct
+6. Broader HTTP/context/vLLM campaigns remain separate from quick CUDA direct
    feedback. Continue the larger runtime/serving capability rather than returning
    to endless sub-percent kernel churn.
 
