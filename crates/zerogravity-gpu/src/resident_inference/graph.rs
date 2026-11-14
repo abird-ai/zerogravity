@@ -14,10 +14,12 @@ use crate::physical_quarantine::CompletionOwner;
 use crate::resident_leases::ForeignProviderCharge;
 use crate::resident_program::{BatchBodyReceipt, BatchGraphProfile, BatchGraphReplay};
 use cubecl::client::Graph;
+use cubecl_common::device::ServiceId;
 use std::sync::{
     Mutex as HostMutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
+use zerogravity_core::accelerator::SourceIdentity;
 #[cfg(feature = "qualification")]
 pub(super) mod qualification;
 #[cfg(feature = "qualification")]
@@ -26,6 +28,180 @@ pub(super) mod wider;
 const GRAPH_CONTROL_RESERVE_BYTES: usize = 64 * 1024;
 const GRAPH_DISPATCH_RESERVE_BYTES: usize = 4 * 1024;
 const GRAPH_DISPATCH_BOUND: usize = 65_536;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ProductionGraphKey {
+    source: SourceIdentity,
+    service_generation: u64,
+    service: ServiceId,
+    stream: u64,
+    profile: BatchGraphProfile,
+}
+impl ProductionGraphKey {
+    fn current(service: &Arc<ResidentService>, profile: BatchGraphProfile) -> Result<Self> {
+        let queue = service.pinned_cuda_queue()?;
+        Ok(Self {
+            source: service.source_identity(),
+            service_generation: service.generation(),
+            service: service.client().service_id(),
+            stream: queue.logical_stream_id().value,
+            profile,
+        })
+    }
+
+    fn same_runtime(&self, other: &Self) -> bool {
+        self.source == other.source
+            && self.service_generation == other.service_generation
+            && self.service == other.service
+            && self.stream == other.stream
+    }
+}
+
+enum ProductionGraphState {
+    Cold,
+    Capturing,
+    Live {
+        graph: Arc<CapturedResidentGraph>,
+        retirement_root: u64,
+    },
+    Spent,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GraphCaptureOwner {
+    Qualification,
+    ProductionCache,
+}
+
+/// One private graph owner per live native batch workspace. A capture attempt is
+/// one-shot for that workspace: success installs the sole lifecycle owner, while
+/// any failed/retired attempt makes the workspace graph-ineligible until the
+/// workspace itself is replaced.
+pub(super) struct ProductionGraphCache {
+    state: ProductionGraphState,
+}
+impl ProductionGraphCache {
+    pub(super) fn cold() -> Self {
+        Self {
+            state: ProductionGraphState::Cold,
+        }
+    }
+
+    fn can_begin(&self) -> bool {
+        matches!(self.state, ProductionGraphState::Cold)
+    }
+
+    fn begin(&mut self) -> Result<()> {
+        if !self.can_begin() {
+            return Err(Error::State(
+                "one production graph capture per live batch workspace".into(),
+            ));
+        }
+        self.state = ProductionGraphState::Capturing;
+        Ok(())
+    }
+
+    fn install(&mut self, graph: Arc<CapturedResidentGraph>, retirement_root: u64) -> Result<()> {
+        if !matches!(self.state, ProductionGraphState::Capturing) {
+            return Err(Error::State(
+                "production graph cache install without capture owner".into(),
+            ));
+        }
+        self.state = ProductionGraphState::Live {
+            graph,
+            retirement_root,
+        };
+        Ok(())
+    }
+
+    fn capture_failed(&mut self) {
+        if matches!(self.state, ProductionGraphState::Capturing) {
+            self.state = ProductionGraphState::Spent;
+        }
+    }
+
+    pub(super) fn is_capturing(&self) -> bool {
+        matches!(self.state, ProductionGraphState::Capturing)
+    }
+
+    pub(super) fn is_live(&self) -> bool {
+        matches!(self.state, ProductionGraphState::Live { .. })
+    }
+
+    pub(super) fn reclaimable_bytes(&self) -> usize {
+        match &self.state {
+            ProductionGraphState::Live { graph, .. } => graph.receipt.resource_charge_bytes,
+            _ => 0,
+        }
+    }
+
+    fn compatible(
+        &self,
+        model: &ResidentModel,
+        program: &BatchProgram,
+        parameters: &[RuntimeParameters],
+        output: ResidentOutput,
+    ) -> Result<Option<Arc<CapturedResidentGraph>>> {
+        let ProductionGraphState::Live { graph, .. } = &self.state else {
+            if self.is_capturing() {
+                return Err(Error::State(
+                    "production graph cache lookup during capture".into(),
+                ));
+            }
+            return Ok(None);
+        };
+        let profile = match program.graph_profile(parameters, output) {
+            Ok(profile) => profile,
+            Err(Error::Unsupported(_)) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        let captured = graph.cache_key();
+        let current = ProductionGraphKey::current(&model.service, profile)?;
+        if !Arc::ptr_eq(&graph.service, &model.service) || !captured.same_runtime(&current) {
+            return Err(Error::State(
+                "production graph cache runtime identity changed".into(),
+            ));
+        }
+        if captured.profile != current.profile {
+            return Ok(None);
+        }
+        graph.validate_cache_identity(model, program, parameters, output)?;
+        Ok(Some(graph.clone()))
+    }
+
+    pub(super) fn take_for_retirement(
+        &mut self,
+    ) -> Result<Option<(Arc<CapturedResidentGraph>, u64)>> {
+        match self.state {
+            ProductionGraphState::Capturing => {
+                return Err(Error::State(
+                    "production graph capture blocks batch replacement".into(),
+                ));
+            }
+            ProductionGraphState::Cold | ProductionGraphState::Spent => return Ok(None),
+            ProductionGraphState::Live { .. } => {}
+        }
+        let state = std::mem::replace(&mut self.state, ProductionGraphState::Spent);
+        let ProductionGraphState::Live {
+            graph,
+            retirement_root,
+        } = state
+        else {
+            unreachable!("live state checked above");
+        };
+        Ok(Some((graph, retirement_root)))
+    }
+
+    #[cfg(feature = "qualification")]
+    fn witness(&self) -> &'static str {
+        match self.state {
+            ProductionGraphState::Cold => "cold",
+            ProductionGraphState::Capturing => "capturing",
+            ProductionGraphState::Live { .. } => "live",
+            ProductionGraphState::Spent => "spent",
+        }
+    }
+}
 
 fn graph_policy_bytes(dispatches: usize, access_capacity: usize) -> Result<usize> {
     if dispatches == 0 || dispatches > GRAPH_DISPATCH_BOUND || access_capacity > 65_536 {
@@ -184,6 +360,16 @@ impl Drop for CapturedResidentGraph {
 }
 
 impl CapturedResidentGraph {
+    fn cache_key(&self) -> ProductionGraphKey {
+        ProductionGraphKey {
+            source: self.service.source_identity(),
+            service_generation: self.service.generation(),
+            service: self.service.client().service_id(),
+            stream: self.stream,
+            profile: self.profile,
+        }
+    }
+
     pub fn output(&self) -> ResidentOutput {
         self.profile.output
     }
@@ -198,8 +384,12 @@ impl CapturedResidentGraph {
         self.service.ensure_usable()?;
         self.resource.require_service(&self.service)?;
         let queue = self.service.pinned_cuda_queue()?;
+        let key = self.cache_key();
         if !Arc::ptr_eq(&self.service, &model.service)
             || self.retired.load(Ordering::Acquire)
+            || key.source != model.service.source_identity()
+            || key.service_generation != model.service.generation()
+            || key.service != model.service.client().service_id()
             || self.service.client().service_id() != queue.service_id()
             || self.stream != queue.logical_stream_id().value
             || !matches!(
@@ -233,6 +423,24 @@ impl CapturedResidentGraph {
             return Err(Error::State("stale resident graph workspace key".into()));
         }
         Ok(())
+    }
+
+    fn validate_cache_identity(
+        &self,
+        model: &ResidentModel,
+        program: &BatchProgram,
+        parameters: &[RuntimeParameters],
+        output: ResidentOutput,
+    ) -> Result<()> {
+        let profile = program.graph_profile(parameters, output)?;
+        if !Arc::ptr_eq(&self.service, &model.service)
+            || self.cache_key() != ProductionGraphKey::current(&model.service, profile)?
+        {
+            return Err(Error::State(
+                "production graph cache identity changed before install".into(),
+            ));
+        }
+        self.validate_program(program, parameters)
     }
 
     /// A graph replay is authorized only by the same armed resident event that
@@ -456,8 +664,12 @@ impl ResidentModel {
                 "initial graph wrapper remains B2".into(),
             ));
         }
-        self.capture_body_internal(rows, ResidentOutput::Logits)
-            .await
+        self.capture_body_internal(
+            rows,
+            ResidentOutput::Logits,
+            GraphCaptureOwner::Qualification,
+        )
+        .await
     }
 
     #[cfg(feature = "qualification")]
@@ -466,13 +678,15 @@ impl ResidentModel {
         rows: &[(&ResidentSession, u32)],
         output: ResidentOutput,
     ) -> Result<Arc<CapturedResidentGraph>> {
-        self.capture_body_internal(rows, output).await
+        self.capture_body_internal(rows, output, GraphCaptureOwner::Qualification)
+            .await
     }
 
     async fn capture_body_internal(
         self: &Arc<Self>,
         rows: &[(&ResidentSession, u32)],
         output: ResidentOutput,
+        owner: GraphCaptureOwner,
     ) -> Result<Arc<CapturedResidentGraph>> {
         self.service.pinned_cuda_queue()?;
         if !matches!(rows.len(), 2 | 4 | 8)
@@ -488,11 +702,10 @@ impl ResidentModel {
             if workspace.program.plan().nodes().len() > 4096 {
                 return Err(Error::Limit("graph original plan node bound".into()));
             }
-            if workspace
-                .batch
-                .as_ref()
-                .is_some_and(|b| b.program.graph_pinned())
-                || self.service.client().is_capturing()
+            if workspace.batch.as_ref().is_some_and(|b| {
+                b.program.graph_pinned()
+                    || (owner == GraphCaptureOwner::ProductionCache && !b.graph_cache.can_begin())
+            }) || self.service.client().is_capturing()
             {
                 return Err(Error::State(
                     "one cold capture per live batch workspace".into(),
@@ -521,7 +734,7 @@ impl ResidentModel {
         let first_count = first.dispatches();
         drop(first);
         let (accesses, band_pin, profile) = {
-            let workspace = self.workspace.lock().await;
+            let mut workspace = self.workspace.lock().await;
             let batch = workspace
                 .batch
                 .as_ref()
@@ -542,7 +755,21 @@ impl ResidentModel {
                 })
                 .cloned()
                 .collect::<Vec<_>>();
-            (accesses, batch.program.graph_pin(), profile)
+            if owner == GraphCaptureOwner::ProductionCache {
+                workspace
+                    .batch
+                    .as_mut()
+                    .expect("graph warm batch checked above")
+                    .graph_cache
+                    .begin()?;
+            }
+            let band_pin = workspace
+                .batch
+                .as_ref()
+                .expect("graph warm batch checked above")
+                .program
+                .graph_pin();
+            (accesses, band_pin, profile)
         };
         if accesses.is_empty() || accesses.len() > 65_536 || profile.body_nodes > 4096 {
             return Err(Error::Limit("graph lease/access metadata bound".into()));
@@ -557,9 +784,14 @@ impl ResidentModel {
             accesses.capacity(),
         )?;
         let mut window = CaptureWindow::prepare(&self.service, leases.clone(), band_pin, resource)?;
-        let second = match output {
-            ResidentOutput::StateOnly => self.prepare_state_fused_cohort(rows).await?,
-            ResidentOutput::Logits => self.prepare_logits_fused_cohort(rows).await?,
+        let second = match owner {
+            GraphCaptureOwner::Qualification => match output {
+                ResidentOutput::StateOnly => self.prepare_state_fused_cohort(rows).await?,
+                ResidentOutput::Logits => self.prepare_logits_fused_cohort(rows).await?,
+            },
+            GraphCaptureOwner::ProductionCache => {
+                self.prepare_graph_capture_warm(rows, output).await?
+            }
         };
         let second_count = second.dispatches();
         drop(second);
@@ -690,6 +922,201 @@ impl ResidentModel {
         Ok(graph)
     }
 
+    async fn prepare_graph_capture_warm(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, u32)],
+        output: ResidentOutput,
+    ) -> Result<PreparedResidentCohort> {
+        let readout = match output {
+            ResidentOutput::StateOnly => Readout::None,
+            ResidentOutput::Logits => Readout::Logits,
+        };
+        self.prepare_fused_execution(
+            rows,
+            None,
+            readout,
+            super::fused::FusedExecution::CaptureWarm,
+        )
+        .await?
+        .ok_or_else(|| Error::Limit("graph capture warm admission exhausted".into()))
+    }
+
+    #[cfg_attr(
+        not(feature = "qualification"),
+        allow(
+            dead_code,
+            reason = "production graph capture is admitted before its serving selector"
+        )
+    )]
+    async fn capture_production_graph_cached(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, u32)],
+        output: ResidentOutput,
+    ) -> Result<GraphCaptureReceipt> {
+        let captured = self
+            .capture_body_internal(rows, output, GraphCaptureOwner::ProductionCache)
+            .await;
+        let graph = match captured {
+            Ok(graph) => graph,
+            Err(error) => {
+                let mut workspace = self.workspace.lock().await;
+                if let Some(batch) = workspace
+                    .batch
+                    .as_mut()
+                    .filter(|batch| batch.rows == rows.len())
+                {
+                    batch.graph_cache.capture_failed();
+                }
+                return Err(error);
+            }
+        };
+        let parameters = rows
+            .iter()
+            .map(|(session, token)| {
+                let position = usize::try_from(session.binding().frontier())
+                    .map_err(|_| Error::Limit("graph cache frontier".into()))?;
+                Ok(RuntimeParameters {
+                    token: *token,
+                    position,
+                    valid_tokens: position + 1,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let receipt = graph.receipt();
+        let install = {
+            let mut workspace = self.workspace.lock().await;
+            let batch = workspace
+                .batch
+                .as_mut()
+                .filter(|batch| batch.rows == rows.len())
+                .ok_or_else(|| Error::State("production graph cache workspace changed".into()))?;
+            graph.validate_cache_identity(self, &batch.program, &parameters, output)?;
+            batch
+                .graph_cache
+                .install(graph.clone(), rows[0].0.binding().root())
+        };
+        if let Err(error) = install {
+            let mut workspace = self.workspace.lock().await;
+            if let Some(batch) = workspace
+                .batch
+                .as_mut()
+                .filter(|batch| batch.rows == rows.len())
+            {
+                batch.graph_cache.capture_failed();
+            }
+            return Err(error);
+        }
+        drop(graph);
+        Ok(receipt)
+    }
+
+    #[cfg_attr(
+        not(feature = "qualification"),
+        allow(
+            dead_code,
+            reason = "production graph teardown is admitted before its serving selector"
+        )
+    )]
+    async fn retire_production_graph_cached(self: &Arc<Self>) -> Result<bool> {
+        let _allocation = self.allocation.lock().await;
+        let retirement = {
+            let mut workspace = self.workspace.lock().await;
+            let Some(batch) = workspace.batch.as_mut() else {
+                return Ok(false);
+            };
+            if batch.graph_cache.is_capturing() {
+                return Err(Error::State(
+                    "production graph retirement during capture".into(),
+                ));
+            }
+            if batch.program.graph_pinned() && !batch.graph_cache.is_live() {
+                return Err(Error::State(
+                    "externally owned graph must retire through its original owner".into(),
+                ));
+            }
+            if batch.graph_cache.is_live() && !batch.program.graph_pinned() {
+                return Err(Error::State(
+                    "production graph cache lost its batch workspace pin".into(),
+                ));
+            }
+            batch.graph_cache.take_for_retirement()?
+        };
+        let Some((graph, root)) = retirement else {
+            return Ok(false);
+        };
+        graph.retire(root).await?;
+        let workspace = self.workspace.lock().await;
+        let batch = workspace
+            .batch
+            .as_ref()
+            .ok_or_else(|| Error::State("retired production graph workspace disappeared".into()))?;
+        if batch.program.graph_pinned()
+            || batch.graph_cache.is_live()
+            || batch.graph_cache.is_capturing()
+        {
+            return Err(Error::State(
+                "trusted production graph retirement retained executable ownership".into(),
+            ));
+        }
+        Ok(true)
+    }
+
+    #[cfg(feature = "qualification")]
+    pub async fn qualification_retire_production_graph(self: &Arc<Self>) -> Result<bool> {
+        self.retire_production_graph_cached().await
+    }
+
+    #[cfg(feature = "qualification")]
+    pub async fn qualification_capture_production_graph(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, u32)],
+        output: ResidentOutput,
+    ) -> Result<GraphCaptureReceipt> {
+        self.capture_production_graph_cached(rows, output).await
+    }
+
+    #[cfg(feature = "qualification")]
+    pub async fn qualification_production_graph_cache_state(&self) -> Result<&'static str> {
+        let workspace = self.workspace.lock().await;
+        Ok(workspace
+            .batch
+            .as_ref()
+            .map(|batch| batch.graph_cache.witness())
+            .unwrap_or("absent"))
+    }
+
+    #[cfg(feature = "qualification")]
+    pub async fn qualification_production_graph_cache_compatible(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, u32)],
+        output: ResidentOutput,
+    ) -> Result<bool> {
+        let parameters = rows
+            .iter()
+            .map(|(session, token)| {
+                let position = usize::try_from(session.binding().frontier())
+                    .map_err(|_| Error::Limit("graph cache lookup frontier".into()))?;
+                Ok(RuntimeParameters {
+                    token: *token,
+                    position,
+                    valid_tokens: position + 1,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let workspace = self.workspace.lock().await;
+        let Some(batch) = workspace
+            .batch
+            .as_ref()
+            .filter(|batch| batch.rows == rows.len())
+        else {
+            return Ok(false);
+        };
+        Ok(batch
+            .graph_cache
+            .compatible(self, &batch.program, &parameters, output)?
+            .is_some())
+    }
+
     #[cfg(feature = "qualification")]
     pub async fn prepare_graph_logits(
         self: &Arc<Self>,
@@ -751,6 +1178,27 @@ mod resource_policy_tests {
         assert!(graph_policy_bytes(0, 1).is_err());
         assert!(graph_policy_bytes(GRAPH_DISPATCH_BOUND + 1, 1).is_err());
         assert!(graph_policy_bytes(1, 65_537).is_err());
+    }
+
+    #[test]
+    fn production_graph_capture_attempt_is_one_shot_per_workspace() {
+        let mut cache = ProductionGraphCache::cold();
+        assert!(cache.take_for_retirement().unwrap().is_none());
+        assert!(cache.can_begin());
+        assert_eq!(cache.witness(), "cold");
+        cache.begin().unwrap();
+        assert!(!cache.can_begin());
+        assert!(cache.is_capturing());
+        assert_eq!(cache.witness(), "capturing");
+        assert!(cache.take_for_retirement().is_err());
+        cache.capture_failed();
+        assert!(!cache.can_begin());
+        assert!(!cache.is_capturing());
+        assert!(!cache.is_live());
+        assert_eq!(cache.witness(), "spent");
+        assert!(cache.take_for_retirement().unwrap().is_none());
+        assert_eq!(cache.witness(), "spent");
+        assert!(cache.begin().is_err());
     }
 }
 

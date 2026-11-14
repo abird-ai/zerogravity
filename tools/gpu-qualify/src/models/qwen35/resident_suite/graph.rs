@@ -319,6 +319,100 @@ pub async fn qualify(
             "retired graph batch bytes not reclaimable".into(),
         ));
     }
+
+    // Production lifecycle/cache qualification stays private: capture installs
+    // one live graph in the batch workspace, a second capture refuses, and a
+    // different native band must retire/destroy the graph before replacement.
+    let production_rows = [(&sessions[0], 11), (&sessions[1], 17)];
+    let production_receipt = resident
+        .qualification_capture_production_graph(&production_rows, ResidentOutput::Logits)
+        .await?;
+    if resident
+        .qualification_production_graph_cache_state()
+        .await?
+        != "live"
+        || resident.qualification().foreign_bytes()? != production_receipt.resource_charge_bytes
+        || !resident
+            .qualification_production_graph_cache_compatible(
+                &production_rows,
+                ResidentOutput::Logits,
+            )
+            .await?
+        || resident
+            .qualification_production_graph_cache_compatible(
+                &production_rows,
+                ResidentOutput::StateOnly,
+            )
+            .await?
+    {
+        return Err(Error::State(
+            "production graph cache live identity/profile witness failed".into(),
+        ));
+    }
+    let production_live_bytes = resident.qualification().resident_bytes()?;
+    if resident
+        .qualification_capture_production_graph(&production_rows, ResidentOutput::Logits)
+        .await
+        .is_ok()
+    {
+        return Err(Error::State(
+            "production graph cache admitted a second cold capture".into(),
+        ));
+    }
+    idle_at(
+        &resident,
+        production_live_bytes,
+        "post-production-cache-refusal",
+    )?;
+    if !resident.qualification_retire_production_graph().await?
+        || resident
+            .qualification_production_graph_cache_state()
+            .await?
+            != "spent"
+        || resident.qualification().foreign_bytes()? != 0
+    {
+        return Err(Error::State(
+            "explicit production graph retirement retained stale cache/charge".into(),
+        ));
+    }
+    resident.qualification_release_graph_band().await?;
+
+    // A new live batch workspace may capture once again. Replacing that band
+    // must retire the second cached graph before any new batch storage is built.
+    let replacement_receipt = resident
+        .qualification_capture_production_graph(&production_rows, ResidentOutput::Logits)
+        .await?;
+    if resident
+        .qualification_production_graph_cache_state()
+        .await?
+        != "live"
+        || resident.qualification().foreign_bytes()? != replacement_receipt.resource_charge_bytes
+    {
+        return Err(Error::State(
+            "fresh production graph workspace failed to own its cache/charge".into(),
+        ));
+    }
+    let replacement = resident
+        .prepare_logits_fused_cohort(&[
+            (&sessions[0], 19),
+            (&sessions[1], 23),
+            (&singles[0], 29),
+            (&singles[1], 31),
+        ])
+        .await?;
+    drop(replacement);
+    if resident
+        .qualification_production_graph_cache_state()
+        .await?
+        != "cold"
+        || resident.qualification().foreign_bytes()? != 0
+    {
+        return Err(Error::State(
+            "production graph replacement retained stale cache/charge".into(),
+        ));
+    }
+    resident.qualification_release_graph_band().await?;
+
     drop(cpus);
     drop(native);
     drop(singles);
@@ -333,7 +427,7 @@ pub async fn qualify(
         ));
     }
     println!(
-        "P12_GRAPH_B2_LOGITS_PASS source=original_GGUF rows=2 independent_frontiers=true swapped_rows=true full_vocab=248320 all_domains=42 steps=4 warm_kernels={:?} captured_body_kernel_launch_sites={} outside_kernels_per_replay={} graph_host_enqueues={} committed_kernel_launches={} recorded_model_execution=0 retained_engine_lease_bytes={} owned_lease_vector_bytes={} graph_policy_charge_bytes={} graph_policy_charge_retained_while_live=true graph_policy_charge_released_on_retire=true driver_internal_bytes=unqualified driver_graph_node_enumeration=unqualified synthetic_padding_guard=true sampler=outside_unused final_reserved=0",
+        "P12_GRAPH_B2_LOGITS_PASS source=original_GGUF rows=2 independent_frontiers=true swapped_rows=true full_vocab=248320 all_domains=42 steps=4 warm_kernels={:?} captured_body_kernel_launch_sites={} outside_kernels_per_replay={} graph_host_enqueues={} committed_kernel_launches={} recorded_model_execution=0 retained_engine_lease_bytes={} owned_lease_vector_bytes={} graph_policy_charge_bytes={} graph_policy_charge_retained_while_live=true graph_policy_charge_released_on_retire=true production_cache_capture_once=true production_cache_charge_bytes={} production_cache_compatible_lookup=true production_cache_incompatible_profile_miss=true production_cache_second_capture_refused=true production_cache_explicit_retire=true production_cache_explicit_retire_state=spent production_cache_explicit_retire_foreign_bytes=0 production_cache_fresh_workspace_recapture=true production_cache_replacement_charge_bytes={} production_cache_replacement=B2_to_B4 production_cache_replacement_retired_before_release=true production_cache_replacement_foreign_bytes=0 replacement_cache_state=cold driver_internal_bytes=unqualified driver_graph_node_enumeration=unqualified synthetic_padding_guard=true sampler=outside_unused final_reserved=0",
         receipt.warm_dispatches,
         receipt.captured_kernels,
         total_kernels - receipt.captured_kernels,
@@ -341,7 +435,9 @@ pub async fn qualify(
         committed_kernels,
         receipt.retained_lease_bytes,
         receipt.owned_lease_vector_bytes,
-        receipt.resource_charge_bytes
+        receipt.resource_charge_bytes,
+        production_receipt.resource_charge_bytes,
+        replacement_receipt.resource_charge_bytes
     );
     Ok(())
 }

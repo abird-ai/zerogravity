@@ -251,7 +251,7 @@ impl ResidentService {
     /// or submission. Capture-specific policy remains qualification-only.
     #[cfg(all(
         feature = "cuda",
-        any(feature = "qualification", feature = "cuda-cublas")
+        any(feature = "qualification", feature = "cuda-native")
     ))]
     #[allow(dead_code)] // Staged ordinary CUDA constructor; public route remains refused.
     pub fn new_pinned_cuda(
@@ -333,7 +333,7 @@ impl ResidentService {
     }
     #[cfg(all(
         feature = "cuda",
-        any(feature = "qualification", feature = "cuda-cublas")
+        any(feature = "qualification", feature = "cuda-native")
     ))]
     pub fn pinned_cuda_queue(&self) -> Result<&Arc<cubecl::cuda::OwnedCudaQueue>> {
         self.ensure_usable()?;

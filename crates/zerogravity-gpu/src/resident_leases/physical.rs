@@ -40,7 +40,7 @@ pub struct ResidentPhysical {
     pub(super) provider: crate::backend::Provider,
     #[cfg(all(
         feature = "cuda",
-        any(feature = "qualification", feature = "cuda-cublas")
+        any(feature = "qualification", feature = "cuda-native")
     ))]
     pub(super) pinned_cuda_queue: Option<Arc<cubecl::cuda::OwnedCudaQueue>>,
     pub(super) budget: PhysicalServiceBudget,
@@ -255,7 +255,7 @@ impl ResidentPhysical {
             provider,
             #[cfg(all(
                 feature = "cuda",
-                any(feature = "qualification", feature = "cuda-cublas")
+                any(feature = "qualification", feature = "cuda-native")
             ))]
             pinned_cuda_queue: None,
             ledger: Arc::new(Mutex::new(ResidentLedger::physical(
@@ -522,7 +522,7 @@ impl ResidentPhysical {
     }
     #[cfg(all(
         feature = "cuda",
-        any(feature = "qualification", feature = "cuda-cublas")
+        any(feature = "qualification", feature = "cuda-native")
     ))]
     #[allow(dead_code)] // Staged ordinary CUDA constructor; selector remains refused.
     pub(crate) fn new_pinned_cuda(

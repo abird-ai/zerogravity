@@ -7,6 +7,11 @@ pub(super) enum FusedExecution {
         feature = "cuda",
         any(feature = "qualification", feature = "cuda-native")
     ))]
+    CaptureWarm,
+    #[cfg(all(
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-native")
+    ))]
     #[cfg_attr(
         not(feature = "qualification"),
         allow(
@@ -237,6 +242,11 @@ impl ResidentModel {
         // This lock follows any prior actual terminal completion. Account the
         // complete candidate/packet/workspace footprint before retiring an idle
         // band or allocating a single candidate. No scheduler byte credits.
+        #[cfg(all(
+            feature = "cuda",
+            any(feature = "qualification", feature = "cuda-native")
+        ))]
+        let mut graph_to_retire = None;
         {
             let mut workspace = self.workspace.lock().await;
             self.service.ensure_usable()?;
@@ -248,15 +258,42 @@ impl ResidentModel {
                 feature = "cuda",
                 any(feature = "qualification", feature = "cuda-native")
             ))]
-            if !same_band
-                && workspace
-                    .batch
-                    .as_ref()
-                    .is_some_and(|b| b.program.graph_pinned())
-            {
-                return Err(Error::State(
-                    "graph workspace must retire before band replacement".into(),
-                ));
+            if let Some(batch) = workspace.batch.as_ref() {
+                if batch.graph_cache.is_capturing()
+                    && !matches!(execution, FusedExecution::CaptureWarm)
+                {
+                    return Err(Error::State(
+                        "production graph capture owns the native batch workspace".into(),
+                    ));
+                }
+                if matches!(execution, FusedExecution::CaptureWarm)
+                    && !batch.graph_cache.is_capturing()
+                {
+                    return Err(Error::State(
+                        "graph capture warm requires the live capture owner".into(),
+                    ));
+                }
+            }
+            #[cfg(all(
+                feature = "cuda",
+                any(feature = "qualification", feature = "cuda-native")
+            ))]
+            if !same_band && let Some(batch) = workspace.batch.as_ref() {
+                if batch.graph_cache.is_capturing() {
+                    return Err(Error::State(
+                        "production graph capture blocks batch replacement".into(),
+                    ));
+                }
+                if batch.program.graph_pinned() && !batch.graph_cache.is_live() {
+                    return Err(Error::State(
+                        "externally owned graph must retire before band replacement".into(),
+                    ));
+                }
+                if batch.graph_cache.is_live() && !batch.program.graph_pinned() {
+                    return Err(Error::State(
+                        "production graph cache lost its batch workspace pin".into(),
+                    ));
+                }
             }
             #[cfg(all(
                 feature = "cuda",
@@ -290,6 +327,23 @@ impl ResidentModel {
                     .transpose()?
                     .unwrap_or(0)
             };
+            #[cfg(all(
+                feature = "cuda",
+                any(feature = "qualification", feature = "cuda-native")
+            ))]
+            let reclaimable = if same_band {
+                reclaimable
+            } else {
+                reclaimable
+                    .checked_add(
+                        workspace
+                            .batch
+                            .as_ref()
+                            .map(|batch| batch.graph_cache.reclaimable_bytes())
+                            .unwrap_or(0),
+                    )
+                    .ok_or_else(|| Error::Limit("native graph reclaimable bytes overflow".into()))?
+            };
             let workspace_bytes = if same_band {
                 0
             } else {
@@ -308,8 +362,48 @@ impl ResidentModel {
                 return Ok(None);
             }
             if !same_band {
-                workspace.batch = None;
+                #[cfg(all(
+                    feature = "cuda",
+                    any(feature = "qualification", feature = "cuda-native")
+                ))]
+                if let Some(batch) = workspace.batch.as_mut()
+                    && batch.program.graph_pinned()
+                {
+                    graph_to_retire = batch.graph_cache.take_for_retirement()?;
+                }
+                #[cfg(all(
+                    feature = "cuda",
+                    any(feature = "qualification", feature = "cuda-native")
+                ))]
+                if graph_to_retire.is_none() {
+                    workspace.batch = None;
+                }
+                #[cfg(not(all(
+                    feature = "cuda",
+                    any(feature = "qualification", feature = "cuda-native")
+                )))]
+                {
+                    workspace.batch = None;
+                }
             }
+        }
+        #[cfg(all(
+            feature = "cuda",
+            any(feature = "qualification", feature = "cuda-native")
+        ))]
+        if let Some((graph, root)) = graph_to_retire {
+            graph.retire(root).await?;
+            let mut workspace = self.workspace.lock().await;
+            let batch = workspace
+                .batch
+                .as_ref()
+                .ok_or_else(|| Error::State("retired graph batch workspace disappeared".into()))?;
+            if batch.rows == rows.len() || batch.program.graph_pinned() {
+                return Err(Error::State(
+                    "retired production graph did not release replaced batch workspace".into(),
+                ));
+            }
+            workspace.batch = None;
         }
         let mut candidates = Vec::with_capacity(rows.len());
         for _ in rows {
@@ -435,6 +529,11 @@ impl ResidentModel {
                 program,
                 leases,
                 rows: rows.len(),
+                #[cfg(all(
+                    feature = "cuda",
+                    any(feature = "qualification", feature = "cuda-native")
+                ))]
+                graph_cache: super::graph::ProductionGraphCache::cold(),
             });
             // Initialization reached a real terminal sync. Retire its slot,
             // then release the workspace before waiting for execution: a B1
@@ -549,25 +648,31 @@ impl ResidentModel {
             flight
         };
         let program = &mut workspace.batch.as_mut().unwrap().program;
+        let launch_native = |program: &mut BatchProgram| {
+            if let Some(tokens) = &device_buffers {
+                program.launch_device_tokens(
+                    self.service.client(),
+                    &parameters,
+                    &bindings,
+                    tokens,
+                    output,
+                )
+            } else {
+                program.launch(self.service.client(), &parameters, &bindings, output)
+            }
+        };
         let mut submitted = match &execution {
+            FusedExecution::Native => launch_native(program)?,
+            #[cfg(all(
+                feature = "cuda",
+                any(feature = "qualification", feature = "cuda-native")
+            ))]
+            FusedExecution::CaptureWarm => launch_native(program)?,
             #[cfg(all(
                 feature = "cuda",
                 any(feature = "qualification", feature = "cuda-native")
             ))]
             FusedExecution::Graph(graph) => graph.launch(program, &parameters, &bindings)?,
-            FusedExecution::Native => {
-                if let Some(tokens) = &device_buffers {
-                    program.launch_device_tokens(
-                        self.service.client(),
-                        &parameters,
-                        &bindings,
-                        tokens,
-                        output,
-                    )?
-                } else {
-                    program.launch(self.service.client(), &parameters, &bindings, output)?
-                }
-            }
         };
         let expected = workspace.program.plan().proposed_domains();
         if submitted.proposals.len() != expected.len() * rows.len()

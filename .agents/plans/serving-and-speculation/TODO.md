@@ -579,11 +579,34 @@ or a change to the active correctness/benchmark/27B order.
   graph generation still match. Production + qualification strict Clippy, real
   `qwen35-cuda` checks, graph policy/topology/resource ownership tests and the
   physical original0.8B B2 graph qualifier pass.
+- [x] Private production graph lifecycle/cache is now workspace-owned and
+  fail-closed without selecting graph serving. Each live native batch workspace is
+  `Cold -> Capturing -> Live -> Spent`: one capture attempt only; a failed or
+  explicitly retired capture cannot recapture until that workspace is released.
+  The cache key binds exact source identity, resident service generation, CUDA
+  service/stream and the complete `BatchGraphProfile`; runtime identity drift is
+  an error, while a different typed graph profile is a cache miss. The graph's
+  existing batch pin and exact retained `(ResidentLease, DeviceAccess)` set remain
+  authoritative; no second storage/resource owner was added. Explicit cached-graph
+  retirement and incompatible-band replacement both run the existing two trusted
+  terminal barriers before graph destruction and release the opaque graph charge
+  before workspace reclamation. Unknown retirement still fences/quarantines through
+  the existing graph Drop path. The accepted graph policy formula is unchanged:
+  original0.8B B2 physical qualification still charges exactly **15,356,224 bytes**.
+  The final supervised RTX3060 run preserves full248320/all42 exactness, warm
+  `[3725,3725]`, captured body3632, six replay enqueues and14,900 committed
+  kernels; it additionally proves exact compatible lookup, incompatible-profile
+  miss, second-capture refusal, explicit retirement -> `Spent`/foreign0, fresh
+  workspace recapture, and trusted B2->B4 retirement before replacement ->
+  `Cold`/foreign0/final reserved0/41MiB. One preceding fresh lifecycle invocation
+  disappeared before producing a result; no process/VRAM delta remained and a
+  native-gpu control passed, so it remains incomplete rather than relabeled.
 - [ ] Remaining graph work: external capture/replay APIs remain qualification-only
-  and ordinary serving still selects `FusedExecution::Native`. Add the private
-  production graph lifecycle/cache and clean retirement/replacement policy, then
-  integrate a fail-closed production selector and benchmark it before enabling
-  graph serving.
+  and ordinary serving still selects `FusedExecution::Native`. Integrate a
+  fail-closed production selector that can choose only a compatible live cache,
+  define refusal/fallback semantics without widening numerical/state/source/resource
+  authority, then benchmark the selected graph path against the same Native path
+  before enabling or claiming a serving win.
 
 - [ ] **P12 prefix scheduling performance:** measure concurrent native prefix
   cold-process throughput/TTFT against the accepted max32-prefix implementation.

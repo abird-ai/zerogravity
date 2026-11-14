@@ -129,6 +129,11 @@ struct Workspace {
     logit_accesses: Vec<(ResidentLease, DeviceAccess)>,
 }
 struct BatchWorkspace {
+    #[cfg(all(
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-native")
+    ))]
+    graph_cache: graph::ProductionGraphCache,
     program: BatchProgram,
     leases: Vec<(ResidentLease, DeviceAccess)>,
     rows: usize,
