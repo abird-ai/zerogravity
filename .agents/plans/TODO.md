@@ -21,8 +21,17 @@ widths and does not justify the extra serving/resource lifecycle, so public serv
 deliberately remains `FusedExecution::Native`; retain the private selector/cache for
 future materially different graph regions. Earlier interrupted invocations remain
 incomplete, not passes. The older15,339,840-byte transient remains unexplained/
-watch-only. Pushed `origin/main` is `4502f567`; selector/timing checkpoints are local
-and unpushed at this checkpoint.
+watch-only. Prefix scheduling follow-up now has one accepted reconstructed cold
+diagnostic: 0.8B old max32 (`d0a6084`) versus native-prefix (`f788929`) fresh-process
+ABBA completes 32/32 exact requests and improves mean wave 17.4307s->15.4529s
+(-11.35%), with TTFT p95 15.0368s->14.9527s and delivery-ITL p95
+0.8188s->0.7804s. The reconstruction uses a symmetric benchmark-only exact-SM
+cubin overlay matching later `6a5c610` and a reconstructed accepted-prompt workload;
+it is not the lost original frozen benchmark. 2B cold remains incomplete after two
+externally terminated old-provider first-GPU-work attempts with no Rust result and
+clean 41MiB retirement, so the prefix-performance item stays open. Pushed
+`origin/main` is `4502f567`; selector/timing checkpoints are local and unpushed at
+this checkpoint.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

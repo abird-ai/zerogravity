@@ -915,9 +915,70 @@ scheduling cost; finite noisy samples do not establish no-regression broadly.
 Sampled GPU maxima old→new3045→3043MiB(0.8B),3509→3507MiB(2B);
 owned RSS maxima1654288→1650324KiB and2719732→2719836KiB. Sampling can
 miss allocator peaks and does not establish physical RAM admission. Two
-workload labels do not establish authenticated tenant fairness. Cold-process
-prefix measurements, original-HF/CUDA numerical qualification and genuine
-matched vLLM V1 benchmarks remain open. No vLLM speed/parity claim.
+workload labels do not establish authenticated tenant fairness. The original
+warm workload/frozen benchmark binaries were not retained. A later reconstructed
+0.8B cold-process diagnostic is recorded below; 2B cold, original-HF/CUDA
+numerical qualification and genuine matched vLLM V1 benchmarks remain open. No
+vLLM speed/parity claim.
+
+### 14 Nov 2026 reconstructed 0.8B cold-process prefix diagnostic
+
+This closes only the missing 0.8B fresh-process observation, not a byte-identical
+rerun of the lost benchmark. Exact historical source commits were reconstructed
+from Git: `d0a6084` is the accepted max32-prefix provider and `f788929` is the
+native teacher-prefix provider. Their original frozen binaries and workload file
+no longer exist. Both were rebuilt with the current Rust/CUDA13.4 toolchain.
+
+Those historical sources predate `6a5c610`, while this host's CUDA13.4 NVRTC can
+emit PTX newer than the installed driver accepts. A benchmark-only overlay was
+therefore applied identically to both historical CubeCL trees: the already
+exact-SM NVRTC compile still uses the same source/options/geometry, but extracts
+cubin/SASS instead of PTX before the existing `cuModuleLoadData`. The overlaid
+CubeCL file is byte-identical between providers
+(`b11c7cd51fdf0f717bd9c6f2e003a91764f74f8303107e7ab29614dd1e7de760`);
+rebuilt provider binaries are
+old `6bb22960f45e44e9e0751b61eae7b84cbd47cdbca4e9145c6261eb2ea04641ae`
+and new `89b23d0a321ff66047deaa4eea1a3ba38364c531597aa44a898a689ee7d494f5`.
+This is compatibility-only qualification evidence, not a production backport.
+
+Cold retains the historical contract: fresh provider process and no request
+warmup, while compiler/OS/storage caches are allowed to remain warm. CubeCL
+compilation persistence was enabled in isolated environment
+`prefix-cubin-bench-v1` and each rebuilt provider was preconditioned once before
+measurement. The measured workload is reconstructed from the eight source-real
+ragged HTTP prefix prompts retained by `f788929`, all arriving together,
+alternating two labels, greedy output8/context512/active8, one worker,
+4GiB provider/5GiB device and four CPU-affinity members. Workload SHA256 is
+`aba80031c830829f71e4d63420aa0fc69f45cd802fe56126111be84b6e7dcc89`.
+It is not claimed to be the lost original workload.
+
+Four serialized fresh-process samples run ABBA old/new/new/old. All 32 requests
+complete; all 256 generated token IDs, output hashes, reported completion usage
+and finish reasons are exact across builds. Every sample has zero timeout,
+unsuccessful request, native-admission refusal, failed GPU quantum, cancellation
+and discarded ready cohort, and each isolated physical scope returns to 41MiB.
+
+| 0.8B reconstructed cold | old max32 | native-prefix |
+| --- | ---: | ---: |
+| Mean 8-request wave | 17.430712s | 15.452881s |
+| Mean reported output tok/s | 3.6720 | 4.1416 |
+| Mean client token TTFT p95 | 15.036773s | 14.952722s |
+| Mean ID-delivery ITL p95 | 0.818831s | 0.780442s |
+
+Wave time improves 11.35% and reported output rate rises 12.79%; TTFT p95 is nearly
+flat (-0.56%) while delivery-ITL p95 improves 4.69%. This reconstructed workload
+does **not** reproduce the old warm report's dispatch shape: old samples record
+81 GPU quanta/25 completed forward calls/10 fused batches/58 fused rows, while
+new samples record250/76/42/208. Treat it as a distinct cold scheduler diagnostic,
+not evidence that the warm dispatch-reduction ratios reproduced.
+
+The corresponding 2B cold cell remains incomplete. The rebuilt old provider
+reached readiness twice under the same driver-safe overlay, then the isolated
+process was externally terminated during first GPU work with no Rust/server
+exit result; the first attempt grew the isolated compiler store and both attempts
+returned the RTX3060 to 41MiB with no surviving process. No timing/output cell was
+produced, and these attempts remain incomplete. Do not repeatedly relaunch or
+infer a 2B result from warm measurements.
 
 ## Private CUDA graph and ordered RoPE qualification
 

@@ -605,10 +605,29 @@ or a change to the active correctness/benchmark/27B order.
   cache/selector as a reusable qualified capability for materially different future
   graph regions. CUDA driver-internal graph bytes/node enumeration remain unqualified.
 
-- [ ] **P12 prefix scheduling performance:** measure concurrent native prefix
-  cold-process throughput/TTFT against the accepted max32-prefix implementation.
-  Warm observations below cover both models plus explicit B1 scheduling cost;
-  genuine equivalent-source vLLM comparison remains open.
+- [~] **P12 prefix scheduling performance:** warm native-prefix evidence remains
+  accepted for both models. Fresh-process/no-request-warmup reconstruction now
+  closes the missing **0.8B** cold diagnostic only: exact source commits
+  `d0a6084` (max32-prefix) and `f788929` (native teacher-prefix) were rebuilt under
+  the current toolchain, with one byte-identical benchmark-only CUDA compatibility
+  overlay on both historical trees that changes only exact-SM NVRTC output from
+  PTX to cubin/SASS, matching the later accepted `6a5c610` driver-safe policy.
+  Compiler persistence was enabled in an isolated CubeCL environment and
+  preconditioned symmetrically; measured samples remained fresh processes with no
+  request warmup. Reconstructed source-real 8-request ABBA completes 32/32 requests
+  with exact token IDs/output hashes/reported completion usage/finish and zero
+  timeout/refusal/failure/cancel/discard:
+  mean wave 17.4307s->15.4529s (-11.35%), client token TTFT p95
+  15.0368s->14.9527s and delivery-ITL p95 0.8188s->0.7804s. All physical scopes
+  retire to 41MiB. This workload is reconstructed from accepted `f788929` HTTP
+  prompts because the original benchmark workload/frozen binaries are gone; its
+  dispatch shape differs from the retained warm report, so do not merge the two
+  tables or call it a byte-identical rerun. **2B remains incomplete:** two
+  independently supervised old-provider preconditioning attempts reached
+  readiness then were externally terminated during first GPU work with no
+  Rust/server exit result; partial compiler-cache growth and final 41MiB cleanup
+  were observed. Do not loop or relabel those attempts. Close this item only with
+  a trusted comparable 2B cold cell; genuine equivalent-source vLLM remains open.
 
 - [ ] **P12 fused continuous GPU serving:** extend the accepted CUDA B2/B4/B8
   HTTP path with paged hybrid KV/recurrent cache, physically safe
