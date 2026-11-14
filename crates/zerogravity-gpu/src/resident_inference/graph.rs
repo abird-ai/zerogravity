@@ -27,16 +27,16 @@ const GRAPH_CONTROL_RESERVE_BYTES: usize = 64 * 1024;
 const GRAPH_DISPATCH_RESERVE_BYTES: usize = 4 * 1024;
 const GRAPH_DISPATCH_BOUND: usize = 65_536;
 
-fn graph_policy_bytes(dispatches: usize, lease_capacity: usize) -> Result<usize> {
-    if dispatches == 0 || dispatches > GRAPH_DISPATCH_BOUND || lease_capacity > 65_536 {
+fn graph_policy_bytes(dispatches: usize, access_capacity: usize) -> Result<usize> {
+    if dispatches == 0 || dispatches > GRAPH_DISPATCH_BOUND || access_capacity > 65_536 {
         return Err(Error::Limit("graph resource admission geometry".into()));
     }
     let metadata = std::mem::size_of::<CapturedResidentGraph>()
         .checked_add(std::mem::size_of::<GraphCaptureReceipt>())
         .and_then(|n| {
-            lease_capacity
-                .checked_mul(std::mem::size_of::<ResidentLease>())
-                .and_then(|leases| n.checked_add(leases))
+            access_capacity
+                .checked_mul(std::mem::size_of::<(ResidentLease, DeviceAccess)>())
+                .and_then(|accesses| n.checked_add(accesses))
         })
         .ok_or_else(|| Error::Limit("graph owned metadata byte overflow".into()))?;
     let dispatch_bytes = dispatches
@@ -58,9 +58,9 @@ impl GraphResourceAdmission {
     fn initial(
         service: &Arc<ResidentService>,
         dispatches: usize,
-        lease_capacity: usize,
+        access_capacity: usize,
     ) -> Result<Self> {
-        let bytes = graph_policy_bytes(dispatches, lease_capacity)?;
+        let bytes = graph_policy_bytes(dispatches, access_capacity)?;
         let charge = service.reserve_foreign_provider(bytes)?;
         charge.require_service(service)?;
         if charge.bytes() != bytes {
@@ -138,7 +138,10 @@ pub struct CapturedResidentGraph {
     stream: u64,
     body: BatchBodyReceipt,
     graph: HostMutex<Option<Graph>>,
-    leases: Vec<ResidentLease>,
+    /// Exact captured internal storage and its event authority. Replays must
+    /// prove these same allocations/accesses are retained by the current armed
+    /// ResidentSubmission before the backend graph may enqueue.
+    accesses: Vec<(ResidentLease, DeviceAccess)>,
     status: ResidentLease,
     resource: GraphResourceAdmission,
     _band_pin: Arc<()>,
@@ -163,15 +166,19 @@ impl Drop for CapturedResidentGraph {
                 .get_mut()
                 .unwrap_or_else(|p| p.into_inner())
                 .take();
+            let leases = self
+                .accesses
+                .iter()
+                .map(|(lease, _)| lease.clone())
+                .collect::<Vec<_>>();
             let owner: CompletionOwner = Arc::new(QuarantinedGraph {
                 _graph: graph,
-                _leases: self.leases.clone(),
+                _leases: leases.clone(),
                 _service: Arc::clone(&self.service),
                 _resource: self.resource.clone(),
                 _band_pin: Arc::clone(&self._band_pin),
             });
-            self.service
-                .fence_and_retain_owners(&self.leases, vec![owner]);
+            self.service.fence_and_retain_owners(&leases, vec![owner]);
         }
     }
 }
@@ -227,6 +234,26 @@ impl CapturedResidentGraph {
         }
         Ok(())
     }
+
+    /// A graph replay is authorized only by the same armed resident event that
+    /// retains every exact internal allocation captured by the graph, with at
+    /// least the access authority recorded at capture. This prevents a valid
+    /// executable from being paired with replacement storage or a sibling
+    /// physical event merely because the batch geometry still matches.
+    pub(super) fn require_flight(
+        &self,
+        flight: &crate::resident_leases::ResidentSubmission<'_>,
+    ) -> Result<()> {
+        self.service.ensure_usable()?;
+        self.resource.require_service(&self.service)?;
+        if self.accesses.is_empty() {
+            return Err(Error::State(
+                "resident graph captured no storage authority".into(),
+            ));
+        }
+        flight.require_accesses(self.accesses.iter().map(|(lease, access)| (lease, *access)))
+    }
+
     pub(super) fn launch(
         &self,
         program: &mut BatchProgram,
@@ -288,10 +315,9 @@ impl CapturedResidentGraph {
         let mut slot = ticket.wait().await?;
         self.service.ensure_usable()?;
         let accesses = self
-            .leases
+            .accesses
             .iter()
-            .cloned()
-            .map(|l| (l, DeviceAccess::Read))
+            .map(|(lease, _)| (lease.clone(), DeviceAccess::Read))
             .collect::<Vec<_>>();
         slot.begin_submission()?;
         let mut flight = self.service.submit(root, &accesses)?;
@@ -494,7 +520,7 @@ impl ResidentModel {
         };
         let first_count = first.dispatches();
         drop(first);
-        let (leases, band_pin, profile) = {
+        let (accesses, band_pin, profile) = {
             let workspace = self.workspace.lock().await;
             let batch = workspace
                 .batch
@@ -505,22 +531,30 @@ impl ResidentModel {
             }
             let profile = batch.program.graph_profile(&parameters, output)?;
             let handles = batch.program.execution_handles(output);
-            let leases = workspace
+            let accesses = workspace
                 .leases
                 .iter()
                 .chain(&batch.leases)
-                .filter(|(l, _)| handles.iter().any(|h| same_handle(h, &l.handle())))
-                .map(|(l, _)| l.clone())
+                .filter(|(lease, _)| {
+                    handles
+                        .iter()
+                        .any(|handle| same_handle(handle, &lease.handle()))
+                })
+                .cloned()
                 .collect::<Vec<_>>();
-            (leases, batch.program.graph_pin(), profile)
+            (accesses, batch.program.graph_pin(), profile)
         };
-        if leases.is_empty() || leases.len() > 65_536 || profile.body_nodes > 4096 {
-            return Err(Error::Limit("graph lease/node metadata bound".into()));
+        if accesses.is_empty() || accesses.len() > 65_536 || profile.body_nodes > 4096 {
+            return Err(Error::Limit("graph lease/access metadata bound".into()));
         }
+        let leases = accesses
+            .iter()
+            .map(|(lease, _)| lease.clone())
+            .collect::<Vec<_>>();
         let resource = GraphResourceAdmission::initial(
             &self.service,
             first_count.max(profile.body_nodes),
-            leases.capacity(),
+            accesses.capacity(),
         )?;
         let mut window = CaptureWindow::prepare(&self.service, leases.clone(), band_pin, resource)?;
         let second = match output {
@@ -615,8 +649,9 @@ impl ResidentModel {
                     .unwrap_or_else(|| Error::State("graph body dispatch/resource bound".into())));
             }
         };
-        let retained_lease_bytes = leases.iter().map(ResidentLease::bytes).sum();
-        let owned_lease_vector_bytes = leases.capacity() * std::mem::size_of::<ResidentLease>();
+        let retained_lease_bytes = accesses.iter().map(|(lease, _)| lease.bytes()).sum();
+        let owned_lease_vector_bytes =
+            accesses.capacity() * std::mem::size_of::<(ResidentLease, DeviceAccess)>();
         let resource = window.take_resource()?;
         let resource_charge_bytes = resource.bytes();
         let graph = Arc::new(CapturedResidentGraph {
@@ -625,7 +660,7 @@ impl ResidentModel {
             stream: self.service.pinned_cuda_queue()?.logical_stream_id().value,
             body,
             graph: HostMutex::new(Some(graph)),
-            leases,
+            accesses,
             status: status.clone(),
             resource,
             _band_pin: batch.program.graph_pin(),
@@ -710,8 +745,8 @@ mod resource_policy_tests {
         );
         assert_eq!(
             more_owners - wider,
-            63 * std::mem::size_of::<ResidentLease>(),
-            "owned lease-vector metadata is charged exactly"
+            63 * std::mem::size_of::<(ResidentLease, DeviceAccess)>(),
+            "owned lease/access-vector metadata is charged exactly"
         );
         assert!(graph_policy_bytes(0, 1).is_err());
         assert!(graph_policy_bytes(GRAPH_DISPATCH_BOUND + 1, 1).is_err());

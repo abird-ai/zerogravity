@@ -544,6 +544,7 @@ impl ResidentModel {
             if let FusedExecution::Graph(graph) = &execution {
                 let owner: crate::physical_quarantine::CompletionOwner = graph.clone();
                 flight.retain_completion_owner(owner)?;
+                graph.require_flight(&flight)?;
             }
             flight
         };
