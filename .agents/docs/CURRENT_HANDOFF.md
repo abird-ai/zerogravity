@@ -17,22 +17,22 @@ and live TODOs are authoritative.
 - **AMD large-VRAM execution/test host:** use `dotlink---x2` only for running and
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
-- Latest signed **implementation** checkpoint before this handoff refresh is
-  `874e67db0b6e737e6d9de31e44ade597b3160143`
-  (`feat(cuda): retain shared-input projection pair`). The handoff refresh itself
-  may be a newer docs-only signed commit; always revalidate live l5 `HEAD`.
-- The immediately preceding signed HIP checkpoint is
-  `c282f20ea10c16680b033586bf11d0e5d62c0189`
-  (`fix(hip): restore source profile compilation`).
+- Latest signed **implementation** checkpoint is
+  `134a571dc080ac8e2d0f243d3e4aac0ff4cfa5dc`
+  (`fix(hip): isolate CUDA private KV qualification`). It is a one-line
+  cross-feature correctness repair; it does not grant HIP private-BF16 KV support.
+- Previous key implementation checkpoints remain `874e67d`
+  (`feat(cuda): retain shared-input projection pair`) and `c282f20`
+  (`fix(hip): restore source profile compilation`). Docs checkpoints include
+  `2caf304` and `52c8a16`.
 - `origin/main` remains `c12acab60c357e0742ad4ecd2f00295cd9b6bb0a`
   (`feat(cuda): retain grouped B8 recurrent transport`). Immediately before this
-  docs refresh l5 was **11 commits ahead of origin**; the refresh may add one
-  docs-only commit. Nothing newer is pushed. Never push unless the user explicitly
-  asks.
-- X2 is clean at `c282f20`; it is behind l5 by the `874e67d` implementation
-  checkpoint plus any later docs-only refresh. Before any new physical X2 run,
-  sync it to the exact current l5 `main` bytes/commit without using a push merely
-  as transport, then revalidate status/process/GPU state.
+  docs refresh l5 and X2 were both clean at `134a571`, **14 commits ahead of
+  origin**. This refresh may add one docs-only commit. Nothing newer is pushed.
+  Never push unless the user explicitly asks.
+- Before any new physical X2 run, sync it to the exact current l5 `main`
+  bytes/commit without using a push merely as transport, then revalidate
+  status/process/GPU state.
 - Local l5 commits after origin, oldest → newest:
   - `85f458f` — packed BF16 batch greedy retained.
   - `f303bca` — exact head→greedy partials retained.
@@ -46,6 +46,9 @@ and live TODOs are authoritative.
   - `c282f20` — HIP-only source-profile compilation repair.
   - `874e67d` — exact shared-input B8 projection-pair primitive retained; serving
     consumer still held.
+  - `2caf304` / `52c8a16` — handoff + X2 tiny-HIP-health documentation.
+  - `134a571` — HIP qualification no longer calls the CUDA-only private-BF16 KV
+    physical qualifier without `cuda-cublas`.
 - Important accepted commits immediately before origin:
   - `60b048d` — canonical-boundary private B8 GDN recurrent core accepted.
   - `775dfa6` — ragged private B8 KV transition accepted.
@@ -270,8 +273,28 @@ serving, memory and composition plans.
   health. Focused Rust test builds could still disappear without an exit code both
   inside and outside `native-gpu.py`; no cgroup/kernel/systemd-oomd OOM evidence
   was found. The temporary diagnostic source-gate experiment was discarded.
-- Ordinary27B HTTP504 plus populated 1K/2K HTTP/context closure is now the next X2
-  physical task. Preserve the original 180s HTTP contract.
+- `134a571` fixes another cross-feature HIP qualification regression exposed by
+  the tracked 27B context diagnostic: generic batch-KV qualification no longer
+  unconditionally invokes the CUDA-only private-BF16 KV qualifier. Exact l5 HIP
+  qualification check and X2 release context-diagnostic build pass.
+- Exact X2 27B host-only `cache-preflight` passes on canonical snapshot
+  `98cea13c169310196c4d8a113765f8fe58ab7a7961f0d1be69212c70dba8015e`;
+  source remains unchanged and 512/1K/2K capacity cells complete with no GPU.
+- The current runtime blocker is earlier than HIP allocation. A fresh explicit
+  75GiB current-main HTTP diagnostic was externally terminated ~53s into model
+  load with VRAM still at baseline, and the in-tree host-only canonical
+  source/tokenizer test was externally terminated twice with no Rust error/GPU/OOM
+  evidence. Therefore localize runtime `open_source` — `qwen35_source::open`
+  versus authenticated tokenizer construction/retention — before another 27B GPU
+  launch.
+- Historical R9/R10 HTTP504 ran 5 Nov; `d16f096` explicit75GiB resident-budget
+  plumbing landed 8 Nov. The old ~240s streamed path exceeded the unchanged180s
+  deadline; the later resident C1 path was ~5.5s. Preserve that chronology rather
+  than treating the old 504 as a resident-route result.
+- The accepted 66-call 27B reference and populated1K/2K reference material are not
+  present in the current X2 cache. Full numerical/context acceptance remains
+  blocked until exact approved material is recovered or a properly supervised
+  successor capture is established; never substitute/repin.
 - ROCm2B C4 warmup plus C16/C32/C64 warmup/timed mismatches remain unlocalized.
   Preserve failed cells and expected IDs; do not repin expectations.
 - These remaining campaigns are explicitly authorized X2 execution/test work;
@@ -630,21 +653,21 @@ capture, another GPU or another model.
    feedback. If local CUDA surfaces are exhausted, advance the larger runtime/
    serving capability rather than endless sub-percent kernel churn.
 
-### x2 AMD large-VRAM execution/testing — tiny HIP health closed; 27B next
+### x2 AMD large-VRAM execution/testing — 27B host-load boundary next
 
-1. **Tiny physical HIP health is green.** X2 was synced to exact l5 `2caf304`
-   without push transport; a self-validating `gfx1151` HIP kernel ran through
-   `native-gpu.py` and verified 256 exact output words before returning to the
-   pre-run VRAM/KFD/OOM baseline. Do not repeat this environmental probe unless
-   host/runtime state materially changes.
-2. Resume ordinary27B HTTP504 + populated 1K/2K context closure now. Keep the
-   existing 180s HTTP deadline and accepted 75GiB-total device budget; localize
-   measured latency rather than extending deadlines or changing resource
-   accounting.
-3. ROCm2B C4/C16/C32/C64 divergence localization remains independently open if
-   the 27B path is still externally blocked.
-   Preserve expected IDs and every failed warmup/timed cell; no repinning.
-4. Before every X2 physical run, sync X2 to the exact current l5 `main`, confirm
+1. **Tiny physical HIP health stays green.** The isolated `gfx1151` smoke passed
+   and returned to baseline; do not repeat it unless host/runtime state changes.
+2. **Do not relaunch 27B GPU/HTTP yet.** Exact canonical source/cache/plan preflight
+   passes host-only, but runtime canonical `open_source`/tokenizer loading is
+   externally terminated before first HIP allocation. Isolate
+   `qwen35_source::open` versus tokenizer construction/retention first.
+3. Once that host boundary is stable, retry the exact explicit75GiB resident route
+   under the unchanged180s HTTP deadline. Numerical/populated-context acceptance
+   still requires the missing approved 27B reference material.
+4. ROCm2B C4/C16/C32/C64 divergence localization remains independently open if
+   the 27B host path remains externally blocked. Preserve expected IDs and every
+   failed warmup/timed cell; no repinning.
+5. Before every X2 physical run, sync X2 to the exact current l5 `main`, confirm
    one checkout, no active Cargo/model/KFD owner and current VRAM state. X2 is not
    an independent source-authoring branch.
 
@@ -748,16 +771,16 @@ existing bounded contract.
 > --short --branch`, `git log -1 --show-signature`, `git worktree list --porcelain`,
 > active Cargo/model processes and GPU state before editing or executing.
 >
-> The latest implementation checkpoint remains signed `874e67d`
-> (`feat(cuda): retain shared-input projection pair`), immediately above signed
-> `c282f20` (`fix(hip): restore source profile compilation`). The prior handoff
-> refresh is signed `2caf304`. `origin/main` remains `c12acab`; immediately
-> before this ledger refresh l5 and X2 were both clean at exact `2caf304`, 12
-> commits ahead of origin, and nothing newer was pushed. This refresh may itself be
-> a newer docs-only signed commit, so revalidate live l5 `HEAD`/ahead count and
-> sync X2 to that exact `main` before any new physical run without using a push
-> merely as transport. Source/tests/live TODOs outrank this handoff if `main`
-> advances.
+> The latest implementation checkpoint is signed `134a571`
+> (`fix(hip): isolate CUDA private KV qualification`). Earlier key checkpoints are
+> `874e67d` (retained shared-input projection pair), `c282f20` (HIP source-profile
+> compilation repair), and docs `2caf304`/`52c8a16`. `origin/main` remains
+> `c12acab`; immediately before this ledger refresh l5 and X2 were both clean at
+> exact `134a571`, 14 commits ahead of origin, and nothing newer was pushed. This
+> refresh may itself be a newer docs-only signed commit, so revalidate live l5
+> `HEAD`/ahead count and sync X2 to that exact `main` before any new physical run
+> without using a push merely as transport. Source/tests/live TODOs outrank this
+> handoff if `main` advances.
 >
 > Preserve the accepted ordinary CUDA path: exact independent source reduction
 > contracts; B4/B8 cohorts with B2 partial regrouping; same-frontier chunked/ragged
@@ -782,22 +805,21 @@ existing bounded contract.
 > remains blocked by missing approved reference/archive material on l5; do not
 > invent tolerances, repin references or substitute another model/reference.
 >
-> `c282f20` restores HIP-only source-profile compilation by removing an erroneous
-> `cuda-cublas` gate from the model-neutral packed-BF16 numeric-zero greedy kernel
-> and making HIP test/support profiles explicit with `native_rows: 0`. X2
-> compile/link checks passed; the fresh 27B diagnostic was externally terminated
-> during model load with no Rust panic/error, but tiny physical HIP health is now
-> independently green. On exact l5 `2caf304`, a temporary self-validating HIP C++
-> kernel built with installed CLR 7.2.4 + its referenced ROCm device libraries ran
-> only through `python3 -B scripts/native-gpu.py -- ...` and exited0 on AMD Radeon
-> 8060S/`gfx1151`, verifying 256 exact `i*17+5` words (checksum `556160`).
-> Post-run VRAM/KFD/cgroup-OOM state returned cleanly to baseline. Focused Rust test
-> builds could still be externally terminated without an exit code, including
-> outside the GPU wrapper, so do not infer an OOM or HIP kernel failure from those
-> build deaths. The next X2 task is ordinary27B HTTP504/populated1K/2K closure;
-> use ROCm2B C4/C16/C32/C64 mismatch localization only if that path remains
-> externally blocked. Preserve the existing 180s HTTP contract, expected IDs and
-> failed cells; do not repin or extend a deadline to create a pass.
+> `c282f20` and `134a571` repair two separate HIP-only cross-feature compile
+> boundaries; neither grants a new HIP kernel capability. Tiny physical HIP health
+> is independently green. Exact canonical 27B host-only source/cache/plan preflight
+> now passes on X2, but runtime canonical `open_source`/tokenizer loading is
+> externally terminated before first HIP allocation: a current explicit75GiB HTTP
+> diagnostic dies during model load, and the in-tree host-only source/tokenizer test
+> dies twice with no Rust error/GPU/OOM evidence. Historical R9/R10 HTTP504 predates
+> `d16f096` resident-budget support and reflects the ~240s streamed path, not the
+> later ~5.5s resident C1 path. Do **not** relaunch 27B GPU/HTTP until
+> `qwen35_source::open` versus tokenizer construction/retention is isolated and
+> stable. The accepted66-call and populated1K/2K reference material is also absent
+> from current X2, so full acceptance remains blocked without exact approved
+> recovery/successor capture. ROCm2B mismatch localization is the fallback.
+> Preserve the existing180s HTTP contract, expected IDs and failed cells; do not
+> repin or extend a deadline to create a pass.
 >
 > Prefer implementation → quick real-model feedback → controlled same-process
 > comparison. Reuse accepted checks/evidence, add tests only for concrete new

@@ -44,11 +44,23 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   and link in about 2m15s. No cgroup, kernel-log or systemd-oomd evidence of OOM
   was observed. A temporary source-gate experiment was discarded, and all smoke
   sources/binaries/sync bundles were removed; tracked source remains `2caf304`.
-- [ ] Resume the highest-value X2 closure now: ordinary27B HTTP504 plus populated
-  1K/2K context first, or ROCm2B C4/C16/C32/C64 mismatch localization if the 27B
-  path remains externally blocked. Preserve the original 180s HTTP contract,
-  failed cells and expected IDs; do not repin or stretch deadlines to create a
-  pass.
+- [x] `134a571` repairs a second HIP-only cross-feature compile leak: the broad
+  batch-KV qualification surface no longer invokes the CUDA-only private-BF16 KV
+  physical qualifier without `cuda-cublas`. Exact l5 HIP qualification check and
+  X2 release context-diagnostic build pass.
+- [x] Localized the current 27B blocker before serving. Exact X2 canonical
+  27B source/cache/plan `cache-preflight` passes host-only with source unchanged,
+  but the canonical runtime source/tokenizer test is externally terminated twice
+  with no GPU/error/OOM evidence. A fresh explicit75GiB current-main HTTP
+  diagnostic likewise dies during model load before first HIP allocation; no HTTP
+  status is produced. Historical R9/R10 HTTP504 predates the 8 Nov
+  `d16f096` resident-budget plumbing and exercised the ~240s streamed path.
+- [ ] Stabilize/localize runtime `open_source` host loading before another 27B
+  physical launch. Then retry the exact75GiB route under the unchanged180s HTTP
+  contract. Full 27B/populated1K/2K acceptance additionally needs the approved
+  reference material, currently absent on X2; do not repin/substitute it. If the
+  27B host path remains externally blocked, continue ROCm2B C4/C16/C32/C64
+  mismatch localization.
 - [ ] L5 remains the source/repository authority. X2 is execution/testing only and
   must be synced to the exact current l5 `main` before physical work; do not push
   merely to transfer local commits.

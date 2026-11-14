@@ -4090,10 +4090,42 @@ build or general model/backend grant. Historical failures keep their source scop
   evidence was observed. A temporary test-gate source experiment was fully
   discarded, so no runtime/source implementation change survives from this
   diagnostic work.
-- [ ] Next X2 work is ordinary27B HTTP504 plus populated1K/2K context closure under
-  the unchanged180s HTTP contract. If that remains externally blocked, localize
-  the retained ROCm2B C4/C16/C32/C64 mismatches. Do not repin IDs, erase failed
-  cells or extend deadlines to manufacture acceptance.
+### `134a571` — HIP qualification boundary repaired; 27B host-load blocker localized
+
+- [x] Fixed another real HIP-only cross-feature regression exposed by the tracked
+  27B context preflight: broad `qualification` unconditionally called the retained
+  CUDA-only private-BF16 KV qualifier. The generic batch-KV qualifier remains
+  available; the private BF16 physical qualifier is now called only with its actual
+  `cuda-cublas` implementation feature. L5 exact HIP-qualification `cargo check`
+  passes after a warmed retry; X2 release `qwen_source_contexts_hip` builds on the
+  exact signed commit.
+- [x] X2 host-only canonical 27B `cache-preflight` passes on snapshot
+  `98cea13c169310196c4d8a113765f8fe58ab7a7961f0d1be69212c70dba8015e`:
+  exact source remains unchanged; 512/1K/2K capacity cells complete without GPU
+  access, while the existing >=4K refusals remain capacity results. This excludes
+  the source archive/cache-plan path as the current external-kill boundary.
+- [x] Historical HTTP504 is not evidence against the signed resident route: R9/R10
+  ran on 5 Nov, while explicit75GiB resident-budget plumbing landed 8 Nov in
+  `d16f096`. The historical streamed27B C1 path was ~240s/request, above the
+  unchanged180s HTTP deadline; the later resident C1 path was ~5.5s/request.
+- [x] A current-main diagnostic using the exact 27B snapshot, explicit75GiB budget
+  and unchanged180s server contract linked after one warmed release retry, but was
+  externally terminated ~53s into model load before any HIP allocation: VRAM stayed
+  at `272351232` bytes/busy0, with no Rust error and cgroup OOM counters all zero.
+  Therefore no new HTTP result follows.
+- [x] The narrower in-tree host-only canonical runtime source/tokenizer test was
+  also externally terminated twice (no exit code/error, no GPU), while the separate
+  exact source/cache context preflight passes. The current blocker is therefore
+  localized to the runtime `open_source` path (canonical `qwen35_source::open`
+  and/or authenticated tokenizer construction/retention), before
+  `ResidentModel::load_ordinary_cpu_source_with_budget` and before HIP allocation.
+- [ ] Next: isolate `qwen35_source::open` versus tokenizer construction at this
+  host-only boundary with bounded temporary diagnostics; fix only a concrete
+  source/runtime bug if found. Do not relaunch 27B GPU/HTTP until the host path is
+  stable. The accepted66-call 27B reference and populated1K/2K reference material
+  are not present in the current X2 cache, so full numerical/context acceptance
+  also remains blocked; do not fabricate or repin them. ROCm2B mismatch
+  localization remains the independent fallback.
 
 ### 14 Nov 2026 — shared-input B8 projection-pair primitive retained; consumer held
 
