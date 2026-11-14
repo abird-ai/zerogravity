@@ -28,11 +28,12 @@ and live TODOs are authoritative.
   (`feat(cuda): retain shared-input projection pair`) and `c282f20`
   (`fix(hip): restore source profile compilation`). Docs checkpoints include
   `2caf304`, `52c8a16`, `ca6e99f` and `f5d2a88`.
-- `origin/main` remains `c12acab60c357e0742ad4ecd2f00295cd9b6bb0a`
-  (`feat(cuda): retain grouped B8 recurrent transport`). Immediately before this
-  docs refresh both tracked checkouts are clean at `f5d2a88`, **17 commits ahead
-  of origin**. This refresh may add one docs-only commit. Nothing newer is pushed.
-  Never push unless the user explicitly asks.
+- `origin/main` is `d68b649031ac89ddfb88f6880cb7185208b25c09`
+  (`docs: record X2 27B physical allocation blocker`) at the start of this
+  localization refresh. l5 is clean at that exact pushed tip; X2's checkout is also
+  exact at `d68b649` although its local remote-tracking ref may be stale until
+  fetched. This refresh may add one docs-only local commit. Never push unless the
+  user explicitly asks.
 - Before any new physical X2 run, sync it to the exact current l5 `main`
   bytes/commit without using a push merely as transport, then revalidate
   status/process/GPU state.
@@ -60,12 +61,12 @@ and live TODOs are authoritative.
   - `775dfa6` — ragged private B8 KV transition accepted.
   - `c12acab` — grouped B8 recurrent transport primitive retained, serving
     consumer rejected.
-- At this refresh no Cargo/model process is active on either host and l5 RTX3060
-  is idle at ~41 MiB. X2 is **not** at its clean GPU baseline: after the latest
-  failed physical27B attempt sysfs still reports ~31.376GB of ~96GiB VRAM used,
-  busy0, with no surviving model process or non-current DRM/KFD owner visible from
-  the connector and no OOM/AMDGPU-fault evidence. Do not launch another model on X2
-  until that state returns to baseline or is safely localized/reclaimed.
+- At this refresh no Cargo/model process is active in the connector-visible
+  command namespaces and l5 RTX3060 is idle at ~41 MiB. X2 is **not** at its clean
+  GPU baseline: total VRAM remains ~31.376GB/busy0. Host-global KFD sysfs identifies
+  the sole retained owner `2406838`, holding31,098,232,832 bytes across six queues;
+  sandboxed `/proc` cannot see the host PID directly. Do not launch another model
+  on X2 while that KFD owner persists.
 - Root `README.md` is user-authored. Leave it unchanged unless explicitly asked.
 - Keep one persistent `main` checkout per host. Reuse canonical target/cache state;
   do not recreate old worktree pools or `.agents/runs`.
@@ -316,12 +317,30 @@ serving, memory and composition plans.
   deadline. It reached real HIP allocation (~31.376GB VRAM, busy6%) but the entire
   isolated process disappeared after ~10..12s despite an external5s heartbeat,
   before any HTTP response. No numerical/reference acceptance follows.
-- X2 did **not** return to the clean GPU baseline after that process disappeared:
-  `mem_info_vram_used` remains ~31,375,962,112 bytes, busy0, with no surviving
-  model/Cargo process, no non-current DRM/KFD owner visible through the connector,
-  no cgroup OOM, and no kernel AMDGPU/KFD reset/fault evidence. Treat X2 as
-  physically dirty. Do not launch27B or ROCm2B again until baseline/reclamation is
-  safely understood; do not implicitly reset GPU or dotlink service state.
+- X2 did **not** return to the clean GPU baseline after that process disappeared.
+  The earlier “no visible owner” note was incomplete because each dotlink shell has
+  a Bubblewrap-private PID namespace. Host-global KFD sysfs exposes exactly one
+  retained process entry: `/sys/class/kfd/kfd/proc/2406838`, owning
+  31,098,232,832 bytes VRAM and six queues with `pasid=0`, zero CU occupancy,
+  zero faults, `page_in=23470`, `page_out=0`. At the same checkpoint total
+  device VRAM was31,375,888,384 bytes, so this one KFD entry explains essentially
+  all excess over the ~272MiB clean baseline.
+- Dotlink's exposed GPU mount sources are pinned with `O_PATH|O_NOFOLLOW|O_CLOEXEC`
+  and used only as Bubblewrap `--dev-bind` sources; their fdinfo has no DRM memory
+  accounting. A matched non-GPU durable-Job → Bubblewrap → `nix develop` →
+  `native-gpu.py` → nested-unshare control ran35s and exited0. Therefore the
+  physical run's10..12s loss is not a generic connector/native-gpu lifetime limit.
+- The75GiB budget selects resident storage for the canonical ~53.8GB source-weight
+  extent, and preparation uploads those projection operands sequentially. The
+  stranded31.1GB KFD owner therefore localizes the failed run to **partial resident
+  weight upload/allocation**, still before HTTP. No ZeroGravity lease/drop defect
+  is established because the whole userspace tree was lost abnormally and normal
+  Rust teardown could not run.
+- Treat X2 as physically dirty. Do not launch27B or ROCm2B again while KFD owner
+  `2406838` persists. Do not implicitly reset GPU, restart dotlink, kill an unseen
+  host process, or force KFD reclamation. Running kernel is7.3.1 while the
+  current-system kernel path points at7.3.3; that is only an environment
+  observation, not evidence that an update/reboot fixes this incident.
 - Historical R9/R10 HTTP504 ran 5 Nov; `d16f096` explicit75GiB resident-budget
   plumbing landed 8 Nov. The old ~240s streamed path exceeded the unchanged180s
   deadline; the later resident C1 path was ~5.5s. Preserve that chronology rather
@@ -698,15 +717,17 @@ capture, another GPU or another model.
    connector execution alive; do not mistake that transport behavior for a model
    requirement or source bug.
 3. **Do not launch another physical model on X2 yet.** The first post-host-closure
-   explicit75GiB public HTTP liveness attempt reached HIP allocation
-   (~31.376GB VRAM/busy6%) then lost its isolated process before HTTP status.
-   VRAM accounting remains ~31.376GB with busy0/no visible model/KFD owner.
-4. Revalidate for natural reclamation first. If the clean baseline does not return,
-   safely localize the GPU/connector/driver ownership boundary before any27B or
-   ROCm2B run. Do not implicitly reset GPU/dotlink. Once X2 is clean, retry the
-   exact explicit75GiB resident route under the unchanged180s HTTP deadline.
-   Numerical/populated-context acceptance still requires the missing approved27B
-   reference material; ROCm2B mismatch localization remains a later fallback.
+   explicit75GiB public HTTP liveness attempt reached partial resident-weight HIP
+   upload (~31.376GB total VRAM/busy6%) then lost its isolated process before HTTP.
+   Host-global KFD sysfs now identifies the sole retained owner `2406838`, holding
+   31,098,232,832 bytes and six queues with `pasid=0`; it explains essentially
+   all excess VRAM. A matched35s non-GPU native-gpu execution control passes.
+4. The next boundary is explicit host/KFD recovery or natural disappearance of
+   owner `2406838`, not another model retry. Do not implicitly reset GPU/dotlink,
+   kill unseen host state, or force reclamation. Once X2 is demonstrably clean,
+   retry the exact explicit75GiB resident route under the unchanged180s HTTP
+   deadline. Numerical/populated-context acceptance still requires the missing
+   approved27B reference material; ROCm2B mismatch localization remains later.
 5. Before every X2 physical run, sync X2 to the exact current l5 `main`, confirm
    one checkout, no active Cargo/model/KFD owner and current VRAM state. X2 is not
    an independent source-authoring branch.
@@ -815,9 +836,8 @@ existing bounded contract.
 > (`fix(cache): avoid duplicate Qwen snapshot hashing`). Earlier key checkpoints
 > include `134a571` (HIP/CUDA qualification boundary), `874e67d` (retained
 > shared-input projection pair), `c282f20` (HIP source-profile compilation repair),
-> and docs `2caf304`/`52c8a16`/`ca6e99f`. `origin/main` remains `c12acab`;
-> immediately before this ledger refresh l5 is clean at exact `b0cf0b2`, 16 commits
-> ahead of origin, and nothing newer was pushed. Before the next execution X2
+> implementation `b0cf0b2`, and docs through pushed `d68b649`. `origin/main` is
+> exact at `d68b649` at the start of this refresh. Before the next execution X2
 > should be exact at the final docs checkpoint; revalidate and sync if needed. This
 > refresh may itself be a newer docs-only signed commit, so revalidate live l5
 > `HEAD`/ahead count and sync X2 to that exact `main` before any new physical run

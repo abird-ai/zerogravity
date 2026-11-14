@@ -73,12 +73,21 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   The run reached HIP allocation (~31.376GB VRAM, busy6%) but the entire isolated
   process disappeared after ~10..12s despite an external heartbeat, before any HTTP
   status. This establishes allocation progress only, not HTTP/numerical acceptance.
-- [ ] X2 VRAM accounting remains stranded around31.376GB with busy0 and no surviving
-  model/KFD owner or OOM/driver-fault log. Stop all physical Qwen campaigns,
-  including ROCm2B fallback, until a clean baseline is re-established or the
-  GPU/connector/driver ownership boundary is safely localized. Do not implicitly
-  reset hardware/service state. Missing27B/populated1K/2K references remain a
-  separate acceptance blocker.
+- [x] Host-global KFD sysfs resolves the stranded allocation owner that sandboxed
+  `/proc` could not see: the sole KFD process entry `2406838` owns
+  31,098,232,832 bytes VRAM and six queues with `pasid=0`, zero occupancy/faults
+  and static counters. Total VRAM is ~31.376GB, so nearly all excess memory is
+  attached to that one KFD ownership entry rather than anonymous accounting.
+- [x] Generic execution plumbing is not the10..12s boundary: an otherwise matched
+  durable Job/Bubblewrap/`nix develop`/`native-gpu.py`/nested-unshare control
+  stayed alive35s and exited0. Dotlink's device pins are `O_PATH` mount
+  capabilities, not DRM/KFD clients. The75GiB route selects resident27B weights,
+  so the failed run was partway through sequential resident-weight upload.
+- [ ] Stop all physical Qwen campaigns, including ROCm2B fallback, while KFD owner
+  `2406838` and its ~31.1GB allocation persist. No ZeroGravity cleanup bug is
+  demonstrated and no code workaround is justified. Do not implicitly reset GPU,
+  restart dotlink or kill/reclaim host state. Missing27B/populated1K/2K references
+  remain a separate acceptance blocker.
 - [ ] L5 remains the source/repository authority. X2 is execution/testing only and
   must be synced to the exact current l5 `main` before physical work; do not push
   merely to transfer local commits.

@@ -4176,15 +4176,38 @@ build or general model/backend grant. Historical failures keep their source scop
   after model-load start with no Rust panic/error, no cgroup/kernel/systemd-oomd OOM
   evidence and no AMDGPU/KFD reset/fault log. Therefore **no HTTP status or serving
   liveness result follows**.
-- [ ] X2 is now physically dirty: after the failed isolated process disappeared,
-  `mem_info_vram_used` remains about31,375,962,112 bytes with busy0, no surviving
-  model/Cargo process and no non-current DRM/KFD owner visible from the connector.
-  Do not launch another27B **or the ROCm2B fallback** while this accounting remains
-  above the clean baseline. First revalidate whether VRAM naturally returns; if it
-  does not, localize/reclaim the GPU/connector/driver ownership boundary safely
-  before any further model execution. Do not reset the GPU, restart dotlink or
-  force driver reclamation implicitly. Accepted66-call and populated1K/2K references
-  remain absent; never fabricate/repin them.
+- [x] Corrected the earlier ownership observation: X2 shell `/proc` is inside
+  Bubblewrap's private PID namespace, so it could not prove host-global process
+  absence. Host-global KFD sysfs does expose the retained owner. Exactly one entry
+  exists at `/sys/class/kfd/kfd/proc/2406838`; it owns31,098,232,832 bytes of
+  VRAM, six KFD queues, reports `pasid=0`, zero CU occupancy, zero faults,
+  `page_in=23470`, `page_out=0`, and remained byte-for-byte stable across the
+  observation window. Total device VRAM was31,375,888,384 bytes at the same
+  checkpoint, leaving only ~278MiB outside that owner—approximately the normal
+  baseline. Do not call the excess anonymous driver accounting.
+- [x] The dotlink hardware capability is not that KFD owner. Device mount sources
+  are pinned with Linux `O_PATH|O_NOFOLLOW|O_CLOEXEC` and passed to Bubblewrap
+  via `--dev-bind`; their fdinfo has no DRM client/memory accounting. A matched
+  non-GPU control using the same durable Job → Bubblewrap → `nix develop` →
+  `native-gpu.py` → nested-unshare chain ran for35s with5s progress ticks and
+  exited0. The earlier10..12s tree loss is therefore not a generic job/native-gpu
+  timeout or parent-lifetime failure.
+- [x] The explicit75GiB budget selects **resident** storage for the canonical27B
+  ~53.8GB source-weight extent. Preparation allocates/uploads resident projection
+  operands sequentially before source-page/parameter/workspace completion. The
+  ~31GB KFD owner therefore localizes the failed physical attempt to a partial
+  resident-weight upload/allocation phase, still before HTTP serving. No
+  ZeroGravity lease/drop defect is established: the whole userspace tree was lost
+  abnormally, so ordinary Rust teardown could not run.
+- [ ] X2 remains physically dirty and the blocker is now the host KFD/process-
+  lifetime cleanup boundary represented by owner `2406838`, not source opening,
+  HTTP, or generic dotlink execution. Do not launch another27B **or ROCm2B** while
+  that owner/VRAM remains. Do not implicitly reset the GPU, restart dotlink, kill
+  an unseen host process, or force KFD reclamation. Running kernel is7.3.1 while
+  the current-system kernel path points at7.3.3; that is an observation only, not
+  evidence that a reboot/update fixes this incident. Any operator-level recovery
+  should be explicit before model work resumes. Accepted66-call and populated1K/2K
+  references remain absent; never fabricate/repin them.
 
 ### 14 Nov 2026 — shared-input B8 projection-pair primitive retained; consumer held
 
