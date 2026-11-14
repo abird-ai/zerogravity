@@ -20,17 +20,20 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation** checkpoint is
-  `f1ce532d49c4121324eb5f5a401f85ea900f1251`
-  (`feat(cuda): bind graph replay to resident flight`). Above the accepted graph
-  lifetime/resource substrate, a captured graph now retains the exact internal
-  `(ResidentLease, DeviceAccess)` set and every replay must prove those same
-  allocations with compatible access authority are retained by the current armed
-  `ResidentSubmission` before the backend graph can enqueue. The graph is attached
-  as a completion owner before that check, so refusal still fences/quarantines the
-  same executable/storage authority. External graph APIs remain qualification-only
-  and production serving still selects Native; no production graph-serving permit
-  follows.
-- Earlier key implementation checkpoints include `b0cf0b2`
+  `63ee14e440d73beedab6e2acb96838926968eed9`
+  (`feat(cuda): own resident graph lifecycle cache`). Above the accepted
+  `f1ce532` exact replay storage/access authority, each live native batch workspace
+  now owns one private production graph lifecycle/cache
+  (`Cold -> Capturing -> Live -> Spent`) keyed by exact source identity, resident
+  service generation, CUDA service/stream and complete `BatchGraphProfile`.
+  Explicit retirement and incompatible-band replacement both destroy only after the
+  existing two trusted terminal barriers; unknown retirement still
+  fences/quarantines. Runtime-identity drift fails closed, incompatible profiles are
+  cache misses, and a retired/failed workspace cannot recapture until the workspace
+  itself is replaced. External graph APIs remain qualification-only and production
+  serving still selects Native; no production graph-serving permit follows.
+- Earlier key implementation checkpoints include `f1ce532`
+  (exact graph replay storage/access authority), `b0cf0b2`
   (`fix(cache): avoid duplicate Qwen snapshot hashing`), `134a571`
   (`fix(hip): isolate CUDA private KV qualification`), `874e67d`
   (`feat(cuda): retain shared-input projection pair`), `c282f20`
@@ -40,9 +43,10 @@ and live TODOs are authoritative.
   Their docs checkpoints through `b12e8f5` are pushed.
 - `origin/main` is `b12e8f5395af84bda5a5c0eab960efef2399f6c7`
   (`docs: record graph lifetime repeatability witness`). Local history above it
-  currently starts with implementation `f1ce532` (exact graph replay
-  storage/event authority); this refresh may add another docs-only commit. Earlier
-  graph checkpoints through `81b7c71` and docs `b12e8f5` are already pushed.
+  includes `f1ce532` (exact graph replay storage/event authority) and
+  `63ee14e` (private production lifecycle/cache); this refresh may add another
+  docs-only commit. Earlier graph checkpoints through `81b7c71` and docs
+  `b12e8f5` are already pushed.
   X2 is synced to the
   exact current local tip after each checkpoint even when its remote-tracking ref
   is stale. Never push unless the user explicitly asks.
@@ -715,43 +719,41 @@ capture, another GPU or another model.
    has now been measured and rejected because order/thermal drift dwarfed the
    ~1.04% favorable two-sided aggregate. Do not retry the same selection without a
    materially different composition.
-2. **Production CUDA graph admission is the active broader l5 boundary.**
+2. **Production CUDA graph selector integration is now the active l5 boundary.**
    `5bf440d` made graph identity/pin/replay/owner plumbing production-compilable;
-   `db7be60` now pre-admits graph opaque resources through the same local ledger
-   and global provider envelope. Policy is64KiB control +4KiB per prepaid
-   source-dispatch slot + Rust graph/receipt/lease-access-vector metadata; actual CUDA
-   driver bytes remain unqualified. The charge is acquired before `graph_prepare`,
-   may grow only before capture starts, must cover the recorded body, survives
-   CaptureWindow/CapturedResidentGraph/quarantine ownership and releases only after
-   trusted retirement. Queue work uses prepaid `AllocationClass::Other`; there is
-   no second global charge. External graph APIs remain qualification-only and
-   production serving remains `FusedExecution::Native`.
-3. Signed `6a5c610` closes the physical graph compiler blocker:
-   `CUDA_ERROR_UNSUPPORTED_PTX_VERSION` came from CUDA13.4 NVRTC PTX loaded by
-   an older driver, so non-persistent C++ compilation now returns exact-SM
-   cubin/SASS while persistent compilation continues to emit/cache PTX. Signed
-   `81b7c71` strengthens the graph resource qualifier and signed `f1ce532`
-   adds exact captured access authority to each retained lease. The current policy
-   charge is **15,356,224 bytes** (32,768 bytes of owned lease/access-vector
-   metadata); live foreign-ledger bytes must equal that charge, live charge owners
-   must exist, and foreign bytes must reach0 immediately after trusted retirement.
-   The original0.8B B2 path passes physically with warm `[3725,3725]`, captured
-   body3632 launch sites, outside93/replay, six host enqueues,14,900 committed
-   kernels, full248320 logits + all42 state domains exact, final ResourceArbiter
-   reserved=0 and RTX306041MiB.
-4. One post-`9dca4b` repeat failed closed at the first post-capture idle check:
-   total resident bytes fell by exactly15,339,840 with pending_events=0 and an
-   empty queue. It did not reproduce in **four consecutive** subsequent runs,
-   including the final `81b7c71` witness run proving charge-retained-while-live
-   and released-on-retire. Do not weaken the idle invariant or call the transient
-   explained. If it recurs, use the warm/steady foreign-byte + charge-owner
-   witness to localize it. `f1ce532` separately closes the same-card
-   storage/event-authority seam: every replay is now rejected unless its armed
-   resident flight retains the exact captured allocations and access modes. The
-   physical B2 qualifier passes this path with final reserved=0 and41MiB→41MiB.
-   Driver-internal graph bytes/node enumeration and graph performance remain
-   unqualified. Production serving remains Native; production lifecycle/cache and
-   selector integration are still open.
+   `db7be60` pre-admits graph opaque resources through the same local ledger and
+   global provider envelope; `6a5c610` emits driver-safe exact-SM cubin/SASS;
+   `81b7c71` witnesses charge lifetime; `f1ce532` binds replay to exact captured
+   storage/access authority; and signed `63ee14e` adds the private workspace-owned
+   production lifecycle/cache. Each live batch workspace is
+   `Cold -> Capturing -> Live -> Spent`, with one capture attempt, exact
+   source/service-generation/CUDA-service+stream/`BatchGraphProfile` identity,
+   explicit trusted retirement, and retire-before-incompatible-band replacement.
+   Runtime identity drift fails closed; incompatible typed profiles are cache misses.
+   External graph APIs remain qualification-only and production serving still selects
+   `FusedExecution::Native`.
+3. The graph policy remains64KiB control +4KiB per prepaid source-dispatch slot +
+   Rust graph/receipt/lease-access-vector metadata; actual CUDA driver bytes remain
+   unqualified. The charge is acquired before `graph_prepare`, may grow only before
+   capture starts, survives CaptureWindow/CapturedResidentGraph/quarantine ownership
+   and releases only after trusted retirement. The current charge remains exactly
+   **15,356,224 bytes** (32,768 bytes owned lease/access-vector metadata). The final
+   supervised original0.8B B2 lifecycle run preserves warm `[3725,3725]`, body3632,
+   six replay enqueues,14,900 committed kernels, full248320/all42 exactness and
+   final41MiB/reserved0; it additionally proves compatible cache lookup,
+   incompatible-profile miss, second-capture refusal, explicit retire->Spent/
+   foreign0, fresh-workspace recapture, and B2->B4 trusted retire-before-replace->
+   Cold/foreign0. One preceding fresh lifecycle invocation disappeared before a
+   result with no retained process/VRAM delta; keep it incomplete.
+4. One older post-`9dca4b` repeat failed closed at the first post-capture idle
+   check: total resident bytes fell by exactly15,339,840 with pending_events=0 and
+   an empty queue. It did not reproduce in four subsequent pre-`63ee14e` runs or
+   the final lifecycle run. Do not weaken the idle invariant or call the transient
+   explained. Driver-internal graph bytes/node enumeration and graph performance
+   remain unqualified. Next, a production selector may choose only a compatible
+   live cache and must define fail-closed refusal/fallback semantics without
+   widening numerical/state/source/resource authority; benchmark that selected path
+   against the same Native path before enabling or calling graph serving a win.
 5. **Large CUDA same-contract distribution/state acceptance is open but blocked.**
    Cross-profile diagnostics are not acceptance. Approved original reference/archive
    material needed for the intended rerun is missing on l5; do not invent
@@ -911,36 +913,35 @@ is already green; repeat it only if host/runtime state changes.
 > `git worktree list --porcelain`, active Cargo/model/native-gpu processes, and
 > physical GPU state. At handoff construction the source/docs tip before the
 > handoff-only commit is `9c86c0cd8396abd023d4504c6f2a559249d331fd`;
-> latest implementation is signed `f1ce532d49c4121324eb5f5a401f85ea900f1251`
-> (`feat(cuda): bind graph replay to resident flight`), and pushed
+> latest implementation is signed `63ee14e440d73beedab6e2acb96838926968eed9`
+> (`feat(cuda): own resident graph lifecycle cache`), and pushed
 > `origin/main` is `b12e8f5395af84bda5a5c0eab960efef2399f6c7`.
 > The handoff creation itself may add one newer docs-only signed commit, so trust
 > live Git and sync X2 to that exact l5 tip by bundle before any new X2 physical
 > execution. Never push unless the user explicitly asks.
 >
-> **Immediate continuation:** production CUDA graph admission is the active l5
-> boundary. The graph identity/pin/replay substrate is production-compilable
-> (`5bf440d`), opaque graph resources are prepaid in the existing resident
-> ledger/provider envelope (`db7be60`), non-persistent CUDA NVRTC is driver-safe
-> (`6a5c610`), graph resource lifetime is explicitly witnessed (`81b7c71`), and
-> `f1ce532` now closes the same-card storage/event-authority seam by retaining the
-> exact captured `(ResidentLease, DeviceAccess)` set and requiring the armed
-> `ResidentSubmission` to prove those same allocations/accesses before every
-> backend graph enqueue. The original0.8B B2 physical qualifier passes full248320
-> logits/all42 state domains, six graph host enqueues, final reserved=0 and
-> RTX3060 41MiB→41MiB. Current conservative graph policy charge is
-> **15,356,224 bytes**, including **32,768 bytes** of owned lease/access-vector
-> metadata. Driver-internal graph bytes/node enumeration remain unqualified.
+> **Immediate continuation:** production CUDA graph lifecycle/cache is complete at
+> signed `63ee14e`. The private cache is owned by the live native batch workspace,
+> is one-shot per workspace, and binds exact source identity, resident service
+> generation, CUDA service/stream and complete `BatchGraphProfile`. Explicit
+> retirement and incompatible-band replacement use the existing two trusted terminal
+> barriers; unknown completion fences/quarantines. The existing `f1ce532` exact
+> captured `(ResidentLease, DeviceAccess)` replay authority is unchanged. The final
+> supervised original0.8B B2 qualifier preserves full248320/all42, six graph
+> enqueues,14,900 committed kernels, final reserved0/41MiB and the exact
+> **15,356,224-byte** policy charge, while also proving compatible lookup,
+> incompatible-profile miss, second-capture refusal, explicit retire->Spent/foreign0,
+> fresh-workspace recapture and B2->B4 retire-before-replace->Cold/foreign0.
+> Driver-internal graph bytes/node enumeration remain unqualified.
 >
-> **Next phase:** add the private production graph lifecycle/cache and clean
-> retirement/replacement policy around the existing `ResidentModel`/batch workspace.
-> Keep external graph capture/replay wrappers qualification-only and keep public
-> serving on `FusedExecution::Native` until the lifecycle/cache is complete and
-> fail-closed. Do not jump directly to a router selector. Once lifecycle/cache is
-> coherent and physically qualified, integrate a production selector that can only
-> choose a compatible live graph and falls back/refuses according to the declared
-> contract without widening numerical/state/resource semantics; then benchmark the
-> selected path against the same native path before calling it a serving win.
+> **Next phase:** integrate the private production selector, but keep public serving
+> on `FusedExecution::Native` until the selector is itself coherent and qualified.
+> It may select only an exact compatible live graph. Runtime-identity drift or graph
+> lifecycle failure must fail closed; an incompatible typed profile is a cache miss,
+> and any declared Native fallback must occur only before unsafe graph work begins,
+> never after unknown capture/replay completion. Do not widen numerical/state/source/
+> resource semantics. Then benchmark the selected graph path against the same Native
+> path under the same workload before enabling it or calling it a serving win.
 >
 > Preserve the graph invariants already established: one cold capture per live
 > batch workspace; exact service/source/generation/stream/profile identity; batch

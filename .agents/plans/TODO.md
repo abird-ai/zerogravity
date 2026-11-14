@@ -4,19 +4,24 @@ Current source, tests, and this queue are authoritative; Git retains retired his
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-14.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-14.md).
 
-Latest implementation checkpoint is signed `f1ce532`
-(`feat(cuda): bind graph replay to resident flight`). A captured graph now owns
-the exact `(ResidentLease, DeviceAccess)` set for its internal storage, and replay
-is permitted only when the current armed `ResidentSubmission` retains those exact
-allocations with compatible access authority. This closes the same-card
-storage/event-authority seam without enabling graph serving. The current
-conservative policy charge is15,356,224 bytes; the original0.8B B2 physical graph
-qualification passes with exact fullV/all42 state, six graph enqueues, final
-reserved0 and41MiB→41MiB. The prior single transient post-capture mismatch was under
-the older15,339,840-byte policy and remains an explicit watch item. Production
-serving still selects Native. Earlier graph checkpoints through docs `b12e8f5`
-are pushed; `origin/main` is `b12e8f5` at this refresh. Revalidate live l5 `HEAD`/ahead
-count because this plan refresh may add a docs-only commit. X2 is
+Latest implementation checkpoint is signed `63ee14e`
+(`feat(cuda): own resident graph lifecycle cache`). The private production cache is
+owned by the live native batch workspace and is one-shot per workspace
+(`Cold -> Capturing -> Live -> Spent`), keyed by exact source/service generation/
+CUDA service+stream/`BatchGraphProfile`. Explicit retirement and incompatible-band
+replacement both use the existing trusted terminal barriers before graph
+destruction; runtime-identity drift fails closed and incompatible graph profiles are
+cache misses. The existing exact retained `(ResidentLease, DeviceAccess)` replay
+authority from `f1ce532` remains unchanged. The conservative policy charge remains
+exactly15,356,224 bytes; the supervised original0.8B B2 qualifier still passes exact
+fullV/all42/six replay enqueues/final reserved0/41MiB and additionally proves
+compatible lookup, second-capture refusal, explicit retire->Spent/foreign0, fresh
+workspace recapture and trusted B2->B4 retire-before-replace->Cold/foreign0.
+Production serving still selects Native; the selector and matched Native benchmark
+are next. The older15,339,840-byte transient remains unexplained/watch-only.
+Earlier graph checkpoints through docs `b12e8f5` are pushed; `origin/main` is
+`b12e8f5` at this refresh. Revalidate live l5 `HEAD`/ahead count because this
+plan refresh may add a docs-only commit. X2 is
 the approved AMD large-VRAM execution/test host. Tiny-HIP runtime health is green;
 exact tokenizer, isolated source binding/plan, and the full canonical host runtime
 test now pass; the latter completed in75.20s once the external execution wrapper
@@ -53,11 +58,14 @@ Prioritize working paths + early matched-vLLM feedback; reuse checks/evidence,
 add fixtures only for concrete gaps. Baselines need not await all models/batching.
 On l5, `5bf440d` opened the production CUDA graph ownership substrate,
 `db7be60` added prepaid opaque graph-resource admission, `6a5c610` closed the
-driver-PTX compatibility blocker, `81b7c71` made charge lifetime explicit, and
-`f1ce532` now binds replay to the exact resident-flight storage/access authority.
-The original0.8B B2 graph path passes physically; one older transient post-capture
-byte-accounting mismatch remains a watch item. No production serving selector is
-enabled; lifecycle/cache + selector integration is next.
+driver-PTX compatibility blocker, `81b7c71` made charge lifetime explicit,
+`f1ce532` binds replay to exact resident-flight storage/access authority, and
+`63ee14e` adds the private workspace-owned production lifecycle/cache with trusted
+explicit retirement and retire-before-replacement. The original0.8B B2 graph path
+passes physically with the unchanged15,356,224-byte charge; one older transient
+post-capture byte-accounting mismatch remains a watch item. No production serving
+selector is enabled; compatible-live-graph selector integration + same-Native
+benchmark is next.
 Owner direction: l5 owns repository/source changes; x2 is only for AMD
 large-VRAM execution/testing. Tiny HIP health and the full canonical27B host
 runtime source/tokenizer path are green. X2 is a **shared GPU host** with Ollama
@@ -84,7 +92,7 @@ activating held routes.
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)
 - [~] P1 pipeline-composition — @pvl — recursive primitives/pipelines/profiles; shared execution adapters active, reuse current adapters in Fabric; Qwen expansion deferred — [details](pipeline-composition/TODO.md)
 - [~] P1 cli-device-routing — @pvl — unified run/config/source/device selection; preserve behavior through Fabric SDK/CLI migration — [details](cli-device-routing/TODO.md)
-- [~] P2 model-execution — @pvl — l5 CUDA2B B8 currently selects exact independent reductions, same-frontier ragged/chunked cohorts, private B8 recurrent core `60b048d`, ragged private B8 KV `775dfa6` and CTA256 KV `399e43a`; `874e67d` retains the exact shared-input Ordered+LaneBlocked B8 projection pair and its serving consumer remains rejected after non-repeatable loaded-model A/B. `6a5c610` fixes nonpersistent NVRTC driver compatibility and physically accepts the B2 CUDA graph resource lifecycle above `db7be60`. Large same-contract CUDA numerical acceptance remains blocked by missing approved reference material. Populated small HIP is `8ffb511`; resident27B C1..C64 is `d16f096`; `c282f20`/`134a571` repair HIP cross-feature boundaries; `b0cf0b2` removes duplicate Qwen snapshot hashing with an explicitly non-authoritative descriptor lease. X2 exact tokenizer/source binding and full canonical host runtime pass. X2 is shared with Ollama/model workloads: existing KFD/VRAM is baseline, so physical27B/ROCm2B work may proceed when the requested configuration fits current available capacity, while preserving other owners and verifying only ZeroGravity's incremental resource delta retires — [details](model-execution/TODO.md)
+- [~] P2 model-execution — @pvl — l5 CUDA2B B8 currently selects exact independent reductions, same-frontier ragged/chunked cohorts, private B8 recurrent core `60b048d`, ragged private B8 KV `775dfa6` and CTA256 KV `399e43a`; `874e67d` retains the exact shared-input Ordered+LaneBlocked B8 projection pair and its serving consumer remains rejected after non-repeatable loaded-model A/B. `6a5c610` fixes nonpersistent NVRTC driver compatibility; `63ee14e` physically closes the private workspace-owned B2 graph lifecycle/cache above `db7be60`/`f1ce532`, with selector/performance still pending. Large same-contract CUDA numerical acceptance remains blocked by missing approved reference material. Populated small HIP is `8ffb511`; resident27B C1..C64 is `d16f096`; `c282f20`/`134a571` repair HIP cross-feature boundaries; `b0cf0b2` removes duplicate Qwen snapshot hashing with an explicitly non-authoritative descriptor lease. X2 exact tokenizer/source binding and full canonical host runtime pass. X2 is shared with Ollama/model workloads: existing KFD/VRAM is baseline, so physical27B/ROCm2B work may proceed when the requested configuration fits current available capacity, while preserving other owners and verifying only ZeroGravity's incremental resource delta retires — [details](model-execution/TODO.md)
 - [~] P2 model-acquisition — @pvl — [details](model-acquisition/TODO.md)
 
 ## Icebox
