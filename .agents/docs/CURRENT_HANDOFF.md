@@ -20,18 +20,16 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation** checkpoint is
-  `63ee14e440d73beedab6e2acb96838926968eed9`
-  (`feat(cuda): own resident graph lifecycle cache`). Above the accepted
-  `f1ce532` exact replay storage/access authority, each live native batch workspace
-  now owns one private production graph lifecycle/cache
-  (`Cold -> Capturing -> Live -> Spent`) keyed by exact source identity, resident
-  service generation, CUDA service/stream and complete `BatchGraphProfile`.
-  Explicit retirement and incompatible-band replacement both destroy only after the
-  existing two trusted terminal barriers; unknown retirement still
-  fences/quarantines. Runtime-identity drift fails closed, incompatible profiles are
-  cache misses, and a retired/failed workspace cannot recapture until the workspace
-  itself is replaced. External graph APIs remain qualification-only and production
-  serving still selects Native; no production graph-serving permit follows.
+  `9d6613cb0bef84147a7d30453e5afb82ca83411b`
+  (`feat(cuda): select compatible resident graph cache`). Above the accepted
+  `f1ce532` replay storage/access authority and `63ee14e` workspace-owned lifecycle,
+  the private production selector now resolves under the existing allocation+
+  workspace boundary: exact compatible live cache -> Graph; absent/cold/spent,
+  incompatible typed profile or device-token route -> pre-enqueue Native; runtime
+  identity/lifecycle drift or replay failure -> Error with no unsafe retry. External
+  graph APIs remain qualification-only and ordinary serving still selects Native.
+  Physical B2 qualification passes this selector and lifecycle contract; no public
+  graph-serving permit follows from the modest B2 timing result.
 - Earlier key implementation checkpoints include `f1ce532`
   (exact graph replay storage/access authority), `b0cf0b2`
   (`fix(cache): avoid duplicate Qwen snapshot hashing`), `134a571`
@@ -41,22 +39,19 @@ and live TODOs are authoritative.
   (production CUDA graph substrate/resource admission), `6a5c610` (driver-safe
   nonpersistent NVRTC) and `81b7c71` (explicit graph-resource lifetime witness).
   Their docs checkpoints through `b12e8f5` are pushed.
-- `origin/main` is `b12e8f5395af84bda5a5c0eab960efef2399f6c7`
-  (`docs: record graph lifetime repeatability witness`). Local history above it
-  includes `f1ce532` (exact graph replay storage/event authority) and
-  `63ee14e` (private production lifecycle/cache); this refresh may add another
-  docs-only commit. Earlier graph checkpoints through `81b7c71` and docs
-  `b12e8f5` are already pushed.
-  X2 is synced to the
-  exact current local tip after each checkpoint even when its remote-tracking ref
-  is stale. Never push unless the user explicitly asks.
+- Pushed `origin/main` is `4502f5678e8cb1641848be62cd0fb5068bae1d09`
+  (`docs: record resident graph lifecycle checkpoint`). Local history above it now
+  includes signed `9d6613c` (private fail-closed production selector + B2 matched
+  timing); this refresh may add another docs-only commit. X2 is synced to the exact
+  current local tip after each checkpoint even when its remote-tracking ref is stale.
+  Never push unless the user explicitly asks.
 - Before any new physical X2 run, sync it to the exact current l5 `main`
   bytes/commit without using a push merely as transport, then revalidate
   status/process/GPU state.
-- Key pushed history now contained in `origin/main=b12e8f5` includes all
-  earlier accepted CUDA/HIP work through `d68b649` plus `5c8f143`, `3cadc3b`,
-  `5bf440d`, `bc9a1b3`, `db7be60`, `cbf1384`, `6a5c610`, `9dca4b`,
-  `81b7c71` and `b12e8f5`. Do not describe those as unpushed local commits.
+- Pushed `origin/main=4502f567` contains the earlier accepted CUDA/HIP history
+  through `b12e8f5` plus the later graph authority/lifecycle checkpoints including
+  `f1ce532`, `63ee14e` and docs `4502f567`. Do not describe those as unpushed local
+  commits; only newer local selector/docs checkpoints are ahead until explicitly pushed.
 - Local docs `5c8f143` recorded the host-global X2 KFD observation and `3cadc3b`
   records rejection of the ordinary-Qwen `874e67d` consumer after completed
   loaded-model A/B; the primitive itself remains retained. Later host context
@@ -70,15 +65,14 @@ and live TODOs are authoritative.
   - `c12acab` — grouped B8 recurrent transport primitive retained, serving
     consumer rejected.
 - At this refresh no Cargo/model process is active in the connector-visible
-  command namespaces and l5 RTX3060 is idle at ~41 MiB. X2 is a **shared GPU
-  host**: the last baseline was total103,079,215,104 bytes VRAM,
-  used31,376,207,872/busy0, with host-global KFD owner `2406838` holding
-  31,098,232,832 bytes across six queues. The host also runs Ollama/model
-  workloads outside the Bubblewrap PID namespace, so that owner is baseline and
-  cannot be attributed to ZeroGravity from the sandbox. Do not require an empty
-  GPU. Record the baseline before our run, stay within available capacity, and
-  verify only our incremental VRAM/queue/process delta retires afterward. Never
-  reset/reclaim/restart/kill other owners without explicit authorization.
+  command namespaces and l5 RTX3060 is idle at ~41 MiB. X2 is a **shared GPU host**
+  whose baseline must be resampled every run: the latest observation is
+  total103,079,215,104 bytes VRAM, used272,351,232/busy0 with no KFD owners, while
+  earlier observations included unrelated Ollama/model residents around31GB. Do not
+  infer ownership from a prior baseline or require an empty GPU. Record the current
+  baseline, stay within available capacity, verify only our incremental VRAM/queue/
+  process delta retires, and never reset/reclaim/restart/kill other owners without
+  explicit authorization.
 - Root `README.md` is user-authored. Leave it unchanged unless explicitly asked.
 - Keep one persistent `main` checkout per host. Reuse canonical target/cache state;
   do not recreate old worktree pools or `.agents/runs`.
@@ -719,18 +713,15 @@ capture, another GPU or another model.
    has now been measured and rejected because order/thermal drift dwarfed the
    ~1.04% favorable two-sided aggregate. Do not retry the same selection without a
    materially different composition.
-2. **Production CUDA graph selector integration is now the active l5 boundary.**
-   `5bf440d` made graph identity/pin/replay/owner plumbing production-compilable;
-   `db7be60` pre-admits graph opaque resources through the same local ledger and
-   global provider envelope; `6a5c610` emits driver-safe exact-SM cubin/SASS;
-   `81b7c71` witnesses charge lifetime; `f1ce532` binds replay to exact captured
-   storage/access authority; and signed `63ee14e` adds the private workspace-owned
-   production lifecycle/cache. Each live batch workspace is
-   `Cold -> Capturing -> Live -> Spent`, with one capture attempt, exact
-   source/service-generation/CUDA-service+stream/`BatchGraphProfile` identity,
-   explicit trusted retirement, and retire-before-incompatible-band replacement.
-   Runtime identity drift fails closed; incompatible typed profiles are cache misses.
-   External graph APIs remain qualification-only and production serving still selects
+2. **Production CUDA graph selector is privately integrated at signed `9d6613c`.**
+   `5bf440d`/`db7be60`/`6a5c610`/`81b7c71`/`f1ce532` establish the graph substrate,
+   resource admission, driver-safe compilation, lifetime witness and exact captured
+   storage/access authority; `63ee14e` adds the workspace-owned lifecycle/cache.
+   `9d6613c` adds the fail-closed selector under that same workspace authority. Exact
+   compatible live cache selects Graph; absent/cold/spent, incompatible profile or
+   device-token route select Native before graph enqueue; identity/lifecycle drift,
+   unresolved selection or replay failure is an error with no Native retry. External
+   graph APIs remain qualification-only and ordinary serving still selects
    `FusedExecution::Native`.
 3. The graph policy remains64KiB control +4KiB per prepaid source-dispatch slot +
    Rust graph/receipt/lease-access-vector metadata; actual CUDA driver bytes remain
@@ -748,12 +739,13 @@ capture, another GPU or another model.
 4. One older post-`9dca4b` repeat failed closed at the first post-capture idle
    check: total resident bytes fell by exactly15,339,840 with pending_events=0 and
    an empty queue. It did not reproduce in four subsequent pre-`63ee14e` runs or
-   the final lifecycle run. Do not weaken the idle invariant or call the transient
-   explained. Driver-internal graph bytes/node enumeration and graph performance
-   remain unqualified. Next, a production selector may choose only a compatible
-   live cache and must define fail-closed refusal/fallback semantics without
-   widening numerical/state/source/resource authority; benchmark that selected path
-   against the same Native path before enabling or calling graph serving a win.
+   the final lifecycle/selector runs. Do not weaken the idle invariant or call the
+   transient explained. Driver-internal graph bytes/node enumeration remain
+   unqualified. The `9d6613c` same-process B2 AB/BA diagnostic measured Native
+   mean273,933us/median267,847us versus selected Graph mean264,881us/median263,238us
+   (~3.3% mean/~1.7% median). That is positive but modest: do **not** enable or claim
+   production graph serving from B2 alone. Next obtain matched B4/B8 evidence and
+   decide whether capture/selection policy earns the retained graph complexity.
 5. **Large CUDA same-contract distribution/state acceptance is open but blocked.**
    Cross-profile diagnostics are not acceptance. Approved original reference/archive
    material needed for the intended rerun is missing on l5; do not invent
@@ -911,37 +903,33 @@ is already green; repeat it only if host/runtime state changes.
 > Revalidate before editing: `git status --short --branch`, `git rev-parse HEAD`,
 > `git rev-parse origin/main`, `git log -1 --show-signature`,
 > `git worktree list --porcelain`, active Cargo/model/native-gpu processes, and
-> physical GPU state. At handoff construction the source/docs tip before the
-> handoff-only commit is `9c86c0cd8396abd023d4504c6f2a559249d331fd`;
-> latest implementation is signed `63ee14e440d73beedab6e2acb96838926968eed9`
-> (`feat(cuda): own resident graph lifecycle cache`), and pushed
-> `origin/main` is `b12e8f5395af84bda5a5c0eab960efef2399f6c7`.
+> physical GPU state. Latest implementation is signed
+> `9d6613cb0bef84147a7d30453e5afb82ca83411b`
+> (`feat(cuda): select compatible resident graph cache`), while pushed
+> `origin/main` is `4502f5678e8cb1641848be62cd0fb5068bae1d09`.
 > The handoff creation itself may add one newer docs-only signed commit, so trust
 > live Git and sync X2 to that exact l5 tip by bundle before any new X2 physical
 > execution. Never push unless the user explicitly asks.
 >
-> **Immediate continuation:** production CUDA graph lifecycle/cache is complete at
-> signed `63ee14e`. The private cache is owned by the live native batch workspace,
-> is one-shot per workspace, and binds exact source identity, resident service
-> generation, CUDA service/stream and complete `BatchGraphProfile`. Explicit
-> retirement and incompatible-band replacement use the existing two trusted terminal
-> barriers; unknown completion fences/quarantines. The existing `f1ce532` exact
-> captured `(ResidentLease, DeviceAccess)` replay authority is unchanged. The final
-> supervised original0.8B B2 qualifier preserves full248320/all42, six graph
-> enqueues,14,900 committed kernels, final reserved0/41MiB and the exact
-> **15,356,224-byte** policy charge, while also proving compatible lookup,
-> incompatible-profile miss, second-capture refusal, explicit retire->Spent/foreign0,
-> fresh-workspace recapture and B2->B4 retire-before-replace->Cold/foreign0.
-> Driver-internal graph bytes/node enumeration remain unqualified.
+> **Immediate continuation:** signed `63ee14e` owns the private workspace graph
+> lifecycle/cache and signed `9d6613c` adds its fail-closed exact-compatible private
+> selector. Exact live compatibility selects Graph; absent/cold/spent/incompatible
+> profile/device-token routes select Native before graph enqueue; runtime identity/
+> lifecycle drift, unresolved selection and replay failure error without Native retry.
+> Public serving still constructs `FusedExecution::Native`. The supervised original
+> 0.8B B2 selector qualifier preserves full248320/all42, the exact **15,356,224-byte**
+> graph charge, trusted retirement/replacement and final reserved0/41MiB; it proves
+> compatible selector replay and incompatible Native fallback without graph replay.
+> One preceding fresh selector invocation disappeared without Rust error/exit code and
+> remains incomplete. Driver-internal graph bytes/node enumeration remain unqualified.
 >
-> **Next phase:** integrate the private production selector, but keep public serving
-> on `FusedExecution::Native` until the selector is itself coherent and qualified.
-> It may select only an exact compatible live graph. Runtime-identity drift or graph
-> lifecycle failure must fail closed; an incompatible typed profile is a cache miss,
-> and any declared Native fallback must occur only before unsafe graph work begins,
-> never after unknown capture/replay completion. Do not widen numerical/state/source/
-> resource semantics. Then benchmark the selected graph path against the same Native
-> path under the same workload before enabling it or calling it a serving win.
+> **Next phase:** keep public serving Native and extend the same matched selector
+> evidence to B4/B8 before deciding any capture/selection policy. B2 AB/BA timing was
+> positive but modest: Native mean273,933us/median267,847us versus selected Graph
+> mean264,881us/median263,238us (~3.3% mean/~1.7% median), so it is not a serving-win
+> gate by itself. Preserve all existing numerical/state/source/resource/lifetime
+> authority and do not enable graph serving unless the broader matched evidence makes
+> the complexity worthwhile.
 >
 > Preserve the graph invariants already established: one cold capture per live
 > batch workspace; exact service/source/generation/stream/profile identity; batch

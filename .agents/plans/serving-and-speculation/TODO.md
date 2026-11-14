@@ -579,12 +579,26 @@ or a change to the active correctness/benchmark/27B order.
   graph generation still match. Production + qualification strict Clippy, real
   `qwen35-cuda` checks, graph policy/topology/resource ownership tests and the
   physical original0.8B B2 graph qualifier pass.
-- [ ] Remaining graph work: external capture/replay APIs remain qualification-only
-  and ordinary serving still selects `FusedExecution::Native`. Integrate a
-  fail-closed production selector that can choose only a compatible live cache,
-  define refusal/fallback semantics without widening numerical/state/source/resource
-  authority, then benchmark the selected graph path against the same Native path
-  before enabling or claiming a serving win.
+- [x] Signed `9d6613c` integrates the private production selector without enabling
+  public graph serving. `FusedExecution::Production` resolves only under the existing
+  allocation+workspace ownership boundary: an exact compatible live workspace cache
+  becomes `Graph`; cold/spent/no-live-cache, device-token and incompatible typed
+  profiles remain pre-enqueue Native misses; runtime identity/lifecycle drift is an
+  error; an unresolved selector or graph replay failure never retries Native. The
+  existing graph/program/storage/access/resource validation remains authoritative.
+  Physical original0.8B B2 qualification proves one compatible selector replay,
+  incompatible Logits->StateOnly Native fallback with zero graph replay/retirement,
+  unchanged roots/state, retained15,356,224-byte graph charge, explicit retirement,
+  fresh-workspace recapture, trusted B2->B4 replacement and final reserved0/41MiB.
+- [~] Matched same-process B2 timing is positive but modest, so public serving still
+  selects `FusedExecution::Native`: 4 AB/BA warm pairs +12 samples each measured
+  Native mean273,933us / median267,847us versus selected-Graph mean264,881us /
+  median263,238us (~3.3% mean, ~1.7% median). The first fresh physical selector
+  invocation disappeared with no Rust error/exit code and is recorded incomplete;
+  the supervised direct rerun passed. Do not claim a serving win from this B2 result.
+  Next measure B4/B8 under the same contract and decide whether capture/selection
+  policy earns its retained resource/lifecycle complexity before any public route is
+  changed. CUDA driver-internal graph bytes/node enumeration remain unqualified.
 
 - [ ] **P12 prefix scheduling performance:** measure concurrent native prefix
   cold-process throughput/TTFT against the accepted max32-prefix implementation.

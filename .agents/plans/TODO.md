@@ -4,45 +4,36 @@ Current source, tests, and this queue are authoritative; Git retains retired his
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-14.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-14.md).
 
-Latest implementation checkpoint is signed `63ee14e`
-(`feat(cuda): own resident graph lifecycle cache`). The private production cache is
-owned by the live native batch workspace and is one-shot per workspace
-(`Cold -> Capturing -> Live -> Spent`), keyed by exact source/service generation/
-CUDA service+stream/`BatchGraphProfile`. Explicit retirement and incompatible-band
-replacement both use the existing trusted terminal barriers before graph
-destruction; runtime-identity drift fails closed and incompatible graph profiles are
-cache misses. The existing exact retained `(ResidentLease, DeviceAccess)` replay
-authority from `f1ce532` remains unchanged. The conservative policy charge remains
-exactly15,356,224 bytes; the supervised original0.8B B2 qualifier still passes exact
-fullV/all42/six replay enqueues/final reserved0/41MiB and additionally proves
-compatible lookup, second-capture refusal, explicit retire->Spent/foreign0, fresh
-workspace recapture and trusted B2->B4 retire-before-replace->Cold/foreign0.
-Production serving still selects Native; the selector and matched Native benchmark
-are next. The older15,339,840-byte transient remains unexplained/watch-only.
-Earlier graph checkpoints through docs `b12e8f5` are pushed; `origin/main` is
-`b12e8f5` at this refresh. Revalidate live l5 `HEAD`/ahead count because this
-plan refresh may add a docs-only commit. X2 is
-the approved AMD large-VRAM execution/test host. Tiny-HIP runtime health is green;
-exact tokenizer, isolated source binding/plan, and the full canonical host runtime
-test now pass; the latter completed in75.20s once the external execution wrapper
-kept emitting progress, proving the prior silent host termination was not a Qwen
-source bug. `b0cf0b2` remains the shared duplicate-hash fix. A fresh explicit75GiB
-public-HTTP liveness probe reached ~31.376GB total device usage but its isolated
-process then disappeared before any HTTP status. Host-global KFD sysfs exposes
-owner `2406838`:31,098,232,832 bytes VRAM, six queues, `pasid=0`, zero
-faults/occupancy. X2 also runs Ollama/model workloads outside the sandbox, so that
-owner is **shared-host baseline unless positively attributed**, not evidence of a
-stranded ZeroGravity allocation. After any newer docs-only checkpoint X2
-may again be behind l5; sync it to exact current l5 `main` before
-new physical tests without push transport. Selected CUDA2B B8
-serving still uses the canonical-boundary private B8 recurrent core (`60b048d`),
-ragged private B8 KV transition (`775dfa6`) and B8 private-KV CTA256 (`399e43a`).
-`874e67d` retains a model-neutral shared-input Ordered+LaneBlocked B8 projection
-pair; its ordinary-Qwen consumer is now explicitly rejected after order-sensitive
-loaded-model A/B, not merely held. `main` is the only persistent
-worktree per host. Detailed CUDA/HIP primitive history, exact measurements,
-rejections and blockers remain in [model-execution/TODO.md](model-execution/TODO.md);
-do not duplicate them into a second evidence ledger.
+Latest implementation checkpoint is signed `9d6613c`
+(`feat(cuda): select compatible resident graph cache`). Above signed `63ee14e`, the
+workspace-owned one-shot production graph cache now has a private fail-closed selector
+without changing ordinary serving: exact compatible live cache -> Graph; cold/spent/
+absent/incompatible profile or device-token route -> pre-enqueue Native; runtime
+identity/lifecycle drift or replay failure -> Error with no unsafe retry. The original
+0.8B B2 physical qualifier proves compatible replay, incompatible Native fallback
+without replay/retirement, unchanged roots/state, retained15,356,224-byte charge,
+trusted retirement/replacement and final reserved0/41MiB. Same-process AB/BA timing
+(4 warm pairs,12 samples/path) measured Native273,933us mean /267,847us median versus
+selected Graph264,881us /263,238us (~3.3% mean/~1.7% median). That is positive but
+modest, so public serving remains `FusedExecution::Native`; B4/B8 matched evidence and
+capture/selection policy are next before any serving enablement. The first fresh
+selector run disappeared without Rust error/exit code and remains incomplete; one
+supervised direct rerun passed. The older15,339,840-byte transient also remains
+unexplained/watch-only. Pushed `origin/main` is `4502f567`; `9d6613c` is local and
+unpushed at this checkpoint.
+
+X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
+be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about
+272,351,232/busy0 with no KFD owners, whereas earlier runs observed unrelated
+Ollama/model residents around31GB. Never infer ownership from a prior baseline or
+reset/reclaim another owner. Sync X2 to exact current l5 `main` before new AMD
+physical work without using push as transport. Tiny-HIP runtime health, exact
+tokenizer/source binding/plan and canonical27B host runtime remain green; missing
+approved populated/reference material and previously recorded ROCm numerical cells
+remain separate blockers. `main` is the only persistent worktree per host. Detailed
+CUDA/HIP primitive history, exact measurements, rejections and blockers remain in
+[model-execution/TODO.md](model-execution/TODO.md); do not duplicate them into a
+second evidence ledger.
 
 ## Owner priority — current continuation
 
@@ -59,13 +50,13 @@ add fixtures only for concrete gaps. Baselines need not await all models/batchin
 On l5, `5bf440d` opened the production CUDA graph ownership substrate,
 `db7be60` added prepaid opaque graph-resource admission, `6a5c610` closed the
 driver-PTX compatibility blocker, `81b7c71` made charge lifetime explicit,
-`f1ce532` binds replay to exact resident-flight storage/access authority, and
-`63ee14e` adds the private workspace-owned production lifecycle/cache with trusted
-explicit retirement and retire-before-replacement. The original0.8B B2 graph path
-passes physically with the unchanged15,356,224-byte charge; one older transient
-post-capture byte-accounting mismatch remains a watch item. No production serving
-selector is enabled; compatible-live-graph selector integration + same-Native
-benchmark is next.
+`f1ce532` binds replay to exact resident-flight storage/access authority,
+`63ee14e` adds the private workspace-owned production lifecycle/cache, and `9d6613c`
+adds the fail-closed exact-compatible private selector plus matched B2 timing. The
+original0.8B B2 graph path still passes with the unchanged15,356,224-byte charge;
+one older transient post-capture byte-accounting mismatch remains a watch item.
+Public serving remains Native because the B2 gain is only ~3.3% mean/~1.7% median;
+matched B4/B8 evidence and capture/selection policy are next.
 Owner direction: l5 owns repository/source changes; x2 is only for AMD
 large-VRAM execution/testing. Tiny HIP health and the full canonical27B host
 runtime source/tokenizer path are green. X2 is a **shared GPU host** with Ollama
