@@ -53,25 +53,26 @@ and live TODOs are authoritative.
   historical reruns, source-correct-goodput evidence or vLLM claims. The P12 prefix
   scheduling performance item is closed; continue with the remaining fused-serving
   paged-state/overlap/fairness and genuine equivalent-source vLLM work.
-- **Current local P12-C implementation checkpoint is partial, not accepted.**
-  Shared `zerogravity-engine` fair-round scheduling now adds finite
-  `round_tokens` and `prefill_age_rounds` above the already accepted
-  source/phase/frontier wave builder: every eligible decode row executes first,
-  young prefill retains its exact state/source owners while deferred, and the
-  oldest prefill must make progress after two deferred rounds. Admission requires
-  room for one maximum prefill wave plus every active decode row. Existing
-  executor/Ready/publication/cancellation authority is unchanged. 18 wave tests,
-  14 worker tests, strict engine clippy and production CUDA/CLI composition pass.
-  Physical unequal-arrival HTTP passes both 0.8B/2B approved CUDA sources:
-  request B arrives only after A's first actual ID; first shared B2 is no earlier
-  than A index 4; both sockets drain; CPU IDs/text/usage remain exact; no
-  failed/refused/cancelled/discarded work; final GPU 41MiB. The first combined
-  `scripts/check.sh` invocation disappeared during an ordinary-CUDA compile with
-  no source/test failure. A subsequent complete GPU feature-boundary subgate
-  passes, but the CPU/packaging remainder of the final gate is still pending.
-  **Next turn must finish that remainder before any paging/COW/overlap work or
-  before marking this fairness slice accepted.** Native multi-token temporal
-  prefill remains separately unqualified.
+- **P12-C fair-interleaving sub-slice is accepted at `7dea460`.** Shared
+  `zerogravity-engine` fair-round scheduling adds finite `round_tokens` and
+  `prefill_age_rounds` above the accepted source/phase/frontier wave builder:
+  every eligible decode row executes first, young prefill retains exact
+  state/source owners while deferred, and the oldest prefill must make progress
+  after two deferred rounds. Admission requires room for one maximum prefill wave
+  plus every active decode row. Executor/Ready/publication/cancellation authority
+  is unchanged. 18 wave tests, 14 worker tests, strict engine clippy and
+  production CUDA/CLI composition pass. Physical unequal-arrival HTTP passes both
+  approved 0.8B/2B CUDA sources: B arrives only after A's first actual ID; first
+  shared B2 is no earlier than A index 4; both sockets drain; CPU IDs/text/usage
+  remain exact; no failed/refused/cancelled/discarded work; final GPU 41MiB.
+  Every `scripts/check.sh` command has a terminal-green result on these exact
+  bytes under isolated `native-gpu`, including feature-boundary, CPU workspace,
+  serving/lifecycle, acquisition and release/packaging blocks. Repeated attempts
+  to keep the whole shell wrapper in one connector job disappeared during normal
+  cached builds without a compiler/test error, surviving child, cgroup OOM or GPU
+  residue; those wrapper attempts remain incomplete. **Next executable P12-C
+  work is actual multi-token temporal prefill in the existing completion path;**
+  paged hybrid state/COW and event-backed physical overlap remain separately open.
 - Earlier key implementation checkpoints include `f1ce532`
   (exact graph replay storage/access authority), `b0cf0b2`
   (`fix(cache): avoid duplicate Qwen snapshot hashing`), `134a571`
@@ -81,20 +82,15 @@ and live TODOs are authoritative.
   (production CUDA graph substrate/resource admission), `6a5c610` (driver-safe
   nonpersistent NVRTC) and `81b7c71` (explicit graph-resource lifetime witness).
   Their docs checkpoints through `b12e8f5` are pushed.
-- Pushed `origin/main` is `4502f5678e8cb1641848be62cd0fb5068bae1d09`
-  (`docs: record resident graph lifecycle checkpoint`). Local history above it now
-  includes signed `9d6613c` (private fail-closed production selector), docs
-  `bc76312`, and signed `599cb28` (B4/B8 selector timing diagnostic); this refresh
-  may add another docs-only commit. X2 is synced to the exact current local tip after
-  each checkpoint even when its remote-tracking ref is stale. Never push unless the
-  user explicitly asks.
+- Pushed `origin/main` is `7dea460a80b420d0ce49a60f6c860b3502c67c38`
+  (`feat(serving): age prefill behind decode`). It includes the earlier selector,
+  graph timing and prefix-scheduling checkpoints that were previously local.
+  This acceptance refresh may add one docs-only local commit; never push it unless
+  the user explicitly asks. X2 is synced to the exact current local tip after each
+  checkpoint even when its remote-tracking ref is stale.
 - Before any new physical X2 run, sync it to the exact current l5 `main`
   bytes/commit without using a push merely as transport, then revalidate
   status/process/GPU state.
-- Pushed `origin/main=4502f567` contains the earlier accepted CUDA/HIP history
-  through `b12e8f5` plus the later graph authority/lifecycle checkpoints including
-  `f1ce532`, `63ee14e` and docs `4502f567`. Do not describe those as unpushed local
-  commits; only newer local selector/docs checkpoints are ahead until explicitly pushed.
 - Local docs `5c8f143` recorded the host-global X2 KFD observation and `3cadc3b`
   records rejection of the ordinary-Qwen `874e67d` consumer after completed
   loaded-model A/B; the primitive itself remains retained. Later host context
@@ -102,7 +98,7 @@ and live TODOs are authoritative.
   workloads, so that KFD owner is not attributable to ZeroGravity without host
   process evidence. `5bf440d` is the first broader post-micro-optimization CUDA
   implementation checkpoint.
-- Important accepted commits immediately before origin:
+- Important earlier accepted commits:
   - `60b048d` — canonical-boundary private B8 GDN recurrent core accepted.
   - `775dfa6` — ragged private B8 KV transition accepted.
   - `c12acab` — grouped B8 recurrent transport primitive retained, serving
