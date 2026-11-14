@@ -63,7 +63,8 @@ impl NativeCacheBudget {
     }
     #[cfg(any(
         all(test, feature = "cuda-cublas"),
-        feature = "cuda-native-qualification",
+        feature = "cuda-native",
+        all(feature = "qualification", feature = "cuda"),
         all(
             target_os = "linux",
             any(feature = "hip", feature = "vulkan"),
@@ -109,7 +110,8 @@ impl ForeignProviderOwner for NativeCacheBudget {
 }
 #[cfg(any(
     all(test, feature = "cuda-cublas"),
-    feature = "cuda-native-qualification",
+    feature = "cuda-native",
+    all(feature = "qualification", feature = "cuda"),
     all(
         target_os = "linux",
         any(feature = "hip", feature = "vulkan"),

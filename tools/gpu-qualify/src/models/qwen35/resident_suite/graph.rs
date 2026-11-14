@@ -45,6 +45,7 @@ pub async fn qualify(
         || receipt.body_nodes == 0
         || receipt.retained_lease_bytes == 0
         || receipt.owned_lease_vector_bytes == 0
+        || receipt.resource_charge_bytes == 0
         || graph.replay_enqueues() != 0
     {
         return Err(Error::State("graph cold receipt incomplete".into()));
@@ -290,14 +291,15 @@ pub async fn qualify(
         ));
     }
     println!(
-        "P12_GRAPH_B2_LOGITS_PASS source=original_GGUF rows=2 independent_frontiers=true swapped_rows=true full_vocab=248320 all_domains=42 steps=4 warm_kernels={:?} captured_body_kernel_launch_sites={} outside_kernels_per_replay={} graph_host_enqueues={} committed_kernel_launches={} recorded_model_execution=0 retained_engine_lease_bytes={} owned_lease_vector_bytes={} driver_internal_bytes=unqualified driver_graph_node_enumeration=unqualified synthetic_padding_guard=true sampler=outside_unused final_reserved=0",
+        "P12_GRAPH_B2_LOGITS_PASS source=original_GGUF rows=2 independent_frontiers=true swapped_rows=true full_vocab=248320 all_domains=42 steps=4 warm_kernels={:?} captured_body_kernel_launch_sites={} outside_kernels_per_replay={} graph_host_enqueues={} committed_kernel_launches={} recorded_model_execution=0 retained_engine_lease_bytes={} owned_lease_vector_bytes={} graph_policy_charge_bytes={} driver_internal_bytes=unqualified driver_graph_node_enumeration=unqualified synthetic_padding_guard=true sampler=outside_unused final_reserved=0",
         receipt.warm_dispatches,
         receipt.captured_kernels,
         total_kernels - receipt.captured_kernels,
         enqueues,
         committed_kernels,
         receipt.retained_lease_bytes,
-        receipt.owned_lease_vector_bytes
+        receipt.owned_lease_vector_bytes,
+        receipt.resource_charge_bytes
     );
     Ok(())
 }

@@ -41,9 +41,15 @@ pub(crate) struct BatchProgram {
     greedy: [Handle; 3],
     projection_blocks: Vec<Option<PreparedBlocks>>,
     owned: Vec<Handle>,
-    #[cfg(feature = "cuda-native")]
+    #[cfg(all(
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-native")
+    ))]
     graph_generation: u64,
-    #[cfg(feature = "cuda-native")]
+    #[cfg(all(
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-native")
+    ))]
     graph_pin: Arc<()>,
     // All raw batch aliases precede the original program/native owner.
     inner: ResidentProgram,
@@ -56,9 +62,15 @@ pub(crate) struct BatchBodyReceipt {
     pub fused_dispatches: usize,
 }
 
-#[cfg(feature = "cuda-native")]
+#[cfg(all(
+    feature = "cuda",
+    any(feature = "qualification", feature = "cuda-native")
+))]
 mod graph;
-#[cfg(feature = "cuda-native")]
+#[cfg(all(
+    feature = "cuda",
+    any(feature = "qualification", feature = "cuda-native")
+))]
 pub(crate) use graph::{BatchGraphProfile, BatchGraphReplay};
 #[cfg(all(test, feature = "qualification", feature = "cuda"))]
 mod state_transport_qualification;
@@ -339,9 +351,15 @@ impl BatchProgram {
             greedy,
             projection_blocks,
             owned,
-            #[cfg(feature = "cuda-native")]
+            #[cfg(all(
+                feature = "cuda",
+                any(feature = "qualification", feature = "cuda-native")
+            ))]
             graph_generation: graph::next_generation()?,
-            #[cfg(feature = "cuda-native")]
+            #[cfg(all(
+                feature = "cuda",
+                any(feature = "qualification", feature = "cuda-native")
+            ))]
             graph_pin: Arc::new(()),
         })
     }

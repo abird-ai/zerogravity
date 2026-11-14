@@ -32,7 +32,8 @@ pub(crate) mod final_owner_probe;
 mod foreign_provider;
 #[cfg(any(
     test,
-    feature = "cuda-native-qualification",
+    feature = "cuda-native",
+    all(feature = "qualification", feature = "cuda"),
     all(
         target_os = "linux",
         any(feature = "hip", feature = "vulkan"),
@@ -87,8 +88,8 @@ pub(crate) mod source_page;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod source_upload;
 #[cfg(any(
-    all(test, feature = "cuda-cublas"),
-    feature = "cuda-native-qualification",
+    feature = "cuda-native",
+    all(feature = "qualification", feature = "cuda"),
     all(
         target_os = "linux",
         feature = "hip",

@@ -56,7 +56,10 @@ pub(crate) use batch::BatchProgram;
 pub(crate) mod ordinary_cuda;
 #[cfg(all(feature = "qualification", target_os = "linux"))]
 pub(crate) mod typed_slice;
-#[cfg(feature = "cuda-native")]
+#[cfg(all(
+    feature = "cuda",
+    any(feature = "qualification", feature = "cuda-native")
+))]
 pub(crate) use batch::{BatchBodyReceipt, BatchGraphProfile, BatchGraphReplay};
 
 #[cfg(feature = "qualification")]

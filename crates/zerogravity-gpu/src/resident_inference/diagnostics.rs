@@ -214,7 +214,7 @@ pub mod graph_wide {
 }
 #[cfg(all(feature = "portable-checkpoint", feature = "hardware-abort-probe"))]
 pub use super::checkpoint_abort::abort_upload;
-#[cfg(feature = "cuda-native")]
+#[cfg(feature = "cuda")]
 pub use super::graph::{CapturedResidentGraph, GraphCaptureReceipt};
 
 impl ResidentModel {

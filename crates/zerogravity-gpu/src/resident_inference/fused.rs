@@ -3,7 +3,10 @@ use super::*;
 
 pub(super) enum FusedExecution {
     Native,
-    #[cfg(feature = "cuda-native")]
+    #[cfg(all(
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-native")
+    ))]
     #[cfg_attr(
         not(feature = "qualification"),
         allow(
@@ -14,7 +17,10 @@ pub(super) enum FusedExecution {
     Graph(Arc<super::graph::CapturedResidentGraph>),
 }
 
-#[cfg(feature = "cuda-native")]
+#[cfg(all(
+    feature = "cuda",
+    any(feature = "qualification", feature = "cuda-native")
+))]
 fn graph_readout(
     rows: usize,
     output: ResidentOutput,
@@ -141,7 +147,10 @@ impl ResidentModel {
         readout: Readout,
         execution: FusedExecution,
     ) -> Result<Option<PreparedResidentCohort>> {
-        #[cfg(feature = "cuda-native")]
+        #[cfg(all(
+            feature = "cuda",
+            any(feature = "qualification", feature = "cuda-native")
+        ))]
         if let FusedExecution::Graph(graph) = &execution {
             // Refuse mismatched body/readout or device feedback before roots,
             // attempts, candidates, packet/workspace admission or queue work.
@@ -198,7 +207,10 @@ impl ResidentModel {
                 "native resident batch capacity exhausted".into(),
             ));
         }
-        #[cfg(feature = "cuda-native")]
+        #[cfg(all(
+            feature = "cuda",
+            any(feature = "qualification", feature = "cuda-native")
+        ))]
         if let FusedExecution::Graph(graph) = &execution {
             graph.validate(self, rows.len(), &positions, readout)?;
         }
@@ -232,7 +244,10 @@ impl ResidentModel {
                 .batch
                 .as_ref()
                 .is_some_and(|b| b.rows == rows.len());
-            #[cfg(feature = "cuda-native")]
+            #[cfg(all(
+                feature = "cuda",
+                any(feature = "qualification", feature = "cuda-native")
+            ))]
             if !same_band
                 && workspace
                     .batch
@@ -243,7 +258,10 @@ impl ResidentModel {
                     "graph workspace must retire before band replacement".into(),
                 ));
             }
-            #[cfg(feature = "cuda-native")]
+            #[cfg(all(
+                feature = "cuda",
+                any(feature = "qualification", feature = "cuda-native")
+            ))]
             if let FusedExecution::Graph(graph) = &execution {
                 let batch = workspace
                     .batch
@@ -339,7 +357,10 @@ impl ResidentModel {
             .as_ref()
             .is_some_and(|b| b.rows != rows.len())
         {
-            #[cfg(feature = "cuda-native")]
+            #[cfg(all(
+                feature = "cuda",
+                any(feature = "qualification", feature = "cuda-native")
+            ))]
             if workspace
                 .batch
                 .as_ref()
@@ -514,7 +535,10 @@ impl ResidentModel {
         drop(allocation);
         slot.begin_submission()?;
         let flight = self.service.submit_cohort(&bases, &accesses)?;
-        #[cfg(feature = "cuda-native")]
+        #[cfg(all(
+            feature = "cuda",
+            any(feature = "qualification", feature = "cuda-native")
+        ))]
         let flight = {
             let mut flight = flight;
             if let FusedExecution::Graph(graph) = &execution {
@@ -525,7 +549,10 @@ impl ResidentModel {
         };
         let program = &mut workspace.batch.as_mut().unwrap().program;
         let mut submitted = match &execution {
-            #[cfg(feature = "cuda-native")]
+            #[cfg(all(
+                feature = "cuda",
+                any(feature = "qualification", feature = "cuda-native")
+            ))]
             FusedExecution::Graph(graph) => graph.launch(program, &parameters, &bindings)?,
             FusedExecution::Native => {
                 if let Some(tokens) = &device_buffers {
@@ -718,7 +745,7 @@ impl ResidentModel {
     }
 }
 
-#[cfg(all(test, feature = "qualification", feature = "cuda-native"))]
+#[cfg(all(test, feature = "qualification", feature = "cuda"))]
 mod graph_readout_tests {
     use super::*;
 

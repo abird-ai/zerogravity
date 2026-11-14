@@ -211,7 +211,8 @@ impl ResidentLedger {
     }
     #[cfg(any(
         test,
-        feature = "cuda-native-qualification",
+        feature = "cuda-native",
+        all(feature = "qualification", feature = "cuda"),
         all(
             target_os = "linux",
             any(feature = "hip", feature = "vulkan"),
@@ -230,7 +231,8 @@ impl ResidentLedger {
     }
     #[cfg(any(
         test,
-        feature = "cuda-native-qualification",
+        feature = "cuda-native",
+        all(feature = "qualification", feature = "cuda"),
         all(
             target_os = "linux",
             any(feature = "hip", feature = "vulkan"),
@@ -266,7 +268,8 @@ impl Deref for ResidentLedger {
 // global envelope and SAME ledger, without a Client/actor reference.
 #[cfg(any(
     test,
-    feature = "cuda-native-qualification",
+    feature = "cuda-native",
+    all(feature = "qualification", feature = "cuda"),
     all(
         target_os = "linux",
         any(feature = "hip", feature = "vulkan"),
@@ -286,7 +289,8 @@ pub(crate) trait ForeignProviderOwner: Send + Sync {
 }
 #[cfg(any(
     test,
-    feature = "cuda-native-qualification",
+    feature = "cuda-native",
+    all(feature = "qualification", feature = "cuda"),
     all(
         target_os = "linux",
         any(feature = "hip", feature = "vulkan"),
@@ -305,7 +309,8 @@ pub(crate) struct ForeignProviderCharge<
 }
 #[cfg(any(
     test,
-    feature = "cuda-native-qualification",
+    feature = "cuda-native",
+    all(feature = "qualification", feature = "cuda"),
     all(
         target_os = "linux",
         any(feature = "hip", feature = "vulkan"),
@@ -330,7 +335,8 @@ impl<O: ForeignProviderOwner> ForeignProviderCharge<O> {
     }
 }
 #[cfg(any(
-    feature = "cuda-native-qualification",
+    feature = "cuda-native",
+    all(feature = "qualification", feature = "cuda"),
     all(test, feature = "cuda-cublas")
 ))]
 impl ForeignProviderCharge<super::native_cache::NativeCacheBudget> {
@@ -340,7 +346,8 @@ impl ForeignProviderCharge<super::native_cache::NativeCacheBudget> {
 }
 #[cfg(any(
     test,
-    feature = "cuda-native-qualification",
+    feature = "cuda-native",
+    all(feature = "qualification", feature = "cuda"),
     all(
         target_os = "linux",
         any(feature = "hip", feature = "vulkan"),
@@ -369,7 +376,8 @@ impl<O: ForeignProviderOwner> Drop for ForeignProviderCharge<O> {
     }
 }
 #[cfg(any(
-    feature = "cuda-native-qualification",
+    feature = "cuda-native",
+    all(feature = "qualification", feature = "cuda"),
     all(test, feature = "cuda-cublas")
 ))]
 impl ResidentService {

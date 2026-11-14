@@ -11,6 +11,7 @@
 )]
 use super::*;
 use crate::physical_quarantine::CompletionOwner;
+use crate::resident_leases::ForeignProviderCharge;
 use crate::resident_program::{BatchBodyReceipt, BatchGraphProfile, BatchGraphReplay};
 use cubecl::client::Graph;
 use std::sync::{
@@ -22,6 +23,102 @@ pub(super) mod qualification;
 #[cfg(feature = "qualification")]
 pub(super) mod wider;
 
+const GRAPH_CONTROL_RESERVE_BYTES: usize = 64 * 1024;
+const GRAPH_DISPATCH_RESERVE_BYTES: usize = 4 * 1024;
+const GRAPH_DISPATCH_BOUND: usize = 65_536;
+
+fn graph_policy_bytes(dispatches: usize, lease_capacity: usize) -> Result<usize> {
+    if dispatches == 0 || dispatches > GRAPH_DISPATCH_BOUND || lease_capacity > 65_536 {
+        return Err(Error::Limit("graph resource admission geometry".into()));
+    }
+    let metadata = std::mem::size_of::<CapturedResidentGraph>()
+        .checked_add(std::mem::size_of::<GraphCaptureReceipt>())
+        .and_then(|n| {
+            lease_capacity
+                .checked_mul(std::mem::size_of::<ResidentLease>())
+                .and_then(|leases| n.checked_add(leases))
+        })
+        .ok_or_else(|| Error::Limit("graph owned metadata byte overflow".into()))?;
+    let dispatch_bytes = dispatches
+        .checked_mul(GRAPH_DISPATCH_RESERVE_BYTES)
+        .ok_or_else(|| Error::Limit("graph dispatch reserve overflow".into()))?;
+    GRAPH_CONTROL_RESERVE_BYTES
+        .checked_add(dispatch_bytes)
+        .and_then(|n| n.checked_add(metadata))
+        .ok_or_else(|| Error::Limit("graph resource reserve overflow".into()))
+}
+
+#[derive(Clone)]
+struct GraphResourceAdmission {
+    charges: Vec<Arc<ForeignProviderCharge>>,
+    dispatch_slots: usize,
+    bytes: usize,
+}
+impl GraphResourceAdmission {
+    fn initial(
+        service: &Arc<ResidentService>,
+        dispatches: usize,
+        lease_capacity: usize,
+    ) -> Result<Self> {
+        let bytes = graph_policy_bytes(dispatches, lease_capacity)?;
+        let charge = service.reserve_foreign_provider(bytes)?;
+        charge.require_service(service)?;
+        if charge.bytes() != bytes {
+            return Err(Error::State("graph initial resource charge differs".into()));
+        }
+        Ok(Self {
+            charges: vec![charge],
+            dispatch_slots: dispatches,
+            bytes,
+        })
+    }
+
+    fn ensure_dispatches(
+        &mut self,
+        service: &Arc<ResidentService>,
+        dispatches: usize,
+    ) -> Result<()> {
+        if dispatches == 0 || dispatches > GRAPH_DISPATCH_BOUND {
+            return Err(Error::Limit("graph dispatch reserve bound".into()));
+        }
+        if dispatches <= self.dispatch_slots {
+            return Ok(());
+        }
+        let extra = dispatches
+            .checked_sub(self.dispatch_slots)
+            .and_then(|n| n.checked_mul(GRAPH_DISPATCH_RESERVE_BYTES))
+            .ok_or_else(|| Error::Limit("graph additional dispatch reserve overflow".into()))?;
+        let charge = service.reserve_foreign_provider(extra)?;
+        charge.require_service(service)?;
+        if charge.bytes() != extra {
+            return Err(Error::State(
+                "graph additional resource charge differs".into(),
+            ));
+        }
+        self.charges.push(charge);
+        self.dispatch_slots = dispatches;
+        self.bytes = self
+            .bytes
+            .checked_add(extra)
+            .ok_or_else(|| Error::Limit("graph total reserve overflow".into()))?;
+        Ok(())
+    }
+
+    fn require_service(&self, service: &Arc<ResidentService>) -> Result<()> {
+        if self.bytes == 0 || self.charges.is_empty() {
+            return Err(Error::State("graph resource admission absent".into()));
+        }
+        for charge in &self.charges {
+            charge.require_service(service)?;
+        }
+        Ok(())
+    }
+
+    fn bytes(&self) -> usize {
+        self.bytes
+    }
+}
+
 /// A source launch-site count, not a driver graph-node enumeration or timing.
 #[derive(Clone, Copy, Debug)]
 pub struct GraphCaptureReceipt {
@@ -31,6 +128,8 @@ pub struct GraphCaptureReceipt {
     pub body_nodes: usize,
     pub retained_lease_bytes: usize,
     pub owned_lease_vector_bytes: usize,
+    /// Conservative policy reserve, not measured CUDA driver memory.
+    pub resource_charge_bytes: usize,
 }
 
 pub struct CapturedResidentGraph {
@@ -41,6 +140,7 @@ pub struct CapturedResidentGraph {
     graph: HostMutex<Option<Graph>>,
     leases: Vec<ResidentLease>,
     status: ResidentLease,
+    resource: GraphResourceAdmission,
     _band_pin: Arc<()>,
     retired: AtomicBool,
     replay_enqueues: AtomicUsize,
@@ -52,6 +152,7 @@ struct QuarantinedGraph {
     _graph: Option<Graph>,
     _leases: Vec<ResidentLease>,
     _service: Arc<ResidentService>,
+    _resource: GraphResourceAdmission,
     _band_pin: Arc<()>,
 }
 impl Drop for CapturedResidentGraph {
@@ -66,6 +167,7 @@ impl Drop for CapturedResidentGraph {
                 _graph: graph,
                 _leases: self.leases.clone(),
                 _service: Arc::clone(&self.service),
+                _resource: self.resource.clone(),
                 _band_pin: Arc::clone(&self._band_pin),
             });
             self.service
@@ -87,6 +189,7 @@ impl CapturedResidentGraph {
         readout: Readout,
     ) -> Result<()> {
         self.service.ensure_usable()?;
+        self.resource.require_service(&self.service)?;
         let queue = self.service.pinned_cuda_queue()?;
         if !Arc::ptr_eq(&self.service, &model.service)
             || self.retired.load(Ordering::Acquire)
@@ -172,12 +275,13 @@ impl CapturedResidentGraph {
     }
 
     async fn terminal_barrier(self: &Arc<Self>, root: u64, destroy: bool) -> Result<()> {
+        self.resource.require_service(&self.service)?;
         let ticket = self.service.queue().submit(
             self.service.budget(),
             self.service.owner().clone(),
             &[AllocationRequest {
-                kind: AllocationClass::Scratch,
-                bytes: 4,
+                kind: AllocationClass::Other,
+                bytes: self.resource.bytes() as u64,
             }],
             None,
         )?;
@@ -223,6 +327,7 @@ struct CaptureWindow {
     service: Arc<ResidentService>,
     leases: Vec<ResidentLease>,
     band_pin: Arc<()>,
+    resource: Option<GraphResourceAdmission>,
     active: bool,
 }
 impl CaptureWindow {
@@ -230,6 +335,7 @@ impl CaptureWindow {
         service: &Arc<ResidentService>,
         leases: Vec<ResidentLease>,
         band_pin: Arc<()>,
+        resource: GraphResourceAdmission,
     ) -> Result<Self> {
         if service.client().is_capturing() {
             return Err(Error::State("capture already active".into()));
@@ -238,6 +344,7 @@ impl CaptureWindow {
             service: service.clone(),
             leases,
             band_pin,
+            resource: Some(resource),
             active: true,
         };
         // Construct the owner first so a prepare failure/unwind also closes
@@ -249,6 +356,32 @@ impl CaptureWindow {
             .map_err(|e| Error::State(format!("graph prepare: {e}")))?;
         Ok(window)
     }
+    fn ensure_dispatches(&mut self, dispatches: usize) -> Result<()> {
+        self.resource
+            .as_mut()
+            .ok_or_else(|| Error::State("graph capture resource owner absent".into()))?
+            .ensure_dispatches(&self.service, dispatches)
+    }
+
+    fn take_resource(&mut self) -> Result<GraphResourceAdmission> {
+        self.resource
+            .take()
+            .ok_or_else(|| Error::State("graph capture resource owner already moved".into()))
+    }
+
+    fn resource_bytes(&self) -> Result<usize> {
+        self.resource
+            .as_ref()
+            .map(GraphResourceAdmission::bytes)
+            .ok_or_else(|| Error::State("graph capture resource owner absent".into()))
+    }
+
+    fn covers_dispatches(&self, dispatches: usize) -> bool {
+        self.resource
+            .as_ref()
+            .is_some_and(|resource| dispatches <= resource.dispatch_slots)
+    }
+
     fn start(&self) -> Result<()> {
         self.service
             .client()
@@ -267,10 +400,15 @@ impl Drop for CaptureWindow {
     fn drop(&mut self) {
         if self.active {
             let graph = self.service.client().stop_capture().ok();
+            let resource = self
+                .resource
+                .take()
+                .expect("active capture window retains resource admission");
             let owner: CompletionOwner = Arc::new(QuarantinedGraph {
                 _graph: graph,
                 _leases: self.leases.clone(),
                 _service: self.service.clone(),
+                _resource: resource,
                 _band_pin: self.band_pin.clone(),
             });
             self.service
@@ -336,66 +474,6 @@ impl ResidentModel {
             }
         }
         let before = rows.iter().map(|(s, _)| s.binding()).collect::<Vec<_>>();
-        // First warm admits the original native workspace and completes private
-        // output without publishing. Second warm fills prepared info keys.
-        let first = match output {
-            ResidentOutput::StateOnly => self.prepare_state_fused_cohort(rows).await?,
-            ResidentOutput::Logits => self.prepare_logits_fused_cohort(rows).await?,
-        };
-        let first_count = first.dispatches();
-        drop(first);
-        let (leases, band_pin) = {
-            let workspace = self.workspace.lock().await;
-            let batch = workspace
-                .batch
-                .as_ref()
-                .ok_or_else(|| Error::State("graph warm batch missing".into()))?;
-            if batch.program.graph_pinned() {
-                return Err(Error::State("one graph per live batch workspace".into()));
-            }
-            let handles = batch.program.execution_handles(output);
-            let leases = workspace
-                .leases
-                .iter()
-                .chain(&batch.leases)
-                .filter(|(l, _)| handles.iter().any(|h| same_handle(h, &l.handle())))
-                .map(|(l, _)| l.clone())
-                .collect::<Vec<_>>();
-            (leases, batch.program.graph_pin())
-        };
-        if leases.is_empty() || leases.len() > 65_536 {
-            return Err(Error::Limit("graph lease metadata bound".into()));
-        }
-        let mut window = CaptureWindow::prepare(&self.service, leases.clone(), band_pin)?;
-        let second = match output {
-            ResidentOutput::StateOnly => self.prepare_state_fused_cohort(rows).await?,
-            ResidentOutput::Logits => self.prepare_logits_fused_cohort(rows).await?,
-        };
-        let second_count = second.dispatches();
-        drop(second);
-        if rows
-            .iter()
-            .map(|(s, _)| s.binding())
-            .ne(before.iter().copied())
-        {
-            return Err(Error::State("graph private warm changed root".into()));
-        }
-        let allocation = self.allocation.lock().await;
-        let ticket = self.service.queue().submit(
-            self.service.budget(),
-            self.service.owner().clone(),
-            &[AllocationRequest {
-                kind: AllocationClass::Scratch,
-                bytes: 4,
-            }],
-            None,
-        )?;
-        let mut slot = ticket.wait().await?;
-        let workspace = self.workspace.lock().await;
-        let batch = workspace
-            .batch
-            .as_ref()
-            .ok_or_else(|| Error::State("graph capture batch missing".into()))?;
         let parameters = rows
             .iter()
             .map(|(s, token)| {
@@ -408,9 +486,75 @@ impl ResidentModel {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        let profile = batch.program.graph_profile(&parameters, output)?;
-        if profile.body_nodes > 4096 {
-            return Err(Error::Limit("graph node-prefix bound".into()));
+        // First warm admits the original native workspace and completes private
+        // output without publishing. Second warm fills prepared info keys.
+        let first = match output {
+            ResidentOutput::StateOnly => self.prepare_state_fused_cohort(rows).await?,
+            ResidentOutput::Logits => self.prepare_logits_fused_cohort(rows).await?,
+        };
+        let first_count = first.dispatches();
+        drop(first);
+        let (leases, band_pin, profile) = {
+            let workspace = self.workspace.lock().await;
+            let batch = workspace
+                .batch
+                .as_ref()
+                .ok_or_else(|| Error::State("graph warm batch missing".into()))?;
+            if batch.program.graph_pinned() {
+                return Err(Error::State("one graph per live batch workspace".into()));
+            }
+            let profile = batch.program.graph_profile(&parameters, output)?;
+            let handles = batch.program.execution_handles(output);
+            let leases = workspace
+                .leases
+                .iter()
+                .chain(&batch.leases)
+                .filter(|(l, _)| handles.iter().any(|h| same_handle(h, &l.handle())))
+                .map(|(l, _)| l.clone())
+                .collect::<Vec<_>>();
+            (leases, batch.program.graph_pin(), profile)
+        };
+        if leases.is_empty() || leases.len() > 65_536 || profile.body_nodes > 4096 {
+            return Err(Error::Limit("graph lease/node metadata bound".into()));
+        }
+        let resource = GraphResourceAdmission::initial(
+            &self.service,
+            first_count.max(profile.body_nodes),
+            leases.capacity(),
+        )?;
+        let mut window = CaptureWindow::prepare(&self.service, leases.clone(), band_pin, resource)?;
+        let second = match output {
+            ResidentOutput::StateOnly => self.prepare_state_fused_cohort(rows).await?,
+            ResidentOutput::Logits => self.prepare_logits_fused_cohort(rows).await?,
+        };
+        let second_count = second.dispatches();
+        drop(second);
+        window.ensure_dispatches(second_count)?;
+        if rows
+            .iter()
+            .map(|(s, _)| s.binding())
+            .ne(before.iter().copied())
+        {
+            return Err(Error::State("graph private warm changed root".into()));
+        }
+        let allocation = self.allocation.lock().await;
+        let ticket = self.service.queue().submit(
+            self.service.budget(),
+            self.service.owner().clone(),
+            &[AllocationRequest {
+                kind: AllocationClass::Other,
+                bytes: window.resource_bytes()? as u64,
+            }],
+            None,
+        )?;
+        let mut slot = ticket.wait().await?;
+        let workspace = self.workspace.lock().await;
+        let batch = workspace
+            .batch
+            .as_ref()
+            .ok_or_else(|| Error::State("graph capture batch missing".into()))?;
+        if batch.program.graph_profile(&parameters, output)? != profile {
+            return Err(Error::State("graph profile changed after warm".into()));
         }
         let handles = batch.program.execution_handles(output);
         if handles
@@ -450,26 +594,31 @@ impl ResidentModel {
         let body = match body_result {
             Ok(body)
                 if body.dispatches > 0
-                    && body.dispatches <= 65_536
-                    && body.fused_dispatches > 0 =>
+                    && body.dispatches <= GRAPH_DISPATCH_BOUND
+                    && body.fused_dispatches > 0
+                    && window.covers_dispatches(body.dispatches) =>
             {
                 body
             }
             error => {
+                let resource = window.take_resource()?;
                 let owner: CompletionOwner = Arc::new(QuarantinedGraph {
                     _graph: Some(graph),
                     _leases: leases.clone(),
                     _service: self.service.clone(),
+                    _resource: resource,
                     _band_pin: batch.program.graph_pin(),
                 });
                 flight.retain_completion_owner(owner)?;
                 return Err(error
                     .err()
-                    .unwrap_or_else(|| Error::State("graph body dispatch bound".into())));
+                    .unwrap_or_else(|| Error::State("graph body dispatch/resource bound".into())));
             }
         };
         let retained_lease_bytes = leases.iter().map(ResidentLease::bytes).sum();
         let owned_lease_vector_bytes = leases.capacity() * std::mem::size_of::<ResidentLease>();
+        let resource = window.take_resource()?;
+        let resource_charge_bytes = resource.bytes();
         let graph = Arc::new(CapturedResidentGraph {
             service: self.service.clone(),
             profile,
@@ -478,6 +627,7 @@ impl ResidentModel {
             graph: HostMutex::new(Some(graph)),
             leases,
             status: status.clone(),
+            resource,
             _band_pin: batch.program.graph_pin(),
             retired: AtomicBool::new(false),
             replay_enqueues: AtomicUsize::new(0),
@@ -488,6 +638,7 @@ impl ResidentModel {
                 body_nodes: profile.body_nodes,
                 retained_lease_bytes,
                 owned_lease_vector_bytes,
+                resource_charge_bytes,
             },
         });
         let owner: CompletionOwner = graph.clone();
@@ -539,6 +690,32 @@ impl ResidentModel {
         )
         .await?
         .ok_or_else(|| Error::Limit("graph cohort admission exhausted".into()))
+    }
+}
+
+#[cfg(test)]
+mod resource_policy_tests {
+    use super::*;
+
+    #[test]
+    fn graph_resource_policy_is_monotonic_and_bounded() {
+        let base = graph_policy_bytes(1, 1).unwrap();
+        let wider = graph_policy_bytes(8, 1).unwrap();
+        let more_owners = graph_policy_bytes(8, 64).unwrap();
+        assert!(base >= GRAPH_CONTROL_RESERVE_BYTES + GRAPH_DISPATCH_RESERVE_BYTES);
+        assert_eq!(
+            wider - base,
+            7 * GRAPH_DISPATCH_RESERVE_BYTES,
+            "dispatch policy is one conservative page per source launch slot"
+        );
+        assert_eq!(
+            more_owners - wider,
+            63 * std::mem::size_of::<ResidentLease>(),
+            "owned lease-vector metadata is charged exactly"
+        );
+        assert!(graph_policy_bytes(0, 1).is_err());
+        assert!(graph_policy_bytes(GRAPH_DISPATCH_BOUND + 1, 1).is_err());
+        assert!(graph_policy_bytes(1, 65_537).is_err());
     }
 }
 
