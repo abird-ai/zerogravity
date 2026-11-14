@@ -29,14 +29,13 @@ pub async fn unchanged(
 }
 pub fn idle(model: &ResidentModel, bytes: usize) -> Result<()> {
     let queue = model.service.queue().stats()?;
-    if model.service.pending_events()? != 0
-        || model.service.resident_bytes()? != bytes
-        || queue.active
-        || queue.queued != 0
-    {
-        return Err(Error::State(
-            "graph idle retained event/candidate/queue item".into(),
-        ));
+    let pending = model.service.pending_events()?;
+    let resident = model.service.resident_bytes()?;
+    if pending != 0 || resident != bytes || queue.active || queue.queued != 0 {
+        return Err(Error::State(format!(
+            "graph idle retained state: pending_events={pending} resident_bytes={resident} expected_bytes={bytes} queue_active={} queue_queued={}",
+            queue.active, queue.queued
+        )));
     }
     model.service.ensure_usable()
 }

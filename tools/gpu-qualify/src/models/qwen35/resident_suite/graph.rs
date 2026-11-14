@@ -2,6 +2,10 @@
 use super::*;
 use zerogravity_gpu::qualification::resident::graph::*;
 
+fn idle_at(model: &ResidentModel, bytes: usize, stage: &str) -> Result<()> {
+    idle(model, bytes).map_err(|error| Error::State(format!("{stage}: {error}")))
+}
+
 pub async fn qualify(
     device: Device,
     path: &Path,
@@ -52,7 +56,7 @@ pub async fn qualify(
     }
     let warm_bytes = resident.qualification().resident_bytes()?;
     let uploads = resident.qualification().uploaded_value_bytes();
-    idle(&resident, warm_bytes)?;
+    idle_at(&resident, warm_bytes, "post-capture")?;
     if resident
         .capture_logits_b2(&[(&sessions[0], 11), (&sessions[1], 17)])
         .await
@@ -113,7 +117,7 @@ pub async fn qualify(
         return Err(Error::State("refusal enqueued graph".into()));
     }
     unchanged(&sessions, &prior_roots, &prior).await?;
-    idle(&resident, warm_bytes)?;
+    idle_at(&resident, warm_bytes, "post-refusal")?;
     // Actual BufferLease pressure; no synthetic byte-credit admission.
     let staging = resident
         .state_bytes()
@@ -139,7 +143,7 @@ pub async fn qualify(
         ));
     }
     drop(filler);
-    idle(&resident, warm_bytes)?;
+    idle_at(&resident, warm_bytes, "post-pressure")?;
     let abandoned = resident
         .prepare_graph_logits(&[(&sessions[0], 55), (&sessions[1], 78)], &graph)
         .await?;
@@ -152,7 +156,7 @@ pub async fn qualify(
     }
     drop(abandoned);
     unchanged(&sessions, &prior_roots, &prior).await?;
-    idle(&resident, warm_bytes)?;
+    idle_at(&resident, warm_bytes, "post-abandon")?;
     // Restore changes epoch after an actual B1 state transition. The old
     // graph proposal cannot publish any sibling; graph itself remains reusable.
     let stale = resident
@@ -171,7 +175,7 @@ pub async fn qualify(
     unchanged(&sessions, &changed_roots, &changed).await?;
     sessions[0].restore(&snapshot)?;
     drop(snapshot);
-    idle(&resident, warm_bytes)?;
+    idle_at(&resident, warm_bytes, "post-stale-restore")?;
     let mut committed_kernels = 0usize;
     for step in 0..4 {
         let ids = [IDS[(step + 6) % 8], IDS[(step + 1) % 8]];
@@ -260,7 +264,11 @@ pub async fn qualify(
         if resident.qualification().uploaded_value_bytes() != uploads {
             return Err(Error::State("graph warm replay uploaded values".into()));
         }
-        idle(&resident, warm_bytes)?;
+        idle_at(
+            &resident,
+            warm_bytes,
+            &format!("post-committed-replay-step-{step}"),
+        )?;
     }
     let enqueues = graph.replay_enqueues();
     if enqueues != 6 {
@@ -268,11 +276,14 @@ pub async fn qualify(
             "graph host enqueue count excludes/multiplies actual replays".into(),
         ));
     }
+    let retired_bytes = warm_bytes
+        .checked_sub(receipt.resource_charge_bytes)
+        .ok_or_else(|| Error::State("graph policy charge exceeds warm resident bytes".into()))?;
     graph.retire(sessions[0].binding().root()).await?;
-    idle(&resident, warm_bytes)?;
+    idle_at(&resident, retired_bytes, "post-graph-retire")?;
     resident.qualification_release_graph_band().await?;
     let live = resident.qualification().resident_bytes()?;
-    if live >= warm_bytes {
+    if live >= retired_bytes {
         return Err(Error::State(
             "retired graph batch bytes not reclaimable".into(),
         ));
@@ -291,7 +302,7 @@ pub async fn qualify(
         ));
     }
     println!(
-        "P12_GRAPH_B2_LOGITS_PASS source=original_GGUF rows=2 independent_frontiers=true swapped_rows=true full_vocab=248320 all_domains=42 steps=4 warm_kernels={:?} captured_body_kernel_launch_sites={} outside_kernels_per_replay={} graph_host_enqueues={} committed_kernel_launches={} recorded_model_execution=0 retained_engine_lease_bytes={} owned_lease_vector_bytes={} graph_policy_charge_bytes={} driver_internal_bytes=unqualified driver_graph_node_enumeration=unqualified synthetic_padding_guard=true sampler=outside_unused final_reserved=0",
+        "P12_GRAPH_B2_LOGITS_PASS source=original_GGUF rows=2 independent_frontiers=true swapped_rows=true full_vocab=248320 all_domains=42 steps=4 warm_kernels={:?} captured_body_kernel_launch_sites={} outside_kernels_per_replay={} graph_host_enqueues={} committed_kernel_launches={} recorded_model_execution=0 retained_engine_lease_bytes={} owned_lease_vector_bytes={} graph_policy_charge_bytes={} graph_policy_charge_released_on_retire=true driver_internal_bytes=unqualified driver_graph_node_enumeration=unqualified synthetic_padding_guard=true sampler=outside_unused final_reserved=0",
         receipt.warm_dispatches,
         receipt.captured_kernels,
         total_kernels - receipt.captured_kernels,

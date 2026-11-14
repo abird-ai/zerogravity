@@ -34,22 +34,27 @@ fn error(reason: impl Into<String>) -> CompilationError {
 impl CudaContext {
     /// Sticky uncertainty uses the original poisoned-device propagation. A
     /// later empty sync must not settle the submitting initialization owner.
+    /// The finite compiler context owns an unbound in-memory module cache because
+    /// persistence is disabled before installation, so unrelated CubeCL
+    /// environment generation bumps do not invalidate already-loaded modules.
+    /// New compilation attempts revalidate the captured SDK configuration.
     pub(crate) fn check_compiler(&self) -> Result<(), cubecl_server::driver::DevicePoison> {
-        if self.compiler_unknown
-            || self
-                .compiler_context
-                .as_ref()
-                .is_some_and(|c| c.check_environment().is_err())
-        {
-            return Err(cubecl_server::driver::DevicePoison::new(
-                "CUDA compiler/module lifetime is uncertain; process restart required",
-            ));
+        if self.compiler_unknown {
+            let reason = self.compiler_unknown_reason.as_deref().unwrap_or(
+                "CUDA compiler/module lifetime became uncertain without a retained concrete cause",
+            );
+            return Err(cubecl_server::driver::DevicePoison::new(format!(
+                "CUDA compiler/module lifetime is uncertain; process restart required: {reason}"
+            )));
         }
         Ok(())
     }
 
     pub(super) fn compiler_failure(&mut self, reason: String) -> CompilationError {
         self.compiler_unknown = true;
+        if self.compiler_unknown_reason.is_none() {
+            self.compiler_unknown_reason = Some(reason.clone());
+        }
         cubecl_server::driver::DevicePoison::new(reason).into()
     }
 
@@ -80,6 +85,15 @@ impl CudaContext {
             options.push(option);
         }
 
+        let persistent = match (self.ptx_cache.is_some(), self.second_line_ptx_cache.is_some()) {
+            (true, true) => true,
+            (false, false) => false,
+            _ => {
+                return Err(self.compiler_limit(
+                    "CUDA primary/second-line compilation persistence differs",
+                ))
+            }
+        };
         let c_source = CString::new(source).map_err(|err| error(format!("CUDA source: {err}")))?;
         let handle = cudarc::nvrtc::result::create_program(c_source.as_c_str(), None)
             .map_err(|err| error(format!("nvrtcCreateProgram: {err}")))?;
@@ -96,6 +110,7 @@ impl CudaContext {
             program.resource().handle,
             &options,
             source,
+            !persistent,
             self.compiler_context.as_mut(),
         );
         match program.finish() {
@@ -117,6 +132,7 @@ fn compile(
     program: cudarc::nvrtc::sys::nvrtcProgram,
     options: &[&str],
     source: &str,
+    emit_cubin: bool,
     context: Option<&mut CompilerContextState>,
 ) -> Result<NvrtcModule, CompilationError> {
     // SAFETY: ProgramGuard retains the sole live program and its CString
@@ -139,15 +155,18 @@ fn compile(
             }
             return Err(error(format!("{message}\n[Source]  \n{source}")));
         }
-        if let Some(context) = context {
-            // The admitted finite compiler targets the exact observed SM and
-            // disables persistent code caching. Return cubin/SASS so a newer
-            // local NVRTC does not require the driver to understand its PTX ISA.
+        if emit_cubin {
+            // Non-persistent compilation targets the exact observed SM. Return
+            // cubin/SASS so a newer local NVRTC never requires the installed
+            // driver to understand its PTX ISA. A finite compiler owner, when
+            // present, additionally accounts the resulting code bytes.
             let mut size = 0usize;
             cudarc::nvrtc::sys::nvrtcGetCUBINSize(program, &mut size)
                 .result()
                 .map_err(|err| error(format!("nvrtcGetCUBINSize: {err}")))?;
-            context.ptx(size).map_err(error)?;
+            if let Some(context) = context {
+                context.ptx(size).map_err(error)?;
+            }
             let mut cubin = vec![0; size];
             cudarc::nvrtc::sys::nvrtcGetCUBIN(program, cubin.as_mut_ptr())
                 .result()

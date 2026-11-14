@@ -33,14 +33,13 @@ impl SdkConfiguration {
 
 pub(crate) struct CompilerContextState {
     pub(crate) owner: Arc<dyn Any + Send + Sync>,
-    generation: u32,
     sdk: SdkConfiguration,
     pub(crate) usage: CompilerContextUsage,
 }
 impl core::fmt::Debug for CompilerContextState {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("CompilerContextState")
-            .field("generation", &self.generation)
+            .field("sdk", &self.sdk)
             .field("usage", &self.usage)
             .finish()
     }
@@ -49,14 +48,13 @@ impl CompilerContextState {
     pub(crate) fn new(owner: Arc<dyn Any + Send + Sync>) -> Result<Self, &'static str> {
         Ok(Self {
             owner,
-            generation: cubecl_environment::environment::generation(),
             sdk: SdkConfiguration::capture()?,
             usage: CompilerContextUsage::default(),
         })
     }
-    pub(crate) fn check_environment(&self) -> Result<(), &'static str> {
-        if cubecl_environment::environment::generation() != self.generation {
-            Err("admitted CUDA compiler environment changed; no cache eviction/reload credit")
+    pub(crate) fn check_configuration(&self) -> Result<(), &'static str> {
+        if SdkConfiguration::capture()? != self.sdk {
+            Err("admitted CUDA include/options configuration changed")
         } else {
             Ok(())
         }
@@ -68,10 +66,7 @@ impl CompilerContextState {
         )
     }
     pub(crate) fn begin(&mut self) -> Result<(), &'static str> {
-        self.check_environment()?;
-        if SdkConfiguration::capture()? != self.sdk {
-            return Err("admitted CUDA include/options configuration changed");
-        }
+        self.check_configuration()?;
         self.usage.begin()
     }
     pub(crate) fn source(&mut self, bytes: usize) -> Result<(), &'static str> {
@@ -107,7 +102,7 @@ impl super::CudaContext {
             .ok_or_else(|| {
                 self.compiler_limit("CUDA compile-only requires original admitted context")
             })?
-            .check_environment()
+            .check_configuration()
             .map_err(|e| self.compiler_limit(e))
     }
     pub(crate) fn install_compiler_context(

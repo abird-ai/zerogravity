@@ -71,6 +71,8 @@ pub(crate) struct CudaContext {
     build_id: StableHash,
     /// Failed program retirement/module load forbids reuse and healthy sync.
     compiler_unknown: bool,
+    /// First concrete uncertainty cause, retained for every later poison report.
+    compiler_unknown_reason: Option<String>,
     compiler_context: Option<CompilerContextState>,
     compilation_attempts: usize,
 }
@@ -151,6 +153,7 @@ impl CudaContext {
             properties,
             build_id: build_id_hash(),
             compiler_unknown: false,
+            compiler_unknown_reason: None,
             compiler_context: None,
             compilation_attempts: 0,
         }
@@ -432,7 +435,7 @@ impl CudaContext {
 
         if !module.ptx && self.ptx_cache.is_some() {
             return Err(self
-                .compiler_limit("CUDA cubin output requires the non-persistent admitted compiler")
+                .compiler_limit("CUDA cubin output requires non-persistent compilation")
                 .into());
         }
         let stored = match &mut self.ptx_cache {
