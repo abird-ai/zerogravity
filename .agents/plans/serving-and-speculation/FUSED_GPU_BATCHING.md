@@ -916,10 +916,10 @@ Sampled GPU maxima old→new3045→3043MiB(0.8B),3509→3507MiB(2B);
 owned RSS maxima1654288→1650324KiB and2719732→2719836KiB. Sampling can
 miss allocator peaks and does not establish physical RAM admission. Two
 workload labels do not establish authenticated tenant fairness. The original
-warm workload/frozen benchmark binaries were not retained. A later reconstructed
-0.8B cold-process diagnostic is recorded below; 2B cold, original-HF/CUDA
-numerical qualification and genuine matched vLLM V1 benchmarks remain open. No
-vLLM speed/parity claim.
+warm workload/frozen benchmark binaries were not retained. Later reconstructed
+0.8B/2B cold-process diagnostics are recorded below; original-HF/CUDA numerical
+qualification and genuine matched vLLM V1 benchmarks remain open. No vLLM
+speed/parity claim.
 
 ### 14 Nov 2026 reconstructed 0.8B cold-process prefix diagnostic
 
@@ -972,13 +972,58 @@ does **not** reproduce the old warm report's dispatch shape: old samples record
 new samples record250/76/42/208. Treat it as a distinct cold scheduler diagnostic,
 not evidence that the warm dispatch-reduction ratios reproduced.
 
-The corresponding 2B cold cell remains incomplete. The rebuilt old provider
-reached readiness twice under the same driver-safe overlay, then the isolated
-process was externally terminated during first GPU work with no Rust/server
-exit result; the first attempt grew the isolated compiler store and both attempts
-returned the RTX3060 to 41MiB with no surviving process. No timing/output cell was
-produced, and these attempts remain incomplete. Do not repeatedly relaunch or
-infer a 2B result from warm measurements.
+### 15 Nov 2026 reconstructed 2B cold-process prefix diagnostic
+
+The corresponding 2B cell now closes under the same contract: fresh measured
+provider processes, no request warmup, compiler/OS/storage caches allowed warm,
+same original GGUF/tokenizer, greedy output8/context512/active8, one worker,
+4GiB provider/5GiB device and four CPU-affinity members. It reuses the same eight
+retained source-real ragged prefix prompts; the 2B workload JSON SHA256 is
+`1c119ac72912625b89524a58293837db35c17298a83f5a4ee3e7b006b1aef0ca`.
+The exact rebuilt old/new provider source commits remain `d0a6084`/`f788929`.
+For this reconstruction the identical benchmark-only CUDA context bytes hash
+`528e21daa64ab4e1211b2912499eb89ec0e3a931c50a92939eb4849ac2f03a77`
+in both trees; rebuilt provider binaries hash
+`25b5e14342d1b408ed8ec89b3553c3a9024f94666c35694e3b74dd7ca409f956`
+and `9bf882307291d2cff474057531a1abab91a5c24f8d98bea96c76c1f7b01830ce`.
+As above, the overlay changes only exact-SM NVRTC output from PTX to cubin/SASS
+for current CUDA13.4/driver compatibility; it is not a production backport.
+
+Two early rebuilt-old preconditioning attempts reached HTTP readiness and then
+their isolated scopes disappeared during first GPU work without a Rust/server
+exit result. They remain incomplete. Host cgroup inspection shows no memory cap
+and zero historical OOM/oom-kill events. Rather than relaunching the same scope,
+the compiler/runtime boundary was staged: 2B C1 passes; ragged C2 passes with no
+native band; ragged C4 passes two B2 bands; four equal prompts pass exactly two B4
+bands/eight rows; eight equal prompts pass exactly two B8 bands/16 rows with zero
+failed/refused work, observed GPU maximum 3261MiB and monitored cgroup current below
+3.95GB. After that staged compiler preconditioning, the exact old ragged output8
+scope itself passes 8/8 with 10 fused batches/58 fused rows and final 41MiB. This
+rules out a B4/B8 execution-width defect in the rebuilt historical provider; the
+earlier null scopes remain incomplete preconditioning attempts.
+
+Four quiet serialized measured samples then run ABBA old/new/new/old. All 32
+requests and 256 generated token IDs complete with exact output hashes, reported
+completion usage and finish reasons across providers. Every sample records zero
+timeout, unsuccessful request, native-admission refusal, failed GPU quantum,
+cancellation and discarded ready cohort. Old samples repeat
+B2/B4/B8=3/1/6 batches (10 fused batches/58 rows); new samples repeat
+14/11/17 (42/208). Each physical scope retires to 41MiB.
+
+| 2B reconstructed cold | old max32 | native-prefix |
+| --- | ---: | ---: |
+| Mean 8-request wave | 29.527963s | 25.093730s |
+| Mean reported output tok/s | 2.1693 | 2.5512 |
+| Mean client token TTFT p95 | 23.162466s | 23.893053s |
+| Mean ID-delivery ITL p95 | 1.559768s | 1.323423s |
+
+Wave time improves 15.02%, reported output rate rises 17.60%, and delivery-ITL p95
+improves 15.15%; **TTFT p95 worsens 3.15%**. Therefore native teacher-prefix
+scheduling establishes better bounded cold wave throughput and delivery cadence
+on this reconstructed 2B workload, but not a TTFT improvement. These samples did
+not configure a source-correct SLO-goodput gate, and the retained workload is a
+reconstruction rather than the lost original benchmark. No vLLM speed/parity or
+general serving claim follows.
 
 ## Private CUDA graph and ordered RoPE qualification
 

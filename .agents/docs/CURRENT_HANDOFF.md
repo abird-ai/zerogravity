@@ -35,19 +35,24 @@ and live TODOs are authoritative.
   The gain shrinks with useful width, so public graph serving is deliberately not
   enabled; ordinary serving remains Native and the private selector/cache stays
   available for materially different future graph regions.
-- The next prefix-scheduling checkpoint is partial. A reconstructed **0.8B**
-  fresh-process ABBA of accepted max32-prefix source `d0a6084` versus native-prefix
-  `f788929` completes 32/32 exact requests: mean wave 17.4307s->15.4529s (-11.35%),
-  client token TTFT p95 15.0368s->14.9527s and delivery-ITL p95
-  0.8188s->0.7804s, with zero timeout/refusal/failure/cancel/discard and final 41MiB.
-  The original frozen binaries/workload are gone, so this reconstruction uses the
-  retained `f788929` source-real HTTP prompts and one identical benchmark-only
-  driver-safe NVRTC cubin overlay on both historical trees, matching the later
-  accepted `6a5c610` policy. It is not a byte-identical rerun and its dispatch shape
-  differs from the retained warm report. **2B cold remains incomplete:** two
-  supervised rebuilt-old-provider attempts reached readiness then were externally
-  terminated during first GPU work with no Rust/server result; both cleaned to 41MiB.
-  Do not relaunch in a loop or close the prefix-performance item from warm2B data.
+- Prefix-scheduling cold reconstruction is now complete for **0.8B and 2B**.
+  Fresh-process/no-request-warmup ABBA compares accepted max32-prefix `d0a6084`
+  against native teacher-prefix `f788929` with symmetric benchmark-only exact-SM
+  cubin compatibility matching later `6a5c610`. 0.8B completes 32/32 exact requests:
+  mean wave 17.4307s->15.4529s (-11.35%), TTFT p95 15.0368s->14.9527s and
+  delivery-ITL p95 0.8188s->0.7804s. 2B also completes 32/32 exact requests with
+  zero timeout/refusal/failure/cancel/discard: mean wave 29.5280s->25.0937s
+  (-15.02%), rate 2.1693->2.5512tok/s (+17.60%) and delivery-ITL p95
+  1.5598s->1.3234s (-15.15%), while TTFT p95 regresses 23.1625s->23.8931s
+  (+3.15%). Before measurement, staged 2B C1/B2/B4/B8 diagnostics proved the
+  rebuilt old provider healthy through exact B8; two earlier first-work process
+  disappearances remain incomplete compiler-preconditioning attempts, with no
+  cgroup OOM evidence. Every accepted physical scope retires to 41MiB. The original
+  frozen benchmark binaries/workload are gone, so both cells use retained source-real
+  `f788929` HTTP prompts and are reconstructed diagnostics, not byte-identical
+  historical reruns, source-correct-goodput evidence or vLLM claims. The P12 prefix
+  scheduling performance item is closed; continue with the remaining fused-serving
+  paged-state/overlap/fairness and genuine equivalent-source vLLM work.
 - Earlier key implementation checkpoints include `f1ce532`
   (exact graph replay storage/access authority), `b0cf0b2`
   (`fix(cache): avoid duplicate Qwen snapshot hashing`), `134a571`

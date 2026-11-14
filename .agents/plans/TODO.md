@@ -21,17 +21,22 @@ widths and does not justify the extra serving/resource lifecycle, so public serv
 deliberately remains `FusedExecution::Native`; retain the private selector/cache for
 future materially different graph regions. Earlier interrupted invocations remain
 incomplete, not passes. The older15,339,840-byte transient remains unexplained/
-watch-only. Prefix scheduling follow-up now has one accepted reconstructed cold
-diagnostic: 0.8B old max32 (`d0a6084`) versus native-prefix (`f788929`) fresh-process
-ABBA completes 32/32 exact requests and improves mean wave 17.4307s->15.4529s
-(-11.35%), with TTFT p95 15.0368s->14.9527s and delivery-ITL p95
-0.8188s->0.7804s. The reconstruction uses a symmetric benchmark-only exact-SM
-cubin overlay matching later `6a5c610` and a reconstructed accepted-prompt workload;
-it is not the lost original frozen benchmark. 2B cold remains incomplete after two
-externally terminated old-provider first-GPU-work attempts with no Rust result and
-clean 41MiB retirement, so the prefix-performance item stays open. Pushed
-`origin/main` is `4502f567`; selector/timing checkpoints are local and unpushed at
-this checkpoint.
+watch-only. Prefix scheduling follow-up is now complete as a bounded reconstructed
+ZG-vs-ZG cold diagnostic for both original models. 0.8B old max32 (`d0a6084`)
+versus native-prefix (`f788929`) improves mean wave 17.4307s->15.4529s (-11.35%),
+TTFT p95 15.0368s->14.9527s and delivery-ITL p95 0.8188s->0.7804s. 2B completes
+the same fresh-process ABBA contract with exact outputs/usage/finish and zero
+failed/refused/cancelled/discarded work: mean wave 29.5280s->25.0937s (-15.02%),
+reported output rate 2.1693->2.5512tok/s (+17.60%) and delivery-ITL p95
+1.5598s->1.3234s (-15.15%), while TTFT p95 regresses 23.1625s->23.8931s
+(+3.15%). Earlier rebuilt-old 2B first-work disappearances remain incomplete
+preconditioning attempts; staged C1/B2/B4/B8 diagnostics and the exact ragged
+scope subsequently pass with zero OOM events and final 41MiB. Both reconstructions
+use symmetric benchmark-only exact-SM cubin behavior matching `6a5c610` and
+retained source-real prompts because the original frozen binaries/workload are
+gone. Do not promote these to byte-identical historical, source-correct-goodput
+or vLLM claims. Pushed `origin/main` is `4502f567`; newer local checkpoints remain
+unpushed at this checkpoint.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

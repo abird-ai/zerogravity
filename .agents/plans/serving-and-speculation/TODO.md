@@ -605,29 +605,30 @@ or a change to the active correctness/benchmark/27B order.
   cache/selector as a reusable qualified capability for materially different future
   graph regions. CUDA driver-internal graph bytes/node enumeration remain unqualified.
 
-- [~] **P12 prefix scheduling performance:** warm native-prefix evidence remains
-  accepted for both models. Fresh-process/no-request-warmup reconstruction now
-  closes the missing **0.8B** cold diagnostic only: exact source commits
-  `d0a6084` (max32-prefix) and `f788929` (native teacher-prefix) were rebuilt under
-  the current toolchain, with one byte-identical benchmark-only CUDA compatibility
-  overlay on both historical trees that changes only exact-SM NVRTC output from
-  PTX to cubin/SASS, matching the later accepted `6a5c610` driver-safe policy.
-  Compiler persistence was enabled in an isolated CubeCL environment and
-  preconditioned symmetrically; measured samples remained fresh processes with no
-  request warmup. Reconstructed source-real 8-request ABBA completes 32/32 requests
-  with exact token IDs/output hashes/reported completion usage/finish and zero
-  timeout/refusal/failure/cancel/discard:
-  mean wave 17.4307s->15.4529s (-11.35%), client token TTFT p95
-  15.0368s->14.9527s and delivery-ITL p95 0.8188s->0.7804s. All physical scopes
-  retire to 41MiB. This workload is reconstructed from accepted `f788929` HTTP
-  prompts because the original benchmark workload/frozen binaries are gone; its
-  dispatch shape differs from the retained warm report, so do not merge the two
-  tables or call it a byte-identical rerun. **2B remains incomplete:** two
-  independently supervised old-provider preconditioning attempts reached
-  readiness then were externally terminated during first GPU work with no
-  Rust/server exit result; partial compiler-cache growth and final 41MiB cleanup
-  were observed. Do not loop or relabel those attempts. Close this item only with
-  a trusted comparable 2B cold cell; genuine equivalent-source vLLM remains open.
+- [x] **P12 prefix scheduling performance:** warm native-prefix evidence remains
+  accepted for both models and the missing reconstructed cold-process cells now
+  close for both original sources. Exact historical providers are `d0a6084`
+  (max32-prefix) and `f788929` (native teacher-prefix); both are rebuilt under the
+  current toolchain with the same benchmark-only exact-SM NVRTC cubin/SASS
+  compatibility behavior matching later accepted `6a5c610`. Compiler persistence
+  is preconditioned symmetrically; every measured sample is still a fresh process
+  with no request warmup. Reconstructed source-real 8-request ABBA completes
+  32/32 requests/model with exact token IDs/output hashes/reported completion
+  usage/finish and zero timeout/refusal/failure/cancel/discard. 0.8B mean
+  wave 17.4307s->15.4529s (-11.35%), TTFT p95 15.0368s->14.9527s and
+  delivery-ITL p95 0.8188s->0.7804s. 2B mean wave 29.5280s->25.0937s
+  (-15.02%), reported output rate 2.1693->2.5512tok/s (+17.60%) and
+  delivery-ITL p95 1.5598s->1.3234s (-15.15%), while TTFT p95 **regresses**
+  23.1625s->23.8931s (+3.15%). 2B old samples consistently execute
+  B2/B4/B8=3/1/6 batches; new samples14/11/17. Earlier rebuilt-old 2B scopes that
+  disappeared during first GPU work remain incomplete cold compiler-preconditioning
+  attempts, not runtime failures: staged C1, B2, exact B4 and exact B8 physical
+  diagnostics subsequently pass, including two B8 batches/16 rows, <=3261MiB
+  observed device use, zero cgroup OOM events, and final 41MiB; the exact ragged
+  old workload then passes before measurement. The original frozen binaries and
+  workload file are gone, so these are reconstructed diagnostics from retained
+  `f788929` HTTP prompts, not byte-identical reruns and not a vLLM/source-correct
+  goodput claim. Genuine equivalent-source vLLM comparison remains open.
 
 - [ ] **P12 fused continuous GPU serving:** extend the accepted CUDA B2/B4/B8
   HTTP path with paged hybrid KV/recurrent cache, physically safe
