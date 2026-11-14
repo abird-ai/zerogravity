@@ -3,18 +3,22 @@
 Current source, tests, and this queue are authoritative; Git retains retired history.
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 
-Last implementation/probe-bearing l5 checkpoint before the 14 Nov 2026 handoff
-refresh is signed `cb9e349`; `origin/main` remains `c12acab`. The handoff refresh
-may be a newer docs-only signed commit, so takeover must revalidate live HEAD and
-ahead count; nothing newer than `c12acab` is pushed at handoff creation.
-Selected CUDA2B B8 serving includes the canonical-boundary private B8 recurrent
-core (`60b048d`), ragged private B8 KV transition (`775dfa6`) and B8 private-KV
-CTA256 (`399e43a`). Later local commits retain useful shared primitives or record
-rejected consumers/probes; production source is restored after the docs-only probe
-checkpoints. `main` is the only persistent worktree. Detailed CUDA/HIP primitive
-history, exact measurements, rejections and blockers remain in
-[model-execution/TODO.md](model-execution/TODO.md); do not duplicate them into a
-second evidence ledger.
+Latest implementation checkpoint before this documentation refresh is signed
+`874e67d` (`feat(cuda): retain shared-input projection pair`), with signed HIP
+repair `c282f20` immediately below it. `origin/main` remains `c12acab` and nothing
+newer is pushed; revalidate live l5 `HEAD`/ahead count because the handoff/plan
+refresh itself may be a newer docs-only signed commit. X2 is the approved AMD
+large-VRAM execution/test host and is clean at `c282f20`; it is behind l5 by the
+`874e67d` implementation checkpoint plus any later docs-only refresh. Sync X2 to
+the exact current l5 `main` before new physical tests without using a push as
+transport. Selected CUDA2B B8
+serving still uses the canonical-boundary private B8 recurrent core (`60b048d`),
+ragged private B8 KV transition (`775dfa6`) and B8 private-KV CTA256 (`399e43a`).
+`874e67d` retains a model-neutral shared-input Ordered+LaneBlocked B8 projection
+pair, but its ordinary-Qwen consumer is not selected. `main` is the only persistent
+worktree per host. Detailed CUDA/HIP primitive history, exact measurements,
+rejections and blockers remain in [model-execution/TODO.md](model-execution/TODO.md);
+do not duplicate them into a second evidence ledger.
 
 ## Owner priority — current continuation
 
@@ -28,9 +32,12 @@ Explicit75GiB-total HIP admission is signed`d16f096`; historical defaults unchan
 Complete substantial implementation batches before combined validation; full gate last.
 Prioritize working paths + early matched-vLLM feedback; reuse checks/evidence,
 add fixtures only for concrete gaps. Baselines need not await all models/batching.
-Owner direction: CUDA + ordinary27B, quick real-model/serving feedback. Shared
-CUDA and resident HIP checkpoints are signed; no build/device campaign is live.
-This closeout reconciles notes and commits current changes, without a new launch.
+Owner direction: l5 owns repository/source changes; x2 is only for AMD
+large-VRAM execution/testing. CUDA + ordinary27B remain the active Qwen mission,
+with quick real-model/serving feedback. Before another 27B or ROCm2B campaign,
+localize the current x2 execution termination with a tiny known-good HIP physical
+scope in the established qualification/runtime environment. No build/device
+campaign is live at this checkpoint.
 
 Fabric migration is complete; the unfinished Qwen campaign remains next.
 Preserve signed native GDN`e2559b6`/pause`1c35172` and all accepted bounded
@@ -47,7 +54,7 @@ activating held routes.
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)
 - [~] P1 pipeline-composition — @pvl — recursive primitives/pipelines/profiles; shared execution adapters active, reuse current adapters in Fabric; Qwen expansion deferred — [details](pipeline-composition/TODO.md)
 - [~] P1 cli-device-routing — @pvl — unified run/config/source/device selection; preserve behavior through Fabric SDK/CLI migration — [details](cli-device-routing/TODO.md)
-- [~] P2 model-execution — @pvl — l5 CUDA2B B8 currently selects exact independent reductions, same-frontier ragged/chunked cohorts, private B8 recurrent core `60b048d`, ragged private B8 KV `775dfa6` and CTA256 KV `399e43a`; independently useful grouped transport/greedy/head/Conv/QK/certification primitives remain retained while unprofitable serving consumers stay rejected. Large same-contract CUDA numerical acceptance is blocked by missing approved reference material on l5. Populated small HIP is `8ffb511`; resident27B C1..C64 is `d16f096`, while HTTP/context closure and ROCm2B mismatch localization remain x2 work — [details](model-execution/TODO.md)
+- [~] P2 model-execution — @pvl — l5 CUDA2B B8 currently selects exact independent reductions, same-frontier ragged/chunked cohorts, private B8 recurrent core `60b048d`, ragged private B8 KV `775dfa6` and CTA256 KV `399e43a`; `874e67d` additionally retains an exact shared-input Ordered+LaneBlocked B8 projection-pair primitive with its serving consumer held. Large same-contract CUDA numerical acceptance is blocked by missing approved reference material on l5. Populated small HIP is `8ffb511`; resident27B C1..C64 is `d16f096`; `c282f20` restores HIP-only source-profile compilation. X2 must first localize the current execution termination with a tiny physical HIP scope, then resume 27B HTTP/context closure or ROCm2B mismatch localization — [details](model-execution/TODO.md)
 - [~] P2 model-acquisition — @pvl — [details](model-acquisition/TODO.md)
 
 ## Icebox

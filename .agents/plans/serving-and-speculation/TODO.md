@@ -21,6 +21,31 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
+### Current continuation — 14 Nov 2026
+
+- [x] `c282f20` restores HIP-only source-profile compilation after a shared CUDA
+  optimization accidentally gated the model-neutral packed-BF16 numeric-zero
+  greedy kernel behind `cuda-cublas`; stale HIP test/support profiles now specify
+  `native_rows: 0`. X2 compile/link validation passed for `zerogravity-gpu`
+  `hip-source`, `qwen_hip_sdk` `qwen35-hip,serve`, `fabric_sdk`
+  `qwen35-hip,serve`, and the temporary release 27B SDK/HTTP diagnostic.
+- [ ] Localize the current X2 physical-execution termination before another large
+  model campaign. The 27B diagnostic was externally terminated during model load
+  with no Rust panic/error; VRAM returned to baseline, no KFD client remained and
+  host RAM/swap did not identify an obvious OOM. A subsequent tiny HIP smoke was
+  itself terminated during compilation before physical execution, so current HIP
+  runtime health is still unknown. Re-establish one tiny known-good physical HIP
+  execution in the existing qualification/runtime environment before relaunching
+  27B or attributing the termination to model/runtime code.
+- [ ] Once tiny HIP execution is known-good, resume the highest-value X2 closure:
+  ordinary27B HTTP504/populated1K/2K context first, or ROCm2B C4/C16/C32/C64
+  mismatch localization if the 27B path remains externally blocked. Preserve the
+  original 180s HTTP contract, failed cells and expected IDs; do not repin or
+  stretch deadlines to create a pass.
+- [ ] L5 remains the source/repository authority. X2 is execution/testing only and
+  must be synced to the exact current l5 `main` before physical work; do not push
+  merely to transfer local commits.
+
 ### Expanded owner mission — 30 Oct
 
 - [ ] Finish ordinary correctness on `pvl-l5` CUDA `.8B`/`2B` through genuine

@@ -4054,6 +4054,25 @@ build or general model/backend grant. Historical failures keep their source scop
   entries, selectors and timing code were removed; production remains byte-for-
   byte on the accepted .ca K64 path.
 
+### `c282f20` — HIP source-profile compilation restored
+
+- [x] Fixed a real HIP-only cross-feature regression: the model-neutral packed-BF16
+  numeric-zero batch-greedy kernel had been incorrectly hidden behind the
+  `cuda-cublas` feature even though HIP source execution also compiles and uses the
+  shared primitive. The kernel is again available independently of CUDA without
+  changing its arithmetic, ABI or selected CUDA serving consumer.
+- [x] Updated stale HIP-facing test/support `QwenHipProfile` literals to state the
+  existing singleton physical policy explicitly as `native_rows: 0`; no native
+  HIP batching capability is granted by this repair.
+- [x] X2 compile/link validation passed for `zerogravity-gpu` with `hip-source`,
+  `qwen_hip_sdk` and `fabric_sdk` with `qwen35-hip,serve`, and a temporary release
+  27B SDK/HTTP diagnostic. The actual 27B diagnostic was externally terminated
+  during model load without a Rust panic/error; VRAM returned to baseline and no
+  KFD client remained. A later tiny HIP smoke was terminated during compilation
+  before physical execution. Therefore no fresh physical HIP-health or 27B HTTP
+  result follows from this checkpoint. Before another large launch, re-establish
+  one tiny known-good physical HIP execution in the established X2 environment.
+
 ### 14 Nov 2026 — shared-input B8 projection-pair primitive retained; consumer held
 
 - [x] Added one model-neutral B8 shared-input projection primitive that composes

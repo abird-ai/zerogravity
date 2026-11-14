@@ -11,20 +11,29 @@ and live TODOs are authoritative.
 
 ### Repository/topology checkpoint
 
-- Use **`dotlink---l5` only** unless the user explicitly changes the host/tunnel
-  instruction.
-- Work strictly in `/home/pvl/spaces/abird/src/zerogravity`.
-- Branch/checkout: `main`; it is the only persistent Git worktree.
-- Last implementation/probe-bearing signed checkpoint before this handoff refresh:
-  `cb9e349946c6daceff7d58ff28df1005dfa3ece4`
-  (`docs(cuda): record projection cache probes`). The handoff refresh itself may be
-  a newer docs-only signed commit; always revalidate live `HEAD` on takeover.
-- `origin/main` is `c12acab60c357e0742ad4ecd2f00295cd9b6bb0a`
-  (`feat(cuda): retain grouped B8 recurrent transport`).
-- Before this handoff refresh, local `main` was **8 commits ahead of origin**.
-  The handoff refresh itself may add one docs-only commit. Nothing newer than
-  `c12acab` is pushed. Never push unless the user explicitly asks.
-- Local commits after origin, oldest → newest:
+- **Repository/source authority:** use `dotlink---l5`; work only in
+  `/home/pvl/spaces/abird/src/zerogravity` on `main`. Do not create another Git
+  worktree.
+- **AMD large-VRAM execution/test host:** use `dotlink---x2` only for running and
+  testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
+  X2 as an independent source-authoring branch; source changes land on l5 first.
+- Latest signed **implementation** checkpoint before this handoff refresh is
+  `874e67db0b6e737e6d9de31e44ade597b3160143`
+  (`feat(cuda): retain shared-input projection pair`). The handoff refresh itself
+  may be a newer docs-only signed commit; always revalidate live l5 `HEAD`.
+- The immediately preceding signed HIP checkpoint is
+  `c282f20ea10c16680b033586bf11d0e5d62c0189`
+  (`fix(hip): restore source profile compilation`).
+- `origin/main` remains `c12acab60c357e0742ad4ecd2f00295cd9b6bb0a`
+  (`feat(cuda): retain grouped B8 recurrent transport`). Immediately before this
+  docs refresh l5 was **11 commits ahead of origin**; the refresh may add one
+  docs-only commit. Nothing newer is pushed. Never push unless the user explicitly
+  asks.
+- X2 is clean at `c282f20`; it is behind l5 by the `874e67d` implementation
+  checkpoint plus any later docs-only refresh. Before any new physical X2 run,
+  sync it to the exact current l5 `main` bytes/commit without using a push merely
+  as transport, then revalidate status/process/GPU state.
+- Local l5 commits after origin, oldest → newest:
   - `85f458f` — packed BF16 batch greedy retained.
   - `f303bca` — exact head→greedy partials retained.
   - `68ac810` — grouped ConvB4 transport retained.
@@ -33,22 +42,26 @@ and live TODOs are authoritative.
   - `399e43a` — accepted B8 private-KV CTA256.
   - `de2eed8` — post-KV optimization probes recorded.
   - `cb9e349` — projection/cache-policy probes recorded.
+  - `6c601f9` — comprehensive cross-window handoff refresh.
+  - `c282f20` — HIP-only source-profile compilation repair.
+  - `874e67d` — exact shared-input B8 projection-pair primitive retained; serving
+    consumer still held.
 - Important accepted commits immediately before origin:
   - `60b048d` — canonical-boundary private B8 GDN recurrent core accepted.
   - `775dfa6` — ragged private B8 KV transition accepted.
   - `c12acab` — grouped B8 recurrent transport primitive retained, serving
     consumer rejected.
-- At the last CUDA checkpoint no Cargo/model process was active, the RTX3060 was
-  idle at ~41 MiB, and all temporary benchmark/include-view artifacts were removed.
+- At this refresh no Cargo/model process is active on either host. l5 RTX3060 is
+  idle at ~41 MiB; X2 reports ~272 MiB of ~96 GiB VRAM through sysfs and no KFD
+  client. These are takeover observations, not acceptance evidence.
 - Root `README.md` is user-authored. Leave it unchanged unless explicitly asked.
-- Do not create another Git worktree on l5. Reuse the canonical target/tmp/model
-  cache state; previous extra worktrees duplicated very large build trees and were
-  intentionally removed.
+- Keep one persistent `main` checkout per host. Reuse canonical target/cache state;
+  do not recreate old worktree pools or `.agents/runs`.
 - Commits are signed. Inspect `git diff --cached --stat` before every commit and
   stage only owned paths.
-- `git log --show-signature` reports a good ED25519 signature while also printing
-  a missing local allowed-signers principal warning. That warning is not a bad
-  signature.
+- On l5, `git log --show-signature` reports a good ED25519 signature while also
+  printing a missing local allowed-signers principal warning. That warning is not
+  a bad signature.
 
 ### Read order / authority
 
@@ -233,14 +246,30 @@ serving, memory and composition plans.
 
 - `8ffb511`: populated 0.8B/2B HIP serving accepted through qualified scopes.
 - `d16f096`: explicit total HIP device-budget admission and resident 27B
-  comparison.
-- Resident 27B C1..C64 output/state/retirement is verified under the declared
-  large budget.
-- HTTP504 and populated 1K/2K HTTP/context closure remain open.
+  comparison. Resident 27B C1..C64 output/state/retirement is verified under the
+  declared large budget.
+- `c282f20`: fixes a real HIP-only cross-feature compile regression. The shared
+  packed-BF16 numeric-zero batch-greedy kernel is model-neutral and no longer
+  incorrectly hidden behind `cuda-cublas`; HIP-facing test/support profiles also
+  state the existing singleton policy explicitly with `native_rows: 0`.
+- X2 compile/link validation after `c282f20` passed `zerogravity-gpu` with
+  `hip-source`, `qwen_hip_sdk` and `fabric_sdk` with `qwen35-hip,serve`, plus a
+  temporary release 27B SDK/HTTP diagnostic link.
+- The fresh 27B diagnostic did **not** establish a physical result: its isolated
+  process was externally terminated during model load with no Rust panic/error.
+  VRAM returned to baseline, no KFD client remained, and host RAM/swap did not
+  establish an obvious OOM. A subsequent tiny HIP smoke was itself terminated
+  during compilation before physical execution. Therefore current physical HIP
+  runtime health remains unknown after this checkpoint.
+- Before another 27B or ROCm2B campaign, establish one tiny known-good physical
+  HIP execution in the existing X2 qualification/runtime environment and localize
+  any external termination. Do not blindly relaunch the large model.
+- Ordinary27B HTTP504 and populated 1K/2K HTTP/context closure remain open after
+  tiny-HIP health is established. Preserve the original 180s HTTP contract.
 - ROCm2B C4 warmup plus C16/C32/C64 warmup/timed mismatches remain unlocalized.
-  Preserve failed cells; do not repin expectations.
-- Those remaining campaigns are x2 work. Current user instruction is l5-only, so
-  do not jump to x2 without a new instruction.
+  Preserve failed cells and expected IDs; do not repin expectations.
+- These remaining campaigns are explicitly authorized X2 execution/test work;
+  repository/source edits still originate on l5.
 
 ### CUDA composition / serving foundation
 
@@ -430,6 +459,26 @@ Rejected after CTA256:
   ~1.2% slower and Rounded flipped direction between repeats.
 - All experimental helpers/selectors/tests/runners were removed.
 
+### Retained: `874e67d` shared-input B8 projection pair; consumer held
+
+- Adds one model-neutral B8 physical primitive that composes an exact Ordered K64
+  projection with an independent `LaneBlocked<32,T>` projection under one launch.
+  Both original reduction orders, row-major activation semantics, independent
+  outputs/status and source/session/root/publication boundaries remain unchanged.
+- The secondary projection remains one row per CTA; this is **not** the previously
+  rejected LaneBlocked64 row-sharing specialization and is also distinct from the
+  old rejected LaneStrided shared-input activation-staging experiment.
+- RTX3060 physical qualification matches both accepted GEMMs bit-for-bit with zero
+  status. Direct alternating timing at the real 2B hot pair
+  `8192x8x2048 + 32x8x2048` measured separate launches at 168.230 µs mean versus
+  155.752 µs composed (~7.42% lower primitive time).
+- Ordinary Qwen serving does **not** select this primitive yet. The same-process
+  loaded-model A/B did not reach a completed measurement before the bounded
+  checkpoint. Temporary selector/runner/timing/include-view artifacts were removed.
+- This is the latest retained shared architecture opportunity. A future consumer
+  must derive the pairing from real adjacent graph/dataflow compatibility, keep
+  both source reductions exact, and show controlled end-to-end benefit.
+
 ## Current ordinary CUDA selected path
 
 ### Selected
@@ -458,6 +507,8 @@ Rejected after CTA256:
 - Grouped ConvB4 transport (`68ac810`).
 - Dual Q/K head RMS (`da3eae5`).
 - Certified recurrent export (`ee347d9`).
+- Shared-input Ordered + LaneBlocked B8 projection pair (`874e67d`); consumer held,
+  not yet accepted or rejected end-to-end.
 - Other stateless row/RMS/gate/QK/rotary primitives whose current consumer
   economics were rejected.
 
@@ -473,7 +524,8 @@ two-segment row split; B4/B8 packed-BF16 KV; source-exact rotary; private
 B4/B8 GDN recurrent + alias properties; B4/B8 gated; ragged B4/B8 attention;
 exact-root derived state; scalar/grouped recurrent and Conv transports; packed
 BF16 greedy/continuation; head→greedy partials; dual Q/K RMS; certified recurrent
-export; compiler/transport/oracle utilities.
+export; exact shared-input Ordered+LaneBlocked B8 projection composition;
+compiler/transport/oracle utilities.
 
 A rejected Qwen consumer is not a reason to delete these primitives.
 
@@ -499,8 +551,10 @@ Exact data is in the owning TODO. Major rejections:
 - Ordered M128/N16.
 - Rounded M32/two-warp and paired-BF16 segment boundary.
 - K64 weight-only `.cg` cache hint.
-- dominant LaneStrided CTA-only/shared-input/paired-column/warp-sharing/
-  paired-unpack/unroll variants.
+- dominant LaneStrided CTA-only/**old LaneStrided shared-input staging**/
+  paired-column/warp-sharing/paired-unpack/unroll variants. Do not confuse this
+  rejected family with retained `874e67d`, which composes two different exact
+  projections sharing one activation boundary.
 - full broad requalification of unchanged primitives.
 - large CUDA acceptance from cross-profile NMSE/greedy-token equality alone.
 
@@ -516,6 +570,9 @@ capture, another GPU or another model.
 - Dense projection remains the largest measured region; the fresh family ranking
   above is the current local guide.
 - B8 recurrent core, B8 KV transition and CTA256 are accepted material wins.
+- `874e67d` reduces one directly timed real 2B Ordered+LaneBlocked projection pair
+  from 168.230 to 155.752 µs mean (~7.42%), but has no completed loaded-model A/B;
+  it is a retained primitive opportunity, not a serving performance claim.
 - Recent 47..54 +16 whole-model waves commonly land ~675–705 ms depending
   clock/thermal state.
 - Cross-process timing has repeatedly reversed sub-1% conclusions.
@@ -546,37 +603,45 @@ capture, another GPU or another model.
 
 ## Current blockers / open work
 
-### l5-local
+### l5 source/repository work
 
-1. **CUDA2B optimization only with materially new architecture or fresh profile
-   evidence.**
-   - Easy launch/CTA/cache/instruction variants are heavily exhausted.
-   - Re-profile before another micro-optimization.
-   - A possible next investigation is higher-level composition of adjacent
-     projections sharing an activation/read boundary, only if the real graph has
-     independent outputs whose exact reductions can remain unchanged. Inspect
-     graph/source calls first; QKVZ/gate-up may already be packed.
-   - A recurrent-state improvement would need a genuinely different layout or
-     composition, not another transport grouping/CTA/cache tweak.
-   - Do not force a change simply because a measured family is large.
-2. **Large CUDA same-contract distribution/state acceptance is open.**
-   - Cross-profile diagnostics are not acceptance.
-   - Approved original reference/archive material needed for the intended rerun is
-     currently missing on l5. Do not invent tolerances, repin or substitute.
-3. **Unequal-frontier prefill remains held.**
-   - First-lane coupling was hardened, but admission stays same-frontier.
-   - Per-lane source position/base/state semantics need approved HF source and
-     private-singleton physical comparison before scheduler admission changes.
-4. Broader HTTP/context/graph/vLLM campaigns remain separate from quick CUDA
-   direct feedback.
-5. If local CUDA micro-surfaces are exhausted, prefer the next larger runtime/
-   product capability from the live queue over endless sub-percent kernel churn.
+1. **Do not force another CUDA micro-optimization.** Easy launch-count, CTA-width,
+   cache-hint and instruction-count variants are heavily exhausted. `874e67d`
+   already implements the materially different shared-input projection-pair idea
+   for one real Ordered+LaneBlocked adjacency and retains it only as a primitive.
+   Its ordinary-Qwen serving consumer still needs a controlled loaded-model A/B;
+   first inspect the actual graph/dataflow and only wire it if the same activation,
+   exact independent reductions and lifetime boundaries genuinely match.
+2. **Large CUDA same-contract distribution/state acceptance is open but blocked.**
+   Cross-profile diagnostics are not acceptance. Approved original reference/archive
+   material needed for the intended rerun is missing on l5; do not invent
+   tolerances, repin or substitute another model/reference.
+3. **Unequal-frontier prefill remains held.** First-lane coupling was hardened, but
+   admission stays same-frontier. Per-lane source position/base/state semantics
+   still need approved HF source plus private-singleton physical comparison before
+   scheduler admission changes.
+4. Broader HTTP/context/graph/vLLM campaigns remain separate from quick CUDA direct
+   feedback. If local CUDA surfaces are exhausted, advance the larger runtime/
+   serving capability rather than endless sub-percent kernel churn.
 
-### x2 work, unavailable while l5-only remains active
+### x2 AMD large-VRAM execution/testing — current next physical blocker
 
-- ROCm2B C4/C16/C32/C64 divergence localization.
-- Ordinary 27B HIP HTTP504 and populated 1K/2K context closure.
-- Do not switch hosts without explicit user direction.
+1. **First establish tiny HIP physical health.** X2 is authorized for AMD execution
+   and testing, but the latest 27B diagnostic was externally terminated during
+   model load and the follow-up tiny smoke was terminated during compilation before
+   execution. Use the established qualification/runtime environment and a tiny
+   already-known HIP physical scope; localize process/build/environment termination
+   before another large model launch. Do not infer OOM or a HIP kernel bug without
+   evidence.
+2. Once tiny HIP is known-good, resume ordinary27B HTTP504 + populated 1K/2K
+   context closure. Keep the existing 180s HTTP deadline and accepted 75GiB-total
+   device budget; localize measured latency rather than extending deadlines or
+   changing resource accounting.
+3. ROCm2B C4/C16/C32/C64 divergence localization remains independently open.
+   Preserve expected IDs and every failed warmup/timed cell; no repinning.
+4. Before every X2 physical run, sync X2 to the exact current l5 `main`, confirm
+   one checkout, no active Cargo/model/KFD owner and current VRAM state. X2 is not
+   an independent source-authoring branch.
 
 ## Validation / execution cadence
 
@@ -597,13 +662,18 @@ capture, another GPU or another model.
 13. Stage only owned paths, inspect cached diff, signed commit.
 14. Never push without explicit user instruction.
 
-## l5 build/GPU operational notes
+## l5/x2 build and GPU operational notes
 
 Defaults:
 `CARGO_BUILD_JOBS=8`, `RAYON_NUM_THREADS=4`, `RUST_TEST_THREADS=1` where useful,
-`CARGO_NET_OFFLINE=true`, `PYTHONDONTWRITEBYTECODE=1` and `python3 -B`.
+`CARGO_NET_OFFLINE=true`, `PYTHONDONTWRITEBYTECODE=1` and `python3 -B` where the
+host environment provides Python.
 
-Physical GPU checks use `python3 -B scripts/native-gpu.py -- <command>`.
+Physical GPU checks use `python3 -B scripts/native-gpu.py -- <command>` from the
+established host environment. l5 is the repository/source authority; X2 is the AMD
+large-VRAM execution/test host only. X2's connector shell can have a reduced PATH,
+so do not treat a missing `python3`/Cargo command in the raw connector environment
+as proof that the established qualification environment is absent.
 
 Connector behavior:
 - dotlink bash timeout is adjustable; there is no fixed 114-second wall.
@@ -632,9 +702,11 @@ paths without applicable user authorization.
 
 ## Worktree / disk discipline
 
-- `main` is the only persistent checkout.
-- No second l5 Git worktree for implementation/profiling/review.
-- Reuse canonical target/cache state.
+- `main` is the only persistent checkout **per host**.
+- No second l5 or X2 Git worktree for implementation/profiling/review.
+- Author/edit source on l5. Sync exact l5 commits to X2 only as needed for AMD
+  execution/testing; do not let X2 drift into a separate implementation branch.
+- Reuse canonical target/cache state on each host.
 - Temporary `_tmp` runners and profiling files are disposable.
 - Do not recreate old worktree pools or `.agents/runs`.
 - Preserve unrelated dirty work.
@@ -649,49 +721,87 @@ grouped recurrent transport consumer; tiled recurrent transpose; recurrent CTA
 sweep; grouped ConvB4; B8 gated; dual Q/K RMS; certified export consumer;
 existing head→greedy tilings; packed greedy selection on old weak evidence;
 LaneBlocked inner-major/terms64; Ordered M128/N16; Rounded M32/paired BF16;
-K64 .cg; dominant LaneStrided CTA/shared-input/paired-column/warp-sharing/
-paired-unpack/unroll variants; broad unchanged requalification; large CUDA
-acceptance from cross-profile metrics; or x2 work while l5-only is active.
+K64 .cg; dominant LaneStrided CTA/**old shared-input staging**/paired-column/
+warp-sharing/paired-unpack/unroll variants; broad unchanged requalification; or
+large CUDA acceptance from cross-profile metrics. `874e67d` is not that old
+shared-input experiment: it is a retained exact Ordered+LaneBlocked projection-pair
+primitive whose serving consumer is still unmeasured. On X2, do not blindly
+relaunch 27B until one tiny known-good physical HIP execution closes the current
+environment/process-termination uncertainty.
 
 ## Copy/paste next-agent prompt
 
-> Use `dotlink---l5` only. Work strictly inside
+> Use `dotlink---l5` for the main repository/source and `dotlink---x2` only for
+> AMD large-VRAM running/testing. On both hosts use
 > `/home/pvl/spaces/abird/src/zerogravity` on `main`; do not create another Git
-> worktree. First read `AGENTS.md`, `.agents/plans/README.md`,
+> worktree. First read, in order: `AGENTS.md`, `.agents/plans/README.md`,
 > `.agents/docs/CURRENT_HANDOFF.md`, `.agents/plans/TODO.md`,
-> `.agents/plans/model-execution/TODO.md` and
-> `.agents/plans/numerics-and-context/CORRECTNESS_POLICY.md`, then revalidate
-> source/tests, status, signed HEAD, worktree topology, active processes and GPU.
-> The last implementation/probe-bearing signed checkpoint before the handoff
-> refresh is `cb9e349`; `origin/main` is `c12acab`. The handoff refresh may be a
-> newer docs-only signed commit, so revalidate live HEAD/ahead count immediately;
-> nothing newer than `c12acab` is pushed at handoff creation.
-> Source/tests/live TODOs outrank the handoff if main advanced. Preserve the
-> accepted CUDA path: exact independent reductions; B4/B8 cohorts with B2 partial
-> regrouping; same-frontier chunked/ragged prefill; selected canonical-boundary
-> private B8 recurrent core `60b048d`; selected ragged private B8 KV `775dfa6`;
-> selected B8 private-KV CTA256 `399e43a`; canonical roots remain publication
-> authority. Keep retained model-neutral primitives available even when their
-> current Qwen consumer was rejected: grouped recurrent transport, packed BF16
-> greedy, head-greedy partials, grouped ConvB4, dual Q/K RMS, certified recurrent
-> export, private B8 attention/gated GDN, stateless row/RMS/gate/rotary and
-> exact-root derived-state cache. Do not resurrect B16 or unequal-frontier
-> prefill; do not replay rejected recurrent/head/Conv/QK/LaneBlocked/K64/Rounded/
-> LaneStrided micro-variants unless architecture is materially different. Large
-> CUDA same-contract acceptance is still blocked by missing approved reference
-> material on l5. ROCm2B and HIP27B HTTP/context are x2 work and unavailable under
-> the current l5-only instruction. For local CUDA work, re-profile before
-> optimizing and pursue only materially new shared architecture or a clearly
-> measured hot path; easy launch/CTA/cache/instruction variants are heavily
-> exhausted. Prefer implementation → quick real-model feedback → controlled
-> same-process comparison. Reuse accepted checks, add tests only for concrete new
-> contracts/bugs, do not repeatedly requalify unchanged primitives, and preserve
-> exact source/reduction/state/root/resource/cancellation semantics. Use
-> `CARGO_BUILD_JOBS=8`, `python3 -B`, the existing canonical build/cache trees and
-> `scripts/native-gpu.py` for physical checks. Connector build replies can be
-> ambiguous; verify processes/binary timestamps/executable bits and use durable
-> jobs for long builds. Remove `_tmp` runners/include views after measurement.
-> Inspect staged paths before a signed commit. Never push unless explicitly asked.
+> `.agents/plans/model-execution/TODO.md`, and
+> `.agents/plans/numerics-and-context/CORRECTNESS_POLICY.md`; then read the owning
+> plan for the selected task. Revalidate current source/tests, `git status
+> --short --branch`, `git log -1 --show-signature`, `git worktree list --porcelain`,
+> active Cargo/model processes and GPU state before editing or executing.
+>
+> The latest implementation checkpoint before this handoff refresh is signed
+> `874e67d` (`feat(cuda): retain shared-input projection pair`), immediately above
+> signed `c282f20` (`fix(hip): restore source profile compilation`). `origin/main`
+> remains `c12acab`; immediately before the docs refresh l5 was 11 commits ahead
+> and nothing newer was pushed. The refresh itself may be a newer docs-only signed
+> commit, so revalidate live l5 `HEAD` and ahead count. X2 is clean at `c282f20`
+> and therefore behind both `874e67d` and any later docs-only refresh; sync X2 to
+> the exact current l5 `main` before any new physical run without using a push
+> merely as transport. Source/tests/live TODOs outrank this handoff if `main`
+> advances.
+>
+> Preserve the accepted ordinary CUDA path: exact independent source reduction
+> contracts; B4/B8 cohorts with B2 partial regrouping; same-frontier chunked/ragged
+> prefill; selected canonical-boundary private B8 recurrent core `60b048d`;
+> selected ragged private B8 KV `775dfa6`; selected B8 private-KV CTA256
+> `399e43a`; canonical roots remain checkpoint/rollback/publication authority.
+> Keep independently useful model-neutral primitives even when current Qwen
+> consumers were rejected or held: grouped B8 recurrent transport, packed BF16
+> batch greedy, exact head→greedy partials, grouped ConvB4 transport, dual Q/K RMS,
+> certified recurrent export, private B8 attention/gated GDN, stateless row/RMS/
+> gate/rotary primitives, exact-root derived-state cache, and `874e67d`'s exact
+> shared-input Ordered+LaneBlocked B8 projection pair. That latest pair is retained
+> but not selected in serving; its direct hot-pair timing improved ~7.42%, while a
+> loaded-model A/B did not complete before the checkpoint.
+>
+> Do not resurrect B16 or enable unequal-frontier prefill. Do not replay rejected
+> recurrent transport/tiled transpose/recurrent CTA/head/Conv/QK/LaneBlocked/K64/
+> Rounded/dominant LaneStrided experiments unless the architecture is materially
+> different with fresh evidence. In particular, do not confuse the rejected old
+> LaneStrided shared-input staging experiment with `874e67d`'s different two-
+> projection composition. Large CUDA same-contract distribution/state acceptance
+> remains blocked by missing approved reference/archive material on l5; do not
+> invent tolerances, repin references or substitute another model/reference.
+>
+> `c282f20` restores HIP-only source-profile compilation by removing an erroneous
+> `cuda-cublas` gate from the model-neutral packed-BF16 numeric-zero greedy kernel
+> and making HIP test/support profiles explicit with `native_rows: 0`. X2
+> compile/link checks passed, but the fresh 27B diagnostic was externally
+> terminated during model load with no Rust panic/error; VRAM returned to baseline
+> and no KFD client remained. A subsequent tiny HIP smoke was terminated during
+> compilation before physical execution. Therefore the next X2 step is **not**
+> another blind 27B launch: first establish one tiny known-good physical HIP run in
+> the established qualification/runtime environment and localize any external
+> termination. Once that is green, resume ordinary27B HTTP504/populated1K/2K
+> closure or ROCm2B C4/C16/C32/C64 mismatch localization. Preserve the existing
+> 180s HTTP contract, expected IDs and failed cells; do not repin or extend a
+> deadline to create a pass.
+>
+> Prefer implementation → quick real-model feedback → controlled same-process
+> comparison. Reuse accepted checks/evidence, add tests only for concrete new
+> contracts/bugs/failure boundaries and do not repeatedly requalify unchanged
+> primitives. Preserve exact source/reduction/state/root/resource/cancellation
+> semantics. Use `CARGO_BUILD_JOBS=8`, `python3 -B` in the established environment,
+> canonical build/cache trees and `scripts/native-gpu.py` for physical checks.
+> Connector build replies can be ambiguous: verify actual processes, binary
+> timestamps/sizes/executable bits and marker strings; prefer durable jobs for long
+> builds. Remove `_tmp` runners, profiling hooks, selectors and CUDA include views
+> after measurement. Keep turns to about 30 minutes and pause at the next coherent
+> checkpoint. Inspect `git diff --cached --stat` before every signed commit. Never
+> push unless the user explicitly asks.
 
 ---
 
