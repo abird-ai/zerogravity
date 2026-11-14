@@ -18,15 +18,16 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation** checkpoint is
-  `db7be604addc4f908efb8172eb51306ec436104f`
-  (`feat(cuda): admit captured graph resources`). Above `5bf440d`, captured CUDA
-  graphs now pre-admit opaque control/dispatch/owned-metadata resources inside the
-  same resident ledger/provider envelope and retain that charge across capture,
-  graph ownership, quarantine and trusted retirement. This is a conservative
-  policy reserve (64KiB control +4KiB per source-dispatch slot + Rust-owned
-  metadata), **not** measured driver memory. External capture/replay entrypoints
-  remain qualification-only and ordinary production serving still selects only
-  Native execution; no graph-serving permit follows.
+  `6a5c6101a6979d4c56c20de4c2065f44bffe8463`
+  (`fix(cuda): make nonpersistent NVRTC driver-safe`). Above `db7be60` graph
+  resource admission, it fixes the actual pre-graph physical blocker:
+  non-persistent CUDA C++ NVRTC now emits exact-SM cubin/SASS instead of PTX that
+  can outrun the installed driver's PTX ISA, while persistent contexts continue
+  to emit/cache PTX. Finite compiler contexts revalidate the captured SDK/include
+  configuration on compilation rather than poisoning on unrelated CubeCL
+  environment-generation bumps, and sticky poison retains its first concrete
+  cause. External graph APIs remain qualification-only and production serving
+  still selects Native; no production graph-serving permit follows.
 - Previous key implementation checkpoints include `b0cf0b2`
   (`fix(cache): avoid duplicate Qwen snapshot hashing`), `134a571`
   (`fix(hip): isolate CUDA private KV qualification`), `874e67d`
@@ -38,8 +39,9 @@ and live TODOs are authoritative.
   (`docs: record X2 27B physical allocation blocker`). Local history above it is
   `5c8f143` (X2 KFD localization), `3cadc3b` (shared-pair Qwen consumer
   rejection), implementation `5bf440d` (production cuda-native graph substrate),
-  docs `bc9a1b3`, and implementation `db7be60` (prepaid graph resources); this
-  refresh may add another docs-only commit. X2 is synced to the
+  docs `bc9a1b3`, implementation `db7be60` (prepaid graph resources), docs
+  `cbf1384`, and implementation `6a5c610` (driver-safe nonpersistent NVRTC);
+  this refresh may add another docs-only commit. X2 is synced to the
   exact current local tip after each checkpoint even when its remote-tracking ref
   is stale. Never push unless the user explicitly asks.
 - Before any new physical X2 run, sync it to the exact current l5 `main`
@@ -49,21 +51,28 @@ and live TODOs are authoritative.
   `f303bca`, `68ac810`, `da3eae5`, `ee347d9`, `399e43a`, `de2eed8`, `cb9e349`,
   `6c601f9`, `c282f20`, `874e67d`, `2caf304`, `52c8a16`, `134a571`, `b0cf0b2`,
   `f5d2a88` and `d68b649`. Do not describe those as unpushed local commits.
-- Local docs `5c8f143` localizes X2's stranded KFD owner and `3cadc3b`
+- Local docs `5c8f143` recorded the host-global X2 KFD observation and `3cadc3b`
   records rejection of the ordinary-Qwen `874e67d` consumer after completed
-  loaded-model A/B; the primitive itself remains retained. `5bf440d` is the first
-  broader post-micro-optimization CUDA implementation checkpoint.
+  loaded-model A/B; the primitive itself remains retained. Later host context
+  corrected `5c8f143`'s ownership inference: X2 is shared with Ollama/model
+  workloads, so that KFD owner is not attributable to ZeroGravity without host
+  process evidence. `5bf440d` is the first broader post-micro-optimization CUDA
+  implementation checkpoint.
 - Important accepted commits immediately before origin:
   - `60b048d` — canonical-boundary private B8 GDN recurrent core accepted.
   - `775dfa6` — ragged private B8 KV transition accepted.
   - `c12acab` — grouped B8 recurrent transport primitive retained, serving
     consumer rejected.
 - At this refresh no Cargo/model process is active in the connector-visible
-  command namespaces and l5 RTX3060 is idle at ~41 MiB. X2 is **not** at its clean
-  GPU baseline: total VRAM remains ~31.376GB/busy0. Host-global KFD sysfs identifies
-  the sole retained owner `2406838`, holding31,098,232,832 bytes across six queues;
-  sandboxed `/proc` cannot see the host PID directly. Do not launch another model
-  on X2 while that KFD owner persists.
+  command namespaces and l5 RTX3060 is idle at ~41 MiB. X2 is a **shared GPU
+  host**: the last baseline was total103,079,215,104 bytes VRAM,
+  used31,376,207,872/busy0, with host-global KFD owner `2406838` holding
+  31,098,232,832 bytes across six queues. The host also runs Ollama/model
+  workloads outside the Bubblewrap PID namespace, so that owner is baseline and
+  cannot be attributed to ZeroGravity from the sandbox. Do not require an empty
+  GPU. Record the baseline before our run, stay within available capacity, and
+  verify only our incremental VRAM/queue/process delta retires afterward. Never
+  reset/reclaim/restart/kill other owners without explicit authorization.
 - Root `README.md` is user-authored. Leave it unchanged unless explicitly asked.
 - Keep one persistent `main` checkout per host. Reuse canonical target/cache state;
   do not recreate old worktree pools or `.agents/runs`.
@@ -314,34 +323,33 @@ serving, memory and composition plans.
   deadline. It reached real HIP allocation (~31.376GB VRAM, busy6%) but the entire
   isolated process disappeared after ~10..12s despite an external5s heartbeat,
   before any HTTP response. No numerical/reference acceptance follows.
-- X2 did **not** return to the clean GPU baseline after that process disappeared.
-  The earlier “no visible owner” note was incomplete because each dotlink shell has
-  a Bubblewrap-private PID namespace. Host-global KFD sysfs exposes exactly one
-  retained process entry: `/sys/class/kfd/kfd/proc/2406838`, owning
-  31,098,232,832 bytes VRAM and six queues with `pasid=0`, zero CU occupancy,
-  zero faults, `page_in=23470`, `page_out=0`. At the same checkpoint total
-  device VRAM was31,375,888,384 bytes, so this one KFD entry explains essentially
-  all excess over the ~272MiB clean baseline.
+- The earlier “no visible owner” note was incomplete because each dotlink shell
+  has a Bubblewrap-private PID namespace. Host-global KFD sysfs exposes process
+  entry `/sys/class/kfd/kfd/proc/2406838`, owning31,098,232,832 bytes VRAM and
+  six queues with `pasid=0`, zero CU occupancy/faults. **The later host-context
+  correction matters:** X2 also runs Ollama/model workloads outside the sandbox,
+  so this KFD owner cannot be attributed to the failed ZeroGravity run. The old
+  “stranded allocation / clean272MiB baseline” interpretation is retired; the
+  observed KFD/VRAM state is a shared-host baseline unless ownership is positively
+  established.
 - Dotlink's exposed GPU mount sources are pinned with `O_PATH|O_NOFOLLOW|O_CLOEXEC`
   and used only as Bubblewrap `--dev-bind` sources; their fdinfo has no DRM memory
   accounting. A matched non-GPU durable-Job → Bubblewrap → `nix develop` →
   `native-gpu.py` → nested-unshare control ran35s and exited0. Therefore the
   physical run's10..12s loss is not a generic connector/native-gpu lifetime limit.
-- The75GiB budget selects resident storage for the canonical ~53.8GB source-weight
-  extent, and preparation uploads those projection operands sequentially. The
-  stranded31.1GB KFD owner therefore localizes the failed run to **partial resident
-  weight upload/allocation**, still before HTTP. No ZeroGravity lease/drop defect
-  is established because the whole userspace tree was lost abnormally and normal
-  Rust teardown could not run.
-- Treat X2 as physically dirty. Do not launch27B or ROCm2B again while KFD owner
-  `2406838` persists. The KFD process subtree is read-only from the dotlink
-  sandbox; the AMDGPU device exposes an operator reset interface, but it was not
-  invoked. Do not implicitly reset GPU, restart dotlink, kill an unseen host
-  process, or force KFD reclamation. Running kernel is7.3.1 while the
-  current-system kernel path points at7.3.3; that is only an environment
-  observation, not evidence that an update/reboot fixes this incident. The KFD
-  sysfs node ctime observed during inspection was created lazily when that tree was
-  first traversed and must not be treated as process-start evidence.
+- The75GiB route selects resident storage for the canonical ~53.8GB source-weight
+  extent and preparation uploads projection operands sequentially, but because the
+  host already has shared GPU residents the observed ~31.376GB total usage does
+  **not** localize how many bytes belonged to the failed ZeroGravity process. No
+  ZeroGravity lease/drop defect is established.
+- X2 is usable as a shared execution host. Before each physical run, snapshot
+  total/available VRAM and KFD owners, launch only if the requested workload fits
+  alongside existing residents, and compare after-run state to that exact
+  pre-run baseline. Clean up only ZeroGravity's own delta. The KFD process subtree
+  is read-only from the sandbox; the AMDGPU reset path is operator-level and was
+  not invoked. Do not reset GPU, restart dotlink, kill unseen host processes or
+  force KFD reclamation merely to create exclusive access. Running kernel7.3.1 vs
+  current-system7.3.3 remains only an environment observation.
 - Historical R9/R10 HTTP504 ran 5 Nov; `d16f096` explicit75GiB resident-budget
   plumbing landed 8 Nov. The old ~240s streamed path exceeded the unchanged180s
   deadline; the later resident C1 path was ~5.5s. Preserve that chronology rather
@@ -716,16 +724,18 @@ capture, another GPU or another model.
    trusted retirement. Queue work uses prepaid `AllocationClass::Other`; there is
    no second global charge. External graph APIs remain qualification-only and
    production serving remains `FusedExecution::Native`.
-3. Compile/host acceptance for `db7be60` is green: plain CUDA remains graph-free;
-   production/qualification CUDA-cublas strict Clippy and real Qwen production
-   checks pass; graph policy1 + graph identity/topology3 + foreign ownership7 +
-   detached-budget3 host tests pass. **Physical graph charge acceptance is still
-   open.** Both approved0.8B RTX3060 qualifier attempts failed during the initial
-   ordinary session readback, before graph resource admission/capture, at the
-   existing CUDA compiler/module-lifetime poison boundary; both returned the card
-   to41MiB. Regain that physical qualifier boundary before claiming the new charge
-   exercised. Then finish remaining same-card external-event/storage and selector
-   integration. Compile availability is not participation/performance acceptance.
+3. Signed `6a5c610` closes the physical graph qualifier blocker. The generic
+   compiler poison was localized to `CUDA_ERROR_UNSUPPORTED_PTX_VERSION` from
+   CUDA13.4 NVRTC PTX loaded by an older driver. Non-persistent C++ compilation
+   now returns exact-SM cubin/SASS; persistent compilation continues to emit/cache
+   PTX. The original0.8B B2 physical graph qualifier passes: warm
+   `[3725,3725]`, captured body3632 launch sites, outside93/replay, six graph
+   host enqueues,14,900 committed kernels, full248320 logits + all42 state domains
+   exact. The prepaid graph charge is **15,339,840 bytes** and that exact amount
+   is released by trusted `graph.retire()`; final ResourceArbiter reserved=0 and
+   RTX3060 returns41MiB. Driver-internal graph bytes/node enumeration and graph
+   performance remain unqualified. Production serving remains Native; same-card
+   external-event/storage and selector integration are still open.
 4. **Large CUDA same-contract distribution/state acceptance is open but blocked.**
    Cross-profile diagnostics are not acceptance. Approved original reference/archive
    material needed for the intended rerun is missing on l5; do not invent
@@ -747,23 +757,24 @@ capture, another GPU or another model.
    The full-runtime test needed only an external progress heartbeat to keep the X2
    connector execution alive; do not mistake that transport behavior for a model
    requirement or source bug.
-3. **Do not launch another physical model on X2 yet.** The first post-host-closure
-   explicit75GiB public HTTP liveness attempt reached partial resident-weight HIP
-   upload (~31.376GB total VRAM/busy6%) then lost its isolated process before HTTP.
-   Host-global KFD sysfs now identifies the sole retained owner `2406838`, holding
-   31,098,232,832 bytes and six queues with `pasid=0`; it explains essentially
-   all excess VRAM. A matched35s non-GPU native-gpu execution control passes.
-4. The next boundary is explicit host/KFD recovery or natural disappearance of
-   owner `2406838`, not another model retry. The owner tree is read-only from the
-   sandbox and the exposed AMDGPU reset path is an operator action; it was not used.
-   Do not implicitly reset GPU/dotlink, kill unseen host state, or force reclamation.
-   Once X2 is demonstrably clean,
-   retry the exact explicit75GiB resident route under the unchanged180s HTTP
-   deadline. Numerical/populated-context acceptance still requires the missing
-   approved27B reference material; ROCm2B mismatch localization remains later.
+3. **X2 is a shared GPU host.** Existing KFD owner `2406838` / ~31.1GB is
+   not a blocker and cannot be attributed to ZeroGravity from the private PID
+   namespace because Ollama/model workloads also run on the host. The old
+   “recover owner before any model retry” rule is retired. A matched35s non-GPU
+   native-gpu execution control remains green.
+4. Before a new27B/ROCm run, record exact total/used/available VRAM and KFD baseline,
+   then run only if the requested ZeroGravity configuration fits alongside
+   existing workloads. Track our process and incremental VRAM/queues, and require
+   those deltas to retire after normal exit. Never evict/reset/reclaim another
+   owner. The last observed ~31.38GB shared baseline left ~71.7GB before overhead,
+   so re-evaluate the exact75GiB route against **current available physical
+   capacity** instead of assuming exclusive-card capacity. Preserve the unchanged
+   180s HTTP deadline. Missing approved27B populated/reference material remains a
+   separate numerical-acceptance blocker.
 5. Before every X2 physical run, sync X2 to the exact current l5 `main`, confirm
-   one checkout, no active Cargo/model/KFD owner and current VRAM state. X2 is not
-   an independent source-authoring branch.
+   one checkout, record active workload/KFD/VRAM state, and avoid colliding with
+   insufficient remaining capacity. X2 is not an independent source-authoring
+   branch.
 
 ## Validation / execution cadence
 
@@ -913,18 +924,17 @@ existing bounded contract.
 >
 > The next exact75GiB public HTTP **liveness-only** attempt ran through
 > `native-gpu.py`, private loopback and the unchanged180s server deadline. It reached
-> real HIP allocation (~31.376GB VRAM, busy6%) but the complete isolated process
-> disappeared after ~10..12s despite an external5s heartbeat, before any HTTP
-> status. No Rust panic, cgroup/kernel OOM, AMDGPU/KFD reset or VM-fault log was
-> found. X2 VRAM accounting remains ~31.376GB with busy0 and no visible surviving
-> model/KFD owner, so treat the GPU as physically dirty. Do **not** launch27B or
-> ROCm2B again until the clean baseline returns or this ownership/reclamation
-> boundary is safely localized; do not implicitly reset GPU/dotlink service state.
-> Historical R9/R10 HTTP504 predates `d16f096` resident-budget support and reflects
-> the ~240s streamed path, not the later ~5.5s resident C1 path. The accepted66-call
-> and populated1K/2K reference material remains absent from current X2, so full
-> numerical/context acceptance is separately blocked without exact approved
-> recovery/successor capture.
+> ~31.376GB total device usage but the complete isolated process disappeared after
+> ~10..12s despite an external5s heartbeat, before any HTTP status. No Rust panic,
+> cgroup/kernel OOM, AMDGPU/KFD reset or VM-fault log was found. Later host context
+> established that X2 also runs Ollama/model workloads, so the observed KFD owner
+> and ~31GB usage cannot be attributed to ZeroGravity from the sandbox. Treat that
+> as shared-host baseline, not a dirty-GPU blocker; preserve other owners and track
+> only our incremental resource delta. Historical R9/R10 HTTP504 predates
+> `d16f096` resident-budget support and reflects the ~240s streamed path, not the
+> later ~5.5s resident C1 path. The accepted66-call and populated1K/2K reference
+> material remains absent from current X2, so full numerical/context acceptance is
+> separately blocked without exact approved recovery/successor capture.
 > Preserve the existing180s HTTP contract, expected IDs and failed cells; do not
 > repin or extend a deadline to create a pass.
 >

@@ -3,15 +3,17 @@
 Current source, tests, and this queue are authoritative; Git retains retired history.
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 
-Latest implementation checkpoint is signed `db7be60`
-(`feat(cuda): admit captured graph resources`). Above `5bf440d`, it preprices
-captured CUDA graph opaque resources inside the existing resident ledger/provider
-envelope, retains the charge through capture/quarantine/replay ownership and
-trusted retirement, and still leaves all production serving on Native execution.
-The charge is an explicit conservative policy reserve, not a claim about measured
-CUDA driver bytes. Earlier implementation checkpoints include `b0cf0b2`,
-`134a571`, `874e67d` and `c282f20`; pushed history remains through
-`d68b649`, with local docs `5c8f143` / `3cadc3b` / `bc9a1b3`.
+Latest implementation checkpoint is signed `6a5c610`
+(`fix(cuda): make nonpersistent NVRTC driver-safe`). It closes the physical
+pre-graph compiler blocker by emitting exact-SM cubin/SASS for non-persistent C++
+NVRTC while persistent contexts retain PTX caching, preserves the first concrete
+compiler poison cause, and narrows finite-compiler revalidation to the actual
+captured SDK/include configuration. Above `db7be60`, the original0.8B B2 physical
+graph qualifier now passes and proves the exact15,339,840-byte graph policy charge
+is released by trusted graph retirement. Production serving still selects Native.
+Earlier implementation checkpoints include `5bf440d`, `b0cf0b2`, `134a571`,
+`874e67d` and `c282f20`; pushed history remains through `d68b649`, with local
+docs `5c8f143` / `3cadc3b` / `bc9a1b3` / `cbf1384`.
 `origin/main` is `d68b649` at this refresh; revalidate live l5 `HEAD`/ahead
 count because this plan refresh may add a docs-only commit. X2 is
 the approved AMD large-VRAM execution/test host. Tiny-HIP runtime health is green;
@@ -19,11 +21,12 @@ exact tokenizer, isolated source binding/plan, and the full canonical host runti
 test now pass; the latter completed in75.20s once the external execution wrapper
 kept emitting progress, proving the prior silent host termination was not a Qwen
 source bug. `b0cf0b2` remains the shared duplicate-hash fix. A fresh explicit75GiB
-public-HTTP liveness probe reached real HIP allocation (~31.376GB VRAM) but its
-isolated process then disappeared before any HTTP status. Host-global KFD sysfs
-now identifies the sole retained owner `2406838`:31,098,232,832 bytes VRAM,
-six queues, `pasid=0`, zero faults/occupancy. X2 has not returned to baseline.
-After any newer docs-only checkpoint X2
+public-HTTP liveness probe reached ~31.376GB total device usage but its isolated
+process then disappeared before any HTTP status. Host-global KFD sysfs exposes
+owner `2406838`:31,098,232,832 bytes VRAM, six queues, `pasid=0`, zero
+faults/occupancy. X2 also runs Ollama/model workloads outside the sandbox, so that
+owner is **shared-host baseline unless positively attributed**, not evidence of a
+stranded ZeroGravity allocation. After any newer docs-only checkpoint X2
 may again be behind l5; sync it to exact current l5 `main` before
 new physical tests without push transport. Selected CUDA2B B8
 serving still uses the canonical-boundary private B8 recurrent core (`60b048d`),
@@ -47,25 +50,21 @@ Explicit75GiB-total HIP admission is signed`d16f096`; historical defaults unchan
 Complete substantial implementation batches before combined validation; full gate last.
 Prioritize working paths + early matched-vLLM feedback; reuse checks/evidence,
 add fixtures only for concrete gaps. Baselines need not await all models/batching.
-On l5, `5bf440d` opened the broader production CUDA graph ownership substrate
-and `db7be60` adds prepaid opaque graph-resource admission in the same shared
-resident ledger. No serving selector is enabled. Physical charge qualification is
-still open because both fresh qualifier attempts hit the pre-graph CUDA
-compiler/module-lifetime poison boundary before resource admission; do not infer
-graph participation or physical acceptance from compile/host evidence.
+On l5, `5bf440d` opened the broader production CUDA graph ownership substrate,
+`db7be60` added prepaid opaque graph-resource admission, and `6a5c610` closes
+the driver-PTX compatibility blocker. The original0.8B B2 physical graph qualifier
+now passes and proves exact graph-charge retirement; no production serving selector
+is enabled.
 Owner direction: l5 owns repository/source changes; x2 is only for AMD
-large-VRAM execution/testing. Tiny HIP health is green and the full canonical27B
-host runtime source/tokenizer path now passes. The next explicit75GiB public HTTP
-liveness attempt reached HIP allocation but the isolated process disappeared before
-HTTP status. Host-global KFD sysfs now shows the sole retained owner `2406838`
-with31,098,232,832 bytes and six queues; sandboxed `/proc` had hidden it. A
-matched35s non-GPU native-gpu control is green, so generic execution lifetime is
-not the10..12s boundary. Treat X2 as physically dirty: no27B or ROCm2B launch until
-that KFD owner/VRAM is explicitly recovered or naturally disappears. The retained
-KFD owner tree is read-only from this sandbox; the exposed AMDGPU reset interface
-is operator-level and was not invoked. Preserve the unchanged180s contract and
-missing-reference blockers; do not implicitly reset GPU/service/host state. No
-X2 build/device campaign is live at this checkpoint.
+large-VRAM execution/testing. Tiny HIP health and the full canonical27B host
+runtime source/tokenizer path are green. X2 is a **shared GPU host** with Ollama
+and other model workloads: existing KFD owner `2406838` / ~31.1GB is baseline,
+not a launch blocker and not safely attributable to ZeroGravity from sandboxed
+`/proc`. Before our physical work record the current VRAM/KFD baseline, run only
+within available capacity, and verify our incremental delta retires afterward.
+Never reset/reclaim/restart/kill other owners. Preserve the unchanged180s contract
+and missing-reference blockers; no X2 build/device campaign is live at this
+checkpoint.
 
 Fabric migration is complete; the unfinished Qwen campaign remains next.
 Preserve signed native GDN`e2559b6`/pause`1c35172` and all accepted bounded
@@ -82,7 +81,7 @@ activating held routes.
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)
 - [~] P1 pipeline-composition — @pvl — recursive primitives/pipelines/profiles; shared execution adapters active, reuse current adapters in Fabric; Qwen expansion deferred — [details](pipeline-composition/TODO.md)
 - [~] P1 cli-device-routing — @pvl — unified run/config/source/device selection; preserve behavior through Fabric SDK/CLI migration — [details](cli-device-routing/TODO.md)
-- [~] P2 model-execution — @pvl — l5 CUDA2B B8 currently selects exact independent reductions, same-frontier ragged/chunked cohorts, private B8 recurrent core `60b048d`, ragged private B8 KV `775dfa6` and CTA256 KV `399e43a`; `874e67d` retains the exact shared-input Ordered+LaneBlocked B8 projection pair; its serving consumer is rejected after non-repeatable loaded-model A/B. Large same-contract CUDA numerical acceptance remains blocked by missing approved reference material. Populated small HIP is `8ffb511`; resident27B C1..C64 is `d16f096`; `c282f20`/`134a571` repair HIP cross-feature boundaries; `b0cf0b2` removes duplicate Qwen snapshot hashing with an explicitly non-authoritative descriptor lease. X2 exact tokenizer/source binding and full canonical host runtime pass; a fresh explicit75GiB public HTTP liveness probe reached partial resident-weight HIP upload then lost its isolated process before HTTP status. Host-global KFD owner `2406838` retains31,098,232,832 bytes/six queues and explains nearly all ~31.376GB usage. Stop physical27B/ROCm2B until that owner/VRAM is explicitly recovered or disappears — [details](model-execution/TODO.md)
+- [~] P2 model-execution — @pvl — l5 CUDA2B B8 currently selects exact independent reductions, same-frontier ragged/chunked cohorts, private B8 recurrent core `60b048d`, ragged private B8 KV `775dfa6` and CTA256 KV `399e43a`; `874e67d` retains the exact shared-input Ordered+LaneBlocked B8 projection pair and its serving consumer remains rejected after non-repeatable loaded-model A/B. `6a5c610` fixes nonpersistent NVRTC driver compatibility and physically accepts the B2 CUDA graph resource lifecycle above `db7be60`. Large same-contract CUDA numerical acceptance remains blocked by missing approved reference material. Populated small HIP is `8ffb511`; resident27B C1..C64 is `d16f096`; `c282f20`/`134a571` repair HIP cross-feature boundaries; `b0cf0b2` removes duplicate Qwen snapshot hashing with an explicitly non-authoritative descriptor lease. X2 exact tokenizer/source binding and full canonical host runtime pass. X2 is shared with Ollama/model workloads: existing KFD/VRAM is baseline, so physical27B/ROCm2B work may proceed when the requested configuration fits current available capacity, while preserving other owners and verifying only ZeroGravity's incremental resource delta retires — [details](model-execution/TODO.md)
 - [~] P2 model-acquisition — @pvl — [details](model-acquisition/TODO.md)
 
 ## Icebox

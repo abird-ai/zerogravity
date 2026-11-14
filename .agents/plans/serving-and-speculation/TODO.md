@@ -73,23 +73,26 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   The run reached HIP allocation (~31.376GB VRAM, busy6%) but the entire isolated
   process disappeared after ~10..12s despite an external heartbeat, before any HTTP
   status. This establishes allocation progress only, not HTTP/numerical acceptance.
-- [x] Host-global KFD sysfs resolves the stranded allocation owner that sandboxed
-  `/proc` could not see: the sole KFD process entry `2406838` owns
-  31,098,232,832 bytes VRAM and six queues with `pasid=0`, zero occupancy/faults
-  and static counters. Total VRAM is ~31.376GB, so nearly all excess memory is
-  attached to that one KFD ownership entry rather than anonymous accounting.
+- [x] Host-global KFD sysfs exposes one existing process entry `2406838` with
+  31,098,232,832 bytes VRAM and six queues (`pasid=0`, zero occupancy/faults).
+  **Do not attribute that owner to the failed ZeroGravity run.** X2 is a shared
+  GPU host and also runs Ollama/model workloads outside the Bubblewrap PID
+  namespace; sandboxed `/proc` cannot map the KFD owner back to its host process.
+  The previous “stranded ZeroGravity allocation / dirty GPU” interpretation is
+  retired.
 - [x] Generic execution plumbing is not the10..12s boundary: an otherwise matched
   durable Job/Bubblewrap/`nix develop`/`native-gpu.py`/nested-unshare control
   stayed alive35s and exited0. Dotlink's device pins are `O_PATH` mount
-  capabilities, not DRM/KFD clients. The75GiB route selects resident27B weights,
-  so the failed run was partway through sequential resident-weight upload.
-- [ ] Stop all physical Qwen campaigns, including ROCm2B fallback, while KFD owner
-  `2406838` and its ~31.1GB allocation persist. No ZeroGravity cleanup bug is
-  demonstrated and no code workaround is justified. Its KFD process tree is
-  read-only from the sandbox; the exposed AMDGPU reset path is an operator action
-  and was not used. Do not implicitly reset GPU, restart dotlink or kill/reclaim
-  host state. Missing27B/populated1K/2K references remain a separate acceptance
-  blocker.
+  capabilities, not DRM/KFD clients. The failed75GiB liveness run did reach
+  ~31.376GB total device usage before the isolated process disappeared, but shared
+  baseline overlap means that total cannot be assigned to ZeroGravity.
+- [ ] Treat X2 as a **shared physical resource**, not an exclusive test card.
+  Record VRAM/KFD state before each run, execute only when the requested workload
+  fits the currently available capacity, and verify only ZeroGravity's incremental
+  process/VRAM/queue delta retires afterward. Existing KFD owners/VRAM remain
+  other-workload baseline. Never reset/reclaim/restart/kill those owners merely to
+  create an empty GPU. Missing27B/populated1K/2K references remain a separate
+  numerical-acceptance blocker.
 - [ ] L5 remains the source/repository authority. X2 is execution/testing only and
   must be synced to the exact current l5 `main` before physical work; do not push
   merely to transfer local commits.
@@ -536,18 +539,28 @@ or a change to the active correctness/benchmark/27B order.
   shared-cap concurrency and poison/fence retention. External
   `ResidentModel::capture_*` / `prepare_graph_*` remain qualification-only and
   ordinary serving still constructs only `FusedExecution::Native`.
-- [ ] Physical requalification of the new charge is **not established**. Two
-  isolated RTX3060 attempts using the approved original0.8B GGUF—first historical
-  `qualification,cuda`, then a production-capable `cuda-cublas` feature
-  union—both failed in the initial ordinary session readback *before*
-  `GraphResourceAdmission::initial` / graph prepare, with the existing
-  `CUDA compiler/module lifetime is uncertain; process restart required` poison
-  boundary. Both processes exited and the card returned to41MiB. Do not attribute
-  those failures to the graph charge or call them graph acceptance. Next graph
-  work must first regain a clean physical qualifier path, then prove the prepaid
-  charge through capture/replay/retirement. Same-card external-event/storage and
-  complete production selector integration remain separate; private graph replay
-  still grants no serving participation/performance.
+- [x] Signed `6a5c610` closes the physical CUDA compiler blocker and accepts
+  the prepaid graph charge on the RTX3060. The original generic poison was
+  localized to `CUDA_ERROR_UNSUPPORTED_PTX_VERSION`: non-persistent C++ NVRTC
+  emitted CUDA13.4 PTX newer than the installed driver accepted. Non-persistent
+  compilation now emits exact-SM cubin/SASS; persistent compilation still emits
+  and caches PTX. The finite compiler owner no longer treats an unrelated CubeCL
+  environment-generation bump as module uncertainty; every new compilation still
+  revalidates its captured SDK/include configuration, finite cumulative accounting
+  remains intact, and sticky poison now preserves the first concrete cause.
+- [x] Exact original0.8B B2 graph qualification now passes physically:
+  warm launches `[3725,3725]`, captured body3632 launch sites, outside93 per
+  replay, six graph host enqueues,14,900 committed kernels, full248320 logits and
+  all42 state domains exact. The graph policy charge is **15,339,840 bytes** and
+  the qualifier proves that exact charge disappears at trusted `graph.retire()`;
+  graph-band release then reclaims additional batch storage, final ResourceArbiter
+  reserved bytes are0 and the RTX3060 returns to41MiB. CUDA driver-internal graph
+  bytes/node enumeration remain unqualified. This is correctness/lifetime
+  acceptance only, not graph performance or production serving selection.
+- [ ] Remaining graph work: external capture/replay APIs remain qualification-only
+  and ordinary serving still selects `FusedExecution::Native`. Finish the
+  remaining same-card external-event/storage/production-selector integration
+  before enabling graph serving.
 
 - [ ] **P12 prefix scheduling performance:** measure concurrent native prefix
   cold-process throughput/TTFT against the accepted max32-prefix implementation.
