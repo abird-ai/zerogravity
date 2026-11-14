@@ -2,6 +2,7 @@
 
 Current source, tests, and this queue are authoritative; Git retains retired history.
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
+Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-14.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-14.md).
 
 Latest implementation checkpoint is signed `f1ce532`
 (`feat(cuda): bind graph replay to resident flight`). A captured graph now owns

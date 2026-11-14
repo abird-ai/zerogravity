@@ -2,6 +2,8 @@
 
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
+Full dated takeover snapshot: [`FULL_COMPREHENSIVE_HANDOFF_2026-11-14.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-14.md).
+
 This file is the complete takeover map and a pointer into maintained source, tests
 and plans. It is deliberately **not** the retired monolithic SHA/archive/evidence
 handoff model. Git history retains superseded checkpoints; current source, tests
@@ -28,13 +30,14 @@ and live TODOs are authoritative.
   same executable/storage authority. External graph APIs remain qualification-only
   and production serving still selects Native; no production graph-serving permit
   follows.
-- Previous key implementation checkpoints include `b0cf0b2`
+- Earlier key implementation checkpoints include `b0cf0b2`
   (`fix(cache): avoid duplicate Qwen snapshot hashing`), `134a571`
   (`fix(hip): isolate CUDA private KV qualification`), `874e67d`
-  (`feat(cuda): retain shared-input projection pair`) and `c282f20`
-  (`fix(hip): restore source profile compilation`). Docs checkpoints include
-  `2caf304`, `52c8a16`, `ca6e99f`, `f5d2a88`, pushed `d68b649` and local
-  `5c8f143`.
+  (`feat(cuda): retain shared-input projection pair`), `c282f20`
+  (`fix(hip): restore source profile compilation`), `5bf440d` / `db7be60`
+  (production CUDA graph substrate/resource admission), `6a5c610` (driver-safe
+  nonpersistent NVRTC) and `81b7c71` (explicit graph-resource lifetime witness).
+  Their docs checkpoints through `b12e8f5` are pushed.
 - `origin/main` is `b12e8f5395af84bda5a5c0eab960efef2399f6c7`
   (`docs: record graph lifetime repeatability witness`). Local history above it
   currently starts with implementation `f1ce532` (exact graph replay
@@ -860,109 +863,133 @@ paths without applicable user authorization.
 
 ## Next agent must not redo
 
-Do not replay:
-Fabric transition; cancelled recurrence/watch campaigns; B16; unequal-frontier
-admission without new source qualification; persistent derived GDN consumer;
-grouped recurrent transport consumer; tiled recurrent transpose; recurrent CTA
-sweep; grouped ConvB4; B8 gated; dual Q/K RMS; certified export consumer;
-existing head→greedy tilings; packed greedy selection on old weak evidence;
-LaneBlocked inner-major/terms64; Ordered M128/N16; Rounded M32/paired BF16;
-K64 .cg; dominant LaneStrided CTA/**old shared-input staging**/paired-column/
-warp-sharing/paired-unpack/unroll variants; broad unchanged requalification; or
-large CUDA acceptance from cross-profile metrics. `874e67d` is not that old
-shared-input experiment: it is a retained exact Ordered+LaneBlocked projection-pair
-primitive whose serving consumer is still unmeasured. On X2, tiny physical HIP
-health is now re-established; do not repeat the health probe unless host/runtime
-state changes. Resume ordinary27B HTTP504/populated1K/2K closure next under the
-existing bounded contract.
+Do not replay or reopen without materially new architecture/evidence:
+
+- the completed Fabric vNext transition or cancelled recurrence/watch campaigns;
+- B16 active/native serving;
+- unequal-frontier **prefill** admission without new approved source qualification;
+- persistent derived-GDN consumer, grouped recurrent transport consumer, tiled recurrent
+  transpose, recurrent CTA sweeps, grouped ConvB4 consumer, B8 gated consumer,
+  dual Q/K RMS consumer, certified recurrent-export consumer;
+- existing head→greedy tilings, packed greedy selection on the old weak evidence,
+  LaneBlocked inner-major/terms64, Ordered M128/N16, Rounded M32/paired BF16,
+  K64 `.cg`, dominant LaneStrided CTA/old shared-input staging/paired-column/
+  warp-sharing/paired-unpack/unroll variants;
+- the `874e67d` ordinary-Qwen consumer: the exact Ordered+LaneBlocked pair primitive
+  remains useful, but its loaded-model consumer was measured and rejected because
+  order/thermal drift dwarfed the small two-sided aggregate;
+- the CUDA graph PTX compatibility blocker: `6a5c610` already fixes non-persistent
+  NVRTC by emitting exact-SM cubin/SASS;
+- graph opaque-resource admission/lifetime: `db7be60` + `81b7c71` already price,
+  retain, witness and retire the charge;
+- same-card graph storage/event authority: `f1ce532` already requires every replay
+  to prove the exact captured `(ResidentLease, DeviceAccess)` set against the armed
+  `ResidentSubmission`;
+- the old X2 "dirty GPU / wait for KFD owner to disappear" interpretation. X2 is
+  shared with Ollama/model workloads; existing KFD/VRAM is baseline unless
+  positively attributed to our process.
+
+Do not broadly requalify unchanged primitives merely because a new phase starts.
+On X2, do not reset/reclaim/restart/kill other GPU owners. Tiny physical HIP health
+is already green; repeat it only if host/runtime state changes.
 
 ## Copy/paste next-agent prompt
 
-> Use `dotlink---l5` for the main repository/source and `dotlink---x2` only for
-> AMD large-VRAM running/testing. On both hosts use
+> Use `dotlink---l5` for all repository/source changes and `dotlink---x2` only for
+> AMD large-VRAM execution/testing. On both hosts work in
 > `/home/pvl/spaces/abird/src/zerogravity` on `main`; do not create another Git
 > worktree. First read, in order: `AGENTS.md`, `.agents/plans/README.md`,
-> `.agents/docs/CURRENT_HANDOFF.md`, `.agents/plans/TODO.md`,
-> `.agents/plans/model-execution/TODO.md`, and
-> `.agents/plans/numerics-and-context/CORRECTNESS_POLICY.md`; then read the owning
-> plan for the selected task. Revalidate current source/tests, `git status
-> --short --branch`, `git log -1 --show-signature`, `git worktree list --porcelain`,
-> active Cargo/model processes and GPU state before editing or executing.
+> `.agents/docs/CURRENT_HANDOFF.md`,
+> `.agents/docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-14.md`,
+> `.agents/plans/TODO.md`, `.agents/plans/model-execution/TODO.md`,
+> `.agents/plans/numerics-and-context/CORRECTNESS_POLICY.md`, and then the owning
+> plan(s) for the task. Current source/tests/live TODOs outrank handoff text if
+> `main` has advanced.
 >
-> The latest implementation checkpoint is signed `b0cf0b2`
-> (`fix(cache): avoid duplicate Qwen snapshot hashing`). Earlier key checkpoints
-> include `134a571` (HIP/CUDA qualification boundary), `874e67d` (retained
-> shared-input projection pair), `c282f20` (HIP source-profile compilation repair),
-> implementation `b0cf0b2`, and docs through pushed `d68b649`. `origin/main` is
-> exact at `d68b649` at the start of this refresh. Before the next execution X2
-> should be exact at the final docs checkpoint; revalidate and sync if needed. This
-> refresh may itself be a newer docs-only signed commit, so revalidate live l5
-> `HEAD`/ahead count and sync X2 to that exact `main` before any new physical run
-> without using a push merely as transport. Source/tests/live TODOs outrank this
-> handoff if `main` advances.
+> Revalidate before editing: `git status --short --branch`, `git rev-parse HEAD`,
+> `git rev-parse origin/main`, `git log -1 --show-signature`,
+> `git worktree list --porcelain`, active Cargo/model/native-gpu processes, and
+> physical GPU state. At handoff construction the source/docs tip before the
+> handoff-only commit is `9c86c0cd8396abd023d4504c6f2a559249d331fd`;
+> latest implementation is signed `f1ce532d49c4121324eb5f5a401f85ea900f1251`
+> (`feat(cuda): bind graph replay to resident flight`), and pushed
+> `origin/main` is `b12e8f5395af84bda5a5c0eab960efef2399f6c7`.
+> The handoff creation itself may add one newer docs-only signed commit, so trust
+> live Git and sync X2 to that exact l5 tip by bundle before any new X2 physical
+> execution. Never push unless the user explicitly asks.
+>
+> **Immediate continuation:** production CUDA graph admission is the active l5
+> boundary. The graph identity/pin/replay substrate is production-compilable
+> (`5bf440d`), opaque graph resources are prepaid in the existing resident
+> ledger/provider envelope (`db7be60`), non-persistent CUDA NVRTC is driver-safe
+> (`6a5c610`), graph resource lifetime is explicitly witnessed (`81b7c71`), and
+> `f1ce532` now closes the same-card storage/event-authority seam by retaining the
+> exact captured `(ResidentLease, DeviceAccess)` set and requiring the armed
+> `ResidentSubmission` to prove those same allocations/accesses before every
+> backend graph enqueue. The original0.8B B2 physical qualifier passes full248320
+> logits/all42 state domains, six graph host enqueues, final reserved=0 and
+> RTX3060 41MiB→41MiB. Current conservative graph policy charge is
+> **15,356,224 bytes**, including **32,768 bytes** of owned lease/access-vector
+> metadata. Driver-internal graph bytes/node enumeration remain unqualified.
+>
+> **Next phase:** add the private production graph lifecycle/cache and clean
+> retirement/replacement policy around the existing `ResidentModel`/batch workspace.
+> Keep external graph capture/replay wrappers qualification-only and keep public
+> serving on `FusedExecution::Native` until the lifecycle/cache is complete and
+> fail-closed. Do not jump directly to a router selector. Once lifecycle/cache is
+> coherent and physically qualified, integrate a production selector that can only
+> choose a compatible live graph and falls back/refuses according to the declared
+> contract without widening numerical/state/resource semantics; then benchmark the
+> selected path against the same native path before calling it a serving win.
+>
+> Preserve the graph invariants already established: one cold capture per live
+> batch workspace; exact service/source/generation/stream/profile identity; batch
+> workspace pinning across graph life; exact retained storage/access authority;
+> graph resource charge acquired before `graph_prepare`, allowed to grow only
+> before capture starts, retained through capture/replay/quarantine and released
+> only after trusted retirement; terminal graph destruction only after trusted
+> barriers; unknown completion fences/quarantines rather than freeing. One older
+> repeat under the previous **15,339,840-byte** policy failed closed at the first
+> post-capture idle check with an exact-policy-sized resident-byte delta. It did not
+> reproduce in four subsequent runs, and the stronger `81b7c71` witness remains in
+> place. Do not weaken the idle invariant or claim that transient is explained.
 >
 > Preserve the accepted ordinary CUDA path: exact independent source reduction
-> contracts; B4/B8 cohorts with B2 partial regrouping; same-frontier chunked/ragged
-> prefill; selected canonical-boundary private B8 recurrent core `60b048d`;
-> selected ragged private B8 KV `775dfa6`; selected B8 private-KV CTA256
-> `399e43a`; canonical roots remain checkpoint/rollback/publication authority.
-> Keep independently useful model-neutral primitives even when current Qwen
-> consumers were rejected or held: grouped B8 recurrent transport, packed BF16
-> batch greedy, exact head→greedy partials, grouped ConvB4 transport, dual Q/K RMS,
-> certified recurrent export, private B8 attention/gated GDN, stateless row/RMS/
-> gate/rotary primitives, exact-root derived-state cache, and `874e67d`'s exact
-> shared-input Ordered+LaneBlocked B8 projection pair. That latest pair is retained
-> but not selected in serving; its direct hot-pair timing improved ~7.42%, while a
-> loaded-model A/B did not complete before the checkpoint.
+> contracts; genuine B4/B8 cohorts with B2 partial regrouping; same-frontier
+> chunked/ragged prefill; selected canonical-boundary private B8 recurrent core
+> `60b048d`; selected ragged private B8 KV `775dfa6`; selected B8 private-KV
+> CTA256 `399e43a`; canonical roots remain checkpoint/rollback/publication
+> authority. Keep reusable model-neutral primitives even where the first Qwen
+> consumer was rejected: grouped recurrent transport, packed BF16 greedy,
+> head→greedy partials, grouped ConvB4 transport, dual Q/K RMS, certified recurrent
+> export, private B8 attention/gated GDN, stateless row/RMS/gate/rotary primitives,
+> exact-root derived cache, and `874e67d`'s Ordered+LaneBlocked pair. Do not
+> resurrect rejected B16/unequal-prefill/recurrent/transpose/CTA/head/Conv/QK/
+> LaneBlocked/K64/Rounded/dominant-LaneStrided variants without materially
+> different architecture and evidence.
 >
-> Do not resurrect B16 or enable unequal-frontier prefill. Do not replay rejected
-> recurrent transport/tiled transpose/recurrent CTA/head/Conv/QK/LaneBlocked/K64/
-> Rounded/dominant LaneStrided experiments unless the architecture is materially
-> different with fresh evidence. In particular, do not confuse the rejected old
-> LaneStrided shared-input staging experiment with `874e67d`'s different two-
-> projection composition. Large CUDA same-contract distribution/state acceptance
-> remains blocked by missing approved reference/archive material on l5; do not
-> invent tolerances, repin references or substitute another model/reference.
+> Large same-contract CUDA distribution/state acceptance remains blocked by missing
+> approved reference/archive material on l5; do not invent tolerances, repin or
+> substitute another reference. On X2, exact tokenizer/source binding and the full
+> canonical27B host runtime path are green. X2 is a **shared GPU host**: existing
+> KFD owners/VRAM (including Ollama/model workloads) are baseline, not a blocker.
+> Before our run record current VRAM/KFD state, run only within available capacity,
+> and verify only our incremental process/VRAM/queue delta retires. Never
+> reset/reclaim/restart/kill another owner. The prior exact75GiB27B HTTP attempt
+> disappeared before HTTP status; historical R9/R10 HTTP504 predates resident-budget
+> support, and the accepted66-call plus populated1K/2K reference material is still
+> missing. Preserve the existing180s contract; do not extend/repin to manufacture a
+> pass.
 >
-> `c282f20` and `134a571` repair two separate HIP-only cross-feature compile
-> boundaries; neither grants a new HIP kernel capability. Tiny physical HIP health
-> is independently green. Exact tokenizer, isolated source binding/seal/1K plan and
-> the **full canonical27B host runtime test** now pass. The full-runtime host test
-> completed in75.20s when an external2s progress heartbeat kept the X2 connector
-> execution envelope alive, with ~16..37MiB RSS and `gpu=false`; this closes the
-> former host/source blocker without weakening `ExtentSource::scan_verified`.
-> Signed `b0cf0b2` remains the duplicate-hash optimization: its explicitly
-> non-authoritative `SnapshotDescriptorLease` leaves every Qwen metadata/shard SHA
-> check and ordinary verified `SnapshotLease` semantics intact.
->
-> The next exact75GiB public HTTP **liveness-only** attempt ran through
-> `native-gpu.py`, private loopback and the unchanged180s server deadline. It reached
-> ~31.376GB total device usage but the complete isolated process disappeared after
-> ~10..12s despite an external5s heartbeat, before any HTTP status. No Rust panic,
-> cgroup/kernel OOM, AMDGPU/KFD reset or VM-fault log was found. Later host context
-> established that X2 also runs Ollama/model workloads, so the observed KFD owner
-> and ~31GB usage cannot be attributed to ZeroGravity from the sandbox. Treat that
-> as shared-host baseline, not a dirty-GPU blocker; preserve other owners and track
-> only our incremental resource delta. Historical R9/R10 HTTP504 predates
-> `d16f096` resident-budget support and reflects the ~240s streamed path, not the
-> later ~5.5s resident C1 path. The accepted66-call and populated1K/2K reference
-> material remains absent from current X2, so full numerical/context acceptance is
-> separately blocked without exact approved recovery/successor capture.
-> Preserve the existing180s HTTP contract, expected IDs and failed cells; do not
-> repin or extend a deadline to create a pass.
->
-> Prefer implementation → quick real-model feedback → controlled same-process
-> comparison. Reuse accepted checks/evidence, add tests only for concrete new
-> contracts/bugs/failure boundaries and do not repeatedly requalify unchanged
-> primitives. Preserve exact source/reduction/state/root/resource/cancellation
-> semantics. Use `CARGO_BUILD_JOBS=8`, `python3 -B` in the established environment,
-> canonical build/cache trees and `scripts/native-gpu.py` for physical checks.
-> Connector build replies can be ambiguous: verify actual processes, binary
-> timestamps/sizes/executable bits and marker strings; prefer durable jobs for long
-> builds. Remove `_tmp` runners, profiling hooks, selectors and CUDA include views
-> after measurement. Keep turns to about 30 minutes and pause at the next coherent
-> checkpoint. Inspect `git diff --cached --stat` before every signed commit. Never
-> push unless the user explicitly asks.
+> Work implementation-first: shared clean primitives where semantics genuinely
+> generalize, model/source policy at model/source layers, Rust ownership/zero-cost
+> abstractions where natural, correctness before performance. Reuse accepted
+> validation for unchanged primitives. Use `CARGO_BUILD_JOBS=8`; physical GPU work
+> only through `python3 -B scripts/native-gpu.py -- ...`; prefer durable jobs for
+> long builds/runs. Remove every `_tmp` runner/include view/temporary selector or
+> profiling hook after use. Inspect `git diff --cached --stat` before every signed
+> commit. Keep each user turn to about30 minutes, checkpoint at the next coherent
+> point, pause, and do not push unless explicitly asked.
 
 ---
 
