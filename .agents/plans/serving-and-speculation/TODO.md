@@ -522,7 +522,7 @@ or a change to the active correctness/benchmark/27B order.
   buffers and other foreign driver resources; no second ResourceArbiter domain was
   added. The policy reserve is deliberately labeled policy, not measured CUDA
   internals:64KiB control + one4KiB page per prepaid source-dispatch slot + Rust
-  graph/receipt/lease-vector metadata. It is reserved before `graph_prepare`,
+  graph/receipt/lease-access-vector metadata. It is reserved before `graph_prepare`,
   can grow only before capture starts, must cover the captured dispatch count,
   travels with CaptureWindow/CapturedResidentGraph/quarantine owners, and releases
   only after the existing trusted retirement path. Capture and retirement queue
@@ -551,12 +551,14 @@ or a change to the active correctness/benchmark/27B order.
 - [x] Exact original0.8B B2 graph qualification passes physically:
   warm launches `[3725,3725]`, captured body3632 launch sites, outside93 per
   replay, six graph host enqueues,14,900 committed kernels, full248320 logits and
-  all42 state domains exact. The graph policy charge is **15,339,840 bytes**.
-  Signed `81b7c71` now makes its lifetime explicit: the resident foreign-byte
-  ledger must equal that charge while the graph is live, live charge owners must
-  remain retained, and foreign bytes must be0 immediately after trusted
-  `graph.retire()`. Graph-band release then reclaims additional batch storage,
-  final ResourceArbiter reserved bytes are0 and the RTX3060 returns to41MiB.
+  all42 state domains exact. Signed `f1ce532` extends retained graph metadata
+  from bare leases to exact `(ResidentLease, DeviceAccess)` authority, making the
+  current conservative policy charge **15,356,224 bytes** with32,768 bytes of
+  owned lease/access-vector metadata. The resident foreign-byte ledger must equal
+  that charge while the graph is live, live charge owners must remain retained,
+  and foreign bytes must be0 immediately after trusted `graph.retire()`.
+  Graph-band release then reclaims additional batch storage, final ResourceArbiter
+  reserved bytes are0 and the RTX3060 returns to41MiB.
 - [~] One later repeat observed a transient post-capture total resident-byte
   mismatch of exactly15,339,840 bytes with pending_events=0 and an empty physical
   queue. The run failed closed before replay. The condition did **not** reproduce
@@ -568,10 +570,20 @@ or a change to the active correctness/benchmark/27B order.
   localized. CUDA driver-internal graph bytes/node enumeration remain unqualified.
   This is correctness/lifetime qualification only, not graph performance or
   production serving selection.
+- [x] Signed `f1ce532` closes the same-card external storage/event-authority
+  seam without selecting graph serving. Capture retains the exact internal
+  `(ResidentLease, DeviceAccess)` set; before every replay the graph is attached
+  as a completion owner and the armed resident flight must prove those exact
+  allocations with compatible access authority. Thus a sibling event or replaced
+  storage cannot authorize an otherwise-valid graph merely because geometry and
+  graph generation still match. Production + qualification strict Clippy, real
+  `qwen35-cuda` checks, graph policy/topology/resource ownership tests and the
+  physical original0.8B B2 graph qualifier pass.
 - [ ] Remaining graph work: external capture/replay APIs remain qualification-only
-  and ordinary serving still selects `FusedExecution::Native`. Finish the
-  remaining same-card external-event/storage/production-selector integration
-  before enabling graph serving.
+  and ordinary serving still selects `FusedExecution::Native`. Add the private
+  production graph lifecycle/cache and clean retirement/replacement policy, then
+  integrate a fail-closed production selector and benchmark it before enabling
+  graph serving.
 
 - [ ] **P12 prefix scheduling performance:** measure concurrent native prefix
   cold-process throughput/TTFT against the accepted max32-prefix implementation.

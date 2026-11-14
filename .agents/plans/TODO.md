@@ -3,20 +3,18 @@
 Current source, tests, and this queue are authoritative; Git retains retired history.
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 
-Latest implementation checkpoint is signed `81b7c71`
-(`test(cuda): witness graph resource lifetime`). It strengthens the physical
-graph qualifier above `6a5c610` by exposing the resident foreign-byte ledger and
-live graph charge owners, requiring the exact15,339,840-byte policy charge while
-the graph is live and zero foreign bytes immediately after trusted retirement.
-The driver-safe non-persistent NVRTC fix remains `6a5c610`; production serving
-still selects Native. One later repeat observed a transient post-capture total
-resident-byte mismatch equal to the policy charge, with zero pending events and an
-empty queue. It did **not** reproduce in four consecutive subsequent physical runs;
-the permanent witness will expose foreign-ledger/owner state if it recurs. Earlier
-implementation checkpoints include `5bf440d`, `b0cf0b2`, `134a571`, `874e67d`
-and `c282f20`; pushed history remains through `d68b649`, with local docs
-`5c8f143` / `3cadc3b` / `bc9a1b3` / `cbf1384` / `9dca4b`.
-`origin/main` is `d68b649` at this refresh; revalidate live l5 `HEAD`/ahead
+Latest implementation checkpoint is signed `f1ce532`
+(`feat(cuda): bind graph replay to resident flight`). A captured graph now owns
+the exact `(ResidentLease, DeviceAccess)` set for its internal storage, and replay
+is permitted only when the current armed `ResidentSubmission` retains those exact
+allocations with compatible access authority. This closes the same-card
+storage/event-authority seam without enabling graph serving. The current
+conservative policy charge is15,356,224 bytes; the original0.8B B2 physical graph
+qualification passes with exact fullV/all42 state, six graph enqueues, final
+reserved0 and41MiB→41MiB. The prior single transient post-capture mismatch was under
+the older15,339,840-byte policy and remains an explicit watch item. Production
+serving still selects Native. Earlier graph checkpoints through docs `b12e8f5`
+are pushed; `origin/main` is `b12e8f5` at this refresh. Revalidate live l5 `HEAD`/ahead
 count because this plan refresh may add a docs-only commit. X2 is
 the approved AMD large-VRAM execution/test host. Tiny-HIP runtime health is green;
 exact tokenizer, isolated source binding/plan, and the full canonical host runtime
@@ -52,13 +50,13 @@ Explicit75GiB-total HIP admission is signed`d16f096`; historical defaults unchan
 Complete substantial implementation batches before combined validation; full gate last.
 Prioritize working paths + early matched-vLLM feedback; reuse checks/evidence,
 add fixtures only for concrete gaps. Baselines need not await all models/batching.
-On l5, `5bf440d` opened the broader production CUDA graph ownership substrate,
-`db7be60` added prepaid opaque graph-resource admission, `6a5c610` closes the
-driver-PTX compatibility blocker, and `81b7c71` makes live/retired foreign-charge
-ownership an explicit physical qualification invariant. The original0.8B B2 graph
-path passes repeatedly; one transient post-capture byte-accounting mismatch remains
-a recorded watch item because it did not reproduce under the strengthened witness.
-No production serving selector is enabled.
+On l5, `5bf440d` opened the production CUDA graph ownership substrate,
+`db7be60` added prepaid opaque graph-resource admission, `6a5c610` closed the
+driver-PTX compatibility blocker, `81b7c71` made charge lifetime explicit, and
+`f1ce532` now binds replay to the exact resident-flight storage/access authority.
+The original0.8B B2 graph path passes physically; one older transient post-capture
+byte-accounting mismatch remains a watch item. No production serving selector is
+enabled; lifecycle/cache + selector integration is next.
 Owner direction: l5 owns repository/source changes; x2 is only for AMD
 large-VRAM execution/testing. Tiny HIP health and the full canonical27B host
 runtime source/tokenizer path are green. X2 is a **shared GPU host** with Ollama

@@ -18,15 +18,16 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation** checkpoint is
-  `81b7c71324e6c3ba99d4d77bff7e4e14b2ddcf28`
-  (`test(cuda): witness graph resource lifetime`). Above driver-safe
-  non-persistent NVRTC fix `6a5c610` and graph admission `db7be60`, the
-  original0.8B B2 physical qualifier now directly requires the resident
-  foreign-byte ledger to equal the exact graph policy charge while live and to
-  reach0 immediately after trusted graph retirement; it also exposes live charge
-  count/Arc ownership if a post-capture accounting mismatch recurs. External graph
-  APIs remain qualification-only and production serving still selects Native; no
-  production graph-serving permit follows.
+  `f1ce532d49c4121324eb5f5a401f85ea900f1251`
+  (`feat(cuda): bind graph replay to resident flight`). Above the accepted graph
+  lifetime/resource substrate, a captured graph now retains the exact internal
+  `(ResidentLease, DeviceAccess)` set and every replay must prove those same
+  allocations with compatible access authority are retained by the current armed
+  `ResidentSubmission` before the backend graph can enqueue. The graph is attached
+  as a completion owner before that check, so refusal still fences/quarantines the
+  same executable/storage authority. External graph APIs remain qualification-only
+  and production serving still selects Native; no production graph-serving permit
+  follows.
 - Previous key implementation checkpoints include `b0cf0b2`
   (`fix(cache): avoid duplicate Qwen snapshot hashing`), `134a571`
   (`fix(hip): isolate CUDA private KV qualification`), `874e67d`
@@ -34,23 +35,21 @@ and live TODOs are authoritative.
   (`fix(hip): restore source profile compilation`). Docs checkpoints include
   `2caf304`, `52c8a16`, `ca6e99f`, `f5d2a88`, pushed `d68b649` and local
   `5c8f143`.
-- `origin/main` is `d68b649031ac89ddfb88f6880cb7185208b25c09`
-  (`docs: record X2 27B physical allocation blocker`). Local history above it is
-  `5c8f143` (X2 KFD localization), `3cadc3b` (shared-pair Qwen consumer
-  rejection), implementation `5bf440d` (production cuda-native graph substrate),
-  docs `bc9a1b3`, implementation `db7be60` (prepaid graph resources), docs
-  `cbf1384`, implementation `6a5c610` (driver-safe nonpersistent NVRTC), docs
-  `9dca4b`, and implementation `81b7c71` (explicit graph-charge lifetime
-  witness); this refresh may add another docs-only commit. X2 is synced to the
+- `origin/main` is `b12e8f5395af84bda5a5c0eab960efef2399f6c7`
+  (`docs: record graph lifetime repeatability witness`). Local history above it
+  currently starts with implementation `f1ce532` (exact graph replay
+  storage/event authority); this refresh may add another docs-only commit. Earlier
+  graph checkpoints through `81b7c71` and docs `b12e8f5` are already pushed.
+  X2 is synced to the
   exact current local tip after each checkpoint even when its remote-tracking ref
   is stale. Never push unless the user explicitly asks.
 - Before any new physical X2 run, sync it to the exact current l5 `main`
   bytes/commit without using a push merely as transport, then revalidate
   status/process/GPU state.
-- Key pushed history now contained in `origin/main=d68b649` includes `85f458f`,
-  `f303bca`, `68ac810`, `da3eae5`, `ee347d9`, `399e43a`, `de2eed8`, `cb9e349`,
-  `6c601f9`, `c282f20`, `874e67d`, `2caf304`, `52c8a16`, `134a571`, `b0cf0b2`,
-  `f5d2a88` and `d68b649`. Do not describe those as unpushed local commits.
+- Key pushed history now contained in `origin/main=b12e8f5` includes all
+  earlier accepted CUDA/HIP work through `d68b649` plus `5c8f143`, `3cadc3b`,
+  `5bf440d`, `bc9a1b3`, `db7be60`, `cbf1384`, `6a5c610`, `9dca4b`,
+  `81b7c71` and `b12e8f5`. Do not describe those as unpushed local commits.
 - Local docs `5c8f143` recorded the host-global X2 KFD observation and `3cadc3b`
   records rejection of the ordinary-Qwen `874e67d` consumer after completed
   loaded-model A/B; the primitive itself remains retained. Later host context
@@ -717,7 +716,7 @@ capture, another GPU or another model.
    `5bf440d` made graph identity/pin/replay/owner plumbing production-compilable;
    `db7be60` now pre-admits graph opaque resources through the same local ledger
    and global provider envelope. Policy is64KiB control +4KiB per prepaid
-   source-dispatch slot + Rust graph/receipt/lease-vector metadata; actual CUDA
+   source-dispatch slot + Rust graph/receipt/lease-access-vector metadata; actual CUDA
    driver bytes remain unqualified. The charge is acquired before `graph_prepare`,
    may grow only before capture starts, must cover the recorded body, survives
    CaptureWindow/CapturedResidentGraph/quarantine ownership and releases only after
@@ -728,10 +727,12 @@ capture, another GPU or another model.
    `CUDA_ERROR_UNSUPPORTED_PTX_VERSION` came from CUDA13.4 NVRTC PTX loaded by
    an older driver, so non-persistent C++ compilation now returns exact-SM
    cubin/SASS while persistent compilation continues to emit/cache PTX. Signed
-   `81b7c71` strengthens the graph resource qualifier: live foreign-ledger bytes
-   must equal the exact **15,339,840-byte** policy charge, live charge owners must
-   exist, and foreign bytes must reach0 immediately after trusted retirement.
-   The original0.8B B2 path repeatedly passes with warm `[3725,3725]`, captured
+   `81b7c71` strengthens the graph resource qualifier and signed `f1ce532`
+   adds exact captured access authority to each retained lease. The current policy
+   charge is **15,356,224 bytes** (32,768 bytes of owned lease/access-vector
+   metadata); live foreign-ledger bytes must equal that charge, live charge owners
+   must exist, and foreign bytes must reach0 immediately after trusted retirement.
+   The original0.8B B2 path passes physically with warm `[3725,3725]`, captured
    body3632 launch sites, outside93/replay, six host enqueues,14,900 committed
    kernels, full248320 logits + all42 state domains exact, final ResourceArbiter
    reserved=0 and RTX306041MiB.
@@ -740,10 +741,14 @@ capture, another GPU or another model.
    empty queue. It did not reproduce in **four consecutive** subsequent runs,
    including the final `81b7c71` witness run proving charge-retained-while-live
    and released-on-retire. Do not weaken the idle invariant or call the transient
-   explained. If it recurs, use the new warm/steady foreign-byte + charge-owner
-   witness to localize it. Driver-internal graph bytes/node enumeration and graph
-   performance remain unqualified. Production serving remains Native; same-card
-   external-event/storage and selector integration are still open.
+   explained. If it recurs, use the warm/steady foreign-byte + charge-owner
+   witness to localize it. `f1ce532` separately closes the same-card
+   storage/event-authority seam: every replay is now rejected unless its armed
+   resident flight retains the exact captured allocations and access modes. The
+   physical B2 qualifier passes this path with final reserved=0 and41MiB→41MiB.
+   Driver-internal graph bytes/node enumeration and graph performance remain
+   unqualified. Production serving remains Native; production lifecycle/cache and
+   selector integration are still open.
 5. **Large CUDA same-contract distribution/state acceptance is open but blocked.**
    Cross-profile diagnostics are not acceptance. Approved original reference/archive
    material needed for the intended rerun is missing on l5; do not invent
