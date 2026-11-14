@@ -45,10 +45,12 @@ pub use fused_greedy::qualify_abort as qualify_fused_greedy_abort;
 pub use graph::qualify as qualify_graph;
 #[cfg(all(feature = "cuda", feature = "hardware-abort-probe"))]
 pub use graph::qualify_abort as qualify_graph_abort;
-#[cfg(feature = "cuda")]
-pub use graph_wide::qualify as qualify_graph_wide;
 #[cfg(all(feature = "cuda", feature = "hardware-abort-probe"))]
 pub use graph_wide::qualify_abort as qualify_graph_wide_abort;
+#[cfg(feature = "cuda")]
+pub use graph_wide::{
+    qualify as qualify_graph_wide, qualify_selector as qualify_graph_wide_selector,
+};
 pub use qualification::{
     qualify as qualify_resident, qualify_bounded_context as qualify_bounded_resident_context,
     qualify_context,

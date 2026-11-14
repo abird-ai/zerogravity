@@ -71,9 +71,11 @@ pub fn run() {
     let abort_recurrent_mode = selected.strip_prefix("model-abort-recurrent-");
     #[cfg(feature = "hardware-abort-probe")]
     let abort_conv_mode = selected.strip_prefix("model-abort-conv-");
+    let cuda_graph_wide_selector_mode = selected.strip_prefix("resident-cuda-graph-wide-selector-");
     let cuda_graph_wide_abort_mode = selected.strip_prefix("resident-cuda-graph-wide-abort-");
-    let cuda_graph_wide_mode =
-        cuda_graph_wide_abort_mode.or_else(|| selected.strip_prefix("resident-cuda-graph-wide-"));
+    let cuda_graph_wide_mode = cuda_graph_wide_selector_mode
+        .or(cuda_graph_wide_abort_mode)
+        .or_else(|| selected.strip_prefix("resident-cuda-graph-wide-"));
     let cuda_graph_abort_mode = selected.strip_prefix("resident-cuda-graph-abort-");
     let cuda_graph_mode = cuda_graph_wide_mode
         .or(cuda_graph_abort_mode)
@@ -378,6 +380,21 @@ pub fn run() {
             #[cfg(not(all(feature = "cuda", feature = "hardware-abort-probe")))]
             let _ = &mode;
             let qualification = async {
+                if cuda_graph_wide_selector_mode.is_some() {
+                    #[cfg(feature = "cuda")]
+                    return qualify_graph_wide_selector(
+                        device,
+                        std::path::Path::new(&path),
+                        provider,
+                        cap,
+                        rows,
+                    )
+                    .await;
+                    #[cfg(not(feature = "cuda"))]
+                    return Err::<(), _>(zerogravity_core::Error::Unsupported(
+                        "requires CUDA".into(),
+                    ));
+                }
                 if cuda_graph_wide_abort_mode.is_some() {
                     #[cfg(all(feature = "cuda", feature = "hardware-abort-probe"))]
                     return qualify_graph_wide_abort(

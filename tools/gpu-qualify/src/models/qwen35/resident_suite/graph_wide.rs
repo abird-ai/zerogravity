@@ -64,6 +64,140 @@ async fn reference_rows(
     Ok(expected)
 }
 
+#[derive(Clone, Copy)]
+struct SelectorTiming {
+    charge_bytes: usize,
+    replay_enqueues: usize,
+    native_mean_us: u128,
+    graph_mean_us: u128,
+    native_median_us: u128,
+    graph_median_us: u128,
+}
+
+async fn production_selector_timing(
+    model: &Arc<ResidentModel>,
+    sessions: &[ResidentSession],
+    tokens: &[u32],
+) -> Result<SelectorTiming> {
+    let count = sessions.len();
+    if !matches!(count, 4 | 8) || tokens.len() != count {
+        return Err(Error::State(
+            "wide production selector timing requires B4/B8 coverage".into(),
+        ));
+    }
+    let order = (0..count).collect::<Vec<_>>();
+    let selected_rows = rows(sessions, tokens, &order)?;
+    let prior_roots = roots(sessions);
+    let prior_states = states(sessions).await?;
+    let receipt = model
+        .qualification_capture_production_graph(&selected_rows, ResidentOutput::Logits)
+        .await?;
+    let live_bytes = model.qualification().resident_bytes()?;
+    if model.qualification_production_graph_cache_state().await? != "live"
+        || model.qualification().foreign_bytes()? != receipt.resource_charge_bytes
+        || !model
+            .qualification_production_graph_cache_compatible(&selected_rows, ResidentOutput::Logits)
+            .await?
+    {
+        return Err(Error::State(
+            "wide production selector cache identity/charge witness".into(),
+        ));
+    }
+
+    for round in 0..4 {
+        if round % 2 == 0 {
+            drop(model.prepare_logits_fused_cohort(&selected_rows).await?);
+            drop(
+                model
+                    .qualification_prepare_production_selected(&selected_rows, Readout::Logits)
+                    .await?,
+            );
+        } else {
+            drop(
+                model
+                    .qualification_prepare_production_selected(&selected_rows, Readout::Logits)
+                    .await?,
+            );
+            drop(model.prepare_logits_fused_cohort(&selected_rows).await?);
+        }
+    }
+
+    let before = model
+        .qualification_production_graph_replay_enqueues()
+        .await?
+        .ok_or_else(|| Error::State("wide production selector graph witness absent".into()))?;
+    let mut native_us = Vec::with_capacity(12);
+    let mut graph_us = Vec::with_capacity(12);
+    for round in 0..12 {
+        if round % 2 == 0 {
+            let start = std::time::Instant::now();
+            drop(model.prepare_logits_fused_cohort(&selected_rows).await?);
+            native_us.push(start.elapsed().as_micros());
+
+            let start = std::time::Instant::now();
+            drop(
+                model
+                    .qualification_prepare_production_selected(&selected_rows, Readout::Logits)
+                    .await?,
+            );
+            graph_us.push(start.elapsed().as_micros());
+        } else {
+            let start = std::time::Instant::now();
+            drop(
+                model
+                    .qualification_prepare_production_selected(&selected_rows, Readout::Logits)
+                    .await?,
+            );
+            graph_us.push(start.elapsed().as_micros());
+
+            let start = std::time::Instant::now();
+            drop(model.prepare_logits_fused_cohort(&selected_rows).await?);
+            native_us.push(start.elapsed().as_micros());
+        }
+    }
+    let after = model
+        .qualification_production_graph_replay_enqueues()
+        .await?
+        .ok_or_else(|| Error::State("wide production selector graph disappeared".into()))?;
+    if after != before + graph_us.len()
+        || model.qualification().foreign_bytes()? != receipt.resource_charge_bytes
+        || model.qualification_production_graph_cache_state().await? != "live"
+    {
+        return Err(Error::State(
+            "wide production selector timing changed replay/lifetime authority".into(),
+        ));
+    }
+    unchanged(sessions, &prior_roots, &prior_states).await?;
+    idle(model, live_bytes)?;
+
+    let native_mean_us = native_us.iter().sum::<u128>() / native_us.len() as u128;
+    let graph_mean_us = graph_us.iter().sum::<u128>() / graph_us.len() as u128;
+    native_us.sort_unstable();
+    graph_us.sort_unstable();
+    let native_median_us = native_us[native_us.len() / 2];
+    let graph_median_us = graph_us[graph_us.len() / 2];
+
+    if !model.qualification_retire_production_graph().await?
+        || model.qualification_production_graph_cache_state().await? != "spent"
+        || model.qualification().foreign_bytes()? != 0
+    {
+        return Err(Error::State(
+            "wide production selector trusted retirement retained cache/charge".into(),
+        ));
+    }
+    model.qualification_release_graph_band().await?;
+    unchanged(sessions, &prior_roots, &prior_states).await?;
+
+    Ok(SelectorTiming {
+        charge_bytes: receipt.resource_charge_bytes,
+        replay_enqueues: after - before,
+        native_mean_us,
+        graph_mean_us,
+        native_median_us,
+        graph_median_us,
+    })
+}
+
 async fn teacher_step(
     model: &Arc<ResidentModel>,
     sessions: &mut [ResidentSession],
@@ -399,6 +533,57 @@ pub async fn qualify(
         logits_receipt.captured_kernels,
         prefix_receipt.warm_dispatches,
         logits_receipt.warm_dispatches
+    );
+    Ok(())
+}
+
+pub async fn qualify_selector(
+    device: Device,
+    path: &Path,
+    provider_cap: usize,
+    device_cap: u64,
+    count: usize,
+) -> Result<()> {
+    if !matches!(count, 4 | 8) {
+        return Err(Error::Unsupported(
+            "wide production selector timing requires B4/B8".into(),
+        ));
+    }
+    let (source, model) = loaded(device, path, provider_cap, device_cap).await?;
+    let key = model.qualification().physical_key();
+    let mut sessions = Vec::with_capacity(count);
+    for row in 0..count {
+        let history = [IDS[row % 8], IDS[(row + 1) % 8]];
+        let mut session = model.session().await?;
+        let read = session.forward(&history, false).await?;
+        if read.logits.len() != 248_320 {
+            return Err(Error::State(
+                "wide selector setup missing full-vocabulary readout".into(),
+            ));
+        }
+        sessions.push(session);
+    }
+    let tokens = (0..count).map(|row| IDS[(row + 2) % 8]).collect::<Vec<_>>();
+    let timing = production_selector_timing(&model, &sessions, &tokens).await?;
+
+    drop(sessions);
+    drop(model);
+    drop(source);
+    let budget =
+        zerogravity_core::resource_arbiter::ResourceArbiter::process_shared().snapshot(&key)?;
+    if budget.reserved != 0 || budget.fenced {
+        return Err(Error::State(
+            "wide production selector final resource ownership".into(),
+        ));
+    }
+    println!(
+        "P12_GRAPH_SELECTOR_TIMING_PASS B={count} original=GGUF capacity=512 AV_padding=256 arithmetic_state_reference=retained_wide_graph_qualification selector_samples=12 selector_graph_replay_enqueues={} selector_graph_charge_bytes={} selector_native_mean_us={} selector_graph_mean_us={} selector_native_median_us={} selector_graph_median_us={} selector_acceptance=diagnostic public_serving=false final_reserved=0",
+        timing.replay_enqueues,
+        timing.charge_bytes,
+        timing.native_mean_us,
+        timing.graph_mean_us,
+        timing.native_median_us,
+        timing.graph_median_us
     );
     Ok(())
 }
