@@ -1,4 +1,11 @@
 //! Closed B2/B4/B8 typed body; no source/state/publisher ownership.
+#![cfg_attr(
+    not(feature = "qualification"),
+    allow(
+        dead_code,
+        reason = "production retains graph identity/replay plumbing while graph selection remains qualification-only"
+    )
+)]
 use super::*;
 use std::sync::atomic::{AtomicU64, Ordering};
 

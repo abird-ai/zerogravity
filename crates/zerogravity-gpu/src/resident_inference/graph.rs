@@ -1,5 +1,14 @@
-//! Qualifier-only, cold isolated B2/B4/B8 typed original node body.
-//! No Ready/root permit lives in this module; fused preparation still owns it.
+//! Cold isolated B2/B4/B8 CUDA graph owner/replay substrate.
+//! No Ready/root permit or production selection lives here; fused preparation
+//! still owns publication, and external capture/replay entrypoints remain
+//! qualification-only.
+#![cfg_attr(
+    not(feature = "qualification"),
+    allow(
+        dead_code,
+        reason = "production compiles the graph ownership substrate before any serving selector is admitted"
+    )
+)]
 use super::*;
 use crate::physical_quarantine::CompletionOwner;
 use crate::resident_program::{BatchBodyReceipt, BatchGraphProfile, BatchGraphReplay};
@@ -8,7 +17,9 @@ use std::sync::{
     Mutex as HostMutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
+#[cfg(feature = "qualification")]
 pub(super) mod qualification;
+#[cfg(feature = "qualification")]
 pub(super) mod wider;
 
 /// A source launch-site count, not a driver graph-node enumeration or timing.
@@ -271,6 +282,7 @@ impl Drop for CaptureWindow {
 impl ResidentModel {
     /// Caller MUST establish process-wide cold same-card isolation. The local
     /// allocation/queue/workspace order cannot exclude another model's Client.
+    #[cfg(feature = "qualification")]
     pub async fn capture_logits_b2(
         self: &Arc<Self>,
         rows: &[(&ResidentSession, u32)],
@@ -280,10 +292,20 @@ impl ResidentModel {
                 "initial graph wrapper remains B2".into(),
             ));
         }
-        self.capture_body(rows, ResidentOutput::Logits).await
+        self.capture_body_internal(rows, ResidentOutput::Logits)
+            .await
     }
 
+    #[cfg(feature = "qualification")]
     pub async fn capture_body(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, u32)],
+        output: ResidentOutput,
+    ) -> Result<Arc<CapturedResidentGraph>> {
+        self.capture_body_internal(rows, output).await
+    }
+
+    async fn capture_body_internal(
         self: &Arc<Self>,
         rows: &[(&ResidentSession, u32)],
         output: ResidentOutput,
@@ -482,16 +504,28 @@ impl ResidentModel {
         Ok(graph)
     }
 
+    #[cfg(feature = "qualification")]
     pub async fn prepare_graph_logits(
         self: &Arc<Self>,
         rows: &[(&ResidentSession, u32)],
         graph: &Arc<CapturedResidentGraph>,
     ) -> Result<PreparedResidentCohort> {
-        self.prepare_graph_readout(rows, graph, Readout::Logits)
+        self.prepare_graph_readout_internal(rows, graph, Readout::Logits)
             .await
     }
 
+    #[cfg(feature = "qualification")]
     pub async fn prepare_graph_readout(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, u32)],
+        graph: &Arc<CapturedResidentGraph>,
+        readout: Readout,
+    ) -> Result<PreparedResidentCohort> {
+        self.prepare_graph_readout_internal(rows, graph, readout)
+            .await
+    }
+
+    async fn prepare_graph_readout_internal(
         self: &Arc<Self>,
         rows: &[(&ResidentSession, u32)],
         graph: &Arc<CapturedResidentGraph>,
@@ -508,6 +542,7 @@ impl ResidentModel {
     }
 }
 
+#[cfg(feature = "qualification")]
 impl CapturedResidentGraph {
     pub fn qualification_generation(&self) -> u64 {
         self.profile.generation

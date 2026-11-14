@@ -328,6 +328,7 @@ impl Bf16SharedInputProjectionPair {
         self.kernel.prepare_code(queue)
     }
 
+    #[allow(clippy::too_many_arguments)] // Keep both projection/output/status bindings explicit.
     pub(crate) fn prepare(
         &self,
         client: &Client,

@@ -55,7 +55,7 @@ mod fused_greedy_qualification;
 mod fused_qualification;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod gdn_state;
-#[cfg(all(feature = "qualification", feature = "cuda"))]
+#[cfg(feature = "cuda-native")]
 mod graph;
 
 #[cfg(all(
