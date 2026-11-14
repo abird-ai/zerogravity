@@ -135,7 +135,7 @@ impl ProductionGraphCache {
         }
     }
 
-    fn compatible(
+    pub(super) fn compatible(
         &self,
         model: &ResidentModel,
         program: &BatchProgram,
@@ -1083,6 +1083,36 @@ impl ResidentModel {
             .as_ref()
             .map(|batch| batch.graph_cache.witness())
             .unwrap_or("absent"))
+    }
+
+    #[cfg(feature = "qualification")]
+    pub async fn qualification_production_graph_replay_enqueues(&self) -> Result<Option<usize>> {
+        let workspace = self.workspace.lock().await;
+        let Some(batch) = workspace.batch.as_ref() else {
+            return Ok(None);
+        };
+        Ok(match &batch.graph_cache.state {
+            ProductionGraphState::Live { graph, .. } => Some(graph.replay_enqueues()),
+            ProductionGraphState::Cold
+            | ProductionGraphState::Capturing
+            | ProductionGraphState::Spent => None,
+        })
+    }
+
+    #[cfg(feature = "qualification")]
+    pub async fn qualification_prepare_production_selected(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, u32)],
+        readout: Readout,
+    ) -> Result<PreparedResidentCohort> {
+        self.prepare_fused_execution(
+            rows,
+            None,
+            readout,
+            super::fused::FusedExecution::Production,
+        )
+        .await?
+        .ok_or_else(|| Error::Limit("production graph selector admission exhausted".into()))
     }
 
     #[cfg(feature = "qualification")]

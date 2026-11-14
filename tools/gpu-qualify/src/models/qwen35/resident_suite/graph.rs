@@ -350,6 +350,146 @@ pub async fn qualify(
         ));
     }
     let production_live_bytes = resident.qualification().resident_bytes()?;
+    let selector_roots = roots(&sessions);
+    let selector_states = states(&sessions).await?;
+    let selector_before = resident
+        .qualification_production_graph_replay_enqueues()
+        .await?
+        .ok_or_else(|| Error::State("production selector live graph witness absent".into()))?;
+    let selected = resident
+        .qualification_prepare_production_selected(&production_rows, Readout::Logits)
+        .await?;
+    if selected.len() != 2 || selected.fused_dispatches() != production_receipt.projection_dots {
+        return Err(Error::State(
+            "production selector graph receipt changed".into(),
+        ));
+    }
+    drop(selected);
+    let selector_after = resident
+        .qualification_production_graph_replay_enqueues()
+        .await?
+        .ok_or_else(|| Error::State("production selector graph disappeared".into()))?;
+    if selector_after != selector_before + 1 {
+        return Err(Error::State(
+            "compatible production selector did not replay exactly once".into(),
+        ));
+    }
+    let fallback = resident
+        .qualification_prepare_production_selected(&production_rows, Readout::None)
+        .await?;
+    if fallback.len() != 2 || fallback.fused_dispatches() == 0 {
+        return Err(Error::State(
+            "production selector native fallback receipt incomplete".into(),
+        ));
+    }
+    drop(fallback);
+    if resident
+        .qualification_production_graph_replay_enqueues()
+        .await?
+        != Some(selector_after)
+        || resident
+            .qualification_production_graph_cache_state()
+            .await?
+            != "live"
+        || resident.qualification().foreign_bytes()? != production_receipt.resource_charge_bytes
+    {
+        return Err(Error::State(
+            "incompatible production selector replayed or retired live graph".into(),
+        ));
+    }
+    unchanged(&sessions, &selector_roots, &selector_states).await?;
+    idle_at(&resident, production_live_bytes, "post-production-selector")?;
+
+    // Same process/model/workspace/frontier and identical full-logit readback.
+    // Alternate order to expose clock drift; timing stays diagnostic until
+    // serving selection is separately admitted.
+    for round in 0..4 {
+        if round % 2 == 0 {
+            drop(
+                resident
+                    .prepare_logits_fused_cohort(&production_rows)
+                    .await?,
+            );
+            drop(
+                resident
+                    .qualification_prepare_production_selected(&production_rows, Readout::Logits)
+                    .await?,
+            );
+        } else {
+            drop(
+                resident
+                    .qualification_prepare_production_selected(&production_rows, Readout::Logits)
+                    .await?,
+            );
+            drop(
+                resident
+                    .prepare_logits_fused_cohort(&production_rows)
+                    .await?,
+            );
+        }
+    }
+    let benchmark_enqueues_before = resident
+        .qualification_production_graph_replay_enqueues()
+        .await?
+        .ok_or_else(|| Error::State("production benchmark graph witness absent".into()))?;
+    let mut native_us = Vec::with_capacity(12);
+    let mut graph_us = Vec::with_capacity(12);
+    for round in 0..12 {
+        if round % 2 == 0 {
+            let start = std::time::Instant::now();
+            drop(
+                resident
+                    .prepare_logits_fused_cohort(&production_rows)
+                    .await?,
+            );
+            native_us.push(start.elapsed().as_micros());
+            let start = std::time::Instant::now();
+            drop(
+                resident
+                    .qualification_prepare_production_selected(&production_rows, Readout::Logits)
+                    .await?,
+            );
+            graph_us.push(start.elapsed().as_micros());
+        } else {
+            let start = std::time::Instant::now();
+            drop(
+                resident
+                    .qualification_prepare_production_selected(&production_rows, Readout::Logits)
+                    .await?,
+            );
+            graph_us.push(start.elapsed().as_micros());
+            let start = std::time::Instant::now();
+            drop(
+                resident
+                    .prepare_logits_fused_cohort(&production_rows)
+                    .await?,
+            );
+            native_us.push(start.elapsed().as_micros());
+        }
+    }
+    let benchmark_enqueues_after = resident
+        .qualification_production_graph_replay_enqueues()
+        .await?
+        .ok_or_else(|| Error::State("production benchmark graph disappeared".into()))?;
+    if benchmark_enqueues_after != benchmark_enqueues_before + graph_us.len()
+        || resident.qualification().foreign_bytes()? != production_receipt.resource_charge_bytes
+    {
+        return Err(Error::State(
+            "production graph benchmark selector/lifetime witness changed".into(),
+        ));
+    }
+    idle_at(
+        &resident,
+        production_live_bytes,
+        "post-production-selector-benchmark",
+    )?;
+    let native_mean_us = native_us.iter().sum::<u128>() / native_us.len() as u128;
+    let graph_mean_us = graph_us.iter().sum::<u128>() / graph_us.len() as u128;
+    native_us.sort_unstable();
+    graph_us.sort_unstable();
+    let native_median_us = native_us[native_us.len() / 2];
+    let graph_median_us = graph_us[graph_us.len() / 2];
+
     if resident
         .qualification_capture_production_graph(&production_rows, ResidentOutput::Logits)
         .await
@@ -427,7 +567,7 @@ pub async fn qualify(
         ));
     }
     println!(
-        "P12_GRAPH_B2_LOGITS_PASS source=original_GGUF rows=2 independent_frontiers=true swapped_rows=true full_vocab=248320 all_domains=42 steps=4 warm_kernels={:?} captured_body_kernel_launch_sites={} outside_kernels_per_replay={} graph_host_enqueues={} committed_kernel_launches={} recorded_model_execution=0 retained_engine_lease_bytes={} owned_lease_vector_bytes={} graph_policy_charge_bytes={} graph_policy_charge_retained_while_live=true graph_policy_charge_released_on_retire=true production_cache_capture_once=true production_cache_charge_bytes={} production_cache_compatible_lookup=true production_cache_incompatible_profile_miss=true production_cache_second_capture_refused=true production_cache_explicit_retire=true production_cache_explicit_retire_state=spent production_cache_explicit_retire_foreign_bytes=0 production_cache_fresh_workspace_recapture=true production_cache_replacement_charge_bytes={} production_cache_replacement=B2_to_B4 production_cache_replacement_retired_before_release=true production_cache_replacement_foreign_bytes=0 replacement_cache_state=cold driver_internal_bytes=unqualified driver_graph_node_enumeration=unqualified synthetic_padding_guard=true sampler=outside_unused final_reserved=0",
+        "P12_GRAPH_B2_LOGITS_PASS source=original_GGUF rows=2 independent_frontiers=true swapped_rows=true full_vocab=248320 all_domains=42 steps=4 warm_kernels={:?} captured_body_kernel_launch_sites={} outside_kernels_per_replay={} graph_host_enqueues={} committed_kernel_launches={} recorded_model_execution=0 retained_engine_lease_bytes={} owned_lease_vector_bytes={} graph_policy_charge_bytes={} graph_policy_charge_retained_while_live=true graph_policy_charge_released_on_retire=true production_cache_capture_once=true production_cache_charge_bytes={} production_cache_compatible_lookup=true production_cache_incompatible_profile_miss=true production_selector_compatible_graph_replay=true production_selector_incompatible_native_fallback=true production_selector_replay_enqueues={} production_selector_public_serving=false selector_benchmark_samples=12 selector_native_mean_us={} selector_graph_mean_us={} selector_native_median_us={} selector_graph_median_us={} selector_benchmark_acceptance=diagnostic production_cache_second_capture_refused=true production_cache_explicit_retire=true production_cache_explicit_retire_state=spent production_cache_explicit_retire_foreign_bytes=0 production_cache_fresh_workspace_recapture=true production_cache_replacement_charge_bytes={} production_cache_replacement=B2_to_B4 production_cache_replacement_retired_before_release=true production_cache_replacement_foreign_bytes=0 replacement_cache_state=cold driver_internal_bytes=unqualified driver_graph_node_enumeration=unqualified synthetic_padding_guard=true sampler=outside_unused final_reserved=0",
         receipt.warm_dispatches,
         receipt.captured_kernels,
         total_kernels - receipt.captured_kernels,
@@ -437,6 +577,11 @@ pub async fn qualify(
         receipt.owned_lease_vector_bytes,
         receipt.resource_charge_bytes,
         production_receipt.resource_charge_bytes,
+        selector_after,
+        native_mean_us,
+        graph_mean_us,
+        native_median_us,
+        graph_median_us,
         replacement_receipt.resource_charge_bytes
     );
     Ok(())

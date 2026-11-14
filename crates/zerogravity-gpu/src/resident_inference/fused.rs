@@ -7,6 +7,18 @@ pub(super) enum FusedExecution {
         feature = "cuda",
         any(feature = "qualification", feature = "cuda-native")
     ))]
+    #[cfg_attr(
+        not(feature = "qualification"),
+        allow(
+            dead_code,
+            reason = "production selector is compiled before ordinary serving is permitted to use it"
+        )
+    )]
+    Production,
+    #[cfg(all(
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-native")
+    ))]
     CaptureWarm,
     #[cfg(all(
         feature = "cuda",
@@ -156,6 +168,16 @@ impl ResidentModel {
             feature = "cuda",
             any(feature = "qualification", feature = "cuda-native")
         ))]
+        let mut execution = execution;
+        #[cfg(not(all(
+            feature = "cuda",
+            any(feature = "qualification", feature = "cuda-native")
+        )))]
+        let execution = execution;
+        #[cfg(all(
+            feature = "cuda",
+            any(feature = "qualification", feature = "cuda-native")
+        ))]
         if let FusedExecution::Graph(graph) = &execution {
             // Refuse mismatched body/readout or device feedback before roots,
             // attempts, candidates, packet/workspace admission or queue work.
@@ -273,6 +295,45 @@ impl ResidentModel {
                         "graph capture warm requires the live capture owner".into(),
                     ));
                 }
+            }
+            #[cfg(all(
+                feature = "cuda",
+                any(feature = "qualification", feature = "cuda-native")
+            ))]
+            if matches!(execution, FusedExecution::Production) {
+                execution = if device_tokens.is_some() || !same_band {
+                    FusedExecution::Native
+                } else {
+                    let batch = workspace
+                        .batch
+                        .as_ref()
+                        .expect("same native batch band checked above");
+                    let parameters = rows
+                        .iter()
+                        .zip(&positions)
+                        .map(|((_, token), &position)| RuntimeParameters {
+                            token: *token,
+                            position,
+                            valid_tokens: position + 1,
+                        })
+                        .collect::<Vec<_>>();
+                    match batch
+                        .graph_cache
+                        .compatible(self, &batch.program, &parameters, output)?
+                    {
+                        Some(graph) => {
+                            graph_readout(
+                                rows.len(),
+                                graph.output(),
+                                readout,
+                                device_tokens.is_some(),
+                            )?;
+                            graph.validate(self, rows.len(), &positions, readout)?;
+                            FusedExecution::Graph(graph)
+                        }
+                        None => FusedExecution::Native,
+                    }
+                };
             }
             #[cfg(all(
                 feature = "cuda",
@@ -663,6 +724,15 @@ impl ResidentModel {
         };
         let mut submitted = match &execution {
             FusedExecution::Native => launch_native(program)?,
+            #[cfg(all(
+                feature = "cuda",
+                any(feature = "qualification", feature = "cuda-native")
+            ))]
+            FusedExecution::Production => {
+                return Err(Error::State(
+                    "production graph selector remained unresolved before submission".into(),
+                ));
+            }
             #[cfg(all(
                 feature = "cuda",
                 any(feature = "qualification", feature = "cuda-native")
