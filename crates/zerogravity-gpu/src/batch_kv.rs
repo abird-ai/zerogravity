@@ -206,6 +206,7 @@ pub fn qualify(device: cubecl::Device) -> Result<()> {
             );
         }
     }
+    #[cfg(feature = "cuda-cublas")]
     private_bf16::qualify(&client)?;
     Ok(())
 }
