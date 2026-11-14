@@ -3,17 +3,19 @@
 Current source, tests, and this queue are authoritative; Git retains retired history.
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 
-Latest implementation checkpoint is signed `6a5c610`
-(`fix(cuda): make nonpersistent NVRTC driver-safe`). It closes the physical
-pre-graph compiler blocker by emitting exact-SM cubin/SASS for non-persistent C++
-NVRTC while persistent contexts retain PTX caching, preserves the first concrete
-compiler poison cause, and narrows finite-compiler revalidation to the actual
-captured SDK/include configuration. Above `db7be60`, the original0.8B B2 physical
-graph qualifier now passes and proves the exact15,339,840-byte graph policy charge
-is released by trusted graph retirement. Production serving still selects Native.
-Earlier implementation checkpoints include `5bf440d`, `b0cf0b2`, `134a571`,
-`874e67d` and `c282f20`; pushed history remains through `d68b649`, with local
-docs `5c8f143` / `3cadc3b` / `bc9a1b3` / `cbf1384`.
+Latest implementation checkpoint is signed `81b7c71`
+(`test(cuda): witness graph resource lifetime`). It strengthens the physical
+graph qualifier above `6a5c610` by exposing the resident foreign-byte ledger and
+live graph charge owners, requiring the exact15,339,840-byte policy charge while
+the graph is live and zero foreign bytes immediately after trusted retirement.
+The driver-safe non-persistent NVRTC fix remains `6a5c610`; production serving
+still selects Native. One later repeat observed a transient post-capture total
+resident-byte mismatch equal to the policy charge, with zero pending events and an
+empty queue. It did **not** reproduce in four consecutive subsequent physical runs;
+the permanent witness will expose foreign-ledger/owner state if it recurs. Earlier
+implementation checkpoints include `5bf440d`, `b0cf0b2`, `134a571`, `874e67d`
+and `c282f20`; pushed history remains through `d68b649`, with local docs
+`5c8f143` / `3cadc3b` / `bc9a1b3` / `cbf1384` / `9dca4b`.
 `origin/main` is `d68b649` at this refresh; revalidate live l5 `HEAD`/ahead
 count because this plan refresh may add a docs-only commit. X2 is
 the approved AMD large-VRAM execution/test host. Tiny-HIP runtime health is green;
@@ -51,10 +53,12 @@ Complete substantial implementation batches before combined validation; full gat
 Prioritize working paths + early matched-vLLM feedback; reuse checks/evidence,
 add fixtures only for concrete gaps. Baselines need not await all models/batching.
 On l5, `5bf440d` opened the broader production CUDA graph ownership substrate,
-`db7be60` added prepaid opaque graph-resource admission, and `6a5c610` closes
-the driver-PTX compatibility blocker. The original0.8B B2 physical graph qualifier
-now passes and proves exact graph-charge retirement; no production serving selector
-is enabled.
+`db7be60` added prepaid opaque graph-resource admission, `6a5c610` closes the
+driver-PTX compatibility blocker, and `81b7c71` makes live/retired foreign-charge
+ownership an explicit physical qualification invariant. The original0.8B B2 graph
+path passes repeatedly; one transient post-capture byte-accounting mismatch remains
+a recorded watch item because it did not reproduce under the strengthened witness.
+No production serving selector is enabled.
 Owner direction: l5 owns repository/source changes; x2 is only for AMD
 large-VRAM execution/testing. Tiny HIP health and the full canonical27B host
 runtime source/tokenizer path are green. X2 is a **shared GPU host** with Ollama

@@ -548,15 +548,26 @@ or a change to the active correctness/benchmark/27B order.
   environment-generation bump as module uncertainty; every new compilation still
   revalidates its captured SDK/include configuration, finite cumulative accounting
   remains intact, and sticky poison now preserves the first concrete cause.
-- [x] Exact original0.8B B2 graph qualification now passes physically:
+- [x] Exact original0.8B B2 graph qualification passes physically:
   warm launches `[3725,3725]`, captured body3632 launch sites, outside93 per
   replay, six graph host enqueues,14,900 committed kernels, full248320 logits and
-  all42 state domains exact. The graph policy charge is **15,339,840 bytes** and
-  the qualifier proves that exact charge disappears at trusted `graph.retire()`;
-  graph-band release then reclaims additional batch storage, final ResourceArbiter
-  reserved bytes are0 and the RTX3060 returns to41MiB. CUDA driver-internal graph
-  bytes/node enumeration remain unqualified. This is correctness/lifetime
-  acceptance only, not graph performance or production serving selection.
+  all42 state domains exact. The graph policy charge is **15,339,840 bytes**.
+  Signed `81b7c71` now makes its lifetime explicit: the resident foreign-byte
+  ledger must equal that charge while the graph is live, live charge owners must
+  remain retained, and foreign bytes must be0 immediately after trusted
+  `graph.retire()`. Graph-band release then reclaims additional batch storage,
+  final ResourceArbiter reserved bytes are0 and the RTX3060 returns to41MiB.
+- [~] One later repeat observed a transient post-capture total resident-byte
+  mismatch of exactly15,339,840 bytes with pending_events=0 and an empty physical
+  queue. The run failed closed before replay. The condition did **not** reproduce
+  in four consecutive subsequent physical runs; all four returned41MiB and the
+  final strengthened run explicitly proved charge-retained-while-live=true and
+  charge-released-on-retire=true. Do not weaken the idle invariant. If it recurs,
+  the `81b7c71` witness reports warm/steady foreign bytes, graph resource bytes,
+  charge count and Arc strong counts so the actual ownership boundary can be
+  localized. CUDA driver-internal graph bytes/node enumeration remain unqualified.
+  This is correctness/lifetime qualification only, not graph performance or
+  production serving selection.
 - [ ] Remaining graph work: external capture/replay APIs remain qualification-only
   and ordinary serving still selects `FusedExecution::Native`. Finish the
   remaining same-card external-event/storage/production-selector integration

@@ -18,16 +18,15 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation** checkpoint is
-  `6a5c6101a6979d4c56c20de4c2065f44bffe8463`
-  (`fix(cuda): make nonpersistent NVRTC driver-safe`). Above `db7be60` graph
-  resource admission, it fixes the actual pre-graph physical blocker:
-  non-persistent CUDA C++ NVRTC now emits exact-SM cubin/SASS instead of PTX that
-  can outrun the installed driver's PTX ISA, while persistent contexts continue
-  to emit/cache PTX. Finite compiler contexts revalidate the captured SDK/include
-  configuration on compilation rather than poisoning on unrelated CubeCL
-  environment-generation bumps, and sticky poison retains its first concrete
-  cause. External graph APIs remain qualification-only and production serving
-  still selects Native; no production graph-serving permit follows.
+  `81b7c71324e6c3ba99d4d77bff7e4e14b2ddcf28`
+  (`test(cuda): witness graph resource lifetime`). Above driver-safe
+  non-persistent NVRTC fix `6a5c610` and graph admission `db7be60`, the
+  original0.8B B2 physical qualifier now directly requires the resident
+  foreign-byte ledger to equal the exact graph policy charge while live and to
+  reach0 immediately after trusted graph retirement; it also exposes live charge
+  count/Arc ownership if a post-capture accounting mismatch recurs. External graph
+  APIs remain qualification-only and production serving still selects Native; no
+  production graph-serving permit follows.
 - Previous key implementation checkpoints include `b0cf0b2`
   (`fix(cache): avoid duplicate Qwen snapshot hashing`), `134a571`
   (`fix(hip): isolate CUDA private KV qualification`), `874e67d`
@@ -40,8 +39,9 @@ and live TODOs are authoritative.
   `5c8f143` (X2 KFD localization), `3cadc3b` (shared-pair Qwen consumer
   rejection), implementation `5bf440d` (production cuda-native graph substrate),
   docs `bc9a1b3`, implementation `db7be60` (prepaid graph resources), docs
-  `cbf1384`, and implementation `6a5c610` (driver-safe nonpersistent NVRTC);
-  this refresh may add another docs-only commit. X2 is synced to the
+  `cbf1384`, implementation `6a5c610` (driver-safe nonpersistent NVRTC), docs
+  `9dca4b`, and implementation `81b7c71` (explicit graph-charge lifetime
+  witness); this refresh may add another docs-only commit. X2 is synced to the
   exact current local tip after each checkpoint even when its remote-tracking ref
   is stale. Never push unless the user explicitly asks.
 - Before any new physical X2 run, sync it to the exact current l5 `main`
@@ -724,27 +724,35 @@ capture, another GPU or another model.
    trusted retirement. Queue work uses prepaid `AllocationClass::Other`; there is
    no second global charge. External graph APIs remain qualification-only and
    production serving remains `FusedExecution::Native`.
-3. Signed `6a5c610` closes the physical graph qualifier blocker. The generic
-   compiler poison was localized to `CUDA_ERROR_UNSUPPORTED_PTX_VERSION` from
-   CUDA13.4 NVRTC PTX loaded by an older driver. Non-persistent C++ compilation
-   now returns exact-SM cubin/SASS; persistent compilation continues to emit/cache
-   PTX. The original0.8B B2 physical graph qualifier passes: warm
-   `[3725,3725]`, captured body3632 launch sites, outside93/replay, six graph
-   host enqueues,14,900 committed kernels, full248320 logits + all42 state domains
-   exact. The prepaid graph charge is **15,339,840 bytes** and that exact amount
-   is released by trusted `graph.retire()`; final ResourceArbiter reserved=0 and
-   RTX3060 returns41MiB. Driver-internal graph bytes/node enumeration and graph
+3. Signed `6a5c610` closes the physical graph compiler blocker:
+   `CUDA_ERROR_UNSUPPORTED_PTX_VERSION` came from CUDA13.4 NVRTC PTX loaded by
+   an older driver, so non-persistent C++ compilation now returns exact-SM
+   cubin/SASS while persistent compilation continues to emit/cache PTX. Signed
+   `81b7c71` strengthens the graph resource qualifier: live foreign-ledger bytes
+   must equal the exact **15,339,840-byte** policy charge, live charge owners must
+   exist, and foreign bytes must reach0 immediately after trusted retirement.
+   The original0.8B B2 path repeatedly passes with warm `[3725,3725]`, captured
+   body3632 launch sites, outside93/replay, six host enqueues,14,900 committed
+   kernels, full248320 logits + all42 state domains exact, final ResourceArbiter
+   reserved=0 and RTX306041MiB.
+4. One post-`9dca4b` repeat failed closed at the first post-capture idle check:
+   total resident bytes fell by exactly15,339,840 with pending_events=0 and an
+   empty queue. It did not reproduce in **four consecutive** subsequent runs,
+   including the final `81b7c71` witness run proving charge-retained-while-live
+   and released-on-retire. Do not weaken the idle invariant or call the transient
+   explained. If it recurs, use the new warm/steady foreign-byte + charge-owner
+   witness to localize it. Driver-internal graph bytes/node enumeration and graph
    performance remain unqualified. Production serving remains Native; same-card
    external-event/storage and selector integration are still open.
-4. **Large CUDA same-contract distribution/state acceptance is open but blocked.**
+5. **Large CUDA same-contract distribution/state acceptance is open but blocked.**
    Cross-profile diagnostics are not acceptance. Approved original reference/archive
    material needed for the intended rerun is missing on l5; do not invent
    tolerances, repin or substitute another model/reference.
-5. **Unequal-frontier prefill remains held.** First-lane coupling was hardened, but
+6. **Unequal-frontier prefill remains held.** First-lane coupling was hardened, but
    admission stays same-frontier. Per-lane source position/base/state semantics
    still need approved HF source plus private-singleton physical comparison before
    scheduler admission changes.
-6. Broader HTTP/context/vLLM campaigns remain separate from quick CUDA direct
+7. Broader HTTP/context/vLLM campaigns remain separate from quick CUDA direct
    feedback. Continue the larger runtime/serving capability rather than returning
    to endless sub-percent kernel churn.
 
