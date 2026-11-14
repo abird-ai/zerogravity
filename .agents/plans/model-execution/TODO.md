@@ -4119,13 +4119,48 @@ build or general model/backend grant. Historical failures keep their source scop
   localized to the runtime `open_source` path (canonical `qwen35_source::open`
   and/or authenticated tokenizer construction/retention), before
   `ResidentModel::load_ordinary_cpu_source_with_budget` and before HIP allocation.
-- [ ] Next: isolate `qwen35_source::open` versus tokenizer construction at this
-  host-only boundary with bounded temporary diagnostics; fix only a concrete
-  source/runtime bug if found. Do not relaunch 27B GPU/HTTP until the host path is
-  stable. The accepted66-call 27B reference and populated1K/2K reference material
-  are not present in the current X2 cache, so full numerical/context acceptance
-  also remains blocked; do not fabricate or repin them. ROCm2B mismatch
-  localization remains the independent fallback.
+- [x] Isolated tokenizer construction independently from source opening. The exact
+  canonical27B `tokenizer.json` is 12,809,320 bytes with SHA256
+  `0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3`;
+  the existing release tokenizer test passes construction, serving-inventory
+  verification, encode/decode and bounded-prefix operations in0.71s. Tokenizer
+  construction/retention is not the blocker.
+- [x] A smaller host-only real-source probe also completed the complete canonical
+  27B Qwen binding chain when isolated from the full runtime binary: exact18 shard
+  authentication,55,563,006,776 source bytes,1,199 tensors,851 text/348 other
+  roles,64 layers/states, ordinary CPU-source seal and a1K plan with64
+  boundaries/112 domains. This excludes deterministic Qwen role/binding/plan
+  construction as the blocker.
+- [x] Found and fixed one concrete shared cache inefficiency in signed `b0cf0b2`:
+  ordinary Qwen runtime previously called fully verifying `open_snapshot`, hashing
+  all31 snapshot payloads (55,586,113,293 bytes), then
+  `VerifiedWindowPlan::open` independently re-authenticated every exact shard.
+  New `SnapshotDescriptorLease` authenticates the snapshot manifest and pins exact
+  read-only descriptors/lengths without claiming payload verification; ordinary
+  Qwen then performs its existing SHA checks on every consumed metadata payload
+  and the authoritative whole-shard `ExtentSource::scan_verified` exactly once.
+  Normal `SnapshotLease/open_snapshot` semantics are unchanged for every other
+  consumer.
+- [x] Added a mutation boundary test: a same-length modified payload may be bound by
+  the explicitly non-authoritative descriptor lease, while both normal verified
+  snapshot opening and downstream `SourceWeights` authentication reject it.
+  All8 cache/source-bridge tests pass; strict artifacts+cache Clippy passes; HIP
+  and CUDA Qwen production feature checks pass. Global strict HIP/CUDA Clippy is
+  still stopped by pre-existing unrelated dead-code/too-many-arguments warnings.
+- [x] Exact X2 candidate source binding completes with the redundant cache-wide hash
+  removed. A baseline full-double-verification probe took92.82s and a warmed
+  descriptor candidate took57.24s, but this is cache/order-sensitive diagnostic
+  timing, **not** a controlled performance claim. The structural claim is only one
+  complete snapshot payload hash removed while exact source authentication remains.
+- [ ] The full runtime host-only test now reaches the **single required**
+  `ExtentSource::scan_verified` pass, then can still be externally terminated
+  during the first3.97GiB shard with no Rust error or OOM evidence. The same
+  authoritative scan succeeds across all18 shards in the smaller exact-source
+  probe, so do not weaken/skip it or invent an extent manifest/pin. Next localize
+  the external full-runtime process termination around this source-scan boundary.
+  Do not relaunch27B GPU/HTTP until that host path is stable. Accepted66-call and
+  populated1K/2K references remain absent from current X2; never fabricate/repin.
+  ROCm2B mismatch localization remains the independent fallback.
 
 ### 14 Nov 2026 — shared-input B8 projection-pair primitive retained; consumer held
 

@@ -18,17 +18,21 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation** checkpoint is
-  `134a571dc080ac8e2d0f243d3e4aac0ff4cfa5dc`
-  (`fix(hip): isolate CUDA private KV qualification`). It is a one-line
-  cross-feature correctness repair; it does not grant HIP private-BF16 KV support.
-- Previous key implementation checkpoints remain `874e67d`
+  `b0cf0b21e5a72a9e89c0431f8437afa2a635982e`
+  (`fix(cache): avoid duplicate Qwen snapshot hashing`). It adds an explicitly
+  non-authoritative snapshot descriptor lease so Qwen can authenticate each
+  consumed payload once at its existing source boundary; normal verified
+  `SnapshotLease` semantics are unchanged.
+- Previous key implementation checkpoints include `134a571`
+  (`fix(hip): isolate CUDA private KV qualification`), `874e67d`
   (`feat(cuda): retain shared-input projection pair`) and `c282f20`
   (`fix(hip): restore source profile compilation`). Docs checkpoints include
-  `2caf304` and `52c8a16`.
+  `2caf304`, `52c8a16` and `ca6e99f`.
 - `origin/main` remains `c12acab60c357e0742ad4ecd2f00295cd9b6bb0a`
   (`feat(cuda): retain grouped B8 recurrent transport`). Immediately before this
-  docs refresh l5 and X2 were both clean at `134a571`, **14 commits ahead of
-  origin**. This refresh may add one docs-only commit. Nothing newer is pushed.
+  docs refresh l5 is clean at `b0cf0b2`, **16 commits ahead of origin**; X2 still
+  needs the final implementation/docs sync after candidate validation. This refresh
+  may add one docs-only commit. Nothing newer is pushed.
   Never push unless the user explicitly asks.
 - Before any new physical X2 run, sync it to the exact current l5 `main`
   bytes/commit without using a push merely as transport, then revalidate
@@ -49,6 +53,9 @@ and live TODOs are authoritative.
   - `2caf304` / `52c8a16` — handoff + X2 tiny-HIP-health documentation.
   - `134a571` — HIP qualification no longer calls the CUDA-only private-BF16 KV
     physical qualifier without `cuda-cublas`.
+  - `b0cf0b2` — ordinary Qwen uses a manifest-authenticated descriptor lease and
+    performs its existing metadata/shard authentication once instead of hashing the
+    complete cached snapshot before re-authenticating every shard.
 - Important accepted commits immediately before origin:
   - `60b048d` — canonical-boundary private B8 GDN recurrent core accepted.
   - `775dfa6` — ragged private B8 KV transition accepted.
@@ -280,13 +287,27 @@ serving, memory and composition plans.
 - Exact X2 27B host-only `cache-preflight` passes on canonical snapshot
   `98cea13c169310196c4d8a113765f8fe58ab7a7961f0d1be69212c70dba8015e`;
   source remains unchanged and 512/1K/2K capacity cells complete with no GPU.
-- The current runtime blocker is earlier than HIP allocation. A fresh explicit
-  75GiB current-main HTTP diagnostic was externally terminated ~53s into model
-  load with VRAM still at baseline, and the in-tree host-only canonical
-  source/tokenizer test was externally terminated twice with no Rust error/GPU/OOM
-  evidence. Therefore localize runtime `open_source` — `qwen35_source::open`
-  versus authenticated tokenizer construction/retention — before another 27B GPU
-  launch.
+- Runtime `open_source` is now split more precisely. Exact canonical27B
+  tokenizer construction is independently green:12,809,320-byte `tokenizer.json`,
+  SHA256 `0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3`,
+  existing release tokenizer test pass0.71s.
+- A smaller host-only exact-source process also authenticates all18 27B shards and
+  completes the full Qwen binding/seal/1K plan:55,563,006,776 source bytes,1,199
+  tensors,851 text/348 other roles,64 layers/states,64 plan boundaries/112 domains.
+  The deterministic Qwen binding/plan path itself is therefore green.
+- `b0cf0b2` fixes a concrete redundant verification boundary discovered here.
+  Runtime previously fully hashed all31 snapshot payloads (55,586,113,293 bytes)
+  in `open_snapshot`, then `VerifiedWindowPlan::open` authenticated the exact
+  shards again. Qwen now binds a manifest-authenticated `SnapshotDescriptorLease`
+  that claims no payload verification; every non-shard payload keeps its existing
+  compiled SHA check and every shard keeps the authoritative whole-file
+  `ExtentSource::scan_verified`. Normal `SnapshotLease` remains fully verified.
+- The full runtime process is **still not stable**: with the redundant first hash
+  removed it reaches the single required authoritative shard scan, but can still
+  be externally terminated during the first3.97GiB shard with no Rust error or OOM
+  evidence. That same scan succeeds across all18 shards in the smaller exact-source
+  process. Do not weaken/skip it or invent an extent manifest/pin. Localize the
+  external full-runtime process boundary before another 27B GPU launch.
 - Historical R9/R10 HTTP504 ran 5 Nov; `d16f096` explicit75GiB resident-budget
   plumbing landed 8 Nov. The old ~240s streamed path exceeded the unchanged180s
   deadline; the later resident C1 path was ~5.5s. Preserve that chronology rather
@@ -657,11 +678,14 @@ capture, another GPU or another model.
 
 1. **Tiny physical HIP health stays green.** The isolated `gfx1151` smoke passed
    and returned to baseline; do not repeat it unless host/runtime state changes.
-2. **Do not relaunch 27B GPU/HTTP yet.** Exact canonical source/cache/plan preflight
-   passes host-only, but runtime canonical `open_source`/tokenizer loading is
-   externally terminated before first HIP allocation. Isolate
-   `qwen35_source::open` versus tokenizer construction/retention first.
-3. Once that host boundary is stable, retry the exact explicit75GiB resident route
+2. **Do not relaunch 27B GPU/HTTP yet.** Exact tokenizer construction and the
+   complete isolated27B source binding/seal/1K plan are green. Signed `b0cf0b2`
+   removes one redundant complete cache-snapshot hash while preserving the single
+   authoritative source scan. The full runtime process can still be externally
+   terminated during that required first-shard scan before HIP allocation.
+3. Localize that external full-runtime process boundary without weakening
+   `ExtentSource::scan_verified` or inventing extent authority. Once stable, retry
+   the exact explicit75GiB resident route
    under the unchanged180s HTTP deadline. Numerical/populated-context acceptance
    still requires the missing approved 27B reference material.
 4. ROCm2B C4/C16/C32/C64 divergence localization remains independently open if
@@ -771,12 +795,14 @@ existing bounded contract.
 > --short --branch`, `git log -1 --show-signature`, `git worktree list --porcelain`,
 > active Cargo/model processes and GPU state before editing or executing.
 >
-> The latest implementation checkpoint is signed `134a571`
-> (`fix(hip): isolate CUDA private KV qualification`). Earlier key checkpoints are
-> `874e67d` (retained shared-input projection pair), `c282f20` (HIP source-profile
-> compilation repair), and docs `2caf304`/`52c8a16`. `origin/main` remains
-> `c12acab`; immediately before this ledger refresh l5 and X2 were both clean at
-> exact `134a571`, 14 commits ahead of origin, and nothing newer was pushed. This
+> The latest implementation checkpoint is signed `b0cf0b2`
+> (`fix(cache): avoid duplicate Qwen snapshot hashing`). Earlier key checkpoints
+> include `134a571` (HIP/CUDA qualification boundary), `874e67d` (retained
+> shared-input projection pair), `c282f20` (HIP source-profile compilation repair),
+> and docs `2caf304`/`52c8a16`/`ca6e99f`. `origin/main` remains `c12acab`;
+> immediately before this ledger refresh l5 is clean at exact `b0cf0b2`, 16 commits
+> ahead of origin, and nothing newer was pushed. Before the next execution X2
+> should be exact at the final docs checkpoint; revalidate and sync if needed. This
 > refresh may itself be a newer docs-only signed commit, so revalidate live l5
 > `HEAD`/ahead count and sync X2 to that exact `main` before any new physical run
 > without using a push merely as transport. Source/tests/live TODOs outrank this
@@ -807,15 +833,20 @@ existing bounded contract.
 >
 > `c282f20` and `134a571` repair two separate HIP-only cross-feature compile
 > boundaries; neither grants a new HIP kernel capability. Tiny physical HIP health
-> is independently green. Exact canonical 27B host-only source/cache/plan preflight
-> now passes on X2, but runtime canonical `open_source`/tokenizer loading is
-> externally terminated before first HIP allocation: a current explicit75GiB HTTP
-> diagnostic dies during model load, and the in-tree host-only source/tokenizer test
-> dies twice with no Rust error/GPU/OOM evidence. Historical R9/R10 HTTP504 predates
+> is independently green. Exact canonical27B tokenizer construction now passes, and
+> a smaller host-only exact-source process authenticates all18 shards and completes
+> the full Qwen binding/seal/1K plan. Signed `b0cf0b2` removes a redundant
+> cache-wide payload hash by introducing an explicitly non-authoritative
+> `SnapshotDescriptorLease`; normal `SnapshotLease` remains fully verified, while
+> Qwen's existing metadata SHA checks and authoritative whole-shard
+> `ExtentSource::scan_verified` remain unchanged. The full runtime process can still
+> be externally terminated during the first shard of that single required scan,
+> before HIP allocation, with no Rust error/GPU/OOM evidence. Do **not** weaken that
+> scan or invent extent pins, and do **not** relaunch27B GPU/HTTP until the external
+> full-runtime process boundary is stable. Historical R9/R10 HTTP504 predates
 > `d16f096` resident-budget support and reflects the ~240s streamed path, not the
-> later ~5.5s resident C1 path. Do **not** relaunch 27B GPU/HTTP until
-> `qwen35_source::open` versus tokenizer construction/retention is isolated and
-> stable. The accepted66-call and populated1K/2K reference material is also absent
+> later ~5.5s resident C1 path. The accepted66-call and populated1K/2K reference
+> material is also absent
 > from current X2, so full acceptance remains blocked without exact approved
 > recovery/successor capture. ROCm2B mismatch localization is the fallback.
 > Preserve the existing180s HTTP contract, expected IDs and failed cells; do not

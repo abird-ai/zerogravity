@@ -3,16 +3,18 @@
 Current source, tests, and this queue are authoritative; Git retains retired history.
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 
-Latest implementation checkpoint is signed `134a571`
-(`fix(hip): isolate CUDA private KV qualification`), above docs `52c8a16` and the
-earlier `874e67d` CUDA / `c282f20` HIP checkpoints. `origin/main` remains
-`c12acab` and nothing newer is pushed; revalidate live l5 `HEAD`/ahead count
-because this plan refresh may add a docs-only commit. X2 is the approved AMD
-large-VRAM execution/test host and was synced to exact `134a571` for the latest
-host-only 27B localization. Tiny-HIP runtime health is green and exact canonical
-27B source/cache/plan preflight passes, but runtime `open_source`/tokenizer loading
-is externally terminated before HIP allocation. After any newer docs-only
-checkpoint X2 may again be behind l5; sync it to exact current l5 `main` before
+Latest implementation checkpoint is signed `b0cf0b2`
+(`fix(cache): avoid duplicate Qwen snapshot hashing`), above `134a571`, docs
+`52c8a16` and the earlier `874e67d` CUDA / `c282f20` HIP checkpoints.
+`origin/main` remains `c12acab` and nothing newer is pushed; revalidate live l5
+`HEAD`/ahead count because this plan refresh may add a docs-only commit. X2 is
+the approved AMD large-VRAM execution/test host. Tiny-HIP runtime health is green;
+exact tokenizer and full source binding/plan pass host-only; `b0cf0b2` removes
+one redundant complete snapshot hash while preserving downstream source
+authentication. The full runtime process can still be externally terminated
+during the single required shard scan, before HIP allocation. After any newer
+docs-only checkpoint X2 may again be behind l5; sync it to exact current l5
+`main` before
 new physical tests without push transport. Selected CUDA2B B8
 serving still uses the canonical-boundary private B8 recurrent core (`60b048d`),
 ragged private B8 KV transition (`775dfa6`) and B8 private-KV CTA256 (`399e43a`).
@@ -35,13 +37,14 @@ Complete substantial implementation batches before combined validation; full gat
 Prioritize working paths + early matched-vLLM feedback; reuse checks/evidence,
 add fixtures only for concrete gaps. Baselines need not await all models/batching.
 Owner direction: l5 owns repository/source changes; x2 is only for AMD
-large-VRAM execution/testing. Tiny physical HIP health is green, and signed
-`134a571` repairs the newly exposed HIP/CUDA qualification boundary. Exact 27B
-source/cache/plan preflight passes host-only, but canonical runtime
-`open_source`/tokenizer loading is externally terminated before any HIP allocation.
-Localize that host boundary before another 27B HTTP launch; preserve the unchanged
-180s contract and missing-reference blockers. ROCm2B mismatch localization remains
-the fallback. No build/device campaign is live at this checkpoint.
+large-VRAM execution/testing. Tiny physical HIP health is green. Exact 27B
+tokenizer and complete isolated source binding/plan pass host-only; signed
+`b0cf0b2` removes a redundant cache-wide payload hash without weakening the
+authoritative Qwen source scan. The full runtime process can still disappear
+during that one required shard scan before HIP allocation. Localize that external
+process boundary before another 27B HTTP launch; preserve the unchanged180s
+contract and missing-reference blockers. ROCm2B mismatch localization remains the
+fallback. No build/device campaign is live at this checkpoint.
 
 Fabric migration is complete; the unfinished Qwen campaign remains next.
 Preserve signed native GDN`e2559b6`/pause`1c35172` and all accepted bounded
@@ -58,7 +61,7 @@ activating held routes.
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)
 - [~] P1 pipeline-composition — @pvl — recursive primitives/pipelines/profiles; shared execution adapters active, reuse current adapters in Fabric; Qwen expansion deferred — [details](pipeline-composition/TODO.md)
 - [~] P1 cli-device-routing — @pvl — unified run/config/source/device selection; preserve behavior through Fabric SDK/CLI migration — [details](cli-device-routing/TODO.md)
-- [~] P2 model-execution — @pvl — l5 CUDA2B B8 currently selects exact independent reductions, same-frontier ragged/chunked cohorts, private B8 recurrent core `60b048d`, ragged private B8 KV `775dfa6` and CTA256 KV `399e43a`; `874e67d` retains the exact shared-input Ordered+LaneBlocked B8 projection pair with serving held. Large same-contract CUDA numerical acceptance remains blocked by missing approved reference material. Populated small HIP is `8ffb511`; resident27B C1..C64 is `d16f096`; `c282f20` and `134a571` repair two HIP-only cross-feature compile boundaries. X2 tiny HIP health and exact 27B source/cache preflight pass, but runtime `open_source`/tokenizer loading is externally terminated before HIP allocation; localize that host boundary before 27B HTTP, with ROCm2B mismatch localization as fallback — [details](model-execution/TODO.md)
+- [~] P2 model-execution — @pvl — l5 CUDA2B B8 currently selects exact independent reductions, same-frontier ragged/chunked cohorts, private B8 recurrent core `60b048d`, ragged private B8 KV `775dfa6` and CTA256 KV `399e43a`; `874e67d` retains the exact shared-input Ordered+LaneBlocked B8 projection pair with serving held. Large same-contract CUDA numerical acceptance remains blocked by missing approved reference material. Populated small HIP is `8ffb511`; resident27B C1..C64 is `d16f096`; `c282f20`/`134a571` repair HIP cross-feature boundaries; `b0cf0b2` removes duplicate Qwen snapshot hashing with an explicitly non-authoritative descriptor lease. X2 exact tokenizer and full isolated27B source binding/plan pass, but the full runtime process can still be externally terminated during the single required authoritative shard scan before HIP allocation; localize that process boundary before 27B HTTP, with ROCm2B mismatch localization as fallback — [details](model-execution/TODO.md)
 - [~] P2 model-acquisition — @pvl — [details](model-acquisition/TODO.md)
 
 ## Icebox

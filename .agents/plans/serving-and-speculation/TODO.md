@@ -55,12 +55,21 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   diagnostic likewise dies during model load before first HIP allocation; no HTTP
   status is produced. Historical R9/R10 HTTP504 predates the 8 Nov
   `d16f096` resident-budget plumbing and exercised the ~240s streamed path.
-- [ ] Stabilize/localize runtime `open_source` host loading before another 27B
-  physical launch. Then retry the exact75GiB route under the unchanged180s HTTP
-  contract. Full 27B/populated1K/2K acceptance additionally needs the approved
-  reference material, currently absent on X2; do not repin/substitute it. If the
-  27B host path remains externally blocked, continue ROCm2B C4/C16/C32/C64
-  mismatch localization.
+- [x] Isolated the runtime host path further. Exact canonical27B tokenizer
+  construction/serving inventory is green; a smaller host-only exact-source probe
+  authenticates all18 shards and completes Qwen binding/seal/1K plan. Signed
+  `b0cf0b2` removes a redundant initial55.6GB cache snapshot payload hash by using
+  an explicitly non-authoritative descriptor lease; all consumed metadata/shards
+  keep their downstream SHA authentication and normal `SnapshotLease` stays fully
+  verified.
+- [ ] The full runtime process can still be externally terminated during the first
+  shard of the **single required** authoritative `ExtentSource::scan_verified`
+  pass, before HIP allocation. That same scan passes all18 shards in the smaller
+  exact-source process, so do not weaken it or invent an extent pin. Localize the
+  external process boundary next; only then retry exact75GiB 27B HTTP under the
+  unchanged180s contract. Full27B/populated1K/2K acceptance still needs approved
+  reference material currently absent on X2. ROCm2B mismatch localization remains
+  fallback.
 - [ ] L5 remains the source/repository authority. X2 is execution/testing only and
   must be synced to the exact current l5 `main` before physical work; do not push
   merely to transfer local commits.
