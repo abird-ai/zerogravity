@@ -18,22 +18,26 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation** checkpoint is
-  `b0cf0b21e5a72a9e89c0431f8437afa2a635982e`
-  (`fix(cache): avoid duplicate Qwen snapshot hashing`). It adds an explicitly
-  non-authoritative snapshot descriptor lease so Qwen can authenticate each
-  consumed payload once at its existing source boundary; normal verified
-  `SnapshotLease` semantics are unchanged.
-- Previous key implementation checkpoints include `134a571`
+  `5bf440d7f891111feac63f50d04a4333b40286bb`
+  (`refactor(cuda): admit graph substrate in native builds`). The existing CUDA
+  graph generation/profile/pin/replay owner path now compiles under production
+  `cuda-native`, the actual capability that owns a pinned CUDA queue. External
+  capture/replay entrypoints remain qualification-only and ordinary production
+  serving still selects only Native execution; no graph-serving permit follows.
+- Previous key implementation checkpoints include `b0cf0b2`
+  (`fix(cache): avoid duplicate Qwen snapshot hashing`), `134a571`
   (`fix(hip): isolate CUDA private KV qualification`), `874e67d`
   (`feat(cuda): retain shared-input projection pair`) and `c282f20`
   (`fix(hip): restore source profile compilation`). Docs checkpoints include
   `2caf304`, `52c8a16`, `ca6e99f`, `f5d2a88`, pushed `d68b649` and local
   `5c8f143`.
 - `origin/main` is `d68b649031ac89ddfb88f6880cb7185208b25c09`
-  (`docs: record X2 27B physical allocation blocker`). l5 is currently one local
-  docs checkpoint ahead at `5c8f143`; this refresh may add another docs-only commit.
-  X2 is synced to the exact current local tip after each checkpoint even when its
-  remote-tracking ref is stale. Never push unless the user explicitly asks.
+  (`docs: record X2 27B physical allocation blocker`). Local history above it is
+  `5c8f143` (X2 KFD localization), `3cadc3b` (shared-pair Qwen consumer
+  rejection) and implementation `5bf440d` (production cuda-native graph
+  substrate); this refresh may add another docs-only commit. X2 is synced to the
+  exact current local tip after each checkpoint even when its remote-tracking ref
+  is stale. Never push unless the user explicitly asks.
 - Before any new physical X2 run, sync it to the exact current l5 `main`
   bytes/commit without using a push merely as transport, then revalidate
   status/process/GPU state.
@@ -41,9 +45,10 @@ and live TODOs are authoritative.
   `f303bca`, `68ac810`, `da3eae5`, `ee347d9`, `399e43a`, `de2eed8`, `cb9e349`,
   `6c601f9`, `c282f20`, `874e67d`, `2caf304`, `52c8a16`, `134a571`, `b0cf0b2`,
   `f5d2a88` and `d68b649`. Do not describe those as unpushed local commits.
-- Local docs checkpoint `5c8f143` localizes X2's stranded KFD owner. This refresh
-  additionally records rejection of the ordinary-Qwen `874e67d` consumer after
-  completed loaded-model A/B; the primitive itself remains retained.
+- Local docs `5c8f143` localizes X2's stranded KFD owner and `3cadc3b`
+  records rejection of the ordinary-Qwen `874e67d` consumer after completed
+  loaded-model A/B; the primitive itself remains retained. `5bf440d` is the first
+  broader post-micro-optimization CUDA implementation checkpoint.
 - Important accepted commits immediately before origin:
   - `60b048d` — canonical-boundary private B8 GDN recurrent core accepted.
   - `775dfa6` — ragged private B8 KV transition accepted.
@@ -692,22 +697,33 @@ capture, another GPU or another model.
 
 1. **Do not force another CUDA micro-optimization.** Easy launch-count, CTA-width,
    cache-hint and instruction-count variants are heavily exhausted. `874e67d`
-   already implements the materially different shared-input projection-pair idea
-   for one real Ordered+LaneBlocked adjacency and retains it only as a primitive.
-   Its ordinary-Qwen serving consumer still needs a controlled loaded-model A/B;
-   first inspect the actual graph/dataflow and only wire it if the same activation,
-   exact independent reductions and lifetime boundaries genuinely match.
-2. **Large CUDA same-contract distribution/state acceptance is open but blocked.**
+   remains a useful exact primitive, but its real adjacent ordinary-Qwen consumer
+   has now been measured and rejected because order/thermal drift dwarfed the
+   ~1.04% favorable two-sided aggregate. Do not retry the same selection without a
+   materially different composition.
+2. **Production CUDA graph admission is now the active broader l5 boundary.**
+   Signed `5bf440d` makes the existing graph workspace generation/profile/pin,
+   replay validation, captured owner/quarantine and fused graph ownership path
+   compile in normal `cuda-native` production builds. It deliberately keeps all
+   external capture/replay entrypoints qualification-only and ordinary serving
+   still constructs only `FusedExecution::Native`. Generic `cuda` is unchanged.
+   Production `cuda-cublas` check/strict Clippy, qualification strict Clippy,
+   generic-CUDA check, `zerogravity qwen35-cuda` check and three graph
+   topology/identity host tests pass. **Still open before any production graph
+   selector:** explicit graph metadata/driver-resource pricing/admission and the
+   remaining same-card external-event/storage/prepaid-retirement/final-drop
+   integration. Compile availability is not participation/performance acceptance.
+3. **Large CUDA same-contract distribution/state acceptance is open but blocked.**
    Cross-profile diagnostics are not acceptance. Approved original reference/archive
    material needed for the intended rerun is missing on l5; do not invent
    tolerances, repin or substitute another model/reference.
-3. **Unequal-frontier prefill remains held.** First-lane coupling was hardened, but
+4. **Unequal-frontier prefill remains held.** First-lane coupling was hardened, but
    admission stays same-frontier. Per-lane source position/base/state semantics
    still need approved HF source plus private-singleton physical comparison before
    scheduler admission changes.
-4. Broader HTTP/context/graph/vLLM campaigns remain separate from quick CUDA direct
-   feedback. If local CUDA surfaces are exhausted, advance the larger runtime/
-   serving capability rather than endless sub-percent kernel churn.
+5. Broader HTTP/context/vLLM campaigns remain separate from quick CUDA direct
+   feedback. Continue the larger runtime/serving capability rather than returning
+   to endless sub-percent kernel churn.
 
 ### x2 AMD large-VRAM execution/testing — 27B host-load boundary next
 

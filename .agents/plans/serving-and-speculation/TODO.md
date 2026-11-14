@@ -512,14 +512,27 @@ or a change to the active correctness/benchmark/27B order.
   and physical counts;
   this bounded observation does not establish numerical or serving parity.
 
-- [ ] **Production CUDA graph admission:** close every same-card constructor,
-  transport, allocation, external event/storage and final-drop path through
-  original queue/completion ownership; admit graph metadata/driver resources.
-  Private graph replay does not enable production graph selection. Test-only
-  host protocol14 cases/three ownership negatives pass. Separate original
-  transport14 cases/two intended ownership failures, strict Clippy and no_std
-  also pass in an isolated harness. Prepaid retirement and complete integration
-  remain separate work, with participation unproven.
+- [ ] **Production CUDA graph admission:** signed `5bf440d` closes the first
+  production compile/ownership boundary without selecting graphs. The existing
+  batch graph generation/profile/pin/replay machinery, captured-graph owner,
+  capture-window quarantine, live-graph band-replacement guards and completion-
+  owner retention now compile under the actual `cuda-native` capability used by
+  production Qwen CUDA. Generic `cuda` remains unchanged because graph ownership
+  requires the pinned native CUDA queue. External `ResidentModel::capture_*` /
+  `prepare_graph_*` entrypoints and qualification mutation helpers remain
+  `qualification`-only, and ordinary fused serving still constructs only
+  `FusedExecution::Native`; this does **not** enable production graph selection.
+  Production `cuda-cublas` check + strict Clippy, qualification strict Clippy,
+  generic-CUDA check, real `zerogravity --features qwen35-cuda` check and the
+  existing three graph topology/identity host tests pass. A strict production
+  Clippy run also exposed/fixed only a missing explicit-bindings lint annotation
+  on the retained shared-input BF16 pair; arithmetic/ABI are unchanged.
+  Still open: explicitly price/admit CUDA graph metadata/driver resources and
+  complete same-card constructor/transport/allocation/external-event/storage/
+  prepaid-retirement/final-drop integration before any production selector.
+  Private graph replay does not grant serving participation or performance.
+  Historical test-only host protocol14 cases/three ownership negatives and
+  transport14 cases/two intended ownership failures remain retained evidence.
 
 - [ ] **P12 prefix scheduling performance:** measure concurrent native prefix
   cold-process throughput/TTFT against the accepted max32-prefix implementation.

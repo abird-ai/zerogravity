@@ -3,10 +3,13 @@
 Current source, tests, and this queue are authoritative; Git retains retired history.
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 
-Latest implementation checkpoint is signed `b0cf0b2`
-(`fix(cache): avoid duplicate Qwen snapshot hashing`), above `134a571`; pushed docs
-are through `d68b649`, with local docs checkpoint `5c8f143` and this refresh above
-it. Earlier CUDA/HIP checkpoints include `874e67d` / `c282f20`.
+Latest implementation checkpoint is signed `5bf440d`
+(`refactor(cuda): admit graph substrate in native builds`). It makes the existing
+CUDA graph identity/pin/replay/owner substrate compile in production
+`cuda-native` while keeping external capture/replay APIs qualification-only and
+ordinary serving on Native execution. Earlier implementation checkpoints include
+`b0cf0b2`, `134a571`, `874e67d` and `c282f20`; pushed history is through
+`d68b649`, with local docs checkpoints `5c8f143` / `3cadc3b` above it.
 `origin/main` is `d68b649` at this refresh; revalidate live l5 `HEAD`/ahead
 count because this plan refresh may add a docs-only commit. X2 is
 the approved AMD large-VRAM execution/test host. Tiny-HIP runtime health is green;
@@ -42,6 +45,10 @@ Explicit75GiB-total HIP admission is signed`d16f096`; historical defaults unchan
 Complete substantial implementation batches before combined validation; full gate last.
 Prioritize working paths + early matched-vLLM feedback; reuse checks/evidence,
 add fixtures only for concrete gaps. Baselines need not await all models/batching.
+On l5, `5bf440d` begins the broader production CUDA graph-admission work at the
+shared ownership layer only; graph driver-resource pricing/admission and any
+production serving selector remain open. Do not infer graph participation from
+compile availability.
 Owner direction: l5 owns repository/source changes; x2 is only for AMD
 large-VRAM execution/testing. Tiny HIP health is green and the full canonical27B
 host runtime source/tokenizer path now passes. The next explicit75GiB public HTTP
