@@ -27,35 +27,23 @@ and live TODOs are authoritative.
   (`fix(hip): isolate CUDA private KV qualification`), `874e67d`
   (`feat(cuda): retain shared-input projection pair`) and `c282f20`
   (`fix(hip): restore source profile compilation`). Docs checkpoints include
-  `2caf304`, `52c8a16`, `ca6e99f` and `f5d2a88`.
+  `2caf304`, `52c8a16`, `ca6e99f`, `f5d2a88`, pushed `d68b649` and local
+  `5c8f143`.
 - `origin/main` is `d68b649031ac89ddfb88f6880cb7185208b25c09`
-  (`docs: record X2 27B physical allocation blocker`) at the start of this
-  localization refresh. l5 is clean at that exact pushed tip; X2's checkout is also
-  exact at `d68b649` although its local remote-tracking ref may be stale until
-  fetched. This refresh may add one docs-only local commit. Never push unless the
-  user explicitly asks.
+  (`docs: record X2 27B physical allocation blocker`). l5 is currently one local
+  docs checkpoint ahead at `5c8f143`; this refresh may add another docs-only commit.
+  X2 is synced to the exact current local tip after each checkpoint even when its
+  remote-tracking ref is stale. Never push unless the user explicitly asks.
 - Before any new physical X2 run, sync it to the exact current l5 `main`
   bytes/commit without using a push merely as transport, then revalidate
   status/process/GPU state.
-- Local l5 commits after origin, oldest → newest:
-  - `85f458f` — packed BF16 batch greedy retained.
-  - `f303bca` — exact head→greedy partials retained.
-  - `68ac810` — grouped ConvB4 transport retained.
-  - `da3eae5` — dual Q/K head RMS retained.
-  - `ee347d9` — certified recurrent export retained.
-  - `399e43a` — accepted B8 private-KV CTA256.
-  - `de2eed8` — post-KV optimization probes recorded.
-  - `cb9e349` — projection/cache-policy probes recorded.
-  - `6c601f9` — comprehensive cross-window handoff refresh.
-  - `c282f20` — HIP-only source-profile compilation repair.
-  - `874e67d` — exact shared-input B8 projection-pair primitive retained; serving
-    consumer still held.
-  - `2caf304` / `52c8a16` — handoff + X2 tiny-HIP-health documentation.
-  - `134a571` — HIP qualification no longer calls the CUDA-only private-BF16 KV
-    physical qualifier without `cuda-cublas`.
-  - `b0cf0b2` — ordinary Qwen uses a manifest-authenticated descriptor lease and
-    performs its existing metadata/shard authentication once instead of hashing the
-    complete cached snapshot before re-authenticating every shard.
+- Key pushed history now contained in `origin/main=d68b649` includes `85f458f`,
+  `f303bca`, `68ac810`, `da3eae5`, `ee347d9`, `399e43a`, `de2eed8`, `cb9e349`,
+  `6c601f9`, `c282f20`, `874e67d`, `2caf304`, `52c8a16`, `134a571`, `b0cf0b2`,
+  `f5d2a88` and `d68b649`. Do not describe those as unpushed local commits.
+- Local docs checkpoint `5c8f143` localizes X2's stranded KFD owner. This refresh
+  additionally records rejection of the ordinary-Qwen `874e67d` consumer after
+  completed loaded-model A/B; the primitive itself remains retained.
 - Important accepted commits immediately before origin:
   - `60b048d` — canonical-boundary private B8 GDN recurrent core accepted.
   - `775dfa6` — ragged private B8 KV transition accepted.
@@ -337,10 +325,14 @@ serving, memory and composition plans.
   is established because the whole userspace tree was lost abnormally and normal
   Rust teardown could not run.
 - Treat X2 as physically dirty. Do not launch27B or ROCm2B again while KFD owner
-  `2406838` persists. Do not implicitly reset GPU, restart dotlink, kill an unseen
-  host process, or force KFD reclamation. Running kernel is7.3.1 while the
+  `2406838` persists. The KFD process subtree is read-only from the dotlink
+  sandbox; the AMDGPU device exposes an operator reset interface, but it was not
+  invoked. Do not implicitly reset GPU, restart dotlink, kill an unseen host
+  process, or force KFD reclamation. Running kernel is7.3.1 while the
   current-system kernel path points at7.3.3; that is only an environment
-  observation, not evidence that an update/reboot fixes this incident.
+  observation, not evidence that an update/reboot fixes this incident. The KFD
+  sysfs node ctime observed during inspection was created lazily when that tree was
+  first traversed and must not be treated as process-start evidence.
 - Historical R9/R10 HTTP504 ran 5 Nov; `d16f096` explicit75GiB resident-budget
   plumbing landed 8 Nov. The old ~240s streamed path exceeded the unchanged180s
   deadline; the later resident C1 path was ~5.5s. Preserve that chronology rather
@@ -372,7 +364,12 @@ Important foundation commits:
 
 Current serving uses genuine B4/B8 physical cohorts with B2 partial regrouping.
 Same-frontier ragged/chunked prefill is accepted. Unequal-frontier prefill remains
-fail-closed.
+fail-closed. The retained `874e67d` shared-input Ordered+LaneBlocked B8 projection
+pair remains model-neutral and exact, but its ordinary-Qwen serving consumer is now
+**rejected**: public Qwen3.5-2B B8 prompts47..54/16 outputs preserved all128 ID264
+tokens and native width8, while selector-off/on/reverse process-order measurements
+had much larger side drift than the ~1.04% favorable two-sided candidate mean.
+Keep the primitive; do not select the consumer from that noisy aggregate.
 
 ## CUDA execution/performance chronology
 
@@ -542,7 +539,7 @@ Rejected after CTA256:
   ~1.2% slower and Rounded flipped direction between repeats.
 - All experimental helpers/selectors/tests/runners were removed.
 
-### Retained: `874e67d` shared-input B8 projection pair; consumer held
+### Retained: `874e67d` shared-input B8 projection pair; consumer rejected
 
 - Adds one model-neutral B8 physical primitive that composes an exact Ordered K64
   projection with an independent `LaneBlocked<32,T>` projection under one launch.
@@ -555,12 +552,17 @@ Rejected after CTA256:
   status. Direct alternating timing at the real 2B hot pair
   `8192x8x2048 + 32x8x2048` measured separate launches at 168.230 µs mean versus
   155.752 µs composed (~7.42% lower primitive time).
-- Ordinary Qwen serving does **not** select this primitive yet. The same-process
-  loaded-model A/B did not reach a completed measurement before the bounded
-  checkpoint. Temporary selector/runner/timing/include-view artifacts were removed.
-- This is the latest retained shared architecture opportunity. A future consumer
-  must derive the pairing from real adjacent graph/dataflow compatibility, keep
-  both source reductions exact, and show controlled end-to-end benefit.
+- The missing loaded-model A/B is now complete. A temporary structural consumer
+  composed only the real adjacent `Qkvz(normal)` then `Ba(normal)` B8 projections
+  when both shared the exact SSA input, retained resident weights, and matched the
+  primitive's Ordered + LaneBlocked<32,T> contracts. Public Qwen3.5-2B ragged
+  prompts47..54 with16 outputs preserved all128 ID264 tokens and native width8.
+- Reject ordinary-Qwen selection: selector-off first side mean665.690ms, candidate
+  mean701.917ms, reverse baseline722.543ms, reverse candidate671.881ms. The
+  two-sided aggregate favors candidate only ~1.04%, while the sign flips by order
+  and side drift is much larger than the net effect. This does not meet the
+  repeatability bar. Temporary consumer/selector/runner/include-view artifacts were
+  removed; keep the model-neutral primitive for a materially different consumer.
 
 ## Current ordinary CUDA selected path
 
@@ -590,8 +592,8 @@ Rejected after CTA256:
 - Grouped ConvB4 transport (`68ac810`).
 - Dual Q/K head RMS (`da3eae5`).
 - Certified recurrent export (`ee347d9`).
-- Shared-input Ordered + LaneBlocked B8 projection pair (`874e67d`); consumer held,
-  not yet accepted or rejected end-to-end.
+- Shared-input Ordered + LaneBlocked B8 projection pair (`874e67d`); ordinary-Qwen
+  consumer rejected after order-sensitive loaded-model A/B, primitive retained.
 - Other stateless row/RMS/gate/QK/rotary primitives whose current consumer
   economics were rejected.
 
@@ -723,8 +725,10 @@ capture, another GPU or another model.
    31,098,232,832 bytes and six queues with `pasid=0`; it explains essentially
    all excess VRAM. A matched35s non-GPU native-gpu execution control passes.
 4. The next boundary is explicit host/KFD recovery or natural disappearance of
-   owner `2406838`, not another model retry. Do not implicitly reset GPU/dotlink,
-   kill unseen host state, or force reclamation. Once X2 is demonstrably clean,
+   owner `2406838`, not another model retry. The owner tree is read-only from the
+   sandbox and the exposed AMDGPU reset path is an operator action; it was not used.
+   Do not implicitly reset GPU/dotlink, kill unseen host state, or force reclamation.
+   Once X2 is demonstrably clean,
    retry the exact explicit75GiB resident route under the unchanged180s HTTP
    deadline. Numerical/populated-context acceptance still requires the missing
    approved27B reference material; ROCm2B mismatch localization remains later.

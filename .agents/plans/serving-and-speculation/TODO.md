@@ -85,9 +85,11 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   so the failed run was partway through sequential resident-weight upload.
 - [ ] Stop all physical Qwen campaigns, including ROCm2B fallback, while KFD owner
   `2406838` and its ~31.1GB allocation persist. No ZeroGravity cleanup bug is
-  demonstrated and no code workaround is justified. Do not implicitly reset GPU,
-  restart dotlink or kill/reclaim host state. Missing27B/populated1K/2K references
-  remain a separate acceptance blocker.
+  demonstrated and no code workaround is justified. Its KFD process tree is
+  read-only from the sandbox; the exposed AMDGPU reset path is an operator action
+  and was not used. Do not implicitly reset GPU, restart dotlink or kill/reclaim
+  host state. Missing27B/populated1K/2K references remain a separate acceptance
+  blocker.
 - [ ] L5 remains the source/repository authority. X2 is execution/testing only and
   must be synced to the exact current l5 `main` before physical work; do not push
   merely to transfer local commits.

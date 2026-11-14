@@ -4209,7 +4209,7 @@ build or general model/backend grant. Historical failures keep their source scop
   should be explicit before model work resumes. Accepted66-call and populated1K/2K
   references remain absent; never fabricate/repin them.
 
-### 14 Nov 2026 — shared-input B8 projection-pair primitive retained; consumer held
+### 14 Nov 2026 — shared-input B8 projection-pair primitive retained; consumer rejected
 
 - [x] Added one model-neutral B8 shared-input projection primitive that composes
   an exact Ordered K64 projection with an independent LaneBlocked<32,T>
@@ -4222,8 +4222,25 @@ build or general model/backend grant. Historical failures keep their source scop
 - [x] Direct alternating timing at the real2B hot shape
   8192x8x2048 + 32x8x2048 measured separate accepted launches at
   168.230us mean versus155.752us for the composed primitive (~7.42% lower).
-  Keep the reusable primitive and focused exactness test. Do not select it in
-  ordinary Qwen serving yet: the same-process loaded-model A/B did not reach a
-  completed measurement before the bounded checkpoint. Temporary selector,
-  runner, timing hooks and CUDA include views were removed; the accepted
-  ordinary CUDA path remains unchanged.
+  Keep the reusable primitive and focused exactness test.
+- [x] Completed the previously missing loaded-model ordinary-Qwen A/B on l5.
+  The structural candidate composed only adjacent all-active B8 projections that
+  share the exact SSA input, with primary Ordered arithmetic, secondary
+  LaneBlocked<32,T>, equal inner dimension and both resident weight owners. The
+  Qwen ordinary builder emits exactly this `Qkvz(normal)` then `Ba(normal)` pair
+  before their first consumer, so the candidate reordered no dependency/root/state.
+  Public runtime used canonical cached Qwen3.5-2B, `native_rows=8`, ragged raw
+  prompts47..54,16 output tokens each, non-LTO/opt1/codegen64. Every completed run
+  preserved all128 generated IDs at264 and every GPU observation at native width8.
+- [x] Reject the ordinary-Qwen consumer. Same candidate-capable binary, selector
+  off/on with external progress heartbeat only around the process: first baseline
+  warmed samples667.525/664.964/664.582ms (mean665.690); candidate
+  709.155/697.990/698.606ms (mean701.917); reverse baseline
+  719.367/711.407/736.857ms (mean722.543); reverse candidate
+  670.788/674.105/670.751ms (mean671.881). Two-sided means are baseline694.117ms
+  versus candidate686.899ms (~1.04% lower latency/~1.05% higher output throughput),
+  but the sign flips by order and side-to-side drift is far larger than the net
+  effect. This fails the repeatability bar; do not select it on that average.
+  Temporary consumer/selector/runner/include view were removed. Clean production
+  `zerogravity-gpu --features cuda-cublas` compilation passes and RTX3060 returned
+  to41MiB baseline. The accepted ordinary CUDA path is unchanged.
