@@ -4069,9 +4069,31 @@ build or general model/backend grant. Historical failures keep their source scop
   27B SDK/HTTP diagnostic. The actual 27B diagnostic was externally terminated
   during model load without a Rust panic/error; VRAM returned to baseline and no
   KFD client remained. A later tiny HIP smoke was terminated during compilation
-  before physical execution. Therefore no fresh physical HIP-health or 27B HTTP
-  result follows from this checkpoint. Before another large launch, re-establish
-  one tiny known-good physical HIP execution in the established X2 environment.
+  before physical execution.
+
+### 14 Nov 2026 — X2 tiny physical HIP health re-established
+
+- [x] Synced X2 to exact l5 `2caf304` without push transport, then built a
+  temporary self-validating HIP C++ kernel with the installed CLR 7.2.4 toolchain
+  and the exact ROCm device-library store referenced by that CLR. Physical
+  execution ran only through `python3 -B scripts/native-gpu.py -- ...` and exited
+  0 on AMD Radeon 8060S / `gfx1151`: device count1, 256 exact `i*17+5` words,
+  checksum `556160`.
+- [x] Post-run state returned to the exact pre-run baseline:
+  `272351232/103079215104` VRAM bytes, busy0, no KFD client, no Cargo/model
+  process, and dotlink cgroup `oom=0`/`oom_kill=0`. The temporary smoke source,
+  binary and all transfer bundles were removed.
+- [x] The earlier external termination is now localized away from HIP runtime
+  health. Focused Rust test builds could still disappear without an exit code
+  both inside and outside `native-gpu.py`; a plain `hip` unit-test build
+  completed and linked in about2m15s, and no cgroup/kernel/systemd-oomd OOM
+  evidence was observed. A temporary test-gate source experiment was fully
+  discarded, so no runtime/source implementation change survives from this
+  diagnostic work.
+- [ ] Next X2 work is ordinary27B HTTP504 plus populated1K/2K context closure under
+  the unchanged180s HTTP contract. If that remains externally blocked, localize
+  the retained ROCm2B C4/C16/C32/C64 mismatches. Do not repin IDs, erase failed
+  cells or extend deadlines to manufacture acceptance.
 
 ### 14 Nov 2026 — shared-input B8 projection-pair primitive retained; consumer held
 

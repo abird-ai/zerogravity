@@ -29,19 +29,26 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   `native_rows: 0`. X2 compile/link validation passed for `zerogravity-gpu`
   `hip-source`, `qwen_hip_sdk` `qwen35-hip,serve`, `fabric_sdk`
   `qwen35-hip,serve`, and the temporary release 27B SDK/HTTP diagnostic.
-- [ ] Localize the current X2 physical-execution termination before another large
-  model campaign. The 27B diagnostic was externally terminated during model load
-  with no Rust panic/error; VRAM returned to baseline, no KFD client remained and
-  host RAM/swap did not identify an obvious OOM. A subsequent tiny HIP smoke was
-  itself terminated during compilation before physical execution, so current HIP
-  runtime health is still unknown. Re-establish one tiny known-good physical HIP
-  execution in the existing qualification/runtime environment before relaunching
-  27B or attributing the termination to model/runtime code.
-- [ ] Once tiny HIP execution is known-good, resume the highest-value X2 closure:
-  ordinary27B HTTP504/populated1K/2K context first, or ROCm2B C4/C16/C32/C64
-  mismatch localization if the 27B path remains externally blocked. Preserve the
-  original 180s HTTP contract, failed cells and expected IDs; do not repin or
-  stretch deadlines to create a pass.
+- [x] Re-established tiny X2 physical HIP health before another large-model
+  campaign. X2 was first synced to exact l5 `2caf304` without push transport. A
+  temporary self-validating HIP C++ smoke was built with the installed CLR 7.2.4
+  toolchain plus the ROCm device-library store referenced by that CLR, then run
+  only through `python3 -B scripts/native-gpu.py -- ...`. It exited 0 on the
+  AMD Radeon 8060S (`gfx1151`): one device, 256 exact `i*17+5` output words,
+  checksum `556160`. Post-run VRAM returned to
+  `272351232/103079215104` bytes, GPU busy was `0`, no KFD client remained,
+  and the dotlink cgroup still reported `oom=0`/`oom_kill=0`.
+- [x] Localized the earlier tiny-smoke failure away from HIP runtime itself.
+  Focused Rust test builds were externally terminated without an exit code both
+  inside and outside `native-gpu.py`; a plain `hip` unit-test build did complete
+  and link in about 2m15s. No cgroup, kernel-log or systemd-oomd evidence of OOM
+  was observed. A temporary source-gate experiment was discarded, and all smoke
+  sources/binaries/sync bundles were removed; tracked source remains `2caf304`.
+- [ ] Resume the highest-value X2 closure now: ordinary27B HTTP504 plus populated
+  1K/2K context first, or ROCm2B C4/C16/C32/C64 mismatch localization if the 27B
+  path remains externally blocked. Preserve the original 180s HTTP contract,
+  failed cells and expected IDs; do not repin or stretch deadlines to create a
+  pass.
 - [ ] L5 remains the source/repository authority. X2 is execution/testing only and
   must be synced to the exact current l5 `main` before physical work; do not push
   merely to transfer local commits.

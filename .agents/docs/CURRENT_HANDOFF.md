@@ -255,17 +255,23 @@ serving, memory and composition plans.
 - X2 compile/link validation after `c282f20` passed `zerogravity-gpu` with
   `hip-source`, `qwen_hip_sdk` and `fabric_sdk` with `qwen35-hip,serve`, plus a
   temporary release 27B SDK/HTTP diagnostic link.
-- The fresh 27B diagnostic did **not** establish a physical result: its isolated
-  process was externally terminated during model load with no Rust panic/error.
-  VRAM returned to baseline, no KFD client remained, and host RAM/swap did not
-  establish an obvious OOM. A subsequent tiny HIP smoke was itself terminated
-  during compilation before physical execution. Therefore current physical HIP
-  runtime health remains unknown after this checkpoint.
-- Before another 27B or ROCm2B campaign, establish one tiny known-good physical
-  HIP execution in the existing X2 qualification/runtime environment and localize
-  any external termination. Do not blindly relaunch the large model.
-- Ordinary27B HTTP504 and populated 1K/2K HTTP/context closure remain open after
-  tiny-HIP health is established. Preserve the original 180s HTTP contract.
+- The fresh 27B diagnostic still does **not** establish a 27B physical result:
+  its isolated process was externally terminated during model load with no Rust
+  panic/error. VRAM returned to baseline, no KFD client remained, and host RAM/swap
+  did not establish an obvious OOM.
+- Tiny physical HIP health is now re-established independently. X2 was synced to
+  exact l5 `2caf304`; a temporary self-validating HIP C++ kernel built with the
+  installed CLR 7.2.4 toolchain and its referenced ROCm device-library store ran
+  only through `python3 -B scripts/native-gpu.py -- ...` and exited0 on AMD Radeon
+  8060S / `gfx1151`: one device, 256 exact `i*17+5` words, checksum `556160`.
+  Post-run VRAM returned to `272351232/103079215104` bytes, busy0, no KFD client
+  remained and the dotlink cgroup still reported `oom=0`/`oom_kill=0`.
+- The earlier tiny-smoke termination is therefore localized away from HIP runtime
+  health. Focused Rust test builds could still disappear without an exit code both
+  inside and outside `native-gpu.py`; no cgroup/kernel/systemd-oomd OOM evidence
+  was found. The temporary diagnostic source-gate experiment was discarded.
+- Ordinary27B HTTP504 plus populated 1K/2K HTTP/context closure is now the next X2
+  physical task. Preserve the original 180s HTTP contract.
 - ROCm2B C4 warmup plus C16/C32/C64 warmup/timed mismatches remain unlocalized.
   Preserve failed cells and expected IDs; do not repin expectations.
 - These remaining campaigns are explicitly authorized X2 execution/test work;
@@ -624,20 +630,19 @@ capture, another GPU or another model.
    feedback. If local CUDA surfaces are exhausted, advance the larger runtime/
    serving capability rather than endless sub-percent kernel churn.
 
-### x2 AMD large-VRAM execution/testing — current next physical blocker
+### x2 AMD large-VRAM execution/testing — tiny HIP health closed; 27B next
 
-1. **First establish tiny HIP physical health.** X2 is authorized for AMD execution
-   and testing, but the latest 27B diagnostic was externally terminated during
-   model load and the follow-up tiny smoke was terminated during compilation before
-   execution. Use the established qualification/runtime environment and a tiny
-   already-known HIP physical scope; localize process/build/environment termination
-   before another large model launch. Do not infer OOM or a HIP kernel bug without
-   evidence.
-2. Once tiny HIP is known-good, resume ordinary27B HTTP504 + populated 1K/2K
-   context closure. Keep the existing 180s HTTP deadline and accepted 75GiB-total
-   device budget; localize measured latency rather than extending deadlines or
-   changing resource accounting.
-3. ROCm2B C4/C16/C32/C64 divergence localization remains independently open.
+1. **Tiny physical HIP health is green.** X2 was synced to exact l5 `2caf304`
+   without push transport; a self-validating `gfx1151` HIP kernel ran through
+   `native-gpu.py` and verified 256 exact output words before returning to the
+   pre-run VRAM/KFD/OOM baseline. Do not repeat this environmental probe unless
+   host/runtime state materially changes.
+2. Resume ordinary27B HTTP504 + populated 1K/2K context closure now. Keep the
+   existing 180s HTTP deadline and accepted 75GiB-total device budget; localize
+   measured latency rather than extending deadlines or changing resource
+   accounting.
+3. ROCm2B C4/C16/C32/C64 divergence localization remains independently open if
+   the 27B path is still externally blocked.
    Preserve expected IDs and every failed warmup/timed cell; no repinning.
 4. Before every X2 physical run, sync X2 to the exact current l5 `main`, confirm
    one checkout, no active Cargo/model/KFD owner and current VRAM state. X2 is not
@@ -725,9 +730,10 @@ K64 .cg; dominant LaneStrided CTA/**old shared-input staging**/paired-column/
 warp-sharing/paired-unpack/unroll variants; broad unchanged requalification; or
 large CUDA acceptance from cross-profile metrics. `874e67d` is not that old
 shared-input experiment: it is a retained exact Ordered+LaneBlocked projection-pair
-primitive whose serving consumer is still unmeasured. On X2, do not blindly
-relaunch 27B until one tiny known-good physical HIP execution closes the current
-environment/process-termination uncertainty.
+primitive whose serving consumer is still unmeasured. On X2, tiny physical HIP
+health is now re-established; do not repeat the health probe unless host/runtime
+state changes. Resume ordinary27B HTTP504/populated1K/2K closure next under the
+existing bounded contract.
 
 ## Copy/paste next-agent prompt
 
@@ -742,14 +748,14 @@ environment/process-termination uncertainty.
 > --short --branch`, `git log -1 --show-signature`, `git worktree list --porcelain`,
 > active Cargo/model processes and GPU state before editing or executing.
 >
-> The latest implementation checkpoint before this handoff refresh is signed
-> `874e67d` (`feat(cuda): retain shared-input projection pair`), immediately above
-> signed `c282f20` (`fix(hip): restore source profile compilation`). `origin/main`
-> remains `c12acab`; immediately before the docs refresh l5 was 11 commits ahead
-> and nothing newer was pushed. The refresh itself may be a newer docs-only signed
-> commit, so revalidate live l5 `HEAD` and ahead count. X2 is clean at `c282f20`
-> and therefore behind both `874e67d` and any later docs-only refresh; sync X2 to
-> the exact current l5 `main` before any new physical run without using a push
+> The latest implementation checkpoint remains signed `874e67d`
+> (`feat(cuda): retain shared-input projection pair`), immediately above signed
+> `c282f20` (`fix(hip): restore source profile compilation`). The prior handoff
+> refresh is signed `2caf304`. `origin/main` remains `c12acab`; immediately
+> before this ledger refresh l5 and X2 were both clean at exact `2caf304`, 12
+> commits ahead of origin, and nothing newer was pushed. This refresh may itself be
+> a newer docs-only signed commit, so revalidate live l5 `HEAD`/ahead count and
+> sync X2 to that exact `main` before any new physical run without using a push
 > merely as transport. Source/tests/live TODOs outrank this handoff if `main`
 > advances.
 >
@@ -779,16 +785,19 @@ environment/process-termination uncertainty.
 > `c282f20` restores HIP-only source-profile compilation by removing an erroneous
 > `cuda-cublas` gate from the model-neutral packed-BF16 numeric-zero greedy kernel
 > and making HIP test/support profiles explicit with `native_rows: 0`. X2
-> compile/link checks passed, but the fresh 27B diagnostic was externally
-> terminated during model load with no Rust panic/error; VRAM returned to baseline
-> and no KFD client remained. A subsequent tiny HIP smoke was terminated during
-> compilation before physical execution. Therefore the next X2 step is **not**
-> another blind 27B launch: first establish one tiny known-good physical HIP run in
-> the established qualification/runtime environment and localize any external
-> termination. Once that is green, resume ordinary27B HTTP504/populated1K/2K
-> closure or ROCm2B C4/C16/C32/C64 mismatch localization. Preserve the existing
-> 180s HTTP contract, expected IDs and failed cells; do not repin or extend a
-> deadline to create a pass.
+> compile/link checks passed; the fresh 27B diagnostic was externally terminated
+> during model load with no Rust panic/error, but tiny physical HIP health is now
+> independently green. On exact l5 `2caf304`, a temporary self-validating HIP C++
+> kernel built with installed CLR 7.2.4 + its referenced ROCm device libraries ran
+> only through `python3 -B scripts/native-gpu.py -- ...` and exited0 on AMD Radeon
+> 8060S/`gfx1151`, verifying 256 exact `i*17+5` words (checksum `556160`).
+> Post-run VRAM/KFD/cgroup-OOM state returned cleanly to baseline. Focused Rust test
+> builds could still be externally terminated without an exit code, including
+> outside the GPU wrapper, so do not infer an OOM or HIP kernel failure from those
+> build deaths. The next X2 task is ordinary27B HTTP504/populated1K/2K closure;
+> use ROCm2B C4/C16/C32/C64 mismatch localization only if that path remains
+> externally blocked. Preserve the existing 180s HTTP contract, expected IDs and
+> failed cells; do not repin or extend a deadline to create a pass.
 >
 > Prefer implementation → quick real-model feedback → controlled same-process
 > comparison. Reuse accepted checks/evidence, add tests only for concrete new

@@ -8,10 +8,12 @@ Latest implementation checkpoint before this documentation refresh is signed
 repair `c282f20` immediately below it. `origin/main` remains `c12acab` and nothing
 newer is pushed; revalidate live l5 `HEAD`/ahead count because the handoff/plan
 refresh itself may be a newer docs-only signed commit. X2 is the approved AMD
-large-VRAM execution/test host and is clean at `c282f20`; it is behind l5 by the
-`874e67d` implementation checkpoint plus any later docs-only refresh. Sync X2 to
-the exact current l5 `main` before new physical tests without using a push as
-transport. Selected CUDA2B B8
+large-VRAM execution/test host. It was synced to exact l5 `2caf304` for a fresh
+physical health probe, and a self-validating `gfx1151` HIP kernel passed under
+`native-gpu.py` with clean post-run VRAM/KFD/OOM state. Tiny-HIP runtime-health
+uncertainty is therefore closed. After any newer docs-only checkpoint X2 may again
+be behind l5; sync it to the exact current l5 `main` before new physical tests
+without using a push as transport. Selected CUDA2B B8
 serving still uses the canonical-boundary private B8 recurrent core (`60b048d`),
 ragged private B8 KV transition (`775dfa6`) and B8 private-KV CTA256 (`399e43a`).
 `874e67d` retains a model-neutral shared-input Ordered+LaneBlocked B8 projection
@@ -33,11 +35,12 @@ Complete substantial implementation batches before combined validation; full gat
 Prioritize working paths + early matched-vLLM feedback; reuse checks/evidence,
 add fixtures only for concrete gaps. Baselines need not await all models/batching.
 Owner direction: l5 owns repository/source changes; x2 is only for AMD
-large-VRAM execution/testing. CUDA + ordinary27B remain the active Qwen mission,
-with quick real-model/serving feedback. Before another 27B or ROCm2B campaign,
-localize the current x2 execution termination with a tiny known-good HIP physical
-scope in the established qualification/runtime environment. No build/device
-campaign is live at this checkpoint.
+large-VRAM execution/testing. Tiny physical HIP health is re-established on X2
+under the established `native-gpu.py` boundary, so CUDA + ordinary27B remain the
+active Qwen mission with quick real-model/serving feedback. Resume ordinary27B
+HTTP504 plus populated 1K/2K context closure next; use ROCm2B mismatch localization
+only if that path is still externally blocked. No build/device campaign is live
+at this checkpoint.
 
 Fabric migration is complete; the unfinished Qwen campaign remains next.
 Preserve signed native GDN`e2559b6`/pause`1c35172` and all accepted bounded
@@ -54,7 +57,7 @@ activating held routes.
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)
 - [~] P1 pipeline-composition — @pvl — recursive primitives/pipelines/profiles; shared execution adapters active, reuse current adapters in Fabric; Qwen expansion deferred — [details](pipeline-composition/TODO.md)
 - [~] P1 cli-device-routing — @pvl — unified run/config/source/device selection; preserve behavior through Fabric SDK/CLI migration — [details](cli-device-routing/TODO.md)
-- [~] P2 model-execution — @pvl — l5 CUDA2B B8 currently selects exact independent reductions, same-frontier ragged/chunked cohorts, private B8 recurrent core `60b048d`, ragged private B8 KV `775dfa6` and CTA256 KV `399e43a`; `874e67d` additionally retains an exact shared-input Ordered+LaneBlocked B8 projection-pair primitive with its serving consumer held. Large same-contract CUDA numerical acceptance is blocked by missing approved reference material on l5. Populated small HIP is `8ffb511`; resident27B C1..C64 is `d16f096`; `c282f20` restores HIP-only source-profile compilation. X2 must first localize the current execution termination with a tiny physical HIP scope, then resume 27B HTTP/context closure or ROCm2B mismatch localization — [details](model-execution/TODO.md)
+- [~] P2 model-execution — @pvl — l5 CUDA2B B8 currently selects exact independent reductions, same-frontier ragged/chunked cohorts, private B8 recurrent core `60b048d`, ragged private B8 KV `775dfa6` and CTA256 KV `399e43a`; `874e67d` additionally retains an exact shared-input Ordered+LaneBlocked B8 projection-pair primitive with its serving consumer held. Large same-contract CUDA numerical acceptance is blocked by missing approved reference material on l5. Populated small HIP is `8ffb511`; resident27B C1..C64 is `d16f096`; `c282f20` restores HIP-only source-profile compilation. Fresh X2 tiny physical HIP health now passes under `native-gpu.py`; resume ordinary27B HTTP504/populated1K/2K closure, with ROCm2B mismatch localization as fallback — [details](model-execution/TODO.md)
 - [~] P2 model-acquisition — @pvl — [details](model-acquisition/TODO.md)
 
 ## Icebox
