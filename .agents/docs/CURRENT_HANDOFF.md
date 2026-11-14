@@ -53,6 +53,25 @@ and live TODOs are authoritative.
   historical reruns, source-correct-goodput evidence or vLLM claims. The P12 prefix
   scheduling performance item is closed; continue with the remaining fused-serving
   paged-state/overlap/fairness and genuine equivalent-source vLLM work.
+- **Current local P12-C implementation checkpoint is partial, not accepted.**
+  Shared `zerogravity-engine` fair-round scheduling now adds finite
+  `round_tokens` and `prefill_age_rounds` above the already accepted
+  source/phase/frontier wave builder: every eligible decode row executes first,
+  young prefill retains its exact state/source owners while deferred, and the
+  oldest prefill must make progress after two deferred rounds. Admission requires
+  room for one maximum prefill wave plus every active decode row. Existing
+  executor/Ready/publication/cancellation authority is unchanged. 18 wave tests,
+  14 worker tests, strict engine clippy and production CUDA/CLI composition pass.
+  Physical unequal-arrival HTTP passes both 0.8B/2B approved CUDA sources:
+  request B arrives only after A's first actual ID; first shared B2 is no earlier
+  than A index 4; both sockets drain; CPU IDs/text/usage remain exact; no
+  failed/refused/cancelled/discarded work; final GPU 41MiB. The first combined
+  `scripts/check.sh` invocation disappeared during an ordinary-CUDA compile with
+  no source/test failure. A subsequent complete GPU feature-boundary subgate
+  passes, but the CPU/packaging remainder of the final gate is still pending.
+  **Next turn must finish that remainder before any paging/COW/overlap work or
+  before marking this fairness slice accepted.** Native multi-token temporal
+  prefill remains separately unqualified.
 - Earlier key implementation checkpoints include `f1ce532`
   (exact graph replay storage/access authority), `b0cf0b2`
   (`fix(cache): avoid duplicate Qwen snapshot hashing`), `134a571`

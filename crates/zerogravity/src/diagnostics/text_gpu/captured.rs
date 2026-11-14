@@ -119,6 +119,14 @@ pub(super) fn start(
         },
         max_tokens: if qwen { 72 * native_rows.max(1) } else { 64 },
         max_scratch: 256 * 1024 * 1024,
+        fairness: Fairness {
+            round_tokens: if qwen {
+                72 * native_rows.max(1) + active
+            } else {
+                64 + active
+            },
+            prefill_age_rounds: 2,
+        },
         prefill_quantum: if qwen { 72 } else { 47 },
         unequal_decode: native_rows != 0,
         unequal_prefill: false,

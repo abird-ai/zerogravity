@@ -1395,27 +1395,42 @@ fn qualify_unequal_arrival_metrics(name: &str) -> Proof<()> {
     let first_records = first
         .join()
         .map_err(|_| "first observed SSE reader panicked")??;
-    let paired = first_records.iter().any(|a| {
-        second_records.iter().any(|b| {
+    let paired = first_records.iter().find_map(|a| {
+        second_records.iter().find_map(|b| {
             let ca = &a["gpu"]["native_cohort"];
             let cb = &b["gpu"]["native_cohort"];
-            ca["publication_sequence"]
-                .as_u64()
-                .is_some_and(|sequence| sequence > 0)
+            let sequence = ca["publication_sequence"].as_u64()?;
+            (sequence > 0
                 && ca == cb
                 && ca["width"] == 2
-                && a["gpu"]["producer_frontier"] != b["gpu"]["producer_frontier"]
+                && a["gpu"]["producer_frontier"] != b["gpu"]["producer_frontier"])
+                .then(|| {
+                    (
+                        a["index"].as_u64(),
+                        b["index"].as_u64(),
+                        sequence,
+                        a["gpu"]["producer_frontier"].as_u64(),
+                        b["gpu"]["producer_frontier"].as_u64(),
+                    )
+                })
         })
     });
-    if !paired {
+    let Some((Some(first_index), Some(second_index), sequence, first_frontier, second_frontier)) =
+        paired
+    else {
         return Err(format!(
             "actual HTTP unequal arrival never shared an observed native cohort: first={first_records:?},second={second_records:?}"
+        ));
+    };
+    if first_index < 4 || second_index < 1 {
+        return Err(format!(
+            "aged prefill bypassed decode protection before first shared cohort: A_index={first_index} B_index={second_index} sequence={sequence} A_frontier={first_frontier:?} B_frontier={second_frontier:?}"
         ));
     }
     let health = server.wait_health(|h| h["active_sessions"] == 0 && h["queued_requests"] == 0)?;
     physical_accounting(&health)?;
     println!(
-        "P12_UNEQUAL_ARRIVAL_HTTP_PASS source={name} different_source_prompt_lengths=true B_arrival_after_A_actual_ID=true both_sockets_drained=true native_membership_frontiers=observed CPU_ID_text_usage=exact terminal_usage_DONE=once health={health}"
+        "P12_UNEQUAL_ARRIVAL_HTTP_PASS source={name} different_source_prompt_lengths=true B_arrival_after_A_actual_ID=true decode_protected_prefill_age_rounds=2 first_shared_A_index_gte4=true both_sockets_drained=true native_membership_frontiers=observed CPU_ID_text_usage=exact terminal_usage_DONE=once health={health}"
     );
     Ok(())
 }

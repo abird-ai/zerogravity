@@ -48,6 +48,8 @@ pub struct Active<A: Executor> {
     pub prompt: Vec<u32>,
     pub cursor: usize,
     pub packet_presented: bool,
+    /// Eligible prefill rounds deferred by decode protection.
+    pub prefill_wait_rounds: usize,
     pub blocked_since: Option<Instant>,
     pub token_commit_observed_at: Option<Instant>,
     pub token_observation: Option<GpuTokenObservation>,
@@ -127,6 +129,7 @@ impl<A: Executor> Active<A> {
             prompt,
             cursor: 0,
             packet_presented: false,
+            prefill_wait_rounds: 0,
             blocked_since: None,
             token_commit_observed_at: None,
             token_observation: None,
@@ -522,6 +525,10 @@ pub fn advance_round<A: Executor>(
     policy: WavePolicy,
 ) {
     let ready = eligible_rows.iter().map(Active::ready).collect::<Vec<_>>();
+    let ages = eligible_rows
+        .iter()
+        .map(|row| row.prefill_wait_rounds)
+        .collect::<Vec<_>>();
     let bounds = waves::Limits {
         max_members: policy.max_members,
         max_tokens: policy.max_tokens,
@@ -533,9 +540,10 @@ pub fn advance_round<A: Executor>(
         policy.unequal_decode,
         policy.unequal_prefill,
         policy.prefill_quantum,
-    );
-    let waves = match planned {
-        Ok(waves) => waves,
+    )
+    .and_then(|waves| waves::fair_round(&ready, &ages, waves, policy.fairness));
+    let round = match planned {
+        Ok(round) => round,
         Err(error) => {
             for row in eligible_rows.drain(..) {
                 fail(&row, stats, error.clone());
@@ -544,7 +552,22 @@ pub fn advance_round<A: Executor>(
         }
     };
     let mut pending = eligible_rows.drain(..).map(Some).collect::<Vec<_>>();
-    for wave in waves {
+    // Deferred work keeps its original state/source owners and goes before rows
+    // that consume this round, so equal-age prefills cannot be perpetually
+    // overtaken by the same younger wave.
+    for index in round.deferred {
+        let mut row = pending[index].take().expect("deferred scheduler row");
+        debug_assert!(row.cursor < row.prompt.len());
+        row.prefill_wait_rounds = row.prefill_wait_rounds.saturating_add(1);
+        active.push_back(row);
+    }
+    for wave in round.waves {
+        for &index in &wave.indices {
+            pending[index]
+                .as_mut()
+                .expect("selected scheduler row")
+                .prefill_wait_rounds = 0;
+        }
         let admitted = wave
             .indices
             .iter()
@@ -575,6 +598,7 @@ pub fn advance_round<A: Executor>(
             .collect::<Vec<_>>();
         cohorts::advance(rows, active, stats, policy.cohorts, policy.native_rows);
     }
+    debug_assert!(pending.iter().all(Option::is_none));
 }
 
 #[cfg(test)]

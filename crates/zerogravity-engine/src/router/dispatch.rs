@@ -535,6 +535,10 @@ impl Router {
                     max_members: 1,
                     max_tokens: 32,
                     max_scratch: 32 * 1024 * 1024,
+                    fairness: Fairness {
+                        round_tokens: 33,
+                        prefill_age_rounds: 2,
+                    },
                     prefill_quantum: 32,
                     unequal_prefill: false,
                     unequal_decode: false,
@@ -608,12 +612,29 @@ impl Router {
                     .ok_or_else(|| {
                         ServiceError::new(400, "invalid_config", "wave token budget overflow")
                     })?;
+            let min_fair_round_tokens =
+                policy
+                    .max_tokens
+                    .checked_add(config.active)
+                    .ok_or_else(|| {
+                        ServiceError::new(400, "invalid_config", "fair round token budget overflow")
+                    })?;
+            let max_fair_round_tokens = config
+                .context
+                .checked_mul(config.active)
+                .and_then(|tokens| tokens.checked_add(config.active))
+                .ok_or_else(|| {
+                    ServiceError::new(400, "invalid_config", "fair round capacity overflow")
+                })?;
             if config.workers != 1
                 || policy.max_members == 0
                 || policy.max_members > config.active
                 || policy.max_tokens == 0
                 || policy.max_tokens > max_wave_tokens
                 || !(1..=512 * 1024 * 1024).contains(&policy.max_scratch)
+                || policy.fairness.round_tokens < min_fair_round_tokens
+                || policy.fairness.round_tokens > max_fair_round_tokens
+                || !(1..=1024).contains(&policy.fairness.prefill_age_rounds)
                 || policy.prefill_quantum == 0
                 || policy.prefill_quantum > config.context
             {

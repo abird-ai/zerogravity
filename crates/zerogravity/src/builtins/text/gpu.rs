@@ -130,6 +130,10 @@ fn policy(active: usize, native_rows: usize) -> WorkPolicy {
         },
         max_tokens: 64,
         max_scratch: 256 * 1024 * 1024,
+        fairness: Fairness {
+            round_tokens: 64 + active,
+            prefill_age_rounds: 2,
+        },
         prefill_quantum: 32,
         unequal_prefill: native_rows != 0,
         unequal_decode: native_rows != 0,

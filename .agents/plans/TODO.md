@@ -38,6 +38,18 @@ gone. Do not promote these to byte-identical historical, source-correct-goodput
 or vLLM claims. Pushed `origin/main` is `4502f567`; newer local checkpoints remain
 unpushed at this checkpoint.
 
+The next P12-C slice is locally implemented but **not yet finally accepted**:
+shared engine fair rounds protect all eligible decode work, defer young prefill
+with original owners intact, and force oldest prefill progress after two deferred
+rounds under a bounded logical-token budget. Focused engine tests/clippy and
+production CUDA composition pass; physical staggered-arrival HTTP passes on both
+approved 0.8B/2B models with exact IDs/text/usage, first shared B2 no earlier than
+A output index 4, zero failed/refused/cancelled/discarded work and final 41MiB.
+Formatting/architecture and the complete GPU feature-boundary gate pass. The
+initial combined `scripts/check.sh` process disappeared mid ordinary-CUDA build
+without a compiler/test result; its CPU/packaging remainder must pass next before
+this fairness slice is marked accepted or paging/overlap begins.
+
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about
 272,351,232/busy0 with no KFD owners, whereas earlier runs observed unrelated

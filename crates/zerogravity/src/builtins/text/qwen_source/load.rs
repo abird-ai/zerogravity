@@ -172,6 +172,10 @@ pub(crate) fn load_router(
                     max_members: profile.native_rows,
                     max_tokens: profile.native_rows * 64,
                     max_scratch: 256 * 1024 * 1024,
+                    fairness: Fairness {
+                        round_tokens: profile.native_rows * 64 + profile.active,
+                        prefill_age_rounds: 2,
+                    },
                     prefill_quantum: 64,
                     unequal_prefill: false,
                     unequal_decode: true,

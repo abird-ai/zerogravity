@@ -1,6 +1,7 @@
 //! Coarse execution seam. Scheduling metadata never grants backend eligibility.
 //! Associated state/Ready/lease types retain the original physical owners.
 use super::{LogitModel, PreparedModel};
+pub use crate::router::waves::Fairness;
 use crate::router::waves::Phase;
 use crate::router::worker::{Active, SchedulerSnapshot};
 use crate::router::{GpuTokenObservation, ServiceError, pending::ServingHost as HostPool};
@@ -56,6 +57,8 @@ pub struct WavePolicy {
     pub max_members: usize,
     pub max_tokens: usize,
     pub max_scratch: usize,
+    /// Total logical source/decode tokens issued in one scheduler round.
+    pub fairness: Fairness,
     pub prefill_quantum: usize,
     pub unequal_prefill: bool,
     pub unequal_decode: bool,

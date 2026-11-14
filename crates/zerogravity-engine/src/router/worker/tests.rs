@@ -356,6 +356,10 @@ fn policy(rows: usize, retry: RetryOrder) -> WavePolicy {
         max_members: rows,
         max_tokens: 64,
         max_scratch: 256 * 1024 * 1024,
+        fairness: Fairness {
+            round_tokens: 72,
+            prefill_age_rounds: 2,
+        },
         prefill_quantum: 32,
         unequal_prefill: true,
         unequal_decode: true,
@@ -451,6 +455,45 @@ fn known_completed_cancel_drops_ready_before_regrouping_survivors() {
     );
     rig.close();
 }
+#[test]
+fn bounded_prefill_round_retains_deferred_owners_and_rotates_oldest_first() {
+    let mut rig = Rig::new();
+    let log = Arc::default();
+    let mut policy = policy(2, RetryOrder::Regroup);
+    policy.max_tokens = 2;
+    policy.fairness.round_tokens = 2;
+    policy.fairness.prefill_age_rounds = 2;
+    let mut rows = rig.rows(
+        1,
+        6,
+        vec![Action::Fatal, Action::Fatal, Action::Fatal],
+        policy,
+        &log,
+    );
+
+    turn(&mut rows, &rig, policy);
+    assert_eq!(
+        rows.iter().map(|row| row.state.id).collect::<Vec<_>>(),
+        [2, 3, 4, 5]
+    );
+    assert!(rows.iter().all(|row| row.prefill_wait_rounds == 1));
+
+    turn(&mut rows, &rig, policy);
+    assert_eq!(
+        rows.iter().map(|row| row.state.id).collect::<Vec<_>>(),
+        [4, 5]
+    );
+    assert!(rows.iter().all(|row| row.prefill_wait_rounds == 2));
+
+    turn(&mut rows, &rig, policy);
+    assert!(rows.is_empty());
+    assert_eq!(
+        operations(&log),
+        ["prepare:1:2", "prepare:1:2", "prepare:1:2"]
+    );
+    rig.close();
+}
+
 #[test]
 fn captured_discard_returns_to_next_round_without_overtaking_other_ready_work() {
     let mut rig = Rig::new();
@@ -698,6 +741,15 @@ fn invalid_wave_controls_refuse_before_worker_or_session_creation() {
     let model = rows[0].model.clone();
     drop(rows);
     let mut bad = Vec::new();
+    let mut p = original;
+    p.fairness.round_tokens = 0;
+    bad.push(p);
+    let mut p = original;
+    p.fairness.round_tokens = 71;
+    bad.push(p);
+    let mut p = original;
+    p.fairness.prefill_age_rounds = 0;
+    bad.push(p);
     let mut p = original;
     p.prefill_quantum = 0;
     bad.push(p);

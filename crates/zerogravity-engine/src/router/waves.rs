@@ -34,6 +34,170 @@ pub struct Limits {
     pub max_scratch: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Fairness {
+    /// Aggregate logical tokens allowed across all waves selected this round.
+    pub round_tokens: usize,
+    /// Decode may defer an eligible prefill this many complete rounds.
+    pub prefill_age_rounds: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FairRound {
+    pub waves: Vec<Wave>,
+    pub deferred: Vec<usize>,
+}
+
+/// Decode rows always receive their eligible one-token quantum. Prefill runs
+/// normally when decode is absent; while decode is live it enters only after
+/// finite aging. Deferred rows are returned separately so the worker can retain
+/// their original owners without manufacturing completion or retry authority.
+pub(crate) fn fair_round(
+    slots: &[Ready],
+    ages: &[usize],
+    waves: Vec<Wave>,
+    fairness: Fairness,
+) -> Result<FairRound, ServiceError> {
+    if slots.is_empty()
+        || slots.len() != ages.len()
+        || fairness.round_tokens == 0
+        || fairness.prefill_age_rounds == 0
+    {
+        return Err(ServiceError::new(
+            400,
+            "invalid_fair_round",
+            "bounded round tokens and finite prefill aging required",
+        ));
+    }
+    let mut seen = vec![false; slots.len()];
+    let mut classified = Vec::with_capacity(waves.len());
+    for (order, wave) in waves.into_iter().enumerate() {
+        if wave.indices.is_empty() || wave.tokens == 0 || wave.tokens > fairness.round_tokens {
+            return Err(ServiceError::new(
+                400,
+                "invalid_fair_round",
+                "wave exceeds bounded fair-round token budget",
+            ));
+        }
+        let first = *wave.indices.first().expect("nonempty wave checked above");
+        let phase = slots
+            .get(first)
+            .ok_or_else(|| {
+                ServiceError::new(
+                    400,
+                    "invalid_fair_round",
+                    "wave row index outside ready set",
+                )
+            })?
+            .phase;
+        let mut age = 0usize;
+        for &index in &wave.indices {
+            let slot = slots.get(index).ok_or_else(|| {
+                ServiceError::new(
+                    400,
+                    "invalid_fair_round",
+                    "wave row index outside ready set",
+                )
+            })?;
+            if slot.phase != phase || seen[index] {
+                return Err(ServiceError::new(
+                    400,
+                    "invalid_fair_round",
+                    "wave rows must be unique and phase-homogeneous",
+                ));
+            }
+            seen[index] = true;
+            age = age.max(ages[index]);
+        }
+        classified.push((order, phase, age, wave));
+    }
+    if seen.iter().any(|&included| !included) {
+        return Err(ServiceError::new(
+            400,
+            "invalid_fair_round",
+            "fair round must account every ready row exactly once",
+        ));
+    }
+
+    let decode_live = classified
+        .iter()
+        .any(|(_, phase, _, _)| *phase == Phase::Decode);
+    let mut priority = classified
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (order, phase, age, _))| {
+            let class = match phase {
+                Phase::Decode => 0usize,
+                Phase::Prefill if !decode_live || *age >= fairness.prefill_age_rounds => 1,
+                Phase::Prefill => return None,
+            };
+            Some((class, usize::MAX - *age, *order, index))
+        })
+        .collect::<Vec<_>>();
+    priority.sort_unstable();
+
+    let mut selected = vec![false; classified.len()];
+    let mut selected_order = Vec::new();
+    let mut used = 0usize;
+    for (_, _, _, index) in priority {
+        let wave = &classified[index].3;
+        if used
+            .checked_add(wave.tokens)
+            .is_some_and(|next| next <= fairness.round_tokens)
+        {
+            used += wave.tokens;
+            selected[index] = true;
+            selected_order.push(index);
+        }
+    }
+    if decode_live
+        && classified
+            .iter()
+            .enumerate()
+            .any(|(index, (_, phase, _, _))| *phase == Phase::Decode && !selected[index])
+    {
+        return Err(ServiceError::new(
+            400,
+            "invalid_fair_round",
+            "round budget cannot protect every active decode row",
+        ));
+    }
+    let aged_prefill = classified
+        .iter()
+        .any(|(_, phase, age, _)| *phase == Phase::Prefill && *age >= fairness.prefill_age_rounds);
+    if aged_prefill
+        && !classified
+            .iter()
+            .enumerate()
+            .any(|(index, (_, phase, age, _))| {
+                selected[index] && *phase == Phase::Prefill && *age >= fairness.prefill_age_rounds
+            })
+    {
+        return Err(ServiceError::new(
+            400,
+            "invalid_fair_round",
+            "round budget cannot service the oldest aged prefill wave",
+        ));
+    }
+
+    let mut remaining = classified
+        .into_iter()
+        .map(|(_, _, _, wave)| Some(wave))
+        .collect::<Vec<_>>();
+    let mut chosen = Vec::with_capacity(selected_order.len());
+    for index in selected_order {
+        chosen.push(remaining[index].take().expect("selected wave is unique"));
+    }
+    let mut deferred = Vec::new();
+    for wave in remaining.into_iter().flatten() {
+        deferred.extend(wave.indices);
+    }
+    Ok(FairRound {
+        waves: chosen,
+        deferred,
+    })
+}
+
 /// Contiguous, unpadded native bands; B1 carries an unmatched survivor.
 /// Ceiling 1 is the final prelaunch capacity fallback.
 pub fn native_bands(count: usize, ceiling: usize) -> Result<Vec<usize>, ServiceError> {
@@ -415,6 +579,131 @@ mod tests {
             tokens,
             scratch_bytes: 1024,
         }
+    }
+
+    fn fair(slots: &[Ready], ages: &[usize], round_tokens: usize) -> FairRound {
+        let waves = form_with_frontiers(
+            slots,
+            Limits {
+                max_members: 8,
+                max_tokens: 64,
+                max_scratch: 64 * 1024,
+            },
+            true,
+            false,
+            32,
+        )
+        .unwrap();
+        fair_round(
+            slots,
+            ages,
+            waves,
+            Fairness {
+                round_tokens,
+                prefill_age_rounds: 2,
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn decode_is_protected_until_prefill_reaches_finite_age() {
+        // Wave formation sees prefill first. Fair selection must still execute
+        // decode first and defer the young prompt without dropping ownership.
+        let slots = [
+            r(1, Phase::Prefill, 0, 32),
+            r(1, Phase::Decode, 40, 1),
+            r(1, Phase::Decode, 41, 1),
+            r(1, Phase::Prefill, 0, 32),
+        ];
+        let young = fair(&slots, &[0, 0, 0, 0], 66);
+        assert_eq!(
+            young
+                .waves
+                .iter()
+                .map(|wave| wave.indices.clone())
+                .collect::<Vec<_>>(),
+            [vec![1, 2]]
+        );
+        assert_eq!(young.deferred, [0, 3]);
+
+        let aged = fair(&slots, &[2, 0, 0, 2], 66);
+        assert_eq!(
+            aged.waves
+                .iter()
+                .map(|wave| wave.indices.clone())
+                .collect::<Vec<_>>(),
+            [vec![1, 2], vec![0, 3]]
+        );
+        assert!(aged.deferred.is_empty());
+    }
+
+    #[test]
+    fn oldest_prefill_wins_a_bounded_prefill_only_round() {
+        let slots = [
+            r(1, Phase::Prefill, 0, 32),
+            r(2, Phase::Prefill, 0, 32),
+            r(3, Phase::Prefill, 0, 32),
+            r(4, Phase::Prefill, 0, 32),
+        ];
+        let round = fair(&slots, &[0, 4, 1, 2], 32);
+        assert_eq!(round.waves.len(), 1);
+        assert_eq!(round.waves[0].indices, [1]);
+        assert_eq!(round.deferred, [0, 2, 3]);
+    }
+
+    #[test]
+    fn multiple_aged_prefills_rotate_behind_complete_decode_service() {
+        let slots = [
+            r(1, Phase::Decode, 20, 1),
+            r(2, Phase::Decode, 21, 1),
+            r(3, Phase::Prefill, 0, 32),
+            r(4, Phase::Prefill, 0, 32),
+            r(5, Phase::Prefill, 0, 32),
+        ];
+        let round = fair(&slots, &[0, 0, 4, 3, 2], 34);
+        assert_eq!(
+            round
+                .waves
+                .iter()
+                .map(|wave| wave.indices.clone())
+                .collect::<Vec<_>>(),
+            [vec![0], vec![1], vec![2]]
+        );
+        assert_eq!(round.deferred, [3, 4]);
+    }
+
+    #[test]
+    fn fair_round_refuses_budget_that_cannot_protect_decode_or_aged_prefill() {
+        let slots = [
+            r(1, Phase::Decode, 20, 1),
+            r(2, Phase::Decode, 21, 1),
+            r(3, Phase::Prefill, 0, 32),
+        ];
+        let waves = form_with_frontiers(
+            &slots,
+            Limits {
+                max_members: 8,
+                max_tokens: 64,
+                max_scratch: 64 * 1024,
+            },
+            true,
+            false,
+            32,
+        )
+        .unwrap();
+        assert!(
+            fair_round(
+                &slots,
+                &[0, 0, 2],
+                waves,
+                Fairness {
+                    round_tokens: 33,
+                    prefill_age_rounds: 2,
+                },
+            )
+            .is_err()
+        );
     }
     #[test]
     fn group_matching_source_phase_frontier_and_preserve_full_coverage() {

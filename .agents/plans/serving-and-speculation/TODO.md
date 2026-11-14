@@ -438,9 +438,30 @@ or a change to the active correctness/benchmark/27B order.
   Qualify independent B1/B2/B4/B8, page boundaries and full logits/state;
   allocator/hybrid prefix/COW dependencies live in the
   [memory plan](../memory-and-streaming/TODO.md).
-- [ ] Extend bounded refill/regroup into fair aged chunked prefill/decode
+- [~] Extend bounded refill/regroup into fair aged chunked prefill/decode
   scheduling; qualify actual multi-token temporal prefill separately from
-  request batching. Admit any physical GPU overlap only after event/lease,
+  request batching. **15 Nov local implementation checkpoint:** the shared
+  engine now owns a bounded fair-round policy above existing source/phase wave
+  formation. Every eligible decode row is selected first; young prefill is
+  deferred without dropping its original state/source owners; after two complete
+  deferred rounds the oldest prefill wave must make progress. Round admission
+  requires enough logical-token credit for one maximum admitted prefill wave plus
+  every active decode row, and refuses invalid/unbounded age/budget controls
+  before worker/session creation. Focused model-neutral coverage passes 18 wave
+  tests and 14 worker tests, including owner retention/age rotation; strict engine
+  clippy and production `qwen35-cuda`/CLI feature checks pass. Physical
+  unequal-arrival HTTP qualification passes both approved 0.8B/2B CUDA models:
+  B is admitted only after A's first actual ID, the first shared B2 cohort is no
+  earlier than A output index 4, both sockets remain drained, CPU IDs/text/usage
+  are exact, zero failed/refused/cancelled/discarded work, and final device use
+  returns 41MiB. This proves the existing completion path remains source-correct
+  under the new phase policy; native multi-token temporal prefill is still
+  separately unqualified. The full final gate is **not yet complete**: formatting,
+  architecture and the complete GPU feature-boundary subgate pass, but the first
+  combined `scripts/check.sh` invocation disappeared mid ordinary-CUDA build with
+  no compiler/test error and the CPU/packaging remainder is still pending. Do not
+  advance to paging/overlap or mark this item fully accepted until that remainder
+  passes. Admit any physical GPU overlap only after event/lease,
   cancellation/unknown-completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long

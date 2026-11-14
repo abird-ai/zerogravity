@@ -107,6 +107,24 @@ overriding later named acceptance in the live TODO.
 
 ## Continuous batching, temporal prefill and overlap — serving plan
 
+**15 Nov 2026 implementation checkpoint (final gate pending):** the first
+ordered step below—fair interleaving in the existing completion path—is now
+implemented in the shared engine rather than in a Qwen/CUDA adapter. `WavePolicy`
+carries finite round-token and prefill-age controls. Wave selection protects every
+eligible decode row, retains deferred prefill owners, services the oldest aged
+prefill after two deferred rounds, and rejects a configuration that cannot hold
+one maximum admitted prefill wave plus all active decode rows. Existing
+source/phase/frontier grouping, native band authority, Ready/publication,
+cancellation and backpressure semantics are unchanged. 18 wave tests, 14 worker
+tests, strict engine clippy and production CUDA composition checks pass. The
+existing staggered-arrival HTTP proof was strengthened and physically passes on
+both approved 0.8B/2B CUDA sources with exact CPU IDs/text/usage and final 41MiB.
+The first full `scripts/check.sh` attempt was externally lost during an ordinary
+CUDA compile with no code error; a fresh complete GPU feature-boundary subgate
+passes, while the CPU/packaging remainder is still pending. Therefore this is a
+checkpoint, **not phase acceptance**. Actual multi-token temporal native prefill,
+paged state/COW and event-backed physical overlap remain untouched and open.
+
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve
   B1 and smaller qualified bands after checked prelaunch capacity refusal.
