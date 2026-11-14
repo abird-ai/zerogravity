@@ -1,5 +1,7 @@
-//! Opt-in, offline artifact acquisition and explicit cache maintenance. A snapshot is
-//! verified data, never model/device readiness or a session state authority.
+//! Opt-in, offline artifact acquisition and explicit cache maintenance. A
+//! `SnapshotLease` is verified data, never model/device readiness or a session
+//! state authority. `SnapshotDescriptorLease` only binds a verified manifest to
+//! held descriptors; its payloads require downstream authentication.
 //!
 //! Linux-local-filesystem first. Quotas coordinate cooperating writers within
 //! this cache only, not arbitrary filesystem users or all process/UMA memory.
@@ -13,7 +15,7 @@ pub mod paths;
 pub mod provenance;
 mod store;
 
-pub use leases::SnapshotLease;
+pub use leases::{SnapshotDescriptorLease, SnapshotLease};
 pub use manifest::{
     CacheLimits, DigestProvenance, FileRole, Manifest, ManifestEntry, ManifestSource,
 };

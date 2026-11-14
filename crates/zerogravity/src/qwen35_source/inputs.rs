@@ -10,7 +10,7 @@ pub(crate) enum Inputs<'a> {
     #[cfg(feature = "qwen35-cuda-qualification")]
     Directory(&'a super::held_directory::Directory),
     #[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
-    Snapshot(&'a zerogravity_artifacts::cache::SnapshotLease),
+    Snapshot(&'a zerogravity_artifacts::cache::SnapshotDescriptorLease),
 }
 impl Inputs<'_> {
     pub(super) fn file(&self, name: &str) -> Result<File> {

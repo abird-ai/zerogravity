@@ -203,6 +203,47 @@ fn original_open_descriptors_survive_object_and_root_path_replacement() {
 }
 
 #[test]
+fn descriptor_lease_binds_files_without_claiming_payload_digest_verification() {
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    let original = gguf("value", [1., 2.]);
+    let (snapshot, verified) = publish(&store, &original, FileRole::Weights);
+    drop(verified);
+
+    let model_blob = fixture
+        .root
+        .join(format!("blobs/sha256/{}", hash(&original)));
+    let replacement = gguf("other", [3., 4.]);
+    assert_eq!(replacement.len(), original.len());
+    fs::write(&model_blob, &replacement).unwrap();
+
+    let descriptors = store.open_snapshot_descriptors(&snapshot).unwrap();
+    assert_eq!(descriptors.manifest().digest().unwrap(), snapshot);
+    assert_eq!(
+        descriptors.file(MODEL).unwrap().metadata().unwrap().len(),
+        original.len() as u64
+    );
+    let artifact = Artifact::from_file(
+        descriptors.file(MODEL).unwrap().try_clone().unwrap(),
+        Path::new(MODEL),
+    )
+    .unwrap();
+    assert!(matches!(
+        SourceWeights::from_verified_artifact(
+            artifact,
+            original.len() as u64,
+            &hash(&original),
+            &admission(),
+        ),
+        Err(Error::Malformed(_))
+    ));
+    assert!(matches!(
+        store.open_snapshot(&snapshot),
+        Err(Error::Malformed(_))
+    ));
+}
+
+#[test]
 fn same_inode_changes_after_lease_verification_refuse_and_owned_copy_stays_immutable() {
     let fixture = Fixture::new();
     let store = fixture.open();

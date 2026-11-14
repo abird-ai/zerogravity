@@ -217,9 +217,12 @@ fn open_source(
         64 * 1024 * 1024,
     )?;
     let store = CacheStore::open_existing(cache).map_err(ServiceError::inference)?;
+    // The source loader authenticates every metadata payload and whole shard
+    // from these same held descriptors. Avoid hashing the complete snapshot here
+    // only to repeat the exact shard authentication in VerifiedWindowPlan::open.
     let snapshot = Arc::new(
         store
-            .open_snapshot(snapshot)
+            .open_snapshot_descriptors(snapshot)
             .map_err(ServiceError::inference)?,
     );
     let mut opened = qwen35_source::open(Inputs::Snapshot(&snapshot), contract, &admission, None)

@@ -4,7 +4,7 @@ use super::paths::{
 use super::{
     ByNameEntry, ByNameKind, ByNameUpdate, ByteLength, CacheOptions, CommitOutcome,
     DigestProvenance, DiskUsage, FileRole, FilesystemProfile, Manifest, ManifestEntry,
-    ManifestSource, PublishedSnapshot, SnapshotLease, TransferAdmission,
+    ManifestSource, PublishedSnapshot, SnapshotDescriptorLease, SnapshotLease, TransferAdmission,
 };
 #[cfg(feature = "diagnostic-cache")]
 use super::{CacheHook, CacheMoment, CacheOperation, CachePoint};
@@ -1068,6 +1068,38 @@ impl CacheStore {
         self.open_snapshot_cancellable(digest, &AtomicBool::new(false))
     }
 
+    /// Bind the exact snapshot manifest and read-only descriptors without hashing
+    /// payload contents. The returned type deliberately carries no verified-data
+    /// helpers: a downstream source loader must authenticate every consumed payload
+    /// from these same descriptors before granting source/model authority.
+    pub fn open_snapshot_descriptors(&self, digest: &str) -> Result<SnapshotDescriptorLease> {
+        self.open_snapshot_descriptors_cancellable(digest, &AtomicBool::new(false))
+    }
+
+    pub fn open_snapshot_descriptors_cancellable(
+        &self,
+        digest: &str,
+        cancel: &AtomicBool,
+    ) -> Result<SnapshotDescriptorLease> {
+        let _activity = self.activity(cancel)?;
+        let manifest = self.snapshot_manifest(digest, cancel)?;
+        let mut files = BTreeMap::new();
+        for entry in manifest.entries() {
+            check_cancel(cancel)?;
+            let file = self.inner.root.open_file(
+                &format!("snapshots/{digest}/files/{}", entry.path()),
+                OFlags::RDONLY,
+                Mode::empty(),
+            )?;
+            if file.metadata()?.len() != entry.bytes() {
+                return Err(Error::Malformed("snapshot object length mismatch".into()));
+            }
+            files.insert(entry.path().to_string(), file);
+        }
+        check_cancel(cancel)?;
+        Ok(SnapshotDescriptorLease { manifest, files })
+    }
+
     /// Cooperative cancellation between bounded object reads. Filesystem calls,
     /// parsing and inventory work do not gain a real-time interruption bound.
     pub fn open_snapshot_cancellable(
@@ -1079,9 +1111,7 @@ impl CacheStore {
         self.open_snapshot_bound(digest, cancel)
     }
 
-    // Caller owns activity, including a committing transaction that already
-    // owns publication. Avoid acquiring another activity description there.
-    fn open_snapshot_bound(&self, digest: &str, cancel: &AtomicBool) -> Result<SnapshotLease> {
+    fn snapshot_manifest(&self, digest: &str, cancel: &AtomicBool) -> Result<Manifest> {
         check_cancel(cancel)?;
         validate_digest(digest)?;
         let manifest = Manifest::from_json(
@@ -1095,6 +1125,13 @@ impl CacheStore {
             return Err(Error::Malformed("snapshot manifest digest mismatch".into()));
         }
         check_cancel(cancel)?;
+        Ok(manifest)
+    }
+
+    // Caller owns activity, including a committing transaction that already
+    // owns publication. Avoid acquiring another activity description there.
+    fn open_snapshot_bound(&self, digest: &str, cancel: &AtomicBool) -> Result<SnapshotLease> {
+        let manifest = self.snapshot_manifest(digest, cancel)?;
         let mut files = BTreeMap::new();
         for entry in manifest.entries() {
             files.insert(

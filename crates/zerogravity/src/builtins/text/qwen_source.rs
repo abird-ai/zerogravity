@@ -56,7 +56,7 @@ impl QwenSourceProfile {
 struct Source {
     plan: OrdinaryQwenPlan,
     metadata: crate::qwen35_source::Metadata,
-    _snapshot: Arc<crate::cache::SnapshotLease>,
+    _snapshot: Arc<crate::cache::SnapshotDescriptorLease>,
     // Source/canonical metadata and plan allocation, not device/root storage.
     _control: GlobalResourceLease,
 }

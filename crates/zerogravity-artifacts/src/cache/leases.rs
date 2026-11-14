@@ -19,6 +19,30 @@ pub struct SnapshotLease {
     pub(crate) files: BTreeMap<String, File>,
 }
 
+/// Pins the digest-authenticated snapshot manifest and exact read-only file
+/// descriptors without claiming payload-digest verification. Consumers must
+/// authenticate every payload they use from these same descriptors before the
+/// bytes gain source/model authority. This avoids an otherwise redundant full
+/// cache hash when a downstream source loader already performs that exact
+/// authentication.
+#[derive(Debug)]
+pub struct SnapshotDescriptorLease {
+    pub(crate) manifest: Manifest,
+    pub(crate) files: BTreeMap<String, File>,
+}
+
+impl SnapshotDescriptorLease {
+    pub fn manifest(&self) -> &Manifest {
+        &self.manifest
+    }
+
+    pub fn file(&self, logical_path: &str) -> Result<&File> {
+        self.files
+            .get(logical_path)
+            .ok_or_else(|| Error::Malformed("file is absent from snapshot".into()))
+    }
+}
+
 impl SnapshotLease {
     pub fn manifest(&self) -> &Manifest {
         &self.manifest
