@@ -730,4 +730,15 @@ impl CapturedResidentGraph {
     pub fn qualification_rows(&self) -> usize {
         self.profile.rows
     }
+    pub fn qualification_resource_witness(&self) -> (usize, usize, Vec<usize>) {
+        (
+            self.resource.bytes,
+            self.resource.charges.len(),
+            self.resource
+                .charges
+                .iter()
+                .map(Arc::strong_count)
+                .collect(),
+        )
+    }
 }

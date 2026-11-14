@@ -209,6 +209,10 @@ impl ResidentLedger {
     pub(super) fn resident_bytes(&self) -> usize {
         self.events.resident_bytes() + self.foreign_bytes
     }
+    #[cfg(feature = "qualification")]
+    pub(super) fn qualification_foreign_bytes(&self) -> usize {
+        self.foreign_bytes
+    }
     #[cfg(any(
         test,
         feature = "cuda-native",

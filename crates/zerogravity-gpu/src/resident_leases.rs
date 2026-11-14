@@ -390,6 +390,14 @@ impl ResidentService {
             .map_err(|_| Error::State("resident lease ledger poisoned".into()))?
             .model_bytes(self.generation)
     }
+    #[cfg(feature = "qualification")]
+    pub(crate) fn qualification_foreign_bytes(&self) -> Result<usize> {
+        Ok(self
+            .ledger
+            .lock()
+            .map_err(|_| Error::State("resident lease ledger poisoned".into()))?
+            .qualification_foreign_bytes())
+    }
     pub fn remaining_capacity(&self) -> Result<usize> {
         self.cap
             .checked_sub(self.resident_bytes()?)

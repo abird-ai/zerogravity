@@ -55,8 +55,33 @@ pub async fn qualify(
         return Err(Error::State("graph cold receipt incomplete".into()));
     }
     let warm_bytes = resident.qualification().resident_bytes()?;
+    let warm_foreign = resident.qualification().foreign_bytes()?;
+    let resource_witness = graph.qualification_resource_witness();
+    if warm_foreign != receipt.resource_charge_bytes
+        || resource_witness.0 != receipt.resource_charge_bytes
+        || resource_witness.1 == 0
+        || resource_witness.2.iter().any(|&owners| owners == 0)
+    {
+        return Err(Error::State(format!(
+            "graph retained charge witness differs: ledger_foreign_bytes={warm_foreign} receipt_bytes={} graph_resource_bytes={} graph_charge_count={} graph_charge_strong_counts={:?}",
+            receipt.resource_charge_bytes,
+            resource_witness.0,
+            resource_witness.1,
+            resource_witness.2
+        )));
+    }
     let uploads = resident.qualification().uploaded_value_bytes();
-    idle_at(&resident, warm_bytes, "post-capture")?;
+    if let Err(error) = idle_at(&resident, warm_bytes, "post-capture") {
+        let steady_bytes = resident.qualification().resident_bytes()?;
+        let steady_foreign = resident.qualification().foreign_bytes()?;
+        return Err(Error::State(format!(
+            "{error}; warm_foreign_bytes={warm_foreign} steady_foreign_bytes={steady_foreign} graph_resource_bytes={} graph_charge_count={} graph_charge_strong_counts={:?} resident_delta={}",
+            resource_witness.0,
+            resource_witness.1,
+            resource_witness.2,
+            warm_bytes.saturating_sub(steady_bytes)
+        )));
+    }
     if resident
         .capture_logits_b2(&[(&sessions[0], 11), (&sessions[1], 17)])
         .await
@@ -280,6 +305,12 @@ pub async fn qualify(
         .checked_sub(receipt.resource_charge_bytes)
         .ok_or_else(|| Error::State("graph policy charge exceeds warm resident bytes".into()))?;
     graph.retire(sessions[0].binding().root()).await?;
+    let retired_foreign = resident.qualification().foreign_bytes()?;
+    if retired_foreign != 0 {
+        return Err(Error::State(format!(
+            "graph trusted retirement retained foreign charge: foreign_bytes={retired_foreign}"
+        )));
+    }
     idle_at(&resident, retired_bytes, "post-graph-retire")?;
     resident.qualification_release_graph_band().await?;
     let live = resident.qualification().resident_bytes()?;
@@ -302,7 +333,7 @@ pub async fn qualify(
         ));
     }
     println!(
-        "P12_GRAPH_B2_LOGITS_PASS source=original_GGUF rows=2 independent_frontiers=true swapped_rows=true full_vocab=248320 all_domains=42 steps=4 warm_kernels={:?} captured_body_kernel_launch_sites={} outside_kernels_per_replay={} graph_host_enqueues={} committed_kernel_launches={} recorded_model_execution=0 retained_engine_lease_bytes={} owned_lease_vector_bytes={} graph_policy_charge_bytes={} graph_policy_charge_released_on_retire=true driver_internal_bytes=unqualified driver_graph_node_enumeration=unqualified synthetic_padding_guard=true sampler=outside_unused final_reserved=0",
+        "P12_GRAPH_B2_LOGITS_PASS source=original_GGUF rows=2 independent_frontiers=true swapped_rows=true full_vocab=248320 all_domains=42 steps=4 warm_kernels={:?} captured_body_kernel_launch_sites={} outside_kernels_per_replay={} graph_host_enqueues={} committed_kernel_launches={} recorded_model_execution=0 retained_engine_lease_bytes={} owned_lease_vector_bytes={} graph_policy_charge_bytes={} graph_policy_charge_retained_while_live=true graph_policy_charge_released_on_retire=true driver_internal_bytes=unqualified driver_graph_node_enumeration=unqualified synthetic_padding_guard=true sampler=outside_unused final_reserved=0",
         receipt.warm_dispatches,
         receipt.captured_kernels,
         total_kernels - receipt.captured_kernels,

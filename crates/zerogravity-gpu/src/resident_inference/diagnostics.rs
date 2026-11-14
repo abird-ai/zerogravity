@@ -36,6 +36,9 @@ impl QualificationService {
     pub fn resident_bytes(&self) -> Result<usize> {
         self.0.resident_bytes()
     }
+    pub fn foreign_bytes(&self) -> Result<usize> {
+        self.0.qualification_foreign_bytes()
+    }
     pub fn remaining_capacity(&self) -> Result<usize> {
         self.0.remaining_capacity()
     }
