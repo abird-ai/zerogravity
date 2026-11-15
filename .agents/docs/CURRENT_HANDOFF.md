@@ -20,16 +20,23 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation/qualification** checkpoint is
-  `0027c282fb28fcf846c141f032ea0e4e4fdee599`
-  (`feat(state): add paged COW block-table primitive`). This is deliberately a
-  model-neutral logical foundation only: immutable block tables carry exact
-  source/numerical/domain/layout compatibility plus page/unit geometry; full
-  pages may be shared, partial valid tails always COW before append, fresh-page
-  allocation is transactional with respect to the prior table, and copy/write
-  plans retain both endpoints until the existing physical owner accepts them.
-  It does **not** allocate GPU pages, synthesize Ready, publish roots, enable a
-  prefix cache or change serving policy. Eight focused tests, all178 core tests,
-  strict core clippy and `qwen35-cuda` composition are green.
+  `54340a6d848ff5f19bb19333f550b1c057328881`
+  (`feat(state): bind paged tables to resident pages`). Parent `0027c28`
+  remains the model-neutral immutable block-table/COW planner. `54340a6` binds
+  it to a finite homogeneous `ResidentPagePool` over the existing charged
+  `ResidentPool`/`ResidentLease` backing, so paging reuses the original
+  physical allocation generation, logical lease, reader, completion and
+  quarantine authority rather than inventing a second allocator. The retained
+  physical CUDA qualifier passes with page_bytes=2048/max_pages=3: partial-tail
+  COW planning uses fresh logical generations, finite pressure refuses without
+  mutating the prior table, cloned/in-flight readers pin pages, completed GPU
+  readback returns pages to idle, and a real unsynchronized H2D under an armed
+  Write which is abandoned fences the service and keeps one page non-reusable
+  (2 quarantined handles); diagnostic sync does not clear that fence/quarantine.
+  Production `qwen35-cuda` composition and strict production clippy are green.
+  This still does **not** execute the COW payload copy, lower model KV through a
+  block table, synthesize Ready/publish roots, enable prefix reuse or change
+  serving policy.
   Parent `8e6f14d3defc0aa2e542c26ffb9ccc7c736f1fcb`
   (`feat(serving): enable qualified temporal B8 prefill`) remains the current
   production temporal checkpoint. The retained width-parameterized qualifier
@@ -118,13 +125,13 @@ and live TODOs are authoritative.
   still open after another heartbeat-supervised release attempt disappeared
   while compiling/linking `zerogravity-cli`, before the test ran and without a
   terminal child status, Rust diagnostic, OOM/Xid, live child or GPU residue.
-  Do not loop that unstable build. The first paged-state control primitive is
-  now `0027c28` above. **Next executable P12-C work is the physical page-pool
-  adapter:** compose the existing charged `ResidentPool`/`ResidentLease`
-  backing/generation/reader/quarantine authority with
-  `PagedBlockTable<ResidentLease>` for KV pages, while recurrent/conv domains
-  remain typed checkpoint state. Then close allocator/COW physical tests before
-  complete-domain prefix identity/intersection. Event/lease-backed physical
+  Do not loop that unstable build. Paged-state control/physical ownership is now
+  `0027c28` + `54340a6` above. **Next executable P12-C work is actual paged KV
+  materialization:** execute the retained partial-tail copy/write plan under the
+  original device leases/events, bind `StateLayout::Kv` to paged block tables
+  while recurrent/conv vectors remain typed checkpoint state, and qualify
+  page-boundary/full-state continuations against the contiguous path. Only after
+  that should complete-domain prefix identity/intersection begin. Event/lease-backed physical
   overlap remains after those state gates and must not be pulled forward.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited

@@ -91,9 +91,13 @@ The following extends existing owners; source-byte qualification is not inferenc
   exact source/numerical/domain/layout + semantic page/unit compatibility,
   immutable full-page sharing, partial-tail COW, transactional allocation
   refusal and copy/write owner pinning. It deliberately owns no device allocator
-  or Ready/root authority. Next bind existing `ResidentPool`/`ResidentLease`
-  physical backing/generation/quarantine to KV pages and close physical
-  allocator/COW tests; recurrent/conv domains remain typed checkpoints.
+  or Ready/root authority. Signed `54340a6` now binds it to a finite
+  `ResidentPagePool` over existing `ResidentPool`/`ResidentLease` physical
+  backing/generation/event/quarantine ownership. The CUDA physical qualifier
+  passes finite pressure, fresh reuse generation, fork/read pinning, completed
+  GPU readback reuse and submitted-unknown fencing/quarantine that diagnostic
+  sync cannot reclaim. Actual COW payload copy and model KV block-table lowering
+  remain open; recurrent/conv domains remain typed checkpoints.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

@@ -64,19 +64,23 @@ not relabeled. Debug-profile evidence is real CUDA but not release packaging/
 performance. Canonical release B2 remains open: a fresh heartbeat-supervised
 thin-LTO attempt again disappeared during CLI compile/link before test execution,
 with no terminal child/Rust/OOM/Xid/GPU-residue evidence. Do not loop it.
-Signed `0027c28` starts the paged-state phase with a **logical-only,
-model-neutral immutable block-table/COW primitive** in `zerogravity-core`.
-Compatibility includes bound source plus numerical/domain/layout identities and
-page geometry includes an explicit semantic append unit. Full pages share
-immutably; partial tails COW; allocation refusal leaves the prior table intact;
-copy/write plans pin their owners. Eight focused tests, all178 core tests, strict
-core clippy and `qwen35-cuda` composition pass. This is not a GPU page-pool,
-prefix-cache, Ready or serving permit. **Next: adapt the existing charged
-`ResidentPool`/`ResidentLease` authority into finite KV pages and bind
-`PagedBlockTable<ResidentLease>`; preserve recurrent/conv typed checkpoints,
-then close physical allocator/COW pressure/reader/quarantine tests.** Complete-
-domain prefix identity/intersection follows that. Event/lease-backed physical
-overlap remains after those state gates.
+Signed `0027c28` starts the paged-state phase with the logical immutable
+block-table/COW planner. Signed `54340a6` adds the first **physical page-owner
+adapter** without changing model execution: finite homogeneous pages use the
+existing charged `ResidentPool`/`ResidentLease` backing/generation/event/
+quarantine authority and bind directly to `PagedBlockTable<ResidentLease>`.
+The physical CUDA ownership qualifier passes page_bytes2048/max_pages3 with
+fresh logical generations, atomic pressure refusal, cloned and in-flight reader
+pinning, completed readback reuse, and an actually submitted unsynchronized H2D
+whose abandoned flight fences/quarantines and stays unreclaimed after diagnostic
+sync (2 quarantined handles). Production `qwen35-cuda` composition and strict
+production clippy pass. Payload COW copying, model KV/block-table lowering,
+Ready/root publication and prefix caching remain unimplemented. **Next: execute
+the COW copy/write plan under original leases/events and bind `StateLayout::Kv`
+to paged tables while recurrent/conv stays typed contiguous checkpoint state;
+then qualify page boundaries/full-state continuation against the contiguous
+reference.** Complete-domain prefix identity/intersection follows that.
+Event/lease-backed physical overlap remains after those state gates.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

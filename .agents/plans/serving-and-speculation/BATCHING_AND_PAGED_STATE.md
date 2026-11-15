@@ -182,14 +182,31 @@ compatibility, geometry, full/tail pages, partial-prefix COW, exhaustion
 atomicity and owner pinning; all178 core tests, strict core clippy and
 `qwen35-cuda` composition pass.
 
-This does **not** close Allocator/COW below: there is no physical page pool,
-`ResidentLease` adapter, block-table kernel, complete-domain prefix cache,
-Ready/root publication change or serving capability. **Next: use the existing
-charged `ResidentPool`/`ResidentLease` backing generation and
-reader/quarantine authority as the finite physical KV page provider, bind it to
-`PagedBlockTable<ResidentLease>`, keep recurrent/conv state as typed
-checkpoint domains, and qualify pressure/readers/reuse/unknown completion before
-prefix identity/intersection.** Event/lease-backed physical overlap remains later.
+**15 Nov physical page-owner follow-up:** signed `54340a6` adds a homogeneous
+`ResidentPagePool` as a one-plane specialization of the existing
+`ResidentPool`; checkout still returns the original `ResidentLease`, with
+fresh allocation generation and the same backing ledger/event/quarantine path.
+`ResidentPagedTable` binds that pool to `PagedBlockTable<ResidentLease>` and
+rejects non-RecurrentState or physical/semantic alignment mismatch. Its physical
+CUDA qualifier passes page_bytes2048/max_pages3: one partial-tail fork plans COW
+onto fresh generations, the third backing page exhausts the finite pool without
+mutating the prior table, a cloned table keeps its pages non-idle, an initialized
+page remains pinned through actual GPU readback and returns only after completion,
+and an actually submitted H2D under an armed Write which is then abandoned fences
+the service/quarantines the page. Pool idle falls3->2 and stays2 after diagnostic
+sync; 2 handles remain quarantined. The qualifier is ownership/lifetime evidence,
+not a payload-COW numerical pass.
+
+Allocator/COW below therefore remains **partially open**: physical page
+allocation/reuse/pressure/readers/unknown-completion are accepted, but the actual
+partial-tail copy/write has not yet executed, model KV does not yet use block
+tables, and no paged attention/prefix cache is selected. **Next: materialize the
+`PageAppendPlan` copy/write under original leases/events and lower
+`StateLayout::Kv` through paged tables while Vector recurrent/conv domains keep
+their typed checkpoint path. Qualify page_size-1/page_size/page_size+1 and
+multi-page full-state continuation against the contiguous reference before
+complete-domain prefix identity/intersection.** Event/lease-backed physical
+overlap remains later.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve

@@ -488,16 +488,19 @@ or a change to the active correctness/benchmark/27B order.
   release-profile B2 remains open after another heartbeat-supervised thin-LTO
   build disappeared during CLI compile/link before the test ran, without terminal
   child/Rust/OOM/Xid/residue evidence; do not loop it.
-  **Paged-state phase started at signed `0027c28`:** `zerogravity-core` now has
-  a model-neutral immutable block-table/COW planner with exact bound-source +
-  numerical/domain/layout compatibility, semantic page/unit geometry, immutable
-  full-page sharing, partial-tail COW, transactional fresh-page refusal and
-  copy/write owner pins. Eight focused tests, all178 core tests, strict core
-  clippy and `qwen35-cuda` composition pass. It owns no physical allocator,
-  Ready/root publication, cache identity or serving policy. **Next: physical
-  `ResidentPool`/`ResidentLease` page adapter for KV plus allocator/COW
-  pressure/reader/quarantine qualification; recurrent/conv stay typed checkpoint
-  domains. Complete-domain prefix identity/intersection follows.**
+  **Paged-state phase:** signed `0027c28` provides the model-neutral immutable
+  block-table/COW planner. Signed `54340a6` binds it to a finite physical
+  `ResidentPagePool` implemented over the existing charged
+  `ResidentPool`/`ResidentLease` authority. The physical CUDA qualifier passes
+  page_bytes2048/max_pages3: fresh generations, partial-tail COW planning,
+  atomic pressure refusal, fork/reader pinning, completed GPU readback reuse and
+  an actual unsynchronized H2D whose abandoned armed Write fences/quarantines;
+  diagnostic sync does not reclaim it. Production `qwen35-cuda` composition
+  and strict production clippy pass. No model KV lowering, payload COW copy,
+  Ready/root publication, prefix identity or serving policy is enabled.
+  **Next: materialize COW copy/write under original events and bind
+  `StateLayout::Kv` to paged tables; recurrent/conv remain typed checkpoints.
+  Then qualify page-boundary/full-state continuation before prefix caching.**
   Admit physical GPU overlap only after event/lease, cancellation/unknown-
   completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
