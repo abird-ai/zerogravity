@@ -196,18 +196,27 @@ GGUF fixtures are not equivalent evidence. Four hybrid unit gates, all eight
 exact-current RTX3060 paged cells, top-level qwen35-hip, CUDA tests and strict
 clippy pass.
 
+Signed `398e446` adds the **source-real paged B1 lifecycle qualification
+target** without runtime changes. The shared approved-source fixture now drives a
+second ignored target proving prelaunch cancel, abandoned Ready, cancel-after-
+Ready discard, page-boundary commits and exact all42 restore to both the saved
+pre-boundary and boundary roots, followed by shutdown. It compiles and links.
+Execution remains blocked by the same missing approved HF cache input; a targeted
+search found neither approved small-source snapshot digest under XDG cache/data,
+`/home/pvl`, `/var/tmp` or `/tmp`. No replacement source was acquired.
+
 Admission review changes the next implementation shape: ordinary admission
 budgets a finite inventory of complete state roots. A paged committed root plus
 full prior staging plus full candidate staging would be a third state-sized
 envelope at full context and must not be smuggled past admission. The Ready and
 snapshot semantics are accepted at `93468b1`; physical pools at `cb57e1d`;
-current-root execution at `b9b04aa`; explicit low-level policy at `1413f72`.
-**Next: execute the linked source-real B1 differential on the approved original
-0.8B and2B HF snapshots when those retained inputs are available.** Require full
-logit/all42 exactness at page_size-1/page_size/page_size+1/multi-page. Then extend
-cancel/abandon/restore/rollback coverage before adding any high-level paged
-serving selection. Default CUDA/native/HIP stay contiguous; page_tokens remains
-explicit.
+current-root execution at `b9b04aa`; explicit low-level policy at `1413f72`;
+source-real lifecycle target at `398e446`. **Next: execute both linked source-
+real B1 targets on the approved original0.8B and2B HF snapshots when those
+retained inputs are available.** Require full logit/all42 page-boundary parity
+plus cancel/abandon/restore exactness. Add a true CUDA in-flight cancellation cell
+after that, then consider any high-level paged serving selection. Default
+CUDA/native/HIP stay contiguous; page_tokens remains explicit.
 Complete-domain prefix identity/intersection follows that.
 Event/lease-backed physical overlap remains after those state gates.
 

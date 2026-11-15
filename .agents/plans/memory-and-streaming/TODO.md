@@ -143,9 +143,12 @@ The following extends existing owners; source-byte qualification is not inferenc
   only for explicit page_tokens/max_append_tokens, enforces B1 and append bounds,
   and has a linked original-HF Contiguous-vs-Paged full-vocab/all42 page-boundary
   differential. The approved HF cache input is absent on L5, so that source-real
-  cell is not run. Next execute it for0.8B/2B when retained inputs are restored,
-  then fault/rollback/restore coverage before native batches/HTTP. page_tokens
-  remains explicit, not a production default.
+  cell is not run. Signed `398e446` adds the matching paged B1 lifecycle target:
+  prelaunch cancel, abandoned Ready, cancel-after-Ready discard, page-boundary
+  commits, exact all42 restore to pre-boundary/boundary roots and shutdown. It is
+  linked but blocked by the same absent approved cache. Next execute both targets
+  for0.8B/2B when retained inputs are restored, then add true in-flight cancel
+  before native batches/HTTP. page_tokens remains explicit, not a default.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

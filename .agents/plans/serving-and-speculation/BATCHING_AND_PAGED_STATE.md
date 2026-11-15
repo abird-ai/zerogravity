@@ -519,6 +519,27 @@ cell separately for original0.8B and2B with explicit page policy, then add
 cancellation/abandon/restore/rollback and clean-retirement acceptance. Only then
 add a high-level paged serving selector and adapt native B2/B4/B8/HTTP.
 
+**15 Nov paged source lifecycle qualification follow-up:** signed `398e446`
+adds a second ignored original-HF target on the same explicit paged policy.
+Without changing runtime code it verifies:
+- cancellation set before prepare returns `CancelledBeforeLaunch` and preserves
+  the exact initial root/all42 snapshot;
+- dropping a completed Ready candidate publishes nothing and preserves all42;
+- toggling cancellation after Ready causes `commit` to return `Discarded`
+  with the original root/all42 unchanged;
+- normal commits advance to page_size-1, page_size and page_size+1;
+- snapshots saved at page_size-1 and page_size can each be restored exactly,
+  including RootBinding and all42 state;
+- final source-model shutdown succeeds.
+
+Success marker is `P12_SOURCE_PAGED_LIFECYCLE_PASS ... all42=exact
+final_shutdown=true`. The target compiles and links. It is not executed because
+the same approved HF cache inputs are absent. A targeted L5 search for the known
+0.8B/2B snapshot digests found no match in project XDG roots, `/home/pvl`,
+`/var/tmp` or `/tmp`; no download/acquisition was attempted. True in-flight
+CUDA cancellation remains separate because the existing launch-boundary probe is
+not available on this ordinary CUDA source path.
+
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve
   B1 and smaller qualified bands after checked prelaunch capacity refusal.

@@ -20,8 +20,9 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation/qualification** checkpoint is
-  `1413f729ac5db55131b8379752b8cdf0a7b98263`
-  (`feat(state): add explicit paged source policy`). Parent `b9b04aa`
+  `398e4461fc3bd30a84e050951dbdf204b05f0cdd`
+  (`test(state): qualify paged source lifecycle`). Parent `1413f72` is the
+  runtime/source-policy checkpoint; `b9b04aa`
   remains the accepted current-root gather/KvInPlace/scatter/Ready candidate
   execution; `cb57e1d` remains the physical pool substrate and `93468b1`
   remains snapshot/restore/inherited-Ready authority.
@@ -47,6 +48,18 @@ and live TODOs are authoritative.
   That source-real cell is **not executed** because L5 currently has no retained
   approved HF cache snapshot/reference input (`ZG_QWEN_SOURCE_SNAPSHOT` and
   cache root are absent); local GGUF fixtures are not equivalent evidence.
+  `398e446` adds a second ignored source-real paged B1 lifecycle qualifier on
+  the same authenticated-source fixture. It proves, once inputs are present:
+  prelaunch cancellation leaves root/all42 unchanged; dropping a completed Ready
+  candidate publishes nothing; cancellation toggled after Ready yields
+  `Discarded` with exact rollback; committed execution crosses page_size-1 ->
+  page_size -> page_size+1; restore back to the saved pre-boundary and boundary
+  roots reproduces exact all42 state; final model shutdown is clean. Success
+  marker: `P12_SOURCE_PAGED_LIFECYCLE_PASS ... all42=exact
+  final_shutdown=true`. The target compiles and links; it is unexecuted for the
+  same missing approved-HF-cache blocker. A targeted filesystem search for both
+  approved small-source snapshot digests found neither under project XDG roots,
+  `/home/pvl`, `/var/tmp` nor `/tmp`; no acquisition was attempted.
   Final-current available validation is green: four hybrid admission units, all
   eight RTX3060 pool/paging/in-place cells, top-level `qwen35-hip`,
   CUDA tests and strict production clippy. A combined cross-feature wrapper
@@ -148,17 +161,17 @@ and live TODOs are authoritative.
   source-policy plumbing is now
   `0027c28` + `54340a6` + `1eb6e0f` + `3ac2059` + `dc6a188` +
   `53336b3` + `ef9e4d4` + `93468b1` + `cb57e1d` + `b9b04aa` +
-  `1413f72`.
+  `1413f72` + `398e446`.
   **Next executable P12-C work is source-real policy acceptance.** Restore/use the
-  already approved original HF cache snapshots and run
-  `original_source_b1_paged_matches_contiguous_at_page_boundaries` separately
-  for original0.8B and2B with explicit page_tokens/max_append_tokens. Do not
+  already approved original HF cache snapshots and run both
+  `original_source_b1_paged_matches_contiguous_at_page_boundaries` and
+  `original_source_b1_paged_lifecycle_rolls_back_exactly` separately for
+  original0.8B and2B with explicit page_tokens/max_append_tokens. Do not
   acquire or invent replacement source/reference inputs without authorization.
-  Once both full-vocab/all42 boundary cells pass, extend the same policy route
-  through cancellation before submit/in flight/after Ready, abandoned
-  candidate/root rollback and snapshot/restore/retirement. Only then expose a
-  high-level paged serving selection, adapt native B2/B4/B8 state transport and
-  run production HTTP. page_tokens=4 remains qualification data, not a default.
+  Those cells close full-vocab/all42 boundaries plus prelaunch/after-Ready cancel,
+  abandon and restore. True in-flight cancellation still needs its own CUDA
+  launch-boundary proof after source inputs return. Only after those gates should
+  a high-level paged serving selector/native B2/B4/B8/HTTP work begin.
   Complete-domain prefix reuse follows these state gates; event/lease-backed physical
   overlap remains after those state gates and must not be pulled forward.
   **Post-check L5 baseline watch:**

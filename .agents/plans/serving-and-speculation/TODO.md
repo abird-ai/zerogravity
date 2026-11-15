@@ -561,9 +561,12 @@ or a change to the active correctness/benchmark/27B order.
   policy refuses before source IO. The linked ignored original-HF differential
   compares Contiguous vs Paged full-vocab/all42 at page-1/page/page+1/2page+1.
   It is not executed because the approved HF cache inputs are absent on L5.
-  **Production selection remains open:** next run that qualifier for original
-  0.8B/2B when approved inputs are restored, then fault/rollback/restore cells,
-  then native B2/B4/B8 + HTTP.
+  Signed `398e446` adds the matching source-real lifecycle target: prelaunch
+  cancel, abandoned Ready, cancel-after-Ready discard, page-boundary commits and
+  exact all42 restore to pre-boundary/boundary roots, final shutdown. It also
+  links but cannot execute without the approved cache. **Production selection
+  remains open:** next run both targets for original0.8B/2B when approved inputs
+  are restored, then add true in-flight cancellation, then native B2/B4/B8 + HTTP.
   Admit physical GPU overlap only after event/lease, cancellation/unknown-
   completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
