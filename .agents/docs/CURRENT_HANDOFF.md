@@ -1,8 +1,8 @@
-# ZeroGravity current comprehensive handoff — 14 Nov 2026
+# ZeroGravity current comprehensive handoff — 15 Nov 2026
 
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
-Full dated takeover snapshot: [`FULL_COMPREHENSIVE_HANDOFF_2026-11-14.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-14.md).
+Full dated takeover snapshot: [`FULL_COMPREHENSIVE_HANDOFF_2026-11-15.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-15.md). The 15 Nov pack embeds the complete 14 Nov baseline so the October→November design and implementation history remains available from one file.
 
 This file is the complete takeover map and a pointer into maintained source, tests
 and plans. It is deliberately **not** the retired monolithic SHA/archive/evidence
@@ -20,21 +20,19 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation** checkpoint is
-  `9d6613cb0bef84147a7d30453e5afb82ca83411b`
-  (`feat(cuda): select compatible resident graph cache`). Above the accepted
-  `f1ce532` replay storage/access authority and `63ee14e` workspace-owned lifecycle,
-  the private production selector now resolves under the existing allocation+
-  workspace boundary: exact compatible live cache -> Graph; absent/cold/spent,
-  incompatible typed profile or device-token route -> pre-enqueue Native; runtime
-  identity/lifecycle drift or replay failure -> Error with no unsafe retry. External
-  graph APIs remain qualification-only and ordinary serving still selects Native.
-  Physical B2 qualification passes this selector/lifecycle contract. Signed
-  `599cb28945bee79ef70dc48ea35566c526a7f049` adds retained B4/B8 selector timing:
-  B2/B4/B8 mean gains are ~3.30%/~1.11%/~0.73% and median gains
-  ~1.72%/~1.13%/~0.36%, with exact replay-count/resource-retirement witnesses.
-  The gain shrinks with useful width, so public graph serving is deliberately not
-  enabled; ordinary serving remains Native and the private selector/cache stays
-  available for materially different future graph regions.
+  `1e0f4ebfc5b9650341814ad669d4101aea717623`
+  (`feat(serving): enable qualified temporal B2 prefill`). It promotes only the
+  physically qualified original0.8B B2 prefill route to 4-token temporal chunks,
+  fixes the missing `NativeText::cohort_eligible` production boundary and keeps
+  B4/B8 on their accepted one-token prefill policy. Its retained resident qualifier
+  proves atomic rollback/publication, CPU/B1/all42 state and terminal greedy; the
+  exact-current production HTTP test proves prompt10 executes as native chunks
+  4+4+2 with three B2 publications, two state-only + one greedy, exact CPU
+  text/usage, zero failures/refusals and final41MiB. Parent `9dab004` added the
+  reusable temporal candidate-chain primitive; `7dea460`/`ba7e376` establish fair
+  aged decode/prefill scheduling. Earlier `9d6613c`/`599cb28` graph selector/timing
+  remain accepted, but the shrinking B2/B4/B8 graph gain does not justify public
+  graph serving; ordinary serving remains Native.
 - Prefix-scheduling cold reconstruction is now complete for **0.8B and 2B**.
   Fresh-process/no-request-warmup ABBA compares accepted max32-prefix `d0a6084`
   against native teacher-prefix `f788929` with symmetric benchmark-only exact-SM
