@@ -474,24 +474,19 @@ or a change to the active correctness/benchmark/27B order.
   exact producer and final reserved0. The actual production CLI HTTP path passes
   prompt10 as chunks4+4+2 with CPU ID264/text ` a`, usage10/1, exactly3 B2
   publications, zero failures/refusals and final41MiB.
-  **15 Nov B4/B8 full qualification progress:** signed `3625348` makes the
-  full qualifier host-state bounded by constructing CPU/B1 references row by row.
-  Original0.8B B4 and B8 each separately pass full mode on those exact bytes:
-  private-chain abandonment leaves original roots/all42 untouched; state4 and
-  terminal2 each publish one root; every native row matches CPU/B1 all42 and
-  greedy bits; producer lineage is exact; final reserved0. Retained band bytes
-  are 1,230,916,660 (B4) and 1,802,356,148 (B8). Earlier disappeared B4/oracle
-  runs and one exact-current pre-temporal B4 attempt remain incomplete, not
-  failures; the bounded retry passed. Two exact-current B2 qualifier retries also
-  disappeared after session setup before temporal work and do not supersede the
-  already accepted B2 production/physical result.
-  The live policy stays 4-token **only for native B2**. B4/B8 remain one-token
-  until their actual production HTTP cells pass separately. **2B temporal is the
-  next independent qualification and remains unqualified.** Do not promote B4/B8
-  through `native_rows` alone before the affected 2B cells pass; any earlier
-  promotion would need explicit source-bound policy. Canonical release-profile B2
-  is also still open. Next: qualify 2B temporal, then close B4/B8 HTTP and widen
-  only policies whose affected source/model cells have their own physical pass.
+  **15 Nov temporal B4 production checkpoint:** original2B now independently
+  passes full B2/B4/B8 resident qualification with CPU/B1/all42,
+  rollback/publication/greedy/producer exact and final reserved0; retained bytes
+  are 1,589,873,428 / 1,833,045,908 / 2,319,390,868. Two unsupervised B4 runs
+  disappeared before temporal work; a heartbeat-supervised run completed exactly.
+  Signed `eaec62d` then promotes **B4 only**: final-byte production HTTP passes
+  original0.8B and2B B4 as three exact4+4+2 B4 cohorts/publications with mixed
+  JSON/SSE CPU text/usage exact, zero failed/refused work and clean retirement.
+  B2+B4 now select temporal4. B8 remains one-token/unequal-frontier; one
+  supervised0.8B B8 HTTP attempt disappeared after test start and is incomplete,
+  not a failure/pass. Canonical release-profile B2 remains open. Next: close B8
+  HTTP on both sources before promotion and run the retained2B B2 HTTP cell when
+  practical.
   Admit physical GPU overlap only after event/lease, cancellation/unknown-
   completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine

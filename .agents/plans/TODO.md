@@ -52,23 +52,20 @@ residue and remain explicitly incomplete. Multi-token temporal prefill has a
 **functional physical 0.8B B2 acceptance cell** and production HTTP B2 remains
 exact chunks4+4+2 with CPU ID264/text ` a`, usage10/1,3 publications, zero
 failures/refusals and final41MiB. The retained qualifier is now
-`temporal_prefill`, shared across B2/B4/B8. B2 retains its accepted
-CPU/B1/all42 rollback/publication/greedy evidence. Signed `3625348` bounds the
-qualifier's host-state footprint, and exact-current original0.8B B4 and B8 now
-each pass **full mode**, not only the native CUDA+CPU constituent: CPU/B1/all42
-state and greedy bits are exact, rollback/publication is atomic, producer lineage
-is exact and final reserved0 (retained-band bytes 1,230,916,660 and
-1,802,356,148 respectively). Earlier disappeared oracle/B4 attempts remain
-incomplete; one bounded exact-current B4 retry passed. Two exact-current B2
-qualifier retries disappeared after session setup before temporal work and do
-not replace the already accepted B2 evidence. B4/B8 production HTTP remains
-open, therefore only B2 selects temporal4 and B4/B8 stay one-token. **2B
-temporal qualification is next and remains unqualified.** Do not widen B4/B8
-through `native_rows` alone before those affected 2B cells pass; alternatively
-make any earlier promotion explicitly source-bound. Debug-profile evidence is real CUDA but
+`temporal_prefill`, shared across B2/B4/B8. Original0.8B B4/B8 retain their
+full CPU/B1/all42 acceptance. Original2B now independently passes full B2/B4/B8
+qualification too, with retained-band bytes 1,589,873,428 / 1,833,045,908 /
+2,319,390,868 and exact rollback/publication/greedy/producer/final reserved0.
+Two unsupervised2B B4 attempts disappeared before temporal work; the supervised
+heartbeat run passed fully. Signed `eaec62d` promotes **B4 only** in production:
+final-byte original0.8B and2B B4 HTTP each execute exact chunks4+4+2 with three
+B4 cohorts/publications, mixed JSON/SSE CPU text/usage exact and clean retirement.
+B2+B4 therefore select temporal4. B8 remains one-token/unequal-frontier because
+its HTTP gate is still open; one supervised0.8B B8 attempt disappeared after
+test start without a semantic result. Debug-profile evidence is real CUDA but
 not release packaging/performance; canonical release B2 remains open. Next:
-qualify 2B temporal, then close B4/B8 HTTP and widen only source/model policies
-with their own physical pass; retry release B2 when the build host survives. Paged hybrid state/COW
+close B8 HTTP on both sources before widening it, run2B B2 HTTP when practical,
+and retry release B2 when the build host survives. Paged hybrid state/COW
 and physical overlap remain open.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must

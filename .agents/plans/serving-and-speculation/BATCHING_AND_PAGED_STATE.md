@@ -145,20 +145,19 @@ publication, 2-token terminal greedy producer lineage and final reserved0.
 Production HTTP executes prompt10 as B2 chunks4+4+2 with CPU ID264/text ` a`,
 usage10/1, exactly3 publications, no failures/refusals and final41MiB.
 
-B4 and B8 now each have a separate **full debug qualifier pass**. Signed
-`3625348` bounds host reference state row by row; both widths prove
-private-chain abandonment, atomic state4 and terminal2 publication, exact
-per-row CPU/B1 all42 state/greedy bits, exact producer lineage and final
-reserved0. Retained-band bytes are 1,230,916,660 and 1,802,356,148. Earlier
-disappeared B4/oracle attempts, one exact-current pre-temporal B4 attempt and two
-exact-current pre-temporal B2 confirmation attempts remain incomplete without a
-Rust/OOM/residue signal; the bounded B4 retry and B8 full run pass, while prior
-B2 production/physical acceptance remains unchanged.
-Therefore production still selects temporal4 only for B2: B4/B8 stay
-one-token/unequal-frontier until actual HTTP passes. **2B temporal qualification
-is next and remains open.** Do not promote B4/B8 through `native_rows` alone
-before the affected 2B cells pass; any earlier widening would need source-bound
-policy so an unqualified route cannot inherit the 0.8B permit.
+B4 and B8 retain full original0.8B debug qualifier passes, and original2B now
+independently passes full B2/B4/B8 with the same CPU/B1/all42/root/producer
+contract. 2B retained-band bytes are 1,589,873,428 / 1,833,045,908 /
+2,319,390,868. Two unsupervised2B B4 attempts disappeared before temporal work;
+the heartbeat-supervised B4 run passed fully.
+
+Signed `eaec62d` promotes **B4 only**. Final-byte production HTTP passes both
+original0.8B and2B B4 with prompt10 -> exact chunks4+4+2, three B4 cohorts,
+two state-only + one greedy, three root publications, mixed JSON/SSE CPU
+text/usage exact and clean retirement. Production therefore selects temporal4
+for B2+B4. B8 intentionally remains one-token/unequal-frontier: one supervised
+0.8B B8 HTTP attempt disappeared after test start without a semantic result, so
+its production gate remains open.
 
 These physical cells use the debug Rust profile; canonical release-profile B2 is
 still open after thin-LTO build process losses without Rust/OOM evidence. Paged
