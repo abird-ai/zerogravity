@@ -440,6 +440,7 @@ mod cuda_paged_tests {
             SourceCallPublication,
         },
     };
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     const MIB: usize = 1024 * 1024;
     const PROVIDER_BYTES: usize = 4608 * MIB;
@@ -477,6 +478,73 @@ mod cuda_paged_tests {
                 .unwrap_or_else(|| panic!("{label} missing {slot:?}"));
             exact_words(expected, actual, label);
         }
+    }
+
+    fn exact_domains(
+        expected: &[(crate::accelerator::program::StateSlot, Vec<f32>)],
+        actual: &[(crate::accelerator::program::StateSlot, Vec<f32>)],
+        label: &str,
+    ) {
+        assert_eq!(expected.len(), 42, "{label} expected all42");
+        assert_eq!(actual.len(), 42, "{label} actual all42");
+        for (slot, expected) in expected {
+            let actual = actual
+                .iter()
+                .find(|(actual, _)| actual == slot)
+                .map(|(_, words)| words)
+                .unwrap_or_else(|| panic!("{label} missing {slot:?}"));
+            exact_words(expected, actual, label);
+        }
+    }
+
+    fn paged_source_fixture(label: &str) -> (SourceParts, usize, usize, Vec<u32>) {
+        let snapshot =
+            std::env::var("ZG_QWEN_SOURCE_SNAPSHOT").expect("explicit approved snapshot");
+        let root = std::env::var_os("ZG_QWEN_CACHE_ROOT").map(std::path::PathBuf::from);
+        let page_tokens = std::env::var("ZG_QWEN_PAGED_PAGE_TOKENS")
+            .expect("explicit page_tokens")
+            .parse::<usize>()
+            .expect("page_tokens");
+        let max_append_tokens = std::env::var("ZG_QWEN_PAGED_MAX_APPEND_TOKENS")
+            .expect("explicit max_append_tokens")
+            .parse::<usize>()
+            .expect("max_append_tokens");
+        assert!((2..=64).contains(&page_tokens));
+        assert!(max_append_tokens >= page_tokens);
+        let arbiter = ResourceArbiter::process_shared();
+        let resource = PhysicalDeviceKey::new("host", "system-ram").unwrap();
+        arbiter
+            .register_matching(resource.clone(), 16 * 1024 * 1024 * 1024)
+            .unwrap();
+        let admission = TransferAdmission {
+            arbiter,
+            resource,
+            owner: ResourceOwner::new(label, "original-source").unwrap(),
+        };
+        let host = ServingHost::from_process_admission(&admission).unwrap();
+        let parts = open_source(
+            label,
+            CacheOptions::new(root, 96 * 1024 * 1024 * 1024),
+            &snapshot,
+            512,
+            &host,
+            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        )
+        .unwrap();
+        let needed = page_tokens * 2 + 2;
+        let prompt = " a".repeat(needed * 2);
+        let mut tokens = parts
+            .tokenizer
+            .prompt_tokens(&prompt, false)
+            .expect("source tokenizer");
+        assert!(tokens.len() >= needed);
+        tokens.truncate(needed);
+        assert!(
+            tokens
+                .iter()
+                .all(|&id| { (id as usize) < parts.source.plan.model_profile().vocabulary_size() })
+        );
+        (parts, page_tokens, max_append_tokens, tokens)
     }
 
     async fn trajectory(
@@ -530,54 +598,10 @@ mod cuda_paged_tests {
     #[test]
     #[ignore = "approved original HF cache; exact contiguous-vs-paged CUDA B1 all42"]
     fn original_source_b1_paged_matches_contiguous_at_page_boundaries() {
-        let snapshot =
-            std::env::var("ZG_QWEN_SOURCE_SNAPSHOT").expect("explicit approved snapshot");
-        let root = std::env::var_os("ZG_QWEN_CACHE_ROOT").map(std::path::PathBuf::from);
-        let page_tokens = std::env::var("ZG_QWEN_PAGED_PAGE_TOKENS")
-            .expect("explicit page_tokens")
-            .parse::<usize>()
-            .expect("page_tokens");
-        let max_append_tokens = std::env::var("ZG_QWEN_PAGED_MAX_APPEND_TOKENS")
-            .expect("explicit max_append_tokens")
-            .parse::<usize>()
-            .expect("max_append_tokens");
-        assert!((2..=64).contains(&page_tokens));
-        assert!(max_append_tokens >= page_tokens);
-        let context = 512usize;
-
-        let arbiter = ResourceArbiter::process_shared();
-        let resource = PhysicalDeviceKey::new("host", "system-ram").unwrap();
-        arbiter
-            .register_matching(resource.clone(), 16 * 1024 * 1024 * 1024)
-            .unwrap();
-        let admission = TransferAdmission {
-            arbiter,
-            resource,
-            owner: ResourceOwner::new("paged-source-differential", "original-source").unwrap(),
-        };
-        let host = ServingHost::from_process_admission(&admission).unwrap();
-        let parts = open_source(
-            "paged-source-differential",
-            CacheOptions::new(root, 96 * 1024 * 1024 * 1024),
-            &snapshot,
-            context,
-            &host,
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
-        )
-        .unwrap();
+        let (parts, page_tokens, max_append_tokens, mut tokens) =
+            paged_source_fixture("paged-source-differential");
         let needed = page_tokens * 2 + 1;
-        let prompt = " a".repeat(needed * 2);
-        let mut tokens = parts
-            .tokenizer
-            .prompt_tokens(&prompt, false)
-            .expect("source tokenizer");
-        assert!(tokens.len() >= needed);
         tokens.truncate(needed);
-        assert!(
-            tokens
-                .iter()
-                .all(|&id| { (id as usize) < parts.source.plan.model_profile().vocabulary_size() })
-        );
 
         let run = |policy| {
             ResidentModel::load_ordinary_cuda_source_with_state_policy(
@@ -635,5 +659,210 @@ mod cuda_paged_tests {
             page_tokens + 1,
             page_tokens * 2 + 1,
         );
+    }
+
+    #[test]
+    #[ignore = "approved original HF cache; paged CUDA B1 cancel/discard/restore lifecycle"]
+    fn original_source_b1_paged_lifecycle_rolls_back_exactly() {
+        let (parts, page_tokens, max_append_tokens, tokens) =
+            paged_source_fixture("paged-source-lifecycle");
+        block_on(async {
+            let model = ResidentModel::load_ordinary_cuda_source_with_state_policy(
+                Device::Cuda(Default::default()),
+                parts.source.plan.source().clone(),
+                parts.source.clone(),
+                parts.source.plan.plan().clone(),
+                1,
+                0,
+                PROVIDER_BYTES,
+                DEVICE_BYTES,
+                CudaSourceStatePolicy::Paged {
+                    page_tokens,
+                    max_append_tokens,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+            let mut session = model.session().await.unwrap();
+            let root0 = session.binding();
+            let initial = session.snapshot().unwrap();
+            let initial_domains = initial.read_domains().await.unwrap().to_vec();
+
+            let first_ids = Arc::<[u32]>::from(tokens[..page_tokens - 1].to_vec());
+            let first = parts
+                .source
+                .plan
+                .bind_invocation(SourceCallMode::Prefill, 0, first_ids, true)
+                .unwrap();
+
+            let pre_cancel = Arc::new(AtomicBool::new(true));
+            assert!(matches!(
+                session
+                    .prepare(
+                        first.bound_invocation(),
+                        SourceCallMode::Prefill,
+                        ResidentOutput::Logits,
+                        Some(pre_cancel),
+                    )
+                    .await
+                    .unwrap(),
+                SourceCallPreparation::CancelledBeforeLaunch
+            ));
+            assert_eq!(session.binding(), root0);
+            exact_domains(
+                &initial_domains,
+                &session.snapshot().unwrap().read_domains().await.unwrap(),
+                "paged prelaunch cancel",
+            );
+
+            let abandoned = session
+                .prepare(
+                    first.bound_invocation(),
+                    SourceCallMode::Prefill,
+                    ResidentOutput::Logits,
+                    None,
+                )
+                .await
+                .unwrap();
+            let SourceCallPreparation::Ready(abandoned) = abandoned else {
+                panic!("paged abandoned candidate was not Ready");
+            };
+            assert_eq!(session.binding(), root0);
+            drop(abandoned);
+            assert_eq!(session.binding(), root0);
+            exact_domains(
+                &initial_domains,
+                &session.snapshot().unwrap().read_domains().await.unwrap(),
+                "paged abandoned Ready",
+            );
+
+            let cancel_after_ready = Arc::new(AtomicBool::new(false));
+            let pending = session
+                .prepare(
+                    first.bound_invocation(),
+                    SourceCallMode::Prefill,
+                    ResidentOutput::Logits,
+                    Some(cancel_after_ready.clone()),
+                )
+                .await
+                .unwrap();
+            let SourceCallPreparation::Ready(pending) = pending else {
+                panic!("paged cancel-after-Ready candidate was not Ready");
+            };
+            cancel_after_ready.store(true, Ordering::Release);
+            assert!(matches!(
+                session.commit(pending).unwrap(),
+                SourceCallPublication::Discarded(_)
+            ));
+            assert_eq!(session.binding(), root0);
+            exact_domains(
+                &initial_domains,
+                &session.snapshot().unwrap().read_domains().await.unwrap(),
+                "paged cancel after Ready",
+            );
+
+            let pending = session
+                .prepare(
+                    first.bound_invocation(),
+                    SourceCallMode::Prefill,
+                    ResidentOutput::Logits,
+                    None,
+                )
+                .await
+                .unwrap();
+            let SourceCallPreparation::Ready(pending) = pending else {
+                panic!("paged first committed candidate was not Ready");
+            };
+            assert!(matches!(
+                session.commit(pending).unwrap(),
+                SourceCallPublication::Committed(_)
+            ));
+            assert_eq!(session.binding().frontier(), (page_tokens - 1) as u64);
+            let before_boundary = session.snapshot().unwrap();
+            let before_boundary_domains = before_boundary.read_domains().await.unwrap().to_vec();
+
+            let boundary = parts
+                .source
+                .plan
+                .bind_invocation(
+                    SourceCallMode::Prefill,
+                    page_tokens - 1,
+                    Arc::<[u32]>::from(vec![tokens[page_tokens - 1]]),
+                    true,
+                )
+                .unwrap();
+            let pending = session
+                .prepare(
+                    boundary.bound_invocation(),
+                    SourceCallMode::Prefill,
+                    ResidentOutput::Logits,
+                    None,
+                )
+                .await
+                .unwrap();
+            let SourceCallPreparation::Ready(pending) = pending else {
+                panic!("paged boundary candidate was not Ready");
+            };
+            assert!(matches!(
+                session.commit(pending).unwrap(),
+                SourceCallPublication::Committed(_)
+            ));
+            assert_eq!(session.binding().frontier(), page_tokens as u64);
+            let at_boundary = session.snapshot().unwrap();
+            let at_boundary_domains = at_boundary.read_domains().await.unwrap().to_vec();
+
+            let beyond = parts
+                .source
+                .plan
+                .bind_invocation(
+                    SourceCallMode::Prefill,
+                    page_tokens,
+                    Arc::<[u32]>::from(vec![tokens[page_tokens]]),
+                    true,
+                )
+                .unwrap();
+            let pending = session
+                .prepare(
+                    beyond.bound_invocation(),
+                    SourceCallMode::Prefill,
+                    ResidentOutput::Logits,
+                    None,
+                )
+                .await
+                .unwrap();
+            let SourceCallPreparation::Ready(pending) = pending else {
+                panic!("paged post-boundary candidate was not Ready");
+            };
+            assert!(matches!(
+                session.commit(pending).unwrap(),
+                SourceCallPublication::Committed(_)
+            ));
+            assert_eq!(session.binding().frontier(), (page_tokens + 1) as u64);
+
+            session.restore(&before_boundary).unwrap();
+            assert_eq!(session.binding(), before_boundary.binding());
+            exact_domains(
+                &before_boundary_domains,
+                &session.snapshot().unwrap().read_domains().await.unwrap(),
+                "paged restore before boundary",
+            );
+            session.restore(&at_boundary).unwrap();
+            assert_eq!(session.binding(), at_boundary.binding());
+            exact_domains(
+                &at_boundary_domains,
+                &session.snapshot().unwrap().read_domains().await.unwrap(),
+                "paged restore at boundary",
+            );
+
+            drop(initial);
+            drop(before_boundary);
+            drop(at_boundary);
+            drop(session);
+            model.shutdown().await.unwrap();
+            println!(
+                "P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens={page_tokens} prelaunch_cancel=true abandoned_ready=true cancel_after_ready=true restore_before_boundary=true restore_at_boundary=true all42=exact final_shutdown=true"
+            );
+        });
     }
 }
