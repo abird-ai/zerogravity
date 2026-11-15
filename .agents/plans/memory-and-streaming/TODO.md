@@ -118,7 +118,12 @@ The following extends existing owners; source-byte qualification is not inferenc
   retirement. Production ordinary sessions still select contiguous KV. Admission
   review rejects a separate full prior+candidate staging pair on top of paged
   state because that becomes a third state-sized envelope at full context.
-  Next use one admitted in-place K/V staging pair, then scatter appended rows.
+  Signed `ef9e4d4` adds the ordinary KvInPlace execution contract: exact fresh
+  prior/candidate staging alias, no zero/prefix-copy preparation, physical
+  prefix/new-row/tail exactness and clean retirement. Next split ordinary root
+  storage into admitted vector/page/staging pools, allow only exact initialized
+  current-root full pages as inherited Ready state, and add paged snapshot/read/
+  restore before selecting the production session route.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

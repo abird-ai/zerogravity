@@ -521,10 +521,18 @@ or a change to the active correctness/benchmark/27B order.
   all prior paged cells plus production composition/clippy remain green.
   **Production selection remains open.** Admission analysis rejects the earlier
   two-staging sketch: paged committed state + full prior staging + full candidate
-  staging becomes three state envelopes at full context. Next use one in-place
-  contiguous K/V staging pair, explicitly skip the ordinary KV zero/prefix-copy
-  when that staging was gathered from the paged parent, run attention on it and
-  scatter only appended rows before the accepted root publication.
+  staging becomes three state envelopes at full context. Signed `ef9e4d4` now
+  lands the one-staging execution contract: `StateBindingMode::KvInPlace`
+  requires exact same fresh K/V lease identities for prior/candidate, and the
+  actual ordinary `KvAppend` emits zero preparation launches instead of
+  zeroing/copying the already-gathered prefix. Physical base3/capacity8 pass
+  preserves the prefix, writes the new row exactly, leaves the tail zero and
+  retires staging; all retained paged cells and production composition/clippy
+  remain green. Next replace ordinary root allocation with hybrid admitted
+  vector/page/staging pools, then select the paged route. Ready validation must
+  permit exact initialized full pages inherited from the current root while
+  requiring fresh/COW pages as actual Write outputs; snapshot/read/restore also
+  needs explicit paged readers before production selection is complete.
   Admit physical GPU overlap only after event/lease, cancellation/unknown-
   completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine

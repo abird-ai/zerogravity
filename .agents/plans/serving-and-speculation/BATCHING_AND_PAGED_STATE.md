@@ -332,6 +332,47 @@ path. Qualify continued page_size-1/page_size/page_size+1 and multi-page
 full-state parity before direct block-table attention or complete-domain prefix
 identity/intersection. Event/lease-backed physical overlap remains later.
 
+**15 Nov in-place ordinary execution follow-up:** signed `ef9e4d4` implements
+the execution half of that admission decision. `StateBinding` now carries an
+explicit mode. Distinct remains the default everywhere, including native batch.
+`KvInPlace` is accepted by ordinary CUDA only for a KV requirement whose prior
+and candidate are the exact same two resident leases by ID, allocation
+generation and extent; those staging leases must be uninitialized at validation,
+so an already-published canonical root cannot be mutated through this mode.
+Within the real `KvAppend` host path, `prepare_kv_candidate` preserves the old
+Distinct zero+prefix-copy behavior but returns zero launches for KvInPlace.
+The actual append kernel and FlashAttention candidate binding remain unchanged.
+
+The retained physical RTX3060 test creates fresh resident BF16 K/V staging,
+submits exactly one Write access per plane, writes a three-token committed
+prefix + zero tail under that original flight, enters KvInPlace preparation,
+then executes the real ordinary Qwen KV append for token4. Exact marker:
+`P12_ORDINARY_KV_INPLACE_PASS base=3 rows=1 capacity=8 kv_width=512
+preparation_launches=0 prefix_preserved=true new_row_exact=true
+inactive_tail_zero=true unique_write_access=true all_staging_retired=true`.
+The same final binary passes canonical paged root publication, GPU
+gather/scatter, 3/4/5 page boundaries, lower COW materialization and
+submitted-unknown quarantine; production `qwen35-cuda` composition and strict
+clippy are green.
+
+Production selection still requires three coupled changes; do not land only one:
+1. split the existing complete-root pool into a **hybrid admitted inventory**
+   whose physical sum stays within the already charged root bytes: contiguous
+   Conv/Recurrent committed/candidate planes, finite KV page pools and one
+   full-capacity K/V staging pair per active ordinary execution;
+2. update `validate_prepared`/Ready coverage for immutable shared full pages:
+   a candidate page may be inherited only when it is the exact initialized owner
+   from the current root, while fresh/COW pages must be actual submitted Write
+   outputs. Never turn shared pages into fake Writes merely to satisfy Ready;
+3. implement paged snapshot/read/restore over page order/valid extents. The
+   no-handle `StateBuffers::PagedKv` marker must not make snapshots silently
+   empty or bypass source/generation checks.
+
+After those gates, bind the accepted single staging pair, gather paged prior,
+run ordinary KvInPlace append/attention, scatter only appended rows, and publish
+through the existing root authority. Then qualify page_size-1/page_size/
+page_size+1 and multi-page full-model continuations.
+
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve
   B1 and smaller qualified bands after checked prelaunch capacity refusal.

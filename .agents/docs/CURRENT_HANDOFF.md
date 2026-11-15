@@ -20,26 +20,24 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation/qualification** checkpoint is
-  `53336b3d961f2ffc59c0b845f876ff4e8e0033c9`
-  (`feat(state): admit paged KV session domains`). Parents `0027c28`,
-  `54340a6`, `1eb6e0f`, `3ac2059` and `dc6a188` remain the logical table,
-  finite page owner, COW materializer, typed paged-KV/gather layer and GPU-only
-  staging/scatter bridge. `53336b3` adds the canonical session-domain shape:
-  `Domain` can retain a `ResidentPagedKvDomain` plus the exact page
-  leases/generations while `StateBuffers::PagedKv` is only a marker that forces
-  execution to bind transient contiguous staging. Model-domain validation now
-  checks the original source/service generation, declared `StateRequirement::Kv`
-  geometry, exact page lease coverage and initialization; legacy/native
-  batch/range/diagnostic consumers fail closed on the marker rather than
-  fabricating contiguous semantics. Single-session commit now calls a factored
-  `publish_domain_swap` that is the same original
-  `publish_if_usable -> prepare_publish -> swap -> commit` sequence.
-  RTX3060 physical acceptance publishes canonical paged roots 0->3->4 through
-  that exact helper; both root IDs change, frontier3/frontier4 each retain only
-  two initialized page owners, the displaced frontier3 remains byte-exact after
-  frontier4 publication and all pages retire. The final-current staging bridge,
-  3/4/5 boundary, lower materialization and submitted-unknown/quarantine cells
-  also pass; production `qwen35-cuda` composition and strict clippy are green.
+  `ef9e4d4c4364df423d4a6afad108a1c5b562d967`
+  (`feat(cuda): add in-place paged KV staging mode`). Parents `0027c28`,
+  `54340a6`, `1eb6e0f`, `3ac2059`, `dc6a188` and `53336b3` remain the
+  logical/page/COW/gather-scatter/canonical-domain substrate. `ef9e4d4` adds an
+  explicit `StateBindingMode::KvInPlace` for the one-staging design. Ordinary
+  validation permits prior/candidate aliasing only for KV, requires the exact
+  same two lease identities/generations/bytes, requires those staging leases to
+  be fresh/uninitialized at validation, and still rejects aliasing for Vector or
+  normal distinct bindings. The real `KvAppend` branch now routes through one
+  `prepare_kv_candidate`: Distinct keeps the accepted zero + prefix-copy path;
+  KvInPlace emits no zero/prefix-copy work because the caller gathered the
+  committed paged prefix into that staging on the same original flight.
+  RTX3060 physical acceptance uses the actual ordinary Qwen KV append kernel at
+  base3/capacity8/kv_width512 and passes with preparation_launches0, exact prefix
+  preservation, exact new row, zero inactive tail, unique submitted Writes and
+  complete staging retirement. The final-current paged root-publication,
+  gather/scatter, 3/4/5 boundary, COW and submitted-unknown/quarantine cells all
+  pass; production `qwen35-cuda` composition and strict clippy are green.
   Production ordinary sessions still construct contiguous KV today; no serving
   selector, direct paged attention, prefix reuse or public capability changed.
   Parent `8e6f14d3defc0aa2e542c26ffb9ccc7c736f1fcb`
@@ -131,18 +129,22 @@ and live TODOs are authoritative.
   while compiling/linking `zerogravity-cli`, before the test ran and without a
   terminal child status, Rust diagnostic, OOM/Xid, live child or GPU residue.
   Do not loop that unstable build. Paged-state control/ownership/materialization/
-  typed-KV gather/scatter/domain publication is now `0027c28` + `54340a6` +
-  `1eb6e0f` + `3ac2059` + `dc6a188` + `53336b3`. **Next executable P12-C
-  work is production ordinary-session selection.** Admission review found that
-  canonical paged state + separate full prior staging + full candidate staging
-  would require three state-sized envelopes at full context, while ordinary
-  admission intentionally budgets a finite root inventory (two roots in the
-  base path). Do not add an uncharged third state. Use one exact-size in-place
-  contiguous K/V staging pair instead: gather the committed paged prefix into it,
-  opt the ordinary KV append into an explicit in-place staged mode that skips the
-  old zero/full-prefix copy, run unchanged attention on that candidate staging,
-  then scatter only newly produced rows into private pages before the existing
-  Ready/atomic root swap. Qualify
+  typed-KV gather/scatter/domain publication/in-place ordinary execution is now
+  `0027c28` + `54340a6` + `1eb6e0f` + `3ac2059` + `dc6a188` +
+  `53336b3` + `ef9e4d4`. **Next executable P12-C work is production
+  ordinary-session selection.** Do not add an uncharged third state. Build the
+  hybrid admitted inventory from the existing root budget: canonical contiguous
+  Conv/Recurrent roots, paged KV pools, one transient full-capacity K/V staging
+  pair per active ordinary execution and only the required vector candidate
+  storage. Then gather paged KV into that staging, bind KvInPlace, run the
+  unchanged append/attention body, scatter only newly produced KV rows into the
+  private paged child and publish through the accepted root swap.
+  Publication validation must also distinguish **newly written page outputs**
+  from full pages inherited immutably from the current root: inherited pages are
+  valid only when they are exact initialized current-root owners and must not be
+  submitted as fake Writes merely to satisfy Ready. Paged snapshot/read/restore
+  must use explicit page readers instead of the no-handle `PagedKv` marker.
+  Qualify
   continued full-state execution at page_size-1/page_size/page_size+1 and
   multi-page boundaries before direct paged attention or complete-domain prefix
   identity/intersection. Event/lease-backed physical

@@ -115,14 +115,34 @@ production `qwen35-cuda` composition/strict clippy pass. Two unsupervised/late
 link wrappers disappeared without Rust/OOM/Xid diagnostics; supervised/warmed
 bounded retries completed and the final-current binary passed.
 
+Signed `ef9e4d4` adds the **ordinary in-place KV execution contract** required
+by the admitted one-staging design. `StateBindingMode::KvInPlace` is KV-only:
+prior/candidate must be the exact same two resident leases (ID, allocation
+generation and extent), staging must still be fresh/uninitialized at ordinary
+validation, and all other bindings retain the old distinct-owner rule.
+`KvAppend` now shares one `prepare_kv_candidate` path: Distinct is unchanged;
+KvInPlace skips candidate zeroing and prior-prefix copies because the committed
+prefix is already gathered into staging on the same original flight. RTX3060
+physical pass uses the real ordinary KV append kernel at base3/capacity8:
+`P12_ORDINARY_KV_INPLACE_PASS ... preparation_launches=0
+prefix_preserved=true new_row_exact=true inactive_tail_zero=true
+unique_write_access=true all_staging_retired=true`. The canonical paged
+publication/bridge/boundary/COW/quarantine cells all pass on the same final
+binary; production composition and strict clippy pass.
+
 Admission review changes the next implementation shape: ordinary admission
 budgets a finite inventory of complete state roots. A paged committed root plus
 full prior staging plus full candidate staging would be a third state-sized
 envelope at full context and must not be smuggled past admission. **Next: select
-paged KV for ordinary sessions with one full in-place K/V staging pair: gather
-pages into it, add an explicit staged-in-place KV append mode that skips the old
-zero/prefix copy, run attention on the same staging, scatter only new rows into
-the paged child, then publish through the accepted root swap.
+paged KV for ordinary sessions by replacing the monolithic root inventory with
+hybrid admitted pools: contiguous Conv/Recurrent committed+candidate state,
+finite paged KV backing and one full K/V staging pair per active execution.
+Gather pages into staging, bind the accepted KvInPlace mode, run append/attention,
+scatter only new rows and publish the paged child. Extend `validate_prepared`
+so shared full pages inherited from the current root are accepted as already-Ready
+immutable owners while only fresh/COW pages are required as submitted Write
+outputs; never submit inherited pages as fake Writes. Add paged snapshot/read/
+restore handling rather than relying on `StateBuffers::buffers()`.
 Qualify continued full-state page-boundary/multi-page parity.**
 Complete-domain prefix identity/intersection follows that.
 Event/lease-backed physical overlap remains after those state gates.
