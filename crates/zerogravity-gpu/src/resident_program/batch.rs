@@ -862,6 +862,11 @@ impl BatchProgram {
                         )?)
                     });
                 }
+                StateBuffers::PagedKv => {
+                    return Err(Error::State(
+                        "native batch transport requires contiguous staged KV".into(),
+                    ));
+                }
             }
         }
         Ok(prepared)

@@ -164,8 +164,39 @@ pub struct ResidentModel {
 struct Domain {
     slot: StateSlot,
     buffers: StateBuffers,
+    paged_kv: Option<paged_state::ResidentPagedKvDomain>,
     leases: Vec<ResidentLease>,
     generations: Vec<u64>,
+}
+impl Domain {
+    #[allow(
+        dead_code,
+        reason = "canonical paged KV Domain construction is selected by the next ordinary-session slice"
+    )]
+    fn from_paged_kv(paged_kv: paged_state::ResidentPagedKvDomain) -> Result<Self> {
+        let slot = paged_kv.slot();
+        let leases = paged_kv.leases()?;
+        let generations = leases
+            .iter()
+            .map(ResidentLease::allocation_generation)
+            .collect();
+        Ok(Self {
+            slot,
+            buffers: StateBuffers::PagedKv,
+            paged_kv: Some(paged_kv),
+            leases,
+            generations,
+        })
+    }
+
+    fn paged_kv(&self) -> Result<&paged_state::ResidentPagedKvDomain> {
+        self.paged_kv
+            .as_ref()
+            .filter(|paged| {
+                self.slot == paged.slot() && matches!(self.buffers, StateBuffers::PagedKv)
+            })
+            .ok_or_else(|| Error::State("resident domain is not canonical paged KV".into()))
+    }
 }
 #[derive(Clone)]
 pub struct ResidentSnapshot {
@@ -350,6 +381,20 @@ fn publish_prepared_cohort(
         }
     }
     Ok(())
+}
+
+fn publish_domain_swap(
+    service: &Arc<ResidentService>,
+    authority: &mut SessionAuthority,
+    current: &mut Vec<Domain>,
+    attempt: RootAttempt,
+    candidate: &mut Vec<Domain>,
+) -> Result<RootBinding> {
+    service.publish_if_usable(|| {
+        let transition = authority.prepare_publish(attempt)?;
+        std::mem::swap(current, candidate);
+        Ok(transition.commit())
+    })
 }
 
 #[cfg(all(
@@ -1088,6 +1133,42 @@ impl ResidentModel {
                     "resident domain slot/generation coverage".into(),
                 ));
             }
+            if matches!(domain.buffers, StateBuffers::PagedKv) {
+                let paged = domain.paged_kv()?;
+                paged.require_requirement(requirement)?;
+                let page_leases = paged.leases()?;
+                if page_leases.len() != domain.leases.len()
+                    || page_leases
+                        .iter()
+                        .zip(&domain.leases)
+                        .any(|(actual, retained)| {
+                            actual.id() != retained.id()
+                                || actual.allocation_generation()
+                                    != retained.allocation_generation()
+                        })
+                {
+                    return Err(Error::State(
+                        "resident paged KV lease coverage differs".into(),
+                    ));
+                }
+                for (lease, expected) in domain.leases.iter().zip(&domain.generations) {
+                    if !Arc::ptr_eq(lease.service(), &self.service)
+                        || lease.service_generation() != self.service.generation()
+                        || lease.source_identity() != self.service.source_identity()
+                        || lease.allocation_generation() != *expected
+                        || (initialized && !lease.is_initialized())
+                    {
+                        return Err(Error::State(
+                            "resident paged KV allocation/service generation mismatch".into(),
+                        ));
+                    }
+                }
+                continue;
+            } else if domain.paged_kv.is_some() {
+                return Err(Error::State(
+                    "resident contiguous domain retains paged KV authority".into(),
+                ));
+            }
             let handles = domain.buffers.handles();
             if handles.len() != domain.leases.len() {
                 return Err(Error::State("resident physical domain coverage".into()));
@@ -1661,6 +1742,12 @@ impl ResidentModel {
                             }
                             flat.extend_from_slice(&data[..active]);
                         }
+                        StateBuffers::PagedKv => {
+                            return Err(Error::State(
+                                "resident diagnostic readback requires explicit paged KV reader"
+                                    .into(),
+                            ));
+                        }
                     }
                     cursor += 1;
                 }
@@ -2088,6 +2175,7 @@ fn make_domain(
     Ok(Domain {
         slot: r.slot,
         buffers,
+        paged_kv: None,
         leases,
         generations,
     })
@@ -2673,11 +2761,13 @@ impl ResidentSession {
     pub fn commit(&mut self, mut prepared: PreparedInference) -> Result<InferenceReadback> {
         self.validate_prepared(&prepared)?;
         let mut displaced = prepared.domains;
-        let published = self.model.service.publish_if_usable(|| {
-            let transition = self.authority.prepare_publish(prepared.attempt)?;
-            std::mem::swap(&mut self.domains, &mut displaced);
-            Ok(transition.commit())
-        })?;
+        let published = publish_domain_swap(
+            &self.model.service,
+            &mut self.authority,
+            &mut self.domains,
+            prepared.attempt,
+            &mut displaced,
+        )?;
         drop(displaced);
         for derived in &mut prepared.derived {
             let _ = derived.retag_after_publish(published);

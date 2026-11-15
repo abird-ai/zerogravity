@@ -535,6 +535,46 @@ impl ResidentPagedKvDomain {
         Ok(key_bytes / self.row_bytes)
     }
 
+    pub(crate) fn leases(&self) -> Result<Vec<ResidentLease>> {
+        let mut leases = Vec::with_capacity(self.keys.page_count() + self.values.page_count());
+        for table in [&self.keys, &self.values] {
+            for index in 0..table.page_count() {
+                let (lease, valid) = table
+                    .page(index)
+                    .ok_or_else(|| Error::State("paged KV lease page absent".into()))?;
+                if valid == 0 || valid > table.geometry().page_bytes() {
+                    return Err(Error::State("paged KV page valid extent differs".into()));
+                }
+                leases.push(lease.clone());
+            }
+        }
+        Ok(leases)
+    }
+
+    pub(crate) fn require_requirement(&self, requirement: &StateRequirement) -> Result<()> {
+        let StateLayout::Kv { slab, capacity } = requirement.layout else {
+            return Err(Error::State("paged KV requirement is not KV".into()));
+        };
+        if requirement.slot != self.slot
+            || slab != self.slab
+            || capacity != self.capacity
+            || requirement.physical != self.physical
+            || requirement.bytes
+                != self
+                    .row_bytes
+                    .checked_mul(self.capacity)
+                    .and_then(|n| n.checked_mul(2))
+                    .ok_or_else(|| {
+                        Error::Limit("paged KV requirement byte extent overflow".into())
+                    })?
+        {
+            return Err(Error::State(
+                "paged KV canonical requirement/layout differs".into(),
+            ));
+        }
+        Ok(())
+    }
+
     pub(crate) fn fork_for_append(&self, tokens: usize) -> Result<ResidentPagedKvAppend> {
         if tokens == 0
             || self
@@ -1949,6 +1989,180 @@ mod tests {
             println!(
                 "P12_PAGED_KV_BRIDGE_PASS prior=3 candidate=4 page_tokens={PAGE_TOKENS} row_bytes={row_bytes} gather_dispatches={gather_dispatches} prefix_copy_dispatches=2 scatter_cow_dispatches={} scatter_append_transfers={} gpu_only_after_input=true prior_immutable=true contiguous_abi_exact=true all_pages_retired=true",
                 scatter.copy_dispatches, scatter.append_transfers
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    #[ignore = "physical CUDA canonical paged KV Domain root publication"]
+    fn physical_paged_kv_domain_publishes_through_session_root() -> Result<()> {
+        futures_lite::future::block_on(async {
+            let diagnostic = CudaDiagnostic::new("paged-kv-domain-publish")?;
+            let service = diagnostic.service.clone();
+            let alignment = usize::try_from(service.client().properties().memory.alignment)
+                .map_err(|_| Error::Limit("paged KV publication alignment".into()))?;
+            if !alignment.is_multiple_of(2) {
+                return Err(Error::Unsupported(
+                    "paged KV publication BF16 row requires even alignment".into(),
+                ));
+            }
+            const PAGE_TOKENS: usize = 4;
+            const CAPACITY: usize = 7;
+            let slab = alignment / 2;
+            let row_bytes = alignment;
+            let page_bytes = PAGE_TOKENS * row_bytes;
+            let requirement = StateRequirement {
+                slot: StateSlot::Kv(KvDomain(7)),
+                layout: StateLayout::Kv {
+                    slab,
+                    capacity: CAPACITY,
+                },
+                physical: ResidentPhysicalType::Bf16,
+                bytes: 2 * row_bytes * CAPACITY,
+            };
+            requirement.plane_layout()?;
+            let max_pages = 4usize;
+            let metadata_bytes = ResidentPagePool::metadata_bytes(max_pages)?;
+            let host_key = PhysicalDeviceKey::new(
+                "host",
+                "zerogravity-paged-kv-domain-publish-qualification",
+            )?;
+            let arbiter = ResourceArbiter::process_shared();
+            arbiter.register_matching(
+                host_key.clone(),
+                u64::try_from(metadata_bytes)
+                    .map_err(|_| Error::Limit("paged KV publication metadata".into()))?,
+            )?;
+            let metadata = arbiter
+                .admit(
+                    &host_key,
+                    ResourceOwner::new("paged-kv-domain-publish", "block-table-metadata")?,
+                    &[AllocationRequest {
+                        kind: AllocationClass::Scratch,
+                        bytes: metadata_bytes as u64,
+                    }],
+                )?
+                .into_host_workspace(service.source_identity(), Arc::new(()))?;
+            let pool = ResidentPagePool::prepare(
+                service.clone(),
+                metadata,
+                ResidentPlaneLayout {
+                    bytes: page_bytes,
+                    role: BufferRole::RecurrentState,
+                    alignment,
+                },
+                max_pages,
+            )?;
+            let empty = ResidentPagedKvDomain::empty(
+                &requirement,
+                pool.clone(),
+                PAGE_TOKENS,
+                service.generation(),
+                0x71,
+            )?;
+            let mut authority = SessionAuthority::new(service.source_identity())?;
+            let initial_binding = authority.binding();
+            let mut current = vec![Domain::from_paged_kv(empty)?];
+            if current[0].paged_kv()?.tokens()? != 0
+                || !matches!(current[0].buffers, StateBuffers::PagedKv)
+                || !current[0].leases.is_empty()
+            {
+                return Err(Error::State(
+                    "paged KV initial canonical Domain differs".into(),
+                ));
+            }
+
+            let row = |token: usize, salt: usize| {
+                (0..row_bytes)
+                    .map(|byte| ((token * 43 + byte * 11 + salt) % 251) as u8)
+                    .collect::<Vec<_>>()
+            };
+            let mut keys3 = Vec::new();
+            let mut values3 = Vec::new();
+            for token in 0..3 {
+                keys3.extend(row(token, 5));
+                values3.extend(row(token, 127));
+            }
+            let (paged3, _) =
+                materialize_kv_append(&service, current[0].paged_kv()?, &keys3, &values3).await?;
+            let mut candidate3 = vec![Domain::from_paged_kv(paged3)?];
+            let attempt3 = authority.begin_advance(3)?;
+            let published3 = publish_domain_swap(
+                &service,
+                &mut authority,
+                &mut current,
+                attempt3,
+                &mut candidate3,
+            )?;
+            if published3.frontier() != 3
+                || published3.root() == initial_binding.root()
+                || authority.binding() != published3
+                || current[0].paged_kv()?.tokens()? != 3
+                || candidate3[0].paged_kv()?.tokens()? != 0
+                || current[0].leases.len() != 2
+                || current[0]
+                    .leases
+                    .iter()
+                    .any(|lease| !lease.is_initialized())
+            {
+                return Err(Error::State(
+                    "paged KV frontier3 root publication differs".into(),
+                ));
+            }
+            gather_kv_exact(&service, current[0].paged_kv()?, &keys3, &values3).await?;
+
+            let key4 = row(3, 5);
+            let value4 = row(3, 127);
+            let (paged4, boundary) =
+                materialize_kv_append(&service, current[0].paged_kv()?, &key4, &value4).await?;
+            if boundary.copy_dispatches != 2
+                || boundary.append_transfers != 2
+                || boundary.append_bytes != 2 * row_bytes
+            {
+                return Err(Error::State(
+                    "paged KV published boundary materialization differs".into(),
+                ));
+            }
+            let mut candidate4 = vec![Domain::from_paged_kv(paged4)?];
+            let attempt4 = authority.begin_advance(1)?;
+            let published4 = publish_domain_swap(
+                &service,
+                &mut authority,
+                &mut current,
+                attempt4,
+                &mut candidate4,
+            )?;
+            if published4.frontier() != 4
+                || published4.root() == published3.root()
+                || authority.binding() != published4
+                || current[0].paged_kv()?.tokens()? != 4
+                || candidate4[0].paged_kv()?.tokens()? != 3
+                || current[0].leases.len() != 2
+                || candidate4[0].leases.len() != 2
+            {
+                return Err(Error::State(
+                    "paged KV frontier4 root publication differs".into(),
+                ));
+            }
+            let mut keys4 = keys3.clone();
+            let mut values4 = values3.clone();
+            keys4.extend_from_slice(&key4);
+            values4.extend_from_slice(&value4);
+            gather_kv_exact(&service, current[0].paged_kv()?, &keys4, &values4).await?;
+            gather_kv_exact(&service, candidate4[0].paged_kv()?, &keys3, &values3).await?;
+
+            drop(candidate3);
+            drop(candidate4);
+            drop(current);
+            let final_pool = pool.snapshot()?;
+            if final_pool.allocated_pages != max_pages || final_pool.idle_pages != max_pages {
+                return Err(Error::State(
+                    "paged KV canonical Domain publication did not retire pages".into(),
+                ));
+            }
+            println!(
+                "P12_PAGED_KV_DOMAIN_PUBLISH_PASS frontiers=0,3,4 root_changes=2 canonical_marker=true frontier3_pages=2 frontier4_pages=2 boundary_cow=2 displaced_parent_exact=true original_session_authority=true all_pages_retired=true"
             );
             Ok(())
         })

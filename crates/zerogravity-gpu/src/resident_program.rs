@@ -359,18 +359,27 @@ pub(crate) enum StateBuffers {
         keys: DeviceBuffer,
         values: DeviceBuffer,
     },
+    /// Canonical KV is owned by resident paged-state metadata. Execution must
+    /// bind transient contiguous staging before reaching a program consumer.
+    #[allow(
+        dead_code,
+        reason = "canonical paged KV binding is selected by the next ordinary-session slice"
+    )]
+    PagedKv,
 }
 impl StateBuffers {
     pub fn buffers(&self) -> Vec<&DeviceBuffer> {
         match self {
             Self::Vector(v) => vec![v],
             Self::Kv { keys, values } => vec![keys, values],
+            Self::PagedKv => Vec::new(),
         }
     }
     pub fn handles(&self) -> Vec<Handle> {
         match self {
             Self::Vector(v) => vec![v.handle.clone()],
             Self::Kv { keys, values } => vec![keys.handle.clone(), values.handle.clone()],
+            Self::PagedKv => Vec::new(),
         }
     }
 }

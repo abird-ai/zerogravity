@@ -94,6 +94,9 @@ fn first(state: &mut StateBuffers) -> &mut DeviceBuffer {
     match state {
         StateBuffers::Vector(v) => v,
         StateBuffers::Kv { keys, .. } => keys,
+        StateBuffers::PagedKv => {
+            panic!("range qualification fixture requires contiguous state")
+        }
     }
 }
 
