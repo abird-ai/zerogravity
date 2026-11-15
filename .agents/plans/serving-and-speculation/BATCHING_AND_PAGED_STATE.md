@@ -129,24 +129,34 @@ surviving child, cgroup OOM or GPU residue; those wrapper invocations remain
 incomplete rather than passes. The complete constituent command set is the
 acceptance evidence for this scheduler-only slice.
 
-**15 Nov temporal-prefill implementation checkpoint (not accepted):** the
-resident fused layer now has an unselected equal-chunk temporal transaction for
-B2/B4/B8. A chunk of 2..32 teacher tokens reuses the existing native one-token
-body repeatedly against private candidate domains, retains the original root as
-the sole publication authority, emits no intermediate logits/token packet and
-returns one terminal `PreparedResidentCohort`; dropping/refusing the chain never
-publishes an intermediate root. The ordinary cohort adapter can consume such a
-receipt and advance the scheduler cursor by the whole chunk, but the production
-`NativeText` prefill quantum remains one token pending physical qualification.
-Final bytes pass strict production clippy/compile and normal debug lib-test
-compilation. An optimized GPU-library build completed before the final
-nonsemantic request-struct cleanup. No temporal GPU inference completed this
-turn: heavyweight thin-LTO release test targets lost their outer
-process during root/test optimization without a Rust error, and therefore remain
-incomplete. Next use a small explicit qualification target around the public
-`ResidentModel` temporal API, qualify 0.8B B2 source/state/rollback/greedy first,
-then activate the 4-token serving quantum and prove HTTP B2. B4/B8/2B, paged
-state/COW and event-backed physical overlap remain open.
+**15 Nov 2026 temporal-prefill B2 functional acceptance:** the resident fused
+layer has a reusable equal-chunk temporal transaction for B2/B4/B8. A chunk of
+2..32 teacher tokens reuses the accepted native body repeatedly against private
+candidate domains, retains the original root as the sole publication authority,
+emits no intermediate logits/token packet and returns one terminal
+`PreparedResidentCohort`; dropping/refusing the chain never publishes an
+intermediate root. The ordinary cohort adapter consumes the receipt and advances
+the scheduler cursor by the whole chunk.
+
+The first physical target is now accepted for original0.8B B2. The retained
+`zerogravity-gpu` example `temporal_prefill_b2` independently checks CPU/B1 and
+all42 state, abandoned-candidate rollback, 4-token state-only publication,
+2-token terminal greedy producer lineage and final reserved0. It also revealed
+that the production adapter had never opted prefill into native cohort formation:
+`Executor::cohort_eligible` defaults false. The fix makes native prefill
+eligibility explicit and pairwise compatibility exact on resident model owner,
+hidden width and chunk length. Production HTTP then physically executes a
+10-token equal prompt pair as B2 chunks4+4+2 with CPU oracle ID264/text ` a`,
+usage10/1, exactly3 B2 publications (2 state-only,1 greedy), no failures/refusals
+and final41MiB. Production selects temporal4 only for B2; B4/B8 intentionally
+remain one-token/unequal-frontier until their own physical cells pass.
+
+These functional physical cells use the debug Rust profile; they validate real
+CUDA/source/root/Ready semantics but are not release packaging/performance
+evidence. Canonical thin-LTO/codegen-units=1 qualification builds have repeatedly
+lost their outer process without a Rust error or cgroup OOM. Keep release-profile
+B2 and all B4/B8/2B temporal cells open before any broader policy promotion.
+Paged state/COW and event-backed physical overlap remain untouched and open.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve

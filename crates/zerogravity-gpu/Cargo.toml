@@ -48,3 +48,8 @@ sha2 = { version = "=0.10.9", optional = true }
 sha2 = "=0.10.9"
 # Source fixtures only; qualification drivers own runtime model composition.
 zerogravity-model-qwen35 = { path = "../zerogravity-model-qwen35", default-features = false, features = ["cpu", "text", "source-binding", "diagnostic-cpu-checkpoint"] }
+
+[[example]]
+name = "temporal_prefill_b2"
+path = "examples/temporal_prefill_b2.rs"
+required-features = ["cuda-native-qualification"]

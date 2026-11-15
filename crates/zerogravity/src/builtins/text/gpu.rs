@@ -135,7 +135,7 @@ fn policy(active: usize, native_rows: usize) -> WorkPolicy {
             prefill_age_rounds: 2,
         },
         prefill_quantum: 32,
-        unequal_prefill: native_rows != 0,
+        unequal_prefill: native_rows != 0 && native_rows != 2,
         unequal_decode: native_rows != 0,
         native_rows,
         cohorts: if native_rows == 0 {
@@ -195,7 +195,11 @@ impl Executor for NativeText {
         ))
     }
     fn prefill(model: &Self::Model) -> Prefill {
-        Prefill::Chunks(if model.native_rows == 0 { 32 } else { 1 })
+        Prefill::Chunks(match model.native_rows {
+            0 => 32,
+            2 => 4,
+            _ => 1,
+        })
     }
     fn group(model: &Self::Model) -> usize {
         model.group
@@ -214,6 +218,18 @@ impl Executor for NativeText {
     }
     fn has_feedback(state: &State) -> bool {
         state.device_token.is_some()
+    }
+    fn cohort_eligible(row: &Row) -> bool {
+        row.model.native_rows == 2
+            && row.cursor < row.prompt.len()
+            && row.state.device_token.is_none()
+    }
+    fn compatible(first: &Row, row: &Row) -> bool {
+        Arc::ptr_eq(&first.model.resident, &row.model.resident)
+            && first.model.hidden_width == row.model.hidden_width
+            && first.cursor < first.prompt.len()
+            && row.cursor < row.prompt.len()
+            && first.prefill_count() == row.prefill_count()
     }
     fn single(row: &mut Row) -> Result<SingleCompleted, ServiceError> {
         let (read, consumed, readout) = if row.cursor < row.prompt.len() {

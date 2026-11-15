@@ -48,16 +48,20 @@ failed/refused/cancelled/discarded work and final 41MiB. Every command in
 `scripts/check.sh` is terminal-green on the exact source under isolated
 `native-gpu`; repeated monolithic connector-wrapper attempts disappeared during
 ordinary cached builds with no compiler/test error, live child, OOM event or GPU
-residue and remain explicitly incomplete. Native multi-token temporal prefill
-now has a **dormant shared implementation checkpoint**: B2/B4/B8 equal chunks
-2..32 chain private candidate state and expose one final all-row publication;
-the ordinary cohort adapter can consume the chunk receipt, while the production
-policy intentionally stays at one token until physical acceptance. Final bytes
-pass production clippy/compile and normal debug lib-test compilation; no temporal
-GPU run completed because large release qualification targets lost their outer process
-during thin-LTO root/test optimization without a Rust diagnostic. Next physically
-qualify 0.8B B2 through a small explicit target, then activate 4-token serving
-and prove HTTP B2 before widening. Paged hybrid state/COW and overlap remain open.
+residue and remain explicitly incomplete. Multi-token temporal prefill now has a
+**functional physical 0.8B B2 acceptance cell**. The retained small GPU qualifier
+proves private 4-token candidate rollback, one-root 4-token state publication,
+one-root 2-token terminal greedy, CPU/B1/all42 exactness and final reserved0.
+During production HTTP qualification a real adapter gap was found and fixed:
+prefill never opted into native cohorts because `cohort_eligible` inherited false.
+The current B2 production path physically passes prompt10 as exact chunks4+4+2,
+CPU ID264/text ` a`, usage10/1,3 B2 publications (2 state-only +1 greedy), zero
+failures/refusals and final41MiB. Only B2 now selects temporal4; B4/B8 remain
+one-token. Strict production clippy,18 wave tests,14 worker tests and composition
+checks pass. Physical evidence is from the debug Rust profile; canonical release
+thin-LTO builds remain operationally incomplete without Rust/OOM evidence.
+Next: release-profile B2 confirmation when build tooling permits, then B4/B8 and
+2B temporal cells. Paged hybrid state/COW and physical overlap remain open.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

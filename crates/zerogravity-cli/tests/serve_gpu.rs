@@ -1435,6 +1435,70 @@ fn qualify_unequal_arrival_metrics(name: &str) -> Proof<()> {
     Ok(())
 }
 
+fn qualify_temporal_prefill_http(name: &str) -> Proof<()> {
+    let _serial = GPU_HTTP_LOCK
+        .lock()
+        .map_err(|_| "physical HTTP test lock poisoned")?;
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/models")
+        .join(name);
+    let model_path = directory.join("model.gguf");
+    let source = LoadedQwenModel::open(&model_path, &directory.join("config.json"))
+        .map_err(|e| e.to_string())?;
+    let tokenizer =
+        QwenTokenizer::from_file(&directory.join("tokenizer.json")).map_err(|e| e.to_string())?;
+    let oracle = Oracle::compute(&source, &tokenizer, &" a".repeat(10))?;
+    if oracle.prompt_tokens != 10 || oracle.ids.is_empty() {
+        return Err(format!(
+            "temporal HTTP fixture requires ten prompt tokens and one output: prompt={} outputs={}",
+            oracle.prompt_tokens,
+            oracle.ids.len()
+        ));
+    }
+    let expected = oracle.expected(&tokenizer, 1)?;
+    let server = OwnedServer::start_rows(&model_path, 2)?;
+    let before = server.health()?["admission"].clone();
+    let (json, sse) = queued_pair(
+        &server,
+        &payload(&server.aliases[0], &oracle.prompt, 1, false),
+        &payload(&server.aliases[0], &oracle.prompt, 1, true),
+    )?;
+    json_completion(json, &server.aliases[0], &expected, oracle.prompt_tokens)?;
+    sse_completion(sse, &server.aliases[0], &expected, oracle.prompt_tokens)?;
+    let after = server.wait_health(|h| h["active_sessions"] == 0 && h["queued_requests"] == 0)?;
+    physical_accounting(&after)?;
+    if band_counter(&after, 2)? != band_counter(&before, 2)? + 3
+        || band_counter(&after, 4)? != band_counter(&before, 4)?
+        || band_counter(&after, 8)? != band_counter(&before, 8)?
+        || counter(&after, "gpu_fused_batches")? != counter(&before, "gpu_fused_batches")? + 3
+        || counter(&after, "gpu_fused_state_only_batches")?
+            != counter(&before, "gpu_fused_state_only_batches")? + 2
+        || counter(&after, "gpu_fused_greedy_batches")?
+            != counter(&before, "gpu_fused_greedy_batches")? + 1
+        || counter(&after, "gpu_fused_rows_completed")?
+            != counter(&before, "gpu_fused_rows_completed")? + 6
+        || counter(&after, "gpu_fused_state_only_rows")?
+            != counter(&before, "gpu_fused_state_only_rows")? + 4
+        || counter(&after, "state_cohort_publications")?
+            != counter(&before, "state_cohort_publications")? + 3
+        || counter(&after, "state_cohort_rows")? != counter(&before, "state_cohort_rows")? + 6
+    {
+        return Err(format!(
+            "temporal HTTP pair did not execute exact 4+4+2 B2 cohorts: before={before} after={after}"
+        ));
+    }
+    println!(
+        "P12_NATIVE_TEMPORAL_HTTP_PASS source={name} B=2 prompt_tokens=10 chunks=4,4,2 native_batches=3 state_only=2 terminal_greedy=1 root_publications=3 CPU_text_usage=exact final_active=0 health={after}"
+    );
+    Ok(())
+}
+
+#[test]
+#[ignore = "physical CUDA temporal-prefill HTTP; approved .8B source; serial"]
+fn original_qwen35_08b_native_temporal_prefill_http() -> Proof<()> {
+    qualify_temporal_prefill_http("qwen35-0.8b")
+}
+
 #[test]
 #[ignore = "release physical CUDA unequal-arrival metrics HTTP; approved .8B source; serial"]
 fn original_qwen35_08b_native_unequal_arrival_token_observations_http() -> Proof<()> {

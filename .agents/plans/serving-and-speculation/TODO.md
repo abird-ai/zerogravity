@@ -463,28 +463,33 @@ or a change to the active correctness/benchmark/27B order.
   compiler/test error, surviving child, cgroup OOM event or GPU residue; do not
   relabel those wrapper attempts as passes. This fair scheduling sub-slice is
   accepted from the complete constituent gate results. The broader item remains
-  partial. **15 Nov temporal implementation checkpoint:** a reusable native
-  B2/B4/B8 equal-chunk candidate chain now exists beneath the accepted one-token
-  fused body. It executes 2..32 host teacher tokens through private candidate
-  domains, keeps the original session roots unpublished until one final all-row
-  Ready, aggregates state/logit/readback/dispatch receipts, and publishes one
-  logical root advance for the whole chunk. The ordinary cohort completion path
-  understands multi-token state-only and terminal-greedy receipts, but the live
-  `NativeText` policy deliberately remains at one teacher token: no unqualified
-  production route was enabled. Final bytes pass production `qwen35-cuda` strict
-  clippy, CLI composition and the normal debug lib-test compile. Physical
-  temporal execution is **not yet established**. An optimized GPU-library build
-  completed before the final nonsemantic request-struct cleanup, while large
-  release test/HTTP harness builds
-  repeatedly lost their outer process while optimizing the `zerogravity`/CLI
-  test target with thin-LTO/codegen-units=1, with no Rust diagnostic and no GPU
-  work; one debug-assertions-off diagnostic build instead hit its explicit 120s
-  tool timeout. Do not infer a B2 pass from compilation. Next: expose the public
-  temporal primitive through a small explicit qualification target, prove 0.8B
-  B2 CPU/B1/all42 + abandoned-candidate rollback + terminal greedy physically,
-  then enable the 4-token production policy and run exact HTTP B2 before widening
-  to B4/B8/2B. Admit physical GPU overlap only after event/lease,
-  cancellation/unknown-completion and independent-root tests.
+  partial. The reusable native B2/B4/B8 equal-chunk candidate chain executes
+  2..32 host teacher tokens through private candidate domains, keeps original
+  session roots unpublished until one final all-row Ready, aggregates
+  state/logit/readback/dispatch receipts and publishes one logical root advance
+  for the whole chunk. **15 Nov 0.8B B2 functional physical acceptance:** a new
+  small explicit `zerogravity-gpu` qualifier (`temporal_prefill_b2`) avoids the
+  heavyweight test harness and physically proves abandoned 4-token candidate
+  rollback, one-root 4-token state publication, one-root 2-token terminal greedy,
+  CPU/B1/full-all42 exactness, exact producer and final reserved0.
+  A production integration bug was also exposed and fixed: prefill waves were
+  co-scheduled but `NativeText` inherited `cohort_eligible=false`, silently
+  forcing every prefill wave to singleton execution. Native prefill eligibility
+  is now explicit and pairwise compatibility binds the exact resident model,
+  hidden width and chunk length. The actual production CLI HTTP path physically
+  passes 0.8B B2 prompt10 as exactly chunks4+4+2 with CPU oracle ID264/text ` a`,
+  usage10/1, exactly3 B2 publications, 2 state-only +1 terminal greedy, zero
+  failures/refusals and final41MiB. The live policy therefore selects 4-token
+  prefill **only for native B2**; B4/B8 remain one-token and keep their existing
+  unequal-frontier policy. Final source passes strict production clippy, 18 wave
+  tests, 14 worker tests and CLI/qualifier composition. These physical proofs use
+  the debug Rust build profile, not canonical release packaging/performance.
+  Canonical thin-LTO/codegen-units=1 builds remain operationally unstable on L5
+  (external process loss without Rust diagnostic/OOM), so keep that gate open.
+  Next: confirm release-profile B2 when build tooling permits, then separately
+  qualify B4/B8 and 2B before widening their production prefill quantum. Admit
+  physical GPU overlap only after event/lease, cancellation/unknown-completion
+  and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

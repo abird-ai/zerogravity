@@ -72,19 +72,33 @@ and live TODOs are authoritative.
   cached builds without a compiler/test error, surviving child, cgroup OOM or GPU
   residue; those wrapper attempts remain incomplete. **Next executable P12-C
   work is actual multi-token temporal prefill in the existing completion path.**
-  The current local implementation provides the reusable
-  temporal primitive without selecting it in production: B2/B4/B8 equal chunks
-  of 2..32 host teacher tokens chain private candidate domains through the
-  accepted native body and expose only one final all-row Ready/root publication.
-  The ordinary cohort adapter understands whole-chunk state-only/terminal-greedy
-  receipts, but `NativeText` still advertises one-token prefill. Final bytes pass
-  strict production clippy/CLI composition and normal debug lib-test compilation.
-  No physical temporal inference result exists yet: repeated large release
-  qualification/HTTP harness builds lost their outer process during
-  thin-LTO/codegen-units=1 root/test optimization with no Rust diagnostic or GPU
-  work. **Next turn must physically qualify 0.8B B2 through a small explicit
-  diagnostic target before enabling the 4-token policy.** Then prove HTTP B2 and
-  widen B4/B8/2B. Paged hybrid state/COW and event-backed overlap remain open.
+  **0.8B B2 temporal prefill is now functionally/physically accepted in the
+  debug qualification scope.** The retained `zerogravity-gpu` example
+  `temporal_prefill_b2` exercises the public resident API without the large
+  facade/test harness. Its physical run proves a completed 4-token temporal
+  candidate can be abandoned with roots/all42 unchanged after the accepted B2
+  workspace is prewarmed, then commits a 4-token state-only chunk as one root
+  publication and a 2-token terminal-greedy chunk as one root publication with
+  CPU/B1/full-all42 exactness, exact packet/producer and final reserved0:
+  `P12_NATIVE_TEMPORAL_B2_PASS`. During HTTP qualification a real missing
+  production boundary was found: `NativeText` inherited the default
+  `cohort_eligible=false`, so 2-row prefill scheduler waves always fell to
+  singleton execution. The fix enables prefill cohorts only for exact native
+  owners and requires pairwise exact resident model/hidden-width/chunk
+  compatibility. The exact current B2 branch then passes the actual production
+  CLI HTTP path with prompt10 -> native chunks4+4+2, independent CPU oracle
+  ID264/text ` a`, usage10/1, exactly3 B2 publications (2 state-only +1 greedy),
+  zero failures/refusals and final41MiB: `P12_NATIVE_TEMPORAL_HTTP_PASS`.
+  Production `NativeText` now selects 4-token prefill **only for B2**.
+  B4/B8 retain their accepted one-token/unequal-frontier policy until separately
+  qualified. Strict production clippy, 18 wave tests, 14 worker tests, CLI/test
+  composition and the explicit qualifier compile pass. The physical runs used
+  the debug Rust profile; CUDA kernels/source/root semantics are real, but this
+  is not a canonical release-profile packaging/performance claim. Repeated
+  canonical thin-LTO/codegen-units=1 qualification builds have been externally
+  lost without Rust diagnostics/OOM. **Next: establish canonical release-profile
+  B2 when the host build survives, then widen temporal qualification to B4/B8 and
+  2B.** Paged hybrid state/COW and event-backed overlap remain separately open.
 - Earlier key implementation checkpoints include `f1ce532`
   (exact graph replay storage/access authority), `b0cf0b2`
   (`fix(cache): avoid duplicate Qwen snapshot hashing`), `134a571`

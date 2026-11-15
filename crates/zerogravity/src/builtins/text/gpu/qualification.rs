@@ -746,12 +746,16 @@ fn source_eos(fixture: &Fixture) {
         before.fused_greedy_batches + 1,
         "actual final prompt tokens did not execute the native model cohort"
     );
+    let prompt_batches = length.div_ceil(4);
     assert_eq!(
         after.fused_state_only_batches,
-        before.fused_state_only_batches + (length - 1) as u64,
-        "every teacher prefix must execute its state-only native cohort"
+        before.fused_state_only_batches + (prompt_batches - 1) as u64,
+        "every nonterminal temporal prompt chunk must execute one state-only native cohort"
     );
-    assert_eq!(after.fused_batches, before.fused_batches + length as u64);
+    assert_eq!(
+        after.fused_batches,
+        before.fused_batches + prompt_batches as u64
+    );
     assert_eq!(after.model_tokens, before.model_tokens + 2 * length as u64);
     let mut references = active
         .iter()
