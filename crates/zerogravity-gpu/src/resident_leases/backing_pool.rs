@@ -253,6 +253,16 @@ pub(crate) struct ResidentPoolSnapshot {
     pub(crate) idle_sets: usize,
     pub(crate) backing_bytes: usize,
 }
+#[derive(Clone, Copy, Debug, Default)]
+#[allow(
+    dead_code,
+    reason = "paged-state telemetry is consumed by the physical qualifier before production KV selection"
+)]
+pub(crate) struct ResidentPagePoolSnapshot {
+    pub(crate) allocated_pages: usize,
+    pub(crate) idle_pages: usize,
+    pub(crate) backing_bytes: usize,
+}
 /// Source-neutral bounded cohort; checkout never waits for another use to retire.
 pub(crate) struct ResidentPool {
     state: Mutex<PoolState>,
@@ -261,6 +271,12 @@ pub(crate) struct ResidentPool {
     bytes_per_set: usize,
     metadata: Arc<HostWorkspace>,
     service: Arc<ResidentService>,
+}
+/// Homogeneous one-plane page provider over the same charged backing/lease
+/// authority as `ResidentPool`. It owns no logical root or cache policy.
+pub(crate) struct ResidentPagePool {
+    pool: Arc<ResidentPool>,
+    page: ResidentPlaneLayout,
 }
 pub(super) struct PoolUse {
     planes: Option<PlaneSet>,
@@ -405,6 +421,73 @@ impl ResidentPool {
             allocated_sets: state.created,
             idle_sets: state.idle.len(),
             backing_bytes: state.created * self.bytes_per_set,
+        })
+    }
+}
+
+impl ResidentPagePool {
+    #[allow(
+        dead_code,
+        reason = "page-pool construction is selected by the next resident KV integration slice"
+    )]
+    pub(crate) fn metadata_bytes(max_pages: usize) -> Result<usize> {
+        ResidentPool::metadata_bytes(1, max_pages)
+    }
+
+    #[allow(
+        dead_code,
+        reason = "page-pool construction is selected by the next resident KV integration slice"
+    )]
+    pub(crate) fn prepare(
+        service: Arc<ResidentService>,
+        metadata: HostWorkspace,
+        page: ResidentPlaneLayout,
+        max_pages: usize,
+    ) -> Result<Arc<Self>> {
+        let pool = ResidentPool::prepare(service, metadata, &[page], max_pages)?;
+        Ok(Arc::new(Self { pool, page }))
+    }
+
+    pub(crate) fn page_bytes(&self) -> usize {
+        self.page.bytes
+    }
+
+    pub(crate) fn role(&self) -> BufferRole {
+        self.page.role
+    }
+
+    pub(crate) fn alignment(&self) -> usize {
+        self.page.alignment
+    }
+
+    /// Fresh logical page identity over a charged backing page. Reuse occurs
+    /// only after every clone/reader/Ready owner of the prior logical use drops.
+    pub(crate) fn checkout(self: &Arc<Self>) -> Result<ResidentLease> {
+        let mut leases = self.pool.checkout()?;
+        if leases.len() != 1 {
+            return Err(Error::State(
+                "resident page pool checkout must contain one plane".into(),
+            ));
+        }
+        let lease = leases.pop().expect("one resident page lease");
+        if lease.bytes() != self.page.bytes
+            || lease.role() != self.page.role
+            || lease.is_initialized()
+            || !Arc::ptr_eq(lease.service(), &self.pool.service)
+        {
+            return Err(Error::State(
+                "resident page pool returned incompatible logical page".into(),
+            ));
+        }
+        Ok(lease)
+    }
+
+    pub(crate) fn snapshot(&self) -> Result<ResidentPagePoolSnapshot> {
+        let snapshot = self.pool.snapshot()?;
+        Ok(ResidentPagePoolSnapshot {
+            allocated_pages: snapshot.allocated_sets,
+            idle_pages: snapshot.idle_sets,
+            backing_bytes: snapshot.backing_bytes,
         })
     }
 }

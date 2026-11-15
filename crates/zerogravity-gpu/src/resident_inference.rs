@@ -60,6 +60,11 @@ pub(crate) mod gdn_state;
     any(feature = "qualification", feature = "cuda-native")
 ))]
 mod graph;
+#[allow(
+    dead_code,
+    reason = "paged physical adapter is retained for the next resident KV integration slice"
+)]
+mod paged_state;
 
 #[cfg(all(
     test,
