@@ -20,17 +20,20 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation/qualification** checkpoint is
-  `12f784083f4057dcf36fd343e408d5a7ed482589`
-  (`test(cuda): qualify temporal B4/B8 prefill constituents`). It generalizes
-  the retained temporal qualifier across B2/B4/B8 and physically closes the
-  original0.8B B4/B8 native CUDA+CPU constituents without changing production
-  policy. Parent `1e0f4ebfc5b9650341814ad669d4101aea717623`
+  `36253481d5e26d27ffb577187b21c338a211beaf`
+  (`test(cuda): bound temporal qualifier host state`). Parent `12f7840`
+  generalized the retained temporal qualifier across B2/B4/B8; this follow-up
+  keeps full B1/CPU qualification at bounded host-state footprint by checking
+  each row against a short-lived oracle instead of retaining B8-wide all42
+  snapshots. Exact-current original0.8B B4 and B8 full-mode runs now close the
+  B1 cross-check in addition to the native CUDA+CPU constituent. Production
+  policy is still unchanged. Parent `1e0f4ebfc5b9650341814ad669d4101aea717623`
   (`feat(serving): enable qualified temporal B2 prefill`) remains the production
   B2 enablement: only B2 selects 4-token temporal prefill, while B4/B8 retain
-  their accepted one-token policy until B1+HTTP gates close. B2 production HTTP
-  still proves prompt10 executes as native chunks4+4+2 with three publications,
-  two state-only + one greedy, exact CPU text/usage, zero failures/refusals and
-  final41MiB. Parent `9dab004` added the reusable temporal candidate-chain
+  their accepted one-token policy until the remaining production gates close.
+  B2 production HTTP still proves prompt10 executes as native chunks4+4+2 with
+  three publications, two state-only + one greedy, exact CPU text/usage, zero
+  failures/refusals and final41MiB. Parent `9dab004` added the reusable temporal candidate-chain
   primitive; `7dea460`/`ba7e376` establish fair aged decode/prefill scheduling.
   Earlier `9d6613c`/`599cb28` graph selector/timing remain accepted, but the
   shrinking B2/B4/B8 graph gain does not justify public graph serving; ordinary
@@ -70,8 +73,8 @@ and live TODOs are authoritative.
   serving/lifecycle, acquisition and release/packaging blocks. Repeated attempts
   to keep the whole shell wrapper in one connector job disappeared during normal
   cached builds without a compiler/test error, surviving child, cgroup OOM or GPU
-  residue; those wrapper attempts remain incomplete. **Next executable P12-C
-  work is actual multi-token temporal prefill in the existing completion path.**
+  residue; those wrapper attempts remain incomplete. The following P12-C slice
+  is the actual multi-token temporal prefill work described below.
   **0.8B B2 temporal prefill is functionally/physically accepted in the
   debug qualification scope.** The retained `zerogravity-gpu` example is now the
   width-parameterized `temporal_prefill`: B2 still proves abandoned 4-token
@@ -80,26 +83,33 @@ and live TODOs are authoritative.
   production HTTP path still passes prompt10 -> native chunks4+4+2 with CPU
   ID264/text ` a`, usage10/1, exactly3 B2 publications (2 state-only +1 greedy),
   zero failures/refusals and final41MiB.
-  **15 Nov follow-up:** the same retained qualifier now isolates width-specific
-  CUDA work from the B1 oracle. Original0.8B B4 and B8 each physically pass the
-  native CUDA+CPU constituent: completed private 4-token chains can be abandoned
-  with roots/all42 unchanged, 4-token state and 2-token greedy chunks publish one
-  root each, every row matches CPU all42 state and greedy bits exactly, and final
+  **15 Nov follow-up:** the same retained qualifier isolates width-specific CUDA
+  work while full mode keeps B1 mandatory. Original0.8B B4 and B8 now each
+  physically pass full mode on the exact `3625348` source: completed private
+  4-token chains can be abandoned with roots/all42 unchanged; 4-token state and
+  2-token greedy chunks each publish one root; every native row matches CPU and
+  B1 all42 state plus greedy bits; packet producer lineage is exact; and final
   reservation returns to zero. B4 retained-band bytes were 1,230,916,660; B8
-  1,802,356,148. Earlier full B4 attempts disappeared during the first
-  width-independent B1 reference before any B4 root/workspace existed, with no
-  Rust diagnostic, OOM, live child or GPU residue; they remain incomplete, not
-  B4 failures. The qualifier therefore supports `--native-only` as an explicit
-  constituent while full mode keeps the B1 cross-check mandatory.
+  1,802,356,148. Earlier full B4/oracle attempts and one exact-current B4
+  confirmation disappeared before temporal work, with no Rust diagnostic, OOM,
+  live child or GPU residue; the bounded retry passed and the disappeared runs
+  remain incomplete, not failures. Two exact-current B2 qualifier confirmations
+  likewise disappeared just after session setup before temporal work; the
+  already-accepted B2 production/physical evidence is unchanged and those retries
+  are not new failures.
   Production `NativeText` still selects temporal4 **only for B2**: B4/B8 keep
-  their accepted one-token/unequal-frontier policy until the B1 constituent and
-  real production HTTP cells close. 2B remains unqualified. These physical
+  their accepted one-token/unequal-frontier policy until their real production
+  HTTP cells close. **2B temporal qualification is next and remains unqualified.**
+  Do not widen B4/B8 beforehand through `native_rows` alone, because that could
+  grant the 0.8B permit to an unqualified 2B route; either qualify the affected
+  2B cells first or make the promotion source-bound. These physical
   proofs use the debug Rust profile; canonical thin-LTO/codegen-units=1 B2 is
   still open after external build losses without Rust/OOM evidence. **Next:
-  close B4/B8 B1 + production HTTP independently, then widen only the accepted
-  widths; qualify 2B afterwards. Retry release-profile B2 when the build host
-  survives.** Paged hybrid state/COW and event-backed overlap remain separately
-  open. **Post-check L5 baseline watch:** after the accepted B8 process had exited
+  qualify 2B temporal independently, then close B4/B8 production HTTP and widen
+  only policies whose affected source/model cells are physically accepted. Retry
+  release-profile B2 when the build host survives.** Paged hybrid state/COW and
+  event-backed overlap remain separately open. **Post-check L5 baseline watch:**
+  after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
   `nvidia-smi` later reported ~1,785MiB/P0 instead of the initial 41MiB, while
   NVML/pmon exposed no process owner and the kernel log showed no Xid/OOM. A

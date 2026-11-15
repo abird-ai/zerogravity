@@ -474,19 +474,24 @@ or a change to the active correctness/benchmark/27B order.
   exact producer and final reserved0. The actual production CLI HTTP path passes
   prompt10 as chunks4+4+2 with CPU ID264/text ` a`, usage10/1, exactly3 B2
   publications, zero failures/refusals and final41MiB.
-  **15 Nov B4/B8 constituent progress:** B4 and B8 each separately pass the
-  width-specific native CUDA+CPU path in debug profile: private-chain abandonment
-  leaves original roots/all42 untouched; state4 and terminal2 each publish one
-  root; every native row matches CPU all42/greedy bits; final reserved0. Retained
-  band bytes are 1,230,916,660 (B4) and 1,802,356,148 (B8). Full B4 attempts
-  before this split disappeared during the first width-independent B1 reference,
-  before any B4 native root/workspace existed, with no Rust/OOM/residue evidence.
-  They remain incomplete, not failures. The qualifier therefore exposes
-  `--native-only` as an explicit constituent; full mode still requires B1.
+  **15 Nov B4/B8 full qualification progress:** signed `3625348` makes the
+  full qualifier host-state bounded by constructing CPU/B1 references row by row.
+  Original0.8B B4 and B8 each separately pass full mode on those exact bytes:
+  private-chain abandonment leaves original roots/all42 untouched; state4 and
+  terminal2 each publish one root; every native row matches CPU/B1 all42 and
+  greedy bits; producer lineage is exact; final reserved0. Retained band bytes
+  are 1,230,916,660 (B4) and 1,802,356,148 (B8). Earlier disappeared B4/oracle
+  runs and one exact-current pre-temporal B4 attempt remain incomplete, not
+  failures; the bounded retry passed. Two exact-current B2 qualifier retries also
+  disappeared after session setup before temporal work and do not supersede the
+  already accepted B2 production/physical result.
   The live policy stays 4-token **only for native B2**. B4/B8 remain one-token
-  until their B1 cross-check and actual production HTTP cells pass separately;
-  2B remains unqualified. Canonical release-profile B2 is also still open.
-  Next: close B4/B8 B1+HTTP and widen only the passing width, then qualify 2B.
+  until their actual production HTTP cells pass separately. **2B temporal is the
+  next independent qualification and remains unqualified.** Do not promote B4/B8
+  through `native_rows` alone before the affected 2B cells pass; any earlier
+  promotion would need explicit source-bound policy. Canonical release-profile B2
+  is also still open. Next: qualify 2B temporal, then close B4/B8 HTTP and widen
+  only policies whose affected source/model cells have their own physical pass.
   Admit physical GPU overlap only after event/lease, cancellation/unknown-
   completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
