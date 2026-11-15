@@ -20,15 +20,23 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation/qualification** checkpoint is
-  `8e6f14d3defc0aa2e542c26ffb9ccc7c736f1fcb`
-  (`feat(serving): enable qualified temporal B8 prefill`). The retained
-  width-parameterized qualifier fully passes original0.8B and2B B2/B4/B8 with
-  CPU/B1/all42, rollback/publication, greedy bits/producer and final reserved0.
-  Production HTTP now passes B4 **and B8** on both original sources as exact
-  chunks4+4+2 with three same-width cohorts/publications, mixed JSON/SSE CPU
-  text/usage exact and clean retirement. The retained2B B2 production HTTP cell
-  also passes. Production therefore selects temporal4 for B2/B4/B8; decode is
-  unchanged.
+  `0027c282fb28fcf846c141f032ea0e4e4fdee599`
+  (`feat(state): add paged COW block-table primitive`). This is deliberately a
+  model-neutral logical foundation only: immutable block tables carry exact
+  source/numerical/domain/layout compatibility plus page/unit geometry; full
+  pages may be shared, partial valid tails always COW before append, fresh-page
+  allocation is transactional with respect to the prior table, and copy/write
+  plans retain both endpoints until the existing physical owner accepts them.
+  It does **not** allocate GPU pages, synthesize Ready, publish roots, enable a
+  prefix cache or change serving policy. Eight focused tests, all178 core tests,
+  strict core clippy and `qwen35-cuda` composition are green.
+  Parent `8e6f14d3defc0aa2e542c26ffb9ccc7c736f1fcb`
+  (`feat(serving): enable qualified temporal B8 prefill`) remains the current
+  production temporal checkpoint. The retained width-parameterized qualifier
+  fully passes original0.8B and2B B2/B4/B8 with CPU/B1/all42,
+  rollback/publication, greedy bits/producer and final reserved0. Production
+  HTTP passes B4/B8 on both original sources and retained2B B2; B2/B4/B8 all
+  select temporal4 while decode remains unchanged.
   B2 production HTTP still proves prompt10 executes as native chunks4+4+2 with
   three publications, two state-only + one greedy, exact CPU text/usage, zero
   failures/refusals and final41MiB. Parent `9dab004` added the reusable temporal
@@ -110,8 +118,13 @@ and live TODOs are authoritative.
   still open after another heartbeat-supervised release attempt disappeared
   while compiling/linking `zerogravity-cli`, before the test ran and without a
   terminal child status, Rust diagnostic, OOM/Xid, live child or GPU residue.
-  Do not loop that unstable build. **Next executable P12-C work is paged hybrid
-  state allocation and complete-domain prefix/COW.** Event/lease-backed physical
+  Do not loop that unstable build. The first paged-state control primitive is
+  now `0027c28` above. **Next executable P12-C work is the physical page-pool
+  adapter:** compose the existing charged `ResidentPool`/`ResidentLease`
+  backing/generation/reader/quarantine authority with
+  `PagedBlockTable<ResidentLease>` for KV pages, while recurrent/conv domains
+  remain typed checkpoint state. Then close allocator/COW physical tests before
+  complete-domain prefix identity/intersection. Event/lease-backed physical
   overlap remains after those state gates and must not be pulled forward.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited

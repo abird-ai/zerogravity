@@ -87,6 +87,13 @@ The following extends existing owners; source-byte qualification is not inferenc
   recurrent/conv checkpoints. Pin encoded/captured/queued/in-flight readers;
   reclaim only after real completion, preserving cancellation/quarantine.
   Design and physical acceptance: [batching/paged state](../serving-and-speculation/BATCHING_AND_PAGED_STATE.md#paged-state-allocator--memory-plan).
+  Signed `0027c28` lands the logical-only shared block-table/COW planner:
+  exact source/numerical/domain/layout + semantic page/unit compatibility,
+  immutable full-page sharing, partial-tail COW, transactional allocation
+  refusal and copy/write owner pinning. It deliberately owns no device allocator
+  or Ready/root authority. Next bind existing `ResidentPool`/`ResidentLease`
+  physical backing/generation/quarantine to KV pages and close physical
+  allocator/COW tests; recurrent/conv domains remain typed checkpoints.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

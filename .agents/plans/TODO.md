@@ -64,9 +64,19 @@ not relabeled. Debug-profile evidence is real CUDA but not release packaging/
 performance. Canonical release B2 remains open: a fresh heartbeat-supervised
 thin-LTO attempt again disappeared during CLI compile/link before test execution,
 with no terminal child/Rust/OOM/Xid/GPU-residue evidence. Do not loop it.
-**Next: paged hybrid state allocator + complete-domain prefix reuse/COW.**
-Event/lease-backed physical overlap remains after those state gates; both remain
-open.
+Signed `0027c28` starts the paged-state phase with a **logical-only,
+model-neutral immutable block-table/COW primitive** in `zerogravity-core`.
+Compatibility includes bound source plus numerical/domain/layout identities and
+page geometry includes an explicit semantic append unit. Full pages share
+immutably; partial tails COW; allocation refusal leaves the prior table intact;
+copy/write plans pin their owners. Eight focused tests, all178 core tests, strict
+core clippy and `qwen35-cuda` composition pass. This is not a GPU page-pool,
+prefix-cache, Ready or serving permit. **Next: adapt the existing charged
+`ResidentPool`/`ResidentLease` authority into finite KV pages and bind
+`PagedBlockTable<ResidentLease>`; preserve recurrent/conv typed checkpoints,
+then close physical allocator/COW pressure/reader/quarantine tests.** Complete-
+domain prefix identity/intersection follows that. Event/lease-backed physical
+overlap remains after those state gates.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

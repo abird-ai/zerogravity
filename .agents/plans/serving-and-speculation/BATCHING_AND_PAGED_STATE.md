@@ -164,8 +164,32 @@ These physical cells use the debug Rust profile; canonical release-profile B2 is
 still open after a fresh heartbeat-supervised thin-LTO build disappeared during
 CLI compile/link before test execution, without terminal child/Rust/OOM/Xid/
 residue evidence. Do not loop that unstable build. Temporal/fair serving is now
-the accepted foundation. **Next: paged state allocation and complete-domain
-prefix reuse/COW.** Event/lease-backed physical overlap remains later and open.
+the accepted foundation.
+
+**15 Nov paged-state control foundation:** signed `0027c28` adds a
+model-neutral `zerogravity-core::paged_state` primitive without selecting it in
+resident execution. `PageCompatibility` requires the bound source plus
+numerical/domain/layout identities; `PageGeometry` requires a positive page
+extent that is an exact multiple of the caller's semantic append unit, so a KV
+adapter cannot split one token row accidentally. `PagedBlockTable` is immutable:
+full pages share their existing owner; a partial valid tail always COWs before
+append; every fresh page is obtained before candidate-table mutation; allocation
+failure therefore rolls back through the caller handle's RAII; and
+`PageAppendPlan` retains source/target/write owners until the existing physical
+copy/write authority accepts them. Prefix truncation shares only compatible
+immutable pages and preserves a valid-tail extent. Eight focused tests cover
+compatibility, geometry, full/tail pages, partial-prefix COW, exhaustion
+atomicity and owner pinning; all178 core tests, strict core clippy and
+`qwen35-cuda` composition pass.
+
+This does **not** close Allocator/COW below: there is no physical page pool,
+`ResidentLease` adapter, block-table kernel, complete-domain prefix cache,
+Ready/root publication change or serving capability. **Next: use the existing
+charged `ResidentPool`/`ResidentLease` backing generation and
+reader/quarantine authority as the finite physical KV page provider, bind it to
+`PagedBlockTable<ResidentLease>`, keep recurrent/conv state as typed
+checkpoint domains, and qualify pressure/readers/reuse/unknown completion before
+prefix identity/intersection.** Event/lease-backed physical overlap remains later.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve
