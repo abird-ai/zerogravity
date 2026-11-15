@@ -101,7 +101,13 @@ The following extends existing owners; source-byte qualification is not inferenc
   append H2D ranges physically pass page2048/unit512 with valid[2048,512],
   immutable source, zero inactive tail and complete retirement. Model KV
   block-table lowering remains open; recurrent/conv domains remain typed
-  contiguous checkpoints.
+  contiguous checkpoints. Signed `3ac2059` adds a typed paired K/V paged-domain
+  representation and bounded gather-to-contiguous adapter. RTX3060 frontiers3/4/5
+  around a four-token page match exact contiguous K/V bytes under a four-page
+  peak cap, including boundary COW, full-page sharing/backing reuse, immutable
+  parents, zero tails, capacity refusal and final release. It is not yet selected
+  by `ResidentSession::Domain`; session integration and full-model parity remain
+  the next allocator/COW gate.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

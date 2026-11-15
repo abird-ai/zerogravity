@@ -488,21 +488,25 @@ or a change to the active correctness/benchmark/27B order.
   release-profile B2 remains open after another heartbeat-supervised thin-LTO
   build disappeared during CLI compile/link before the test ran, without terminal
   child/Rust/OOM/Xid/residue evidence; do not loop it.
-  **Paged-state phase:** `0027c28` is the logical block-table/COW planner and
-  `54340a6` the finite physical resident page owner. Signed `1eb6e0f` adds
-  actual CUDA materialization under one original `ResidentSubmission`: deduped
-  source Read/target Write leases, zeroed fresh pages, partial-tail device copy,
-  append H2D writes, and existing completion/initialization authority. Physical
-  exact pass is page2048/unit512, first_valid1536, copy1536, append1024, final
-  valid[2048,512], source immutable, inactive tail zero and all pages retired.
-  Pressure/reader/submitted-unknown regression remains green with 3-page cap and
-  2 quarantined handles retained after diagnostic sync. Production
-  `qwen35-cuda` composition and strict production clippy pass. No model KV
-  lowering, Ready/root change, prefix identity or serving policy is enabled.
-  **Next: bind `StateLayout::Kv` to paged tables while recurrent/conv remain
-  typed contiguous checkpoints; use bounded gather-to-contiguous KV
-  append/read/attention for first correctness, then page-boundary/full-state
-  parity before direct paged kernels or prefix caching.**
+  **Paged-state phase:** `0027c28`/`54340a6`/`1eb6e0f` establish the logical
+  table, finite resident page ownership and actual CUDA COW materialization.
+  Signed `3ac2059` adds a typed `StateLayout::Kv` page representation plus
+  bounded gather-to-contiguous adapter without selecting it in sessions. K/V
+  tables have distinct compatibility identities and paired frontiers. Final-byte
+  RTX3060 page-boundary proof uses BF16 row512/page4 and a 4-page cap:
+  frontiers3/4/5 gather byte-exact to contiguous (dispatches2/2/4), 3->4 performs
+  two COW copies, 4->5 shares full first pages/reuses backing, prior state is
+  immutable, inactive tails zero, capacity refusal and final retirement pass.
+  Lower materialization and submitted-unknown quarantine cells remain green;
+  production `qwen35-cuda` composition and strict clippy pass. The implementation
+  also separates pre-submit fresh-target validation from post-Ready candidate
+  validation, a lifecycle bug found by the first physical boundary attempt.
+  No canonical session-domain, Ready/root, prefix identity or serving policy
+  change is enabled. **Next: make paged KV the canonical KV `Domain`, gather
+  prior pages into bounded contiguous staging for the unchanged ordinary
+  append/attention ABI, then materialize the resulting contiguous candidate into
+  private pages before existing atomic root publication. Qualify continued
+  page-boundary/multi-page full-state parity before direct paged kernels.**
   Admit physical GPU overlap only after event/lease, cancellation/unknown-
   completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine

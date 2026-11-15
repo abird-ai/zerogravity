@@ -64,25 +64,33 @@ not relabeled. Debug-profile evidence is real CUDA but not release packaging/
 performance. Canonical release B2 remains open: a fresh heartbeat-supervised
 thin-LTO attempt again disappeared during CLI compile/link before test execution,
 with no terminal child/Rust/OOM/Xid/GPU-residue evidence. Do not loop it.
-Signed `0027c28` provides the immutable block-table/COW planner and `54340a6`
-the finite physical `ResidentPagePool` owner. Signed `1eb6e0f` now closes the
-first **actual COW materialization** cell: candidate+plan are one object;
-committed-tail Reads/fresh-page Writes are deduplicated into the original
-`ResidentSubmission`; fresh pages are zeroed, the partial tail is copied by the
-shared runtime word transport, and append ranges are overlaid by H2D writes.
-RTX3060 exact pass: page2048/unit512, first_valid1536, copy1536, append1024,
-final valid[2048,512], source immutable, inactive tail zero, all3 pages retired.
-The physical pressure/reader/unknown regression also still passes with 3-page
-cap, atomic refusal and 2 quarantined handles retained after diagnostic sync.
-Production `qwen35-cuda` composition and strict production clippy pass. The
-first materialization run had already passed byte/COW checks but failed final
-retirement because the qualifier retained its own access/readback lease clones;
-dropping those diagnostic owners fixed the test without changing production
-ownership semantics. Model KV/block-table lowering, Ready/root publication and
-prefix caching remain unimplemented. **Next: bind `StateLayout::Kv` to paged
-tables, keep recurrent/conv typed contiguous, and adapt KV append/read/attention
-through a bounded gather-to-contiguous correctness route before any direct paged
-kernel. Qualify page-boundary/full-state continuation against contiguous.**
+Signed `0027c28`, `54340a6` and `1eb6e0f` provide the immutable block-table
+planner, finite resident page owner and actual COW materializer. Signed
+`3ac2059` adds the first **typed paged-KV representation + bounded gather**
+without selecting it in sessions. `ResidentPagedKvDomain` accepts only checked
+`StateLayout::Kv` requirements, gives K/V distinct source/profile/domain/schema
+compatibility identities, pairs their append transactions, and gathers the exact
+committed frontier into fresh contiguous K/V staging under the original
+`ResidentSubmission`. Final-byte RTX3060 proof uses BF16 row512/page4 with a
+strict 4-page cap: frontiers3/4/5 gather byte-exact with dispatches2/2/4; 3->4
+does two COW copies; 4->5 shares the full first pages and reuses retired backing;
+prior snapshots are immutable; inactive tails zero; capacity refusal and final
+retirement pass. Lower COW materialization and unknown-completion regression
+cells remain green; production `qwen35-cuda` composition and strict clippy pass.
+The first boundary run exposed post-Ready validation incorrectly reusing the
+pre-submit uninitialized-target check; those lifecycle checks are now separated.
+The next run proved data/gather correctness but showed only4 physical pages were
+created because retired pages were reused; the qualifier was tightened from a
+loose6-page ceiling to the actual4-page peak and passed. During linking,
+`target/debug/incremental` (about29GiB) exhausted the filesystem; only that
+disposable Rust build cache was removed, taking free space from about3.9GiB to
+24GiB. One later exact relink wrapper disappeared without a compiler diagnostic;
+the bounded warmed retry linked and the final-current physical result passed.
+Canonical `ResidentSession::Domain` still uses contiguous `StateBuffers::Kv`.
+**Next: integrate paged KV as the canonical KV domain, gather prior pages into
+bounded contiguous staging for the unchanged attention ABI, and materialize the
+contiguous candidate back into private pages before atomic root publication.
+Qualify continued full-state page-boundary/multi-page parity.**
 Complete-domain prefix identity/intersection follows that.
 Event/lease-backed physical overlap remains after those state gates.
 

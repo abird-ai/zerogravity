@@ -225,13 +225,58 @@ reader/submitted-unknown physical cell also passes unchanged.
 Allocator/COW is still **partially open at model composition**: the page owner and
 payload COW materializer are accepted, but `StateLayout::Kv`/attention still
 use contiguous `StateBuffers::Kv` and no paged attention/prefix cache is
-selected. **Next: introduce paged KV domain representation while keeping Vector
-recurrent/conv state contiguous; route append/read through a bounded
-gather-to-contiguous correctness adapter, then qualify
-page_size-1/page_size/page_size+1 and multi-page full-state continuation against
-the unchanged contiguous reference. Only then consider direct block-table
-attention and complete-domain prefix identity/intersection.** Event/lease-backed
-physical overlap remains later.
+selected.
+
+**15 Nov typed paged-KV/gather follow-up:** signed `3ac2059` adds
+`ResidentPagedKvDomain`, constructed only from a checked
+`StateRequirement { StateLayout::Kv, .. }`. It preserves the model-declared
+slab/capacity/physical type, binds page size to an integer token-row count,
+requires row/page allocator alignment, gives key and value tables distinct
+source/numerical/domain/schema compatibility identities, and keeps their logical
+frontiers paired. `ResidentPagedKvAppend` composes the already accepted
+candidate/COW materializers; the gather adapter takes initialized page Reads and
+fresh exact-size contiguous K/V staging Writes in one original
+`ResidentSubmission`, zeroes staging, then copies each valid page range in
+logical order with the reusable runtime word transport. It is intentionally a
+correctness adapter: copies/dispatches are observable and it is not a direct
+paged-attention claim.
+
+The retained RTX3060 boundary qualifier uses BF16 row_bytes512, four tokens per
+2048-byte page, capacity7 and a strict four-page physical pool. It appends/gathers
+frontiers3 (=page_size-1),4 (=page_size),5 (=page_size+1). Exact contiguous K/V
+parity passes at all three frontiers with gather dispatches2/2/4. The3->4
+transition makes two COW copies (K+V), while4->5 shares the full first K/V pages
+and reuses the two retired physical backings rather than growing the pool. Both
+retained prior domains remain byte-exact after child appends, inactive staging/
+page tails stay zero, capacity overflow refuses and all four pages retire.
+
+Two useful fail-closed observations are retained: (1) the first physical run
+found that post-Ready `into_candidate` was incorrectly going through the
+pre-submit “target must be uninitialized” check; plan identity and freshness are
+now separate, so submit requires fresh targets and publication requires exact
+initialized targets. (2) the next run passed data/gather checks but the test
+expected six allocated pages; actual safe reuse kept the peak at four, so the
+physical cap was tightened to four and the final-current run passed. A separate
+link attempt hit ENOSPC because generated `target/debug/incremental` had grown
+to about29GiB; only that disposable build cache was deleted (free space recovered
+from about3.9GiB to24GiB). One later exact relink wrapper disappeared during
+compile without a diagnostic; a single warmed retry completed and the exact
+binary passed. Lower COW materialization and pressure/reader/submitted-unknown
+tests remain green, as do production `qwen35-cuda` composition and strict
+production clippy.
+
+Allocator/COW remains **partially open at session/model composition**:
+`ResidentSession::Domain` still owns contiguous `StateBuffers::Kv`; the new
+paged representation is not canonical and no root/serving policy changed.
+**Next: integrate `ResidentPagedKvDomain` into KV `Domain` while Vector
+recurrent/conv state stays contiguous. For the first end-to-end route, gather
+committed pages into bounded contiguous prior staging, execute the unchanged
+ordinary CUDA KV append/attention path into contiguous candidate staging, then
+materialize/scatter that candidate into private pages before the existing
+Ready/atomic root swap. Qualify continued page_size-1/page_size/page_size+1 and
+multi-page full-state parity before direct block-table attention or
+complete-domain prefix identity/intersection.** Event/lease-backed physical
+overlap remains later.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve
