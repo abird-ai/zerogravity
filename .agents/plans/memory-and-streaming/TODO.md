@@ -96,8 +96,12 @@ The following extends existing owners; source-byte qualification is not inferenc
   backing/generation/event/quarantine ownership. The CUDA physical qualifier
   passes finite pressure, fresh reuse generation, fork/read pinning, completed
   GPU readback reuse and submitted-unknown fencing/quarantine that diagnostic
-  sync cannot reclaim. Actual COW payload copy and model KV block-table lowering
-  remain open; recurrent/conv domains remain typed checkpoints.
+  sync cannot reclaim. Signed `1eb6e0f` adds actual COW materialization under
+  those original leases/events: fresh-page zero, partial-tail device copy and
+  append H2D ranges physically pass page2048/unit512 with valid[2048,512],
+  immutable source, zero inactive tail and complete retirement. Model KV
+  block-table lowering remains open; recurrent/conv domains remain typed
+  contiguous checkpoints.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

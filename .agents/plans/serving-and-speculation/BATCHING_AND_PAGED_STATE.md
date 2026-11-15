@@ -199,14 +199,39 @@ not a payload-COW numerical pass.
 
 Allocator/COW below therefore remains **partially open**: physical page
 allocation/reuse/pressure/readers/unknown-completion are accepted, but the actual
-partial-tail copy/write has not yet executed, model KV does not yet use block
-tables, and no paged attention/prefix cache is selected. **Next: materialize the
-`PageAppendPlan` copy/write under original leases/events and lower
-`StateLayout::Kv` through paged tables while Vector recurrent/conv domains keep
-their typed checkpoint path. Qualify page_size-1/page_size/page_size+1 and
-multi-page full-state continuation against the contiguous reference before
-complete-domain prefix identity/intersection.** Event/lease-backed physical
-overlap remains later.
+partial-tail copy/write was still open at `54340a6`.
+
+**15 Nov COW materialization follow-up:** signed `1eb6e0f` binds the private
+candidate and `PageAppendPlan` together so a foreign plan cannot be mixed with
+another table. The adapter derives one deduplicated original-flight access set:
+the committed partial tail is an initialized Read and every fresh page is a
+Write. CUDA materialization first zeroes each fresh page (correctness-first
+inactive-tail policy), then uses the existing runtime word transport for the
+partial-tail device copy and overlays host append bytes into the planned ranges.
+No new completion/Ready/root authority is introduced; the existing
+`ResidentSubmission` owns all accesses and the existing completion path marks
+the fresh pages initialized only after physical readback in the qualifier.
+
+RTX3060 physical exactness passes with page_bytes2048/unit_bytes512:
+first append produces valid1536 + zero tail; second append copies the immutable
+1536-byte source tail, appends1024 across that COW page and one new page, yields
+valid extents[2048,512], leaves the old page byte-exact unchanged, keeps the new
+inactive tail zero and retires all3 pages. The first attempt passed all
+copy/write/source checks but its final idle assertion correctly caught retained
+qualifier-owned access/readback clones; those diagnostic owners were dropped at
+their completion points and the exact rerun passed. The previous pressure/
+reader/submitted-unknown physical cell also passes unchanged.
+
+Allocator/COW is still **partially open at model composition**: the page owner and
+payload COW materializer are accepted, but `StateLayout::Kv`/attention still
+use contiguous `StateBuffers::Kv` and no paged attention/prefix cache is
+selected. **Next: introduce paged KV domain representation while keeping Vector
+recurrent/conv state contiguous; route append/read through a bounded
+gather-to-contiguous correctness adapter, then qualify
+page_size-1/page_size/page_size+1 and multi-page full-state continuation against
+the unchanged contiguous reference. Only then consider direct block-table
+attention and complete-domain prefix identity/intersection.** Event/lease-backed
+physical overlap remains later.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve

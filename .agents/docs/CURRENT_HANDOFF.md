@@ -20,23 +20,25 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation/qualification** checkpoint is
-  `54340a6d848ff5f19bb19333f550b1c057328881`
-  (`feat(state): bind paged tables to resident pages`). Parent `0027c28`
-  remains the model-neutral immutable block-table/COW planner. `54340a6` binds
-  it to a finite homogeneous `ResidentPagePool` over the existing charged
-  `ResidentPool`/`ResidentLease` backing, so paging reuses the original
-  physical allocation generation, logical lease, reader, completion and
-  quarantine authority rather than inventing a second allocator. The retained
-  physical CUDA qualifier passes with page_bytes=2048/max_pages=3: partial-tail
-  COW planning uses fresh logical generations, finite pressure refuses without
-  mutating the prior table, cloned/in-flight readers pin pages, completed GPU
-  readback returns pages to idle, and a real unsynchronized H2D under an armed
-  Write which is abandoned fences the service and keeps one page non-reusable
-  (2 quarantined handles); diagnostic sync does not clear that fence/quarantine.
-  Production `qwen35-cuda` composition and strict production clippy are green.
-  This still does **not** execute the COW payload copy, lower model KV through a
-  block table, synthesize Ready/publish roots, enable prefix reuse or change
-  serving policy.
+  `1eb6e0f669f7bf6f31e4a0b7cdbdffa14ef73b7c`
+  (`feat(state): materialize paged COW appends`). Parents `0027c28` and
+  `54340a6` remain the logical block-table planner and finite
+  `ResidentPagePool` owner respectively. `1eb6e0f` binds each private
+  candidate table to its exact `PageAppendPlan`, derives one deduplicated
+  original-flight access set (committed tail Read + fresh target Writes), clears
+  each fresh page first, runs the COW prefix copy with the reusable CUDA runtime
+  word transport, and overlays append H2D ranges. It creates no Ready/root
+  authority; the existing `ResidentSubmission::complete_with_readback` path
+  establishes physical completion and initialization in the qualifier.
+  Physical RTX3060 acceptance is exact at page_bytes=2048/unit_bytes=512:
+  first_valid1536, COW copy1536, append1024, final valid extents[2048,512],
+  immutable source byte-exact, inactive tail zero and all3 pages retired.
+  The prior pressure/reader/submitted-unknown qualifier still passes unchanged
+  (3-page cap, fresh generations, atomic exhaustion refusal, service fence,
+  2 quarantined handles retained across diagnostic sync). Production
+  `qwen35-cuda` composition and strict production clippy are green.
+  This still does **not** lower model `StateLayout::Kv` through block tables,
+  change Ready/root publication, enable prefix reuse or change serving policy.
   Parent `8e6f14d3defc0aa2e542c26ffb9ccc7c736f1fcb`
   (`feat(serving): enable qualified temporal B8 prefill`) remains the current
   production temporal checkpoint. The retained width-parameterized qualifier
@@ -125,13 +127,14 @@ and live TODOs are authoritative.
   still open after another heartbeat-supervised release attempt disappeared
   while compiling/linking `zerogravity-cli`, before the test ran and without a
   terminal child status, Rust diagnostic, OOM/Xid, live child or GPU residue.
-  Do not loop that unstable build. Paged-state control/physical ownership is now
-  `0027c28` + `54340a6` above. **Next executable P12-C work is actual paged KV
-  materialization:** execute the retained partial-tail copy/write plan under the
-  original device leases/events, bind `StateLayout::Kv` to paged block tables
-  while recurrent/conv vectors remain typed checkpoint state, and qualify
-  page-boundary/full-state continuations against the contiguous path. Only after
-  that should complete-domain prefix identity/intersection begin. Event/lease-backed physical
+  Do not loop that unstable build. Paged-state control/ownership/materialization
+  is now `0027c28` + `54340a6` + `1eb6e0f` above. **Next executable P12-C
+  work is model KV lowering:** represent `StateLayout::Kv` with paged block
+  tables while recurrent/conv vectors remain typed contiguous checkpoint state,
+  and adapt KV append/read/attention through a bounded gather-to-contiguous
+  correctness route first. Qualify page_size-1/page_size/page_size+1 and
+  multi-page full-state continuation against the unchanged contiguous path before
+  a direct paged kernel or complete-domain prefix identity/intersection. Event/lease-backed physical
   overlap remains after those state gates and must not be pulled forward.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited

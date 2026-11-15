@@ -488,19 +488,21 @@ or a change to the active correctness/benchmark/27B order.
   release-profile B2 remains open after another heartbeat-supervised thin-LTO
   build disappeared during CLI compile/link before the test ran, without terminal
   child/Rust/OOM/Xid/residue evidence; do not loop it.
-  **Paged-state phase:** signed `0027c28` provides the model-neutral immutable
-  block-table/COW planner. Signed `54340a6` binds it to a finite physical
-  `ResidentPagePool` implemented over the existing charged
-  `ResidentPool`/`ResidentLease` authority. The physical CUDA qualifier passes
-  page_bytes2048/max_pages3: fresh generations, partial-tail COW planning,
-  atomic pressure refusal, fork/reader pinning, completed GPU readback reuse and
-  an actual unsynchronized H2D whose abandoned armed Write fences/quarantines;
-  diagnostic sync does not reclaim it. Production `qwen35-cuda` composition
-  and strict production clippy pass. No model KV lowering, payload COW copy,
-  Ready/root publication, prefix identity or serving policy is enabled.
-  **Next: materialize COW copy/write under original events and bind
-  `StateLayout::Kv` to paged tables; recurrent/conv remain typed checkpoints.
-  Then qualify page-boundary/full-state continuation before prefix caching.**
+  **Paged-state phase:** `0027c28` is the logical block-table/COW planner and
+  `54340a6` the finite physical resident page owner. Signed `1eb6e0f` adds
+  actual CUDA materialization under one original `ResidentSubmission`: deduped
+  source Read/target Write leases, zeroed fresh pages, partial-tail device copy,
+  append H2D writes, and existing completion/initialization authority. Physical
+  exact pass is page2048/unit512, first_valid1536, copy1536, append1024, final
+  valid[2048,512], source immutable, inactive tail zero and all pages retired.
+  Pressure/reader/submitted-unknown regression remains green with 3-page cap and
+  2 quarantined handles retained after diagnostic sync. Production
+  `qwen35-cuda` composition and strict production clippy pass. No model KV
+  lowering, Ready/root change, prefix identity or serving policy is enabled.
+  **Next: bind `StateLayout::Kv` to paged tables while recurrent/conv remain
+  typed contiguous checkpoints; use bounded gather-to-contiguous KV
+  append/read/attention for first correctness, then page-boundary/full-state
+  parity before direct paged kernels or prefix caching.**
   Admit physical GPU overlap only after event/lease, cancellation/unknown-
   completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine

@@ -64,22 +64,26 @@ not relabeled. Debug-profile evidence is real CUDA but not release packaging/
 performance. Canonical release B2 remains open: a fresh heartbeat-supervised
 thin-LTO attempt again disappeared during CLI compile/link before test execution,
 with no terminal child/Rust/OOM/Xid/GPU-residue evidence. Do not loop it.
-Signed `0027c28` starts the paged-state phase with the logical immutable
-block-table/COW planner. Signed `54340a6` adds the first **physical page-owner
-adapter** without changing model execution: finite homogeneous pages use the
-existing charged `ResidentPool`/`ResidentLease` backing/generation/event/
-quarantine authority and bind directly to `PagedBlockTable<ResidentLease>`.
-The physical CUDA ownership qualifier passes page_bytes2048/max_pages3 with
-fresh logical generations, atomic pressure refusal, cloned and in-flight reader
-pinning, completed readback reuse, and an actually submitted unsynchronized H2D
-whose abandoned flight fences/quarantines and stays unreclaimed after diagnostic
-sync (2 quarantined handles). Production `qwen35-cuda` composition and strict
-production clippy pass. Payload COW copying, model KV/block-table lowering,
-Ready/root publication and prefix caching remain unimplemented. **Next: execute
-the COW copy/write plan under original leases/events and bind `StateLayout::Kv`
-to paged tables while recurrent/conv stays typed contiguous checkpoint state;
-then qualify page boundaries/full-state continuation against the contiguous
-reference.** Complete-domain prefix identity/intersection follows that.
+Signed `0027c28` provides the immutable block-table/COW planner and `54340a6`
+the finite physical `ResidentPagePool` owner. Signed `1eb6e0f` now closes the
+first **actual COW materialization** cell: candidate+plan are one object;
+committed-tail Reads/fresh-page Writes are deduplicated into the original
+`ResidentSubmission`; fresh pages are zeroed, the partial tail is copied by the
+shared runtime word transport, and append ranges are overlaid by H2D writes.
+RTX3060 exact pass: page2048/unit512, first_valid1536, copy1536, append1024,
+final valid[2048,512], source immutable, inactive tail zero, all3 pages retired.
+The physical pressure/reader/unknown regression also still passes with 3-page
+cap, atomic refusal and 2 quarantined handles retained after diagnostic sync.
+Production `qwen35-cuda` composition and strict production clippy pass. The
+first materialization run had already passed byte/COW checks but failed final
+retirement because the qualifier retained its own access/readback lease clones;
+dropping those diagnostic owners fixed the test without changing production
+ownership semantics. Model KV/block-table lowering, Ready/root publication and
+prefix caching remain unimplemented. **Next: bind `StateLayout::Kv` to paged
+tables, keep recurrent/conv typed contiguous, and adapt KV append/read/attention
+through a bounded gather-to-contiguous correctness route before any direct paged
+kernel. Qualify page-boundary/full-state continuation against contiguous.**
+Complete-domain prefix identity/intersection follows that.
 Event/lease-backed physical overlap remains after those state gates.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
