@@ -132,9 +132,15 @@ The following extends existing owners; source-byte qualification is not inferenc
   verified-source installer. Physical4-vector-root +1-staging +24-page maximum
   equals the old67584-byte envelope exactly, reuses all idle backing and retires
   to resident0. Initial hybrid roots are zeroed Vector + empty paged KV; candidate
-  allocation still refuses without the current root. Next wire the current-root
-  candidate/staging one-flight path, then select it for ordinary source-call
-  sessions. page_tokens remains explicit, not a production default.
+  allocation still refuses without the current root. Signed `b9b04aa` wires
+  current-root-aware candidate execution: Vector candidate + one staging set +
+  per-KV paged append under one exact submission, gather before the ordinary body,
+  scatter after, Ready only for Vector/fresh-COW outputs and paged Domain creation
+  after completion. Physical one-Vector/two-KV base3->4 is exact with gather4/
+  scatter8, five Ready outputs, exact continuation/tails and final resident0.
+  Next select hybrid pools only through an explicit source-call page policy and
+  qualify real0.8B/2B B1 page boundaries/faults before native batches/HTTP.
+  page_tokens remains explicit, not a production default.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

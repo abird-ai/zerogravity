@@ -20,28 +20,38 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation/qualification** checkpoint is
-  `cb57e1d8bd4d33b530c4efc771e19450df1ef55e`
-  (`feat(state): construct hybrid paged state pools`). Parent `93468b1`
-  remains the accepted snapshot/restore/inherited-Ready semantics; parents
-  through `ef9e4d4` remain the COW/gather-scatter/KvInPlace substrate.
-  `cb57e1d` turns the pure hybrid inventory plan into real pool objects:
-  `PooledStateStorage` is explicitly Contiguous or Hybrid; the hybrid owner
-  retains one Vector `ResidentPool`, one full-K/V staging `ResidentPool` and
-  one `ResidentPagePool`. The source-owned installer reserves separate metadata
-  workspaces from the original `VerifiedTensorSource` and constructs all three
-  pools from the accepted byte plan. Initial hybrid roots are zeroed
-  Conv/Recurrent planes plus empty canonical paged KV domains; uninitialized
-  candidate allocation still refuses until it has the current paged root.
-  Production page compatibility no longer uses qualifier constants:
-  `empty_for_contract` maps `SourceNumericalContract` to explicit fixed tags
-  and uses checked versioned bit-packing for physical type/slab/capacity; page
-  geometry remains a separate compatibility component.
-  RTX3060 physical acceptance forces4 vector sets +1 complete staging set +24
-  page backings resident simultaneously and observes exactly the old
-  67,584-byte root envelope, then full idle reuse and final resident_bytes0:
-  `P12_HYBRID_POOL_PASS ... simultaneous_exact=true ... final_resident_bytes=0`.
-  The exact-current seven physical pool/paging/in-place cells, production
-  `qwen35-cuda` composition and strict clippy are green.
+  `b9b04aafd9d10b0325ec5daac45cb3f6be8fedf0`
+  (`feat(state): execute hybrid paged candidates`). Parent `cb57e1d` remains
+  the physical vector/staging/page pool substrate; `93468b1` remains the
+  snapshot/restore/inherited-Ready authority and parents through `ef9e4d4`
+  remain the COW/gather-scatter/KvInPlace primitives.
+  `b9b04aa` adds a current-root-aware `HybridCandidateBundle`: one Vector
+  candidate set, one staging-set checkout and one private
+  `ResidentPagedKvAppend` per KV domain. It builds one exact-identity
+  deduplicated flight containing current Vector/page Reads, Vector/staging Writes
+  and fresh/COW page Writes. Ordinary CUDA gathers paged KV before the unchanged
+  source program, binds those staging buffers as `KvInPlace`, scatters appended
+  rows after the model body, and promotes only Vector candidates plus fresh/COW
+  page outputs. Paged appends remain private plans until physical completion;
+  only then are they converted to canonical paged `Domain`s.
+  Ready output ordering is now explicitly aligned with
+  `canonical_write_outputs`: per-plane fresh/COW page outputs use deterministic
+  lease-ID ordering, while immutable inherited pages remain absent from Ready.
+  RTX3060 physical acceptance with one BF16 Vector domain + two Qwen KV domains
+  proves base3->4 in one flight:
+  `P12_HYBRID_CANDIDATE_PASS base=3 rows=1 kv_domains=2
+  gather_dispatches=4 scatter_dispatches=8 ready_outputs=5
+  canonical_ready_order=true paged_frontier=4 vector_ready=true
+  continuation_exact=true inactive_tail_zero=true
+  old_root_budget_bytes=135168 final_resident_bytes=0`.
+  The first two physical attempts exposed qualifier-owner lifetime mistakes only:
+  one retained access vector pinned the sole staging checkout, then one retained
+  canonical comparison vector pinned output leases. Releasing those test-owned
+  clones fixed teardown; production bundle ownership was unchanged.
+  Two full test-link wrappers also disappeared late without Rust/OOM/Xid status;
+  the materially narrower `--lib --no-run` link completed, and the exact-current
+  eight-cell physical pool/paging/in-place suite plus production
+  `qwen35-cuda` composition/strict clippy are green.
   Production ordinary sessions still construct contiguous KV today; no serving
   selector, direct paged attention, prefix reuse or public capability changed.
   Parent `8e6f14d3defc0aa2e542c26ffb9ccc7c736f1fcb`
@@ -133,24 +143,21 @@ and live TODOs are authoritative.
   while compiling/linking `zerogravity-cli`, before the test ran and without a
   terminal child status, Rust diagnostic, OOM/Xid, live child or GPU residue.
   Do not loop that unstable build. Paged-state control/ownership/materialization/
-  typed-KV gather/scatter/domain publication/in-place execution/hybrid pools is now
+  typed-KV gather/scatter/domain publication/in-place execution/hybrid candidate
+  execution is now
   `0027c28` + `54340a6` + `1eb6e0f` + `3ac2059` + `dc6a188` +
-  `53336b3` + `ef9e4d4` + `93468b1` + `cb57e1d`.
-  **Next executable P12-C work is current-root-aware hybrid candidate execution
-  and ordinary source-call selection.** Checkout one vector candidate set and one
-  staging set; fork every paged KV domain from the current root; build one
-  deduplicated flight containing current page Reads, staging Writes, vector
-  prior/candidate accesses and fresh/COW page Writes; gather current KV into
-  staging; bind the accepted KvInPlace mode; execute ordinary append/attention;
-  scatter only appended rows into each paged candidate; complete Ready with
-  `canonical_write_outputs`; then publish through the existing root swap.
-  Only after that path is physically exact should the ordinary source loader
-  install/select the hybrid pools. Keep page_tokens explicit; qualification value4
-  is still not a production default.
-  Qualify
-  continued full-state execution at page_size-1/page_size/page_size+1 and
-  multi-page boundaries before direct paged attention or complete-domain prefix
-  identity/intersection. Event/lease-backed physical
+  `53336b3` + `ef9e4d4` + `93468b1` + `cb57e1d` + `b9b04aa`.
+  **Next executable P12-C work is explicit page policy + ordinary source-call
+  selection and real-model qualification.** The current source loader still calls
+  `install_window_root_pool`; do not switch it silently. Add an explicit paged
+  policy carrying page_tokens/max_append_tokens, install the hybrid pools only
+  for that policy, and first qualify real original 0.8B/2B B1 continuation with
+  full logits/all42 state at page_size-1/page_size/page_size+1 and a multi-page
+  boundary. Include cancellation before submit/in flight/after Ready, abandoned
+  candidate/root rollback, snapshot/restore and clean retirement. Only after B1
+  is exact adapt native B2/B4/B8 state transport and then production HTTP.
+  Qualification page_tokens=4 remains test data, not a production default.
+  Complete-domain prefix reuse follows these state gates; event/lease-backed physical
   overlap remains after those state gates and must not be pulled forward.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited

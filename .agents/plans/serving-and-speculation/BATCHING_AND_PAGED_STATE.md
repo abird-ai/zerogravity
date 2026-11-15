@@ -436,13 +436,56 @@ staging_sets=1 max_pages=24 simultaneous_exact=true empty_paged_root=true
 idle_reuse=true final_resident_bytes=0`. The same exact binary passes the six
 previous paging/KvInPlace cells and production strict checks.
 
-Next: add a current-root-aware candidate bundle owning vector candidate leases,
-one staging-set checkout and each `ResidentPagedKvAppend`. Build one
-deduplicated access cohort, gather all current KV pages, bind staging as
-KvInPlace, execute ordinary append/attention, scatter the new rows, convert only
-physically Ready appends into paged candidate domains and complete with
-`canonical_write_outputs`. After page-boundary/full-state qualification, wire
-the ordinary source loader to the hybrid installer behind an explicit page policy.
+**15 Nov current-root execution follow-up:** signed `b9b04aa` lands that bundle
+and integrates it into the ordinary executor while leaving the source loader on
+the contiguous pool. `OrdinaryCandidateState` keeps the existing Contiguous
+domain/binding path and adds Hybrid only when Hybrid storage was already
+installed. The Hybrid bundle owns:
+- one private Vector candidate checkout;
+- one complete transient K/V staging checkout;
+- every current paged KV owner needed for gather;
+- one `ResidentPagedKvAppend` per KV domain until physical completion.
+
+Its access cohort is deduplicated by exact lease ID/generation/extent/role/service;
+Write dominates a duplicate Read only for the exact same lease. The original
+ordinary submission then executes:
+1. paged gather into staging;
+2. unchanged ordinary source body using `KvInPlace` bindings;
+3. paged scatter from staging into fresh/COW page targets;
+4. original physical completion with Ready outputs = Vector candidates + only
+   fresh/COW page targets;
+5. append-plan -> canonical paged Domain conversion only after Ready.
+
+State-effect receipts compare against each binding's actual candidate handles, so
+the unchanged contiguous path still sees its normal candidate handles while
+hybrid KV sees staging handles. Access deduplication is shared but fail-closed on
+identity mismatch. Fresh/COW output order is deterministic per K/V plane and
+matches post-completion `canonical_write_outputs`.
+
+Physical RTX3060 composition with one BF16 Vector domain + two qwen35_08 KV
+domains at base3 -> frontier4 passes:
+`P12_HYBRID_CANDIDATE_PASS base=3 rows=1 kv_domains=2
+gather_dispatches=4 scatter_dispatches=8 ready_outputs=5
+canonical_ready_order=true paged_frontier=4 vector_ready=true
+continuation_exact=true inactive_tail_zero=true
+old_root_budget_bytes=135168 final_resident_bytes=0`.
+The first run's staging-pool exhaustion was caused by the qualifier retaining its
+submitted-access lease clones across a deliberate reuse checkout. The next run's
+final-retirement failure was caused by the qualifier retaining its canonical
+comparison lease clones. Dropping those test-owned proof vectors made both
+lifetime checks pass; production bundle ownership did not change. Two broad
+link wrappers also disappeared late without terminal Rust/OOM/Xid evidence; a
+materially narrower lib-only link completed and the final-current eight physical
+cells pass.
+
+Next: make page policy explicit at source-call load time and select
+`install_window_hybrid_state_pools` only for that policy. Keep the current
+contiguous default. First qualify original0.8B/2B B1 full logits + all42 state at
+page_size-1/page_size/page_size+1 and multi-page, with cancel-before-submit,
+in-flight cancel, abandon-after-Ready/root rollback and snapshot/restore. Then
+adapt native B2/B4/B8 state transport and production HTTP. Do not begin
+complete-domain prefix reuse until those state gates pass, and do not begin
+event/lease physical overlap until prefix/state ownership is accepted.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve

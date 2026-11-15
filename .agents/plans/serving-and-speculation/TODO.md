@@ -537,16 +537,25 @@ or a change to the active correctness/benchmark/27B order.
   4->5 has2 inherited+2 Writes. The new pure hybrid inventory plan proves
   vector-root + staging + page maxima fit the old roots*state_bytes envelope and
   refuses insufficient active-fork headroom or heterogeneous page geometry.
-  **Production selection remains open:** next physically construct/install those
-  pools for ordinary source-call sessions and choose page_tokens explicitly.
+  At `93468b1`, production selection remained open with physical pool
+  construction and explicit page policy still pending.
   Signed `cb57e1d` now constructs the actual vector/staging/page pool owner and
   source-owned installer. Physical vector4+staging1+page24 residency equals the
   old67584-byte root envelope exactly and retires to0. Initial hybrid roots are
   zeroed vectors + empty paged KV; candidate allocation intentionally refuses
   until a current-root-aware path exists. Stable compatibility IDs use explicit
-  numerical tags and checked physical/slab/capacity packing. **Next:** build that
-  one-flight hybrid candidate execution path, then select it in ordinary
-  source-call loading under an explicit page policy.
+  numerical tags and checked physical/slab/capacity packing.
+  Signed `b9b04aa` now lands the one-flight current-root candidate path itself.
+  One `HybridCandidateBundle` owns Vector candidate + complete staging + all KV
+  append plans; exact access deduplication merges current Reads and submitted
+  Writes; gather precedes the unchanged ordinary program, scatter follows it, and
+  only Vector + fresh/COW pages are promoted. Paged Domains materialize only
+  after Ready. Physical one-Vector/two-KV base3->4 passes with gather4/scatter8,
+  five Ready outputs, exact canonical Ready order/frontier4 continuation/zero
+  tails and final resident0. The exact-current eight-cell suite and production
+  strict checks pass. **Production selection remains open:** next add an explicit
+  page policy, switch only the ordinary source-call loader under that policy,
+  qualify real0.8B/2B B1 all42/page boundaries/faults, then adapt B2/B4/B8 + HTTP.
   Admit physical GPU overlap only after event/lease, cancellation/unknown-
   completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine

@@ -160,19 +160,37 @@ simultaneously resident at exactly old_root_budget_bytes67584, verifies empty
 paged roots and pool reuse, then drops the pools to final resident_bytes0.
 All retained paged/in-place physical cells and production composition/clippy pass.
 
+Signed `b9b04aa` adds the **current-root-aware hybrid candidate execution
+path** without selecting it in the source loader. `HybridCandidateBundle` owns
+one Vector candidate checkout, one complete KV staging checkout and all private
+paged append plans. One exact-identity deduplicated submission covers current
+Vector/page Reads, Vector/staging Writes and fresh/COW page Writes. Gather runs
+before the ordinary source body; KV binds as accepted `KvInPlace`; scatter runs
+after the body; Ready promotes only Vector candidates + actual fresh/COW pages;
+paged `Domain`s are created only after physical completion.
+Fresh/COW output ordering now matches `canonical_write_outputs` deterministically.
+RTX3060 proof with one Vector + two KV domains passes base3->4 in one flight:
+`P12_HYBRID_CANDIDATE_PASS ... gather_dispatches=4 scatter_dispatches=8
+ready_outputs=5 canonical_ready_order=true paged_frontier=4 vector_ready=true
+continuation_exact=true inactive_tail_zero=true old_root_budget_bytes=135168
+final_resident_bytes=0`. Two earlier qualifier failures were test-owner lifetime
+issues (retained access clones pinned staging; retained canonical comparison
+clones pinned output backing), not execution failures. Two broad link wrappers
+also disappeared late with no Rust/OOM/Xid status; lib-only linking succeeded and
+the final-current eight-cell physical suite passes. Production check/clippy pass.
+
 Admission review changes the next implementation shape: ordinary admission
 budgets a finite inventory of complete state roots. A paged committed root plus
 full prior staging plus full candidate staging would be a third state-sized
 envelope at full context and must not be smuggled past admission. The Ready and
-snapshot semantics are accepted at `93468b1`; physical pools are accepted at
-`cb57e1d`. **Next: implement the current-root-aware hybrid candidate path**
-inside ordinary CUDA execution: vector candidate checkout + staging checkout +
-per-domain paged fork, one deduplicated original flight, gather -> KvInPlace
-append/attention -> scatter -> Ready -> root publication. Only then switch the
-ordinary source-call loader from `install_window_root_pool` to the hybrid
-installer under an explicit page policy. Leave generic roots=2/native/HIP on the
-old contiguous allocator and keep page_tokens explicit.
-Qualify continued full-state page-boundary/multi-page parity.**
+snapshot semantics are accepted at `93468b1`; physical pools at `cb57e1d`;
+current-root execution at `b9b04aa`. **Next: add an explicit paged source-call
+policy and switch the loader only under that policy.** Keep generic roots=2,
+native/HIP and default CUDA on the old contiguous allocator. First qualify
+original 0.8B/2B B1 full-logit/all42 continuations at page_size-1/page_size/
+page_size+1 and multi-page, including cancel/abandon/restore/rollback. Then adapt
+native B2/B4/B8 state transport and HTTP. page_tokens=4 remains qualification
+data until a production policy is explicitly chosen.
 Complete-domain prefix identity/intersection follows that.
 Event/lease-backed physical overlap remains after those state gates.
 
