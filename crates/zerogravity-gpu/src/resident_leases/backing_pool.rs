@@ -460,6 +460,10 @@ impl ResidentPagePool {
         self.page.alignment
     }
 
+    pub(crate) fn service(&self) -> &Arc<ResidentService> {
+        &self.pool.service
+    }
+
     /// Fresh logical page identity over a charged backing page. Reuse occurs
     /// only after every clone/reader/Ready owner of the prior logical use drops.
     pub(crate) fn checkout(self: &Arc<Self>) -> Result<ResidentLease> {
