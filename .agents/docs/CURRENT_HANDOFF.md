@@ -99,7 +99,14 @@ and live TODOs are authoritative.
   close B4/B8 B1 + production HTTP independently, then widen only the accepted
   widths; qualify 2B afterwards. Retry release-profile B2 when the build host
   survives.** Paged hybrid state/COW and event-backed overlap remain separately
-  open.
+  open. **Post-check L5 baseline watch:** after the accepted B8 process had exited
+  and no ZeroGravity/native-gpu process remained, the isolated connector view of
+  `nvidia-smi` later reported ~1,785MiB/P0 instead of the initial 41MiB, while
+  NVML/pmon exposed no process owner and the kernel log showed no Xid/OOM. A
+  subsequent passive resample returned to 41MiB/0% without reset or intervention.
+  Treat the transient as unexplained rather than a ZeroGravity leak; preserve any
+  unrelated host owner and continue resampling the physical baseline before CUDA
+  work.
 - Earlier key implementation checkpoints include `f1ce532`
   (exact graph replay storage/access authority), `b0cf0b2`
   (`fix(cache): avoid duplicate Qwen snapshot hashing`), `134a571`
