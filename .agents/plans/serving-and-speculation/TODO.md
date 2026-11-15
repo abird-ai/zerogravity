@@ -474,19 +474,21 @@ or a change to the active correctness/benchmark/27B order.
   exact producer and final reserved0. The actual production CLI HTTP path passes
   prompt10 as chunks4+4+2 with CPU ID264/text ` a`, usage10/1, exactly3 B2
   publications, zero failures/refusals and final41MiB.
-  **15 Nov temporal B4 production checkpoint:** original2B now independently
+  **15 Nov temporal production checkpoint:** original2B independently
   passes full B2/B4/B8 resident qualification with CPU/B1/all42,
   rollback/publication/greedy/producer exact and final reserved0; retained bytes
   are 1,589,873,428 / 1,833,045,908 / 2,319,390,868. Two unsupervised B4 runs
   disappeared before temporal work; a heartbeat-supervised run completed exactly.
-  Signed `eaec62d` then promotes **B4 only**: final-byte production HTTP passes
-  original0.8B and2B B4 as three exact4+4+2 B4 cohorts/publications with mixed
-  JSON/SSE CPU text/usage exact, zero failed/refused work and clean retirement.
-  B2+B4 now select temporal4. B8 remains one-token/unequal-frontier; one
-  supervised0.8B B8 HTTP attempt disappeared after test start and is incomplete,
-  not a failure/pass. Canonical release-profile B2 remains open. Next: close B8
-  HTTP on both sources before promotion and run the retained2B B2 HTTP cell when
-  practical.
+  Signed `eaec62d` promoted B4 and signed `8e6f14d` promotes **B8**. Production
+  HTTP passes original0.8B and2B B4 as three exact4+4+2 B4 cohorts/publications with mixed
+  JSON/SSE CPU text/usage exact, zero failed/refused work and clean retirement;
+  B8 passes the same exact production contract on both sources. Retained2B B2 HTTP
+  also passes. B2+B4+B8 now all select temporal4 with equal-frontier prefill.
+  One earlier supervised0.8B B8 attempt remains incomplete. Canonical
+  release-profile B2 remains open after another heartbeat-supervised thin-LTO
+  build disappeared during CLI compile/link before the test ran, without terminal
+  child/Rust/OOM/Xid/residue evidence; do not loop it. **Next: paged hybrid state
+  allocator and complete-domain prefix reuse/COW.**
   Admit physical GPU overlap only after event/lease, cancellation/unknown-
   completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine

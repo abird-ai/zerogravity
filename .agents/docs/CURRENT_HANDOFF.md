@@ -20,19 +20,20 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation/qualification** checkpoint is
-  `eaec62d8a40c6179baa49e62be7a358b4b800128`
-  (`feat(serving): enable qualified temporal B4 prefill`). The retained
-  width-parameterized qualifier now fully passes original2B B2/B4/B8 with
-  CPU/B1/all42, rollback/publication, greedy bits/producer and final reserved0;
-  retained-band bytes are 1,589,873,428 / 1,833,045,908 / 2,319,390,868.
-  Production HTTP B4 passes on both original0.8B and2B as exact chunks4+4+2,
-  three B4 cohorts/publications, mixed JSON/SSE CPU text/usage exact and clean
-  retirement. Production therefore selects temporal4 for B2+B4; B8 deliberately
-  remains one-token/unequal-frontier because its HTTP gate is not closed.
+  `8e6f14d3defc0aa2e542c26ffb9ccc7c736f1fcb`
+  (`feat(serving): enable qualified temporal B8 prefill`). The retained
+  width-parameterized qualifier fully passes original0.8B and2B B2/B4/B8 with
+  CPU/B1/all42, rollback/publication, greedy bits/producer and final reserved0.
+  Production HTTP now passes B4 **and B8** on both original sources as exact
+  chunks4+4+2 with three same-width cohorts/publications, mixed JSON/SSE CPU
+  text/usage exact and clean retirement. The retained2B B2 production HTTP cell
+  also passes. Production therefore selects temporal4 for B2/B4/B8; decode is
+  unchanged.
   B2 production HTTP still proves prompt10 executes as native chunks4+4+2 with
   three publications, two state-only + one greedy, exact CPU text/usage, zero
-  failures/refusals and final41MiB. Parent `9dab004` added the reusable temporal candidate-chain
-  primitive; `7dea460`/`ba7e376` establish fair aged decode/prefill scheduling.
+  failures/refusals and final41MiB. Parent `9dab004` added the reusable temporal
+  candidate-chain primitive; `7dea460`/`ba7e376` establish fair aged
+  decode/prefill scheduling.
   Earlier `9d6613c`/`599cb28` graph selector/timing remain accepted, but the
   shrinking B2/B4/B8 graph gain does not justify public graph serving; ordinary
   serving remains Native.
@@ -95,22 +96,24 @@ and live TODOs are authoritative.
   likewise disappeared just after session setup before temporal work; the
   already-accepted B2 production/physical evidence is unchanged and those retries
   are not new failures.
-  **2B temporal B2/B4/B8 now each pass full debug qualification** with the same
+  **2B temporal B2/B4/B8 each pass full debug qualification** with the same
   private-candidate/root contract as0.8B. Two unsupervised B4 launches vanished
   before temporal work, but the materially different heartbeat-supervised run
   completed B4 exactly; this establishes an execution-envelope issue rather than
-  a B4 semantic failure. On the final narrowed production bytes, original0.8B
-  and2B B4 HTTP each pass exact 4+4+2 native B4 execution and accounting.
-  Production `NativeText` now selects temporal4 for **B2 and B4**. B8 stays on
-  one-token/unequal-frontier: one supervised0.8B B8 HTTP attempt disappeared
-  immediately after test start with no semantic result and remains incomplete.
-  These physical
-  proofs use the debug Rust profile; canonical thin-LTO/codegen-units=1 B2 is
-  still open after external build losses without Rust/OOM evidence. **Next:
-  close B8 production HTTP independently on both sources before any B8 promotion;
-  also run the retained2B B2 HTTP cell when practical. Retry release-profile B2
-  when the build host survives.** Paged hybrid state/COW and
-  event-backed overlap remain separately open. **Post-check L5 baseline watch:**
+  a B4 semantic failure. On signed `8e6f14d`, original0.8B and2B B8 HTTP now
+  each pass exact4+4+2 native B8 execution and accounting; the earlier vanished
+  0.8B B8 attempt remains incomplete rather than being relabeled. The retained
+  2B B2 HTTP cell also passes exact4+4+2. Production `NativeText` now selects
+  temporal4 for **B2, B4 and B8**, with equal-frontier prefill and explicit
+  native prefill cohort eligibility for all three widths. These physical proofs
+  use the debug Rust profile; canonical thin-LTO/codegen-units=1 B2 is
+  still open after another heartbeat-supervised release attempt disappeared
+  while compiling/linking `zerogravity-cli`, before the test ran and without a
+  terminal child status, Rust diagnostic, OOM/Xid, live child or GPU residue.
+  Do not loop that unstable build. **Next executable P12-C work is paged hybrid
+  state allocation and complete-domain prefix/COW.** Event/lease-backed physical
+  overlap remains after those state gates and must not be pulled forward.
+  **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
   `nvidia-smi` later reported ~1,785MiB/P0 instead of the initial 41MiB, while

@@ -52,21 +52,21 @@ residue and remain explicitly incomplete. Multi-token temporal prefill has a
 **functional physical 0.8B B2 acceptance cell** and production HTTP B2 remains
 exact chunks4+4+2 with CPU ID264/text ` a`, usage10/1,3 publications, zero
 failures/refusals and final41MiB. The retained qualifier is now
-`temporal_prefill`, shared across B2/B4/B8. Original0.8B B4/B8 retain their
-full CPU/B1/all42 acceptance. Original2B now independently passes full B2/B4/B8
-qualification too, with retained-band bytes 1,589,873,428 / 1,833,045,908 /
-2,319,390,868 and exact rollback/publication/greedy/producer/final reserved0.
-Two unsupervised2B B4 attempts disappeared before temporal work; the supervised
-heartbeat run passed fully. Signed `eaec62d` promotes **B4 only** in production:
-final-byte original0.8B and2B B4 HTTP each execute exact chunks4+4+2 with three
-B4 cohorts/publications, mixed JSON/SSE CPU text/usage exact and clean retirement.
-B2+B4 therefore select temporal4. B8 remains one-token/unequal-frontier because
-its HTTP gate is still open; one supervised0.8B B8 attempt disappeared after
-test start without a semantic result. Debug-profile evidence is real CUDA but
-not release packaging/performance; canonical release B2 remains open. Next:
-close B8 HTTP on both sources before widening it, run2B B2 HTTP when practical,
-and retry release B2 when the build host survives. Paged hybrid state/COW
-and physical overlap remain open.
+`temporal_prefill`, shared across B2/B4/B8. Original0.8B and2B each have full
+CPU/B1/all42 temporal B2/B4/B8 acceptance with exact rollback/publication,
+greedy/producer and final reserved0. Signed `eaec62d` promoted B4 and signed
+`8e6f14d` now promotes **B8**. Final production HTTP passes original0.8B and2B
+for both B4 and B8 as exact chunks4+4+2 with three matching native cohorts/
+publications, mixed JSON/SSE CPU text/usage exact and clean retirement; retained
+2B B2 HTTP also passes. B2+B4+B8 therefore all select temporal4 with
+equal-frontier prefill. Earlier disappeared B4/B8 attempts remain incomplete,
+not relabeled. Debug-profile evidence is real CUDA but not release packaging/
+performance. Canonical release B2 remains open: a fresh heartbeat-supervised
+thin-LTO attempt again disappeared during CLI compile/link before test execution,
+with no terminal child/Rust/OOM/Xid/GPU-residue evidence. Do not loop it.
+**Next: paged hybrid state allocator + complete-domain prefix reuse/COW.**
+Event/lease-backed physical overlap remains after those state gates; both remain
+open.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

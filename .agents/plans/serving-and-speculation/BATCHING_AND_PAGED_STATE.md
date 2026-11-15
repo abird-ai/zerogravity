@@ -151,17 +151,21 @@ contract. 2B retained-band bytes are 1,589,873,428 / 1,833,045,908 /
 2,319,390,868. Two unsupervised2B B4 attempts disappeared before temporal work;
 the heartbeat-supervised B4 run passed fully.
 
-Signed `eaec62d` promotes **B4 only**. Final-byte production HTTP passes both
-original0.8B and2B B4 with prompt10 -> exact chunks4+4+2, three B4 cohorts,
+Signed `eaec62d` promotes B4 and signed `8e6f14d` promotes **B8**. Production
+HTTP passes both original0.8B and2B B4 with prompt10 -> exact chunks4+4+2, three B4 cohorts,
 two state-only + one greedy, three root publications, mixed JSON/SSE CPU
-text/usage exact and clean retirement. Production therefore selects temporal4
-for B2+B4. B8 intentionally remains one-token/unequal-frontier: one supervised
-0.8B B8 HTTP attempt disappeared after test start without a semantic result, so
-its production gate remains open.
+text/usage exact and clean retirement; B8 passes the same exact production
+contract on both sources, and retained2B B2 HTTP also passes. Production
+therefore selects temporal4 for B2+B4+B8 with equal-frontier prefill. One earlier
+supervised0.8B B8 HTTP attempt disappeared after test start without a semantic
+result and remains incomplete.
 
 These physical cells use the debug Rust profile; canonical release-profile B2 is
-still open after thin-LTO build process losses without Rust/OOM evidence. Paged
-state/COW and event-backed physical overlap remain untouched and open.
+still open after a fresh heartbeat-supervised thin-LTO build disappeared during
+CLI compile/link before test execution, without terminal child/Rust/OOM/Xid/
+residue evidence. Do not loop that unstable build. Temporal/fair serving is now
+the accepted foundation. **Next: paged state allocation and complete-domain
+prefix reuse/COW.** Event/lease-backed physical overlap remains later and open.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve
