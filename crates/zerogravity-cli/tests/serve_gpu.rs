@@ -1435,7 +1435,10 @@ fn qualify_unequal_arrival_metrics(name: &str) -> Proof<()> {
     Ok(())
 }
 
-fn qualify_temporal_prefill_http(name: &str) -> Proof<()> {
+fn qualify_temporal_prefill_http(name: &str, width: usize) -> Proof<()> {
+    if !matches!(width, 2 | 4 | 8) {
+        return Err("temporal HTTP qualification requires B2/B4/B8".into());
+    }
     let _serial = GPU_HTTP_LOCK
         .lock()
         .map_err(|_| "physical HTTP test lock poisoned")?;
@@ -1456,39 +1459,67 @@ fn qualify_temporal_prefill_http(name: &str) -> Proof<()> {
         ));
     }
     let expected = oracle.expected(&tokenizer, 1)?;
-    let server = OwnedServer::start_rows(&model_path, 2)?;
+    let server = OwnedServer::start_rows(&model_path, width)?;
     let before = server.health()?["admission"].clone();
-    let (json, sse) = queued_pair(
-        &server,
-        &payload(&server.aliases[0], &oracle.prompt, 1, false),
-        &payload(&server.aliases[0], &oracle.prompt, 1, true),
-    )?;
-    json_completion(json, &server.aliases[0], &expected, oracle.prompt_tokens)?;
-    sse_completion(sse, &server.aliases[0], &expected, oracle.prompt_tokens)?;
+    if width == 2 {
+        let (json, sse) = queued_pair(
+            &server,
+            &payload(&server.aliases[0], &oracle.prompt, 1, false),
+            &payload(&server.aliases[1], &oracle.prompt, 1, true),
+        )?;
+        json_completion(json, &server.aliases[0], &expected, oracle.prompt_tokens)?;
+        sse_completion(sse, &server.aliases[1], &expected, oracle.prompt_tokens)?;
+    } else {
+        let bodies = (0..width)
+            .map(|row| {
+                payload(
+                    &server.aliases[row % server.aliases.len()],
+                    &oracle.prompt,
+                    1,
+                    row % 2 == 1,
+                )
+            })
+            .collect::<Vec<_>>();
+        let responses = queued_group(&server, &bodies)?;
+        for (row, response) in responses.into_iter().enumerate() {
+            let alias = &server.aliases[row % server.aliases.len()];
+            if row % 2 == 1 {
+                sse_completion(response, alias, &expected, oracle.prompt_tokens)?;
+            } else {
+                json_completion(response, alias, &expected, oracle.prompt_tokens)?;
+            }
+        }
+    }
     let after = server.wait_health(|h| h["active_sessions"] == 0 && h["queued_requests"] == 0)?;
     physical_accounting(&after)?;
-    if band_counter(&after, 2)? != band_counter(&before, 2)? + 3
-        || band_counter(&after, 4)? != band_counter(&before, 4)?
-        || band_counter(&after, 8)? != band_counter(&before, 8)?
-        || counter(&after, "gpu_fused_batches")? != counter(&before, "gpu_fused_batches")? + 3
+    for band in [2, 4, 8] {
+        let expected = band_counter(&before, band)? + u64::from(band == width) * 3;
+        if band_counter(&after, band)? != expected {
+            return Err(format!(
+                "temporal HTTP group selected wrong native band B{band}: before={before} after={after}"
+            ));
+        }
+    }
+    if counter(&after, "gpu_fused_batches")? != counter(&before, "gpu_fused_batches")? + 3
         || counter(&after, "gpu_fused_state_only_batches")?
             != counter(&before, "gpu_fused_state_only_batches")? + 2
         || counter(&after, "gpu_fused_greedy_batches")?
             != counter(&before, "gpu_fused_greedy_batches")? + 1
         || counter(&after, "gpu_fused_rows_completed")?
-            != counter(&before, "gpu_fused_rows_completed")? + 6
+            != counter(&before, "gpu_fused_rows_completed")? + (3 * width) as u64
         || counter(&after, "gpu_fused_state_only_rows")?
-            != counter(&before, "gpu_fused_state_only_rows")? + 4
+            != counter(&before, "gpu_fused_state_only_rows")? + (2 * width) as u64
         || counter(&after, "state_cohort_publications")?
             != counter(&before, "state_cohort_publications")? + 3
-        || counter(&after, "state_cohort_rows")? != counter(&before, "state_cohort_rows")? + 6
+        || counter(&after, "state_cohort_rows")?
+            != counter(&before, "state_cohort_rows")? + (3 * width) as u64
     {
         return Err(format!(
-            "temporal HTTP pair did not execute exact 4+4+2 B2 cohorts: before={before} after={after}"
+            "temporal HTTP group did not execute exact 4+4+2 B{width} cohorts: before={before} after={after}"
         ));
     }
     println!(
-        "P12_NATIVE_TEMPORAL_HTTP_PASS source={name} B=2 prompt_tokens=10 chunks=4,4,2 native_batches=3 state_only=2 terminal_greedy=1 root_publications=3 CPU_text_usage=exact final_active=0 health={after}"
+        "P12_NATIVE_TEMPORAL_HTTP_PASS source={name} B={width} prompt_tokens=10 chunks=4,4,2 native_batches=3 state_only=2 terminal_greedy=1 root_publications=3 CPU_text_usage=exact final_active=0 health={after}"
     );
     Ok(())
 }
@@ -1496,7 +1527,37 @@ fn qualify_temporal_prefill_http(name: &str) -> Proof<()> {
 #[test]
 #[ignore = "physical CUDA temporal-prefill HTTP; approved .8B source; serial"]
 fn original_qwen35_08b_native_temporal_prefill_http() -> Proof<()> {
-    qualify_temporal_prefill_http("qwen35-0.8b")
+    qualify_temporal_prefill_http("qwen35-0.8b", 2)
+}
+
+#[test]
+#[ignore = "physical CUDA temporal-prefill B4 HTTP; approved .8B source; serial"]
+fn original_qwen35_08b_native_temporal_b4_http() -> Proof<()> {
+    qualify_temporal_prefill_http("qwen35-0.8b", 4)
+}
+
+#[test]
+#[ignore = "physical CUDA temporal-prefill B8 HTTP; approved .8B source; serial"]
+fn original_qwen35_08b_native_temporal_b8_http() -> Proof<()> {
+    qualify_temporal_prefill_http("qwen35-0.8b", 8)
+}
+
+#[test]
+#[ignore = "physical CUDA temporal-prefill B2 HTTP; approved 2B source; serial"]
+fn original_qwen35_2b_native_temporal_b2_http() -> Proof<()> {
+    qualify_temporal_prefill_http("qwen35-2b", 2)
+}
+
+#[test]
+#[ignore = "physical CUDA temporal-prefill B4 HTTP; approved 2B source; serial"]
+fn original_qwen35_2b_native_temporal_b4_http() -> Proof<()> {
+    qualify_temporal_prefill_http("qwen35-2b", 4)
+}
+
+#[test]
+#[ignore = "physical CUDA temporal-prefill B8 HTTP; approved 2B source; serial"]
+fn original_qwen35_2b_native_temporal_b8_http() -> Proof<()> {
+    qualify_temporal_prefill_http("qwen35-2b", 8)
 }
 
 #[test]

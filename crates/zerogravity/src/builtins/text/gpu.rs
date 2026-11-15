@@ -135,7 +135,7 @@ fn policy(active: usize, native_rows: usize) -> WorkPolicy {
             prefill_age_rounds: 2,
         },
         prefill_quantum: 32,
-        unequal_prefill: native_rows != 0 && native_rows != 2,
+        unequal_prefill: native_rows == 8,
         unequal_decode: native_rows != 0,
         native_rows,
         cohorts: if native_rows == 0 {
@@ -197,7 +197,7 @@ impl Executor for NativeText {
     fn prefill(model: &Self::Model) -> Prefill {
         Prefill::Chunks(match model.native_rows {
             0 => 32,
-            2 => 4,
+            2 | 4 => 4,
             _ => 1,
         })
     }
@@ -220,7 +220,7 @@ impl Executor for NativeText {
         state.device_token.is_some()
     }
     fn cohort_eligible(row: &Row) -> bool {
-        row.model.native_rows == 2
+        matches!(row.model.native_rows, 2 | 4)
             && row.cursor < row.prompt.len()
             && row.state.device_token.is_none()
     }
