@@ -502,9 +502,17 @@ or a change to the active correctness/benchmark/27B order.
   also separates pre-submit fresh-target validation from post-Ready candidate
   validation, a lifecycle bug found by the first physical boundary attempt.
   No canonical session-domain, Ready/root, prefix identity or serving policy
-  change is enabled. **Next: make paged KV the canonical KV `Domain`, gather
-  prior pages into bounded contiguous staging for the unchanged ordinary
-  append/attention ABI, then materialize the resulting contiguous candidate into
+  change is enabled. Signed `dc6a188` adds the missing GPU-only bridge needed
+  for that wiring: transient `ResidentPagedKvStaging` exposes the exact old
+  `StateBuffers::Kv` ABI, and private page appends can scatter only new rows
+  from contiguous candidate staging under the same original flight while COWing
+  the partial prior tail from immutable pages. Physical prior3->candidate4 passes
+  with gather2, prefix-copy2, scatter-COW2, scatter-append2, no host readback
+  after input, exact parent/child bytes and full retirement. The retained boundary,
+  materialization and unknown-completion cells plus production composition/clippy
+  remain green. **Next: make paged KV the canonical KV `Domain`, allocate
+  transient prior/candidate staging inside ordinary execution, bind those to the
+  unchanged append/attention ABI, then scatter the resulting new rows into
   private pages before existing atomic root publication. Qualify continued
   page-boundary/multi-page full-state parity before direct paged kernels.**
   Admit physical GPU overlap only after event/lease, cancellation/unknown-

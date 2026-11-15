@@ -106,8 +106,12 @@ The following extends existing owners; source-byte qualification is not inferenc
   around a four-token page match exact contiguous K/V bytes under a four-page
   peak cap, including boundary COW, full-page sharing/backing reuse, immutable
   parents, zero tails, capacity refusal and final release. It is not yet selected
-  by `ResidentSession::Domain`; session integration and full-model parity remain
-  the next allocator/COW gate.
+  by `ResidentSession::Domain`. Signed `dc6a188` adds transient typed K/V
+  staging plus device-to-device scatter from the unchanged contiguous candidate
+  ABI into private pages. Physical prior3->candidate4 stays under one original
+  flight, does gather2/prefix-copy2/scatter-COW2/scatter-append2 with no host
+  readback after input, preserves the parent and retires all pages. Session
+  integration and full-model parity remain the next allocator/COW gate.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

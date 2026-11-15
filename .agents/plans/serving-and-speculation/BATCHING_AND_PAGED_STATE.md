@@ -268,11 +268,37 @@ production clippy.
 Allocator/COW remains **partially open at session/model composition**:
 `ResidentSession::Domain` still owns contiguous `StateBuffers::Kv`; the new
 paged representation is not canonical and no root/serving policy changed.
+Before that final ownership switch, signed `dc6a188` closes the missing
+device-side bridge. `ResidentPagedKvStaging` is a transient pair of ordinary
+resident leases validated against the same `StateRequirement::Kv`, and exposes
+the old `StateBuffers::Kv` ABI without becoming committed state. A new scatter
+path accepts a contiguous candidate lease already written by the same
+`ResidentSubmission`: fresh target pages are zeroed, any partial committed tail
+is copied from immutable prior pages, and only the append range is copied from
+candidate staging into the planned target ranges. The flight must retain the
+candidate staging Read (a submitted Write satisfies it), all COW source Reads and
+all page Writes; no host readback or second completion authority is introduced.
+
+The retained RTX3060 bridge qualifier starts from a physically Ready paged
+frontier3, allocates full-capacity prior/candidate BF16 staging, gathers the old
+K/V pages into prior staging, performs the exact two-plane contiguous prefix copy
+plus one new-row write that stands in for the unchanged ordinary program, then
+scatters that candidate row into a frontier4 paged child. One original flight
+covers the whole bridge. Exact pass marker:
+`P12_PAGED_KV_BRIDGE_PASS prior=3 candidate=4 page_tokens=4 row_bytes=512
+gather_dispatches=2 prefix_copy_dispatches=2 scatter_cow_dispatches=2
+scatter_append_transfers=2 gpu_only_after_input=true prior_immutable=true
+contiguous_abi_exact=true all_pages_retired=true`. The final-current 3/4/5
+boundary, lower COW materializer and submitted-unknown/quarantine tests all pass,
+as do production `qwen35-cuda` composition and strict clippy. The materializer
+counter is now named `append_transfers`, since the same plan can be populated
+by host upload or device copy.
+
 **Next: integrate `ResidentPagedKvDomain` into KV `Domain` while Vector
 recurrent/conv state stays contiguous. For the first end-to-end route, gather
-committed pages into bounded contiguous prior staging, execute the unchanged
-ordinary CUDA KV append/attention path into contiguous candidate staging, then
-materialize/scatter that candidate into private pages before the existing
+committed pages into transient contiguous prior staging, execute the unchanged
+ordinary CUDA KV append/attention path into transient candidate staging, then
+scatter only the newly produced rows into private pages before the existing
 Ready/atomic root swap. Qualify continued page_size-1/page_size/page_size+1 and
 multi-page full-state parity before direct block-table attention or
 complete-domain prefix identity/intersection.** Event/lease-backed physical

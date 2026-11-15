@@ -86,10 +86,24 @@ loose6-page ceiling to the actual4-page peak and passed. During linking,
 disposable Rust build cache was removed, taking free space from about3.9GiB to
 24GiB. One later exact relink wrapper disappeared without a compiler diagnostic;
 the bounded warmed retry linked and the final-current physical result passed.
+Signed `dc6a188` adds the missing **GPU-only staging/scatter bridge** required
+before changing session ownership: `ResidentPagedKvStaging` presents transient
+contiguous K/V leases as the unchanged `StateBuffers::Kv` ABI, and paged append
+can scatter only newly produced candidate rows directly from those device
+staging leases while preserving page-tail COW from the immutable prior. One
+original `ResidentSubmission` now covers paged Reads, prior/candidate staging
+Writes and private page Writes. RTX3060 exact proof prior3->candidate4 passes
+with gather2, contiguous prefix-copy2, scatter-COW2 and scatter-append2; after
+input the entire bridge is GPU-only, parent bytes remain exact and all pages
+retire. The retained 3/4/5 boundary, lower materialization and unknown-completion
+cells pass on the same final bytes; production `qwen35-cuda` composition and
+strict clippy remain green. The implementation metric was renamed from the
+host-specific `append_uploads` to transport-neutral `append_transfers`.
 Canonical `ResidentSession::Domain` still uses contiguous `StateBuffers::Kv`.
-**Next: integrate paged KV as the canonical KV domain, gather prior pages into
-bounded contiguous staging for the unchanged attention ABI, and materialize the
-contiguous candidate back into private pages before atomic root publication.
+**Next: integrate paged KV as the canonical KV domain, allocate transient
+prior/candidate staging inside ordinary execution, bind those to the unchanged
+attention ABI, and scatter only the new candidate rows into private pages before
+atomic root publication.
 Qualify continued full-state page-boundary/multi-page parity.**
 Complete-domain prefix identity/intersection follows that.
 Event/lease-backed physical overlap remains after those state gates.
