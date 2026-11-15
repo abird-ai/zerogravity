@@ -50,6 +50,6 @@ sha2 = "=0.10.9"
 zerogravity-model-qwen35 = { path = "../zerogravity-model-qwen35", default-features = false, features = ["cpu", "text", "source-binding", "diagnostic-cpu-checkpoint"] }
 
 [[example]]
-name = "temporal_prefill_b2"
-path = "examples/temporal_prefill_b2.rs"
+name = "temporal_prefill"
+path = "examples/temporal_prefill.rs"
 required-features = ["cuda-native-qualification"]

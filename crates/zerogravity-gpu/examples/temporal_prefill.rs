@@ -1,4 +1,4 @@
-//! Small explicit CUDA qualification for unpublished multi-token B2 prefill.
+//! Small explicit CUDA qualification for unpublished multi-token B2/B4/B8 prefill.
 //! No serving/router/test-harness code is linked here.
 use std::{
     future::Future,
@@ -16,6 +16,8 @@ const PROVIDER: usize = 4 * 1024 * 1024 * 1024;
 const DEVICE_CAP: u64 = 5 * 1024 * 1024 * 1024;
 const CAPACITY: usize = 512;
 const IDS: [u32; 8] = [11, 353, 17, 42, 55, 78, 101, 135];
+
+type Domains = Vec<(StateSlot, Vec<f32>)>;
 
 struct ThreadWake(thread::Thread);
 impl Wake for ThreadWake {
@@ -48,7 +50,7 @@ fn exact(expected: &[f32], actual: &[f32], label: &str) {
         );
     }
 }
-fn domains(expected: &[(StateSlot, Vec<f32>)], actual: &[(StateSlot, Vec<f32>)], label: &str) {
+fn domains(expected: &Domains, actual: &Domains, label: &str) {
     assert_eq!(expected.len(), 42, "{label} expected domain count");
     assert_eq!(actual.len(), 42, "{label} actual domain count");
     for (slot, expected) in expected {
@@ -67,31 +69,58 @@ fn best(logits: &[f32]) -> (u32, u32) {
         .unwrap();
     (index as u32, logits[index].to_bits())
 }
-async fn check_state(
-    native: &[ResidentSession],
-    b1: &[ResidentSession],
-    cpu: &[QwenDenseCpu],
-    label: &str,
-) {
-    for row in 0..native.len() {
-        let expected = cpu[row].snapshot().domain_values();
-        domains(
-            &expected,
-            &native[row].snapshot().read_domains().await.unwrap(),
-            label,
-        );
-        domains(
-            &expected,
-            &b1[row].snapshot().read_domains().await.unwrap(),
-            label,
-        );
-    }
+fn tokens(row: usize, start: usize, count: usize) -> Vec<u32> {
+    (start..start + count)
+        .map(|step| IDS[(row + step) % IDS.len()])
+        .collect()
 }
 
-async fn run(root: &Path) {
+struct Reference {
+    state_chunk: Domains,
+    final_state: Domains,
+    packet: (u32, u32),
+}
+
+async fn run(root: &Path, width: usize, check_b1: bool) {
+    assert!(
+        matches!(width, 2 | 4 | 8),
+        "temporal width must be B2/B4/B8"
+    );
     let source =
         LoadedQwenModel::open(&root.join("model.gguf"), &root.join("config.json")).unwrap();
     assert_eq!(source.geometry().vocab_size, 248_320);
+    let first = (0..width).map(|row| tokens(row, 0, 4)).collect::<Vec<_>>();
+    let final_chunk = (0..width).map(|row| tokens(row, 4, 2)).collect::<Vec<_>>();
+
+    // Build the independent CPU oracle before creating any GPU owner. This keeps
+    // width-specific native qualification isolated from the already-qualified
+    // B1 route, which can be checked as a separate constituent afterwards.
+    let initial = QwenDenseCpu::from_shared(source.clone())
+        .unwrap()
+        .snapshot()
+        .domain_values();
+    let mut references = Vec::with_capacity(width);
+    for row in 0..width {
+        let mut cpu = QwenDenseCpu::from_shared(source.clone()).unwrap();
+        for &id in &first[row] {
+            cpu.forward(id).unwrap();
+        }
+        let state_chunk = cpu.snapshot().domain_values();
+
+        let mut logits = Vec::new();
+        for &id in &final_chunk[row] {
+            logits = cpu.forward(id).unwrap();
+        }
+        let packet = best(&logits);
+        let final_state = cpu.snapshot().domain_values();
+        references.push(Reference {
+            state_chunk,
+            final_state,
+            packet,
+        });
+        eprintln!("TEMPORAL_STAGE cpu_reference_complete B={width} row={row}");
+    }
+
     let plan = source.forward_plan(CAPACITY, true, true).unwrap();
     let model = ResidentModel::load(
         Device::Cuda(cubecl::device::CudaDevice::new(0)),
@@ -104,45 +133,44 @@ async fn run(root: &Path) {
     .unwrap();
     let service = model.qualification();
     let key = service.physical_key();
+    eprintln!("TEMPORAL_STAGE model_loaded B={width}");
+    assert_eq!(service.pending_events().unwrap(), 0);
 
-    let mut native = vec![
-        model.session().await.unwrap(),
-        model.session().await.unwrap(),
-    ];
-    let mut b1 = vec![
-        model.session().await.unwrap(),
-        model.session().await.unwrap(),
-    ];
-    let mut cpu = vec![
-        QwenDenseCpu::from_shared(source.clone()).unwrap(),
-        QwenDenseCpu::from_shared(source.clone()).unwrap(),
-    ];
-    check_state(&native, &b1, &cpu, "initial").await;
+    let mut native = Vec::with_capacity(width);
+    for _ in 0..width {
+        native.push(model.session().await.unwrap());
+    }
+    for session in &native {
+        domains(
+            &initial,
+            &session.snapshot().read_domains().await.unwrap(),
+            "native initial",
+        );
+    }
+    eprintln!("TEMPORAL_STAGE native_roots_ready B={width}");
 
-    let first = [
-        vec![IDS[0], IDS[1], IDS[2], IDS[3]],
-        vec![IDS[1], IDS[2], IDS[3], IDS[4]],
-    ];
     let before = native
         .iter()
         .map(ResidentSession::binding)
         .collect::<Vec<_>>();
-    let before_domains = futures_lite::future::zip(
-        native[0].snapshot().read_domains(),
-        native[1].snapshot().read_domains(),
-    )
-    .await;
-    let before_domains = [before_domains.0.unwrap(), before_domains.1.unwrap()];
+    let mut before_domains = Vec::with_capacity(width);
+    for session in &native {
+        before_domains.push(session.snapshot().read_domains().await.unwrap());
+    }
 
-    // The first native B2 call lazily creates a reusable band workspace. Warm
-    // that already-accepted one-token path before measuring candidate rollback,
-    // so the temporal assertion only detects private candidate retention.
-    let warm_rows = [(&native[0], IDS[0]), (&native[1], IDS[1])];
+    // The first native call lazily creates a reusable band workspace. Warm that
+    // already-accepted one-token path before measuring candidate rollback, so
+    // the temporal assertion only detects private candidate retention.
+    let warm_rows = native
+        .iter()
+        .enumerate()
+        .map(|(row, session)| (session, IDS[row]))
+        .collect::<Vec<_>>();
     let warm = model
         .prepare_state_fused_cohort_admitted(&warm_rows)
         .await
         .unwrap()
-        .expect("accepted B2 warmup candidate admitted");
+        .expect("accepted native warmup candidate admitted");
     drop(warm);
     assert_eq!(
         native
@@ -153,19 +181,19 @@ async fn run(root: &Path) {
         "accepted workspace warmup published a root"
     );
     let bytes = service.resident_bytes().unwrap();
+    eprintln!("TEMPORAL_STAGE native_warm B={width} bytes={bytes}");
 
     let rows = native
         .iter()
         .zip(&first)
         .map(|(session, tokens)| (session, tokens.as_slice()))
         .collect::<Vec<_>>();
-
     let abandoned = model
         .prepare_state_temporal_fused_cohort_admitted(&rows)
         .await
         .unwrap()
-        .expect("B2 temporal state candidate admitted");
-    assert_eq!(abandoned.len(), 2);
+        .expect("temporal state candidate admitted");
+    assert_eq!(abandoned.len(), width);
     assert!(abandoned.fused_dispatches() > 0);
     assert_eq!(abandoned.native_greedy_dispatches(), 0);
     assert_eq!(
@@ -179,7 +207,7 @@ async fn run(root: &Path) {
     drop(abandoned);
     assert_eq!(service.pending_events().unwrap(), 0);
     assert_eq!(service.resident_bytes().unwrap(), bytes);
-    for row in 0..2 {
+    for row in 0..width {
         assert_eq!(native[row].binding(), before[row]);
         domains(
             &before_domains[row],
@@ -187,14 +215,8 @@ async fn run(root: &Path) {
             "abandoned temporal candidate",
         );
     }
+    eprintln!("TEMPORAL_STAGE abandon_verified B={width}");
 
-    for row in 0..2 {
-        for &id in &first[row] {
-            let expected = cpu[row].forward(id).unwrap();
-            let actual = b1[row].forward(&[id], false).await.unwrap();
-            exact(&expected, &actual.logits, "state chunk CPU/B1 logits");
-        }
-    }
     let rows = native
         .iter()
         .zip(&first)
@@ -204,38 +226,33 @@ async fn run(root: &Path) {
         .prepare_state_temporal_fused_cohort_admitted(&rows)
         .await
         .unwrap()
-        .expect("B2 temporal state candidate admitted");
-    assert_eq!(candidate.prior_frontiers().collect::<Vec<_>>(), vec![0, 0]);
+        .expect("temporal state candidate admitted");
+    assert_eq!(
+        candidate.prior_frontiers().collect::<Vec<_>>(),
+        vec![0; width]
+    );
     let reads = candidate
         .commit(&mut native.iter_mut().collect::<Vec<_>>())
         .unwrap();
-    for row in 0..2 {
+    eprintln!("TEMPORAL_STAGE state_commit_ready B={width}");
+    for row in 0..width {
         assert_eq!(reads[row].state_only_steps, 4);
         assert_eq!(reads[row].logit_steps, 0);
         assert!(reads[row].logits.is_empty());
         assert!(reads[row].device_token.is_none());
         assert_eq!(native[row].binding().root(), before[row].root() + 1);
         assert_eq!(native[row].binding().frontier(), before[row].frontier() + 4);
+        domains(
+            &references[row].state_chunk,
+            &native[row].snapshot().read_domains().await.unwrap(),
+            "committed state chunk",
+        );
     }
-    check_state(&native, &b1, &cpu, "committed state chunk").await;
 
-    let final_chunk = [vec![IDS[4], IDS[5]], vec![IDS[5], IDS[6]]];
     let before = native
         .iter()
         .map(ResidentSession::binding)
         .collect::<Vec<_>>();
-    let mut expected_packets = Vec::with_capacity(2);
-    for row in 0..2 {
-        let mut logits = Vec::new();
-        for &id in &final_chunk[row] {
-            logits = cpu[row].forward(id).unwrap();
-        }
-        let expected = best(&logits);
-        let read = b1[row].forward_greedy(&final_chunk[row]).await.unwrap();
-        let packet = read.device_token.unwrap();
-        assert_eq!((packet.id, packet.max_bits), expected);
-        expected_packets.push(expected);
-    }
     let rows = native
         .iter()
         .zip(&final_chunk)
@@ -245,29 +262,73 @@ async fn run(root: &Path) {
         .prepare_greedy_temporal_fused_cohort_admitted(&rows)
         .await
         .unwrap()
-        .expect("B2 temporal greedy candidate admitted");
+        .expect("temporal greedy candidate admitted");
     assert!(candidate.fused_dispatches() > 0);
     assert_eq!(candidate.native_greedy_dispatches(), 4);
     let reads = candidate
         .commit(&mut native.iter_mut().collect::<Vec<_>>())
         .unwrap();
-    for row in 0..2 {
+    eprintln!("TEMPORAL_STAGE greedy_commit_ready B={width}");
+    for row in 0..width {
         assert_eq!(reads[row].state_only_steps, 1);
         assert_eq!(reads[row].logit_steps, 1);
         assert!(reads[row].logits.is_empty());
         let packet = reads[row].device_token.as_ref().unwrap();
-        assert_eq!((packet.id, packet.max_bits), expected_packets[row]);
+        assert_eq!(
+            (packet.id, packet.max_bits),
+            references[row].packet,
+            "terminal packet differs at row {row}"
+        );
         assert_eq!(packet.qualification_producer(), Some(native[row].binding()));
         assert_eq!(native[row].binding().root(), before[row].root() + 1);
         assert_eq!(native[row].binding().frontier(), before[row].frontier() + 2);
+        domains(
+            &references[row].final_state,
+            &native[row].snapshot().read_domains().await.unwrap(),
+            "terminal greedy chunk",
+        );
     }
-    check_state(&native, &b1, &cpu, "terminal greedy chunk").await;
     assert_eq!(service.pending_events().unwrap(), 0);
 
     drop(reads);
-    drop(cpu);
-    drop(b1);
     drop(native);
+    assert_eq!(service.pending_events().unwrap(), 0);
+
+    if check_b1 {
+        for row in 0..width {
+            let mut b1 = model.session().await.unwrap();
+            domains(
+                &initial,
+                &b1.snapshot().read_domains().await.unwrap(),
+                "B1 initial",
+            );
+            for &id in &first[row] {
+                b1.forward(&[id], false).await.unwrap();
+            }
+            domains(
+                &references[row].state_chunk,
+                &b1.snapshot().read_domains().await.unwrap(),
+                "B1 state chunk",
+            );
+            let read = b1.forward_greedy(&final_chunk[row]).await.unwrap();
+            let packet = read.device_token.unwrap();
+            assert_eq!(
+                (packet.id, packet.max_bits),
+                references[row].packet,
+                "B1 terminal packet differs at row {row}"
+            );
+            domains(
+                &references[row].final_state,
+                &b1.snapshot().read_domains().await.unwrap(),
+                "B1 terminal chunk",
+            );
+            drop(b1);
+            assert_eq!(service.pending_events().unwrap(), 0);
+            eprintln!("TEMPORAL_STAGE b1_reference_complete B={width} row={row}");
+        }
+    }
+
+    drop(references);
     drop(model);
     assert_eq!(service.pending_events().unwrap(), 0);
     assert_eq!(service.resident_bytes().unwrap(), 0);
@@ -282,22 +343,55 @@ async fn run(root: &Path) {
     let final_state = ResourceArbiter::process_shared().snapshot(&key).unwrap();
     assert_eq!(final_state.reserved, 0);
     assert!(!final_state.fenced);
-    println!(
-        "P12_NATIVE_TEMPORAL_B2_PASS source=qwen35-0.8b state_chunk=4 terminal_chunk=2 unpublished_abandon=true roots=atomic CPU_B1_all42=exact terminal_greedy=exact final_reserved=0"
-    );
+    let source_name = root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("unknown");
+    if check_b1 {
+        println!(
+            "P12_NATIVE_TEMPORAL_PASS source={source_name} B={width} state_chunk=4 terminal_chunk=2 unpublished_abandon=true roots=atomic CPU_B1_all42=exact terminal_greedy=exact final_reserved=0"
+        );
+    } else {
+        println!(
+            "P12_NATIVE_TEMPORAL_CUDA_CPU_PASS source={source_name} B={width} state_chunk=4 terminal_chunk=2 unpublished_abandon=true roots=atomic CPU_all42=exact terminal_greedy=exact B1=separate final_reserved=0"
+        );
+    }
+}
+
+fn model_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/models/qwen35-0.8b")
 }
 
 fn main() {
-    let args = std::env::args_os().skip(1).collect::<Vec<_>>();
-    let (oracle_only, root) = match args.as_slice() {
-        [mode, root] if mode == "--oracle" => (true, PathBuf::from(root)),
-        [root] => (false, PathBuf::from(root)),
-        [] => (
-            false,
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/models/qwen35-0.8b"),
+    let mut args = std::env::args_os().skip(1).collect::<Vec<_>>();
+    let native_only = args.first().is_some_and(|value| value == "--native-only");
+    if native_only {
+        args.remove(0);
+    }
+    let (oracle_only, width, root) = match args.as_slice() {
+        [mode, root] if mode == "--oracle" => (true, 2, PathBuf::from(root)),
+        [mode] if mode == "--oracle" => (true, 2, model_root()),
+        [width, root] => {
+            let width = width
+                .to_str()
+                .and_then(|value| value.parse::<usize>().ok())
+                .filter(|width| matches!(width, 2 | 4 | 8))
+                .expect("temporal width must be 2, 4 or 8");
+            (false, width, PathBuf::from(root))
+        }
+        [value] => match value.to_str().and_then(|value| value.parse::<usize>().ok()) {
+            Some(width) if matches!(width, 2 | 4 | 8) => (false, width, model_root()),
+            _ => (false, 2, PathBuf::from(value)),
+        },
+        [] => (false, 2, model_root()),
+        _ => panic!(
+            "usage: temporal_prefill [--native-only] [2|4|8] [model-dir] | --oracle [model-dir]"
         ),
-        _ => panic!("usage: temporal_prefill_b2 [--oracle] [model-dir]"),
     };
+    assert!(
+        !(native_only && oracle_only),
+        "--native-only cannot qualify an oracle-only run"
+    );
     if oracle_only {
         let source =
             LoadedQwenModel::open(&root.join("model.gguf"), &root.join("config.json")).unwrap();
@@ -320,5 +414,5 @@ fn main() {
         );
         return;
     }
-    block_on(run(&root));
+    block_on(run(&root, width, !native_only));
 }

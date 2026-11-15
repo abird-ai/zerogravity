@@ -467,29 +467,28 @@ or a change to the active correctness/benchmark/27B order.
   2..32 host teacher tokens through private candidate domains, keeps original
   session roots unpublished until one final all-row Ready, aggregates
   state/logit/readback/dispatch receipts and publishes one logical root advance
-  for the whole chunk. **15 Nov 0.8B B2 functional physical acceptance:** a new
-  small explicit `zerogravity-gpu` qualifier (`temporal_prefill_b2`) avoids the
-  heavyweight test harness and physically proves abandoned 4-token candidate
-  rollback, one-root 4-token state publication, one-root 2-token terminal greedy,
-  CPU/B1/full-all42 exactness, exact producer and final reserved0.
-  A production integration bug was also exposed and fixed: prefill waves were
-  co-scheduled but `NativeText` inherited `cohort_eligible=false`, silently
-  forcing every prefill wave to singleton execution. Native prefill eligibility
-  is now explicit and pairwise compatibility binds the exact resident model,
-  hidden width and chunk length. The actual production CLI HTTP path physically
-  passes 0.8B B2 prompt10 as exactly chunks4+4+2 with CPU oracle ID264/text ` a`,
-  usage10/1, exactly3 B2 publications, 2 state-only +1 terminal greedy, zero
-  failures/refusals and final41MiB. The live policy therefore selects 4-token
-  prefill **only for native B2**; B4/B8 remain one-token and keep their existing
-  unequal-frontier policy. Final source passes strict production clippy, 18 wave
-  tests, 14 worker tests and CLI/qualifier composition. These physical proofs use
-  the debug Rust build profile, not canonical release packaging/performance.
-  Canonical thin-LTO/codegen-units=1 builds remain operationally unstable on L5
-  (external process loss without Rust diagnostic/OOM), so keep that gate open.
-  Next: confirm release-profile B2 when build tooling permits, then separately
-  qualify B4/B8 and 2B before widening their production prefill quantum. Admit
-  physical GPU overlap only after event/lease, cancellation/unknown-completion
-  and independent-root tests.
+  for the whole chunk. **15 Nov 0.8B B2 functional physical acceptance:** the
+  retained small `zerogravity-gpu` qualifier is now `temporal_prefill`, shared
+  across B2/B4/B8. B2 proves abandoned 4-token rollback, one-root 4-token state
+  publication, one-root 2-token terminal greedy, CPU/B1/full-all42 exactness,
+  exact producer and final reserved0. The actual production CLI HTTP path passes
+  prompt10 as chunks4+4+2 with CPU ID264/text ` a`, usage10/1, exactly3 B2
+  publications, zero failures/refusals and final41MiB.
+  **15 Nov B4/B8 constituent progress:** B4 and B8 each separately pass the
+  width-specific native CUDA+CPU path in debug profile: private-chain abandonment
+  leaves original roots/all42 untouched; state4 and terminal2 each publish one
+  root; every native row matches CPU all42/greedy bits; final reserved0. Retained
+  band bytes are 1,230,916,660 (B4) and 1,802,356,148 (B8). Full B4 attempts
+  before this split disappeared during the first width-independent B1 reference,
+  before any B4 native root/workspace existed, with no Rust/OOM/residue evidence.
+  They remain incomplete, not failures. The qualifier therefore exposes
+  `--native-only` as an explicit constituent; full mode still requires B1.
+  The live policy stays 4-token **only for native B2**. B4/B8 remain one-token
+  until their B1 cross-check and actual production HTTP cells pass separately;
+  2B remains unqualified. Canonical release-profile B2 is also still open.
+  Next: close B4/B8 B1+HTTP and widen only the passing width, then qualify 2B.
+  Admit physical GPU overlap only after event/lease, cancellation/unknown-
+  completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

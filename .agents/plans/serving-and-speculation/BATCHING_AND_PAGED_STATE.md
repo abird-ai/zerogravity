@@ -138,25 +138,26 @@ emits no intermediate logits/token packet and returns one terminal
 intermediate root. The ordinary cohort adapter consumes the receipt and advances
 the scheduler cursor by the whole chunk.
 
-The first physical target is now accepted for original0.8B B2. The retained
-`zerogravity-gpu` example `temporal_prefill_b2` independently checks CPU/B1 and
-all42 state, abandoned-candidate rollback, 4-token state-only publication,
-2-token terminal greedy producer lineage and final reserved0. It also revealed
-that the production adapter had never opted prefill into native cohort formation:
-`Executor::cohort_eligible` defaults false. The fix makes native prefill
-eligibility explicit and pairwise compatibility exact on resident model owner,
-hidden width and chunk length. Production HTTP then physically executes a
-10-token equal prompt pair as B2 chunks4+4+2 with CPU oracle ID264/text ` a`,
-usage10/1, exactly3 B2 publications (2 state-only,1 greedy), no failures/refusals
-and final41MiB. Production selects temporal4 only for B2; B4/B8 intentionally
-remain one-token/unequal-frontier until their own physical cells pass.
+The first full physical target remains original0.8B B2. The retained
+`zerogravity-gpu` example is now the width-parameterized `temporal_prefill`;
+B2 checks CPU/B1/all42 state, abandoned-candidate rollback, 4-token state-only
+publication, 2-token terminal greedy producer lineage and final reserved0.
+Production HTTP executes prompt10 as B2 chunks4+4+2 with CPU ID264/text ` a`,
+usage10/1, exactly3 publications, no failures/refusals and final41MiB.
 
-These functional physical cells use the debug Rust profile; they validate real
-CUDA/source/root/Ready semantics but are not release packaging/performance
-evidence. Canonical thin-LTO/codegen-units=1 qualification builds have repeatedly
-lost their outer process without a Rust error or cgroup OOM. Keep release-profile
-B2 and all B4/B8/2B temporal cells open before any broader policy promotion.
-Paged state/COW and event-backed physical overlap remain untouched and open.
+B4 and B8 now each have a separate **native CUDA+CPU constituent pass** in the
+same debug qualifier. Both prove private-chain abandonment, atomic state4 and
+terminal2 publication, exact per-row CPU all42 state/greedy bits and final
+reserved0; retained-band bytes are 1,230,916,660 and 1,802,356,148. Earlier full
+B4 runs disappeared during the first width-independent B1 reference before any
+B4 root/workspace existed. To keep evidence scoped correctly, `--native-only`
+isolates the width-specific constituent while full mode retains the B1 gate.
+Therefore production still selects temporal4 only for B2: B4/B8 stay
+one-token/unequal-frontier until B1 plus actual HTTP pass, and 2B remains open.
+
+These physical cells use the debug Rust profile; canonical release-profile B2 is
+still open after thin-LTO build process losses without Rust/OOM evidence. Paged
+state/COW and event-backed physical overlap remain untouched and open.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve

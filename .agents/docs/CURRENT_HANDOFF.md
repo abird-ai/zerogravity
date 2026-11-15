@@ -70,33 +70,34 @@ and live TODOs are authoritative.
   cached builds without a compiler/test error, surviving child, cgroup OOM or GPU
   residue; those wrapper attempts remain incomplete. **Next executable P12-C
   work is actual multi-token temporal prefill in the existing completion path.**
-  **0.8B B2 temporal prefill is now functionally/physically accepted in the
-  debug qualification scope.** The retained `zerogravity-gpu` example
-  `temporal_prefill_b2` exercises the public resident API without the large
-  facade/test harness. Its physical run proves a completed 4-token temporal
-  candidate can be abandoned with roots/all42 unchanged after the accepted B2
-  workspace is prewarmed, then commits a 4-token state-only chunk as one root
-  publication and a 2-token terminal-greedy chunk as one root publication with
-  CPU/B1/full-all42 exactness, exact packet/producer and final reserved0:
-  `P12_NATIVE_TEMPORAL_B2_PASS`. During HTTP qualification a real missing
-  production boundary was found: `NativeText` inherited the default
-  `cohort_eligible=false`, so 2-row prefill scheduler waves always fell to
-  singleton execution. The fix enables prefill cohorts only for exact native
-  owners and requires pairwise exact resident model/hidden-width/chunk
-  compatibility. The exact current B2 branch then passes the actual production
-  CLI HTTP path with prompt10 -> native chunks4+4+2, independent CPU oracle
+  **0.8B B2 temporal prefill is functionally/physically accepted in the
+  debug qualification scope.** The retained `zerogravity-gpu` example is now the
+  width-parameterized `temporal_prefill`: B2 still proves abandoned 4-token
+  rollback, one-root 4-token state publication, one-root 2-token terminal greedy,
+  CPU/B1/full-all42 exactness, exact packet/producer and final reserved0. The
+  production HTTP path still passes prompt10 -> native chunks4+4+2 with CPU
   ID264/text ` a`, usage10/1, exactly3 B2 publications (2 state-only +1 greedy),
-  zero failures/refusals and final41MiB: `P12_NATIVE_TEMPORAL_HTTP_PASS`.
-  Production `NativeText` now selects 4-token prefill **only for B2**.
-  B4/B8 retain their accepted one-token/unequal-frontier policy until separately
-  qualified. Strict production clippy, 18 wave tests, 14 worker tests, CLI/test
-  composition and the explicit qualifier compile pass. The physical runs used
-  the debug Rust profile; CUDA kernels/source/root semantics are real, but this
-  is not a canonical release-profile packaging/performance claim. Repeated
-  canonical thin-LTO/codegen-units=1 qualification builds have been externally
-  lost without Rust diagnostics/OOM. **Next: establish canonical release-profile
-  B2 when the host build survives, then widen temporal qualification to B4/B8 and
-  2B.** Paged hybrid state/COW and event-backed overlap remain separately open.
+  zero failures/refusals and final41MiB.
+  **15 Nov follow-up:** the same retained qualifier now isolates width-specific
+  CUDA work from the B1 oracle. Original0.8B B4 and B8 each physically pass the
+  native CUDA+CPU constituent: completed private 4-token chains can be abandoned
+  with roots/all42 unchanged, 4-token state and 2-token greedy chunks publish one
+  root each, every row matches CPU all42 state and greedy bits exactly, and final
+  reservation returns to zero. B4 retained-band bytes were 1,230,916,660; B8
+  1,802,356,148. Earlier full B4 attempts disappeared during the first
+  width-independent B1 reference before any B4 root/workspace existed, with no
+  Rust diagnostic, OOM, live child or GPU residue; they remain incomplete, not
+  B4 failures. The qualifier therefore supports `--native-only` as an explicit
+  constituent while full mode keeps the B1 cross-check mandatory.
+  Production `NativeText` still selects temporal4 **only for B2**: B4/B8 keep
+  their accepted one-token/unequal-frontier policy until the B1 constituent and
+  real production HTTP cells close. 2B remains unqualified. These physical
+  proofs use the debug Rust profile; canonical thin-LTO/codegen-units=1 B2 is
+  still open after external build losses without Rust/OOM evidence. **Next:
+  close B4/B8 B1 + production HTTP independently, then widen only the accepted
+  widths; qualify 2B afterwards. Retry release-profile B2 when the build host
+  survives.** Paged hybrid state/COW and event-backed overlap remain separately
+  open.
 - Earlier key implementation checkpoints include `f1ce532`
   (exact graph replay storage/access authority), `b0cf0b2`
   (`fix(cache): avoid duplicate Qwen snapshot hashing`), `134a571`

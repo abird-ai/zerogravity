@@ -48,20 +48,23 @@ failed/refused/cancelled/discarded work and final 41MiB. Every command in
 `scripts/check.sh` is terminal-green on the exact source under isolated
 `native-gpu`; repeated monolithic connector-wrapper attempts disappeared during
 ordinary cached builds with no compiler/test error, live child, OOM event or GPU
-residue and remain explicitly incomplete. Multi-token temporal prefill now has a
-**functional physical 0.8B B2 acceptance cell**. The retained small GPU qualifier
-proves private 4-token candidate rollback, one-root 4-token state publication,
-one-root 2-token terminal greedy, CPU/B1/all42 exactness and final reserved0.
-During production HTTP qualification a real adapter gap was found and fixed:
-prefill never opted into native cohorts because `cohort_eligible` inherited false.
-The current B2 production path physically passes prompt10 as exact chunks4+4+2,
-CPU ID264/text ` a`, usage10/1,3 B2 publications (2 state-only +1 greedy), zero
-failures/refusals and final41MiB. Only B2 now selects temporal4; B4/B8 remain
-one-token. Strict production clippy,18 wave tests,14 worker tests and composition
-checks pass. Physical evidence is from the debug Rust profile; canonical release
-thin-LTO builds remain operationally incomplete without Rust/OOM evidence.
-Next: release-profile B2 confirmation when build tooling permits, then B4/B8 and
-2B temporal cells. Paged hybrid state/COW and physical overlap remain open.
+residue and remain explicitly incomplete. Multi-token temporal prefill has a
+**functional physical 0.8B B2 acceptance cell** and production HTTP B2 remains
+exact chunks4+4+2 with CPU ID264/text ` a`, usage10/1,3 publications, zero
+failures/refusals and final41MiB. The retained qualifier is now
+`temporal_prefill`, shared across B2/B4/B8. B2 still closes CPU/B1/all42,
+rollback/publication/greedy and final reserved0. B4 and B8 now separately pass
+the width-specific native CUDA+CPU constituent with exact all42 state/greedy,
+atomic rollback/publication and final reserved0 (retained-band bytes
+1,230,916,660 and 1,802,356,148 respectively). Earlier full B4 attempts vanished
+inside the first width-independent B1 reference before any B4 root/workspace, so
+they are incomplete rather than B4 failures; `--native-only` now isolates that
+constituent explicitly. B4/B8 B1 + production HTTP remain open, therefore only
+B2 selects temporal4 and B4/B8 stay one-token. 2B is unqualified. Debug-profile
+evidence is real CUDA but not release packaging/performance; canonical release
+B2 remains open. Next: close B4/B8 B1/HTTP, widen each only after its own pass,
+then 2B; retry release B2 when the build host survives. Paged hybrid state/COW
+and physical overlap remain open.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about
