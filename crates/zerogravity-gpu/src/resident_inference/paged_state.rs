@@ -663,6 +663,7 @@ impl ResidentPagedKvDomain {
                 .into_iter()
                 .enumerate()
         {
+            let mut plane_writes = BTreeMap::new();
             if candidate.page_count() < current.page_count() {
                 return Err(Error::State(
                     "paged KV candidate lost current-root pages".into(),
@@ -690,8 +691,13 @@ impl ResidentPagedKvDomain {
                         "paged KV inherited page moved from plane/index {old_plane}/{old_index} to {plane}/{index}"
                     )));
                 }
-                writes.push(next.clone());
+                if plane_writes.insert(next.id(), next.clone()).is_some() {
+                    return Err(Error::State(
+                        "paged KV candidate write page identity duplicated".into(),
+                    ));
+                }
             }
+            writes.extend(plane_writes.into_values());
         }
         Ok(writes)
     }

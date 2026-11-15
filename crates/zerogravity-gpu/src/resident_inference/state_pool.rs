@@ -9,7 +9,9 @@ use crate::resident_leases::backing_pool::ResidentPagePool;
 ))]
 use crate::resident_leases::backing_pool::ResidentPlaneLayout;
 use crate::resident_leases::backing_pool::ResidentPool;
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
+use zerogravity_core::device_events::BufferLeaseId;
 
 #[derive(Clone, Debug)]
 #[allow(
@@ -247,6 +249,163 @@ pub(super) struct HybridPooledStates {
     pub numerical: zerogravity_core::accelerator::program::SourceNumericalContract,
 }
 
+enum HybridCandidatePart {
+    Vector {
+        prior: Domain,
+        candidate: Domain,
+    },
+    Kv {
+        prior: paged_state::ResidentPagedKvDomain,
+        staging: paged_state::ResidentPagedKvStaging,
+        append: paged_state::ResidentPagedKvAppend,
+    },
+}
+
+pub(crate) struct HybridCandidateBundle {
+    parts: Vec<HybridCandidatePart>,
+    bindings: Vec<StateBinding>,
+}
+
+impl HybridCandidateBundle {
+    pub(crate) fn bindings(&self) -> &[StateBinding] {
+        &self.bindings
+    }
+
+    pub(crate) fn accesses(&self) -> Result<Vec<(ResidentLease, DeviceAccess)>> {
+        let mut unique = BTreeMap::<BufferLeaseId, (ResidentLease, DeviceAccess)>::new();
+        for part in &self.parts {
+            match part {
+                HybridCandidatePart::Vector { prior, candidate } => {
+                    for lease in &prior.leases {
+                        merge_access(&mut unique, lease.clone(), DeviceAccess::Read)?;
+                    }
+                    for lease in &candidate.leases {
+                        merge_access(&mut unique, lease.clone(), DeviceAccess::Write)?;
+                    }
+                }
+                HybridCandidatePart::Kv {
+                    prior,
+                    staging,
+                    append,
+                } => {
+                    for (lease, access) in
+                        prior.gather_accesses(prior.tokens()?, staging.keys(), staging.values())?
+                    {
+                        merge_access(&mut unique, lease, access)?;
+                    }
+                    for (lease, access) in append.accesses()? {
+                        merge_access(&mut unique, lease, access)?;
+                    }
+                }
+            }
+        }
+        Ok(unique.into_values().collect())
+    }
+
+    pub(crate) fn write_outputs(&self) -> Result<Vec<ResidentLease>> {
+        let mut outputs = Vec::new();
+        for part in &self.parts {
+            match part {
+                HybridCandidatePart::Vector { candidate, .. } => {
+                    outputs.extend(candidate.leases.iter().cloned());
+                }
+                HybridCandidatePart::Kv { append, .. } => {
+                    outputs.extend(append.outputs()?);
+                }
+            }
+        }
+        Ok(outputs)
+    }
+
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    pub(crate) fn enqueue_gather_cuda(
+        &self,
+        flight: &crate::resident_leases::ResidentSubmission<'_>,
+    ) -> Result<usize> {
+        let mut dispatches = 0usize;
+        for part in &self.parts {
+            if let HybridCandidatePart::Kv { prior, staging, .. } = part {
+                dispatches = dispatches
+                    .checked_add(prior.enqueue_gather_cuda(
+                        flight,
+                        prior.tokens()?,
+                        staging.keys(),
+                        staging.values(),
+                    )?)
+                    .ok_or_else(|| Error::Limit("resident hybrid gather dispatches".into()))?;
+            }
+        }
+        Ok(dispatches)
+    }
+
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    pub(crate) fn enqueue_scatter_cuda(
+        &self,
+        flight: &crate::resident_leases::ResidentSubmission<'_>,
+    ) -> Result<usize> {
+        let mut dispatches = 0usize;
+        for part in &self.parts {
+            if let HybridCandidatePart::Kv {
+                prior,
+                staging,
+                append,
+            } = part
+            {
+                let materialized =
+                    append.enqueue_cuda_from_staging(flight, staging, prior.tokens()?)?;
+                dispatches = dispatches
+                    .checked_add(materialized.copy_dispatches)
+                    .and_then(|n| n.checked_add(materialized.append_transfers))
+                    .ok_or_else(|| Error::Limit("resident hybrid scatter dispatches".into()))?;
+            }
+        }
+        Ok(dispatches)
+    }
+
+    pub(crate) fn into_domains(self) -> Result<Vec<Domain>> {
+        let mut domains = Vec::with_capacity(self.parts.len());
+        for part in self.parts {
+            match part {
+                HybridCandidatePart::Vector { candidate, .. } => domains.push(candidate),
+                HybridCandidatePart::Kv {
+                    prior,
+                    append,
+                    staging: _,
+                } => domains.push(Domain::from_paged_kv(append.into_candidate(&prior)?)?),
+            }
+        }
+        Ok(domains)
+    }
+}
+
+fn merge_access(
+    unique: &mut BTreeMap<BufferLeaseId, (ResidentLease, DeviceAccess)>,
+    lease: ResidentLease,
+    access: DeviceAccess,
+) -> Result<()> {
+    match unique.entry(lease.id()) {
+        std::collections::btree_map::Entry::Vacant(entry) => {
+            entry.insert((lease, access));
+        }
+        std::collections::btree_map::Entry::Occupied(mut entry) => {
+            let (existing, existing_access) = entry.get_mut();
+            if existing.allocation_generation() != lease.allocation_generation()
+                || existing.bytes() != lease.bytes()
+                || existing.role() != lease.role()
+                || !Arc::ptr_eq(existing.service(), lease.service())
+            {
+                return Err(Error::State(
+                    "resident hybrid access lease identity aliases".into(),
+                ));
+            }
+            if access == DeviceAccess::Write {
+                *existing_access = DeviceAccess::Write;
+            }
+        }
+    }
+    Ok(())
+}
+
 #[allow(
     dead_code,
     reason = "hybrid storage is installed by the next ordinary source-call selection slice"
@@ -281,6 +440,104 @@ impl HybridPooledStates {
             page_pool,
             numerical,
         }))
+    }
+
+    pub(crate) fn candidate(
+        &self,
+        states: &[StateRequirement],
+        prior: &[Domain],
+        tokens: usize,
+        position: usize,
+    ) -> Result<HybridCandidateBundle> {
+        if tokens == 0 || states.len() != prior.len() {
+            return Err(Error::State(
+                "resident hybrid candidate state/token coverage differs".into(),
+            ));
+        }
+        let vector_leases = self.vector_pool.checkout()?;
+        let staging_leases = self.staging_pool.checkout()?;
+        let mut vectors = vector_leases.iter();
+        let mut staging = staging_leases.iter();
+        let mut parts = Vec::with_capacity(states.len());
+        let mut bindings = Vec::with_capacity(states.len());
+
+        for (requirement, current) in states.iter().zip(prior) {
+            if requirement.slot != current.slot {
+                return Err(Error::State(
+                    "resident hybrid candidate slot ordering differs".into(),
+                ));
+            }
+            match requirement.layout {
+                StateLayout::Vector { .. } => {
+                    if current.paged_kv.is_some() {
+                        return Err(Error::State(
+                            "resident hybrid vector current root is paged".into(),
+                        ));
+                    }
+                    let candidate = make_domain(requirement, &mut |layout| {
+                        let lease = vectors.next().ok_or_else(|| {
+                            Error::State("resident hybrid candidate vector plane missing".into())
+                        })?;
+                        if lease.bytes() != layout.bytes()?
+                            || lease.role() != BufferRole::RecurrentState
+                            || lease.is_initialized()
+                        {
+                            return Err(Error::State(
+                                "resident hybrid candidate vector plane differs".into(),
+                            ));
+                        }
+                        Ok(lease.clone())
+                    })?;
+                    bindings.push(StateBinding {
+                        slot: requirement.slot,
+                        prior: current.buffers.clone(),
+                        candidate: candidate.buffers.clone(),
+                        prior_tokens: position,
+                        mode: crate::resident_program::StateBindingMode::Distinct,
+                    });
+                    parts.push(HybridCandidatePart::Vector {
+                        prior: current.clone(),
+                        candidate,
+                    });
+                }
+                StateLayout::Kv { .. } => {
+                    let current = current.paged_kv()?.clone();
+                    if current.tokens()? != position {
+                        return Err(Error::State(
+                            "resident hybrid candidate KV frontier differs".into(),
+                        ));
+                    }
+                    let key = staging.next().ok_or_else(|| {
+                        Error::State("resident hybrid candidate key staging missing".into())
+                    })?;
+                    let value = staging.next().ok_or_else(|| {
+                        Error::State("resident hybrid candidate value staging missing".into())
+                    })?;
+                    let staged =
+                        current.staging(key.clone(), value.clone(), DeviceAccess::Write)?;
+                    let buffers = staged.buffers();
+                    bindings.push(StateBinding {
+                        slot: requirement.slot,
+                        prior: buffers.clone(),
+                        candidate: buffers,
+                        prior_tokens: position,
+                        mode: crate::resident_program::StateBindingMode::KvInPlace,
+                    });
+                    let append = current.fork_for_append(tokens)?;
+                    parts.push(HybridCandidatePart::Kv {
+                        prior: current,
+                        staging: staged,
+                        append,
+                    });
+                }
+            }
+        }
+        if vectors.next().is_some() || staging.next().is_some() {
+            return Err(Error::State(
+                "resident hybrid candidate pool has extra planes".into(),
+            ));
+        }
+        Ok(HybridCandidateBundle { parts, bindings })
     }
 }
 
@@ -787,5 +1044,435 @@ mod tests {
             "P12_HYBRID_POOL_PASS old_root_budget_bytes={expected_bytes} vector_sets={vector_sets} staging_sets={staging_sets} max_pages={max_pages} simultaneous_exact=true empty_paged_root=true idle_reuse=true final_resident_bytes=0"
         );
         Ok(())
+    }
+
+    #[cfg(all(
+        feature = "cuda-native-qualification",
+        feature = "cuda-cublas",
+        target_os = "linux"
+    ))]
+    #[test]
+    #[ignore = "physical CUDA current-root-aware hybrid candidate one-flight composition"]
+    fn physical_hybrid_candidate_one_flight() -> Result<()> {
+        use crate::cuda::{
+            ordinary_text::{
+                Access as OrdinaryAccess, BufferRole as OrdinaryRole, Geometry, LaunchBinding,
+                Program, Step,
+            },
+            test_support::CudaDiagnostic,
+        };
+        use cubecl::CubeElement;
+        use zerogravity_core::accelerator::program::SourceNumericalContract;
+        use zerogravity_core::resource_arbiter::{
+            AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
+        };
+
+        fn metadata(
+            source: zerogravity_core::accelerator::SourceIdentity,
+            label: &str,
+            bytes: usize,
+        ) -> Result<zerogravity_core::resource_arbiter::HostWorkspace> {
+            let key = PhysicalDeviceKey::new("host", label)?;
+            let arbiter = ResourceArbiter::process_shared();
+            arbiter.register_matching(
+                key.clone(),
+                u64::try_from(bytes)
+                    .map_err(|_| Error::Limit("hybrid candidate metadata extent".into()))?,
+            )?;
+            arbiter
+                .admit(
+                    &key,
+                    ResourceOwner::new("hybrid-candidate-qualification", label)?,
+                    &[AllocationRequest {
+                        kind: AllocationClass::Scratch,
+                        bytes: bytes as u64,
+                    }],
+                )?
+                .into_host_workspace(source, Arc::new(()))
+        }
+
+        fn bf16_bytes(words: &[u16]) -> Vec<u8> {
+            words.iter().flat_map(|word| word.to_le_bytes()).collect()
+        }
+
+        futures_lite::future::block_on(async {
+            let diagnostic = CudaDiagnostic::new("hybrid-candidate-one-flight")?;
+            let service = diagnostic.service.clone();
+            let client = service.client();
+            let alignment = usize::try_from(client.properties().memory.alignment)
+                .map_err(|_| Error::Limit("hybrid candidate allocator alignment".into()))?;
+            let geometry = Geometry::qwen35_08();
+            let kv_width = geometry.kv_width()?;
+            const CAPACITY: usize = 8;
+            const BASE: usize = 3;
+            const ROWS: usize = 1;
+            const PAGE_TOKENS: usize = 4;
+            const PACKED_WIDTH: usize = 5120;
+            const VALUE_OFFSET: usize = 4608;
+            let states = vec![
+                StateRequirement {
+                    slot: StateSlot::Recurrent(RecurrentDomain(0)),
+                    layout: StateLayout::Vector { elements: 512 },
+                    physical: ResidentPhysicalType::Bf16,
+                    bytes: 512 * 2,
+                },
+                StateRequirement {
+                    slot: StateSlot::Kv(KvDomain(1)),
+                    layout: StateLayout::Kv {
+                        slab: kv_width,
+                        capacity: CAPACITY,
+                    },
+                    physical: ResidentPhysicalType::Bf16,
+                    bytes: 2 * kv_width * CAPACITY * 2,
+                },
+                StateRequirement {
+                    slot: StateSlot::Kv(KvDomain(2)),
+                    layout: StateLayout::Kv {
+                        slab: kv_width,
+                        capacity: CAPACITY,
+                    },
+                    physical: ResidentPhysicalType::Bf16,
+                    bytes: 2 * kv_width * CAPACITY * 2,
+                },
+            ];
+            let state_bytes = states.iter().map(|state| state.bytes).sum::<usize>();
+            let plan = HybridStateInventoryPlan::analyze(
+                &states,
+                state_bytes,
+                4,
+                1,
+                PAGE_TOKENS,
+                ROWS,
+                alignment,
+            )?;
+            let pools = HybridPooledStates::prepare(
+                service.clone(),
+                plan,
+                metadata(
+                    service.source_identity(),
+                    "zerogravity-hybrid-candidate-vector-metadata",
+                    ResidentPool::metadata_bytes(1, 4)?,
+                )?,
+                metadata(
+                    service.source_identity(),
+                    "zerogravity-hybrid-candidate-staging-metadata",
+                    ResidentPool::metadata_bytes(4, 1)?,
+                )?,
+                metadata(
+                    service.source_identity(),
+                    "zerogravity-hybrid-candidate-page-metadata",
+                    ResidentPagePool::metadata_bytes(24)?,
+                )?,
+                SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            )?;
+
+            let vector_root = pools.vector_pool.checkout()?;
+            let mut vector_iter = vector_root.iter();
+            let current_vector = make_domain(&states[0], &mut |layout| {
+                let lease = vector_iter.next().ok_or_else(|| {
+                    Error::State("hybrid candidate current vector missing".into())
+                })?;
+                if lease.bytes() != layout.bytes()? {
+                    return Err(Error::State(
+                        "hybrid candidate current vector extent differs".into(),
+                    ));
+                }
+                Ok(lease.clone())
+            })?;
+            if vector_iter.next().is_some() {
+                return Err(Error::State(
+                    "hybrid candidate current vector has extra planes".into(),
+                ));
+            }
+            let current_vector_accesses = current_vector
+                .leases
+                .iter()
+                .cloned()
+                .map(|lease| (lease, DeviceAccess::Write))
+                .collect::<Vec<_>>();
+            let vector_flight = service.submit(0, &current_vector_accesses)?;
+            for lease in &current_vector.leases {
+                client.write(
+                    &lease.handle(),
+                    Bytes::from_bytes_vec(vec![0u8; lease.bytes()]),
+                );
+            }
+            let vector_reads = current_vector
+                .leases
+                .iter()
+                .map(|lease| lease.readback(0, lease.bytes()))
+                .collect::<Result<Vec<_>>>()?;
+            let (vector_ready, vector_data) = vector_flight
+                .complete_with_readback(&current_vector.leases, &vector_reads, |data| {
+                    if data
+                        .iter()
+                        .flat_map(|bytes| bytes.iter())
+                        .any(|byte| *byte != 0)
+                    {
+                        return Err(Error::State(
+                            "hybrid candidate current vector initialization differs".into(),
+                        ));
+                    }
+                    Ok(())
+                })
+                .await?;
+            drop(vector_ready);
+            drop(vector_data);
+            drop(vector_reads);
+            drop(current_vector_accesses);
+            drop(vector_root);
+
+            async fn materialize(
+                service: &Arc<ResidentService>,
+                current: &paged_state::ResidentPagedKvDomain,
+                keys: &[u8],
+                values: &[u8],
+            ) -> Result<paged_state::ResidentPagedKvDomain> {
+                let append = current.fork_for_append(BASE)?;
+                let accesses = append.accesses()?;
+                let flight = service.submit(0, &accesses)?;
+                append.enqueue_cuda(&flight, keys, values)?;
+                let outputs = append.outputs()?;
+                let reads = outputs
+                    .iter()
+                    .map(|lease| lease.readback(0, lease.bytes()))
+                    .collect::<Result<Vec<_>>>()?;
+                let (ready, data) = flight
+                    .complete_with_readback(&outputs, &reads, |_| Ok(()))
+                    .await?;
+                drop(ready);
+                drop(data);
+                drop(reads);
+                drop(outputs);
+                drop(accesses);
+                append.into_candidate(current)
+            }
+
+            let row_bytes = kv_width * 2;
+            let row = |token: usize, salt: usize| {
+                (0..kv_width)
+                    .map(|lane| 0x3c00u16 + ((token * 29 + lane * 7 + salt) % 0x0200) as u16)
+                    .collect::<Vec<_>>()
+            };
+            let mut current = vec![current_vector];
+            let mut expected = Vec::new();
+            for (domain_index, requirement) in states[1..].iter().enumerate() {
+                let empty = paged_state::ResidentPagedKvDomain::empty_for_contract(
+                    requirement,
+                    pools.page_pool.clone(),
+                    PAGE_TOKENS,
+                    pools.numerical,
+                )?;
+                let mut keys = Vec::new();
+                let mut values = Vec::new();
+                for token in 0..BASE {
+                    keys.extend(bf16_bytes(&row(token, 11 + domain_index * 17)));
+                    values.extend(bf16_bytes(&row(token, 113 + domain_index * 19)));
+                }
+                let ready = materialize(&service, &empty, &keys, &values).await?;
+                expected.push((keys, values));
+                current.push(Domain::from_paged_kv(ready)?);
+            }
+
+            let bundle = pools.candidate(&states, &current, ROWS, BASE)?;
+            if bundle.bindings().len() != states.len()
+                || bundle.bindings()[0].mode != crate::resident_program::StateBindingMode::Distinct
+                || bundle.bindings()[1..].iter().any(|binding| {
+                    binding.mode != crate::resident_program::StateBindingMode::KvInPlace
+                })
+            {
+                return Err(Error::State("hybrid candidate binding modes differ".into()));
+            }
+            let accesses = bundle.accesses()?;
+            let flight = service.submit(0, &accesses)?;
+            let gather_dispatches = bundle.enqueue_gather_cuda(&flight)?;
+            let promoted = bundle.write_outputs()?;
+            if promoted.len() != 5 {
+                return Err(Error::State(
+                    "hybrid candidate promoted output count differs".into(),
+                ));
+            }
+            client.write(
+                &promoted[0].handle(),
+                Bytes::from_bytes_vec(vec![0u8; promoted[0].bytes()]),
+            );
+
+            let program = Program::new(geometry)?;
+            let step = Step::new(ROWS, BASE, CAPACITY)?;
+            let status = client.create_from_slice(u32::as_bytes(&[0u32]));
+            for (domain_index, binding) in bundle.bindings()[1..].iter().enumerate() {
+                let StateBuffers::Kv { keys, values } = &binding.candidate else {
+                    return Err(Error::State(
+                        "hybrid candidate KV staging binding differs".into(),
+                    ));
+                };
+                let new_key = row(BASE, 11 + domain_index * 17);
+                let new_value = row(BASE, 113 + domain_index * 19);
+                let mut packed = vec![0u16; PACKED_WIDTH];
+                packed[VALUE_OFFSET..VALUE_OFFSET + kv_width].copy_from_slice(&new_value);
+                let key = client.create_from_slice(&bf16_bytes(&new_key));
+                let packed = client.create_from_slice(&bf16_bytes(&packed));
+                program
+                    .kv_append(step)?
+                    .prepare_owned(
+                        client,
+                        vec![
+                            LaunchBinding::new(OrdinaryRole::Key, OrdinaryAccess::Read, key),
+                            LaunchBinding::new(
+                                OrdinaryRole::PackedAttention,
+                                OrdinaryAccess::Read,
+                                packed,
+                            ),
+                            LaunchBinding::new(
+                                OrdinaryRole::KeyCache,
+                                OrdinaryAccess::ReadWrite,
+                                keys.handle.clone(),
+                            ),
+                            LaunchBinding::new(
+                                OrdinaryRole::ValueCache,
+                                OrdinaryAccess::ReadWrite,
+                                values.handle.clone(),
+                            ),
+                        ],
+                        LaunchBinding::new(
+                            OrdinaryRole::Status,
+                            OrdinaryAccess::ReadWrite,
+                            status.clone(),
+                        ),
+                    )?
+                    .enqueue_owned(client, &status)?;
+                expected[domain_index]
+                    .0
+                    .extend_from_slice(&bf16_bytes(&new_key));
+                expected[domain_index]
+                    .1
+                    .extend_from_slice(&bf16_bytes(&new_value));
+            }
+            let scatter_dispatches = bundle.enqueue_scatter_cuda(&flight)?;
+            let readback = promoted[0].readback(0, promoted[0].bytes())?;
+            let (ready, vector_data) = flight
+                .complete_with_readback(&promoted, &[readback], |data| {
+                    if data.len() != 1 || data[0].iter().any(|byte| *byte != 0) {
+                        return Err(Error::State(
+                            "hybrid candidate vector completion differs".into(),
+                        ));
+                    }
+                    Ok(())
+                })
+                .await?;
+            let status_bytes = client
+                .read_one(status)
+                .map_err(|error| Error::State(format!("hybrid candidate status: {error}")))?;
+            if status_bytes.len() != 4
+                || u32::from_le_bytes(status_bytes[..4].try_into().unwrap()) != 0
+            {
+                return Err(Error::State(
+                    "hybrid candidate ordinary KV status differs".into(),
+                ));
+            }
+            drop(vector_data);
+            let candidate = bundle.into_domains()?;
+            let canonical = canonical_write_outputs(&current, &candidate)?;
+            if canonical.len() != ready.outputs().len()
+                || canonical
+                    .iter()
+                    .zip(ready.outputs())
+                    .any(|(expected, actual)| expected.id() != actual.id())
+            {
+                return Err(Error::State(
+                    "hybrid candidate Ready/canonical output ordering differs".into(),
+                ));
+            }
+            if candidate[0]
+                .leases
+                .iter()
+                .any(|lease| !lease.is_initialized())
+                || candidate[1..]
+                    .iter()
+                    .any(|domain| domain.paged_kv().is_err())
+            {
+                return Err(Error::State(
+                    "hybrid candidate canonical domain readiness differs".into(),
+                ));
+            }
+            drop(accesses);
+
+            let staging = pools.staging_pool.checkout()?;
+            let mut staging_iter = staging.iter();
+            let mut verify_accesses =
+                BTreeMap::<BufferLeaseId, (ResidentLease, DeviceAccess)>::new();
+            let mut verify_pairs = Vec::new();
+            for domain in &candidate[1..] {
+                let paged = domain.paged_kv()?;
+                if paged.tokens()? != BASE + ROWS {
+                    return Err(Error::State(
+                        "hybrid candidate paged frontier differs".into(),
+                    ));
+                }
+                let key = staging_iter
+                    .next()
+                    .ok_or_else(|| Error::State("hybrid verify key staging missing".into()))?;
+                let value = staging_iter
+                    .next()
+                    .ok_or_else(|| Error::State("hybrid verify value staging missing".into()))?;
+                for (lease, access) in paged.gather_accesses(BASE + ROWS, key, value)? {
+                    merge_access(&mut verify_accesses, lease, access)?;
+                }
+                verify_pairs.push((paged.clone(), key.clone(), value.clone()));
+            }
+            if staging_iter.next().is_some() {
+                return Err(Error::State(
+                    "hybrid verify staging has extra planes".into(),
+                ));
+            }
+            let verify_accesses = verify_accesses.into_values().collect::<Vec<_>>();
+            let verify_flight = service.submit(0, &verify_accesses)?;
+            for (paged, key, value) in &verify_pairs {
+                paged.enqueue_gather_cuda(&verify_flight, BASE + ROWS, key, value)?;
+            }
+            let verify_outputs = staging.clone();
+            let verify_reads = verify_outputs
+                .iter()
+                .map(|lease| lease.readback(0, lease.bytes()))
+                .collect::<Result<Vec<_>>>()?;
+            let (_, gathered) = verify_flight
+                .complete_with_readback(&verify_outputs, &verify_reads, |_| Ok(()))
+                .await?;
+            for (domain_index, pair) in gathered.chunks_exact(2).enumerate() {
+                let active = (BASE + ROWS) * row_bytes;
+                if pair[0][..active] != expected[domain_index].0
+                    || pair[1][..active] != expected[domain_index].1
+                    || pair[0][active..].iter().any(|byte| *byte != 0)
+                    || pair[1][active..].iter().any(|byte| *byte != 0)
+                {
+                    return Err(Error::State(
+                        "hybrid candidate gathered continuation differs".into(),
+                    ));
+                }
+            }
+
+            drop(gathered);
+            drop(verify_reads);
+            drop(verify_outputs);
+            drop(verify_accesses);
+            drop(verify_pairs);
+            drop(staging);
+            drop(ready);
+            drop(promoted);
+            drop(canonical);
+            drop(candidate);
+            drop(current);
+            let old_budget = pools.plan.root_budget_bytes;
+            drop(pools);
+            if service.resident_bytes()? != 0 {
+                return Err(Error::State(
+                    "hybrid candidate pool backing did not retire".into(),
+                ));
+            }
+            println!(
+                "P12_HYBRID_CANDIDATE_PASS base={BASE} rows={ROWS} kv_domains=2 gather_dispatches={gather_dispatches} scatter_dispatches={scatter_dispatches} ready_outputs=5 canonical_ready_order=true paged_frontier=4 vector_ready=true continuation_exact=true inactive_tail_zero=true old_root_budget_bytes={old_budget} final_resident_bytes=0"
+            );
+            Ok(())
+        })
     }
 }

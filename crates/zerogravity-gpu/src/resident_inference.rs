@@ -1843,12 +1843,174 @@ impl ResidentModel {
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
+enum OrdinaryCandidateState {
+    Contiguous {
+        domains: Vec<Domain>,
+        bindings: Vec<StateBinding>,
+    },
+    #[cfg(feature = "cuda-cublas")]
+    Hybrid(state_pool::HybridCandidateBundle),
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
+impl OrdinaryCandidateState {
+    fn bindings(&self) -> &[StateBinding] {
+        match self {
+            Self::Contiguous { bindings, .. } => bindings,
+            #[cfg(feature = "cuda-cublas")]
+            Self::Hybrid(bundle) => bundle.bindings(),
+        }
+    }
+
+    fn state_accesses(&self, prior: &[Domain]) -> Result<Vec<(ResidentLease, DeviceAccess)>> {
+        match self {
+            Self::Contiguous { domains, .. } => {
+                let mut accesses = Vec::new();
+                for domain in prior {
+                    accesses.extend(
+                        domain
+                            .leases
+                            .iter()
+                            .cloned()
+                            .map(|lease| (lease, DeviceAccess::Read)),
+                    );
+                }
+                for domain in domains {
+                    accesses.extend(
+                        domain
+                            .leases
+                            .iter()
+                            .cloned()
+                            .map(|lease| (lease, DeviceAccess::Write)),
+                    );
+                }
+                Ok(accesses)
+            }
+            #[cfg(feature = "cuda-cublas")]
+            Self::Hybrid(bundle) => bundle.accesses(),
+        }
+    }
+
+    fn write_outputs(&self) -> Result<Vec<ResidentLease>> {
+        match self {
+            Self::Contiguous { domains, .. } => Ok(domains
+                .iter()
+                .flat_map(|domain| domain.leases.iter().cloned())
+                .collect()),
+            #[cfg(feature = "cuda-cublas")]
+            Self::Hybrid(bundle) => bundle.write_outputs(),
+        }
+    }
+
+    #[cfg(feature = "cuda-cublas")]
+    fn enqueue_gather_cuda(
+        &self,
+        flight: &crate::resident_leases::ResidentSubmission<'_>,
+    ) -> Result<usize> {
+        match self {
+            Self::Contiguous { .. } => Ok(0),
+            Self::Hybrid(bundle) => bundle.enqueue_gather_cuda(flight),
+        }
+    }
+
+    #[cfg(feature = "cuda-cublas")]
+    fn enqueue_scatter_cuda(
+        &self,
+        flight: &crate::resident_leases::ResidentSubmission<'_>,
+    ) -> Result<usize> {
+        match self {
+            Self::Contiguous { .. } => Ok(0),
+            Self::Hybrid(bundle) => bundle.enqueue_scatter_cuda(flight),
+        }
+    }
+
+    fn into_domains(self) -> Result<Vec<Domain>> {
+        match self {
+            Self::Contiguous { domains, .. } => Ok(domains),
+            #[cfg(feature = "cuda-cublas")]
+            Self::Hybrid(bundle) => bundle.into_domains(),
+        }
+    }
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
+fn dedupe_resident_accesses(
+    accesses: Vec<(ResidentLease, DeviceAccess)>,
+) -> Result<Vec<(ResidentLease, DeviceAccess)>> {
+    let mut unique = std::collections::BTreeMap::new();
+    for (lease, access) in accesses {
+        match unique.entry(lease.id()) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert((lease, access));
+            }
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                let (existing, existing_access) = entry.get_mut();
+                if existing.allocation_generation() != lease.allocation_generation()
+                    || existing.bytes() != lease.bytes()
+                    || existing.role() != lease.role()
+                    || !Arc::ptr_eq(existing.service(), lease.service())
+                {
+                    return Err(Error::State(
+                        "ordinary resident access identity aliases".into(),
+                    ));
+                }
+                if access == DeviceAccess::Write {
+                    *existing_access = DeviceAccess::Write;
+                }
+            }
+        }
+    }
+    Ok(unique.into_values().collect())
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
 impl ResidentModel {
+    async fn ordinary_candidate_state(
+        &self,
+        prior: &[Domain],
+        tokens: usize,
+        position: usize,
+    ) -> Result<OrdinaryCandidateState> {
+        if let Some(storage) = self.state_pool.get()
+            && let state_pool::PooledStateStorage::Hybrid(pools) = &storage.storage
+        {
+            #[cfg(feature = "cuda-cublas")]
+            {
+                return Ok(OrdinaryCandidateState::Hybrid(pools.candidate(
+                    &self.states,
+                    prior,
+                    tokens,
+                    position,
+                )?));
+            }
+            #[cfg(not(feature = "cuda-cublas"))]
+            {
+                let _ = pools;
+                return Err(Error::Unsupported(
+                    "hybrid paged state requires ordinary CUDA".into(),
+                ));
+            }
+        }
+        let domains = self.allocate_state(false).await?;
+        self.validate_domains(&domains, false)?;
+        let bindings = bind_domains(prior, &domains, position)?;
+        Ok(OrdinaryCandidateState::Contiguous { domains, bindings })
+    }
+
     async fn execute_ordinary_source(
         &self,
         base: RootBinding,
         prior: &[Domain],
-        candidate: Vec<Domain>,
+        candidate: OrdinaryCandidateState,
         request: &ForwardPlan,
         options: OrdinarySourceOptions<'_, '_>,
     ) -> Result<(Vec<Domain>, ResidentReady, InferenceReadback)> {
@@ -1900,8 +2062,7 @@ impl ResidentModel {
             ));
         }
         self.validate_domains(prior, true)?;
-        self.validate_domains(&candidate, false)?;
-        let bindings = bind_domains(prior, &candidate, call.rows().base())?;
+        let bindings = candidate.bindings();
 
         ordinary_not_cancelled(cancelled)?;
         let ticket = self.service.queue().submit(
@@ -1929,7 +2090,7 @@ impl ResidentModel {
             .validate_ordinary_source_request(request)?;
         workspace
             .program
-            .validate_source_call_states(request, &bindings)?;
+            .validate_source_call_states(request, bindings)?;
         let wait_on_cancel =
             workspace.program.source_call_waits_on_cancel() || completion_owner.is_some();
         let mut accesses = match output {
@@ -1954,27 +2115,11 @@ impl ResidentModel {
         } else {
             None
         };
-        for domain in prior {
-            accesses.extend(
-                domain
-                    .leases
-                    .iter()
-                    .cloned()
-                    .map(|lease| (lease, DeviceAccess::Read)),
-            );
-        }
-        for domain in &candidate {
-            accesses.extend(
-                domain
-                    .leases
-                    .iter()
-                    .cloned()
-                    .map(|lease| (lease, DeviceAccess::Write)),
-            );
-        }
+        accesses.extend(candidate.state_accesses(prior)?);
         if let Some(token) = &device_token {
             accesses.push((token.lease.clone(), DeviceAccess::Read));
         }
+        let accesses = dedupe_resident_accesses(accesses)?;
         ordinary_not_cancelled(cancelled)?;
         slot.begin_submission()?;
         let mut flight = self.service.submit(base.root(), &accesses)?;
@@ -1984,12 +2129,14 @@ impl ResidentModel {
         if let Some(flag) = submitted_flag {
             flag.store(true, std::sync::atomic::Ordering::Release);
         }
+        #[cfg(feature = "cuda-cublas")]
+        let gather_dispatches = candidate.enqueue_gather_cuda(&flight)?;
         let submitted = workspace
             .program
             .launch_ordinary_source(
                 &mut flight,
                 request,
-                &bindings,
+                bindings,
                 output,
                 matches!(readout, Readout::Greedy),
                 device_token
@@ -2000,7 +2147,16 @@ impl ResidentModel {
             )
             .await?;
         #[cfg(feature = "cuda-cublas")]
-        let mut submitted = submitted;
+        let mut submitted = {
+            let mut submitted = submitted;
+            let scatter_dispatches = candidate.enqueue_scatter_cuda(&flight)?;
+            submitted.dispatches = submitted
+                .dispatches
+                .checked_add(gather_dispatches)
+                .and_then(|n| n.checked_add(scatter_dispatches))
+                .ok_or_else(|| Error::Limit("ordinary hybrid state dispatch count".into()))?;
+            submitted
+        };
         #[cfg(not(feature = "cuda-cublas"))]
         let submitted = submitted;
         if let Some(packet) = &packet {
@@ -2049,12 +2205,12 @@ impl ResidentModel {
             ));
         }
         for ((version, buffers), expected) in submitted.proposals.iter().zip(expected) {
-            let domain = candidate
+            let binding = bindings
                 .iter()
-                .find(|domain| domain.slot == version.slot)
+                .find(|binding| binding.slot == version.slot)
                 .ok_or_else(|| Error::State("ordinary CUDA foreign state proposal".into()))?;
             let actual = buffers.handles();
-            let target = domain.buffers.handles();
+            let target = binding.candidate.handles();
             if version.slot != expected.slot
                 || version.ordinal != expected.ordinal
                 || actual.len() != target.len()
@@ -2100,10 +2256,7 @@ impl ResidentModel {
             }
         }
 
-        let mut promoted = candidate
-            .iter()
-            .flat_map(|domain| domain.leases.iter().cloned())
-            .collect::<Vec<_>>();
+        let mut promoted = candidate.write_outputs()?;
         promoted.extend(packet.iter().cloned());
         let expected_readback_bytes = cohort.iter().map(|item| item.bytes()).sum();
         if !wait_on_cancel {
@@ -2152,6 +2305,8 @@ impl ResidentModel {
         if !wait_on_cancel {
             ordinary_not_cancelled(cancelled)?;
         }
+        let candidate = candidate.into_domains()?;
+        self.validate_domains(&candidate, true)?;
 
         let device_token = if matches!(readout, Readout::Greedy) {
             Some(ResidentToken {
@@ -2744,7 +2899,10 @@ impl ResidentSession {
             .map_err(|_| Error::Limit("ordinary CUDA request row count".into()))?;
         let attempt = self.authority.begin_advance(count)?;
         ordinary_not_cancelled(cancelled)?;
-        let candidate = self.model.allocate_state(false).await?;
+        let candidate = self
+            .model
+            .ordinary_candidate_state(&self.domains, call.rows().len(), call.rows().base())
+            .await?;
         ordinary_not_cancelled(cancelled)?;
         let retained_call = options.completion_owner.is_some();
         let (domains, ready, readback) = self
