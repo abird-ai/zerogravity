@@ -128,8 +128,13 @@ The following extends existing owners; source-byte qualification is not inferenc
   Ready requires only new/COW page Writes and proves2 inherited full pages at
   4->5. A pure hybrid inventory plan now proves vector/staging/page maxima stay
   inside the old root byte envelope and rejects insufficient fork headroom.
-  Next physically construct/install those pools for ordinary source-call sessions;
-  page_tokens remains an explicit policy input, not yet a production default.
+  Signed `cb57e1d` constructs the real Vector/staging/page pool owner and
+  verified-source installer. Physical4-vector-root +1-staging +24-page maximum
+  equals the old67584-byte envelope exactly, reuses all idle backing and retires
+  to resident0. Initial hybrid roots are zeroed Vector + empty paged KV; candidate
+  allocation still refuses without the current root. Next wire the current-root
+  candidate/staging one-flight path, then select it for ordinary source-call
+  sessions. page_tokens remains explicit, not a production default.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

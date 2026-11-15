@@ -146,17 +146,32 @@ pressure and rejects insufficient headroom/heterogeneous page geometry. Three
 unit gates pass. This is an admission plan only: no physical hybrid pool is
 installed and no production page-token value is selected.
 
+Signed `cb57e1d` adds the **physical hybrid pool substrate** without selecting
+it in serving. `PooledStateStorage` now distinguishes the existing Contiguous
+pool from a Hybrid owner containing vector-root, staging-set and page pools.
+`install_window_hybrid_state_pools` reserves each metadata workspace from the
+original verified source and constructs the three accepted pools. Initial hybrid
+roots are zeroed Vector domains + empty paged KV; generic uninitialized candidate
+allocation fails closed because candidate paging requires the current root.
+Production page compatibility now uses fixed numerical-contract tags plus a
+checked versioned physical/slab/capacity identity, not arbitrary qualifier IDs.
+Physical RTX3060 proof forces vector_sets4 + staging_sets1 + max_pages24
+simultaneously resident at exactly old_root_budget_bytes67584, verifies empty
+paged roots and pool reuse, then drops the pools to final resident_bytes0.
+All retained paged/in-place physical cells and production composition/clippy pass.
+
 Admission review changes the next implementation shape: ordinary admission
 budgets a finite inventory of complete state roots. A paged committed root plus
 full prior staging plus full candidate staging would be a third state-sized
 envelope at full context and must not be smuggled past admission. The Ready and
-snapshot semantics are now accepted at `93468b1`. **Next: construct/install the
-physical pools from `HybridStateInventoryPlan`, using source-owned metadata:
-contiguous Conv/Recurrent root pool, homogeneous KV page pool and bounded staging
-pool. Wire only ordinary source-call sessions first; leave generic roots=2 and
-native/HIP on the old contiguous allocator. Keep page_tokens explicit until a
-production policy is chosen. Then gather -> KvInPlace append/attention -> scatter
--> Ready -> root publication.
+snapshot semantics are accepted at `93468b1`; physical pools are accepted at
+`cb57e1d`. **Next: implement the current-root-aware hybrid candidate path**
+inside ordinary CUDA execution: vector candidate checkout + staging checkout +
+per-domain paged fork, one deduplicated original flight, gather -> KvInPlace
+append/attention -> scatter -> Ready -> root publication. Only then switch the
+ordinary source-call loader from `install_window_root_pool` to the hybrid
+installer under an explicit page policy. Leave generic roots=2/native/HIP on the
+old contiguous allocator and keep page_tokens explicit.
 Qualify continued full-state page-boundary/multi-page parity.**
 Complete-domain prefix identity/intersection follows that.
 Event/lease-backed physical overlap remains after those state gates.

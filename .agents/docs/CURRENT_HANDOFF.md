@@ -20,29 +20,28 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation/qualification** checkpoint is
-  `93468b1f5062804f009f817c6f5dd50bc7d0516e`
-  (`feat(state): validate hybrid paged root semantics`). Parents through
-  `ef9e4d4` remain the page/COW/gather-scatter/canonical-domain/KvInPlace
-  execution substrate. `93468b1` closes the two semantic gates required before
-  installing hybrid pools. Paged snapshots now traverse K then V page leases
-  explicitly, validate page/physical/valid extents, trim partial pages to their
-  valid rows, require zero inactive tails and preserve typed finite checks.
-  Snapshot restore reuses the exact original `publish_domain_swap` authority.
-  RTX3060 proves frontier3 partial snapshot, frontier4 full snapshot and
-  4->3->4 restore byte-exact with all pages retired.
-  Ready validation now computes only actual canonical Write outputs: contiguous
-  domains remain all-write; paged KV omits a page only when it is the exact same
-  initialized **full** current-root owner at the same K/V plane and logical page
-  index. The 3->4 boundary requires2 COW Writes; 4->5 retains2 inherited full
-  pages and requires only2 new Writes.
-  A pure `HybridStateInventoryPlan` now takes explicit page_tokens and
-  max_append_tokens, derives vector-root/staging/page maxima from the existing
-  roots*state_bytes envelope, budgets all-KV-domain candidate COW/page growth,
-  rejects insufficient fork headroom and heterogeneous page geometry, and proves
-  simultaneous maxima never exceed the old root byte cap. It does **not** install
-  pools or choose a production page-size policy yet.
-  The final-current six physical paging/in-place cells, hybrid unit gates,
-  production `qwen35-cuda` composition and strict clippy are green.
+  `cb57e1d8bd4d33b530c4efc771e19450df1ef55e`
+  (`feat(state): construct hybrid paged state pools`). Parent `93468b1`
+  remains the accepted snapshot/restore/inherited-Ready semantics; parents
+  through `ef9e4d4` remain the COW/gather-scatter/KvInPlace substrate.
+  `cb57e1d` turns the pure hybrid inventory plan into real pool objects:
+  `PooledStateStorage` is explicitly Contiguous or Hybrid; the hybrid owner
+  retains one Vector `ResidentPool`, one full-K/V staging `ResidentPool` and
+  one `ResidentPagePool`. The source-owned installer reserves separate metadata
+  workspaces from the original `VerifiedTensorSource` and constructs all three
+  pools from the accepted byte plan. Initial hybrid roots are zeroed
+  Conv/Recurrent planes plus empty canonical paged KV domains; uninitialized
+  candidate allocation still refuses until it has the current paged root.
+  Production page compatibility no longer uses qualifier constants:
+  `empty_for_contract` maps `SourceNumericalContract` to explicit fixed tags
+  and uses checked versioned bit-packing for physical type/slab/capacity; page
+  geometry remains a separate compatibility component.
+  RTX3060 physical acceptance forces4 vector sets +1 complete staging set +24
+  page backings resident simultaneously and observes exactly the old
+  67,584-byte root envelope, then full idle reuse and final resident_bytes0:
+  `P12_HYBRID_POOL_PASS ... simultaneous_exact=true ... final_resident_bytes=0`.
+  The exact-current seven physical pool/paging/in-place cells, production
+  `qwen35-cuda` composition and strict clippy are green.
   Production ordinary sessions still construct contiguous KV today; no serving
   selector, direct paged attention, prefix reuse or public capability changed.
   Parent `8e6f14d3defc0aa2e542c26ffb9ccc7c736f1fcb`
@@ -134,20 +133,20 @@ and live TODOs are authoritative.
   while compiling/linking `zerogravity-cli`, before the test ran and without a
   terminal child status, Rust diagnostic, OOM/Xid, live child or GPU residue.
   Do not loop that unstable build. Paged-state control/ownership/materialization/
-  typed-KV gather/scatter/domain publication/in-place execution/hybrid semantics is now
+  typed-KV gather/scatter/domain publication/in-place execution/hybrid pools is now
   `0027c28` + `54340a6` + `1eb6e0f` + `3ac2059` + `dc6a188` +
-  `53336b3` + `ef9e4d4` + `93468b1`. **Next executable P12-C work is
-  physical hybrid-pool installation and ordinary source-call selection.** Use
-  `HybridStateInventoryPlan` as the byte authority: construct a root pool only
-  for contiguous Conv/Recurrent planes, one homogeneous KV page pool, and one
-  full K/V staging-set pool per active ordinary source-call session. Reserve all
-  pool metadata from the existing source owner and ensure their maximum physical
-  bytes equal or undercut the old complete-root inventory. Keep page_tokens an
-  explicit policy input; do not silently promote the 4-token qualification value
-  to production policy. Then create paged-empty KV session roots, gather into one
-  staging set, bind KvInPlace, execute ordinary append/attention, scatter only
-  new/COW pages, complete Ready with the already accepted inherited-page rules,
-  and publish through the existing root swap.
+  `53336b3` + `ef9e4d4` + `93468b1` + `cb57e1d`.
+  **Next executable P12-C work is current-root-aware hybrid candidate execution
+  and ordinary source-call selection.** Checkout one vector candidate set and one
+  staging set; fork every paged KV domain from the current root; build one
+  deduplicated flight containing current page Reads, staging Writes, vector
+  prior/candidate accesses and fresh/COW page Writes; gather current KV into
+  staging; bind the accepted KvInPlace mode; execute ordinary append/attention;
+  scatter only appended rows into each paged candidate; complete Ready with
+  `canonical_write_outputs`; then publish through the existing root swap.
+  Only after that path is physically exact should the ordinary source loader
+  install/select the hybrid pools. Keep page_tokens explicit; qualification value4
+  is still not a production default.
   Qualify
   continued full-state execution at page_size-1/page_size/page_size+1 and
   multi-page boundaries before direct paged attention or complete-domain prefix

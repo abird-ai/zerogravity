@@ -539,6 +539,14 @@ or a change to the active correctness/benchmark/27B order.
   refuses insufficient active-fork headroom or heterogeneous page geometry.
   **Production selection remains open:** next physically construct/install those
   pools for ordinary source-call sessions and choose page_tokens explicitly.
+  Signed `cb57e1d` now constructs the actual vector/staging/page pool owner and
+  source-owned installer. Physical vector4+staging1+page24 residency equals the
+  old67584-byte root envelope exactly and retires to0. Initial hybrid roots are
+  zeroed vectors + empty paged KV; candidate allocation intentionally refuses
+  until a current-root-aware path exists. Stable compatibility IDs use explicit
+  numerical tags and checked physical/slab/capacity packing. **Next:** build that
+  one-flight hybrid candidate execution path, then select it in ordinary
+  source-call loading under an explicit page policy.
   Admit physical GPU overlap only after event/lease, cancellation/unknown-
   completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine

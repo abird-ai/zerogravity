@@ -412,6 +412,38 @@ plan using source-owned metadata, install them only in the ordinary source-call
 path, and bind session allocation/execution. Page-token policy remains explicit;
 the qualification value4 is not a production default.
 
+**15 Nov physical hybrid-pool follow-up:** signed `cb57e1d` constructs the
+pool substrate but deliberately does not select it in production serving.
+`PooledStateStorage` has explicit Contiguous/Hybrid variants. The Hybrid owner
+contains a finite Vector root `ResidentPool`, a finite full-K/V staging
+`ResidentPool`, one homogeneous `ResidentPagePool`, the accepted inventory
+plan and the numerical contract. The verified-source installer reserves distinct
+metadata workspaces for all three pools before setting the one model storage
+authority. Initial hybrid root checkout zeroes only Vector planes and constructs
+empty paged KV domains; candidate checkout refuses until the current root can be
+forked rather than fabricating an empty candidate.
+
+Production compatibility identity is also no longer caller-invented:
+`ResidentPagedKvDomain::empty_for_contract` maps each
+`SourceNumericalContract` to a stable explicit tag and encodes
+version/physical-type/slab/capacity into a checked collision-free 64-bit layout
+identity within 24-bit slab/capacity bounds. Page byte/unit geometry remains
+separate in `PageGeometry`.
+
+Physical pool qualification holds all admitted backing simultaneously:
+`P12_HYBRID_POOL_PASS old_root_budget_bytes=67584 vector_sets=4
+staging_sets=1 max_pages=24 simultaneous_exact=true empty_paged_root=true
+idle_reuse=true final_resident_bytes=0`. The same exact binary passes the six
+previous paging/KvInPlace cells and production strict checks.
+
+Next: add a current-root-aware candidate bundle owning vector candidate leases,
+one staging-set checkout and each `ResidentPagedKvAppend`. Build one
+deduplicated access cohort, gather all current KV pages, bind staging as
+KvInPlace, execute ordinary append/attention, scatter the new rows, convert only
+physically Ready appends into paged candidate domains and complete with
+`canonical_write_outputs`. After page-boundary/full-state qualification, wire
+the ordinary source loader to the hybrid installer behind an explicit page policy.
+
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve
   B1 and smaller qualified bands after checked prelaunch capacity refusal.
