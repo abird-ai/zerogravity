@@ -233,6 +233,7 @@ impl BatchProgram {
                 prior: state()?,
                 candidate: state()?,
                 prior_tokens: 0,
+                mode: super::StateBindingMode::Distinct,
             });
         }
         let tensors = original

@@ -390,6 +390,15 @@ pub(crate) struct StateBinding {
     pub candidate: StateBuffers,
     /// Committed prefix length; meaningful for paired KV only.
     pub prior_tokens: usize,
+    pub mode: StateBindingMode,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StateBindingMode {
+    Distinct,
+    /// Prior/candidate are the same transient KV staging pair. The caller must
+    /// have gathered the committed paged prefix into this pair on the same
+    /// original physical submission before ordinary execution.
+    KvInPlace,
 }
 struct NativeExecution<'a> {
     #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]

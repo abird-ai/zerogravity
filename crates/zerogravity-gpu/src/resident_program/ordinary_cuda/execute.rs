@@ -17,8 +17,8 @@ use crate::{
     resident_leases::{ResidentLease, ResidentSubmission as PhysicalSubmission},
     resident_program::{
         DeviceBuffer, ResidentBufferLayout, ResidentOutput, ResidentPhysicalType,
-        ResidentSubmission as ProgramSubmission, StateBinding, StateBuffers, StateLayout,
-        StateRequirement, cohort_rows::CohortRowSpans,
+        ResidentSubmission as ProgramSubmission, StateBinding, StateBindingMode, StateBuffers,
+        StateLayout, StateRequirement, cohort_rows::CohortRowSpans,
     },
 };
 use cubecl::{bytes::Bytes, server::Handle};
@@ -46,6 +46,104 @@ fn require_not_cancelled(cancelled: Option<&std::sync::atomic::AtomicBool>) -> R
 struct CohortValues<'a> {
     arena: &'a OrdinaryCudaCohortValues,
     spans: &'a CohortRowSpans,
+}
+
+fn require_in_place_kv_alias(state: &StateBinding) -> Result<()> {
+    if state.mode != StateBindingMode::KvInPlace {
+        return Ok(());
+    }
+    let (
+        StateBuffers::Kv {
+            keys: prior_keys,
+            values: prior_values,
+        },
+        StateBuffers::Kv {
+            keys: candidate_keys,
+            values: candidate_values,
+        },
+    ) = (&state.prior, &state.candidate)
+    else {
+        return Err(Error::State(
+            "ordinary CUDA in-place KV binding requires paired KV buffers".into(),
+        ));
+    };
+    for (prior, candidate) in [
+        (prior_keys, candidate_keys),
+        (prior_values, candidate_values),
+    ] {
+        let prior = prior.original_lease()?;
+        let candidate = candidate.original_lease()?;
+        if prior.id() != candidate.id()
+            || prior.allocation_generation() != candidate.allocation_generation()
+            || prior.bytes() != candidate.bytes()
+        {
+            return Err(Error::State(
+                "ordinary CUDA in-place KV prior/candidate identity differs".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn prepare_kv_candidate(
+    client: &cubecl::client::Client,
+    status: &Handle,
+    state: &StateBinding,
+    step: Step,
+    kv_width: usize,
+) -> Result<usize> {
+    require_in_place_kv_alias(state)?;
+    let StateBuffers::Kv {
+        keys: prior_keys,
+        values: prior_values,
+    } = &state.prior
+    else {
+        return Err(Error::State("ordinary CUDA prior KV layout".into()));
+    };
+    let StateBuffers::Kv {
+        keys: candidate_keys,
+        values: candidate_values,
+    } = &state.candidate
+    else {
+        return Err(Error::State("ordinary CUDA candidate KV layout".into()));
+    };
+    if state.mode == StateBindingMode::KvInPlace {
+        return Ok(0);
+    }
+
+    let state_elements = step
+        .capacity
+        .checked_mul(kv_width)
+        .ok_or_else(|| Error::Limit("ordinary CUDA KV state extent".into()))?;
+    let mut launches = 0;
+    launches += attention::zero_bf16(client, &candidate_keys.handle, state_elements)?;
+    launches += attention::zero_bf16(client, &candidate_values.handle, state_elements)?;
+    if step.base != 0 {
+        let elements = step
+            .base
+            .checked_mul(kv_width)
+            .ok_or_else(|| Error::Limit("ordinary CUDA KV prefix element count".into()))?;
+        for (prior, candidate, role) in [
+            (prior_keys, candidate_keys, "key"),
+            (prior_values, candidate_values, "value"),
+        ] {
+            let source = exact_view(
+                prior.original_lease()?,
+                0,
+                elements * 2,
+                &format!("ordinary prior {role} prefix"),
+            )?;
+            let destination = exact_view(
+                candidate.original_lease()?,
+                0,
+                elements * 2,
+                &format!("ordinary candidate {role} prefix"),
+            )?;
+            launches +=
+                attention::copy_bf16_prefix(client, &source, &destination, status, elements)?;
+        }
+    }
+    Ok(launches)
 }
 
 impl OrdinaryCudaBody {
@@ -318,23 +416,38 @@ impl OrdinaryCudaBody {
                     "ordinary CUDA state prior/candidate plane count differs".into(),
                 ));
             }
-            for lease in prior.iter().chain(&candidate) {
-                if !Arc::ptr_eq(lease.service(), self.cold().service())
-                    || lease.source_identity() != self.cold().plan().source()
-                    || lease.service_generation() != self.cold().service().generation()
-                    || lease.role() != BufferRole::RecurrentState
-                    || cold_ids.contains(&lease.id())
-                    || !seen.insert(lease.id())
+            let validate = |lease: &ResidentLease| {
+                Arc::ptr_eq(lease.service(), self.cold().service())
+                    && lease.source_identity() == self.cold().plan().source()
+                    && lease.service_generation() == self.cold().service().generation()
+                    && lease.role() == BufferRole::RecurrentState
+                    && !cold_ids.contains(&lease.id())
+            };
+            if binding.mode == StateBindingMode::KvInPlace {
+                require_in_place_kv_alias(binding)?;
+                if !matches!(requirement.layout, StateLayout::Kv { .. })
+                    || prior.len() != 2
+                    || prior.iter().any(|lease| {
+                        !validate(lease) || lease.is_initialized() || !seen.insert(lease.id())
+                    })
                 {
                     return Err(Error::State(
-                        "ordinary CUDA state physical owner aliases/differs".into(),
+                        "ordinary CUDA in-place KV staging ownership differs".into(),
                     ));
                 }
-            }
-            if prior.iter().any(|lease| !lease.is_initialized()) {
-                return Err(Error::State(
-                    "ordinary CUDA prior state is not physically initialized".into(),
-                ));
+            } else {
+                for lease in prior.iter().chain(&candidate) {
+                    if !validate(lease) || !seen.insert(lease.id()) {
+                        return Err(Error::State(
+                            "ordinary CUDA state physical owner aliases/differs".into(),
+                        ));
+                    }
+                }
+                if prior.iter().any(|lease| !lease.is_initialized()) {
+                    return Err(Error::State(
+                        "ordinary CUDA prior state is not physically initialized".into(),
+                    ));
+                }
             }
             map.insert(binding.slot, binding);
         }
@@ -885,58 +998,19 @@ impl OrdinaryCudaBody {
                 };
                 let state = self.state(states, StateSlot::Kv(domain))?;
                 let StateBuffers::Kv {
-                    keys: prior_keys,
-                    values: prior_values,
-                } = &state.prior
-                else {
-                    return Err(Error::State("ordinary CUDA prior KV layout".into()));
-                };
-                let StateBuffers::Kv {
                     keys: candidate_keys,
                     values: candidate_values,
                 } = &state.candidate
                 else {
                     return Err(Error::State("ordinary CUDA candidate KV layout".into()));
                 };
-                let state_elements = step
-                    .capacity
-                    .checked_mul(self.cold().layout().geometry().kv_width()?)
-                    .ok_or_else(|| Error::Limit("ordinary CUDA KV state extent".into()))?;
-                let mut launches = 0;
-                launches += attention::zero_bf16(client, &candidate_keys.handle, state_elements)?;
-                launches += attention::zero_bf16(client, &candidate_values.handle, state_elements)?;
-                if step.base != 0 {
-                    let elements = step
-                        .base
-                        .checked_mul(self.cold().layout().geometry().kv_width()?)
-                        .ok_or_else(|| {
-                            Error::Limit("ordinary CUDA KV prefix element count".into())
-                        })?;
-                    for (prior, candidate, role) in [
-                        (prior_keys, candidate_keys, "key"),
-                        (prior_values, candidate_values, "value"),
-                    ] {
-                        let source = exact_view(
-                            prior.original_lease()?,
-                            0,
-                            elements * 2,
-                            &format!("ordinary prior {role} prefix"),
-                        )?;
-                        let destination = exact_view(
-                            candidate.original_lease()?,
-                            0,
-                            elements * 2,
-                            &format!("ordinary candidate {role} prefix"),
-                        )?;
-                        launches += attention::copy_bf16_prefix(
-                            client,
-                            &source,
-                            &destination,
-                            &self.cold().status().handle(),
-                            elements,
-                        )?;
-                    }
-                }
+                let mut launches = prepare_kv_candidate(
+                    client,
+                    &self.cold().status().handle(),
+                    state,
+                    step,
+                    self.cold().layout().geometry().kv_width()?,
+                )?;
                 let row_extent = self.row_extent_in(values, request, step.rows)?;
                 self.enqueue_primitive(
                     self.cold().program().kv_append_bounded(step, row_extent)?,
@@ -1745,5 +1819,214 @@ impl OrdinaryCudaBody {
         );
         let prepared = definition.prepare_owned(client, bindings, status)?;
         prepared.enqueue_owned(client, &self.cold().status().handle())
+    }
+}
+
+#[cfg(all(
+    test,
+    feature = "cuda-native-qualification",
+    feature = "cuda-cublas",
+    target_os = "linux"
+))]
+mod in_place_tests {
+    use super::*;
+    use crate::cuda::{
+        ordinary_text::{
+            Access as OrdinaryAccess, BufferRole as OrdinaryRole, Geometry, LaunchBinding, Program,
+        },
+        test_support::CudaDiagnostic,
+    };
+    use cubecl::CubeElement;
+    use zerogravity_core::{
+        accelerator::program::KvDomain,
+        device_events::{BufferRole, DeviceAccess},
+    };
+
+    fn bf16_bytes(words: &[u16]) -> Vec<u8> {
+        words.iter().flat_map(|word| word.to_le_bytes()).collect()
+    }
+
+    #[test]
+    #[ignore = "physical CUDA ordinary KV in-place staging preserves gathered prefix"]
+    fn physical_ordinary_kv_in_place_staging() -> Result<()> {
+        futures_lite::future::block_on(async {
+            const CAPACITY: usize = 8;
+            const BASE: usize = 3;
+            const ROWS: usize = 1;
+            const PACKED_WIDTH: usize = 5120;
+            const VALUE_OFFSET: usize = 4608;
+
+            let diagnostic = CudaDiagnostic::new("ordinary-kv-in-place")?;
+            let service = diagnostic.service.clone();
+            let client = service.client();
+            let geometry = Geometry::qwen35_08();
+            let kv_width = geometry.kv_width()?;
+            let plane_elements = CAPACITY
+                .checked_mul(kv_width)
+                .ok_or_else(|| Error::Limit("ordinary in-place KV plane elements".into()))?;
+            let plane_bytes = plane_elements
+                .checked_mul(2)
+                .ok_or_else(|| Error::Limit("ordinary in-place KV plane bytes".into()))?;
+            let physical = ResidentBufferLayout::new(ResidentPhysicalType::Bf16, plane_elements)?;
+
+            let key_lease =
+                service.allocate_uninitialized(plane_bytes, BufferRole::RecurrentState)?;
+            let value_lease =
+                service.allocate_uninitialized(plane_bytes, BufferRole::RecurrentState)?;
+            if key_lease.is_initialized() || value_lease.is_initialized() {
+                return Err(Error::State(
+                    "ordinary in-place KV staging was already initialized".into(),
+                ));
+            }
+            let key_buffer = DeviceBuffer::from_lease(
+                key_lease.clone(),
+                physical,
+                BufferRole::RecurrentState,
+                DeviceAccess::Write,
+            )?;
+            let value_buffer = DeviceBuffer::from_lease(
+                value_lease.clone(),
+                physical,
+                BufferRole::RecurrentState,
+                DeviceAccess::Write,
+            )?;
+            let staging = StateBuffers::Kv {
+                keys: key_buffer,
+                values: value_buffer,
+            };
+            let state = StateBinding {
+                slot: StateSlot::Kv(KvDomain(0)),
+                prior: staging.clone(),
+                candidate: staging,
+                prior_tokens: BASE,
+                mode: StateBindingMode::KvInPlace,
+            };
+            require_in_place_kv_alias(&state)?;
+
+            let mut initial_keys = vec![0u16; plane_elements];
+            let mut initial_values = vec![0u16; plane_elements];
+            for token in 0..BASE {
+                for lane in 0..kv_width {
+                    initial_keys[token * kv_width + lane] =
+                        ((token * 17 + lane * 3 + 1) % 251) as u16;
+                    initial_values[token * kv_width + lane] =
+                        ((token * 19 + lane * 5 + 7) % 251) as u16;
+                }
+            }
+            let new_keys = (0..kv_width)
+                .map(|lane| ((lane * 11 + 29) % 251) as u16)
+                .collect::<Vec<_>>();
+            let new_values = (0..kv_width)
+                .map(|lane| ((lane * 13 + 37) % 251) as u16)
+                .collect::<Vec<_>>();
+            let mut packed = vec![0u16; PACKED_WIDTH];
+            packed[VALUE_OFFSET..VALUE_OFFSET + kv_width].copy_from_slice(&new_values);
+
+            let accesses = vec![
+                (key_lease.clone(), DeviceAccess::Write),
+                (value_lease.clone(), DeviceAccess::Write),
+            ];
+            let flight = service.submit(0, &accesses)?;
+            flight.require_accesses([
+                (&key_lease, DeviceAccess::Write),
+                (&value_lease, DeviceAccess::Write),
+            ])?;
+            client.write(
+                &key_lease.handle(),
+                Bytes::from_bytes_vec(bf16_bytes(&initial_keys)),
+            );
+            client.write(
+                &value_lease.handle(),
+                Bytes::from_bytes_vec(bf16_bytes(&initial_values)),
+            );
+
+            let step = Step::new(ROWS, BASE, CAPACITY)?;
+            let status = client.create_from_slice(u32::as_bytes(&[0u32]));
+            let preparation_launches =
+                prepare_kv_candidate(client, &status, &state, step, kv_width)?;
+            if preparation_launches != 0 {
+                return Err(Error::State(
+                    "ordinary in-place KV preparation launched zero/copy work".into(),
+                ));
+            }
+
+            let program = Program::new(geometry)?;
+            let key = client.create_from_slice(&bf16_bytes(&new_keys));
+            let packed = client.create_from_slice(&bf16_bytes(&packed));
+            let prepared = program.kv_append(step)?.prepare_owned(
+                client,
+                vec![
+                    LaunchBinding::new(OrdinaryRole::Key, OrdinaryAccess::Read, key),
+                    LaunchBinding::new(OrdinaryRole::PackedAttention, OrdinaryAccess::Read, packed),
+                    LaunchBinding::new(
+                        OrdinaryRole::KeyCache,
+                        OrdinaryAccess::ReadWrite,
+                        key_lease.handle(),
+                    ),
+                    LaunchBinding::new(
+                        OrdinaryRole::ValueCache,
+                        OrdinaryAccess::ReadWrite,
+                        value_lease.handle(),
+                    ),
+                ],
+                LaunchBinding::new(
+                    OrdinaryRole::Status,
+                    OrdinaryAccess::ReadWrite,
+                    status.clone(),
+                ),
+            )?;
+            prepared.enqueue_owned(client, &status)?;
+
+            let mut expected_keys = initial_keys.clone();
+            let mut expected_values = initial_values.clone();
+            expected_keys[BASE * kv_width..(BASE + ROWS) * kv_width].copy_from_slice(&new_keys);
+            expected_values[BASE * kv_width..(BASE + ROWS) * kv_width].copy_from_slice(&new_values);
+            let outputs = vec![key_lease.clone(), value_lease.clone()];
+            let readbacks = vec![
+                key_lease.readback(0, plane_bytes)?,
+                value_lease.readback(0, plane_bytes)?,
+            ];
+            let (ready, data) = flight
+                .complete_with_readback(&outputs, &readbacks, |cohort| {
+                    if cohort.len() != 2
+                        || &cohort[0][..] != bf16_bytes(&expected_keys).as_slice()
+                        || &cohort[1][..] != bf16_bytes(&expected_values).as_slice()
+                    {
+                        return Err(Error::State(
+                            "ordinary in-place KV staging contents differ".into(),
+                        ));
+                    }
+                    Ok(())
+                })
+                .await?;
+            let status_bytes = client
+                .read_one(status)
+                .map_err(|error| Error::State(format!("ordinary in-place KV status: {error}")))?;
+            if status_bytes.len() != 4
+                || u32::from_le_bytes(status_bytes[..4].try_into().unwrap()) != 0
+                || outputs.iter().any(|lease| !lease.is_initialized())
+            {
+                return Err(Error::State(
+                    "ordinary in-place KV completion/status differs".into(),
+                ));
+            }
+            drop(ready);
+            drop(data);
+            drop(readbacks);
+            drop(outputs);
+            drop(state);
+            drop(accesses);
+            drop(key_lease);
+            drop(value_lease);
+            if service.resident_bytes()? != 0 {
+                return Err(Error::State(
+                    "ordinary in-place KV staging did not retire".into(),
+                ));
+            }
+            println!(
+                "P12_ORDINARY_KV_INPLACE_PASS base={BASE} rows={ROWS} capacity={CAPACITY} kv_width={kv_width} preparation_launches=0 prefix_preserved=true new_row_exact=true inactive_tail_zero=true unique_write_access=true all_staging_retired=true"
+            );
+            Ok(())
+        })
     }
 }

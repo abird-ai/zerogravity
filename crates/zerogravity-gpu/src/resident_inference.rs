@@ -2200,6 +2200,7 @@ fn bind_domains(
                 prior: p.buffers.clone(),
                 candidate: c.buffers.clone(),
                 prior_tokens: position,
+                mode: crate::resident_program::StateBindingMode::Distinct,
             })
         })
         .collect()
