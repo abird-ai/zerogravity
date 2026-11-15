@@ -11,6 +11,7 @@ pub mod identity;
 pub mod model;
 pub mod numerics;
 pub mod optimization;
+pub mod paged_state;
 pub mod physical;
 pub mod pipeline;
 pub mod placement;
