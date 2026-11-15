@@ -138,9 +138,14 @@ The following extends existing owners; source-byte qualification is not inferenc
   scatter after, Ready only for Vector/fresh-COW outputs and paged Domain creation
   after completion. Physical one-Vector/two-KV base3->4 is exact with gather4/
   scatter8, five Ready outputs, exact continuation/tails and final resident0.
-  Next select hybrid pools only through an explicit source-call page policy and
-  qualify real0.8B/2B B1 page boundaries/faults before native batches/HTTP.
-  page_tokens remains explicit, not a production default.
+  Signed `1413f72` adds the explicit low-level source policy while production
+  registration stays Contiguous. Paged policy installs the accepted hybrid pools
+  only for explicit page_tokens/max_append_tokens, enforces B1 and append bounds,
+  and has a linked original-HF Contiguous-vs-Paged full-vocab/all42 page-boundary
+  differential. The approved HF cache input is absent on L5, so that source-real
+  cell is not run. Next execute it for0.8B/2B when retained inputs are restored,
+  then fault/rollback/restore coverage before native batches/HTTP. page_tokens
+  remains explicit, not a production default.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

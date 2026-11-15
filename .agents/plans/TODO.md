@@ -179,18 +179,35 @@ clones pinned output backing), not execution failures. Two broad link wrappers
 also disappeared late with no Rust/OOM/Xid status; lib-only linking succeeded and
 the final-current eight-cell physical suite passes. Production check/clippy pass.
 
+Signed `1413f72` adds the **explicit source-call paged state policy without
+changing public/default serving selection**. `CudaSourceStatePolicy` is exported
+only on the CUDA source boundary; the existing source loader remains a
+Contiguous wrapper and the policy-bearing loader installs hybrid pools only for
+explicit `Paged { page_tokens, max_append_tokens }`. Paged mode currently
+requires B1; native rows and zero bounds refuse. Inventory also rejects an append
+bound above state capacity, and runtime calls larger than the admitted bound
+return `Limit` before checkout. Production registration explicitly passes
+Contiguous, and public `ModelLoadRequest` is unchanged.
+The pre-IO policy-refusal unit passes. A new ignored original-HF differential
+target links successfully: same authenticated source, Contiguous vs Paged,
+full248320 logits + all42 exact at page-1/page/page+1/2page+1, final shutdown.
+It was not run because the approved HF cache snapshot is absent on L5; local
+GGUF fixtures are not equivalent evidence. Four hybrid unit gates, all eight
+exact-current RTX3060 paged cells, top-level qwen35-hip, CUDA tests and strict
+clippy pass.
+
 Admission review changes the next implementation shape: ordinary admission
 budgets a finite inventory of complete state roots. A paged committed root plus
 full prior staging plus full candidate staging would be a third state-sized
 envelope at full context and must not be smuggled past admission. The Ready and
 snapshot semantics are accepted at `93468b1`; physical pools at `cb57e1d`;
-current-root execution at `b9b04aa`. **Next: add an explicit paged source-call
-policy and switch the loader only under that policy.** Keep generic roots=2,
-native/HIP and default CUDA on the old contiguous allocator. First qualify
-original 0.8B/2B B1 full-logit/all42 continuations at page_size-1/page_size/
-page_size+1 and multi-page, including cancel/abandon/restore/rollback. Then adapt
-native B2/B4/B8 state transport and HTTP. page_tokens=4 remains qualification
-data until a production policy is explicitly chosen.
+current-root execution at `b9b04aa`; explicit low-level policy at `1413f72`.
+**Next: execute the linked source-real B1 differential on the approved original
+0.8B and2B HF snapshots when those retained inputs are available.** Require full
+logit/all42 exactness at page_size-1/page_size/page_size+1/multi-page. Then extend
+cancel/abandon/restore/rollback coverage before adding any high-level paged
+serving selection. Default CUDA/native/HIP stay contiguous; page_tokens remains
+explicit.
 Complete-domain prefix identity/intersection follows that.
 Event/lease-backed physical overlap remains after those state gates.
 

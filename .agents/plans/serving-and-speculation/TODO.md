@@ -553,9 +553,17 @@ or a change to the active correctness/benchmark/27B order.
   after Ready. Physical one-Vector/two-KV base3->4 passes with gather4/scatter8,
   five Ready outputs, exact canonical Ready order/frontier4 continuation/zero
   tails and final resident0. The exact-current eight-cell suite and production
-  strict checks pass. **Production selection remains open:** next add an explicit
-  page policy, switch only the ordinary source-call loader under that policy,
-  qualify real0.8B/2B B1 all42/page boundaries/faults, then adapt B2/B4/B8 + HTTP.
+  strict checks pass.
+  Signed `1413f72` adds the explicit low-level CUDA source-state policy while
+  leaving public/default serving Contiguous. Paged source loading now requires
+  `Paged { page_tokens, max_append_tokens }`, B1, and bounded positive policy;
+  inventory/runtime append bounds are enforced. Invalid paged/native/bounds
+  policy refuses before source IO. The linked ignored original-HF differential
+  compares Contiguous vs Paged full-vocab/all42 at page-1/page/page+1/2page+1.
+  It is not executed because the approved HF cache inputs are absent on L5.
+  **Production selection remains open:** next run that qualifier for original
+  0.8B/2B when approved inputs are restored, then fault/rollback/restore cells,
+  then native B2/B4/B8 + HTTP.
   Admit physical GPU overlap only after event/lease, cancellation/unknown-
   completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine

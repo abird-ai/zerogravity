@@ -487,6 +487,38 @@ adapt native B2/B4/B8 state transport and production HTTP. Do not begin
 complete-domain prefix reuse until those state gates pass, and do not begin
 event/lease physical overlap until prefix/state ownership is accepted.
 
+**15 Nov explicit source-policy follow-up:** signed `1413f72` lands the policy
+seam without publishing a new high-level serving capability.
+`CudaSourceStatePolicy` has two exact modes:
+- `Contiguous`: the historical root-pool path;
+- `Paged { page_tokens, max_append_tokens }`: hybrid Vector/staging/page pools.
+
+`ResidentModel::load_ordinary_cuda_source` remains a Contiguous compatibility
+wrapper. `load_ordinary_cuda_source_with_state_policy` is the explicit internal
+selector. Paged currently requires native_rows=0; zero page/append bounds refuse.
+`HybridStateInventoryPlan` rejects max_append_tokens above state capacity, and
+`HybridPooledStates::candidate` returns `Limit` before checkout when an actual
+call exceeds its admitted append bound. Production qwen source registration
+passes Contiguous explicitly. No high-level paged `ModelLoadRequest` is exposed.
+
+An ignored source-real B1 differential is compiled/linked. It opens one
+authenticated original HF source, runs a complete Contiguous model first, shuts
+it down, then runs the same source through Paged. It compares every F32
+full-vocabulary logit bit and every all42 state-domain word at frontiers
+`page_tokens-1`, `page_tokens`, `page_tokens+1`, and
+`2*page_tokens+1`. The last chunk is one full page, so the final checkpoint is
+genuinely multi-page. On success it prints
+`P12_SOURCE_PAGED_B1_PASS ... full_vocab=exact all42=exact
+contiguous_reference=true final_shutdown=true`.
+
+The target is **linked but unexecuted** at this checkpoint: L5 has only local
+GGUF fixtures under `target/models`; the approved HF cache snapshot and
+`ZG_QWEN_SOURCE_SNAPSHOT`/cache root are absent. Do not reinterpret GGUF parity
+as original-HF source acceptance. Once the approved cache is restored, run this
+cell separately for original0.8B and2B with explicit page policy, then add
+cancellation/abandon/restore/rollback and clean-retirement acceptance. Only then
+add a high-level paged serving selector and adapt native B2/B4/B8/HTTP.
+
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve
   B1 and smaller qualified bands after checked prelaunch capacity refusal.

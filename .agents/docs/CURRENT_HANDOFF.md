@@ -20,38 +20,39 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation/qualification** checkpoint is
-  `b9b04aafd9d10b0325ec5daac45cb3f6be8fedf0`
-  (`feat(state): execute hybrid paged candidates`). Parent `cb57e1d` remains
-  the physical vector/staging/page pool substrate; `93468b1` remains the
-  snapshot/restore/inherited-Ready authority and parents through `ef9e4d4`
-  remain the COW/gather-scatter/KvInPlace primitives.
-  `b9b04aa` adds a current-root-aware `HybridCandidateBundle`: one Vector
-  candidate set, one staging-set checkout and one private
-  `ResidentPagedKvAppend` per KV domain. It builds one exact-identity
-  deduplicated flight containing current Vector/page Reads, Vector/staging Writes
-  and fresh/COW page Writes. Ordinary CUDA gathers paged KV before the unchanged
-  source program, binds those staging buffers as `KvInPlace`, scatters appended
-  rows after the model body, and promotes only Vector candidates plus fresh/COW
-  page outputs. Paged appends remain private plans until physical completion;
-  only then are they converted to canonical paged `Domain`s.
-  Ready output ordering is now explicitly aligned with
-  `canonical_write_outputs`: per-plane fresh/COW page outputs use deterministic
-  lease-ID ordering, while immutable inherited pages remain absent from Ready.
-  RTX3060 physical acceptance with one BF16 Vector domain + two Qwen KV domains
-  proves base3->4 in one flight:
-  `P12_HYBRID_CANDIDATE_PASS base=3 rows=1 kv_domains=2
-  gather_dispatches=4 scatter_dispatches=8 ready_outputs=5
-  canonical_ready_order=true paged_frontier=4 vector_ready=true
-  continuation_exact=true inactive_tail_zero=true
-  old_root_budget_bytes=135168 final_resident_bytes=0`.
-  The first two physical attempts exposed qualifier-owner lifetime mistakes only:
-  one retained access vector pinned the sole staging checkout, then one retained
-  canonical comparison vector pinned output leases. Releasing those test-owned
-  clones fixed teardown; production bundle ownership was unchanged.
-  Two full test-link wrappers also disappeared late without Rust/OOM/Xid status;
-  the materially narrower `--lib --no-run` link completed, and the exact-current
-  eight-cell physical pool/paging/in-place suite plus production
-  `qwen35-cuda` composition/strict clippy are green.
+  `1413f729ac5db55131b8379752b8cdf0a7b98263`
+  (`feat(state): add explicit paged source policy`). Parent `b9b04aa`
+  remains the accepted current-root gather/KvInPlace/scatter/Ready candidate
+  execution; `cb57e1d` remains the physical pool substrate and `93468b1`
+  remains snapshot/restore/inherited-Ready authority.
+  `1413f72` adds `CudaSourceStatePolicy::{Contiguous,Paged}` at the original
+  source-call loader seam. Existing `load_ordinary_cuda_source` remains an exact
+  Contiguous wrapper; the explicit policy-bearing loader installs hybrid
+  Vector/staging/page pools only for `Paged { page_tokens,
+  max_append_tokens }`. Paged policy is B1-only for now: native_rows !=0 and
+  zero policy extents fail closed. `HybridStateInventoryPlan` also rejects
+  max_append_tokens above state capacity, and runtime candidate construction
+  returns `Limit` before checkout if a call exceeds the admitted append bound.
+  The high-level/public `ModelLoadRequest` is intentionally unchanged:
+  production registration passes `CudaSourceStatePolicy::Contiguous`
+  explicitly, so no serving capability/default switched in this checkpoint.
+  A pre-source-IO unit test proves invalid paged/native/bound policies return
+  `invalid_source_state_policy` before cache/device access.
+  A new ignored original-HF differential qualifier is compiled and linked. It
+  opens one authenticated source, runs Contiguous then Paged sequentially, and
+  compares every full-vocabulary logit word plus all42 state words bit-for-bit at
+  frontiers page_size-1/page_size/page_size+1/(2*page_size+1). Success marker:
+  `P12_SOURCE_PAGED_B1_PASS ... full_vocab=exact all42=exact
+  contiguous_reference=true final_shutdown=true`.
+  That source-real cell is **not executed** because L5 currently has no retained
+  approved HF cache snapshot/reference input (`ZG_QWEN_SOURCE_SNAPSHOT` and
+  cache root are absent); local GGUF fixtures are not equivalent evidence.
+  Final-current available validation is green: four hybrid admission units, all
+  eight RTX3060 pool/paging/in-place cells, top-level `qwen35-hip`,
+  CUDA tests and strict production clippy. A combined cross-feature wrapper
+  disappeared after a terminal-green HIP command while entering the next build;
+  separate CUDA commands completed green. One first GPU relink also disappeared
+  late; one bounded warm lib-only retry completed.
   Production ordinary sessions still construct contiguous KV today; no serving
   selector, direct paged attention, prefix reuse or public capability changed.
   Parent `8e6f14d3defc0aa2e542c26ffb9ccc7c736f1fcb`
@@ -143,20 +144,21 @@ and live TODOs are authoritative.
   while compiling/linking `zerogravity-cli`, before the test ran and without a
   terminal child status, Rust diagnostic, OOM/Xid, live child or GPU residue.
   Do not loop that unstable build. Paged-state control/ownership/materialization/
-  typed-KV gather/scatter/domain publication/in-place execution/hybrid candidate
-  execution is now
+  typed-KV gather/scatter/domain publication/in-place execution/hybrid candidate/
+  source-policy plumbing is now
   `0027c28` + `54340a6` + `1eb6e0f` + `3ac2059` + `dc6a188` +
-  `53336b3` + `ef9e4d4` + `93468b1` + `cb57e1d` + `b9b04aa`.
-  **Next executable P12-C work is explicit page policy + ordinary source-call
-  selection and real-model qualification.** The current source loader still calls
-  `install_window_root_pool`; do not switch it silently. Add an explicit paged
-  policy carrying page_tokens/max_append_tokens, install the hybrid pools only
-  for that policy, and first qualify real original 0.8B/2B B1 continuation with
-  full logits/all42 state at page_size-1/page_size/page_size+1 and a multi-page
-  boundary. Include cancellation before submit/in flight/after Ready, abandoned
-  candidate/root rollback, snapshot/restore and clean retirement. Only after B1
-  is exact adapt native B2/B4/B8 state transport and then production HTTP.
-  Qualification page_tokens=4 remains test data, not a production default.
+  `53336b3` + `ef9e4d4` + `93468b1` + `cb57e1d` + `b9b04aa` +
+  `1413f72`.
+  **Next executable P12-C work is source-real policy acceptance.** Restore/use the
+  already approved original HF cache snapshots and run
+  `original_source_b1_paged_matches_contiguous_at_page_boundaries` separately
+  for original0.8B and2B with explicit page_tokens/max_append_tokens. Do not
+  acquire or invent replacement source/reference inputs without authorization.
+  Once both full-vocab/all42 boundary cells pass, extend the same policy route
+  through cancellation before submit/in flight/after Ready, abandoned
+  candidate/root rollback and snapshot/restore/retirement. Only then expose a
+  high-level paged serving selection, adapt native B2/B4/B8 state transport and
+  run production HTTP. page_tokens=4 remains qualification data, not a default.
   Complete-domain prefix reuse follows these state gates; event/lease-backed physical
   overlap remains after those state gates and must not be pulled forward.
   **Post-check L5 baseline watch:**
