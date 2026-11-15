@@ -75,12 +75,6 @@ fn tokens(row: usize, start: usize, count: usize) -> Vec<u32> {
         .collect()
 }
 
-struct Reference {
-    state_chunk: Domains,
-    final_state: Domains,
-    packet: (u32, u32),
-}
-
 async fn run(root: &Path, width: usize, check_b1: bool) {
     assert!(
         matches!(width, 2 | 4 | 8),
@@ -92,35 +86,12 @@ async fn run(root: &Path, width: usize, check_b1: bool) {
     let first = (0..width).map(|row| tokens(row, 0, 4)).collect::<Vec<_>>();
     let final_chunk = (0..width).map(|row| tokens(row, 4, 2)).collect::<Vec<_>>();
 
-    // Build the independent CPU oracle before creating any GPU owner. This keeps
-    // width-specific native qualification isolated from the already-qualified
-    // B1 route, which can be checked as a separate constituent afterwards.
+    // Keep only one zero-state snapshot. Wider temporal qualification must not
+    // retain B8 copies of every full state domain in host memory.
     let initial = QwenDenseCpu::from_shared(source.clone())
         .unwrap()
         .snapshot()
         .domain_values();
-    let mut references = Vec::with_capacity(width);
-    for row in 0..width {
-        let mut cpu = QwenDenseCpu::from_shared(source.clone()).unwrap();
-        for &id in &first[row] {
-            cpu.forward(id).unwrap();
-        }
-        let state_chunk = cpu.snapshot().domain_values();
-
-        let mut logits = Vec::new();
-        for &id in &final_chunk[row] {
-            logits = cpu.forward(id).unwrap();
-        }
-        let packet = best(&logits);
-        let final_state = cpu.snapshot().domain_values();
-        references.push(Reference {
-            state_chunk,
-            final_state,
-            packet,
-        });
-        eprintln!("TEMPORAL_STAGE cpu_reference_complete B={width} row={row}");
-    }
-
     let plan = source.forward_plan(CAPACITY, true, true).unwrap();
     let model = ResidentModel::load(
         Device::Cuda(cubecl::device::CudaDevice::new(0)),
@@ -242,11 +213,37 @@ async fn run(root: &Path, width: usize, check_b1: bool) {
         assert!(reads[row].device_token.is_none());
         assert_eq!(native[row].binding().root(), before[row].root() + 1);
         assert_eq!(native[row].binding().frontier(), before[row].frontier() + 4);
+
+        let mut cpu = QwenDenseCpu::from_shared(source.clone()).unwrap();
+        let mut b1 = if check_b1 {
+            Some(model.session().await.unwrap())
+        } else {
+            None
+        };
+        for &id in &first[row] {
+            let expected = cpu.forward(id).unwrap();
+            if let Some(b1) = b1.as_mut() {
+                let actual = b1.forward(&[id], false).await.unwrap();
+                exact(&expected, &actual.logits, "state chunk CPU/B1 logits");
+            }
+        }
+        let expected = cpu.snapshot().domain_values();
         domains(
-            &references[row].state_chunk,
+            &expected,
             &native[row].snapshot().read_domains().await.unwrap(),
             "committed state chunk",
         );
+        if let Some(b1) = b1.as_ref() {
+            domains(
+                &expected,
+                &b1.snapshot().read_domains().await.unwrap(),
+                "B1 state chunk",
+            );
+        }
+        drop(b1);
+        drop(cpu);
+        assert_eq!(service.pending_events().unwrap(), 0);
+        eprintln!("TEMPORAL_STAGE state_reference_complete B={width} row={row}");
     }
 
     let before = native
@@ -274,28 +271,32 @@ async fn run(root: &Path, width: usize, check_b1: bool) {
         assert_eq!(reads[row].logit_steps, 1);
         assert!(reads[row].logits.is_empty());
         let packet = reads[row].device_token.as_ref().unwrap();
+
+        let mut cpu = QwenDenseCpu::from_shared(source.clone()).unwrap();
+        for &id in &first[row] {
+            cpu.forward(id).unwrap();
+        }
+        let mut logits = Vec::new();
+        for &id in &final_chunk[row] {
+            logits = cpu.forward(id).unwrap();
+        }
+        let expected_packet = best(&logits);
         assert_eq!(
             (packet.id, packet.max_bits),
-            references[row].packet,
+            expected_packet,
             "terminal packet differs at row {row}"
         );
         assert_eq!(packet.qualification_producer(), Some(native[row].binding()));
         assert_eq!(native[row].binding().root(), before[row].root() + 1);
         assert_eq!(native[row].binding().frontier(), before[row].frontier() + 2);
+        let expected = cpu.snapshot().domain_values();
         domains(
-            &references[row].final_state,
+            &expected,
             &native[row].snapshot().read_domains().await.unwrap(),
             "terminal greedy chunk",
         );
-    }
-    assert_eq!(service.pending_events().unwrap(), 0);
 
-    drop(reads);
-    drop(native);
-    assert_eq!(service.pending_events().unwrap(), 0);
-
-    if check_b1 {
-        for row in 0..width {
+        if check_b1 {
             let mut b1 = model.session().await.unwrap();
             domains(
                 &initial,
@@ -305,30 +306,29 @@ async fn run(root: &Path, width: usize, check_b1: bool) {
             for &id in &first[row] {
                 b1.forward(&[id], false).await.unwrap();
             }
-            domains(
-                &references[row].state_chunk,
-                &b1.snapshot().read_domains().await.unwrap(),
-                "B1 state chunk",
-            );
             let read = b1.forward_greedy(&final_chunk[row]).await.unwrap();
             let packet = read.device_token.unwrap();
             assert_eq!(
                 (packet.id, packet.max_bits),
-                references[row].packet,
+                expected_packet,
                 "B1 terminal packet differs at row {row}"
             );
             domains(
-                &references[row].final_state,
+                &expected,
                 &b1.snapshot().read_domains().await.unwrap(),
                 "B1 terminal chunk",
             );
             drop(b1);
-            assert_eq!(service.pending_events().unwrap(), 0);
-            eprintln!("TEMPORAL_STAGE b1_reference_complete B={width} row={row}");
         }
+        drop(cpu);
+        assert_eq!(service.pending_events().unwrap(), 0);
+        eprintln!("TEMPORAL_STAGE terminal_reference_complete B={width} row={row}");
     }
 
-    drop(references);
+    assert_eq!(service.pending_events().unwrap(), 0);
+    drop(reads);
+    drop(native);
+    assert_eq!(service.pending_events().unwrap(), 0);
     drop(model);
     assert_eq!(service.pending_events().unwrap(), 0);
     assert_eq!(service.resident_bytes().unwrap(), 0);
