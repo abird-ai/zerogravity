@@ -99,11 +99,30 @@ retire. The retained 3/4/5 boundary, lower materialization and unknown-completio
 cells pass on the same final bytes; production `qwen35-cuda` composition and
 strict clippy remain green. The implementation metric was renamed from the
 host-specific `append_uploads` to transport-neutral `append_transfers`.
-Canonical `ResidentSession::Domain` still uses contiguous `StateBuffers::Kv`.
-**Next: integrate paged KV as the canonical KV domain, allocate transient
-prior/candidate staging inside ordinary execution, bind those to the unchanged
-attention ABI, and scatter only the new candidate rows into private pages before
-atomic root publication.
+Signed `53336b3` adds the **canonical paged KV Domain/root substrate** without
+selecting it in production ordinary sessions. `Domain` can now own
+`ResidentPagedKvDomain` plus its exact page lease/generation cohort;
+`StateBuffers::PagedKv` is a marker only. Validation checks declared
+`StateRequirement::Kv` geometry, source/service generation, exact page-owner
+coverage and readiness. Legacy native batch/range/diagnostic consumers explicitly
+reject the marker until staging is bound. The existing single-session publication
+sequence is factored into `publish_domain_swap` and still owns the only
+`publish_if_usable -> prepare_publish -> swap -> commit` path. RTX3060 exact
+proof publishes roots0->3->4, retains2 initialized page owners at each committed
+frontier, keeps the displaced frontier3 byte-exact after frontier4 publication and
+retires all pages. All four earlier paged physical cells pass on the final bytes;
+production `qwen35-cuda` composition/strict clippy pass. Two unsupervised/late
+link wrappers disappeared without Rust/OOM/Xid diagnostics; supervised/warmed
+bounded retries completed and the final-current binary passed.
+
+Admission review changes the next implementation shape: ordinary admission
+budgets a finite inventory of complete state roots. A paged committed root plus
+full prior staging plus full candidate staging would be a third state-sized
+envelope at full context and must not be smuggled past admission. **Next: select
+paged KV for ordinary sessions with one full in-place K/V staging pair: gather
+pages into it, add an explicit staged-in-place KV append mode that skips the old
+zero/prefix copy, run attention on the same staging, scatter only new rows into
+the paged child, then publish through the accepted root swap.
 Qualify continued full-state page-boundary/multi-page parity.**
 Complete-domain prefix identity/intersection follows that.
 Event/lease-backed physical overlap remains after those state gates.

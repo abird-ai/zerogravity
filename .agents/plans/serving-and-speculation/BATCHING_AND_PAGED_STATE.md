@@ -265,9 +265,30 @@ binary passed. Lower COW materialization and pressure/reader/submitted-unknown
 tests remain green, as do production `qwen35-cuda` composition and strict
 production clippy.
 
-Allocator/COW remains **partially open at session/model composition**:
-`ResidentSession::Domain` still owns contiguous `StateBuffers::Kv`; the new
-paged representation is not canonical and no root/serving policy changed.
+Allocator/COW remains **partially open at production session/model composition**.
+Signed `53336b3` lands the canonical domain/root representation even though
+ordinary session construction does not select it yet. `Domain` may retain a
+`ResidentPagedKvDomain` and its exact page lease/generation cohort while
+`StateBuffers::PagedKv` is a no-handle marker. `ResidentModel::validate_domains`
+checks the model's declared `StateRequirement::Kv`, original source/service
+generation, exact page-owner set and initialized state. Native batch transport,
+range qualification and old diagnostic readback reject the marker until a
+contiguous staging representation is explicitly bound. The single-session commit
+path now calls `publish_domain_swap`, which is only a factorization of the
+existing `publish_if_usable -> prepare_publish -> state swap -> commit` authority.
+No second publisher or root lifecycle exists.
+
+The retained RTX3060 root qualifier constructs physically Ready paged KV,
+publishes frontier0->3 and3->4 through that exact helper, verifies root changes
+and authority bindings, keeps only2 initialized page owners at each committed
+frontier, and re-gathers both current frontier4 and displaced frontier3 exactly
+after publication. Marker:
+`P12_PAGED_KV_DOMAIN_PUBLISH_PASS frontiers=0,3,4 root_changes=2
+canonical_marker=true frontier3_pages=2 frontier4_pages=2 boundary_cow=2
+displaced_parent_exact=true original_session_authority=true
+all_pages_retired=true`. The final-current bridge, 3/4/5 boundary, COW
+materializer and submitted-unknown/quarantine tests also pass; production
+`qwen35-cuda` composition and strict clippy pass.
 Before that final ownership switch, signed `dc6a188` closes the missing
 device-side bridge. `ResidentPagedKvStaging` is a transient pair of ordinary
 resident leases validated against the same `StateRequirement::Kv`, and exposes
@@ -294,15 +315,22 @@ as do production `qwen35-cuda` composition and strict clippy. The materializer
 counter is now named `append_transfers`, since the same plan can be populated
 by host upload or device copy.
 
-**Next: integrate `ResidentPagedKvDomain` into KV `Domain` while Vector
-recurrent/conv state stays contiguous. For the first end-to-end route, gather
-committed pages into transient contiguous prior staging, execute the unchanged
-ordinary CUDA KV append/attention path into transient candidate staging, then
-scatter only the newly produced rows into private pages before the existing
-Ready/atomic root swap. Qualify continued page_size-1/page_size/page_size+1 and
-multi-page full-state parity before direct block-table attention or
-complete-domain prefix identity/intersection.** Event/lease-backed physical
-overlap remains later.
+**Admission decision for the next slice:** do not carry both a full prior and a
+full candidate staging pair on top of a paged committed root. Ordinary admission
+counts a finite inventory of complete state roots: the base path is explicitly
+prior+candidate, with additional roots charged as whole state extents.
+Canonical paged state + prior staging + candidate staging would therefore become
+three state-sized envelopes at full context and can exceed the provider cap.
+The first production route should use one full-capacity **in-place** K/V staging
+pair. Gather the committed paged prefix into it, bind an explicit paged-staging
+mode that permits prior/candidate identity for KV only, skip the old KV
+zero/full-prefix-copy in `KvAppend`, append new rows in place, let the existing
+FlashAttention read that same contiguous candidate, then scatter only newly
+produced rows into private pages under the original flight before the accepted
+Ready/root swap. Conv/Recurrent state stays on the existing contiguous typed
+path. Qualify continued page_size-1/page_size/page_size+1 and multi-page
+full-state parity before direct block-table attention or complete-domain prefix
+identity/intersection. Event/lease-backed physical overlap remains later.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve

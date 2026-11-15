@@ -20,27 +20,28 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation/qualification** checkpoint is
-  `dc6a188bad8d30a28d6871f0798ae98c4a6803bd`
-  (`feat(state): add paged KV staging scatter`). Parents `0027c28`,
-  `54340a6`, `1eb6e0f` and `3ac2059` remain the logical table, finite page
-  owner, actual COW materializer and typed paged-KV/gather representation.
-  `dc6a188` adds a transient `ResidentPagedKvStaging` that exposes the exact
-  existing contiguous `StateBuffers::Kv` ABI from ordinary resident leases,
-  plus device-to-device scatter from a contiguous candidate into the private
-  paged append. The scatter copies only newly appended rows from staging; any
-  committed partial tail is still COWed from immutable pages. Gather + simulated
-  ordinary candidate production + scatter stay under one original
-  `ResidentSubmission`, with no host readback after input. RTX3060 physical
-  acceptance passes prior frontier3 -> candidate4 with row_bytes512/page_tokens4:
-  gather dispatches2, contiguous prefix copies2, scatter COW dispatches2,
-  scatter append transfers2, exact old contiguous ABI, immutable parent,
-  exact paged child and all page owners retired. The retained 3/4/5 boundary,
-  lower COW materialization and pressure/reader/submitted-unknown cells all pass
-  on the same final bytes. Production `qwen35-cuda` composition and strict
-  production clippy are green.
-  This is **not yet selected by ResidentSession::Domain**: canonical session
-  state and ordinary/native attention still use contiguous `StateBuffers::Kv`.
-  No Ready/root publication, prefix reuse or serving policy changed.
+  `53336b3d961f2ffc59c0b845f876ff4e8e0033c9`
+  (`feat(state): admit paged KV session domains`). Parents `0027c28`,
+  `54340a6`, `1eb6e0f`, `3ac2059` and `dc6a188` remain the logical table,
+  finite page owner, COW materializer, typed paged-KV/gather layer and GPU-only
+  staging/scatter bridge. `53336b3` adds the canonical session-domain shape:
+  `Domain` can retain a `ResidentPagedKvDomain` plus the exact page
+  leases/generations while `StateBuffers::PagedKv` is only a marker that forces
+  execution to bind transient contiguous staging. Model-domain validation now
+  checks the original source/service generation, declared `StateRequirement::Kv`
+  geometry, exact page lease coverage and initialization; legacy/native
+  batch/range/diagnostic consumers fail closed on the marker rather than
+  fabricating contiguous semantics. Single-session commit now calls a factored
+  `publish_domain_swap` that is the same original
+  `publish_if_usable -> prepare_publish -> swap -> commit` sequence.
+  RTX3060 physical acceptance publishes canonical paged roots 0->3->4 through
+  that exact helper; both root IDs change, frontier3/frontier4 each retain only
+  two initialized page owners, the displaced frontier3 remains byte-exact after
+  frontier4 publication and all pages retire. The final-current staging bridge,
+  3/4/5 boundary, lower materialization and submitted-unknown/quarantine cells
+  also pass; production `qwen35-cuda` composition and strict clippy are green.
+  Production ordinary sessions still construct contiguous KV today; no serving
+  selector, direct paged attention, prefix reuse or public capability changed.
   Parent `8e6f14d3defc0aa2e542c26ffb9ccc7c736f1fcb`
   (`feat(serving): enable qualified temporal B8 prefill`) remains the current
   production temporal checkpoint. The retained width-parameterized qualifier
@@ -130,14 +131,17 @@ and live TODOs are authoritative.
   while compiling/linking `zerogravity-cli`, before the test ran and without a
   terminal child status, Rust diagnostic, OOM/Xid, live child or GPU residue.
   Do not loop that unstable build. Paged-state control/ownership/materialization/
-  typed-KV gather/scatter is now `0027c28` + `54340a6` + `1eb6e0f` +
-  `3ac2059` + `dc6a188`. **Next executable P12-C work is the actual
-  session-domain integration:** let KV `Domain` own `ResidentPagedKvDomain`
-  as canonical state while Conv/Recurrent keep the existing typed contiguous
-  buffers. Build transient prior/candidate `ResidentPagedKvStaging` inside
-  ordinary execution, gather the committed pages into prior staging, run the
-  unchanged ordinary append/attention program against those staging bindings,
-  then scatter only the new candidate rows into private pages before the existing
+  typed-KV gather/scatter/domain publication is now `0027c28` + `54340a6` +
+  `1eb6e0f` + `3ac2059` + `dc6a188` + `53336b3`. **Next executable P12-C
+  work is production ordinary-session selection.** Admission review found that
+  canonical paged state + separate full prior staging + full candidate staging
+  would require three state-sized envelopes at full context, while ordinary
+  admission intentionally budgets a finite root inventory (two roots in the
+  base path). Do not add an uncharged third state. Use one exact-size in-place
+  contiguous K/V staging pair instead: gather the committed paged prefix into it,
+  opt the ordinary KV append into an explicit in-place staged mode that skips the
+  old zero/full-prefix copy, run unchanged attention on that candidate staging,
+  then scatter only newly produced rows into private pages before the existing
   Ready/atomic root swap. Qualify
   continued full-state execution at page_size-1/page_size/page_size+1 and
   multi-page boundaries before direct paged attention or complete-domain prefix

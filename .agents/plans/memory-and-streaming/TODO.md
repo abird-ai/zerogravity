@@ -105,13 +105,20 @@ The following extends existing owners; source-byte qualification is not inferenc
   representation and bounded gather-to-contiguous adapter. RTX3060 frontiers3/4/5
   around a four-token page match exact contiguous K/V bytes under a four-page
   peak cap, including boundary COW, full-page sharing/backing reuse, immutable
-  parents, zero tails, capacity refusal and final release. It is not yet selected
-  by `ResidentSession::Domain`. Signed `dc6a188` adds transient typed K/V
+  parents, zero tails, capacity refusal and final release. At `3ac2059` it was
+  not yet selected by `ResidentSession::Domain`. Signed `dc6a188` adds transient typed K/V
   staging plus device-to-device scatter from the unchanged contiguous candidate
   ABI into private pages. Physical prior3->candidate4 stays under one original
   flight, does gather2/prefix-copy2/scatter-COW2/scatter-append2 with no host
   readback after input, preserves the parent and retires all pages. Session
-  integration and full-model parity remain the next allocator/COW gate.
+  integration and full-model parity remain the next allocator/COW gate. Signed
+  `53336b3` adds the canonical paged-KV `Domain` representation and the exact
+  original root-swap helper used by single-session commit; physical roots0->3->4
+  publish with initialized page ownership, exact displaced parents and full
+  retirement. Production ordinary sessions still select contiguous KV. Admission
+  review rejects a separate full prior+candidate staging pair on top of paged
+  state because that becomes a third state-sized envelope at full context.
+  Next use one admitted in-place K/V staging pair, then scatter appended rows.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

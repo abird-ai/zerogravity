@@ -501,20 +501,30 @@ or a change to the active correctness/benchmark/27B order.
   production `qwen35-cuda` composition and strict clippy pass. The implementation
   also separates pre-submit fresh-target validation from post-Ready candidate
   validation, a lifecycle bug found by the first physical boundary attempt.
-  No canonical session-domain, Ready/root, prefix identity or serving policy
-  change is enabled. Signed `dc6a188` adds the missing GPU-only bridge needed
-  for that wiring: transient `ResidentPagedKvStaging` exposes the exact old
+  At `dc6a188`, canonical session selection was still disabled; that commit adds
+  the missing GPU-only bridge needed for the later wiring:
+  transient `ResidentPagedKvStaging` exposes the exact old
   `StateBuffers::Kv` ABI, and private page appends can scatter only new rows
   from contiguous candidate staging under the same original flight while COWing
   the partial prior tail from immutable pages. Physical prior3->candidate4 passes
   with gather2, prefix-copy2, scatter-COW2, scatter-append2, no host readback
   after input, exact parent/child bytes and full retirement. The retained boundary,
   materialization and unknown-completion cells plus production composition/clippy
-  remain green. **Next: make paged KV the canonical KV `Domain`, allocate
-  transient prior/candidate staging inside ordinary execution, bind those to the
-  unchanged append/attention ABI, then scatter the resulting new rows into
-  private pages before existing atomic root publication. Qualify continued
-  page-boundary/multi-page full-state parity before direct paged kernels.**
+  remain green.
+  Signed `53336b3` now lands the canonical `Domain`/root substrate itself:
+  `StateBuffers::PagedKv` is a marker, `Domain` retains the actual paged owner
+  and exact page lease/generation cohort, validation checks the original
+  `StateRequirement::Kv`/source/service/readiness contract, legacy/native
+  consumers fail closed, and single-session commit uses the factored original
+  publication sequence. Physical roots0->3->4 publish successfully with2 page
+  owners per committed frontier, exact displaced parent bytes and final release;
+  all prior paged cells plus production composition/clippy remain green.
+  **Production selection remains open.** Admission analysis rejects the earlier
+  two-staging sketch: paged committed state + full prior staging + full candidate
+  staging becomes three state envelopes at full context. Next use one in-place
+  contiguous K/V staging pair, explicitly skip the ordinary KV zero/prefix-copy
+  when that staging was gathered from the paged parent, run attention on it and
+  scatter only appended rows before the accepted root publication.
   Admit physical GPU overlap only after event/lease, cancellation/unknown-
   completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
