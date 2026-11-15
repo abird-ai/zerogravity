@@ -551,6 +551,115 @@ impl ResidentPagedKvDomain {
         Ok(leases)
     }
 
+    pub(crate) fn snapshot_planes(
+        &self,
+    ) -> Result<Vec<(ResidentLease, ResidentBufferLayout, usize)>> {
+        let width = self.physical.byte_width();
+        let page_bytes = self.keys.geometry().page_bytes();
+        if page_bytes != self.values.geometry().page_bytes() || !page_bytes.is_multiple_of(width) {
+            return Err(Error::State(
+                "paged KV snapshot page/physical geometry differs".into(),
+            ));
+        }
+        let layout = ResidentBufferLayout::new(self.physical, page_bytes / width)?;
+        let mut planes = Vec::with_capacity(self.keys.page_count() + self.values.page_count());
+        for table in [&self.keys, &self.values] {
+            for index in 0..table.page_count() {
+                let (lease, valid) = table
+                    .page(index)
+                    .ok_or_else(|| Error::State("paged KV snapshot page absent".into()))?;
+                if valid == 0
+                    || valid > page_bytes
+                    || !valid.is_multiple_of(width)
+                    || !valid.is_multiple_of(self.row_bytes)
+                    || lease.bytes() != page_bytes
+                {
+                    return Err(Error::State(
+                        "paged KV snapshot valid page extent differs".into(),
+                    ));
+                }
+                planes.push((lease.clone(), layout, valid / width));
+            }
+        }
+        Ok(planes)
+    }
+
+    pub(crate) fn required_write_leases_from(
+        &self,
+        prior: &ResidentPagedKvDomain,
+    ) -> Result<Vec<ResidentLease>> {
+        if self.slot != prior.slot
+            || self.slab != prior.slab
+            || self.capacity != prior.capacity
+            || self.physical != prior.physical
+            || self.row_bytes != prior.row_bytes
+            || self.page_tokens != prior.page_tokens
+            || self.keys.compatibility() != prior.keys.compatibility()
+            || self.values.compatibility() != prior.values.compatibility()
+            || self.keys.geometry() != prior.keys.geometry()
+            || self.values.geometry() != prior.values.geometry()
+            || self.tokens()? < prior.tokens()?
+        {
+            return Err(Error::State(
+                "paged KV candidate/current root compatibility differs".into(),
+            ));
+        }
+        let page_bytes = self.keys.geometry().page_bytes();
+        let mut current_positions = BTreeMap::new();
+        for (plane, table) in [(&prior.keys, 0usize), (&prior.values, 1usize)] {
+            for index in 0..plane.page_count() {
+                let (lease, valid) = plane
+                    .page(index)
+                    .ok_or_else(|| Error::State("paged KV current-root page absent".into()))?;
+                if current_positions
+                    .insert(lease.id(), (table, index, valid, lease.clone()))
+                    .is_some()
+                {
+                    return Err(Error::State(
+                        "paged KV current-root page identity duplicated".into(),
+                    ));
+                }
+            }
+        }
+        let mut writes = Vec::new();
+        for (plane, (candidate, current)) in
+            [(&self.keys, &prior.keys), (&self.values, &prior.values)]
+                .into_iter()
+                .enumerate()
+        {
+            if candidate.page_count() < current.page_count() {
+                return Err(Error::State(
+                    "paged KV candidate lost current-root pages".into(),
+                ));
+            }
+            for index in 0..candidate.page_count() {
+                let (next, next_valid) = candidate
+                    .page(index)
+                    .ok_or_else(|| Error::State("paged KV candidate page absent".into()))?;
+                if let Some((old, old_valid)) = current.page(index)
+                    && same_resident_lease(next, old)
+                {
+                    if old_valid != page_bytes || next_valid != old_valid {
+                        return Err(Error::State(
+                            "paged KV inherited page is not unchanged full current-root state"
+                                .into(),
+                        ));
+                    }
+                    continue;
+                }
+                if let Some((old_plane, old_index, _, old)) = current_positions.get(&next.id())
+                    && same_resident_lease(next, old)
+                {
+                    return Err(Error::State(format!(
+                        "paged KV inherited page moved from plane/index {old_plane}/{old_index} to {plane}/{index}"
+                    )));
+                }
+                writes.push(next.clone());
+            }
+        }
+        Ok(writes)
+    }
+
     pub(crate) fn require_requirement(&self, requirement: &StateRequirement) -> Result<()> {
         let StateLayout::Kv { slab, capacity } = requirement.layout else {
             return Err(Error::State("paged KV requirement is not KV".into()));
@@ -1694,6 +1803,17 @@ mod tests {
             domain = next;
             expected_keys.extend_from_slice(&key4);
             expected_values.extend_from_slice(&value4);
+            let current3 = vec![Domain::from_paged_kv(prior3.clone())?];
+            let candidate4 = vec![Domain::from_paged_kv(domain.clone())?];
+            let ready34 = canonical_write_outputs(&current3, &candidate4)?;
+            if ready34.len() != 2 || candidate4[0].leases.len() != 2 {
+                return Err(Error::State(
+                    "paged KV 3->4 Ready write classification differs".into(),
+                ));
+            }
+            drop(ready34);
+            drop(current3);
+            drop(candidate4);
             let gather4 =
                 gather_kv_exact(&service, &domain, &expected_keys, &expected_values).await?;
             let prior3_keys = expected_keys[..3 * row_bytes].to_vec();
@@ -1717,6 +1837,17 @@ mod tests {
             domain = next;
             expected_keys.extend_from_slice(&key5);
             expected_values.extend_from_slice(&value5);
+            let current4 = vec![Domain::from_paged_kv(prior4.clone())?];
+            let candidate5 = vec![Domain::from_paged_kv(domain.clone())?];
+            let ready45 = canonical_write_outputs(&current4, &candidate5)?;
+            if ready45.len() != 2 || candidate5[0].leases.len() != 4 {
+                return Err(Error::State(
+                    "paged KV 4->5 inherited Ready classification differs".into(),
+                ));
+            }
+            drop(ready45);
+            drop(current4);
+            drop(candidate5);
             let gather5 =
                 gather_kv_exact(&service, &domain, &expected_keys, &expected_values).await?;
             gather_kv_exact(
@@ -1741,7 +1872,7 @@ mod tests {
                 ));
             }
             println!(
-                "P12_PAGED_KV_BOUNDARY_PASS page_tokens={PAGE_TOKENS} row_bytes={row_bytes} boundaries=3,4,5 gather_dispatches={gather3},{gather4},{gather5} cow_at_boundary=2 full_page_share=true prior_immutable=true inactive_tail_zero=true capacity_refusal=true all_pages_retired=true"
+                "P12_PAGED_KV_BOUNDARY_PASS page_tokens={PAGE_TOKENS} row_bytes={row_bytes} boundaries=3,4,5 gather_dispatches={gather3},{gather4},{gather5} cow_at_boundary=2 ready_writes_3_to_4=2 ready_writes_4_to_5=2 inherited_pages_4_to_5=2 full_page_share=true prior_immutable=true inactive_tail_zero=true capacity_refusal=true all_pages_retired=true"
             );
             Ok(())
         })
@@ -2074,8 +2205,19 @@ mod tests {
             }
 
             let row = |token: usize, salt: usize| {
-                (0..row_bytes)
-                    .map(|byte| ((token * 43 + byte * 11 + salt) % 251) as u8)
+                (0..row_bytes / 2)
+                    .flat_map(|element| {
+                        let bits = 0x3c00u16 + ((token * 43 + element * 11 + salt) % 0x0200) as u16;
+                        bits.to_le_bytes()
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let widen = |bytes: &[u8]| {
+                bytes
+                    .chunks_exact(2)
+                    .map(|word| {
+                        f32::from_bits(u32::from(u16::from_le_bytes([word[0], word[1]])) << 16)
+                    })
                     .collect::<Vec<_>>()
             };
             let mut keys3 = Vec::new();
@@ -2111,6 +2253,22 @@ mod tests {
                 ));
             }
             gather_kv_exact(&service, current[0].paged_kv()?, &keys3, &values3).await?;
+            let snapshot3 = ResidentSnapshot {
+                binding: published3,
+                service_generation: service.generation(),
+                capacity: CAPACITY,
+                domains: current.clone(),
+            };
+            let read3 = snapshot3.read_domains().await?;
+            let expected3 = widen(&keys3)
+                .into_iter()
+                .chain(widen(&values3))
+                .collect::<Vec<_>>();
+            if read3 != vec![(requirement.slot, expected3)] {
+                return Err(Error::State(
+                    "paged KV frontier3 snapshot/read differs".into(),
+                ));
+            }
 
             let key4 = row(3, 5);
             let value4 = row(3, 127);
@@ -2151,7 +2309,87 @@ mod tests {
             values4.extend_from_slice(&value4);
             gather_kv_exact(&service, current[0].paged_kv()?, &keys4, &values4).await?;
             gather_kv_exact(&service, candidate4[0].paged_kv()?, &keys3, &values3).await?;
+            let snapshot4 = ResidentSnapshot {
+                binding: published4,
+                service_generation: service.generation(),
+                capacity: CAPACITY,
+                domains: current.clone(),
+            };
+            let read4 = snapshot4.read_domains().await?;
+            let expected4 = widen(&keys4)
+                .into_iter()
+                .chain(widen(&values4))
+                .collect::<Vec<_>>();
+            if read4 != vec![(requirement.slot, expected4)] {
+                return Err(Error::State(
+                    "paged KV frontier4 snapshot/read differs".into(),
+                ));
+            }
 
+            let restore3_attempt = authority.begin_restore(snapshot3.binding)?;
+            let mut restore3 = snapshot3.domains.clone();
+            let restored3 = publish_domain_swap(
+                &service,
+                &mut authority,
+                &mut current,
+                restore3_attempt,
+                &mut restore3,
+            )?;
+            drop(restore3);
+            if restored3.frontier() != 3
+                || authority.binding() != restored3
+                || current[0].paged_kv()?.tokens()? != 3
+            {
+                return Err(Error::State(
+                    "paged KV frontier3 restore publication differs".into(),
+                ));
+            }
+            let restored_snapshot3 = ResidentSnapshot {
+                binding: restored3,
+                service_generation: service.generation(),
+                capacity: CAPACITY,
+                domains: current.clone(),
+            };
+            if restored_snapshot3.read_domains().await? != read3 {
+                return Err(Error::State(
+                    "paged KV restored frontier3 snapshot differs".into(),
+                ));
+            }
+
+            let restore4_attempt = authority.begin_restore(snapshot4.binding)?;
+            let mut restore4 = snapshot4.domains.clone();
+            let restored4 = publish_domain_swap(
+                &service,
+                &mut authority,
+                &mut current,
+                restore4_attempt,
+                &mut restore4,
+            )?;
+            drop(restore4);
+            if restored4.frontier() != 4
+                || authority.binding() != restored4
+                || current[0].paged_kv()?.tokens()? != 4
+            {
+                return Err(Error::State(
+                    "paged KV frontier4 restore-back publication differs".into(),
+                ));
+            }
+            let restored_snapshot4 = ResidentSnapshot {
+                binding: restored4,
+                service_generation: service.generation(),
+                capacity: CAPACITY,
+                domains: current.clone(),
+            };
+            if restored_snapshot4.read_domains().await? != read4 {
+                return Err(Error::State(
+                    "paged KV restored frontier4 snapshot differs".into(),
+                ));
+            }
+
+            drop(restored_snapshot3);
+            drop(restored_snapshot4);
+            drop(snapshot3);
+            drop(snapshot4);
             drop(candidate3);
             drop(candidate4);
             drop(current);
@@ -2162,7 +2400,7 @@ mod tests {
                 ));
             }
             println!(
-                "P12_PAGED_KV_DOMAIN_PUBLISH_PASS frontiers=0,3,4 root_changes=2 canonical_marker=true frontier3_pages=2 frontier4_pages=2 boundary_cow=2 displaced_parent_exact=true original_session_authority=true all_pages_retired=true"
+                "P12_PAGED_KV_DOMAIN_PUBLISH_PASS frontiers=0,3,4 root_changes=2 canonical_marker=true frontier3_pages=2 frontier4_pages=2 boundary_cow=2 snapshot_partial_exact=true snapshot_full_exact=true restore_4_to_3_to_4=true displaced_parent_exact=true original_session_authority=true all_pages_retired=true"
             );
             Ok(())
         })

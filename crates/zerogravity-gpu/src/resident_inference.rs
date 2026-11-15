@@ -397,6 +397,34 @@ fn publish_domain_swap(
     })
 }
 
+fn canonical_write_outputs(current: &[Domain], candidate: &[Domain]) -> Result<Vec<ResidentLease>> {
+    if current.len() != candidate.len() {
+        return Err(Error::State(
+            "resident prepared/current domain coverage differs".into(),
+        ));
+    }
+    let mut outputs = Vec::new();
+    for (current, candidate) in current.iter().zip(candidate) {
+        match (
+            matches!(current.buffers, StateBuffers::PagedKv),
+            matches!(candidate.buffers, StateBuffers::PagedKv),
+        ) {
+            (false, false) => outputs.extend(candidate.leases.iter().cloned()),
+            (true, true) => outputs.extend(
+                candidate
+                    .paged_kv()?
+                    .required_write_leases_from(current.paged_kv()?)?,
+            ),
+            _ => {
+                return Err(Error::State(
+                    "resident prepared state representation changed before publication".into(),
+                ));
+            }
+        }
+    }
+    Ok(outputs)
+}
+
 #[cfg(all(
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
@@ -2213,10 +2241,96 @@ impl ResidentSnapshot {
         &self,
         owner: Option<crate::physical_quarantine::CompletionOwner>,
     ) -> Result<Vec<(StateSlot, Vec<f32>)>> {
+        #[derive(Clone)]
+        struct SnapshotPlane {
+            lease: ResidentLease,
+            layout: ResidentBufferLayout,
+            active_elements: usize,
+            zero_tail: bool,
+        }
+
+        let frontier = usize::try_from(self.binding.frontier())
+            .map_err(|_| Error::Limit("resident snapshot frontier".into()))?;
+        let domain_planes = self
+            .domains
+            .iter()
+            .map(|domain| {
+                if matches!(domain.buffers, StateBuffers::PagedKv) {
+                    let paged = domain.paged_kv()?;
+                    if paged.tokens()? != frontier {
+                        return Err(Error::State(
+                            "resident paged snapshot frontier differs".into(),
+                        ));
+                    }
+                    return paged
+                        .snapshot_planes()?
+                        .into_iter()
+                        .map(|(lease, layout, active_elements)| {
+                            if active_elements == 0 || active_elements > layout.elements() {
+                                return Err(Error::State(
+                                    "resident paged snapshot active extent differs".into(),
+                                ));
+                            }
+                            Ok(SnapshotPlane {
+                                lease,
+                                layout,
+                                active_elements,
+                                zero_tail: active_elements < layout.elements(),
+                            })
+                        })
+                        .collect::<Result<Vec<_>>>();
+                }
+
+                let buffers = domain.buffers.buffers();
+                if buffers.len() != domain.leases.len() {
+                    return Err(Error::State(
+                        "resident snapshot typed domain plane coverage differs".into(),
+                    ));
+                }
+                domain
+                    .leases
+                    .iter()
+                    .zip(buffers)
+                    .map(|(lease, buffer)| {
+                        let layout = buffer.physical_layout();
+                        if lease.bytes() != layout.bytes()? {
+                            return Err(Error::State(
+                                "resident snapshot typed lease/layout differs".into(),
+                            ));
+                        }
+                        let active_elements = if matches!(&domain.buffers, StateBuffers::Kv { .. })
+                        {
+                            if !layout.elements().is_multiple_of(self.capacity) {
+                                return Err(Error::State(
+                                    "resident snapshot KV plane/capacity differs".into(),
+                                ));
+                            }
+                            let slab = layout.elements() / self.capacity;
+                            slab.checked_mul(frontier)
+                                .filter(|active| *active <= layout.elements())
+                                .ok_or_else(|| {
+                                    Error::Limit("resident snapshot active KV extent".into())
+                                })?
+                        } else {
+                            layout.elements()
+                        };
+                        Ok(SnapshotPlane {
+                            lease: lease.clone(),
+                            layout,
+                            active_elements,
+                            zero_tail: matches!(&domain.buffers, StateBuffers::Kv { .. })
+                                && active_elements < layout.elements(),
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let planes = domain_planes.iter().flatten().cloned().collect::<Vec<_>>();
         let service = self
             .domains
-            .first()
-            .and_then(|d| d.leases.first())
+            .iter()
+            .flat_map(|domain| domain.leases.iter())
+            .next()
             .ok_or_else(|| Error::State("empty resident snapshot".into()))?
             .service()
             .clone();
@@ -2226,30 +2340,13 @@ impl ResidentSnapshot {
         {
             return Err(Error::State("snapshot service generation mismatch".into()));
         }
-        let leases = self
-            .domains
+        let accesses = planes
             .iter()
-            .flat_map(|d| d.leases.iter().cloned())
+            .map(|plane| (plane.lease.clone(), DeviceAccess::Read))
             .collect::<Vec<_>>();
-        let accesses = leases
+        let cohort = planes
             .iter()
-            .cloned()
-            .map(|l| (l, DeviceAccess::Read))
-            .collect::<Vec<_>>();
-        let layouts = self
-            .domains
-            .iter()
-            .flat_map(|domain| domain.buffers.buffers())
-            .map(DeviceBuffer::physical_layout)
-            .collect::<Vec<_>>();
-        if layouts.len() != leases.len() {
-            return Err(Error::State(
-                "resident snapshot typed plane coverage differs".into(),
-            ));
-        }
-        let cohort = leases
-            .iter()
-            .map(|l| l.readback(0, l.bytes()))
+            .map(|plane| plane.lease.readback(0, plane.lease.bytes()))
             .collect::<Result<Vec<_>>>()?;
         let ticket = service.queue().submit(
             service.budget(),
@@ -2259,7 +2356,7 @@ impl ResidentSnapshot {
             },
             &[AllocationRequest {
                 kind: AllocationClass::TransferStaging,
-                bytes: leases.iter().map(|l| l.bytes() as u64).sum(),
+                bytes: planes.iter().map(|plane| plane.lease.bytes() as u64).sum(),
             }],
             None,
         )?;
@@ -2271,14 +2368,21 @@ impl ResidentSnapshot {
         }
         let read = flight
             .complete_read_only_readback(&cohort, |data| {
-                if data.len() != layouts.len() {
+                if data.len() != planes.len() {
                     return Err(Error::State(
                         "resident snapshot typed readback coverage differs".into(),
                     ));
                 }
-                for (bytes, &layout) in data.iter().zip(&layouts) {
-                    if !resident_plane_finite(bytes, layout)? {
+                for (bytes, plane) in data.iter().zip(&planes) {
+                    if !resident_plane_finite(bytes, plane.layout)? {
                         return Err(Error::State("nonfinite committed resident snapshot".into()));
+                    }
+                    if plane.zero_tail
+                        && !resident_plane_tail_zero(bytes, plane.layout, plane.active_elements)?
+                    {
+                        return Err(Error::State(
+                            "snapshot noncanonical inactive state tail".into(),
+                        ));
                     }
                 }
                 Ok(())
@@ -2287,49 +2391,22 @@ impl ResidentSnapshot {
         slot.finish()?;
         let mut cursor = 0;
         let mut output = Vec::new();
-        for d in &self.domains {
+        for (domain, planes) in self.domains.iter().zip(&domain_planes) {
             let mut flat = Vec::new();
-            let buffers = d.buffers.buffers();
-            if buffers.len() != d.leases.len() {
-                return Err(Error::State(
-                    "resident snapshot typed domain plane coverage differs".into(),
-                ));
-            }
-            for (lease, buffer) in d.leases.iter().zip(buffers) {
-                let layout = buffer.physical_layout();
-                if lease.bytes() != layout.bytes()? || layouts[cursor] != layout {
-                    return Err(Error::State(
-                        "resident snapshot typed lease/layout differs".into(),
-                    ));
-                }
-                let active_elements = if matches!(&d.buffers, StateBuffers::Kv { .. }) {
-                    if !layout.elements().is_multiple_of(self.capacity) {
-                        return Err(Error::State(
-                            "resident snapshot KV plane/capacity differs".into(),
-                        ));
-                    }
-                    let slab = layout.elements() / self.capacity;
-                    let frontier = usize::try_from(self.binding.frontier())
-                        .map_err(|_| Error::Limit("resident snapshot frontier".into()))?;
-                    let active = slab
-                        .checked_mul(frontier)
-                        .filter(|active| *active <= layout.elements())
-                        .ok_or_else(|| Error::Limit("resident snapshot active KV extent".into()))?;
-                    if !resident_plane_tail_zero(&read[cursor], layout, active)? {
-                        return Err(Error::State("snapshot noncanonical KV tail".into()));
-                    }
-                    active
-                } else {
-                    layout.elements()
-                };
+            for plane in planes {
                 flat.extend(resident_plane_values(
                     &read[cursor],
-                    layout,
-                    active_elements,
+                    plane.layout,
+                    plane.active_elements,
                 )?);
                 cursor += 1;
             }
-            output.push((d.slot, flat));
+            output.push((domain.slot, flat));
+        }
+        if cursor != read.len() {
+            return Err(Error::State(
+                "resident snapshot readback cursor coverage differs".into(),
+            ));
         }
         Ok(output)
     }
@@ -2733,19 +2810,25 @@ impl ResidentSession {
             }
         }
         self.model.validate_domains(&prepared.domains, true)?;
-        let mut canonical_outputs = prepared
-            .domains
-            .iter()
-            .flat_map(|d| d.leases.iter())
-            .collect::<Vec<_>>();
-        canonical_outputs.extend(prepared.readback.device_token.iter().map(|t| &t.lease));
+        let mut canonical_outputs = canonical_write_outputs(&self.domains, &prepared.domains)?;
+        canonical_outputs.extend(
+            prepared
+                .readback
+                .device_token
+                .iter()
+                .map(|t| t.lease.clone()),
+        );
         let ready_outputs = prepared.ready.outputs();
         let canonical_len = canonical_outputs.len();
         if ready_outputs.len() != canonical_len + prepared.derived.len()
             || canonical_outputs
                 .iter()
                 .zip(&ready_outputs[..canonical_len])
-                .any(|(a, b)| a.id() != b.id())
+                .any(|(a, b)| {
+                    a.id() != b.id()
+                        || a.allocation_generation() != b.allocation_generation()
+                        || !Arc::ptr_eq(a.service(), b.service())
+                })
             || prepared
                 .derived
                 .iter()
@@ -2843,12 +2926,13 @@ impl ResidentSession {
         self.model.validate_domains(&snapshot.domains, true)?;
         let attempt = self.authority.begin_restore(snapshot.binding)?;
         let mut displaced = snapshot.domains.clone();
-        self.model.service.publish_if_usable(|| {
-            let transition = self.authority.prepare_publish(attempt)?;
-            std::mem::swap(&mut self.domains, &mut displaced);
-            transition.commit();
-            Ok(())
-        })?;
+        let _ = publish_domain_swap(
+            &self.model.service,
+            &mut self.authority,
+            &mut self.domains,
+            attempt,
+            &mut displaced,
+        )?;
         self.derived.invalidate();
         drop(displaced);
         Ok(())
