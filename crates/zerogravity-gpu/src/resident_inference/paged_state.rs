@@ -38,17 +38,26 @@ pub(crate) struct ResidentPagedKvDomain {
 }
 
 pub(crate) struct ResidentPagedKvAppend {
+    slot: StateSlot,
     keys: ResidentPagedAppend,
     values: ResidentPagedAppend,
     tokens: usize,
     row_bytes: usize,
 }
 
+#[derive(Clone)]
+pub(crate) struct ResidentPagedKvStaging {
+    requirement: StateRequirement,
+    keys: ResidentLease,
+    values: ResidentLease,
+    buffers: StateBuffers,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct PagedMaterialization {
     pub(crate) zero_uploads: usize,
     pub(crate) copy_dispatches: usize,
-    pub(crate) append_uploads: usize,
+    pub(crate) append_transfers: usize,
     pub(crate) append_bytes: usize,
 }
 
@@ -302,8 +311,120 @@ impl ResidentPagedAppend {
         Ok(PagedMaterialization {
             zero_uploads: targets.len(),
             copy_dispatches,
-            append_uploads: self.plan.writes().len(),
+            append_transfers: self.plan.writes().len(),
             append_bytes: append.len(),
+        })
+    }
+
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    pub(crate) fn enqueue_cuda_from_contiguous(
+        &self,
+        flight: &ResidentSubmission<'_>,
+        source: &ResidentLease,
+        source_offset: usize,
+    ) -> Result<PagedMaterialization> {
+        let append_bytes = self
+            .plan
+            .final_bytes()
+            .checked_sub(self.plan.prior_bytes())
+            .ok_or_else(|| Error::State("paged scatter plan frontier regressed".into()))?;
+        let source_end = source_offset
+            .checked_add(append_bytes)
+            .filter(|end| *end <= source.bytes())
+            .ok_or_else(|| Error::State("paged scatter source range differs".into()))?;
+        if source.role() != BufferRole::RecurrentState
+            || !Arc::ptr_eq(
+                source.service(),
+                self.target_pages()?
+                    .values()
+                    .next()
+                    .expect("paged scatter targets")
+                    .service(),
+            )
+            || !source_offset.is_multiple_of(4)
+            || !append_bytes.is_multiple_of(4)
+            || source_end <= source_offset
+        {
+            return Err(Error::State(
+                "paged scatter source ownership/alignment differs".into(),
+            ));
+        }
+        let accesses = self.accesses()?;
+        flight.require_accesses(accesses.iter().map(|(lease, access)| (lease, *access)))?;
+        flight.require_accesses([(source, DeviceAccess::Read)])?;
+        let targets = self.target_pages()?;
+        let page_bytes = self.candidate.geometry().page_bytes();
+        let service = targets
+            .values()
+            .next()
+            .expect("nonempty paged scatter targets")
+            .service();
+        for target in targets.values() {
+            service.client().write(
+                &target.handle(),
+                Bytes::from_bytes_vec(vec![0u8; page_bytes]),
+            );
+        }
+
+        let mut copy_dispatches = 0usize;
+        for copy in self.plan.copies() {
+            if !copy.bytes().is_multiple_of(4) {
+                return Err(Error::Unsupported(
+                    "CUDA paged scatter COW requires word-aligned extent".into(),
+                ));
+            }
+            let words = copy.bytes() / 4;
+            let transport =
+                RuntimeWordTransport::copy(copy.bytes(), copy.bytes(), 1, words, words, words)?;
+            transport
+                .kernel
+                .prepare(
+                    service.client(),
+                    transport.grid,
+                    vec![
+                        prefix_handle(copy.source(), copy.bytes())?,
+                        prefix_handle(copy.target(), copy.bytes())?,
+                    ],
+                )?
+                .launch()?;
+            copy_dispatches += 1;
+        }
+
+        let mut cursor = 0usize;
+        for write in self.plan.writes() {
+            if !write.bytes().is_multiple_of(4) {
+                return Err(Error::Unsupported(
+                    "CUDA paged scatter append requires word-aligned extent".into(),
+                ));
+            }
+            let words = write.bytes() / 4;
+            let transport =
+                RuntimeWordTransport::copy(write.bytes(), write.bytes(), 1, words, words, words)?;
+            transport
+                .kernel
+                .prepare(
+                    service.client(),
+                    transport.grid,
+                    vec![
+                        range_handle(source, source_offset + cursor, write.bytes())?,
+                        range_handle(write.target(), write.offset(), write.bytes())?,
+                    ],
+                )?
+                .launch()?;
+            cursor = cursor
+                .checked_add(write.bytes())
+                .ok_or_else(|| Error::Limit("paged scatter cursor overflow".into()))?;
+        }
+        if cursor != append_bytes {
+            return Err(Error::State(
+                "paged scatter did not cover complete append extent".into(),
+            ));
+        }
+        Ok(PagedMaterialization {
+            zero_uploads: targets.len(),
+            copy_dispatches,
+            append_transfers: self.plan.writes().len(),
+            append_bytes,
         })
     }
 }
@@ -437,6 +558,7 @@ impl ResidentPagedKvDomain {
             }
         };
         Ok(ResidentPagedKvAppend {
+            slot: self.slot,
             keys,
             values,
             tokens,
@@ -574,6 +696,28 @@ impl ResidentPagedKvDomain {
         }
         Ok(())
     }
+
+    pub(crate) fn staging(
+        &self,
+        key: ResidentLease,
+        value: ResidentLease,
+        access: DeviceAccess,
+    ) -> Result<ResidentPagedKvStaging> {
+        let requirement = StateRequirement {
+            slot: self.slot,
+            layout: StateLayout::Kv {
+                slab: self.slab,
+                capacity: self.capacity,
+            },
+            physical: self.physical,
+            bytes: self
+                .row_bytes
+                .checked_mul(self.capacity)
+                .and_then(|n| n.checked_mul(2))
+                .ok_or_else(|| Error::Limit("paged KV staging requirement bytes".into()))?,
+        };
+        ResidentPagedKvStaging::new(requirement, key, value, access)
+    }
 }
 
 impl ResidentPagedKvAppend {
@@ -621,7 +765,36 @@ impl ResidentPagedKvAppend {
         Ok(PagedMaterialization {
             zero_uploads: key.zero_uploads + value.zero_uploads,
             copy_dispatches: key.copy_dispatches + value.copy_dispatches,
-            append_uploads: key.append_uploads + value.append_uploads,
+            append_transfers: key.append_transfers + value.append_transfers,
+            append_bytes: key.append_bytes + value.append_bytes,
+        })
+    }
+
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    pub(crate) fn enqueue_cuda_from_staging(
+        &self,
+        flight: &ResidentSubmission<'_>,
+        staging: &ResidentPagedKvStaging,
+        prior_tokens: usize,
+    ) -> Result<PagedMaterialization> {
+        if staging.requirement.slot != self.slot || staging.row_bytes()? != self.row_bytes {
+            return Err(Error::State(
+                "paged KV scatter staging geometry differs".into(),
+            ));
+        }
+        let source_offset = prior_tokens
+            .checked_mul(self.row_bytes)
+            .ok_or_else(|| Error::Limit("paged KV scatter source offset overflow".into()))?;
+        let key = self
+            .keys
+            .enqueue_cuda_from_contiguous(flight, staging.keys(), source_offset)?;
+        let value =
+            self.values
+                .enqueue_cuda_from_contiguous(flight, staging.values(), source_offset)?;
+        Ok(PagedMaterialization {
+            zero_uploads: key.zero_uploads + value.zero_uploads,
+            copy_dispatches: key.copy_dispatches + value.copy_dispatches,
+            append_transfers: key.append_transfers + value.append_transfers,
             append_bytes: key.append_bytes + value.append_bytes,
         })
     }
@@ -631,12 +804,13 @@ impl ResidentPagedKvAppend {
         previous: &ResidentPagedKvDomain,
     ) -> Result<ResidentPagedKvDomain> {
         let Self {
+            slot,
             keys,
             values,
             tokens,
             row_bytes,
         } = self;
-        if row_bytes != previous.row_bytes {
+        if slot != previous.slot || row_bytes != previous.row_bytes {
             return Err(Error::State("paged KV append row geometry changed".into()));
         }
         let keys = keys.into_candidate()?;
@@ -657,6 +831,76 @@ impl ResidentPagedKvAppend {
             ));
         }
         Ok(result)
+    }
+}
+
+impl ResidentPagedKvStaging {
+    pub(crate) fn new(
+        requirement: StateRequirement,
+        keys: ResidentLease,
+        values: ResidentLease,
+        access: DeviceAccess,
+    ) -> Result<Self> {
+        let StateLayout::Kv { .. } = requirement.layout else {
+            return Err(Error::State(
+                "paged KV staging requires StateLayout::Kv".into(),
+            ));
+        };
+        let (planes, physical) = requirement.plane_layout()?;
+        if planes != 2
+            || keys.id() == values.id()
+            || !Arc::ptr_eq(keys.service(), values.service())
+            || keys.bytes() != physical.bytes()?
+            || values.bytes() != physical.bytes()?
+        {
+            return Err(Error::State(
+                "paged KV staging physical owners/layout differ".into(),
+            ));
+        }
+        let buffers = StateBuffers::Kv {
+            keys: DeviceBuffer::from_lease(
+                keys.clone(),
+                physical,
+                BufferRole::RecurrentState,
+                access,
+            )?,
+            values: DeviceBuffer::from_lease(
+                values.clone(),
+                physical,
+                BufferRole::RecurrentState,
+                access,
+            )?,
+        };
+        Ok(Self {
+            requirement,
+            keys,
+            values,
+            buffers,
+        })
+    }
+
+    pub(crate) fn buffers(&self) -> StateBuffers {
+        self.buffers.clone()
+    }
+
+    pub(crate) fn keys(&self) -> &ResidentLease {
+        &self.keys
+    }
+
+    pub(crate) fn values(&self) -> &ResidentLease {
+        &self.values
+    }
+
+    pub(crate) fn leases(&self) -> [ResidentLease; 2] {
+        [self.keys.clone(), self.values.clone()]
+    }
+
+    pub(crate) fn row_bytes(&self) -> Result<usize> {
+        let StateLayout::Kv { slab, .. } = self.requirement.layout else {
+            unreachable!("validated paged KV staging")
+        };
+        slab.checked_mul(self.requirement.physical.byte_width())
+            .ok_or_else(|| Error::Limit("paged KV staging row bytes overflow".into()))
     }
 }
 
@@ -1038,7 +1282,7 @@ mod tests {
                 != (PagedMaterialization {
                     zero_uploads: 1,
                     copy_dispatches: 0,
-                    append_uploads: 1,
+                    append_transfers: 1,
                     append_bytes: first_payload.len(),
                 })
             {
@@ -1087,7 +1331,7 @@ mod tests {
                 != (PagedMaterialization {
                     zero_uploads: 2,
                     copy_dispatches: 1,
-                    append_uploads: 2,
+                    append_transfers: 2,
                     append_bytes: second_payload.len(),
                 })
             {
@@ -1458,6 +1702,253 @@ mod tests {
             }
             println!(
                 "P12_PAGED_KV_BOUNDARY_PASS page_tokens={PAGE_TOKENS} row_bytes={row_bytes} boundaries=3,4,5 gather_dispatches={gather3},{gather4},{gather5} cow_at_boundary=2 full_page_share=true prior_immutable=true inactive_tail_zero=true capacity_refusal=true all_pages_retired=true"
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    #[ignore = "physical CUDA paged KV gather-contiguous-scatter bridge"]
+    fn physical_paged_kv_gather_scatter_bridge_is_gpu_only() -> Result<()> {
+        futures_lite::future::block_on(async {
+            let diagnostic = CudaDiagnostic::new("paged-kv-gather-scatter")?;
+            let service = diagnostic.service.clone();
+            let alignment = usize::try_from(service.client().properties().memory.alignment)
+                .map_err(|_| Error::Limit("paged KV bridge alignment".into()))?;
+            if !alignment.is_multiple_of(2) {
+                return Err(Error::Unsupported(
+                    "paged KV bridge BF16 row requires even alignment".into(),
+                ));
+            }
+            const PAGE_TOKENS: usize = 4;
+            const CAPACITY: usize = 7;
+            let slab = alignment / 2;
+            let row_bytes = alignment;
+            let page_bytes = PAGE_TOKENS * row_bytes;
+            let plane_bytes = CAPACITY * row_bytes;
+            let requirement = StateRequirement {
+                slot: StateSlot::Kv(KvDomain(5)),
+                layout: StateLayout::Kv {
+                    slab,
+                    capacity: CAPACITY,
+                },
+                physical: ResidentPhysicalType::Bf16,
+                bytes: 2 * plane_bytes,
+            };
+            requirement.plane_layout()?;
+            let max_pages = 4usize;
+            let metadata_bytes = ResidentPagePool::metadata_bytes(max_pages)?;
+            let host_key =
+                PhysicalDeviceKey::new("host", "zerogravity-paged-kv-bridge-qualification")?;
+            let arbiter = ResourceArbiter::process_shared();
+            arbiter.register_matching(
+                host_key.clone(),
+                u64::try_from(metadata_bytes)
+                    .map_err(|_| Error::Limit("paged KV bridge metadata".into()))?,
+            )?;
+            let metadata = arbiter
+                .admit(
+                    &host_key,
+                    ResourceOwner::new("paged-kv-bridge", "block-table-metadata")?,
+                    &[AllocationRequest {
+                        kind: AllocationClass::Scratch,
+                        bytes: metadata_bytes as u64,
+                    }],
+                )?
+                .into_host_workspace(service.source_identity(), Arc::new(()))?;
+            let pool = ResidentPagePool::prepare(
+                service.clone(),
+                metadata,
+                ResidentPlaneLayout {
+                    bytes: page_bytes,
+                    role: BufferRole::RecurrentState,
+                    alignment,
+                },
+                max_pages,
+            )?;
+            let empty = ResidentPagedKvDomain::empty(
+                &requirement,
+                pool.clone(),
+                PAGE_TOKENS,
+                service.generation(),
+                0x61,
+            )?;
+            let row = |token: usize, salt: usize| {
+                (0..row_bytes)
+                    .map(|byte| ((token * 31 + byte * 7 + salt) % 251) as u8)
+                    .collect::<Vec<_>>()
+            };
+            let mut keys = Vec::new();
+            let mut values = Vec::new();
+            for token in 0..3 {
+                keys.extend(row(token, 3));
+                values.extend(row(token, 109));
+            }
+            let (domain3, _) = materialize_kv_append(&service, &empty, &keys, &values).await?;
+            let key4 = row(3, 3);
+            let value4 = row(3, 109);
+            let append = domain3.fork_for_append(1)?;
+
+            let prior_key =
+                service.allocate_uninitialized(plane_bytes, BufferRole::RecurrentState)?;
+            let prior_value =
+                service.allocate_uninitialized(plane_bytes, BufferRole::RecurrentState)?;
+            let candidate_key =
+                service.allocate_uninitialized(plane_bytes, BufferRole::RecurrentState)?;
+            let candidate_value =
+                service.allocate_uninitialized(plane_bytes, BufferRole::RecurrentState)?;
+            let prior_staging =
+                domain3.staging(prior_key.clone(), prior_value.clone(), DeviceAccess::Write)?;
+            let candidate_staging = domain3.staging(
+                candidate_key.clone(),
+                candidate_value.clone(),
+                DeviceAccess::Write,
+            )?;
+            let StateBuffers::Kv {
+                keys: candidate_key_buffer,
+                values: candidate_value_buffer,
+            } = candidate_staging.buffers()
+            else {
+                return Err(Error::State("paged KV bridge staging ABI differs".into()));
+            };
+            if candidate_key_buffer.original_lease()?.id() != candidate_key.id()
+                || candidate_value_buffer.original_lease()?.id() != candidate_value.id()
+            {
+                return Err(Error::State(
+                    "paged KV bridge did not expose original contiguous ABI".into(),
+                ));
+            }
+
+            let mut accesses = BTreeMap::new();
+            let mut insert = |lease: ResidentLease, access: DeviceAccess| -> Result<()> {
+                match accesses.entry(lease.id()) {
+                    std::collections::btree_map::Entry::Vacant(entry) => {
+                        entry.insert((lease, access));
+                    }
+                    std::collections::btree_map::Entry::Occupied(mut entry) => {
+                        if !same_resident_lease(&entry.get().0, &lease) {
+                            return Err(Error::State(
+                                "paged KV bridge access identity alias".into(),
+                            ));
+                        }
+                        if access == DeviceAccess::Write {
+                            entry.get_mut().1 = DeviceAccess::Write;
+                        }
+                    }
+                }
+                Ok(())
+            };
+            for (lease, access) in
+                domain3.gather_accesses(3, prior_staging.keys(), prior_staging.values())?
+            {
+                insert(lease, access)?;
+            }
+            for (lease, access) in append.accesses()? {
+                insert(lease, access)?;
+            }
+            for lease in candidate_staging.leases() {
+                insert(lease, DeviceAccess::Write)?;
+            }
+            let accesses = accesses.into_values().collect::<Vec<_>>();
+            let flight = service.submit(0, &accesses)?;
+            let gather_dispatches = domain3.enqueue_gather_cuda(
+                &flight,
+                3,
+                prior_staging.keys(),
+                prior_staging.values(),
+            )?;
+
+            for lease in candidate_staging.leases() {
+                service.client().write(
+                    &lease.handle(),
+                    Bytes::from_bytes_vec(vec![0u8; plane_bytes]),
+                );
+            }
+            let prefix_bytes = 3 * row_bytes;
+            for (source, target) in [
+                (prior_staging.keys(), candidate_staging.keys()),
+                (prior_staging.values(), candidate_staging.values()),
+            ] {
+                let words = prefix_bytes / 4;
+                let transport =
+                    RuntimeWordTransport::copy(prefix_bytes, prefix_bytes, 1, words, words, words)?;
+                transport
+                    .kernel
+                    .prepare(
+                        service.client(),
+                        transport.grid,
+                        vec![
+                            prefix_handle(source, prefix_bytes)?,
+                            prefix_handle(target, prefix_bytes)?,
+                        ],
+                    )?
+                    .launch()?;
+            }
+            service.client().write(
+                &range_handle(candidate_staging.keys(), prefix_bytes, row_bytes)?,
+                Bytes::from_bytes_vec(key4.clone()),
+            );
+            service.client().write(
+                &range_handle(candidate_staging.values(), prefix_bytes, row_bytes)?,
+                Bytes::from_bytes_vec(value4.clone()),
+            );
+            let scatter = append.enqueue_cuda_from_staging(&flight, &candidate_staging, 3)?;
+            if gather_dispatches != 2
+                || scatter.copy_dispatches != 2
+                || scatter.append_transfers != 2
+                || scatter.append_bytes != 2 * row_bytes
+            {
+                return Err(Error::State(
+                    "paged KV bridge gather/scatter accounting differs".into(),
+                ));
+            }
+            let outputs = append.outputs()?;
+            let readbacks = outputs
+                .iter()
+                .map(|lease| lease.readback(0, lease.bytes()))
+                .collect::<Result<Vec<_>>>()?;
+            let (ready, data) = flight
+                .complete_with_readback(&outputs, &readbacks, |cohort| {
+                    if cohort.len() != outputs.len() {
+                        return Err(Error::State("paged KV bridge completion coverage".into()));
+                    }
+                    Ok(())
+                })
+                .await?;
+            drop(ready);
+            drop(data);
+            drop(readbacks);
+            drop(outputs);
+            drop(accesses);
+            let domain4 = append.into_candidate(&domain3)?;
+            keys.extend_from_slice(&key4);
+            values.extend_from_slice(&value4);
+            gather_kv_exact(&service, &domain4, &keys, &values).await?;
+            gather_kv_exact(
+                &service,
+                &domain3,
+                &keys[..3 * row_bytes],
+                &values[..3 * row_bytes],
+            )
+            .await?;
+            drop(prior_staging);
+            drop(candidate_staging);
+            drop(prior_key);
+            drop(prior_value);
+            drop(candidate_key);
+            drop(candidate_value);
+            drop(domain3);
+            drop(domain4);
+            drop(empty);
+            let final_pool = pool.snapshot()?;
+            if final_pool.allocated_pages != max_pages || final_pool.idle_pages != max_pages {
+                return Err(Error::State(
+                    "paged KV bridge did not retire page pool".into(),
+                ));
+            }
+            println!(
+                "P12_PAGED_KV_BRIDGE_PASS prior=3 candidate=4 page_tokens={PAGE_TOKENS} row_bytes={row_bytes} gather_dispatches={gather_dispatches} prefix_copy_dispatches=2 scatter_cow_dispatches={} scatter_append_transfers={} gpu_only_after_input=true prior_immutable=true contiguous_abi_exact=true all_pages_retired=true",
+                scatter.copy_dispatches, scatter.append_transfers
             );
             Ok(())
         })
