@@ -19,20 +19,22 @@ and live TODOs are authoritative.
 - **AMD large-VRAM execution/test host:** use `dotlink---x2` only for running and
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
-- Latest signed **implementation** checkpoint is
-  `1e0f4ebfc5b9650341814ad669d4101aea717623`
-  (`feat(serving): enable qualified temporal B2 prefill`). It promotes only the
-  physically qualified original0.8B B2 prefill route to 4-token temporal chunks,
-  fixes the missing `NativeText::cohort_eligible` production boundary and keeps
-  B4/B8 on their accepted one-token prefill policy. Its retained resident qualifier
-  proves atomic rollback/publication, CPU/B1/all42 state and terminal greedy; the
-  exact-current production HTTP test proves prompt10 executes as native chunks
-  4+4+2 with three B2 publications, two state-only + one greedy, exact CPU
-  text/usage, zero failures/refusals and final41MiB. Parent `9dab004` added the
-  reusable temporal candidate-chain primitive; `7dea460`/`ba7e376` establish fair
-  aged decode/prefill scheduling. Earlier `9d6613c`/`599cb28` graph selector/timing
-  remain accepted, but the shrinking B2/B4/B8 graph gain does not justify public
-  graph serving; ordinary serving remains Native.
+- Latest signed **implementation/qualification** checkpoint is
+  `12f784083f4057dcf36fd343e408d5a7ed482589`
+  (`test(cuda): qualify temporal B4/B8 prefill constituents`). It generalizes
+  the retained temporal qualifier across B2/B4/B8 and physically closes the
+  original0.8B B4/B8 native CUDA+CPU constituents without changing production
+  policy. Parent `1e0f4ebfc5b9650341814ad669d4101aea717623`
+  (`feat(serving): enable qualified temporal B2 prefill`) remains the production
+  B2 enablement: only B2 selects 4-token temporal prefill, while B4/B8 retain
+  their accepted one-token policy until B1+HTTP gates close. B2 production HTTP
+  still proves prompt10 executes as native chunks4+4+2 with three publications,
+  two state-only + one greedy, exact CPU text/usage, zero failures/refusals and
+  final41MiB. Parent `9dab004` added the reusable temporal candidate-chain
+  primitive; `7dea460`/`ba7e376` establish fair aged decode/prefill scheduling.
+  Earlier `9d6613c`/`599cb28` graph selector/timing remain accepted, but the
+  shrinking B2/B4/B8 graph gain does not justify public graph serving; ordinary
+  serving remains Native.
 - Prefix-scheduling cold reconstruction is now complete for **0.8B and 2B**.
   Fresh-process/no-request-warmup ABBA compares accepted max32-prefix `d0a6084`
   against native teacher-prefix `f788929` with symmetric benchmark-only exact-SM
