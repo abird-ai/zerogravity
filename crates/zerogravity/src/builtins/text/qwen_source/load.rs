@@ -19,6 +19,7 @@ pub(crate) enum SourceBackend {
     Cuda {
         provider_bytes: usize,
         device_bytes: u64,
+        state_policy: crate::gpu::CudaSourceStatePolicy,
     },
 }
 impl SourceBackend {
@@ -27,6 +28,7 @@ impl SourceBackend {
         if let Self::Cuda {
             provider_bytes,
             device_bytes,
+            ..
         } = self
             && (provider_bytes == 0
                 || u64::try_from(provider_bytes).map_or(true, |n| n > device_bytes))
@@ -78,6 +80,27 @@ pub(crate) fn load_router(
 ) -> Result<Router, ServiceError> {
     profile.validate()?;
     backend.validate()?;
+    #[cfg(feature = "qwen35-cuda")]
+    if let SourceBackend::Cuda {
+        state_policy:
+            crate::gpu::CudaSourceStatePolicy::Paged {
+                page_tokens,
+                max_append_tokens,
+            },
+        ..
+    } = backend
+        && (profile.native_rows != 0
+            || page_tokens == 0
+            || max_append_tokens == 0
+            || page_tokens > profile.context
+            || max_append_tokens > profile.context)
+    {
+        return Err(ServiceError::new(
+            400,
+            "invalid_source_state_policy",
+            "paged CUDA state requires B1 and positive page/append tokens within context",
+        ));
+    }
     #[cfg(feature = "qwen35-hip")]
     if profile.native_rows != 0 && matches!(backend, SourceBackend::Hip(_)) {
         return Err(ServiceError::new(
@@ -132,7 +155,8 @@ pub(crate) fn load_router(
         SourceBackend::Cuda {
             provider_bytes,
             device_bytes,
-        } => block_on(ResidentModel::load_ordinary_cuda_source(
+            state_policy,
+        } => block_on(ResidentModel::load_ordinary_cuda_source_with_state_policy(
             Device::Cuda(Default::default()),
             source.plan.source().clone(),
             source.clone(),
@@ -141,6 +165,7 @@ pub(crate) fn load_router(
             profile.native_rows,
             provider_bytes,
             device_bytes,
+            state_policy,
             None,
         )),
     }
@@ -402,5 +427,213 @@ mod tests {
         ] {
             assert!(validate_aliases(&aliases).is_err());
         }
+    }
+}
+
+#[cfg(all(test, feature = "qwen35-cuda"))]
+mod cuda_paged_tests {
+    use super::*;
+    use crate::{
+        accelerator::program::SourceCallMode,
+        gpu::{
+            CudaSourceStatePolicy, ResidentOutput, SourceCallModel, SourceCallPreparation,
+            SourceCallPublication,
+        },
+    };
+
+    const MIB: usize = 1024 * 1024;
+    const PROVIDER_BYTES: usize = 4608 * MIB;
+    const DEVICE_BYTES: u64 = 5120 * MIB as u64;
+
+    #[derive(Debug)]
+    struct Checkpoint {
+        frontier: u64,
+        logits: Vec<f32>,
+        domains: Vec<(crate::accelerator::program::StateSlot, Vec<f32>)>,
+    }
+
+    fn exact_words(expected: &[f32], actual: &[f32], label: &str) {
+        assert_eq!(expected.len(), actual.len(), "{label} length");
+        for (index, (&expected, &actual)) in expected.iter().zip(actual).enumerate() {
+            assert_eq!(
+                expected.to_bits(),
+                actual.to_bits(),
+                "{label} differs at word {index}"
+            );
+        }
+    }
+
+    fn exact_checkpoint(expected: &Checkpoint, actual: &Checkpoint, label: &str) {
+        assert_eq!(expected.frontier, actual.frontier, "{label} frontier");
+        exact_words(&expected.logits, &actual.logits, label);
+        assert_eq!(expected.domains.len(), 42, "{label} expected all42");
+        assert_eq!(actual.domains.len(), 42, "{label} actual all42");
+        for (slot, expected) in &expected.domains {
+            let actual = actual
+                .domains
+                .iter()
+                .find(|(actual, _)| actual == slot)
+                .map(|(_, words)| words)
+                .unwrap_or_else(|| panic!("{label} missing {slot:?}"));
+            exact_words(expected, actual, label);
+        }
+    }
+
+    async fn trajectory(
+        model: &Arc<SourceCallModel>,
+        plan: &crate::qwen35::plan::OrdinaryQwenPlan,
+        tokens: &[u32],
+        page_tokens: usize,
+    ) -> crate::Result<Vec<Checkpoint>> {
+        let mut session = model.session().await?;
+        let chunks = [page_tokens - 1, 1, 1, page_tokens];
+        let mut offset = 0usize;
+        let mut checkpoints = Vec::with_capacity(chunks.len());
+        for rows in chunks {
+            let ids = Arc::<[u32]>::from(tokens[offset..offset + rows].to_vec());
+            let invocation = plan.bind_invocation(SourceCallMode::Prefill, offset, ids, true)?;
+            let pending = session
+                .prepare(
+                    invocation.bound_invocation(),
+                    SourceCallMode::Prefill,
+                    ResidentOutput::Logits,
+                    None,
+                )
+                .await?;
+            let SourceCallPreparation::Ready(pending) = pending else {
+                return Err(crate::Error::State(
+                    "paged source differential candidate refused".into(),
+                ));
+            };
+            let SourceCallPublication::Committed(read) = session.commit(pending)? else {
+                return Err(crate::Error::State(
+                    "paged source differential candidate discarded".into(),
+                ));
+            };
+            offset += rows;
+            if session.binding().frontier() != offset as u64 {
+                return Err(crate::Error::State(
+                    "paged source differential frontier differs".into(),
+                ));
+            }
+            let snapshot = session.snapshot()?;
+            checkpoints.push(Checkpoint {
+                frontier: session.binding().frontier(),
+                logits: read.logits.clone(),
+                domains: snapshot.read_domains().await?.to_vec(),
+            });
+            drop(read);
+        }
+        Ok(checkpoints)
+    }
+
+    #[test]
+    #[ignore = "approved original HF cache; exact contiguous-vs-paged CUDA B1 all42"]
+    fn original_source_b1_paged_matches_contiguous_at_page_boundaries() {
+        let snapshot =
+            std::env::var("ZG_QWEN_SOURCE_SNAPSHOT").expect("explicit approved snapshot");
+        let root = std::env::var_os("ZG_QWEN_CACHE_ROOT").map(std::path::PathBuf::from);
+        let page_tokens = std::env::var("ZG_QWEN_PAGED_PAGE_TOKENS")
+            .expect("explicit page_tokens")
+            .parse::<usize>()
+            .expect("page_tokens");
+        let max_append_tokens = std::env::var("ZG_QWEN_PAGED_MAX_APPEND_TOKENS")
+            .expect("explicit max_append_tokens")
+            .parse::<usize>()
+            .expect("max_append_tokens");
+        assert!((2..=64).contains(&page_tokens));
+        assert!(max_append_tokens >= page_tokens);
+        let context = 512usize;
+
+        let arbiter = ResourceArbiter::process_shared();
+        let resource = PhysicalDeviceKey::new("host", "system-ram").unwrap();
+        arbiter
+            .register_matching(resource.clone(), 16 * 1024 * 1024 * 1024)
+            .unwrap();
+        let admission = TransferAdmission {
+            arbiter,
+            resource,
+            owner: ResourceOwner::new("paged-source-differential", "original-source").unwrap(),
+        };
+        let host = ServingHost::from_process_admission(&admission).unwrap();
+        let parts = open_source(
+            "paged-source-differential",
+            CacheOptions::new(root, 96 * 1024 * 1024 * 1024),
+            &snapshot,
+            context,
+            &host,
+            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        )
+        .unwrap();
+        let needed = page_tokens * 2 + 1;
+        let prompt = " a".repeat(needed * 2);
+        let mut tokens = parts
+            .tokenizer
+            .prompt_tokens(&prompt, false)
+            .expect("source tokenizer");
+        assert!(tokens.len() >= needed);
+        tokens.truncate(needed);
+        assert!(
+            tokens
+                .iter()
+                .all(|&id| { (id as usize) < parts.source.plan.model_profile().vocabulary_size() })
+        );
+
+        let run = |policy| {
+            ResidentModel::load_ordinary_cuda_source_with_state_policy(
+                Device::Cuda(Default::default()),
+                parts.source.plan.source().clone(),
+                parts.source.clone(),
+                parts.source.plan.plan().clone(),
+                1,
+                0,
+                PROVIDER_BYTES,
+                DEVICE_BYTES,
+                policy,
+                None,
+            )
+        };
+        let expected = block_on(async {
+            let model = run(CudaSourceStatePolicy::Contiguous).await.unwrap();
+            let checkpoints = trajectory(&model, &parts.source.plan, &tokens, page_tokens)
+                .await
+                .unwrap();
+            model.shutdown().await.unwrap();
+            checkpoints
+        });
+        let actual = block_on(async {
+            let model = run(CudaSourceStatePolicy::Paged {
+                page_tokens,
+                max_append_tokens,
+            })
+            .await
+            .unwrap();
+            let checkpoints = trajectory(&model, &parts.source.plan, &tokens, page_tokens)
+                .await
+                .unwrap();
+            model.shutdown().await.unwrap();
+            checkpoints
+        });
+        assert_eq!(expected.len(), 4);
+        assert_eq!(actual.len(), 4);
+        for (index, (expected, actual)) in expected.iter().zip(&actual).enumerate() {
+            exact_checkpoint(expected, actual, &format!("paged B1 checkpoint {index}"));
+        }
+        assert_eq!(
+            actual.iter().map(|c| c.frontier).collect::<Vec<_>>(),
+            vec![
+                (page_tokens - 1) as u64,
+                page_tokens as u64,
+                (page_tokens + 1) as u64,
+                (page_tokens * 2 + 1) as u64,
+            ]
+        );
+        println!(
+            "P12_SOURCE_PAGED_B1_PASS page_tokens={page_tokens} max_append_tokens={max_append_tokens} frontiers={},{},{},{} full_vocab=exact all42=exact contiguous_reference=true final_shutdown=true",
+            page_tokens - 1,
+            page_tokens,
+            page_tokens + 1,
+            page_tokens * 2 + 1,
+        );
     }
 }

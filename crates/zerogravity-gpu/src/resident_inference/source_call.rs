@@ -33,6 +33,16 @@ pub use probe::{SourceCallFinalReader, SourceCallReaderObservation};
 const CONTROL_BYTES: usize = 64 * 1024;
 const CALL_HOST_BYTES: usize = 32 * 1024 * 1024;
 
+#[cfg(feature = "cuda-cublas")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CudaSourceStatePolicy {
+    Contiguous,
+    Paged {
+        page_tokens: usize,
+        max_append_tokens: usize,
+    },
+}
+
 /// No exposed inner model/session: detached readers must retain these owners.
 pub struct SourceCallModel {
     inner: Arc<ResidentModel>,
@@ -240,12 +250,51 @@ impl ResidentModel {
         device_cap: u64,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<SourceCallModel>> {
+        Self::load_ordinary_cuda_source_with_state_policy(
+            device,
+            source,
+            source_owner,
+            plan,
+            max_sessions,
+            native_rows,
+            provider_cap,
+            device_cap,
+            CudaSourceStatePolicy::Contiguous,
+            cancelled,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn load_ordinary_cuda_source_with_state_policy(
+        device: Device,
+        source: VerifiedTensorSource,
+        source_owner: Arc<dyn std::any::Any + Send + Sync>,
+        plan: Arc<ForwardPlan>,
+        max_sessions: usize,
+        native_rows: usize,
+        provider_cap: usize,
+        device_cap: u64,
+        state_policy: CudaSourceStatePolicy,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<Arc<SourceCallModel>> {
         ordinary_not_cancelled(cancelled)?;
         if !(1..=64).contains(&max_sessions)
             || !matches!(native_rows, 0 | 4 | 8)
             || (native_rows != 0 && max_sessions < native_rows)
         {
             return Err(Error::Limit("source-call session capacity".into()));
+        }
+        if let CudaSourceStatePolicy::Paged {
+            page_tokens,
+            max_append_tokens,
+        } = state_policy
+            && (page_tokens == 0 || max_append_tokens == 0 || native_rows != 0)
+        {
+            return Err(Error::Unsupported(
+                "paged source-call state requires positive page/append policy and B1 ordinary CUDA"
+                    .into(),
+            ));
         }
         let roots = max_sessions * 2 + 2;
         let control = source.reserve_workspace(CONTROL_BYTES)?;
@@ -264,7 +313,24 @@ impl ResidentModel {
             cancelled,
         )
         .await?;
-        model.install_window_root_pool(source.clone(), roots)?;
+        match state_policy {
+            CudaSourceStatePolicy::Contiguous => {
+                model.install_window_root_pool(source.clone(), roots)?;
+            }
+            CudaSourceStatePolicy::Paged {
+                page_tokens,
+                max_append_tokens,
+            } => {
+                model.install_window_hybrid_state_pools(
+                    source.clone(),
+                    roots,
+                    max_sessions,
+                    page_tokens,
+                    max_append_tokens,
+                    SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+                )?;
+            }
+        }
         ordinary_not_cancelled(cancelled)?;
         Ok(Arc::new(SourceCallModel {
             inner: model,

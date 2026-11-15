@@ -1994,7 +1994,7 @@ impl ResidentModel {
             }
             #[cfg(not(feature = "cuda-cublas"))]
             {
-                let _ = pools;
+                let _ = (pools, tokens);
                 return Err(Error::Unsupported(
                     "hybrid paged state requires ordinary CUDA".into(),
                 ));
@@ -3464,7 +3464,9 @@ mod ordinary_shutdown_owner_tests {
 ))]
 mod source_call;
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-pub use source_call::{SourceCallCohortPending, SourceCallCohortPreparation};
+pub use source_call::{
+    CudaSourceStatePolicy, SourceCallCohortPending, SourceCallCohortPreparation,
+};
 #[cfg(all(
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))

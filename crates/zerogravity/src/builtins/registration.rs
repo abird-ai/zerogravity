@@ -29,6 +29,7 @@ pub(crate) fn load_text(
                 super::text::qwen_source::SourceBackend::Cuda {
                     provider_bytes,
                     device_bytes,
+                    state_policy: crate::gpu::CudaSourceStatePolicy::Contiguous,
                 },
             )
         }

@@ -88,7 +88,7 @@ impl HybridStateInventoryPlan {
                     });
                 }
                 StateLayout::Kv { slab, capacity } => {
-                    if planes != 2 || page_tokens > capacity {
+                    if planes != 2 || page_tokens > capacity || max_append_tokens > capacity {
                         return Err(Error::State(
                             "resident hybrid KV plane geometry differs".into(),
                         ));
@@ -249,6 +249,7 @@ pub(super) struct HybridPooledStates {
     pub numerical: zerogravity_core::accelerator::program::SourceNumericalContract,
 }
 
+#[cfg(feature = "cuda-cublas")]
 enum HybridCandidatePart {
     Vector {
         prior: Domain,
@@ -261,11 +262,13 @@ enum HybridCandidatePart {
     },
 }
 
+#[cfg(feature = "cuda-cublas")]
 pub(crate) struct HybridCandidateBundle {
     parts: Vec<HybridCandidatePart>,
     bindings: Vec<StateBinding>,
 }
 
+#[cfg(feature = "cuda-cublas")]
 impl HybridCandidateBundle {
     pub(crate) fn bindings(&self) -> &[StateBinding] {
         &self.bindings
@@ -378,6 +381,7 @@ impl HybridCandidateBundle {
     }
 }
 
+#[cfg(feature = "cuda-cublas")]
 fn merge_access(
     unique: &mut BTreeMap<BufferLeaseId, (ResidentLease, DeviceAccess)>,
     lease: ResidentLease,
@@ -442,6 +446,7 @@ impl HybridPooledStates {
         }))
     }
 
+    #[cfg(feature = "cuda-cublas")]
     pub(crate) fn candidate(
         &self,
         states: &[StateRequirement],
@@ -449,6 +454,11 @@ impl HybridPooledStates {
         tokens: usize,
         position: usize,
     ) -> Result<HybridCandidateBundle> {
+        if tokens > self.plan.max_append_tokens {
+            return Err(Error::Limit(
+                "resident hybrid append exceeds admitted token bound".into(),
+            ));
+        }
         if tokens == 0 || states.len() != prior.len() {
             return Err(Error::State(
                 "resident hybrid candidate state/token coverage differs".into(),
@@ -906,6 +916,17 @@ mod tests {
             HybridStateInventoryPlan::analyze(&states, state_bytes, 4, 1, 4, 4, 512),
             Err(Error::Unsupported(reason))
                 if reason == "resident hybrid heterogeneous KV page geometry"
+        ));
+    }
+
+    #[test]
+    fn hybrid_inventory_rejects_append_bound_above_state_capacity() {
+        let states = hybrid_requirements();
+        let state_bytes = states.iter().map(|state| state.bytes).sum::<usize>();
+        assert!(matches!(
+            HybridStateInventoryPlan::analyze(&states, state_bytes, 4, 1, 4, 9, 512),
+            Err(Error::State(reason))
+                if reason == "resident hybrid KV plane geometry differs"
         ));
     }
 

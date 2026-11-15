@@ -168,4 +168,53 @@ mod tests {
             assert!(bad.validate().is_err());
         }
     }
+
+    #[cfg(feature = "qwen35-cuda")]
+    #[test]
+    fn paged_cuda_policy_refuses_invalid_shape_before_source_io() {
+        let base = QwenSourceProfile {
+            active: 4,
+            context: 1024,
+            output: 2,
+            max_pending: Some(4),
+            native_rows: 0,
+        };
+        let load = |profile, page_tokens, max_append_tokens| {
+            load::load_router(
+                vec!["paged-policy-preflight".into()],
+                crate::cache::CacheOptions::new(None, 1),
+                "not-a-source-digest".into(),
+                profile,
+                load::SourceBackend::Cuda {
+                    provider_bytes: 1,
+                    device_bytes: 1,
+                    state_policy: crate::gpu::CudaSourceStatePolicy::Paged {
+                        page_tokens,
+                        max_append_tokens,
+                    },
+                },
+            )
+        };
+        for (profile, page_tokens, max_append_tokens) in [
+            (
+                QwenSourceProfile {
+                    native_rows: 4,
+                    ..base
+                },
+                4,
+                64,
+            ),
+            (base, 0, 64),
+            (base, 4, 0),
+            (base, 1025, 64),
+            (base, 4, 1025),
+        ] {
+            let error = match load(profile, page_tokens, max_append_tokens) {
+                Ok(_) => panic!("invalid paged policy reached source loading"),
+                Err(error) => error,
+            };
+            assert_eq!(error.status, 400);
+            assert_eq!(error.code, "invalid_source_state_policy");
+        }
+    }
 }
