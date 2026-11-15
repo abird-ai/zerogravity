@@ -529,10 +529,16 @@ or a change to the active correctness/benchmark/27B order.
   preserves the prefix, writes the new row exactly, leaves the tail zero and
   retires staging; all retained paged cells and production composition/clippy
   remain green. Next replace ordinary root allocation with hybrid admitted
-  vector/page/staging pools, then select the paged route. Ready validation must
-  permit exact initialized full pages inherited from the current root while
-  requiring fresh/COW pages as actual Write outputs; snapshot/read/restore also
-  needs explicit paged readers before production selection is complete.
+  vector/page/staging pools, then select the paged route.
+  Signed `93468b1` closes the Ready/snapshot semantics first: paged snapshot
+  reads are typed, ordered and valid-tail bounded; physical partial/full snapshots
+  plus4->3->4 restore pass. Ready classification permits only exact initialized
+  full same-plane/index current-root pages as inherited, so3->4 has2 Writes and
+  4->5 has2 inherited+2 Writes. The new pure hybrid inventory plan proves
+  vector-root + staging + page maxima fit the old roots*state_bytes envelope and
+  refuses insufficient active-fork headroom or heterogeneous page geometry.
+  **Production selection remains open:** next physically construct/install those
+  pools for ordinary source-call sessions and choose page_tokens explicitly.
   Admit physical GPU overlap only after event/lease, cancellation/unknown-
   completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine

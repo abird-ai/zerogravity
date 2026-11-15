@@ -123,7 +123,13 @@ The following extends existing owners; source-byte qualification is not inferenc
   prefix/new-row/tail exactness and clean retirement. Next split ordinary root
   storage into admitted vector/page/staging pools, allow only exact initialized
   current-root full pages as inherited Ready state, and add paged snapshot/read/
-  restore before selecting the production session route.
+  restore before selecting the production session route. Signed `93468b1`
+  closes those semantic gates: paged partial/full snapshot +4->3->4 restore pass;
+  Ready requires only new/COW page Writes and proves2 inherited full pages at
+  4->5. A pure hybrid inventory plan now proves vector/staging/page maxima stay
+  inside the old root byte envelope and rejects insufficient fork headroom.
+  Next physically construct/install those pools for ordinary source-call sessions;
+  page_tokens remains an explicit policy input, not yet a production default.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

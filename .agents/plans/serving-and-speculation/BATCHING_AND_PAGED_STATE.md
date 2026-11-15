@@ -373,6 +373,45 @@ run ordinary KvInPlace append/attention, scatter only appended rows, and publish
 through the existing root authority. Then qualify page_size-1/page_size/
 page_size+1 and multi-page full-model continuations.
 
+**15 Nov hybrid semantic/admission follow-up:** signed `93468b1` closes gates2
+and3 above and turns gate1 into an explicit byte plan.
+`ResidentPagedKvDomain::snapshot_planes` exposes K-then-V page owners with typed
+physical layout + valid element counts. `ResidentSnapshot::read_domains` now
+builds one explicit plane list for contiguous and paged domains, retains original
+Read leases, validates finite values, checks partial-page inactive tails are +0
+and reconstructs the same flat K-then-V active values as contiguous snapshots.
+Restore uses the same factored `publish_domain_swap`; physical frontier3 partial
+and frontier4 full snapshots plus4->3->4 restore are exact.
+
+`canonical_write_outputs` is now the pre-publication cohort authority used by
+`validate_prepared`. For paged KV it calls
+`required_write_leases_from(current)`: source/numerical/domain/schema/page
+geometry must match; inherited pages must be the exact same logical lease at the
+same plane/index, must remain full with unchanged valid extent, and any current
+page moved to another position is rejected. The retained boundary qualifier now
+proves3->4 requires2 COW Writes, while4->5 owns4 candidate pages but Ready needs
+only2 new page Writes because2 full pages are inherited.
+
+`HybridStateInventoryPlan` is a pure admission contract, not a pool installer.
+Inputs are the actual StateRequirements, old state_bytes/root count, number of
+simultaneous staging sets, explicit page_tokens, explicit max_append_tokens and
+allocator alignment. It derives:
+- contiguous Vector plane layout and roots*vector_bytes maximum;
+- one complete K/V staging layout and staging_sets*kv_bytes maximum;
+- one homogeneous page layout and the remaining page-byte budget;
+- pages per committed root plus worst candidate-page growth across **every KV
+  domain** for every active staging set.
+It refuses if page geometry is heterogeneous, state-byte accounting differs, or
+remaining page capacity cannot hold all active committed roots plus candidate
+forks. Unit proof with two KV domains/page4/append4 shows4 old roots -> vector
+roots + one staging set +24 pages exactly equals the old byte cap; roots2 is
+refused for missing fork headroom.
+
+Next: construct the actual `ResidentPool`/ `ResidentPagePool` objects from this
+plan using source-owned metadata, install them only in the ordinary source-call
+path, and bind session allocation/execution. Page-token policy remains explicit;
+the qualification value4 is not a production default.
+
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve
   B1 and smaller qualified bands after checked prelaunch capacity refusal.

@@ -20,24 +20,29 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation/qualification** checkpoint is
-  `ef9e4d4c4364df423d4a6afad108a1c5b562d967`
-  (`feat(cuda): add in-place paged KV staging mode`). Parents `0027c28`,
-  `54340a6`, `1eb6e0f`, `3ac2059`, `dc6a188` and `53336b3` remain the
-  logical/page/COW/gather-scatter/canonical-domain substrate. `ef9e4d4` adds an
-  explicit `StateBindingMode::KvInPlace` for the one-staging design. Ordinary
-  validation permits prior/candidate aliasing only for KV, requires the exact
-  same two lease identities/generations/bytes, requires those staging leases to
-  be fresh/uninitialized at validation, and still rejects aliasing for Vector or
-  normal distinct bindings. The real `KvAppend` branch now routes through one
-  `prepare_kv_candidate`: Distinct keeps the accepted zero + prefix-copy path;
-  KvInPlace emits no zero/prefix-copy work because the caller gathered the
-  committed paged prefix into that staging on the same original flight.
-  RTX3060 physical acceptance uses the actual ordinary Qwen KV append kernel at
-  base3/capacity8/kv_width512 and passes with preparation_launches0, exact prefix
-  preservation, exact new row, zero inactive tail, unique submitted Writes and
-  complete staging retirement. The final-current paged root-publication,
-  gather/scatter, 3/4/5 boundary, COW and submitted-unknown/quarantine cells all
-  pass; production `qwen35-cuda` composition and strict clippy are green.
+  `93468b1f5062804f009f817c6f5dd50bc7d0516e`
+  (`feat(state): validate hybrid paged root semantics`). Parents through
+  `ef9e4d4` remain the page/COW/gather-scatter/canonical-domain/KvInPlace
+  execution substrate. `93468b1` closes the two semantic gates required before
+  installing hybrid pools. Paged snapshots now traverse K then V page leases
+  explicitly, validate page/physical/valid extents, trim partial pages to their
+  valid rows, require zero inactive tails and preserve typed finite checks.
+  Snapshot restore reuses the exact original `publish_domain_swap` authority.
+  RTX3060 proves frontier3 partial snapshot, frontier4 full snapshot and
+  4->3->4 restore byte-exact with all pages retired.
+  Ready validation now computes only actual canonical Write outputs: contiguous
+  domains remain all-write; paged KV omits a page only when it is the exact same
+  initialized **full** current-root owner at the same K/V plane and logical page
+  index. The 3->4 boundary requires2 COW Writes; 4->5 retains2 inherited full
+  pages and requires only2 new Writes.
+  A pure `HybridStateInventoryPlan` now takes explicit page_tokens and
+  max_append_tokens, derives vector-root/staging/page maxima from the existing
+  roots*state_bytes envelope, budgets all-KV-domain candidate COW/page growth,
+  rejects insufficient fork headroom and heterogeneous page geometry, and proves
+  simultaneous maxima never exceed the old root byte cap. It does **not** install
+  pools or choose a production page-size policy yet.
+  The final-current six physical paging/in-place cells, hybrid unit gates,
+  production `qwen35-cuda` composition and strict clippy are green.
   Production ordinary sessions still construct contiguous KV today; no serving
   selector, direct paged attention, prefix reuse or public capability changed.
   Parent `8e6f14d3defc0aa2e542c26ffb9ccc7c736f1fcb`
@@ -129,21 +134,20 @@ and live TODOs are authoritative.
   while compiling/linking `zerogravity-cli`, before the test ran and without a
   terminal child status, Rust diagnostic, OOM/Xid, live child or GPU residue.
   Do not loop that unstable build. Paged-state control/ownership/materialization/
-  typed-KV gather/scatter/domain publication/in-place ordinary execution is now
+  typed-KV gather/scatter/domain publication/in-place execution/hybrid semantics is now
   `0027c28` + `54340a6` + `1eb6e0f` + `3ac2059` + `dc6a188` +
-  `53336b3` + `ef9e4d4`. **Next executable P12-C work is production
-  ordinary-session selection.** Do not add an uncharged third state. Build the
-  hybrid admitted inventory from the existing root budget: canonical contiguous
-  Conv/Recurrent roots, paged KV pools, one transient full-capacity K/V staging
-  pair per active ordinary execution and only the required vector candidate
-  storage. Then gather paged KV into that staging, bind KvInPlace, run the
-  unchanged append/attention body, scatter only newly produced KV rows into the
-  private paged child and publish through the accepted root swap.
-  Publication validation must also distinguish **newly written page outputs**
-  from full pages inherited immutably from the current root: inherited pages are
-  valid only when they are exact initialized current-root owners and must not be
-  submitted as fake Writes merely to satisfy Ready. Paged snapshot/read/restore
-  must use explicit page readers instead of the no-handle `PagedKv` marker.
+  `53336b3` + `ef9e4d4` + `93468b1`. **Next executable P12-C work is
+  physical hybrid-pool installation and ordinary source-call selection.** Use
+  `HybridStateInventoryPlan` as the byte authority: construct a root pool only
+  for contiguous Conv/Recurrent planes, one homogeneous KV page pool, and one
+  full K/V staging-set pool per active ordinary source-call session. Reserve all
+  pool metadata from the existing source owner and ensure their maximum physical
+  bytes equal or undercut the old complete-root inventory. Keep page_tokens an
+  explicit policy input; do not silently promote the 4-token qualification value
+  to production policy. Then create paged-empty KV session roots, gather into one
+  staging set, bind KvInPlace, execute ordinary append/attention, scatter only
+  new/COW pages, complete Ready with the already accepted inherited-page rules,
+  and publish through the existing root swap.
   Qualify
   continued full-state execution at page_size-1/page_size/page_size+1 and
   multi-page boundaries before direct paged attention or complete-domain prefix

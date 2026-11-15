@@ -130,19 +130,33 @@ unique_write_access=true all_staging_retired=true`. The canonical paged
 publication/bridge/boundary/COW/quarantine cells all pass on the same final
 binary; production composition and strict clippy pass.
 
+Signed `93468b1` closes the next **hybrid root semantic/admission gates**.
+Paged snapshot/read no longer depends on contiguous `StateBuffers` handles:
+it reads K then V page leases in block-table order, validates typed page geometry,
+trims to valid rows and checks zero inactive tails. The same retained physical
+root cell proves frontier3 partial + frontier4 full snapshots and 4->3->4 restore
+through the original `publish_domain_swap`. Ready coverage now derives actual
+Write outputs against the current root: shared pages are omitted only if they are
+the exact initialized full owner at the same plane/index. Physical3->4 requires2
+COW Writes;4->5 has4 candidate page leases but only2 Ready Writes because2 full
+pages are inherited. `HybridStateInventoryPlan` takes explicit page_tokens and
+max_append_tokens and computes vector-root, staging and page-pool maxima under
+the original roots*state_bytes cap; it includes all-KV-domain candidate page
+pressure and rejects insufficient headroom/heterogeneous page geometry. Three
+unit gates pass. This is an admission plan only: no physical hybrid pool is
+installed and no production page-token value is selected.
+
 Admission review changes the next implementation shape: ordinary admission
 budgets a finite inventory of complete state roots. A paged committed root plus
 full prior staging plus full candidate staging would be a third state-sized
-envelope at full context and must not be smuggled past admission. **Next: select
-paged KV for ordinary sessions by replacing the monolithic root inventory with
-hybrid admitted pools: contiguous Conv/Recurrent committed+candidate state,
-finite paged KV backing and one full K/V staging pair per active execution.
-Gather pages into staging, bind the accepted KvInPlace mode, run append/attention,
-scatter only new rows and publish the paged child. Extend `validate_prepared`
-so shared full pages inherited from the current root are accepted as already-Ready
-immutable owners while only fresh/COW pages are required as submitted Write
-outputs; never submit inherited pages as fake Writes. Add paged snapshot/read/
-restore handling rather than relying on `StateBuffers::buffers()`.
+envelope at full context and must not be smuggled past admission. The Ready and
+snapshot semantics are now accepted at `93468b1`. **Next: construct/install the
+physical pools from `HybridStateInventoryPlan`, using source-owned metadata:
+contiguous Conv/Recurrent root pool, homogeneous KV page pool and bounded staging
+pool. Wire only ordinary source-call sessions first; leave generic roots=2 and
+native/HIP on the old contiguous allocator. Keep page_tokens explicit until a
+production policy is chosen. Then gather -> KvInPlace append/attention -> scatter
+-> Ready -> root publication.
 Qualify continued full-state page-boundary/multi-page parity.**
 Complete-domain prefix identity/intersection follows that.
 Event/lease-backed physical overlap remains after those state gates.
