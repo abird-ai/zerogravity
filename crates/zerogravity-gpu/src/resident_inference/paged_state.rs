@@ -430,6 +430,42 @@ impl ResidentPagedAppend {
 }
 
 impl ResidentPagedKvDomain {
+    pub(crate) fn empty_for_contract(
+        requirement: &StateRequirement,
+        pool: Arc<ResidentPagePool>,
+        page_tokens: usize,
+        contract: zerogravity_core::accelerator::program::SourceNumericalContract,
+    ) -> Result<Self> {
+        let numerical = match contract {
+            zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1 => 1,
+            zerogravity_core::accelerator::program::SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1 => 2,
+            zerogravity_core::accelerator::program::SourceNumericalContract::GgmlSourceF32V1 => 3,
+            zerogravity_core::accelerator::program::SourceNumericalContract::GgmlQ4Repack8x8F32V1 => 4,
+            zerogravity_core::accelerator::program::SourceNumericalContract::OpenBlas033Zen16Q8F32V1 => 5,
+        };
+        let StateLayout::Kv { slab, capacity } = requirement.layout else {
+            return Err(Error::State(
+                "paged KV compatibility identity requires KV layout".into(),
+            ));
+        };
+        let physical = match requirement.physical {
+            ResidentPhysicalType::Bf16 => 1u64,
+            ResidentPhysicalType::F32 => 2u64,
+        };
+        const FIELD_BITS: u32 = 24;
+        const FIELD_MAX: usize = (1usize << FIELD_BITS) - 1;
+        if slab == 0 || capacity == 0 || slab > FIELD_MAX || capacity > FIELD_MAX {
+            return Err(Error::Limit(
+                "paged KV compatibility layout field exceeds 24 bits".into(),
+            ));
+        }
+        // Version|physical|slab|capacity: collision-free inside the checked
+        // field bounds; page geometry is separately part of PageCompatibility.
+        let schema =
+            (1u64 << 56) | (physical << 48) | ((slab as u64) << FIELD_BITS) | capacity as u64;
+        Self::empty(requirement, pool, page_tokens, numerical, schema)
+    }
+
     pub(crate) fn empty(
         requirement: &StateRequirement,
         pool: Arc<ResidentPagePool>,

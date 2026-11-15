@@ -1,5 +1,6 @@
 //! Shared .8B/2B root checkout: fresh logical leases, unchanged domain binding.
 use super::*;
+use crate::resident_leases::backing_pool::ResidentPagePool;
 #[cfg(any(
     feature = "cuda-native-qualification",
     feature = "cuda-cublas",
@@ -212,8 +213,17 @@ impl HybridStateInventoryPlan {
     }
 }
 
+#[allow(
+    dead_code,
+    reason = "hybrid storage is installed by the next ordinary source-call selection slice"
+)]
+pub(super) enum PooledStateStorage {
+    Contiguous(Arc<ResidentPool>),
+    Hybrid(Arc<HybridPooledStates>),
+}
+
 pub(super) struct PooledStates {
-    pub pool: Arc<ResidentPool>,
+    pub storage: PooledStateStorage,
     #[cfg(all(
         any(
             feature = "qualification",
@@ -224,6 +234,140 @@ pub(super) struct PooledStates {
     ))]
     pub source: Option<zerogravity_artifacts::source_weights::VerifiedTensorSource>,
 }
+
+#[allow(
+    dead_code,
+    reason = "hybrid storage is installed by the next ordinary source-call selection slice"
+)]
+pub(super) struct HybridPooledStates {
+    pub plan: HybridStateInventoryPlan,
+    pub vector_pool: Arc<ResidentPool>,
+    pub staging_pool: Arc<ResidentPool>,
+    pub page_pool: Arc<ResidentPagePool>,
+    pub numerical: zerogravity_core::accelerator::program::SourceNumericalContract,
+}
+
+#[allow(
+    dead_code,
+    reason = "hybrid storage is installed by the next ordinary source-call selection slice"
+)]
+impl HybridPooledStates {
+    pub(super) fn prepare(
+        service: Arc<ResidentService>,
+        plan: HybridStateInventoryPlan,
+        vector_metadata: zerogravity_core::resource_arbiter::HostWorkspace,
+        staging_metadata: zerogravity_core::resource_arbiter::HostWorkspace,
+        page_metadata: zerogravity_core::resource_arbiter::HostWorkspace,
+        numerical: zerogravity_core::accelerator::program::SourceNumericalContract,
+    ) -> Result<Arc<Self>> {
+        let vector_pool = ResidentPool::prepare(
+            service.clone(),
+            vector_metadata,
+            &plan.vector_layout,
+            plan.roots,
+        )?;
+        let staging_pool = ResidentPool::prepare(
+            service.clone(),
+            staging_metadata,
+            &plan.staging_layout,
+            plan.staging_sets,
+        )?;
+        let page_pool =
+            ResidentPagePool::prepare(service, page_metadata, plan.page, plan.max_pages)?;
+        Ok(Arc::new(Self {
+            plan,
+            vector_pool,
+            staging_pool,
+            page_pool,
+            numerical,
+        }))
+    }
+}
+
+pub(crate) async fn allocate_hybrid_initial_state<F>(
+    model: &ResidentModel,
+    pools: &Arc<HybridPooledStates>,
+    cancelled: Option<&AtomicBool>,
+    retain: F,
+) -> Result<Vec<Domain>>
+where
+    F: FnOnce(&mut crate::resident_leases::ResidentInitialization<'_>) -> Result<()>,
+{
+    check_cancel(cancelled)?;
+    model.service.ensure_usable()?;
+    let vector_leases = pools.vector_pool.checkout()?;
+    let mut vectors = vector_leases.iter();
+    let mut domains = Vec::with_capacity(model.states.len());
+    for requirement in &model.states {
+        match requirement.layout {
+            StateLayout::Vector { .. } => {
+                domains.push(make_domain(requirement, &mut |layout| {
+                    let lease = vectors.next().ok_or_else(|| {
+                        Error::State("resident hybrid vector root plane missing".into())
+                    })?;
+                    if layout.bytes()? != lease.bytes()
+                        || lease.role() != BufferRole::RecurrentState
+                        || lease.is_initialized()
+                        || !Arc::ptr_eq(lease.service(), &model.service)
+                    {
+                        return Err(Error::State(
+                            "resident hybrid vector root plane differs".into(),
+                        ));
+                    }
+                    Ok(lease.clone())
+                })?);
+            }
+            StateLayout::Kv { .. } => {
+                domains.push(Domain::from_paged_kv(
+                    paged_state::ResidentPagedKvDomain::empty_for_contract(
+                        requirement,
+                        pools.page_pool.clone(),
+                        pools.plan.page_tokens,
+                        pools.numerical,
+                    )?,
+                )?);
+            }
+        }
+    }
+    if vectors.next().is_some() {
+        return Err(Error::State(
+            "resident hybrid vector root has extra planes".into(),
+        ));
+    }
+    model.validate_domains(&domains, false)?;
+    let vector_root_bytes = pools
+        .plan
+        .vector_layout
+        .iter()
+        .try_fold(0usize, |sum, plane| {
+            sum.checked_add(plane.bytes)
+                .ok_or_else(|| Error::Limit("resident hybrid vector root bytes".into()))
+        })?;
+    let _allocation = model.allocation.lock().await;
+    let ticket = model.service.queue().submit(
+        model.service.budget(),
+        model.service.owner().clone(),
+        &[AllocationRequest {
+            kind: AllocationClass::RecurrentState,
+            bytes: vector_root_bytes as u64,
+        }],
+        None,
+    )?;
+    let mut slot = ticket.wait().await?;
+    check_cancel(cancelled)?;
+    slot.begin_submission()?;
+    let mut init = model.service.begin_initialization(0)?;
+    retain(&mut init)?;
+    for lease in &vector_leases {
+        init.upload_zeroed_into(lease)?;
+    }
+    drop(init.complete_sync().await?);
+    slot.finish()?;
+    check_cancel(cancelled)?;
+    model.validate_domains(&domains, true)?;
+    Ok(domains)
+}
+
 fn check_cancel(flag: Option<&AtomicBool>) -> Result<()> {
     if flag.is_some_and(|f| f.load(Ordering::Acquire)) {
         return Err(Error::State("resident root checkout cancelled".into()));
@@ -353,10 +497,73 @@ impl ResidentModel {
         let pool = ResidentPool::prepare(self.service.clone(), metadata, &layout, roots)?;
         self.state_pool
             .set(PooledStates {
-                pool,
+                storage: PooledStateStorage::Contiguous(pool),
                 source: Some(source),
             })
             .map_err(|_| Error::State("resident root pool rebound".into()))
+    }
+
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+    #[allow(
+        dead_code,
+        reason = "hybrid source-call selection lands after physical pool acceptance"
+    )]
+    pub(crate) fn install_window_hybrid_state_pools(
+        &self,
+        source: zerogravity_artifacts::source_weights::VerifiedTensorSource,
+        roots: usize,
+        staging_sets: usize,
+        page_tokens: usize,
+        max_append_tokens: usize,
+        numerical: zerogravity_core::accelerator::program::SourceNumericalContract,
+    ) -> Result<()> {
+        if source.source_identity() != self.service.source_identity()
+            || self.state_pool.get().is_some()
+        {
+            return Err(Error::State(
+                "resident hybrid pool source/reinitialization".into(),
+            ));
+        }
+        let alignment = usize::try_from(self.service.client().properties().memory.alignment)
+            .map_err(|_| Error::Limit("resident hybrid allocator alignment".into()))?;
+        let plan = HybridStateInventoryPlan::analyze(
+            &self.states,
+            self.state_bytes,
+            roots,
+            staging_sets,
+            page_tokens,
+            max_append_tokens,
+            alignment,
+        )?;
+        let vector_metadata = source
+            .reserve_workspace(ResidentPool::metadata_bytes(
+                plan.vector_layout.len(),
+                plan.roots,
+            )?)?
+            .into_host_workspace()?;
+        let staging_metadata = source
+            .reserve_workspace(ResidentPool::metadata_bytes(
+                plan.staging_layout.len(),
+                plan.staging_sets,
+            )?)?
+            .into_host_workspace()?;
+        let page_metadata = source
+            .reserve_workspace(ResidentPagePool::metadata_bytes(plan.max_pages)?)?
+            .into_host_workspace()?;
+        let pools = HybridPooledStates::prepare(
+            self.service.clone(),
+            plan,
+            vector_metadata,
+            staging_metadata,
+            page_metadata,
+            numerical,
+        )?;
+        self.state_pool
+            .set(PooledStates {
+                storage: PooledStateStorage::Hybrid(pools),
+                source: Some(source),
+            })
+            .map_err(|_| Error::State("resident hybrid pool rebound".into()))
     }
 }
 
@@ -443,5 +650,142 @@ mod tests {
             Err(Error::Unsupported(reason))
                 if reason == "resident hybrid heterogeneous KV page geometry"
         ));
+    }
+
+    #[cfg(all(
+        feature = "cuda-native-qualification",
+        feature = "cuda-cublas",
+        target_os = "linux"
+    ))]
+    #[test]
+    #[ignore = "physical CUDA hybrid vector/staging/page pool envelope"]
+    fn physical_hybrid_pool_matches_original_root_envelope() -> Result<()> {
+        use crate::cuda::test_support::CudaDiagnostic;
+        use zerogravity_core::accelerator::program::SourceNumericalContract;
+        use zerogravity_core::resource_arbiter::{
+            AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
+        };
+
+        fn metadata(
+            source: zerogravity_core::accelerator::SourceIdentity,
+            label: &str,
+            bytes: usize,
+        ) -> Result<zerogravity_core::resource_arbiter::HostWorkspace> {
+            let key = PhysicalDeviceKey::new("host", label)?;
+            let arbiter = ResourceArbiter::process_shared();
+            arbiter.register_matching(
+                key.clone(),
+                u64::try_from(bytes)
+                    .map_err(|_| Error::Limit("hybrid pool metadata extent".into()))?,
+            )?;
+            arbiter
+                .admit(
+                    &key,
+                    ResourceOwner::new("hybrid-pool-qualification", label)?,
+                    &[AllocationRequest {
+                        kind: AllocationClass::Scratch,
+                        bytes: bytes as u64,
+                    }],
+                )?
+                .into_host_workspace(source, Arc::new(()))
+        }
+
+        let diagnostic = CudaDiagnostic::new("hybrid-state-pools")?;
+        let service = diagnostic.service.clone();
+        let alignment = usize::try_from(service.client().properties().memory.alignment)
+            .map_err(|_| Error::Limit("hybrid pool allocator alignment".into()))?;
+        let states = hybrid_requirements();
+        let state_bytes = states.iter().map(|state| state.bytes).sum::<usize>();
+        let plan = HybridStateInventoryPlan::analyze(&states, state_bytes, 4, 1, 4, 4, alignment)?;
+        let expected_bytes = plan.root_budget_bytes;
+        let vector_metadata = metadata(
+            service.source_identity(),
+            "zerogravity-hybrid-vector-metadata",
+            ResidentPool::metadata_bytes(plan.vector_layout.len(), plan.roots)?,
+        )?;
+        let staging_metadata = metadata(
+            service.source_identity(),
+            "zerogravity-hybrid-staging-metadata",
+            ResidentPool::metadata_bytes(plan.staging_layout.len(), plan.staging_sets)?,
+        )?;
+        let page_metadata = metadata(
+            service.source_identity(),
+            "zerogravity-hybrid-page-metadata",
+            ResidentPagePool::metadata_bytes(plan.max_pages)?,
+        )?;
+        let pools = HybridPooledStates::prepare(
+            service.clone(),
+            plan,
+            vector_metadata,
+            staging_metadata,
+            page_metadata,
+            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        )?;
+
+        let mut vector_roots = Vec::new();
+        for _ in 0..pools.plan.roots {
+            vector_roots.push(pools.vector_pool.checkout()?);
+        }
+        let staging = pools.staging_pool.checkout()?;
+        let mut pages = Vec::new();
+        for _ in 0..pools.plan.max_pages {
+            pages.push(pools.page_pool.checkout()?);
+        }
+        if service.resident_bytes()? != expected_bytes
+            || vector_roots.iter().any(|root| {
+                root.len() != pools.plan.vector_layout.len()
+                    || root.iter().any(ResidentLease::is_initialized)
+            })
+            || staging.len() != pools.plan.staging_layout.len()
+            || staging.iter().any(ResidentLease::is_initialized)
+            || pages.iter().any(ResidentLease::is_initialized)
+        {
+            return Err(Error::State(
+                "hybrid physical pool simultaneous envelope differs".into(),
+            ));
+        }
+        let empty = paged_state::ResidentPagedKvDomain::empty_for_contract(
+            &states[1],
+            pools.page_pool.clone(),
+            pools.plan.page_tokens,
+            pools.numerical,
+        )?;
+        if empty.tokens()? != 0 || !empty.leases()?.is_empty() {
+            return Err(Error::State(
+                "hybrid physical pool empty paged root differs".into(),
+            ));
+        }
+        drop(empty);
+        drop(vector_roots);
+        drop(staging);
+        drop(pages);
+        let vector = pools.vector_pool.snapshot()?;
+        let staging = pools.staging_pool.snapshot()?;
+        let pages = pools.page_pool.snapshot()?;
+        if vector.allocated_sets != pools.plan.roots
+            || vector.idle_sets != pools.plan.roots
+            || staging.allocated_sets != pools.plan.staging_sets
+            || staging.idle_sets != pools.plan.staging_sets
+            || pages.allocated_pages != pools.plan.max_pages
+            || pages.idle_pages != pools.plan.max_pages
+            || service.resident_bytes()? != expected_bytes
+        {
+            return Err(Error::State(
+                "hybrid physical pool idle ownership differs".into(),
+            ));
+        }
+        let max_pages = pools.plan.max_pages;
+        let vector_sets = pools.plan.roots;
+        let staging_sets = pools.plan.staging_sets;
+        drop(pools);
+        if service.resident_bytes()? != 0 {
+            return Err(Error::State(
+                "hybrid physical pool backing did not retire".into(),
+            ));
+        }
+        println!(
+            "P12_HYBRID_POOL_PASS old_root_budget_bytes={expected_bytes} vector_sets={vector_sets} staging_sets={staging_sets} max_pages={max_pages} simultaneous_exact=true empty_paged_root=true idle_reuse=true final_resident_bytes=0"
+        );
+        Ok(())
     }
 }

@@ -1055,21 +1055,48 @@ impl ResidentModel {
             } else {
                 None
             };
-            return state_pool::allocate_pooled_state(self, &storage.pool, zero, None, |init| {
-                #[cfg(all(
-                    any(
-                        feature = "qualification",
-                        feature = "hip-source",
-                        feature = "cuda-cublas"
-                    ),
-                    target_os = "linux"
-                ))]
-                if let Some(host) = host {
-                    init.retain_completion_owner(host)?;
+            return match &storage.storage {
+                state_pool::PooledStateStorage::Contiguous(pool) => {
+                    state_pool::allocate_pooled_state(self, pool, zero, None, |init| {
+                        #[cfg(all(
+                            any(
+                                feature = "qualification",
+                                feature = "hip-source",
+                                feature = "cuda-cublas"
+                            ),
+                            target_os = "linux"
+                        ))]
+                        if let Some(host) = host {
+                            init.retain_completion_owner(host)?;
+                        }
+                        retain(init)
+                    })
+                    .await
                 }
-                retain(init)
-            })
-            .await;
+                state_pool::PooledStateStorage::Hybrid(pools) => {
+                    if !zero {
+                        return Err(Error::Unsupported(
+                            "resident hybrid candidate allocation requires current paged root"
+                                .into(),
+                        ));
+                    }
+                    state_pool::allocate_hybrid_initial_state(self, pools, None, |init| {
+                        #[cfg(all(
+                            any(
+                                feature = "qualification",
+                                feature = "hip-source",
+                                feature = "cuda-cublas"
+                            ),
+                            target_os = "linux"
+                        ))]
+                        if let Some(host) = host {
+                            init.retain_completion_owner(host)?;
+                        }
+                        retain(init)
+                    })
+                    .await
+                }
+            };
         }
         let _admission = self.allocation.lock().await;
         self.service.ensure_usable()?;
@@ -1107,7 +1134,12 @@ impl ResidentModel {
     /// Caller holds the original allocation admission lock; no GPU command.
     fn allocate_uninitialized_state(&self) -> Result<Vec<Domain>> {
         if let Some(storage) = self.state_pool.get() {
-            let leases = storage.pool.checkout()?;
+            let state_pool::PooledStateStorage::Contiguous(pool) = &storage.storage else {
+                return Err(Error::Unsupported(
+                    "resident hybrid candidate allocation requires current paged root".into(),
+                ));
+            };
+            let leases = pool.checkout()?;
             let mut next = leases.iter();
             let domains = self
                 .states
