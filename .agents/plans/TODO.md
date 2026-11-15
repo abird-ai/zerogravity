@@ -48,8 +48,16 @@ failed/refused/cancelled/discarded work and final 41MiB. Every command in
 `scripts/check.sh` is terminal-green on the exact source under isolated
 `native-gpu`; repeated monolithic connector-wrapper attempts disappeared during
 ordinary cached builds with no compiler/test error, live child, OOM event or GPU
-residue and remain explicitly incomplete. Native multi-token temporal prefill,
-paged hybrid state/COW and physical overlap remain open.
+residue and remain explicitly incomplete. Native multi-token temporal prefill
+now has a **dormant shared implementation checkpoint**: B2/B4/B8 equal chunks
+2..32 chain private candidate state and expose one final all-row publication;
+the ordinary cohort adapter can consume the chunk receipt, while the production
+policy intentionally stays at one token until physical acceptance. Final bytes
+pass production clippy/compile and normal debug lib-test compilation; no temporal
+GPU run completed because large release qualification targets lost their outer process
+during thin-LTO root/test optimization without a Rust diagnostic. Next physically
+qualify 0.8B B2 through a small explicit target, then activate 4-token serving
+and prove HTTP B2 before widening. Paged hybrid state/COW and overlap remain open.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

@@ -34,6 +34,15 @@ pub(super) enum FusedExecution {
     Graph(Arc<super::graph::CapturedResidentGraph>),
 }
 
+struct FusedRequest<'a> {
+    device_tokens: Option<&'a [&'a ResidentToken]>,
+    readout: Readout,
+    execution: FusedExecution,
+    prior: Option<&'a [Vec<Domain>]>,
+    position_offset: usize,
+    advance_count: u64,
+}
+
 #[cfg(all(
     feature = "cuda",
     any(feature = "qualification", feature = "cuda-native")
@@ -88,6 +97,18 @@ impl ResidentModel {
             .await
     }
 
+    /// Advance an equal-length multi-token prompt chunk per row while keeping
+    /// every original session root unpublished until the final all-row Ready.
+    /// Intermediate native candidates are private and may be discarded as one
+    /// logical rollback if any later step refuses or fails.
+    pub async fn prepare_state_temporal_fused_cohort_admitted(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, &[u32])],
+    ) -> Result<Option<PreparedResidentCohort>> {
+        self.prepare_temporal_fused_cohort_admitted(rows, Readout::None)
+            .await
+    }
+
     /// One native full-model batch and source-exact device greedy selection.
     /// Each independent output packet gains its producer only at cohort commit.
     pub async fn prepare_greedy_fused_cohort(
@@ -95,6 +116,17 @@ impl ResidentModel {
         rows: &[(&ResidentSession, u32)],
     ) -> Result<PreparedResidentCohort> {
         self.prepare_fused_mode(rows, None, Readout::Greedy).await
+    }
+
+    /// Multi-token prompt chunk with one terminal native greedy readout. Every
+    /// intermediate token is state-only and no original root publishes before
+    /// the terminal cohort has completed.
+    pub async fn prepare_greedy_temporal_fused_cohort_admitted(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, &[u32])],
+    ) -> Result<Option<PreparedResidentCohort>> {
+        self.prepare_temporal_fused_cohort_admitted(rows, Readout::Greedy)
+            .await
     }
 
     /// None means only a checked capacity refusal before any GPU submission.
@@ -105,6 +137,133 @@ impl ResidentModel {
     ) -> Result<Option<PreparedResidentCohort>> {
         self.prepare_fused_mode_admitted(rows, None, Readout::Greedy)
             .await
+    }
+
+    async fn prepare_temporal_fused_cohort_admitted(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, &[u32])],
+        readout: Readout,
+    ) -> Result<Option<PreparedResidentCohort>> {
+        let steps = rows
+            .first()
+            .map(|(_, tokens)| tokens.len())
+            .ok_or_else(|| Error::State("empty temporal resident cohort".into()))?;
+        if !matches!(rows.len(), 2 | 4 | 8)
+            || !(2..=32).contains(&steps)
+            || rows.iter().any(|(_, tokens)| tokens.len() != steps)
+        {
+            return Err(Error::Unsupported(
+                "temporal resident cohort requires B2/B4/B8 equal chunks of 2..32 tokens".into(),
+            ));
+        }
+
+        let advance_count =
+            u64::try_from(steps).map_err(|_| Error::Limit("temporal token count".into()))?;
+        let mut prior: Option<Vec<Vec<Domain>>> = None;
+        let mut total_dispatches = 0usize;
+        let mut total_fused_dispatches = 0usize;
+        let mut prior_chunk_bytes = vec![0usize; rows.len()];
+        let mut prior_state_only_steps = vec![0usize; rows.len()];
+        let mut prior_logit_steps = vec![0usize; rows.len()];
+
+        for step in 0..steps {
+            let inputs = rows
+                .iter()
+                .map(|(session, tokens)| (*session, tokens[step]))
+                .collect::<Vec<_>>();
+            let final_step = step + 1 == steps;
+            let step_readout = if final_step { readout } else { Readout::None };
+            let prepared = self
+                .prepare_fused_execution_from(
+                    &inputs,
+                    FusedRequest {
+                        device_tokens: None,
+                        readout: step_readout,
+                        execution: FusedExecution::Native,
+                        prior: prior.as_deref(),
+                        position_offset: step,
+                        advance_count: if final_step { advance_count } else { 1 },
+                    },
+                )
+                .await?;
+            let Some(mut cohort) = prepared else {
+                return Ok(None);
+            };
+            total_dispatches = total_dispatches
+                .checked_add(cohort.dispatches)
+                .ok_or_else(|| Error::Limit("temporal dispatch count overflow".into()))?;
+            total_fused_dispatches = total_fused_dispatches
+                .checked_add(cohort.fused_dispatches)
+                .ok_or_else(|| Error::Limit("temporal fused dispatch overflow".into()))?;
+
+            if final_step {
+                cohort.dispatches = total_dispatches;
+                cohort.fused_dispatches = total_fused_dispatches;
+                for (row, prepared) in cohort.prepared.iter_mut().enumerate() {
+                    prepared.readback.dispatches = usize::from(row == 0) * total_dispatches;
+                    prepared.readback.chunk_bytes = prepared
+                        .readback
+                        .chunk_bytes
+                        .checked_add(prior_chunk_bytes[row])
+                        .ok_or_else(|| Error::Limit("temporal readback bytes overflow".into()))?;
+                    prepared.readback.state_only_steps = prepared
+                        .readback
+                        .state_only_steps
+                        .checked_add(prior_state_only_steps[row])
+                        .ok_or_else(|| Error::Limit("temporal state step overflow".into()))?;
+                    prepared.readback.logit_steps = prepared
+                        .readback
+                        .logit_steps
+                        .checked_add(prior_logit_steps[row])
+                        .ok_or_else(|| Error::Limit("temporal logit step overflow".into()))?;
+                }
+                return Ok(Some(cohort));
+            }
+
+            if cohort.native_greedy_dispatches != 0 {
+                return Err(Error::State(
+                    "intermediate temporal cohort produced greedy work".into(),
+                ));
+            }
+            let PreparedResidentCohort { prepared, .. } = cohort;
+            let mut next_prior = Vec::with_capacity(rows.len());
+            for (row, prepared) in prepared.into_iter().enumerate() {
+                let PreparedInference {
+                    attempt: _,
+                    domains,
+                    derived,
+                    ready,
+                    readback,
+                } = prepared;
+                if !derived.is_empty()
+                    || readback.state_only_steps != 1
+                    || readback.logit_steps != 0
+                    || !readback.logits.is_empty()
+                    || readback.device_token.is_some()
+                {
+                    return Err(Error::State(
+                        "intermediate temporal cohort readout changed".into(),
+                    ));
+                }
+                prior_chunk_bytes[row] =
+                    prior_chunk_bytes[row]
+                        .checked_add(readback.chunk_bytes)
+                        .ok_or_else(|| Error::Limit("temporal readback bytes overflow".into()))?;
+                prior_state_only_steps[row] = prior_state_only_steps[row]
+                    .checked_add(readback.state_only_steps)
+                    .ok_or_else(|| Error::Limit("temporal state step overflow".into()))?;
+                prior_logit_steps[row] =
+                    prior_logit_steps[row]
+                        .checked_add(readback.logit_steps)
+                        .ok_or_else(|| Error::Limit("temporal logit step overflow".into()))?;
+                drop(ready);
+                next_prior.push(domains);
+            }
+            prior = Some(next_prior);
+        }
+        Err(Error::State(
+            "temporal resident cohort produced no terminal Ready".into(),
+        ))
     }
 
     /// Read original packet words on the GPU under their exact producing roots.
@@ -164,6 +323,41 @@ impl ResidentModel {
         readout: Readout,
         execution: FusedExecution,
     ) -> Result<Option<PreparedResidentCohort>> {
+        self.prepare_fused_execution_from(
+            rows,
+            FusedRequest {
+                device_tokens,
+                readout,
+                execution,
+                prior: None,
+                position_offset: 0,
+                advance_count: 1,
+            },
+        )
+        .await
+    }
+
+    async fn prepare_fused_execution_from(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, u32)],
+        request: FusedRequest<'_>,
+    ) -> Result<Option<PreparedResidentCohort>> {
+        let FusedRequest {
+            device_tokens,
+            readout,
+            execution,
+            prior,
+            position_offset,
+            advance_count,
+        } = request;
+        if advance_count == 0
+            || prior.is_some()
+                && (!matches!(execution, FusedExecution::Native) || device_tokens.is_some())
+        {
+            return Err(Error::State(
+                "temporal fused execution requires native host-token ownership".into(),
+            ));
+        }
         #[cfg(all(
             feature = "cuda",
             any(feature = "qualification", feature = "cuda-native")
@@ -195,6 +389,18 @@ impl ResidentModel {
         }
         let bases = rows.iter().map(|(s, _)| s.binding()).collect::<Vec<_>>();
         let roots = ResidentBatchRows::new(&bases, 1)?;
+        let priors = match prior {
+            Some(prior) if prior.len() == rows.len() => prior.iter().map(Vec::as_slice).collect(),
+            Some(_) => {
+                return Err(Error::State(
+                    "temporal fused prior row coverage differs".into(),
+                ));
+            }
+            None => rows
+                .iter()
+                .map(|(session, _)| session.domains.as_slice())
+                .collect::<Vec<_>>(),
+        };
         if !matches!(rows.len(), 2 | 4 | 8) {
             return Err(Error::Unsupported(
                 "resident native batch rows must be 2/4/8".into(),
@@ -226,10 +432,18 @@ impl ResidentModel {
             .frontiers()
             .map(|frontier| {
                 usize::try_from(frontier)
-                    .map_err(|_| Error::Limit("native resident batch frontier overflow".into()))
+                    .map_err(|_| Error::Limit("native resident batch frontier overflow".into()))?
+                    .checked_add(position_offset)
+                    .ok_or_else(|| Error::Limit("native resident batch position overflow".into()))
             })
             .collect::<Result<Vec<_>>>()?;
-        if positions.iter().any(|&position| position >= self.capacity) {
+        if positions.iter().any(|&position| position >= self.capacity)
+            || bases.iter().any(|base| {
+                base.frontier()
+                    .checked_add(advance_count)
+                    .is_none_or(|frontier| frontier > self.capacity as u64)
+            })
+        {
             return Err(Error::Limit(
                 "native resident batch capacity exhausted".into(),
             ));
@@ -242,14 +456,14 @@ impl ResidentModel {
             graph.validate(self, rows.len(), &positions, readout)?;
         }
         let mut attempts = Vec::with_capacity(rows.len());
-        for (session, token) in rows {
+        for (index, (session, token)) in rows.iter().enumerate() {
             if !Arc::ptr_eq(&session.model, self) || u64::from(*token) >= self.vocab {
                 return Err(Error::State(
                     "foreign/invalid native resident batch row".into(),
                 ));
             }
-            self.validate_domains(&session.domains, true)?;
-            attempts.push(session.authority.begin_advance(1)?);
+            self.validate_domains(priors[index], true)?;
+            attempts.push(session.authority.begin_advance(advance_count)?);
         }
         let staging_bytes = self
             .state_bytes
@@ -470,13 +684,11 @@ impl ResidentModel {
         for _ in rows {
             candidates.push(self.allocate_uninitialized_state()?);
         }
-        let bindings = rows
+        let bindings = priors
             .iter()
             .zip(&candidates)
             .zip(&positions)
-            .map(|(((session, _), candidate), &position)| {
-                bind_domains(&session.domains, candidate, position)
-            })
+            .map(|((prior, candidate), &position)| bind_domains(prior, candidate, position))
             .collect::<Result<Vec<_>>>()?;
         let parameters = rows
             .iter()
@@ -674,11 +886,10 @@ impl ResidentModel {
                 .cloned()
                 .map(|lease| (lease, DeviceAccess::Write)),
         );
-        for ((session, _), candidate) in rows.iter().zip(&candidates) {
+        for (prior, candidate) in priors.iter().zip(&candidates) {
             self.validate_domains(candidate, false)?;
             accesses.extend(
-                session
-                    .domains
+                prior
                     .iter()
                     .flat_map(|d| d.leases.iter())
                     .cloned()

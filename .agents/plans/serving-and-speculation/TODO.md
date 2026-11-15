@@ -463,8 +463,27 @@ or a change to the active correctness/benchmark/27B order.
   compiler/test error, surviving child, cgroup OOM event or GPU residue; do not
   relabel those wrapper attempts as passes. This fair scheduling sub-slice is
   accepted from the complete constituent gate results. The broader item remains
-  partial because native multi-token temporal prefill is still separately
-  unqualified. Admit any physical GPU overlap only after event/lease,
+  partial. **15 Nov temporal implementation checkpoint:** a reusable native
+  B2/B4/B8 equal-chunk candidate chain now exists beneath the accepted one-token
+  fused body. It executes 2..32 host teacher tokens through private candidate
+  domains, keeps the original session roots unpublished until one final all-row
+  Ready, aggregates state/logit/readback/dispatch receipts, and publishes one
+  logical root advance for the whole chunk. The ordinary cohort completion path
+  understands multi-token state-only and terminal-greedy receipts, but the live
+  `NativeText` policy deliberately remains at one teacher token: no unqualified
+  production route was enabled. Final bytes pass production `qwen35-cuda` strict
+  clippy, CLI composition and the normal debug lib-test compile. Physical
+  temporal execution is **not yet established**. An optimized GPU-library build
+  completed before the final nonsemantic request-struct cleanup, while large
+  release test/HTTP harness builds
+  repeatedly lost their outer process while optimizing the `zerogravity`/CLI
+  test target with thin-LTO/codegen-units=1, with no Rust diagnostic and no GPU
+  work; one debug-assertions-off diagnostic build instead hit its explicit 120s
+  tool timeout. Do not infer a B2 pass from compilation. Next: expose the public
+  temporal primitive through a small explicit qualification target, prove 0.8B
+  B2 CPU/B1/all42 + abandoned-candidate rollback + terminal greedy physically,
+  then enable the 4-token production policy and run exact HTTP B2 before widening
+  to B4/B8/2B. Admit physical GPU overlap only after event/lease,
   cancellation/unknown-completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long

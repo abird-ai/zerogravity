@@ -71,8 +71,20 @@ and live TODOs are authoritative.
   to keep the whole shell wrapper in one connector job disappeared during normal
   cached builds without a compiler/test error, surviving child, cgroup OOM or GPU
   residue; those wrapper attempts remain incomplete. **Next executable P12-C
-  work is actual multi-token temporal prefill in the existing completion path;**
-  paged hybrid state/COW and event-backed physical overlap remain separately open.
+  work is actual multi-token temporal prefill in the existing completion path.**
+  The current local implementation provides the reusable
+  temporal primitive without selecting it in production: B2/B4/B8 equal chunks
+  of 2..32 host teacher tokens chain private candidate domains through the
+  accepted native body and expose only one final all-row Ready/root publication.
+  The ordinary cohort adapter understands whole-chunk state-only/terminal-greedy
+  receipts, but `NativeText` still advertises one-token prefill. Final bytes pass
+  strict production clippy/CLI composition and normal debug lib-test compilation.
+  No physical temporal inference result exists yet: repeated large release
+  qualification/HTTP harness builds lost their outer process during
+  thin-LTO/codegen-units=1 root/test optimization with no Rust diagnostic or GPU
+  work. **Next turn must physically qualify 0.8B B2 through a small explicit
+  diagnostic target before enabling the 4-token policy.** Then prove HTTP B2 and
+  widen B4/B8/2B. Paged hybrid state/COW and event-backed overlap remain open.
 - Earlier key implementation checkpoints include `f1ce532`
   (exact graph replay storage/access authority), `b0cf0b2`
   (`fix(cache): avoid duplicate Qwen snapshot hashing`), `134a571`

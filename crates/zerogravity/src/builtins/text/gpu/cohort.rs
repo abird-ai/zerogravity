@@ -44,7 +44,8 @@ pub(super) fn validate(rows: &[Row], work: CohortWork) -> Result<(), ServiceErro
                     || r.model.hidden_width != batch.row_elements()
                     || (work.phase == Phase::Prefill
                         && (r.cursor >= r.prompt.len()
-                            || (r.prompt.len() - r.cursor > 1) != work.state_only
+                            || r.prefill_has_successor() != work.state_only
+                            || r.prefill_count() != first.prefill_count()
                             || r.state.device_token.is_some()))
                     || (work.phase == Phase::Decode
                         && (r.cursor != r.prompt.len()
@@ -80,16 +81,34 @@ pub(super) fn prepare(
             .collect::<Vec<_>>();
         block_on(model.prepare_device_tokens_fused_cohort_admitted(&inputs))
     } else {
-        let inputs = rows
-            .iter()
-            .map(|r| (&r.state.session, r.prompt[r.cursor]))
-            .collect::<Vec<_>>();
-        if work.state_only {
-            block_on(model.prepare_state_fused_cohort_admitted(&inputs))
-        } else if work.native_rows != 0 {
-            block_on(model.prepare_greedy_fused_cohort_admitted(&inputs))
+        let tokens = rows[0].prefill_count();
+        if tokens > 1 {
+            let inputs = rows
+                .iter()
+                .map(|r| (&r.state.session, &r.prompt[r.cursor..r.cursor + tokens]))
+                .collect::<Vec<_>>();
+            if work.state_only {
+                block_on(model.prepare_state_temporal_fused_cohort_admitted(&inputs))
+            } else if work.native_rows != 0 {
+                block_on(model.prepare_greedy_temporal_fused_cohort_admitted(&inputs))
+            } else {
+                Err(crate::Error::State(
+                    "non-native prompt tail cannot request temporal cohort".into(),
+                ))
+                .map(Some)
+            }
         } else {
-            block_on(model.prepare_greedy_cohort(&inputs)).map(Some)
+            let inputs = rows
+                .iter()
+                .map(|r| (&r.state.session, r.prompt[r.cursor]))
+                .collect::<Vec<_>>();
+            if work.state_only {
+                block_on(model.prepare_state_fused_cohort_admitted(&inputs))
+            } else if work.native_rows != 0 {
+                block_on(model.prepare_greedy_fused_cohort_admitted(&inputs))
+            } else {
+                block_on(model.prepare_greedy_cohort(&inputs)).map(Some)
+            }
         }
     }
     .map_err(ServiceError::inference)?;
@@ -102,11 +121,20 @@ pub(super) fn prepare(
         } else {
             ready.native_greedy_dispatches() != 0
         };
+    let tokens = if work.phase == Phase::Prefill {
+        rows[0].prefill_count()
+    } else {
+        1
+    };
     let completion = Completion {
         quanta: ready.len() as u64,
-        forwards: if native { 1 } else { ready.len() as u64 },
+        forwards: if native {
+            tokens as u64
+        } else {
+            ready.len() as u64
+        },
         dispatches: ready.dispatches() as u64,
-        model_tokens: ready.len() as u64,
+        model_tokens: (ready.len() * tokens) as u64,
         committed_roots: 0,
         native_projections: if native {
             ready.fused_dispatches() as u64
@@ -154,12 +182,17 @@ pub(super) fn commit(
             "original publisher returned a different row count",
         ));
     }
+    let consumed = if work.phase == Phase::Prefill {
+        rows[0].prefill_count()
+    } else {
+        1
+    };
     let reports = rows
         .iter_mut()
         .zip(receipts)
         .map(|(row, read)| {
             if work.state_only {
-                if read.state_only_steps != 1
+                if read.state_only_steps != consumed
                     || read.logit_steps != 0
                     || !read.logits.is_empty()
                     || read.device_token.is_some()
@@ -171,14 +204,22 @@ pub(super) fn commit(
                     ))
                 } else {
                     Ok(Published {
-                        consumed: 1,
+                        consumed,
                         readout: false,
                         observed_at: committed,
                         observation: None,
                     })
                 }
+            } else if work.phase == Phase::Prefill
+                && (read.state_only_steps + read.logit_steps != consumed || read.logit_steps != 1)
+            {
+                Err(ServiceError::new(
+                    500,
+                    "invalid_temporal_readout",
+                    "terminal temporal GPU completion has wrong step coverage",
+                ))
             } else {
-                install(row, read, 1, committed)
+                install(row, read, consumed, committed)
             }
         })
         .collect();

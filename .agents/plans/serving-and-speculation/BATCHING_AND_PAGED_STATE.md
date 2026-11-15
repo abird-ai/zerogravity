@@ -127,8 +127,26 @@ blocks. Repeated attempts to run the monolithic shell wrapper as one connector
 job disappeared during ordinary cached builds without a compiler/test error,
 surviving child, cgroup OOM or GPU residue; those wrapper invocations remain
 incomplete rather than passes. The complete constituent command set is the
-acceptance evidence for this scheduler-only slice. Actual multi-token temporal
-native prefill, paged state/COW and event-backed physical overlap remain open.
+acceptance evidence for this scheduler-only slice.
+
+**15 Nov temporal-prefill implementation checkpoint (not accepted):** the
+resident fused layer now has an unselected equal-chunk temporal transaction for
+B2/B4/B8. A chunk of 2..32 teacher tokens reuses the existing native one-token
+body repeatedly against private candidate domains, retains the original root as
+the sole publication authority, emits no intermediate logits/token packet and
+returns one terminal `PreparedResidentCohort`; dropping/refusing the chain never
+publishes an intermediate root. The ordinary cohort adapter can consume such a
+receipt and advance the scheduler cursor by the whole chunk, but the production
+`NativeText` prefill quantum remains one token pending physical qualification.
+Final bytes pass strict production clippy/compile and normal debug lib-test
+compilation. An optimized GPU-library build completed before the final
+nonsemantic request-struct cleanup. No temporal GPU inference completed this
+turn: heavyweight thin-LTO release test targets lost their outer
+process during root/test optimization without a Rust error, and therefore remain
+incomplete. Next use a small explicit qualification target around the public
+`ResidentModel` temporal API, qualify 0.8B B2 source/state/rollback/greedy first,
+then activate the 4-token serving quantum and prove HTTP B2. B4/B8/2B, paged
+state/COW and event-backed physical overlap remain open.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve
