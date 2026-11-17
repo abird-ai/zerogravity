@@ -578,8 +578,15 @@ or a change to the active correctness/benchmark/27B order.
   containment before recording. Controlled inner/sandbox-shell SIGKILL paths
   report numeric137, while failure-time cgroup OOM/pids and restart/poll-failure
   evidence are0. A direct no-inner-supervisor cold run still reproduced null exit.
-  **Production selection remains open:** next original2B differential/cold
-  lifecycle, then true in-flight cancellation, then native B2/B4/B8 + HTTP.
+  **Production selection remains open.** Original2B differential/cold lifecycle
+  page4/append4 are currently execution-envelope blocked on deployed dotlink
+  v0.17.3, not semantically failed: direct jobs `4ced0b86...`,
+  `ea96e80e...` and `3e57de9f...` all terminated as
+  Completed+exit_code=null+success=false before any Rust/model result, with
+  final41MiB GPU and zero OOM/Xid/cgroup-pressure evidence. Do not loop this
+  sandbox envelope. Rerun the exact cells only once Bubblewrap survival is
+  established by an authorized unrestricted or corrected/upgraded L5 path.
+  Then add true in-flight cancellation, then native B2/B4/B8 + HTTP.
   Admit physical GPU overlap only after event/lease, cancellation/unknown-
   completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine

@@ -235,9 +235,21 @@ snapshot semantics are accepted at `93468b1`; physical pools at `cb57e1d`;
 current-root execution at `b9b04aa`; explicit low-level policy at `1413f72`;
 source-real lifecycle target at `398e446`; qualifier correction at `3041457`;
 cold-only cleanup at `e6aac53`.
-**Next: run original2B differential + cold lifecycle page4/append4.** Add true
-CUDA in-flight cancellation after those state/lifecycle gates, then consider any
-high-level paged serving selection. Default CUDA/native/HIP stay contiguous.
+Original2B differential + cold lifecycle page4/append4 remain **open but
+execution-envelope blocked** on the deployed sandbox, not failed. Exact-current
+direct launches against approved snapshot `88606494...`:
+`4ced0b86...` differential (~139s), bounded retry `ea96e80e...` (~38s), and
+cold lifecycle `3e57de9f...` (~20s) all ended as dotlink v0.17.3
+Completed+exit_code=null+success=false before any Rust/model result. GPU returned
+to41MiB; systemd-oomd/kernel/dotlink journals show no kill/OOM/Xid/segfault;
+cgroup `oom/oom_kill/pids.max` events and memory PSI are zero. Do not loop the
+same envelope or treat these as negative2B evidence. Next rerun the exact two
+cells only in an L5 execution envelope where Bubblewrap survival is established
+(authorized unrestricted path or corrected/upgraded connector). Keep
+page4/append4 and full-vocab/all42/cold requirements unchanged.
+True CUDA in-flight cancellation remains after successful2B state/lifecycle
+acceptance; then consider high-level paged serving selection. Default
+CUDA/native/HIP stay contiguous.
 Complete-domain prefix identity/intersection follows that.
 Event/lease-backed physical overlap remains after those state gates.
 

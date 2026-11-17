@@ -568,9 +568,26 @@ tmux/setsid/heartbeat supervisor, still reproduced the same null-exit shape, so
 the older harness is not required. Treat null-exit runs as infrastructure-
 incomplete and never as negative model evidence; do not add a warmup workaround.
 
-Next: run original2B differential/cold lifecycle with page4/append4.
-True in-flight CUDA cancellation remains separate because the existing
-launch-boundary probe is not available on this ordinary CUDA source path.
+**17 Nov original2B execution-envelope checkpoint:** the exact differential and
+cold lifecycle remain open, but three direct source-real launches in the deployed
+dotlink v0.17.3 sandbox produced no semantic result. Differential
+`4ced0b86...` ran ~139s before Completed+exit_code=null+success=false; its
+bounded identical retry `ea96e80e...` did the same after ~38s. The materially
+different cold lifecycle `3e57de9f...` did the same after ~20s. All use the
+approved `88606494...` snapshot, page_tokens4/max_append_tokens4, direct
+`native-gpu -> env -> test binary`, and the exact-current linked lib test.
+None emitted a Rust panic/assertion, source-state marker or child exit code.
+Immediate physical cleanup returns to41MiB. `systemd-oomd`, kernel and
+dotlink-service journals show no kill/OOM/Xid/segfault; service cgroup
+`oom=0`, `oom_kill=0`, pids `max=0`; host/service memory PSI are0.
+Per the deployed-tree signal analysis above, classify these as signalled
+Bubblewrap infrastructure-incomplete attempts, not negative2B model evidence.
+Do not loop the same execution envelope or relax the acceptance cell. Next rerun
+the exact differential and cold lifecycle only when an L5 path with established
+Bubblewrap survival is available (authorized unrestricted or corrected/upgraded
+connector). True in-flight CUDA cancellation remains ordered after successful2B
+acceptance because the existing launch-boundary probe is not available on this
+ordinary CUDA source path.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve

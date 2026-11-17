@@ -156,8 +156,14 @@ The following extends existing owners; source-byte qualification is not inferenc
   failures. Deployed dotlink v0.17.3 records a signalled child as
   `Completed + exit_code=null + success=false` via `ExitStatus::code()==None`;
   main's richer signal enum is not deployed. A direct no-inner-supervisor run
-  still reproduced null exit. Next run2B parity/cold lifecycle, then true
-  in-flight cancel before native batches/HTTP. page_tokens remains explicit.
+  still reproduced null exit. Original2B parity/cold lifecycle are now
+  execution-envelope blocked rather than failed: exact direct jobs
+  `4ced0b86...`, `ea96e80e...`, `3e57de9f...` all ended as deployed
+  dotlink Completed+exit_code=null before model evidence, with final41MiB and
+  zero OOM/Xid/cgroup-pressure evidence. Do not loop the same sandbox; rerun the
+  exact page4/append4 cells only in an authorized L5 envelope with established
+  Bubblewrap survival. True in-flight cancel remains after2B acceptance, before
+  native batches/HTTP. page_tokens remains explicit.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

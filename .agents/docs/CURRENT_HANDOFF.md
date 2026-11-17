@@ -206,10 +206,31 @@ and live TODOs are authoritative.
   `0027c28` + `54340a6` + `1eb6e0f` + `3ac2059` + `dc6a188` +
   `53336b3` + `ef9e4d4` + `93468b1` + `cb57e1d` + `b9b04aa` +
   `1413f72` + `398e446` + `3041457` + `e6aac53`.
-  **Next executable P12-C work is original2B source-real parity/lifecycle.**
-  Run the differential and cold-only lifecycle targets with
-  page_tokens4/max_append_tokens4. True in-flight cancellation still needs its
-  own CUDA launch-boundary proof. Only after0.8B/2B state/lifecycle gates close
+  **Original2B source-real parity/lifecycle is now execution-envelope blocked,
+  not semantically failed.** On exact current bytes and the approved
+  `88606494...` managed snapshot, three direct
+  `native-gpu -> env -> test binary` launches were attempted with
+  page_tokens4/max_append_tokens4:
+  - differential job `4ced0b86-974e-4d62-9525-c1e645a40ee7` ran ~139s,
+    printed only the >60s test-running notice, then deployed dotlink v0.17.3
+    recorded `Completed + exit_code=null + success=false`;
+  - bounded identical differential retry
+    `ea96e80e-087e-45c6-9bc1-59c2e2e14bb0` ended the same way after ~38s;
+  - the materially different cold lifecycle job
+    `3e57de9f-566d-42d7-9b24-fb5ec0f83053` ended the same way after ~20s.
+  None produced a Rust assertion/error or model marker. Immediate GPU retirement
+  returned to41MiB. Across the exact window, `systemd-oomd`, kernel and
+  dotlink-service journals contain no kill/OOM/Xid/segfault event;
+  `dotlink.service` reports memory `oom=0`, `oom_kill=0`, pids `max=0`;
+  host and cgroup memory PSI are0. These are infrastructure-incomplete signalled
+  Bubblewrap runs under the deployed connector, not negative2B model evidence.
+  **Do not loop them in the same envelope.** Next physical action is to rerun the
+  exact differential and cold lifecycle in an L5 execution envelope where the
+  sandbox launcher survives (for example an explicitly authorized unrestricted
+  path or corrected/upgraded connector). Do not weaken page4/append4,
+  full-vocab/all42 or cold-lifecycle requirements.
+  True in-flight cancellation remains ordered **after** successful original2B
+  state/lifecycle acceptance. Only after0.8B/2B state/lifecycle gates close
   should high-level paged serving/native B2/B4/B8/HTTP work begin.
   Complete-domain prefix reuse follows these state gates; event/lease-backed physical
   overlap remains after those state gates and must not be pulled forward.
