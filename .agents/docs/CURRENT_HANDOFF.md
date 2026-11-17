@@ -77,19 +77,31 @@ and live TODOs are authoritative.
   frontier/state; the test incorrectly required equality with the old snapshot
   RootBinding. `3041457` fixes the assertion to require same source/session,
   root+1, epoch+1, saved frontier and exact all42 bytes.
-  Several other 0.8B cold attempts terminated intermittently with dotlink
-  `status=completed`, `exit_code=null`, no Rust failure, OOM/Xid/coredump,
-  live child or VRAM residue. This is **not** a ZeroGravity cold-load blocker.
-  Dotlink's own runner waits on Bubblewrap and maps Completed+no exit code+
-  unsuccessful to `SharedProcessExit::Signal`. Controlled probes establish the
-  distinction: SIGKILL of an inner child is observed by the surviving shell as
-  status137, and SIGKILL of the sandbox shell is translated by surviving
-  Bubblewrap to numeric exit137; the intermittent jobs instead have null exit
-  code, so Bubblewrap itself was signalled. At the exact failures the
-  `dotlink.service` cgroup reported memory `oom=0`, `oom_kill=0` and
-  pids `max=0`. The source of that external Bubblewrap signal is not proven;
-  classify such runs as connector-infrastructure incomplete and require a full
-  terminal pass for model evidence. Do not add loader workarounds or warmup.
+  Several other0.8B cold attempts terminated intermittently with deployed
+  dotlink **v0.17.3** reporting `status=completed`, `exit_code=null`,
+  `success=false`, with no Rust failure, OOM/Xid/coredump, live child or VRAM
+  residue. This is **not** a ZeroGravity cold-load blocker. Revalidation against
+  the deployed `release/0.17` tree matters here: v0.17.3 does **not** contain
+  main's newer `SharedProcessExit::Signal` projection. Its runner records
+  `JobCompletion::completed(status.code(), status.success(), ...)`; Rust
+  `ExitStatus::code()==None` means the process dotlink waited on was terminated
+  by a signal, but v0.17.3 discards the signal number. The child dotlink waits on
+  for a sandboxed shell command is Bubblewrap. Timeout/cancel/spawn/stdin/spool
+  failure paths use distinct non-`Completed` statuses, and the normal
+  `Completed` path disarms the process-tree guard before recording completion,
+  so the observed null-exit jobs were not dotlink timeout/cancel results.
+  Controlled probes further distinguish the case: SIGKILL of an inner child is
+  observed by the surviving shell as status137, and SIGKILL of the sandbox shell
+  is translated by surviving Bubblewrap to numeric exit137; the intermittent
+  jobs instead have null exit code, meaning the Bubblewrap child itself was
+  signalled. At the exact failures `dotlink.service` reported memory
+  `oom=0`, `oom_kill=0`, pids `max=0`; no dotlink restart/poll failure was
+  observed. The source of that external signal is not proven. A clean reproduction
+  with no inner tmux/setsid/heartbeat supervisor
+  (`native-gpu -> env -> test binary`) still produced the same null-exit shape,
+  so the earlier tmux/setsid harness is not required to trigger it. Classify such
+  runs as connector-infrastructure incomplete and require a full terminal pass for
+  model evidence. Do not add loader workarounds or warmup.
   All Cargo compilation/check/clippy in this slice used
   `RUSTC_WRAPPER=/run/current-system/sw/bin/kache`.
   Final-current available validation is green: four hybrid admission units, all

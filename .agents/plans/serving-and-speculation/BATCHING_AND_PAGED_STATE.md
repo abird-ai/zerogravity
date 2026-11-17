@@ -547,16 +547,26 @@ qualifier is cold-only and labels successful evidence `cold_load=true`.
 
 Intermittent alternative runs that previously looked like cold-loader
 disappearances are connector-infrastructure signals, not model failures.
-Dotlink's runner waits on Bubblewrap; its source maps Completed+exit_code=None+
-success=false to `SharedProcessExit::Signal`. Controlled probes distinguish the
+Course correction after validating the **deployed dotlink v0.17.3**
+`release/0.17` tree: the deployed build does not have main's newer
+`SharedProcessExit::Signal` type. Its shell runner records
+`JobCompletion::completed(status.code(), status.success(), ...)`; on Unix,
+`ExitStatus::code()==None` means the process dotlink waited on was signalled,
+but v0.17.3 discards the signal number. For sandboxed shell commands that waited
+process is Bubblewrap. Dotlink timeout/cancel/spawn/stdin/spool failures use
+distinct non-`Completed` statuses, and the `Completed` path disarms the
+process-tree guard before recording completion. Controlled probes distinguish the
 case: SIGKILL of an inner child yields shell status137, and SIGKILL of the
 sandbox shell yields dotlink numeric137 because Bubblewrap survives; the
 intermittent model jobs instead terminate with null exit code, meaning Bubblewrap
 itself was signalled. At those failures there is no Rust panic, OOM/Xid/coredump,
-surviving process or VRAM residue, and `dotlink.service` cgroup counters show
-`oom=0`, `oom_kill=0`, `pids.max events=0`. The external signal source is
-not proven. Treat null-exit runs as infrastructure-incomplete and never as
-negative model evidence; do not add a warmup workaround.
+surviving process or VRAM residue; `dotlink.service` cgroup counters show
+`oom=0`, `oom_kill=0`, `pids.max events=0`, with no observed dotlink
+restart/poll failure. The external signal source is not proven. A clean cold run
+launched directly as `native-gpu -> env -> test binary`, with no inner
+tmux/setsid/heartbeat supervisor, still reproduced the same null-exit shape, so
+the older harness is not required. Treat null-exit runs as infrastructure-
+incomplete and never as negative model evidence; do not add a warmup workaround.
 
 Next: run original2B differential/cold lifecycle with page4/append4.
 True in-flight CUDA cancellation remains separate because the existing

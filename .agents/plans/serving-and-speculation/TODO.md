@@ -570,10 +570,14 @@ or a change to the active correctness/benchmark/27B order.
   retained dotlink job `9feb1394...`: exit0,168.08s,
   `contiguous_warmup=false`, exact cancel/abandon/restore/all42/shutdown.
   Signed `e6aac53` removes the warmup/stage scaffolding and leaves the qualifier
-  cold-only. Other intermittent null-exit jobs are Bubblewrap-signal
-  infrastructure events, not ZeroGravity failures: dotlink maps
-  Completed+exit_code=null to Signal on its bwrap child; controlled inner
-  SIGKILL paths report numeric137, and failure-time cgroup OOM/pids counters are0.
+  cold-only. Other intermittent null-exit jobs are signalled-Bubblewrap
+  infrastructure events, not ZeroGravity failures. Correction: deployed dotlink
+  v0.17.3 does not have main's `SharedProcessExit::Signal`; it records
+  `ExitStatus::code()==None` for a signalled child, and its sandbox child is
+  Bubblewrap. Timeout/cancel/failure use distinct statuses and Completed disarms
+  containment before recording. Controlled inner/sandbox-shell SIGKILL paths
+  report numeric137, while failure-time cgroup OOM/pids and restart/poll-failure
+  evidence are0. A direct no-inner-supervisor cold run still reproduced null exit.
   **Production selection remains open:** next original2B differential/cold
   lifecycle, then true in-flight cancellation, then native B2/B4/B8 + HTTP.
   Admit physical GPU overlap only after event/lease, cancellation/unknown-

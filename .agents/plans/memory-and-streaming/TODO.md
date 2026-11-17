@@ -151,8 +151,12 @@ The following extends existing owners; source-byte qualification is not inferenc
   Cold-paged0.8B lifecycle is accepted by retained exit0 dotlink job
   `9feb1394...` with `contiguous_warmup=false`, exact lifecycle/all42 and
   shutdown. Signed `e6aac53` leaves the qualifier cold-only. Other null-exit
-  attempts are Bubblewrap-signal infrastructure events with zero cgroup OOM/pids
-  events, not model failures. Next run2B parity/cold lifecycle, then true
+  attempts are signalled-Bubblewrap infrastructure events with zero cgroup
+  OOM/pids and no observed dotlink restart/poll-failure evidence, not model
+  failures. Deployed dotlink v0.17.3 records a signalled child as
+  `Completed + exit_code=null + success=false` via `ExitStatus::code()==None`;
+  main's richer signal enum is not deployed. A direct no-inner-supervisor run
+  still reproduced null exit. Next run2B parity/cold lifecycle, then true
   in-flight cancel before native batches/HTTP. page_tokens remains explicit.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;

@@ -214,11 +214,18 @@ restore_before_boundary=true restore_at_boundary=true all42=exact
 final_shutdown=true`.
 Signed `e6aac53` removes the temporary warmup/stage diagnostics and leaves the
 qualifier cold-only, emitting `cold_load=true`.
-Intermittent alternative runs ending as dotlink Completed+exit_code=null are
-connector-infrastructure incomplete, not model failures. Dotlink maps that shape
-to a signal on its Bubblewrap child; controlled child/shell SIGKILL probes return
-numeric137 instead, while failure-time cgroup OOM/pids counters remain zero.
-External Bubblewrap signal origin is unproven; only full terminal passes count.
+Intermittent alternative runs ending as deployed dotlink v0.17.3
+Completed+exit_code=null+success=false are connector-infrastructure incomplete,
+not model failures. On `release/0.17`, dotlink stores
+`ExitStatus::code(): Option<i32>`; None means its Bubblewrap child was signalled,
+but v0.17.3 does not retain the signal number (main's richer
+`SharedProcessExit::Signal` is not deployed). Timeout/cancel/failure paths have
+distinct statuses and the Completed path disarms containment before recording.
+Controlled child/shell SIGKILL probes return numeric137 instead; cgroup OOM/pids
+counters and dotlink restart/poll-failure evidence remain zero. A direct
+`native-gpu -> env -> test binary` reproduction with no inner supervisor still
+showed null exit, so tmux/setsid is not required. External signal origin remains
+unproven; only full terminal passes count.
 
 Admission review changes the next implementation shape: ordinary admission
 budgets a finite inventory of complete state roots. A paged committed root plus
