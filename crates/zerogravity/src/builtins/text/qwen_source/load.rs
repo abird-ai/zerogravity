@@ -497,6 +497,33 @@ mod cuda_paged_tests {
         }
     }
 
+    fn exact_restore_publication(
+        before: crate::session_root::RootBinding,
+        after: crate::session_root::RootBinding,
+        saved: crate::session_root::RootBinding,
+        label: &str,
+    ) {
+        assert_eq!(after.source(), before.source(), "{label} source");
+        assert_eq!(after.session(), before.session(), "{label} session");
+        assert_eq!(
+            after.root(),
+            before
+                .root()
+                .checked_add(1)
+                .expect("restore root increment"),
+            "{label} root"
+        );
+        assert_eq!(
+            after.session_epoch(),
+            before
+                .session_epoch()
+                .checked_add(1)
+                .expect("restore epoch increment"),
+            "{label} epoch"
+        );
+        assert_eq!(after.frontier(), saved.frontier(), "{label} frontier");
+    }
+
     fn paged_source_fixture(label: &str) -> (SourceParts, usize, usize, Vec<u32>) {
         let snapshot =
             std::env::var("ZG_QWEN_SOURCE_SNAPSHOT").expect("explicit approved snapshot");
@@ -666,7 +693,57 @@ mod cuda_paged_tests {
     fn original_source_b1_paged_lifecycle_rolls_back_exactly() {
         let (parts, page_tokens, max_append_tokens, tokens) =
             paged_source_fixture("paged-source-lifecycle");
+        eprintln!("PAGED_LIFECYCLE_STAGE source_ready page_tokens={page_tokens}");
+        let contiguous_warmup =
+            std::env::var("ZG_QWEN_PAGED_CONTIGUOUS_WARMUP").as_deref() == Ok("1");
         block_on(async {
+            if contiguous_warmup {
+                let warm = ResidentModel::load_ordinary_cuda_source_with_state_policy(
+                    Device::Cuda(Default::default()),
+                    parts.source.plan.source().clone(),
+                    parts.source.clone(),
+                    parts.source.plan.plan().clone(),
+                    1,
+                    0,
+                    PROVIDER_BYTES,
+                    DEVICE_BYTES,
+                    CudaSourceStatePolicy::Contiguous,
+                    None,
+                )
+                .await
+                .unwrap();
+                eprintln!("PAGED_LIFECYCLE_STAGE contiguous_warm_model_loaded");
+                let mut warm_session = warm.session().await.unwrap();
+                let warm_invocation = parts
+                    .source
+                    .plan
+                    .bind_invocation(
+                        SourceCallMode::Prefill,
+                        0,
+                        Arc::<[u32]>::from(vec![tokens[0]]),
+                        true,
+                    )
+                    .unwrap();
+                let warm_pending = warm_session
+                    .prepare(
+                        warm_invocation.bound_invocation(),
+                        SourceCallMode::Prefill,
+                        ResidentOutput::Logits,
+                        None,
+                    )
+                    .await
+                    .unwrap();
+                let SourceCallPreparation::Ready(warm_pending) = warm_pending else {
+                    panic!("contiguous warmup candidate was not Ready");
+                };
+                assert!(matches!(
+                    warm_session.commit(warm_pending).unwrap(),
+                    SourceCallPublication::Committed(_)
+                ));
+                drop(warm_session);
+                warm.shutdown().await.unwrap();
+                eprintln!("PAGED_LIFECYCLE_STAGE contiguous_warm_complete");
+            }
             let model = ResidentModel::load_ordinary_cuda_source_with_state_policy(
                 Device::Cuda(Default::default()),
                 parts.source.plan.source().clone(),
@@ -684,10 +761,14 @@ mod cuda_paged_tests {
             )
             .await
             .unwrap();
+            eprintln!("PAGED_LIFECYCLE_STAGE model_loaded");
             let mut session = model.session().await.unwrap();
+            eprintln!("PAGED_LIFECYCLE_STAGE session_ready");
             let root0 = session.binding();
             let initial = session.snapshot().unwrap();
+            eprintln!("PAGED_LIFECYCLE_STAGE initial_snapshot_ready");
             let initial_domains = initial.read_domains().await.unwrap().to_vec();
+            eprintln!("PAGED_LIFECYCLE_STAGE initial_snapshot_read");
 
             let first_ids = Arc::<[u32]>::from(tokens[..page_tokens - 1].to_vec());
             let first = parts
@@ -709,6 +790,7 @@ mod cuda_paged_tests {
                     .unwrap(),
                 SourceCallPreparation::CancelledBeforeLaunch
             ));
+            eprintln!("PAGED_LIFECYCLE_STAGE prelaunch_cancel_ready");
             assert_eq!(session.binding(), root0);
             exact_domains(
                 &initial_domains,
@@ -728,6 +810,7 @@ mod cuda_paged_tests {
             let SourceCallPreparation::Ready(abandoned) = abandoned else {
                 panic!("paged abandoned candidate was not Ready");
             };
+            eprintln!("PAGED_LIFECYCLE_STAGE abandoned_ready_completed");
             assert_eq!(session.binding(), root0);
             drop(abandoned);
             assert_eq!(session.binding(), root0);
@@ -750,6 +833,7 @@ mod cuda_paged_tests {
             let SourceCallPreparation::Ready(pending) = pending else {
                 panic!("paged cancel-after-Ready candidate was not Ready");
             };
+            eprintln!("PAGED_LIFECYCLE_STAGE cancel_after_ready_completed");
             cancel_after_ready.store(true, Ordering::Release);
             assert!(matches!(
                 session.commit(pending).unwrap(),
@@ -779,8 +863,10 @@ mod cuda_paged_tests {
                 SourceCallPublication::Committed(_)
             ));
             assert_eq!(session.binding().frontier(), (page_tokens - 1) as u64);
+            eprintln!("PAGED_LIFECYCLE_STAGE preboundary_committed");
             let before_boundary = session.snapshot().unwrap();
             let before_boundary_domains = before_boundary.read_domains().await.unwrap().to_vec();
+            eprintln!("PAGED_LIFECYCLE_STAGE preboundary_snapshot_read");
 
             let boundary = parts
                 .source
@@ -809,8 +895,10 @@ mod cuda_paged_tests {
                 SourceCallPublication::Committed(_)
             ));
             assert_eq!(session.binding().frontier(), page_tokens as u64);
+            eprintln!("PAGED_LIFECYCLE_STAGE boundary_committed");
             let at_boundary = session.snapshot().unwrap();
             let at_boundary_domains = at_boundary.read_domains().await.unwrap().to_vec();
+            eprintln!("PAGED_LIFECYCLE_STAGE boundary_snapshot_read");
 
             let beyond = parts
                 .source
@@ -839,16 +927,30 @@ mod cuda_paged_tests {
                 SourceCallPublication::Committed(_)
             ));
             assert_eq!(session.binding().frontier(), (page_tokens + 1) as u64);
+            eprintln!("PAGED_LIFECYCLE_STAGE postboundary_committed");
 
+            let before_restore = session.binding();
             session.restore(&before_boundary).unwrap();
-            assert_eq!(session.binding(), before_boundary.binding());
+            exact_restore_publication(
+                before_restore,
+                session.binding(),
+                before_boundary.binding(),
+                "paged restore before boundary",
+            );
             exact_domains(
                 &before_boundary_domains,
                 &session.snapshot().unwrap().read_domains().await.unwrap(),
                 "paged restore before boundary",
             );
+            eprintln!("PAGED_LIFECYCLE_STAGE restore_preboundary_verified");
+            let before_restore = session.binding();
             session.restore(&at_boundary).unwrap();
-            assert_eq!(session.binding(), at_boundary.binding());
+            exact_restore_publication(
+                before_restore,
+                session.binding(),
+                at_boundary.binding(),
+                "paged restore at boundary",
+            );
             exact_domains(
                 &at_boundary_domains,
                 &session.snapshot().unwrap().read_domains().await.unwrap(),
@@ -858,10 +960,12 @@ mod cuda_paged_tests {
             drop(initial);
             drop(before_boundary);
             drop(at_boundary);
+            eprintln!("PAGED_LIFECYCLE_STAGE restore_boundary_verified");
             drop(session);
             model.shutdown().await.unwrap();
+            eprintln!("PAGED_LIFECYCLE_STAGE shutdown_complete");
             println!(
-                "P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens={page_tokens} prelaunch_cancel=true abandoned_ready=true cancel_after_ready=true restore_before_boundary=true restore_at_boundary=true all42=exact final_shutdown=true"
+                "P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens={page_tokens} contiguous_warmup={contiguous_warmup} prelaunch_cancel=true abandoned_ready=true cancel_after_ready=true restore_before_boundary=true restore_at_boundary=true all42=exact final_shutdown=true"
             );
         });
     }
