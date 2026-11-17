@@ -20,8 +20,9 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation/qualification** checkpoint is
-  `398e4461fc3bd30a84e050951dbdf204b05f0cdd`
-  (`test(state): qualify paged source lifecycle`). Parent `1413f72` is the
+  `30414571c5998880d99c7f685227b83434e6c03c`
+  (`test(state): fix paged restore qualification`). Parent `398e446`
+  added the source-real lifecycle target; `1413f72` is the
   runtime/source-policy checkpoint; `b9b04aa`
   remains the accepted current-root gather/KvInPlace/scatter/Ready candidate
   execution; `cb57e1d` remains the physical pool substrate and `93468b1`
@@ -39,15 +40,19 @@ and live TODOs are authoritative.
   explicitly, so no serving capability/default switched in this checkpoint.
   A pre-source-IO unit test proves invalid paged/native/bound policies return
   `invalid_source_state_policy` before cache/device access.
-  A new ignored original-HF differential qualifier is compiled and linked. It
+  The real managed L5 cache is now visible at
+  `/home/pvl/.cache/abird/zerogravity/models` with the exact approved0.8B
+  snapshot `d7c7bf56...` and2B snapshot `88606494...`.
+  The original-HF differential qualifier
   opens one authenticated source, runs Contiguous then Paged sequentially, and
   compares every full-vocabulary logit word plus all42 state words bit-for-bit at
   frontiers page_size-1/page_size/page_size+1/(2*page_size+1). Success marker:
   `P12_SOURCE_PAGED_B1_PASS ... full_vocab=exact all42=exact
   contiguous_reference=true final_shutdown=true`.
-  That source-real cell is **not executed** because L5 currently has no retained
-  approved HF cache snapshot/reference input (`ZG_QWEN_SOURCE_SNAPSHOT` and
-  cache root are absent); local GGUF fixtures are not equivalent evidence.
+  On original0.8B with page_tokens4/max_append_tokens4 it now passes physically:
+  `P12_SOURCE_PAGED_B1_PASS page_tokens=4 max_append_tokens=4
+  frontiers=3,4,5,9 full_vocab=exact all42=exact
+  contiguous_reference=true final_shutdown=true`.
   `398e446` adds a second ignored source-real paged B1 lifecycle qualifier on
   the same authenticated-source fixture. It proves, once inputs are present:
   prelaunch cancellation leaves root/all42 unchanged; dropping a completed Ready
@@ -56,10 +61,27 @@ and live TODOs are authoritative.
   page_size -> page_size+1; restore back to the saved pre-boundary and boundary
   roots reproduces exact all42 state; final model shutdown is clean. Success
   marker: `P12_SOURCE_PAGED_LIFECYCLE_PASS ... all42=exact
-  final_shutdown=true`. The target compiles and links; it is unexecuted for the
-  same missing approved-HF-cache blocker. A targeted filesystem search for both
-  approved small-source snapshot digests found neither under project XDG roots,
-  `/home/pvl`, `/var/tmp` nor `/tmp`; no acquisition was attempted.
+  final_shutdown=true`.
+  Direct cold-paged0.8B lifecycle attempts remain **incomplete**: after the
+  authenticated source/tokenizer fixture completes, the connector wrapper
+  repeatedly disappears during cold
+  `load_ordinary_cuda_source_with_state_policy(Paged)` before `model_loaded`,
+  with no child exit status, Rust diagnostic, OOM/Xid, surviving process or VRAM
+  residue. Do not relabel this as a lifecycle failure.
+  A materially different same-process diagnostic first loads/executes/shuts down
+  one Contiguous B1 step, then runs the identical paged lifecycle. That exact-
+  current path passes:
+  `P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens=4 contiguous_warmup=true
+  prelaunch_cancel=true abandoned_ready=true cancel_after_ready=true
+  restore_before_boundary=true restore_at_boundary=true all42=exact
+  final_shutdown=true`.
+  The first completed warm run exposed a qualifier bug: restore intentionally
+  publishes one fresh root and increments session epoch while restoring the saved
+  frontier/state; the test incorrectly required equality with the old snapshot
+  RootBinding. `3041457` fixes the assertion to require same source/session,
+  root+1, epoch+1, saved frontier and exact all42 bytes.
+  All Cargo compilation/check/clippy in this slice used
+  `RUSTC_WRAPPER=/run/current-system/sw/bin/kache`.
   Final-current available validation is green: four hybrid admission units, all
   eight RTX3060 pool/paging/in-place cells, top-level `qwen35-hip`,
   CUDA tests and strict production clippy. A combined cross-feature wrapper
@@ -161,17 +183,15 @@ and live TODOs are authoritative.
   source-policy plumbing is now
   `0027c28` + `54340a6` + `1eb6e0f` + `3ac2059` + `dc6a188` +
   `53336b3` + `ef9e4d4` + `93468b1` + `cb57e1d` + `b9b04aa` +
-  `1413f72` + `398e446`.
-  **Next executable P12-C work is source-real policy acceptance.** Restore/use the
-  already approved original HF cache snapshots and run both
-  `original_source_b1_paged_matches_contiguous_at_page_boundaries` and
-  `original_source_b1_paged_lifecycle_rolls_back_exactly` separately for
-  original0.8B and2B with explicit page_tokens/max_append_tokens. Do not
-  acquire or invent replacement source/reference inputs without authorization.
-  Those cells close full-vocab/all42 boundaries plus prelaunch/after-Ready cancel,
-  abandon and restore. True in-flight cancellation still needs its own CUDA
-  launch-boundary proof after source inputs return. Only after those gates should
-  a high-level paged serving selector/native B2/B4/B8/HTTP work begin.
+  `1413f72` + `398e446` + `3041457`.
+  **Next executable P12-C work is 2B source-real parity, then cold-load closure.**
+  Run the differential and lifecycle targets against approved original2B with
+  page_tokens4/max_append_tokens4. Preserve the explicit
+  `contiguous_warmup=true` label for any preconditioned lifecycle run.
+  Separately diagnose/qualify direct cold paged model loading; do not let a warm
+  lifecycle pass erase that gap. True in-flight cancellation still needs its own
+  CUDA launch-boundary proof. Only after0.8B/2B direct state/load gates close
+  should high-level paged serving/native B2/B4/B8/HTTP work begin.
   Complete-domain prefix reuse follows these state gates; event/lease-backed physical
   overlap remains after those state gates and must not be pulled forward.
   **Post-check L5 baseline watch:**
@@ -192,12 +212,10 @@ and live TODOs are authoritative.
   (production CUDA graph substrate/resource admission), `6a5c610` (driver-safe
   nonpersistent NVRTC) and `81b7c71` (explicit graph-resource lifetime witness).
   Their docs checkpoints through `b12e8f5` are pushed.
-- Pushed `origin/main` is `7dea460a80b420d0ce49a60f6c860b3502c67c38`
-  (`feat(serving): age prefill behind decode`). It includes the earlier selector,
-  graph timing and prefix-scheduling checkpoints that were previously local.
-  This acceptance refresh may add one docs-only local commit; never push it unless
-  the user explicitly asks. X2 is synced to the exact current local tip after each
-  checkpoint even when its remote-tracking ref is stale.
+- Pushed `origin/main` is `3a1596db12d0f2e5d104ed1980f57af9ae27a513`
+  (`docs: checkpoint paged source lifecycle qualifier`). Current
+  `3041457` plus this acceptance refresh remain local until explicitly pushed.
+  Never use push merely for X2 transport.
 - Before any new physical X2 run, sync it to the exact current l5 `main`
   bytes/commit without using a push merely as transport, then revalidate
   status/process/GPU state.

@@ -501,7 +501,7 @@ selector. Paged currently requires native_rows=0; zero page/append bounds refuse
 call exceeds its admitted append bound. Production qwen source registration
 passes Contiguous explicitly. No high-level paged `ModelLoadRequest` is exposed.
 
-An ignored source-real B1 differential is compiled/linked. It opens one
+The source-real B1 differential opens one
 authenticated original HF source, runs a complete Contiguous model first, shuts
 it down, then runs the same source through Paged. It compares every F32
 full-vocabulary logit bit and every all42 state-domain word at frontiers
@@ -511,13 +511,10 @@ genuinely multi-page. On success it prints
 `P12_SOURCE_PAGED_B1_PASS ... full_vocab=exact all42=exact
 contiguous_reference=true final_shutdown=true`.
 
-The target is **linked but unexecuted** at this checkpoint: L5 has only local
-GGUF fixtures under `target/models`; the approved HF cache snapshot and
-`ZG_QWEN_SOURCE_SNAPSHOT`/cache root are absent. Do not reinterpret GGUF parity
-as original-HF source acceptance. Once the approved cache is restored, run this
-cell separately for original0.8B and2B with explicit page policy, then add
-cancellation/abandon/restore/rollback and clean-retirement acceptance. Only then
-add a high-level paged serving selector and adapt native B2/B4/B8/HTTP.
+The approved managed0.8B/2B snapshots are now visible in the real L5 XDG cache.
+Original0.8B with page_tokens4/max_append_tokens4 physically passes the
+differential at frontiers3,4,5,9 with every full-vocabulary logit and all42 state
+word exact versus Contiguous, followed by clean shutdown.
 
 **15 Nov paged source lifecycle qualification follow-up:** signed `398e446`
 adds a second ignored original-HF target on the same explicit paged policy.
@@ -528,17 +525,33 @@ Without changing runtime code it verifies:
 - toggling cancellation after Ready causes `commit` to return `Discarded`
   with the original root/all42 unchanged;
 - normal commits advance to page_size-1, page_size and page_size+1;
-- snapshots saved at page_size-1 and page_size can each be restored exactly,
-  including RootBinding and all42 state;
+- snapshots saved at page_size-1 and page_size can each be restored exactly:
+  restore publishes a fresh root/epoch at the saved frontier and all42 state
+  matches the snapshot;
 - final source-model shutdown succeeds.
 
-Success marker is `P12_SOURCE_PAGED_LIFECYCLE_PASS ... all42=exact
-final_shutdown=true`. The target compiles and links. It is not executed because
-the same approved HF cache inputs are absent. A targeted L5 search for the known
-0.8B/2B snapshot digests found no match in project XDG roots, `/home/pvl`,
-`/var/tmp` or `/tmp`; no download/acquisition was attempted. True in-flight
-CUDA cancellation remains separate because the existing launch-boundary probe is
-not available on this ordinary CUDA source path.
+Signed `3041457` corrects the original lifecycle qualifier bug: the old test
+wrongly required restored `RootBinding == snapshot.binding()`, contradicting
+`SessionAuthority` restore semantics. It now requires same source/session,
+root+1, epoch+1, saved frontier and exact all42 bytes.
+
+Direct cold-paged0.8B lifecycle attempts repeatedly complete authenticated
+source/tokenizer setup but then lose the wrapper during
+`load_ordinary_cuda_source_with_state_policy(Paged)`, before `model_loaded`,
+without child status, Rust panic, OOM/Xid, surviving process or VRAM residue.
+These attempts are incomplete, not failures. A materially different diagnostic
+sets `ZG_QWEN_PAGED_CONTIGUOUS_WARMUP=1`, performs one Contiguous B1
+load/step/shutdown in the same process, then runs the identical paged lifecycle.
+The exact-current marker passes:
+`P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens=4 contiguous_warmup=true
+prelaunch_cancel=true abandoned_ready=true cancel_after_ready=true
+restore_before_boundary=true restore_at_boundary=true all42=exact
+final_shutdown=true`.
+
+Next: run original2B differential/lifecycle with page4/append4, keep any warm
+evidence explicitly labeled, and separately close direct cold paged loading.
+True in-flight CUDA cancellation remains separate because the existing
+launch-boundary probe is not available on this ordinary CUDA source path.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve

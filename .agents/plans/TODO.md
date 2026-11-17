@@ -35,8 +35,8 @@ scope subsequently pass with zero OOM events and final 41MiB. Both reconstructio
 use symmetric benchmark-only exact-SM cubin behavior matching `6a5c610` and
 retained source-real prompts because the original frozen binaries/workload are
 gone. Do not promote these to byte-identical historical, source-correct-goodput
-or vLLM claims. Pushed `origin/main` is `7dea460`; the fairness acceptance docs
-checkpoint below is local until explicitly pushed.
+or vLLM claims. Pushed `origin/main` is `3a1596d`; current paged source
+qualification work remains local until explicitly pushed.
 
 The P12-C fair-interleaving sub-slice is now accepted: shared engine fair rounds
 protect all eligible decode work, defer young prefill with original owners intact,
@@ -188,11 +188,12 @@ requires B1; native rows and zero bounds refuse. Inventory also rejects an appen
 bound above state capacity, and runtime calls larger than the admitted bound
 return `Limit` before checkout. Production registration explicitly passes
 Contiguous, and public `ModelLoadRequest` is unchanged.
-The pre-IO policy-refusal unit passes. A new ignored original-HF differential
-target links successfully: same authenticated source, Contiguous vs Paged,
-full248320 logits + all42 exact at page-1/page/page+1/2page+1, final shutdown.
-It was not run because the approved HF cache snapshot is absent on L5; local
-GGUF fixtures are not equivalent evidence. Four hybrid unit gates, all eight
+The pre-IO policy-refusal unit passes. The original-HF differential uses the same
+authenticated source, Contiguous vs Paged, full248320 logits + all42 exact at
+page-1/page/page+1/2page+1, final shutdown. The real managed L5 cache now exposes
+the approved0.8B/2B snapshots. Original0.8B page4/append4 physically passes
+`P12_SOURCE_PAGED_B1_PASS ... frontiers=3,4,5,9 full_vocab=exact all42=exact
+contiguous_reference=true final_shutdown=true`. Four hybrid unit gates, all eight
 exact-current RTX3060 paged cells, top-level qwen35-hip, CUDA tests and strict
 clippy pass.
 
@@ -201,9 +202,17 @@ target** without runtime changes. The shared approved-source fixture now drives 
 second ignored target proving prelaunch cancel, abandoned Ready, cancel-after-
 Ready discard, page-boundary commits and exact all42 restore to both the saved
 pre-boundary and boundary roots, followed by shutdown. It compiles and links.
-Execution remains blocked by the same missing approved HF cache input; a targeted
-search found neither approved small-source snapshot digest under XDG cache/data,
-`/home/pvl`, `/var/tmp` or `/tmp`. No replacement source was acquired.
+Signed `3041457` fixes the lifecycle qualifier's restore contract: restore
+publishes a fresh root/epoch at the saved frontier; it does not resurrect the old
+RootBinding. Same source/session, root+1, epoch+1 and exact all42 are now required.
+Direct cold-paged0.8B lifecycle runs repeatedly disappear during paged model load
+after source/tokenizer setup with no child status/OOM/Xid/residue, so remain
+incomplete. A materially different same-process Contiguous one-step warmup then
+Paged lifecycle passes exact-current:
+`P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens=4 contiguous_warmup=true
+prelaunch_cancel=true abandoned_ready=true cancel_after_ready=true
+restore_before_boundary=true restore_at_boundary=true all42=exact
+final_shutdown=true`.
 
 Admission review changes the next implementation shape: ordinary admission
 budgets a finite inventory of complete state roots. A paged committed root plus
@@ -211,12 +220,12 @@ full prior staging plus full candidate staging would be a third state-sized
 envelope at full context and must not be smuggled past admission. The Ready and
 snapshot semantics are accepted at `93468b1`; physical pools at `cb57e1d`;
 current-root execution at `b9b04aa`; explicit low-level policy at `1413f72`;
-source-real lifecycle target at `398e446`. **Next: execute both linked source-
-real B1 targets on the approved original0.8B and2B HF snapshots when those
-retained inputs are available.** Require full logit/all42 page-boundary parity
-plus cancel/abandon/restore exactness. Add a true CUDA in-flight cancellation cell
-after that, then consider any high-level paged serving selection. Default
-CUDA/native/HIP stay contiguous; page_tokens remains explicit.
+source-real lifecycle target at `398e446`; qualifier correction at `3041457`.
+**Next: run original2B differential + lifecycle page4/append4, then close direct
+cold paged loading.** Keep warm-preconditioned lifecycle evidence explicitly
+labeled and separate from cold-load acceptance. Add true CUDA in-flight
+cancellation after those state/load gates, then consider any high-level paged
+serving selection. Default CUDA/native/HIP stay contiguous.
 Complete-domain prefix identity/intersection follows that.
 Event/lease-backed physical overlap remains after those state gates.
 

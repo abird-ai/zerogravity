@@ -558,15 +558,20 @@ or a change to the active correctness/benchmark/27B order.
   leaving public/default serving Contiguous. Paged source loading now requires
   `Paged { page_tokens, max_append_tokens }`, B1, and bounded positive policy;
   inventory/runtime append bounds are enforced. Invalid paged/native/bounds
-  policy refuses before source IO. The linked ignored original-HF differential
-  compares Contiguous vs Paged full-vocab/all42 at page-1/page/page+1/2page+1.
-  It is not executed because the approved HF cache inputs are absent on L5.
+  policy refuses before source IO. The original-HF differential compares
+  Contiguous vs Paged full-vocab/all42 at page-1/page/page+1/2page+1.
+  The approved managed0.8B/2B cache inputs are now visible on L5; original0.8B
+  page4/append4 passes full-vocab/all42 exact at frontiers3,4,5,9.
   Signed `398e446` adds the matching source-real lifecycle target: prelaunch
   cancel, abandoned Ready, cancel-after-Ready discard, page-boundary commits and
-  exact all42 restore to pre-boundary/boundary roots, final shutdown. It also
-  links but cannot execute without the approved cache. **Production selection
-  remains open:** next run both targets for original0.8B/2B when approved inputs
-  are restored, then add true in-flight cancellation, then native B2/B4/B8 + HTTP.
+  exact all42 restore to pre-boundary/boundary roots, final shutdown.
+  Signed `3041457` corrects restore qualification to fresh root/epoch
+  publication at the saved frontier. Direct cold-paged0.8B model load is still
+  infrastructure-incomplete after repeated wrapper disappearances with no
+  diagnostic/residue; a same-process Contiguous warm step then paged lifecycle
+  passes exact with `contiguous_warmup=true`.
+  **Production selection remains open:** next original2B differential/lifecycle,
+  then direct cold-load and true in-flight cancellation, then native B2/B4/B8 + HTTP.
   Admit physical GPU overlap only after event/lease, cancellation/unknown-
   completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine

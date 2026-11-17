@@ -141,14 +141,17 @@ The following extends existing owners; source-byte qualification is not inferenc
   Signed `1413f72` adds the explicit low-level source policy while production
   registration stays Contiguous. Paged policy installs the accepted hybrid pools
   only for explicit page_tokens/max_append_tokens, enforces B1 and append bounds,
-  and has a linked original-HF Contiguous-vs-Paged full-vocab/all42 page-boundary
-  differential. The approved HF cache input is absent on L5, so that source-real
-  cell is not run. Signed `398e446` adds the matching paged B1 lifecycle target:
+  and has an original-HF Contiguous-vs-Paged full-vocab/all42 page-boundary
+  differential. The real L5 managed cache now contains approved0.8B/2B snapshots;
+  original0.8B page4/append4 passes full-vocab/all42 at3/4/5/9.
+  Signed `398e446` adds the matching paged B1 lifecycle target:
   prelaunch cancel, abandoned Ready, cancel-after-Ready discard, page-boundary
-  commits, exact all42 restore to pre-boundary/boundary roots and shutdown. It is
-  linked but blocked by the same absent approved cache. Next execute both targets
-  for0.8B/2B when retained inputs are restored, then add true in-flight cancel
-  before native batches/HTTP. page_tokens remains explicit, not a default.
+  commits, exact all42 restore and shutdown. Signed `3041457` corrects restore
+  qualification to fresh root/epoch publication at the saved frontier. Direct
+  cold-paged0.8B load remains infrastructure-incomplete; Contiguous-warmed paged
+  lifecycle passes exact with `contiguous_warmup=true`. Next run2B parity/
+  lifecycle, then close cold load and true in-flight cancel before native
+  batches/HTTP. page_tokens remains explicit, not a default.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/
