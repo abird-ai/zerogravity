@@ -566,12 +566,16 @@ or a change to the active correctness/benchmark/27B order.
   cancel, abandoned Ready, cancel-after-Ready discard, page-boundary commits and
   exact all42 restore to pre-boundary/boundary roots, final shutdown.
   Signed `3041457` corrects restore qualification to fresh root/epoch
-  publication at the saved frontier. Direct cold-paged0.8B model load is still
-  infrastructure-incomplete after repeated wrapper disappearances with no
-  diagnostic/residue; a same-process Contiguous warm step then paged lifecycle
-  passes exact with `contiguous_warmup=true`.
-  **Production selection remains open:** next original2B differential/lifecycle,
-  then direct cold-load and true in-flight cancellation, then native B2/B4/B8 + HTTP.
+  publication at the saved frontier. Cold-paged0.8B lifecycle is accepted by
+  retained dotlink job `9feb1394...`: exit0,168.08s,
+  `contiguous_warmup=false`, exact cancel/abandon/restore/all42/shutdown.
+  Signed `e6aac53` removes the warmup/stage scaffolding and leaves the qualifier
+  cold-only. Other intermittent null-exit jobs are Bubblewrap-signal
+  infrastructure events, not ZeroGravity failures: dotlink maps
+  Completed+exit_code=null to Signal on its bwrap child; controlled inner
+  SIGKILL paths report numeric137, and failure-time cgroup OOM/pids counters are0.
+  **Production selection remains open:** next original2B differential/cold
+  lifecycle, then true in-flight cancellation, then native B2/B4/B8 + HTTP.
   Admit physical GPU overlap only after event/lease, cancellation/unknown-
   completion and independent-root tests.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine

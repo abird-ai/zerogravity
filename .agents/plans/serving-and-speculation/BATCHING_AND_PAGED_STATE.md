@@ -535,21 +535,30 @@ wrongly required restored `RootBinding == snapshot.binding()`, contradicting
 `SessionAuthority` restore semantics. It now requires same source/session,
 root+1, epoch+1, saved frontier and exact all42 bytes.
 
-Direct cold-paged0.8B lifecycle attempts repeatedly complete authenticated
-source/tokenizer setup but then lose the wrapper during
-`load_ordinary_cuda_source_with_state_policy(Paged)`, before `model_loaded`,
-without child status, Rust panic, OOM/Xid, surviving process or VRAM residue.
-These attempts are incomplete, not failures. A materially different diagnostic
-sets `ZG_QWEN_PAGED_CONTIGUOUS_WARMUP=1`, performs one Contiguous B1
-load/step/shutdown in the same process, then runs the identical paged lifecycle.
-The exact-current marker passes:
-`P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens=4 contiguous_warmup=true
+Cold original0.8B lifecycle is accepted from retained dotlink job
+`9feb1394-1a3b-498b-8f92-fdd3e607c6b3`: exit0 after168.08s, no contiguous
+warmup, full marker:
+`P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens=4 contiguous_warmup=false
 prelaunch_cancel=true abandoned_ready=true cancel_after_ready=true
 restore_before_boundary=true restore_at_boundary=true all42=exact
 final_shutdown=true`.
+`e6aac53` removes the temporary warmup branch and stage logging; the retained
+qualifier is cold-only and labels successful evidence `cold_load=true`.
 
-Next: run original2B differential/lifecycle with page4/append4, keep any warm
-evidence explicitly labeled, and separately close direct cold paged loading.
+Intermittent alternative runs that previously looked like cold-loader
+disappearances are connector-infrastructure signals, not model failures.
+Dotlink's runner waits on Bubblewrap; its source maps Completed+exit_code=None+
+success=false to `SharedProcessExit::Signal`. Controlled probes distinguish the
+case: SIGKILL of an inner child yields shell status137, and SIGKILL of the
+sandbox shell yields dotlink numeric137 because Bubblewrap survives; the
+intermittent model jobs instead terminate with null exit code, meaning Bubblewrap
+itself was signalled. At those failures there is no Rust panic, OOM/Xid/coredump,
+surviving process or VRAM residue, and `dotlink.service` cgroup counters show
+`oom=0`, `oom_kill=0`, `pids.max events=0`. The external signal source is
+not proven. Treat null-exit runs as infrastructure-incomplete and never as
+negative model evidence; do not add a warmup workaround.
+
+Next: run original2B differential/cold lifecycle with page4/append4.
 True in-flight CUDA cancellation remains separate because the existing
 launch-boundary probe is not available on this ordinary CUDA source path.
 

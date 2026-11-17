@@ -20,8 +20,9 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation/qualification** checkpoint is
-  `30414571c5998880d99c7f685227b83434e6c03c`
-  (`test(state): fix paged restore qualification`). Parent `398e446`
+  `e6aac539edcf631199bb51628c7f9e361e65057f`
+  (`test(state): keep paged lifecycle cold-only`). Parent `3041457`
+  corrected restore qualification; `398e446`
   added the source-real lifecycle target; `1413f72` is the
   runtime/source-policy checkpoint; `b9b04aa`
   remains the accepted current-root gather/KvInPlace/scatter/Ready candidate
@@ -62,24 +63,33 @@ and live TODOs are authoritative.
   roots reproduces exact all42 state; final model shutdown is clean. Success
   marker: `P12_SOURCE_PAGED_LIFECYCLE_PASS ... all42=exact
   final_shutdown=true`.
-  Direct cold-paged0.8B lifecycle attempts remain **incomplete**: after the
-  authenticated source/tokenizer fixture completes, the connector wrapper
-  repeatedly disappears during cold
-  `load_ordinary_cuda_source_with_state_policy(Paged)` before `model_loaded`,
-  with no child exit status, Rust diagnostic, OOM/Xid, surviving process or VRAM
-  residue. Do not relabel this as a lifecycle failure.
-  A materially different same-process diagnostic first loads/executes/shuts down
-  one Contiguous B1 step, then runs the identical paged lifecycle. That exact-
-  current path passes:
-  `P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens=4 contiguous_warmup=true
+  Cold original0.8B paged lifecycle is accepted from retained dotlink job
+  `9feb1394-1a3b-498b-8f92-fdd3e607c6b3`: normal `exit_code=0`, 168.08s,
+  no contiguous preconditioning, full lifecycle marker
+  `P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens=4 contiguous_warmup=false
   prelaunch_cancel=true abandoned_ready=true cancel_after_ready=true
   restore_before_boundary=true restore_at_boundary=true all42=exact
   final_shutdown=true`.
+  `e6aac53` removes the temporary warmup branch and lifecycle stage spam; the
+  retained qualifier is cold-only by construction and emits `cold_load=true`.
   The first completed warm run exposed a qualifier bug: restore intentionally
   publishes one fresh root and increments session epoch while restoring the saved
   frontier/state; the test incorrectly required equality with the old snapshot
   RootBinding. `3041457` fixes the assertion to require same source/session,
   root+1, epoch+1, saved frontier and exact all42 bytes.
+  Several other 0.8B cold attempts terminated intermittently with dotlink
+  `status=completed`, `exit_code=null`, no Rust failure, OOM/Xid/coredump,
+  live child or VRAM residue. This is **not** a ZeroGravity cold-load blocker.
+  Dotlink's own runner waits on Bubblewrap and maps Completed+no exit code+
+  unsuccessful to `SharedProcessExit::Signal`. Controlled probes establish the
+  distinction: SIGKILL of an inner child is observed by the surviving shell as
+  status137, and SIGKILL of the sandbox shell is translated by surviving
+  Bubblewrap to numeric exit137; the intermittent jobs instead have null exit
+  code, so Bubblewrap itself was signalled. At the exact failures the
+  `dotlink.service` cgroup reported memory `oom=0`, `oom_kill=0` and
+  pids `max=0`. The source of that external Bubblewrap signal is not proven;
+  classify such runs as connector-infrastructure incomplete and require a full
+  terminal pass for model evidence. Do not add loader workarounds or warmup.
   All Cargo compilation/check/clippy in this slice used
   `RUSTC_WRAPPER=/run/current-system/sw/bin/kache`.
   Final-current available validation is green: four hybrid admission units, all
@@ -183,14 +193,11 @@ and live TODOs are authoritative.
   source-policy plumbing is now
   `0027c28` + `54340a6` + `1eb6e0f` + `3ac2059` + `dc6a188` +
   `53336b3` + `ef9e4d4` + `93468b1` + `cb57e1d` + `b9b04aa` +
-  `1413f72` + `398e446` + `3041457`.
-  **Next executable P12-C work is 2B source-real parity, then cold-load closure.**
-  Run the differential and lifecycle targets against approved original2B with
-  page_tokens4/max_append_tokens4. Preserve the explicit
-  `contiguous_warmup=true` label for any preconditioned lifecycle run.
-  Separately diagnose/qualify direct cold paged model loading; do not let a warm
-  lifecycle pass erase that gap. True in-flight cancellation still needs its own
-  CUDA launch-boundary proof. Only after0.8B/2B direct state/load gates close
+  `1413f72` + `398e446` + `3041457` + `e6aac53`.
+  **Next executable P12-C work is original2B source-real parity/lifecycle.**
+  Run the differential and cold-only lifecycle targets with
+  page_tokens4/max_append_tokens4. True in-flight cancellation still needs its
+  own CUDA launch-boundary proof. Only after0.8B/2B state/lifecycle gates close
   should high-level paged serving/native B2/B4/B8/HTTP work begin.
   Complete-domain prefix reuse follows these state gates; event/lease-backed physical
   overlap remains after those state gates and must not be pulled forward.

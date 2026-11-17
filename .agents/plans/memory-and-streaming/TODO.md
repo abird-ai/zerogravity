@@ -147,11 +147,13 @@ The following extends existing owners; source-byte qualification is not inferenc
   Signed `398e446` adds the matching paged B1 lifecycle target:
   prelaunch cancel, abandoned Ready, cancel-after-Ready discard, page-boundary
   commits, exact all42 restore and shutdown. Signed `3041457` corrects restore
-  qualification to fresh root/epoch publication at the saved frontier. Direct
-  cold-paged0.8B load remains infrastructure-incomplete; Contiguous-warmed paged
-  lifecycle passes exact with `contiguous_warmup=true`. Next run2B parity/
-  lifecycle, then close cold load and true in-flight cancel before native
-  batches/HTTP. page_tokens remains explicit, not a default.
+  qualification to fresh root/epoch publication at the saved frontier.
+  Cold-paged0.8B lifecycle is accepted by retained exit0 dotlink job
+  `9feb1394...` with `contiguous_warmup=false`, exact lifecycle/all42 and
+  shutdown. Signed `e6aac53` leaves the qualifier cold-only. Other null-exit
+  attempts are Bubblewrap-signal infrastructure events with zero cgroup OOM/pids
+  events, not model failures. Next run2B parity/cold lifecycle, then true
+  in-flight cancel before native batches/HTTP. page_tokens remains explicit.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

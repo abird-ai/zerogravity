@@ -205,14 +205,20 @@ pre-boundary and boundary roots, followed by shutdown. It compiles and links.
 Signed `3041457` fixes the lifecycle qualifier's restore contract: restore
 publishes a fresh root/epoch at the saved frontier; it does not resurrect the old
 RootBinding. Same source/session, root+1, epoch+1 and exact all42 are now required.
-Direct cold-paged0.8B lifecycle runs repeatedly disappear during paged model load
-after source/tokenizer setup with no child status/OOM/Xid/residue, so remain
-incomplete. A materially different same-process Contiguous one-step warmup then
-Paged lifecycle passes exact-current:
-`P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens=4 contiguous_warmup=true
+Cold original0.8B lifecycle is physically accepted by retained job
+`9feb1394-1a3b-498b-8f92-fdd3e607c6b3` with exit0 in168.08s and no
+preconditioning:
+`P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens=4 contiguous_warmup=false
 prelaunch_cancel=true abandoned_ready=true cancel_after_ready=true
 restore_before_boundary=true restore_at_boundary=true all42=exact
 final_shutdown=true`.
+Signed `e6aac53` removes the temporary warmup/stage diagnostics and leaves the
+qualifier cold-only, emitting `cold_load=true`.
+Intermittent alternative runs ending as dotlink Completed+exit_code=null are
+connector-infrastructure incomplete, not model failures. Dotlink maps that shape
+to a signal on its Bubblewrap child; controlled child/shell SIGKILL probes return
+numeric137 instead, while failure-time cgroup OOM/pids counters remain zero.
+External Bubblewrap signal origin is unproven; only full terminal passes count.
 
 Admission review changes the next implementation shape: ordinary admission
 budgets a finite inventory of complete state roots. A paged committed root plus
@@ -220,12 +226,11 @@ full prior staging plus full candidate staging would be a third state-sized
 envelope at full context and must not be smuggled past admission. The Ready and
 snapshot semantics are accepted at `93468b1`; physical pools at `cb57e1d`;
 current-root execution at `b9b04aa`; explicit low-level policy at `1413f72`;
-source-real lifecycle target at `398e446`; qualifier correction at `3041457`.
-**Next: run original2B differential + lifecycle page4/append4, then close direct
-cold paged loading.** Keep warm-preconditioned lifecycle evidence explicitly
-labeled and separate from cold-load acceptance. Add true CUDA in-flight
-cancellation after those state/load gates, then consider any high-level paged
-serving selection. Default CUDA/native/HIP stay contiguous.
+source-real lifecycle target at `398e446`; qualifier correction at `3041457`;
+cold-only cleanup at `e6aac53`.
+**Next: run original2B differential + cold lifecycle page4/append4.** Add true
+CUDA in-flight cancellation after those state/lifecycle gates, then consider any
+high-level paged serving selection. Default CUDA/native/HIP stay contiguous.
 Complete-domain prefix identity/intersection follows that.
 Event/lease-backed physical overlap remains after those state gates.
 
