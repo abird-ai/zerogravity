@@ -589,6 +589,15 @@ connector). True in-flight CUDA cancellation remains ordered after successful2B
 acceptance because the existing launch-boundary probe is not available on this
 ordinary CUDA source path.
 
+**18 Nov execution authority note:** unrestricted L5 execution is explicitly
+authorized for these two physical cells. Dotlink documents the mode as
+`dotlink --unrestricted` (legacy `--allow-all --no-sandbox`). The current
+ChatGPT session has no such second L5 connector; its only `dotlink---l5`
+endpoint is Bubblewrap-sandboxed and cannot safely reconfigure/escape itself.
+When the unrestricted endpoint is exposed, run only the exact approved2B
+page4/append4 differential and cold lifecycle there, and retain normal L5 as
+the sole source/Git authoring connector.
+
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve
   B1 and smaller qualified bands after checked prelaunch capacity refusal.

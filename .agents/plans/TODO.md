@@ -247,6 +247,14 @@ same envelope or treat these as negative2B evidence. Next rerun the exact two
 cells only in an L5 execution envelope where Bubblewrap survival is established
 (authorized unrestricted path or corrected/upgraded connector). Keep
 page4/append4 and full-vocab/all42/cold requirements unchanged.
+The user has now explicitly authorized the unrestricted L5 route. Dotlink's
+supported mode is `dotlink --unrestricted` (legacy
+`--allow-all --no-sandbox`), but this ChatGPT session currently exposes only
+the sandboxed `dotlink---l5` connector and cannot reconfigure that host service
+from inside its own Bubblewrap namespace. Do not bypass containment. Once a
+second unrestricted L5 connector is exposed, use it only for the bounded 2B
+physical differential/lifecycle execution; keep all source/Git work on the
+canonical L5 connector.
 True CUDA in-flight cancellation remains after successful2B state/lifecycle
 acceptance; then consider high-level paged serving selection. Default
 CUDA/native/HIP stay contiguous.

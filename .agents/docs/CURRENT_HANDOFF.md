@@ -229,6 +229,20 @@ and live TODOs are authoritative.
   sandbox launcher survives (for example an explicitly authorized unrestricted
   path or corrected/upgraded connector). Do not weaken page4/append4,
   full-vocab/all42 or cold-lifecycle requirements.
+  **18 Nov authorization/update:** the user explicitly authorized the
+  unrestricted L5 route for this physical qualification. Dotlink's supported
+  host mode is `dotlink --unrestricted` (legacy equivalent
+  `--allow-all --no-sandbox`). The currently connected `dotlink---l5`
+  endpoint still exposes only the Bubblewrap-sandboxed shell; no second
+  unrestricted L5 connector/profile is present in this ChatGPT tool surface,
+  and the sandboxed shell does not expose the host dotlink binary/service needed
+  to reconfigure itself. Do **not** try to escape the sandbox through SSH,
+  systemd, namespace tricks or similar. The next physical action is therefore:
+  expose/connect a second L5 dotlink endpoint launched explicitly with
+  `--unrestricted`, then run the exact already-linked 2B differential and
+  cold-lifecycle cells there. Source/Git authoring remains on canonical
+  `dotlink---l5`; unrestricted authority is for this bounded physical
+  qualification only.
   True in-flight cancellation remains ordered **after** successful original2B
   state/lifecycle acceptance. Only after0.8B/2B state/lifecycle gates close
   should high-level paged serving/native B2/B4/B8/HTTP work begin.
