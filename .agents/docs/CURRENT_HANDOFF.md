@@ -1,8 +1,8 @@
-# ZeroGravity current comprehensive handoff — 15 Nov 2026
+# ZeroGravity current comprehensive handoff — 18 Nov 2026
 
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
-Full dated takeover snapshot: [`FULL_COMPREHENSIVE_HANDOFF_2026-11-15.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-15.md). The 15 Nov pack embeds the complete 14 Nov baseline so the October→November design and implementation history remains available from one file.
+Full dated takeover snapshot: [`FULL_COMPREHENSIVE_HANDOFF_2026-11-18.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-18.md). The 18 Nov pack embeds this live handoff plus the complete 15 Nov pack, which itself carries the 14 Nov/October design foundation.
 
 This file is the complete takeover map and a pointer into maintained source, tests
 and plans. It is deliberately **not** the retired monolithic SHA/archive/evidence
@@ -225,8 +225,9 @@ and live TODOs are authoritative.
   `native-gpu.py --require-private-network -- bash scripts/check.sh`.
   Focused validation:29/29 offline harness tests, Python compile + Bash syntax,
   real current-sandbox `--isolation-info`, AF_UNIX allowed/AF_INET denied,
-  io_uring_setup denied with EPERM, private-network refusal before child launch,
-  and a silent 15s direct-exec smoke all pass. The complete `scripts/check.sh`
+  io_uring_setup denied with EPERM, exact direct exit73 propagation, direct TERM
+  propagation as status143, private-network refusal before child launch, and a
+  silent 15s direct-exec smoke all pass. The complete `scripts/check.sh`
   gate is not runnable under this particular L5 connector profile because its
   Bubblewrap shares networking; that is now an explicit execution-profile
   refusal, not a harness ambiguity or semantic test failure.
@@ -330,10 +331,11 @@ A new agent should read in this order:
 2. `AGENTS.md`.
 3. `.agents/plans/README.md`.
 4. `.agents/docs/CURRENT_HANDOFF.md`.
-5. `.agents/plans/TODO.md`.
-6. `.agents/plans/model-execution/TODO.md`.
-7. `.agents/plans/numerics-and-context/CORRECTNESS_POLICY.md`.
-8. The owning plan(s), especially:
+5. `.agents/docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-18.md`.
+6. `.agents/plans/TODO.md`.
+7. `.agents/plans/model-execution/TODO.md`.
+8. `.agents/plans/numerics-and-context/CORRECTNESS_POLICY.md`.
+9. The owning plan(s), especially:
    - `serving-and-speculation/TODO.md`
    - `cpu-gpu-optimization/TODO.md`
    - `memory-and-streaming/TODO.md`
@@ -341,8 +343,8 @@ A new agent should read in this order:
    - `numerics-and-context/TODO.md`
    - `cli-device-routing/TODO.md`
    - `model-acquisition/TODO.md`
-9. Relevant architecture docs under `.agents/docs/`.
-10. Git history for removed experiments and superseded handoffs.
+10. Relevant architecture docs under `.agents/docs/`.
+11. Git history for removed experiments and superseded handoffs.
 
 Current source/tests and live TODOs outrank this handoff if main advances.
 
@@ -1129,96 +1131,61 @@ is already green; repeat it only if host/runtime state changes.
 
 ## Copy/paste next-agent prompt
 
-> Use `dotlink---l5` for all repository/source changes and `dotlink---x2` only for
-> AMD large-VRAM execution/testing. On both hosts work in
-> `/home/pvl/spaces/abird/src/zerogravity` on `main`; do not create another Git
-> worktree. First read, in order: `AGENTS.md`, `.agents/plans/README.md`,
-> `.agents/docs/CURRENT_HANDOFF.md`,
-> `.agents/docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-14.md`,
-> `.agents/plans/TODO.md`, `.agents/plans/model-execution/TODO.md`,
-> `.agents/plans/numerics-and-context/CORRECTNESS_POLICY.md`, and then the owning
-> plan(s) for the task. Current source/tests/live TODOs outrank handoff text if
-> `main` has advanced.
+> Use dotlink---l5 as the only source-authoring connector. Continue in
+> /home/pvl/spaces/abird/src/zerogravity on the single main worktree. Use
+> dotlink---x2 only for AMD large-VRAM execution/testing; synchronize exact L5
+> commits by Git bundle rather than pushing merely for transport.
 >
-> Revalidate before editing: `git status --short --branch`, `git rev-parse HEAD`,
-> `git rev-parse origin/main`, `git log -1 --show-signature`,
-> `git worktree list --porcelain`, active Cargo/model/native-gpu processes, and
-> physical GPU state. Latest implementation is signed
-> `9d6613cb0bef84147a7d30453e5afb82ca83411b`
-> (`feat(cuda): select compatible resident graph cache`), while pushed
-> `origin/main` is `4502f5678e8cb1641848be62cd0fb5068bae1d09`.
-> The handoff creation itself may add one newer docs-only signed commit, so trust
-> live Git and sync X2 to that exact l5 tip by bundle before any new X2 physical
-> execution. Never push unless the user explicitly asks.
+> Read first, in order: AGENTS.md, .agents/plans/README.md,
+> .agents/docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-18.md,
+> .agents/docs/CURRENT_HANDOFF.md, .agents/plans/TODO.md,
+> .agents/plans/model-execution/TODO.md,
+> .agents/plans/numerics-and-context/CORRECTNESS_POLICY.md,
+> .agents/plans/serving-and-speculation/TODO.md,
+> .agents/plans/serving-and-speculation/BATCHING_AND_PAGED_STATE.md,
+> .agents/plans/memory-and-streaming/TODO.md, then any owning docs/plans linked
+> from those files.
 >
-> **Immediate continuation:** signed `63ee14e` owns the private workspace graph
-> lifecycle/cache and signed `9d6613c` adds its fail-closed exact-compatible private
-> selector. Exact live compatibility selects Graph; absent/cold/spent/incompatible
-> profile/device-token routes select Native before graph enqueue; runtime identity/
-> lifecycle drift, unresolved selection and replay failure error without Native retry.
-> Public serving still constructs `FusedExecution::Native`. The supervised original
-> 0.8B B2 selector qualifier preserves full248320/all42, the exact **15,356,224-byte**
-> graph charge, trusted retirement/replacement and final reserved0/41MiB; it proves
-> compatible selector replay and incompatible Native fallback without graph replay.
-> One preceding fresh selector invocation disappeared without Rust error/exit code and
-> remains incomplete. Driver-internal graph bytes/node enumeration remain unqualified.
+> Revalidate before editing: Git status, HEAD, origin/main, signature, worktrees,
+> live Cargo/model/native-gpu/Bubblewrap processes, physical GPU baseline, source
+> cache identities, disk and _tmp. Preserve unrelated work. Do not create another
+> persistent worktree/branch. Commits must remain signed. Do not push unless the
+> user explicitly requests it.
 >
-> **Next phase:** keep public serving Native and extend the same matched selector
-> evidence to B4/B8 before deciding any capture/selection policy. B2 AB/BA timing was
-> positive but modest: Native mean273,933us/median267,847us versus selected Graph
-> mean264,881us/median263,238us (~3.3% mean/~1.7% median), so it is not a serving-win
-> gate by itself. Preserve all existing numerical/state/source/resource/lifetime
-> authority and do not enable graph serving unless the broader matched evidence makes
-> the complexity worthwhile.
+> Current production ordinary serving remains Native and public graph serving
+> remains disabled. Both approved original Qwen3.5-0.8B and2B pass source-real
+> paged B1 full-vocabulary/all42 boundary parity and cold lifecycle at
+> page_tokens=4/max_append_tokens=4. The paged logical/physical COW stack,
+> gather/scatter, canonical paged Domain/root authority, one-staging KvInPlace,
+> hybrid admission/pools, current-root candidate execution, snapshots/restore,
+> inherited Ready rules and explicit low-level paged source policy are accepted.
+> High-level paged serving is not selected.
 >
-> Preserve the graph invariants already established: one cold capture per live
-> batch workspace; exact service/source/generation/stream/profile identity; batch
-> workspace pinning across graph life; exact retained storage/access authority;
-> graph resource charge acquired before `graph_prepare`, allowed to grow only
-> before capture starts, retained through capture/replay/quarantine and released
-> only after trusted retirement; terminal graph destruction only after trusted
-> barriers; unknown completion fences/quarantines rather than freeing. One older
-> repeat under the previous **15,339,840-byte** policy failed closed at the first
-> post-capture idle check with an exact-policy-sized resident-byte delta. It did not
-> reproduce in four subsequent runs, and the stronger `81b7c71` witness remains in
-> place. Do not weaken the idle invariant or claim that transient is explained.
+> The native GPU harness is accepted at 6b920a0. It reuses an existing Bubblewrap
+> PID/user sandbox; uses Bubblewrap private netns when present; otherwise applies
+> fail-closed socket/io_uring seccomp; outside Bubblewrap it retains user+net
+> unshare. Do not reintroduce nested user namespace assumptions. Commands that
+> require TCP/UDP loopback must use --require-private-network and fail closed on
+> the current shared-net profile. Heartbeat output is optional harness plumbing,
+> not a correctness requirement.
 >
-> Preserve the accepted ordinary CUDA path: exact independent source reduction
-> contracts; genuine B4/B8 cohorts with B2 partial regrouping; same-frontier
-> chunked/ragged prefill; selected canonical-boundary private B8 recurrent core
-> `60b048d`; selected ragged private B8 KV `775dfa6`; selected B8 private-KV
-> CTA256 `399e43a`; canonical roots remain checkpoint/rollback/publication
-> authority. Keep reusable model-neutral primitives even where the first Qwen
-> consumer was rejected: grouped recurrent transport, packed BF16 greedy,
-> head→greedy partials, grouped ConvB4 transport, dual Q/K RMS, certified recurrent
-> export, private B8 attention/gated GDN, stateless row/RMS/gate/rotary primitives,
-> exact-root derived cache, and `874e67d`'s Ordered+LaneBlocked pair. Do not
-> resurrect rejected B16/unequal-prefill/recurrent/transpose/CTA/head/Conv/QK/
-> LaneBlocked/K64/Rounded/dominant-LaneStrided variants without materially
-> different architecture and evidence.
+> Use CARGO_BUILD_JOBS=8 and
+> RUSTC_WRAPPER=/run/current-system/sw/bin/kache for every Cargo invocation.
+> Run physical GPU work only through python3 -B scripts/native-gpu.py -- ...
+> Remove all _tmp artifacts.
 >
-> Large same-contract CUDA distribution/state acceptance remains blocked by missing
-> approved reference/archive material on l5; do not invent tolerances, repin or
-> substitute another reference. On X2, exact tokenizer/source binding and the full
-> canonical27B host runtime path are green. X2 is a **shared GPU host**: existing
-> KFD owners/VRAM (including Ollama/model workloads) are baseline, not a blocker.
-> Before our run record current VRAM/KFD state, run only within available capacity,
-> and verify only our incremental process/VRAM/queue delta retires. Never
-> reset/reclaim/restart/kill another owner. The prior exact75GiB27B HTTP attempt
-> disappeared before HTTP status; historical R9/R10 HTTP504 predates resident-budget
-> support, and the accepted66-call plus populated1K/2K reference material is still
-> missing. Preserve the existing180s contract; do not extend/repin to manufacture a
-> pass.
+> Continue with the next coherent P12-C slice: true in-flight CUDA cancellation
+> on the ordinary paged source path. After-Ready cancellation is already accepted
+> and does not satisfy this gate. Establish a real submitted/in-flight boundary,
+> preserve exact Root/Ready/cancellation/resource authority, no partial
+> publication, fail-safe unknown-completion/quarantine, exact continuation and
+> clean retirement. Do not jump to high-level paged serving, native B2/B4/B8
+> paged transport, complete-domain prefix reuse or physical overlap before this
+> gate is accepted.
 >
-> Work implementation-first: shared clean primitives where semantics genuinely
-> generalize, model/source policy at model/source layers, Rust ownership/zero-cost
-> abstractions where natural, correctness before performance. Reuse accepted
-> validation for unchanged primitives. Use `CARGO_BUILD_JOBS=8`; physical GPU work
-> only through `python3 -B scripts/native-gpu.py -- ...`; prefer durable jobs for
-> long builds/runs. Remove every `_tmp` runner/include view/temporary selector or
-> profiling hook after use. Inspect `git diff --cached --stat` before every signed
-> commit. Keep each user turn to about30 minutes, checkpoint at the next coherent
-> point, pause, and do not push unless explicitly asked.
+> Keep the implementation turn to roughly 30 minutes. Aim for the next coherent
+> checkpoint, update owning TODO/handoff state, sign the commit, sync X2 only if
+> needed for AMD physical work, then pause. Do not push unless explicitly asked.
 
 ---
 
