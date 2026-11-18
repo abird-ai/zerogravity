@@ -173,9 +173,17 @@ The following extends existing owners; source-byte qualification is not inferenc
   tests plus real sandbox network/io_uring/private-net and silent 15s smokes pass.
   Current L5 shared-network Bubblewrap intentionally cannot run the full
   loopback-dependent `scripts/check.sh` gate; use a private-net connector
-  profile for that gate. Both small approved models now clear source-real paged
-  B1 state/lifecycle. Next true in-flight cancel, then native batches/HTTP.
-  page_tokens remains explicit.
+  profile for that gate. Both small approved models clear source-real paged B1
+  state/lifecycle. **19 Nov original0.8B also clears true in-flight cancellation:**
+  a real post-enqueue/pre-Ready launch cut proves Vector/staging/page ownership is
+  held until known physical completion, cancellation retirement creates no Ready
+  or initialized candidate Write, committed root/all42 stay exact, pool occupancy
+  returns exactly, replay continues and shutdown is clean. A deliberate submitted
+  future drop proves the existing fail-safe unknown path fences the service and
+  quarantines the pending event,396 handles and completion owners without pool
+  reuse or root publication. Two externally SIGKILLed attempts remain incomplete;
+  the terminal known/unknown runs pass. page_tokens remains explicit; high-level
+  paged selection, native batches/HTTP, prefix reuse and overlap are still later.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

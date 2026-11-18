@@ -429,9 +429,36 @@ fn canonical_write_outputs(current: &[Domain], candidate: &[Domain]) -> Result<V
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
+fn ordinary_cancel_requested(cancelled: Option<&std::sync::atomic::AtomicBool>) -> bool {
+    cancelled.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire))
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
 fn ordinary_not_cancelled(cancelled: Option<&std::sync::atomic::AtomicBool>) -> Result<()> {
-    if cancelled.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire)) {
+    if ordinary_cancel_requested(cancelled) {
         return Err(Error::State("ordinary CUDA request cancelled".into()));
+    }
+    Ok(())
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
+async fn retire_ordinary_cancelled(
+    flight: crate::resident_leases::ResidentSubmission<'_>,
+    accesses: &[(ResidentLease, DeviceAccess)],
+    status: &Handle,
+) -> Result<()> {
+    let status = lease_for(accesses, status)?.readback(0, 4)?;
+    let read = flight.retire_cancelled_with_readback(&[status]).await?;
+    if read.len() != 1 || !all_zero(&read[0]) {
+        return Err(Error::State(
+            "cancelled ordinary source work reported a nonzero status".into(),
+        ));
     }
     Ok(())
 }
@@ -2091,8 +2118,10 @@ impl ResidentModel {
         workspace
             .program
             .validate_source_call_states(request, bindings)?;
-        let wait_on_cancel =
-            workspace.program.source_call_waits_on_cancel() || completion_owner.is_some();
+        // Completion owners are retained by the armed physical flight and follow
+        // it into quarantine on uncertainty. Only backend page semantics may
+        // require waiting through cancellation.
+        let wait_on_cancel = workspace.program.source_call_waits_on_cancel();
         let mut accesses = match output {
             ResidentOutput::StateOnly => workspace.state_accesses.clone(),
             ResidentOutput::Logits => workspace.logit_accesses.clone(),
@@ -2194,8 +2223,10 @@ impl ResidentModel {
         #[cfg(feature = "hardware-abort-probe")]
         self.qualification_after_launch(flight.handles().len())
             .await;
-        if !wait_on_cancel {
-            ordinary_not_cancelled(cancelled)?;
+        if !wait_on_cancel && ordinary_cancel_requested(cancelled) {
+            retire_ordinary_cancelled(flight, &accesses, &submitted.status).await?;
+            slot.finish()?;
+            return Err(Error::State("ordinary CUDA request cancelled".into()));
         }
 
         let expected = workspace.program.plan().proposed_domains();
@@ -2259,8 +2290,10 @@ impl ResidentModel {
         let mut promoted = candidate.write_outputs()?;
         promoted.extend(packet.iter().cloned());
         let expected_readback_bytes = cohort.iter().map(|item| item.bytes()).sum();
-        if !wait_on_cancel {
-            ordinary_not_cancelled(cancelled)?;
+        if !wait_on_cancel && ordinary_cancel_requested(cancelled) {
+            retire_ordinary_cancelled(flight, &accesses, &submitted.status).await?;
+            slot.finish()?;
+            return Err(Error::State("ordinary CUDA request cancelled".into()));
         }
         let (ready, read) = flight
             .complete_with_readback(&promoted, &cohort, |values| {
@@ -3463,6 +3496,12 @@ mod ordinary_shutdown_owner_tests {
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
 mod source_call;
+#[cfg(all(
+    feature = "cuda-cublas",
+    feature = "hardware-abort-probe",
+    target_os = "linux"
+))]
+pub use source_call::SourceCallPagedPoolSnapshot;
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
 pub use source_call::{
     CudaSourceStatePolicy, SourceCallCohortPending, SourceCallCohortPreparation,

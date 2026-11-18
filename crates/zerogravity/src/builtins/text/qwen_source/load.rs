@@ -441,6 +441,8 @@ mod cuda_paged_tests {
         },
     };
     use std::sync::atomic::{AtomicBool, Ordering};
+    #[cfg(feature = "qwen35-cuda-paged-cancellation-qualification")]
+    use std::{future::Future, task::Poll};
 
     const MIB: usize = 1024 * 1024;
     const PROVIDER_BYTES: usize = 4608 * MIB;
@@ -902,6 +904,261 @@ mod cuda_paged_tests {
             println!(
                 "P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens={page_tokens} cold_load=true prelaunch_cancel=true abandoned_ready=true cancel_after_ready=true restore_before_boundary=true restore_at_boundary=true all42=exact final_shutdown=true"
             );
+        });
+    }
+
+    #[cfg(feature = "qwen35-cuda-paged-cancellation-qualification")]
+    #[test]
+    #[ignore = "approved original HF cache; real submitted paged CUDA cancellation before Ready"]
+    fn original_source_b1_paged_inflight_cancel_retires_exactly() {
+        let (parts, page_tokens, max_append_tokens, tokens) =
+            paged_source_fixture("paged-source-inflight-cancel");
+        block_on(async {
+            let model = ResidentModel::load_ordinary_cuda_source_with_state_policy(
+                Device::Cuda(Default::default()),
+                parts.source.plan.source().clone(),
+                parts.source.clone(),
+                parts.source.plan.plan().clone(),
+                1,
+                0,
+                PROVIDER_BYTES,
+                DEVICE_BYTES,
+                CudaSourceStatePolicy::Paged {
+                    page_tokens,
+                    max_append_tokens,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+            let mut session = model.session().await.unwrap();
+            let root0 = session.binding();
+            let initial = session.snapshot().unwrap();
+            let initial_domains = initial.read_domains().await.unwrap().to_vec();
+            let before = model.diagnostic_paged_pool_snapshot().unwrap();
+            let occupied = |allocated: usize, idle: usize| {
+                allocated.checked_sub(idle).expect("pool occupancy")
+            };
+
+            let first_ids = Arc::<[u32]>::from(tokens[..page_tokens - 1].to_vec());
+            let first = parts
+                .source
+                .plan
+                .bind_invocation(SourceCallMode::Prefill, 0, first_ids, true)
+                .unwrap();
+            let cancelled = Arc::new(AtomicBool::new(false));
+            model.diagnostic_pause_next_launch().unwrap();
+            let mut future = Box::pin(session.prepare(
+                first.bound_invocation(),
+                SourceCallMode::Prefill,
+                ResidentOutput::Logits,
+                Some(cancelled.clone()),
+            ));
+            let submitted_handles = std::future::poll_fn(|cx| {
+                if future.as_mut().poll(cx).is_ready() {
+                    panic!("paged cancellation qualifier completed before launch cut");
+                }
+                let handles = model.diagnostic_launch_handles();
+                if handles == 0 {
+                    Poll::Pending
+                } else {
+                    Poll::Ready(handles)
+                }
+            })
+            .await;
+            let during = model.diagnostic_paged_pool_snapshot().unwrap();
+            assert!(submitted_handles > 0, "no real CUDA submission observed");
+            assert_eq!(model.diagnostic_pending_events().unwrap(), 1);
+            assert_eq!(model.diagnostic_quarantined_handles().unwrap(), 0);
+            assert_eq!(model.diagnostic_quarantined_completion_owners().unwrap(), 0);
+            assert!(
+                occupied(during.vector_allocated_sets, during.vector_idle_sets)
+                    > occupied(before.vector_allocated_sets, before.vector_idle_sets),
+                "submitted Vector candidate recycled before completion"
+            );
+            assert!(
+                occupied(during.staging_allocated_sets, during.staging_idle_sets)
+                    > occupied(before.staging_allocated_sets, before.staging_idle_sets),
+                "submitted staging candidate recycled before completion"
+            );
+            assert!(
+                occupied(during.allocated_pages, during.idle_pages)
+                    > occupied(before.allocated_pages, before.idle_pages),
+                "submitted page candidate recycled before completion"
+            );
+
+            cancelled.store(true, Ordering::Release);
+            model.diagnostic_resume_launch();
+            assert!(matches!(
+                future.await,
+                Err(crate::Error::State(reason)) if reason == "ordinary CUDA request cancelled"
+            ));
+            assert_eq!(
+                session.binding(),
+                root0,
+                "in-flight cancel published a root"
+            );
+            let after_cancel = session.snapshot().unwrap();
+            exact_domains(
+                &initial_domains,
+                &after_cancel.read_domains().await.unwrap(),
+                "paged in-flight cancel",
+            );
+            drop(after_cancel);
+            assert_eq!(model.diagnostic_pending_events().unwrap(), 0);
+            assert!(model.diagnostic_service_usable());
+            assert_eq!(model.diagnostic_quarantined_handles().unwrap(), 0);
+            assert_eq!(model.diagnostic_quarantined_completion_owners().unwrap(), 0);
+            let after = model.diagnostic_paged_pool_snapshot().unwrap();
+            assert_eq!(
+                occupied(after.vector_allocated_sets, after.vector_idle_sets),
+                occupied(before.vector_allocated_sets, before.vector_idle_sets),
+                "cancelled Vector candidate did not retire exactly"
+            );
+            assert_eq!(
+                occupied(after.staging_allocated_sets, after.staging_idle_sets),
+                occupied(before.staging_allocated_sets, before.staging_idle_sets),
+                "cancelled staging candidate did not retire exactly"
+            );
+            assert_eq!(
+                occupied(after.allocated_pages, after.idle_pages),
+                occupied(before.allocated_pages, before.idle_pages),
+                "cancelled page candidate did not retire exactly"
+            );
+
+            cancelled.store(false, Ordering::Release);
+            let replay = session
+                .prepare(
+                    first.bound_invocation(),
+                    SourceCallMode::Prefill,
+                    ResidentOutput::Logits,
+                    None,
+                )
+                .await
+                .unwrap();
+            let SourceCallPreparation::Ready(replay) = replay else {
+                panic!("valid work after in-flight cancellation was not Ready");
+            };
+            let SourceCallPublication::Committed(read) = session.commit(replay).unwrap() else {
+                panic!("valid work after in-flight cancellation was not committed");
+            };
+            assert_eq!(session.binding().frontier(), (page_tokens - 1) as u64);
+            assert_eq!(model.diagnostic_pending_events().unwrap(), 0);
+            drop(read);
+            drop(initial);
+            drop(session);
+            model.shutdown().await.unwrap();
+            println!(
+                "P12_SOURCE_PAGED_INFLIGHT_CANCEL_PASS page_tokens={page_tokens} max_append_tokens={max_append_tokens} submitted_handles={submitted_handles} cancelled_before_ready=true root_unchanged=true all42=exact vector_held=true staging_held=true pages_held=true completion=known retired_exact=true replay=true final_shutdown=true"
+            );
+        });
+    }
+
+    #[cfg(feature = "qwen35-cuda-paged-cancellation-qualification")]
+    #[test]
+    #[ignore = "approved original HF cache; dropped submitted paged CUDA work must quarantine"]
+    fn original_source_b1_paged_unknown_completion_quarantines_exactly() {
+        let (parts, page_tokens, max_append_tokens, tokens) =
+            paged_source_fixture("paged-source-unknown-completion");
+        block_on(async {
+            let model = ResidentModel::load_ordinary_cuda_source_with_state_policy(
+                Device::Cuda(Default::default()),
+                parts.source.plan.source().clone(),
+                parts.source.clone(),
+                parts.source.plan.plan().clone(),
+                1,
+                0,
+                PROVIDER_BYTES,
+                DEVICE_BYTES,
+                CudaSourceStatePolicy::Paged {
+                    page_tokens,
+                    max_append_tokens,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+            let session = model.session().await.unwrap();
+            let root0 = session.binding();
+            let initial = session.snapshot().unwrap();
+            let initial_domains = initial.read_domains().await.unwrap().to_vec();
+            assert_eq!(initial_domains.len(), 42);
+            drop(initial);
+            let before = model.diagnostic_paged_pool_snapshot().unwrap();
+            let occupied = |allocated: usize, idle: usize| {
+                allocated.checked_sub(idle).expect("pool occupancy")
+            };
+
+            let first_ids = Arc::<[u32]>::from(tokens[..page_tokens - 1].to_vec());
+            let first = parts
+                .source
+                .plan
+                .bind_invocation(SourceCallMode::Prefill, 0, first_ids, true)
+                .unwrap();
+            model.diagnostic_pause_next_launch().unwrap();
+            let mut future = Box::pin(session.prepare(
+                first.bound_invocation(),
+                SourceCallMode::Prefill,
+                ResidentOutput::Logits,
+                None,
+            ));
+            let submitted_handles = std::future::poll_fn(|cx| {
+                if future.as_mut().poll(cx).is_ready() {
+                    panic!("paged unknown qualifier completed before launch cut");
+                }
+                let handles = model.diagnostic_launch_handles();
+                if handles == 0 {
+                    Poll::Pending
+                } else {
+                    Poll::Ready(handles)
+                }
+            })
+            .await;
+            let during = model.diagnostic_paged_pool_snapshot().unwrap();
+            assert!(submitted_handles > 0, "no real CUDA submission observed");
+            assert_eq!(model.diagnostic_pending_events().unwrap(), 1);
+            assert!(
+                occupied(during.vector_allocated_sets, during.vector_idle_sets)
+                    > occupied(before.vector_allocated_sets, before.vector_idle_sets)
+                    && occupied(during.staging_allocated_sets, during.staging_idle_sets)
+                        > occupied(before.staging_allocated_sets, before.staging_idle_sets)
+                    && occupied(during.allocated_pages, during.idle_pages)
+                        > occupied(before.allocated_pages, before.idle_pages),
+                "submitted paged resources were not held at the launch cut"
+            );
+
+            drop(future);
+            model.diagnostic_resume_launch();
+            assert_eq!(
+                session.binding(),
+                root0,
+                "unknown completion published a root"
+            );
+            assert!(!model.diagnostic_service_usable());
+            assert_eq!(model.diagnostic_pending_events().unwrap(), 1);
+            assert!(
+                model.diagnostic_quarantined_handles().unwrap() >= submitted_handles,
+                "unknown completion did not retain submitted handles"
+            );
+            assert!(
+                model.diagnostic_quarantined_completion_owners().unwrap() > 0,
+                "unknown completion lost source completion authority"
+            );
+            let after = model.diagnostic_paged_pool_snapshot().unwrap();
+            assert!(
+                occupied(after.vector_allocated_sets, after.vector_idle_sets)
+                    >= occupied(during.vector_allocated_sets, during.vector_idle_sets)
+                    && occupied(after.staging_allocated_sets, after.staging_idle_sets)
+                        >= occupied(during.staging_allocated_sets, during.staging_idle_sets)
+                    && occupied(after.allocated_pages, after.idle_pages)
+                        >= occupied(during.allocated_pages, during.idle_pages),
+                "unknown-completion resources were recycled"
+            );
+            println!(
+                "P12_SOURCE_PAGED_UNKNOWN_COMPLETION_PASS page_tokens={page_tokens} max_append_tokens={max_append_tokens} submitted_handles={submitted_handles} root_binding_unchanged=true service_fenced=true pending_event=true handles_quarantined=true completion_owners_retained=true pools_not_recycled=true recovery=false"
+            );
+            drop(session);
+            drop(model);
         });
     }
 }

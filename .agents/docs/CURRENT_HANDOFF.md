@@ -19,17 +19,17 @@ and live TODOs are authoritative.
 - **AMD large-VRAM execution/test host:** use `dotlink---x2` only for running and
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
-- Latest signed **implementation/qualification** checkpoint is
+- Accepted native-GPU harness checkpoint is
   `6b920a0a91e534eae86f81e603cf419dea3b207b`
   (`fix(harness): reuse existing sandbox isolation`). The paged-state lineage
   remains `e6aac53` -> `3041457` -> `398e446`: `e6aac53` keeps the
   lifecycle qualifier cold-only, `3041457` corrected restore qualification,
-  and `398e446`
-  added the source-real lifecycle target; `1413f72` is the
-  runtime/source-policy checkpoint; `b9b04aa`
-  remains the accepted current-root gather/KvInPlace/scatter/Ready candidate
-  execution; `cb57e1d` remains the physical pool substrate and `93468b1`
-  remains snapshot/restore/inherited-Ready authority.
+  and `398e446` added the source-real lifecycle target; `1413f72` is the
+  runtime/source-policy checkpoint; `b9b04aa` remains the accepted current-root
+  gather/KvInPlace/scatter/Ready candidate execution; `cb57e1d` remains the
+  physical pool substrate and `93468b1` remains snapshot/restore/inherited-Ready
+  authority. Current main additionally carries the 19 Nov true in-flight
+  cancellation implementation/qualification described below.
   `1413f72` adds `CudaSourceStatePolicy::{Contiguous,Paged}` at the original
   source-call loader seam. Existing `load_ordinary_cuda_source` remains an exact
   Contiguous wrapper; the explicit policy-bearing loader installs hybrid
@@ -257,17 +257,23 @@ and live TODOs are authoritative.
     final_shutdown=true`.
   Therefore both approved original0.8B and2B now pass source-real paged B1
   full-vocab/all42 boundary parity and cold lifecycle semantics.
-  **Next executable P12-C slice is true in-flight CUDA cancellation** on the
-  ordinary source path. Keep the model child foreground and require an actual
-  launch-boundary proof; periodic heartbeat output is optional harness plumbing,
-  not part of the correctness contract. Run ordinary model/GPU physical cells
-  through the accepted `native-gpu` isolation plan; reserve
-  `--require-private-network` for gates that genuinely need TCP/UDP loopback.
-  After-Ready cancellation is already accepted but is not a substitute. Only
-  after that gate should high-level paged serving/native B2/B4/B8/HTTP work
-  begin.
-  Complete-domain prefix reuse follows these state gates; event/lease-backed physical
-  overlap remains after those state gates and must not be pulled forward.
+  **19 Nov P12-C true in-flight CUDA cancellation is accepted on original0.8B
+  paged B1.** A qualification-only launch witness pauses the original ordinary
+  CUDA flight only after real gather/body/scatter enqueue and before Ready. Known
+  cancellation waits for physical status readback, marks no candidate Write
+  initialized and creates no Ready: root/all42 remain exact, Vector/staging/page
+  resources stay held through completion, pool occupancy returns exactly, replay
+  commits and final shutdown returns RTX3060 to37MiB. A paired deliberate drop at
+  the same submitted cut proves the accepted fail-safe unknown path: root binding
+  unchanged, service fenced, event pending,396 handles and source completion
+  owners quarantined, no pool reuse/recovery. Two external-SIGKILL attempts before
+  semantic completion remain incomplete; direct known-completion and final
+  heartbeat-assisted unknown-completion runs exit0. Heartbeat is optional transport
+  plumbing only. Run physical cells through `native-gpu`; reserve
+  `--require-private-network` for genuine TCP/UDP loopback gates. No high-level
+  paged serving/default changed. Next consider the explicit high-level paged
+  selector, then native B2/B4/B8/HTTP. Complete-domain prefix reuse and
+  event/lease-backed overlap remain later.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -287,9 +293,9 @@ and live TODOs are authoritative.
   nonpersistent NVRTC) and `81b7c71` (explicit graph-resource lifetime witness).
   Their docs checkpoints through `b12e8f5` are pushed.
 - Pushed `origin/main` is `3a1596db12d0f2e5d104ed1980f57af9ae27a513`
-  (`docs: checkpoint paged source lifecycle qualifier`). Current
-  `3041457` plus this acceptance refresh remain local until explicitly pushed.
-  Never use push merely for X2 transport.
+  (`docs: checkpoint paged source lifecycle qualifier`). All newer signed local
+  paged/harness/handoff/cancellation work remains unpushed until explicitly
+  requested. Never use push merely for X2 transport.
 - Before any new physical X2 run, sync it to the exact current l5 `main`
   bytes/commit without using a push merely as transport, then revalidate
   status/process/GPU state.
@@ -1174,14 +1180,16 @@ is already green; repeat it only if host/runtime state changes.
 > Run physical GPU work only through python3 -B scripts/native-gpu.py -- ...
 > Remove all _tmp artifacts.
 >
-> Continue with the next coherent P12-C slice: true in-flight CUDA cancellation
-> on the ordinary paged source path. After-Ready cancellation is already accepted
-> and does not satisfy this gate. Establish a real submitted/in-flight boundary,
-> preserve exact Root/Ready/cancellation/resource authority, no partial
-> publication, fail-safe unknown-completion/quarantine, exact continuation and
-> clean retirement. Do not jump to high-level paged serving, native B2/B4/B8
-> paged transport, complete-domain prefix reuse or physical overlap before this
-> gate is accepted.
+> True in-flight CUDA cancellation on original0.8B paged B1 is accepted: real
+> post-enqueue/pre-Ready launch witness, no Ready/publication on cancellation,
+> exact root/all42 rollback, submitted Vector/staging/page ownership through known
+> completion, exact retirement + replay + shutdown, and deliberate-drop
+> unknown-completion fencing/quarantine with no reuse. Two external-SIGKILL attempts
+> remain incomplete; the terminal known/unknown physical cells pass. No public
+> paged default/selector changed. Continue with the next coherent P12-C slice:
+> consider an explicit high-level paged selector without changing defaults, then
+> native B2/B4/B8 paged state transport/HTTP. Keep complete-domain prefix reuse
+> and event/lease physical overlap behind their remaining gates.
 >
 > Keep the implementation turn to roughly 30 minutes. Aim for the next coherent
 > checkpoint, update owning TODO/handoff state, sign the commit, sync X2 only if

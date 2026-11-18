@@ -198,7 +198,6 @@ impl ResidentLedger {
         self.event_models.remove(&id);
         Ok(())
     }
-    #[cfg(test)]
     pub(super) fn request_cancel(&mut self, id: DeviceEventId) -> Result<()> {
         self.events.request_cancel(id)?;
         if self.events.phase(id).is_err() {

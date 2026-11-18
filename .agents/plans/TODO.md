@@ -258,14 +258,22 @@ keeping the model foreground:
 - `744f36fd...` cold lifecycle exits0 in438.18s with
   `cold_load=true`, prelaunch cancel, abandoned Ready, cancel-after-Ready,
   both exact restores/all42 and final shutdown.
-**Next: add true CUDA in-flight cancellation qualification on the ordinary source
-path.** After-Ready discard is already proven but does not satisfy this gate.
-Heartbeat output is optional harness plumbing, not an acceptance requirement.
-Use ordinary `native-gpu` isolation for model/GPU cells and
-`--require-private-network` only for loopback-dependent gates. Then consider
-high-level paged serving selection. Default CUDA/native/HIP stay contiguous.
-Complete-domain prefix identity/intersection follows that.
-Event/lease-backed physical overlap remains after those state gates.
+**19 Nov P12-C in-flight cancellation gate is accepted on original0.8B paged B1.**
+A qualification-only launch cut observes the already-armed ordinary CUDA flight
+after real enqueue and before Ready. Known cancellation retires through the
+original event ledger only after physical status readback, never initializes
+candidate Writes or constructs Ready: root/all42 stay exact, Vector/staging/page
+owners remain held until completion, retire to the preflight pool occupancy,
+valid replay commits and final shutdown returns RTX3060 to37MiB. Deliberately
+dropping the submitted future exercises the existing unknown-completion path:
+root binding stays unchanged, the service fences, the pending event,396 submitted
+handles and completion owners remain quarantined, and pool backing is not reused.
+Two external-SIGKILL attempts before semantic completion remain incomplete; the
+direct known-completion run and the final heartbeat-assisted unknown run both
+exit0. Heartbeat output is transport plumbing only, not correctness. No high-level
+paged serving/default changed. Next consider the explicit high-level paged selector,
+then native B2/B4/B8 + HTTP. Complete-domain prefix reuse and event/lease overlap
+remain later gates.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

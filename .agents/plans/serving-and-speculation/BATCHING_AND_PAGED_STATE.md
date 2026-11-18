@@ -606,13 +606,40 @@ max_append_tokens4:
   final_shutdown=true`.
 
 Thus original0.8B and2B both clear the source-real paged B1 boundary and
-lifecycle gates. Next add a **true in-flight CUDA cancellation** cell on the
-ordinary source path. The existing after-Ready cancellation proof is not
-in-flight; require a real launch-boundary observation and preserve no-partial-
-publication/quarantine semantics before any high-level paged serving selector.
-Heartbeat output, if used, is optional harness plumbing only. Ordinary physical
-model cells can use the seccomp fallback; loopback-dependent serving/full-gate
-work must require a private network namespace explicitly.
+lifecycle gates.
+
+**19 Nov true in-flight CUDA cancellation follow-up:** original0.8B page4/append4
+now closes the missing cancellation phase on the ordinary paged source path. A
+qualification-only launch witness pauses after gather + ordinary body + scatter
+have actually been enqueued under the original `ResidentSubmission`, before any
+physical readback/Ready. If cancellation wins at that cut, the original event is
+marked cancellation-requested and a status readback is the positive physical
+completion witness. The event/queue work retires without `record_completed_write`
+and without constructing `ResidentReady`; candidate Vector/staging/page leases
+therefore never become publication authority. The physical pass reports
+`P12_SOURCE_PAGED_INFLIGHT_CANCEL_PASS ... submitted_handles=396
+cancelled_before_ready=true root_unchanged=true all42=exact vector_held=true
+staging_held=true pages_held=true completion=known retired_exact=true replay=true
+final_shutdown=true`, and RTX3060 returns to37MiB.
+
+The paired unknown-completion proof drops that exact submitted future at the same
+launch cut. Existing `ResidentSubmission::drop` remains the authority: no root is
+published, the service fences, one event remains pending, all396 submitted handles
+and source completion owners enter process-lifetime quarantine, and hybrid pool
+backing is not recycled. Marker:
+`P12_SOURCE_PAGED_UNKNOWN_COMPLETION_PASS ... root_binding_unchanged=true
+service_fenced=true pending_event=true handles_quarantined=true
+completion_owners_retained=true pools_not_recycled=true recovery=false`.
+Two earlier executions were externally SIGKILLed before terminal model semantics
+and remain incomplete; the direct known-completion run and the final
+heartbeat-assisted unknown-completion run each exit0. Periodic output is optional
+transport plumbing only, not an acceptance requirement.
+
+No public/default paged selector changed. Next consider the explicit high-level
+paged selector, then native B2/B4/B8 state transport and HTTP. Complete-domain
+prefix reuse remains after those state gates; event/lease-backed physical overlap
+remains later. Ordinary physical model cells can use the seccomp fallback;
+loopback-dependent serving/full-gate work must require a private network namespace.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve

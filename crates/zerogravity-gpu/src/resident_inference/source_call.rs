@@ -43,6 +43,17 @@ pub enum CudaSourceStatePolicy {
     },
 }
 
+#[cfg(all(feature = "hardware-abort-probe", feature = "cuda-cublas"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SourceCallPagedPoolSnapshot {
+    pub vector_allocated_sets: usize,
+    pub vector_idle_sets: usize,
+    pub staging_allocated_sets: usize,
+    pub staging_idle_sets: usize,
+    pub allocated_pages: usize,
+    pub idle_pages: usize,
+}
+
 /// No exposed inner model/session: detached readers must retain these owners.
 pub struct SourceCallModel {
     inner: Arc<ResidentModel>,
@@ -416,6 +427,78 @@ impl SourceCallModel {
         }
         service.close_model_namespace()
     }
+
+    #[cfg(feature = "hardware-abort-probe")]
+    pub fn diagnostic_pause_next_launch(&self) -> Result<()> {
+        let _idle = self.inner.workspace.try_lock().ok_or_else(|| {
+            Error::State("source-call launch probe requires idle workspace".into())
+        })?;
+        self.inner.service.ensure_usable()?;
+        if self.inner.qualification_launch_seen() != 0 {
+            return Err(Error::State(
+                "source-call launch probe already reached".into(),
+            ));
+        }
+        self.inner
+            .abort_after_launch
+            .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| Error::State("source-call launch probe already armed".into()))?;
+        Ok(())
+    }
+
+    #[cfg(feature = "hardware-abort-probe")]
+    pub fn diagnostic_launch_handles(&self) -> usize {
+        self.inner.qualification_launch_seen()
+    }
+
+    #[cfg(feature = "hardware-abort-probe")]
+    pub fn diagnostic_resume_launch(&self) {
+        self.inner.qualification_reset_launch_seen();
+    }
+
+    #[cfg(feature = "hardware-abort-probe")]
+    pub fn diagnostic_pending_events(&self) -> Result<usize> {
+        self.inner.service.pending_events()
+    }
+
+    #[cfg(feature = "hardware-abort-probe")]
+    pub fn diagnostic_service_usable(&self) -> bool {
+        self.inner.service.ensure_usable().is_ok()
+    }
+
+    #[cfg(all(feature = "hardware-abort-probe", feature = "cuda-cublas"))]
+    pub fn diagnostic_quarantined_handles(&self) -> Result<usize> {
+        crate::physical_quarantine::quarantined_handles_for(self.inner.service.client())
+    }
+
+    #[cfg(all(feature = "hardware-abort-probe", feature = "cuda-cublas"))]
+    pub fn diagnostic_quarantined_completion_owners(&self) -> Result<usize> {
+        crate::physical_quarantine::quarantined_completion_owners_for(self.inner.service.client())
+    }
+
+    #[cfg(all(feature = "hardware-abort-probe", feature = "cuda-cublas"))]
+    pub fn diagnostic_paged_pool_snapshot(&self) -> Result<SourceCallPagedPoolSnapshot> {
+        let states = self
+            .inner
+            .state_pool
+            .get()
+            .ok_or_else(|| Error::State("source-call state pool absent".into()))?;
+        let super::state_pool::PooledStateStorage::Hybrid(pools) = &states.storage else {
+            return Err(Error::State("source-call state pool is not paged".into()));
+        };
+        let vector = pools.vector_pool.snapshot()?;
+        let staging = pools.staging_pool.snapshot()?;
+        let pages = pools.page_pool.snapshot()?;
+        Ok(SourceCallPagedPoolSnapshot {
+            vector_allocated_sets: vector.allocated_sets,
+            vector_idle_sets: vector.idle_sets,
+            staging_allocated_sets: staging.allocated_sets,
+            staging_idle_sets: staging.idle_sets,
+            allocated_pages: pages.allocated_pages,
+            idle_pages: pages.idle_pages,
+        })
+    }
+
     #[cfg(all(
         feature = "hardware-abort-probe",
         feature = "hip-source",

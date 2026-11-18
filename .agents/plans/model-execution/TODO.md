@@ -57,6 +57,29 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
+### 19 Nov 2026 — P12-C paged B1 in-flight cancellation accepted
+
+- [x] Original0.8B paged ordinary CUDA now has a real post-enqueue/pre-Ready
+  cancellation boundary using the existing qualification launch witness. Known
+  cancellation requests cancellation on the original event, waits for physical
+  status readback, retires queue/event ownership without initializing candidate
+  Writes or constructing Ready, preserves committed root/all42 exactly, holds
+  Vector/staging/page resources until completion, returns pool occupancy exactly,
+  permits a valid replay and shuts down cleanly. Physical marker reports396
+  submitted handles and final RTX306037MiB.
+- [x] Deliberately dropping the same submitted future exercises the unchanged
+  fail-safe `ResidentSubmission::drop`: root binding remains unchanged, service
+  fences, one event stays pending,396 submitted handles plus source completion
+  owners are retained in process-lifetime quarantine, and hybrid pool backing is
+  not reusable. No recovery is claimed.
+- [x] Focused feature `cargo check` passes with required kache/jobs settings.
+  Two strict-Clippy invocations were externally SIGKILLed without a lint result and
+  remain incomplete. Likewise two initial physical executions were externally
+  SIGKILLed before terminal semantics. The direct known-completion physical run and
+  final heartbeat-assisted unknown-completion physical run both exit0; heartbeat is
+  transport plumbing only, not a correctness requirement. No high-level paged
+  selector/default, native B2/B4/B8 transport, prefix reuse or overlap is selected.
+
 ### Next continuation — no live campaign
 
 - [ ] Establish independent large-CUDA distribution/state accuracy (session task44)

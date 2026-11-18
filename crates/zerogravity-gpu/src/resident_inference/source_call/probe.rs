@@ -159,27 +159,4 @@ impl SourceCallModel {
             _scope: scope,
         })
     }
-
-    pub fn diagnostic_pause_next_launch(&self) -> Result<()> {
-        let _idle = self.inner.workspace.try_lock().ok_or_else(|| {
-            Error::State("source-call launch probe requires idle workspace".into())
-        })?;
-        self.inner.service.ensure_usable()?;
-        if self.inner.qualification_launch_seen() != 0 {
-            return Err(Error::State(
-                "source-call launch probe already reached".into(),
-            ));
-        }
-        self.inner
-            .abort_after_launch
-            .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
-            .map_err(|_| Error::State("source-call launch probe already armed".into()))?;
-        Ok(())
-    }
-    pub fn diagnostic_launch_handles(&self) -> usize {
-        self.inner.qualification_launch_seen()
-    }
-    pub fn diagnostic_resume_launch(&self) {
-        self.inner.qualification_reset_launch_seen();
-    }
 }

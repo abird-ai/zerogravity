@@ -589,10 +589,22 @@ or a change to the active correctness/benchmark/27B order.
   differential `38c1f321...` exits0 in703.17s with full-vocab/all42 exact at
   3/4/5/9, and cold lifecycle `744f36fd...` exits0 in438.18s with
   `cold_load=true`, exact cancel/abandon/restore/all42/shutdown.
-  **Production selection remains open:** next add true in-flight CUDA
-  cancellation on the ordinary source path, then native B2/B4/B8 + HTTP.
-  Admit physical GPU overlap only after event/lease, cancellation/unknown-
-  completion and independent-root tests.
+  **19 Nov true in-flight cancellation gate accepted on original0.8B paged B1.**
+  The qualification-only launch cut pauses only after the ordinary CUDA flight has
+  actually enqueued work and before Ready. Known cancellation then waits for a
+  physical status readback and retires the existing event without initializing
+  submitted Writes or creating Ready: root/all42 remain exact, Vector/staging/page
+  backing stays held until completion, returns to the exact preflight occupancy,
+  replay commits successfully and final shutdown is clean. Dropping the same
+  submitted future instead preserves the accepted fail-safe path: root binding is
+  unchanged, service fenced, one event pending,396 submitted handles plus source
+  completion owners quarantined and no pool reuse. Two externally SIGKILLed runs
+  before terminal semantics remain incomplete; retained direct known-completion
+  and heartbeat-assisted unknown-completion runs both exit0. Heartbeat is optional
+  transport plumbing only. **Production selection remains open:** no public/default
+  paged selector changed here. Next consider the explicit high-level selector,
+  then native B2/B4/B8 + HTTP. Physical overlap remains behind event/lease and
+  independent-root gates.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

@@ -1055,6 +1055,45 @@ impl ResidentSubmission<'_> {
         Ok((ready, bytes))
     }
 
+    /// Cancellation after real enqueue still needs positive physical completion.
+    /// The readback is the completion witness; unlike `finish_ready`, this never
+    /// initializes submitted Writes and never constructs a publishable Ready.
+    pub async fn retire_cancelled_with_readback(
+        mut self,
+        cohort: &[ResidentReadback],
+    ) -> Result<Vec<Bytes>> {
+        if self.cohort.is_some() {
+            return Err(Error::State(
+                "resident cohort cancellation requires cohort retirement".into(),
+            ));
+        }
+        {
+            let mut ledger = self
+                .service
+                .ledger
+                .lock()
+                .map_err(|_| Error::State("resident cancellation ledger poisoned".into()))?;
+            ledger.request_cancel(self.event)?;
+        }
+        let bytes = self.readback_checked(cohort, |_| Ok(())).await?;
+        {
+            let mut ledger = self
+                .service
+                .ledger
+                .lock()
+                .map_err(|_| Error::State("resident cancellation ledger poisoned".into()))?;
+            // CancellationRequested + observed physical completion retires the
+            // event pins directly. No Ready/publication authority is created.
+            ledger.report_physical_ready(self.event)?;
+        }
+        self.work
+            .take()
+            .ok_or_else(|| Error::State("resident physical guard absent".into()))?
+            .complete()?;
+        self.armed = false;
+        Ok(bytes)
+    }
+
     /// Exact finite source plan installed on THIS armed flight before enqueue.
     /// Serial source verification and the trusted validator precede originalReady.
     #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
