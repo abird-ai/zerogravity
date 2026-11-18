@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Offline guard regressions; no SDK, real cache, command or GPU is required.
 
-Actual user/network namespace isolation is a separate physical phase fixture.
-These tests exercise real temporary-file verification before mocked execution.
+Actual user/network isolation is a separate physical phase fixture. These tests
+exercise real temporary-file verification and isolation planning before mocked
+execution.
 """
 
 from contextlib import redirect_stderr, redirect_stdout
@@ -21,6 +22,53 @@ SCRIPT = Path(__file__).with_name("native-gpu.py")
 # Load the script without importing it as __main__ or creating a bytecode cache.
 NATIVE = types.ModuleType("native_gpu")
 exec(compile(SCRIPT.read_bytes(), str(SCRIPT), "exec"), NATIVE.__dict__)
+
+
+class BubblewrapIsolationTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="native-gpu-proc-test-")
+        self.addCleanup(temporary.cleanup)
+        self.proc = Path(temporary.name)
+        (self.proc / "self").mkdir()
+        (self.proc / "1").mkdir()
+
+    def write_proc(self, uid_map, arguments):
+        (self.proc / "self/uid_map").write_text(uid_map, encoding="ascii")
+        (self.proc / "1/cmdline").write_bytes(
+            b"\0".join(argument.encode() for argument in arguments) + b"\0"
+        )
+
+    def test_initial_user_namespace_is_not_treated_as_bubblewrap(self):
+        self.write_proc(
+            "0 0 4294967295\n",
+            ["bwrap", "--unshare-pid", "--unshare-net", "--", "command"],
+        )
+        self.assertIsNone(NATIVE.bubblewrap_network_isolation(self.proc))
+
+    def test_existing_bubblewrap_private_network_is_detected(self):
+        self.write_proc(
+            "1000 0 1\n",
+            ["bwrap", "--unshare-pid", "--unshare-net", "--", "command"],
+        )
+        self.assertIs(NATIVE.bubblewrap_network_isolation(self.proc), True)
+
+    def test_existing_bubblewrap_shared_network_is_detected(self):
+        self.write_proc(
+            "1000 0 1\n",
+            ["bwrap", "--unshare-pid", "--", "command"],
+        )
+        self.assertIs(NATIVE.bubblewrap_network_isolation(self.proc), False)
+
+    def test_child_unshare_net_argument_does_not_change_detection(self):
+        self.write_proc(
+            "1000 0 1\n",
+            ["bwrap", "--unshare-pid", "--", "command", "--unshare-net"],
+        )
+        self.assertIs(NATIVE.bubblewrap_network_isolation(self.proc), False)
+
+    def test_bubblewrap_without_private_pid_namespace_is_not_reused(self):
+        self.write_proc("1000 0 1\n", ["bwrap", "--unshare-net", "--", "command"])
+        self.assertIsNone(NATIVE.bubblewrap_network_isolation(self.proc))
 
 
 class TreeHashTests(unittest.TestCase):
@@ -91,6 +139,7 @@ class ExecutionGuardTests(unittest.TestCase):
             mock.patch.object(NATIVE, "CONTENT_SHA256", self.content_hash),
             mock.patch.object(NATIVE.sys, "platform", "linux"),
             mock.patch.object(NATIVE.platform, "machine", return_value="x86_64"),
+            mock.patch.object(NATIVE, "bubblewrap_network_isolation", return_value=None),
             # Deliberately unrelated: the upstream artifact path ignores it.
             mock.patch.dict(os.environ, {
                 "XDG_DATA_HOME": str(self.home / ".local/share"),
@@ -198,12 +247,148 @@ class ExecutionGuardTests(unittest.TestCase):
             "/test/unshare", "--user", "--map-root-user", "--net", "--",
             "cargo", "check", "--offline",
         ])
-        self.assertEqual(environment, {**before, "CARGO_NET_OFFLINE": "true"})
+        self.assertEqual(
+            environment,
+            {
+                **before,
+                "CARGO_NET_OFFLINE": "true",
+                "ZG_NATIVE_GPU_ISOLATION": "unshare-user-network",
+            },
+        )
         self.assertEqual(os.environ.copy(), before)
         self.assertEqual(Path.cwd(), current_directory)
         verify.assert_not_called()
         self.assertIn("LLVM verification not requested", self.last_error)
         self.assertNotIn("verified pinned LLVM", self.last_error)
+
+    def test_existing_bubblewrap_network_namespace_execs_directly(self):
+        before = os.environ.copy()
+        with (
+            mock.patch.object(
+                NATIVE, "bubblewrap_network_isolation", return_value=True
+            ),
+            mock.patch.object(NATIVE, "install_no_network_seccomp") as seccomp,
+            mock.patch.object(NATIVE.shutil, "which") as locate,
+            mock.patch.object(
+                NATIVE.os, "execvpe", side_effect=SystemExit(73)
+            ) as execute,
+        ):
+            with self.assertRaises(SystemExit) as captured:
+                self.invoke(
+                    [
+                        "--require-private-network",
+                        "--",
+                        "cargo",
+                        "check",
+                        "--offline",
+                    ]
+                )
+        self.assertEqual(captured.exception.code, 73)
+        executable, arguments, environment = execute.call_args.args
+        self.assertEqual(executable, "cargo")
+        self.assertEqual(arguments, ["cargo", "check", "--offline"])
+        self.assertEqual(
+            environment,
+            {
+                **before,
+                "CARGO_NET_OFFLINE": "true",
+                "ZG_NATIVE_GPU_ISOLATION": "bubblewrap-network-namespace",
+            },
+        )
+        seccomp.assert_not_called()
+        locate.assert_not_called()
+        self.assertIn("existing Bubblewrap user/network namespaces", self.last_error)
+
+    def test_existing_bubblewrap_shared_network_uses_seccomp(self):
+        order = []
+
+        def install_seccomp():
+            order.append("seccomp")
+
+        def execute(executable, arguments, environment):
+            order.append("execute")
+            self.assertEqual(executable, "gpu-command")
+            self.assertEqual(arguments, ["gpu-command"])
+            self.assertEqual(environment["CARGO_NET_OFFLINE"], "true")
+            self.assertEqual(
+                environment["ZG_NATIVE_GPU_ISOLATION"], "bubblewrap-seccomp"
+            )
+            raise SystemExit(73)
+
+        with (
+            mock.patch.object(
+                NATIVE, "bubblewrap_network_isolation", return_value=False
+            ),
+            mock.patch.object(
+                NATIVE, "install_no_network_seccomp", side_effect=install_seccomp
+            ),
+            mock.patch.object(NATIVE.shutil, "which") as locate,
+            mock.patch.object(NATIVE.os, "execvpe", side_effect=execute),
+        ):
+            with self.assertRaises(SystemExit) as captured:
+                self.invoke(["--", "gpu-command"])
+        self.assertEqual(captured.exception.code, 73)
+        self.assertEqual(order, ["seccomp", "execute"])
+        locate.assert_not_called()
+        self.assertIn("seccomp network filter", self.last_error)
+
+    def test_seccomp_refuses_inherited_socket_before_prctl(self):
+        with (
+            mock.patch.object(NATIVE, "inherited_socket_fds", return_value=[7]),
+            mock.patch.object(NATIVE.ctypes, "CDLL") as libc,
+        ):
+            with self.assertRaisesRegex(ValueError, "inherited socket descriptors"):
+                NATIVE.install_no_network_seccomp()
+        libc.assert_not_called()
+
+    def test_private_network_requirement_refuses_shared_bubblewrap_before_execution(self):
+        with (
+            mock.patch.object(
+                NATIVE, "bubblewrap_network_isolation", return_value=False
+            ),
+            mock.patch.object(NATIVE, "install_no_network_seccomp") as seccomp,
+            mock.patch.object(NATIVE.os, "execvpe") as execute,
+        ):
+            result, output, error = self.invoke(
+                ["--require-private-network", "--", "must-not-run"]
+            )
+        self.assertEqual(result, 1)
+        self.assertEqual(output, "")
+        self.assertIn("private network namespace is required", error)
+        seccomp.assert_not_called()
+        execute.assert_not_called()
+
+    def test_isolation_info_reports_unshare_without_execution(self):
+        with (
+            mock.patch.object(NATIVE.shutil, "which", return_value="/test/unshare"),
+            mock.patch.object(NATIVE.os, "execvpe") as execute,
+        ):
+            result, output, error = self.invoke(["--isolation-info"])
+        self.assertEqual(result, 0)
+        self.assertEqual(error, "")
+        receipt = json.loads(output)
+        self.assertEqual(receipt["mode"], "unshare-user-network")
+        self.assertTrue(receipt["private_network_namespace"])
+        self.assertTrue(receipt["loopback_capable"])
+        self.assertEqual(receipt["unshare"], "/test/unshare")
+        execute.assert_not_called()
+
+    def test_isolation_info_reports_shared_bubblewrap_seccomp_plan(self):
+        with (
+            mock.patch.object(
+                NATIVE, "bubblewrap_network_isolation", return_value=False
+            ),
+            mock.patch.object(NATIVE.os, "execvpe") as execute,
+        ):
+            result, output, error = self.invoke(["--isolation-info"])
+        self.assertEqual(result, 0)
+        self.assertEqual(error, "")
+        receipt = json.loads(output)
+        self.assertEqual(receipt["mode"], "bubblewrap-seccomp")
+        self.assertFalse(receipt["private_network_namespace"])
+        self.assertFalse(receipt["loopback_capable"])
+        self.assertEqual(receipt["network_isolation"], "seccomp-socket-create")
+        execute.assert_not_called()
 
     def test_default_command_does_not_require_an_unused_llvm_installation(self):
         missing = self.home / "absent-data-directory"
@@ -219,6 +404,10 @@ class ExecutionGuardTests(unittest.TestCase):
         self.assertEqual(execute.call_args.args[1][-3:], ["cpp-only-command", "--require-llvm", ""])
         self.assertEqual(execute.call_args.args[2]["XDG_DATA_HOME"], str(missing))
         self.assertEqual(execute.call_args.args[2]["CARGO_NET_OFFLINE"], "true")
+        self.assertEqual(
+            execute.call_args.args[2]["ZG_NATIVE_GPU_ISOLATION"],
+            "unshare-user-network",
+        )
         self.assertFalse(missing.exists())
         verify.assert_not_called()
 
@@ -299,7 +488,11 @@ class ExecutionGuardTests(unittest.TestCase):
         for arguments in [
             [], ["--"], ["cargo", "check"], ["--verify-only", "--", "cargo"],
             ["--require-llvm"], ["--require-llvm", "--"],
-            ["--verify-only", "--require-llvm"], ["--unknown", "--", "cargo"],
+            ["--verify-only", "--require-llvm"],
+            ["--verify-only", "--require-private-network"],
+            ["--isolation-info", "--require-llvm"],
+            ["--isolation-info", "--", "cargo"],
+            ["--unknown", "--", "cargo"],
         ]:
             with self.subTest(arguments=arguments), mock.patch.object(NATIVE, "verify") as verify:
                 with self.assertRaises(SystemExit) as captured:

@@ -6,6 +6,11 @@ cd "$repo"
 
 command -v python3 >/dev/null 2>&1 || { echo "Python 3 is required for workspace and qualification checks." >&2; exit 1; }
 
+if [[ "$(uname -s)" == Linux && "${ZG_NATIVE_GPU_ISOLATION:-}" == bubblewrap-seccomp ]]; then
+  echo "scripts/check.sh requires a private loopback-capable network namespace; rerun native-gpu.py with --require-private-network or use a connector with an isolated network namespace." >&2
+  exit 1
+fi
+
 echo "Checking Rust formatting..."
 cargo fmt --all -- --check
 
@@ -52,8 +57,9 @@ cargo clippy "${cpu_args[@]}" --all-targets -- -D warnings
 
 # The standalone serving crate has loopback tests in the CPU package set.
 if [[ "$(uname -s)" == Linux ]]; then
-  # native-gpu.py creates a private network namespace with lo down. Enable
-  # only that namespace's loopback; never change a host interface or route.
+  # In namespace isolation modes native-gpu.py provides a private network
+  # namespace with lo down. Enable only that namespace's loopback; never change
+  # a host interface or route.
   python3 - <<'PYLOOPBACK'
 import fcntl
 import os
