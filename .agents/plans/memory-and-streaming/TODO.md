@@ -156,9 +156,13 @@ The following extends existing owners; source-byte qualification is not inferenc
   failures. Deployed dotlink v0.17.3 records a signalled child as
   `Completed + exit_code=null + success=false` via `ExitStatus::code()==None`;
   main's richer signal enum is not deployed. A direct no-inner-supervisor run
-  still reproduced null exit. The repaired current harness now reports those
-  quiet-job terminations as external SIGKILL9; a 120s 5-second-heartbeat control
-  succeeds. With a heartbeat sidecar and foreground model, original2B
+  still reproduced null exit. Dotlink v0.17.4 follow-up corrects the earlier
+  quiet-job interpretation: every connector-initiated stop is now logged, and
+  the relevant window contains only an explicit `job_cancel`; a silent long
+  sleep survived until cancellation. Earlier SIGKILL9s therefore belong to the
+  surrounding harness/orchestration layer, not a dotlink quiet-job watchdog.
+  With a heartbeat sidecar used only as harness plumbing and a foreground model,
+  original2B
   page4/append4 is accepted: `38c1f321...` differential exits0 in703.17s with
   full-vocab/all42 exact at3/4/5/9; `744f36fd...` cold lifecycle exits0 in
   438.18s with exact cancel/abandon/restore/all42/shutdown. Pre-existing dirty

@@ -239,9 +239,13 @@ Original2B differential + cold lifecycle page4/append4 are now **accepted**.
 The repaired local execution harness detects the existing Bubblewrap namespace
 instead of nesting another user namespace; those dirty
 `scripts/native-gpu.py`/test changes pre-existed this slice and remain
-unstaged. Quiet long jobs still receive external SIGKILL9, but a 120s
-5-second-heartbeat control passes. Using a heartbeat sidecar while keeping the
-model foreground:
+unstaged. Course correction from dotlink v0.17.4 forensics: periodic output is
+**not** proven necessary. Dotlink now logs every stop it initiates; the relevant
+window contains only the explicitly requested `job_cancel`, while a silent
+long sleep survived until cancellation. Earlier SIGKILL9s are therefore
+surrounding harness/orchestration artifacts outside dotlink stop paths, not a
+quiet-job policy. The accepted runs happened to use a heartbeat sidecar while
+keeping the model foreground:
 - `38c1f321...` differential exits0 in703.17s with full-vocab/all42 exact at
   frontiers3/4/5/9 and clean shutdown;
 - `744f36fd...` cold lifecycle exits0 in438.18s with
@@ -249,8 +253,9 @@ model foreground:
   both exact restores/all42 and final shutdown.
 **Next: add true CUDA in-flight cancellation qualification on the ordinary source
 path.** After-Ready discard is already proven but does not satisfy this gate.
-Use heartbeat supervision for long physical runs; then consider high-level paged
-serving selection. Default CUDA/native/HIP stay contiguous.
+Heartbeat output is optional harness plumbing, not an acceptance requirement.
+Then consider high-level paged serving selection. Default CUDA/native/HIP stay
+contiguous.
 Complete-domain prefix identity/intersection follows that.
 Event/lease-backed physical overlap remains after those state gates.
 

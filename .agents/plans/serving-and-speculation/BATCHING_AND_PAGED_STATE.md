@@ -573,13 +573,17 @@ issue is sufficiently characterized to obtain valid evidence without weakening
 the model gate. Pre-existing dirty local `scripts/native-gpu.py` changes detect
 the current Bubblewrap user namespace and execute directly there, applying a
 seccomp network filter if needed rather than nesting `unshare`. The upgraded
-connector reports external SIGKILL9 directly. Quiet long jobs remain vulnerable:
-2B differential,0.8B lifecycle control, `native-gpu -- sleep120` and plain
-`sleep120` all reproduced external SIGKILL9 despite unlimited cgroup memory,
-zero OOM/high/max/pids events, zero PSI and clean GPU retirement. A 120s command
-printing one heartbeat each5s exits0. The accepted qualification envelope
-therefore keeps the model child foreground and adds only an independent stderr
-heartbeat sidecar.
+connector reports external signal numbers directly and v0.17.4 logs every stop
+it initiates. Follow-up connector forensics found exactly one stop in the
+relevant window, the explicitly requested `job_cancel`; a silent `sleep300`
+survived until that cancellation. Therefore earlier SIGKILL9s must not be
+attributed to quiet output or a dotlink watchdog. They are surrounding
+harness/orchestration artifacts outside dotlink's stop paths. Unlimited cgroup
+memory, zero OOM/high/max/pids events, zero PSI and clean GPU retirement remain
+supporting evidence that they were not model/resource failures. The accepted
+qualification runs below used an independent stderr heartbeat sidecar only as
+harness plumbing; periodic output is **not** part of the model acceptance
+contract.
 
 On approved original2B snapshot `88606494...`, page_tokens4/
 max_append_tokens4:
@@ -598,6 +602,7 @@ lifecycle gates. Next add a **true in-flight CUDA cancellation** cell on the
 ordinary source path. The existing after-Ready cancellation proof is not
 in-flight; require a real launch-boundary observation and preserve no-partial-
 publication/quarantine semantics before any high-level paged serving selector.
+Heartbeat output, if used, is optional harness plumbing only.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve

@@ -579,9 +579,13 @@ or a change to the active correctness/benchmark/27B order.
   report numeric137, while failure-time cgroup OOM/pids and restart/poll-failure
   evidence are0. A direct no-inner-supervisor cold run still reproduced null exit.
   **Original2B page4/append4 source-real acceptance is now green.** The repaired
-  local native-GPU harness executes inside the existing Bubblewrap namespace;
-  quiet long jobs still receive external SIGKILL9, while a 120s 5-second
-  heartbeat control exits0. With the model foreground and a heartbeat sidecar,
+  local native-GPU harness executes inside the existing Bubblewrap namespace.
+  Dotlink v0.17.4 forensics correct the earlier interpretation: it logs every
+  stop it initiates, and the relevant window shows only the explicit
+  `job_cancel`; a silent long sleep survived until cancellation. Thus earlier
+  SIGKILL9s are outside dotlink stop paths and do not establish a quiet-job
+  watchdog or heartbeat requirement. With the model foreground and a heartbeat
+  sidecar used only as harness plumbing,
   differential `38c1f321...` exits0 in703.17s with full-vocab/all42 exact at
   3/4/5/9, and cold lifecycle `744f36fd...` exits0 in438.18s with
   `cold_load=true`, exact cancel/abandon/restore/all42/shutdown.

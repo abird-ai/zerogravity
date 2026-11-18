@@ -213,14 +213,17 @@ and live TODOs are authoritative.
   and execute directly inside it, adding a seccomp network filter when Bubblewrap
   shares the host network instead of nesting another `unshare`. These two dirty
   files are not owned/staged by this slice and must be preserved.
-  The upgraded connector now reports external signal numbers explicitly. Quiet
-  long jobs still receive an external SIGKILL9: original2B direct differential,
-  original0.8B control, `native-gpu -- sleep 120`, and plain `sleep 120`
-  each reproduced it. Host/service memory limits are unbounded, OOM/high/max and
-  pids events are0, PSI is0, and GPU returns to37MiB, so this is not model/GPU/
-  memory evidence. A 120s control emitting one heartbeat every5s completed
-  exit0, establishing a stable qualification envelope: keep the actual model
-  process foreground and use only an independent stderr heartbeat sidecar.
+  The upgraded connector now reports external signal numbers explicitly and, in
+  v0.17.4, emits one lifecycle log line for every stop it initiates. Follow-up
+  connector review found only the explicitly requested `job_cancel` stop in the
+  relevant window; a silent `sleep 300` remained alive until that cancellation.
+  Therefore the earlier SIGKILL9 observations must **not** be interpreted as a
+  dotlink quiet-job watchdog or as evidence that periodic output is required.
+  They are best classified as surrounding harness/orchestration artifacts outside
+  dotlink's stop paths. Host/service memory limits were unbounded,
+  OOM/high/max/pids events were0, PSI was0, and GPU retired cleanly, so they also
+  remain non-model evidence. The heartbeat sidecar used below was an operational
+  stabilization technique for our harness, not an accepted runtime requirement.
   Under that envelope and approved snapshot `88606494...`,
   page_tokens4/max_append_tokens4:
   - differential job `38c1f321-0347-4a80-b2dc-c6d9d46d0249` completed
@@ -237,11 +240,11 @@ and live TODOs are authoritative.
   Therefore both approved original0.8B and2B now pass source-real paged B1
   full-vocab/all42 boundary parity and cold lifecycle semantics.
   **Next executable P12-C slice is true in-flight CUDA cancellation** on the
-  ordinary source path. Use the same heartbeat-supervised execution envelope for
-  long physical jobs, keep the model child foreground, and require an actual
-  launch-boundary proof; after-Ready cancellation is already accepted but is not
-  a substitute. Only after that gate should high-level paged serving/native
-  B2/B4/B8/HTTP work begin.
+  ordinary source path. Keep the model child foreground and require an actual
+  launch-boundary proof; periodic heartbeat output is optional harness plumbing,
+  not part of the correctness contract. After-Ready cancellation is already
+  accepted but is not a substitute. Only after that gate should high-level paged
+  serving/native B2/B4/B8/HTTP work begin.
   Complete-domain prefix reuse follows these state gates; event/lease-backed physical
   overlap remains after those state gates and must not be pulled forward.
   **Post-check L5 baseline watch:**
