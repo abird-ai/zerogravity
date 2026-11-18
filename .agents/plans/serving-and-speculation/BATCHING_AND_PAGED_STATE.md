@@ -570,9 +570,17 @@ incomplete and never as negative model evidence; do not add a warmup workaround.
 
 **18 Nov original2B acceptance follow-up:** the sandbox/native-GPU execution
 issue is sufficiently characterized to obtain valid evidence without weakening
-the model gate. Pre-existing dirty local `scripts/native-gpu.py` changes detect
-the current Bubblewrap user namespace and execute directly there, applying a
-seccomp network filter if needed rather than nesting `unshare`. The upgraded
+the model gate. Signed `6b920a0` now owns the harness fix: existing Bubblewrap
+PID/user namespaces are detected and reused rather than nesting another user
+namespace. Existing private Bubblewrap networking executes directly; a
+shared-network Bubblewrap gets a fail-closed socket/io_uring seccomp filter;
+outside Bubblewrap the original user+network `unshare` path remains.
+`--isolation-info` exposes the plan, and loopback/TCP callers must use
+`--require-private-network`, which refuses the shared-network fallback. The
+full `scripts/check.sh` gate therefore requires an L5 connector with private
+networking; the current connector profile correctly refuses before Cargo work.
+29/29 harness tests plus real AF_UNIX/AF_INET/io_uring/private-net and silent 15s
+smokes pass. The upgraded
 connector reports external signal numbers directly and v0.17.4 logs every stop
 it initiates. Follow-up connector forensics found exactly one stop in the
 relevant window, the explicitly requested `job_cancel`; a silent `sleep300`
@@ -602,7 +610,9 @@ lifecycle gates. Next add a **true in-flight CUDA cancellation** cell on the
 ordinary source path. The existing after-Ready cancellation proof is not
 in-flight; require a real launch-boundary observation and preserve no-partial-
 publication/quarantine semantics before any high-level paged serving selector.
-Heartbeat output, if used, is optional harness plumbing only.
+Heartbeat output, if used, is optional harness plumbing only. Ordinary physical
+model cells can use the seccomp fallback; loopback-dependent serving/full-gate
+work must require a private network namespace explicitly.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve

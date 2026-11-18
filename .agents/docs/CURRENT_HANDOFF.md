@@ -20,9 +20,11 @@ and live TODOs are authoritative.
   testing, in the same path `/home/pvl/spaces/abird/src/zerogravity`. Do not use
   X2 as an independent source-authoring branch; source changes land on l5 first.
 - Latest signed **implementation/qualification** checkpoint is
-  `e6aac539edcf631199bb51628c7f9e361e65057f`
-  (`test(state): keep paged lifecycle cold-only`). Parent `3041457`
-  corrected restore qualification; `398e446`
+  `6b920a0a91e534eae86f81e603cf419dea3b207b`
+  (`fix(harness): reuse existing sandbox isolation`). The paged-state lineage
+  remains `e6aac53` -> `3041457` -> `398e446`: `e6aac53` keeps the
+  lifecycle qualifier cold-only, `3041457` corrected restore qualification,
+  and `398e446`
   added the source-real lifecycle target; `1413f72` is the
   runtime/source-policy checkpoint; `b9b04aa`
   remains the accepted current-root gather/KvInPlace/scatter/Ready candidate
@@ -206,13 +208,28 @@ and live TODOs are authoritative.
   `0027c28` + `54340a6` + `1eb6e0f` + `3ac2059` + `dc6a188` +
   `53336b3` + `ef9e4d4` + `93468b1` + `cb57e1d` + `b9b04aa` +
   `1413f72` + `398e446` + `3041457` + `e6aac53`.
-  **18 Nov original2B source-real paged B1 acceptance is complete.** The
-  connector/native-GPU execution envelope changed before this run: pre-existing
-  dirty local changes in `scripts/native-gpu.py` /
-  `scripts/test-native-gpu.py` detect the existing Bubblewrap user namespace
-  and execute directly inside it, adding a seccomp network filter when Bubblewrap
-  shares the host network instead of nesting another `unshare`. These two dirty
-  files are not owned/staged by this slice and must be preserved.
+  **18 Nov original2B source-real paged B1 acceptance is complete.** Signed
+  `6b920a0` (`fix(harness): reuse existing sandbox isolation`) now owns the
+  native-GPU harness repair. `scripts/native-gpu.py` detects an existing
+  Bubblewrap PID/user sandbox instead of nesting another user namespace. If
+  Bubblewrap already owns a private network namespace it executes directly;
+  otherwise it installs a fail-closed x86_64 seccomp socket-creation filter
+  (including io_uring socket-creation bypass prevention) and executes directly.
+  Outside Bubblewrap it retains the original
+  `unshare --user --map-root-user --net` route.
+  `--isolation-info` reports the exact planned mode and
+  `ZG_NATIVE_GPU_ISOLATION` records it in the child. Commands requiring TCP/UDP
+  loopback must pass `--require-private-network`; the shared-network seccomp
+  fallback refuses them rather than weakening isolation. `scripts/check.sh`
+  now fails immediately in that fallback, and `AGENTS.md` uses
+  `native-gpu.py --require-private-network -- bash scripts/check.sh`.
+  Focused validation:29/29 offline harness tests, Python compile + Bash syntax,
+  real current-sandbox `--isolation-info`, AF_UNIX allowed/AF_INET denied,
+  io_uring_setup denied with EPERM, private-network refusal before child launch,
+  and a silent 15s direct-exec smoke all pass. The complete `scripts/check.sh`
+  gate is not runnable under this particular L5 connector profile because its
+  Bubblewrap shares networking; that is now an explicit execution-profile
+  refusal, not a harness ambiguity or semantic test failure.
   The upgraded connector now reports external signal numbers explicitly and, in
   v0.17.4, emits one lifecycle log line for every stop it initiates. Follow-up
   connector review found only the explicitly requested `job_cancel` stop in the
@@ -242,9 +259,12 @@ and live TODOs are authoritative.
   **Next executable P12-C slice is true in-flight CUDA cancellation** on the
   ordinary source path. Keep the model child foreground and require an actual
   launch-boundary proof; periodic heartbeat output is optional harness plumbing,
-  not part of the correctness contract. After-Ready cancellation is already
-  accepted but is not a substitute. Only after that gate should high-level paged
-  serving/native B2/B4/B8/HTTP work begin.
+  not part of the correctness contract. Run ordinary model/GPU physical cells
+  through the accepted `native-gpu` isolation plan; reserve
+  `--require-private-network` for gates that genuinely need TCP/UDP loopback.
+  After-Ready cancellation is already accepted but is not a substitute. Only
+  after that gate should high-level paged serving/native B2/B4/B8/HTTP work
+  begin.
   Complete-domain prefix reuse follows these state gates; event/lease-backed physical
   overlap remains after those state gates and must not be pulled forward.
   **Post-check L5 baseline watch:**

@@ -236,10 +236,17 @@ current-root execution at `b9b04aa`; explicit low-level policy at `1413f72`;
 source-real lifecycle target at `398e446`; qualifier correction at `3041457`;
 cold-only cleanup at `e6aac53`.
 Original2B differential + cold lifecycle page4/append4 are now **accepted**.
-The repaired local execution harness detects the existing Bubblewrap namespace
-instead of nesting another user namespace; those dirty
-`scripts/native-gpu.py`/test changes pre-existed this slice and remain
-unstaged. Course correction from dotlink v0.17.4 forensics: periodic output is
+Signed `6b920a0` owns the repaired execution harness: existing Bubblewrap
+PID/user sandboxes are reused; private Bubblewrap netns executes directly;
+shared-network Bubblewrap uses fail-closed socket/io_uring seccomp; outside
+Bubblewrap the original user+net `unshare` path remains. `--isolation-info`
+and `ZG_NATIVE_GPU_ISOLATION` expose the selected mode. Loopback/TCP callers
+must use `--require-private-network`; `scripts/check.sh` refuses the seccomp
+fallback immediately and AGENTS uses that flag. 29/29 harness tests plus current
+sandbox AF_UNIX/AF_INET/io_uring/private-net refusal and silent 15s physical
+smokes pass. The full workspace gate still needs an L5 connector profile with a
+private network namespace; the current shared-network connector correctly
+refuses it. Course correction from dotlink v0.17.4 forensics: periodic output is
 **not** proven necessary. Dotlink now logs every stop it initiates; the relevant
 window contains only the explicitly requested `job_cancel`, while a silent
 long sleep survived until cancellation. Earlier SIGKILL9s are therefore
@@ -254,8 +261,9 @@ keeping the model foreground:
 **Next: add true CUDA in-flight cancellation qualification on the ordinary source
 path.** After-Ready discard is already proven but does not satisfy this gate.
 Heartbeat output is optional harness plumbing, not an acceptance requirement.
-Then consider high-level paged serving selection. Default CUDA/native/HIP stay
-contiguous.
+Use ordinary `native-gpu` isolation for model/GPU cells and
+`--require-private-network` only for loopback-dependent gates. Then consider
+high-level paged serving selection. Default CUDA/native/HIP stay contiguous.
 Complete-domain prefix identity/intersection follows that.
 Event/lease-backed physical overlap remains after those state gates.
 

@@ -165,10 +165,17 @@ The following extends existing owners; source-byte qualification is not inferenc
   original2B
   page4/append4 is accepted: `38c1f321...` differential exits0 in703.17s with
   full-vocab/all42 exact at3/4/5/9; `744f36fd...` cold lifecycle exits0 in
-  438.18s with exact cancel/abandon/restore/all42/shutdown. Pre-existing dirty
-  `native-gpu.py`/test harness changes remain unstaged. Both small approved
-  models now clear source-real paged B1 state/lifecycle. Next true in-flight
-  cancel, then native batches/HTTP. page_tokens remains explicit.
+  438.18s with exact cancel/abandon/restore/all42/shutdown. Signed `6b920a0`
+  owns the native-GPU harness repair: reuse existing Bubblewrap user/PID
+  isolation, seccomp-deny socket/io_uring creation when Bubblewrap networking is
+  shared, retain outer user+net unshare otherwise, expose `--isolation-info`,
+  and require `--require-private-network` for loopback callers. 29/29 harness
+  tests plus real sandbox network/io_uring/private-net and silent 15s smokes pass.
+  Current L5 shared-network Bubblewrap intentionally cannot run the full
+  loopback-dependent `scripts/check.sh` gate; use a private-net connector
+  profile for that gate. Both small approved models now clear source-real paged
+  B1 state/lifecycle. Next true in-flight cancel, then native batches/HTTP.
+  page_tokens remains explicit.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/
