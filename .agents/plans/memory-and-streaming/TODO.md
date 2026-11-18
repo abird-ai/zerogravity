@@ -156,14 +156,15 @@ The following extends existing owners; source-byte qualification is not inferenc
   failures. Deployed dotlink v0.17.3 records a signalled child as
   `Completed + exit_code=null + success=false` via `ExitStatus::code()==None`;
   main's richer signal enum is not deployed. A direct no-inner-supervisor run
-  still reproduced null exit. Original2B parity/cold lifecycle are now
-  execution-envelope blocked rather than failed: exact direct jobs
-  `4ced0b86...`, `ea96e80e...`, `3e57de9f...` all ended as deployed
-  dotlink Completed+exit_code=null before model evidence, with final41MiB and
-  zero OOM/Xid/cgroup-pressure evidence. Do not loop the same sandbox; rerun the
-  exact page4/append4 cells only in an authorized L5 envelope with established
-  Bubblewrap survival. True in-flight cancel remains after2B acceptance, before
-  native batches/HTTP. page_tokens remains explicit.
+  still reproduced null exit. The repaired current harness now reports those
+  quiet-job terminations as external SIGKILL9; a 120s 5-second-heartbeat control
+  succeeds. With a heartbeat sidecar and foreground model, original2B
+  page4/append4 is accepted: `38c1f321...` differential exits0 in703.17s with
+  full-vocab/all42 exact at3/4/5/9; `744f36fd...` cold lifecycle exits0 in
+  438.18s with exact cancel/abandon/restore/all42/shutdown. Pre-existing dirty
+  `native-gpu.py`/test harness changes remain unstaged. Both small approved
+  models now clear source-real paged B1 state/lifecycle. Next true in-flight
+  cancel, then native batches/HTTP. page_tokens remains explicit.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

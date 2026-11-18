@@ -235,29 +235,22 @@ snapshot semantics are accepted at `93468b1`; physical pools at `cb57e1d`;
 current-root execution at `b9b04aa`; explicit low-level policy at `1413f72`;
 source-real lifecycle target at `398e446`; qualifier correction at `3041457`;
 cold-only cleanup at `e6aac53`.
-Original2B differential + cold lifecycle page4/append4 remain **open but
-execution-envelope blocked** on the deployed sandbox, not failed. Exact-current
-direct launches against approved snapshot `88606494...`:
-`4ced0b86...` differential (~139s), bounded retry `ea96e80e...` (~38s), and
-cold lifecycle `3e57de9f...` (~20s) all ended as dotlink v0.17.3
-Completed+exit_code=null+success=false before any Rust/model result. GPU returned
-to41MiB; systemd-oomd/kernel/dotlink journals show no kill/OOM/Xid/segfault;
-cgroup `oom/oom_kill/pids.max` events and memory PSI are zero. Do not loop the
-same envelope or treat these as negative2B evidence. Next rerun the exact two
-cells only in an L5 execution envelope where Bubblewrap survival is established
-(authorized unrestricted path or corrected/upgraded connector). Keep
-page4/append4 and full-vocab/all42/cold requirements unchanged.
-The user has now explicitly authorized the unrestricted L5 route. Dotlink's
-supported mode is `dotlink --unrestricted` (legacy
-`--allow-all --no-sandbox`), but this ChatGPT session currently exposes only
-the sandboxed `dotlink---l5` connector and cannot reconfigure that host service
-from inside its own Bubblewrap namespace. Do not bypass containment. Once a
-second unrestricted L5 connector is exposed, use it only for the bounded 2B
-physical differential/lifecycle execution; keep all source/Git work on the
-canonical L5 connector.
-True CUDA in-flight cancellation remains after successful2B state/lifecycle
-acceptance; then consider high-level paged serving selection. Default
-CUDA/native/HIP stay contiguous.
+Original2B differential + cold lifecycle page4/append4 are now **accepted**.
+The repaired local execution harness detects the existing Bubblewrap namespace
+instead of nesting another user namespace; those dirty
+`scripts/native-gpu.py`/test changes pre-existed this slice and remain
+unstaged. Quiet long jobs still receive external SIGKILL9, but a 120s
+5-second-heartbeat control passes. Using a heartbeat sidecar while keeping the
+model foreground:
+- `38c1f321...` differential exits0 in703.17s with full-vocab/all42 exact at
+  frontiers3/4/5/9 and clean shutdown;
+- `744f36fd...` cold lifecycle exits0 in438.18s with
+  `cold_load=true`, prelaunch cancel, abandoned Ready, cancel-after-Ready,
+  both exact restores/all42 and final shutdown.
+**Next: add true CUDA in-flight cancellation qualification on the ordinary source
+path.** After-Ready discard is already proven but does not satisfy this gate.
+Use heartbeat supervision for long physical runs; then consider high-level paged
+serving selection. Default CUDA/native/HIP stay contiguous.
 Complete-domain prefix identity/intersection follows that.
 Event/lease-backed physical overlap remains after those state gates.
 

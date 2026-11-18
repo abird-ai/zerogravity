@@ -206,46 +206,42 @@ and live TODOs are authoritative.
   `0027c28` + `54340a6` + `1eb6e0f` + `3ac2059` + `dc6a188` +
   `53336b3` + `ef9e4d4` + `93468b1` + `cb57e1d` + `b9b04aa` +
   `1413f72` + `398e446` + `3041457` + `e6aac53`.
-  **Original2B source-real parity/lifecycle is now execution-envelope blocked,
-  not semantically failed.** On exact current bytes and the approved
-  `88606494...` managed snapshot, three direct
-  `native-gpu -> env -> test binary` launches were attempted with
+  **18 Nov original2B source-real paged B1 acceptance is complete.** The
+  connector/native-GPU execution envelope changed before this run: pre-existing
+  dirty local changes in `scripts/native-gpu.py` /
+  `scripts/test-native-gpu.py` detect the existing Bubblewrap user namespace
+  and execute directly inside it, adding a seccomp network filter when Bubblewrap
+  shares the host network instead of nesting another `unshare`. These two dirty
+  files are not owned/staged by this slice and must be preserved.
+  The upgraded connector now reports external signal numbers explicitly. Quiet
+  long jobs still receive an external SIGKILL9: original2B direct differential,
+  original0.8B control, `native-gpu -- sleep 120`, and plain `sleep 120`
+  each reproduced it. Host/service memory limits are unbounded, OOM/high/max and
+  pids events are0, PSI is0, and GPU returns to37MiB, so this is not model/GPU/
+  memory evidence. A 120s control emitting one heartbeat every5s completed
+  exit0, establishing a stable qualification envelope: keep the actual model
+  process foreground and use only an independent stderr heartbeat sidecar.
+  Under that envelope and approved snapshot `88606494...`,
   page_tokens4/max_append_tokens4:
-  - differential job `4ced0b86-974e-4d62-9525-c1e645a40ee7` ran ~139s,
-    printed only the >60s test-running notice, then deployed dotlink v0.17.3
-    recorded `Completed + exit_code=null + success=false`;
-  - bounded identical differential retry
-    `ea96e80e-087e-45c6-9bc1-59c2e2e14bb0` ended the same way after ~38s;
-  - the materially different cold lifecycle job
-    `3e57de9f-566d-42d7-9b24-fb5ec0f83053` ended the same way after ~20s.
-  None produced a Rust assertion/error or model marker. Immediate GPU retirement
-  returned to41MiB. Across the exact window, `systemd-oomd`, kernel and
-  dotlink-service journals contain no kill/OOM/Xid/segfault event;
-  `dotlink.service` reports memory `oom=0`, `oom_kill=0`, pids `max=0`;
-  host and cgroup memory PSI are0. These are infrastructure-incomplete signalled
-  Bubblewrap runs under the deployed connector, not negative2B model evidence.
-  **Do not loop them in the same envelope.** Next physical action is to rerun the
-  exact differential and cold lifecycle in an L5 execution envelope where the
-  sandbox launcher survives (for example an explicitly authorized unrestricted
-  path or corrected/upgraded connector). Do not weaken page4/append4,
-  full-vocab/all42 or cold-lifecycle requirements.
-  **18 Nov authorization/update:** the user explicitly authorized the
-  unrestricted L5 route for this physical qualification. Dotlink's supported
-  host mode is `dotlink --unrestricted` (legacy equivalent
-  `--allow-all --no-sandbox`). The currently connected `dotlink---l5`
-  endpoint still exposes only the Bubblewrap-sandboxed shell; no second
-  unrestricted L5 connector/profile is present in this ChatGPT tool surface,
-  and the sandboxed shell does not expose the host dotlink binary/service needed
-  to reconfigure itself. Do **not** try to escape the sandbox through SSH,
-  systemd, namespace tricks or similar. The next physical action is therefore:
-  expose/connect a second L5 dotlink endpoint launched explicitly with
-  `--unrestricted`, then run the exact already-linked 2B differential and
-  cold-lifecycle cells there. Source/Git authoring remains on canonical
-  `dotlink---l5`; unrestricted authority is for this bounded physical
-  qualification only.
-  True in-flight cancellation remains ordered **after** successful original2B
-  state/lifecycle acceptance. Only after0.8B/2B state/lifecycle gates close
-  should high-level paged serving/native B2/B4/B8/HTTP work begin.
+  - differential job `38c1f321-0347-4a80-b2dc-c6d9d46d0249` completed
+    exit0 in703.17s with
+    `P12_SOURCE_PAGED_B1_PASS page_tokens=4 max_append_tokens=4
+    frontiers=3,4,5,9 full_vocab=exact all42=exact
+    contiguous_reference=true final_shutdown=true`;
+  - cold lifecycle job `744f36fd-b145-47b9-aa61-084e7d4b414b` completed
+    exit0 in438.18s with
+    `P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens=4 cold_load=true
+    prelaunch_cancel=true abandoned_ready=true cancel_after_ready=true
+    restore_before_boundary=true restore_at_boundary=true all42=exact
+    final_shutdown=true`.
+  Therefore both approved original0.8B and2B now pass source-real paged B1
+  full-vocab/all42 boundary parity and cold lifecycle semantics.
+  **Next executable P12-C slice is true in-flight CUDA cancellation** on the
+  ordinary source path. Use the same heartbeat-supervised execution envelope for
+  long physical jobs, keep the model child foreground, and require an actual
+  launch-boundary proof; after-Ready cancellation is already accepted but is not
+  a substitute. Only after that gate should high-level paged serving/native
+  B2/B4/B8/HTTP work begin.
   Complete-domain prefix reuse follows these state gates; event/lease-backed physical
   overlap remains after those state gates and must not be pulled forward.
   **Post-check L5 baseline watch:**

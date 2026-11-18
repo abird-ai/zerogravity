@@ -568,35 +568,36 @@ tmux/setsid/heartbeat supervisor, still reproduced the same null-exit shape, so
 the older harness is not required. Treat null-exit runs as infrastructure-
 incomplete and never as negative model evidence; do not add a warmup workaround.
 
-**17 Nov original2B execution-envelope checkpoint:** the exact differential and
-cold lifecycle remain open, but three direct source-real launches in the deployed
-dotlink v0.17.3 sandbox produced no semantic result. Differential
-`4ced0b86...` ran ~139s before Completed+exit_code=null+success=false; its
-bounded identical retry `ea96e80e...` did the same after ~38s. The materially
-different cold lifecycle `3e57de9f...` did the same after ~20s. All use the
-approved `88606494...` snapshot, page_tokens4/max_append_tokens4, direct
-`native-gpu -> env -> test binary`, and the exact-current linked lib test.
-None emitted a Rust panic/assertion, source-state marker or child exit code.
-Immediate physical cleanup returns to41MiB. `systemd-oomd`, kernel and
-dotlink-service journals show no kill/OOM/Xid/segfault; service cgroup
-`oom=0`, `oom_kill=0`, pids `max=0`; host/service memory PSI are0.
-Per the deployed-tree signal analysis above, classify these as signalled
-Bubblewrap infrastructure-incomplete attempts, not negative2B model evidence.
-Do not loop the same execution envelope or relax the acceptance cell. Next rerun
-the exact differential and cold lifecycle only when an L5 path with established
-Bubblewrap survival is available (authorized unrestricted or corrected/upgraded
-connector). True in-flight CUDA cancellation remains ordered after successful2B
-acceptance because the existing launch-boundary probe is not available on this
-ordinary CUDA source path.
+**18 Nov original2B acceptance follow-up:** the sandbox/native-GPU execution
+issue is sufficiently characterized to obtain valid evidence without weakening
+the model gate. Pre-existing dirty local `scripts/native-gpu.py` changes detect
+the current Bubblewrap user namespace and execute directly there, applying a
+seccomp network filter if needed rather than nesting `unshare`. The upgraded
+connector reports external SIGKILL9 directly. Quiet long jobs remain vulnerable:
+2B differential,0.8B lifecycle control, `native-gpu -- sleep120` and plain
+`sleep120` all reproduced external SIGKILL9 despite unlimited cgroup memory,
+zero OOM/high/max/pids events, zero PSI and clean GPU retirement. A 120s command
+printing one heartbeat each5s exits0. The accepted qualification envelope
+therefore keeps the model child foreground and adds only an independent stderr
+heartbeat sidecar.
 
-**18 Nov execution authority note:** unrestricted L5 execution is explicitly
-authorized for these two physical cells. Dotlink documents the mode as
-`dotlink --unrestricted` (legacy `--allow-all --no-sandbox`). The current
-ChatGPT session has no such second L5 connector; its only `dotlink---l5`
-endpoint is Bubblewrap-sandboxed and cannot safely reconfigure/escape itself.
-When the unrestricted endpoint is exposed, run only the exact approved2B
-page4/append4 differential and cold lifecycle there, and retain normal L5 as
-the sole source/Git authoring connector.
+On approved original2B snapshot `88606494...`, page_tokens4/
+max_append_tokens4:
+- `38c1f321-0347-4a80-b2dc-c6d9d46d0249` exits0 in703.17s with
+  `P12_SOURCE_PAGED_B1_PASS page_tokens=4 max_append_tokens=4
+  frontiers=3,4,5,9 full_vocab=exact all42=exact
+  contiguous_reference=true final_shutdown=true`;
+- `744f36fd-b145-47b9-aa61-084e7d4b414b` exits0 in438.18s with
+  `P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens=4 cold_load=true
+  prelaunch_cancel=true abandoned_ready=true cancel_after_ready=true
+  restore_before_boundary=true restore_at_boundary=true all42=exact
+  final_shutdown=true`.
+
+Thus original0.8B and2B both clear the source-real paged B1 boundary and
+lifecycle gates. Next add a **true in-flight CUDA cancellation** cell on the
+ordinary source path. The existing after-Ready cancellation proof is not
+in-flight; require a real launch-boundary observation and preserve no-partial-
+publication/quarantine semantics before any high-level paged serving selector.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve
