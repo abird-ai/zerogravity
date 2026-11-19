@@ -2,6 +2,7 @@
 use super::*;
 use crate::resident_leases::backing_pool::ResidentPagePool;
 #[cfg(any(
+    feature = "cuda-native",
     feature = "cuda-native-qualification",
     feature = "cuda-cublas",
     feature = "gemma-bf16-qualification",
@@ -9,8 +10,10 @@ use crate::resident_leases::backing_pool::ResidentPagePool;
 ))]
 use crate::resident_leases::backing_pool::ResidentPlaneLayout;
 use crate::resident_leases::backing_pool::ResidentPool;
+#[cfg(feature = "cuda-cublas")]
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(feature = "cuda-cublas")]
 use zerogravity_core::device_events::BufferLeaseId;
 
 #[derive(Clone, Debug)]
