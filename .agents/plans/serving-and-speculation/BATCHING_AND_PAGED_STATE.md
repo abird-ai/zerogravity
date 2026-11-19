@@ -716,11 +716,25 @@ warm executes65 model tokens and caches the state-only64 prefix; the next ScopeA
 request restores it and executes1; ScopeB misses and executes65. All three return
 the same generated token ID and final shutdown is clean
 (`P12_SOURCE_PAGED_PREFIX_CACHE_PASS`,172.98s). No new hit counter/fixture was added;
-the existing scheduler `completed_model_token_steps` is the proof surface. HTTP
-remains intentionally unscoped: add only a trusted server-side scope source, never a
-client-chosen body/header value. Next qualify HTTP hit/miss, then bounded eviction,
-stale-scope invalidation and pressure. Event/lease-backed physical overlap remains
-later.
+the existing scheduler `completed_model_token_steps` is the proof surface.
+
+**19 Nov trusted HTTP scope follow-up:** `ServerBuilder::prefix_sharing_scope` adds
+one optional server-owned authorization scope. It is not parsed from OpenAI JSON or
+headers. The accept/connection path carries the validated Copy value inside one
+small `ServeConfig` with auth/metrics/limits. `TextService::request_admitted_scoped`
+defaults to `prefix_sharing_unsupported`, so adapters cannot silently ignore an
+active server scope; Runtime and Router explicitly implement the scoped path. The
+focused cold server suite is7/7 and strict serving Clippy passes.
+
+Physical original0.8B page4/max_append64 HTTP proof uses only normal completion JSON
+(prompt65/output1/return_token_ids). Server scope7 first request executes65 model
+tokens and caches prefix64; the next request on that server executes1. The server is
+then shut down without closing the runtime/cache, a new server with scope8 executes
+65, and all three return the identical token ID. Final runtime shutdown is clean:
+`P12_SOURCE_PAGED_PREFIX_HTTP_PASS ... server_scoped=true client_scope=false`,
+171.97s. Next qualify FIFO/weight eviction under actual snapshot ownership,
+stale-scope retention/invalidation policy and memory pressure. Event/lease-backed
+physical overlap remains later.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 

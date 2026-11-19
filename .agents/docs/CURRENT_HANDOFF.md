@@ -353,11 +353,19 @@ and live TODOs are authoritative.
   only1, different scopeB consumes65 again; generated ID is identical and shutdown
   is clean (`P12_SOURCE_PAGED_PREFIX_CACHE_PASS`,172.98s). An initial run exposed a
   real lifecycle issue: cache-held snapshots outlived resident retirement; executor
-  retirement now clears the cache before source shutdown. HTTP intentionally remains
-  unscoped because no trusted server-side sharing authority is configured; do not add
-  a client-chosen body/header shortcut. Next add trusted server-side scope injection
-  and HTTP hit/miss, then pressure/eviction/stale-scope qualification; event/lease
-  overlap remains later.
+  retirement now clears the cache before source shutdown. **Trusted HTTP scope
+  injection is now accepted.** `ServerBuilder::prefix_sharing_scope` owns one optional
+  validated scope for the whole server instance; connection captures carry only that
+  Copy value. HTTP parsing exposes no scope field/header. `TextService` defaults to a
+  fail-closed `prefix_sharing_unsupported` error for scoped admission, while the
+  engine Runtime/Router explicitly implement it; the focused server suite is7/7 and
+  strict serving Clippy passes. Original0.8B page4/max_append64 physical HTTP proof
+  uses ordinary OpenAI JSON only: server scope7 warm consumes65 model tokens, repeat
+  consumes1, a new server over the same runtime/cache with scope8 consumes65, all
+  output IDs match and shutdown is clean (`P12_SOURCE_PAGED_PREFIX_HTTP_PASS`,
+  171.97s). No client can select/override the scope through this HTTP API. Next
+  qualify bounded eviction, stale-scope retention/invalidation semantics and memory
+  pressure; event/lease overlap remains later.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -1293,10 +1301,13 @@ is already green; repeat it only if host/runtime state changes.
 > Physical 0.8B page4/max_append64 worker proof on a65-token prompt records model
 > token deltas65 warm /1 same-scope hit /65 different-scope miss with identical
 > generated ID and clean shutdown. Cache snapshots are explicitly cleared before
-> resident retirement. HTTP remains unscoped until the server has a trusted scope
-> source; never accept an arbitrary client-selected sharing scope. Continue with
-> trusted server-side scope injection + HTTP hit/miss, then eviction/stale-scope and
-> pressure qualification. Keep event/lease physical overlap behind its remaining gates.
+> resident retirement. HTTP trusted scope injection is now terminal-green:
+> `ServerBuilder::prefix_sharing_scope` fixes the authorization scope server-side,
+> the wire format has no scope control, and unaware `TextService` adapters fail
+> closed. Physical original0.8B HTTP prompt65 records65 warm /1 same-server-scope hit
+> /65 different-server-scope miss with exact output ID and clean shutdown in171.97s.
+> Continue with bounded eviction + stale-scope retention/invalidation + pressure
+> qualification. Keep event/lease physical overlap behind its remaining gates.
 >
 > Keep the implementation turn to roughly 30 minutes. Aim for the next coherent
 > checkpoint, update owning TODO/handoff state, sign the commit, sync X2 only if

@@ -219,9 +219,13 @@ The following extends existing owners; source-byte qualification is not inferenc
   `active*context` semantic-token bounds. Original0.8B page4/max_append64 prompt65
   physically proves65 warm /1 same-scope /65 different-scope model-token work,
   identical generated ID and clean retirement in172.98s. The first run exposed and
-  fixed cache-before-resident retirement ordering. Remaining: trusted server-side
-  HTTP scope injection (never client-selected), then stale-scope invalidation,
-  pressure/eviction metrics and extension to any future multi-checkpoint domain set.
+  fixed cache-before-resident retirement ordering. Trusted server-side HTTP scope
+  injection is now accepted: one `ServerBuilder` scope is fixed by the embedding
+  application, absent from the wire format, and unaware services fail closed. The
+  physical original0.8B prompt65 HTTP proof records65 warm /1 same scope /65 different
+  server scope with exact output ID and clean shutdown in171.97s. Remaining: actual
+  FIFO/weight eviction with live snapshot owners, stale-scope retention/invalidation
+  semantics, pressure metrics and extension to future multi-checkpoint domain sets.
   Missing recurrent state still requires an earlier complete checkpoint/recompute,
   never a KV-only full hit. Exact gates and serving owner:
   [prefix design](../serving-and-speculation/BATCHING_AND_PAGED_STATE.md#complete-domain-prefix-reuse-and-cow--memory-plan).

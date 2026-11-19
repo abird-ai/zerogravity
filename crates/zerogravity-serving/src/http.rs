@@ -20,6 +20,14 @@ use zerogravity_engine::router::token_metrics::{TokenMetrics, validate_wire_id};
 use zerogravity_engine::router::{
     Request, RequestEvents, ResponseEvent, ServiceError, TokenMetricsRequest,
 };
+use zerogravity_engine::state_cache::PrefixSharingScope;
+
+pub(crate) struct ServeConfig {
+    pub api_key: Option<String>,
+    pub enable_per_request_metrics: bool,
+    pub prefix_sharing_scope: Option<PrefixSharingScope>,
+    pub limits: IngressLimits,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HttpMethod {
@@ -976,6 +984,7 @@ fn respond(
     router: &dyn TextService,
     api_key: Option<&str>,
     enable_per_request_metrics: bool,
+    prefix_sharing_scope: Option<PrefixSharingScope>,
     shutdown: &AtomicBool,
 ) -> Result<(), ServiceError> {
     check_running(shutdown)?;
@@ -1044,7 +1053,10 @@ fn respond(
     let stream_response = task.stream;
     let ingress = std::mem::take(&mut req.ingress);
     check_running(shutdown)?;
-    let events = router.request_admitted(task, ingress)?;
+    let events = match prefix_sharing_scope {
+        Some(scope) => router.request_admitted_scoped(task, ingress, scope)?,
+        None => router.request_admitted(task, ingress)?,
+    };
     if stream_response {
         stream_events(stream, events, chat, include_usage, shutdown).map_err(|_| {
             ServiceError::new(499, "client_closed", "streaming client disconnected")
@@ -1277,6 +1289,7 @@ struct ConnectionCaptures {
     router: Arc<dyn TextService>,
     api_key: Option<String>,
     enable_per_request_metrics: bool,
+    prefix_sharing_scope: Option<PrefixSharingScope>,
     shutdown: Arc<AtomicBool>,
     limits: IngressLimits,
     metrics: Arc<Counters>,
@@ -1302,6 +1315,7 @@ impl ConnectionCaptures {
                 self.router.as_ref(),
                 self.api_key.as_deref(),
                 self.enable_per_request_metrics,
+                self.prefix_sharing_scope,
                 &self.shutdown,
             )
         });
@@ -1347,11 +1361,15 @@ pub(crate) fn serve(
     listener: TcpListener,
     router: Arc<dyn TextService>,
     mut connections: Connections,
-    api_key: Option<String>,
-    enable_per_request_metrics: bool,
-    limits: IngressLimits,
+    config: ServeConfig,
     metrics: Arc<Counters>,
 ) -> std::io::Result<()> {
+    let ServeConfig {
+        api_key,
+        enable_per_request_metrics,
+        prefix_sharing_scope,
+        limits,
+    } = config;
     let result = accept_connections(
         &mut connections,
         || listener.accept().map(|(s, _)| s),
@@ -1402,6 +1420,7 @@ pub(crate) fn serve(
                 router: Arc::clone(&router),
                 api_key: api_key.as_deref().map(str::to_owned),
                 enable_per_request_metrics,
+                prefix_sharing_scope,
                 shutdown: Arc::clone(&connections.shutdown),
                 limits,
                 metrics: Arc::clone(&metrics),

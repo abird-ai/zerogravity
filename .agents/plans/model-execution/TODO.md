@@ -168,8 +168,15 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   tokens,1 same-scope hit,65 different-scope miss, identical generated ID and clean
   shutdown in172.98s (`P12_SOURCE_PAGED_PREFIX_CACHE_PASS`). First physical run
   correctly exposed cache-held snapshot owners blocking source retirement; executor
-  retirement now clears the cache before resident shutdown. HTTP remains unscoped
-  until trusted server-side authorization supplies the scope.
+  retirement now clears the cache before resident shutdown.
+- [x] Trusted HTTP scope injection is complete. `ServerBuilder::prefix_sharing_scope`
+  captures one optional validated scope; request JSON/headers cannot choose it.
+  `TextService` scoped admission defaults to fail closed and Runtime/Router opt in.
+  The server capture path groups auth/metrics/scope/limits in one small immutable
+  config rather than expanding the hot-call argument surface.7/7 server tests and
+  strict serving Clippy pass. Original0.8B page4/max_append64 HTTP prompt65
+  physically proves65 warm,1 same-scope hit,65 different-server-scope miss, exact
+  output ID and clean shutdown in171.97s. Next: eviction/stale-scope/pressure.
 
 ### Next continuation — no live campaign
 

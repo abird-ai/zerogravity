@@ -3,7 +3,7 @@ use serde_json::Value;
 pub use zerogravity_engine::router::{
     Request, RequestEvents, ServiceError, pending::ServingCharge,
 };
-use zerogravity_engine::{Runtime, router::Router};
+use zerogravity_engine::{Runtime, router::Router, state_cache::PrefixSharingScope};
 
 type Result<T> = std::result::Result<T, ServiceError>;
 
@@ -15,6 +15,19 @@ pub trait TextService: Send + Sync + 'static {
         request: Request,
         ingress: Vec<ServingCharge>,
     ) -> Result<RequestEvents>;
+    fn request_admitted_scoped(
+        &self,
+        request: Request,
+        ingress: Vec<ServingCharge>,
+        sharing: PrefixSharingScope,
+    ) -> Result<RequestEvents> {
+        let _ = (request, ingress, sharing);
+        Err(ServiceError::new(
+            400,
+            "prefix_sharing_unsupported",
+            "text service does not support scoped prefix sharing",
+        ))
+    }
     fn charge_ingress(&self, session: &str, bytes: u64) -> Result<ServingCharge>;
     fn model_ids(&self) -> Result<Vec<String>>;
     fn max_output(&self) -> Result<usize>;
@@ -47,6 +60,21 @@ impl TextService for Runtime {
         }
         self.with_text_router(|router| router.request_admitted(request, ingress))
     }
+    fn request_admitted_scoped(
+        &self,
+        request: Request,
+        ingress: Vec<ServingCharge>,
+        sharing: PrefixSharingScope,
+    ) -> Result<RequestEvents> {
+        if request.input.len() > self.limits().max_input_bytes {
+            return Err(ServiceError::new(
+                400,
+                "invalid_request",
+                "request exceeds input/output bounds",
+            ));
+        }
+        self.with_text_router(|router| router.request_admitted_scoped(request, ingress, sharing))
+    }
     fn charge_ingress(&self, session: &str, bytes: u64) -> Result<ServingCharge> {
         self.with_text_router(|router| router.charge_ingress(session, bytes))
     }
@@ -74,6 +102,14 @@ impl TextService for Router {
         ingress: Vec<ServingCharge>,
     ) -> Result<RequestEvents> {
         Router::request_admitted(self, request, ingress)
+    }
+    fn request_admitted_scoped(
+        &self,
+        request: Request,
+        ingress: Vec<ServingCharge>,
+        sharing: PrefixSharingScope,
+    ) -> Result<RequestEvents> {
+        Router::request_admitted_scoped(self, request, ingress, sharing)
     }
     fn charge_ingress(&self, session: &str, bytes: u64) -> Result<ServingCharge> {
         Router::charge_ingress(self, session, bytes)

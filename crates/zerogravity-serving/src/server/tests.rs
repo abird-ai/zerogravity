@@ -228,6 +228,31 @@ fn framed_chat_preserves_source_refusal_before_enqueue() {
 }
 
 #[test]
+fn configured_prefix_scope_refuses_unaware_text_service() {
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let service = Script::new(host);
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .prefix_sharing_scope(Some(
+            zerogravity_engine::state_cache::PrefixSharingScope::new(7).unwrap(),
+        ))
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let body = r#"{"model":"fixture","prompt":"hello","max_tokens":1}"#;
+    let response = exchange(server.local_addr(), &post("/v1/completions", body));
+    assert!(response.starts_with("HTTP/1.1 400"));
+    assert_eq!(
+        document(&response)["error"]["code"],
+        "prefix_sharing_unsupported"
+    );
+    assert!(service.requests.lock().unwrap().is_empty());
+    server.shutdown().unwrap();
+}
+
+#[test]
 fn actual_json_and_chunked_sse_use_one_service_and_preserve_chat_framing() {
     let _lock = test_support::lock();
     let host = test_support::host();

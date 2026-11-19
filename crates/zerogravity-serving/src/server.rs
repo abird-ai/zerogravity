@@ -15,6 +15,7 @@ use std::{
 use zerogravity_engine::{
     Runtime,
     router::pending::{self, ServingCharge},
+    state_cache::PrefixSharingScope,
 };
 
 #[cfg(test)]
@@ -28,6 +29,7 @@ pub struct ServerBuilder {
     limits: IngressLimits,
     api_key: Option<String>,
     enable_per_request_metrics: bool,
+    prefix_sharing_scope: Option<PrefixSharingScope>,
 }
 pub struct Server {
     builder: ServerBuilder,
@@ -46,9 +48,7 @@ struct AcceptCaptures {
     listener: TcpListener,
     service: Arc<dyn TextService>,
     connections: http::Connections,
-    api_key: Option<String>,
-    enable_per_request_metrics: bool,
-    limits: IngressLimits,
+    config: http::ServeConfig,
     metrics: Arc<Counters>,
 }
 impl AcceptCaptures {
@@ -57,9 +57,7 @@ impl AcceptCaptures {
             self.listener,
             self.service,
             self.connections,
-            self.api_key,
-            self.enable_per_request_metrics,
-            self.limits,
+            self.config,
             self.metrics,
         )
     }
@@ -76,6 +74,7 @@ impl ServerBuilder {
             limits: IngressLimits::default(),
             api_key: None,
             enable_per_request_metrics: false,
+            prefix_sharing_scope: None,
         }
     }
     pub fn bind(mut self, address: SocketAddr) -> Self {
@@ -93,6 +92,12 @@ impl ServerBuilder {
     }
     pub fn enable_per_request_metrics(mut self, enabled: bool) -> Self {
         self.enable_per_request_metrics = enabled;
+        self
+    }
+    /// Trusted server-owned authorization scope for cross-request prefix reuse.
+    /// HTTP clients cannot supply or override this value.
+    pub fn prefix_sharing_scope(mut self, scope: Option<PrefixSharingScope>) -> Self {
+        self.prefix_sharing_scope = scope;
         self
     }
     /// Cold validation only: no listener, model load or thread creation.
@@ -163,9 +168,12 @@ impl Server {
             listener,
             service: builder.service,
             connections,
-            api_key: builder.api_key,
-            enable_per_request_metrics: builder.enable_per_request_metrics,
-            limits: builder.limits,
+            config: http::ServeConfig {
+                api_key: builder.api_key,
+                enable_per_request_metrics: builder.enable_per_request_metrics,
+                prefix_sharing_scope: builder.prefix_sharing_scope,
+                limits: builder.limits,
+            },
             metrics: Arc::clone(&metrics),
         };
         let worker = std::thread::Builder::new()

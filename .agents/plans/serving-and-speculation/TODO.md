@@ -643,10 +643,15 @@ or a change to the active correctness/benchmark/27B order.
   contiguous state is unaffected. Physical0.8B page4/max_append64 prompt65 produces
   scheduler model-token deltas65 warm /1 same-scope /65 different-scope with exact
   output ID and clean shutdown in172.98s. The first run exposed and fixed retirement
-  ordering by clearing cache snapshots before resident shutdown. HTTP deliberately
-  has no client-selected scope; trusted server-side injection + HTTP hit/miss is next,
-  followed by eviction/stale-scope/pressure qualification. Physical overlap remains
-  behind event/lease and independent-root gates.
+  ordering by clearing cache snapshots before resident shutdown. **Trusted HTTP
+  scoped hit/miss is now accepted:** `ServerBuilder::prefix_sharing_scope` supplies
+  one fixed optional scope from the embedding application; no request field/header
+  can set it, and unaware services reject scoped admission. Physical0.8B
+  page4/max_append64 prompt65 over HTTP records scheduler model-token deltas65 warm /
+  1 same scope7 /65 second-server scope8, exact output ID and clean shutdown in
+ 171.97s.7/7 server tests, strict serving Clippy and CUDA-serving composition pass.
+  Next qualify bounded eviction, stale-scope retention/invalidation and pressure.
+  Physical overlap remains behind event/lease and independent-root gates.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

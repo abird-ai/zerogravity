@@ -842,6 +842,14 @@ impl Router {
     ) -> Result<RequestEvents, ServiceError> {
         self.request_with(request, Some(ingress), None)
     }
+    pub fn request_admitted_scoped(
+        &self,
+        request: Request,
+        ingress: Vec<ServingCharge>,
+        sharing: crate::state_cache::PrefixSharingScope,
+    ) -> Result<RequestEvents, ServiceError> {
+        self.request_with(request, Some(ingress), Some(sharing))
+    }
     fn request_with(
         &self,
         mut request: Request,

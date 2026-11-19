@@ -275,6 +275,152 @@ fn qwen_cuda_paged_native_http_matches_contiguous() {
     );
 }
 
+#[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+#[test]
+#[ignore = "approved original CUDA cache; trusted server-side scoped paged prefix reuse"]
+fn qwen_cuda_paged_scoped_http_skips_replay() {
+    use serde_json::{Value, json};
+    use std::{
+        io::{BufReader, Read, Write},
+        net::{SocketAddr, TcpStream},
+    };
+    use zerogravity::{
+        cache::CacheOptions,
+        models::{ModelLoadRequest, QwenCudaStatePolicy, QwenSourceProfile},
+        runtime::{PrefixSharingScope, SchedulerLimits},
+    };
+
+    const MIB: usize = 1024 * 1024;
+    const SNAPSHOT: &str = "d7c7bf56e176bd70a8190acb9873cc719e65b6b306181039f2896d6f9387b36c";
+
+    let runtime = Runtime::builder()
+        .limits(SchedulerLimits {
+            max_active: 2,
+            max_queued: Some(4),
+            ..Default::default()
+        })
+        .build()
+        .unwrap();
+    runtime
+        .models()
+        .load(ModelLoadRequest::QwenCudaWithStatePolicy {
+            aliases: vec!["source".into()],
+            cache: CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
+            snapshot: SNAPSHOT.into(),
+            profile: QwenSourceProfile {
+                active: 2,
+                context: 512,
+                output: 1,
+                max_pending: Some(4),
+                native_rows: 0,
+            },
+            provider_bytes: 4608 * MIB,
+            device_bytes: 5120 * MIB as u64,
+            state_policy: QwenCudaStatePolicy::Paged {
+                page_tokens: 4,
+                max_append_tokens: 64,
+            },
+        })
+        .unwrap();
+    let prompt = " a".repeat(65);
+    assert_eq!(
+        runtime
+            .models()
+            .resolve("source")
+            .unwrap()
+            .prepared()
+            .tokenizer()
+            .prompt_tokens(&prompt, false)
+            .unwrap()
+            .len(),
+        65
+    );
+
+    let request = |address: SocketAddr, label: &str| {
+        let socket = qwen_source_http::connect(
+            address,
+            "/v1/completions",
+            &json!({
+                "model":"source",
+                "prompt":prompt,
+                "max_tokens":1,
+                "stream":false,
+                "return_token_ids":true
+            }),
+            label,
+        );
+        let mut reader = BufReader::new(socket);
+        let head = qwen_source_http::headers(&mut reader);
+        assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+        let mut raw = Vec::new();
+        reader.take(64 * 1024 + 1).read_to_end(&mut raw).unwrap();
+        assert!(raw.len() <= 64 * 1024);
+        let document: Value = serde_json::from_slice(&raw).unwrap();
+        assert_eq!(document["usage"]["prompt_tokens"], 65);
+        assert_eq!(document["usage"]["completion_tokens"], 1);
+        document["choices"][0]["token_ids"][0].as_u64().unwrap() as u32
+    };
+    let model_tokens = |address: SocketAddr| {
+        let mut socket = TcpStream::connect(address).unwrap();
+        socket
+            .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .unwrap();
+        let mut reader = BufReader::new(socket);
+        let head = qwen_source_http::headers(&mut reader);
+        assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+        let mut raw = Vec::new();
+        reader.read_to_end(&mut raw).unwrap();
+        let document: Value = serde_json::from_slice(&raw).unwrap();
+        document["admission"]["completed_model_token_steps"]
+            .as_u64()
+            .unwrap()
+    };
+    let server = |scope| {
+        runtime
+            .server()
+            .bind("127.0.0.1:0".parse().unwrap())
+            .limits(zerogravity::serving::ingress::IngressLimits {
+                connections: 4,
+                body_bytes: 64 * 1024,
+                output_bytes: 64 * 1024,
+            })
+            .enable_per_request_metrics(true)
+            .prefix_sharing_scope(Some(scope))
+            .build()
+            .unwrap()
+            .start()
+            .unwrap()
+    };
+
+    let scope_a = PrefixSharingScope::new(7).unwrap();
+    let scope_b = PrefixSharingScope::new(8).unwrap();
+    let server_a = server(scope_a);
+    let address_a = server_a.local_addr();
+    let before = model_tokens(address_a);
+    let warm = request(address_a, "prefix-http-warm");
+    let after_warm = model_tokens(address_a);
+    let hit = request(address_a, "prefix-http-hit");
+    let after_hit = model_tokens(address_a);
+    server_a.shutdown().unwrap();
+
+    let server_b = server(scope_b);
+    let address_b = server_b.local_addr();
+    let miss = request(address_b, "prefix-http-miss");
+    let after_miss = model_tokens(address_b);
+    server_b.shutdown().unwrap();
+
+    assert_eq!(warm, hit);
+    assert_eq!(warm, miss);
+    assert_eq!(after_warm - before, 65);
+    assert_eq!(after_hit - after_warm, 1);
+    assert_eq!(after_miss - after_hit, 65);
+    runtime.shutdown().unwrap();
+    assert!(runtime.status().closed);
+    println!(
+        "P12_SOURCE_PAGED_PREFIX_HTTP_PASS prompt_tokens=65 cached_prefix=64 warm_model_tokens=65 same_scope_model_tokens=1 different_scope_model_tokens=65 output_id_exact=true server_scoped=true client_scope=false final_shutdown=true"
+    );
+}
+
 #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
 #[test]
 fn canonical_hip_registration_checks_runtime_limits_and_aliases_before_source_io() {

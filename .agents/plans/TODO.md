@@ -321,9 +321,15 @@ uses a model-local cache only for paged state, capped to `active` entries and
 prompt65 records model-token deltas65 warm /1 same-scope /65 different-scope and
 identical output ID; shutdown is clean in172.98s. Cache-held snapshots are cleared
 before resident retirement after the first run exposed that lifecycle requirement.
-HTTP remains unscoped until a trusted server-side scope source exists; no client-
-chosen scope field/header. Next: trusted HTTP scope injection + hit/miss, then
-pressure/eviction/stale-scope qualification; event/lease overlap remains later.
+**Trusted HTTP scope injection is now accepted.** `ServerBuilder` carries one
+optional validated `PrefixSharingScope`; HTTP clients have no body/header control for
+it, and custom `TextService` implementations fail closed unless they implement
+scoped admission. Runtime/Router do implement it. Focused server tests are7/7 and
+strict serving Clippy passes. Physical original0.8B page4/max_append64 HTTP prompt65
+uses ordinary JSON and records65 warm /1 same scope7 /65 new server scope8 with exact
+output ID and clean shutdown in171.97s (`P12_SOURCE_PAGED_PREFIX_HTTP_PASS`). Next:
+bounded eviction, stale-scope retention/invalidation and memory-pressure
+qualification; event/lease overlap remains later.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about
