@@ -674,13 +674,63 @@ impl Executor for SourceText {
                 .host
                 .and_then(|(_, reserved, _, serving)| reserved.checked_sub(serving))
         );
-        report["source_models"] = serde_json::Value::Array(models.iter().map(|(alias, model)| {
+        let mut source_models = Vec::with_capacity(models.len());
+        for (alias, model) in models {
             let metadata = &model.source.metadata;
-            serde_json::json!({"alias": alias, "family": metadata.family, "repository": metadata.repository,
-                "revision": metadata.revision, "hidden_width": metadata.hidden_width,
-                "context": model.max_context(), "prefill_rows": 64,
-                "numerical_contract": format!("{:?}", model.source.plan.source_seal().numerical_contract())})
-        }).collect());
+            #[cfg(feature = "qwen35-cuda")]
+            let prefix_cache = model
+                .prefix_cache
+                .lock()
+                .map_err(|_| poison())?
+                .as_ref()
+                .map(|cache| cache.snapshot());
+            #[cfg(feature = "qwen35-cuda")]
+            let paged_pool = model
+                .resident
+                .lock()
+                .map_err(|_| poison())?
+                .as_ref()
+                .map(|resident| resident.paged_pool_snapshot())
+                .transpose()
+                .map_err(ServiceError::inference)?
+                .flatten();
+            let mut model_report = serde_json::json!({
+                "alias": alias,
+                "family": metadata.family,
+                "repository": metadata.repository,
+                "revision": metadata.revision,
+                "hidden_width": metadata.hidden_width,
+                "context": model.max_context(),
+                "prefill_rows": 64,
+                "numerical_contract": format!("{:?}", model.source.plan.source_seal().numerical_contract()),
+            });
+            #[cfg(feature = "qwen35-cuda")]
+            {
+                model_report["prefix_cache"] = prefix_cache
+                    .map(|cache| {
+                        serde_json::json!({
+                            "entries": cache.entries,
+                            "weight": cache.weight,
+                            "max_entries": cache.max_entries,
+                            "max_weight": cache.max_weight,
+                        })
+                    })
+                    .unwrap_or(serde_json::Value::Null);
+                model_report["paged_pool"] = paged_pool
+                    .map(|pool| {
+                        serde_json::json!({
+                            "allocated_pages": pool.allocated_pages,
+                            "idle_pages": pool.idle_pages,
+                            "occupied_pages": pool.allocated_pages - pool.idle_pages,
+                            "max_pages": pool.max_pages,
+                            "page_bytes": pool.page_bytes,
+                        })
+                    })
+                    .unwrap_or(serde_json::Value::Null);
+            }
+            source_models.push(model_report);
+        }
+        report["source_models"] = serde_json::Value::Array(source_models);
         Ok(report)
     }
 }

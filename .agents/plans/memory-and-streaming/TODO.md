@@ -233,8 +233,16 @@ The following extends existing owners; source-byte qualification is not inferenc
   page4/max_append64 proves prefix64 FIFO oldest miss/newer hit, purge2/128 + invalidated
   scope miss, and independent512-weight pressure: prefix320 hit1 while evicted prefix256
   makes prompt257 replay257; final purge2/448, repeat purge0, clean shutdown in
- 179.12s. Remaining: externally imposed page-pool/device/host pressure, minimal
-  pressure/eviction diagnostics and extension to future multi-checkpoint domain sets.
+ 179.12s. **Externally imposed resident page-pool pressure is now accepted:** a
+  qualification-only owner pins real pages from the same finite pool around a cached
+  prefix64. Original0.8B page4/max_append64 holds5952 pages, fills6144/6144, gets
+  prelaunch Capacity without root mutation or vector/staging leakage, then after
+  release reproduces the complete baseline logits exactly and retires all pages
+  before clean shutdown in168.51s. One startup SIGTERM attempt is incomplete only.
+  Minimal production diagnostics expose current prefix-cache occupancy/bounds and
+  paged-pool allocated/idle/occupied/max/page-byte values. No cumulative hot-path
+  pressure counters were added. External host/device OOM and future multi-checkpoint
+  domain sets remain outside this checkpoint.
   Missing recurrent state still requires an earlier complete checkpoint/recompute,
   never a KV-only full hit. Exact gates and serving owner:
   [prefix design](../serving-and-speculation/BATCHING_AND_PAGED_STATE.md#complete-domain-prefix-reuse-and-cow--memory-plan).

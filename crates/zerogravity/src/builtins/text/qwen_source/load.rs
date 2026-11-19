@@ -1546,6 +1546,202 @@ mod cuda_paged_tests {
 
     #[cfg(feature = "qwen35-cuda-paged-cancellation-qualification")]
     #[test]
+    #[ignore = "approved original HF cache; actual resident page-pool pressure around shared prefix"]
+    fn original_source_paged_prefix_survives_external_page_pressure() {
+        let (parts, page_tokens, max_append_tokens, _) =
+            paged_source_fixture("paged-source-prefix-page-pressure");
+        assert!(max_append_tokens >= 64);
+        let tokens = parts
+            .tokenizer
+            .prompt_tokens(&" a".repeat(65), false)
+            .unwrap();
+        assert_eq!(tokens.len(), 65);
+        let model = block_on(ResidentModel::load_ordinary_cuda_source_with_state_policy(
+            Device::Cuda(Default::default()),
+            parts.source.plan.source().clone(),
+            parts.source.clone(),
+            parts.source.plan.plan().clone(),
+            2,
+            0,
+            PROVIDER_BYTES,
+            DEVICE_BYTES,
+            CudaSourceStatePolicy::Paged {
+                page_tokens,
+                max_append_tokens,
+            },
+            None,
+        ))
+        .unwrap();
+
+        block_on(async {
+            let prefix = 64usize;
+            let prefix_call = parts
+                .source
+                .plan
+                .bind_invocation(
+                    SourceCallMode::Prefill,
+                    0,
+                    Arc::<[u32]>::from(tokens[..prefix].to_vec()),
+                    false,
+                )
+                .unwrap();
+            let tail_call = parts
+                .source
+                .plan
+                .bind_invocation(
+                    SourceCallMode::Prefill,
+                    prefix,
+                    Arc::<[u32]>::from(vec![tokens[prefix]]),
+                    true,
+                )
+                .unwrap();
+
+            let mut producer = model.session().await.unwrap();
+            let SourceCallPreparation::Ready(pending) = producer
+                .prepare(
+                    prefix_call.bound_invocation(),
+                    SourceCallMode::Prefill,
+                    ResidentOutput::StateOnly,
+                    None,
+                )
+                .await
+                .unwrap()
+            else {
+                panic!("prefix producer admission");
+            };
+            let SourceCallPublication::Committed(read) = producer.commit(pending).unwrap() else {
+                panic!("prefix producer publication");
+            };
+            drop(read);
+            let cached = producer.snapshot().unwrap();
+            assert_eq!(cached.binding().frontier(), prefix as u64);
+            drop(producer);
+
+            let baseline_logits = {
+                let mut baseline = model.session().await.unwrap();
+                baseline.fork_shared_prefix(&cached).unwrap();
+                let SourceCallPreparation::Ready(pending) = baseline
+                    .prepare(
+                        tail_call.bound_invocation(),
+                        SourceCallMode::Prefill,
+                        ResidentOutput::Logits,
+                        None,
+                    )
+                    .await
+                    .unwrap()
+                else {
+                    panic!("baseline tail admission");
+                };
+                let SourceCallPublication::Committed(read) = baseline.commit(pending).unwrap()
+                else {
+                    panic!("baseline tail publication");
+                };
+                let logits = read.logits.clone();
+                drop(read);
+                drop(baseline);
+                logits
+            };
+
+            let mut pressured = model.session().await.unwrap();
+            pressured.fork_shared_prefix(&cached).unwrap();
+            let root = pressured.binding();
+            let before = model.diagnostic_paged_pool_snapshot().unwrap();
+            let occupied = |allocated: usize, idle: usize| {
+                allocated.checked_sub(idle).expect("paged pool occupancy")
+            };
+            let before_occupied = occupied(before.allocated_pages, before.idle_pages);
+            let available = before
+                .max_pages
+                .checked_sub(before_occupied)
+                .expect("paged pool available pages");
+            assert!(available > 0, "qualifier requires external page capacity");
+            let pressure = model.diagnostic_hold_paged_pages(available).unwrap();
+            let full = model.diagnostic_paged_pool_snapshot().unwrap();
+            assert_eq!(full.allocated_pages, full.max_pages);
+            assert_eq!(full.idle_pages, 0);
+            assert_eq!(
+                occupied(full.allocated_pages, full.idle_pages),
+                full.max_pages
+            );
+
+            assert!(matches!(
+                pressured
+                    .prepare(
+                        tail_call.bound_invocation(),
+                        SourceCallMode::Prefill,
+                        ResidentOutput::Logits,
+                        None,
+                    )
+                    .await
+                    .unwrap(),
+                SourceCallPreparation::Capacity
+            ));
+            assert_eq!(pressured.binding(), root, "page pressure mutated root");
+            let refused = model.diagnostic_paged_pool_snapshot().unwrap();
+            assert_eq!(
+                occupied(refused.allocated_pages, refused.idle_pages),
+                refused.max_pages,
+                "pressure pages were released during refusal"
+            );
+            assert_eq!(
+                refused.vector_allocated_sets - refused.vector_idle_sets,
+                before.vector_allocated_sets - before.vector_idle_sets,
+                "refused vector candidate leaked"
+            );
+            assert_eq!(
+                refused.staging_allocated_sets - refused.staging_idle_sets,
+                before.staging_allocated_sets - before.staging_idle_sets,
+                "refused staging candidate leaked"
+            );
+
+            drop(pressure);
+            let released = model.diagnostic_paged_pool_snapshot().unwrap();
+            assert_eq!(
+                occupied(released.allocated_pages, released.idle_pages),
+                before_occupied,
+                "external page pressure did not retire"
+            );
+
+            let SourceCallPreparation::Ready(pending) = pressured
+                .prepare(
+                    tail_call.bound_invocation(),
+                    SourceCallMode::Prefill,
+                    ResidentOutput::Logits,
+                    None,
+                )
+                .await
+                .unwrap()
+            else {
+                panic!("tail did not recover after pressure release");
+            };
+            let SourceCallPublication::Committed(read) = pressured.commit(pending).unwrap() else {
+                panic!("tail publication after pressure release");
+            };
+            exact_words(
+                &baseline_logits,
+                &read.logits,
+                "external page pressure recovered logits",
+            );
+            assert_eq!(pressured.binding().frontier(), 65);
+            drop(read);
+            drop(pressured);
+            drop(cached);
+
+            let final_pool = model.diagnostic_paged_pool_snapshot().unwrap();
+            assert_eq!(
+                final_pool.allocated_pages, final_pool.idle_pages,
+                "page pool did not fully retire after pressure qualifier"
+            );
+            model.shutdown().await.unwrap();
+            println!(
+                "P12_SOURCE_PAGED_PREFIX_PAGE_PRESSURE_PASS prefix_tokens=64 tail_tokens=1 page_tokens={page_tokens} max_append_tokens={max_append_tokens} max_pages={} pressure_pages={available} prelaunch_capacity=true root_unchanged=true vector_staging_unwound=true cached_root_survived=true recovered_logits=exact final_pages_idle=true final_shutdown=true",
+                before.max_pages
+            );
+        });
+    }
+
+    #[cfg(feature = "qwen35-cuda-paged-cancellation-qualification")]
+    #[test]
     #[ignore = "approved original HF cache; real submitted paged CUDA cancellation before Ready"]
     fn original_source_b1_paged_inflight_cancel_retires_exactly() {
         let (parts, page_tokens, max_append_tokens, tokens) =

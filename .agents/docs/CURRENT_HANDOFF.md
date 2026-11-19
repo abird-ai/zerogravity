@@ -381,10 +381,22 @@ and live TODOs are authoritative.
   a prompt321 trajectory hits the512-weight bound, retains prefix320 for a1-token hit,
   but evicts prefix256 so prompt257 replays all257 tokens; final purge releases2
   entries/448 weight, repeated purge returns zero, and shutdown is clean
-  (`P12_SOURCE_PAGED_PREFIX_EVICTION_PASS`,179.12s). This is cache-retention pressure,
-  not a claim about external GPU/host OOM pressure. Next qualify externally imposed
-  resident/page-pool pressure and expose only the minimum useful cache pressure/
-  eviction diagnostics; event/lease overlap remains later.
+  (`P12_SOURCE_PAGED_PREFIX_EVICTION_PASS`,179.12s). This is cache-retention pressure.
+  **Externally imposed resident page-pool pressure is now physically accepted too.**
+  The qualification-only holder checks out real pages from the same finite
+  `ResidentPagePool`; production only exposes read-only diagnostics. With original
+  0.8B page4/max_append64, a cached prefix64 leaves192 pages occupied; the qualifier
+  holds the remaining5952 pages and fills the6144-page pool. The next cached tail is
+  refused prelaunch as `Capacity`, the root stays unchanged, vector/staging candidate
+  leases unwind to their prior occupancy, and the cached snapshot remains valid. After
+  releasing pressure, the same tail commits and its complete vocabulary logits match
+  the pre-pressure baseline bit-for-bit; all allocated pages are idle before clean
+  shutdown (`P12_SOURCE_PAGED_PREFIX_PAGE_PRESSURE_PASS`,168.51s). One earlier
+  external SIGTERM at ~8s during startup remains incomplete only. Minimal production
+  diagnostics now report current `prefix_cache` occupancy/bounds and `paged_pool`
+  allocated/idle/occupied/max/page-bytes under each Qwen source model; there are no
+  cumulative hot-path counters. This qualifies actual resident page-pool exhaustion
+  and recovery, not host/device OOM. Event/lease overlap remains later.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -1333,8 +1345,13 @@ is already green; repeat it only if host/runtime state changes.
 > Server stop/scope change is not a cache purge. Trusted owners must stop/drain the
 > stale scope, then call `invalidate_prefix_scope`; already-admitted work is not
 > retroactively cancelled.
-> Continue with externally imposed resident/page-pool pressure and minimal pressure/
-> eviction diagnostics. Keep event/lease physical overlap behind its remaining gates.
+> Externally imposed resident page-pool pressure is now terminal-green on original
+> 0.8B page4/max_append64: cached prefix64,5952 external pages held,6144/6144 pool full,
+> prelaunch Capacity with unchanged root and exact vector/staging unwind, then exact
+> full-logit recovery after release and all pages idle at shutdown in168.51s. Qwen
+> diagnostics expose only current cache/paged-pool occupancy and maxima, not cumulative
+> pressure counters. One earlier external SIGTERM attempt is incomplete only. Keep
+> event/lease physical overlap behind its remaining gates.
 >
 > Keep the implementation turn to roughly 30 minutes. Aim for the next coherent
 > checkpoint, update owning TODO/handoff state, sign the commit, sync X2 only if

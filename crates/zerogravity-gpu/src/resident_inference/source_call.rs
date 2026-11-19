@@ -43,7 +43,7 @@ pub enum CudaSourceStatePolicy {
     },
 }
 
-#[cfg(all(feature = "hardware-abort-probe", feature = "cuda-cublas"))]
+#[cfg(feature = "cuda-cublas")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SourceCallPagedPoolSnapshot {
     pub vector_allocated_sets: usize,
@@ -52,6 +52,13 @@ pub struct SourceCallPagedPoolSnapshot {
     pub staging_idle_sets: usize,
     pub allocated_pages: usize,
     pub idle_pages: usize,
+    pub max_pages: usize,
+    pub page_bytes: usize,
+}
+
+#[cfg(all(feature = "hardware-abort-probe", feature = "cuda-cublas"))]
+pub struct SourceCallPagedPressure {
+    _pages: Vec<ResidentLease>,
 }
 
 /// No exposed inner model/session: detached readers must retain these owners.
@@ -485,8 +492,39 @@ impl SourceCallModel {
         crate::physical_quarantine::quarantined_completion_owners_for(self.inner.service.client())
     }
 
+    #[cfg(feature = "cuda-cublas")]
+    pub fn paged_pool_snapshot(&self) -> Result<Option<SourceCallPagedPoolSnapshot>> {
+        let states = self
+            .inner
+            .state_pool
+            .get()
+            .ok_or_else(|| Error::State("source-call state pool absent".into()))?;
+        let super::state_pool::PooledStateStorage::Hybrid(pools) = &states.storage else {
+            return Ok(None);
+        };
+        let vector = pools.vector_pool.snapshot()?;
+        let staging = pools.staging_pool.snapshot()?;
+        let pages = pools.page_pool.snapshot()?;
+        Ok(Some(SourceCallPagedPoolSnapshot {
+            vector_allocated_sets: vector.allocated_sets,
+            vector_idle_sets: vector.idle_sets,
+            staging_allocated_sets: staging.allocated_sets,
+            staging_idle_sets: staging.idle_sets,
+            allocated_pages: pages.allocated_pages,
+            idle_pages: pages.idle_pages,
+            max_pages: pools.plan.max_pages,
+            page_bytes: pools.page_pool.page_bytes(),
+        }))
+    }
+
     #[cfg(all(feature = "hardware-abort-probe", feature = "cuda-cublas"))]
     pub fn diagnostic_paged_pool_snapshot(&self) -> Result<SourceCallPagedPoolSnapshot> {
+        self.paged_pool_snapshot()?
+            .ok_or_else(|| Error::State("source-call state pool is not paged".into()))
+    }
+
+    #[cfg(all(feature = "hardware-abort-probe", feature = "cuda-cublas"))]
+    pub fn diagnostic_hold_paged_pages(&self, count: usize) -> Result<SourceCallPagedPressure> {
         let states = self
             .inner
             .state_pool
@@ -495,17 +533,11 @@ impl SourceCallModel {
         let super::state_pool::PooledStateStorage::Hybrid(pools) = &states.storage else {
             return Err(Error::State("source-call state pool is not paged".into()));
         };
-        let vector = pools.vector_pool.snapshot()?;
-        let staging = pools.staging_pool.snapshot()?;
-        let pages = pools.page_pool.snapshot()?;
-        Ok(SourceCallPagedPoolSnapshot {
-            vector_allocated_sets: vector.allocated_sets,
-            vector_idle_sets: vector.idle_sets,
-            staging_allocated_sets: staging.allocated_sets,
-            staging_idle_sets: staging.idle_sets,
-            allocated_pages: pages.allocated_pages,
-            idle_pages: pages.idle_pages,
-        })
+        let mut pages = Vec::with_capacity(count);
+        for _ in 0..count {
+            pages.push(pools.page_pool.checkout()?);
+        }
+        Ok(SourceCallPagedPressure { _pages: pages })
     }
 
     #[cfg(all(

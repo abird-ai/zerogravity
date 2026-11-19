@@ -91,6 +91,14 @@ pub struct PrefixCacheEviction {
     pub weight: usize,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PrefixCacheSnapshot {
+    pub entries: usize,
+    pub weight: usize,
+    pub max_entries: usize,
+    pub max_weight: usize,
+}
+
 /// Small bounded cache for complete-domain prefix candidates.
 ///
 /// Insertion order is the eviction order. Lookup is a bounded linear scan with no
@@ -129,6 +137,15 @@ impl<U: Eq, T> PrefixCache<U, T> {
 
     pub fn weight(&self) -> usize {
         self.weight
+    }
+
+    pub fn snapshot(&self) -> PrefixCacheSnapshot {
+        PrefixCacheSnapshot {
+            entries: self.entries.len(),
+            weight: self.weight,
+            max_entries: self.max_entries,
+            max_weight: self.max_weight,
+        }
     }
 
     pub fn insert(
@@ -297,6 +314,15 @@ mod tests {
             .insert(scope, Arc::from([3]), Arc::new("three"), 5)
             .unwrap();
         assert_eq!((cache.len(), cache.weight()), (2, 10));
+        assert_eq!(
+            cache.snapshot(),
+            PrefixCacheSnapshot {
+                entries: 2,
+                weight: 10,
+                max_entries: 2,
+                max_weight: 10,
+            }
+        );
         assert!(cache.lookup(scope, &[1]).is_none());
         assert_eq!(*cache.lookup(scope, &[2]).unwrap().payload, "two");
         assert_eq!(*cache.lookup(scope, &[3]).unwrap().payload, "three");

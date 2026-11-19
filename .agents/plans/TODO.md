@@ -339,8 +339,16 @@ page4/max_append64 proves three prefix64 entries FIFO-evict the oldest while kee
 the newer hit; purge releases2/128 and forces a miss; prompt321 weight pressure
 retains prefix320 for a1-token hit but evicts prefix256 so prompt257 costs257; final
 purge releases2/448, repeated purge0, clean shutdown in179.12s. This qualifies
-cache-retention pressure only; externally imposed GPU/host/page-pool pressure and
-minimal diagnostics remain next. Event/lease overlap remains later.
+cache-retention pressure. **Actual external resident page-pool pressure is now
+accepted as well:** the qualifier pins real pages from the same finite pool around a
+cached prefix64. On original0.8B page4/max_append64 it holds5952 pages, reaches
+6144/6144, gets a prelaunch Capacity with unchanged root and exact vector/staging
+unwind, releases pressure, then reproduces the complete baseline logits exactly;
+final allocated pages are all idle and shutdown is clean in168.51s. One startup
+SIGTERM attempt is incomplete only. Qwen admission/health diagnostics now include
+current prefix-cache entries/weight/maxima and paged-pool allocated/idle/occupied/max/
+page-bytes only—no cumulative hot-path counters. Host/device OOM remains outside this
+claim. Event/lease overlap remains later.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

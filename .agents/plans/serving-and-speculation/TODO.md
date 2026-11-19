@@ -658,9 +658,15 @@ or a change to the active correctness/benchmark/27B order.
   Qwen cache count=`2*active`, weight=`active*context`. Physical0.8B active1 proves
   FIFO prefix64 oldest miss/newer hit, purge2/128 + invalidated-scope miss, and512-token
   retained-weight pressure where prefix320 hits but prefix256 was evicted; final
-  purge2/448, repeated purge0, clean shutdown in179.12s. External GPU/host/page-
-  pool pressure still needs qualification. Physical overlap remains behind
-  event/lease and independent-root gates.
+  purge2/448, repeated purge0, clean shutdown in179.12s. Actual resident page-pool
+  pressure is now qualified too: original0.8B page4/max_append64 cached prefix64 plus
+ 5952 externally held real pages fills6144/6144; the next tail returns prelaunch
+  Capacity with unchanged root and no vector/staging leak, then exact full-logit
+  recovery after release with all pages idle at shutdown in168.51s. One startup
+  SIGTERM attempt remains incomplete only. Minimal Qwen diagnostics expose current
+  prefix-cache occupancy/bounds and paged-pool allocated/idle/occupied/max/page bytes;
+  no cumulative hot-path counters. Host/device OOM is not claimed. Physical overlap
+  remains behind event/lease and independent-root gates.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

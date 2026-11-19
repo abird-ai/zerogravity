@@ -188,8 +188,19 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   oldest miss), purge2 entries/128 weight + invalidated-scope miss, then independent512-token
   weight pressure where prompt321 retains prefix320 for a1-token hit but evicts
   prefix256 so prompt257 fully replays. Final purge2/448, second purge0 and source
-  shutdown clean in179.12s. This is retained-cache pressure, not external OOM/page-
-  pool pressure; the latter remains next.
+  shutdown clean in179.12s. This is retained-cache pressure.
+- [x] Externally imposed finite resident page-pool pressure is physically accepted on
+  original0.8B. A qualification-only RAII owner checks out real pages from the same
+  pool; production gets only read-only diagnostics. With page4/max_append64 and a
+  cached prefix64,192 pages are occupied and5952 external pages fill the6144-page
+  pool. The cached1-token tail is refused prelaunch as Capacity with unchanged root;
+  vector/staging candidates unwind exactly. After dropping pressure the same tail
+  matches the baseline full logits bit-for-bit, and every allocated page is idle
+  before clean shutdown in168.51s (`P12_SOURCE_PAGED_PREFIX_PAGE_PRESSURE_PASS`). One
+  earlier external SIGTERM attempt is incomplete only. Qwen diagnostics expose
+  current cache occupancy/bounds and paged-pool occupancy/max/page bytes; no
+  cumulative pressure counters were added. This does not claim host/device OOM
+  behavior.
 
 ### Next continuation — no live campaign
 

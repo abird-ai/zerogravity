@@ -760,9 +760,33 @@ prefix320, but prompt257 executes257 because prefix256 was necessarily evicted b
 weight even though a second entry slot existed. Final purge reports2/448, repeated
 purge reports zero, and shutdown is clean:
 `P12_SOURCE_PAGED_PREFIX_EVICTION_PASS`,179.12s. This qualifies cache-retention
-pressure and physical owner release, not externally imposed device/host OOM or page-
-pool exhaustion. That external pressure + minimal useful diagnostics remain next.
-Event/lease-backed physical overlap remains later.
+pressure and physical owner release.
+
+**19 Nov external page-pool pressure follow-up:** `SourceCallModel` now exposes a
+read-only paged-pool snapshot in production (`allocated_pages`, `idle_pages`,
+`max_pages`, `page_bytes`; Qwen derives occupied pages), while a
+`hardware-abort-probe`-only RAII qualifier can temporarily check out real page leases
+from that exact pool. Qwen diagnostics also expose `PrefixCacheSnapshot`
+entries/weight/max entries/max weight. These are current occupancy snapshots only;
+no cumulative pressure/eviction counters were added to request hot paths.
+
+The physical original0.8B page4/max_append64 cell first builds a real prefix64
+snapshot and an independent exact tail-logit baseline. A fresh session forks that
+snapshot, then the qualifier checks out every page not already occupied:192 pages are
+owned by the cached/forked prefix and5952 external leases fill the pool to6144/6144.
+The1-token tail then returns `SourceCallPreparation::Capacity` before submission,
+leaves the session root unchanged, and vector/staging candidate occupancy returns to
+its pre-refusal value. While the holder is alive the page pool remains completely
+occupied. Dropping it restores page occupancy to the exact pre-pressure value. The
+same tail then becomes Ready/Committed and its whole vocabulary logits are bit-exact
+to the baseline. After dropping session/snapshot, every allocated page is idle and
+source shutdown is clean:
+`P12_SOURCE_PAGED_PREFIX_PAGE_PRESSURE_PASS ... pressure_pages=5952
+prelaunch_capacity=true root_unchanged=true vector_staging_unwound=true
+cached_root_survived=true recovered_logits=exact final_pages_idle=true`,168.51s.
+One earlier external SIGTERM during startup is incomplete only. This proves finite
+resident page-pool exhaustion/recovery; it still does not claim external host/device
+OOM. Event/lease-backed physical overlap remains later.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 
