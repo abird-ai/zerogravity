@@ -284,11 +284,20 @@ and live TODOs are authoritative.
   `KvInPlace` cleanly uses the existing per-lane append rather than adding another
   paging kernel. Focused policy tests pass, strict CUDA clippy and CUDA-serving
   composition checks pass. The compact original0.8B Contiguous-vs-Paged B2/B4/B8
-  prefill+decode/all42 test compiles, but two physical attempts were externally
-  SIGKILLed before any semantic result; physical native parity therefore remains
-  incomplete. Next obtain a terminal result from that same test, then go directly
-  to source-real SDK/HTTP paged parity and matched vLLM feedback. Complete-domain
-  prefix reuse and event/lease-backed overlap remain later.
+  prefill+decode/all42 cell is now physically accepted: the same test completed
+  exit0 in306.84s with `P12_SOURCE_PAGED_NATIVE_TRANSPORT_PASS widths=2,4,8
+  prefill=exact decode=exact all42=exact contiguous_reference=true
+  final_shutdown=true`. The earlier two external-SIGKILL attempts remain incomplete,
+  not failures. Public SDK integration is also physically accepted:8 concurrent
+  requests,4-token page-boundary prefill and2 output tokens produced actual native
+  B8 publication in both Contiguous and Paged, identical token IDs and clean
+  shutdown (`P12_SOURCE_PAGED_SDK_PASS ... contiguous_cohorts={8}
+  paged_cohorts={8} tokens=exact final_shutdown=true`, exit0 in340.78s). Strict
+  serving-test Clippy passes. HTTP was not weakened or run because current L5
+  Bubblewrap is shared-net (`private_network_namespace=false`); it must run under a
+  private-net profile. No fresh matched-vLLM claim follows: L5 has no local vLLM
+  executable/module and the retained C8 workload differs from this page-boundary
+  SDK cell. Complete-domain prefix reuse and event/lease-backed overlap remain later.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -1206,12 +1215,17 @@ is already green; repeat it only if host/runtime state changes.
 > remains exactly Contiguous. Native paged B2/B4/B8 transport is implemented by
 > reusing the shared Hybrid candidate gather/body/scatter path; Contiguous B8 keeps
 > its private-KV fast path and paged uses the simpler existing per-lane append.
-> Focused checks are green. The one compact original0.8B Contiguous-vs-Paged native
-> transport test has two externally SIGKILLed attempts before semantic completion,
-> so physical parity is still open. Continue by rerunning that same test to a
-> terminal result, then source-real SDK/HTTP paged parity and matched vLLM feedback.
-> Keep complete-domain prefix reuse and event/lease physical overlap behind their
-> remaining gates.
+> Focused checks are green. The compact original0.8B Contiguous-vs-Paged native
+> transport cell is terminal-green for B2/B4/B8 prefill+decode/all42, and the public
+> SDK cell is terminal-green with actual native B8 publication for both Contiguous
+> and Paged plus exact token IDs/clean shutdown. The two earlier external-SIGKILL
+> attempts remain incomplete only. Current L5 has no private network namespace, so
+> do not run/weaken HTTP here; use a private-net profile for that gate. L5 also has
+> no local vLLM executable/module, and retained vLLM C8 numbers are not matched to
+> the 4-token/2-output page-boundary SDK workload. Continue with private-net paged
+> HTTP and a genuinely matched vLLM cell when the existing pinned runtime is
+> available; do not build a new evidence framework. Keep complete-domain prefix
+> reuse and event/lease physical overlap behind their remaining gates.
 >
 > Keep the implementation turn to roughly 30 minutes. Aim for the next coherent
 > checkpoint, update owning TODO/handoff state, sign the commit, sync X2 only if

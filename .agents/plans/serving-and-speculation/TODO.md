@@ -610,12 +610,16 @@ or a change to the active correctness/benchmark/27B order.
   `OrdinaryCandidateState` gather/body/scatter per lane under one cohort flight.
   Contiguous B8 keeps its private-KV fast path; paged `KvInPlace` uses existing
   per-lane KV append. Focused policy tests, strict CUDA clippy and CUDA-serving
-  composition check pass. The one compact original0.8B Contiguous-vs-Paged
-  B2/B4/B8 prefill/decode/all42 test compiles, but two physical runs were externally
-  SIGKILLed before semantic output, so native paged physical acceptance remains
-  open. **Next:** get that same cell terminal-green, then source-real SDK/HTTP and
-  matched vLLM feedback. Physical overlap remains behind event/lease and
-  independent-root gates.
+  composition check pass. The compact original0.8B Contiguous-vs-Paged B2/B4/B8
+  prefill/decode/all42 cell is terminal-green: exit0 in306.84s, exact state/output
+  and clean shutdown; two earlier external-SIGKILL attempts remain incomplete only.
+  Public SDK paged serving is also terminal-green:8 concurrent page-boundary
+  requests,2 outputs, native B8 observed for both Contiguous/Paged, exact token IDs,
+  clean shutdown in340.78s; strict test-target Clippy passes. **HTTP remains open
+  only because current L5 lacks a private network namespace; do not weaken that
+  gate.** Fresh matched-vLLM timing also remains open because no local vLLM runtime
+  is present and retained C8 data is not this workload. Physical overlap remains
+  behind event/lease and independent-root gates.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

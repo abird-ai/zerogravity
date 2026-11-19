@@ -41,6 +41,137 @@ fn external_sdk_compiles_without_cli_or_concrete_model_features() {
     );
 }
 
+#[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+#[test]
+#[ignore = "approved original CUDA cache; physical public SDK contiguous-vs-paged native cohort"]
+fn qwen_cuda_paged_native_sdk_matches_contiguous() {
+    use std::{
+        collections::BTreeSet,
+        time::{Duration, Instant},
+    };
+    use zerogravity::{
+        cache::CacheOptions,
+        models::{ModelLoadRequest, QwenCudaStatePolicy, QwenSourceProfile},
+        runtime::{
+            SchedulerLimits,
+            text::{Request, ResponseEvent, TokenMetricsRequest},
+        },
+    };
+
+    const MIB: usize = 1024 * 1024;
+    const SNAPSHOT: &str = "d7c7bf56e176bd70a8190acb9873cc719e65b6b306181039f2896d6f9387b36c";
+
+    let run = |paged: bool| {
+        let runtime = Runtime::builder()
+            .limits(SchedulerLimits {
+                max_active: 8,
+                max_queued: Some(16),
+                ..Default::default()
+            })
+            .build()
+            .unwrap();
+        let profile = QwenSourceProfile {
+            active: 8,
+            context: 512,
+            output: 2,
+            max_pending: Some(16),
+            native_rows: 8,
+        };
+        let load = if paged {
+            ModelLoadRequest::QwenCudaWithStatePolicy {
+                aliases: vec!["source".into()],
+                cache: CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
+                snapshot: SNAPSHOT.into(),
+                profile,
+                provider_bytes: 4608 * MIB,
+                device_bytes: 5120 * MIB as u64,
+                state_policy: QwenCudaStatePolicy::Paged {
+                    page_tokens: 4,
+                    max_append_tokens: 4,
+                },
+            }
+        } else {
+            ModelLoadRequest::QwenCuda {
+                aliases: vec!["source".into()],
+                cache: CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
+                snapshot: SNAPSHOT.into(),
+                profile,
+                provider_bytes: 4608 * MIB,
+                device_bytes: 5120 * MIB as u64,
+            }
+        };
+        runtime.models().load(load).unwrap();
+        let model = runtime.models().resolve("source").unwrap();
+        let tokenizer = model.prepared().tokenizer();
+        let prompt = " a".repeat(4);
+        assert_eq!(tokenizer.prompt_tokens(&prompt, false).unwrap().len(), 4);
+
+        let events = (0..8)
+            .map(|_| {
+                runtime
+                    .request_text(Request {
+                        model: "source".into(),
+                        input: prompt.clone(),
+                        chat: false,
+                        max_tokens: 2,
+                        stream: true,
+                        token_metrics: Some(TokenMetricsRequest {
+                            started: Instant::now(),
+                            wire_request_id: None,
+                        }),
+                    })
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let mut outputs = Vec::with_capacity(events.len());
+        let mut cohort_widths = BTreeSet::new();
+        for events in events {
+            let mut ids = Vec::new();
+            loop {
+                match events
+                    .events
+                    .recv_timeout(Duration::from_secs(300))
+                    .expect("paged SDK response deadline")
+                {
+                    ResponseEvent::TokenText { token, .. } => {
+                        if let Some(cohort) = token.gpu.and_then(|gpu| gpu.native_cohort) {
+                            cohort_widths.insert(cohort.width);
+                        }
+                        ids.push(token.id);
+                    }
+                    ResponseEvent::Done {
+                        prompt_tokens,
+                        completion_tokens,
+                        ..
+                    } => {
+                        assert_eq!((prompt_tokens, completion_tokens), (4, 2));
+                        break;
+                    }
+                    ResponseEvent::Error(error) => panic!("paged SDK worker: {error}"),
+                    ResponseEvent::Text(_) => panic!("streaming token observations required"),
+                }
+            }
+            assert_eq!(ids.len(), 2);
+            outputs.push(ids);
+        }
+        assert!(
+            cohort_widths.iter().any(|&width| width > 1),
+            "native cohort publication was not observed"
+        );
+        runtime.shutdown().unwrap();
+        assert!(runtime.status().closed);
+        (outputs, cohort_widths)
+    };
+
+    let contiguous = run(false);
+    let paged = run(true);
+    assert_eq!(paged.0, contiguous.0);
+    println!(
+        "P12_SOURCE_PAGED_SDK_PASS requests=8 prompt_tokens=4 output_tokens=2 contiguous_cohorts={:?} paged_cohorts={:?} tokens=exact final_shutdown=true",
+        contiguous.1, paged.1
+    );
+}
+
 #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
 #[test]
 fn canonical_hip_registration_checks_runtime_limits_and_aliases_before_source_io() {

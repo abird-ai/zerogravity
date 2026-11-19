@@ -649,12 +649,19 @@ fresh-COW Writes, and canonical paged Domains appear only after completion.
 Contiguous B8 retains the specialized private-KV transition when bindings are
 `Distinct`; paged `KvInPlace` deliberately uses the existing per-lane append to
 keep the design simple until profiling justifies another fast path. Focused policy
-tests, strict CUDA clippy and CUDA-serving composition check pass. One compact
-original0.8B Contiguous-vs-Paged B2/B4/B8 prefill/decode/all42 test compiles; two
-physical attempts were externally SIGKILLed before semantic output, so physical
-acceptance remains open. Reuse that same test next, then SDK/HTTP + matched vLLM;
-do not grow a parallel fixture/evidence system. Complete-domain prefix reuse and
-event/lease-backed physical overlap remain later.
+tests, strict CUDA clippy and CUDA-serving composition check pass. The compact
+original0.8B Contiguous-vs-Paged B2/B4/B8 prefill/decode/all42 cell is physically
+accepted: exit0 in306.84s with exact prefill/decode/all42 and clean shutdown; two
+earlier externally SIGKILLed attempts remain incomplete only. The next public-SDK
+cell reuses the public library facade rather than a fixture corpus:8 concurrent
+4-token page-boundary requests,2 outputs, explicit Paged/native_rows8 versus
+Contiguous, actual native cohort width8 on both and identical token IDs; exit0 in
+340.78s with clean shutdown. Strict SDK-target Clippy passes. Current L5
+`--isolation-info` reports `private_network_namespace=false`, so paged HTTP must run
+on a private-net profile. No fresh vLLM result is claimed because no local vLLM
+runtime is available and retained C8 timing is not workload-matched. Do not grow a
+parallel fixture/evidence system. Complete-domain prefix reuse and event/lease-backed
+physical overlap remain later.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 

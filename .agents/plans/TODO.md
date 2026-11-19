@@ -282,11 +282,17 @@ created only after completion. Contiguous B8 retains its private-KV fast path;
 paged `KvInPlace` falls back to the existing per-lane append. Focused policy tests,
 strict `qwen35-cuda` clippy and `qwen35-cuda-serving` composition check pass. One
 compact original0.8B B2/B4/B8 Contiguous-vs-Paged prefill/decode/all42 comparison
-compiles, but two physical attempts were externally SIGKILLed before semantic
-results and remain incomplete. Next obtain that same terminal physical result,
-then source-real SDK/HTTP parity and matched vLLM feedback; do not add another
-fixture/evidence framework. Complete-domain prefix reuse and event/lease overlap
-remain later gates.
+is physically accepted: exit0 in306.84s, exact prefill/decode/all42 and clean
+shutdown. The two earlier external-SIGKILL attempts remain incomplete only. A
+single public `fabric_sdk` cell then loads Contiguous and explicit Paged with
+native_rows8, offers8 concurrent4-token/page-boundary requests with2 output tokens,
+observes actual B8 cohorts `{8}` on both, exact returned token IDs and clean
+shutdown; exit0 in340.78s. Strict serving-test Clippy passes. Current L5 has no
+private network namespace, so HTTP remains for a private-net profile; no local
+vLLM executable/module exists here, and retained C8 numbers are not workload-matched
+with this SDK cell, so no fresh vLLM claim is made. Do not add another fixture/
+evidence framework. Complete-domain prefix reuse and event/lease overlap remain
+later gates.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

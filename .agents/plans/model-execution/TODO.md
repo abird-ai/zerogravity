@@ -95,9 +95,9 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   source-identity validation.
 - [x] Focused selector tests pass 2/2; strict `qwen35-cuda` Clippy and
   `qwen35-cuda-serving` composition check pass with required kache/jobs settings.
-  No new numerical/state/ownership primitive or physical claim is introduced;
-  the exposed B1 route is the already source-real-qualified paged path. Next adapt
-  native B2/B4/B8 paged state transport before claiming batched/HTTP paged serving.
+  No new numerical/state/ownership primitive or physical claim was introduced by
+  the selector itself; native B2/B4/B8 transport and SDK acceptance are recorded
+  immediately below.
 
 ### 19 Nov 2026 — native paged cohort transport implementation checkpoint
 
@@ -112,12 +112,19 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   per-lane KV append path while all other compatible B8 work stays physically
   batched. No second paged cohort engine or model-specific page primitive was added.
 - [x] Production qwen35-cuda check, focused selector/policy tests, strict CUDA
-  clippy and qwen35-cuda-serving composition check pass. A single compact ignored
-  original0.8B test compares Contiguous vs Paged B2/B4/B8 prefill + cached decode,
-  token/max bits and all42; it compiles. Two physical executions were externally
-  SIGKILLed before any semantic result and cleanly returned the GPU to37MiB, so
-  physical native transport acceptance remains open. Do not add more fixtures;
-  rerun this same cell to terminal status, then move to SDK/HTTP and matched vLLM.
+  clippy and qwen35-cuda-serving composition check pass. The single compact
+  original0.8B Contiguous-vs-Paged B2/B4/B8 prefill+cached-decode cell is now
+  terminal-green: exit0 in306.84s, token/max bits and all42 exact, clean shutdown.
+  Two earlier external-SIGKILL attempts remain incomplete only.
+- [x] Public SDK integration is terminal-green without a new fixture corpus:
+  `fabric_sdk` loads Contiguous then explicit Paged/native_rows8, offers8 concurrent
+  4-token page-boundary requests with2 output tokens, observes native cohort width8
+  on both, returns identical token IDs and shuts down cleanly. Marker
+  `P12_SOURCE_PAGED_SDK_PASS ... contiguous_cohorts={8} paged_cohorts={8}
+  tokens=exact final_shutdown=true`; exit0 in340.78s. Strict test-target Clippy
+  passes. HTTP is intentionally not run on current shared-net L5; use a private-net
+  profile. No fresh matched-vLLM result is claimed: no local vLLM executable/module
+  is available and the retained C8 workload is not identical to this SDK cell.
 
 ### Next continuation — no live campaign
 
