@@ -19,7 +19,9 @@ use std::{
 #[cfg(feature = "qwen35-cuda")]
 use zerogravity_engine::router::waves::Phase;
 #[cfg(feature = "qwen35-cuda")]
-use zerogravity_engine::state_cache::{PrefixCompatibility, PrefixSharingScope};
+use zerogravity_engine::state_cache::{
+    PrefixCacheEviction, PrefixCompatibility, PrefixSharingScope,
+};
 use zerogravity_engine::{
     model_instance::execution::*,
     router::{
@@ -222,6 +224,36 @@ impl Executor for SourceText {
                 .map_err(ServiceError::inference)?;
         }
         Ok(())
+    }
+    fn invalidate_prefix_scope(
+        models: &BTreeMap<String, Self::Model>,
+        sharing: zerogravity_engine::state_cache::PrefixSharingScope,
+    ) -> Result<zerogravity_engine::state_cache::PrefixCacheEviction, ServiceError> {
+        #[cfg(feature = "qwen35-cuda")]
+        {
+            let mut seen = Vec::<Self::Model>::new();
+            let mut total = PrefixCacheEviction::default();
+            for model in models.values() {
+                if seen.iter().any(|prior| Arc::ptr_eq(prior, model)) {
+                    continue;
+                }
+                seen.push(model.clone());
+                let mut cache = model.prefix_cache.lock().map_err(|_| poison())?;
+                if let Some(cache) = cache.as_mut() {
+                    let evicted = cache.invalidate_scope(sharing);
+                    total.entries =
+                        total.entries.checked_add(evicted.entries).ok_or_else(|| {
+                            ServiceError::new(500, "prefix_cache", "eviction entry count overflow")
+                        })?;
+                    total.weight = total.weight.checked_add(evicted.weight).ok_or_else(|| {
+                        ServiceError::new(500, "prefix_cache", "eviction weight overflow")
+                    })?;
+                }
+            }
+            return Ok(total);
+        }
+        #[allow(unreachable_code)]
+        Ok(zerogravity_engine::state_cache::PrefixCacheEviction::default())
     }
     #[cfg(feature = "qwen35-cuda")]
     fn cohort_eligible(row: &Active<Self>) -> bool {

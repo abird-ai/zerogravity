@@ -85,6 +85,12 @@ pub struct PrefixHit<T> {
     pub payload: Arc<T>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PrefixCacheEviction {
+    pub entries: usize,
+    pub weight: usize,
+}
+
 /// Small bounded cache for complete-domain prefix candidates.
 ///
 /// Insertion order is the eviction order. Lookup is a bounded linear scan with no
@@ -205,6 +211,24 @@ impl<U: Eq, T> PrefixCache<U, T> {
         })
     }
 
+    pub fn invalidate_scope(&mut self, sharing: PrefixSharingScope) -> PrefixCacheEviction {
+        let mut eviction = PrefixCacheEviction::default();
+        self.entries.retain(|entry| {
+            if entry.compatibility.sharing == sharing {
+                eviction.entries += 1;
+                eviction.weight += entry.weight;
+                false
+            } else {
+                true
+            }
+        });
+        self.weight = self
+            .weight
+            .checked_sub(eviction.weight)
+            .expect("prefix cache invalidation weight");
+        eviction
+    }
+
     pub fn clear(&mut self) {
         self.entries.clear();
         self.weight = 0;
@@ -281,6 +305,17 @@ mod tests {
                 .insert(scope, Arc::from([4]), Arc::new("too-heavy"), 11)
                 .is_err()
         );
+
+        let evicted = cache.invalidate_scope(PrefixSharingScope::new(20).unwrap());
+        assert_eq!(
+            evicted,
+            PrefixCacheEviction {
+                entries: 2,
+                weight: 10,
+            }
+        );
+        assert!(cache.is_empty());
+        assert_eq!(cache.weight(), 0);
 
         cache.clear();
         assert!(cache.is_empty());

@@ -223,9 +223,18 @@ The following extends existing owners; source-byte qualification is not inferenc
   injection is now accepted: one `ServerBuilder` scope is fixed by the embedding
   application, absent from the wire format, and unaware services fail closed. The
   physical original0.8B prompt65 HTTP proof records65 warm /1 same scope /65 different
-  server scope with exact output ID and clean shutdown in171.97s. Remaining: actual
-  FIFO/weight eviction with live snapshot owners, stale-scope retention/invalidation
-  semantics, pressure metrics and extension to future multi-checkpoint domain sets.
+  server scope with exact output ID and clean shutdown in171.97s. **Actual FIFO/
+  weight eviction with live snapshot owners and explicit stale-scope cache invalidation
+  is now accepted.** `invalidate_prefix_scope` is the trusted retained-cache purge and
+  reports exact removed entry/weight totals; it does not cancel already-admitted
+  work. Stop/drain stale-scope admission first; server stop/scope switch alone does
+  not purge.
+  Qwen uses `2*active` entries and `active*context` semantic weight. Physical active1
+  page4/max_append64 proves prefix64 FIFO oldest miss/newer hit, purge2/128 + invalidated
+  scope miss, and independent512-weight pressure: prefix320 hit1 while evicted prefix256
+  makes prompt257 replay257; final purge2/448, repeat purge0, clean shutdown in
+ 179.12s. Remaining: externally imposed page-pool/device/host pressure, minimal
+  pressure/eviction diagnostics and extension to future multi-checkpoint domain sets.
   Missing recurrent state still requires an earlier complete checkpoint/recompute,
   never a KV-only full hit. Exact gates and serving owner:
   [prefix design](../serving-and-speculation/BATCHING_AND_PAGED_STATE.md#complete-domain-prefix-reuse-and-cow--memory-plan).

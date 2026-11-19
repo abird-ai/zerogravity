@@ -271,6 +271,12 @@ impl Runtime {
             router.request_scoped(request, sharing)
         })
     }
+    pub fn invalidate_prefix_scope(
+        &self,
+        sharing: crate::state_cache::PrefixSharingScope,
+    ) -> std::result::Result<crate::state_cache::PrefixCacheEviction, ServiceError> {
+        self.with_text_router(|router| router.invalidate_prefix_scope(sharing))
+    }
     pub fn run(&self, request: &TaskRequest) -> Result<Box<dyn OutputStream>> {
         self.require_open()?;
         request.validate(self.inner.limits.max_input_bytes)?;

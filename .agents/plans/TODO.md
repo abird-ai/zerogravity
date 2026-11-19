@@ -327,9 +327,20 @@ it, and custom `TextService` implementations fail closed unless they implement
 scoped admission. Runtime/Router do implement it. Focused server tests are7/7 and
 strict serving Clippy passes. Physical original0.8B page4/max_append64 HTTP prompt65
 uses ordinary JSON and records65 warm /1 same scope7 /65 new server scope8 with exact
-output ID and clean shutdown in171.97s (`P12_SOURCE_PAGED_PREFIX_HTTP_PASS`). Next:
-bounded eviction, stale-scope retention/invalidation and memory-pressure
-qualification; event/lease overlap remains later.
+output ID and clean shutdown in171.97s (`P12_SOURCE_PAGED_PREFIX_HTTP_PASS`).
+**Bounded live-snapshot eviction + explicit stale-scope cache invalidation are accepted.**
+`PrefixCacheEviction` reports removed entries/semantic weight; trusted
+`invalidate_prefix_scope` is routed through the type-erased registry into executor-
+owned caches and exposed on Runtime. It purges currently retained entries only; it
+never cancels already-admitted work. Trusted owners must stop/drain a stale scope
+first. Server stop/scope change alone never purges the cache.
+Qwen uses `2*active` entry and `active*context` weight bounds. Physical0.8B active1
+page4/max_append64 proves three prefix64 entries FIFO-evict the oldest while keeping
+the newer hit; purge releases2/128 and forces a miss; prompt321 weight pressure
+retains prefix320 for a1-token hit but evicts prefix256 so prompt257 costs257; final
+purge releases2/448, repeated purge0, clean shutdown in179.12s. This qualifies
+cache-retention pressure only; externally imposed GPU/host/page-pool pressure and
+minimal diagnostics remain next. Event/lease overlap remains later.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

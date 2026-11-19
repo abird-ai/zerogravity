@@ -363,9 +363,28 @@ and live TODOs are authoritative.
   uses ordinary OpenAI JSON only: server scope7 warm consumes65 model tokens, repeat
   consumes1, a new server over the same runtime/cache with scope8 consumes65, all
   output IDs match and shutdown is clean (`P12_SOURCE_PAGED_PREFIX_HTTP_PASS`,
-  171.97s). No client can select/override the scope through this HTTP API. Next
-  qualify bounded eviction, stale-scope retention/invalidation semantics and memory
-  pressure; event/lease overlap remains later.
+  171.97s). No client can select/override the scope through this HTTP API. **Bounded
+  live-snapshot eviction and explicit stale-scope cache invalidation are now accepted.** The
+  model-neutral cache exposes `PrefixCacheEviction { entries, weight }` and
+  `invalidate_scope`; trusted control routes that through Executor -> typed Registry
+  -> Router -> engine/public Runtime as `invalidate_prefix_scope`. Cache invalidation
+  is explicit: stopping a server or selecting another scope does not purge prior
+  state. The embedding owner must first stop issuing/drain a stale scope, then call
+  `invalidate_prefix_scope`; this purges currently retained entries but does not
+  retroactively cancel already-admitted work or invalidate a snapshot clone already
+  owned by such work.
+  Qwen now admits `2*active` cache entries while retaining only `active*context`
+  semantic-token weight, so count and weight bounds are independently meaningful.
+  Original0.8B page4/max_append64 physical `active=1` proof shows: three distinct
+  prefix64 snapshots trigger FIFO count eviction (newer hit, oldest miss); explicit
+  purge releases exactly2 entries/128 weight and the invalidated scope misses afterward;
+  a prompt321 trajectory hits the512-weight bound, retains prefix320 for a1-token hit,
+  but evicts prefix256 so prompt257 replays all257 tokens; final purge releases2
+  entries/448 weight, repeated purge returns zero, and shutdown is clean
+  (`P12_SOURCE_PAGED_PREFIX_EVICTION_PASS`,179.12s). This is cache-retention pressure,
+  not a claim about external GPU/host OOM pressure. Next qualify externally imposed
+  resident/page-pool pressure and expose only the minimum useful cache pressure/
+  eviction diagnostics; event/lease overlap remains later.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -1306,8 +1325,16 @@ is already green; repeat it only if host/runtime state changes.
 > the wire format has no scope control, and unaware `TextService` adapters fail
 > closed. Physical original0.8B HTTP prompt65 records65 warm /1 same-server-scope hit
 > /65 different-server-scope miss with exact output ID and clean shutdown in171.97s.
-> Continue with bounded eviction + stale-scope retention/invalidation + pressure
-> qualification. Keep event/lease physical overlap behind its remaining gates.
+> Bounded live-snapshot eviction/cache invalidation is also terminal-green: Qwen uses
+> `2*active` entry / `active*context` semantic-weight bounds; real active1/page4 work
+> proves FIFO oldest miss/newer hit, explicit scope purge2 entries/128 weight,
+> invalidated-scope miss, and independent512-weight pressure that evicts prefix256 while
+> retaining prefix320; final purge2/448, repeated purge0, clean shutdown in179.12s.
+> Server stop/scope change is not a cache purge. Trusted owners must stop/drain the
+> stale scope, then call `invalidate_prefix_scope`; already-admitted work is not
+> retroactively cancelled.
+> Continue with externally imposed resident/page-pool pressure and minimal pressure/
+> eviction diagnostics. Keep event/lease physical overlap behind its remaining gates.
 >
 > Keep the implementation turn to roughly 30 minutes. Aim for the next coherent
 > checkpoint, update owning TODO/handoff state, sign the commit, sync X2 only if

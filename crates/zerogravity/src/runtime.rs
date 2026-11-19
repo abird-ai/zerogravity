@@ -89,6 +89,12 @@ impl Runtime {
     ) -> std::result::Result<text::RequestEvents, text::ServiceError> {
         self.engine.request_text_scoped(request, sharing)
     }
+    pub fn invalidate_prefix_scope(
+        &self,
+        sharing: PrefixSharingScope,
+    ) -> std::result::Result<PrefixCacheEviction, text::ServiceError> {
+        self.engine.invalidate_prefix_scope(sharing)
+    }
     pub fn status(&self) -> RuntimeStatus {
         self.engine.status()
     }
@@ -115,7 +121,7 @@ pub use zerogravity_engine::model_instance::{
 };
 pub use zerogravity_engine::router as text;
 pub use zerogravity_engine::scheduler::SchedulerLimits;
-pub use zerogravity_engine::state_cache::PrefixSharingScope;
+pub use zerogravity_engine::state_cache::{PrefixCacheEviction, PrefixSharingScope};
 
 /// Explicit bounded CPU scheduler/source admission configuration.
 #[derive(Clone, Copy, Debug)]

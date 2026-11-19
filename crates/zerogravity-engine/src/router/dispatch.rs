@@ -802,6 +802,12 @@ impl Router {
             counters: self.stats.snapshot(),
         })
     }
+    pub fn invalidate_prefix_scope(
+        &self,
+        sharing: crate::state_cache::PrefixSharingScope,
+    ) -> Result<crate::state_cache::PrefixCacheEviction, ServiceError> {
+        self.models.invalidate_prefix_scope(sharing)
+    }
     pub fn memory_snapshot(&self) -> Option<(u64, u64, u64, u64)> {
         self.host.snapshot()
     }

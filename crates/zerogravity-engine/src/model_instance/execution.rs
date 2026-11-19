@@ -5,7 +5,7 @@ pub use crate::router::waves::Fairness;
 use crate::router::waves::Phase;
 use crate::router::worker::{Active, SchedulerSnapshot};
 use crate::router::{GpuTokenObservation, ServiceError, pending::ServingHost as HostPool};
-use crate::state_cache::PrefixSharingScope;
+use crate::state_cache::{PrefixCacheEviction, PrefixSharingScope};
 use std::{collections::BTreeMap, sync::Arc, time::Instant};
 
 type Result<T> = std::result::Result<T, ServiceError>;
@@ -174,6 +174,12 @@ pub trait Executor: Sized + Send + Sync + 'static {
         _sharing: Option<PrefixSharingScope>,
     ) -> Result<()> {
         Ok(())
+    }
+    fn invalidate_prefix_scope(
+        _models: &BTreeMap<String, Self::Model>,
+        _sharing: PrefixSharingScope,
+    ) -> Result<PrefixCacheEviction> {
+        Ok(PrefixCacheEviction::default())
     }
 
     fn validate_wave(_rows: &[&Active<Self>]) -> Result<()> {

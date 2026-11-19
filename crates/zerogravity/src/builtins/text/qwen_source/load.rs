@@ -173,7 +173,7 @@ pub(crate) fn load_router(
     let prefix_cache = if resident.supports_shared_prefix() {
         Some(
             zerogravity_engine::state_cache::PrefixCache::new(
-                profile.active,
+                profile.active * 2,
                 profile.context * profile.active,
             )
             .map_err(ServiceError::inference)?,
@@ -1086,6 +1086,178 @@ mod cuda_paged_tests {
         router.shutdown().unwrap();
         println!(
             "P12_SOURCE_PAGED_PREFIX_CACHE_PASS prompt_tokens=65 cached_prefix=64 warm_model_tokens=65 same_scope_model_tokens=1 different_scope_model_tokens=65 output_id_exact=true scoped=true final_shutdown=true"
+        );
+    }
+
+    #[test]
+    #[ignore = "approved original HF cache; live paged prefix FIFO/weight eviction and scope revocation"]
+    fn original_source_paged_prefix_cache_evicts_and_revokes() {
+        use std::time::Duration;
+        use zerogravity_engine::{
+            router::{Request, ResponseEvent},
+            state_cache::{PrefixCacheEviction, PrefixSharingScope},
+        };
+
+        let snapshot =
+            std::env::var("ZG_QWEN_SOURCE_SNAPSHOT").expect("explicit approved snapshot");
+        let root = std::env::var_os("ZG_QWEN_CACHE_ROOT").map(std::path::PathBuf::from);
+        let mut router = load_router(
+            vec!["source".into()],
+            CacheOptions::new(root, 96 * 1024 * 1024 * 1024),
+            snapshot,
+            QwenSourceProfile {
+                active: 1,
+                context: 512,
+                output: 1,
+                max_pending: Some(2),
+                native_rows: 0,
+            },
+            SourceBackend::Cuda {
+                provider_bytes: PROVIDER_BYTES,
+                device_bytes: DEVICE_BYTES,
+                state_policy: crate::gpu::CudaSourceStatePolicy::Paged {
+                    page_tokens: 4,
+                    max_append_tokens: 64,
+                },
+            },
+        )
+        .unwrap();
+        let tokenizer = router.model("source").unwrap().prepared().tokenizer();
+        let prompt_a = " a".repeat(65);
+        let prompt_b = " b".repeat(65);
+        let prompt_c = " c".repeat(65);
+        let prompt_long = " a".repeat(321);
+        let prompt_short = " a".repeat(257);
+        for (prompt, expected) in [
+            (&prompt_a, 65),
+            (&prompt_b, 65),
+            (&prompt_c, 65),
+            (&prompt_long, 321),
+            (&prompt_short, 257),
+        ] {
+            assert_eq!(
+                tokenizer.prompt_tokens(prompt, false).unwrap().len(),
+                expected
+            );
+        }
+
+        let model_tokens = |router: &Router| {
+            router.admission().unwrap()["completed_model_token_steps"]
+                .as_u64()
+                .unwrap()
+        };
+        let run = |router: &Router, prompt: &str, scope: PrefixSharingScope| {
+            let events = router
+                .request_scoped(
+                    Request {
+                        model: "source".into(),
+                        input: prompt.into(),
+                        chat: false,
+                        max_tokens: 1,
+                        stream: false,
+                        token_metrics: None,
+                    },
+                    scope,
+                )
+                .unwrap();
+            loop {
+                match events
+                    .events
+                    .recv_timeout(Duration::from_secs(300))
+                    .expect("prefix pressure response deadline")
+                {
+                    ResponseEvent::Done {
+                        output,
+                        prompt_tokens,
+                        completion_tokens,
+                        ..
+                    } => {
+                        assert_eq!(
+                            prompt_tokens,
+                            tokenizer.prompt_tokens(prompt, false).unwrap().len()
+                        );
+                        assert_eq!(completion_tokens, 1);
+                        break output;
+                    }
+                    ResponseEvent::Error(error) => panic!("prefix pressure worker: {error}"),
+                    ResponseEvent::Text(_) | ResponseEvent::TokenText { .. } => {}
+                }
+            }
+        };
+
+        let fifo_scope = PrefixSharingScope::new(11).unwrap();
+        let mut before = model_tokens(&router);
+        let out_a = run(&router, &prompt_a, fifo_scope);
+        let mut after = model_tokens(&router);
+        assert_eq!(after - before, 65);
+        before = after;
+        let _ = run(&router, &prompt_b, fifo_scope);
+        after = model_tokens(&router);
+        assert_eq!(after - before, 65);
+        before = after;
+        let _ = run(&router, &prompt_c, fifo_scope);
+        after = model_tokens(&router);
+        assert_eq!(after - before, 65);
+        before = after;
+        let _ = run(&router, &prompt_b, fifo_scope);
+        after = model_tokens(&router);
+        assert_eq!(after - before, 1, "newer FIFO entry must remain");
+        before = after;
+        let out_a_after = run(&router, &prompt_a, fifo_scope);
+        after = model_tokens(&router);
+        assert_eq!(after - before, 65, "oldest FIFO entry must be evicted");
+        assert_eq!(out_a_after, out_a);
+        assert_eq!(
+            router.invalidate_prefix_scope(fifo_scope).unwrap(),
+            PrefixCacheEviction {
+                entries: 2,
+                weight: 128,
+            }
+        );
+        before = model_tokens(&router);
+        let _ = run(&router, &prompt_c, fifo_scope);
+        after = model_tokens(&router);
+        assert_eq!(after - before, 65, "revoked scope must miss");
+        assert_eq!(
+            router.invalidate_prefix_scope(fifo_scope).unwrap(),
+            PrefixCacheEviction {
+                entries: 1,
+                weight: 64,
+            }
+        );
+
+        let weight_scope = PrefixSharingScope::new(12).unwrap();
+        before = model_tokens(&router);
+        let long = run(&router, &prompt_long, weight_scope);
+        after = model_tokens(&router);
+        assert_eq!(after - before, 321);
+        before = after;
+        let long_hit = run(&router, &prompt_long, weight_scope);
+        after = model_tokens(&router);
+        assert_eq!(after - before, 1);
+        assert_eq!(long_hit, long);
+        before = after;
+        let _ = run(&router, &prompt_short, weight_scope);
+        after = model_tokens(&router);
+        assert_eq!(
+            after - before,
+            257,
+            "256-token checkpoint must be evicted by semantic-weight pressure"
+        );
+        assert_eq!(
+            router.invalidate_prefix_scope(weight_scope).unwrap(),
+            PrefixCacheEviction {
+                entries: 2,
+                weight: 448,
+            }
+        );
+        assert_eq!(
+            router.invalidate_prefix_scope(weight_scope).unwrap(),
+            PrefixCacheEviction::default()
+        );
+        router.shutdown().unwrap();
+        println!(
+            "P12_SOURCE_PAGED_PREFIX_EVICTION_PASS entry_bound=2 weight_bound=512 fifo_oldest_miss=true newer_hit=true revoke_entries=2 revoke_weight=128 revoked_scope_miss=true long_prompt_tokens=321 long_hit_model_tokens=1 weight_evicted_256=true final_revoke_entries=2 final_revoke_weight=448 final_shutdown=true"
         );
     }
 

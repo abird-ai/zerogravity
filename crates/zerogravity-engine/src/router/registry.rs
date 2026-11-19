@@ -4,6 +4,7 @@ use crate::model_instance::{
     ModelInstance, PreparedModel,
     execution::{Executor, ModelHandle},
 };
+use crate::state_cache::{PrefixCacheEviction, PrefixSharingScope};
 use std::{collections::BTreeMap, sync::Arc};
 
 pub(crate) struct Registry<A: Executor> {
@@ -14,6 +15,10 @@ pub(crate) trait Models: Send + Sync {
     fn count(&self) -> usize;
     fn alias(&self, index: usize) -> Option<&str>;
     fn admission(&self, snapshot: &SchedulerSnapshot) -> Result<serde_json::Value, ServiceError>;
+    fn invalidate_prefix_scope(
+        &self,
+        sharing: PrefixSharingScope,
+    ) -> Result<PrefixCacheEviction, ServiceError>;
     fn retirement_pending(&self) -> bool;
 }
 impl<A: Executor> Models for Registry<A> {
@@ -28,6 +33,12 @@ impl<A: Executor> Models for Registry<A> {
     }
     fn admission(&self, snapshot: &SchedulerSnapshot) -> Result<serde_json::Value, ServiceError> {
         A::diagnostics(&self.models, snapshot)
+    }
+    fn invalidate_prefix_scope(
+        &self,
+        sharing: PrefixSharingScope,
+    ) -> Result<PrefixCacheEviction, ServiceError> {
+        A::invalidate_prefix_scope(&self.models, sharing)
     }
     fn retirement_pending(&self) -> bool {
         A::retirement_pending(&self.models)

@@ -650,8 +650,17 @@ or a change to the active correctness/benchmark/27B order.
   page4/max_append64 prompt65 over HTTP records scheduler model-token deltas65 warm /
   1 same scope7 /65 second-server scope8, exact output ID and clean shutdown in
  171.97s.7/7 server tests, strict serving Clippy and CUDA-serving composition pass.
-  Next qualify bounded eviction, stale-scope retention/invalidation and pressure.
-  Physical overlap remains behind event/lease and independent-root gates.
+  **Bounded live-snapshot eviction/cache invalidation is now accepted:** trusted
+  `invalidate_prefix_scope` removes only currently retained entries for one scope and
+  returns exact entry/weight totals; it does not cancel already-admitted work. Safe
+  stale-scope handling is stop/drain admission, then invalidate; server lifecycle/
+  scope switching alone does not purge.
+  Qwen cache count=`2*active`, weight=`active*context`. Physical0.8B active1 proves
+  FIFO prefix64 oldest miss/newer hit, purge2/128 + invalidated-scope miss, and512-token
+  retained-weight pressure where prefix320 hits but prefix256 was evicted; final
+  purge2/448, repeated purge0, clean shutdown in179.12s. External GPU/host/page-
+  pool pressure still needs qualification. Physical overlap remains behind
+  event/lease and independent-root gates.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

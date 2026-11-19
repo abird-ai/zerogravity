@@ -176,7 +176,20 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   config rather than expanding the hot-call argument surface.7/7 server tests and
   strict serving Clippy pass. Original0.8B page4/max_append64 HTTP prompt65
   physically proves65 warm,1 same-scope hit,65 different-server-scope miss, exact
-  output ID and clean shutdown in171.97s. Next: eviction/stale-scope/pressure.
+  output ID and clean shutdown in171.97s.
+- [x] Bounded live-prefix retention and explicit stale-scope cache invalidation are
+  accepted. `PrefixCache::invalidate_scope` returns `PrefixCacheEviction` entry/
+  weight totals; Executor/Registry/Router/Runtime expose trusted
+  `invalidate_prefix_scope`. This is a retained-cache purge, not cancellation:
+  authorization owners must first stop/drain stale-scope admission, then invalidate.
+  A server stop or different scope alone does not purge old entries. Qwen now bounds cache
+  count at `2*active` and semantic weight at `active*context`. Original0.8B active1
+  page4/max_append64 physically proves FIFO count pressure (newer prefix64 hit,
+  oldest miss), purge2 entries/128 weight + invalidated-scope miss, then independent512-token
+  weight pressure where prompt321 retains prefix320 for a1-token hit but evicts
+  prefix256 so prompt257 fully replays. Final purge2/448, second purge0 and source
+  shutdown clean in179.12s. This is retained-cache pressure, not external OOM/page-
+  pool pressure; the latter remains next.
 
 ### Next continuation — no live campaign
 

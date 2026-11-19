@@ -732,9 +732,37 @@ tokens and caches prefix64; the next request on that server executes1. The serve
 then shut down without closing the runtime/cache, a new server with scope8 executes
 65, and all three return the identical token ID. Final runtime shutdown is clean:
 `P12_SOURCE_PAGED_PREFIX_HTTP_PASS ... server_scoped=true client_scope=false`,
-171.97s. Next qualify FIFO/weight eviction under actual snapshot ownership,
-stale-scope retention/invalidation policy and memory pressure. Event/lease-backed
-physical overlap remains later.
+171.97s.
+
+**19 Nov live eviction/cache-invalidation follow-up:** stale scope is an explicit ownership
+state, not a server-lifecycle inference. `PrefixCache::invalidate_scope` removes
+only entries with the named `PrefixSharingScope` and returns
+`PrefixCacheEviction { entries, weight }`; Executor has a default no-op control hook,
+the typed Registry dispatches it without losing the executor type, Router and engine/
+public Runtime expose trusted `invalidate_prefix_scope`, and Qwen deduplicates aliases
+before touching each model-local cache. Server stop or switching to a different scope
+therefore preserves old entries until normal FIFO/weight eviction or explicit purge.
+`invalidate_prefix_scope` does not cancel already-admitted work or revoke a snapshot
+clone already owned by it; the trusted owner must stop/drain stale-scope admission
+first, then invalidate. Do not reuse a stale numeric scope for unrelated authorization
+without treating it as the same domain.
+
+Qwen now separates its two retention bounds: `max_entries = 2*active`,
+`max_weight = active*context` semantic tokens. The latter is retention policy only;
+physical page/vector owners remain governed by resident pools and the arbiter.
+Original0.8B page4/max_append64 with active1 physically proves both bounds using live
+snapshots. Three distinct65-token requests create distinct prefix64 entries: the
+third count-evicts the oldest, the newer request executes1 token, the oldest replays
+65. Explicit purge reports2 entries/128 weight; the same scope then misses and a
+second purge after that new entry reports1/64. Separately prompt321 produces
+successive state-only checkpoints under a512-weight budget: repeat321 executes1 via
+prefix320, but prompt257 executes257 because prefix256 was necessarily evicted by
+weight even though a second entry slot existed. Final purge reports2/448, repeated
+purge reports zero, and shutdown is clean:
+`P12_SOURCE_PAGED_PREFIX_EVICTION_PASS`,179.12s. This qualifies cache-retention
+pressure and physical owner release, not externally imposed device/host OOM or page-
+pool exhaustion. That external pressure + minimal useful diagnostics remain next.
+Event/lease-backed physical overlap remains later.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 
