@@ -18,6 +18,8 @@ use std::{
 };
 #[cfg(feature = "qwen35-cuda")]
 use zerogravity_engine::router::waves::Phase;
+#[cfg(feature = "qwen35-cuda")]
+use zerogravity_engine::state_cache::{PrefixCompatibility, PrefixSharingScope};
 use zerogravity_engine::{
     model_instance::execution::*,
     router::{
@@ -82,6 +84,24 @@ fn completion(read: &InferenceReadback, consumed: usize, readout: bool) -> Compl
         ..Completion::default()
     }
 }
+#[cfg(feature = "qwen35-cuda")]
+fn prefix_compatibility(
+    model: &Model,
+    sharing: PrefixSharingScope,
+) -> Result<PrefixCompatibility, ServiceError> {
+    // This cache is owned by one exact loaded Model. Loader/numerical,
+    // tokenizer/input policy, position policy and state schema cannot cross
+    // model instances; sharing is the request-varying authorization boundary.
+    PrefixCompatibility::new(
+        model.source.plan.source_seal().source_identity(),
+        1,
+        2,
+        3,
+        4,
+        sharing,
+    )
+    .map_err(ServiceError::inference)
+}
 impl Executor for SourceText {
     type Model = Arc<Model>;
     type State = State;
@@ -130,6 +150,78 @@ impl Executor for SourceText {
     }
     fn has_feedback(state: &State) -> bool {
         state.feedback.is_some()
+    }
+    fn restore_prefix(
+        model: &Self::Model,
+        state: &mut State,
+        prompt: &[u32],
+        sharing: Option<zerogravity_engine::state_cache::PrefixSharingScope>,
+    ) -> Result<usize, ServiceError> {
+        #[cfg(feature = "qwen35-cuda")]
+        {
+            let Some(sharing) = sharing else {
+                return Ok(0);
+            };
+            let resident = model.resident()?;
+            if !resident.supports_shared_prefix() {
+                return Ok(0);
+            }
+            let compatibility = prefix_compatibility(model, sharing)?;
+            let hit = {
+                let cache = model.prefix_cache.lock().map_err(|_| poison())?;
+                cache
+                    .as_ref()
+                    .and_then(|cache| cache.lookup(compatibility, prompt))
+            };
+            if let Some(hit) = hit {
+                state
+                    .session
+                    .fork_shared_prefix(&hit.payload)
+                    .map_err(ServiceError::inference)?;
+                state.feedback = None;
+                return Ok(hit.frontier);
+            }
+        }
+        Ok(0)
+    }
+    fn cache_prefix(
+        model: &Self::Model,
+        state: &State,
+        prefix: &[u32],
+        sharing: Option<zerogravity_engine::state_cache::PrefixSharingScope>,
+    ) -> Result<(), ServiceError> {
+        #[cfg(feature = "qwen35-cuda")]
+        {
+            let Some(sharing) = sharing else {
+                return Ok(());
+            };
+            let resident = model.resident()?;
+            if !resident.supports_shared_prefix() {
+                return Ok(());
+            }
+            if prefix.is_empty() || state.session.binding().frontier() as usize != prefix.len() {
+                return Err(ServiceError::new(
+                    500,
+                    "prefix_cache",
+                    "committed prefix differs from source session frontier",
+                ));
+            }
+            let compatibility = prefix_compatibility(model, sharing)?;
+            let snapshot = state.session.snapshot().map_err(ServiceError::inference)?;
+            let mut cache = model.prefix_cache.lock().map_err(|_| poison())?;
+            let cache = cache.as_mut().ok_or_else(|| {
+                ServiceError::new(500, "prefix_cache", "paged prefix cache is unavailable")
+            })?;
+            cache
+                .insert(
+                    compatibility,
+                    Arc::from(prefix),
+                    Arc::new(snapshot),
+                    prefix.len(),
+                )
+                .map_err(ServiceError::inference)?;
+        }
+        Ok(())
     }
     #[cfg(feature = "qwen35-cuda")]
     fn cohort_eligible(row: &Active<Self>) -> bool {
@@ -523,6 +615,10 @@ impl Executor for SourceText {
     }
     fn retire(models: &BTreeMap<String, Self::Model>) -> Result<(), ServiceError> {
         for model in models.values() {
+            #[cfg(feature = "qwen35-cuda")]
+            if let Some(cache) = model.prefix_cache.lock().map_err(|_| poison())?.as_mut() {
+                cache.clear();
+            }
             let resident = model.resident.lock().map_err(|_| poison())?.take();
             if let Some(resident) = resident {
                 block_on(resident.shutdown()).map_err(ServiceError::inference)?;

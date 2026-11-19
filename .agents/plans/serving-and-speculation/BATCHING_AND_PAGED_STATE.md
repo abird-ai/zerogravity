@@ -691,11 +691,36 @@ checks above. This simple O(bound) design is preferred until serving measurement
 justify an index/trie. Two focused tests, strict engine Clippy and production CUDA
 composition pass.
 
-Serving cache activation is still open because public requests currently have no
-explicit tenant/sharing identity. Do not encode `sharing=1` or infer authorization
-from model/source equality. Next plumb an authenticated sharing scope through the
-request/executor owner, then wire worker restore/cache hit/miss. Event/lease-backed
-physical overlap remains later.
+**19 Nov scoped serving follow-up:** `PrefixSharingScope` is an explicit nonzero
+Copy authorization value. To preserve source compatibility, `Request` itself is
+unchanged: ordinary `request_text` supplies no scope, while
+`request_text_scoped(request, scope)` is the opt-in SDK route and `RequestLease`
+carries the scope alongside the admitted request. The generic Executor gained two
+small hooks: restore immediately after fresh state open, and cache after a committed
+state-only prompt publication. Worker invariants require restored cursor == actual
+executor frontier and reject a full-prompt restore without valid feedback. No cache
+hook can synthesize publication.
+
+Qwen keeps the cache inside one loaded Model, so loader/numerical/tokenizer/position/
+state-schema identities cannot cross model instances; `SourceCallSnapshot` also
+requires the exact same resident model. Distinct nonzero local class IDs represent
+those fixed dimensions inside that cache, while request sharing scope is the only
+varying authorization dimension. Caching is enabled only for paged state, with at
+most `active` entries and `active*context` semantic-token weight. Contiguous state
+incurs no cache retention. Cached snapshots are cleared before resident retirement;
+an initial physical run exposed this necessary ownership ordering when shutdown
+correctly refused live snapshot owners.
+
+Physical original0.8B page4/max_append64 worker proof uses prompt65/output1. ScopeA
+warm executes65 model tokens and caches the state-only64 prefix; the next ScopeA
+request restores it and executes1; ScopeB misses and executes65. All three return
+the same generated token ID and final shutdown is clean
+(`P12_SOURCE_PAGED_PREFIX_CACHE_PASS`,172.98s). No new hit counter/fixture was added;
+the existing scheduler `completed_model_token_steps` is the proof surface. HTTP
+remains intentionally unscoped: add only a trusted server-side scope source, never a
+client-chosen body/header value. Next qualify HTTP hit/miss, then bounded eviction,
+stale-scope invalidation and pressure. Event/lease-backed physical overlap remains
+later.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 

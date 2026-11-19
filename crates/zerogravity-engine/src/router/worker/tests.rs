@@ -310,6 +310,7 @@ impl Rig {
                         stream: false,
                         token_metrics: None,
                     },
+                    prefix_sharing: None,
                     _charges: Arc::new(Vec::new()),
                 }),
                 metrics: MetricsLease {

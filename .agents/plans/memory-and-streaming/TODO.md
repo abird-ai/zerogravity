@@ -210,13 +210,20 @@ The following extends existing owners; source-byte qualification is not inferenc
   `PrefixCompatibility` groups exact source + execution/input/position/state/sharing
   identities; `PrefixCache<U,T>` keeps exact units + immutable `Arc` payloads under
   entry/weight caps, does allocation-free greatest-prefix/newest-tie lookup, refreshes
-  duplicates and evicts FIFO. It creates no restore authority. Remaining: plumb an
-  explicit tenant/sharing identity through request/executor ownership, construct the
-  source/loader/quant/numerical + tokenizer/template/processor/adapter + position/
-  schema key, choose the greatest jointly restorable checkpoint across KV/SWA/
-  recurrent/indexer/draft/grammar/media domains, then worker hit/miss, stale epoch
-  and eviction metrics. Missing recurrent state still requires an earlier complete
-  checkpoint/recompute, never a KV-only full hit. Exact gates and serving owner:
+  duplicates and evicts FIFO. It creates no restore authority. **Explicit scoped
+  worker integration is now accepted:** nonzero `PrefixSharingScope` travels beside
+  the admitted request; ordinary requests stay isolated, explicit SDK calls opt in.
+  Restore is allowed only into a fresh executor state and must match its actual
+  frontier; cache insertion happens only after committed state-only prompt progress.
+  Qwen enables retention only for paged state, with model-local `active` entry and
+  `active*context` semantic-token bounds. Original0.8B page4/max_append64 prompt65
+  physically proves65 warm /1 same-scope /65 different-scope model-token work,
+  identical generated ID and clean retirement in172.98s. The first run exposed and
+  fixed cache-before-resident retirement ordering. Remaining: trusted server-side
+  HTTP scope injection (never client-selected), then stale-scope invalidation,
+  pressure/eviction metrics and extension to any future multi-checkpoint domain set.
+  Missing recurrent state still requires an earlier complete checkpoint/recompute,
+  never a KV-only full hit. Exact gates and serving owner:
   [prefix design](../serving-and-speculation/BATCHING_AND_PAGED_STATE.md#complete-domain-prefix-reuse-and-cow--memory-plan).
 - [ ] Qualify committed snapshot persistence/restore, corruption/security/compatibility UX and restore-versus-recompute; diagnostic portable checkpoints are not product persistence.
 - [ ] Add immutable source extents and bounded coalesced IO/materialization with stable logical tensor identity, genuine copy readiness and original IO/device reader leases.

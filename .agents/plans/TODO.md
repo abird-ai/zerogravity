@@ -311,10 +311,19 @@ state/sharing fingerprints, exact semantic-unit prefixes, greatest-prefix lookup
 newest tie-break, duplicate refresh, FIFO eviction and explicit entry/weight bounds.
 Payloads are immutable `Arc`s and lookup allocates nothing; the cache never grants
 restore authority. Two focused tests, strict engine Clippy and production CUDA
-composition pass. Serving remains intentionally disabled until request ownership
-carries an explicit tenant/sharing identity—do not substitute a process-global
-scope. Next plumb that scope and wire worker restore/cache hit/miss; event/lease
-overlap remains later.
+composition pass. **Scoped worker integration is now accepted:** `PrefixSharingScope`
+is a nonzero Copy value carried beside the queued request; existing `Request` and
+ordinary `request_text` remain no-sharing, while explicit `request_text_scoped`
+opts in. Generic worker restore verifies the returned cursor equals the executor's
+actual frontier; caching happens only after a committed state-only prompt step. Qwen
+uses a model-local cache only for paged state, capped to `active` entries and
+`active*context` semantic-token weight. Physical 0.8B page4/max_append64 proof with
+prompt65 records model-token deltas65 warm /1 same-scope /65 different-scope and
+identical output ID; shutdown is clean in172.98s. Cache-held snapshots are cleared
+before resident retirement after the first run exposed that lifecycle requirement.
+HTTP remains unscoped until a trusted server-side scope source exists; no client-
+chosen scope field/header. Next: trusted HTTP scope injection + hit/miss, then
+pressure/eviction/stale-scope qualification; event/lease overlap remains later.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

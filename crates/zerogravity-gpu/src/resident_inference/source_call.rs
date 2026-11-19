@@ -64,6 +64,8 @@ pub struct SourceCallModel {
     #[cfg(feature = "cuda-cublas")]
     native_rows: usize,
     #[cfg(feature = "cuda-cublas")]
+    state_policy: CudaSourceStatePolicy,
+    #[cfg(feature = "cuda-cublas")]
     prefill_projection_classes:
         Option<crate::resident_program::ordinary_cuda::PrefillProjectionClasses>,
     _source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
@@ -242,6 +244,8 @@ impl ResidentModel {
             #[cfg(feature = "cuda-cublas")]
             native_rows: 0,
             #[cfg(feature = "cuda-cublas")]
+            state_policy: CudaSourceStatePolicy::Contiguous,
+            #[cfg(feature = "cuda-cublas")]
             prefill_projection_classes: None,
             _source_owner: None,
         }))
@@ -349,12 +353,18 @@ impl ResidentModel {
             _control: control,
             contract: SourceNumericalContract::ReferenceCudaSm86Bf16V1,
             native_rows,
+            state_policy,
             prefill_projection_classes,
             _source_owner: Some(source_owner),
         }))
     }
 }
 impl SourceCallModel {
+    #[cfg(feature = "cuda-cublas")]
+    pub fn supports_shared_prefix(&self) -> bool {
+        matches!(self.state_policy, CudaSourceStatePolicy::Paged { .. })
+    }
+
     #[cfg(feature = "cuda-cublas")]
     pub fn prefill_rows_compatible(&self, left: usize, right: usize) -> bool {
         self.native_rows != 0

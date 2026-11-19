@@ -335,11 +335,29 @@ and live TODOs are authoritative.
   semantic-unit prefix, refreshes exact duplicates and evicts FIFO deterministically.
   It never grants physical restore: the backend must still run the accepted full-
   domain validation/fork path. Two focused cache tests, strict engine Clippy and
-  production `qwen35-cuda` composition check pass. **Serving lookup is deliberately
-  not enabled yet:** current public requests carry no explicit tenant/sharing
-  identity, so a global sharing scope would be unsafe. Next plumb that exact sharing
-  scope through request/executor ownership, then integrate worker hit/miss/cache;
-  event/lease overlap remains later.
+  production `qwen35-cuda` composition check pass. **Scoped worker prefix reuse is
+  now implemented and physically accepted.** `PrefixSharingScope` is a validated
+  nonzero Copy ID. Existing `Request` stays unchanged; ordinary `request_text`
+  remains isolated, while the explicit `request_text_scoped(request, scope)` path
+  carries authorization alongside the queued request. Generic executor hooks restore
+  only immediately after opening a fresh state, and the worker verifies restored
+  cursor == actual executor frontier; cache insertion runs only after an already
+  committed state-only prompt step. Qwen owns one model-local paged-only cache
+  (`active` entry cap, `active*context` semantic-token weight); contiguous state pays
+  no snapshot-retention cost. Because the cache instance is owned by one exact loaded
+  Model and `SourceCallSnapshot` additionally requires that exact resident model,
+  loader/numerical/tokenizer/position/state-schema cannot cross instances; sharing
+  scope is the only request-varying authorization class. The first physical 0.8B
+  page4/max_append64 worker cell uses a65-token prompt: warm scopeA consumes65 model
+  tokens, same-scope repeat restores the64-token complete-domain prefix and consumes
+  only1, different scopeB consumes65 again; generated ID is identical and shutdown
+  is clean (`P12_SOURCE_PAGED_PREFIX_CACHE_PASS`,172.98s). An initial run exposed a
+  real lifecycle issue: cache-held snapshots outlived resident retirement; executor
+  retirement now clears the cache before source shutdown. HTTP intentionally remains
+  unscoped because no trusted server-side sharing authority is configured; do not add
+  a client-chosen body/header shortcut. Next add trusted server-side scope injection
+  and HTTP hit/miss, then pressure/eviction/stale-scope qualification; event/lease
+  overlap remains later.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -1268,16 +1286,17 @@ is already green; repeat it only if host/runtime state changes.
 > The pinned vLLM layer bytes still exist but the exact image is no longer registered
 > as runnable in this connector's Podman storage; the exact HF source is intact. Do
 > not rebuild/re-register container layers merely for feedback. Complete-domain
-> prefix fork/COW is terminal-green on original0.8B page4: fresh destination,
-> independent root/session, no replay, partial-tail COW continuation, exact logits/
-> all42 and immutable cached snapshot. The model-neutral bounded prefix cache is now
-> implemented: exact grouped compatibility + exact units, greatest-prefix lookup,
-> duplicate refresh, deterministic FIFO eviction and explicit entry/weight caps;
-> lookup has no allocation and payloads are shared by `Arc`. It is not yet enabled
-> in serving because requests do not carry an explicit tenant/sharing scope. Continue
-> by plumbing that scope through request/executor ownership, then enable worker
-> restore/cache hit/miss using the existing complete-domain fork primitive. Keep
-> event/lease physical overlap behind its remaining gates.
+> prefix fork/COW is terminal-green on original0.8B page4, and the bounded semantic
+> cache is integrated into the generic worker through an explicit nonzero
+> `PrefixSharingScope`. Existing requests remain unscoped by default; the public SDK
+> must opt in via `request_text_scoped`. Qwen enables retention only for paged state.
+> Physical 0.8B page4/max_append64 worker proof on a65-token prompt records model
+> token deltas65 warm /1 same-scope hit /65 different-scope miss with identical
+> generated ID and clean shutdown. Cache snapshots are explicitly cleared before
+> resident retirement. HTTP remains unscoped until the server has a trusted scope
+> source; never accept an arbitrary client-selected sharing scope. Continue with
+> trusted server-side scope injection + HTTP hit/miss, then eviction/stale-scope and
+> pressure qualification. Keep event/lease physical overlap behind its remaining gates.
 >
 > Keep the implementation turn to roughly 30 minutes. Aim for the next coherent
 > checkpoint, update owning TODO/handoff state, sign the commit, sync X2 only if

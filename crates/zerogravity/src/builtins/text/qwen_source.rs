@@ -6,6 +6,8 @@ use crate::{
     resource_arbiter::{AllocationClass, GlobalResourceLease},
 };
 use std::sync::{Arc, Mutex};
+#[cfg(feature = "qwen35-cuda")]
+use zerogravity_engine::state_cache::PrefixCache;
 use zerogravity_engine::{
     model_instance::{PreparedModel, TextTokenizer},
     router::{ServiceError, pending::ServingHost},
@@ -62,6 +64,8 @@ struct Source {
 }
 struct Model {
     resident: Mutex<Option<Arc<SourceCallModel>>>,
+    #[cfg(feature = "qwen35-cuda")]
+    prefix_cache: Mutex<Option<PrefixCache<u32, crate::gpu::SourceCallSnapshot>>>,
     source: Arc<Source>,
     tokenizer: Arc<dyn TextTokenizer>,
     max_token_bytes: usize,

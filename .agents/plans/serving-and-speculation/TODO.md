@@ -635,10 +635,18 @@ or a change to the active correctness/benchmark/27B order.
   greatest-prefix/newest-tie lookup, duplicate refresh, deterministic FIFO eviction
   and explicit entry/weight caps; immutable payloads are `Arc`-shared and lookup
   allocates nothing. Two focused tests, strict engine Clippy and CUDA composition
-  pass. Worker hit/miss remains gated on an explicit request tenant/sharing scope;
-  current public requests do not carry one, so cross-request reuse stays disabled
-  rather than assuming global authorization. Physical overlap remains behind
-  event/lease and independent-root gates.
+  pass. **Scoped worker hit/miss is now accepted.** A validated nonzero
+  `PrefixSharingScope` travels beside the queued request; ordinary `request_text`
+  remains isolated and explicit `request_text_scoped` opts in. Generic worker restore
+  verifies its cursor against actual executor frontier and caches only already-
+  committed state-only prompt roots. Qwen owns a paged-only model-local bounded cache;
+  contiguous state is unaffected. Physical0.8B page4/max_append64 prompt65 produces
+  scheduler model-token deltas65 warm /1 same-scope /65 different-scope with exact
+  output ID and clean shutdown in172.98s. The first run exposed and fixed retirement
+  ordering by clearing cache snapshots before resident shutdown. HTTP deliberately
+  has no client-selected scope; trusted server-side injection + HTTP hit/miss is next,
+  followed by eviction/stale-scope/pressure qualification. Physical overlap remains
+  behind event/lease and independent-root gates.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

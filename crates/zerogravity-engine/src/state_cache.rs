@@ -6,8 +6,27 @@
 //! for the caller's existing full-domain validation/restore path.
 
 use crate::{Error, Result};
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, num::NonZeroU64, sync::Arc};
 use zerogravity_core::accelerator::SourceIdentity;
+
+/// Explicit authorization domain for cross-request prefix reuse.
+///
+/// The engine never derives this from model/source equality. A trusted caller
+/// must opt in by supplying a nonzero scope.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PrefixSharingScope(NonZeroU64);
+
+impl PrefixSharingScope {
+    pub fn new(value: u64) -> Result<Self> {
+        NonZeroU64::new(value)
+            .map(Self)
+            .ok_or_else(|| Error::State("prefix sharing scope must be nonzero".into()))
+    }
+
+    pub const fn get(self) -> u64 {
+        self.0.get()
+    }
+}
 
 /// Exact process-local compatibility required before a cached prefix may be tried.
 ///
@@ -21,7 +40,7 @@ pub struct PrefixCompatibility {
     input: u64,
     position: u64,
     state: u64,
-    sharing: u64,
+    sharing: PrefixSharingScope,
 }
 
 impl PrefixCompatibility {
@@ -31,15 +50,9 @@ impl PrefixCompatibility {
         input: u64,
         position: u64,
         state: u64,
-        sharing: u64,
+        sharing: PrefixSharingScope,
     ) -> Result<Self> {
-        if !source.is_bound()
-            || execution == 0
-            || input == 0
-            || position == 0
-            || state == 0
-            || sharing == 0
-        {
+        if !source.is_bound() || execution == 0 || input == 0 || position == 0 || state == 0 {
             return Err(Error::State(
                 "prefix cache requires bound nonzero semantic identities".into(),
             ));
@@ -203,7 +216,15 @@ mod tests {
     use super::*;
 
     fn compatibility(source: SourceIdentity, sharing: u64) -> PrefixCompatibility {
-        PrefixCompatibility::new(source, 11, 12, 13, 14, sharing).unwrap()
+        PrefixCompatibility::new(
+            source,
+            11,
+            12,
+            13,
+            14,
+            PrefixSharingScope::new(sharing).unwrap(),
+        )
+        .unwrap()
     }
 
     #[test]

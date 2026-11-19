@@ -5,6 +5,7 @@ use super::statistics::{Counters, WorkStats};
 use super::waves::{Phase, Ready};
 use super::*;
 use crate::model_instance::execution::*;
+use crate::state_cache::PrefixSharingScope;
 use std::result::Result;
 use std::{
     collections::VecDeque,
@@ -47,6 +48,7 @@ pub struct Active<A: Executor> {
     pub output: GeneratedText,
     pub prompt: Vec<u32>,
     pub cursor: usize,
+    pub prefix_sharing: Option<PrefixSharingScope>,
     pub packet_presented: bool,
     /// Eligible prefill rounds deferred by decode protection.
     pub prefill_wait_rounds: usize,
@@ -86,6 +88,7 @@ impl<A: Executor> Active<A> {
             )
         })?;
         let request = &lease.request;
+        let prefix_sharing = lease.prefix_sharing;
         let tokenizer = model.model().tokenizer();
         let prompt = tokenizer
             .prompt_tokens(&request.input, request.chat)
@@ -105,7 +108,18 @@ impl<A: Executor> Active<A> {
                 "request exceeds bounded model context",
             ));
         }
-        let (state, source_lease) = A::open(&model, &request.model, &cancelled, host)?;
+        let (mut state, source_lease) = A::open(&model, &request.model, &cancelled, host)?;
+        let cursor = A::restore_prefix(&model, &mut state, &prompt, prefix_sharing)?;
+        if cursor > prompt.len()
+            || A::frontier(&state) != cursor
+            || (cursor == prompt.len() && !A::has_feedback(&state))
+        {
+            return Err(ServiceError::new(
+                500,
+                "prefix_restore",
+                "restored prefix differs from executor frontier/feedback",
+            ));
+        }
         let output = GeneratedText::new(
             tokenizer,
             events.clone(),
@@ -127,7 +141,8 @@ impl<A: Executor> Active<A> {
             errors: events,
             output,
             prompt,
-            cursor: 0,
+            cursor,
+            prefix_sharing,
             packet_presented: false,
             prefill_wait_rounds: 0,
             blocked_since: None,
@@ -250,7 +265,7 @@ impl<A: Executor> Active<A> {
         mut published: Published,
         cohort: Option<NativeCohortObservation>,
     ) -> Result<(), ServiceError> {
-        if self.cursor < self.prompt.len() {
+        let cache_prefix = if self.cursor < self.prompt.len() {
             let end = self
                 .cursor
                 .checked_add(published.consumed)
@@ -263,12 +278,23 @@ impl<A: Executor> Active<A> {
                     )
                 })?;
             self.cursor = end;
+            !published.readout
         } else if published.consumed != 1 {
             return Err(ServiceError::new(
                 500,
                 "source_progress",
                 "feedback publication must consume one original token",
             ));
+        } else {
+            false
+        };
+        if cache_prefix {
+            A::cache_prefix(
+                &self.model,
+                &self.state,
+                &self.prompt[..self.cursor],
+                self.prefix_sharing,
+            )?;
         }
         if published.readout {
             if let Some(observation) = &mut published.observation {

@@ -169,8 +169,22 @@ pub(crate) fn load_router(
         )),
     }
     .map_err(ServiceError::inference)?;
+    #[cfg(feature = "qwen35-cuda")]
+    let prefix_cache = if resident.supports_shared_prefix() {
+        Some(
+            zerogravity_engine::state_cache::PrefixCache::new(
+                profile.active,
+                profile.context * profile.active,
+            )
+            .map_err(ServiceError::inference)?,
+        )
+    } else {
+        None
+    };
     let model = Arc::new(Model {
         resident: Mutex::new(Some(resident)),
+        #[cfg(feature = "qwen35-cuda")]
+        prefix_cache: Mutex::new(prefix_cache),
         source,
         tokenizer,
         max_token_bytes,
@@ -959,6 +973,119 @@ mod cuda_paged_tests {
         println!(
             "P12_SOURCE_PAGED_PREFIX_FORK_PASS prefix_tokens={} append_tokens=1 root_independent=true no_replay=true logits=exact all42=exact cached_snapshot_immutable=true final_shutdown=true",
             page_tokens - 1
+        );
+    }
+
+    #[test]
+    #[ignore = "approved original HF cache; scoped worker prefix hit/miss"]
+    fn original_source_paged_scoped_prefix_cache_skips_replay() {
+        use std::time::{Duration, Instant};
+        use zerogravity_engine::{
+            router::{Request, ResponseEvent, TokenMetricsRequest},
+            state_cache::PrefixSharingScope,
+        };
+
+        let snapshot =
+            std::env::var("ZG_QWEN_SOURCE_SNAPSHOT").expect("explicit approved snapshot");
+        let root = std::env::var_os("ZG_QWEN_CACHE_ROOT").map(std::path::PathBuf::from);
+        let mut router = load_router(
+            vec!["source".into()],
+            CacheOptions::new(root, 96 * 1024 * 1024 * 1024),
+            snapshot,
+            QwenSourceProfile {
+                active: 2,
+                context: 512,
+                output: 1,
+                max_pending: Some(4),
+                native_rows: 0,
+            },
+            SourceBackend::Cuda {
+                provider_bytes: PROVIDER_BYTES,
+                device_bytes: DEVICE_BYTES,
+                state_policy: crate::gpu::CudaSourceStatePolicy::Paged {
+                    page_tokens: 4,
+                    max_append_tokens: 64,
+                },
+            },
+        )
+        .unwrap();
+        let prompt = " a".repeat(65);
+        assert_eq!(
+            router
+                .model("source")
+                .unwrap()
+                .prepared()
+                .tokenizer()
+                .prompt_tokens(&prompt, false)
+                .unwrap()
+                .len(),
+            65
+        );
+
+        let model_tokens = |router: &Router| {
+            router.admission().unwrap()["completed_model_token_steps"]
+                .as_u64()
+                .unwrap()
+        };
+        let run = |router: &Router, scope: PrefixSharingScope| {
+            let events = router
+                .request_scoped(
+                    Request {
+                        model: "source".into(),
+                        input: prompt.clone(),
+                        chat: false,
+                        max_tokens: 1,
+                        stream: true,
+                        token_metrics: Some(TokenMetricsRequest {
+                            started: Instant::now(),
+                            wire_request_id: None,
+                        }),
+                    },
+                    scope,
+                )
+                .unwrap();
+            let mut ids = Vec::new();
+            loop {
+                match events
+                    .events
+                    .recv_timeout(Duration::from_secs(300))
+                    .expect("scoped prefix response deadline")
+                {
+                    ResponseEvent::TokenText { token, .. } => ids.push(token.id),
+                    ResponseEvent::Done {
+                        prompt_tokens,
+                        completion_tokens,
+                        ..
+                    } => {
+                        assert_eq!((prompt_tokens, completion_tokens), (65, 1));
+                        break;
+                    }
+                    ResponseEvent::Error(error) => panic!("scoped prefix worker: {error}"),
+                    ResponseEvent::Text(_) => panic!("streaming token observation required"),
+                }
+            }
+            assert_eq!(ids.len(), 1);
+            ids[0]
+        };
+
+        let scope_a = PrefixSharingScope::new(7).unwrap();
+        let scope_b = PrefixSharingScope::new(8).unwrap();
+        let before = model_tokens(&router);
+        let warm = run(&router, scope_a);
+        let after_warm = model_tokens(&router);
+        let hit = run(&router, scope_a);
+        let after_hit = model_tokens(&router);
+        let miss = run(&router, scope_b);
+        let after_miss = model_tokens(&router);
+
+        assert_eq!(warm, hit);
+        assert_eq!(warm, miss);
+        assert_eq!(after_warm - before, 65);
+        assert_eq!(after_hit - after_warm, 1);
+        assert_eq!(after_miss - after_hit, 65);
+        router.shutdown().unwrap();
+        println!(
+            "P12_SOURCE_PAGED_PREFIX_CACHE_PASS prompt_tokens=65 cached_prefix=64 warm_model_tokens=65 same_scope_model_tokens=1 different_scope_model_tokens=65 output_id_exact=true scoped=true final_shutdown=true"
         );
     }
 

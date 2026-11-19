@@ -466,6 +466,7 @@ impl GeneratedText {
 /// charges are released only after the strings are gone.
 pub struct RequestLease {
     pub request: Request,
+    pub prefix_sharing: Option<crate::state_cache::PrefixSharingScope>,
     pub _charges: Arc<Vec<ServingCharge>>,
 }
 /// The metrics wire ID and the original charge covering it travel together
@@ -822,7 +823,14 @@ impl Router {
     }
     #[allow(dead_code)]
     pub fn request(&self, request: Request) -> Result<RequestEvents, ServiceError> {
-        self.request_with(request, None)
+        self.request_with(request, None, None)
+    }
+    pub fn request_scoped(
+        &self,
+        request: Request,
+        sharing: crate::state_cache::PrefixSharingScope,
+    ) -> Result<RequestEvents, ServiceError> {
+        self.request_with(request, None, Some(sharing))
     }
     /// HTTP handoff: retain the already-charged header/body/parse ingress
     /// through the canonical request strings instead of releasing and
@@ -832,12 +840,13 @@ impl Router {
         request: Request,
         ingress: Vec<ServingCharge>,
     ) -> Result<RequestEvents, ServiceError> {
-        self.request_with(request, Some(ingress))
+        self.request_with(request, Some(ingress), None)
     }
     fn request_with(
         &self,
         mut request: Request,
         ingress: Option<Vec<ServingCharge>>,
+        prefix_sharing: Option<crate::state_cache::PrefixSharingScope>,
     ) -> Result<RequestEvents, ServiceError> {
         let model = self
             .models
@@ -951,6 +960,7 @@ impl Router {
                     max_tokens,
                     ..request
                 },
+                prefix_sharing,
                 _charges: charges,
             }),
             metrics,

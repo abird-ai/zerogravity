@@ -253,6 +253,24 @@ impl Runtime {
             router.request(request)
         })
     }
+    /// Explicit cross-request prefix sharing. The scope is supplied by the
+    /// trusted embedding layer; ordinary requests remain isolated by default.
+    pub fn request_text_scoped(
+        &self,
+        request: Request,
+        sharing: crate::state_cache::PrefixSharingScope,
+    ) -> std::result::Result<RequestEvents, ServiceError> {
+        self.with_text_router(|router| {
+            if request.input.len() > self.inner.limits.max_input_bytes {
+                return Err(ServiceError::new(
+                    400,
+                    "invalid_request",
+                    "request exceeds input/output bounds",
+                ));
+            }
+            router.request_scoped(request, sharing)
+        })
+    }
     pub fn run(&self, request: &TaskRequest) -> Result<Box<dyn OutputStream>> {
         self.require_open()?;
         request.validate(self.inner.limits.max_input_bytes)?;

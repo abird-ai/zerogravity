@@ -156,8 +156,20 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   entry/weight caps, performs allocation-free greatest-exact-prefix lookup, prefers
   newest ties, refreshes duplicates and evicts FIFO. It cannot publish/restore state;
   backend validation remains authoritative. Two focused tests, strict engine Clippy
-  and production `qwen35-cuda` composition check pass. Worker integration is held
-  until requests carry an explicit tenant/sharing scope; no global sharing shortcut.
+  and production `qwen35-cuda` composition check pass.
+- [x] Explicit scoped worker integration is complete. `PrefixSharingScope` is a
+  nonzero Copy authorization ID carried in `RequestLease`; existing Request literals
+  and `request_text` remain unchanged/no-sharing, while `request_text_scoped` is the
+  opt-in public SDK route. Generic restore runs immediately after session open and
+  must report the executor's exact frontier; cache insertion occurs only after a
+  committed state-only prompt publication. Qwen allocates the cache only for paged
+  state and retains at most `active` snapshots / `active*context` semantic-token
+  weight. Original0.8B page4/max_append64 prompt65 physically proves65 warm model
+  tokens,1 same-scope hit,65 different-scope miss, identical generated ID and clean
+  shutdown in172.98s (`P12_SOURCE_PAGED_PREFIX_CACHE_PASS`). First physical run
+  correctly exposed cache-held snapshot owners blocking source retirement; executor
+  retirement now clears the cache before resident shutdown. HTTP remains unscoped
+  until trusted server-side authorization supplies the scope.
 
 ### Next continuation — no live campaign
 

@@ -5,6 +5,7 @@ pub use crate::router::waves::Fairness;
 use crate::router::waves::Phase;
 use crate::router::worker::{Active, SchedulerSnapshot};
 use crate::router::{GpuTokenObservation, ServiceError, pending::ServingHost as HostPool};
+use crate::state_cache::PrefixSharingScope;
 use std::{collections::BTreeMap, sync::Arc, time::Instant};
 
 type Result<T> = std::result::Result<T, ServiceError>;
@@ -153,6 +154,27 @@ pub trait Executor: Sized + Send + Sync + 'static {
     fn selected(state: &mut Self::State) -> Result<u32>;
     fn has_feedback(state: &Self::State) -> bool;
     fn single(row: &mut Active<Self>) -> Result<SingleCompleted>;
+    /// Restore an explicitly authorized complete-domain prefix into a freshly
+    /// opened state. Zero means miss/no sharing. The worker verifies the returned
+    /// cursor against the executor's actual frontier.
+    fn restore_prefix(
+        _model: &Self::Model,
+        _state: &mut Self::State,
+        _prompt: &[u32],
+        _sharing: Option<PrefixSharingScope>,
+    ) -> Result<usize> {
+        Ok(0)
+    }
+    /// Retain an already-published state-only prompt prefix for future authorized
+    /// requests. This runs only after the worker has advanced its committed cursor.
+    fn cache_prefix(
+        _model: &Self::Model,
+        _state: &Self::State,
+        _prefix: &[u32],
+        _sharing: Option<PrefixSharingScope>,
+    ) -> Result<()> {
+        Ok(())
+    }
 
     fn validate_wave(_rows: &[&Active<Self>]) -> Result<()> {
         Ok(())
