@@ -5,6 +5,32 @@ pub use crate::builtins::text::QwenHipProfile;
 pub use crate::builtins::text::QwenSourceProfile;
 #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
 pub use crate::gpu::HipSourceBudget;
+
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum QwenCudaStatePolicy {
+    #[default]
+    Contiguous,
+    Paged {
+        page_tokens: usize,
+        max_append_tokens: usize,
+    },
+}
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+impl From<QwenCudaStatePolicy> for crate::gpu::CudaSourceStatePolicy {
+    fn from(policy: QwenCudaStatePolicy) -> Self {
+        match policy {
+            QwenCudaStatePolicy::Contiguous => Self::Contiguous,
+            QwenCudaStatePolicy::Paged {
+                page_tokens,
+                max_append_tokens,
+            } => Self::Paged {
+                page_tokens,
+                max_append_tokens,
+            },
+        }
+    }
+}
 pub use crate::model::DeclaredModel;
 pub use zerogravity_core::model::{ModelAssembly, ModelDefinition, ModelProgram, ProgramRequest};
 pub use zerogravity_core::provider::{PreparedExecutable, RegionExecutionProvider};
@@ -28,6 +54,17 @@ pub enum ModelLoadRequest {
         provider_bytes: usize,
         /// Physical device admission, including the backend's context owners.
         device_bytes: u64,
+    },
+    /// Explicit CUDA state representation. `QwenCuda` remains Contiguous.
+    #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+    QwenCudaWithStatePolicy {
+        aliases: Vec<String>,
+        cache: crate::cache::CacheOptions,
+        snapshot: String,
+        profile: QwenSourceProfile,
+        provider_bytes: usize,
+        device_bytes: u64,
+        state_policy: QwenCudaStatePolicy,
     },
     /// Canonical original HF source through the shared worker; cold HIP only.
     #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]

@@ -80,6 +80,25 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   transport plumbing only, not a correctness requirement. No high-level paged
   selector/default, native B2/B4/B8 transport, prefix reuse or overlap is selected.
 
+### 19 Nov 2026 — explicit high-level paged selector accepted
+
+- [x] Added public `QwenCudaStatePolicy::{Contiguous,Paged}` plus
+  `ModelLoadRequest::QwenCudaWithStatePolicy`. Existing `ModelLoadRequest::QwenCuda`
+  remains hard-bound to Contiguous, so current callers/default production behavior
+  do not change. The new request maps to the already accepted low-level
+  `CudaSourceStatePolicy` only at the Qwen CUDA registration seam.
+- [x] Existing fail-closed paged policy validation remains authoritative before
+  source IO: paged still requires B1 (`native_rows=0`), positive page/append
+  extents and bounds within context. Unit coverage proves the legacy QwenCuda
+  variant still accepts a valid native-row profile through policy preflight,
+  invalid explicit paged policy returns `invalid_source_state_policy`, and valid
+  explicit paged policy advances to source-identity validation.
+- [x] Focused selector tests pass 2/2; strict `qwen35-cuda` Clippy and
+  `qwen35-cuda-serving` composition check pass with required kache/jobs settings.
+  No new numerical/state/ownership primitive or physical claim is introduced;
+  the exposed B1 route is the already source-real-qualified paged path. Next adapt
+  native B2/B4/B8 paged state transport before claiming batched/HTTP paged serving.
+
 ### Next continuation — no live campaign
 
 - [ ] Establish independent large-CUDA distribution/state accuracy (session task44)

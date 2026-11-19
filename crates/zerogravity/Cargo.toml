@@ -38,7 +38,7 @@ qwen35-cuda = ["cuda", "cache", "text", "zerogravity-gpu/cuda-cublas", "zerograv
 qwen35-hip = ["hip", "cache", "text", "zerogravity-gpu/hip-source", "zerogravity-model-qwen35/source-binding", "dep:rustix"]
 qwen35-cuda-serving = ["serve", "qwen35-cuda"]
 qwen35-cuda-qualification = ["qwen35-cuda", "zerogravity-gpu/qualification", "zerogravity-gpu/cuda-native-qualification"]
-# P12-C lifecycle gate only; production paged selection remains disabled.
+# P12-C cancellation probes only; no default or batched paged behavior.
 qwen35-cuda-paged-cancellation-qualification = ["qwen35-cuda-qualification", "zerogravity-gpu/hardware-abort-probe"]
 hip = ["dep:futures-lite", "dep:zerogravity-gpu", "zerogravity-gpu/hip"]
 all-models = ["model-qwen35", "model-gemma4"]

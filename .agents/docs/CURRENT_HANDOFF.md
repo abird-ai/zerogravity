@@ -38,10 +38,11 @@ and live TODOs are authoritative.
   zero policy extents fail closed. `HybridStateInventoryPlan` also rejects
   max_append_tokens above state capacity, and runtime candidate construction
   returns `Limit` before checkout if a call exceeds the admitted append bound.
-  The high-level/public `ModelLoadRequest` is intentionally unchanged:
-  production registration passes `CudaSourceStatePolicy::Contiguous`
-  explicitly, so no serving capability/default switched in this checkpoint.
-  A pre-source-IO unit test proves invalid paged/native/bound policies return
+  At `1413f72` the high-level/public `ModelLoadRequest` was intentionally
+  unchanged and production registration passed `CudaSourceStatePolicy::Contiguous`
+  explicitly. The 19 Nov follow-up now adds an explicit policy-bearing high-level
+  request while preserving legacy `QwenCuda` as Contiguous; no default switched.
+  Pre-source-IO unit tests prove invalid paged/native/bound policies return
   `invalid_source_state_policy` before cache/device access.
   The real managed L5 cache is now visible at
   `/home/pvl/.cache/abird/zerogravity/models` with the exact approved0.8B
@@ -270,10 +271,16 @@ and live TODOs are authoritative.
   semantic completion remain incomplete; direct known-completion and final
   heartbeat-assisted unknown-completion runs exit0. Heartbeat is optional transport
   plumbing only. Run physical cells through `native-gpu`; reserve
-  `--require-private-network` for genuine TCP/UDP loopback gates. No high-level
-  paged serving/default changed. Next consider the explicit high-level paged
-  selector, then native B2/B4/B8/HTTP. Complete-domain prefix reuse and
-  event/lease-backed overlap remain later.
+  `--require-private-network` for genuine TCP/UDP loopback gates.
+  **19 Nov explicit high-level paged selection is accepted without changing the
+  default.** Public `QwenCudaStatePolicy::{Contiguous,Paged}` is available only via
+  new `ModelLoadRequest::QwenCudaWithStatePolicy`; existing `QwenCuda` remains
+  exactly Contiguous. Paged is still B1-only and page/append/native-row policy
+  refuses before source IO. Focused selector tests, strict CUDA clippy and
+  CUDA-serving composition check pass. This maps to the already source-real
+  accepted paged B1 implementation; no new numerical/state claim is introduced.
+  Next adapt native B2/B4/B8 paged state transport, then source-real SDK/HTTP.
+  Complete-domain prefix reuse and event/lease-backed overlap remain later.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -1185,11 +1192,13 @@ is already green; repeat it only if host/runtime state changes.
 > exact root/all42 rollback, submitted Vector/staging/page ownership through known
 > completion, exact retirement + replay + shutdown, and deliberate-drop
 > unknown-completion fencing/quarantine with no reuse. Two external-SIGKILL attempts
-> remain incomplete; the terminal known/unknown physical cells pass. No public
-> paged default/selector changed. Continue with the next coherent P12-C slice:
-> consider an explicit high-level paged selector without changing defaults, then
-> native B2/B4/B8 paged state transport/HTTP. Keep complete-domain prefix reuse
-> and event/lease physical overlap behind their remaining gates.
+> remain incomplete; the terminal known/unknown physical cells pass. Explicit
+> high-level paged selection is now accepted through public
+> `QwenCudaStatePolicy` + `QwenCudaWithStatePolicy`, while legacy `QwenCuda`
+> remains exactly Contiguous and paged remains B1-only/fail-closed before source
+> IO. Continue with the next coherent P12-C slice: adapt native B2/B4/B8 paged
+> state transport, then source-real SDK/HTTP parity. Keep complete-domain prefix
+> reuse and event/lease physical overlap behind their remaining gates.
 >
 > Keep the implementation turn to roughly 30 minutes. Aim for the next coherent
 > checkpoint, update owning TODO/handoff state, sign the commit, sync X2 only if

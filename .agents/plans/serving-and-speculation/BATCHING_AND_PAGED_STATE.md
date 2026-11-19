@@ -635,11 +635,21 @@ and remain incomplete; the direct known-completion run and the final
 heartbeat-assisted unknown-completion run each exit0. Periodic output is optional
 transport plumbing only, not an acceptance requirement.
 
-No public/default paged selector changed. Next consider the explicit high-level
-paged selector, then native B2/B4/B8 state transport and HTTP. Complete-domain
-prefix reuse remains after those state gates; event/lease-backed physical overlap
-remains later. Ordinary physical model cells can use the seccomp fallback;
-loopback-dependent serving/full-gate work must require a private network namespace.
+**19 Nov explicit high-level selector follow-up:** the public models API now owns
+`QwenCudaStatePolicy::{Contiguous,Paged}` and a separate
+`ModelLoadRequest::QwenCudaWithStatePolicy`. The existing `QwenCuda` request still
+maps directly to Contiguous, so no default/current production caller silently
+changes representation. The explicit request converts to the existing low-level
+`CudaSourceStatePolicy` only at registration; the same pre-source validation keeps
+Paged B1-only and rejects zero/out-of-context page/append bounds. Focused tests
+prove the legacy default remains Contiguous and explicit invalid/valid paged
+preflight ordering; strict CUDA clippy and CUDA-serving composition check pass.
+No new numerical/state primitive or source-real claim is introduced by this
+mapping; it exposes the already accepted paged B1 route. Native B2/B4/B8 state transport
+and source-real SDK/HTTP parity remain next. Complete-domain prefix reuse remains
+after those state gates; event/lease-backed physical overlap remains later.
+Ordinary physical model cells can use the seccomp fallback; loopback-dependent
+serving/full-gate work must require a private network namespace.
 
 - Extend existing source-compatible grouping with numerical/phase/layout/device
   compatibility. Dynamically refill and regroup unpadded survivors; preserve

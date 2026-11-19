@@ -601,9 +601,15 @@ or a change to the active correctness/benchmark/27B order.
   completion owners quarantined and no pool reuse. Two externally SIGKILLed runs
   before terminal semantics remain incomplete; retained direct known-completion
   and heartbeat-assisted unknown-completion runs both exit0. Heartbeat is optional
-  transport plumbing only. **Production selection remains open:** no public/default
-  paged selector changed here. Next consider the explicit high-level selector,
-  then native B2/B4/B8 + HTTP. Physical overlap remains behind event/lease and
+  transport plumbing only. **19 Nov explicit high-level selector accepted without
+  changing defaults:** public `QwenCudaStatePolicy::{Contiguous,Paged}` is exposed
+  only through `ModelLoadRequest::QwenCudaWithStatePolicy`; the historical
+  `QwenCuda` request remains exactly Contiguous. Paged validation is still B1-only
+  and fails before source IO for native-row/zero/out-of-context bounds. Two focused
+  selector tests, strict CUDA clippy and CUDA-serving composition check pass. This
+  exposes the already qualified B1 paged path; it does not qualify native batched
+  transport or HTTP. **Next:** adapt native B2/B4/B8 paged state transport, then
+  source-real SDK/HTTP parity. Physical overlap remains behind event/lease and
   independent-root gates.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long

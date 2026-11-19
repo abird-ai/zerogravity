@@ -270,9 +270,16 @@ root binding stays unchanged, the service fences, the pending event,396 submitte
 handles and completion owners remain quarantined, and pool backing is not reused.
 Two external-SIGKILL attempts before semantic completion remain incomplete; the
 direct known-completion run and the final heartbeat-assisted unknown run both
-exit0. Heartbeat output is transport plumbing only, not correctness. No high-level
-paged serving/default changed. Next consider the explicit high-level paged selector,
-then native B2/B4/B8 + HTTP. Complete-domain prefix reuse and event/lease overlap
+exit0. Heartbeat output is transport plumbing only, not correctness.
+**19 Nov explicit high-level paged selection is now wired without changing the
+default.** Public `QwenCudaStatePolicy::{Contiguous,Paged}` is carried only by the
+new `ModelLoadRequest::QwenCudaWithStatePolicy`; the existing `QwenCuda` request
+continues to select Contiguous exactly. Paged remains B1-only and validates
+native-row/page/append bounds before source IO. Focused selector tests, strict
+`qwen35-cuda` clippy and `qwen35-cuda-serving` composition check pass. No new
+numerical/state primitive was introduced; this exposes the already accepted B1
+paged path explicitly. Next adapt native B2/B4/B8 paged state transport, then
+source-real SDK/HTTP parity. Complete-domain prefix reuse and event/lease overlap
 remain later gates.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must

@@ -182,8 +182,12 @@ The following extends existing owners; source-byte qualification is not inferenc
   future drop proves the existing fail-safe unknown path fences the service and
   quarantines the pending event,396 handles and completion owners without pool
   reuse or root publication. Two externally SIGKILLed attempts remain incomplete;
-  the terminal known/unknown runs pass. page_tokens remains explicit; high-level
-  paged selection, native batches/HTTP, prefix reuse and overlap are still later.
+  the terminal known/unknown runs pass. **19 Nov high-level selection is now
+  explicit but still non-default:** `QwenCudaWithStatePolicy` carries public
+  `QwenCudaStatePolicy::Paged`, while legacy `QwenCuda` remains Contiguous. The
+  same pre-source bounds keep paged B1-only and `page_tokens` explicit. Focused
+  selector/clippy/serving-composition checks pass. Native B2/B4/B8 transport,
+  source-real SDK/HTTP, prefix reuse and overlap are still later.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/
