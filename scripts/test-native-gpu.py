@@ -70,6 +70,26 @@ class BubblewrapIsolationTests(unittest.TestCase):
         self.write_proc("1000 0 1\n", ["bwrap", "--unshare-net", "--", "command"])
         self.assertIsNone(NATIVE.bubblewrap_network_isolation(self.proc))
 
+    def test_isolated_child_network_namespace_requires_loopback_only(self):
+        (self.proc / "self/net").mkdir()
+        (self.proc / "1/net").mkdir()
+        (self.proc / "self/net/dev").write_text(
+            "Inter-| Receive\n face | bytes\n lo: 0\n",
+            encoding="ascii",
+        )
+        (self.proc / "1/net/dev").write_text(
+            "Inter-| Receive\n face | bytes\n lo: 0\n eth0: 0\n",
+            encoding="ascii",
+        )
+        with mock.patch.object(NATIVE, "inherited_socket_fds", return_value=[]):
+            self.assertTrue(NATIVE.isolated_child_network_namespace(self.proc))
+        (self.proc / "self/net/dev").write_text(
+            "Inter-| Receive\n face | bytes\n lo: 0\n eth0: 0\n",
+            encoding="ascii",
+        )
+        with mock.patch.object(NATIVE, "inherited_socket_fds", return_value=[]):
+            self.assertFalse(NATIVE.isolated_child_network_namespace(self.proc))
+
 
 class TreeHashTests(unittest.TestCase):
     def setUp(self):
@@ -298,6 +318,33 @@ class ExecutionGuardTests(unittest.TestCase):
         seccomp.assert_not_called()
         locate.assert_not_called()
         self.assertIn("existing Bubblewrap user/network namespaces", self.last_error)
+
+    def test_existing_bubblewrap_child_network_namespace_execs_directly(self):
+        before = os.environ.copy()
+        with (
+            mock.patch.object(
+                NATIVE, "bubblewrap_network_isolation", return_value=False
+            ),
+            mock.patch.object(
+                NATIVE, "isolated_child_network_namespace", return_value=True
+            ),
+            mock.patch.object(NATIVE, "install_no_network_seccomp") as seccomp,
+            mock.patch.object(NATIVE.os, "execvpe", side_effect=SystemExit(73)) as execute,
+        ):
+            with self.assertRaises(SystemExit) as captured:
+                self.invoke(["--require-private-network", "--", "gpu-command"])
+        self.assertEqual(captured.exception.code, 73)
+        executable, arguments, environment = execute.call_args.args
+        self.assertEqual((executable, arguments), ("gpu-command", ["gpu-command"]))
+        self.assertEqual(
+            environment,
+            {
+                **before,
+                "CARGO_NET_OFFLINE": "true",
+                "ZG_NATIVE_GPU_ISOLATION": "bubblewrap-child-network-namespace",
+            },
+        )
+        seccomp.assert_not_called()
 
     def test_existing_bubblewrap_shared_network_uses_seccomp(self):
         order = []

@@ -11,9 +11,11 @@ Every command inherits the current directory and environment, with Cargo offline
 mode enabled and mandatory user/network isolation. Inside an existing Bubblewrap
 PID/user sandbox, reuse it instead of nesting another user namespace. If
 Bubblewrap already has a private network namespace, execute directly; otherwise
-deny new non-AF_UNIX sockets with seccomp. Outside Bubblewrap, create the original
-private user/network namespaces with unshare. No command runs if the required
-isolation cannot be established. Commands that require TCP/UDP loopback must use
+reuse an already-entered child network namespace only when it differs from PID 1,
+contains loopback alone and inherited sockets are absent; otherwise deny new
+non-AF_UNIX sockets with seccomp. Outside Bubblewrap, create the original private
+user/network namespaces with unshare. No command runs if the required isolation
+cannot be established. Commands that require TCP/UDP loopback must use
 --require-private-network; the socket-deny fallback cannot safely provide it.
 CPP-only commands need no LLVM installation. Callers must select --require-llvm
 for commands using LLVM. --verify-only checks the pinned LLVM bundle without
@@ -93,9 +95,14 @@ def isolation_plan(require_private_network=False):
         )
     sandbox_network = bubblewrap_network_isolation()
     if sandbox_network is not None:
-        if sandbox_network:
+        child_network = not sandbox_network and isolated_child_network_namespace()
+        if sandbox_network or child_network:
             return {
-                "mode": "bubblewrap-network-namespace",
+                "mode": (
+                    "bubblewrap-child-network-namespace"
+                    if child_network
+                    else "bubblewrap-network-namespace"
+                ),
                 "existing_bubblewrap": True,
                 "private_network_namespace": True,
                 "network_isolation": "namespace",
@@ -142,6 +149,30 @@ def inherited_socket_fds(fd_root=Path("/proc/self/fd")):
         if stat.S_ISSOCK(mode):
             sockets.append(descriptor)
     return sorted(sockets)
+
+
+def network_interfaces(path):
+    return {
+        line.split(":", 1)[0].strip()
+        for line in path.read_text(encoding="ascii").splitlines()[2:]
+        if ":" in line
+    }
+
+
+def isolated_child_network_namespace(
+    proc=Path("/proc"), fd_root=Path("/proc/self/fd")
+):
+    """Accept only a proven child netns with loopback alone and no inherited sockets."""
+    try:
+        current = network_interfaces(proc / "self/net/dev")
+        parent = network_interfaces(proc / "1/net/dev")
+        return (
+            current == {"lo"}
+            and current != parent
+            and not inherited_socket_fds(fd_root)
+        )
+    except (OSError, UnicodeError):
+        return False
 
 
 def install_no_network_seccomp():
