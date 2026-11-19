@@ -24,7 +24,7 @@ use crate::{
     },
     resident_leases::{ResidentLease, ResidentSubmission as PhysicalSubmission},
     resident_program::{
-        ResidentBufferLayout, ResidentPhysicalType, StateBinding, StateBuffers,
+        ResidentBufferLayout, ResidentPhysicalType, StateBinding, StateBindingMode, StateBuffers,
         cohort_rows::CohortRowSpans,
     },
 };
@@ -1318,6 +1318,11 @@ impl OrdinaryCudaBody {
                 }
                 if let SourceOperatorKind::KvAppend { domain, .. } = template.kind()
                     && requests.len() == 8
+                    && state_maps.iter().all(|states| {
+                        states
+                            .get(&StateSlot::Kv(domain))
+                            .is_some_and(|state| state.mode == StateBindingMode::Distinct)
+                    })
                 {
                     let ([key, packed], []) = (node.inputs.as_slice(), node.outputs.as_slice())
                     else {

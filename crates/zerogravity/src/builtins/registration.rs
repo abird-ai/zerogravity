@@ -242,34 +242,27 @@ mod tests {
             state_policy,
         };
 
-        for invalid in [
-            request(
-                profile(4, 4),
-                QwenCudaStatePolicy::Paged {
-                    page_tokens: 4,
-                    max_append_tokens: 4,
-                },
-            ),
-            request(
-                profile(1, 0),
-                QwenCudaStatePolicy::Paged {
-                    page_tokens: 0,
-                    max_append_tokens: 4,
-                },
-            ),
-        ] {
+        for invalid in [request(
+            profile(1, 0),
+            QwenCudaStatePolicy::Paged {
+                page_tokens: 0,
+                max_append_tokens: 4,
+            },
+        )] {
             let error = expect_pre_source_error(invalid);
             assert_eq!(error.status, 400);
             assert_eq!(error.code, "invalid_source_state_policy");
         }
 
-        let valid = expect_pre_source_error(request(
-            profile(1, 0),
-            QwenCudaStatePolicy::Paged {
-                page_tokens: 4,
-                max_append_tokens: 4,
-            },
-        ));
-        assert_ne!(valid.code, "invalid_source_state_policy");
+        for profile in [profile(1, 0), profile(4, 4)] {
+            let valid = expect_pre_source_error(request(
+                profile,
+                QwenCudaStatePolicy::Paged {
+                    page_tokens: 4,
+                    max_append_tokens: 4,
+                },
+            ));
+            assert_ne!(valid.code, "invalid_source_state_policy");
+        }
     }
 }

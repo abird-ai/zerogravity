@@ -159,6 +159,43 @@ impl SourceCallModel {
 }
 
 impl ResidentModel {
+    async fn ordinary_source_cohort_candidates(
+        &self,
+        sessions: &[&ResidentSession],
+        tokens: &[usize],
+    ) -> Result<Option<(Vec<OrdinaryCandidateState>, Vec<Vec<StateBinding>>)>> {
+        if sessions.len() != tokens.len() {
+            return Err(Error::State(
+                "ordinary source cohort candidate coverage differs".into(),
+            ));
+        }
+        let mut candidates = Vec::with_capacity(sessions.len());
+        for (session, &tokens) in sessions.iter().zip(tokens) {
+            let position = usize::try_from(session.binding().frontier())
+                .map_err(|_| Error::Limit("ordinary source cohort frontier".into()))?;
+            match self
+                .ordinary_candidate_state(&session.domains, tokens, position)
+                .await
+            {
+                Ok(candidate) => candidates.push(candidate),
+                Err(Error::Limit(reason))
+                    if matches!(
+                        reason.as_str(),
+                        "resident pool busy" | "resident pool exhausted"
+                    ) =>
+                {
+                    return Ok(None);
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        let bindings = candidates
+            .iter()
+            .map(|candidate| candidate.bindings().to_vec())
+            .collect();
+        Ok(Some((candidates, bindings)))
+    }
+
     async fn prepare_ordinary_source_prefill_cohort(
         self: &Arc<Self>,
         sessions: &[&ResidentSession],
@@ -216,14 +253,6 @@ impl ResidentModel {
                 "ordinary source prefill cohort requires aligned compatible chunk roots".into(),
             ));
         }
-        let lane_bases = roots
-            .frontiers()
-            .map(|frontier| {
-                usize::try_from(frontier)
-                    .map_err(|_| Error::Limit("ordinary source prefill cohort frontier".into()))
-            })
-            .collect::<Result<Vec<_>>>()?;
-
         let mut attempts = Vec::with_capacity(width);
         for (session, call) in sessions.iter().zip(&calls) {
             self.validate_domains(&session.domains, true)?;
@@ -259,27 +288,16 @@ impl ResidentModel {
             return Ok(None);
         }
 
-        let mut candidates = Vec::with_capacity(width);
-        for _ in 0..width {
-            match self.allocate_uninitialized_state() {
-                Ok(candidate) => candidates.push(candidate),
-                Err(Error::Limit(reason))
-                    if matches!(
-                        reason.as_str(),
-                        "resident pool busy" | "resident pool exhausted"
-                    ) =>
-                {
-                    return Ok(None);
-                }
-                Err(error) => return Err(error),
-            }
-        }
-        let bindings = sessions
+        let row_counts = calls
             .iter()
-            .zip(&candidates)
-            .zip(&lane_bases)
-            .map(|((session, candidate), &base)| bind_domains(&session.domains, candidate, base))
-            .collect::<Result<Vec<_>>>()?;
+            .map(|call| call.rows().len())
+            .collect::<Vec<_>>();
+        let Some((candidates, bindings)) = self
+            .ordinary_source_cohort_candidates(sessions, &row_counts)
+            .await?
+        else {
+            return Ok(None);
+        };
         let logits = emit_logits
             .then(|| {
                 self.service
@@ -363,25 +381,20 @@ impl ResidentModel {
                 .map(|lease| (lease, DeviceAccess::Write)),
         );
         for (session, candidate) in sessions.iter().zip(&candidates) {
-            accesses.extend(
-                session
-                    .domains
-                    .iter()
-                    .flat_map(|domain| domain.leases.iter().cloned())
-                    .map(|lease| (lease, DeviceAccess::Read)),
-            );
-            accesses.extend(
-                candidate
-                    .iter()
-                    .flat_map(|domain| domain.leases.iter().cloned())
-                    .map(|lease| (lease, DeviceAccess::Write)),
-            );
+            accesses.extend(candidate.state_accesses(&session.domains)?);
         }
+        let accesses = dedupe_resident_accesses(accesses)?;
         drop(allocation);
         slot.begin_submission()?;
         let mut flight = self.service.submit_cohort(&bases, &accesses)?;
         for scope in scopes {
             flight.retain_completion_owner(scope.clone())?;
+        }
+        let mut state_dispatches = 0usize;
+        for candidate in &candidates {
+            state_dispatches = state_dispatches
+                .checked_add(candidate.enqueue_gather_cuda(&flight)?)
+                .ok_or_else(|| Error::Limit("ordinary source cohort gather dispatches".into()))?;
         }
         let mut submitted = workspace
             .program
@@ -393,6 +406,15 @@ impl ResidentModel {
                 values,
             )
             .await?;
+        for candidate in &candidates {
+            state_dispatches = state_dispatches
+                .checked_add(candidate.enqueue_scatter_cuda(&flight)?)
+                .ok_or_else(|| Error::Limit("ordinary source cohort scatter dispatches".into()))?;
+        }
+        submitted.dispatches = submitted
+            .dispatches
+            .checked_add(state_dispatches)
+            .ok_or_else(|| Error::Limit("ordinary source cohort state dispatches".into()))?;
         if submitted.proposals.len() != width {
             return Err(Error::State(
                 "ordinary source prefill cohort state proposal coverage".into(),
@@ -406,14 +428,14 @@ impl ResidentModel {
                 ));
             }
             for ((version, buffers), expected) in proposals.iter().zip(expected) {
-                let domain = candidates[row]
+                let binding = bindings[row]
                     .iter()
-                    .find(|domain| domain.slot == version.slot)
+                    .find(|binding| binding.slot == version.slot)
                     .ok_or_else(|| {
                         Error::State("ordinary source prefill cohort foreign state".into())
                     })?;
                 let actual = buffers.handles();
-                let target = domain.buffers.handles();
+                let target = binding.candidate.handles();
                 if version != expected
                     || actual.len() != target.len()
                     || actual.iter().zip(target).any(|(a, b)| !same_handle(a, &b))
@@ -469,16 +491,13 @@ impl ResidentModel {
             .zip(&candidates)
             .enumerate()
             .map(|(row, (base, candidate))| {
-                let mut leases = candidate
-                    .iter()
-                    .flat_map(|domain| domain.leases.iter().cloned())
-                    .collect::<Vec<_>>();
+                let mut leases = candidate.write_outputs()?;
                 if let Some(packet) = packets.get(row) {
                     leases.push(packet.clone());
                 }
-                (base, leases)
+                Ok((base, leases))
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>>>()?;
         let (ready, read) = flight
             .complete_cohort_with_readback(&outputs, &reads, |values| {
                 if emit_logits {
@@ -519,9 +538,10 @@ impl ResidentModel {
         let fused_dispatches = submitted.fused_dispatches;
         let mut packets = packets.into_iter();
         let mut prepared = Vec::with_capacity(width);
-        for (row, ((attempt, domains), ready)) in
+        for (row, ((attempt, candidate), ready)) in
             attempts.into_iter().zip(candidates).zip(ready).enumerate()
         {
+            let domains = candidate.into_domains()?;
             let device_token = if emit_logits {
                 let packet = packets.next().ok_or_else(|| {
                     Error::State("ordinary source prefill cohort packet missing".into())
@@ -645,32 +665,13 @@ impl ResidentModel {
         {
             return Ok(None);
         }
-        let mut candidates = Vec::with_capacity(width);
-        for _ in 0..width {
-            match self.allocate_uninitialized_state() {
-                Ok(candidate) => candidates.push(candidate),
-                Err(Error::Limit(reason))
-                    if matches!(
-                        reason.as_str(),
-                        "resident pool busy" | "resident pool exhausted"
-                    ) =>
-                {
-                    return Ok(None);
-                }
-                Err(error) => return Err(error),
-            }
-        }
-        let bindings = sessions
-            .iter()
-            .zip(&candidates)
-            .map(|(session, candidate)| {
-                bind_domains(
-                    &session.domains,
-                    candidate,
-                    session.binding().frontier() as usize,
-                )
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let tokens = vec![1usize; width];
+        let Some((candidates, bindings)) = self
+            .ordinary_source_cohort_candidates(sessions, &tokens)
+            .await?
+        else {
+            return Ok(None);
+        };
         let logits = self
             .service
             .allocate_uninitialized(logits_bytes, BufferRole::Output)?;
@@ -732,25 +733,20 @@ impl ResidentModel {
                 .map(|lease| (lease, DeviceAccess::Write)),
         );
         for (session, candidate) in sessions.iter().zip(&candidates) {
-            accesses.extend(
-                session
-                    .domains
-                    .iter()
-                    .flat_map(|domain| domain.leases.iter().cloned())
-                    .map(|lease| (lease, DeviceAccess::Read)),
-            );
-            accesses.extend(
-                candidate
-                    .iter()
-                    .flat_map(|domain| domain.leases.iter().cloned())
-                    .map(|lease| (lease, DeviceAccess::Write)),
-            );
+            accesses.extend(candidate.state_accesses(&session.domains)?);
         }
+        let accesses = dedupe_resident_accesses(accesses)?;
         drop(allocation);
         slot.begin_submission()?;
         let mut flight = self.service.submit_cohort(&bases, &accesses)?;
         for scope in scopes {
             flight.retain_completion_owner(scope.clone())?;
+        }
+        let mut state_dispatches = 0usize;
+        for candidate in &candidates {
+            state_dispatches = state_dispatches
+                .checked_add(candidate.enqueue_gather_cuda(&flight)?)
+                .ok_or_else(|| Error::Limit("ordinary source cohort gather dispatches".into()))?;
         }
         let mut submitted = workspace
             .program
@@ -762,6 +758,15 @@ impl ResidentModel {
                 values,
             )
             .await?;
+        for candidate in &candidates {
+            state_dispatches = state_dispatches
+                .checked_add(candidate.enqueue_scatter_cuda(&flight)?)
+                .ok_or_else(|| Error::Limit("ordinary source cohort scatter dispatches".into()))?;
+        }
+        submitted.dispatches = submitted
+            .dispatches
+            .checked_add(state_dispatches)
+            .ok_or_else(|| Error::Limit("ordinary source cohort state dispatches".into()))?;
         if submitted.proposals.len() != width {
             return Err(Error::State(
                 "ordinary source cohort state proposal coverage".into(),
@@ -775,12 +780,12 @@ impl ResidentModel {
                 ));
             }
             for ((version, buffers), expected) in proposals.iter().zip(expected) {
-                let domain = candidates[row]
+                let binding = bindings[row]
                     .iter()
-                    .find(|domain| domain.slot == version.slot)
+                    .find(|binding| binding.slot == version.slot)
                     .ok_or_else(|| Error::State("ordinary source cohort foreign state".into()))?;
                 let actual = buffers.handles();
-                let target = domain.buffers.handles();
+                let target = binding.candidate.handles();
                 if version != expected
                     || actual.len() != target.len()
                     || actual.iter().zip(target).any(|(a, b)| !same_handle(a, &b))
@@ -822,14 +827,11 @@ impl ResidentModel {
             .zip(&candidates)
             .zip(&packets)
             .map(|((base, candidate), packet)| {
-                let mut leases = candidate
-                    .iter()
-                    .flat_map(|domain| domain.leases.iter().cloned())
-                    .collect::<Vec<_>>();
+                let mut leases = candidate.write_outputs()?;
                 leases.push(packet.clone());
-                (base, leases)
+                Ok((base, leases))
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>>>()?;
         let (ready, read) = flight
             .complete_cohort_with_readback(&outputs, &reads, |values| {
                 if values.len() != width {
@@ -860,13 +862,14 @@ impl ResidentModel {
         let dispatches = submitted.dispatches;
         let fused_dispatches = submitted.fused_dispatches;
         let mut prepared = Vec::with_capacity(width);
-        for (row, (((attempt, domains), ready), packet)) in attempts
+        for (row, (((attempt, candidate), ready), packet)) in attempts
             .into_iter()
             .zip(candidates)
             .zip(ready)
             .zip(packets)
             .enumerate()
         {
+            let domains = candidate.into_domains()?;
             prepared.push(PreparedInference {
                 attempt,
                 domains,

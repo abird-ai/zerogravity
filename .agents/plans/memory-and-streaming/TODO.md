@@ -185,9 +185,15 @@ The following extends existing owners; source-byte qualification is not inferenc
   the terminal known/unknown runs pass. **19 Nov high-level selection is now
   explicit but still non-default:** `QwenCudaWithStatePolicy` carries public
   `QwenCudaStatePolicy::Paged`, while legacy `QwenCuda` remains Contiguous. The
-  same pre-source bounds keep paged B1-only and `page_tokens` explicit. Focused
-  selector/clippy/serving-composition checks pass. Native B2/B4/B8 transport,
-  source-real SDK/HTTP, prefix reuse and overlap are still later.
+  `page_tokens` remains explicit. Native rows4/8 now share the same Hybrid pool
+  and per-lane candidate abstraction: paged gather/body/scatter stays under the
+  original cohort submission and only actual fresh/COW outputs can become Ready.
+  Contiguous B8 keeps its existing optimized KV transition; paged uses the simple
+  already-qualified `KvInPlace` append path. Focused selector/policy, strict clippy
+  and serving-composition checks pass. The compact original0.8B native transport
+  parity test compiles but two physical attempts were externally SIGKILLed before
+  semantic results, so acceptance remains open. SDK/HTTP, prefix reuse and overlap
+  are still later.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

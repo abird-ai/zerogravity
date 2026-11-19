@@ -274,12 +274,18 @@ exit0. Heartbeat output is transport plumbing only, not correctness.
 **19 Nov explicit high-level paged selection is now wired without changing the
 default.** Public `QwenCudaStatePolicy::{Contiguous,Paged}` is carried only by the
 new `ModelLoadRequest::QwenCudaWithStatePolicy`; the existing `QwenCuda` request
-continues to select Contiguous exactly. Paged remains B1-only and validates
-native-row/page/append bounds before source IO. Focused selector tests, strict
-`qwen35-cuda` clippy and `qwen35-cuda-serving` composition check pass. No new
-numerical/state primitive was introduced; this exposes the already accepted B1
-paged path explicitly. Next adapt native B2/B4/B8 paged state transport, then
-source-real SDK/HTTP parity. Complete-domain prefix reuse and event/lease overlap
+continues to select Contiguous exactly. Native rows4/8 now use the same explicit
+Paged policy and shared Hybrid state owner. Cohort preparation reuses
+`OrdinaryCandidateState` lane-by-lane: gather -> unchanged native body -> scatter
+under one flight, with actual write outputs promoted and canonical paged Domains
+created only after completion. Contiguous B8 retains its private-KV fast path;
+paged `KvInPlace` falls back to the existing per-lane append. Focused policy tests,
+strict `qwen35-cuda` clippy and `qwen35-cuda-serving` composition check pass. One
+compact original0.8B B2/B4/B8 Contiguous-vs-Paged prefill/decode/all42 comparison
+compiles, but two physical attempts were externally SIGKILLed before semantic
+results and remain incomplete. Next obtain that same terminal physical result,
+then source-real SDK/HTTP parity and matched vLLM feedback; do not add another
+fixture/evidence framework. Complete-domain prefix reuse and event/lease overlap
 remain later gates.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must

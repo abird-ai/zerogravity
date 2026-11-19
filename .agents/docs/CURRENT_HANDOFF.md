@@ -34,10 +34,11 @@ and live TODOs are authoritative.
   source-call loader seam. Existing `load_ordinary_cuda_source` remains an exact
   Contiguous wrapper; the explicit policy-bearing loader installs hybrid
   Vector/staging/page pools only for `Paged { page_tokens,
-  max_append_tokens }`. Paged policy is B1-only for now: native_rows !=0 and
-  zero policy extents fail closed. `HybridStateInventoryPlan` also rejects
-  max_append_tokens above state capacity, and runtime candidate construction
-  returns `Limit` before checkout if a call exceeds the admitted append bound.
+  max_append_tokens }`. At `1413f72` Paged was B1-only; current main now permits
+  native rows 4/8 through the same hybrid state owner. Zero policy extents still
+  fail closed. `HybridStateInventoryPlan` rejects max_append_tokens above state
+  capacity, and runtime candidate construction returns `Limit` before checkout if
+  a call exceeds the admitted append bound.
   At `1413f72` the high-level/public `ModelLoadRequest` was intentionally
   unchanged and production registration passed `CudaSourceStatePolicy::Contiguous`
   explicitly. The 19 Nov follow-up now adds an explicit policy-bearing high-level
@@ -275,12 +276,19 @@ and live TODOs are authoritative.
   **19 Nov explicit high-level paged selection is accepted without changing the
   default.** Public `QwenCudaStatePolicy::{Contiguous,Paged}` is available only via
   new `ModelLoadRequest::QwenCudaWithStatePolicy`; existing `QwenCuda` remains
-  exactly Contiguous. Paged is still B1-only and page/append/native-row policy
-  refuses before source IO. Focused selector tests, strict CUDA clippy and
-  CUDA-serving composition check pass. This maps to the already source-real
-  accepted paged B1 implementation; no new numerical/state claim is introduced.
-  Next adapt native B2/B4/B8 paged state transport, then source-real SDK/HTTP.
-  Complete-domain prefix reuse and event/lease-backed overlap remain later.
+  exactly Contiguous. **Native paged B2/B4/B8 state transport is now implemented**
+  by reusing `OrdinaryCandidateState`: each lane gathers paged KV into its admitted
+  staging, executes the existing native cohort body, scatters under the same flight,
+  promotes only actual Vector/fresh-COW Writes, then materializes canonical paged
+  Domains after completion. Contiguous B8 keeps its private-KV fast path; paged
+  `KvInPlace` cleanly uses the existing per-lane append rather than adding another
+  paging kernel. Focused policy tests pass, strict CUDA clippy and CUDA-serving
+  composition checks pass. The compact original0.8B Contiguous-vs-Paged B2/B4/B8
+  prefill+decode/all42 test compiles, but two physical attempts were externally
+  SIGKILLed before any semantic result; physical native parity therefore remains
+  incomplete. Next obtain a terminal result from that same test, then go directly
+  to source-real SDK/HTTP paged parity and matched vLLM feedback. Complete-domain
+  prefix reuse and event/lease-backed overlap remain later.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -1195,10 +1203,15 @@ is already green; repeat it only if host/runtime state changes.
 > remain incomplete; the terminal known/unknown physical cells pass. Explicit
 > high-level paged selection is now accepted through public
 > `QwenCudaStatePolicy` + `QwenCudaWithStatePolicy`, while legacy `QwenCuda`
-> remains exactly Contiguous and paged remains B1-only/fail-closed before source
-> IO. Continue with the next coherent P12-C slice: adapt native B2/B4/B8 paged
-> state transport, then source-real SDK/HTTP parity. Keep complete-domain prefix
-> reuse and event/lease physical overlap behind their remaining gates.
+> remains exactly Contiguous. Native paged B2/B4/B8 transport is implemented by
+> reusing the shared Hybrid candidate gather/body/scatter path; Contiguous B8 keeps
+> its private-KV fast path and paged uses the simpler existing per-lane append.
+> Focused checks are green. The one compact original0.8B Contiguous-vs-Paged native
+> transport test has two externally SIGKILLed attempts before semantic completion,
+> so physical parity is still open. Continue by rerunning that same test to a
+> terminal result, then source-real SDK/HTTP paged parity and matched vLLM feedback.
+> Keep complete-domain prefix reuse and event/lease physical overlap behind their
+> remaining gates.
 >
 > Keep the implementation turn to roughly 30 minutes. Aim for the next coherent
 > checkpoint, update owning TODO/handoff state, sign the commit, sync X2 only if

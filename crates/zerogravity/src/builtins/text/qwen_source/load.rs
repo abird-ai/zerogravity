@@ -89,8 +89,7 @@ pub(crate) fn load_router(
             },
         ..
     } = backend
-        && (profile.native_rows != 0
-            || page_tokens == 0
+        && (page_tokens == 0
             || max_append_tokens == 0
             || page_tokens > profile.context
             || max_append_tokens > profile.context)
@@ -98,7 +97,7 @@ pub(crate) fn load_router(
         return Err(ServiceError::new(
             400,
             "invalid_source_state_policy",
-            "paged CUDA state requires B1 and positive page/append tokens within context",
+            "paged CUDA state requires positive page/append tokens within context",
         ));
     }
     #[cfg(feature = "qwen35-hip")]
@@ -436,8 +435,8 @@ mod cuda_paged_tests {
     use crate::{
         accelerator::program::SourceCallMode,
         gpu::{
-            CudaSourceStatePolicy, ResidentOutput, SourceCallModel, SourceCallPreparation,
-            SourceCallPublication,
+            CudaSourceStatePolicy, ResidentOutput, SourceCallCohortPreparation, SourceCallModel,
+            SourceCallPreparation, SourceCallPublication,
         },
     };
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -452,6 +451,12 @@ mod cuda_paged_tests {
     struct Checkpoint {
         frontier: u64,
         logits: Vec<f32>,
+        domains: Vec<(crate::accelerator::program::StateSlot, Vec<f32>)>,
+    }
+
+    #[derive(Debug)]
+    struct NativeCheckpoint {
+        token: (u32, u32),
         domains: Vec<(crate::accelerator::program::StateSlot, Vec<f32>)>,
     }
 
@@ -622,6 +627,173 @@ mod cuda_paged_tests {
             drop(read);
         }
         Ok(checkpoints)
+    }
+
+    async fn native_trajectory(
+        model: &Arc<SourceCallModel>,
+        plan: &crate::qwen35::plan::OrdinaryQwenPlan,
+        tokens: &[u32],
+        width: usize,
+    ) -> crate::Result<Vec<(NativeCheckpoint, NativeCheckpoint)>> {
+        let mut sessions = Vec::with_capacity(width);
+        for _ in 0..width {
+            sessions.push(model.session().await?);
+        }
+        let prefill = (0..width)
+            .map(|row| {
+                plan.bind_invocation(
+                    SourceCallMode::Prefill,
+                    0,
+                    Arc::<[u32]>::from(vec![tokens[row]]),
+                    true,
+                )
+            })
+            .collect::<crate::Result<Vec<_>>>()?;
+        let inputs = sessions
+            .iter()
+            .zip(&prefill)
+            .map(|(session, invocation)| (session, invocation.bound_invocation()))
+            .collect::<Vec<_>>();
+        let SourceCallCohortPreparation::Ready(pending) =
+            model.prepare_prefill_cohort_admitted(&inputs).await?
+        else {
+            return Err(crate::Error::State(
+                "paged native prefill cohort was not admitted".into(),
+            ));
+        };
+        let reads = pending.commit(&mut sessions.iter_mut().collect::<Vec<_>>())?;
+        let mut prefill_checkpoints = Vec::with_capacity(width);
+        let mut feedback = Vec::with_capacity(width);
+        for (session, read) in sessions.iter().zip(&reads) {
+            let token = read
+                .device_token
+                .as_ref()
+                .ok_or_else(|| crate::Error::State("paged native prefill token absent".into()))?;
+            feedback.push(token.clone());
+            prefill_checkpoints.push(NativeCheckpoint {
+                token: (token.id, token.max_bits),
+                domains: session.snapshot()?.read_domains().await?.to_vec(),
+            });
+        }
+        drop(reads);
+
+        let decode = feedback
+            .iter()
+            .enumerate()
+            .map(|(row, token)| {
+                plan.bind_invocation(
+                    SourceCallMode::Decode,
+                    1,
+                    Arc::<[u32]>::from(vec![token.id]),
+                    true,
+                )
+                .map(|invocation| (row, invocation))
+            })
+            .collect::<crate::Result<Vec<_>>>()?;
+        let inputs = sessions
+            .iter()
+            .zip(&decode)
+            .zip(&feedback)
+            .map(|((session, (_, invocation)), token)| {
+                (session, invocation.bound_invocation(), token)
+            })
+            .collect::<Vec<_>>();
+        let SourceCallCohortPreparation::Ready(pending) =
+            model.prepare_greedy_decode_cohort_admitted(&inputs).await?
+        else {
+            return Err(crate::Error::State(
+                "paged native decode cohort was not admitted".into(),
+            ));
+        };
+        let reads = pending.commit(&mut sessions.iter_mut().collect::<Vec<_>>())?;
+        let mut result = Vec::with_capacity(width);
+        for ((session, read), prefill) in sessions.iter().zip(&reads).zip(prefill_checkpoints) {
+            let token = read
+                .device_token
+                .as_ref()
+                .ok_or_else(|| crate::Error::State("paged native decode token absent".into()))?;
+            result.push((
+                prefill,
+                NativeCheckpoint {
+                    token: (token.id, token.max_bits),
+                    domains: session.snapshot()?.read_domains().await?.to_vec(),
+                },
+            ));
+        }
+        Ok(result)
+    }
+
+    #[test]
+    #[ignore = "approved original HF cache; native B2/B4/B8 contiguous-vs-paged state transport"]
+    fn original_source_native_paged_state_transport_matches_contiguous() {
+        let (parts, page_tokens, max_append_tokens, tokens) =
+            paged_source_fixture("paged-source-native-transport");
+        let run = |policy| {
+            ResidentModel::load_ordinary_cuda_source_with_state_policy(
+                Device::Cuda(Default::default()),
+                parts.source.plan.source().clone(),
+                parts.source.clone(),
+                parts.source.plan.plan().clone(),
+                8,
+                8,
+                PROVIDER_BYTES,
+                DEVICE_BYTES,
+                policy,
+                None,
+            )
+        };
+        let expected = block_on(async {
+            let model = run(CudaSourceStatePolicy::Contiguous).await.unwrap();
+            let mut widths = Vec::new();
+            for width in [2, 4, 8] {
+                widths.push(
+                    native_trajectory(&model, &parts.source.plan, &tokens, width)
+                        .await
+                        .unwrap(),
+                );
+            }
+            model.shutdown().await.unwrap();
+            widths
+        });
+        let actual = block_on(async {
+            let model = run(CudaSourceStatePolicy::Paged {
+                page_tokens,
+                max_append_tokens,
+            })
+            .await
+            .unwrap();
+            let mut widths = Vec::new();
+            for width in [2, 4, 8] {
+                widths.push(
+                    native_trajectory(&model, &parts.source.plan, &tokens, width)
+                        .await
+                        .unwrap(),
+                );
+            }
+            model.shutdown().await.unwrap();
+            widths
+        });
+        for (width_index, width) in [2, 4, 8].into_iter().enumerate() {
+            for row in 0..width {
+                let (expected_prefill, expected_decode) = &expected[width_index][row];
+                let (actual_prefill, actual_decode) = &actual[width_index][row];
+                assert_eq!(actual_prefill.token, expected_prefill.token);
+                assert_eq!(actual_decode.token, expected_decode.token);
+                exact_domains(
+                    &expected_prefill.domains,
+                    &actual_prefill.domains,
+                    &format!("native paged B{width} prefill row{row}"),
+                );
+                exact_domains(
+                    &expected_decode.domains,
+                    &actual_decode.domains,
+                    &format!("native paged B{width} decode row{row}"),
+                );
+            }
+        }
+        println!(
+            "P12_SOURCE_PAGED_NATIVE_TRANSPORT_PASS widths=2,4,8 prefill=exact decode=exact all42=exact contiguous_reference=true final_shutdown=true"
+        );
     }
 
     #[test]

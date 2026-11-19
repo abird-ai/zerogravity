@@ -88,16 +88,36 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   do not change. The new request maps to the already accepted low-level
   `CudaSourceStatePolicy` only at the Qwen CUDA registration seam.
 - [x] Existing fail-closed paged policy validation remains authoritative before
-  source IO: paged still requires B1 (`native_rows=0`), positive page/append
-  extents and bounds within context. Unit coverage proves the legacy QwenCuda
-  variant still accepts a valid native-row profile through policy preflight,
-  invalid explicit paged policy returns `invalid_source_state_policy`, and valid
-  explicit paged policy advances to source-identity validation.
+  source IO for positive page/append extents and context bounds. The original
+  B1-only restriction is now lifted because native rows4/8 use the same Hybrid
+  owner; legacy QwenCuda still remains Contiguous. Unit coverage proves invalid
+  explicit paged policy refuses and valid B1/native-row policy advances to
+  source-identity validation.
 - [x] Focused selector tests pass 2/2; strict `qwen35-cuda` Clippy and
   `qwen35-cuda-serving` composition check pass with required kache/jobs settings.
   No new numerical/state/ownership primitive or physical claim is introduced;
   the exposed B1 route is the already source-real-qualified paged path. Next adapt
   native B2/B4/B8 paged state transport before claiming batched/HTTP paged serving.
+
+### 19 Nov 2026 — native paged cohort transport implementation checkpoint
+
+- [x] Native source cohorts now reuse the shared `OrdinaryCandidateState` for both
+  Contiguous and Hybrid state. Per lane, Hybrid gathers committed paged KV into
+  admitted staging, runs the unchanged native cohort body with `KvInPlace`, scatters
+  appended rows under the same original submission, exposes only Vector/fresh-COW
+  Writes to Ready, then converts to canonical paged Domains after physical
+  completion. Existing cohort/root publication authority is unchanged.
+- [x] Preserved the useful optimized Contiguous B8 private-KV primitive. It is used
+  only for `StateBindingMode::Distinct`; paged `KvInPlace` takes the simple existing
+  per-lane KV append path while all other compatible B8 work stays physically
+  batched. No second paged cohort engine or model-specific page primitive was added.
+- [x] Production qwen35-cuda check, focused selector/policy tests, strict CUDA
+  clippy and qwen35-cuda-serving composition check pass. A single compact ignored
+  original0.8B test compares Contiguous vs Paged B2/B4/B8 prefill + cached decode,
+  token/max bits and all42; it compiles. Two physical executions were externally
+  SIGKILLed before any semantic result and cleanly returned the GPU to37MiB, so
+  physical native transport acceptance remains open. Do not add more fixtures;
+  rerun this same cell to terminal status, then move to SDK/HTTP and matched vLLM.
 
 ### Next continuation — no live campaign
 

@@ -300,11 +300,10 @@ impl ResidentModel {
             page_tokens,
             max_append_tokens,
         } = state_policy
-            && (page_tokens == 0 || max_append_tokens == 0 || native_rows != 0)
+            && (page_tokens == 0 || max_append_tokens == 0)
         {
             return Err(Error::Unsupported(
-                "paged source-call state requires positive page/append policy and B1 ordinary CUDA"
-                    .into(),
+                "paged source-call state requires positive page/append policy".into(),
             ));
         }
         let roots = max_sessions * 2 + 2;

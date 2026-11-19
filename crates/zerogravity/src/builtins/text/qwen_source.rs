@@ -196,14 +196,6 @@ mod tests {
             )
         };
         for (profile, page_tokens, max_append_tokens) in [
-            (
-                QwenSourceProfile {
-                    native_rows: 4,
-                    ..base
-                },
-                4,
-                64,
-            ),
             (base, 0, 64),
             (base, 4, 0),
             (base, 1025, 64),
