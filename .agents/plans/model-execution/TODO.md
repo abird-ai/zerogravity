@@ -149,7 +149,15 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   source-call wrappers require the same resident model. Original0.8B paged page4
   physically passes prefix3 fork + append1 COW versus replay with exact full logits/
   all42, independent root/session, immutable cached snapshot and clean shutdown in
- 179.13s. Next: bounded semantic prefix identity/lookup/eviction, then serving hits.
+ 179.13s.
+- [x] Model-neutral bounded prefix lookup/eviction is implemented in the engine.
+  `PrefixCompatibility` requires source plus nonzero execution/input/position/state/
+  sharing fingerprints. `PrefixCache<U,T>` stores immutable `Arc` payloads under
+  entry/weight caps, performs allocation-free greatest-exact-prefix lookup, prefers
+  newest ties, refreshes duplicates and evicts FIFO. It cannot publish/restore state;
+  backend validation remains authoritative. Two focused tests, strict engine Clippy
+  and production `qwen35-cuda` composition check pass. Worker integration is held
+  until requests carry an explicit tenant/sharing scope; no global sharing shortcut.
 
 ### Next continuation — no live campaign
 

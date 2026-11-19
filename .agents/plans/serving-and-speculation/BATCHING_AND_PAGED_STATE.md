@@ -675,9 +675,27 @@ same resident model. For paged KV, shared pages naturally use the existing appen
 COW path. Original0.8B page4 physically passes prefix3 -> fork -> append1 against an
 independent replay: full logits/all42 bit-exact, source snapshot immutable,
 independent session/root, clean shutdown (`P12_SOURCE_PAGED_PREFIX_FORK_PASS`,
-179.13s). This is the payload/root substrate, not yet a semantic cache hit: the
-bounded key/lookup/eviction layer and serving integration remain next. Event/lease-
-backed physical overlap remains later.
+179.13s). This is the payload/root substrate.
+
+**19 Nov bounded semantic cache follow-up:** `zerogravity-engine::state_cache`
+replaces the old unsupported stub with a backend-neutral `PrefixCache<U,T>`.
+`PrefixCompatibility` binds a local source plus nonzero grouped fingerprints for
+execution (loader/quant/numerical), input (tokenizer/template/processor/adapter),
+position, complete state schema and sharing authorization. Entries retain exact
+semantic units and immutable `Arc` payloads. Lookup is a bounded newest-first
+linear scan with no allocation; the greatest exact prefix wins, newest wins an
+equal frontier. Exact duplicate insertion refreshes recency, FIFO eviction enforces
+both entry and caller-supplied weight bounds. The cache deliberately cannot publish
+or validate physical state; a hit must still pass the resident complete-domain fork
+checks above. This simple O(bound) design is preferred until serving measurements
+justify an index/trie. Two focused tests, strict engine Clippy and production CUDA
+composition pass.
+
+Serving cache activation is still open because public requests currently have no
+explicit tenant/sharing identity. Do not encode `sharing=1` or infer authorization
+from model/source equality. Next plumb an authenticated sharing scope through the
+request/executor owner, then wire worker restore/cache hit/miss. Event/lease-backed
+physical overlap remains later.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 

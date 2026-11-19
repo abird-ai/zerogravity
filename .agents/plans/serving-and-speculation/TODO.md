@@ -630,9 +630,15 @@ or a change to the active correctness/benchmark/27B order.
   HF source remains intact and no reconstruction was attempted. **Prefix fork/COW
   substrate now passes physically:** fresh session, independent root, no replay,
   paged partial-tail3->4 COW, exact full logits/all42, immutable cached snapshot,
-  clean shutdown in179.13s. Next is the bounded semantic prefix key/lookup/eviction
-  and worker hit/miss integration. Physical overlap remains behind event/lease and
-  independent-root gates.
+  clean shutdown in179.13s. **Bounded semantic prefix lookup/eviction is now
+  implemented** in the shared engine with exact grouped compatibility, exact units,
+  greatest-prefix/newest-tie lookup, duplicate refresh, deterministic FIFO eviction
+  and explicit entry/weight caps; immutable payloads are `Arc`-shared and lookup
+  allocates nothing. Two focused tests, strict engine Clippy and CUDA composition
+  pass. Worker hit/miss remains gated on an explicit request tenant/sharing scope;
+  current public requests do not carry one, so cross-request reuse stays disabled
+  rather than assuming global authorization. Physical overlap remains behind
+  event/lease and independent-root gates.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

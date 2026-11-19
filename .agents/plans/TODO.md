@@ -305,8 +305,16 @@ is now accepted:** a fresh session can publish an immutable full-domain snapshot
 its own new root with no token replay/readback/copy; original0.8B paged3->4 COW
 continuation matches independent replay for full logits/all42, cached snapshot stays
 immutable and shutdown is clean (`P12_SOURCE_PAGED_PREFIX_FORK_PASS`,179.13s).
-Next implement bounded semantic prefix key/lookup/eviction and serving hit/miss;
-event/lease overlap remains later.
+**Bounded semantic prefix key/lookup/eviction is now implemented** in
+`zerogravity-engine::state_cache`: exact source + grouped execution/input/position/
+state/sharing fingerprints, exact semantic-unit prefixes, greatest-prefix lookup,
+newest tie-break, duplicate refresh, FIFO eviction and explicit entry/weight bounds.
+Payloads are immutable `Arc`s and lookup allocates nothing; the cache never grants
+restore authority. Two focused tests, strict engine Clippy and production CUDA
+composition pass. Serving remains intentionally disabled until request ownership
+carries an explicit tenant/sharing identity—do not substitute a process-global
+scope. Next plumb that scope and wire worker restore/cache hit/miss; event/lease
+overlap remains later.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

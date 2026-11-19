@@ -206,11 +206,17 @@ The following extends existing owners; source-byte qualification is not inferenc
   requires the same resident model. Original0.8B paged page4 prefix3 -> fork ->
   append1 matches independent replay for full logits/all42, keeps the cached snapshot
   immutable and retires cleanly in179.13s. No replay/readback/copy occurs at fork.
-  Remaining: source/loader/quant/numerical-profile, tokenizer/template/processor/
-  adapter, position/schema and tenant-safe key; greatest jointly restorable frontier
-  across KV/SWA/recurrent/indexer/draft/grammar/media domains; bounded lookup/
-  eviction/stale epochs and serving hit/miss metrics. Missing recurrent state still
-  requires an earlier complete checkpoint/recompute, never a KV-only full hit. Exact gates and serving owner:
+  The bounded lookup/eviction substrate is now implemented in the engine:
+  `PrefixCompatibility` groups exact source + execution/input/position/state/sharing
+  identities; `PrefixCache<U,T>` keeps exact units + immutable `Arc` payloads under
+  entry/weight caps, does allocation-free greatest-prefix/newest-tie lookup, refreshes
+  duplicates and evicts FIFO. It creates no restore authority. Remaining: plumb an
+  explicit tenant/sharing identity through request/executor ownership, construct the
+  source/loader/quant/numerical + tokenizer/template/processor/adapter + position/
+  schema key, choose the greatest jointly restorable checkpoint across KV/SWA/
+  recurrent/indexer/draft/grammar/media domains, then worker hit/miss, stale epoch
+  and eviction metrics. Missing recurrent state still requires an earlier complete
+  checkpoint/recompute, never a KV-only full hit. Exact gates and serving owner:
   [prefix design](../serving-and-speculation/BATCHING_AND_PAGED_STATE.md#complete-domain-prefix-reuse-and-cow--memory-plan).
 - [ ] Qualify committed snapshot persistence/restore, corruption/security/compatibility UX and restore-versus-recompute; diagnostic portable checkpoints are not product persistence.
 - [ ] Add immutable source extents and bounded coalesced IO/materialization with stable logical tensor identity, genuine copy readiness and original IO/device reader leases.

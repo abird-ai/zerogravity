@@ -325,8 +325,21 @@ and live TODOs are authoritative.
   the exact same resident model. Original0.8B paged page4 physically passes a
   3-token partial-page prefix fork then1-token COW continuation versus independent
   replay: logits/all42 exact, cached snapshot immutable, independent root/session,
-  clean shutdown (`P12_SOURCE_PAGED_PREFIX_FORK_PASS`,179.13s). Next build the
-  bounded semantic prefix identity/lookup/eviction layer; event/lease overlap remains later.
+  clean shutdown (`P12_SOURCE_PAGED_PREFIX_FORK_PASS`,179.13s). **The bounded
+  semantic prefix lookup/eviction layer is now implemented in the model-neutral
+  engine.** `PrefixCompatibility` requires a bound source plus nonzero grouped
+  fingerprints for execution (loader/quant/numerical), input
+  (tokenizer/template/processor/adapter), position, state schema and sharing scope.
+  `PrefixCache<U,T>` keeps immutable `Arc` payloads under explicit entry/weight
+  bounds, does allocation-free newest-first lookup, returns the greatest exact
+  semantic-unit prefix, refreshes exact duplicates and evicts FIFO deterministically.
+  It never grants physical restore: the backend must still run the accepted full-
+  domain validation/fork path. Two focused cache tests, strict engine Clippy and
+  production `qwen35-cuda` composition check pass. **Serving lookup is deliberately
+  not enabled yet:** current public requests carry no explicit tenant/sharing
+  identity, so a global sharing scope would be unsafe. Next plumb that exact sharing
+  scope through request/executor ownership, then integrate worker hit/miss/cache;
+  event/lease overlap remains later.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -1255,11 +1268,16 @@ is already green; repeat it only if host/runtime state changes.
 > The pinned vLLM layer bytes still exist but the exact image is no longer registered
 > as runnable in this connector's Podman storage; the exact HF source is intact. Do
 > not rebuild/re-register container layers merely for feedback. Complete-domain
-> prefix fork/COW is now terminal-green on original0.8B page4: fresh destination,
+> prefix fork/COW is terminal-green on original0.8B page4: fresh destination,
 > independent root/session, no replay, partial-tail COW continuation, exact logits/
-> all42 and immutable cached snapshot. Continue with the bounded semantic prefix
-> identity/lookup/eviction layer, then serving hit/miss integration. Keep event/lease
-> physical overlap behind its remaining gates.
+> all42 and immutable cached snapshot. The model-neutral bounded prefix cache is now
+> implemented: exact grouped compatibility + exact units, greatest-prefix lookup,
+> duplicate refresh, deterministic FIFO eviction and explicit entry/weight caps;
+> lookup has no allocation and payloads are shared by `Arc`. It is not yet enabled
+> in serving because requests do not carry an explicit tenant/sharing scope. Continue
+> by plumbing that scope through request/executor ownership, then enable worker
+> restore/cache hit/miss using the existing complete-domain fork primitive. Keep
+> event/lease physical overlap behind its remaining gates.
 >
 > Keep the implementation turn to roughly 30 minutes. Aim for the next coherent
 > checkpoint, update owning TODO/handoff state, sign the commit, sync X2 only if
