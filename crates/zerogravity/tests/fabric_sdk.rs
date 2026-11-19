@@ -3,6 +3,62 @@ use zerogravity::{
     Error, Runtime,
     run::{TaskInput, TaskRequest},
 };
+#[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+#[allow(dead_code)]
+#[path = "support/qwen_source_http.rs"]
+mod qwen_source_http;
+
+#[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+fn qwen_cuda_native_runtime(paged: bool) -> Runtime {
+    use zerogravity::{
+        cache::CacheOptions,
+        models::{ModelLoadRequest, QwenCudaStatePolicy, QwenSourceProfile},
+        runtime::SchedulerLimits,
+    };
+    const MIB: usize = 1024 * 1024;
+    const SNAPSHOT: &str = "d7c7bf56e176bd70a8190acb9873cc719e65b6b306181039f2896d6f9387b36c";
+
+    let runtime = Runtime::builder()
+        .limits(SchedulerLimits {
+            max_active: 8,
+            max_queued: Some(16),
+            ..Default::default()
+        })
+        .build()
+        .unwrap();
+    let profile = QwenSourceProfile {
+        active: 8,
+        context: 512,
+        output: 2,
+        max_pending: Some(16),
+        native_rows: 8,
+    };
+    let load = if paged {
+        ModelLoadRequest::QwenCudaWithStatePolicy {
+            aliases: vec!["source".into()],
+            cache: CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
+            snapshot: SNAPSHOT.into(),
+            profile,
+            provider_bytes: 4608 * MIB,
+            device_bytes: 5120 * MIB as u64,
+            state_policy: QwenCudaStatePolicy::Paged {
+                page_tokens: 4,
+                max_append_tokens: 4,
+            },
+        }
+    } else {
+        ModelLoadRequest::QwenCuda {
+            aliases: vec!["source".into()],
+            cache: CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
+            snapshot: SNAPSHOT.into(),
+            profile,
+            provider_bytes: 4608 * MIB,
+            device_bytes: 5120 * MIB as u64,
+        }
+    };
+    runtime.models().load(load).unwrap();
+    runtime
+}
 #[test]
 fn external_sdk_compiles_without_cli_or_concrete_model_features() {
     let runtime = Runtime::builder().build().unwrap();
@@ -49,58 +105,10 @@ fn qwen_cuda_paged_native_sdk_matches_contiguous() {
         collections::BTreeSet,
         time::{Duration, Instant},
     };
-    use zerogravity::{
-        cache::CacheOptions,
-        models::{ModelLoadRequest, QwenCudaStatePolicy, QwenSourceProfile},
-        runtime::{
-            SchedulerLimits,
-            text::{Request, ResponseEvent, TokenMetricsRequest},
-        },
-    };
-
-    const MIB: usize = 1024 * 1024;
-    const SNAPSHOT: &str = "d7c7bf56e176bd70a8190acb9873cc719e65b6b306181039f2896d6f9387b36c";
+    use zerogravity::runtime::text::{Request, ResponseEvent, TokenMetricsRequest};
 
     let run = |paged: bool| {
-        let runtime = Runtime::builder()
-            .limits(SchedulerLimits {
-                max_active: 8,
-                max_queued: Some(16),
-                ..Default::default()
-            })
-            .build()
-            .unwrap();
-        let profile = QwenSourceProfile {
-            active: 8,
-            context: 512,
-            output: 2,
-            max_pending: Some(16),
-            native_rows: 8,
-        };
-        let load = if paged {
-            ModelLoadRequest::QwenCudaWithStatePolicy {
-                aliases: vec!["source".into()],
-                cache: CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
-                snapshot: SNAPSHOT.into(),
-                profile,
-                provider_bytes: 4608 * MIB,
-                device_bytes: 5120 * MIB as u64,
-                state_policy: QwenCudaStatePolicy::Paged {
-                    page_tokens: 4,
-                    max_append_tokens: 4,
-                },
-            }
-        } else {
-            ModelLoadRequest::QwenCuda {
-                aliases: vec!["source".into()],
-                cache: CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
-                snapshot: SNAPSHOT.into(),
-                profile,
-                provider_bytes: 4608 * MIB,
-                device_bytes: 5120 * MIB as u64,
-            }
-        };
-        runtime.models().load(load).unwrap();
+        let runtime = qwen_cuda_native_runtime(paged);
         let model = runtime.models().resolve("source").unwrap();
         let tokenizer = model.prepared().tokenizer();
         let prompt = " a".repeat(4);
@@ -168,6 +176,101 @@ fn qwen_cuda_paged_native_sdk_matches_contiguous() {
     assert_eq!(paged.0, contiguous.0);
     println!(
         "P12_SOURCE_PAGED_SDK_PASS requests=8 prompt_tokens=4 output_tokens=2 contiguous_cohorts={:?} paged_cohorts={:?} tokens=exact final_shutdown=true",
+        contiguous.1, paged.1
+    );
+}
+
+#[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+#[test]
+#[ignore = "approved original CUDA cache; private loopback public HTTP contiguous-vs-paged native cohort"]
+fn qwen_cuda_paged_native_http_matches_contiguous() {
+    use serde_json::{Value, json};
+    use std::{
+        collections::BTreeSet,
+        io::{BufReader, Read},
+    };
+
+    let run = |paged: bool| {
+        let runtime = qwen_cuda_native_runtime(paged);
+        let model = runtime.models().resolve("source").unwrap();
+        let tokenizer = model.prepared().tokenizer();
+        let prompt = " a".repeat(4);
+        assert_eq!(tokenizer.prompt_tokens(&prompt, false).unwrap().len(), 4);
+        let server = runtime
+            .server()
+            .bind("127.0.0.1:0".parse().unwrap())
+            .limits(zerogravity::serving::ingress::IngressLimits {
+                connections: 8,
+                body_bytes: 64 * 1024,
+                output_bytes: 64 * 1024,
+            })
+            .enable_per_request_metrics(true)
+            .build()
+            .unwrap()
+            .start()
+            .unwrap();
+        let address = server.local_addr();
+        let sockets = (0..8)
+            .map(|index| {
+                qwen_source_http::connect(
+                    address,
+                    "/v1/completions",
+                    &json!({
+                        "model":"source",
+                        "prompt":prompt,
+                        "max_tokens":2,
+                        "stream":false,
+                        "return_token_ids":true
+                    }),
+                    &format!("paged-http-{index}"),
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut outputs = Vec::with_capacity(sockets.len());
+        let mut cohort_widths = BTreeSet::new();
+        for socket in sockets {
+            let mut reader = BufReader::new(socket);
+            let head = qwen_source_http::headers(&mut reader);
+            assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+            let mut raw = Vec::new();
+            reader.take(64 * 1024 + 1).read_to_end(&mut raw).unwrap();
+            assert!(raw.len() <= 64 * 1024);
+            let document: Value = serde_json::from_slice(&raw).unwrap();
+            assert!(document.get("error").is_none(), "{document}");
+            assert_eq!(document["usage"]["prompt_tokens"], 4);
+            assert_eq!(document["usage"]["completion_tokens"], 2);
+            let ids = document["choices"][0]["token_ids"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|id| id.as_u64().unwrap() as u32)
+                .collect::<Vec<_>>();
+            assert_eq!(ids.len(), 2);
+            for token in document["zerogravity_token_metrics"]["tokens"]
+                .as_array()
+                .unwrap()
+            {
+                if let Some(width) = token["gpu"]["native_cohort"]["width"].as_u64() {
+                    cohort_widths.insert(width as usize);
+                }
+            }
+            outputs.push(ids);
+        }
+        assert!(
+            cohort_widths.iter().any(|&width| width > 1),
+            "native HTTP cohort publication was not observed"
+        );
+        server.shutdown().unwrap();
+        runtime.shutdown().unwrap();
+        assert!(runtime.status().closed);
+        (outputs, cohort_widths)
+    };
+
+    let contiguous = run(false);
+    let paged = run(true);
+    assert_eq!(paged.0, contiguous.0);
+    println!(
+        "P12_SOURCE_PAGED_HTTP_PASS requests=8 prompt_tokens=4 output_tokens=2 contiguous_cohorts={:?} paged_cohorts={:?} tokens=exact final_shutdown=true",
         contiguous.1, paged.1
     );
 }

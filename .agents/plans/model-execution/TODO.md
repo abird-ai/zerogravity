@@ -121,10 +121,22 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   4-token page-boundary requests with2 output tokens, observes native cohort width8
   on both, returns identical token IDs and shuts down cleanly. Marker
   `P12_SOURCE_PAGED_SDK_PASS ... contiguous_cohorts={8} paged_cohorts={8}
-  tokens=exact final_shutdown=true`; exit0 in340.78s. Strict test-target Clippy
-  passes. HTTP is intentionally not run on current shared-net L5; use a private-net
-  profile. No fresh matched-vLLM result is claimed: no local vLLM executable/module
-  is available and the retained C8 workload is not identical to this SDK cell.
+  tokens=exact final_shutdown=true`; exit0 in340.78s.
+- [x] Public HTTP integration is terminal-green under the explicit child-private-net
+  wrapper accepted by harness `4688cba`: the same8 concurrent4-token/2-output
+  workload observes native cohort width8 for both Contiguous/Paged, exact token IDs
+  and clean shutdown. Marker `P12_SOURCE_PAGED_HTTP_PASS ...
+  contiguous_cohorts={8} paged_cohorts={8} tokens=exact final_shutdown=true`;
+  exit0 in358.07s. Strict `fabric_sdk` test-target Clippy passes. No fresh
+  matched-vLLM result is claimed: no local vLLM executable/module is available and
+  the retained C8 workload is not identical to this SDK/HTTP cell.
+- [x] Full-gate composition exposed one generic feature-boundary bug rather than a
+  model bug: `HybridStateInventoryPlan` compiles under production `cuda-native`, so
+  `ResidentPlaneLayout` must be imported there too. The import cfg now includes
+  `cuda-native`, while `BTreeMap`/`BufferLeaseId` remain CUBLAS-only. Targeted
+  production `cuda-native` check passes. A warmed full `scripts/check.sh` rerun
+  progressed beyond that boundary and was externally SIGKILLed during the later
+  ordinary-Qwen feature compile with no diagnostic; it remains incomplete.
 
 ### Next continuation — no live campaign
 

@@ -169,11 +169,12 @@ The following extends existing owners; source-byte qualification is not inferenc
   owns the native-GPU harness repair: reuse existing Bubblewrap user/PID
   isolation, seccomp-deny socket/io_uring creation when Bubblewrap networking is
   shared, retain outer user+net unshare otherwise, expose `--isolation-info`,
-  and require `--require-private-network` for loopback callers. 29/29 harness
-  tests plus real sandbox network/io_uring/private-net and silent 15s smokes pass.
-  Current L5 shared-network Bubblewrap intentionally cannot run the full
-  loopback-dependent `scripts/check.sh` gate; use a private-net connector
-  profile for that gate. Both small approved models clear source-real paged B1
+  and require `--require-private-network` for loopback callers. Signed `4688cba`
+  adds recognition of an already-entered child netns only when self is loopback-only,
+  PID1's network view differs and no socket FDs are inherited.31/31 harness tests
+  plus real child-net loopback+CUDA smoke pass. Direct shared-net L5 still refuses;
+  an explicit `bwrap --unshare-net --bind / / --dev-bind /dev /dev --` wrapper can
+  supply the required private loopback namespace. Both small approved models clear source-real paged B1
   state/lifecycle. **19 Nov original0.8B also clears true in-flight cancellation:**
   a real post-enqueue/pre-Ready launch cut proves Vector/staging/page ownership is
   held until known physical completion, cancellation retirement creates no Ready
@@ -195,8 +196,9 @@ The following extends existing owners; source-byte qualification is not inferenc
   clean shutdown); two earlier external-SIGKILL attempts remain incomplete only.
   Public SDK is also terminal-green with8 concurrent page-boundary requests,
   native B8 on both Contiguous/Paged, exact returned IDs and clean shutdown
-  (340.78s). HTTP remains blocked correctly by current shared-net L5 and must use a
-  private-net profile. Prefix reuse and overlap are still later.
+  (340.78s). Public HTTP now passes the same workload under the proven child-private
+  netns: native B8 on both, exact IDs, clean shutdown in358.07s. Prefix reuse and
+  overlap are still later.
 - [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
   token/template/processor/adapter, position/schema and tenant-safe identity;
   greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/

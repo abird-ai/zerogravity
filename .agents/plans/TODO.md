@@ -242,11 +242,12 @@ shared-network Bubblewrap uses fail-closed socket/io_uring seccomp; outside
 Bubblewrap the original user+net `unshare` path remains. `--isolation-info`
 and `ZG_NATIVE_GPU_ISOLATION` expose the selected mode. Loopback/TCP callers
 must use `--require-private-network`; `scripts/check.sh` refuses the seccomp
-fallback immediately and AGENTS uses that flag. 29/29 harness tests plus current
-sandbox AF_UNIX/AF_INET/io_uring/private-net refusal and silent 15s physical
-smokes pass. The full workspace gate still needs an L5 connector profile with a
-private network namespace; the current shared-network connector correctly
-refuses it. Course correction from dotlink v0.17.4 forensics: periodic output is
+fallback immediately and AGENTS uses that flag. Signed `4688cba` adds safe
+recognition of a caller-supplied child netns only when self is loopback-only,
+PID1's network view differs and no socket FDs are inherited.31/31 harness tests plus
+real child-net loopback+CUDA smoke pass. Direct shared-net L5 still refuses; the
+explicit `bwrap --unshare-net --bind / / --dev-bind /dev /dev --` wrapper now
+supplies the private namespace without weakening `native-gpu`. Course correction from dotlink v0.17.4 forensics: periodic output is
 **not** proven necessary. Dotlink now logs every stop it initiates; the relevant
 window contains only the explicitly requested `job_cancel`, while a silent
 long sleep survived until cancellation. Earlier SIGKILL9s are therefore
@@ -287,12 +288,17 @@ shutdown. The two earlier external-SIGKILL attempts remain incomplete only. A
 single public `fabric_sdk` cell then loads Contiguous and explicit Paged with
 native_rows8, offers8 concurrent4-token/page-boundary requests with2 output tokens,
 observes actual B8 cohorts `{8}` on both, exact returned token IDs and clean
-shutdown; exit0 in340.78s. Strict serving-test Clippy passes. Current L5 has no
-private network namespace, so HTTP remains for a private-net profile; no local
-vLLM executable/module exists here, and retained C8 numbers are not workload-matched
-with this SDK cell, so no fresh vLLM claim is made. Do not add another fixture/
-evidence framework. Complete-domain prefix reuse and event/lease overlap remain
-later gates.
+shutdown; exit0 in340.78s. Public HTTP is now accepted through the explicit
+child-private-net wrapper: the same8 concurrent page-boundary workload observes
+native B8 `{8}` for both Contiguous/Paged, exact returned IDs and clean shutdown;
+exit0 in358.07s. Strict serving-test Clippy passes. No local vLLM executable/module
+exists here, and retained C8 numbers are not workload-matched with this SDK/HTTP
+cell, so no fresh vLLM claim is made. The child-net full-gate attempt exposed and
+fixed one generic `cuda-native` import boundary for `HybridStateInventoryPlan`;
+targeted production `cuda-native` check passes. The warmed monolithic rerun was
+externally SIGKILLed later during ordinary-Qwen feature compilation with no
+diagnostic and remains incomplete. Do not add another fixture/evidence framework.
+Complete-domain prefix reuse and event/lease overlap remain later gates.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

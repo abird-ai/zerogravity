@@ -615,11 +615,18 @@ or a change to the active correctness/benchmark/27B order.
   and clean shutdown; two earlier external-SIGKILL attempts remain incomplete only.
   Public SDK paged serving is also terminal-green:8 concurrent page-boundary
   requests,2 outputs, native B8 observed for both Contiguous/Paged, exact token IDs,
-  clean shutdown in340.78s; strict test-target Clippy passes. **HTTP remains open
-  only because current L5 lacks a private network namespace; do not weaken that
-  gate.** Fresh matched-vLLM timing also remains open because no local vLLM runtime
-  is present and retained C8 data is not this workload. Physical overlap remains
-  behind event/lease and independent-root gates.
+  clean shutdown in340.78s. **Paged HTTP is now terminal-green** under the explicit
+  child-private-net wrapper accepted by `4688cba`: the same8 concurrent page-boundary
+  workload observes native B8 for Contiguous/Paged, exact token IDs and clean
+  shutdown in358.07s. Strict test-target Clippy passes. Direct shared-net L5 still
+  refuses `--require-private-network`; no isolation was weakened. Fresh matched-vLLM
+  timing remains open because no local vLLM runtime is present and retained C8 data
+  is not this workload. Full-gate composition found and fixed one generic
+  `cuda-native` import boundary for shared hybrid inventory; targeted production
+  `cuda-native` now checks cleanly. The warmed monolithic rerun was externally
+  SIGKILLed later during ordinary-Qwen feature compilation with no diagnostic and
+  remains incomplete. Physical overlap remains behind event/lease and
+  independent-root gates.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

@@ -574,13 +574,14 @@ the model gate. Signed `6b920a0` now owns the harness fix: existing Bubblewrap
 PID/user namespaces are detected and reused rather than nesting another user
 namespace. Existing private Bubblewrap networking executes directly; a
 shared-network Bubblewrap gets a fail-closed socket/io_uring seccomp filter;
-outside Bubblewrap the original user+network `unshare` path remains.
-`--isolation-info` exposes the plan, and loopback/TCP callers must use
-`--require-private-network`, which refuses the shared-network fallback. The
-full `scripts/check.sh` gate therefore requires an L5 connector with private
-networking; the current connector profile correctly refuses before Cargo work.
-29/29 harness tests plus real AF_UNIX/AF_INET/io_uring/private-net and silent 15s
-smokes pass. The upgraded
+outside Bubblewrap the original user+network `unshare` path remains. Signed
+`4688cba` additionally recognizes a caller-supplied child netns only when current
+interfaces are exactly `lo`, PID1's `/proc/1/net/dev` differs and inherited socket
+FDs are absent. `--isolation-info` exposes `bubblewrap-child-network-namespace`.
+Direct shared-net L5 still refuses `--require-private-network`; wrapping the command
+with `bwrap --unshare-net --bind / / --dev-bind /dev /dev --` supplies a proven
+private loopback namespace without weakening the harness. 31/31 harness tests plus
+real loopback+CUDA child-net smoke pass. The upgraded
 connector reports external signal numbers directly and v0.17.4 logs every stop
 it initiates. Follow-up connector forensics found exactly one stop in the
 relevant window, the explicitly requested `job_cancel`; a silent `sleep300`
@@ -656,10 +657,11 @@ earlier externally SIGKILLed attempts remain incomplete only. The next public-SD
 cell reuses the public library facade rather than a fixture corpus:8 concurrent
 4-token page-boundary requests,2 outputs, explicit Paged/native_rows8 versus
 Contiguous, actual native cohort width8 on both and identical token IDs; exit0 in
-340.78s with clean shutdown. Strict SDK-target Clippy passes. Current L5
-`--isolation-info` reports `private_network_namespace=false`, so paged HTTP must run
-on a private-net profile. No fresh vLLM result is claimed because no local vLLM
-runtime is available and retained C8 timing is not workload-matched. Do not grow a
+340.78s with clean shutdown. Public HTTP then passes the same workload under the
+explicit child-private-net wrapper: actual B8 `{8}` on Contiguous/Paged, exact token
+IDs, clean shutdown, `P12_SOURCE_PAGED_HTTP_PASS`, exit0 in358.07s. Strict
+`fabric_sdk` target Clippy passes. No fresh vLLM result is claimed because no local
+vLLM runtime is available and retained C8 timing is not workload-matched. Do not grow a
 parallel fixture/evidence system. Complete-domain prefix reuse and event/lease-backed
 physical overlap remain later.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent

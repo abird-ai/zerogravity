@@ -217,7 +217,12 @@ and live TODOs are authoritative.
   Bubblewrap already owns a private network namespace it executes directly;
   otherwise it installs a fail-closed x86_64 seccomp socket-creation filter
   (including io_uring socket-creation bypass prevention) and executes directly.
-  Outside Bubblewrap it retains the original
+  Signed `4688cba` extends this generically: if the caller has already entered a
+  child netns, the harness accepts it only when `/proc/self/net/dev` is exactly
+  loopback, PID1's network view differs, and no inherited socket FDs exist. This
+  lets a shared-net connector supply `bwrap --unshare-net --bind / / --dev-bind
+  /dev /dev --` without weakening `--require-private-network` or making the
+  harness create another user namespace. Outside Bubblewrap it retains the original
   `unshare --user --map-root-user --net` route.
   `--isolation-info` reports the exact planned mode and
   `ZG_NATIVE_GPU_ISOLATION` records it in the child. Commands requiring TCP/UDP
@@ -225,14 +230,13 @@ and live TODOs are authoritative.
   fallback refuses them rather than weakening isolation. `scripts/check.sh`
   now fails immediately in that fallback, and `AGENTS.md` uses
   `native-gpu.py --require-private-network -- bash scripts/check.sh`.
-  Focused validation:29/29 offline harness tests, Python compile + Bash syntax,
+  Focused validation is now31/31 offline harness tests plus Python compile,
   real current-sandbox `--isolation-info`, AF_UNIX allowed/AF_INET denied,
   io_uring_setup denied with EPERM, exact direct exit73 propagation, direct TERM
-  propagation as status143, private-network refusal before child launch, and a
-  silent 15s direct-exec smoke all pass. The complete `scripts/check.sh`
-  gate is not runnable under this particular L5 connector profile because its
-  Bubblewrap shares networking; that is now an explicit execution-profile
-  refusal, not a harness ambiguity or semantic test failure.
+  propagation as status143, shared-net private-network refusal, and real child-net
+  `--require-private-network` loopback+CUDA smoke. Direct invocation still refuses
+  this L5 outer shared-net profile; the explicit child-Bubblewrap wrapper is the
+  accepted way to supply the required private loopback namespace.
   The upgraded connector now reports external signal numbers explicitly and, in
   v0.17.4, emits one lifecycle log line for every stop it initiates. Follow-up
   connector review found only the explicitly requested `job_cancel` stop in the
@@ -293,11 +297,24 @@ and live TODOs are authoritative.
   B8 publication in both Contiguous and Paged, identical token IDs and clean
   shutdown (`P12_SOURCE_PAGED_SDK_PASS ... contiguous_cohorts={8}
   paged_cohorts={8} tokens=exact final_shutdown=true`, exit0 in340.78s). Strict
-  serving-test Clippy passes. HTTP was not weakened or run because current L5
-  Bubblewrap is shared-net (`private_network_namespace=false`); it must run under a
-  private-net profile. No fresh matched-vLLM claim follows: L5 has no local vLLM
+  serving-test Clippy passes. **Public HTTP paged serving is now physically
+  accepted too** under the explicit child-private-net wrapper:8 concurrent
+  4-token/page-boundary requests with2 outputs observed actual native B8 for both
+  Contiguous and Paged, returned identical token IDs and shut down cleanly.
+  `P12_SOURCE_PAGED_HTTP_PASS ... contiguous_cohorts={8} paged_cohorts={8}
+  tokens=exact final_shutdown=true`, exit0 in358.07s. Strict HTTP/SDK test-target
+  Clippy passes. No fresh matched-vLLM claim follows: L5 has no local vLLM
   executable/module and the retained C8 workload differs from this page-boundary
-  SDK cell. Complete-domain prefix reuse and event/lease-backed overlap remain later.
+  SDK/HTTP cell. The first full isolated `scripts/check.sh` attempt through the
+  child-net envelope found one real source-boundary bug: `HybridStateInventoryPlan`
+  is shared by production `cuda-native`, but `ResidentPlaneLayout` was not imported
+  for that feature. The import cfg is corrected while CUBLAS-only map/lease imports
+  stay gated; targeted `cargo check -p zerogravity-gpu --no-default-features
+  --features cuda-native` passes. A warmed full-gate rerun then progressed beyond
+  that boundary and was externally SIGKILLed during the later ordinary-Qwen feature
+  compile with no compiler/test diagnostic, so the monolithic gate remains
+  incomplete rather than failed. Complete-domain prefix reuse and event/lease-backed
+  overlap remain later.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -1219,12 +1236,14 @@ is already green; repeat it only if host/runtime state changes.
 > transport cell is terminal-green for B2/B4/B8 prefill+decode/all42, and the public
 > SDK cell is terminal-green with actual native B8 publication for both Contiguous
 > and Paged plus exact token IDs/clean shutdown. The two earlier external-SIGKILL
-> attempts remain incomplete only. Current L5 has no private network namespace, so
-> do not run/weaken HTTP here; use a private-net profile for that gate. L5 also has
-> no local vLLM executable/module, and retained vLLM C8 numbers are not matched to
-> the 4-token/2-output page-boundary SDK workload. Continue with private-net paged
-> HTTP and a genuinely matched vLLM cell when the existing pinned runtime is
-> available; do not build a new evidence framework. Keep complete-domain prefix
+> attempts remain incomplete only. Paged HTTP is also terminal-green under the
+> explicit child-Bubblewrap private-net envelope accepted by `4688cba`:8 concurrent
+> page-boundary requests, actual native B8 for Contiguous/Paged, exact token IDs and
+> clean shutdown. Direct shared-net L5 still fails closed; never bypass the harness.
+> L5 has no local vLLM executable/module, and retained vLLM C8 numbers are not
+> matched to this 4-token/2-output workload. Continue with a genuinely matched vLLM
+> cell when the existing pinned runtime is available; do not build a new evidence
+> framework. Keep complete-domain prefix
 > reuse and event/lease physical overlap behind their remaining gates.
 >
 > Keep the implementation turn to roughly 30 minutes. Aim for the next coherent

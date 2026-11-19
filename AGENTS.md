@@ -194,7 +194,12 @@ StateRoot ownership, the physical ResourceArbiter, fair workers and actual
 completion/quarantine. Run checks appropriate to the change and the complete
 `scripts/check.sh` gate before accepting an implementation phase. Use
 `CARGO_BUILD_JOBS=8 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py --require-private-network -- bash scripts/check.sh`
-for actual user/network isolation with already approved inputs. Allow up to eight
+for actual user/network isolation with already approved inputs. On a connector
+whose outer Bubblewrap shares networking, supply the private netns explicitly with
+`bwrap --unshare-net --bind / / --dev-bind /dev /dev --` before `python3`; the
+harness accepts that child only when it is loopback-only, differs from PID 1's
+network view and inherits no sockets. Never bypass `--require-private-network`.
+Allow up to eight
 Cargo build jobs by default; reduce for observed memory pressure or explicit
 resource-sharing constraints. Runtime/test thread limits remain separate. GPU/model
 changes also require their relevant real source, state, cancellation and

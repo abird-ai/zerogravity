@@ -399,7 +399,11 @@ def main():
         )
         if plan["existing_bubblewrap"]:
             if plan["network_isolation"] == "namespace":
-                isolation = "existing Bubblewrap user/network namespaces"
+                isolation = (
+                    "existing Bubblewrap user namespace + isolated child network namespace"
+                    if plan["mode"] == "bubblewrap-child-network-namespace"
+                    else "existing Bubblewrap user/network namespaces"
+                )
             else:
                 install_no_network_seccomp()
                 isolation = "existing Bubblewrap user namespace + seccomp network filter"
