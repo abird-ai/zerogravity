@@ -137,6 +137,19 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   production `cuda-native` check passes. A warmed full `scripts/check.sh` rerun
   progressed beyond that boundary and was externally SIGKILLed during the later
   ordinary-Qwen feature compile with no diagnostic; it remains incomplete.
+- [x] Matched-vLLM feedback was attempted without installing anything. The exact
+  pinned `f57d77f5...` layer store remains ~25GiB, but Podman no longer has a
+  registered image index for that ID in this connector; after a temporary user+
+  mount namespace clears the mount limitation, inspect returns `image not known`.
+  The managed HF0.8B tree is still exact, so source is not the blocker. No layer
+  reconstruction/re-registration or benchmark claim was made.
+- [x] Complete-domain resident prefix fork primitive accepted. A fresh destination
+  session validates same source/service/capacity/full domains, clones immutable
+  domain ownership and publishes through its own validated replacement root;
+  source-call wrappers require the same resident model. Original0.8B paged page4
+  physically passes prefix3 fork + append1 COW versus replay with exact full logits/
+  all42, independent root/session, immutable cached snapshot and clean shutdown in
+ 179.13s. Next: bounded semantic prefix identity/lookup/eviction, then serving hits.
 
 ### Next continuation — no live campaign
 

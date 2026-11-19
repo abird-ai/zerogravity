@@ -199,14 +199,18 @@ The following extends existing owners; source-byte qualification is not inferenc
   (340.78s). Public HTTP now passes the same workload under the proven child-private
   netns: native B8 on both, exact IDs, clean shutdown in358.07s. Prefix reuse and
   overlap are still later.
-- [ ] **Complete-domain prefix reuse/COW:** source/loader/quant/numerical-profile,
-  token/template/processor/adapter, position/schema and tenant-safe identity;
-  greatest jointly restorable frontier across KV/SWA/recurrent/indexer/draft/
-  grammar/media domains. Share only immutable authorized state; fork private
-  roots and copy changed shared domains. Missing recurrent state requires
-  earlier checkpoint/recompute, not a full KV-only hit. Qualify hit/miss/fork,
-  pressure/eviction/stale epochs, page boundaries and full-logit/all-state
-  continuations against cache-disabled replay. Exact gates and serving owner:
+- [ ] **Complete-domain prefix reuse/COW:** the first physical fork substrate is
+  accepted. `ResidentSession::fork_shared_prefix` seeds only a fresh destination,
+  validates same source/service/capacity/all domains and publishes cloned immutable
+  owners under the destination's own replacement root; source-call usage additionally
+  requires the same resident model. Original0.8B paged page4 prefix3 -> fork ->
+  append1 matches independent replay for full logits/all42, keeps the cached snapshot
+  immutable and retires cleanly in179.13s. No replay/readback/copy occurs at fork.
+  Remaining: source/loader/quant/numerical-profile, tokenizer/template/processor/
+  adapter, position/schema and tenant-safe key; greatest jointly restorable frontier
+  across KV/SWA/recurrent/indexer/draft/grammar/media domains; bounded lookup/
+  eviction/stale epochs and serving hit/miss metrics. Missing recurrent state still
+  requires an earlier complete checkpoint/recompute, never a KV-only full hit. Exact gates and serving owner:
   [prefix design](../serving-and-speculation/BATCHING_AND_PAGED_STATE.md#complete-domain-prefix-reuse-and-cow--memory-plan).
 - [ ] Qualify committed snapshot persistence/restore, corruption/security/compatibility UX and restore-versus-recompute; diagnostic portable checkpoints are not product persistence.
 - [ ] Add immutable source extents and bounded coalesced IO/materialization with stable logical tensor identity, genuine copy readiness and original IO/device reader leases.

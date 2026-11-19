@@ -298,7 +298,15 @@ fixed one generic `cuda-native` import boundary for `HybridStateInventoryPlan`;
 targeted production `cuda-native` check passes. The warmed monolithic rerun was
 externally SIGKILLed later during ordinary-Qwen feature compilation with no
 diagnostic and remains incomplete. Do not add another fixture/evidence framework.
-Complete-domain prefix reuse and event/lease overlap remain later gates.
+A matched-vLLM rerun is currently blocked by the retained pinned layer store losing
+its runnable image index in this connector; exact HF source bytes remain present and
+no image reconstruction was attempted. **Complete-domain prefix fork/COW substrate
+is now accepted:** a fresh session can publish an immutable full-domain snapshot at
+its own new root with no token replay/readback/copy; original0.8B paged3->4 COW
+continuation matches independent replay for full logits/all42, cached snapshot stays
+immutable and shutdown is clean (`P12_SOURCE_PAGED_PREFIX_FORK_PASS`,179.13s).
+Next implement bounded semantic prefix key/lookup/eviction and serving hit/miss;
+event/lease overlap remains later.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

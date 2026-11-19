@@ -547,6 +547,14 @@ impl SourceCallSession {
         }
         self.inner.restore(&snapshot.0.inner)
     }
+    pub fn fork_shared_prefix(&mut self, snapshot: &SourceCallSnapshot) -> Result<()> {
+        if !Arc::ptr_eq(&self.model, &snapshot.0.scope.model) {
+            return Err(Error::State(
+                "source shared prefix original model differs".into(),
+            ));
+        }
+        self.inner.fork_shared_prefix(&snapshot.0.inner)
+    }
     pub async fn reset(&mut self) -> Result<()> {
         // Root initialization already has its own source-priced staging. Keep
         // native/source owners on the actual initialization even on uncertainty.

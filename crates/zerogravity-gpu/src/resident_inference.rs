@@ -3160,6 +3160,41 @@ impl ResidentSession {
         drop(displaced);
         Ok(())
     }
+    /// Seed a fresh session from an immutable complete-domain snapshot while
+    /// preserving the destination session as the sole root authority.
+    pub fn fork_shared_prefix(&mut self, snapshot: &ResidentSnapshot) -> Result<()> {
+        let current = self.binding();
+        if current.root() != 0
+            || current.session_epoch() != 0
+            || current.frontier() != 0
+            || snapshot.binding.frontier() == 0
+            || snapshot.binding.frontier() > self.model.capacity as u64
+            || snapshot.service_generation != self.model.service.generation()
+            || snapshot.capacity != self.model.capacity
+            || snapshot.binding.source() != self.model.service.source_identity()
+            || snapshot.domains.len() != self.model.states.len()
+        {
+            return Err(Error::State(
+                "resident shared prefix destination/snapshot differs".into(),
+            ));
+        }
+        self.model.service.ensure_usable()?;
+        self.model.validate_domains(&snapshot.domains, true)?;
+        let attempt = self
+            .authority
+            .begin_validated_replacement(snapshot.binding.frontier())?;
+        let mut displaced = snapshot.domains.clone();
+        let _ = publish_domain_swap(
+            &self.model.service,
+            &mut self.authority,
+            &mut self.domains,
+            attempt,
+            &mut displaced,
+        )?;
+        self.derived.invalidate();
+        drop(displaced);
+        Ok(())
+    }
     pub async fn reset(&mut self) -> Result<()> {
         self.reset_retaining(|_| Ok(())).await
     }

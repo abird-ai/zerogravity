@@ -625,7 +625,13 @@ or a change to the active correctness/benchmark/27B order.
   `cuda-native` import boundary for shared hybrid inventory; targeted production
   `cuda-native` now checks cleanly. The warmed monolithic rerun was externally
   SIGKILLed later during ordinary-Qwen feature compilation with no diagnostic and
-  remains incomplete. Physical overlap remains behind event/lease and
+  remains incomplete. Matched-vLLM rerun is blocked by the retained pinned layer
+  store no longer exposing the exact image ID to Podman from this connector; exact
+  HF source remains intact and no reconstruction was attempted. **Prefix fork/COW
+  substrate now passes physically:** fresh session, independent root, no replay,
+  paged partial-tail3->4 COW, exact full logits/all42, immutable cached snapshot,
+  clean shutdown in179.13s. Next is the bounded semantic prefix key/lookup/eviction
+  and worker hit/miss integration. Physical overlap remains behind event/lease and
   independent-root gates.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long

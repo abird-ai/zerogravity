@@ -797,6 +797,172 @@ mod cuda_paged_tests {
     }
 
     #[test]
+    #[ignore = "approved original HF cache; complete-domain paged prefix fork/COW"]
+    fn original_source_paged_complete_prefix_fork_matches_replay() {
+        let (parts, page_tokens, max_append_tokens, tokens) =
+            paged_source_fixture("paged-source-prefix-fork");
+        let model = block_on(ResidentModel::load_ordinary_cuda_source_with_state_policy(
+            Device::Cuda(Default::default()),
+            parts.source.plan.source().clone(),
+            parts.source.clone(),
+            parts.source.plan.plan().clone(),
+            3,
+            0,
+            PROVIDER_BYTES,
+            DEVICE_BYTES,
+            CudaSourceStatePolicy::Paged {
+                page_tokens,
+                max_append_tokens,
+            },
+            None,
+        ))
+        .unwrap();
+        block_on(async {
+            let prefix = page_tokens - 1;
+            let prefix_ids = Arc::<[u32]>::from(tokens[..prefix].to_vec());
+            let prefix_call = parts
+                .source
+                .plan
+                .bind_invocation(SourceCallMode::Prefill, 0, prefix_ids, false)
+                .unwrap();
+
+            let mut producer = model.session().await.unwrap();
+            let SourceCallPreparation::Ready(pending) = producer
+                .prepare(
+                    prefix_call.bound_invocation(),
+                    SourceCallMode::Prefill,
+                    ResidentOutput::StateOnly,
+                    None,
+                )
+                .await
+                .unwrap()
+            else {
+                panic!("producer prefix admission");
+            };
+            let SourceCallPublication::Committed(read) = producer.commit(pending).unwrap() else {
+                panic!("producer prefix publication");
+            };
+            drop(read);
+            let cached = producer.snapshot().unwrap();
+            let cached_binding = cached.binding();
+            let cached_domains = cached.read_domains().await.unwrap().to_vec();
+            assert_eq!(cached_binding.frontier(), prefix as u64);
+
+            let mut fork = model.session().await.unwrap();
+            let fresh = fork.binding();
+            assert_eq!(
+                (fresh.root(), fresh.session_epoch(), fresh.frontier()),
+                (0, 0, 0)
+            );
+            fork.fork_shared_prefix(&cached).unwrap();
+            let forked = fork.binding();
+            assert_eq!(forked.session(), fresh.session());
+            assert_ne!(forked.session(), cached_binding.session());
+            assert_eq!(forked.source(), cached_binding.source());
+            assert_eq!(forked.root(), 1);
+            assert_eq!(forked.session_epoch(), 1);
+            assert_eq!(forked.frontier(), prefix as u64);
+            exact_domains(
+                &cached_domains,
+                &fork.snapshot().unwrap().read_domains().await.unwrap(),
+                "shared prefix immediate",
+            );
+
+            let mut replay = model.session().await.unwrap();
+            let SourceCallPreparation::Ready(pending) = replay
+                .prepare(
+                    prefix_call.bound_invocation(),
+                    SourceCallMode::Prefill,
+                    ResidentOutput::StateOnly,
+                    None,
+                )
+                .await
+                .unwrap()
+            else {
+                panic!("replay prefix admission");
+            };
+            let SourceCallPublication::Committed(read) = replay.commit(pending).unwrap() else {
+                panic!("replay prefix publication");
+            };
+            drop(read);
+            assert!(replay.fork_shared_prefix(&cached).is_err());
+            exact_domains(
+                &cached_domains,
+                &replay.snapshot().unwrap().read_domains().await.unwrap(),
+                "shared prefix replay",
+            );
+
+            let continuation = parts
+                .source
+                .plan
+                .bind_invocation(
+                    SourceCallMode::Prefill,
+                    prefix,
+                    Arc::<[u32]>::from(vec![tokens[prefix]]),
+                    true,
+                )
+                .unwrap();
+            let SourceCallPreparation::Ready(fork_pending) = fork
+                .prepare(
+                    continuation.bound_invocation(),
+                    SourceCallMode::Prefill,
+                    ResidentOutput::Logits,
+                    None,
+                )
+                .await
+                .unwrap()
+            else {
+                panic!("fork continuation admission");
+            };
+            let SourceCallPublication::Committed(fork_read) = fork.commit(fork_pending).unwrap()
+            else {
+                panic!("fork continuation publication");
+            };
+            let SourceCallPreparation::Ready(replay_pending) = replay
+                .prepare(
+                    continuation.bound_invocation(),
+                    SourceCallMode::Prefill,
+                    ResidentOutput::Logits,
+                    None,
+                )
+                .await
+                .unwrap()
+            else {
+                panic!("replay continuation admission");
+            };
+            let SourceCallPublication::Committed(replay_read) =
+                replay.commit(replay_pending).unwrap()
+            else {
+                panic!("replay continuation publication");
+            };
+            exact_words(
+                &replay_read.logits,
+                &fork_read.logits,
+                "shared prefix continuation logits",
+            );
+            let fork_domains = fork.snapshot().unwrap().read_domains().await.unwrap();
+            let replay_domains = replay.snapshot().unwrap().read_domains().await.unwrap();
+            exact_domains(
+                &replay_domains,
+                &fork_domains,
+                "shared prefix continuation all42",
+            );
+            exact_domains(
+                &cached_domains,
+                &cached.read_domains().await.unwrap(),
+                "shared prefix cached snapshot immutable",
+            );
+            drop((fork_read, replay_read, fork_domains, replay_domains));
+            drop((cached, producer, fork, replay));
+            model.shutdown().await.unwrap();
+        });
+        println!(
+            "P12_SOURCE_PAGED_PREFIX_FORK_PASS prefix_tokens={} append_tokens=1 root_independent=true no_replay=true logits=exact all42=exact cached_snapshot_immutable=true final_shutdown=true",
+            page_tokens - 1
+        );
+    }
+
+    #[test]
     #[ignore = "approved original HF cache; exact contiguous-vs-paged CUDA B1 all42"]
     fn original_source_b1_paged_matches_contiguous_at_page_boundaries() {
         let (parts, page_tokens, max_append_tokens, mut tokens) =

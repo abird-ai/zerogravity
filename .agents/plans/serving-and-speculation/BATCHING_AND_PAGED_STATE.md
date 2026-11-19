@@ -662,8 +662,22 @@ explicit child-private-net wrapper: actual B8 `{8}` on Contiguous/Paged, exact t
 IDs, clean shutdown, `P12_SOURCE_PAGED_HTTP_PASS`, exit0 in358.07s. Strict
 `fabric_sdk` target Clippy passes. No fresh vLLM result is claimed because no local
 vLLM runtime is available and retained C8 timing is not workload-matched. Do not grow a
-parallel fixture/evidence system. Complete-domain prefix reuse and event/lease-backed
-physical overlap remain later.
+parallel fixture/evidence system.
+
+**19 Nov complete-domain fork substrate:** `ResidentSession::fork_shared_prefix`
+separates cross-session prefix reuse from same-session rewind. Only a pristine
+root0/epoch0/frontier0 destination is accepted; snapshot source/service generation,
+capacity and every physical domain are validated before the destination reserves
+`begin_validated_replacement(frontier)`. Publication keeps the destination session
+identity and swaps cloned immutable domain owners only—no token replay, host
+readback or new physical Ready. `SourceCallSession` additionally requires the exact
+same resident model. For paged KV, shared pages naturally use the existing append
+COW path. Original0.8B page4 physically passes prefix3 -> fork -> append1 against an
+independent replay: full logits/all42 bit-exact, source snapshot immutable,
+independent session/root, clean shutdown (`P12_SOURCE_PAGED_PREFIX_FORK_PASS`,
+179.13s). This is the payload/root substrate, not yet a semantic cache hit: the
+bounded key/lookup/eviction layer and serving integration remain next. Event/lease-
+backed physical overlap remains later.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 

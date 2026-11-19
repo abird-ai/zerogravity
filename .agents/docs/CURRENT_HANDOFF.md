@@ -303,9 +303,13 @@ and live TODOs are authoritative.
   Contiguous and Paged, returned identical token IDs and shut down cleanly.
   `P12_SOURCE_PAGED_HTTP_PASS ... contiguous_cohorts={8} paged_cohorts={8}
   tokens=exact final_shutdown=true`, exit0 in358.07s. Strict HTTP/SDK test-target
-  Clippy passes. No fresh matched-vLLM claim follows: L5 has no local vLLM
-  executable/module and the retained C8 workload differs from this page-boundary
-  SDK/HTTP cell. The first full isolated `scripts/check.sh` attempt through the
+  Clippy passes. A fresh matched-vLLM attempt did not run: the exact pinned
+  `f57d77f5...b4b0dbe` layer store is still present (~25GiB), but its image index is
+  no longer registered for this connector's Podman view (`image not known` after a
+  temporary user+mount namespace gets past the outer permission/mount issue). The
+  canonical managed HF0.8B file tree remains exact at revision `2fc06364...` with
+  safetensor `04b1c301...`; do not rebuild/re-register orphaned image layers just to
+  manufacture a benchmark. The first full isolated `scripts/check.sh` attempt through the
   child-net envelope found one real source-boundary bug: `HybridStateInventoryPlan`
   is shared by production `cuda-native`, but `ResidentPlaneLayout` was not imported
   for that feature. The import cfg is corrected while CUBLAS-only map/lease imports
@@ -313,8 +317,16 @@ and live TODOs are authoritative.
   --features cuda-native` passes. A warmed full-gate rerun then progressed beyond
   that boundary and was externally SIGKILLed during the later ordinary-Qwen feature
   compile with no compiler/test diagnostic, so the monolithic gate remains
-  incomplete rather than failed. Complete-domain prefix reuse and event/lease-backed
-  overlap remain later.
+  incomplete rather than failed. **Complete-domain prefix fork/COW substrate is now
+  accepted:** `ResidentSession::fork_shared_prefix` only seeds a fresh destination,
+  validates the same service/source/capacity/full domain set, publishes through the
+  destination's own `begin_validated_replacement`, and clones immutable domain
+  ownership without replay/readback/copy. `SourceCallSession` additionally requires
+  the exact same resident model. Original0.8B paged page4 physically passes a
+  3-token partial-page prefix fork then1-token COW continuation versus independent
+  replay: logits/all42 exact, cached snapshot immutable, independent root/session,
+  clean shutdown (`P12_SOURCE_PAGED_PREFIX_FORK_PASS`,179.13s). Next build the
+  bounded semantic prefix identity/lookup/eviction layer; event/lease overlap remains later.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -1240,11 +1252,14 @@ is already green; repeat it only if host/runtime state changes.
 > explicit child-Bubblewrap private-net envelope accepted by `4688cba`:8 concurrent
 > page-boundary requests, actual native B8 for Contiguous/Paged, exact token IDs and
 > clean shutdown. Direct shared-net L5 still fails closed; never bypass the harness.
-> L5 has no local vLLM executable/module, and retained vLLM C8 numbers are not
-> matched to this 4-token/2-output workload. Continue with a genuinely matched vLLM
-> cell when the existing pinned runtime is available; do not build a new evidence
-> framework. Keep complete-domain prefix
-> reuse and event/lease physical overlap behind their remaining gates.
+> The pinned vLLM layer bytes still exist but the exact image is no longer registered
+> as runnable in this connector's Podman storage; the exact HF source is intact. Do
+> not rebuild/re-register container layers merely for feedback. Complete-domain
+> prefix fork/COW is now terminal-green on original0.8B page4: fresh destination,
+> independent root/session, no replay, partial-tail COW continuation, exact logits/
+> all42 and immutable cached snapshot. Continue with the bounded semantic prefix
+> identity/lookup/eviction layer, then serving hit/miss integration. Keep event/lease
+> physical overlap behind its remaining gates.
 >
 > Keep the implementation turn to roughly 30 minutes. Aim for the next coherent
 > checkpoint, update owning TODO/handoff state, sign the commit, sync X2 only if
