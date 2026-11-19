@@ -201,6 +201,18 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   current cache occupancy/bounds and paged-pool occupancy/max/page bytes; no
   cumulative pressure counters were added. This does not claim host/device OOM
   behavior.
+- [x] Fresh review of the recent prefix/paging/scoped-serving lineage found no new
+  ownership, cancellation, scope-isolation, alias or feature-boundary regression.
+  It confirmed physical overlap cannot yet be claimed: the physical queue is
+  single-active and resident completion remains readback-coupled on one pinned CUDA
+  logical stream. Added/qualified the first prerequisite only: same-service
+  `OwnedCudaQueue::fork_stream` + non-clone `OwnedCudaEvent`. Physical L5 test records
+  events on primary and fresh secondary streams before either wait over disjoint8MiB
+  writes; secondary is still pending at first query and both final readbacks are
+  exact (`P12_CUDA_SECONDARY_STREAM_EVENT_PASS`). No scheduler/StateRoot/queue-width
+  change follows. A future overlap slice must first bind these physical events to
+  resident leases/completion owners, then qualify bounded multi-active queue semantics
+  under cancel/unknown completion before worker adoption.
 
 ### Next continuation — no live campaign
 

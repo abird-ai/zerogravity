@@ -786,7 +786,49 @@ prelaunch_capacity=true root_unchanged=true vector_staging_unwound=true
 cached_root_survived=true recovered_logits=exact final_pages_idle=true`,168.51s.
 One earlier external SIGTERM during startup is incomplete only. This proves finite
 resident page-pool exhaustion/recovery; it still does not claim external host/device
-OOM. Event/lease-backed physical overlap remains later.
+OOM.
+
+**19 Nov fresh overlap review / first prerequisite:** a full re-read of the recent
+prefix/paging/serving changes found no new ownership/scope/cancellation regression,
+but confirmed that the current execution stack cannot honestly overlap resident GPU
+regions yet. `PhysicalQueue::QueueState.active` is a single `Option<u64>` and the
+queue intentionally dispatches at most one physical region per card. Separately,
+`ResidentSubmission::complete_with_readback` observes device completion through the
+trusted readback, then `finish_ready` retires the logical device event, completes the
+physical resource guard and initializes writes. Dropping an armed submission marks
+completion unknown and fences/quarantines. The Qwen CUDA service is also pinned to
+one `OwnedCudaQueue` logical stream. Therefore simply scheduling prefill and decode
+concurrently would still serialize, while detaching the current completion Future
+would violate the established unknown-completion contract.
+
+The first prerequisite is now implemented below ZeroGravity scheduling. The patched
+CubeCL CUDA `OwnedCudaQueue::fork_stream` takes a same-service client clone, binds it
+to a fresh `StreamId::allocate()` logical stream, and retains the same original
+`CudaServer` actor/context. CubeCL maps that logical ID to its own non-blocking
+`CUstream`; existing client clones keep their prior stream. Cross-stream dependencies
+remain explicitly unsafe/caller-owned. `OwnedCudaEvent` is non-clone and owns one
+CUDA event on one exact actor/logical stream, with record/query/wait/destroy; it proves
+physical stream completion only and grants no buffer lease, initialization or
+StateRoot publication authority.
+
+Physical L5 qualification uses two completely disjoint8MiB buffers. It enqueues one
+write on the primary stream and one on the fresh secondary stream, records both events
+before waiting either, verifies same CUDA service + distinct logical streams + exact
+event-stream identity, queries both, then waits and reads both buffers exactly. In
+the accepted run primary was already Ready at first query while secondary was still
+not Ready, proving a genuinely live second stream/event at that observation point:
+`P12_CUDA_SECONDARY_STREAM_EVENT_PASS same_service=true streams_distinct=true
+disjoint_buffers=true events_recorded_before_wait=true primary_ready_before_wait=true
+secondary_ready_before_wait=false readback=exact`.
+
+This **does not** close physical prefill/decode overlap. The next ordered gate is a
+resident in-flight object that retains the original leases + completion owners and
+uses an `OwnedCudaEvent` as the physical completion witness without publishing early.
+Only after that object passes known completion, cancellation and unknown-completion
+quarantine should `PhysicalQueue` gain bounded multiple active slots, restricted by
+actual disjoint event-ledger accesses. Then independently rooted prefill/decode work
+can be physically qualified before any worker/scheduler adoption or performance
+claim.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 

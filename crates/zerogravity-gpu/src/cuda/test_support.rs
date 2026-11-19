@@ -13,6 +13,88 @@ use zerogravity_core::{
     },
 };
 
+#[test]
+#[ignore = "physical CUDA same-service secondary stream and event ownership"]
+fn owned_secondary_stream_events_are_disjoint_and_exact() -> Result<()> {
+    use cubecl_common::bytes::Bytes;
+
+    const BYTES: usize = 8 * 1024 * 1024;
+    let diagnostic = CudaDiagnostic::new("secondary-stream-event")?;
+    let service = &diagnostic.service;
+    let primary = service.pinned_cuda_queue()?.clone();
+    let primary_client = service.client().clone();
+    let (secondary_client, secondary) = unsafe {
+        primary
+            .fork_stream(service.client().clone())
+            .map_err(|error| Error::State(format!("secondary stream fork: {error}")))?
+    };
+    if primary.service_id() != secondary.service_id()
+        || primary_client.service_id() != secondary_client.service_id()
+        || primary.logical_stream_id() == secondary.logical_stream_id()
+    {
+        return Err(Error::State(
+            "secondary CUDA stream service/identity differs".into(),
+        ));
+    }
+
+    let primary_handle = primary_client.empty(BYTES);
+    let secondary_handle = secondary_client.empty(BYTES);
+    let primary_bytes = vec![0xa5u8; BYTES];
+    let secondary_bytes = vec![0x5au8; BYTES];
+    primary_client.write(
+        &primary_handle,
+        Bytes::from_bytes_vec(primary_bytes.clone()),
+    );
+    secondary_client.write(
+        &secondary_handle,
+        Bytes::from_bytes_vec(secondary_bytes.clone()),
+    );
+
+    // Both physical events are recorded before either is waited. Their buffers
+    // are disjoint, so no cross-stream dependency or synchronization is needed.
+    let mut primary_event = primary
+        .record_event()
+        .map_err(|error| Error::State(format!("primary event record: {error}")))?;
+    let mut secondary_event = secondary
+        .record_event()
+        .map_err(|error| Error::State(format!("secondary event record: {error}")))?;
+    if primary_event.stream_id() != primary.logical_stream_id()
+        || secondary_event.stream_id() != secondary.logical_stream_id()
+    {
+        return Err(Error::State(
+            "owned CUDA event stream identity differs".into(),
+        ));
+    }
+    let primary_ready_before_wait = primary_event
+        .ready()
+        .map_err(|error| Error::State(format!("primary event query: {error}")))?;
+    let secondary_ready_before_wait = secondary_event
+        .ready()
+        .map_err(|error| Error::State(format!("secondary event query: {error}")))?;
+    primary_event
+        .wait()
+        .map_err(|error| Error::State(format!("primary event wait: {error}")))?;
+    secondary_event
+        .wait()
+        .map_err(|error| Error::State(format!("secondary event wait: {error}")))?;
+
+    let actual_primary = primary_client
+        .read_one(primary_handle)
+        .map_err(|error| Error::State(format!("primary readback: {error}")))?;
+    let actual_secondary = secondary_client
+        .read_one(secondary_handle)
+        .map_err(|error| Error::State(format!("secondary readback: {error}")))?;
+    if actual_primary.as_ref() != primary_bytes || actual_secondary.as_ref() != secondary_bytes {
+        return Err(Error::State(
+            "secondary CUDA stream disjoint readback differs".into(),
+        ));
+    }
+    println!(
+        "P12_CUDA_SECONDARY_STREAM_EVENT_PASS same_service=true streams_distinct=true disjoint_buffers=true events_recorded_before_wait=true primary_ready_before_wait={primary_ready_before_wait} secondary_ready_before_wait={secondary_ready_before_wait} readback=exact"
+    );
+    Ok(())
+}
+
 pub(crate) struct CudaDiagnostic {
     pub(crate) service: Arc<ResidentService>,
     pub(crate) compiler: Arc<(GlobalResourceLease, GlobalResourceLease)>,

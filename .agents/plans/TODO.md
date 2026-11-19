@@ -348,7 +348,21 @@ final allocated pages are all idle and shutdown is clean in168.51s. One startup
 SIGTERM attempt is incomplete only. Qwen admission/health diagnostics now include
 current prefix-cache entries/weight/maxima and paged-pool allocated/idle/occupied/max/
 page-bytes only—no cumulative hot-path counters. Host/device OOM remains outside this
-claim. Event/lease overlap remains later.
+claim.
+
+**Fresh overlap review:** the accepted prefix/paging/serving changes were re-audited
+end-to-end; no correctness/security regression was found. The actual blocker is below
+the worker: `PhysicalQueue` remains single-active per card and `ResidentSubmission`
+retires only after trusted readback, while Qwen CUDA uses one pinned logical stream.
+Do not enable scheduler concurrency and call it overlap. The first lower-level
+prerequisite is now accepted: CubeCL `OwnedCudaQueue::fork_stream` creates a fresh
+same-service logical/physical stream for a dedicated client clone, and non-clone
+`OwnedCudaEvent` owns exact record/query/wait/destroy on that actor/stream. L5 physical
+proof used disjoint8MiB writes, recorded both events before waiting either, observed
+secondary still pending on first query and got exact dual readback
+(`P12_CUDA_SECONDARY_STREAM_EVENT_PASS`). No physical-queue width, StateRoot or worker
+policy changed. Next: resident event+lease in-flight owner, then bounded >1 physical
+queue only for disjoint access and full cancel/unknown/root-order qualification.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

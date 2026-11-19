@@ -667,6 +667,18 @@ or a change to the active correctness/benchmark/27B order.
   prefix-cache occupancy/bounds and paged-pool allocated/idle/occupied/max/page bytes;
   no cumulative hot-path counters. Host/device OOM is not claimed. Physical overlap
   remains behind event/lease and independent-root gates.
+  **Fresh overlap review checkpoint:** do not widen worker scheduling yet.
+  `PhysicalQueue` is still single-active per physical card, `ResidentSubmission`
+  completion is tied to trusted readback/physical retirement, and Qwen CUDA is pinned
+  to one logical stream; more runnable work would therefore not establish physical
+  overlap. The lower CUDA substrate now has a same-service fresh secondary stream and
+  non-clone actor-owned event. Physical L5 proof records primary+secondary events
+  before either wait on disjoint8MiB buffers; secondary was still not Ready on first
+  query and both readbacks were exact (`P12_CUDA_SECONDARY_STREAM_EVENT_PASS`). This
+  is explicitly a prerequisite, not a throughput/TTFT/ITL or prefill/decode overlap
+  claim. Next bind event lifetime to resident leases/completion authority, then allow
+  bounded multi-active physical regions only with disjoint access and qualify
+  cancellation, unknown completion, independent roots and publication order.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

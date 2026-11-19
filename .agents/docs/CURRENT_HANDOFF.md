@@ -396,7 +396,34 @@ and live TODOs are authoritative.
   diagnostics now report current `prefix_cache` occupancy/bounds and `paged_pool`
   allocated/idle/occupied/max/page-bytes under each Qwen source model; there are no
   cumulative hot-path counters. This qualifies actual resident page-pool exhaustion
-  and recovery, not host/device OOM. Event/lease overlap remains later.
+  and recovery, not host/device OOM.
+  **Fresh 19 Nov review + overlap prerequisite:** the entire recent prefix/paging/
+  serving lineage was re-read from the live tree and reviewed across engine/router/
+  serving/GPU ownership, scope isolation, alias deduplication, cache invalidation,
+  pressure unwind, cancellation and feature boundaries. No prefix correctness or
+  authorization regression was found. The review did find the hard overlap boundary:
+  `PhysicalQueue` still owns exactly one `active: Option<u64>` region per card, and
+  `ResidentSubmission` only retires a physical region after its trusted readback/
+  validation path completes. The current Qwen CUDA source also uses one pinned
+  `OwnedCudaQueue` logical stream. Therefore worker-level or scheduler-level
+  prefill/decode concurrency would still serialize physically (or would weaken
+  completion safety if detached naively); do not claim overlap from more runnable
+  rows/threads.
+  As the first independent prerequisite, the patched CubeCL CUDA layer now supports
+  `OwnedCudaQueue::fork_stream` for a same-service client clone and a non-clone
+  `OwnedCudaEvent` that records/queries/waits/destroys one event on that exact actor/
+  logical stream. No second CUDA service/context is created and cross-stream buffer
+  dependencies remain the caller's responsibility. Physical qualification on L5
+  enqueued disjoint8MiB writes on primary and fresh secondary streams, recorded both
+  events before waiting either, observed the secondary event still not Ready at the
+  first query, then waited both and read back both buffers exactly:
+  `P12_CUDA_SECONDARY_STREAM_EVENT_PASS same_service=true streams_distinct=true
+  disjoint_buffers=true events_recorded_before_wait=true primary_ready_before_wait=true
+  secondary_ready_before_wait=false readback=exact`. This proves a live independent
+  secondary stream/event substrate, **not** prefill/decode performance overlap and
+  not multiple resident regions in flight. Next gate is an event/lease-backed
+  resident in-flight owner plus a bounded >1 physical queue only for disjoint access,
+  with cancel/unknown-completion and independent-root tests before any worker adoption.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -1351,7 +1378,16 @@ is already green; repeat it only if host/runtime state changes.
 > full-logit recovery after release and all pages idle at shutdown in168.51s. Qwen
 > diagnostics expose only current cache/paged-pool occupancy and maxima, not cumulative
 > pressure counters. One earlier external SIGTERM attempt is incomplete only. Keep
-> event/lease physical overlap behind its remaining gates.
+> A fresh review found no regression in the accepted prefix/paging/scoped-serving
+> lineage, but confirmed that `PhysicalQueue` is still single-active and
+> `ResidentSubmission` completion is readback-coupled, so scheduler-level overlap
+> would currently be fake/unsafe. The first prerequisite is now physically green:
+> same-service primary+secondary CUDA logical streams with two one-shot actor-owned
+> events recorded before either wait, disjoint8MiB buffers exact, and the secondary
+> event observed still pending at first query (`P12_CUDA_SECONDARY_STREAM_EVENT_PASS`).
+> This is not yet a prefill/decode overlap claim. Continue with an event/lease-backed
+> resident in-flight owner and bounded multi-active physical queue for disjoint
+> accesses, then cancellation/unknown/root-order qualification before worker adoption.
 >
 > Keep the implementation turn to roughly 30 minutes. Aim for the next coherent
 > checkpoint, update owning TODO/handoff state, sign the commit, sync X2 only if

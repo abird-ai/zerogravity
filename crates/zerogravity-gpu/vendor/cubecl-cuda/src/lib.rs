@@ -39,7 +39,8 @@ pub use owned_command::{
 pub use owned_command::{
     Bf16VocabularyHead, CubinBinding, CubinIo, CubinKernelManifest, CubinLaunchAttributes,
     CubinParameter, CubinPointerFixup, CubinProvider, CubinWorkspaceClear, CubinWorkspaceView,
-    OwnedCudaBinding, OwnedCudaKernel, OwnedCudaModuleSet, OwnedCudaTransferRetirement,
+    OwnedCudaBinding, OwnedCudaEvent, OwnedCudaKernel, OwnedCudaModuleSet,
+    OwnedCudaTransferRetirement,
     VerifiedCubin, VocabularyHeadSelection,
 };
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]

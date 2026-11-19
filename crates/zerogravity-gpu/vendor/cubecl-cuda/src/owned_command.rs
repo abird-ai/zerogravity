@@ -8,12 +8,16 @@ use cubecl_environment::stream::StreamId;
 
 mod compiler;
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+mod event;
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
 pub(crate) mod embedding_rows;
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
 pub(crate) mod source_upload;
 pub(crate) mod weight_upload;
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
 pub use weight_upload::OwnedCudaTransferRetirement;
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+pub use event::OwnedCudaEvent;
 pub use weight_upload::SourceWeightLayout;
 
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
@@ -89,6 +93,38 @@ impl OwnedCudaQueue {
     /// Logical stream identity; the underlying `CUstream` remains server-owned.
     pub fn logical_stream_id(&self) -> StreamId {
         self.stream
+    }
+
+    /// Bind one same-service client clone to a fresh logical CUDA stream while
+    /// retaining the original actor/context. This creates no second service.
+    ///
+    /// # Safety
+    ///
+    /// The caller must provide a client for this exact CUDA service and enforce
+    /// all cross-stream buffer dependencies. Rebinding affects only this client
+    /// value; existing clones retain their prior stream.
+    pub unsafe fn fork_stream(&self, mut client: Client) -> Result<(Client, Self), ServerError> {
+        if client.service_id() != self.service_id() {
+            return Err(ServerError::graph_state(
+                "owned CUDA secondary stream requires the same service",
+            ));
+        }
+        let stream = loop {
+            let candidate = StreamId::allocate();
+            if candidate != self.stream {
+                break candidate;
+            }
+        };
+        // SAFETY: this client clone is intentionally dedicated to the new
+        // logical stream; caller owns cross-stream dependency correctness.
+        unsafe { client.set_stream(stream) };
+        Ok((
+            client,
+            Self {
+                actor: self.actor.clone(),
+                stream,
+            },
+        ))
     }
 }
 
