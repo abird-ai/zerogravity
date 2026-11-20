@@ -712,9 +712,14 @@ or a change to the active correctness/benchmark/27B order.
   rebuilt non-LTO/opt1/codegen64 is183.932ms/130.483 output tok/s contiguous and
   242.488ms/98.974 paged, with exact tokens/native B8. This already clears the retained
   historical eager-vLLM B8 72.20 tok/s short-wave baseline on contiguous. Future perf
-  feedback must use a matched optimized host profile; next prioritize fresh matched
-  vLLM/continuous-arrival goodput and the paged-vs-contiguous gap rather than debug-time
-  decode tuning or more prefill evidence.
+  feedback must use a matched optimized host profile. Continuous refill/regroup now has
+  real public-SDK feedback too: active8/native8 with4 short +4 long survivors +4 queued
+  rows exposed and fixed a reusable band-layout defect. Width8 cohort storage now retains
+  exact B4 and B8 GDN ABI descriptors while sharing one max-width physical scratch arena;
+  legal B4 fallback no longer binds B8 extents. Warm refill passed with `{4,8}` on every
+  survivor/queued row, demonstrating B8→B4→refill→B8 regrouping. Opt1 goodput for68
+  generated tokens:178.769 tok/s contiguous,136.488 paged. Next prioritize fresh matched
+  vLLM or the paged-vs-contiguous gap rather than more refill/debug evidence.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

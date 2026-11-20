@@ -520,9 +520,23 @@ and live TODOs are authoritative.
   that vLLM number is still historical rather than a fresh matched rerun. Approximate
   decode-only cadence is ~25ms/B8 cohort contiguous (~318 output tok/s) and ~44ms paged
   (~183 output tok/s). Do **not** optimize against debug-profile timing; future serving
-  performance feedback must use a matched optimized host profile. The next meaningful
-  serving work is fresh matched comparison/continuous-arrival goodput and the remaining
-  paged-vs-contiguous gap, not debug-profile decode micro-tuning.
+  performance feedback must use a matched optimized host profile.
+  **Continuous refill/regroup is now physically exercised and one banding bug is fixed.**
+  The production worker already refills freed active slots from the admitted FIFO before
+  each wave and recomputes compatible native bands. A temporary public-SDK probe used
+  four1-token rows + four8-token survivors + four queued8-token rows on an active8/native8
+  model. It first exposed a real width-reduction defect: the width8 cohort arena retained
+  only the B8 GDN compiled-ABI layout, so a legal B4 band bound `PackedBa` against a
+  32768-byte B8 ABI while the B4 activation was correctly16384B. The fix retains both
+  B4 and B8 `GdnRuntimeWorkspaceLayout` descriptors for a width8 arena while allocating
+  physical GDN scratch once at the maximum width; active plans select the exact band
+  descriptor with zero per-token allocation. B4 on a width8 model then passed with every
+  token reporting native width4. The warmed refill probe passed contiguous and paged with
+  survivor/queued width sets `{4,8}`, proving actual B8→B4→refill/prefill→B8 regrouping.
+  Matched opt1/codegen64/non-LTO goodput for68 generated tokens was380.379ms /178.769
+  output tok/s contiguous and498.212ms /136.488 paged. The temporary probe was removed.
+  Next meaningful serving work is the remaining paged-vs-contiguous gap or a fresh matched
+  vLLM run, not additional refill fixtures or debug-profile decode micro-tuning.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of

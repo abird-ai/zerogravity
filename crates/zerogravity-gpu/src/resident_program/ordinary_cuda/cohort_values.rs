@@ -27,7 +27,8 @@ pub(crate) struct OrdinaryCudaCohortValues {
     // so a qualified B8 GDN core can execute between exact import/export edges.
     gdn_private_recurrent: Option<ResidentLease>,
     gdn_private_indices: Option<ResidentLease>,
-    gdn_prefill_layout: Option<Arc<GdnRuntimeWorkspaceLayout>>,
+    gdn_prefill_b4: Option<Arc<GdnRuntimeWorkspaceLayout>>,
+    gdn_prefill_b8: Option<Arc<GdnRuntimeWorkspaceLayout>>,
     gdn_prefill_internal: BTreeMap<GdnRuntimeBuffer, ResidentLease>,
 }
 
@@ -170,9 +171,19 @@ impl OrdinaryCudaCohortValues {
             )?;
             (Some(recurrent), Some(indices))
         };
-        let gdn_prefill_layout = Self::build_gdn_prefill_layout(layout, width)?;
+        let gdn_prefill_b4 = Self::build_gdn_prefill_layout(layout, 4)?;
+        let gdn_prefill_b8 = if width == 8 {
+            Self::build_gdn_prefill_layout(layout, 8)?
+        } else {
+            None
+        };
+        let gdn_prefill_physical = if width == 8 {
+            gdn_prefill_b8.as_ref()
+        } else {
+            gdn_prefill_b4.as_ref()
+        };
         let mut gdn_prefill_internal = BTreeMap::new();
-        if let Some(gdn) = &gdn_prefill_layout {
+        if let Some(gdn) = gdn_prefill_physical {
             for buffer in gdn.buffers().iter().filter(|buffer| {
                 layout::owns_gdn_buffer(
                     buffer.role(),
@@ -257,7 +268,8 @@ impl OrdinaryCudaCohortValues {
                 row_scratch,
                 gdn_private_recurrent,
                 gdn_private_indices,
-                gdn_prefill_layout,
+                gdn_prefill_b4,
+                gdn_prefill_b8,
                 gdn_prefill_internal,
             }),
             accesses,
@@ -351,8 +363,20 @@ impl OrdinaryCudaCohortValues {
             .ok_or_else(|| Error::State("ordinary CUDA private GDN B8 indices absent".into()))
     }
 
-    pub(super) fn gdn_prefill_layout(&self) -> Result<Arc<GdnRuntimeWorkspaceLayout>> {
-        self.gdn_prefill_layout
+    pub(super) fn gdn_prefill_layout(
+        &self,
+        lanes: usize,
+    ) -> Result<Arc<GdnRuntimeWorkspaceLayout>> {
+        let layout = match lanes {
+            4 => &self.gdn_prefill_b4,
+            8 => &self.gdn_prefill_b8,
+            _ => {
+                return Err(Error::Unsupported(
+                    "ordinary CUDA cohort GDN layout width".into(),
+                ));
+            }
+        };
+        layout
             .clone()
             .ok_or_else(|| Error::State("ordinary CUDA cohort GDN layout absent".into()))
     }

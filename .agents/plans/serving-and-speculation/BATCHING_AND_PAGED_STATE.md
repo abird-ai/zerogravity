@@ -903,8 +903,15 @@ commit and existing warm8x48+3 cell rebuilt non-LTO/opt1/codegen64 runs at183.93
 130.483 output tok/s contiguous and242.488ms/98.974 paged with exact tokens/native B8.
 Thus current contiguous short-wave serving already exceeds the retained historical
 vLLM72.20 tok/s baseline. Preserve the ownership contracts and use matched optimized
-host profiles for all future performance decisions; focus next on fresh matched
-continuous-arrival/vLLM goodput and the remaining paged gap, not debug-time decode.
+host profiles for all future performance decisions. Continuous refill is now physically
+exercised through the public SDK: after4 short B8 members retire, four survivors execute
+B4 while queued rows refill, those rows prefill as B4 after fairness protection, and all
+eight regroup into B8 decode. This exposed one reusable ABI bug: a width8 arena retained
+only the B8 GDN layout descriptor, so legal B4 reduction saw B8 binding extents. Width8
+now retains B4+B8 descriptors but one max-width physical scratch allocation; active-band
+layout selection is allocation-free. Warm opt1 refill goodput is178.769 tok/s contiguous
+and136.488 paged for68 generated tokens. Focus next on the remaining paged gap or fresh
+matched vLLM goodput, not another refill evidence layer.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 

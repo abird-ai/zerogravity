@@ -334,7 +334,7 @@ impl OrdinaryCudaBody {
             rows,
             lanes,
             first.rows().base() != 0,
-            values.gdn_prefill_layout()?,
+            values.gdn_prefill_layout(lanes)?,
         )
     }
 
@@ -365,7 +365,7 @@ impl OrdinaryCudaBody {
         lane: usize,
         recurrent: bool,
     ) -> Result<Handle> {
-        let layout = values.gdn_prefill_layout()?;
+        let layout = values.gdn_prefill_layout(values.width())?;
         if lane >= values.width() || lane + 1 >= layout.cache_slots() {
             return Err(Error::State(
                 "ordinary CUDA cohort GDN cache lane outside workspace".into(),

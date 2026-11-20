@@ -271,8 +271,19 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   and153.943/198.058/241.371ms respectively. Exact tokens/native B8 are unchanged.
   Current contiguous short-wave serving already exceeds retained historical ZG76.77
   and eager-vLLM72.20 tok/s; do not spend decode work against debug timing. Use the
-  matched optimized profile for future performance feedback, then prioritize fresh
-  matched vLLM/continuous-arrival goodput and the paged-vs-contiguous gap.
+  matched optimized profile for future performance feedback.
+- [x] Continuous active-slot refill/regroup is now exercised through the public SDK. A
+  width8 model legally reducing to B4 exposed that `OrdinaryCudaCohortValues` retained
+  only a B8 GDN ABI layout: B4 `PackedBa` was16384B but the compiled ABI expected32768B.
+  Retain B4 and B8 `GdnRuntimeWorkspaceLayout` descriptors on width8 while allocating
+  scratch only once at the maximum width; active GDN plans select the exact band layout,
+  so no per-token allocation or model policy enters the primitive. Direct four-request
+  width8/B4 serving passed with `{4}` on every token. A warmed4-short+4-survivor+4-queued
+  refill run produced `{4,8}` on every survivor and queued row, proving
+  B8→B4→refill/prefill→B8 regrouping. Opt1/codegen64/non-LTO goodput: contiguous
+  380.379ms/178.769 output tok/s, paged498.212ms/136.488 tok/s for68 generated tokens.
+  The temporary probe was removed. Next prioritize the paged-vs-contiguous gap or a fresh
+  matched vLLM run rather than adding more refill fixtures.
 
 ### Next continuation — no live campaign
 
