@@ -99,7 +99,7 @@ fn external_sdk_compiles_without_cli_or_concrete_model_features() {
 
 #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
 #[test]
-#[ignore = "approved original CUDA cache; physical public SDK contiguous-vs-paged native cohort"]
+#[ignore = "approved original CUDA cache; physical public SDK contiguous-vs-paged native cohort; compare timings only under a matched optimized Cargo profile"]
 fn qwen_cuda_paged_native_sdk_matches_contiguous() {
     use std::{
         collections::BTreeSet,

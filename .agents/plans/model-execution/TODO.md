@@ -263,10 +263,16 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   `OrdinaryCudaCohortValues`. Canonical Conv/Recurrent roots still cross only typed
   `StateTransport` edges. The runtime word-copy primitive alone gets a2^21-word bound;
   the existing global1,000,000-word greedy/reduction/readiness cap is unchanged.
-  Exact warm48+3 B8: contiguous4701.433→1007.301ms, paged5022.809→1160.106ms;
-  TTFT4341.373→616.681ms /4503.152→649.944ms; output23.826/20.688 tok/s. Decode remains
-  ~41 tok/s contiguous and~31-32 paged, so next optimize decode toward the retained
-  historical ZG76.77/vLLM72.20 B8 range rather than expanding prefill fixtures.
+  Exact warm48+3 B8 under the default unoptimized test profile: contiguous
+ 4701.433→1007.301ms, paged5022.809→1160.106ms; TTFT4341.373→616.681ms /
+ 4503.152→649.944ms. That profile is correctness/relative-debug feedback only. The
+  same commit/test rebuilt non-LTO/opt1/codegen64 completed at183.932ms/130.483 output
+  tok/s contiguous and242.488ms/98.974 paged, with mean commits133.297/158.866/183.617
+  and153.943/198.058/241.371ms respectively. Exact tokens/native B8 are unchanged.
+  Current contiguous short-wave serving already exceeds retained historical ZG76.77
+  and eager-vLLM72.20 tok/s; do not spend decode work against debug timing. Use the
+  matched optimized profile for future performance feedback, then prioritize fresh
+  matched vLLM/continuous-arrival goodput and the paged-vs-contiguous gap.
 
 ### Next continuation — no live campaign
 

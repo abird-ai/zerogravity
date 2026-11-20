@@ -507,10 +507,22 @@ and live TODOs are authoritative.
   Real warm48+3 B8 exact serving moved dramatically versus the attention checkpoint:
   contiguous4701.433→1007.301ms (~78.6% faster), paged5022.809→1160.106ms (~76.9%);
   mean TTFT4341.373→616.681ms contiguous (~85.8% lower) and4503.152→649.944ms paged
-  (~85.6% lower). End-to-end output rate is23.826/20.688 tok/s. Decode intervals remain
-  ~194/195ms contiguous (~41 tok/s B8) and~248/257ms paged (~31-32 tok/s), so prefill
-  is no longer the first-order gap; next optimize the real decode path toward the
-  retained historical ZG/vLLM B8 range instead of adding more prefill evidence.
+  (~85.6% lower). Those numbers were produced by Cargo's unoptimized test profile and
+  are correctness/relative-debug feedback only; they must not be used as serving-perf
+  baselines. Rebuilding the **same commit and same existing 8x48+3 SDK cell** with the
+  historical non-LTO/opt1/codegen64 host profile (`CARGO_PROFILE_TEST_OPT_LEVEL=1`,
+  `CARGO_PROFILE_TEST_CODEGEN_UNITS=64`, `CARGO_PROFILE_TEST_LTO=false`, debug info0)
+  changes the result without any source change: contiguous183.932ms/130.483 output
+  tok/s with commits [133.297,158.866,183.617]ms; paged242.488ms/98.974 tok/s with
+  commits [153.943,198.058,241.371]ms. Exact tokens/native B8 remain unchanged.
+  Contiguous is therefore already well above the retained historical eager-vLLM B8
+  72.20 tok/s and old ZG76.77 tok/s on the same short47-50+3 workload class, although
+  that vLLM number is still historical rather than a fresh matched rerun. Approximate
+  decode-only cadence is ~25ms/B8 cohort contiguous (~318 output tok/s) and ~44ms paged
+  (~183 output tok/s). Do **not** optimize against debug-profile timing; future serving
+  performance feedback must use a matched optimized host profile. The next meaningful
+  serving work is fresh matched comparison/continuous-arrival goodput and the remaining
+  paged-vs-contiguous gap, not debug-profile decode micro-tuning.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of

@@ -897,9 +897,14 @@ Multi-token **GDN prefill** is now accepted inside ordinary CUDA source executio
 cache/control/scratch scales with width while independent roots remain outside the
 runtime and cross through typed state transport only. Exact warm48+3 B8 moved from the
 attention checkpoint4701.433→1007.301ms contiguous and5022.809→1160.106ms paged;
-TTFT is now616.681/649.944ms. This removes the dominant prefill serialization gap.
-Preserve the same ownership contracts, but shift the next performance work to decode
-(~41 tok/s contiguous,~31-32 paged) rather than adding another prefill evidence layer.
+TTFT is616.681/649.944ms in the default unoptimized test profile. That profile is
+correctness/relative-debug feedback only, not a serving-performance baseline. The same
+commit and existing warm8x48+3 cell rebuilt non-LTO/opt1/codegen64 runs at183.932ms /
+130.483 output tok/s contiguous and242.488ms/98.974 paged with exact tokens/native B8.
+Thus current contiguous short-wave serving already exceeds the retained historical
+vLLM72.20 tok/s baseline. Preserve the ownership contracts and use matched optimized
+host profiles for all future performance decisions; focus next on fresh matched
+continuous-arrival/vLLM goodput and the remaining paged gap, not debug-time decode.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 

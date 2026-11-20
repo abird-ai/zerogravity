@@ -707,9 +707,14 @@ or a change to the active correctness/benchmark/27B order.
   dominant remaining cost. Shared multi-token GDN prefill is now accepted: generic
   sequence-aware GDN geometry/workspace plus typed private-root import/export drives one
   B4/B8 cohort runtime over packed activations. Exact warm48+3 B8 moved4701.433→1007.301ms
-  contiguous and5022.809→1160.106ms paged; TTFT is616.681/649.944ms and end-to-end output
-  23.826/20.688 tok/s. Decode still runs only~41 tok/s contiguous/~31-32 paged, so the
-  next serving-performance target is decode, not more prefill/overlap evidence.
+  contiguous and5022.809→1160.106ms paged in the default unoptimized test profile.
+  That profile is not a serving-performance baseline. The same commit/existing cell
+  rebuilt non-LTO/opt1/codegen64 is183.932ms/130.483 output tok/s contiguous and
+  242.488ms/98.974 paged, with exact tokens/native B8. This already clears the retained
+  historical eager-vLLM B8 72.20 tok/s short-wave baseline on contiguous. Future perf
+  feedback must use a matched optimized host profile; next prioritize fresh matched
+  vLLM/continuous-arrival goodput and the paged-vs-contiguous gap rather than debug-time
+  decode tuning or more prefill evidence.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed
