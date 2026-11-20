@@ -687,8 +687,16 @@ or a change to the active correctness/benchmark/27B order.
   last-Ready accounting over one prepaid model envelope. Existing event-ledger access
   admission remains authoritative. Physical bounded2 dual resident flights on distinct
   CUDA streams/outputs retire in reverse order with exact8MiB readbacks and reusable
-  service (`P12_CUDA_RESIDENT_DUAL_FLIGHT_PASS`). Next adopt this in Qwen/source and
-  measure real prefill/decode overlap; do not expand synthetic evidence unless needed.
+  service (`P12_CUDA_RESIDENT_DUAL_FLIGHT_PASS`). Real Qwen/source feedback is now in:
+  existing public B8 SDK,8 concurrent original0.8B,48+3, one warm then measured wave.
+  Exact native B8 passes, but steady contiguous is4888.231ms/4.910 output tok/s and
+  paged5080.588ms/4.724 tok/s. Mean first-token commits are4523ms/4567ms respectively,
+  so prefill dominates; decode is ~44 tok/s contiguous and ~31-32 tok/s paged. The
+  immediate bottleneck is not missing queue concurrency: active8 source admission asks
+  for18 roots and the all-or-nothing weight placement then streams the whole source
+  when the full root inventory exceeds the provider envelope. Next keep immutable hot
+  weights resident independently of bounded root/state capacity and remeasure. Avoid
+  more synthetic overlap evidence unless this real integration exposes a new invariant.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

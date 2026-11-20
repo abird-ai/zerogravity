@@ -29,7 +29,7 @@ fn qwen_cuda_native_runtime(paged: bool) -> Runtime {
     let profile = QwenSourceProfile {
         active: 8,
         context: 512,
-        output: 2,
+        output: 3,
         max_pending: Some(16),
         native_rows: 8,
     };
@@ -43,7 +43,7 @@ fn qwen_cuda_native_runtime(paged: bool) -> Runtime {
             device_bytes: 5120 * MIB as u64,
             state_policy: QwenCudaStatePolicy::Paged {
                 page_tokens: 4,
-                max_append_tokens: 4,
+                max_append_tokens: 64,
             },
         }
     } else {
@@ -111,72 +111,95 @@ fn qwen_cuda_paged_native_sdk_matches_contiguous() {
         let runtime = qwen_cuda_native_runtime(paged);
         let model = runtime.models().resolve("source").unwrap();
         let tokenizer = model.prepared().tokenizer();
-        let prompt = " a".repeat(4);
-        assert_eq!(tokenizer.prompt_tokens(&prompt, false).unwrap().len(), 4);
-
-        let events = (0..8)
-            .map(|_| {
-                runtime
-                    .request_text(Request {
-                        model: "source".into(),
-                        input: prompt.clone(),
-                        chat: false,
-                        max_tokens: 2,
-                        stream: true,
-                        token_metrics: Some(TokenMetricsRequest {
-                            started: Instant::now(),
-                            wire_request_id: None,
-                        }),
-                    })
-                    .unwrap()
-            })
-            .collect::<Vec<_>>();
-        let mut outputs = Vec::with_capacity(events.len());
-        let mut cohort_widths = BTreeSet::new();
-        for events in events {
-            let mut ids = Vec::new();
-            loop {
-                match events
-                    .events
-                    .recv_timeout(Duration::from_secs(300))
-                    .expect("paged SDK response deadline")
-                {
-                    ResponseEvent::TokenText { token, .. } => {
-                        if let Some(cohort) = token.gpu.and_then(|gpu| gpu.native_cohort) {
-                            cohort_widths.insert(cohort.width);
+        let prompt = " a".repeat(48);
+        assert_eq!(tokenizer.prompt_tokens(&prompt, false).unwrap().len(), 48);
+        let wave = || {
+            let wave_started = Instant::now();
+            let events = (0..8)
+                .map(|_| {
+                    runtime
+                        .request_text(Request {
+                            model: "source".into(),
+                            input: prompt.clone(),
+                            chat: false,
+                            max_tokens: 3,
+                            stream: true,
+                            token_metrics: Some(TokenMetricsRequest {
+                                started: wave_started,
+                                wire_request_id: None,
+                            }),
+                        })
+                        .unwrap()
+                })
+                .collect::<Vec<_>>();
+            let mut outputs = Vec::with_capacity(events.len());
+            let mut cohort_widths = BTreeSet::new();
+            let mut token_commit_ms = [0.0f64; 3];
+            for events in events {
+                let mut ids = Vec::new();
+                loop {
+                    match events
+                        .events
+                        .recv_timeout(Duration::from_secs(300))
+                        .expect("paged SDK response deadline")
+                    {
+                        ResponseEvent::TokenText { token, .. } => {
+                            if let Some(cohort) = token.gpu.and_then(|gpu| gpu.native_cohort) {
+                                cohort_widths.insert(cohort.width);
+                            }
+                            token_commit_ms[ids.len()] += token
+                                .commit_observed_at
+                                .duration_since(wave_started)
+                                .as_secs_f64()
+                                * 1000.0;
+                            ids.push(token.id);
                         }
-                        ids.push(token.id);
+                        ResponseEvent::Done {
+                            prompt_tokens,
+                            completion_tokens,
+                            ..
+                        } => {
+                            assert_eq!((prompt_tokens, completion_tokens), (48, 3));
+                            break;
+                        }
+                        ResponseEvent::Error(error) => panic!("paged SDK worker: {error}"),
+                        ResponseEvent::Text(_) => panic!("streaming token observations required"),
                     }
-                    ResponseEvent::Done {
-                        prompt_tokens,
-                        completion_tokens,
-                        ..
-                    } => {
-                        assert_eq!((prompt_tokens, completion_tokens), (4, 2));
-                        break;
-                    }
-                    ResponseEvent::Error(error) => panic!("paged SDK worker: {error}"),
-                    ResponseEvent::Text(_) => panic!("streaming token observations required"),
                 }
+                assert_eq!(ids.len(), 3);
+                outputs.push(ids);
             }
-            assert_eq!(ids.len(), 2);
-            outputs.push(ids);
-        }
-        assert!(
-            cohort_widths.iter().any(|&width| width > 1),
-            "native cohort publication was not observed"
-        );
+            let wave_ms = wave_started.elapsed().as_secs_f64() * 1000.0;
+            assert!(
+                cohort_widths.iter().any(|&width| width > 1),
+                "native cohort publication was not observed"
+            );
+            for value in &mut token_commit_ms {
+                *value /= 8.0;
+            }
+            (outputs, cohort_widths, wave_ms, token_commit_ms)
+        };
+        let warm = wave();
+        let measured = wave();
+        assert_eq!(warm.0, measured.0);
         runtime.shutdown().unwrap();
         assert!(runtime.status().closed);
-        (outputs, cohort_widths)
+        measured
     };
 
     let contiguous = run(false);
     let paged = run(true);
     assert_eq!(paged.0, contiguous.0);
     println!(
-        "P12_SOURCE_PAGED_SDK_PASS requests=8 prompt_tokens=4 output_tokens=2 contiguous_cohorts={:?} paged_cohorts={:?} tokens=exact final_shutdown=true",
-        contiguous.1, paged.1
+        "P12_SOURCE_PAGED_SDK_PASS requests=8 prompt_tokens=48 output_tokens=3 contiguous_cohorts={:?} paged_cohorts={:?} contiguous_wave_ms={:.3} paged_wave_ms={:.3} contiguous_output_tok_s={:.3} paged_output_tok_s={:.3} contiguous_commit_ms={:?} paged_commit_ms={:?} tokens=exact final_shutdown=true",
+        contiguous.1,
+        paged.1,
+        contiguous.2,
+        paged.2,
+        24_000.0 / contiguous.2,
+        24_000.0 / paged.2,
+        contiguous.3,
+        paged.3,
     );
 }
 

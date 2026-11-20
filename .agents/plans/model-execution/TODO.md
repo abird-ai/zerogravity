@@ -227,8 +227,21 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   introduced; `DeviceEventLedger::submit` remains authoritative. Host contracts:
   queue6/6, physical-service5/5. Real CUDA bounded2 dual resident flights on distinct
   streams/outputs retire in reverse order with exact8MiB readback and reusable service
-  (`P12_CUDA_RESIDENT_DUAL_FLIGHT_PASS`). Next use these primitives in the actual
-  Qwen/source execution path and measure real prefill/decode overlap/performance.
+  (`P12_CUDA_RESIDENT_DUAL_FLIGHT_PASS`).
+- [x] Current public Qwen/source B8 performance was rechecked on the existing SDK path
+  instead of creating another benchmark fixture:8 concurrent original0.8B requests,
+ 48 prompt +3 output, one warm wave then one measured wave. Exact native B8 stayed
+  green. Steady contiguous4888.231ms/4.910 output tok/s with mean token commits
+ 4523.086/4705.276/4886.792ms; paged5080.588ms/4.724 tok/s with commits
+ 4567.294/4818.167/5075.042ms. TTFT/prefill (~4.5s) is overwhelmingly dominant;
+  contiguous decode intervals are ~182ms/B8 cohort and paged ~251/257ms. Historical
+  eager-vLLM B8 remains72.20 output tok/s on47-50+3 but is not a fresh matched run.
+  Root cause is now concrete: source active8 prices18 roots before residency; binary
+  `OrdinaryCudaAdmission::fit` falls back from all resident weights to all streamed
+  source pages when that complete inventory exceeds provider capacity. The two-root
+  0.8B/context512 resident plan is only ~1.653GB. Next decouple immutable hot-weight
+  residency from root/state pool capacity so source-page H2D is not paid per request;
+  then remeasure before further overlap work.
 
 ### Next continuation — no live campaign
 

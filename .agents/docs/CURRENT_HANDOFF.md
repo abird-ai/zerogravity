@@ -458,6 +458,28 @@ and live TODOs are authoritative.
   Next move directly into the real Qwen/source execution path and measure actual
   prefill/decode multi-flight behavior; do not add another synthetic evidence matrix
   unless that integration finds a concrete missing invariant.
+  **20 Nov realistic serving feedback:** rather than adding another harness, the existing
+  public B8 SDK qualification now uses eight concurrent original0.8B requests at48
+  prompt +3 output tokens, warms once on the loaded model, and times the second wave
+  using existing token publication clocks. Both contiguous and paged form native B8
+  and return exact-identical tokens. Steady measured wave: contiguous4888.231ms
+  (4.910 output tok/s), mean token commits [4523.086,4705.276,4886.792]ms; paged
+  5080.588ms (4.724 output tok/s), commits [4567.294,4818.167,5075.042]ms. Thus
+  fresh prefill/TTFT (~4.5s) dominates; steady B8 decode intervals are ~182ms
+  contiguous (~44 output tok/s) and ~251/257ms paged (~31-32 output tok/s). Warmup
+  does not remove the regression. Retained historical eager-vLLM B8 is72.20 output
+  tok/s on47-50 input/3 output, but the exact vLLM image is not currently runnable,
+  so this is directional history rather than a fresh matched comparison.
+  Source inspection identifies the immediate bottleneck: `OrdinaryCudaAdmission::fit`
+  prices the complete root inventory before choosing weight placement and, if that
+  total exceeds the provider cap, flips the entire model from resident weights to
+  source-page streaming. Source-call active8 requests18 roots (`2*active+2`). The
+  ordinary0.8B/context512 two-root fully resident plan is only ~1.653GB, but the
+  18-root fit triggers the all-or-nothing streaming fallback; cohort projection and
+  embedding then materialize source pages/H2D inside each request. Next optimize this
+  residency/root-capacity coupling—keep immutable hot weights resident while state
+  roots/pages remain independently bounded—before spending more work on multi-stream
+  overlap.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
