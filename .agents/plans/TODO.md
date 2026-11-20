@@ -361,8 +361,16 @@ same-service logical/physical stream for a dedicated client clone, and non-clone
 proof used disjoint8MiB writes, recorded both events before waiting either, observed
 secondary still pending on first query and got exact dual readback
 (`P12_CUDA_SECONDARY_STREAM_EVENT_PASS`). No physical-queue width, StateRoot or worker
-policy changed. Next: resident event+lease in-flight owner, then bounded >1 physical
-queue only for disjoint access and full cancel/unknown/root-order qualification.
+policy changed. **Resident event+lease in-flight ownership is now accepted:**
+`ResidentCudaInFlight` retains the original armed submission/leases/completion owners
+plus one `OwnedCudaEvent`. Event completion alone never creates Ready: known completion
+still runs existing readback/validation; cancellation waits the event and retires
+without initializing writes; unresolved drop preserves completion-unknown fence +
+quarantine and retains the attached owner. Physical L5 marker:
+`P12_CUDA_RESIDENT_INFLIGHT_EVENT_PASS ... quarantine_owner_delta=1
+queue_width_unchanged=true`. Next: bounded >1 physical active set with simultaneous
+submission permitted only for device-event-ledger-disjoint accesses, then independent
+root/cancel/unknown/publication-order qualification before worker adoption.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

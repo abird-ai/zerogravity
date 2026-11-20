@@ -210,9 +210,18 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   events on primary and fresh secondary streams before either wait over disjoint8MiB
   writes; secondary is still pending at first query and both final readbacks are
   exact (`P12_CUDA_SECONDARY_STREAM_EVENT_PASS`). No scheduler/StateRoot/queue-width
-  change follows. A future overlap slice must first bind these physical events to
-  resident leases/completion owners, then qualify bounded multi-active queue semantics
-  under cancel/unknown completion before worker adoption.
+  change follows.
+- [x] Event-backed resident lifetime is now physically accepted. `ResidentCudaInFlight`
+  owns one armed `ResidentSubmission` + same-service `OwnedCudaEvent`; known completion
+  waits the event then reuses the original readback/validator before Ready, cancellation
+  retires after the event without initializing writes, and unresolved drop keeps the
+  existing completion-unknown fence/quarantine path. A dedicated weak completion owner
+  is retained through unresolved quarantine (`quarantine_owner_delta=1`). Physical
+  marker: `P12_CUDA_RESIDENT_INFLIGHT_EVENT_PASS ... queue_width_unchanged=true`.
+  Next overlap slice is now strictly the physical queue: replace the single active ID
+  with a small bounded active set, but admit simultaneous work only when the existing
+  device-event ledger proves disjoint accesses; qualify independent roots, cancel and
+  unknown completion before worker adoption.
 
 ### Next continuation — no live campaign
 

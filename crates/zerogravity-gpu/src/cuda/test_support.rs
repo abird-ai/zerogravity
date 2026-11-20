@@ -95,6 +95,123 @@ fn owned_secondary_stream_events_are_disjoint_and_exact() -> Result<()> {
     Ok(())
 }
 
+#[test]
+#[ignore = "physical CUDA resident event-backed in-flight ownership lifecycle"]
+fn resident_cuda_in_flight_event_lifecycle_is_exact() -> Result<()> {
+    use cubecl_common::bytes::Bytes;
+    use zerogravity_core::device_events::{BufferRole, DeviceAccess};
+
+    const BYTES: usize = 8 * 1024 * 1024;
+    let diagnostic = CudaDiagnostic::new("resident-event-flight")?;
+    let service = diagnostic.service.clone();
+    let primary = service.pinned_cuda_queue()?.clone();
+    let (secondary_client, secondary) = unsafe {
+        primary
+            .fork_stream(service.client().clone())
+            .map_err(|error| Error::State(format!("resident secondary stream: {error}")))?
+    };
+    let slot = || -> Result<crate::physical_queue::ActiveSlot> {
+        let ticket = service.queue().submit(
+            service.budget(),
+            service.owner().clone(),
+            &[AllocationRequest {
+                kind: AllocationClass::Scratch,
+                bytes: 1,
+            }],
+            None,
+        )?;
+        cubecl::future::block_on(ticket.wait())
+    };
+
+    // Known completion: event first proves physical quiescence, then the
+    // existing readback/validator path alone may initialize outputs/Ready.
+    let output = service.allocate_uninitialized(BYTES, BufferRole::Output)?;
+    let mut queue = slot()?;
+    queue.begin_submission()?;
+    let mut flight = service.submit(0, &[(output.clone(), DeviceAccess::Write)])?;
+    let owner = Arc::new(());
+    let owner_weak = Arc::downgrade(&owner);
+    flight.retain_completion_owner(owner.clone())?;
+    drop(owner);
+    let expected = vec![0x31u8; BYTES];
+    secondary_client.write(&output.handle(), Bytes::from_bytes_vec(expected.clone()));
+    let mut in_flight = unsafe { flight.into_cuda_in_flight(&secondary)? };
+    assert!(owner_weak.upgrade().is_some());
+    let _ = in_flight.ready()?;
+    let readback = output.readback(0, BYTES)?;
+    let (ready, raw) = cubecl::future::block_on(in_flight.complete_with_readback(
+        &[output.clone()],
+        &[readback],
+        |raw| {
+            if raw.len() != 1 || raw[0].as_ref() != expected {
+                return Err(Error::State("resident event known readback differs".into()));
+            }
+            Ok(())
+        },
+    ))?;
+    queue.finish()?;
+    assert!(output.is_initialized());
+    drop((ready, raw));
+    assert!(owner_weak.upgrade().is_none());
+    service.ensure_usable()?;
+
+    // Cancelled completion: the logical event is cancelled before the CUDA
+    // completion witness retires it. Writes never become initialized/Ready.
+    let cancelled = service.allocate_uninitialized(BYTES, BufferRole::Output)?;
+    let mut queue = slot()?;
+    queue.begin_submission()?;
+    let mut flight = service.submit(0, &[(cancelled.clone(), DeviceAccess::Write)])?;
+    let cancel_owner = Arc::new(());
+    let cancel_weak = Arc::downgrade(&cancel_owner);
+    flight.retain_completion_owner(cancel_owner.clone())?;
+    drop(cancel_owner);
+    secondary_client.write(
+        &cancelled.handle(),
+        Bytes::from_bytes_vec(vec![0x72u8; BYTES]),
+    );
+    let mut in_flight = unsafe { flight.into_cuda_in_flight(&secondary)? };
+    in_flight.request_cancel()?;
+    assert!(cancel_weak.upgrade().is_some());
+    in_flight.retire_cancelled()?;
+    queue.finish()?;
+    assert!(!cancelled.is_initialized());
+    assert!(cancel_weak.upgrade().is_none());
+    service.ensure_usable()?;
+
+    // Unresolved drop: no query/wait result authorizes retirement. The original
+    // armed submission must fence/quarantine exact leases + completion owner.
+    let quarantined_before =
+        crate::physical_quarantine::quarantined_completion_owners_for(service.client())?;
+    let uncertain = service.allocate_uninitialized(BYTES, BufferRole::Output)?;
+    let mut queue = slot()?;
+    queue.begin_submission()?;
+    let mut flight = service.submit(0, &[(uncertain.clone(), DeviceAccess::Write)])?;
+    let unknown_owner = Arc::new(());
+    let unknown_weak = Arc::downgrade(&unknown_owner);
+    flight.retain_completion_owner(unknown_owner.clone())?;
+    drop(unknown_owner);
+    secondary_client.write(
+        &uncertain.handle(),
+        Bytes::from_bytes_vec(vec![0xc4u8; BYTES]),
+    );
+    let in_flight = unsafe { flight.into_cuda_in_flight(&secondary)? };
+    assert!(unknown_weak.upgrade().is_some());
+    drop(in_flight);
+    drop(queue);
+    assert!(!uncertain.is_initialized());
+    assert!(service.ensure_usable().is_err());
+    assert!(unknown_weak.upgrade().is_some());
+    let quarantined_after =
+        crate::physical_quarantine::quarantined_completion_owners_for(service.client())?;
+    assert!(quarantined_after > quarantined_before);
+
+    println!(
+        "P12_CUDA_RESIDENT_INFLIGHT_EVENT_PASS known_readback=exact known_initialized=true cancel_retired=true cancel_initialized=false unresolved_fenced=true unresolved_initialized=false completion_owner_retained=true quarantine_owner_delta={} queue_width_unchanged=true",
+        quarantined_after - quarantined_before
+    );
+    Ok(())
+}
+
 pub(crate) struct CudaDiagnostic {
     pub(crate) service: Arc<ResidentService>,
     pub(crate) compiler: Arc<(GlobalResourceLease, GlobalResourceLease)>,

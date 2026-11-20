@@ -676,9 +676,15 @@ or a change to the active correctness/benchmark/27B order.
   before either wait on disjoint8MiB buffers; secondary was still not Ready on first
   query and both readbacks were exact (`P12_CUDA_SECONDARY_STREAM_EVENT_PASS`). This
   is explicitly a prerequisite, not a throughput/TTFT/ITL or prefill/decode overlap
-  claim. Next bind event lifetime to resident leases/completion authority, then allow
-  bounded multi-active physical regions only with disjoint access and qualify
-  cancellation, unknown completion, independent roots and publication order.
+  claim. **Resident event/lease in-flight ownership is now accepted:** one armed
+  `ResidentSubmission` and one exact CUDA event stay coupled until explicit resolution.
+  Known completion still requires original readback/validation before Ready;
+  cancellation retires after event completion with writes uninitialized; unresolved
+  drop fences/quarantines and retains the attached completion owner. Physical marker:
+  `P12_CUDA_RESIDENT_INFLIGHT_EVENT_PASS ... queue_width_unchanged=true`. The next
+  safe change is bounded multi-active `PhysicalQueue` state, with simultaneous work
+  admitted only for event-ledger-disjoint accesses, followed by independent-root,
+  cancel/unknown and publication-order qualification. Worker policy remains unchanged.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

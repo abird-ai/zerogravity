@@ -421,9 +421,28 @@ and live TODOs are authoritative.
   disjoint_buffers=true events_recorded_before_wait=true primary_ready_before_wait=true
   secondary_ready_before_wait=false readback=exact`. This proves a live independent
   secondary stream/event substrate, **not** prefill/decode performance overlap and
-  not multiple resident regions in flight. Next gate is an event/lease-backed
-  resident in-flight owner plus a bounded >1 physical queue only for disjoint access,
-  with cancel/unknown-completion and independent-root tests before any worker adoption.
+  not multiple resident regions in flight. **The event/lease-backed resident in-flight
+  owner is now accepted too.** `ResidentCudaInFlight<'a>` owns the original armed
+  `ResidentSubmission<'a>` plus one same-service `OwnedCudaEvent`; it does not own the
+  physical queue slot and creates no Ready/publication authority. Conversion is an
+  explicit unsafe boundary: `into_cuda_in_flight(&OwnedCudaQueue)` records the event
+  itself on the supplied queue, and the caller must prove that exact logical stream
+  already received every command covered by the submission and that no later command
+  will be appended. Known completion
+  waits/queries the CUDA event, then still runs the existing trusted readback +
+  validator path before write initialization/Ready. Cancellation marks the existing
+  logical device event cancelled, waits the CUDA event, retires event pins + physical
+  guard without initializing writes and without constructing Ready. Dropping unresolved
+  ownership first drops the armed submission, preserving completion-unknown fencing,
+  exact lease quarantine and completion-owner retention; the CUDA event token is
+  destroyed only afterward. Physical L5 lifecycle proof is terminal-green:
+  `P12_CUDA_RESIDENT_INFLIGHT_EVENT_PASS known_readback=exact known_initialized=true
+  cancel_retired=true cancel_initialized=false unresolved_fenced=true
+  unresolved_initialized=false completion_owner_retained=true quarantine_owner_delta=1
+  queue_width_unchanged=true`. Queue width is deliberately unchanged. Next gate is a
+  bounded >1 `PhysicalQueue` active set whose simultaneous submissions are admitted
+  only when the existing device-event ledger proves disjoint accesses, followed by
+  independent-root known/cancel/unknown completion tests before any worker adoption.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -1385,9 +1404,14 @@ is already green; repeat it only if host/runtime state changes.
 > same-service primary+secondary CUDA logical streams with two one-shot actor-owned
 > events recorded before either wait, disjoint8MiB buffers exact, and the secondary
 > event observed still pending at first query (`P12_CUDA_SECONDARY_STREAM_EVENT_PASS`).
-> This is not yet a prefill/decode overlap claim. Continue with an event/lease-backed
-> resident in-flight owner and bounded multi-active physical queue for disjoint
-> accesses, then cancellation/unknown/root-order qualification before worker adoption.
+> This is not yet a prefill/decode overlap claim. The resident event/lease in-flight
+> owner is now terminal-green: event completion still requires the original readback/
+> validator before Ready, cancellation retires after the CUDA event without initializing
+> writes, and unresolved drop fences/quarantines while retaining the completion owner
+> (`P12_CUDA_RESIDENT_INFLIGHT_EVENT_PASS`). Queue width remains1. Continue by making
+> `PhysicalQueue` a small bounded active set whose concurrent submissions must pass
+> existing device-event-ledger disjoint-access checks; then qualify independent roots,
+> cancellation, unknown completion and publication order before worker adoption.
 >
 > Keep the implementation turn to roughly 30 minutes. Aim for the next coherent
 > checkpoint, update owning TODO/handoff state, sign the commit, sync X2 only if

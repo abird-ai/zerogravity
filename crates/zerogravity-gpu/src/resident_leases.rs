@@ -929,6 +929,51 @@ pub(crate) struct ResidentSubmission<'a> {
     completion_owners: Vec<crate::physical_quarantine::CompletionOwner>,
     workspace_runs: BTreeMap<usize, Arc<backing_pool::ResidentWorkspaceRun>>,
 }
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[allow(
+    dead_code,
+    reason = "staged for bounded multi-active physical queue adoption"
+)]
+#[must_use]
+pub(crate) struct ResidentCudaInFlight<'a> {
+    submission: Option<ResidentSubmission<'a>>,
+    event: cubecl::cuda::OwnedCudaEvent,
+    physical_ready: bool,
+}
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[allow(
+    dead_code,
+    reason = "staged for bounded multi-active physical queue adoption"
+)]
+impl<'a> ResidentSubmission<'a> {
+    /// Record the physical completion witness on the exact CUDA stream that
+    /// already received every command belonging to this submission.
+    ///
+    /// # Safety
+    ///
+    /// `queue` must be the same logical stream used for every previously
+    /// enqueued command covered by this armed submission. No command for this
+    /// submission may be enqueued after this call. Cross-stream ordering cannot
+    /// be inferred from same-service identity.
+    pub(crate) unsafe fn into_cuda_in_flight(
+        self,
+        queue: &cubecl::cuda::OwnedCudaQueue,
+    ) -> Result<ResidentCudaInFlight<'a>> {
+        if queue.service_id() != self.service.client().service_id() {
+            return Err(Error::State(
+                "resident CUDA queue belongs to another service".into(),
+            ));
+        }
+        let event = queue
+            .record_event()
+            .map_err(|error| Error::State(format!("resident CUDA event record: {error}")))?;
+        Ok(ResidentCudaInFlight {
+            submission: Some(self),
+            event,
+            physical_ready: false,
+        })
+    }
+}
 impl ResidentSubmission<'_> {
     /// Exact current-flight membership. Read accepts a retained Write; Write
     /// requires that same actual allocation's submitted Write authority.
@@ -1094,6 +1139,37 @@ impl ResidentSubmission<'_> {
         Ok(bytes)
     }
 
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[allow(dead_code, reason = "used by staged event-backed in-flight retirement")]
+    fn request_cancel(&mut self) -> Result<()> {
+        self.service.ensure_usable()?;
+        self.service
+            .ledger
+            .lock()
+            .map_err(|_| Error::State("resident cancellation ledger poisoned".into()))?
+            .request_cancel(self.event)
+    }
+
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[allow(dead_code, reason = "used by staged event-backed in-flight retirement")]
+    fn retire_cancelled_after_physical_ready(mut self) -> Result<()> {
+        self.service.ensure_usable()?;
+        {
+            let mut ledger = self
+                .service
+                .ledger
+                .lock()
+                .map_err(|_| Error::State("resident cancellation ledger poisoned".into()))?;
+            ledger.report_physical_ready(self.event)?;
+        }
+        self.work
+            .take()
+            .ok_or_else(|| Error::State("resident physical guard absent".into()))?
+            .complete()?;
+        self.armed = false;
+        Ok(())
+    }
+
     /// Exact finite source plan installed on THIS armed flight before enqueue.
     /// Serial source verification and the trusted validator precede originalReady.
     #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
@@ -1246,6 +1322,84 @@ impl ResidentSubmission<'_> {
         let bytes = self.readback_checked(cohort, validate).await?;
         drop(self.finish_ready(&[])?);
         Ok(bytes)
+    }
+}
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[allow(
+    dead_code,
+    reason = "staged for bounded multi-active physical queue adoption"
+)]
+impl<'a> ResidentCudaInFlight<'a> {
+    fn submission(&self) -> Result<&ResidentSubmission<'a>> {
+        self.submission
+            .as_ref()
+            .ok_or_else(|| Error::State("resident CUDA in-flight owner already resolved".into()))
+    }
+
+    fn submission_mut(&mut self) -> Result<&mut ResidentSubmission<'a>> {
+        self.submission
+            .as_mut()
+            .ok_or_else(|| Error::State("resident CUDA in-flight owner already resolved".into()))
+    }
+
+    pub(crate) fn ready(&mut self) -> Result<bool> {
+        self.submission()?.service.ensure_usable()?;
+        if self.physical_ready {
+            return Ok(true);
+        }
+        let ready = self
+            .event
+            .ready()
+            .map_err(|error| Error::State(format!("resident CUDA event query: {error}")))?;
+        self.physical_ready = ready;
+        Ok(ready)
+    }
+
+    pub(crate) fn wait(&mut self) -> Result<()> {
+        self.submission()?.service.ensure_usable()?;
+        if !self.physical_ready {
+            self.event
+                .wait()
+                .map_err(|error| Error::State(format!("resident CUDA event wait: {error}")))?;
+            self.physical_ready = true;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn request_cancel(&mut self) -> Result<()> {
+        self.submission_mut()?.request_cancel()
+    }
+
+    pub(crate) async fn complete_with_readback<F>(
+        mut self,
+        outputs: &[ResidentLease],
+        cohort: &[ResidentReadback],
+        validate: F,
+    ) -> Result<(ResidentReady, Vec<Bytes>)>
+    where
+        F: FnOnce(&[Bytes]) -> Result<()>,
+    {
+        self.wait()?;
+        self.submission
+            .take()
+            .ok_or_else(|| Error::State("resident CUDA in-flight submission absent".into()))?
+            .complete_with_readback(outputs, cohort, validate)
+            .await
+    }
+
+    pub(crate) fn retire_cancelled(mut self) -> Result<()> {
+        self.request_cancel()?;
+        self.wait()?;
+        self.submission
+            .take()
+            .ok_or_else(|| Error::State("resident CUDA in-flight submission absent".into()))?
+            .retire_cancelled_after_physical_ready()
+    }
+}
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+impl Drop for ResidentCudaInFlight<'_> {
+    fn drop(&mut self) {
+        drop(self.submission.take());
     }
 }
 impl Drop for ResidentSubmission<'_> {

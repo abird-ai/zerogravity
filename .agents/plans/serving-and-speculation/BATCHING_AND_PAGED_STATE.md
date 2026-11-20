@@ -821,14 +821,45 @@ not Ready, proving a genuinely live second stream/event at that observation poin
 disjoint_buffers=true events_recorded_before_wait=true primary_ready_before_wait=true
 secondary_ready_before_wait=false readback=exact`.
 
-This **does not** close physical prefill/decode overlap. The next ordered gate is a
-resident in-flight object that retains the original leases + completion owners and
-uses an `OwnedCudaEvent` as the physical completion witness without publishing early.
-Only after that object passes known completion, cancellation and unknown-completion
-quarantine should `PhysicalQueue` gain bounded multiple active slots, restricted by
-actual disjoint event-ledger accesses. Then independently rooted prefill/decode work
-can be physically qualified before any worker/scheduler adoption or performance
-claim.
+This **does not** close physical prefill/decode overlap.
+
+**19 Nov resident event/lease lifetime follow-up:** `ResidentCudaInFlight<'a>` now
+wraps the exact original armed `ResidentSubmission<'a>` plus one same-service
+`OwnedCudaEvent`. It deliberately does not own/release the `ActiveSlot`; queue width and
+worker behavior stay unchanged. `into_cuda_in_flight(&OwnedCudaQueue)` is unsafe and
+records the event itself on that queue; the caller must prove this is the exact stream
+that received all commands covered by the submission and that no later command is
+enqueued. Same-service identity alone is not accepted as cross-stream ordering proof. Event readiness is only a physical completion witness.
+For normal completion, the object waits/queries the CUDA event and then consumes the
+unchanged `ResidentSubmission::complete_with_readback`, so numerical/status validation
+still precedes `finish_ready`, logical event retirement, physical-work completion and
+write initialization. For cancellation, the existing device ledger is moved to
+`CancellationRequested`, the CUDA event is waited, then `report_physical_ready` retires
+the cancelled event and the physical guard completes; no submitted Write is marked
+initialized and no `ResidentReady` is created. If the object is dropped unresolved,
+its armed submission is dropped first, preserving the current completion-unknown
+ledger state, service/card fence, exact lease quarantine and completion-owner retention;
+only afterward is the CUDA event token destroyed.
+
+Physical L5 qualification runs known, cancelled, then unresolved-drop branches on the
+real pinned CUDA service/secondary stream and real physical queue slot. Known output is
+8MiB exact and becomes initialized only after readback/validation. Cancelled output
+retires cleanly but remains uninitialized. The final unresolved branch fences the
+service, leaves output uninitialized and increases quarantined completion owners by1:
+`P12_CUDA_RESIDENT_INFLIGHT_EVENT_PASS known_readback=exact known_initialized=true
+cancel_retired=true cancel_initialized=false unresolved_fenced=true
+unresolved_initialized=false completion_owner_retained=true quarantine_owner_delta=1
+queue_width_unchanged=true`.
+
+The next ordered gate is now the physical queue itself: replace single
+`active: Option<u64>` with a small bounded active set while preserving fair queue
+selection. A second slot may become active only if actual resident/device-event access
+admission proves it disjoint from every active region; immutable shared Reads may be
+allowed only under the existing ledger rules. Active-slot drop after submission must
+fence only through the existing physical unknown-completion authority, and each slot
+retires independently. Qualify two independent roots, out-of-order known completion,
+one cancelled peer and one unresolved peer before exposing any worker/scheduler
+multi-flight policy or performance claim.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 
