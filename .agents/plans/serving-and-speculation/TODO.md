@@ -725,9 +725,15 @@ or a change to the active correctness/benchmark/27B order.
   tok/s contiguous versus205.724ms/116.661 paged, improving paged from the retained
  242.488ms/98.974 without moving contiguous materially; first-token commits are
  133.988/133.531ms. Physical zero work is now counted as dispatches, including Hybrid
-  scatter accounting. Fresh vLLM is still blocked by the unregistered pinned image, so
-  next prioritize per-page gather/copy amplification (or a clean direct-paged consumer)
-  rather than more refill/debug evidence.
+  scatter accounting. The next shared transport slice now collapses per-page KV
+  gather copies with a fixed15-page-pair/2-destination pinned ABI under the existing
+ 32-pointer ceiling; larger prefixes chunk through the same runtime-scalar kernel. The
+ 48-token/page4 workload therefore gathers12 key/value pages together instead of issuing
+ 24 page-copy launches per KV domain. The same matched cell passes exact/native B8 at
+ 176.800ms/135.746 tok/s contiguous and182.505ms/131.504 paged, leaving only ~3.2%
+  matched wall-time overhead. Fresh vLLM is still blocked by the unregistered pinned
+  image, so next prefer a runnable fresh baseline; otherwise profile the small residual
+  gap before adding direct paged attention or overlap complexity.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

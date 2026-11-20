@@ -920,8 +920,17 @@ tok/s contiguous and205.724ms/116.661 paged, versus retained183.932/130.483 and
 contiguous/133.531ms paged in the new run. This preserves gather-to-contiguous as the
 correctness bridge but makes the remaining cost clearer: profile the per-page gather-copy
 dispatch/copy amplification and move to direct paged consumption only when the ownership/
-root design stays simple. A fresh matched vLLM run remains preferred if its pinned
-environment becomes runnable. Do not add another refill evidence layer.
+root design stays simple. The next slice now removes that short-context per-page
+launch amplification without moving attention itself: `RuntimePagedPairGather` fits15
+key/value page pairs plus two destination planes exactly inside the existing32-pointer
+pinned-kernel limit, with runtime page count/active words/destination offset and bounded
+chunking for longer prefixes. At page4/prompt48,12 pages per plane become one paired copy
+launch per KV domain instead of24 individual copies. The matched SDK cell remains exact
+and improves to176.800ms/135.746 tok/s contiguous versus182.505ms/131.504 paged, only
+~3.2% matched wall-time overhead. A fresh matched vLLM run remains preferred if its
+pinned environment becomes runnable; otherwise profile this residual gap before paying
+the complexity cost of direct paged attention or physical overlap. Do not add another
+refill evidence layer.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 

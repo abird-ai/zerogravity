@@ -9,7 +9,10 @@ use super::*;
 use crate::resident_leases::backing_pool::{ResidentPagePool, ResidentPagePoolSnapshot};
 #[cfg(all(feature = "cuda-native", target_os = "linux"))]
 use crate::{
-    cuda::word_transport::{MAX_RUNTIME_WORD_TRANSPORT_WORDS, RuntimeWordTransport},
+    cuda::word_transport::{
+        MAX_PAGED_PAIR_GATHER_PAGES, MAX_RUNTIME_WORD_TRANSPORT_WORDS, RuntimePagedPairGather,
+        RuntimeWordTransport,
+    },
     resident_leases::ResidentSubmission,
 };
 use std::collections::BTreeMap;
@@ -811,44 +814,76 @@ impl ResidentPagedKvDomain {
                 .checked_add(enqueue_zero_cuda(service, staging)?)
                 .ok_or_else(|| Error::Limit("paged KV gather zero dispatches".into()))?;
         }
-        for (table, staging) in [(&self.keys, key_staging), (&self.values, value_staging)] {
-            let mut offset = 0usize;
-            for index in 0..table.page_count() {
-                let (page, valid) = table
+        if self.keys.page_count() != self.values.page_count() {
+            return Err(Error::State(
+                "paged KV gather key/value page coverage differs".into(),
+            ));
+        }
+        let page_bytes = self.keys.geometry().page_bytes();
+        let max_pages = RuntimePagedPairGather::max_pages(page_bytes)?;
+        debug_assert!(max_pages <= MAX_PAGED_PAIR_GATHER_PAGES);
+        let mut offset = 0usize;
+        let mut first = 0usize;
+        while first < self.keys.page_count() {
+            let pages = (self.keys.page_count() - first).min(max_pages);
+            let mut key_pages = Vec::with_capacity(pages);
+            let mut value_pages = Vec::with_capacity(pages);
+            let mut active_bytes = 0usize;
+            for index in first..first + pages {
+                let (key, key_valid) = self
+                    .keys
                     .page(index)
-                    .ok_or_else(|| Error::State("paged KV gather page absent".into()))?;
-                if !valid.is_multiple_of(4) {
-                    return Err(Error::Unsupported(
-                        "CUDA paged KV gather requires word-aligned page extent".into(),
+                    .ok_or_else(|| Error::State("paged KV gather key page absent".into()))?;
+                let (value, value_valid) = self
+                    .values
+                    .page(index)
+                    .ok_or_else(|| Error::State("paged KV gather value page absent".into()))?;
+                if key_valid != value_valid
+                    || !key_valid.is_multiple_of(4)
+                    || (index + 1 != self.keys.page_count() && key_valid != page_bytes)
+                {
+                    return Err(Error::State(
+                        "paged KV gather paired page extent differs".into(),
                     ));
                 }
-                let words = valid / 4;
-                let transport = RuntimeWordTransport::copy(valid, valid, 1, words, words, words)?;
-                transport
-                    .kernel
-                    .prepare(
-                        service.client(),
-                        transport.grid,
-                        vec![
-                            prefix_handle(page, valid)?,
-                            range_handle(staging, offset, valid)?,
-                        ],
-                    )?
-                    .launch()?;
-                dispatches += 1;
-                offset = offset
-                    .checked_add(valid)
-                    .ok_or_else(|| Error::Limit("paged KV gather cursor overflow".into()))?;
+                active_bytes = active_bytes
+                    .checked_add(key_valid)
+                    .ok_or_else(|| Error::Limit("paged KV gather active bytes".into()))?;
+                key_pages.push(key.handle());
+                value_pages.push(value.handle());
             }
-            if offset
-                != tokens
-                    .checked_mul(self.row_bytes)
-                    .ok_or_else(|| Error::Limit("paged KV gather frontier overflow".into()))?
-            {
-                return Err(Error::State(
-                    "paged KV gather copied a different logical frontier".into(),
-                ));
-            }
+            let gather = RuntimePagedPairGather::new(
+                page_bytes,
+                key_staging.bytes(),
+                pages,
+                active_bytes,
+                offset,
+            )?;
+            gather
+                .prepare(
+                    service.client(),
+                    &key_pages,
+                    &value_pages,
+                    key_staging.handle(),
+                    value_staging.handle(),
+                )?
+                .launch()?;
+            dispatches = dispatches
+                .checked_add(1)
+                .ok_or_else(|| Error::Limit("paged KV gather dispatches".into()))?;
+            offset = offset
+                .checked_add(active_bytes)
+                .ok_or_else(|| Error::Limit("paged KV gather cursor overflow".into()))?;
+            first += pages;
+        }
+        if offset
+            != tokens
+                .checked_mul(self.row_bytes)
+                .ok_or_else(|| Error::Limit("paged KV gather frontier overflow".into()))?
+        {
+            return Err(Error::State(
+                "paged KV gather copied a different logical frontier".into(),
+            ));
         }
         Ok(dispatches)
     }
@@ -2138,7 +2173,7 @@ mod tests {
                 Bytes::from_bytes_vec(value4.clone()),
             );
             let scatter = append.enqueue_cuda_from_staging(&flight, &candidate_staging, 3)?;
-            if gather_dispatches != 4
+            if gather_dispatches != 3
                 || scatter.copy_dispatches != 2
                 || scatter.append_transfers != 2
                 || scatter.append_bytes != 2 * row_bytes

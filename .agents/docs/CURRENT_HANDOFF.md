@@ -550,12 +550,23 @@ and live TODOs are authoritative.
   SIGKILLed after compilation and test entry with no Rust/CUDA diagnostic. Both left no
   process/GPU residue and remain incomplete infrastructure evidence. The terminal-green
   measurement above predates only the dispatch-count accounting correction, not the
-  compute/zero path. The current connector still has no vLLM executable/
-  module and Podman still reports the pinned image `image not known`; do not claim a fresh
-  vLLM comparison. Next meaningful serving work is per-page gather/copy amplification or a
-  clean direct-paged consumer if simple, with a fresh matched vLLM run preferred if its
-  environment becomes runnable. Do not add refill fixtures or return to debug-profile
-  decode micro-tuning.
+  compute/zero path. **The next paged transport slice is now physically accepted.**
+  A source-neutral `RuntimePagedPairGather` uses the existing32-pointer pinned-kernel
+  ceiling as15 key/value page pairs plus two destination planes. Page count, active words
+  and destination offset are runtime scalars; longer prefixes chunk through the same ABI,
+  so no page-count-specific kernel family or pointer-table allocation is introduced.
+  Existing page/root/COW/access/completion authority is unchanged. With page_tokens4 the
+ 48-token workload has12 pages per plane and replaces24 page-copy launches per KV domain
+  with one paired gather launch. The same matched8x48+3 SDK cell is terminal-green,
+  exact/native B8: contiguous176.800ms/135.746 output tok/s and paged182.505ms/131.504,
+  with mean commit clocks[129.424,153.479,176.519]ms versus
+  [129.212,155.426,181.469]ms. Paged matched wall-time overhead is now ~3.2%, versus
+  ~11.6% after device-zeroing and ~31.8% at the retained pre-paged-optimization baseline.
+  The current connector still has no vLLM executable/module and Podman still reports the
+  pinned image `image not known`; do not claim a fresh vLLM comparison. Next prefer a
+  fresh matched vLLM run if runnable; otherwise profile the small residual paged gap
+  before adding direct page-table attention or physical-overlap complexity. Do not add
+  refill fixtures or return to debug-profile decode micro-tuning.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -575,13 +586,13 @@ and live TODOs are authoritative.
   nonpersistent NVRTC) and `81b7c71` (explicit graph-resource lifetime witness).
   Their docs checkpoints through `b12e8f5` are pushed.
 - Pushed/tracked `origin/main` is `f0f06402c78d4511dea1559c73d4295f88790f93`
-  (`feat(cuda): batch multi-token prefill attention`). Latest implementation/source
-  checkpoint at this handoff is `3afb9902f674d9cfe2fc4488e628b61b61cae395`,
-  three implementation commits ahead: `1222f8a` (multi-token GDN prefill), `60ba956`
-  (matched serving-performance profile docs) and `3afb990` (reduced-band GDN layout
-  retention / continuous refill fix). The handoff-consolidation commit may sit above
-  this as docs-only; revalidate actual HEAD first. Nothing after `f0f0640` is pushed
-  unless explicitly requested. Never use push merely for X2 transport.
+  (`feat(cuda): batch multi-token prefill attention`). The post-origin local lineage
+  includes `1222f8a` (multi-token GDN prefill), `60ba956` (matched performance
+  profile), `3afb990` (reduced-band GDN layouts/refill), docs-only `7beb1be`,
+  `0dac5ab` (device-side paged zeroing), and the current paired-page gather slice
+  described above. Revalidate actual HEAD for the newest signed source checkpoint.
+  Nothing after `f0f0640` is pushed unless explicitly requested. Never use push merely
+  for X2 transport.
 - Before any new physical X2 run, sync it to the exact current l5 `main`
   bytes/commit without using a push merely as transport, then revalidate
   status/process/GPU state.

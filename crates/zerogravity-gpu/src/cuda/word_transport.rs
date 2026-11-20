@@ -17,8 +17,10 @@ use zerogravity_core::{Error, Result};
 
 const THREADS: u32 = 128;
 pub(crate) const MAX_RUNTIME_WORD_TRANSPORT_WORDS: usize = 2 * 1024 * 1024;
+pub(crate) const MAX_PAGED_PAIR_GATHER_PAGES: usize = 15;
 const COPY_ENTRY: &str = "zg_copy_strided_words_runtime_v1";
 const ZERO_ENTRY: &str = "zg_zero_strided_words_runtime_v1";
+const PAGED_PAIR_GATHER_ENTRY: &str = "zg_gather_paged_pair_words_runtime_v1";
 const SOURCE: &str = r#"// cubecl.cuda.dynamic_shared_bytes=0
 #if __CUDA_ARCH__ != 860
 #error Closed SM86 runtime word transport
@@ -63,11 +65,220 @@ extern "C" __global__ __launch_bounds__(128) void zg_zero_strided_words_runtime_
 }
 "#;
 
+const PAGED_PAIR_GATHER_SOURCE: &str = r#"// cubecl.cuda.dynamic_shared_bytes=0
+#if __CUDA_ARCH__ != 860
+#error Closed SM86 runtime paged pair gather
+#endif
+struct alignas(8) ZgPagedPairGatherScalars {
+    unsigned long long words[4];
+};
+static_assert(sizeof(ZgPagedPairGatherScalars) == 32, "ZgPagedPairGatherScalars ABI");
+static_assert(alignof(ZgPagedPairGatherScalars) == 8, "ZgPagedPairGatherScalars alignment");
+extern "C" __global__ __launch_bounds__(128) void zg_gather_paged_pair_words_runtime_v1(
+    const unsigned int* key0, const unsigned int* key1, const unsigned int* key2,
+    const unsigned int* key3, const unsigned int* key4, const unsigned int* key5,
+    const unsigned int* key6, const unsigned int* key7, const unsigned int* key8,
+    const unsigned int* key9, const unsigned int* key10, const unsigned int* key11,
+    const unsigned int* key12, const unsigned int* key13, const unsigned int* key14,
+    const unsigned int* value0, const unsigned int* value1, const unsigned int* value2,
+    const unsigned int* value3, const unsigned int* value4, const unsigned int* value5,
+    const unsigned int* value6, const unsigned int* value7, const unsigned int* value8,
+    const unsigned int* value9, const unsigned int* value10, const unsigned int* value11,
+    const unsigned int* value12, const unsigned int* value13, const unsigned int* value14,
+    unsigned int* key_destination, unsigned int* value_destination,
+    ZgPagedPairGatherScalars scalars) {
+    const unsigned int page_words = (unsigned int)scalars.words[0];
+    const unsigned int active_words = (unsigned int)scalars.words[1];
+    const unsigned int destination_offset = (unsigned int)scalars.words[2];
+    const unsigned int pages = (unsigned int)scalars.words[3];
+    const unsigned long long index =
+        (unsigned long long)blockIdx.x * blockDim.x + threadIdx.x;
+    const unsigned long long total = (unsigned long long)active_words * 2ull;
+    if (page_words == 0u || pages == 0u || pages > 15u || index >= total) {
+        return;
+    }
+    const unsigned int plane = (unsigned int)(index / active_words);
+    const unsigned int local =
+        (unsigned int)(index - (unsigned long long)plane * active_words);
+    const unsigned int page = local / page_words;
+    const unsigned int column = local - page * page_words;
+    if (page >= pages) {
+        return;
+    }
+    const unsigned int* source = nullptr;
+#define ZG_PAGE_CASE(i) case i: source = plane == 0u ? key##i : value##i; break
+    switch (page) {
+        ZG_PAGE_CASE(0); ZG_PAGE_CASE(1); ZG_PAGE_CASE(2); ZG_PAGE_CASE(3);
+        ZG_PAGE_CASE(4); ZG_PAGE_CASE(5); ZG_PAGE_CASE(6); ZG_PAGE_CASE(7);
+        ZG_PAGE_CASE(8); ZG_PAGE_CASE(9); ZG_PAGE_CASE(10); ZG_PAGE_CASE(11);
+        ZG_PAGE_CASE(12); ZG_PAGE_CASE(13); ZG_PAGE_CASE(14);
+        default: return;
+    }
+#undef ZG_PAGE_CASE
+    unsigned int* destination = plane == 0u ? key_destination : value_destination;
+    destination[destination_offset + local] = source[column];
+}
+"#;
+
 pub(crate) struct RuntimeWordTransport {
     pub(crate) entry: &'static str,
     pub(crate) source: &'static str,
     pub(crate) grid: [u32; 3],
     pub(crate) kernel: PinnedKernel,
+}
+
+pub(crate) struct RuntimePagedPairGather {
+    pub(crate) grid: [u32; 3],
+    pub(crate) kernel: PinnedKernel,
+    pages: usize,
+}
+
+impl RuntimePagedPairGather {
+    pub(crate) fn max_pages(page_bytes: usize) -> Result<usize> {
+        if page_bytes == 0 || !page_bytes.is_multiple_of(4) {
+            return Err(Error::State(
+                "runtime paged pair gather page extent differs".into(),
+            ));
+        }
+        let max_pair_bytes = MAX_RUNTIME_WORD_TRANSPORT_WORDS
+            .checked_mul(4)
+            .ok_or_else(|| Error::Limit("runtime paged pair gather byte bound".into()))?;
+        let max_plane_bytes = max_pair_bytes / 2;
+        let pages = (max_plane_bytes / page_bytes).min(MAX_PAGED_PAIR_GATHER_PAGES);
+        if pages == 0 {
+            return Err(Error::Limit(
+                "runtime paged pair gather page exceeds transport bound".into(),
+            ));
+        }
+        Ok(pages)
+    }
+
+    pub(crate) fn new(
+        page_bytes: usize,
+        destination_bytes: usize,
+        pages: usize,
+        active_bytes: usize,
+        destination_offset_bytes: usize,
+    ) -> Result<Self> {
+        if pages == 0 || pages > Self::max_pages(page_bytes)? {
+            return Err(Error::State(
+                "runtime paged pair gather page count differs".into(),
+            ));
+        }
+        let page_span = pages
+            .checked_mul(page_bytes)
+            .ok_or_else(|| Error::Limit("runtime paged pair gather page span".into()))?;
+        let prior_span = (pages - 1)
+            .checked_mul(page_bytes)
+            .ok_or_else(|| Error::Limit("runtime paged pair gather prior span".into()))?;
+        if page_bytes == 0
+            || destination_bytes == 0
+            || active_bytes == 0
+            || !page_bytes.is_multiple_of(4)
+            || !destination_bytes.is_multiple_of(4)
+            || !active_bytes.is_multiple_of(4)
+            || !destination_offset_bytes.is_multiple_of(4)
+            || active_bytes > page_span
+            || active_bytes <= prior_span
+            || destination_offset_bytes
+                .checked_add(active_bytes)
+                .is_none_or(|end| end > destination_bytes)
+        {
+            return Err(Error::State(
+                "runtime paged pair gather geometry differs".into(),
+            ));
+        }
+        let page_words = page_bytes / 4;
+        let active_words = active_bytes / 4;
+        let destination_offset_words = destination_offset_bytes / 4;
+        let total_words = active_words
+            .checked_mul(2)
+            .filter(|words| *words <= MAX_RUNTIME_WORD_TRANSPORT_WORDS)
+            .ok_or_else(|| Error::Limit("runtime paged pair gather words".into()))?;
+        let schema = StaticScalarSchema::new(
+            &[
+                (StaticScalarType::U32, 0),
+                (StaticScalarType::U32, 8),
+                (StaticScalarType::U32, 16),
+                (StaticScalarType::U32, 24),
+            ],
+            32,
+            8,
+        )?;
+        let scalars = StaticScalarBlock::new(
+            schema,
+            &[
+                StaticScalarValue::U32(as_u32(page_words, "paged page words")?),
+                StaticScalarValue::U32(as_u32(active_words, "paged active words")?),
+                StaticScalarValue::U32(as_u32(
+                    destination_offset_words,
+                    "paged destination offset",
+                )?),
+                StaticScalarValue::U32(as_u32(pages, "paged source pages")?),
+            ],
+        )?;
+        let mut bindings = Vec::with_capacity(32);
+        bindings.extend(std::iter::repeat_n(
+            (page_bytes, BufferIOAttr::ReadOnly),
+            2 * MAX_PAGED_PAIR_GATHER_PAGES,
+        ));
+        bindings.extend([
+            (destination_bytes, BufferIOAttr::WriteOnly),
+            (destination_bytes, BufferIOAttr::WriteOnly),
+        ]);
+        Ok(Self {
+            grid: [
+                u32::try_from(total_words)
+                    .map_err(|_| Error::Limit("runtime paged pair gather launch words".into()))?
+                    .div_ceil(THREADS),
+                1,
+                1,
+            ],
+            kernel: PinnedKernel::new_with_static_scalars(
+                PAGED_PAIR_GATHER_ENTRY,
+                Arc::from(PAGED_PAIR_GATHER_SOURCE),
+                THREADS,
+                bindings.into(),
+                scalars,
+            )?,
+            pages,
+        })
+    }
+
+    pub(crate) fn prepare(
+        &self,
+        client: &cubecl::client::Client,
+        keys: &[cubecl::server::Handle],
+        values: &[cubecl::server::Handle],
+        key_destination: cubecl::server::Handle,
+        value_destination: cubecl::server::Handle,
+    ) -> Result<crate::cuda::kernel::PreparedPinnedLaunch> {
+        if keys.len() != self.pages || values.len() != self.pages {
+            return Err(Error::State(
+                "runtime paged pair gather source coverage differs".into(),
+            ));
+        }
+        let key_fill = keys
+            .last()
+            .ok_or_else(|| Error::State("runtime paged pair gather keys absent".into()))?;
+        let value_fill = values
+            .last()
+            .ok_or_else(|| Error::State("runtime paged pair gather values absent".into()))?;
+        let mut handles = Vec::with_capacity(32);
+        handles.extend(keys.iter().cloned());
+        handles.extend(std::iter::repeat_n(
+            key_fill.clone(),
+            MAX_PAGED_PAIR_GATHER_PAGES - keys.len(),
+        ));
+        handles.extend(values.iter().cloned());
+        handles.extend(std::iter::repeat_n(
+            value_fill.clone(),
+            MAX_PAGED_PAIR_GATHER_PAGES - values.len(),
+        ));
+        handles.push(key_destination);
+        handles.push(value_destination);
+        self.kernel.prepare(client, self.grid, handles)
+    }
 }
 
 impl RuntimeWordTransport {

@@ -15,11 +15,14 @@ and136.488 paged over68 generated tokens; the temporary probe was removed. The n
 local source checkpoint removes full-capacity host-zero allocations/H2D from paged KV
 gather and fresh-page materialization by reusing the bounded pinned device-side word-zero
 transport. On the same matched8x48+3 cell, contiguous is184.409ms/130.145 output tok/s
-and paged205.724ms/116.661 tok/s with exact native-B8 tokens; the retained pre-change
-paged result was242.488ms/98.974 tok/s. A fresh vLLM comparison is still preferred if
-the pinned environment becomes runnable; otherwise profile/reduce remaining per-page
-gather/copy amplification rather than adding refill fixtures. Public graph serving
-remains Native. The older status narrative below is historical context unless
+and paged205.724ms/116.661 tok/s with exact native-B8 tokens. The next shared paired-page
+gather then reduces the same matched cell to176.800ms/135.746 tok/s contiguous versus
+182.505ms/131.504 paged by collapsing12 key/value pages into one launch per KV domain;
+larger prefixes chunk through the same bounded ABI. Paged matched wall-time overhead is
+now ~3.2%, versus ~31.8% at the retained242.488ms/98.974 pre-optimization baseline. A
+fresh vLLM comparison is still preferred if the pinned environment becomes runnable;
+otherwise profile the small residual gap before adding direct paged-attention/overlap
+complexity. Public graph serving remains Native. The older status narrative below is historical context unless
 corroborated by current source/live plan sections.
 
 Historical implementation checkpoint recorded below is signed `9d6613c`
@@ -460,7 +463,7 @@ activating held routes.
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)
 - [~] P1 pipeline-composition — @pvl — recursive primitives/pipelines/profiles; shared execution adapters active, reuse current adapters in Fabric; Qwen expansion deferred — [details](pipeline-composition/TODO.md)
 - [~] P1 cli-device-routing — @pvl — unified run/config/source/device selection; preserve behavior through Fabric SDK/CLI migration — [details](cli-device-routing/TODO.md)
-- [~] P2 model-execution — @pvl — current Qwen ordinary CUDA owns source-real B2/B4/B8 contiguous+paged transport, complete-domain prefix reuse, event-backed/multi-flight primitives, retained stateless + multi-token attention/GDN prefill, and exact reduced-band B4/B8 GDN layout selection under refill. Matched opt1 short-wave is130.483 tok/s contiguous/98.974 paged; refill probe goodput is178.769/136.488. Public graph serving deliberately remains Native. Large same-contract CUDA numerical acceptance still depends on approved references; populated small HIP and resident27B work remain separate. X2 is shared: preserve other owners and verify only ZeroGravity's incremental resource delta retires — [details](model-execution/TODO.md)
+- [~] P2 model-execution — @pvl — current Qwen ordinary CUDA owns source-real B2/B4/B8 contiguous+paged transport, complete-domain prefix reuse, event-backed/multi-flight primitives, retained stateless + multi-token attention/GDN prefill, reduced-band B4/B8 GDN layout selection and bounded paired-page KV gather. Latest matched opt1 short-wave is135.746 tok/s contiguous/131.504 paged (~3.2% wall-time gap); refill probe goodput remains178.769/136.488. Public graph serving deliberately remains Native. Large same-contract CUDA numerical acceptance still depends on approved references; populated small HIP and resident27B work remain separate. X2 is shared: preserve other owners and verify only ZeroGravity's incremental resource delta retires — [details](model-execution/TODO.md)
 - [~] P2 model-acquisition — @pvl — [details](model-acquisition/TODO.md)
 
 ## Icebox

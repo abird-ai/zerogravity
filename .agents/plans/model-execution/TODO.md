@@ -301,9 +301,24 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   residue and remain incomplete infrastructure evidence; the terminal-green measurement
   above predates only the dispatch-count accounting correction, not the compute/zero path.
   Fresh current vLLM remains unavailable (no executable/module; pinned Podman image still
-  `image not known`), so no new vLLM claim is made. Next profile/merge the remaining
-  per-page gather-copy amplification or adopt direct paged consumption when it stays
-  simple; do not add more refill fixtures or optimize debug-profile timing.
+  `image not known`), so no new vLLM claim is made.
+- [x] The next paged-gap slice removes the dominant per-page gather launch amplification
+  with one reusable source-neutral CUDA primitive. `RuntimePagedPairGather` uses the
+  existing 32-pointer pinned-kernel ceiling as15 key/value page pairs plus two full
+  destination planes; page count, active words and destination offset are runtime
+  scalars, and longer prefixes chunk through the same ABI rather than compiling
+  shape-specific kernels. Unused fixed ABI page parameters alias an already retained
+  source page but are unreachable under the checked page-count scalar. Page-table/root/
+  COW/access authority remains in the existing owner. With page_tokens4, the48-token
+  workload has12 pages/plane and therefore replaces24 copy launches per KV domain with
+  one paired gather launch; device-zero staging remains unchanged.
+  The same matched opt1/codegen64/non-LTO8x48+3 SDK cell is terminal-green with exact
+  native B8: contiguous176.800ms/135.746 output tok/s and paged182.505ms/131.504,
+  commits[129.424,153.479,176.519]ms vs[129.212,155.426,181.469]ms. Paged is now only
+  ~3.2% slower in matched wall time versus ~11.6% after device-zeroing and ~31.8% at the
+  retained pre-optimization baseline. No new fixture was added. Next prefer fresh matched
+  vLLM if runnable; otherwise profile the small residual gap before considering direct
+  page-table attention or more complex overlap.
 
 ### Next continuation — no live campaign
 
