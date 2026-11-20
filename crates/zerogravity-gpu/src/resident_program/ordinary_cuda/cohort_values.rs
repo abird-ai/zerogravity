@@ -410,6 +410,44 @@ impl OrdinaryCudaCohortValues {
         )
     }
 
+    /// One contiguous group of packed lanes. This is pure physical row
+    /// geometry; callers retain all session/root/model semantics.
+    pub(crate) fn lane_group_row_handle(
+        &self,
+        value: ValueId,
+        elements_per_row: usize,
+        spans: &CohortRowSpans,
+        first_lane: usize,
+        lanes: usize,
+    ) -> Result<cubecl::server::Handle> {
+        if elements_per_row == 0
+            || lanes == 0
+            || first_lane
+                .checked_add(lanes)
+                .is_none_or(|end| end > spans.len() || end > self.width)
+        {
+            return Err(Error::State(
+                "ordinary CUDA cohort lane-group geometry".into(),
+            ));
+        }
+        let first = spans.row_span(first_lane)?.start;
+        let last = spans.row_span(first_lane + lanes - 1)?.end;
+        let offset = first
+            .checked_mul(elements_per_row)
+            .and_then(|elements| elements.checked_mul(2))
+            .ok_or_else(|| Error::Limit("ordinary CUDA lane-group offset".into()))?;
+        let bytes = (last - first)
+            .checked_mul(elements_per_row)
+            .and_then(|elements| elements.checked_mul(2))
+            .ok_or_else(|| Error::Limit("ordinary CUDA lane-group bytes".into()))?;
+        super::exact_view(
+            self.lease(value)?,
+            offset,
+            bytes,
+            "cohort packed lane-group BF16 rows",
+        )
+    }
+
     /// Capacity-sized view beginning at one packed lane. Bounded-row kernels
     /// may see overlapping *capacity* views, but execute sequentially and are
     /// required to touch only their active prefix. This stabilizes physical

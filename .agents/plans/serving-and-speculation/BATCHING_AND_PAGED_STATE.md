@@ -889,11 +889,12 @@ lowering and single-token B4/B8 attention, while prefill has no general multi-to
 counterpart. The shared stateless-prefill lowering for QK-RMS/gate/multiply/SiLU is
 retained because it composes cleanly and improved the exact warm48+3 B8 wave by ~3-4%
 on the latest run; the old native cohort remains fixed B4/47x4 rather than a generic
-primitive. Therefore the next ordered implementation is shared multi-token stateful
-prefill batching—attention first, then GDN—inside ordinary CUDA source execution.
-Preserve independent roots/event-ledger ownership and remeasure the existing warm48+3
-B8 SDK wave after each real kernel/lowering improvement; do not add another evidence
-framework.
+primitive. Multi-token attention is now retained as a shared B4 primitive: equal-row
+private sequences share one physical launch, B8 composes two B4 groups, and ragged/
+incompatible cases fall back. The exact warm48+3 serving wave did not materially move,
+so the next ordered implementation is multi-token **GDN prefill** inside ordinary CUDA
+source execution. Preserve independent roots/event-ledger ownership and remeasure the
+same warm48+3 B8 SDK wave; do not add another evidence framework.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 

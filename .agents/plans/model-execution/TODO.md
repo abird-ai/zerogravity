@@ -248,9 +248,15 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   the retained no-extension baseline:4888.231→4696.591ms contiguous (~3.9%) and
  5080.588→4907.715ms paged (~3.4%). Old `native_cohort`
   initial execution is fixed B4/47x4 and qualification-gated, so do not route production
-  through it as a shortcut. Next implement shared multi-token stateful prefill kernels/
-  lowering—attention then GDN—in the generic ordinary-CUDA layer and remeasure the same
-  warm48+3 B8 SDK wave.
+  through it as a shortcut.
+- [x] Shared multi-token prefill attention is now retained. The existing B4 CUDA
+  attention primitive gained an equal-row `new_ragged_rows` ABI with private K/V per
+  lane; rows=1 remains the decode wrapper. Ordinary B4/B8 prefill selects it only for
+  equal-row groups of four (B8=two B4 launches), with the existing lane path as fallback.
+  Real warm48+3 B8 stayed exact but did not materially improve TTFT versus the retained
+  stateless baseline:4696.591→4701.433ms contiguous and4907.715→5022.809ms paged.
+  Therefore attention is not the dominant remaining prefill cost. Next implement shared
+  multi-token GDN prefill lowering and remeasure the same wave.
 
 ### Next continuation — no live campaign
 

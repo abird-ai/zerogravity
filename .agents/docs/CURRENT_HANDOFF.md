@@ -488,9 +488,14 @@ and live TODOs are authoritative.
   and compounds with later work. The old fast `native_cohort` path is also not a reusable general answer:
   its cold envelope is explicitly B4 and initial phase is fixed around47x4=188 rows;
   the serving loader remains qualification-gated. Next implementation target is shared,
-  model-neutral **multi-token stateful prefill batching** (attention first, then GDN),
-  integrated into ordinary CUDA source execution; do not add more overlap fixtures or
-  routing special-cases before that real path exists.
+  model-neutral **multi-token stateful prefill batching**. Multi-token attention is now
+  retained: `Bf16CausalAttentionBatch4::new_ragged_rows` generalizes the existing B4
+  kernel to equal multi-row private sequences, and ordinary B8 prefill composes two B4
+  groups while incompatible/ragged cases keep the old per-lane fallback. The real
+  warm48+3 B8 run stayed exact but TTFT was effectively flat versus the retained
+  stateless baseline (contiguous4696.591→4701.433ms; paged4907.715→5022.809ms), so
+  attention is not the dominant remaining cost. Next target is shared multi-token GDN
+  prefill; do not add more attention/overlap fixtures before that real path moves.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of

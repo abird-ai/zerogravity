@@ -701,9 +701,11 @@ or a change to the active correctness/benchmark/27B order.
   improved4888.231→4696.591ms contiguous (~3.9%) and5080.588→4907.715ms paged (~3.4%)
   versus the retained no-extension baseline. The historical captured engine
   is fixed B4/47 and qualification-only, so it is not a clean serving fallback. Next
-  build reusable multi-token stateful prefill attention/GDN primitives in the shared
-  CUDA layer and wire them into ordinary source execution. Avoid more synthetic overlap
-  evidence until that real serving path moves.
+  multi-token attention is now a reusable shared primitive and is wired into equal-row
+  B4/B8 prefill groups; the warm48+3 wave stayed exact but TTFT was effectively flat
+  (4696.591→4701.433ms contiguous;4907.715→5022.809ms paged), so attention is not the
+  dominant remaining cost. Next build shared multi-token GDN prefill lowering in the
+  ordinary CUDA path. Avoid more synthetic overlap/attention evidence until that moves.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

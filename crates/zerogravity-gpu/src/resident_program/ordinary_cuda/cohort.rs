@@ -1279,6 +1279,73 @@ impl OrdinaryCudaBody {
                 continue;
             }
 
+            if let SourceOperatorKind::FlashAttention { domain, .. } = template.kind()
+                && lanes.is_multiple_of(4)
+                && row_counts
+                    .chunks_exact(4)
+                    .all(|group| group.iter().all(|&rows| rows == group[0]))
+            {
+                let ([query], [output]) = (node.inputs.as_slice(), node.outputs.as_slice()) else {
+                    return Err(Error::State(
+                        "ordinary CUDA prefill cohort attention SSA arity".into(),
+                    ));
+                };
+                let query_width = self.cold().layout().geometry().query_width()?;
+                for first_lane in (0..lanes).step_by(4) {
+                    let rows = row_counts[first_lane];
+                    let descriptor = template.bind_runtime_call(calls[first_lane])?;
+                    let inputs = descriptor.input_elements()?;
+                    let outputs = descriptor.output_elements()?;
+                    if inputs.as_slice() != [rows * query_width]
+                        || outputs.as_slice() != [rows * query_width]
+                    {
+                        return Err(Error::State(
+                            "ordinary CUDA prefill cohort attention row geometry".into(),
+                        ));
+                    }
+                    let bases = std::array::from_fn(|lane| calls[first_lane + lane].rows().base());
+                    let kv = (first_lane..first_lane + 4)
+                        .map(|lane| {
+                            let state = state_maps[lane]
+                                .get(&StateSlot::Kv(domain))
+                                .copied()
+                                .ok_or_else(|| {
+                                    Error::State(
+                                        "ordinary CUDA prefill cohort attention state absent"
+                                            .into(),
+                                    )
+                                })?;
+                            let StateBuffers::Kv { keys, values } = &state.candidate else {
+                                return Err(Error::State(
+                                    "ordinary CUDA prefill cohort attention KV layout".into(),
+                                ));
+                            };
+                            Ok((keys, values))
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    let query =
+                        values.lane_group_row_handle(*query, query_width, &spans, first_lane, 4)?;
+                    let output = values.lane_group_row_handle(
+                        *output,
+                        query_width,
+                        &spans,
+                        first_lane,
+                        4,
+                    )?;
+                    dispatches += self.cold().attention().enqueue_prefill_cohort4(
+                        client,
+                        &descriptor,
+                        rows,
+                        bases,
+                        &query,
+                        &kv,
+                        &output,
+                        self.cold().status(),
+                    )?;
+                }
+                continue;
+            }
+
             for lane in 0..lanes {
                 let descriptor = template.bind_runtime_call(calls[lane])?;
                 let (launched, fused) = self

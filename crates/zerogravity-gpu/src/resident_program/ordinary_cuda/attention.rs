@@ -571,6 +571,110 @@ impl OrdinaryCudaAttention {
         launch.launch_on(client)?;
         Ok(1)
     }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn enqueue_prefill_cohort4(
+        &self,
+        client: &cubecl::client::Client,
+        operator: &zerogravity_core::accelerator::program::SourceOperator,
+        rows: usize,
+        bases: [usize; 4],
+        query: &cubecl::server::Handle,
+        states: &[(
+            &crate::resident_program::DeviceBuffer,
+            &crate::resident_program::DeviceBuffer,
+        )],
+        output: &cubecl::server::Handle,
+        status: &ResidentLease,
+    ) -> Result<usize> {
+        use crate::resident_program::{ResidentBufferLayout, ResidentPhysicalType};
+        self.require_operator(operator)?;
+        self.service.ensure_usable()?;
+        if rows == 0
+            || states.len() != 4
+            || operator.call().rows().len() != rows
+            || operator.call().rows().base() != bases[0]
+            || bases
+                .iter()
+                .any(|&base| base.checked_add(rows).is_none_or(|end| end > self.capacity))
+            || client.service_id() != self.service.client().service_id()
+            || query.service != client.service_id()
+            || output.service != client.service_id()
+            || !Arc::ptr_eq(status.service(), &self.service)
+            || status.bytes() != 4
+        {
+            return Err(Error::State(
+                "ordinary CUDA attention prefill cohort4 service/geometry differs".into(),
+            ));
+        }
+        let query_row = self.geometry.query_width()?;
+        let query_elements = query_row
+            .checked_mul(rows)
+            .and_then(|elements| elements.checked_mul(4))
+            .ok_or_else(|| {
+                Error::Limit("ordinary attention prefill cohort4 query extent".into())
+            })?;
+        if query.size_in_used() != (query_elements * 2) as u64
+            || output.size_in_used() != (query_elements * 2) as u64
+        {
+            return Err(Error::State(
+                "ordinary attention prefill cohort4 BF16 query/output extent differs".into(),
+            ));
+        }
+        let state_elements = self
+            .capacity
+            .checked_mul(self.geometry.kv_width()?)
+            .ok_or_else(|| {
+                Error::Limit("ordinary attention prefill cohort4 state extent".into())
+            })?;
+        let layout = ResidentBufferLayout::new(ResidentPhysicalType::Bf16, state_elements)?;
+        let mut keys = Vec::with_capacity(4);
+        let mut values = Vec::with_capacity(4);
+        for (key, value) in states {
+            key.require_layout(layout)?;
+            value.require_layout(layout)?;
+            let key = key.original_lease()?;
+            let value = value.original_lease()?;
+            if !Arc::ptr_eq(key.service(), &self.service)
+                || !Arc::ptr_eq(value.service(), &self.service)
+                || key.bytes() != state_elements * 2
+                || value.bytes() != state_elements * 2
+            {
+                return Err(Error::State(
+                    "ordinary attention prefill cohort4 candidate KV owner/extent differs".into(),
+                ));
+            }
+            keys.push(key.handle());
+            values.push(value.handle());
+        }
+        let launch = crate::cuda::bf16_attention::Bf16CausalAttentionBatch4::new_ragged_rows(
+            rows,
+            bases,
+            self.capacity,
+            self.geometry.query_heads,
+            self.geometry.kv_heads,
+            WIDTH,
+            SCALE,
+        )?
+        .prepare(
+            client,
+            [
+                query.clone(),
+                keys[0].clone(),
+                keys[1].clone(),
+                keys[2].clone(),
+                keys[3].clone(),
+                values[0].clone(),
+                values[1].clone(),
+                values[2].clone(),
+                values[3].clone(),
+                output.clone(),
+                status.handle(),
+            ],
+        )?;
+        launch.launch_on(client)?;
+        Ok(1)
+    }
 }
 
 #[cfg(test)]

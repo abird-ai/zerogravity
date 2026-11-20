@@ -7,7 +7,7 @@ struct __align__(8) AttentionShape {
     unsigned padding;
 };
 struct __align__(8) AttentionBatch4Shape {
-    unsigned long long capacity, query_heads, kv_heads;
+    unsigned long long rows, capacity, query_heads, kv_heads;
     unsigned long long base0, base1, base2, base3;
     float scale_log2;
     unsigned padding;
@@ -173,8 +173,9 @@ extern "C" __global__ __launch_bounds__(128) void bf16_causal_attention(
     }
 }
 
-// Four independent aligned cached-decode rows. Arithmetic is the same one-row
-// schedule above; blockIdx.z only selects the row's private K/V owner.
+// Four independent equal-row causal sequences. Arithmetic is the same tiled
+// schedule above; blockIdx.z selects the private K/V owner and blockIdx.x the
+// query-row tile within that sequence.
 extern "C" __global__ __launch_bounds__(128) void bf16_causal_attention_batch4(
     const unsigned short* query,
     const unsigned short* keys0, const unsigned short* keys1,
@@ -192,16 +193,16 @@ extern "C" __global__ __launch_bounds__(128) void bf16_causal_attention_batch4(
     const unsigned long long base = batch == 0 ? s.base0 : batch == 1 ? s.base1 : batch == 2 ? s.base2 : s.base3;
     const unsigned short* keys = batch == 0 ? keys0 : batch == 1 ? keys1 : batch == 2 ? keys2 : keys3;
     const unsigned short* values = batch == 0 ? values0 : batch == 1 ? values1 : batch == 2 ? values2 : values3;
-    const unsigned long long end = base + 1;
+    const unsigned long long end = base + s.rows;
     const float neg_inf = __int_as_float(0xff800000);
     for (unsigned i = tid; i < 16 * 256; i += 128) {
         const auto row = first + i / 256;
-        q[i] = row < 1 ? checked(query[(batch * s.query_heads + head) * 256 + i % 256], status) : 0;
+        q[i] = row < s.rows ? checked(query[((batch * s.rows + row) * s.query_heads + head) * 256 + i % 256], status) : 0;
     }
     if (tid < 16) maxima[tid] = neg_inf;
     if (tid < 64) sums[tid] = 0;
     float acc[8][4] = {};
-    const auto last_query = first + 16 < 1 ? first + 16 : 1;
+    const auto last_query = first + 16 < s.rows ? first + 16 : s.rows;
     for (long long start = ((base + last_query - 1) / 64) * 64; start >= 0; start -= 64) {
         for (unsigned i = tid; i < 64 * 256; i += 128) {
             const auto row = static_cast<unsigned long long>(start) + i / 256;
@@ -223,7 +224,7 @@ extern "C" __global__ __launch_bounds__(128) void bf16_causal_attention_batch4(
             #pragma unroll
             for (unsigned i = 0; i < 4; ++i) {
                 const unsigned row = r + (i / 2) * 8, col = warp * 16 + j * 8 + c + i % 2;
-                const bool valid = first + row < 1 && start + col <= base + first + row;
+                const bool valid = first + row < s.rows && start + col <= base + first + row;
                 scores[row * 64 + col] = valid ? dot[j][i] : neg_inf;
                 if (valid && !isfinite(dot[j][i])) atomicOr(status, 2u);
             }
@@ -289,11 +290,11 @@ extern "C" __global__ __launch_bounds__(128) void bf16_causal_attention_batch4(
         #pragma unroll
         for (unsigned i = 0; i < 4; ++i) {
             const unsigned row = r + (i / 2) * 8, col = warp * 64 + j * 8 + c + i % 2;
-            if (first + row < 1) {
+            if (first + row < s.rows) {
                 const float result = mul(acc[j][i], inverse[row]);
                 const auto rounded = bf16(result);
                 if (!isfinite(result) || (rounded & 0x7f80) == 0x7f80) atomicOr(status, 2u);
-                output[(batch * s.query_heads + head) * 256 + col] = rounded;
+                output[((batch * s.rows + first + row) * s.query_heads + head) * 256 + col] = rounded;
             }
         }
     }

@@ -138,13 +138,32 @@ impl Bf16CausalAttentionBatch4 {
         width: usize,
         scale: f32,
     ) -> Result<Self> {
-        if kv_heads == 0
+        Self::new_ragged_rows(1, bases, capacity, query_heads, kv_heads, width, scale)
+    }
+
+    /// Four private causal sequences with an equal active query-row count.
+    /// Q/O are packed lane-major as [4, rows, query_heads, width].
+    /// Each lane retains its own K/V owner and causal base.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_ragged_rows(
+        rows: usize,
+        bases: [usize; 4],
+        capacity: usize,
+        query_heads: usize,
+        kv_heads: usize,
+        width: usize,
+        scale: f32,
+    ) -> Result<Self> {
+        if rows == 0
+            || kv_heads == 0
             || query_heads == 0
             || !query_heads.is_multiple_of(kv_heads)
             || width != 256
             || !scale.is_finite()
             || scale <= 0.0
-            || bases.iter().any(|&base| base >= capacity)
+            || bases
+                .iter()
+                .any(|&base| base.checked_add(rows).is_none_or(|end| end > capacity))
         {
             return Err(Error::Unsupported(
                 "BF16 CUDA attention batch4 geometry/scale".into(),
@@ -160,7 +179,8 @@ impl Bf16CausalAttentionBatch4 {
             .checked_mul(width * 2)
             .ok_or_else(|| Error::Limit("BF16 attention batch4 row extent".into()))?;
         let q_bytes = row_bytes
-            .checked_mul(4)
+            .checked_mul(rows)
+            .and_then(|n| n.checked_mul(4))
             .ok_or_else(|| Error::Limit("BF16 attention batch4 query extent".into()))?;
         let kv_bytes = capacity
             .checked_mul(kv_heads)
@@ -181,14 +201,16 @@ impl Bf16CausalAttentionBatch4 {
                 (StaticScalarType::U64, 32),
                 (StaticScalarType::U64, 40),
                 (StaticScalarType::U64, 48),
-                (StaticScalarType::F32Bits, 56),
+                (StaticScalarType::U64, 56),
+                (StaticScalarType::F32Bits, 64),
             ],
-            64,
+            72,
             8,
         )?;
         let scalars = StaticScalarBlock::new(
             schema,
             &[
+                StaticScalarValue::U64(rows as u64),
                 StaticScalarValue::U64(capacity as u64),
                 StaticScalarValue::U64(query_heads as u64),
                 StaticScalarValue::U64(kv_heads as u64),
@@ -212,7 +234,12 @@ impl Bf16CausalAttentionBatch4 {
                 bindings.into(),
                 scalars,
             )?,
-            grid: [1, query_heads_u32, 4],
+            grid: [
+                u32::try_from(rows.div_ceil(16))
+                    .map_err(|_| Error::Limit("BF16 attention batch4 row grid".into()))?,
+                query_heads_u32,
+                4,
+            ],
         })
     }
 
@@ -257,13 +284,31 @@ impl Bf16CausalAttentionBatch8 {
         width: usize,
         scale: f32,
     ) -> Result<Self> {
-        if kv_heads == 0
+        Self::new_ragged_rows(1, bases, capacity, query_heads, kv_heads, width, scale)
+    }
+
+    /// Eight private causal sequences with an equal active query-row count.
+    /// Q/O are packed lane-major as [8, rows, query_heads, width].
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_ragged_rows(
+        rows: usize,
+        bases: [usize; 8],
+        capacity: usize,
+        query_heads: usize,
+        kv_heads: usize,
+        width: usize,
+        scale: f32,
+    ) -> Result<Self> {
+        if rows == 0
+            || kv_heads == 0
             || query_heads == 0
             || !query_heads.is_multiple_of(kv_heads)
             || width != 256
             || !scale.is_finite()
             || scale <= 0.0
-            || bases.iter().any(|&base| base >= capacity)
+            || bases
+                .iter()
+                .any(|&base| base.checked_add(rows).is_none_or(|end| end > capacity))
         {
             return Err(Error::Unsupported(
                 "BF16 CUDA attention batch8 geometry/scale".into(),
@@ -279,7 +324,8 @@ impl Bf16CausalAttentionBatch8 {
             .checked_mul(width * 2)
             .ok_or_else(|| Error::Limit("BF16 attention batch8 row extent".into()))?;
         let q_bytes = row_bytes
-            .checked_mul(8)
+            .checked_mul(rows)
+            .and_then(|n| n.checked_mul(8))
             .ok_or_else(|| Error::Limit("BF16 attention batch8 query extent".into()))?;
         let kv_bytes = capacity
             .checked_mul(kv_heads)
@@ -304,14 +350,16 @@ impl Bf16CausalAttentionBatch8 {
                 (StaticScalarType::U64, 64),
                 (StaticScalarType::U64, 72),
                 (StaticScalarType::U64, 80),
-                (StaticScalarType::F32Bits, 88),
+                (StaticScalarType::U64, 88),
+                (StaticScalarType::F32Bits, 96),
             ],
-            96,
+            104,
             8,
         )?;
         let scalars = StaticScalarBlock::new(
             schema,
             &[
+                StaticScalarValue::U64(rows as u64),
                 StaticScalarValue::U64(capacity as u64),
                 StaticScalarValue::U64(query_heads as u64),
                 StaticScalarValue::U64(kv_heads as u64),
@@ -339,7 +387,12 @@ impl Bf16CausalAttentionBatch8 {
                 bindings.into(),
                 scalars,
             )?,
-            grid: [1, query_heads_u32, 8],
+            grid: [
+                u32::try_from(rows.div_ceil(16))
+                    .map_err(|_| Error::Limit("BF16 attention batch8 row grid".into()))?,
+                query_heads_u32,
+                8,
+            ],
         })
     }
 

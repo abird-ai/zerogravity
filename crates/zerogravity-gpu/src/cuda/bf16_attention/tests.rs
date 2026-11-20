@@ -54,6 +54,13 @@ fn batch4_ragged_geometry_keeps_private_frontiers_and_aligned_convenience() -> R
     assert_eq!(ragged.grid, [1, 8, 4]);
     assert_eq!(aligned.kernel.binding_sizes(), expected);
     assert_eq!(ragged.kernel.binding_sizes(), expected);
+    let prefill =
+        Bf16CausalAttentionBatch4::new_ragged_rows(17, [0, 17, 63, 100], 128, 8, 2, 256, 0.0625)?;
+    let mut prefill_expected = expected;
+    prefill_expected[0] *= 17;
+    prefill_expected[9] *= 17;
+    assert_eq!(prefill.grid, [2, 8, 4]);
+    assert_eq!(prefill.kernel.binding_sizes(), prefill_expected);
     assert!(Bf16CausalAttentionBatch4::new_ragged([0, 1, 2, 128], 128, 8, 2, 256, 0.0625).is_err());
     assert!(Bf16CausalAttentionBatch4::new_ragged([0; 4], 0, 8, 2, 256, 0.0625).is_err());
     assert!(Bf16CausalAttentionBatch4::new_ragged([0; 4], 128, 3, 2, 256, 0.0625).is_err());
