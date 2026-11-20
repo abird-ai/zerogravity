@@ -327,8 +327,21 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   [129.797,153.805,177.178]ms vs[128.897,154.402,179.491]ms. The remaining matched
   wall-time gap is ~1.7%. The first physical attempt was externally SIGKILLed during
   compilation before test entry; residue/kernel checks were clean and one cached retry
-  passed. No new fixture was added. Next prefer fresh matched vLLM if runnable; otherwise
-  profile before adding direct page-table attention or overlap complexity.
+  passed. No new fixture was added.
+- [x] Re-ran the real mixed-length public-SDK refill shape on unchanged `e72030c`
+  source after the paged transport optimizations:4 one-token rows +4 eight-token
+  survivors +4 queued eight-token rows,68 generated tokens total, matched
+  opt1/codegen64/non-LTO. Terminal-green result: contiguous400.383ms/169.837 output
+  tok/s, paged422.572ms/160.919 tok/s, about5.5% paged wall-time overhead. This updates
+  the older178.769/136.488 refill snapshot without adding a retained fixture; the
+  temporary probe was removed. A clean source-neutral candidate fused device scatter
+  append-copy with inactive-tail zeroing to remove fresh-page zero launches. One attempt
+  was externally SIGKILLed after test entry; residue/kernel checks were clean and one
+  cached retry passed at395.849ms/171.783 contiguous and421.159ms/161.459 paged. The
+  paged gain versus accepted source was only ~0.3%, so the extra kernel path failed the
+  maintenance/performance bar and was fully removed. Source remains `e72030c`. Fresh
+  vLLM is still unavailable; next prefer that matched baseline, otherwise profile the
+  longer-decode paged residual before adding direct page-table attention or overlap.
 
 ### Next continuation — no live campaign
 

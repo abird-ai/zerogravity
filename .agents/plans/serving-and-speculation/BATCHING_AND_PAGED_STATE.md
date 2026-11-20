@@ -931,10 +931,17 @@ and improves to176.800ms/135.746 tok/s contiguous versus182.505ms/131.504 paged,
 zero-fill when the destination plane fits the existing bounded transport, so the common
 path needs no separate staging-zero launch; oversized planes and empty prefixes retain
 the explicit device-zero fallback. The same matched cell passes at177.467ms/135.236
-tok/s contiguous versus180.520ms/132.949 paged, only ~1.7% overhead. A fresh matched
-vLLM run remains preferred if its pinned environment becomes runnable; otherwise profile
-before paying the complexity cost of direct paged attention or physical overlap. Do not
-add another refill evidence layer.
+tok/s contiguous versus180.520ms/132.949 paged, only ~1.7% overhead. The same
+4-short+4-survivor+4-queued public-SDK refill workload has now been rerun on unchanged
+`e72030c` after those transport wins:400.383ms/169.837 output tok/s contiguous and
+422.572ms/160.919 paged for68 generated tokens (~5.5% wall-time overhead). A generic
+device-scatter copy+zero-tail candidate removed fresh-page zero launches but produced only
+~0.3% paged throughput gain (421.159ms/161.459) on one cached physical retry, so it was
+rejected and removed rather than expanding the runtime transport surface for noise-level
+benefit. A fresh matched vLLM run remains preferred if its pinned environment becomes
+runnable; otherwise profile the longer-decode paged residual before paying the complexity
+cost of direct paged attention or physical overlap. Do not add another refill evidence
+layer.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 

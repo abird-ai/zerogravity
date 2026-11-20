@@ -574,7 +574,22 @@ and live TODOs are authoritative.
   SIGKILLed during compilation before test entry; process/GPU/kernel checks were clean and
   one cached retry passed. The connector still has no vLLM executable/module and Podman
   still reports the pinned image `image not known`; do not claim a fresh vLLM comparison.
-  Next prefer a fresh matched vLLM run if runnable; otherwise profile before adding direct
+  **Current continuous-refill goodput is now remeasured on unchanged `e72030c`
+  source.** The same public-SDK4 one-token +4 eight-token survivor +4 queued eight-token
+  shape (active8/native8,68 generated tokens) passes under the matched
+  opt1/codegen64/non-LTO profile at400.383ms/169.837 output tok/s contiguous and
+  422.572ms/160.919 paged, about5.5% paged wall-time overhead. This materially improves
+  the older paged498.212ms/136.488 result while avoiding a new retained fixture; the
+  temporary probe was removed. I also tested the obvious next shared scatter candidate:
+  fuse device-to-device append copy with inactive-tail zeroing so fresh pages do not need
+  a separate zero launch. The first post-change run was externally SIGKILLed after test
+  entry with no residue/OOM/Xid; one cached retry completed at395.849ms/171.783
+  contiguous and421.159ms/161.459 paged. That is only ~0.3% paged throughput gain versus
+  accepted source, so the extra kernel path was rejected and fully removed. Source stays
+  `e72030c`; do not reintroduce that fusion without new evidence. The connector still
+  has no vLLM executable/module and Podman still reports the pinned image `image not
+  known`; do not claim a fresh vLLM comparison. Next prefer a fresh matched vLLM run if
+  runnable; otherwise profile the longer-decode paged residual before adding direct
   page-table attention or physical-overlap complexity. Do not add refill fixtures or
   return to debug-profile decode micro-tuning.
   **Post-check L5 baseline watch:**

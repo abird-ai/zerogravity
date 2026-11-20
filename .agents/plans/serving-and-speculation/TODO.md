@@ -735,9 +735,17 @@ or a change to the active correctness/benchmark/27B order.
   staging tail when the bounded span permits it, eliminating the remaining two staging
   zero launches for this cell while preserving the explicit fallback for oversized or
   empty-prefix cases. The same matched cell passes at177.467ms/135.236 tok/s contiguous
-  and180.520ms/132.949 paged, only ~1.7% overhead. Fresh vLLM is still blocked by the
-  unregistered pinned image, so next prefer a runnable fresh baseline; otherwise profile
-  before adding direct paged attention or overlap complexity.
+  and180.520ms/132.949 paged, only ~1.7% overhead. The production refill shape was
+  then rerun on unchanged `e72030c`:4 one-token +4 eight-token survivors +4 queued
+  eight-token requests,68 generated tokens, matched opt1/codegen64/non-LTO. It passes
+  at400.383ms/169.837 output tok/s contiguous and422.572ms/160.919 paged (~5.5%
+  wall-time overhead), materially improving the retained old paged136.488 tok/s result.
+  A device-scatter append-copy+tail-zero fusion was measured at421.159ms/161.459 paged,
+  only ~0.3% faster than accepted source, and was removed rather than retaining another
+  kernel path. The temporary refill probe was removed too. Fresh vLLM is still blocked
+  by the unregistered pinned image, so next prefer a runnable fresh baseline; otherwise
+  profile the longer-decode paged residual before adding direct paged attention or
+  overlap complexity.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed
