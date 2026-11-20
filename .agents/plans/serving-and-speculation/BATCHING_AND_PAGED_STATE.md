@@ -892,9 +892,14 @@ on the latest run; the old native cohort remains fixed B4/47x4 rather than a gen
 primitive. Multi-token attention is now retained as a shared B4 primitive: equal-row
 private sequences share one physical launch, B8 composes two B4 groups, and ragged/
 incompatible cases fall back. The exact warm48+3 serving wave did not materially move,
-so the next ordered implementation is multi-token **GDN prefill** inside ordinary CUDA
-source execution. Preserve independent roots/event-ledger ownership and remeasure the
-same warm48+3 B8 SDK wave; do not add another evidence framework.
+Multi-token **GDN prefill** is now accepted inside ordinary CUDA source execution.
+`TextPrefillCohort { rows, lanes }` is model-neutral physical geometry; cohort-local
+cache/control/scratch scales with width while independent roots remain outside the
+runtime and cross through typed state transport only. Exact warm48+3 B8 moved from the
+attention checkpoint4701.433→1007.301ms contiguous and5022.809→1160.106ms paged;
+TTFT is now616.681/649.944ms. This removes the dominant prefill serialization gap.
+Preserve the same ownership contracts, but shift the next performance work to decode
+(~41 tok/s contiguous,~31-32 paged) rather than adding another prefill evidence layer.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 

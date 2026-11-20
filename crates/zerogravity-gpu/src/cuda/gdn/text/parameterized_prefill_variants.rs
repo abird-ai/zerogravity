@@ -114,11 +114,12 @@ pub(super) fn source_contract(config: GdnKernelConfig) -> [&'static str; 4] {
 }
 
 fn tokens(phase: GdnPhase, slot: GdnCacheSlot) -> Result<usize> {
-    let GdnPhase::TextPrefill(tokens) = phase else {
+    if !phase.is_text_prefill() {
         return Err(Error::Unsupported(
             "configured GDN implementation is text prefill only".into(),
         ));
-    };
+    }
+    let tokens = phase.tokens();
     slot.validate(phase)?;
     if tokens == 0 || i32::try_from(tokens).is_err() {
         return Err(Error::Limit(
@@ -139,9 +140,11 @@ pub(super) fn prepare(
     use GdnRecomputeKernel::*;
     use GdnStateKernel::*;
 
-    let tokens = tokens(phase, slot)?;
-    let chunks = u32::try_from(tokens.div_ceil(64))
+    let _ = tokens(phase, slot)?;
+    let chunks = u32::try_from(phase.chunks())
         .map_err(|_| Error::Limit("configured GDN chunk grid u32 overflow".into()))?;
+    let sequences = u32::try_from(phase.sequences())
+        .map_err(|_| Error::Limit("configured GDN sequence grid u32 overflow".into()))?;
     let (variant, grid) = match stage {
         GdnStage::Kkt => {
             let variant = match config.kkt() {
@@ -159,8 +162,8 @@ pub(super) fn prepare(
             [chunks, 16, 1],
         ),
         GdnStage::H => match config.state() {
-            Bv32W4S2 => (&H_BV32, [4, 16, 1]),
-            Bv64W4S2 => (&H_BV64, [2, 16, 1]),
+            Bv32W4S2 => (&H_BV32, [4, 16 * sequences, 1]),
+            Bv64W4S2 => (&H_BV64, [2, 16 * sequences, 1]),
         },
         GdnStage::Output => match config.output() {
             Bk32Bv32W4S2 => (&OUTPUT_S2, [4, chunks, 16]),

@@ -76,6 +76,7 @@ enum GridKind {
 struct CheckedGeometry {
     tokens: usize,
     chunks: usize,
+    sequences: usize,
     grid: [u32; 3],
 }
 
@@ -86,18 +87,19 @@ fn checked_geometry(
     slot: GdnCacheSlot,
     kind: GridKind,
 ) -> Result<CheckedGeometry> {
-    let GdnPhase::TextPrefill(tokens) = phase else {
+    if !phase.is_text_prefill() {
         return Err(Error::Unsupported(
             "parameterized GDN stage is text prefill only".into(),
         ));
-    };
+    }
+    let tokens = phase.tokens();
     slot.validate(phase)?;
     if tokens == 0 || i32::try_from(tokens).is_err() {
         return Err(Error::Limit(
             "parameterized GDN text/control i32 extent".into(),
         ));
     }
-    let chunks = tokens.div_ceil(64);
+    let chunks = phase.chunks();
     let (tile, y) = match kind {
         GridKind::Prep => (16, 32),
         GridKind::Chunk => (64, 16),
@@ -107,6 +109,7 @@ fn checked_geometry(
     Ok(CheckedGeometry {
         tokens,
         chunks,
+        sequences: phase.sequences(),
         grid: [x, y, 1],
     })
 }
@@ -132,7 +135,12 @@ fn expected_prep(tokens: usize) -> Result<PrepLayout> {
     })
 }
 
-fn expected_sequence(tokens: usize, chunks: usize, stage: GdnStage) -> Result<SequenceLayout> {
+fn expected_sequence(
+    tokens: usize,
+    chunks: usize,
+    sequences: usize,
+    stage: GdnStage,
+) -> Result<SequenceLayout> {
     let (input_width, input_element, output_width, output_element) = match stage {
         GdnStage::Cumsum => (16, 4, 16, 4),
         GdnStage::Solve => (16 * 64, 4, 16 * 64, 2),
@@ -145,7 +153,7 @@ fn expected_sequence(tokens: usize, chunks: usize, stage: GdnStage) -> Result<Se
     Ok(SequenceLayout {
         input_bytes: extent(tokens, input_width, input_element, "sequence input")?,
         output_bytes: extent(tokens, output_width, output_element, "sequence output")?,
-        query_starts_bytes: 2 * std::mem::size_of::<i32>(),
+        query_starts_bytes: (sequences + 1) * std::mem::size_of::<i32>(),
         chunk_indices_bytes: extent(chunks, 2, std::mem::size_of::<i32>(), "chunk indices")?,
     })
 }
@@ -159,7 +167,8 @@ pub(super) fn prepare(phase: GdnPhase, slot: GdnCacheSlot, stage: GdnStage) -> R
         }
         GdnStage::Cumsum | GdnStage::Solve => {
             let geometry = checked_geometry(phase, slot, GridKind::Chunk)?;
-            let layout = expected_sequence(geometry.tokens, geometry.chunks, stage)?;
+            let layout =
+                expected_sequence(geometry.tokens, geometry.chunks, geometry.sequences, stage)?;
             prepare_sequence_checked(stage, geometry, layout)
         }
         _ => Err(Error::Unsupported(
@@ -240,7 +249,7 @@ fn prepare_sequence_checked(
     geometry: CheckedGeometry,
     layout: SequenceLayout,
 ) -> Result<Definition> {
-    if layout != expected_sequence(geometry.tokens, geometry.chunks, stage)? {
+    if layout != expected_sequence(geometry.tokens, geometry.chunks, geometry.sequences, stage)? {
         return Err(Error::State(
             "parameterized GDN sequence source versus retained pointer/control extents".into(),
         ));

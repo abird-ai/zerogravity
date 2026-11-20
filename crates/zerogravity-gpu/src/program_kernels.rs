@@ -24,9 +24,19 @@ pub(crate) fn checked_copy_words(
     source_stride: usize,
     destination_stride: usize,
 ) -> Result<usize> {
+    checked_copy_words_with_limit(rows, width, source_stride, destination_stride, MAX_WORD_OPS)
+}
+
+pub(crate) fn checked_copy_words_with_limit(
+    rows: usize,
+    width: usize,
+    source_stride: usize,
+    destination_stride: usize,
+    max_words: usize,
+) -> Result<usize> {
     let words = rows
         .checked_mul(width)
-        .filter(|n| *n > 0 && *n <= MAX_WORD_OPS)
+        .filter(|n| *n > 0 && *n <= max_words)
         .ok_or_else(|| Error::Limit("resident word-copy dispatch geometry invalid".into()))?;
     if rows > 1 && destination_stride < width {
         return Err(Error::Malformed(

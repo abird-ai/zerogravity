@@ -255,8 +255,18 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   equal-row groups of four (B8=two B4 launches), with the existing lane path as fallback.
   Real warm48+3 B8 stayed exact but did not materially improve TTFT versus the retained
   stateless baseline:4696.591→4701.433ms contiguous and4907.715→5022.809ms paged.
-  Therefore attention is not the dominant remaining prefill cost. Next implement shared
-  multi-token GDN prefill lowering and remeasure the same wave.
+  Therefore attention is not the dominant remaining prefill cost.
+- [x] Shared multi-token GDN prefill is now selected for equal-row B4/B8 ordinary CUDA
+  cohorts. `TextPrefillCohort { rows, lanes }` keeps physical sequence geometry in the
+  generic GDN runtime; controls/cache/recurrent scratch scale by sequence count; packed
+  recurrent gather/scatter uses cache-slot stride; width-scoped GDN scratch lives with
+  `OrdinaryCudaCohortValues`. Canonical Conv/Recurrent roots still cross only typed
+  `StateTransport` edges. The runtime word-copy primitive alone gets a2^21-word bound;
+  the existing global1,000,000-word greedy/reduction/readiness cap is unchanged.
+  Exact warm48+3 B8: contiguous4701.433→1007.301ms, paged5022.809→1160.106ms;
+  TTFT4341.373→616.681ms /4503.152→649.944ms; output23.826/20.688 tok/s. Decode remains
+  ~41 tok/s contiguous and~31-32 paged, so next optimize decode toward the retained
+  historical ZG76.77/vLLM72.20 B8 range rather than expanding prefill fixtures.
 
 ### Next continuation — no live campaign
 

@@ -1,11 +1,11 @@
 //! Private native-cohort activation arena using the ordinary plan's liveness slots.
 use super::layout::{self, OrdinaryCudaLayout};
 use crate::{
-    cuda::gdn::RECURRENT_STATE_BYTES,
+    cuda::gdn::{GdnRuntimeBuffer, GdnRuntimeWorkspaceLayout, RECURRENT_STATE_BYTES},
     resident_leases::{ResidentInitialization, ResidentLease},
     resident_program::cohort_rows::CohortRowSpans,
 };
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{StateSlot, ValueId, ValueStorageBinding},
@@ -27,9 +27,50 @@ pub(crate) struct OrdinaryCudaCohortValues {
     // so a qualified B8 GDN core can execute between exact import/export edges.
     gdn_private_recurrent: Option<ResidentLease>,
     gdn_private_indices: Option<ResidentLease>,
+    gdn_prefill_layout: Option<Arc<GdnRuntimeWorkspaceLayout>>,
+    gdn_prefill_internal: BTreeMap<GdnRuntimeBuffer, ResidentLease>,
 }
 
 impl OrdinaryCudaCohortValues {
+    fn has_gdn(layout: &OrdinaryCudaLayout) -> bool {
+        layout.groups().direct()
+            && layout
+                .states()
+                .iter()
+                .any(|state| matches!(state.slot, StateSlot::Recurrent(_)))
+    }
+
+    fn build_gdn_prefill_layout(
+        layout: &OrdinaryCudaLayout,
+        width: usize,
+    ) -> Result<Option<Arc<GdnRuntimeWorkspaceLayout>>> {
+        if !Self::has_gdn(layout) {
+            return Ok(None);
+        }
+        Ok(Some(Arc::new(
+            GdnRuntimeWorkspaceLayout::new_prefill_cohort(layout::gdn_runtime_config()?, width)?,
+        )))
+    }
+
+    fn gdn_prefill_bytes(layout: &OrdinaryCudaLayout, width: usize) -> Result<usize> {
+        let Some(gdn) = Self::build_gdn_prefill_layout(layout, width)? else {
+            return Ok(0);
+        };
+        gdn.buffers()
+            .iter()
+            .filter(|buffer| {
+                layout::owns_gdn_buffer(
+                    buffer.role(),
+                    buffer.ownership(),
+                    !layout.groups().direct(),
+                )
+            })
+            .try_fold(0usize, |sum, buffer| {
+                sum.checked_add(buffer.bytes())
+                    .ok_or_else(|| Error::Limit("ordinary CUDA cohort GDN workspace bytes".into()))
+            })
+    }
+
     fn gdn_private_bytes(layout: &OrdinaryCudaLayout, width: usize) -> Result<usize> {
         let recurrent = width == 8
             && layout.groups().direct()
@@ -81,10 +122,11 @@ impl OrdinaryCudaCohortValues {
             })
             .ok_or_else(|| Error::Limit("ordinary CUDA cohort control bytes".into()))?;
         let private_bytes = Self::gdn_private_bytes(layout, width)?;
+        let gdn_prefill_bytes = Self::gdn_prefill_bytes(layout, width)?;
         value_bytes
             .checked_add(control_bytes)
             .and_then(|bytes| bytes.checked_add(private_bytes))
-            .filter(|&total| total <= 64 * 1024 * 1024)
+            .and_then(|bytes| bytes.checked_add(gdn_prefill_bytes))
             .ok_or_else(|| Error::Limit("ordinary CUDA cohort activation/control total".into()))
     }
 
@@ -128,6 +170,24 @@ impl OrdinaryCudaCohortValues {
             )?;
             (Some(recurrent), Some(indices))
         };
+        let gdn_prefill_layout = Self::build_gdn_prefill_layout(layout, width)?;
+        let mut gdn_prefill_internal = BTreeMap::new();
+        if let Some(gdn) = &gdn_prefill_layout {
+            for buffer in gdn.buffers().iter().filter(|buffer| {
+                layout::owns_gdn_buffer(
+                    buffer.role(),
+                    buffer.ownership(),
+                    !layout.groups().direct(),
+                )
+            }) {
+                let lease = init.allocate_empty(buffer.bytes(), BufferRole::Scratch)?;
+                if gdn_prefill_internal.insert(buffer.role(), lease).is_some() {
+                    return Err(Error::State(
+                        "ordinary CUDA duplicate cohort GDN internal role".into(),
+                    ));
+                }
+            }
+        }
         let actual = slots
             .iter()
             .try_fold(0usize, |sum, lease| {
@@ -149,6 +209,11 @@ impl OrdinaryCudaCohortValues {
                         .as_ref()
                         .map_or(0, |lease| lease.bytes()),
                 )
+            })
+            .and_then(|sum| {
+                gdn_prefill_internal
+                    .values()
+                    .try_fold(sum, |sum, lease| sum.checked_add(lease.bytes()))
             })
             .ok_or_else(|| {
                 Error::Limit("ordinary CUDA cohort activation/control byte sum".into())
@@ -177,6 +242,12 @@ impl OrdinaryCudaCohortValues {
                 .cloned()
                 .map(|lease| (lease, DeviceAccess::Read)),
         );
+        accesses.extend(
+            gdn_prefill_internal
+                .values()
+                .cloned()
+                .map(|lease| (lease, DeviceAccess::Write)),
+        );
         Ok((
             Arc::new(Self {
                 width,
@@ -186,6 +257,8 @@ impl OrdinaryCudaCohortValues {
                 row_scratch,
                 gdn_private_recurrent,
                 gdn_private_indices,
+                gdn_prefill_layout,
+                gdn_prefill_internal,
             }),
             accesses,
         ))
@@ -202,6 +275,7 @@ impl OrdinaryCudaCohortValues {
             .chain(std::iter::once(&self.row_scratch))
             .chain(self.gdn_private_recurrent.iter())
             .chain(self.gdn_private_indices.iter())
+            .chain(self.gdn_prefill_internal.values())
     }
 
     pub(super) fn token_handle(&self, lane: usize, rows: usize) -> Result<cubecl::server::Handle> {
@@ -275,6 +349,27 @@ impl OrdinaryCudaCohortValues {
         self.gdn_private_indices
             .as_ref()
             .ok_or_else(|| Error::State("ordinary CUDA private GDN B8 indices absent".into()))
+    }
+
+    pub(super) fn gdn_prefill_layout(&self) -> Result<Arc<GdnRuntimeWorkspaceLayout>> {
+        self.gdn_prefill_layout
+            .clone()
+            .ok_or_else(|| Error::State("ordinary CUDA cohort GDN layout absent".into()))
+    }
+
+    pub(super) fn gdn_prefill_internal(&self, role: GdnRuntimeBuffer) -> Result<&ResidentLease> {
+        self.gdn_prefill_internal
+            .get(&role)
+            .ok_or_else(|| Error::State("ordinary CUDA cohort GDN internal role absent".into()))
+    }
+
+    pub(super) fn gdn_prefill_internal_handles(
+        &self,
+    ) -> BTreeMap<GdnRuntimeBuffer, cubecl::server::Handle> {
+        self.gdn_prefill_internal
+            .iter()
+            .map(|(&role, lease)| (role, lease.handle()))
+            .collect()
     }
 
     pub(crate) fn lease(&self, value: ValueId) -> Result<&ResidentLease> {

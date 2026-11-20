@@ -80,7 +80,7 @@ pub(super) fn select(
     phase: GdnPhase,
     stage: GdnStage,
 ) -> Result<assets::Asset> {
-    if matches!(phase, GdnPhase::TextPrefill(_)) {
+    if phase.is_text_prefill() {
         let config = GdnKernelConfig::require(config)?;
         return match stage {
             GdnStage::Conv => Ok(parameterized_conv::prepare(

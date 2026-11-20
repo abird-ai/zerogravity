@@ -167,6 +167,7 @@ pub struct GdnRuntimeGeometry {
     mode: GdnRuntimeMode,
     frontier: usize,
     rows: usize,
+    lanes: usize,
     has_initial: bool,
 }
 impl GdnRuntimeGeometry {
@@ -183,6 +184,31 @@ impl GdnRuntimeGeometry {
             mode: GdnRuntimeMode::Prefill,
             frontier,
             rows,
+            lanes: 1,
+            has_initial,
+        })
+    }
+
+    fn prefill_cohort(
+        frontier: usize,
+        rows: usize,
+        lanes: usize,
+        has_initial: bool,
+    ) -> Result<Self> {
+        if !(1..=PREFILL_ROWS).contains(&rows)
+            || !matches!(lanes, 4 | 8)
+            || has_initial != (frontier != 0)
+            || frontier.checked_add(rows).is_none()
+        {
+            return Err(Error::Unsupported(
+                "parameterized GDN runtime prefill cohort geometry/state".into(),
+            ));
+        }
+        Ok(Self {
+            mode: GdnRuntimeMode::Prefill,
+            frontier,
+            rows,
+            lanes,
             has_initial,
         })
     }
@@ -197,6 +223,7 @@ impl GdnRuntimeGeometry {
             mode: GdnRuntimeMode::CachedDecode,
             frontier,
             rows: 1,
+            lanes: 1,
             has_initial: true,
         })
     }
@@ -210,11 +237,24 @@ impl GdnRuntimeGeometry {
     pub fn rows(self) -> usize {
         self.rows
     }
+    pub fn lanes(self) -> usize {
+        self.lanes
+    }
     pub fn has_initial(self) -> bool {
         self.has_initial
     }
     pub fn resulting_frontier(self) -> usize {
         self.frontier + self.rows
+    }
+    fn phase(self) -> GdnPhase {
+        match self.mode {
+            GdnRuntimeMode::Prefill if self.lanes == 1 => GdnPhase::TextPrefill(self.rows),
+            GdnRuntimeMode::Prefill => GdnPhase::TextPrefillCohort {
+                rows: self.rows,
+                lanes: self.lanes,
+            },
+            GdnRuntimeMode::CachedDecode => GdnPhase::CachedDecode,
+        }
     }
 }
 
@@ -349,7 +389,26 @@ pub struct GdnRuntimeWorkspaceLayout {
 }
 impl GdnRuntimeWorkspaceLayout {
     pub fn new(config: GdnRuntimeConfig) -> Result<Self> {
-        let phase = GdnPhase::TextPrefill(PREFILL_ROWS);
+        Self::build(config, GdnPhase::TextPrefill(PREFILL_ROWS), true)
+    }
+
+    pub(crate) fn new_prefill_cohort(config: GdnRuntimeConfig, lanes: usize) -> Result<Self> {
+        if !matches!(lanes, 4 | 8) {
+            return Err(Error::Unsupported(
+                "parameterized GDN runtime cohort width".into(),
+            ));
+        }
+        Self::build(
+            config,
+            GdnPhase::TextPrefillCohort {
+                rows: PREFILL_ROWS,
+                lanes,
+            },
+            false,
+        )
+    }
+
+    fn build(config: GdnRuntimeConfig, phase: GdnPhase, include_cached: bool) -> Result<Self> {
         let mut roles = BTreeMap::new();
         for &stage in phase.stages() {
             let spec = build_stage_spec(config, phase, stage)?;
@@ -362,18 +421,20 @@ impl GdnRuntimeWorkspaceLayout {
                     .or_insert_with(|| binding.role.bytes(phase));
             }
         }
-        for &stage in GdnPhase::CachedDecode.stages() {
-            let spec = build_stage_spec(config, GdnPhase::CachedDecode, stage)?;
-            for binding in spec.bindings {
-                roles
-                    .entry(binding.role)
-                    .and_modify(|bytes: &mut usize| {
-                        *bytes = (*bytes).max(binding.role.bytes(GdnPhase::CachedDecode));
-                    })
-                    .or_insert_with(|| binding.role.bytes(GdnPhase::CachedDecode));
+        if include_cached {
+            for &stage in GdnPhase::CachedDecode.stages() {
+                let spec = build_stage_spec(config, GdnPhase::CachedDecode, stage)?;
+                for binding in spec.bindings {
+                    roles
+                        .entry(binding.role)
+                        .and_modify(|bytes: &mut usize| {
+                            *bytes = (*bytes).max(binding.role.bytes(GdnPhase::CachedDecode));
+                        })
+                        .or_insert_with(|| binding.role.bytes(GdnPhase::CachedDecode));
+                }
             }
         }
-        // Copy-only source/destination extents are part of the executable layout.
+        // Copy-only source/destination/control extents are executable inventory.
         for role in [
             GdnBuffer::PackedBa,
             GdnBuffer::AContiguous,
@@ -382,15 +443,25 @@ impl GdnRuntimeWorkspaceLayout {
             GdnBuffer::InitialState,
             GdnBuffer::FinalState,
             GdnBuffer::Inverse,
+            GdnBuffer::CacheArena,
+            GdnBuffer::CacheIndices,
+            GdnBuffer::HasInitial,
+            GdnBuffer::QueryStarts,
+            GdnBuffer::ConvBatch,
+            GdnBuffer::ConvChunkOffsets,
+            GdnBuffer::ChunkIndices,
+            GdnBuffer::ChunkOffsets,
         ] {
             roles
                 .entry(role)
                 .and_modify(|bytes: &mut usize| *bytes = (*bytes).max(role.bytes(phase)))
                 .or_insert_with(|| role.bytes(phase));
         }
-        roles
-            .entry(GdnBuffer::CacheIndices)
-            .and_modify(|bytes: &mut usize| *bytes = (*bytes).max(4 * 4));
+        if include_cached {
+            roles
+                .entry(GdnBuffer::CacheIndices)
+                .and_modify(|bytes: &mut usize| *bytes = (*bytes).max(4 * 4));
+        }
         let buffers = roles
             .into_iter()
             .map(|(role, bytes)| GdnRuntimeBufferLayout {
@@ -400,11 +471,16 @@ impl GdnRuntimeWorkspaceLayout {
             })
             .collect::<Vec<_>>();
         let result = Self { config, buffers };
-        if result.bytes(GdnRuntimeBuffer::CacheArena) != Some(CACHE_SLOTS * CACHE_SLOT_BYTES)
-            || result.config.geometry.cache_slots() != CACHE_SLOTS
+        let expected_slots = if include_cached {
+            CACHE_SLOTS
+        } else {
+            phase.sequences() + 1
+        };
+        if result.bytes(GdnRuntimeBuffer::CacheArena) != Some(expected_slots * CACHE_SLOT_BYTES)
+            || (include_cached && result.config.geometry.cache_slots() != CACHE_SLOTS)
         {
             return Err(Error::State(
-                "parameterized GDN runtime five-slot workspace".into(),
+                "parameterized GDN runtime cache workspace".into(),
             ));
         }
         Ok(result)
@@ -423,7 +499,8 @@ impl GdnRuntimeWorkspaceLayout {
             .map(|entry| entry.bytes)
     }
     pub fn cache_slots(&self) -> usize {
-        CACHE_SLOTS
+        self.bytes(GdnRuntimeBuffer::CacheArena)
+            .map_or(0, |bytes| bytes / CACHE_SLOT_BYTES)
     }
     pub fn cache_slot_bytes(&self) -> usize {
         CACHE_SLOT_BYTES
@@ -464,7 +541,7 @@ fn bounded_stage_abi_bindings(
     workspace: &GdnRuntimeWorkspaceLayout,
     logical: &[GdnRuntimeBinding],
 ) -> Result<Vec<GdnRuntimeBinding>> {
-    if !matches!(phase, GdnPhase::TextPrefill(_)) {
+    if !phase.is_text_prefill() {
         return Ok(logical.to_vec());
     }
     logical
@@ -886,6 +963,12 @@ pub enum GdnRuntimeInitialState {
     InPlace {
         state: GdnRuntimeStateView,
     },
+    StridedCopy {
+        source: GdnRuntimeStateView,
+        source_stride_bytes: usize,
+        destination: GdnRuntimeStateView,
+        lanes: usize,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -896,6 +979,12 @@ pub enum GdnRuntimeFinalState {
     },
     InPlace {
         state: GdnRuntimeStateView,
+    },
+    StridedScatter {
+        source: GdnRuntimeStateView,
+        destination: GdnRuntimeStateView,
+        destination_stride_bytes: usize,
+        lanes: usize,
     },
 }
 
@@ -922,6 +1011,18 @@ impl GdnRuntimePlan {
     ) -> Result<Self> {
         let workspace = Arc::new(GdnRuntimeWorkspaceLayout::new(config)?);
         Self::prefill_with_workspace(config, slot, frontier, rows, has_initial, workspace)
+    }
+
+    pub(crate) fn prefill_cohort(
+        config: GdnRuntimeConfig,
+        frontier: usize,
+        rows: usize,
+        lanes: usize,
+        has_initial: bool,
+        workspace: Arc<GdnRuntimeWorkspaceLayout>,
+    ) -> Result<Self> {
+        let geometry = GdnRuntimeGeometry::prefill_cohort(frontier, rows, lanes, has_initial)?;
+        Self::prepare(config, GdnRuntimeCacheSlot::new(1)?, geometry, workspace)
     }
 
     pub fn cached_decode(
@@ -966,10 +1067,7 @@ impl GdnRuntimePlan {
                 "parameterized GDN runtime workspace configuration".into(),
             ));
         }
-        let phase = match geometry.mode {
-            GdnRuntimeMode::Prefill => GdnPhase::TextPrefill(geometry.rows),
-            GdnRuntimeMode::CachedDecode => GdnPhase::CachedDecode,
-        };
+        let phase = geometry.phase();
         let controls = runtime_controls(phase, slot, geometry.has_initial)?;
         for control in &controls {
             if workspace
@@ -1389,11 +1487,25 @@ fn cache_recurrent_view(slot: GdnRuntimeCacheSlot) -> GdnRuntimeStateView {
     }
 }
 
-fn local_state_view(role: GdnRuntimeBuffer, kind: GdnRuntimeStateKind) -> GdnRuntimeStateView {
+fn cache_recurrent_strided_view(slot: GdnRuntimeCacheSlot, lanes: usize) -> GdnRuntimeStateView {
+    let bytes = (lanes - 1) * CACHE_SLOT_BYTES + RECURRENT_STATE_BYTES;
+    GdnRuntimeStateView {
+        role: GdnRuntimeBuffer::CacheArena,
+        offset: slot.recurrent_offset(),
+        bytes,
+        kind: GdnRuntimeStateKind::RecurrentCache,
+    }
+}
+
+fn local_state_view(
+    role: GdnRuntimeBuffer,
+    kind: GdnRuntimeStateKind,
+    lanes: usize,
+) -> GdnRuntimeStateView {
     GdnRuntimeStateView {
         role,
         offset: 0,
-        bytes: RECURRENT_STATE_BYTES,
+        bytes: lanes * RECURRENT_STATE_BYTES,
         kind,
     }
 }
@@ -1406,17 +1518,31 @@ fn runtime_initial_state(
         GdnRuntimeMode::CachedDecode => GdnRuntimeInitialState::InPlace {
             state: cache_recurrent_view(slot),
         },
+        GdnRuntimeMode::Prefill if geometry.lanes > 1 && geometry.has_initial => {
+            GdnRuntimeInitialState::StridedCopy {
+                source: cache_recurrent_strided_view(slot, geometry.lanes),
+                source_stride_bytes: CACHE_SLOT_BYTES,
+                destination: local_state_view(
+                    GdnRuntimeBuffer::InitialState,
+                    GdnRuntimeStateKind::RecurrentInitial,
+                    geometry.lanes,
+                ),
+                lanes: geometry.lanes,
+            }
+        }
         GdnRuntimeMode::Prefill if geometry.has_initial => GdnRuntimeInitialState::Copy {
             source: cache_recurrent_view(slot),
             destination: local_state_view(
                 GdnRuntimeBuffer::InitialState,
                 GdnRuntimeStateKind::RecurrentInitial,
+                1,
             ),
         },
         GdnRuntimeMode::Prefill => GdnRuntimeInitialState::Zero {
             destination: local_state_view(
                 GdnRuntimeBuffer::InitialState,
                 GdnRuntimeStateKind::RecurrentInitial,
+                geometry.lanes,
             ),
         },
     }
@@ -1430,10 +1556,21 @@ fn runtime_final_state(
         GdnRuntimeMode::CachedDecode => GdnRuntimeFinalState::InPlace {
             state: cache_recurrent_view(slot),
         },
+        GdnRuntimeMode::Prefill if geometry.lanes > 1 => GdnRuntimeFinalState::StridedScatter {
+            source: local_state_view(
+                GdnRuntimeBuffer::FinalState,
+                GdnRuntimeStateKind::RecurrentFinal,
+                geometry.lanes,
+            ),
+            destination: cache_recurrent_strided_view(slot, geometry.lanes),
+            destination_stride_bytes: CACHE_SLOT_BYTES,
+            lanes: geometry.lanes,
+        },
         GdnRuntimeMode::Prefill => GdnRuntimeFinalState::Scatter {
             source: local_state_view(
                 GdnRuntimeBuffer::FinalState,
                 GdnRuntimeStateKind::RecurrentFinal,
+                1,
             ),
             destination: cache_recurrent_view(slot),
         },
@@ -1533,7 +1670,7 @@ fn runtime_copy_geometry(
             RuntimeCopyGeometry {
                 source: None,
                 destination: InitialState,
-                rows: 1,
+                rows: phase.sequences(),
                 words: RECURRENT_STATE_BYTES / 4,
                 source_stride: 0,
                 destination_stride: RECURRENT_STATE_BYTES / 4,
@@ -1545,9 +1682,9 @@ fn runtime_copy_geometry(
             RuntimeCopyGeometry {
                 source: Some(CacheArena),
                 destination: InitialState,
-                rows: 1,
+                rows: phase.sequences(),
                 words: RECURRENT_STATE_BYTES / 4,
-                source_stride: RECURRENT_STATE_BYTES / 4,
+                source_stride: CACHE_SLOT_BYTES / 4,
                 destination_stride: RECURRENT_STATE_BYTES / 4,
                 source_offset: slot.recurrent_offset() / 4,
                 destination_offset: 0,
@@ -1557,10 +1694,10 @@ fn runtime_copy_geometry(
             RuntimeCopyGeometry {
                 source: Some(FinalState),
                 destination: CacheArena,
-                rows: 1,
+                rows: phase.sequences(),
                 words: RECURRENT_STATE_BYTES / 4,
                 source_stride: RECURRENT_STATE_BYTES / 4,
-                destination_stride: RECURRENT_STATE_BYTES / 4,
+                destination_stride: CACHE_SLOT_BYTES / 4,
                 source_offset: 0,
                 destination_offset: slot.recurrent_offset() / 4,
             }
@@ -1765,10 +1902,7 @@ fn expected_schedule_kinds(geometry: GdnRuntimeGeometry) -> Vec<GdnRuntimeSchedu
 }
 
 fn require_schedule(plan: &GdnRuntimePlan) -> Result<()> {
-    let phase = match plan.geometry.mode {
-        GdnRuntimeMode::Prefill => GdnPhase::TextPrefill(plan.geometry.rows),
-        GdnRuntimeMode::CachedDecode => GdnPhase::CachedDecode,
-    };
+    let phase = plan.geometry.phase();
     let actual = plan
         .schedule
         .iter()
@@ -1861,6 +1995,19 @@ fn require_schedule(plan: &GdnRuntimePlan) -> Result<()> {
             && source.role != destination.role
             && source.kind == GdnRuntimeStateKind::RecurrentCache
             && destination.kind == GdnRuntimeStateKind::RecurrentInitial => {}
+        GdnRuntimeInitialState::StridedCopy {
+            source,
+            source_stride_bytes,
+            destination,
+            lanes,
+        } if plan.geometry.mode == GdnRuntimeMode::Prefill
+            && plan.geometry.lanes > 1
+            && lanes == plan.geometry.lanes
+            && source_stride_bytes == CACHE_SLOT_BYTES
+            && source.role == GdnRuntimeBuffer::CacheArena
+            && destination.role == GdnRuntimeBuffer::InitialState
+            && source.kind == GdnRuntimeStateKind::RecurrentCache
+            && destination.kind == GdnRuntimeStateKind::RecurrentInitial => {}
         GdnRuntimeInitialState::InPlace { state }
             if plan.geometry.mode == GdnRuntimeMode::CachedDecode
                 && state.role == GdnRuntimeBuffer::CacheArena
@@ -1881,6 +2028,19 @@ fn require_schedule(plan: &GdnRuntimePlan) -> Result<()> {
             && source.role != destination.role
             && source.kind == GdnRuntimeStateKind::RecurrentFinal
             && destination.kind == GdnRuntimeStateKind::RecurrentCache => {}
+        GdnRuntimeFinalState::StridedScatter {
+            source,
+            destination,
+            destination_stride_bytes,
+            lanes,
+        } if plan.geometry.mode == GdnRuntimeMode::Prefill
+            && plan.geometry.lanes > 1
+            && lanes == plan.geometry.lanes
+            && destination_stride_bytes == CACHE_SLOT_BYTES
+            && source.role == GdnRuntimeBuffer::FinalState
+            && destination.role == GdnRuntimeBuffer::CacheArena
+            && source.kind == GdnRuntimeStateKind::RecurrentFinal
+            && destination.kind == GdnRuntimeStateKind::RecurrentCache => {}
         GdnRuntimeFinalState::InPlace { state }
             if plan.geometry.mode == GdnRuntimeMode::CachedDecode
                 && state.role == GdnRuntimeBuffer::CacheArena
@@ -1891,12 +2051,20 @@ fn require_schedule(plan: &GdnRuntimePlan) -> Result<()> {
             ));
         }
     }
-    if let (
+    let initial_destination = match plan.initial_state {
         GdnRuntimeInitialState::Copy { destination, .. }
-        | GdnRuntimeInitialState::Zero { destination },
-        GdnRuntimeFinalState::Scatter { source, .. },
-    ) = (plan.initial_state, plan.final_state)
-        && destination.role == source.role
+        | GdnRuntimeInitialState::Zero { destination }
+        | GdnRuntimeInitialState::StridedCopy { destination, .. } => Some(destination),
+        GdnRuntimeInitialState::InPlace { .. } => None,
+    };
+    let final_source = match plan.final_state {
+        GdnRuntimeFinalState::Scatter { source, .. }
+        | GdnRuntimeFinalState::StridedScatter { source, .. } => Some(source),
+        GdnRuntimeFinalState::InPlace { .. } => None,
+    };
+    if initial_destination
+        .zip(final_source)
+        .is_some_and(|(destination, source)| destination.role == source.role)
     {
         return Err(Error::State(
             "GDN runtime initial/final recurrent allocations alias".into(),
@@ -1911,12 +2079,15 @@ fn runtime_controls(
     has_initial: bool,
 ) -> Result<Vec<GdnRuntimeControl>> {
     let values = metadata(phase, GdnCacheSlot::One)?;
+    let sequences = phase.sequences();
     values
         .into_iter()
         .map(|(role, mut bytes)| {
             match role {
-                GdnBuffer::CacheIndices => bytes = (slot.index() as i32).to_le_bytes().to_vec(),
-                GdnBuffer::HasInitial => bytes = vec![u8::from(has_initial)],
+                GdnBuffer::CacheIndices if sequences == 1 => {
+                    bytes = (slot.index() as i32).to_le_bytes().to_vec()
+                }
+                GdnBuffer::HasInitial => bytes = vec![u8::from(has_initial); sequences],
                 _ => {}
             }
             Ok(GdnRuntimeControl {
@@ -1945,7 +2116,7 @@ fn build_stage(
     crate::cuda::kernel::StaticScalarBlock,
 )> {
     let (asset, scalars, family_config) = match phase {
-        GdnPhase::TextPrefill(_) => {
+        phase if phase.is_text_prefill() => {
             let (asset, scalars) = match stage {
                 GdnStage::Conv => {
                     let definition = parameterized_conv::prepare(

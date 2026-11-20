@@ -16,6 +16,7 @@ use std::sync::Arc;
 use zerogravity_core::{Error, Result};
 
 const THREADS: u32 = 128;
+const MAX_RUNTIME_WORD_TRANSPORT_WORDS: usize = 2 * 1024 * 1024;
 const COPY_ENTRY: &str = "zg_copy_strided_words_runtime_v1";
 const ZERO_ENTRY: &str = "zg_zero_strided_words_runtime_v1";
 const SOURCE: &str = r#"// cubecl.cuda.dynamic_shared_bytes=0
@@ -78,8 +79,13 @@ impl RuntimeWordTransport {
         source_stride: usize,
         destination_stride: usize,
     ) -> Result<Self> {
-        let words =
-            program_kernels::checked_copy_words(rows, width, source_stride, destination_stride)?;
+        let words = program_kernels::checked_copy_words_with_limit(
+            rows,
+            width,
+            source_stride,
+            destination_stride,
+            MAX_RUNTIME_WORD_TRANSPORT_WORDS,
+        )?;
         require_word_view(source_bytes, rows, source_stride, width, "source")?;
         require_word_view(
             destination_bytes,
@@ -108,11 +114,12 @@ impl RuntimeWordTransport {
         width: usize,
         destination_stride: usize,
     ) -> Result<Self> {
-        let words = program_kernels::checked_copy_words(
+        let words = program_kernels::checked_copy_words_with_limit(
             rows,
             width,
             destination_stride,
             destination_stride,
+            MAX_RUNTIME_WORD_TRANSPORT_WORDS,
         )?;
         require_word_view(
             destination_bytes,

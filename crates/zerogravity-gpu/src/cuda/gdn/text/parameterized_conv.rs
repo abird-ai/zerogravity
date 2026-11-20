@@ -63,11 +63,13 @@ pub(super) fn prepare_with_layout(
     geometry: SourceConvGeometry,
     layout: ConvLayout,
 ) -> Result<Definition> {
-    let GdnPhase::TextPrefill(tokens) = phase else {
+    if !phase.is_text_prefill() {
         return Err(Error::Unsupported(
             "parameterized GDN Conv is text prefill only".into(),
         ));
-    };
+    }
+    let tokens = phase.tokens();
+    let sequences = phase.sequences();
     slot.validate(phase)?;
     if tokens == 0
         || geometry.qkv_channels != 6144
@@ -75,9 +77,9 @@ pub(super) fn prepare_with_layout(
         || geometry.coefficient_channels != 32
         || geometry.kernel != 4
         || !geometry.qkv_channels.is_multiple_of(256)
-        || layout.cache_indices_bytes != 4
-        || layout.has_initial_bytes != 1
-        || layout.query_starts_bytes != 8
+        || layout.cache_indices_bytes != sequences * 4
+        || layout.has_initial_bytes != sequences
+        || layout.query_starts_bytes != (sequences + 1) * 4
         || !layout.conv_batch_bytes.is_multiple_of(4)
         || layout.conv_chunk_offsets_bytes != layout.conv_batch_bytes
         || !layout.cache_arena_bytes.is_multiple_of(CACHE_SLOT_BYTES)
@@ -108,7 +110,11 @@ pub(super) fn prepare_with_layout(
     }
 
     let cache_lines = layout.cache_arena_bytes / CACHE_SLOT_BYTES;
-    if cache_lines != CACHE_SLOTS
+    let expected_cache_lines = match phase {
+        GdnPhase::TextPrefillCohort { .. } => sequences + 1,
+        _ => CACHE_SLOTS,
+    };
+    if cache_lines != expected_cache_lines
         || slot.index() >= cache_lines
         || slot
             .convolution_offset()
@@ -120,10 +126,7 @@ pub(super) fn prepare_with_layout(
         ));
     }
 
-    let grid_x = tokens
-        .checked_add(7)
-        .ok_or_else(|| Error::Limit("GDN Conv grid overflow".into()))?
-        / 8;
+    let grid_x = phase.conv_chunks();
     if grid_x > layout.conv_batch_bytes / 4 {
         return Err(Error::State(
             "parameterized GDN Conv control table range".into(),

@@ -14,6 +14,7 @@ use crate::{
         gdn::{
             CONV_STATE_BYTES, CachedConvBatch, CachedDecodeBatch, CachedDecodePrivateBatch,
             CachedGatedBatch, GdnBuffer, GdnPhase, GdnRuntimeBuffer, GdnRuntimeCacheSlot,
+            GdnRuntimePartition, GdnRuntimePlan,
             state_transport::{
                 CONV_ELEMENTS, RECURRENT_ELEMENTS, StateCopy, StateTransport, plane_handle,
             },
@@ -28,7 +29,7 @@ use crate::{
         cohort_rows::CohortRowSpans,
     },
 };
-use cubecl::server::Handle;
+use cubecl::{bytes::Bytes, server::Handle};
 use std::collections::BTreeMap;
 use zerogravity_core::{
     Error, Result,
@@ -302,6 +303,369 @@ impl OrdinaryCudaBody {
             bytes,
             "ordinary CUDA cohort BF16 rows",
         )
+    }
+
+    fn gdn_prefill_plan(
+        &self,
+        calls: &[&SourceCall],
+        values: &super::OrdinaryCudaCohortValues,
+    ) -> Result<GdnRuntimePlan> {
+        let first = calls
+            .first()
+            .copied()
+            .ok_or_else(|| Error::State("ordinary CUDA empty GDN prefill cohort".into()))?;
+        let lanes = calls.len();
+        let rows = first.rows().len();
+        if !matches!(lanes, 4 | 8)
+            || rows == 0
+            || calls.iter().any(|call| {
+                call.mode() != SourceCallMode::Prefill
+                    || call.rows().len() != rows
+                    || call.rows().base() != first.rows().base()
+            })
+        {
+            return Err(Error::Unsupported(
+                "ordinary CUDA GDN prefill cohort geometry".into(),
+            ));
+        }
+        GdnRuntimePlan::prefill_cohort(
+            super::layout::gdn_runtime_config()?,
+            first.rows().base(),
+            rows,
+            lanes,
+            first.rows().base() != 0,
+            values.gdn_prefill_layout()?,
+        )
+    }
+
+    fn write_gdn_prefill_controls(
+        &self,
+        plan: &GdnRuntimePlan,
+        values: &super::OrdinaryCudaCohortValues,
+    ) -> Result<()> {
+        for control in plan.controls() {
+            let lease = values.gdn_prefill_internal(control.role())?;
+            let handle = exact_view(
+                lease,
+                0,
+                control.bytes().len(),
+                "ordinary CUDA cohort GDN control",
+            )?;
+            self.cold()
+                .service()
+                .client()
+                .write(&handle, Bytes::from_bytes_vec(control.bytes().to_vec()));
+        }
+        Ok(())
+    }
+
+    fn gdn_prefill_cache_state(
+        &self,
+        values: &super::OrdinaryCudaCohortValues,
+        lane: usize,
+        recurrent: bool,
+    ) -> Result<Handle> {
+        let layout = values.gdn_prefill_layout()?;
+        if lane >= values.width() || lane + 1 >= layout.cache_slots() {
+            return Err(Error::State(
+                "ordinary CUDA cohort GDN cache lane outside workspace".into(),
+            ));
+        }
+        let offset = (lane + 1)
+            .checked_mul(layout.cache_slot_bytes())
+            .and_then(|offset| offset.checked_add(if recurrent { CONV_STATE_BYTES } else { 0 }))
+            .ok_or_else(|| Error::Limit("ordinary CUDA cohort GDN cache offset".into()))?;
+        plane_handle(
+            values.gdn_prefill_internal(GdnRuntimeBuffer::CacheArena)?,
+            offset,
+            if recurrent {
+                RECURRENT_ELEMENTS * 4
+            } else {
+                CONV_STATE_BYTES
+            },
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn enqueue_gdn_prefill_convolution_cohort(
+        &self,
+        node_index: usize,
+        node: &PlanNode,
+        template: &SourceOperatorTemplate,
+        calls: &[&SourceCall],
+        state_maps: &[BTreeMap<StateSlot, &StateBinding>],
+        spans: &CohortRowSpans,
+        values: &super::OrdinaryCudaCohortValues,
+    ) -> Result<Option<(usize, usize)>> {
+        let SourceOperatorKind::CausalConvSplit { domain, .. } = template.kind() else {
+            return Ok(None);
+        };
+        if !matches!(calls.len(), 4 | 8)
+            || !self.cold().layout().groups().direct()
+            || calls
+                .iter()
+                .any(|call| call.rows().len() != calls[0].rows().len())
+        {
+            return Ok(None);
+        }
+        let rows = calls[0].rows().len();
+        let descriptor = template.bind_runtime_call(calls[0])?;
+        let ([packed_qkvz, packed_ba], [conv_output, z]) =
+            (node.inputs.as_slice(), node.outputs.as_slice())
+        else {
+            return Err(Error::State(
+                "ordinary CUDA GDN prefill cohort convolution SSA arity".into(),
+            ));
+        };
+        let inputs = descriptor.input_elements()?;
+        let outputs = descriptor.output_elements()?;
+        let per_row = |elements: usize, role: &str| {
+            elements
+                .checked_div(rows)
+                .filter(|&width| width != 0 && width.checked_mul(rows) == Some(elements))
+                .ok_or_else(|| {
+                    Error::State(format!(
+                        "ordinary CUDA GDN prefill cohort {role} row geometry"
+                    ))
+                })
+        };
+        let qkvz_width = per_row(inputs[0], "QKVZ")?;
+        let ba_width = per_row(inputs[1], "BA")?;
+        let conv_width = per_row(outputs[0], "conv")?;
+        let z_width = per_row(outputs[1], "Z")?;
+        let [conv_weights] = self.cold().node_parameters(node_index)? else {
+            return Err(Error::State(
+                "ordinary CUDA GDN prefill cohort convolution parameters".into(),
+            ));
+        };
+        let plan = self.gdn_prefill_plan(calls, values)?;
+        self.write_gdn_prefill_controls(&plan, values)?;
+        let bound_rows = super::layout::MAX_ROWS
+            .checked_mul(calls.len())
+            .ok_or_else(|| Error::Limit("ordinary CUDA GDN cohort row bound".into()))?;
+        let mut handles = values.gdn_prefill_internal_handles();
+        handles.insert(
+            GdnRuntimeBuffer::PackedQkvz,
+            values.packed_row_bounded_handle(*packed_qkvz, qkvz_width, spans, bound_rows)?,
+        );
+        handles.insert(
+            GdnRuntimeBuffer::PackedBa,
+            values.packed_row_bounded_handle(*packed_ba, ba_width, spans, bound_rows)?,
+        );
+        handles.insert(
+            GdnRuntimeBuffer::ConvOutput,
+            values.packed_row_bounded_handle(*conv_output, conv_width, spans, bound_rows)?,
+        );
+        handles.insert(
+            GdnRuntimeBuffer::ZCompact,
+            values.packed_row_bounded_handle(*z, z_width, spans, bound_rows)?,
+        );
+        handles.insert(GdnRuntimeBuffer::ConvWeights, conv_weights.lease().handle());
+
+        let state_layout = ResidentBufferLayout::new(ResidentPhysicalType::F32, CONV_ELEMENTS)?;
+        let mut states = Vec::with_capacity(calls.len());
+        let mut dispatches = 0usize;
+        for (lane, state_map) in state_maps.iter().enumerate() {
+            let state = state_map
+                .get(&StateSlot::Conv(domain))
+                .copied()
+                .ok_or_else(|| {
+                    Error::State("ordinary CUDA GDN prefill cohort conv state absent".into())
+                })?;
+            let (StateBuffers::Vector(prior), StateBuffers::Vector(candidate)) =
+                (&state.prior, &state.candidate)
+            else {
+                return Err(Error::State(
+                    "ordinary CUDA GDN prefill cohort conv state layout".into(),
+                ));
+            };
+            prior.require_layout(state_layout)?;
+            candidate.require_layout(state_layout)?;
+            let native = self.gdn_prefill_cache_state(values, lane, false)?;
+            StateTransport::prepare(
+                self.cold().service(),
+                StateCopy::ConvIn,
+                prior.handle.clone(),
+                native.clone(),
+                self.cold().status(),
+            )?
+            .launch(self.cold().service())?;
+            dispatches += 1;
+            states.push((candidate, native));
+        }
+        dispatches += plan
+            .prepare_partition_launches(
+                self.cold().service().client(),
+                &handles,
+                GdnRuntimePartition::Convolution,
+            )?
+            .launch()?;
+        let active_conv = values.packed_row_handle(*conv_output, conv_width, spans)?;
+        let active_z = values.packed_row_handle(*z, z_width, spans)?;
+        dispatches += attention::certify(
+            self.cold().service().client(),
+            &active_conv,
+            &self.cold().status().handle(),
+            spans.total_rows() * conv_width,
+        )?;
+        dispatches += attention::certify(
+            self.cold().service().client(),
+            &active_z,
+            &self.cold().status().handle(),
+            spans.total_rows() * z_width,
+        )?;
+        for (candidate, native) in states {
+            StateTransport::prepare(
+                self.cold().service(),
+                StateCopy::ConvOut,
+                native,
+                candidate.handle.clone(),
+                self.cold().status(),
+            )?
+            .launch(self.cold().service())?;
+            dispatches += 1;
+        }
+        Ok(Some((dispatches, 0)))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn enqueue_gdn_prefill_recurrent_cohort(
+        &self,
+        node_index: usize,
+        node: &PlanNode,
+        template: &SourceOperatorTemplate,
+        calls: &[&SourceCall],
+        state_maps: &[BTreeMap<StateSlot, &StateBinding>],
+        spans: &CohortRowSpans,
+        values: &super::OrdinaryCudaCohortValues,
+    ) -> Result<Option<(usize, usize)>> {
+        let SourceOperatorKind::GatedDelta { domain, .. } = template.kind() else {
+            return Ok(None);
+        };
+        if !matches!(calls.len(), 4 | 8)
+            || !self.cold().layout().groups().direct()
+            || calls
+                .iter()
+                .any(|call| call.rows().len() != calls[0].rows().len())
+        {
+            return Ok(None);
+        }
+        let rows = calls[0].rows().len();
+        let descriptor = template.bind_runtime_call(calls[0])?;
+        let ([conv_output, z, packed_ba], [output]) =
+            (node.inputs.as_slice(), node.outputs.as_slice())
+        else {
+            return Err(Error::State(
+                "ordinary CUDA GDN prefill cohort recurrent SSA arity".into(),
+            ));
+        };
+        let inputs = descriptor.input_elements()?;
+        let outputs = descriptor.output_elements()?;
+        let per_row = |elements: usize, role: &str| {
+            elements
+                .checked_div(rows)
+                .filter(|&width| width != 0 && width.checked_mul(rows) == Some(elements))
+                .ok_or_else(|| {
+                    Error::State(format!(
+                        "ordinary CUDA GDN prefill cohort {role} row geometry"
+                    ))
+                })
+        };
+        let conv_width = per_row(inputs[0], "conv")?;
+        let z_width = per_row(inputs[1], "Z")?;
+        let ba_width = per_row(inputs[2], "BA")?;
+        let output_width = per_row(outputs[0], "output")?;
+        let [a_log, dt_bias, gamma] = self.cold().node_parameters(node_index)? else {
+            return Err(Error::State(
+                "ordinary CUDA GDN prefill cohort recurrent parameters".into(),
+            ));
+        };
+        let plan = self.gdn_prefill_plan(calls, values)?;
+        self.write_gdn_prefill_controls(&plan, values)?;
+        let bound_rows = super::layout::MAX_ROWS
+            .checked_mul(calls.len())
+            .ok_or_else(|| Error::Limit("ordinary CUDA GDN cohort row bound".into()))?;
+        let mut handles = values.gdn_prefill_internal_handles();
+        handles.insert(
+            GdnRuntimeBuffer::ConvOutput,
+            values.packed_row_bounded_handle(*conv_output, conv_width, spans, bound_rows)?,
+        );
+        handles.insert(
+            GdnRuntimeBuffer::ZCompact,
+            values.packed_row_bounded_handle(*z, z_width, spans, bound_rows)?,
+        );
+        handles.insert(
+            GdnRuntimeBuffer::PackedBa,
+            values.packed_row_bounded_handle(*packed_ba, ba_width, spans, bound_rows)?,
+        );
+        handles.insert(
+            GdnRuntimeBuffer::Gated,
+            values.packed_row_bounded_handle(*output, output_width, spans, bound_rows)?,
+        );
+        handles.insert(GdnRuntimeBuffer::ALog, a_log.lease().handle());
+        handles.insert(GdnRuntimeBuffer::DtBias, dt_bias.lease().handle());
+        handles.insert(GdnRuntimeBuffer::GatedGamma, gamma.lease().handle());
+
+        let recurrent_layout =
+            ResidentBufferLayout::new(ResidentPhysicalType::F32, RECURRENT_ELEMENTS)?;
+        let mut states = Vec::with_capacity(calls.len());
+        let mut dispatches = 0usize;
+        for (lane, state_map) in state_maps.iter().enumerate() {
+            let state = state_map
+                .get(&StateSlot::Recurrent(domain))
+                .copied()
+                .ok_or_else(|| {
+                    Error::State("ordinary CUDA GDN prefill cohort recurrent state absent".into())
+                })?;
+            let (StateBuffers::Vector(prior), StateBuffers::Vector(candidate)) =
+                (&state.prior, &state.candidate)
+            else {
+                return Err(Error::State(
+                    "ordinary CUDA GDN prefill cohort recurrent state layout".into(),
+                ));
+            };
+            prior.require_layout(recurrent_layout)?;
+            candidate.require_layout(recurrent_layout)?;
+            let native = self.gdn_prefill_cache_state(values, lane, true)?;
+            if calls[0].rows().base() != 0 {
+                StateTransport::prepare(
+                    self.cold().service(),
+                    StateCopy::RecurrentIn,
+                    prior.handle.clone(),
+                    native.clone(),
+                    self.cold().status(),
+                )?
+                .launch(self.cold().service())?;
+                dispatches += 1;
+            }
+            states.push((candidate, native));
+        }
+        dispatches += plan
+            .prepare_partition_launches(
+                self.cold().service().client(),
+                &handles,
+                GdnRuntimePartition::Recurrent,
+            )?
+            .launch()?;
+        let active_output = values.packed_row_handle(*output, output_width, spans)?;
+        dispatches += attention::certify(
+            self.cold().service().client(),
+            &active_output,
+            &self.cold().status().handle(),
+            spans.total_rows() * output_width,
+        )?;
+        for (candidate, native) in states {
+            StateTransport::prepare(
+                self.cold().service(),
+                StateCopy::RecurrentOut,
+                native,
+                candidate.handle.clone(),
+                self.cold().status(),
+            )?
+            .launch(self.cold().service())?;
+            dispatches += 1;
+        }
+        Ok(Some((dispatches, 0)))
     }
 
     #[allow(clippy::too_many_arguments)] // Keep cohort row/state/source bindings explicit.
@@ -1273,6 +1637,34 @@ impl OrdinaryCudaBody {
                 &spans,
                 values,
                 &mut gate_alias,
+            )? {
+                dispatches += launched;
+                fused_dispatches += fused;
+                continue;
+            }
+
+            if let Some((launched, fused)) = self.enqueue_gdn_prefill_convolution_cohort(
+                node_index,
+                node,
+                template,
+                &calls,
+                &state_maps,
+                &spans,
+                values,
+            )? {
+                dispatches += launched;
+                fused_dispatches += fused;
+                continue;
+            }
+
+            if let Some((launched, fused)) = self.enqueue_gdn_prefill_recurrent_cohort(
+                node_index,
+                node,
+                template,
+                &calls,
+                &state_maps,
+                &spans,
+                values,
             )? {
                 dispatches += launched;
                 fused_dispatches += fused;

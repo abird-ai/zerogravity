@@ -494,8 +494,23 @@ and live TODOs are authoritative.
   groups while incompatible/ragged cases keep the old per-lane fallback. The real
   warm48+3 B8 run stayed exact but TTFT was effectively flat versus the retained
   stateless baseline (contiguous4696.591→4701.433ms; paged4907.715→5022.809ms), so
-  attention is not the dominant remaining cost. Next target is shared multi-token GDN
-  prefill; do not add more attention/overlap fixtures before that real path moves.
+  attention is not the dominant remaining cost.
+  **Multi-token GDN prefill is now accepted.** The shared GDN runtime gained explicit
+  `TextPrefillCohort { rows, lanes }` geometry, sequence-aware controls/cache/state
+  workspace, strided packed recurrent gather/scatter, and a width-scoped cohort GDN
+  workspace owned by `OrdinaryCudaCohortValues`. Ordinary B4/B8 prefill imports each
+  private Conv/Recurrent root through existing typed `StateTransport`, executes one
+  shared cohort GDN runtime over packed activations, then exports each candidate root;
+  no scheduler/root/publication authority moved into the kernel layer. Runtime word
+  transport keeps the old1,000,000-word global contract; only its dedicated runtime
+  transport path has a2^21-word bound, exactly covering B8 recurrent state.
+  Real warm48+3 B8 exact serving moved dramatically versus the attention checkpoint:
+  contiguous4701.433→1007.301ms (~78.6% faster), paged5022.809→1160.106ms (~76.9%);
+  mean TTFT4341.373→616.681ms contiguous (~85.8% lower) and4503.152→649.944ms paged
+  (~85.6% lower). End-to-end output rate is23.826/20.688 tok/s. Decode intervals remain
+  ~194/195ms contiguous (~41 tok/s B8) and~248/257ms paged (~31-32 tok/s), so prefill
+  is no longer the first-order gap; next optimize the real decode path toward the
+  retained historical ZG/vLLM B8 range instead of adding more prefill evidence.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of

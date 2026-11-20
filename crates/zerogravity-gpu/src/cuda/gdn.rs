@@ -85,6 +85,12 @@ pub(crate) enum GdnPhase {
     FixedPrompt,
     /// One actual prompt with ceil(M/64) GDN chunks, never two model calls.
     TextPrefill(usize),
+    /// Equal-row independent prefill sequences packed into one physical launch.
+    /// Session/root authority remains external; this is physical GDN geometry.
+    TextPrefillCohort {
+        rows: usize,
+        lanes: usize,
+    },
 }
 impl GdnPhase {
     pub(crate) fn for_reference_call(call: &SourceCall) -> Result<Self> {
@@ -106,10 +112,32 @@ impl GdnPhase {
             Self::FixedPrompt => 47,
             Self::ContinuedTwo => 2,
             Self::TextPrefill(prompt_tokens) => prompt_tokens,
+            Self::TextPrefillCohort { rows, lanes } => rows * lanes,
         }
     }
     pub(crate) fn chunks(self) -> usize {
-        self.tokens().div_ceil(64)
+        match self {
+            Self::TextPrefillCohort { rows, lanes } => rows.div_ceil(64) * lanes,
+            _ => self.tokens().div_ceil(64),
+        }
+    }
+    pub(crate) fn sequences(self) -> usize {
+        match self {
+            Self::TextPrefillCohort { lanes, .. } => lanes,
+            _ => 1,
+        }
+    }
+    pub(crate) fn rows_per_sequence(self) -> usize {
+        match self {
+            Self::TextPrefillCohort { rows, .. } => rows,
+            _ => self.tokens(),
+        }
+    }
+    pub(crate) fn conv_chunks(self) -> usize {
+        self.rows_per_sequence().div_ceil(8) * self.sequences()
+    }
+    pub(crate) fn is_text_prefill(self) -> bool {
+        matches!(self, Self::TextPrefill(_) | Self::TextPrefillCohort { .. })
     }
     pub(crate) fn has_initial_state(self) -> bool {
         matches!(self, Self::ContinuedTwo | Self::CachedDecode)
@@ -155,7 +183,10 @@ impl GdnCacheSlot {
         if matches!(
             (phase, self),
             (
-                GdnPhase::InitialOne | GdnPhase::FixedPrompt | GdnPhase::TextPrefill(_),
+                GdnPhase::InitialOne
+                    | GdnPhase::FixedPrompt
+                    | GdnPhase::TextPrefill(_)
+                    | GdnPhase::TextPrefillCohort { .. },
                 Self::Four
             ) | (GdnPhase::Initial64 | GdnPhase::ContinuedTwo, Self::One)
         ) {
@@ -222,6 +253,7 @@ pub(crate) enum GdnBuffer {
 impl GdnBuffer {
     pub(crate) fn bytes(self, phase: GdnPhase) -> usize {
         let tokens = phase.tokens();
+        let sequences = phase.sequences();
         match self {
             Self::PackedQkvz => tokens * 8192 * 2,
             Self::PackedBa => tokens * 32 * 2,
@@ -239,19 +271,22 @@ impl GdnBuffer {
             Self::ALog => 16 * 4,
             Self::DtBias => 16 * 2,
             Self::GatedGamma => 128 * 2,
-            Self::CacheArena => CACHE_SLOTS * CACHE_SLOT_BYTES,
-            Self::CacheIndices => 4,
-            Self::HasInitial => 1,
-            Self::QueryStarts => 8,
+            Self::CacheArena => match phase {
+                GdnPhase::TextPrefillCohort { .. } => (sequences + 1) * CACHE_SLOT_BYTES,
+                _ => CACHE_SLOTS * CACHE_SLOT_BYTES,
+            },
+            Self::CacheIndices => sequences * 4,
+            Self::HasInitial => sequences,
+            Self::QueryStarts => (sequences + 1) * 4,
             Self::ChunkIndices => phase.chunks() * 8,
             Self::ConvBatch | Self::ConvChunkOffsets => 2048 * 4,
-            Self::ChunkOffsets => 16,
+            Self::ChunkOffsets => (sequences + 1) * 8,
             Self::ConvOutput => tokens * 6144 * 2,
             Self::GRaw | Self::Beta | Self::GCumulative | Self::Rstd => tokens * 16 * 4,
             Self::Kkt => tokens * 16 * 64 * 4,
             Self::Inverse => tokens * 16 * 64 * 2,
             Self::HChunks => phase.chunks() * 16 * 128 * 128 * 2,
-            Self::InitialState | Self::FinalState => RECURRENT_STATE_BYTES,
+            Self::InitialState | Self::FinalState => sequences * RECURRENT_STATE_BYTES,
         }
     }
 }
@@ -948,38 +983,71 @@ pub(crate) fn required_buffers(phase: GdnPhase) -> Result<Vec<(GdnBuffer, usize)
 pub(crate) fn metadata(phase: GdnPhase, slot: GdnCacheSlot) -> Result<Vec<(GdnBuffer, Vec<u8>)>> {
     use GdnBuffer::*;
     slot.validate(phase)?;
-    let mut values = vec![(CacheIndices, (slot.index() as i32).to_le_bytes().to_vec())];
-    if phase == GdnPhase::CachedDecode {
-        return Ok(values);
-    }
-    let mut batch = vec![-1_i32; 2048];
-    let mut offsets = vec![-1_i32; 2048];
-    for index in 0..phase.tokens().div_ceil(8) {
-        batch[index] = 0;
-        offsets[index] = index as i32;
-    }
+    let sequences = phase.sequences();
+    let rows = phase.rows_per_sequence();
+    let cache_indices = (0..sequences)
+        .map(|lane| i32::try_from(lane + 1).map_err(|_| Error::Limit("GDN cache index".into())))
+        .collect::<Result<Vec<_>>>()?;
     let packed = |values: &[i32]| {
         values
             .iter()
             .flat_map(|value| value.to_le_bytes())
             .collect::<Vec<_>>()
     };
+    let mut values = vec![(CacheIndices, packed(&cache_indices))];
+    if phase == GdnPhase::CachedDecode {
+        return Ok(values);
+    }
+    let mut batch = vec![-1_i32; 2048];
+    let mut offsets = vec![-1_i32; 2048];
+    let conv_per_sequence = rows.div_ceil(8);
+    let mut cursor = 0usize;
+    for lane in 0..sequences {
+        for chunk in 0..conv_per_sequence {
+            batch[cursor] = i32::try_from(lane)
+                .map_err(|_| Error::Limit("GDN convolution batch index".into()))?;
+            offsets[cursor] = i32::try_from(chunk)
+                .map_err(|_| Error::Limit("GDN convolution chunk offset".into()))?;
+            cursor += 1;
+        }
+    }
+    let query_starts = (0..=sequences)
+        .map(|lane| {
+            lane.checked_mul(rows)
+                .and_then(|value| i32::try_from(value).ok())
+                .ok_or_else(|| Error::Limit("GDN query-start extent".into()))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let chunks_per_sequence = rows.div_ceil(64);
+    let chunk_indices = (0..sequences)
+        .flat_map(|lane| {
+            (0..chunks_per_sequence).flat_map(move |chunk| {
+                [
+                    i32::try_from(lane).expect("bounded GDN sequence index"),
+                    i32::try_from(chunk).expect("bounded GDN chunk index"),
+                ]
+            })
+        })
+        .collect::<Vec<_>>();
+    let chunk_offsets = (0..=sequences)
+        .map(|lane| {
+            lane.checked_mul(chunks_per_sequence)
+                .and_then(|value| i64::try_from(value).ok())
+                .ok_or_else(|| Error::Limit("GDN chunk-offset extent".into()))
+        })
+        .collect::<Result<Vec<_>>>()?;
     values.extend([
-        (HasInitial, vec![u8::from(phase.has_initial_state())]),
-        (QueryStarts, packed(&[0, phase.tokens() as i32])),
+        (
+            HasInitial,
+            vec![u8::from(phase.has_initial_state()); sequences],
+        ),
+        (QueryStarts, packed(&query_starts)),
         (ConvBatch, packed(&batch)),
         (ConvChunkOffsets, packed(&offsets)),
-        (
-            ChunkIndices,
-            packed(
-                &(0..phase.chunks())
-                    .flat_map(|chunk| [0, chunk as i32])
-                    .collect::<Vec<_>>(),
-            ),
-        ),
+        (ChunkIndices, packed(&chunk_indices)),
         (
             ChunkOffsets,
-            [0_i64, phase.chunks() as i64]
+            chunk_offsets
                 .into_iter()
                 .flat_map(i64::to_le_bytes)
                 .collect(),

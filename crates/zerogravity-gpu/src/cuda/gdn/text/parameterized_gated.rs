@@ -38,7 +38,7 @@ pub(super) struct GatedLayout {
 }
 impl GatedLayout {
     fn retained(phase: GdnPhase) -> Result<Self> {
-        if !matches!(phase, GdnPhase::TextPrefill(_) | GdnPhase::CachedDecode) {
+        if !(phase.is_text_prefill() || phase == GdnPhase::CachedDecode) {
             return Err(Error::Unsupported(
                 "parameterized GDN Gated text phase".into(),
             ));
@@ -126,7 +126,7 @@ fn extent(rows: usize, width: usize, element_bytes: usize, role: &str) -> Result
 }
 
 fn prepare_checked(phase: GdnPhase, slot: GdnCacheSlot, layout: GatedLayout) -> Result<Definition> {
-    if !matches!(phase, GdnPhase::TextPrefill(_) | GdnPhase::CachedDecode) {
+    if !(phase.is_text_prefill() || phase == GdnPhase::CachedDecode) {
         return Err(Error::Unsupported(
             "parameterized GDN Gated text phase".into(),
         ));
@@ -171,12 +171,14 @@ fn prepare_checked(phase: GdnPhase, slot: GdnCacheSlot, layout: GatedLayout) -> 
         ],
     )?;
     let (entry, source, ptx_sha256) = match phase {
-        GdnPhase::TextPrefill(_) => (PREFILL_ENTRY, PREFILL_SOURCE, PREFILL_ORIGINAL_PTX_SHA256),
+        GdnPhase::TextPrefill(_) | GdnPhase::TextPrefillCohort { .. } => {
+            (PREFILL_ENTRY, PREFILL_SOURCE, PREFILL_ORIGINAL_PTX_SHA256)
+        }
         GdnPhase::CachedDecode => (CACHED_ENTRY, CACHED_SOURCE, CACHED_ORIGINAL_PTX_SHA256),
         _ => unreachable!(),
     };
     let grid = match phase {
-        GdnPhase::TextPrefill(_) => [rows_u32 / 4, 1, 1],
+        GdnPhase::TextPrefill(_) | GdnPhase::TextPrefillCohort { .. } => [rows_u32 / 4, 1, 1],
         // The pinned cached PTX emits four BF16 values per lane. One block
         // therefore covers 128 BF16 outputs; all 16 head rows are required to
         // cover the full 2,048-element cached Gated vector. This matches the
