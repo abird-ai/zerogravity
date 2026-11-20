@@ -692,11 +692,17 @@ or a change to the active correctness/benchmark/27B order.
   Exact native B8 passes, but steady contiguous is4888.231ms/4.910 output tok/s and
   paged5080.588ms/4.724 tok/s. Mean first-token commits are4523ms/4567ms respectively,
   so prefill dominates; decode is ~44 tok/s contiguous and ~31-32 tok/s paged. The
-  immediate bottleneck is not missing queue concurrency: active8 source admission asks
-  for18 roots and the all-or-nothing weight placement then streams the whole source
-  when the full root inventory exceeds the provider envelope. Next keep immutable hot
-  weights resident independently of bounded root/state capacity and remeasure. Avoid
-  more synthetic overlap evidence unless this real integration exposes a new invariant.
+  immediate bottleneck is not queue concurrency **or weight streaming**. Revalidation
+  proves active8/context512 remains fully resident:18-root total2,076,877,813B plus B8
+  runtime reserve still fits the4.5GiB provider envelope. The generic prefill cohort
+  shares projections/stateless RMS but serializes the remaining stateful operators by
+  lane; decode already has cached GDN batching and one-token B4/B8 attention. A large
+  stateless-prefill batching experiment was exact but rejected after negligible paged
+  gain (TTFT4567→4551ms, throughput4.724→4.719 tok/s). The historical captured engine
+  is fixed B4/47 and qualification-only, so it is not a clean serving fallback. Next
+  build reusable multi-token stateful prefill attention/GDN primitives in the shared
+  CUDA layer and wire them into ordinary source execution. Avoid more synthetic overlap
+  evidence until that real serving path moves.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

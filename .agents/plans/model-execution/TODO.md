@@ -236,12 +236,19 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
  4567.294/4818.167/5075.042ms. TTFT/prefill (~4.5s) is overwhelmingly dominant;
   contiguous decode intervals are ~182ms/B8 cohort and paged ~251/257ms. Historical
   eager-vLLM B8 remains72.20 output tok/s on47-50+3 but is not a fresh matched run.
-  Root cause is now concrete: source active8 prices18 roots before residency; binary
-  `OrdinaryCudaAdmission::fit` falls back from all resident weights to all streamed
-  source pages when that complete inventory exceeds provider capacity. The two-root
-  0.8B/context512 resident plan is only ~1.653GB. Next decouple immutable hot-weight
-  residency from root/state pool capacity so source-page H2D is not paid per request;
-  then remeasure before further overlap work.
+  Revalidation corrected the initial root-cause hypothesis: active8/context512 stays
+  fully resident. Exact bytes: roots2=1,652,990,965; roots18=2,076,877,813; B8 cohort
+  reserve=51,210,272; greedy=11,904; fit cap=4,780,616,032 under provider
+  4,831,838,208, with `resident_weights=true`. The actual generic-source bottleneck is
+  stateful prefill serialization: projections/stateless RMS are shared across B8, while
+  remaining operators run lane-by-lane. Decode already has cached GDN cohort lowering
+  and single-token B4/B8 attention. A263-line stateless-prefill batching experiment
+  (QK-RMS/gate/multiply/SiLU) stayed exact but was rejected after real feedback: paged
+ 4567→4551ms TTFT and4.724→4.719 tok/s; contiguous ~4-5% only. Old `native_cohort`
+  initial execution is fixed B4/47x4 and qualification-gated, so do not route production
+  through it as a shortcut. Next implement shared multi-token stateful prefill kernels/
+  lowering—attention then GDN—in the generic ordinary-CUDA layer and remeasure the same
+  warm48+3 B8 SDK wave.
 
 ### Next continuation — no live campaign
 

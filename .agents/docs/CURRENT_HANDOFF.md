@@ -470,16 +470,25 @@ and live TODOs are authoritative.
   does not remove the regression. Retained historical eager-vLLM B8 is72.20 output
   tok/s on47-50 input/3 output, but the exact vLLM image is not currently runnable,
   so this is directional history rather than a fresh matched comparison.
-  Source inspection identifies the immediate bottleneck: `OrdinaryCudaAdmission::fit`
-  prices the complete root inventory before choosing weight placement and, if that
-  total exceeds the provider cap, flips the entire model from resident weights to
-  source-page streaming. Source-call active8 requests18 roots (`2*active+2`). The
-  ordinary0.8B/context512 two-root fully resident plan is only ~1.653GB, but the
-  18-root fit triggers the all-or-nothing streaming fallback; cohort projection and
-  embedding then materialize source pages/H2D inside each request. Next optimize this
-  residency/root-capacity coupling—keep immutable hot weights resident while state
-  roots/pages remain independently bounded—before spending more work on multi-stream
-  overlap.
+  **Correction after interrupted-phase revalidation:** the previous residency diagnosis
+  was wrong. Exact admission arithmetic for original0.8B/context512 shows the fully
+  resident two-root plan at1,652,990,965B and the fully resident18-root active8 plan at
+  2,076,877,813B. B8 cohort reserve is51,210,272B, greedy reserve11,904B, leaving a
+  fit cap4,780,616,032B under the4,831,838,208B provider envelope; the fitted layout
+  remains `resident_weights=true`. Streaming/root pressure therefore does **not** explain
+  the ~4.5s TTFT. The real hot structure is `execute_prefill_cohort`: projections and
+  stateless RMS are physically shared, but remaining stateful operators execute in a
+  lane loop. Decode already has dedicated cached GDN cohort lowering and single-token
+  B4/B8 attention; prefill has no general multi-token attention/GDN cohort primitive.
+  A263-line experiment batching additional stateless QK-RMS/gate/multiply/SiLU work
+  was physically exact but rejected: paged TTFT changed only4567→4551ms and throughput
+ 4.724→4.719 tok/s; contiguous improved only ~4-5%, not enough to justify the added
+  complexity. The old fast `native_cohort` path is also not a reusable general answer:
+  its cold envelope is explicitly B4 and initial phase is fixed around47x4=188 rows;
+  the serving loader remains qualification-gated. Next implementation target is shared,
+  model-neutral **multi-token stateful prefill batching** (attention first, then GDN),
+  integrated into ordinary CUDA source execution; do not add more overlap fixtures or
+  routing special-cases before that real path exists.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
