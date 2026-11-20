@@ -1,8 +1,8 @@
-# ZeroGravity current comprehensive handoff — 18 Nov 2026
+# ZeroGravity current comprehensive handoff — 20 Nov 2026
 
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
-Full dated takeover snapshot: [`FULL_COMPREHENSIVE_HANDOFF_2026-11-18.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-18.md). The 18 Nov pack embeds this live handoff plus the complete 15 Nov pack, which itself carries the 14 Nov/October design foundation.
+Full dated takeover snapshot: [`FULL_COMPREHENSIVE_HANDOFF_2026-11-20.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-20.md). The 20 Nov pack embeds this live handoff plus the complete 18 Nov pack; the 18 Nov pack in turn carries the 15 Nov/14 Nov/October design foundation.
 
 This file is the complete takeover map and a pointer into maintained source, tests
 and plans. It is deliberately **not** the retired monolithic SHA/archive/evidence
@@ -555,10 +555,14 @@ and live TODOs are authoritative.
   (production CUDA graph substrate/resource admission), `6a5c610` (driver-safe
   nonpersistent NVRTC) and `81b7c71` (explicit graph-resource lifetime witness).
   Their docs checkpoints through `b12e8f5` are pushed.
-- Pushed `origin/main` is `3a1596db12d0f2e5d104ed1980f57af9ae27a513`
-  (`docs: checkpoint paged source lifecycle qualifier`). All newer signed local
-  paged/harness/handoff/cancellation work remains unpushed until explicitly
-  requested. Never use push merely for X2 transport.
+- Pushed/tracked `origin/main` is `f0f06402c78d4511dea1559c73d4295f88790f93`
+  (`feat(cuda): batch multi-token prefill attention`). Latest implementation/source
+  checkpoint at this handoff is `3afb9902f674d9cfe2fc4488e628b61b61cae395`,
+  three implementation commits ahead: `1222f8a` (multi-token GDN prefill), `60ba956`
+  (matched serving-performance profile docs) and `3afb990` (reduced-band GDN layout
+  retention / continuous refill fix). The handoff-consolidation commit may sit above
+  this as docs-only; revalidate actual HEAD first. Nothing after `f0f0640` is pushed
+  unless explicitly requested. Never use push merely for X2 transport.
 - Before any new physical X2 run, sync it to the exact current l5 `main`
   bytes/commit without using a push merely as transport, then revalidate
   status/process/GPU state.
@@ -575,7 +579,7 @@ and live TODOs are authoritative.
   - `c12acab` — grouped B8 recurrent transport primitive retained, serving
     consumer rejected.
 - At this refresh no Cargo/model process is active in the connector-visible
-  command namespaces and l5 RTX3060 is idle at ~41 MiB. X2 is a **shared GPU host**
+  command namespaces and l5 RTX3060 is idle at ~37 MiB. X2 is a **shared GPU host**
   whose baseline must be resampled every run: the latest observation is
   total103,079,215,104 bytes VRAM, used272,351,232/busy0 with no KFD owners, while
   earlier observations included unrelated Ollama/model residents around31GB. Do not
@@ -600,7 +604,7 @@ A new agent should read in this order:
 2. `AGENTS.md`.
 3. `.agents/plans/README.md`.
 4. `.agents/docs/CURRENT_HANDOFF.md`.
-5. `.agents/docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-18.md`.
+5. `.agents/docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-20.md`.
 6. `.agents/plans/TODO.md`.
 7. `.agents/plans/model-execution/TODO.md`.
 8. `.agents/plans/numerics-and-context/CORRECTNESS_POLICY.md`.
@@ -1406,7 +1410,7 @@ is already green; repeat it only if host/runtime state changes.
 > commits by Git bundle rather than pushing merely for transport.
 >
 > Read first, in order: AGENTS.md, .agents/plans/README.md,
-> .agents/docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-18.md,
+> .agents/docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-20.md,
 > .agents/docs/CURRENT_HANDOFF.md, .agents/plans/TODO.md,
 > .agents/plans/model-execution/TODO.md,
 > .agents/plans/numerics-and-context/CORRECTNESS_POLICY.md,
@@ -1420,6 +1424,13 @@ is already green; repeat it only if host/runtime state changes.
 > cache identities, disk and _tmp. Preserve unrelated work. Do not create another
 > persistent worktree/branch. Commits must remain signed. Do not push unless the
 > user explicitly requests it.
+>
+> Latest implementation/source checkpoint at handoff creation is
+> `3afb9902f674d9cfe2fc4488e628b61b61cae395`. The signed handoff-consolidation
+> commit may sit above it as docs-only; revalidate actual HEAD first. Pushed/tracked
+> `origin/main` is `f0f06402c78d4511dea1559c73d4295f88790f93`; the implementation
+> lineage after it is `1222f8a`, `60ba956`, `3afb990`. Do not push unless explicitly
+> requested.
 >
 > Current production ordinary serving remains Native and public graph serving
 > remains disabled. Both approved original Qwen3.5-0.8B and2B pass source-real
@@ -1490,7 +1501,7 @@ is already green; repeat it only if host/runtime state changes.
 > prelaunch Capacity with unchanged root and exact vector/staging unwind, then exact
 > full-logit recovery after release and all pages idle at shutdown in168.51s. Qwen
 > diagnostics expose only current cache/paged-pool occupancy and maxima, not cumulative
-> pressure counters. One earlier external SIGTERM attempt is incomplete only. Keep
+> pressure counters. One earlier external SIGTERM attempt is incomplete only.
 > A fresh review found no regression in the accepted prefix/paging/scoped-serving
 > lineage, but confirmed that `PhysicalQueue` is still single-active and
 > `ResidentSubmission` completion is readback-coupled, so scheduler-level overlap
@@ -1508,8 +1519,30 @@ is already green; repeat it only if host/runtime state changes.
 > flights without double charging. Real CUDA bounded2 dual resident flights on distinct
 > streams retire in reverse order with exact8MiB readbacks and reusable service
 > (`P12_CUDA_RESIDENT_DUAL_FLIGHT_PASS`). Existing device-event admission remains the
-> sole buffer-conflict authority. Continue directly in Qwen/source execution and get
-> actual overlap/performance feedback rather than building more synthetic fixtures.
+> sole buffer-conflict authority.
+>
+> The generic Qwen/source B8 prefill path now retains shared stateless lowering,
+> multi-token B4-group attention and multi-token B4/B8 GDN prefill. GDN cohorting
+> removed the dominant generic-source prefill serialization. Performance decisions
+> must use a matched optimized host profile, not default Cargo test timing. On the
+> existing warm original0.8B 8x48+3 SDK cell, non-LTO/opt1/codegen64 gives
+> contiguous183.932ms /130.483 output tok/s and paged242.488ms /98.974 tok/s with
+> exact native-B8 tokens. The retained eager-vLLM72.20 tok/s number is historical,
+> not a fresh matched current run.
+>
+> Continuous refill/regroup is physically accepted. The worker already refills free
+> active slots and recomputes compatible native bands between waves. `3afb990` fixes
+> the real reduced-band defect by retaining exact B4+B8 GDN runtime layouts inside a
+> width8 arena while allocating physical scratch once at max width. A temporary public
+> SDK probe proved B8->B4->queued refill/prefill->B8 with survivor/queued width sets
+> `{4,8}` and was removed after use. Matched opt1 goodput over68 generated tokens was
+> 178.769 output tok/s contiguous and136.488 paged.
+>
+> Do not add another refill/evidence fixture by default. The highest-value next serving
+> work is a fresh matched vLLM run if a runnable current environment exists, otherwise
+> optimized-profile paged-vs-contiguous profiling/goodput. Preserve exact StateRoot,
+> cancellation, event/lease and physical resource authority; keep shared primitives
+> model-neutral. Avoid debug-profile decode micro-tuning.
 >
 > Keep the implementation turn to roughly 30 minutes. Aim for the next coherent
 > checkpoint, update owning TODO/handoff state, sign the commit, sync X2 only if

@@ -2,9 +2,24 @@
 
 Current source, tests, and this queue are authoritative; Git retains retired history.
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
-Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-14.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-14.md).
+Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-20.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-20.md).
 
-Latest implementation checkpoint is signed `9d6613c`
+**20 Nov authoritative refresh:** latest implementation/source checkpoint is `3afb990`
+and pushed/tracked `origin/main` is `f0f0640`; the implementation lineage is three
+signed commits ahead. The handoff-consolidation commit may sit above `3afb990` as
+docs-only; revalidate actual HEAD first. `1222f8a` adds the
+large multi-token GDN prefill win, `60ba956` corrects performance feedback to the
+matched non-LTO/opt1/codegen64 host profile, and `3afb990` retains exact B4+B8 GDN
+layouts inside a width8 arena so natural continuous refill/regroup passes without
+per-token allocation. The warmed public-SDK refill probe demonstrated
+B8->B4->refill/prefill->B8 with opt1 goodput 178.769 output tok/s contiguous and
+136.488 paged over68 generated tokens; the temporary probe was removed. Current best
+serving follow-up is a fresh matched vLLM comparison if runnable or profiling the
+optimized-profile paged-vs-contiguous gap. Public graph serving remains Native. The
+older status narrative below is historical context unless corroborated by current
+source/live plan sections.
+
+Historical implementation checkpoint recorded below is signed `9d6613c`
 (`feat(cuda): select compatible resident graph cache`); signed qualification checkpoint
 `599cb28` adds retained B4/B8 production-selector timing without changing ordinary
 serving. Above signed `63ee14e`, the workspace-owned one-shot graph cache selects only
@@ -35,8 +50,9 @@ scope subsequently pass with zero OOM events and final 41MiB. Both reconstructio
 use symmetric benchmark-only exact-SM cubin behavior matching `6a5c610` and
 retained source-real prompts because the original frozen binaries/workload are
 gone. Do not promote these to byte-identical historical, source-correct-goodput
-or vLLM claims. Pushed `origin/main` is `3a1596d`; current paged source
-qualification work remains local until explicitly pushed.
+or vLLM claims. This paragraph is historical; current pushed/tracked `origin/main`
+is `f0f0640` and current signed local `main` is `3afb990` as recorded in the 20 Nov
+refresh above.
 
 The P12-C fair-interleaving sub-slice is now accepted: shared engine fair rounds
 protect all eligible decode work, defer young prefill with original owners intact,
@@ -435,13 +451,13 @@ activating held routes.
 
 ## Active
 
-- [ ] P1 serving-and-speculation — @pvl — l5 CUDA `.8B`/`2B`, x2 ROCm `.8B`/`2B`/`27B`: correctness/context fit, C1..C64, then measured vLLM superiority; finite27B checkpoint passed; populated0.8B/2B HIP SDK/HTTP accepted; final gate passes; next CUDA/general27B/native batching; no recurrence restart — [details](serving-and-speculation/TODO.md)
+- [ ] P1 serving-and-speculation — @pvl — l5 CUDA `.8B`/`2B`, x2 ROCm `.8B`/`2B`/`27B`: source-real correctness/paged/prefix/native B2/B4/B8 accepted; multi-token prefill + natural refill/regroup now fast under matched opt1; next fresh matched vLLM/continuous-goodput or optimized paged-gap work, then broader CUDA/general27B as measured; no recurrence restart — [details](serving-and-speculation/TODO.md)
 - [~] P1 numerics-and-context — @pvl — exact cached47→50, lifecycle/capacity and final gate pass; active-context/2B reference inputs missing — [details](numerics-and-context/TODO.md)
 - [~] P1 memory-and-streaming — @pvl — exact two-root admission: `.8B` fits through 32K, `2B` through 16K, `2B`32K refuses before allocation — [details](memory-and-streaming/TODO.md)
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)
 - [~] P1 pipeline-composition — @pvl — recursive primitives/pipelines/profiles; shared execution adapters active, reuse current adapters in Fabric; Qwen expansion deferred — [details](pipeline-composition/TODO.md)
 - [~] P1 cli-device-routing — @pvl — unified run/config/source/device selection; preserve behavior through Fabric SDK/CLI migration — [details](cli-device-routing/TODO.md)
-- [~] P2 model-execution — @pvl — l5 CUDA2B B8 currently selects exact independent reductions, same-frontier ragged/chunked cohorts, private B8 recurrent core `60b048d`, ragged private B8 KV `775dfa6` and CTA256 KV `399e43a`; `874e67d` retains the exact shared-input Ordered+LaneBlocked B8 projection pair and its serving consumer remains rejected after non-repeatable loaded-model A/B. `6a5c610` fixes nonpersistent NVRTC driver compatibility; `63ee14e` physically closes the private workspace-owned graph lifecycle/cache above `db7be60`/`f1ce532`, `9d6613c` adds its exact-compatible private selector, and `599cb28` closes B2/B4/B8 timing with public graph serving deliberately left Native. Large same-contract CUDA numerical acceptance remains blocked by missing approved reference material. Populated small HIP is `8ffb511`; resident27B C1..C64 is `d16f096`; `c282f20`/`134a571` repair HIP cross-feature boundaries; `b0cf0b2` removes duplicate Qwen snapshot hashing with an explicitly non-authoritative descriptor lease. X2 exact tokenizer/source binding and full canonical host runtime pass. X2 is shared with Ollama/model workloads: existing KFD/VRAM is baseline, so physical27B/ROCm2B work may proceed when the requested configuration fits current available capacity, while preserving other owners and verifying only ZeroGravity's incremental resource delta retires — [details](model-execution/TODO.md)
+- [~] P2 model-execution — @pvl — current Qwen ordinary CUDA owns source-real B2/B4/B8 contiguous+paged transport, complete-domain prefix reuse, event-backed/multi-flight primitives, retained stateless + multi-token attention/GDN prefill, and exact reduced-band B4/B8 GDN layout selection under refill. Matched opt1 short-wave is130.483 tok/s contiguous/98.974 paged; refill probe goodput is178.769/136.488. Public graph serving deliberately remains Native. Large same-contract CUDA numerical acceptance still depends on approved references; populated small HIP and resident27B work remain separate. X2 is shared: preserve other owners and verify only ZeroGravity's incremental resource delta retires — [details](model-execution/TODO.md)
 - [~] P2 model-acquisition — @pvl — [details](model-acquisition/TODO.md)
 
 ## Icebox

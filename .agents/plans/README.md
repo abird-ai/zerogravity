@@ -6,7 +6,7 @@ this folder keeps the live queue and per-plan checklists.
 
 Current source, tests, and TODO.md are authoritative. Git retains retired history; deleted takeover snapshots are not live instructions.
 
-Cross-window continuation starts at [the canonical current handoff](../docs/CURRENT_HANDOFF.md). For a new agent that needs the complete design/decision/evidence lineage from the beginning, read the [15 Nov comprehensive takeover pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-15.md). The current handoff remains an index/pointer into this maintained plan/status set, not a generated archive.
+Cross-window continuation starts at [the canonical current handoff](../docs/CURRENT_HANDOFF.md). For a new agent that needs the complete design/decision/evidence lineage from the beginning, read the [20 Nov comprehensive takeover pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-20.md). The 20 Nov pack embeds the current handoff and the complete 18 Nov historical pack, which carries the earlier 15 Nov/14 Nov/October lineage. The current handoff remains an index/pointer into this maintained plan/status set, not a generated archive.
 
 ## Layout
 
