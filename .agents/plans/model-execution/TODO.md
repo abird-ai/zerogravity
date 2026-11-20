@@ -242,9 +242,11 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   4,831,838,208, with `resident_weights=true`. The actual generic-source bottleneck is
   stateful prefill serialization: projections/stateless RMS are shared across B8, while
   remaining operators run lane-by-lane. Decode already has cached GDN cohort lowering
-  and single-token B4/B8 attention. A263-line stateless-prefill batching experiment
-  (QK-RMS/gate/multiply/SiLU) stayed exact but was rejected after real feedback: paged
- 4567→4551ms TTFT and4.724→4.719 tok/s; contiguous ~4-5% only. Old `native_cohort`
+  and single-token B4/B8 attention. The stateless-prefill cohort lowering for QK-RMS,
+  gate/sigmoid, multiply and SiLU is now retained because it is localized and composes
+  cleanly with the existing packed-row arena. Latest exact warm48+3 B8 feedback versus
+  the retained no-extension baseline:4888.231→4696.591ms contiguous (~3.9%) and
+ 5080.588→4907.715ms paged (~3.4%). Old `native_cohort`
   initial execution is fixed B4/47x4 and qualification-gated, so do not route production
   through it as a shortcut. Next implement shared multi-token stateful prefill kernels/
   lowering—attention then GDN—in the generic ordinary-CUDA layer and remeasure the same

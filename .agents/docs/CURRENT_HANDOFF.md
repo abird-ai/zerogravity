@@ -480,10 +480,12 @@ and live TODOs are authoritative.
   stateless RMS are physically shared, but remaining stateful operators execute in a
   lane loop. Decode already has dedicated cached GDN cohort lowering and single-token
   B4/B8 attention; prefill has no general multi-token attention/GDN cohort primitive.
-  A263-line experiment batching additional stateless QK-RMS/gate/multiply/SiLU work
-  was physically exact but rejected: paged TTFT changed only4567→4551ms and throughput
- 4.724→4.719 tok/s; contiguous improved only ~4-5%, not enough to justify the added
-  complexity. The old fast `native_cohort` path is also not a reusable general answer:
+  The stateless QK-RMS/gate/multiply/SiLU cohort lowering was restored and retained:
+  it is localized/composable, preserves lane-specific rotary/root authority, and the
+  latest exact warm48+3 B8 run improved the retained no-extension baseline from
+  4888.231→4696.591ms contiguous (~3.9%) and5080.588→4907.715ms paged (~3.4%).
+  This does not solve the dominant stateful prefill bottleneck, but the gain is useful
+  and compounds with later work. The old fast `native_cohort` path is also not a reusable general answer:
   its cold envelope is explicitly B4 and initial phase is fixed around47x4=188 rows;
   the serving loader remains qualification-gated. Next implementation target is shared,
   model-neutral **multi-token stateful prefill batching** (attention first, then GDN),

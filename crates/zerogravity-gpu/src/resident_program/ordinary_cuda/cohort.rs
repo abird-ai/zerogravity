@@ -35,7 +35,7 @@ use zerogravity_core::{
     accelerator::program::{
         ForwardPlan, PlanNode, PlanOperation, SourceCall, SourceCallMode, SourceOperator,
         SourceOperatorKind, SourceOperatorTemplate, SourceRowSelection, SourceRows, StateSlot,
-        StateVersion, TextCallGeometry,
+        StateVersion, TextCallGeometry, ValueId,
     },
     device_events::DeviceAccess,
 };
@@ -808,6 +808,255 @@ impl OrdinaryCudaBody {
         Ok(Some((1, 0)))
     }
 
+    fn prefill_stateless_extent(
+        template: &SourceOperatorTemplate,
+        calls: &[&SourceCall],
+        spans: &CohortRowSpans,
+    ) -> Result<Option<(StatelessRowExtent, usize)>> {
+        if template.row_selection() != SourceRowSelection::AllActive
+            || !matches!(
+                template.state_access(),
+                zerogravity_core::accelerator::program::SourceStateAccess::None
+            )
+        {
+            return Ok(None);
+        }
+        if spans.len() != calls.len() {
+            return Err(Error::State(
+                "ordinary CUDA stateless cohort row coverage differs".into(),
+            ));
+        }
+        for call in calls {
+            template.bind_runtime_call(call)?;
+        }
+        let bound_rows = template
+            .max_rows()
+            .checked_mul(spans.len())
+            .ok_or_else(|| Error::Limit("ordinary CUDA stateless cohort row bound".into()))?;
+        Ok(Some((
+            StatelessRowExtent::bounded(spans.total_rows(), bound_rows)?,
+            bound_rows,
+        )))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn enqueue_prefill_stateless_shared(
+        &self,
+        node_index: usize,
+        node: &PlanNode,
+        template: &SourceOperatorTemplate,
+        calls: &[&SourceCall],
+        spans: &CohortRowSpans,
+        values: &super::OrdinaryCudaCohortValues,
+        gate_alias: &mut [BTreeMap<u32, u32>],
+    ) -> Result<Option<(usize, usize)>> {
+        let Some((physical, bound_rows)) = Self::prefill_stateless_extent(template, calls, spans)?
+        else {
+            return Ok(None);
+        };
+        let program = self.cold().program();
+        match template.kind() {
+            SourceOperatorKind::QkRmsRotaryGated(geometry) => {
+                let ([packed], [query, key, gate]) =
+                    (node.inputs.as_slice(), node.outputs.as_slice())
+                else {
+                    return Err(Error::State(
+                        "ordinary CUDA stateless QK cohort SSA arity".into(),
+                    ));
+                };
+                if gate_alias.len() != calls.len() {
+                    return Err(Error::State(
+                        "ordinary CUDA stateless QK alias coverage differs".into(),
+                    ));
+                }
+                let parameters = self.cold().node_parameters(node_index)?;
+                let [query_gamma, key_gamma] = parameters else {
+                    return Err(Error::State(
+                        "ordinary CUDA stateless QK gamma arity".into(),
+                    ));
+                };
+                let packed_width = program.attention_row_stride()?;
+                let query_width = program.geometry().query_width()?;
+                let key_width = program.geometry().kv_width()?;
+                self.enqueue_primitive(
+                    program.query_key_head_rms_stateless(physical, geometry.epsilon)?,
+                    vec![
+                        LaunchBinding::new(
+                            OrdinaryRole::PackedAttention,
+                            Access::Read,
+                            values.packed_row_bounded_handle(
+                                *packed,
+                                packed_width,
+                                spans,
+                                bound_rows,
+                            )?,
+                        ),
+                        LaunchBinding::new(
+                            OrdinaryRole::QueryRawGamma,
+                            Access::Read,
+                            query_gamma.lease().handle(),
+                        ),
+                        LaunchBinding::new(
+                            OrdinaryRole::KeyRawGamma,
+                            Access::Read,
+                            key_gamma.lease().handle(),
+                        ),
+                        LaunchBinding::new(
+                            OrdinaryRole::QueryNormalized,
+                            Access::Write,
+                            values.packed_row_bounded_handle(
+                                *query,
+                                query_width,
+                                spans,
+                                bound_rows,
+                            )?,
+                        ),
+                        LaunchBinding::new(
+                            OrdinaryRole::KeyNormalized,
+                            Access::Write,
+                            values.packed_row_bounded_handle(*key, key_width, spans, bound_rows)?,
+                        ),
+                    ],
+                )?;
+                let mut dispatches = 1usize;
+                for (lane, call) in calls.iter().enumerate() {
+                    dispatches = dispatches
+                        .checked_add(self.cold().rotary().enqueue(
+                            &values.lane_row_handle(*query, query_width, spans, lane)?,
+                            &values.lane_row_handle(*key, key_width, spans, lane)?,
+                            self.cold().inverse_frequency(),
+                            self.cold().status(),
+                            call.rows().base(),
+                            spans.lane_rows(lane)?,
+                        )?)
+                        .ok_or_else(|| {
+                            Error::Limit("ordinary CUDA stateless QK dispatch count".into())
+                        })?;
+                    if gate_alias[lane].insert(gate.0, packed.0).is_some() {
+                        return Err(Error::State(
+                            "ordinary CUDA stateless QK gate alias duplicated".into(),
+                        ));
+                    }
+                }
+                Ok(Some((dispatches, 0)))
+            }
+            SourceOperatorKind::Sigmoid { width } => {
+                if width != program.geometry().query_width()? || gate_alias.len() != calls.len() {
+                    return Ok(None);
+                }
+                let ([gate], [output]) = (node.inputs.as_slice(), node.outputs.as_slice()) else {
+                    return Err(Error::State(
+                        "ordinary CUDA stateless sigmoid SSA arity".into(),
+                    ));
+                };
+                let mut packed = None;
+                for aliases in gate_alias {
+                    let source = aliases.remove(&gate.0).map(ValueId).ok_or_else(|| {
+                        Error::State(
+                            "ordinary CUDA stateless sigmoid gate producer alias absent".into(),
+                        )
+                    })?;
+                    if packed.is_some_and(|first| first != source) {
+                        return Err(Error::State(
+                            "ordinary CUDA stateless sigmoid packed source differs".into(),
+                        ));
+                    }
+                    packed.get_or_insert(source);
+                }
+                let packed = packed.ok_or_else(|| {
+                    Error::State("ordinary CUDA stateless sigmoid packed source absent".into())
+                })?;
+                self.enqueue_primitive(
+                    program.sigmoid_stateless(physical)?,
+                    vec![
+                        LaunchBinding::new(
+                            OrdinaryRole::PackedAttention,
+                            Access::Read,
+                            values.packed_row_bounded_handle(
+                                packed,
+                                program.attention_row_stride()?,
+                                spans,
+                                bound_rows,
+                            )?,
+                        ),
+                        LaunchBinding::new(
+                            OrdinaryRole::Output,
+                            Access::Write,
+                            values.packed_row_bounded_handle(*output, width, spans, bound_rows)?,
+                        ),
+                    ],
+                )?;
+                Ok(Some((1, 0)))
+            }
+            SourceOperatorKind::Multiply { width } => {
+                if width != program.geometry().query_width()? {
+                    return Ok(None);
+                }
+                let ([input, gate], [output]) = (node.inputs.as_slice(), node.outputs.as_slice())
+                else {
+                    return Err(Error::State(
+                        "ordinary CUDA stateless multiply SSA arity".into(),
+                    ));
+                };
+                self.enqueue_primitive(
+                    program.multiply_stateless(physical)?,
+                    vec![
+                        LaunchBinding::new(
+                            OrdinaryRole::Input,
+                            Access::Read,
+                            values.packed_row_bounded_handle(*input, width, spans, bound_rows)?,
+                        ),
+                        LaunchBinding::new(
+                            OrdinaryRole::Gate,
+                            Access::Read,
+                            values.packed_row_bounded_handle(*gate, width, spans, bound_rows)?,
+                        ),
+                        LaunchBinding::new(
+                            OrdinaryRole::Output,
+                            Access::Write,
+                            values.packed_row_bounded_handle(*output, width, spans, bound_rows)?,
+                        ),
+                    ],
+                )?;
+                Ok(Some((1, 0)))
+            }
+            SourceOperatorKind::SiluAndMul { width } => {
+                if width != program.geometry().intermediate_width {
+                    return Ok(None);
+                }
+                let ([input], [output]) = (node.inputs.as_slice(), node.outputs.as_slice()) else {
+                    return Err(Error::State(
+                        "ordinary CUDA stateless SiLU SSA arity".into(),
+                    ));
+                };
+                self.enqueue_primitive(
+                    program.silu_up_stateless(physical)?,
+                    vec![
+                        LaunchBinding::new(
+                            OrdinaryRole::PackedGateUp,
+                            Access::Read,
+                            values.packed_row_bounded_handle(
+                                *input,
+                                width.checked_mul(2).ok_or_else(|| {
+                                    Error::Limit("ordinary CUDA stateless SiLU width".into())
+                                })?,
+                                spans,
+                                bound_rows,
+                            )?,
+                        ),
+                        LaunchBinding::new(
+                            OrdinaryRole::Output,
+                            Access::Write,
+                            values.packed_row_bounded_handle(*output, width, spans, bound_rows)?,
+                        ),
+                    ],
+                )?;
+                Ok(Some((1, 0)))
+            }
+            _ => Ok(None),
+        }
+    }
+
     /// Same-base prompt-chunk cohort: private causal/stateful execution per
     /// lane, with only reduction-compatible row-independent projection GEMMs
     /// shared physically. A caller may request state-only execution for an
@@ -1011,6 +1260,20 @@ impl OrdinaryCudaBody {
             if let Some((launched, fused)) = self
                 .enqueue_prefill_stateless_rms(node_index, node, template, &calls, &spans, values)?
             {
+                dispatches += launched;
+                fused_dispatches += fused;
+                continue;
+            }
+
+            if let Some((launched, fused)) = self.enqueue_prefill_stateless_shared(
+                node_index,
+                node,
+                template,
+                &calls,
+                &spans,
+                values,
+                &mut gate_alias,
+            )? {
                 dispatches += launched;
                 fused_dispatches += fused;
                 continue;

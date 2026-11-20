@@ -886,8 +886,9 @@ path is already fully resident but still executes stateful operators lane-by-lan
 Exact active8/context512 fit remains resident (18-root total2,076,877,813B; B8 cohort
 reserve51,210,272B; provider4,831,838,208B). Decode owns dedicated cached GDN cohort
 lowering and single-token B4/B8 attention, while prefill has no general multi-token
-counterpart. A broad stateless-prefill batching attempt was rejected after negligible
-paged improvement, and the old native cohort is fixed B4/47x4 rather than a generic
+counterpart. The shared stateless-prefill lowering for QK-RMS/gate/multiply/SiLU is
+retained because it composes cleanly and improved the exact warm48+3 B8 wave by ~3-4%
+on the latest run; the old native cohort remains fixed B4/47x4 rather than a generic
 primitive. Therefore the next ordered implementation is shared multi-token stateful
 prefill batching—attention first, then GDN—inside ordinary CUDA source execution.
 Preserve independent roots/event-ledger ownership and remeasure the existing warm48+3

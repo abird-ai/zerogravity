@@ -696,9 +696,10 @@ or a change to the active correctness/benchmark/27B order.
   proves active8/context512 remains fully resident:18-root total2,076,877,813B plus B8
   runtime reserve still fits the4.5GiB provider envelope. The generic prefill cohort
   shares projections/stateless RMS but serializes the remaining stateful operators by
-  lane; decode already has cached GDN batching and one-token B4/B8 attention. A large
-  stateless-prefill batching experiment was exact but rejected after negligible paged
-  gain (TTFT4567→4551ms, throughput4.724→4.719 tok/s). The historical captured engine
+  lane; decode already has cached GDN batching and one-token B4/B8 attention. The
+  stateless QK-RMS/gate/multiply/SiLU prefill lowering is retained: exact warm48+3 B8
+  improved4888.231→4696.591ms contiguous (~3.9%) and5080.588→4907.715ms paged (~3.4%)
+  versus the retained no-extension baseline. The historical captured engine
   is fixed B4/47 and qualification-only, so it is not a clean serving fallback. Next
   build reusable multi-token stateful prefill attention/GDN primitives in the shared
   CUDA layer and wire them into ordinary source execution. Avoid more synthetic overlap
