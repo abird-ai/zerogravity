@@ -747,10 +747,18 @@ or a change to the active correctness/benchmark/27B order.
   wall-time overhead), materially improving the retained old paged136.488 tok/s result.
   A device-scatter append-copy+tail-zero fusion was measured at421.159ms/161.459 paged,
   only ~0.3% faster than accepted source, and was removed rather than retaining another
-  kernel path. The temporary refill probe was removed too. Fresh vLLM is still blocked
-  by the unregistered pinned image, so next prefer a runnable fresh baseline; otherwise
-  profile the longer-decode paged residual before adding direct paged attention or
-  overlap complexity.
+  kernel path. The temporary refill probe was removed too. Fresh vLLM remains
+  unavailable and is now explicitly owner-deferred. Do not spend the next turn on the
+  residual paged gap; advance the admitted populated CUDA context ladder on L5 instead.
+- [x] A clean dynamic-prefill grouping candidate was measured and rejected rather than
+  retained speculatively. For the already-compatible mixed native-B8 row pattern
+  [49,48,49,48,49,48,49,48], the candidate clustered private physical lanes by row
+  count while preserving scheduler/publication order, then reused the existing B4
+  attention kernel for equal-row quartets with per-lane leftovers. It added no allocation
+  or new kernel and stayed singleton-exact/native-B8, but the matched measured wave moved
+  from299.985ms on current source to324.231ms and313.585ms on two candidate runs
+  (~8.1%/~4.5% slower). All candidate/probe code was removed. Do not optimize merely for
+  fewer attention launches; dynamic grouping needs a materially different measured path.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

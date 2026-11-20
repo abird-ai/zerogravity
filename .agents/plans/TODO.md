@@ -29,9 +29,9 @@ contiguous and422.572ms/160.919 paged for68 generated tokens (~5.5% wall-time ga
 A device-scatter copy+tail-zero fusion was tested and rejected: the cached physical retry
 measured395.849ms/171.783 contiguous and421.159ms/161.459 paged, only ~0.3% paged
 throughput gain versus the accepted source run while adding another kernel path. The
-experiment and temporary probe were removed. A fresh vLLM comparison is still preferred
-if the pinned environment becomes runnable; otherwise profile the longer-decode paged
-residual before adding direct paged-attention/overlap complexity. Public graph serving remains Native. The older status narrative below is historical context unless
+experiment and temporary probe were removed. vLLM comparison is owner-deferred for now;
+do not spend the next slice on the longer-decode paged residual or direct paged-attention/
+overlap complexity. Public graph serving remains Native. The older status narrative below is historical context unless
 corroborated by current source/live plan sections.
 
 Historical implementation checkpoint recorded below is signed `9d6613c`
@@ -466,7 +466,7 @@ activating held routes; vLLM comparison is owner-deferred for now.
 
 ## Active
 
-- [ ] P1 serving-and-speculation — @pvl — l5 CUDA `.8B`/`2B`, x2 ROCm `.8B`/`2B`/`27B`: source-real correctness/paged/prefix/native B2/B4/B8 accepted; multi-token prefill + natural refill/regroup now fast under matched opt1, short-wave paged overhead is ~1.7%, and current68-token refill is169.837/160.919 tok/s contiguous/paged (~5.5% wall-time gap); a scatter-tail fusion was measured/rejected. Owner explicitly defers vLLM for now. X2 ROCm physical work is environment-gated by clr7.2.4/LLVM22 GLIBC_2.44 vs locked-shell glibc2.42, with no GPU allocation in the20 Nov27B recheck. Next stay L5-only on non-vLLM implementation/correctness rather than micro-tuning or rebuilding X2 ROCm inside model turns — [details](serving-and-speculation/TODO.md)
+- [ ] P1 serving-and-speculation — @pvl — l5 CUDA `.8B`/`2B`, x2 ROCm `.8B`/`2B`/`27B`: source-real correctness/paged/prefix/native B2/B4/B8 accepted; multi-token prefill + natural refill/regroup now fast under matched opt1, short-wave paged overhead is ~1.7%, and current68-token refill is169.837/160.919 tok/s contiguous/paged (~5.5% wall-time gap). Scatter-tail fusion and private mixed-row clustering/B4-attention decomposition were both measured and rejected; the latter regressed an exact interleaved48/49 B8 cell from299.985ms to313.585–324.231ms. Owner explicitly defers vLLM for now. X2 ROCm physical work is environment-gated by clr7.2.4/LLVM22 GLIBC_2.44 vs locked-shell glibc2.42. Next stay L5-only and advance genuine populated CUDA contexts:4K first, then8K/longer admitted cells, reusing existing64-row execution rather than more batching micro-tuning — [details](serving-and-speculation/TODO.md)
 - [~] P1 numerics-and-context — @pvl — exact cached47→50, lifecycle/capacity and final gate pass; active-context/2B reference inputs missing — [details](numerics-and-context/TODO.md)
 - [~] P1 memory-and-streaming — @pvl — exact two-root admission: `.8B` fits through 32K, `2B` through 16K, `2B`32K refuses before allocation — [details](memory-and-streaming/TODO.md)
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)

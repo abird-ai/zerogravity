@@ -391,6 +391,21 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   resident/native ceiling: same non-LTO2B47+3 run stayed exact/native-width8 at
   offered8/16/32 with66.24/68.10/69.06 output tok/s respectively;16 and32 are
   simply two/four queued B8 groups, not hidden B16/B32 execution.
+  **21 Nov mixed-prefill grouping candidate rejected.** Current source already admits
+  reduction-compatible mixed prompt chunks (for example48/49) into one native B8 and
+  shares projection/GDN work, but FlashAttention only batches consecutive equal-row B4
+  groups. A temporary source-neutral experiment kept scheduler/fairness/publication
+  order unchanged, stably clustered only the private physical lanes by prompt-row count,
+  restored logical session/readback order before publication, and let the existing B4
+  attention kernel consume every equal-row quartet with per-lane fallback for leftovers.
+  It added no GPU allocation or kernel. The exact public-SDK interleaved
+  [49,48,49,48,49,48,49,48] +3-output cell remained singleton-exact and native width8,
+  but matched opt1/codegen64/non-LTO measured299.985ms on unchanged source versus
+  324.231ms and313.585ms with the candidate (~8.1% and~4.5% slower). The experiment and
+  temporary probe were fully removed. Dynamic grouping remains open, but do **not**
+  reintroduce row-count lane clustering/B4-attention decomposition without a materially
+  different architecture or evidence. Move next to the admitted populated-context
+  ladder on L5:4K first, then8K/longer-fit cells, reusing the existing64-row contract.
 - [ ] Optimize measured CUDA2B/HIP hot paths and run controlled comparisons after
   relevant correctness. Existing short eager/direct-API rates are not general
   HTTP/context/graph performance or proof of vLLM superiority.

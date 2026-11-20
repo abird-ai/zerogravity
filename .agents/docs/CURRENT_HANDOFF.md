@@ -588,10 +588,9 @@ and live TODOs are authoritative.
   accepted source, so the extra kernel path was rejected and fully removed. Source stays
   `e72030c`; do not reintroduce that fusion without new evidence. The connector still
   has no vLLM executable/module and Podman still reports the pinned image `image not
-  known`; do not claim a fresh vLLM comparison. Next prefer a fresh matched vLLM run if
-  runnable; otherwise profile the longer-decode paged residual before adding direct
-  page-table attention or physical-overlap complexity. Do not add refill fixtures or
-  return to debug-profile decode micro-tuning.
+  known`; do not claim a fresh vLLM comparison. Owner now explicitly defers vLLM.
+  Do not add refill fixtures, direct paged-attention complexity or debug-profile
+  micro-tuning as the next step; advance the populated CUDA context ladder instead.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -948,6 +947,26 @@ serving, memory and composition plans.
   model-execution turns reconstructing this host ROCm closure; repair the X2 environment
   separately before further27B/ROCm2B physical work. vLLM work is explicitly deferred by
   owner for now; continue L5-only non-vLLM implementation/correctness work next.
+- **21 Nov dynamic mixed-prefill grouping was tested and deliberately rejected.**
+  Current CUDA source already admits reduction-compatible ragged prompt chunks into one
+  native cohort:48/49 share the authenticated source-derived projection reduction class,
+  projections/GDN execute jointly, and logical scheduler order remains first-seen/fair.
+  The remaining attention path batches only consecutive equal-row quartets. A temporary
+  candidate kept scheduler order untouched, stably clustered at most8 private physical
+  lanes by row count, temporarily permuted session refs only for physical publication,
+  restored logical session/readback order, and allowed the existing B4 attention kernel
+  to consume each equal-row quartet with per-lane fallback for leftovers. There was no
+  new GPU allocation/kernel or changed root/state authority. A temporary public-SDK cell
+  used singleton48/49 references and an interleaved native-B8
+  [49,48,49,48,49,48,49,48] wave with3 outputs; every row remained singleton-exact and
+  reported native width8. Under the matched opt1/codegen64/non-LTO profile, unchanged
+  source measured299.985ms after warmup; the candidate measured324.231ms and313.585ms
+  on two runs, about8.1% and4.5% slower. The entire implementation and probe were
+  restored away. Do not reintroduce private row-count clustering/B4-attention
+  decomposition without materially different evidence. Next L5 implementation/
+  qualification target is the genuine populated-context ladder:4K first, then8K and
+  longer admitted cells, reusing the existing64-row chunk contract rather than adding
+  another synthetic batching fixture.
 - ROCm2B C4 warmup plus C16/C32/C64 warmup/timed mismatches remain unlocalized.
   Preserve failed cells and expected IDs; do not repin expectations.
 - These remaining campaigns are explicitly authorized X2 execution/test work;
