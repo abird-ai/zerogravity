@@ -926,11 +926,15 @@ key/value page pairs plus two destination planes exactly inside the existing32-p
 pinned-kernel limit, with runtime page count/active words/destination offset and bounded
 chunking for longer prefixes. At page4/prompt48,12 pages per plane become one paired copy
 launch per KV domain instead of24 individual copies. The matched SDK cell remains exact
-and improves to176.800ms/135.746 tok/s contiguous versus182.505ms/131.504 paged, only
-~3.2% matched wall-time overhead. A fresh matched vLLM run remains preferred if its
-pinned environment becomes runnable; otherwise profile this residual gap before paying
-the complexity cost of direct paged attention or physical overlap. Do not add another
-refill evidence layer.
+and improves to176.800ms/135.746 tok/s contiguous versus182.505ms/131.504 paged, about
+~3.2% matched wall-time overhead. The final paired gather now also owns inactive-tail
+zero-fill when the destination plane fits the existing bounded transport, so the common
+path needs no separate staging-zero launch; oversized planes and empty prefixes retain
+the explicit device-zero fallback. The same matched cell passes at177.467ms/135.236
+tok/s contiguous versus180.520ms/132.949 paged, only ~1.7% overhead. A fresh matched
+vLLM run remains preferred if its pinned environment becomes runnable; otherwise profile
+before paying the complexity cost of direct paged attention or physical overlap. Do not
+add another refill evidence layer.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 

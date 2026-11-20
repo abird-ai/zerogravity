@@ -4,12 +4,11 @@ Current source, tests, and this queue are authoritative; Git retains retired his
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-20.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-20.md).
 
-**20 Nov authoritative refresh:** pushed/tracked `origin/main` is `f0f0640`;
-the prior source checkpoint is `3afb990`, with docs-only `7beb1be` above it. Revalidate
-actual HEAD first. `1222f8a` adds the large multi-token GDN prefill win, `60ba956`
-corrects performance feedback to the matched non-LTO/opt1/codegen64 host profile, and
-`3afb990` retains exact B4+B8 GDN layouts inside a width8 arena so natural continuous
-refill/regroup passes without per-token allocation. The warmed public-SDK refill probe
+**20 Nov authoritative refresh:** pushed/tracked `origin/main` is `f0f0640`; local signed
+source lineage above it includes `1222f8a` (multi-token GDN prefill), `60ba956` (matched
+performance profile), `3afb990` (reduced-band GDN layouts), docs-only `7beb1be`,
+`0dac5ab` (device-side paged zeroing) and `0680b0b` (batched paired-page gather). The
+current fused-tail-zero slice is described below; revalidate actual HEAD first. The warmed public-SDK refill probe
 demonstrated B8->B4->refill/prefill->B8 with opt1 goodput 178.769 output tok/s contiguous
 and136.488 paged over68 generated tokens; the temporary probe was removed. The next
 local source checkpoint removes full-capacity host-zero allocations/H2D from paged KV
@@ -18,11 +17,14 @@ transport. On the same matched8x48+3 cell, contiguous is184.409ms/130.145 output
 and paged205.724ms/116.661 tok/s with exact native-B8 tokens. The next shared paired-page
 gather then reduces the same matched cell to176.800ms/135.746 tok/s contiguous versus
 182.505ms/131.504 paged by collapsing12 key/value pages into one launch per KV domain;
-larger prefixes chunk through the same bounded ABI. Paged matched wall-time overhead is
-now ~3.2%, versus ~31.8% at the retained242.488ms/98.974 pre-optimization baseline. A
-fresh vLLM comparison is still preferred if the pinned environment becomes runnable;
-otherwise profile the small residual gap before adding direct paged-attention/overlap
-complexity. Public graph serving remains Native. The older status narrative below is historical context unless
+larger prefixes chunk through the same bounded ABI. The follow-on gather path now folds
+inactive staging-tail zero-fill into the final paired launch whenever the full plane fits
+the existing bounded transport; oversized planes retain the prior separate-zero fallback,
+and empty prefixes still explicitly zero staging. The matched cell is terminal-green at
+177.467ms/135.236 tok/s contiguous versus180.520ms/132.949 paged, only ~1.7% wall-time
+overhead versus ~31.8% at the retained242.488ms/98.974 pre-optimization baseline. A fresh
+vLLM comparison is still preferred if the pinned environment becomes runnable; otherwise
+profile before adding direct paged-attention/overlap complexity. Public graph serving remains Native. The older status narrative below is historical context unless
 corroborated by current source/live plan sections.
 
 Historical implementation checkpoint recorded below is signed `9d6613c`
@@ -457,13 +459,13 @@ activating held routes.
 
 ## Active
 
-- [ ] P1 serving-and-speculation — @pvl — l5 CUDA `.8B`/`2B`, x2 ROCm `.8B`/`2B`/`27B`: source-real correctness/paged/prefix/native B2/B4/B8 accepted; multi-token prefill + natural refill/regroup now fast under matched opt1; next fresh matched vLLM/continuous-goodput or optimized paged-gap work, then broader CUDA/general27B as measured; no recurrence restart — [details](serving-and-speculation/TODO.md)
+- [ ] P1 serving-and-speculation — @pvl — l5 CUDA `.8B`/`2B`, x2 ROCm `.8B`/`2B`/`27B`: source-real correctness/paged/prefix/native B2/B4/B8 accepted; multi-token prefill + natural refill/regroup now fast under matched opt1 and short-wave paged overhead is ~1.7%; next prefer fresh matched vLLM/continuous-goodput, otherwise profiler-led residual work, then broader CUDA/general27B as measured; no recurrence restart — [details](serving-and-speculation/TODO.md)
 - [~] P1 numerics-and-context — @pvl — exact cached47→50, lifecycle/capacity and final gate pass; active-context/2B reference inputs missing — [details](numerics-and-context/TODO.md)
 - [~] P1 memory-and-streaming — @pvl — exact two-root admission: `.8B` fits through 32K, `2B` through 16K, `2B`32K refuses before allocation — [details](memory-and-streaming/TODO.md)
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)
 - [~] P1 pipeline-composition — @pvl — recursive primitives/pipelines/profiles; shared execution adapters active, reuse current adapters in Fabric; Qwen expansion deferred — [details](pipeline-composition/TODO.md)
 - [~] P1 cli-device-routing — @pvl — unified run/config/source/device selection; preserve behavior through Fabric SDK/CLI migration — [details](cli-device-routing/TODO.md)
-- [~] P2 model-execution — @pvl — current Qwen ordinary CUDA owns source-real B2/B4/B8 contiguous+paged transport, complete-domain prefix reuse, event-backed/multi-flight primitives, retained stateless + multi-token attention/GDN prefill, reduced-band B4/B8 GDN layout selection and bounded paired-page KV gather. Latest matched opt1 short-wave is135.746 tok/s contiguous/131.504 paged (~3.2% wall-time gap); refill probe goodput remains178.769/136.488. Public graph serving deliberately remains Native. Large same-contract CUDA numerical acceptance still depends on approved references; populated small HIP and resident27B work remain separate. X2 is shared: preserve other owners and verify only ZeroGravity's incremental resource delta retires — [details](model-execution/TODO.md)
+- [~] P2 model-execution — @pvl — current Qwen ordinary CUDA owns source-real B2/B4/B8 contiguous+paged transport, complete-domain prefix reuse, event-backed/multi-flight primitives, retained stateless + multi-token attention/GDN prefill, reduced-band B4/B8 GDN layout selection and bounded paired-page KV gather with fused inactive-tail fill. Latest matched opt1 short-wave is135.236 tok/s contiguous/132.949 paged (~1.7% wall-time gap); refill probe goodput remains178.769/136.488. Public graph serving deliberately remains Native. Large same-contract CUDA numerical acceptance still depends on approved references; populated small HIP and resident27B work remain separate. X2 is shared: preserve other owners and verify only ZeroGravity's incremental resource delta retires — [details](model-execution/TODO.md)
 - [~] P2 model-acquisition — @pvl — [details](model-acquisition/TODO.md)
 
 ## Icebox

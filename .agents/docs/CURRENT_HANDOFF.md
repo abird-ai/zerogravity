@@ -560,13 +560,23 @@ and live TODOs are authoritative.
   with one paired gather launch. The same matched8x48+3 SDK cell is terminal-green,
   exact/native B8: contiguous176.800ms/135.746 output tok/s and paged182.505ms/131.504,
   with mean commit clocks[129.424,153.479,176.519]ms versus
-  [129.212,155.426,181.469]ms. Paged matched wall-time overhead is now ~3.2%, versus
-  ~11.6% after device-zeroing and ~31.8% at the retained pre-paged-optimization baseline.
-  The current connector still has no vLLM executable/module and Podman still reports the
-  pinned image `image not known`; do not claim a fresh vLLM comparison. Next prefer a
-  fresh matched vLLM run if runnable; otherwise profile the small residual paged gap
-  before adding direct page-table attention or physical-overlap complexity. Do not add
-  refill fixtures or return to debug-profile decode micro-tuning.
+  [129.212,155.426,181.469]ms. That slice left ~3.2% matched wall-time overhead.
+  **The final staging-zero launch gap is now removed on the bounded common path.** The
+  paired gather copies its active prefix and zero-fills the remaining destination span in
+  the same final launch whenever the staging plane fits the existing runtime-word bound.
+  Oversized planes keep the previous bounded device-zero fallback, and empty prefixes
+  explicitly keep it as well, preserving inactive-tail initialization without a larger
+  ABI or new allocation. The same matched8x48+3 SDK cell is terminal-green at
+  contiguous177.467ms/135.236 output tok/s and paged180.520ms/132.949, with commit clocks
+  [129.797,153.805,177.178]ms versus[128.897,154.402,179.491]ms. Remaining matched
+  wall-time overhead is ~1.7%, versus ~11.6% after device-zeroing and ~31.8% at the
+  retained pre-paged-optimization baseline. The first physical attempt was externally
+  SIGKILLed during compilation before test entry; process/GPU/kernel checks were clean and
+  one cached retry passed. The connector still has no vLLM executable/module and Podman
+  still reports the pinned image `image not known`; do not claim a fresh vLLM comparison.
+  Next prefer a fresh matched vLLM run if runnable; otherwise profile before adding direct
+  page-table attention or physical-overlap complexity. Do not add refill fixtures or
+  return to debug-profile decode micro-tuning.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -589,8 +599,9 @@ and live TODOs are authoritative.
   (`feat(cuda): batch multi-token prefill attention`). The post-origin local lineage
   includes `1222f8a` (multi-token GDN prefill), `60ba956` (matched performance
   profile), `3afb990` (reduced-band GDN layouts/refill), docs-only `7beb1be`,
-  `0dac5ab` (device-side paged zeroing), and the current paired-page gather slice
-  described above. Revalidate actual HEAD for the newest signed source checkpoint.
+  `0dac5ab` (device-side paged zeroing), `0680b0b` (batched paired-page gather), and the
+  current fused-tail-zero slice described above. Revalidate actual HEAD for the newest
+  signed source checkpoint.
   Nothing after `f0f0640` is pushed unless explicitly requested. Never use push merely
   for X2 transport.
 - Before any new physical X2 run, sync it to the exact current l5 `main`

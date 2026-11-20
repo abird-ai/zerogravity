@@ -730,10 +730,14 @@ or a change to the active correctness/benchmark/27B order.
  32-pointer ceiling; larger prefixes chunk through the same runtime-scalar kernel. The
  48-token/page4 workload therefore gathers12 key/value pages together instead of issuing
  24 page-copy launches per KV domain. The same matched cell passes exact/native B8 at
- 176.800ms/135.746 tok/s contiguous and182.505ms/131.504 paged, leaving only ~3.2%
-  matched wall-time overhead. Fresh vLLM is still blocked by the unregistered pinned
-  image, so next prefer a runnable fresh baseline; otherwise profile the small residual
-  gap before adding direct paged attention or overlap complexity.
+ 176.800ms/135.746 tok/s contiguous and182.505ms/131.504 paged, leaving ~3.2%
+  matched wall-time overhead. The final paired gather now also zero-fills the inactive
+  staging tail when the bounded span permits it, eliminating the remaining two staging
+  zero launches for this cell while preserving the explicit fallback for oversized or
+  empty-prefix cases. The same matched cell passes at177.467ms/135.236 tok/s contiguous
+  and180.520ms/132.949 paged, only ~1.7% overhead. Fresh vLLM is still blocked by the
+  unregistered pinned image, so next prefer a runnable fresh baseline; otherwise profile
+  before adding direct paged attention or overlap complexity.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

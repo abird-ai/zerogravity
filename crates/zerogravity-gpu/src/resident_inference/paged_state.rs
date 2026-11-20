@@ -809,15 +809,19 @@ impl ResidentPagedKvDomain {
         flight.require_accesses(accesses.iter().map(|(lease, access)| (lease, *access)))?;
         let service = self.keys.pool.service();
         let mut dispatches = 0usize;
-        for staging in [key_staging, value_staging] {
-            dispatches = dispatches
-                .checked_add(enqueue_zero_cuda(service, staging)?)
-                .ok_or_else(|| Error::Limit("paged KV gather zero dispatches".into()))?;
-        }
         if self.keys.page_count() != self.values.page_count() {
             return Err(Error::State(
                 "paged KV gather key/value page coverage differs".into(),
             ));
+        }
+        let fused_tail_zero = self.keys.page_count() != 0
+            && RuntimePagedPairGather::can_fill_span(key_staging.bytes());
+        if !fused_tail_zero {
+            for staging in [key_staging, value_staging] {
+                dispatches = dispatches
+                    .checked_add(enqueue_zero_cuda(service, staging)?)
+                    .ok_or_else(|| Error::Limit("paged KV gather zero dispatches".into()))?;
+            }
         }
         let page_bytes = self.keys.geometry().page_bytes();
         let max_pages = RuntimePagedPairGather::max_pages(page_bytes)?;
@@ -852,12 +856,20 @@ impl ResidentPagedKvDomain {
                 key_pages.push(key.handle());
                 value_pages.push(value.handle());
             }
+            let span_bytes = if fused_tail_zero && first + pages == self.keys.page_count() {
+                key_staging.bytes().checked_sub(offset).ok_or_else(|| {
+                    Error::State("paged KV gather tail offset exceeds staging".into())
+                })?
+            } else {
+                active_bytes
+            };
             let gather = RuntimePagedPairGather::new(
                 page_bytes,
                 key_staging.bytes(),
                 pages,
                 active_bytes,
                 offset,
+                span_bytes,
             )?;
             gather
                 .prepare(
@@ -2173,7 +2185,7 @@ mod tests {
                 Bytes::from_bytes_vec(value4.clone()),
             );
             let scatter = append.enqueue_cuda_from_staging(&flight, &candidate_staging, 3)?;
-            if gather_dispatches != 3
+            if gather_dispatches != 1
                 || scatter.copy_dispatches != 2
                 || scatter.append_transfers != 2
                 || scatter.append_bytes != 2 * row_bytes

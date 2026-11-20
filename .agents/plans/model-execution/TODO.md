@@ -316,9 +316,19 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   native B8: contiguous176.800ms/135.746 output tok/s and paged182.505ms/131.504,
   commits[129.424,153.479,176.519]ms vs[129.212,155.426,181.469]ms. Paged is now only
   ~3.2% slower in matched wall time versus ~11.6% after device-zeroing and ~31.8% at the
-  retained pre-optimization baseline. No new fixture was added. Next prefer fresh matched
-  vLLM if runnable; otherwise profile the small residual gap before considering direct
-  page-table attention or more complex overlap.
+  retained pre-optimization baseline. No new fixture was added.
+- [x] The paired gather now also zero-fills the inactive destination tail in its final
+  launch when the staging plane fits the existing runtime-word bound, removing the two
+  separate staging-zero dispatches without changing the full-capacity contiguous ABI.
+  Oversized planes retain the prior bounded device-zero fallback; empty paged prefixes
+  explicitly keep that fallback so staging is never left uninitialized. The same matched
+  opt1/codegen64/non-LTO8x48+3 public SDK cell is terminal-green with exact native B8 at
+  contiguous177.467ms/135.236 output tok/s and paged180.520ms/132.949, commits
+  [129.797,153.805,177.178]ms vs[128.897,154.402,179.491]ms. The remaining matched
+  wall-time gap is ~1.7%. The first physical attempt was externally SIGKILLed during
+  compilation before test entry; residue/kernel checks were clean and one cached retry
+  passed. No new fixture was added. Next prefer fresh matched vLLM if runnable; otherwise
+  profile before adding direct page-table attention or overlap complexity.
 
 ### Next continuation — no live campaign
 

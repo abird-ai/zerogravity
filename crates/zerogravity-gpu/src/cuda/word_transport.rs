@@ -88,21 +88,26 @@ extern "C" __global__ __launch_bounds__(128) void zg_gather_paged_pair_words_run
     unsigned int* key_destination, unsigned int* value_destination,
     ZgPagedPairGatherScalars scalars) {
     const unsigned int page_words = (unsigned int)scalars.words[0];
-    const unsigned int active_words = (unsigned int)scalars.words[1];
+    const unsigned int copy_words = (unsigned int)scalars.words[1];
     const unsigned int destination_offset = (unsigned int)scalars.words[2];
-    const unsigned int pages = (unsigned int)scalars.words[3];
+    const unsigned int span_words = (unsigned int)scalars.words[3];
     const unsigned long long index =
         (unsigned long long)blockIdx.x * blockDim.x + threadIdx.x;
-    const unsigned long long total = (unsigned long long)active_words * 2ull;
-    if (page_words == 0u || pages == 0u || pages > 15u || index >= total) {
+    const unsigned long long total = (unsigned long long)span_words * 2ull;
+    if (page_words == 0u || copy_words == 0u || span_words < copy_words || index >= total) {
         return;
     }
-    const unsigned int plane = (unsigned int)(index / active_words);
+    const unsigned int plane = (unsigned int)(index / span_words);
     const unsigned int local =
-        (unsigned int)(index - (unsigned long long)plane * active_words);
+        (unsigned int)(index - (unsigned long long)plane * span_words);
+    unsigned int* destination = plane == 0u ? key_destination : value_destination;
+    if (local >= copy_words) {
+        destination[destination_offset + local] = 0u;
+        return;
+    }
     const unsigned int page = local / page_words;
     const unsigned int column = local - page * page_words;
-    if (page >= pages) {
+    if (page >= 15u) {
         return;
     }
     const unsigned int* source = nullptr;
@@ -115,7 +120,6 @@ extern "C" __global__ __launch_bounds__(128) void zg_gather_paged_pair_words_run
         default: return;
     }
 #undef ZG_PAGE_CASE
-    unsigned int* destination = plane == 0u ? key_destination : value_destination;
     destination[destination_offset + local] = source[column];
 }
 "#;
@@ -134,6 +138,12 @@ pub(crate) struct RuntimePagedPairGather {
 }
 
 impl RuntimePagedPairGather {
+    pub(crate) fn can_fill_span(span_bytes: usize) -> bool {
+        span_bytes != 0
+            && span_bytes.is_multiple_of(4)
+            && span_bytes / 4 <= MAX_RUNTIME_WORD_TRANSPORT_WORDS / 2
+    }
+
     pub(crate) fn max_pages(page_bytes: usize) -> Result<usize> {
         if page_bytes == 0 || !page_bytes.is_multiple_of(4) {
             return Err(Error::State(
@@ -157,8 +167,9 @@ impl RuntimePagedPairGather {
         page_bytes: usize,
         destination_bytes: usize,
         pages: usize,
-        active_bytes: usize,
+        copy_bytes: usize,
         destination_offset_bytes: usize,
+        span_bytes: usize,
     ) -> Result<Self> {
         if pages == 0 || pages > Self::max_pages(page_bytes)? {
             return Err(Error::State(
@@ -173,15 +184,17 @@ impl RuntimePagedPairGather {
             .ok_or_else(|| Error::Limit("runtime paged pair gather prior span".into()))?;
         if page_bytes == 0
             || destination_bytes == 0
-            || active_bytes == 0
+            || copy_bytes == 0
             || !page_bytes.is_multiple_of(4)
             || !destination_bytes.is_multiple_of(4)
-            || !active_bytes.is_multiple_of(4)
+            || !copy_bytes.is_multiple_of(4)
             || !destination_offset_bytes.is_multiple_of(4)
-            || active_bytes > page_span
-            || active_bytes <= prior_span
+            || !Self::can_fill_span(span_bytes)
+            || copy_bytes > span_bytes
+            || copy_bytes > page_span
+            || copy_bytes <= prior_span
             || destination_offset_bytes
-                .checked_add(active_bytes)
+                .checked_add(span_bytes)
                 .is_none_or(|end| end > destination_bytes)
         {
             return Err(Error::State(
@@ -189,9 +202,10 @@ impl RuntimePagedPairGather {
             ));
         }
         let page_words = page_bytes / 4;
-        let active_words = active_bytes / 4;
+        let copy_words = copy_bytes / 4;
         let destination_offset_words = destination_offset_bytes / 4;
-        let total_words = active_words
+        let span_words = span_bytes / 4;
+        let total_words = span_words
             .checked_mul(2)
             .filter(|words| *words <= MAX_RUNTIME_WORD_TRANSPORT_WORDS)
             .ok_or_else(|| Error::Limit("runtime paged pair gather words".into()))?;
@@ -209,12 +223,12 @@ impl RuntimePagedPairGather {
             schema,
             &[
                 StaticScalarValue::U32(as_u32(page_words, "paged page words")?),
-                StaticScalarValue::U32(as_u32(active_words, "paged active words")?),
+                StaticScalarValue::U32(as_u32(copy_words, "paged copy words")?),
                 StaticScalarValue::U32(as_u32(
                     destination_offset_words,
                     "paged destination offset",
                 )?),
-                StaticScalarValue::U32(as_u32(pages, "paged source pages")?),
+                StaticScalarValue::U32(as_u32(span_words, "paged destination span")?),
             ],
         )?;
         let mut bindings = Vec::with_capacity(32);
