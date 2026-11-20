@@ -16,7 +16,7 @@ use std::sync::Arc;
 use zerogravity_core::{Error, Result};
 
 const THREADS: u32 = 128;
-const MAX_RUNTIME_WORD_TRANSPORT_WORDS: usize = 2 * 1024 * 1024;
+pub(crate) const MAX_RUNTIME_WORD_TRANSPORT_WORDS: usize = 2 * 1024 * 1024;
 const COPY_ENTRY: &str = "zg_copy_strided_words_runtime_v1";
 const ZERO_ENTRY: &str = "zg_zero_strided_words_runtime_v1";
 const SOURCE: &str = r#"// cubecl.cuda.dynamic_shared_bytes=0

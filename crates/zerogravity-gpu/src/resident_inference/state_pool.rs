@@ -360,7 +360,8 @@ impl HybridCandidateBundle {
                 let materialized =
                     append.enqueue_cuda_from_staging(flight, staging, prior.tokens()?)?;
                 dispatches = dispatches
-                    .checked_add(materialized.copy_dispatches)
+                    .checked_add(materialized.zero_dispatches)
+                    .and_then(|n| n.checked_add(materialized.copy_dispatches))
                     .and_then(|n| n.checked_add(materialized.append_transfers))
                     .ok_or_else(|| Error::Limit("resident hybrid scatter dispatches".into()))?;
             }

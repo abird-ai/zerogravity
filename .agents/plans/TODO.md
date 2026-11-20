@@ -4,20 +4,23 @@ Current source, tests, and this queue are authoritative; Git retains retired his
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-20.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-20.md).
 
-**20 Nov authoritative refresh:** latest implementation/source checkpoint is `3afb990`
-and pushed/tracked `origin/main` is `f0f0640`; the implementation lineage is three
-signed commits ahead. The handoff-consolidation commit may sit above `3afb990` as
-docs-only; revalidate actual HEAD first. `1222f8a` adds the
-large multi-token GDN prefill win, `60ba956` corrects performance feedback to the
-matched non-LTO/opt1/codegen64 host profile, and `3afb990` retains exact B4+B8 GDN
-layouts inside a width8 arena so natural continuous refill/regroup passes without
-per-token allocation. The warmed public-SDK refill probe demonstrated
-B8->B4->refill/prefill->B8 with opt1 goodput 178.769 output tok/s contiguous and
-136.488 paged over68 generated tokens; the temporary probe was removed. Current best
-serving follow-up is a fresh matched vLLM comparison if runnable or profiling the
-optimized-profile paged-vs-contiguous gap. Public graph serving remains Native. The
-older status narrative below is historical context unless corroborated by current
-source/live plan sections.
+**20 Nov authoritative refresh:** pushed/tracked `origin/main` is `f0f0640`;
+the prior source checkpoint is `3afb990`, with docs-only `7beb1be` above it. Revalidate
+actual HEAD first. `1222f8a` adds the large multi-token GDN prefill win, `60ba956`
+corrects performance feedback to the matched non-LTO/opt1/codegen64 host profile, and
+`3afb990` retains exact B4+B8 GDN layouts inside a width8 arena so natural continuous
+refill/regroup passes without per-token allocation. The warmed public-SDK refill probe
+demonstrated B8->B4->refill/prefill->B8 with opt1 goodput 178.769 output tok/s contiguous
+and136.488 paged over68 generated tokens; the temporary probe was removed. The next
+local source checkpoint removes full-capacity host-zero allocations/H2D from paged KV
+gather and fresh-page materialization by reusing the bounded pinned device-side word-zero
+transport. On the same matched8x48+3 cell, contiguous is184.409ms/130.145 output tok/s
+and paged205.724ms/116.661 tok/s with exact native-B8 tokens; the retained pre-change
+paged result was242.488ms/98.974 tok/s. A fresh vLLM comparison is still preferred if
+the pinned environment becomes runnable; otherwise profile/reduce remaining per-page
+gather/copy amplification rather than adding refill fixtures. Public graph serving
+remains Native. The older status narrative below is historical context unless
+corroborated by current source/live plan sections.
 
 Historical implementation checkpoint recorded below is signed `9d6613c`
 (`feat(cuda): select compatible resident graph cache`); signed qualification checkpoint

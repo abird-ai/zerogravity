@@ -910,8 +910,18 @@ eight regroup into B8 decode. This exposed one reusable ABI bug: a width8 arena 
 only the B8 GDN layout descriptor, so legal B4 reduction saw B8 binding extents. Width8
 now retains B4+B8 descriptors but one max-width physical scratch allocation; active-band
 layout selection is allocation-free. Warm opt1 refill goodput is178.769 tok/s contiguous
-and136.488 paged for68 generated tokens. Focus next on the remaining paged gap or fresh
-matched vLLM goodput, not another refill evidence layer.
+and136.488 paged for68 generated tokens. The first matched paged-gap optimization stays
+inside the shared transport: paged KV gather and fresh COW/page initialization no longer
+allocate/upload full host-zero buffers. They use the existing pinned runtime word-zero
+kernel with bounded chunking, and zero work is included in physical dispatch accounting.
+On the same optimized8x48+3 SDK cell, exact native B8 measures184.409ms/130.145 output
+tok/s contiguous and205.724ms/116.661 paged, versus retained183.932/130.483 and
+242.488/98.974 before the change; first-token commit is effectively equal at133.988ms
+contiguous/133.531ms paged in the new run. This preserves gather-to-contiguous as the
+correctness bridge but makes the remaining cost clearer: profile the per-page gather-copy
+dispatch/copy amplification and move to direct paged consumption only when the ownership/
+root design stays simple. A fresh matched vLLM run remains preferred if its pinned
+environment becomes runnable. Do not add another refill evidence layer.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 

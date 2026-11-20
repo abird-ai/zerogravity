@@ -718,8 +718,16 @@ or a change to the active correctness/benchmark/27B order.
   exact B4 and B8 GDN ABI descriptors while sharing one max-width physical scratch arena;
   legal B4 fallback no longer binds B8 extents. Warm refill passed with `{4,8}` on every
   survivor/queued row, demonstrating B8→B4→refill→B8 regrouping. Opt1 goodput for68
-  generated tokens:178.769 tok/s contiguous,136.488 paged. Next prioritize fresh matched
-  vLLM or the paged-vs-contiguous gap rather than more refill/debug evidence.
+  generated tokens:178.769 tok/s contiguous,136.488 paged. The first matched paged-gap
+  optimization now removes host-zero allocation/H2D from paged KV staging and fresh-page
+  initialization by reusing the bounded pinned device-side word-zero primitive. The same
+  optimized8x48+3 SDK cell remains exact/native B8 and measures184.409ms/130.145 output
+  tok/s contiguous versus205.724ms/116.661 paged, improving paged from the retained
+ 242.488ms/98.974 without moving contiguous materially; first-token commits are
+ 133.988/133.531ms. Physical zero work is now counted as dispatches, including Hybrid
+  scatter accounting. Fresh vLLM is still blocked by the unregistered pinned image, so
+  next prioritize per-page gather/copy amplification (or a clean direct-paged consumer)
+  rather than more refill/debug evidence.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

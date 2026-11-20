@@ -8,7 +8,10 @@
 use super::*;
 use crate::resident_leases::backing_pool::{ResidentPagePool, ResidentPagePoolSnapshot};
 #[cfg(all(feature = "cuda-native", target_os = "linux"))]
-use crate::{cuda::word_transport::RuntimeWordTransport, resident_leases::ResidentSubmission};
+use crate::{
+    cuda::word_transport::{MAX_RUNTIME_WORD_TRANSPORT_WORDS, RuntimeWordTransport},
+    resident_leases::ResidentSubmission,
+};
 use std::collections::BTreeMap;
 use zerogravity_core::paged_state::{
     PageAppendPlan, PageCompatibility, PageGeometry, PagedBlockTable,
@@ -55,7 +58,7 @@ pub(crate) struct ResidentPagedKvStaging {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct PagedMaterialization {
-    pub(crate) zero_uploads: usize,
+    pub(crate) zero_dispatches: usize,
     pub(crate) copy_dispatches: usize,
     pub(crate) append_transfers: usize,
     pub(crate) append_bytes: usize,
@@ -252,21 +255,19 @@ impl ResidentPagedAppend {
         let accesses = self.accesses()?;
         flight.require_accesses(accesses.iter().map(|(lease, access)| (lease, *access)))?;
         let targets = self.target_pages()?;
-        let page_bytes = self.candidate.geometry().page_bytes();
         let service = targets
             .values()
             .next()
             .expect("nonempty target pages")
             .service();
 
-        // Correctness-first materialization: clear every fresh page before any
-        // copy/write. A future direct paged kernel may replace this with bounded
-        // tail clearing only after its own inactive-tail qualification.
+        // Clear fresh pages on-device. This preserves the exact inactive-tail
+        // contract without allocating/uploading one host-zero buffer per page.
+        let mut zero_dispatches = 0usize;
         for target in targets.values() {
-            service.client().write(
-                &target.handle(),
-                Bytes::from_bytes_vec(vec![0u8; page_bytes]),
-            );
+            zero_dispatches = zero_dispatches
+                .checked_add(enqueue_zero_cuda(service, target)?)
+                .ok_or_else(|| Error::Limit("paged append zero dispatches".into()))?;
         }
 
         let mut copy_dispatches = 0usize;
@@ -309,7 +310,7 @@ impl ResidentPagedAppend {
         }
 
         Ok(PagedMaterialization {
-            zero_uploads: targets.len(),
+            zero_dispatches,
             copy_dispatches,
             append_transfers: self.plan.writes().len(),
             append_bytes: append.len(),
@@ -353,17 +354,16 @@ impl ResidentPagedAppend {
         flight.require_accesses(accesses.iter().map(|(lease, access)| (lease, *access)))?;
         flight.require_accesses([(source, DeviceAccess::Read)])?;
         let targets = self.target_pages()?;
-        let page_bytes = self.candidate.geometry().page_bytes();
         let service = targets
             .values()
             .next()
             .expect("nonempty paged scatter targets")
             .service();
+        let mut zero_dispatches = 0usize;
         for target in targets.values() {
-            service.client().write(
-                &target.handle(),
-                Bytes::from_bytes_vec(vec![0u8; page_bytes]),
-            );
+            zero_dispatches = zero_dispatches
+                .checked_add(enqueue_zero_cuda(service, target)?)
+                .ok_or_else(|| Error::Limit("paged scatter zero dispatches".into()))?;
         }
 
         let mut copy_dispatches = 0usize;
@@ -421,7 +421,7 @@ impl ResidentPagedAppend {
             ));
         }
         Ok(PagedMaterialization {
-            zero_uploads: targets.len(),
+            zero_dispatches,
             copy_dispatches,
             append_transfers: self.plan.writes().len(),
             append_bytes,
@@ -804,18 +804,13 @@ impl ResidentPagedKvDomain {
     ) -> Result<usize> {
         let accesses = self.gather_accesses(tokens, key_staging, value_staging)?;
         flight.require_accesses(accesses.iter().map(|(lease, access)| (lease, *access)))?;
-        let plane_bytes = self
-            .row_bytes
-            .checked_mul(self.capacity)
-            .ok_or_else(|| Error::Limit("paged KV staging byte extent overflow".into()))?;
         let service = self.keys.pool.service();
-        for staging in [key_staging, value_staging] {
-            service.client().write(
-                &staging.handle(),
-                Bytes::from_bytes_vec(vec![0u8; plane_bytes]),
-            );
-        }
         let mut dispatches = 0usize;
+        for staging in [key_staging, value_staging] {
+            dispatches = dispatches
+                .checked_add(enqueue_zero_cuda(service, staging)?)
+                .ok_or_else(|| Error::Limit("paged KV gather zero dispatches".into()))?;
+        }
         for (table, staging) in [(&self.keys, key_staging), (&self.values, value_staging)] {
             let mut offset = 0usize;
             for index in 0..table.page_count() {
@@ -954,7 +949,7 @@ impl ResidentPagedKvAppend {
         let key = self.keys.enqueue_cuda(flight, keys)?;
         let value = self.values.enqueue_cuda(flight, values)?;
         Ok(PagedMaterialization {
-            zero_uploads: key.zero_uploads + value.zero_uploads,
+            zero_dispatches: key.zero_dispatches + value.zero_dispatches,
             copy_dispatches: key.copy_dispatches + value.copy_dispatches,
             append_transfers: key.append_transfers + value.append_transfers,
             append_bytes: key.append_bytes + value.append_bytes,
@@ -983,7 +978,7 @@ impl ResidentPagedKvAppend {
             self.values
                 .enqueue_cuda_from_contiguous(flight, staging.values(), source_offset)?;
         Ok(PagedMaterialization {
-            zero_uploads: key.zero_uploads + value.zero_uploads,
+            zero_dispatches: key.zero_dispatches + value.zero_dispatches,
             copy_dispatches: key.copy_dispatches + value.copy_dispatches,
             append_transfers: key.append_transfers + value.append_transfers,
             append_bytes: key.append_bytes + value.append_bytes,
@@ -1130,6 +1125,43 @@ fn range_handle(lease: &ResidentLease, offset: usize, bytes: usize) -> Result<Ha
         ));
     }
     Ok(handle)
+}
+
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+fn enqueue_zero_cuda(service: &Arc<ResidentService>, lease: &ResidentLease) -> Result<usize> {
+    if lease.bytes() == 0
+        || !lease.bytes().is_multiple_of(4)
+        || !Arc::ptr_eq(lease.service(), service)
+    {
+        return Err(Error::State(
+            "paged resident zero ownership/alignment differs".into(),
+        ));
+    }
+    let max_bytes = MAX_RUNTIME_WORD_TRANSPORT_WORDS
+        .checked_mul(4)
+        .ok_or_else(|| Error::Limit("paged resident zero chunk bytes".into()))?;
+    let mut offset = 0usize;
+    let mut dispatches = 0usize;
+    while offset < lease.bytes() {
+        let bytes = (lease.bytes() - offset).min(max_bytes);
+        let words = bytes / 4;
+        let transport = RuntimeWordTransport::zero(bytes, 1, words, words)?;
+        transport
+            .kernel
+            .prepare(
+                service.client(),
+                transport.grid,
+                vec![range_handle(lease, offset, bytes)?],
+            )?
+            .launch()?;
+        offset = offset
+            .checked_add(bytes)
+            .ok_or_else(|| Error::Limit("paged resident zero cursor".into()))?;
+        dispatches = dispatches
+            .checked_add(1)
+            .ok_or_else(|| Error::Limit("paged resident zero dispatch count".into()))?;
+    }
+    Ok(dispatches)
 }
 
 #[cfg(all(
@@ -1471,7 +1503,7 @@ mod tests {
             let first_materialized = first.enqueue_cuda(&first_flight, &first_payload)?;
             if first_materialized
                 != (PagedMaterialization {
-                    zero_uploads: 1,
+                    zero_dispatches: 1,
                     copy_dispatches: 0,
                     append_transfers: 1,
                     append_bytes: first_payload.len(),
@@ -1520,7 +1552,7 @@ mod tests {
             let second_materialized = second.enqueue_cuda(&second_flight, &second_payload)?;
             if second_materialized
                 != (PagedMaterialization {
-                    zero_uploads: 2,
+                    zero_dispatches: 2,
                     copy_dispatches: 1,
                     append_transfers: 2,
                     append_bytes: second_payload.len(),
@@ -1817,7 +1849,7 @@ mod tests {
             }
             let (next, first_materialized) =
                 materialize_kv_append(&service, &domain, &expected_keys, &expected_values).await?;
-            if first_materialized.zero_uploads != 2
+            if first_materialized.zero_dispatches != 2
                 || first_materialized.copy_dispatches != 0
                 || first_materialized.append_bytes != 2 * 3 * row_bytes
             {
@@ -1835,7 +1867,7 @@ mod tests {
             let (next, boundary_materialized) =
                 materialize_kv_append(&service, &domain, &key4, &value4).await?;
             if boundary_materialized.copy_dispatches != 2
-                || boundary_materialized.zero_uploads != 2
+                || boundary_materialized.zero_dispatches != 2
                 || boundary_materialized.append_bytes != 2 * row_bytes
             {
                 return Err(Error::State(
@@ -1869,7 +1901,7 @@ mod tests {
             let (next, beyond_materialized) =
                 materialize_kv_append(&service, &domain, &key5, &value5).await?;
             if beyond_materialized.copy_dispatches != 0
-                || beyond_materialized.zero_uploads != 2
+                || beyond_materialized.zero_dispatches != 2
                 || beyond_materialized.append_bytes != 2 * row_bytes
             {
                 return Err(Error::State(
@@ -2106,7 +2138,7 @@ mod tests {
                 Bytes::from_bytes_vec(value4.clone()),
             );
             let scatter = append.enqueue_cuda_from_staging(&flight, &candidate_staging, 3)?;
-            if gather_dispatches != 2
+            if gather_dispatches != 4
                 || scatter.copy_dispatches != 2
                 || scatter.append_transfers != 2
                 || scatter.append_bytes != 2 * row_bytes

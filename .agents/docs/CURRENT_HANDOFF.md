@@ -535,8 +535,27 @@ and live TODOs are authoritative.
   survivor/queued width sets `{4,8}`, proving actual B8→B4→refill/prefill→B8 regrouping.
   Matched opt1/codegen64/non-LTO goodput for68 generated tokens was380.379ms /178.769
   output tok/s contiguous and498.212ms /136.488 paged. The temporary probe was removed.
-  Next meaningful serving work is the remaining paged-vs-contiguous gap or a fresh matched
-  vLLM run, not additional refill fixtures or debug-profile decode micro-tuning.
+  **The first optimized paged-gap slice is now implemented and physically measured.**
+  Paged KV gather and fresh COW/page initialization previously allocated host-zero vectors
+  and uploaded complete staging/page extents on every use. They now reuse the existing
+  pinned runtime word-zero CUDA transport, chunked at its admitted2^21-word bound; zero
+  work is counted as real dispatches, including Hybrid scatter accounting. No root/COW/
+  Ready/publication rule or default state policy changed. On the same matched
+  opt1/codegen64/non-LTO8x48+3 public SDK cell, exact native B8 passes at184.409ms /
+ 130.145 output tok/s contiguous and205.724ms /116.661 paged; retained pre-change results
+  were183.932/130.483 and242.488/98.974. Mean first-token commits in the new run are
+ 133.988ms contiguous and133.531ms paged. Strict CUDA `zerogravity-gpu` Clippy passes.
+  A focused low-level `physical_paged_kv_` attempt was externally SIGKILLed while
+  compiling before any test body; a later exact-source SDK confirmation was externally
+  SIGKILLed after compilation and test entry with no Rust/CUDA diagnostic. Both left no
+  process/GPU residue and remain incomplete infrastructure evidence. The terminal-green
+  measurement above predates only the dispatch-count accounting correction, not the
+  compute/zero path. The current connector still has no vLLM executable/
+  module and Podman still reports the pinned image `image not known`; do not claim a fresh
+  vLLM comparison. Next meaningful serving work is per-page gather/copy amplification or a
+  clean direct-paged consumer if simple, with a fresh matched vLLM run preferred if its
+  environment becomes runnable. Do not add refill fixtures or return to debug-profile
+  decode micro-tuning.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of

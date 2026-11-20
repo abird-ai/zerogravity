@@ -282,8 +282,28 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   refill run produced `{4,8}` on every survivor and queued row, proving
   B8→B4→refill/prefill→B8 regrouping. Opt1/codegen64/non-LTO goodput: contiguous
   380.379ms/178.769 output tok/s, paged498.212ms/136.488 tok/s for68 generated tokens.
-  The temporary probe was removed. Next prioritize the paged-vs-contiguous gap or a fresh
-  matched vLLM run rather than adding more refill fixtures.
+  The temporary probe was removed.
+- [x] The first optimized paged-gap slice removes avoidable host allocation/H2D from the
+  shared paged transport rather than adding a model-specific kernel. KV gather and fresh
+  COW/page materialization previously allocated host-zero vectors and uploaded complete
+  staging/page extents before device copies. They now reuse the existing pinned runtime
+  word-zero kernel, chunked at its admitted2^21-word bound; `zero_dispatches` and Hybrid
+  scatter accounting now expose that physical work truthfully. Root/COW/Ready/publication
+  semantics and default Contiguous policy are unchanged. On the same matched non-LTO/
+  opt1/codegen648x48+3 public-SDK cell, exact native B8 passes at184.409ms/130.145 output
+  tok/s contiguous and205.724ms/116.661 paged, versus the retained pre-change
+ 183.932ms/130.483 and242.488ms/98.974. Mean first-token commit is133.988ms contiguous
+  versus133.531ms paged in this run, removing the prior paged TTFT penalty for this cell.
+  Strict `zerogravity-gpu` CUDA Clippy passes. A focused low-level
+  `physical_paged_kv_` attempt was externally SIGKILLed while compiling before any test
+  payload; a later exact-source SDK confirmation was likewise externally SIGKILLed after
+  compilation and test entry, with no Rust/CUDA diagnostic. Both left no process/VRAM
+  residue and remain incomplete infrastructure evidence; the terminal-green measurement
+  above predates only the dispatch-count accounting correction, not the compute/zero path.
+  Fresh current vLLM remains unavailable (no executable/module; pinned Podman image still
+  `image not known`), so no new vLLM claim is made. Next profile/merge the remaining
+  per-page gather-copy amplification or adopt direct paged consumption when it stays
+  simple; do not add more refill fixtures or optimize debug-profile timing.
 
 ### Next continuation — no live campaign
 
