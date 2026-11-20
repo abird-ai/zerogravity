@@ -461,12 +461,12 @@ Fabric migration is complete; the unfinished Qwen campaign remains next.
 Preserve signed native GDN`e2559b6`/pause`1c35172` and all accepted bounded
 model/lifetime evidence. Recurrence`17aafa71` remains cancelled; no implicit
 hardware restart. S0 → S1–S3 → F0–F4 → Q0/Q1/Q2 are accepted within their named
-scopes. Return to the Qwen model/context/C1..C64/vLLM mission without silently
-activating held routes.
+scopes. Return to the Qwen model/context/C1..C64 mission without silently
+activating held routes; vLLM comparison is owner-deferred for now.
 
 ## Active
 
-- [ ] P1 serving-and-speculation — @pvl — l5 CUDA `.8B`/`2B`, x2 ROCm `.8B`/`2B`/`27B`: source-real correctness/paged/prefix/native B2/B4/B8 accepted; multi-token prefill + natural refill/regroup now fast under matched opt1, short-wave paged overhead is ~1.7%, and current68-token refill is169.837/160.919 tok/s contiguous/paged (~5.5% wall-time gap); a scatter-tail fusion was measured/rejected. Next prefer fresh matched vLLM, otherwise profiler-led longer-decode paged residual work, then broader CUDA/general27B as measured; no recurrence restart — [details](serving-and-speculation/TODO.md)
+- [ ] P1 serving-and-speculation — @pvl — l5 CUDA `.8B`/`2B`, x2 ROCm `.8B`/`2B`/`27B`: source-real correctness/paged/prefix/native B2/B4/B8 accepted; multi-token prefill + natural refill/regroup now fast under matched opt1, short-wave paged overhead is ~1.7%, and current68-token refill is169.837/160.919 tok/s contiguous/paged (~5.5% wall-time gap); a scatter-tail fusion was measured/rejected. Owner explicitly defers vLLM for now. X2 ROCm physical work is environment-gated by clr7.2.4/LLVM22 GLIBC_2.44 vs locked-shell glibc2.42, with no GPU allocation in the20 Nov27B recheck. Next stay L5-only on non-vLLM implementation/correctness rather than micro-tuning or rebuilding X2 ROCm inside model turns — [details](serving-and-speculation/TODO.md)
 - [~] P1 numerics-and-context — @pvl — exact cached47→50, lifecycle/capacity and final gate pass; active-context/2B reference inputs missing — [details](numerics-and-context/TODO.md)
 - [~] P1 memory-and-streaming — @pvl — exact two-root admission: `.8B` fits through 32K, `2B` through 16K, `2B`32K refuses before allocation — [details](memory-and-streaming/TODO.md)
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)

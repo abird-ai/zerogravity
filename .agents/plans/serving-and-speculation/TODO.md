@@ -92,7 +92,12 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   process/VRAM/queue delta retires afterward. Existing KFD owners/VRAM remain
   other-workload baseline. Never reset/reclaim/restart/kill those owners merely to
   create an empty GPU. Missing27B/populated1K/2K references remain a separate
-  numerical-acceptance blocker.
+  numerical-acceptance blocker. **20 Nov update:** a near-empty274,448,384B/0% X2
+  baseline was available and exact-current source plus the accepted private child-net
+  wrapper were prepared successfully, but both installed clr7.2.4 closures fail
+  `dlopen` because their LLVM22 requires GLIBC_2.44 while the current locked shell is
+  glibc2.42. No HIP allocation occurred. Treat X2 ROCm model execution as environment-
+  gated until that closure is repaired; do not weaken isolation or substitute SDKs.
 - [ ] L5 remains the source/repository authority. X2 is execution/testing only and
   must be synced to the exact current l5 `main` before physical work; do not push
   merely to transfer local commits.

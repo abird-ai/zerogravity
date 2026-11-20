@@ -929,6 +929,25 @@ serving, memory and composition plans.
   present in the current X2 cache. Full numerical/context acceptance remains
   blocked until exact approved material is recovered or a properly supervised
   successor capture is established; never substitute/repin.
+- **20 Nov current-source 27B HTTP recheck is environment-gated before HIP allocation.**
+  X2 was synced to exact L5 `dfc3e39` bytes by Git bundle and had a clean passive
+  baseline of274,448,384B VRAM /0% busy, so the explicit75GiB envelope fit. A temporary
+  reference-free active1/context1K/output3/47-token HTTP probe compiled successfully
+  with the already-accepted optimized test profile (opt3/codegen16/non-LTO/debug0);
+  release thin-LTO compilation was again externally SIGKILLed and was not looped.
+  The accepted child-net wrapper
+  `bwrap --unshare-net --bind / / --dev-bind /dev /dev --` plus guarded loopback
+  setup was recognized by `native-gpu.py --require-private-network` as
+  `bubblewrap-child-network-namespace`. The runtime then failed cleanly before HIP
+  allocation because the installed ROCm runtime closure cannot be loaded in the current
+  locked shell: both installed `clr-7.2.4` roots pull `libLLVM.so.22.0` requiring
+  `GLIBC_2.44`, while the shell provides glibc2.42. Exporting the exact HIP/ROCM root
+  therefore does not repair the ABI mismatch. No HTTP/model result follows, no GPU delta
+  occurred, and X2 returned exactly to274,448,384B/0%. The temporary probe and bundle
+  were removed and X2 restored to its original `b599db3` main checkout. Do not spend
+  model-execution turns reconstructing this host ROCm closure; repair the X2 environment
+  separately before further27B/ROCm2B physical work. vLLM work is explicitly deferred by
+  owner for now; continue L5-only non-vLLM implementation/correctness work next.
 - ROCm2B C4 warmup plus C16/C32/C64 warmup/timed mismatches remain unlocalized.
   Preserve failed cells and expected IDs; do not repin expectations.
 - These remaining campaigns are explicitly authorized X2 execution/test work;

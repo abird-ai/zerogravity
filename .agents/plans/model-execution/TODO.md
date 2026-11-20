@@ -364,7 +364,17 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   unchanged and no new numerical tolerance/pinning was introduced.
 - [ ] Localize ROCm2B C4 warmup and C16/32/64 warmup/timed divergence (task39),
   without repinning expected IDs or attributing an unlocalized failure to kernels.
-- [ ] Close ordinary27B HIP HTTP504 and populated1K/2K references/serving (task11).
+- [~] Close ordinary27B HIP HTTP504 and populated1K/2K references/serving (task11).
+  The historical504 still predates resident75GiB routing, but the20 Nov exact-current
+  liveness rerun is now blocked before HIP allocation by the X2 runtime closure, not by
+  ZeroGravity serving: both installed clr7.2.4 roots require an LLVM22 library needing
+  GLIBC_2.44 while the locked dev shell is glibc2.42. Exact `HIP_PATH/ROCM_PATH` does
+  not bridge that ABI mismatch. The temporary reference-free HTTP probe compiled under
+  the accepted opt3/codegen16/non-LTO test profile and private child-net isolation was
+  accepted, but runtime loading refused before GPU allocation. X2 stayed at the exact
+ 274,448,384B/0% baseline and was restored to `b599db3`; probe/bundle removed. Repair
+  the X2 ROCm environment separately before another27B/ROCm2B run. Missing approved
+ 66-call and populated1K/2K references remain a separate blocker.
   R10 audit is complete and mixed; R11 remains staged/unlaunched. Review its older
   binary/budget before any fresh successor. Both context captures remain interrupted;
   the waived12GiB host-available threshold is not a current blocker.
