@@ -15,7 +15,7 @@
 
 use cubecl::{client::Client, ir::PhysicalDevice};
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
 use zerogravity_core::Error;
@@ -108,6 +108,7 @@ pub struct PhysicalServiceBudget {
     // source weight / activation / output suballocation.
     lease: Arc<GlobalResourceLease>,
     fence_flag: Arc<AtomicBool>,
+    in_flight: Arc<Mutex<usize>>,
 }
 
 /// Physical device admission taken before any context or device exists. It
@@ -126,6 +127,7 @@ pub(crate) struct PreAdmittedDevice {
     reported_max: u64,
     lease: Arc<GlobalResourceLease>,
     fence_flag: Arc<AtomicBool>,
+    in_flight: Arc<Mutex<usize>>,
 }
 
 #[cfg(all(
@@ -181,6 +183,7 @@ impl PhysicalServiceBudget {
             reported_max,
             lease: Arc::new(lease),
             fence_flag: Arc::new(AtomicBool::new(false)),
+            in_flight: Arc::new(Mutex::new(0)),
         })
     }
 
@@ -227,6 +230,7 @@ impl PhysicalServiceBudget {
             model_closed: None,
             lease: pre.lease.clone(),
             fence_flag: pre.fence_flag.clone(),
+            in_flight: pre.in_flight.clone(),
         })
     }
 
@@ -262,6 +266,7 @@ impl PhysicalServiceBudget {
             model_closed: None,
             lease: Arc::new(lease),
             fence_flag: Arc::new(AtomicBool::new(false)),
+            in_flight: Arc::new(Mutex::new(0)),
         })
     }
 
@@ -290,7 +295,7 @@ impl PhysicalServiceBudget {
             ));
         }
         crate::physical_quarantine::ensure_service_safe(client)?;
-        let mut work = PhysicalWork::begin(&self.lease)?;
+        let mut work = PhysicalWork::begin(&self.lease, &self.in_flight)?;
         work.fence_flag = Some(self.fence_flag.clone());
         Ok(work)
     }
@@ -397,6 +402,7 @@ impl PhysicalServiceBudget {
             model_closed: Some(closed),
             lease: self.lease.clone(),
             fence_flag: self.fence_flag.clone(),
+            in_flight: self.in_flight.clone(),
         })
     }
     pub fn remaining(&self) -> Result<u64> {
@@ -406,27 +412,56 @@ impl PhysicalServiceBudget {
     }
 }
 
-/// A single submission owns its original physical envelope until CubeCL
-/// read_async and the P07-E logical event ledger both report completion.
-/// An aborted Future fences EVERY service sharing this physical card.
+/// Submitted regions share one already-charged physical envelope. The first
+/// in-flight region marks it Submitted; the last known-complete region marks it
+/// Ready. An aborted region fences EVERY service sharing this physical card.
 /// Physical handles remain independently alive in P07-F quarantine.
 #[must_use]
 pub struct PhysicalWork<'a> {
     lease: &'a GlobalResourceLease,
+    in_flight: &'a Mutex<usize>,
     armed: bool,
     fence_flag: Option<Arc<AtomicBool>>,
 }
 impl<'a> PhysicalWork<'a> {
-    fn begin(lease: &'a GlobalResourceLease) -> Result<Self> {
-        lease.mark_submitted()?;
+    fn begin(lease: &'a GlobalResourceLease, in_flight: &'a Mutex<usize>) -> Result<Self> {
+        let mut count = in_flight
+            .lock()
+            .map_err(|_| Error::State("physical in-flight counter poisoned".into()))?;
+        if *count == 0 {
+            lease.mark_submitted()?;
+        }
+        *count = count
+            .checked_add(1)
+            .ok_or_else(|| Error::Limit("physical in-flight counter exhausted".into()))?;
         Ok(Self {
             lease,
+            in_flight,
             armed: true,
             fence_flag: None,
         })
     }
     pub fn complete(mut self) -> Result<()> {
-        self.lease.mark_ready()?;
+        if self
+            .fence_flag
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::Acquire))
+        {
+            return Err(Error::State(
+                "physical service fenced before in-flight completion".into(),
+            ));
+        }
+        let mut count = self
+            .in_flight
+            .lock()
+            .map_err(|_| Error::State("physical in-flight counter poisoned".into()))?;
+        if *count == 0 {
+            return Err(Error::State("physical in-flight counter underflow".into()));
+        }
+        if *count == 1 {
+            self.lease.mark_ready()?;
+        }
+        *count -= 1;
         self.armed = false;
         Ok(())
     }
@@ -511,7 +546,8 @@ mod tests {
             )
             .unwrap();
         let quarantine = Arc::new(AtomicBool::new(false));
-        let mut work = PhysicalWork::begin(&lease).unwrap();
+        let in_flight = Mutex::new(0);
+        let mut work = PhysicalWork::begin(&lease, &in_flight).unwrap();
         work.fence_flag = Some(quarantine.clone());
         drop(work);
         assert!(quarantine.load(Ordering::Acquire));
@@ -553,12 +589,19 @@ mod tests {
                 .get(&AllocationClass::ProviderEnvelope),
             Some(&240)
         );
-        PhysicalWork::begin(&one).unwrap().complete().unwrap();
-        PhysicalWork::begin(&one).unwrap().complete().unwrap();
-        let unknown = PhysicalWork::begin(&two).unwrap();
+        let one_flights = Mutex::new(0);
+        let two_flights = Mutex::new(0);
+        let first = PhysicalWork::begin(&one, &one_flights).unwrap();
+        let second = PhysicalWork::begin(&one, &one_flights).unwrap();
+        assert_eq!(*one_flights.lock().unwrap(), 2);
+        second.complete().unwrap();
+        assert_eq!(*one_flights.lock().unwrap(), 1);
+        first.complete().unwrap();
+        assert_eq!(*one_flights.lock().unwrap(), 0);
+        let unknown = PhysicalWork::begin(&two, &two_flights).unwrap();
         drop(unknown); // cancelled after possible physical dispatch
         assert!(a.snapshot(&key).unwrap().fenced);
-        assert!(PhysicalWork::begin(&one).is_err());
+        assert!(PhysicalWork::begin(&one, &one_flights).is_err());
         drop(one);
         drop(two);
         // Submitted or unknown memory stays charged; never time-reclaimed.

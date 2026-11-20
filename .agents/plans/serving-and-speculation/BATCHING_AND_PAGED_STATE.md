@@ -851,15 +851,39 @@ cancel_retired=true cancel_initialized=false unresolved_fenced=true
 unresolved_initialized=false completion_owner_retained=true quarantine_owner_delta=1
 queue_width_unchanged=true`.
 
-The next ordered gate is now the physical queue itself: replace single
-`active: Option<u64>` with a small bounded active set while preserving fair queue
-selection. A second slot may become active only if actual resident/device-event access
-admission proves it disjoint from every active region; immutable shared Reads may be
-allowed only under the existing ledger rules. Active-slot drop after submission must
-fence only through the existing physical unknown-completion authority, and each slot
-retires independently. Qualify two independent roots, out-of-order known completion,
-one cancelled peer and one unresolved peer before exposing any worker/scheduler
-multi-flight policy or performance claim.
+**20 Nov bounded multi-flight primitive follow-up:** `PhysicalQueue` now stores a
+bounded set of active IDs instead of one optional ID and retires slots independently.
+The constructor accepts an active capacity, but the production global `queue_for`
+registry deliberately remains at1 until an adopted model path uses event-backed
+multi-flight ownership. This keeps the primitive model-neutral without silently
+changing serving behavior.
+
+A second hidden single-flight guard was also removed cleanly: the one prepaid
+`PhysicalServiceBudget` envelope now owns a shared in-flight count. Transition0→1
+marks the retained `GlobalResourceLease` Submitted; intermediate overlapping known
+flights add no new physical charge and no extra lease phase; transition1→0 after the
+last known completion marks Ready. Any unresolved flight sets the shared fence flag
+and fences the original envelope/card, so a sibling cannot restore reusable status.
+Pre-admitted/source-bound budget views share the same counter. The existing
+`DeviceEventLedger::submit` remains the sole lease-access conflict authority; the queue
+does not duplicate read/write alias logic.
+
+Evidence is intentionally compact: existing queue tests now include one bounded2
+independent-retirement case (6/6 total), and the existing physical-service tests reuse
+their envelope case to prove two overlapping known works under one charge (5/5 total).
+One physical CUDA cell then acquires two active slots from a bounded2 queue, submits
+two disjoint resident outputs under the same service/envelope, uses primary+secondary
+streams/events, and retires the second flight before the first. Both8MiB outputs are
+exact, both become initialized only through the normal readback/Ready path, and the
+service remains reusable:
+`P12_CUDA_RESIDENT_DUAL_FLIGHT_PASS active_capacity=2 same_prepaid_envelope=true
+streams_distinct=true disjoint_outputs=true events_before_completion=true
+reverse_retirement=true readback=exact outputs_initialized=true service_reusable=true`.
+
+Do not add another synthetic multi-flight matrix by default. The next ordered step is
+to adopt these generic primitives in the actual Qwen/source prefill/decode execution
+path, preserve independent roots and the existing event-ledger access rules, and then
+measure real overlap/TTFT/ITL/goodput against the available baseline.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 

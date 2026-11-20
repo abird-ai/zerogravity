@@ -212,6 +212,92 @@ fn resident_cuda_in_flight_event_lifecycle_is_exact() -> Result<()> {
     Ok(())
 }
 
+#[test]
+#[ignore = "physical CUDA bounded dual resident flights on disjoint streams"]
+fn resident_dual_flights_retire_independently() -> Result<()> {
+    use cubecl_common::bytes::Bytes;
+    use zerogravity_core::device_events::{BufferRole, DeviceAccess};
+
+    const BYTES: usize = 8 * 1024 * 1024;
+    let diagnostic = CudaDiagnostic::new("resident-dual-flight")?;
+    let service = diagnostic.service.clone();
+    let primary = service.pinned_cuda_queue()?.clone();
+    let primary_client = service.client().clone();
+    let (secondary_client, secondary) = unsafe {
+        primary
+            .fork_stream(service.client().clone())
+            .map_err(|error| Error::State(format!("dual-flight secondary stream: {error}")))?
+    };
+    let queue = Arc::new(crate::physical_queue::PhysicalQueue::new(
+        service.physical_key(),
+        4,
+        2,
+    )?);
+    let ticket = || {
+        queue.submit(
+            service.budget(),
+            service.owner().clone(),
+            &[AllocationRequest {
+                kind: AllocationClass::Scratch,
+                bytes: 1,
+            }],
+            None,
+        )
+    };
+    let mut one_slot = cubecl::future::block_on(ticket()?.wait())?;
+    let mut two_slot = cubecl::future::block_on(ticket()?.wait())?;
+    one_slot.begin_submission()?;
+    two_slot.begin_submission()?;
+
+    let one = service.allocate_uninitialized(BYTES, BufferRole::Output)?;
+    let two = service.allocate_uninitialized(BYTES, BufferRole::Output)?;
+    let one_expected = vec![0x11u8; BYTES];
+    let two_expected = vec![0x22u8; BYTES];
+    let one_flight = service.submit(11, &[(one.clone(), DeviceAccess::Write)])?;
+    let two_flight = service.submit(22, &[(two.clone(), DeviceAccess::Write)])?;
+    primary_client.write(&one.handle(), Bytes::from_bytes_vec(one_expected.clone()));
+    secondary_client.write(&two.handle(), Bytes::from_bytes_vec(two_expected.clone()));
+    let one_flight = unsafe { one_flight.into_cuda_in_flight(&primary)? };
+    let two_flight = unsafe { two_flight.into_cuda_in_flight(&secondary)? };
+
+    // Retire in reverse order. The shared prepaid envelope remains Submitted
+    // until the final known flight completes; each queue slot retires alone.
+    let (two_ready, two_raw) = cubecl::future::block_on(two_flight.complete_with_readback(
+        &[two.clone()],
+        &[two.readback(0, BYTES)?],
+        |raw| {
+            if raw.len() != 1 || raw[0].as_ref() != two_expected {
+                return Err(Error::State("dual-flight second readback differs".into()));
+            }
+            Ok(())
+        },
+    ))?;
+    two_slot.finish()?;
+    assert!(two.is_initialized());
+    assert!(!one.is_initialized());
+
+    let (one_ready, one_raw) = cubecl::future::block_on(one_flight.complete_with_readback(
+        &[one.clone()],
+        &[one.readback(0, BYTES)?],
+        |raw| {
+            if raw.len() != 1 || raw[0].as_ref() != one_expected {
+                return Err(Error::State("dual-flight first readback differs".into()));
+            }
+            Ok(())
+        },
+    ))?;
+    one_slot.finish()?;
+    assert!(one.is_initialized());
+    drop((one_ready, one_raw, two_ready, two_raw));
+    service.ensure_usable()?;
+    assert_eq!(queue.stats()?.completed, 2);
+
+    println!(
+        "P12_CUDA_RESIDENT_DUAL_FLIGHT_PASS active_capacity=2 same_prepaid_envelope=true streams_distinct=true disjoint_outputs=true events_before_completion=true reverse_retirement=true readback=exact outputs_initialized=true service_reusable=true"
+    );
+    Ok(())
+}
+
 pub(crate) struct CudaDiagnostic {
     pub(crate) service: Arc<ResidentService>,
     pub(crate) compiler: Arc<(GlobalResourceLease, GlobalResourceLease)>,

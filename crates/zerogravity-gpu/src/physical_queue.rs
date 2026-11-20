@@ -9,10 +9,10 @@
 //!
 //! The global provider envelope has ALREADY reserved physical GPU memory;
 //! the G1 fair queue is used in prepaid mode and must never charge it twice.
-//! At most one physical region per card is dispatched by this conservative
-//! service. Cancellation of a queued Future is safe and does not poison GPU.
-//! Cancellation of an active Future is terminal and globally fences the card.
-//! Physical real-device concurrency/cost tuning remains future work.
+//! The primitive supports a bounded number of selected active regions, while
+//! the production registry remains at one until model paths adopt event-backed
+//! multi-flight ownership. Cancellation of a queued Future is safe; dropping a
+//! physically submitted active region remains terminal and fences the card.
 
 use crate::physical_service::PhysicalServiceBudget;
 use std::{
@@ -30,11 +30,12 @@ use zerogravity_core::resource_arbiter::{
 };
 
 const DEFAULT_QUEUE_CAPACITY: usize = 32;
+const DEFAULT_ACTIVE_CAPACITY: usize = 1;
 
 struct QueueState {
     queue: FairDeviceQueue,
     next_id: u64,
-    active: Option<u64>,
+    active: BTreeSet<u64>,
     failed: BTreeSet<u64>,
     wakers: BTreeMap<u64, Waker>,
     selected: u64,
@@ -46,6 +47,7 @@ struct QueueState {
 pub struct PhysicalQueue {
     key: PhysicalDeviceKey,
     capacity: usize,
+    active_capacity: usize,
     epoch_origin: Instant,
     state: Mutex<QueueState>,
 }
@@ -65,15 +67,25 @@ pub struct QueueStats {
 }
 
 impl PhysicalQueue {
-    fn new(key: PhysicalDeviceKey, capacity: usize) -> Result<Self> {
+    pub(crate) fn new(
+        key: PhysicalDeviceKey,
+        capacity: usize,
+        active_capacity: usize,
+    ) -> Result<Self> {
+        if active_capacity == 0 || active_capacity > capacity {
+            return Err(Error::Limit(
+                "physical active capacity must be within queue capacity".into(),
+            ));
+        }
         Ok(Self {
             key,
             capacity,
+            active_capacity,
             epoch_origin: Instant::now(),
             state: Mutex::new(QueueState {
                 queue: FairDeviceQueue::new(1, capacity)?,
                 next_id: 1,
-                active: None,
+                active: BTreeSet::new(),
                 failed: BTreeSet::new(),
                 wakers: BTreeMap::new(),
                 selected: 0,
@@ -201,9 +213,10 @@ impl PhysicalQueue {
                 )));
             }
             state.wakers.insert(id, cx.waker().clone());
-            if state.active.is_none() {
-                // A single scheduling pass can discard multiple expired
-                // tasks, but never runs model math under the queue mutex.
+            if state.active.len() < self.active_capacity {
+                // One scheduling pass selects at most one new active region;
+                // another waiter poll can fill another bounded slot. No model
+                // math or device launch runs under this mutex.
                 loop {
                     let eligible = state.wakers.keys().copied().collect::<BTreeSet<_>>();
                     let choice = match state
@@ -215,7 +228,7 @@ impl PhysicalQueue {
                     };
                     match choice {
                         PrepaidChoice::Dispatched(task) => {
-                            state.active = Some(task.id);
+                            state.active.insert(task.id);
                             state.selected += 1;
                             if let Some(waker) = state.wakers.get(&task.id) {
                                 to_wake.push(waker.clone());
@@ -233,7 +246,7 @@ impl PhysicalQueue {
                     }
                 }
             }
-            if state.active == Some(id) {
+            if state.active.contains(&id) {
                 state.wakers.remove(&id);
                 Poll::Ready(Ok(ActiveSlot {
                     queue: self.clone(),
@@ -261,10 +274,9 @@ impl PhysicalQueue {
         };
         if state.queue.cancel_queued(id) {
             state.cancelled_queued += 1;
-        } else if state.active == Some(id) {
+        } else if state.active.remove(&id) {
             // Selected but never polled/accepted by its original owner: no
             // physical GPU work was launched, so this can be cancelled safely.
-            state.active = None;
         }
         state.failed.remove(&id);
         state.wakers.remove(&id);
@@ -281,12 +293,11 @@ impl PhysicalQueue {
                 .state
                 .lock()
                 .map_err(|_| Error::State("physical GPU queue poisoned".into()))?;
-            if state.active != Some(id) {
+            if !state.active.remove(&id) {
                 return Err(Error::State(
                     "device worker slot not owned by retiring task".into(),
                 ));
             }
-            state.active = None;
             if completed {
                 state.completed += 1;
             }
@@ -310,12 +321,11 @@ impl PhysicalQueue {
                 .lock()
                 .map_err(|_| Error::State("physical GPU queue poisoned".into()))?;
             let count = state.queue.advance_epoch(next)?;
-            let active = state.active;
             let queued = state
                 .wakers
                 .keys()
                 .copied()
-                .filter(|id| Some(*id) != active)
+                .filter(|id| !state.active.contains(id))
                 .collect::<Vec<_>>();
             state.failed.extend(queued);
             let wakes = state.wakers.values().cloned().collect::<Vec<_>>();
@@ -335,7 +345,7 @@ impl PhysicalQueue {
         Ok(QueueStats {
             queued: state.queue.queued(),
             capacity: self.capacity,
-            active: state.active.is_some(),
+            active: !state.active.is_empty(),
             selected: state.selected,
             completed: state.completed,
             cancelled_queued: state.cancelled_queued,
@@ -360,14 +370,20 @@ pub fn queue_for(key: PhysicalDeviceKey) -> Result<Arc<PhysicalQueue>> {
         .lock()
         .map_err(|_| Error::State("physical GPU worker registry poisoned".into()))?;
     if let Some(queue) = entries.get(&key).and_then(Weak::upgrade) {
-        if queue.capacity != DEFAULT_QUEUE_CAPACITY {
+        if queue.capacity != DEFAULT_QUEUE_CAPACITY
+            || queue.active_capacity != DEFAULT_ACTIVE_CAPACITY
+        {
             return Err(Error::State(
                 "incompatible physical worker queue capacity".into(),
             ));
         }
         return Ok(queue);
     }
-    let queue = Arc::new(PhysicalQueue::new(key.clone(), DEFAULT_QUEUE_CAPACITY)?);
+    let queue = Arc::new(PhysicalQueue::new(
+        key.clone(),
+        DEFAULT_QUEUE_CAPACITY,
+        DEFAULT_ACTIVE_CAPACITY,
+    )?);
     entries.insert(key, Arc::downgrade(&queue));
     Ok(queue)
 }
@@ -416,7 +432,7 @@ impl ActiveSlot {
                 .state
                 .lock()
                 .map_err(|_| Error::State("physical GPU worker queue poisoned".into()))?;
-            if state.queue.epoch() != self.epoch || state.active != Some(self.id) {
+            if state.queue.epoch() != self.epoch || !state.active.contains(&self.id) {
                 return Err(Error::State(
                     "stale/cancelled GPU queue slot must not submit physical commands".into(),
                 ));
@@ -471,11 +487,14 @@ mod tests {
     use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
 
     fn setup(id: &str) -> Arc<PhysicalQueue> {
+        setup_with_active(id, 1)
+    }
+    fn setup_with_active(id: &str, active_capacity: usize) -> Arc<PhysicalQueue> {
         let key = PhysicalDeviceKey::new("test-pci", id).unwrap();
         ResourceArbiter::process_shared()
             .register_matching(key.clone(), 4096)
             .unwrap();
-        Arc::new(PhysicalQueue::new(key, 4).unwrap())
+        Arc::new(PhysicalQueue::new(key, 4, active_capacity).unwrap())
     }
     fn ticket(queue: &Arc<PhysicalQueue>, id: &str) -> WaitingTicket {
         queue
@@ -539,6 +558,27 @@ mod tests {
         assert_eq!(q.stats().unwrap().completed, 3);
         existing.release().unwrap();
     }
+    #[test]
+    fn bounded_active_set_retires_independently() {
+        let q = setup_with_active("queue-active-two", 2);
+        let mut first = Box::pin(ticket(&q, "a").wait());
+        let mut second = Box::pin(ticket(&q, "b").wait());
+        let Poll::Ready(Ok(mut one)) = poll(first.as_mut()) else {
+            panic!("first active slot absent")
+        };
+        let Poll::Ready(Ok(mut two)) = poll(second.as_mut()) else {
+            panic!("second active slot absent")
+        };
+        assert_eq!(q.state.lock().unwrap().active.len(), 2);
+        one.begin_submission().unwrap();
+        two.begin_submission().unwrap();
+        two.finish().unwrap();
+        assert_eq!(q.state.lock().unwrap().active.len(), 1);
+        one.finish().unwrap();
+        assert!(q.state.lock().unwrap().active.is_empty());
+        assert_eq!(q.stats().unwrap().completed, 2);
+    }
+
     #[test]
     fn cancelled_pending_request_never_fences_physical_gpu() {
         let q = setup("queue-cancel-pending");

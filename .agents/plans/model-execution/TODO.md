@@ -218,10 +218,17 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   existing completion-unknown fence/quarantine path. A dedicated weak completion owner
   is retained through unresolved quarantine (`quarantine_owner_delta=1`). Physical
   marker: `P12_CUDA_RESIDENT_INFLIGHT_EVENT_PASS ... queue_width_unchanged=true`.
-  Next overlap slice is now strictly the physical queue: replace the single active ID
-  with a small bounded active set, but admit simultaneous work only when the existing
-  device-event ledger proves disjoint accesses; qualify independent roots, cancel and
-  unknown completion before worker adoption.
+- [x] Generic bounded multi-flight support is now physically accepted without changing
+  production concurrency policy. `PhysicalQueue` stores a bounded active-ID set;
+  `queue_for` deliberately remains active_capacity1 until model adoption.
+  `PhysicalServiceBudget` now multiplexes one already-charged provider envelope across
+  overlapping known flights: first marks Submitted, last known completion marks Ready,
+  and unknown completion still fences the envelope/card. No duplicate alias policy was
+  introduced; `DeviceEventLedger::submit` remains authoritative. Host contracts:
+  queue6/6, physical-service5/5. Real CUDA bounded2 dual resident flights on distinct
+  streams/outputs retire in reverse order with exact8MiB readback and reusable service
+  (`P12_CUDA_RESIDENT_DUAL_FLIGHT_PASS`). Next use these primitives in the actual
+  Qwen/source execution path and measure real prefill/decode overlap/performance.
 
 ### Next continuation — no live campaign
 

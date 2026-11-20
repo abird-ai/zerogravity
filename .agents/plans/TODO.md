@@ -368,9 +368,16 @@ still runs existing readback/validation; cancellation waits the event and retire
 without initializing writes; unresolved drop preserves completion-unknown fence +
 quarantine and retains the attached owner. Physical L5 marker:
 `P12_CUDA_RESIDENT_INFLIGHT_EVENT_PASS ... quarantine_owner_delta=1
-queue_width_unchanged=true`. Next: bounded >1 physical active set with simultaneous
-submission permitted only for device-event-ledger-disjoint accesses, then independent
-root/cancel/unknown/publication-order qualification before worker adoption.
+queue_width_unchanged=true`. **Bounded multi-flight primitives are now accepted:**
+`PhysicalQueue` has configurable bounded active slots (production registry still1),
+and `PhysicalServiceBudget` shares one prepaid envelope across overlapping known
+flights with first-Submitted/last-Ready accounting and no second charge. The existing
+DeviceEventLedger remains the only access-conflict authority. Host queue6/6 and
+physical-service5/5 pass; real CUDA bounded2 disjoint dual flights on primary/secondary
+streams retire second-before-first with exact8MiB readbacks and reusable service
+(`P12_CUDA_RESIDENT_DUAL_FLIGHT_PASS`). Next integrate the real Qwen/source path and
+measure actual prefill/decode behavior; avoid another synthetic evidence matrix unless
+integration exposes a specific missing invariant.
 
 X2 remains the approved shared AMD large-VRAM execution/test host. Its baseline must
 be resampled per run: at this checkpoint it is total103,079,215,104 bytes, used about

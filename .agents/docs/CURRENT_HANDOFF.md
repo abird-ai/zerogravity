@@ -439,10 +439,25 @@ and live TODOs are authoritative.
   `P12_CUDA_RESIDENT_INFLIGHT_EVENT_PASS known_readback=exact known_initialized=true
   cancel_retired=true cancel_initialized=false unresolved_fenced=true
   unresolved_initialized=false completion_owner_retained=true quarantine_owner_delta=1
-  queue_width_unchanged=true`. Queue width is deliberately unchanged. Next gate is a
-  bounded >1 `PhysicalQueue` active set whose simultaneous submissions are admitted
-  only when the existing device-event ledger proves disjoint accesses, followed by
-  independent-root known/cancel/unknown completion tests before any worker adoption.
+  queue_width_unchanged=true`. **The reusable bounded multi-flight substrate is now
+  accepted.** `PhysicalQueue` uses a bounded active-ID set with configurable active
+  capacity, while the production registry intentionally remains at active capacity1
+  until model adoption. `PhysicalServiceBudget` now multiplexes its one prepaid
+  envelope across overlapping known flights with a tiny shared counter: first flight
+  marks the retained lease Submitted, intermediate flights add no charge/phase
+  transition, and the last known completion marks it Ready; any unknown flight still
+  fences the same envelope/card. Existing `DeviceEventLedger::submit` remains the
+  access-conflict authority—no duplicate queue-level alias checker was added.
+  Host contracts pass (queue6/6, physical-service5/5). Physical L5 proof acquires two
+  active slots from a bounded2 queue, submits two disjoint resident outputs on primary
+  and secondary streams under the same prepaid envelope, records both completion
+  events, retires the second flight before the first and reads both8MiB outputs exactly:
+  `P12_CUDA_RESIDENT_DUAL_FLIGHT_PASS active_capacity=2 same_prepaid_envelope=true
+  streams_distinct=true disjoint_outputs=true events_before_completion=true
+  reverse_retirement=true readback=exact outputs_initialized=true service_reusable=true`.
+  Next move directly into the real Qwen/source execution path and measure actual
+  prefill/decode multi-flight behavior; do not add another synthetic evidence matrix
+  unless that integration finds a concrete missing invariant.
   **Post-check L5 baseline watch:**
   after the accepted B8 process had exited
   and no ZeroGravity/native-gpu process remained, the isolated connector view of
@@ -1408,10 +1423,14 @@ is already green; repeat it only if host/runtime state changes.
 > owner is now terminal-green: event completion still requires the original readback/
 > validator before Ready, cancellation retires after the CUDA event without initializing
 > writes, and unresolved drop fences/quarantines while retaining the completion owner
-> (`P12_CUDA_RESIDENT_INFLIGHT_EVENT_PASS`). Queue width remains1. Continue by making
-> `PhysicalQueue` a small bounded active set whose concurrent submissions must pass
-> existing device-event-ledger disjoint-access checks; then qualify independent roots,
-> cancellation, unknown completion and publication order before worker adoption.
+> (`P12_CUDA_RESIDENT_INFLIGHT_EVENT_PASS`). The reusable multi-flight substrate is
+> now green too: `PhysicalQueue` supports bounded-N active slots, production registry
+> stays width1 until adoption, and one prepaid envelope supports overlapping known
+> flights without double charging. Real CUDA bounded2 dual resident flights on distinct
+> streams retire in reverse order with exact8MiB readbacks and reusable service
+> (`P12_CUDA_RESIDENT_DUAL_FLIGHT_PASS`). Existing device-event admission remains the
+> sole buffer-conflict authority. Continue directly in Qwen/source execution and get
+> actual overlap/performance feedback rather than building more synthetic fixtures.
 >
 > Keep the implementation turn to roughly 30 minutes. Aim for the next coherent
 > checkpoint, update owning TODO/handoff state, sign the commit, sync X2 only if
