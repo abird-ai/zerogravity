@@ -373,8 +373,20 @@ Vulkan-only retry passed, so no source failure follows.
   bounds, does allocation-free newest-first lookup, returns the greatest exact
   semantic-unit prefix, refreshes exact duplicates and evicts FIFO deterministically.
   It never grants physical restore: the backend must still run the accepted full-
-  domain validation/fork path. Two focused cache tests, strict engine Clippy and
-  production `qwen35-cuda` composition check pass. **Scoped worker prefix reuse is
+  domain validation/fork path. Focused state-cache tests, strict engine Clippy and
+  production `qwen35-cuda` composition check pass. **The source-only common-frontier
+  reconciliation primitive is now also in the same model-neutral engine layer.**
+  `PrefixDomainCheckpoint` describes only a required domain's retained-through
+  frontier and zero-based checkpoint alignment; `reconcile_prefix_frontier` computes
+  the greatest request-bounded frontier legal for every domain using an allocation-free
+  O(domains), overflow-safe bounded LCM. It returns0 when no nonempty aligned common
+  checkpoint exists and grants no physical restore/copy authority. Exact partial-tail
+  COW remains separate and must retain both endpoints through real copy/read completion.
+  The existing shared `ResidentPool` root path was re-audited at the same checkpoint:
+  fresh logical lease IDs/generations are issued over retained backing, readbacks/Ready
+  owners retain the checkout, and reuse occurs only after ledger-proven idle backing;
+  unknown retirement poisons/fences/quarantines rather than returning a set idle.
+  **Scoped worker prefix reuse is
   now implemented and physically accepted.** `PrefixSharingScope` is a validated
   nonzero Copy ID. Existing `Request` stays unchanged; ordinary `request_text`
   remains isolated, while the explicit `request_text_scoped(request, scope)` path

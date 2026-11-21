@@ -6,7 +6,11 @@
 //! for the caller's existing full-domain validation/restore path.
 
 use crate::{Error, Result};
-use std::{collections::VecDeque, num::NonZeroU64, sync::Arc};
+use std::{
+    collections::VecDeque,
+    num::{NonZeroU64, NonZeroUsize},
+    sync::Arc,
+};
 use zerogravity_core::accelerator::SourceIdentity;
 
 /// Explicit authorization domain for cross-request prefix reuse.
@@ -97,6 +101,84 @@ pub struct PrefixCacheSnapshot {
     pub weight: usize,
     pub max_entries: usize,
     pub max_weight: usize,
+}
+
+/// One required state domain's exact prefix checkpoint policy.
+///
+/// Every zero-based frontier that is a multiple of `checkpoint_alignment`
+/// through `retained_through` is restorable. The backend owns the actual
+/// checkpoint payloads; this type only reconciles their semantic frontiers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PrefixDomainCheckpoint {
+    retained_through: usize,
+    checkpoint_alignment: NonZeroUsize,
+}
+
+impl PrefixDomainCheckpoint {
+    pub fn new(retained_through: usize, checkpoint_alignment: usize) -> Result<Self> {
+        let checkpoint_alignment = NonZeroUsize::new(checkpoint_alignment)
+            .ok_or_else(|| Error::Limit("prefix checkpoint alignment must be positive".into()))?;
+        Ok(Self {
+            retained_through,
+            checkpoint_alignment,
+        })
+    }
+
+    pub const fn retained_through(self) -> usize {
+        self.retained_through
+    }
+
+    pub const fn checkpoint_alignment(self) -> usize {
+        self.checkpoint_alignment.get()
+    }
+}
+
+/// Largest exact frontier legal for every required domain and the request.
+///
+/// This is allocation-free and monotone in `requested`: it first caps by the
+/// least retained domain frontier, then rounds down to the least common
+/// multiple of every domain's checkpoint alignment. If that common alignment
+/// exceeds the cap, only the empty frontier is common.
+pub fn reconcile_prefix_frontier(
+    requested: usize,
+    domains: &[PrefixDomainCheckpoint],
+) -> Result<usize> {
+    let mut cap = requested;
+    for domain in domains {
+        cap = cap.min(domain.retained_through());
+    }
+    if domains.is_empty() {
+        return Err(Error::State(
+            "prefix reconciliation requires at least one state domain".into(),
+        ));
+    }
+    if cap == 0 {
+        return Ok(0);
+    }
+
+    let mut common_alignment = 1usize;
+    for domain in domains {
+        let alignment = domain.checkpoint_alignment();
+        if alignment > cap {
+            return Ok(0);
+        }
+        let divisor = gcd(common_alignment, alignment);
+        let reduced = common_alignment / divisor;
+        if reduced > cap / alignment {
+            return Ok(0);
+        }
+        common_alignment = reduced * alignment;
+    }
+    Ok(cap - cap % common_alignment)
+}
+
+fn gcd(mut left: usize, mut right: usize) -> usize {
+    while right != 0 {
+        let remainder = left % right;
+        left = right;
+        right = remainder;
+    }
+    left
 }
 
 /// Small bounded cache for complete-domain prefix candidates.
@@ -346,5 +428,29 @@ mod tests {
         cache.clear();
         assert!(cache.is_empty());
         assert_eq!(cache.weight(), 0);
+    }
+
+    #[test]
+    fn common_frontier_intersects_retention_and_alignment_without_allocation() {
+        let domains = [
+            PrefixDomainCheckpoint::new(37, 1).unwrap(),
+            PrefixDomainCheckpoint::new(35, 4).unwrap(),
+            PrefixDomainCheckpoint::new(33, 8).unwrap(),
+        ];
+        assert_eq!(reconcile_prefix_frontier(40, &domains).unwrap(), 32);
+        assert_eq!(reconcile_prefix_frontier(19, &domains).unwrap(), 16);
+        assert_eq!(reconcile_prefix_frontier(7, &domains).unwrap(), 0);
+    }
+
+    #[test]
+    fn common_frontier_handles_coprime_rules_and_refuses_invalid_policy() {
+        let domains = [
+            PrefixDomainCheckpoint::new(65, 6).unwrap(),
+            PrefixDomainCheckpoint::new(65, 10).unwrap(),
+        ];
+        assert_eq!(reconcile_prefix_frontier(65, &domains).unwrap(), 60);
+        assert_eq!(reconcile_prefix_frontier(29, &domains).unwrap(), 0);
+        assert!(PrefixDomainCheckpoint::new(1, 0).is_err());
+        assert!(reconcile_prefix_frontier(1, &[]).is_err());
     }
 }

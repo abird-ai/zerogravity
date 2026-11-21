@@ -34,22 +34,26 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
   failure. Do not treat the external kill as a VRAM/admission failure.
 - [~] Preserve complete recurrent/conv/KV state history, chunk continuation,
   cancellation/quarantine and readback owners at512/1K/2K/4K/8K/16K, then32K.
-  Public4K/8K/16K execution proves the current chunk-continuation/serving path, but the
-  independent populated all42 archive is absent on L5.32K remains both execution- and
-  numerical-open; use the retained32768 qualifier and current storage policy rather than
+  Public4K/8K/16K execution proves the current chunk-continuation/serving path, and
+  0.8B32K now has one full retained public-SDK pass;2B32K execution remains open. The
+  independent populated all42 archive is absent on L5, so32K numerical closure remains
+  open; use the retained32768 qualifier and current storage policy rather than
   adding another context fixture or restoring the obsolete refusal assumption.
 
 23Oct allocation/boundary adoption: [shared pools, layouts and transfer APIs](../cpu-gpu-optimization/SHARED_MEMORY_AND_BOUNDARIES.md).
 Two independent source audits are reconciled there; implementation remains open.
 
-- [ ] Adopt bounded completed-root backing reuse with fresh logical leases,
-  shared immutable layouts/access schemas, owned authenticated transfer slots
-  and borrowed completed readbacks through existing resident APIs. Charge idle,
-  Pending/snapshot/readers and unknown work until actual retirement. Shared
-  rings must expose real pinned/heap and backend ordering; no model-owned pool
-  or implied zero-copy/overlap. Coordinate substantial units with optimization.
+- [~] Bounded completed-root backing reuse is adopted in the shared resident layer.
+  `ResidentPool`/`BackingPlane` retain one charged physical allocation while every
+  checkout receives fresh `BufferLeaseId`/allocation generations. `ResidentReadback`
+  and `ResidentReady` retain the checked-out lease/use; a set returns idle only after
+  the device ledger proves every backing view idle. Failed/unknown retirement poisons
+  the use and fences/quarantines instead of reusing it. Ordinary CUDA/HIP source
+  sessions install this pool through `install_window_root_pool`. Remaining work in
+  this roadmap item is the broader authenticated transfer-slot/ring and physical-
+  backing identity adoption across source/staging paths; do not add another root pool.
 
-### Mechanism adoption — 21 Oct, unimplemented follow-up
+### Mechanism adoption — 21 Oct follow-up
 
 Source comparison: [families09–13](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md).
 The following extends existing owners; source-byte qualification is not inference.
@@ -69,10 +73,14 @@ The following extends existing owners; source-byte qualification is not inferenc
   restore and predicted expert prefetch, while sharing fair bounded IO/host/device
   admission. Optional direct/async IO retains the same hash/short-read/cancel
   contract. A fully resident path performs no mandatory cache-miss bookkeeping.
-- [ ] Implement common-frontier prefix reconciliation as a bounded monotone
-  intersection over every required domain's legal checkpoint/alignment rules;
-  exact partial-tail COW retains both endpoints until real copy/read completion.
-  Approximate truncated replay and moved-message reuse stay outside exact mode.
+- [~] Common-frontier prefix reconciliation is now implemented model-neutrally in
+  `zerogravity-engine::state_cache`: `PrefixDomainCheckpoint` supplies each required
+  domain's retained-through frontier and zero-based checkpoint alignment, and
+  `reconcile_prefix_frontier` returns the largest request-bounded frontier legal for
+  every domain. The hot check is allocation-free O(domains), uses an overflow-safe
+  bounded LCM and returns0 when no nonempty common aligned checkpoint exists. Exact
+  partial-tail COW still remains: both endpoints must stay owned through real copy/read
+  completion. Approximate truncated replay and moved-message reuse stay outside exact mode.
 - [ ] For dense27B, compare layer-major/row-cohort source-window reuse against
   extra activation spill, retained states, IO amplification and fair decode
   progress. First correct execution may itself require streaming; no full-resident
@@ -282,7 +290,7 @@ Related source commits: `35c9962d8633` (core-device-backing), `3e89f1919993` (gp
 Aggregate source21 qualification applies to the assembled tree; no per-commit
 build or general model/backend grant. Historical failures keep their source scope.
 
-#### Mechanism adoption — 21 Oct, unimplemented follow-up
+#### Mechanism adoption — 21 Oct follow-up
 
 - [x] **Original-index owned tensor windows:** existing SourceWeights
   factory prepares a sealed VerifiedTensorSource with one original source
