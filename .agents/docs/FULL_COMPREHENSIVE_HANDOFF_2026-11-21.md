@@ -2,13 +2,14 @@
 
 Single-file takeover context for /home/pvl/spaces/abird/src/zerogravity.
 
-Exact checkpoint at creation:
+Implementation/source checkpoint captured before docs-only handoff consolidation:
 
-- local main: 6c68a361e843c73107a86aaedea5ca697a30258c — refactor(cuda): use ledger identity for prepared leases
+- latest signed implementation/source checkpoint: 6c68a361e843c73107a86aaedea5ca697a30258c — refactor(cuda): use ledger identity for prepared leases
 - pushed/tracked origin/main: f86538345fe4ce412df81864542c5ec183446460 — docs: record 32k trace pass and external kill
-- local main: 12 commits ahead of origin/main
+- implementation/source lineage was 12 commits ahead of origin/main before handoff consolidation
+- signed handoff-consolidation docs commit(s) may sit above 6c68a36; revalidate actual HEAD first
 - one persistent worktree
-- tracked tree clean
+- tracked tree was clean before handoff generation
 - L5 GPU idle at ~37 MiB / 0%
 - no push is authorized by this handoff
 
@@ -2231,13 +2232,15 @@ is already green; repeat it only if host/runtime state changes.
 > Cargo/rustc/model/native-gpu/Bubblewrap processes, physical GPU state,
 > source/cache identities, disk space and `_tmp` artifacts.
 >
-> Current signed local HEAD at handoff creation is
+> Latest signed implementation/source checkpoint at handoff creation is
 > `6c68a361e843c73107a86aaedea5ca697a30258c`
 > — `refactor(cuda): use ledger identity for prepared leases`.
-> Pushed/tracked `origin/main` is
+> The signed handoff-consolidation docs commit(s) may sit above it; revalidate
+> actual `HEAD` first. Pushed/tracked `origin/main` is
 > `f86538345fe4ce412df81864542c5ec183446460`
 > — `docs: record 32k trace pass and external kill`.
-> Local `main` is 12 commits ahead. Do not push unless explicitly requested.
+> The implementation/source lineage was 12 commits above origin before handoff
+> consolidation. Do not push unless explicitly requested.
 >
 > For every Cargo invocation use `CARGO_BUILD_JOBS=8` and
 > `RUSTC_WRAPPER=/run/current-system/sw/bin/kache`. Run physical GPU work only
