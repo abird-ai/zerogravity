@@ -1094,9 +1094,17 @@ serving, memory and composition plans.
   source-workspace ticket bound before inference; later concurrent two-ticket staging
   work is preserved separately and was not used to claim a32MiB result here. All
   partial-residency/sized-page production wiring from this experiment was removed.
-  Next localize the actual32K prefill hot regions/chunk scaling before changing source
-  placement again. The retained qualifier accepts32768; no duplicate fixture/token pin
-  was added.
+  One source-only admission cleanup is now accepted before further profiling: ordinary
+  CUDA attention carried a capacity-sized `workspace_reserve` even though the retained
+  tile-local attention kernel consumes no global scratch. Removing that dead lease from
+  layout admission, cold allocation and access ownership cuts32K ordinary-CUDA workspace
+  from151,012,757B to12,584,241B (−138,428,516B). The low-level two-root2B32K inventory
+  therefore fits fully resident at4,702,464,913B under the4608MiB provider envelope.
+  Public active1 source-call still deliberately uses four roots and remains Streamed;
+  do **not** reduce the `2*max_sessions+2` lifecycle pool merely to force residency—the
+  extra ownership covers public Pending/snapshot/displaced-root lifetimes. Continue
+  profiling the actual32K prefill/chunk hot regions from that cleaner baseline. The
+  retained qualifier accepts32768; no duplicate fixture/token pin was added.
 - **Retained-candidate policy:** reusable performance experiments are no longer deleted
   merely because one model/shape loses an A/B. Model-neutral candidates live dormant,
   with no production selector/callsite, so Qwen2B/27B, Gemma4 and future models can

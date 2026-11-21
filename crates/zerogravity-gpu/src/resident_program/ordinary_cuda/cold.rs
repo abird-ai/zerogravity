@@ -137,7 +137,6 @@ impl OrdinaryCudaCold {
         )?;
         let attention = OrdinaryCudaAttention::prepare(
             service.clone(),
-            init,
             layout.plan().prefix_capacity(),
             geometry,
         )?;
@@ -519,9 +518,6 @@ impl OrdinaryCudaCold {
         }
         add(&self.inverse_frequency, DeviceAccess::Read);
         for (lease, access) in self.rotary.accesses() {
-            add(&lease, access);
-        }
-        for (lease, access) in self.attention.accesses() {
             add(&lease, access);
         }
         for lease in self.gdn_internal.values() {

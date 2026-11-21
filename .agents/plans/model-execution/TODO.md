@@ -417,9 +417,15 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   ~616–617s total rather than SIGKILL. This is a performance/progress result, not
   numerical acceptance. Partial source residency, state-path-first pack placement and a
   bounded16MiB serial source page were tried against the same cell and did not materially
-  move the deadline; the production experiments were removed. Next profile actual32K
-  prefill/chunk hot regions before changing placement again. Do not repin outputs or
-  resurrect the old refusal rule.
+  move the deadline; the production experiments were removed. One real admission debt is
+  now removed: ordinary CUDA attention no longer allocates its obsolete capacity-sized
+  global scratch reservation because the selected tile-local kernel consumes none. At32K
+  this removes138,428,516B, shrinking workspace151,012,757→12,584,241B and making the
+  low-level two-root2B model fully resident at4,702,464,913B. Public source-call active1
+  still has the intentional four-root lifecycle envelope and remains streamed; do not
+  trade Pending/snapshot/displaced-root safety for residency. Next profile actual32K
+  prefill/chunk hot regions from this baseline. Do not repin outputs or resurrect the old
+  refusal rule.
 - [ ] Localize ROCm2B C4 warmup and C16/32/64 warmup/timed divergence (task39),
   without repinning expected IDs or attributing an unlocalized failure to kernels.
 - [~] Close ordinary27B HIP HTTP504 and populated1K/2K references/serving (task11).

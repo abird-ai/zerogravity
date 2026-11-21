@@ -289,77 +289,38 @@ pub(super) fn certify(
 const WIDTH: usize = 256;
 const SCALE: f32 = 0.0625;
 
-pub(super) fn managed_bytes(
+fn validate_geometry(
     capacity: usize,
     geometry: crate::cuda::ordinary_text::Geometry,
-) -> Result<usize> {
+) -> Result<crate::cuda::ordinary_text::Geometry> {
     let geometry = geometry.validate()?;
-    let query_width = geometry.query_width()?;
-    let kv_width = geometry.kv_width()?;
     if !(1..=32_768).contains(&capacity) {
         return Err(Error::Unsupported(
             "ordinary CUDA attention context capacity".into(),
         ));
     }
-    let kv = capacity
-        .checked_mul(kv_width)
-        .ok_or_else(|| Error::Limit("ordinary attention KV extent".into()))?;
-    let scores = capacity
-        .checked_mul(geometry.query_heads)
-        .ok_or_else(|| Error::Limit("ordinary attention score extent".into()))?;
-    [
-        query_width,
-        kv,
-        kv,
-        scores,
-        scores,
-        geometry.query_heads,
-        scores,
-        geometry.query_heads,
-        geometry.query_heads,
-        scores,
-        query_width,
-        1,
-    ]
-    .into_iter()
-    .try_fold(0usize, |sum, elements| {
-        elements
-            .checked_mul(4)
-            .and_then(|bytes| sum.checked_add(bytes))
-            .ok_or_else(|| Error::Limit("ordinary attention managed byte sum".into()))
-    })
+    Ok(geometry)
 }
 
 pub(super) struct OrdinaryCudaAttention {
     service: Arc<ResidentService>,
     capacity: usize,
     geometry: crate::cuda::ordinary_text::Geometry,
-    // Preserve the admitted workspace envelope until long-context qualification.
-    // The tile-local kernel itself consumes no global scratch.
-    workspace_reserve: ResidentLease,
 }
 
 impl OrdinaryCudaAttention {
     pub(super) fn prepare(
         service: Arc<ResidentService>,
-        init: &mut crate::resident_leases::ResidentInitialization<'_>,
         capacity: usize,
         geometry: crate::cuda::ordinary_text::Geometry,
     ) -> Result<Arc<Self>> {
-        let bytes = managed_bytes(capacity, geometry)?;
-        init.require_service(&service)?;
-        let result = Arc::new(Self {
+        service.ensure_usable()?;
+        let geometry = validate_geometry(capacity, geometry)?;
+        Ok(Arc::new(Self {
             service,
             capacity,
             geometry,
-            workspace_reserve: init.allocate_empty(bytes, BufferRole::Scratch)?,
-        });
-        init.retain_completion_owner(result.clone())?;
-        Ok(result)
-    }
-
-    pub(super) fn accesses(&self) -> Vec<(ResidentLease, DeviceAccess)> {
-        vec![(self.workspace_reserve.clone(), DeviceAccess::Write)]
+        }))
     }
 
     fn require_operator(
@@ -694,15 +655,16 @@ mod tests {
     }
 
     #[test]
-    fn attention_inventory_is_capacity_derived_and_bounded() {
+    fn attention_capacity_is_bounded_without_global_scratch() {
         for capacity in [1usize, 512, 8_192, 32_768] {
-            let expected_elements = 4_121usize + 1_056usize * capacity;
-            assert_eq!(
-                managed_bytes(capacity, crate::cuda::ordinary_text::Geometry::qwen35_08()).unwrap(),
-                expected_elements * 4
+            assert!(
+                validate_geometry(capacity, crate::cuda::ordinary_text::Geometry::qwen35_08(),)
+                    .is_ok()
             );
         }
-        assert!(managed_bytes(0, crate::cuda::ordinary_text::Geometry::qwen35_08()).is_err());
-        assert!(managed_bytes(32_769, crate::cuda::ordinary_text::Geometry::qwen35_08()).is_err());
+        assert!(validate_geometry(0, crate::cuda::ordinary_text::Geometry::qwen35_08()).is_err());
+        assert!(
+            validate_geometry(32_769, crate::cuda::ordinary_text::Geometry::qwen35_08()).is_err()
+        );
     }
 }

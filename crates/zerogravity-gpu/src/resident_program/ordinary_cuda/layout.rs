@@ -3,7 +3,7 @@
 //! This consumes only the immutable call-free ForwardPlan. It performs no
 //! source reads, GPU allocations, provider creation, request binding or launch.
 
-use super::{attention, rotary};
+use super::rotary;
 use crate::{
     cuda::gdn::{
         GdnKernelConfig, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel,
@@ -162,9 +162,7 @@ impl OrdinaryCudaLayout {
                 })
                 .map(|buffer| buffer.bytes()),
         )?;
-        let attention_bytes = attention::managed_bytes(plan.prefix_capacity(), geometry)?;
         let workspace_bytes = checked_sum([
-            attention_bytes,
             gdn_workspace_bytes,
             if groups.direct() {
                 0
