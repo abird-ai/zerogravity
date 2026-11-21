@@ -91,9 +91,16 @@ The following extends existing owners; source-byte qualification is not inferenc
   The final retained-owner actor upload passes that exact cell at **38.46s**, versus39.36s
   at `b839920` (~2.3% faster), with exact replay/frontiers, independent sessions and clean
   shutdown. The earlier direct SSD→pinned/cache-bypass prototype remains rejected at41.77s.
-  All policy overrides were temporary and reverted; no benchmark fixture/evidence pin was
-  added. Direct/async source IO remains future work only if it composes with the verified
-  cache/miss policy instead of bypassing it.
+  The next simple overlap attempt is now rejected too: generalizing the existing two-slot
+  retirement ring to CUDA while keeping one device page/same stream passed strict checks,
+  but matched same-tree Contiguous/Streamed2B32K/prompt48 measured **38.323s serial vs
+  39.281s ring** (~2.5% slower). The candidate and its temporary Contiguous policy switch
+  were removed; an Auto control at24.267s chose paged state + resident weights and did not
+  exercise this fallback. Do not add another one-page ring. A future second device page or
+  copy stream needs separate physical admission and a real workload case that still requires
+  streamed weights. No benchmark fixture/evidence pin was added. Direct/async source IO
+  remains future work only if it composes with the verified cache/miss policy instead of
+  bypassing it.
 - [~] Canonical physical buffer identity now exists in the model-neutral device
   ledger. `DeviceBufferIdentity` is an opaque process-local **ledger namespace +
   allocation owner + exact byte range**: direct allocations are owned by their original

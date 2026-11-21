@@ -562,8 +562,20 @@ Vulkan-only retry passed, so no source failure follows.
   into the generic writer/drop queue44.88s rejected; final retained-owner direct actor H2D
   **38.46s** (~2.3% faster than `b839920`). Exact replay/frontiers, independent sessions and
   clean shutdown remain intact. The older direct SSD→pinned/cache-bypass candidate remains
-  rejected at41.77s. Temporary policy overrides were reverted; no new fixture/evidence pin
-  was added. Future direct/async IO must compose at the authenticated cache-miss boundary.
+  rejected at41.77s. A 22 Nov follow-up tested the next simple overlap candidate without
+  adding fixtures: reuse the existing two-slot retirement-ring state machine on CUDA with
+  same-stream `OwnedCudaEvent` marks, the same single 1MiB device page, and exact retained
+  `TensorWindow`/output owners. Strict CUDA/HIP checks and the existing retirement/accounting
+  tests passed, but a same-tree matched opt1/codegen64/non-LTO explicit
+  Contiguous/Streamed2B32K/prompt48 A/B measured **38.323s serial vs39.281s ring**; the ring
+  was ~2.5% slower and was fully reverted. A separate24.267s Auto run selected paged state
+  plus resident weights and therefore is not evidence for this streamed-path candidate; it
+  does confirm the default smart policy already avoids this fallback when residency fits.
+  Temporary policy overrides/include view were removed and no new evidence fixture was
+  retained. Do not retry one-page same-stream runahead; meaningful streamed overlap would
+  require separately admitted extra device-page/copy-stream authority and should be driven
+  by a real workload need. Future direct/async IO must compose at the authenticated
+  cache-miss boundary.
   **Scoped worker prefix reuse is
   now implemented and physically accepted.** `PrefixSharingScope` is a validated
   nonzero Copy ID. Existing `Request` stays unchanged; ordinary `request_text`
