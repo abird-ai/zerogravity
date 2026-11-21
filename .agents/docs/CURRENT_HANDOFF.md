@@ -48,6 +48,13 @@ vocabulary; its code now calls the new runtime API without rewriting the frozen 
 format. Active Qwen35 CUDA/batching and Qwen text diagnostics now use autoregressive
 feedback/history/IDs as well.
 
+The fifth cleanup retires `all42` as an engineering term. Active APIs, tests, diagnostics,
+comments and receipt labels now say **all state domains** / `all_state_domains`; the number
+42 remains only an implementation/model property. The accepted Qwen35 reference archive
+coordinates `plain/all42/...`, `all42-prior/...` and key
+`all24_all42_post_validation` remain unchanged compatibility/provenance values and are not
+runtime vocabulary.
+
 Cumulative terminology validation remains green across strict core/Qwen/GPU/public-CUDA
 Clippy plus public CUDA/HIP, CUDA qualification, 27B HIP qualification and CUDA CLI
 compilation. Core invocation tests pass 10/10; the Qwen forward suite passes 5/5; the

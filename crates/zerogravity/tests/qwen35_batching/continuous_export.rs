@@ -588,7 +588,7 @@ impl Export {
             }
             ensure(
                 record.plan().proposed_domains().len() == 42,
-                "export all42 state domains",
+                "export all state domains",
             )?;
             for version in record.plan().proposed_domains() {
                 let (kind, layer, shape) = match version.slot {

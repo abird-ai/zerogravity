@@ -527,7 +527,7 @@ fn all_domains() -> Result<Vec<StateSlot>> {
 }
 
 impl QwenPlanBuilder {
-    /// Metadata recipe only. Real lowerer must bind the SAME original all42 root.
+    /// Metadata recipe only. Real lowerer must bind the SAME original all-state-domain root.
     pub fn new_gdn_fragment(invocation: QwenGdnInvocation) -> Result<Self> {
         invocation.validate()?;
         if invocation.layer().index() != 0
@@ -592,7 +592,7 @@ impl QwenPlanBuilder {
         }
         self.finish_fragment(output, None, 0)
     }
-    /// SAME all42 authority, complete initial layer0 or initial GDN prefix0..2.
+    /// SAME authority over all state domains; complete initial layer0 or initial GDN prefix0..2.
     /// Pending MLP branch and carried BF16 residual remain distinct outputs.
     pub fn finish_gdn_mlp_fragment(
         self,

@@ -631,7 +631,7 @@ fn complete_metadata(rows: usize, layers: usize) -> (QwenPlanBuilder, PlanValue,
     (b, branch, residual)
 }
 #[test]
-fn complete_prefix_preserves_pending_branch_and_residual_all42_and_initial_scope() {
+fn complete_prefix_preserves_pending_branch_and_residual_all_state_domains_and_initial_scope() {
     for rows in [1, 64] {
         for layers in [1, 3] {
             let (b, branch, residual) = complete_metadata(rows, layers);
@@ -708,7 +708,7 @@ fn prefix_layer_change_does_not_remint_teacher_or_conv_producer_authority() {
 
 // Closed family metadata tests; no execution qualification.
 #[test]
-fn transaction_phase_records_preserve_all42_zero_frontier_and_old_initial_refusal() {
+fn transaction_phase_records_preserve_all_state_domains_zero_frontier_and_old_initial_refusal() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     for (phase, base, rows) in [
         (ReferencePhase::CachedOne, 1, 1),

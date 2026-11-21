@@ -242,7 +242,7 @@ impl ResidentSession {
         wall.mark("enqueue");
         if submitted.logits.is_some() || submitted.proposals.len() != 42 {
             return Err(Error::State(
-                "short-HF original all42 provisional domains required".into(),
+                "short-HF original provisional values for all state domains required".into(),
             ));
         }
         body.require_publication_finished()?;
@@ -261,7 +261,7 @@ impl ResidentSession {
                     for ((ps, pr), (cs, cr)) in prior.iter().zip(&candidate) {
                         if ps != cs {
                             return Err(Error::State(
-                                "short-HF all42 prior/candidate order".into(),
+                                "short-HF prior/candidate order across all state domains".into(),
                             ));
                         }
                         if matches!(ps, StateSlot::Kv(_)) {

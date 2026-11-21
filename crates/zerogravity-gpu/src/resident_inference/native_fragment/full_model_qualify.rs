@@ -828,7 +828,7 @@ where
             body.validate_readbacks(&raw[..1+18+6+3+327+48*4+2])?;
             owners._positions[index].validate_readback(&raw[raw.len()-1..])?;
             if local==0 && frame.prior.iter().any(|(_,range)|raw[range.clone()].iter().any(|b|b.iter().any(|v|*v!=0))){
-                return Err(Error::State("full24 original all42 initial prior differs from zero".into()));
+                return Err(Error::State("full24 original initial prior across all state domains differs from zero".into()));
             }
             let prior_domains=frame.prior.iter().map(|(slot,range)|SourceDomainReadback{slot:*slot,buffers:&raw[range.clone()]}).collect::<Vec<_>>();
             let domains=frame.candidate.iter().map(|(slot,range)|SourceDomainReadback{slot:*slot,buffers:&raw[range.clone()]}).collect::<Vec<_>>();

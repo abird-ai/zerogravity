@@ -82,7 +82,7 @@ where
     }
 }
 
-/// Revoke an actual prior physical completion using the original all42 zero
+/// Revoke an actual prior physical completion using the original zero state across all state domains
 /// snapshot. No prefix candidate is published as a model root.
 pub async fn qualify_gdn_sequence_restore_refusal<F>(
     device: Device,

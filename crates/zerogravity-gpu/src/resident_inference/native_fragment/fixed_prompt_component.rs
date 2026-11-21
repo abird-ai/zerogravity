@@ -1,5 +1,5 @@
 //! Source-owned six-node cut on the original model/session/attempt/node loop.
-//! Genuine all42 candidates are diagnostic; no RootReady/commit/model route.
+//! Genuine candidates across all state domains are diagnostic; no RootReady/commit/model route.
 use super::continuation::{AttemptPhaseBinding, GdnAttemptSchedule};
 use super::*;
 use crate::cuda::gdn::{FixedPromptGdnArithmetic, FixedPromptGdnIntermediate};

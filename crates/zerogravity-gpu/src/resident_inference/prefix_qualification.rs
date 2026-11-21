@@ -313,7 +313,7 @@ async fn qualify_prefix(name: &str, count: usize) -> Result<()> {
     drop(sessions);
     reclaim(model).await?;
     println!(
-        "P12_NATIVE_PREFIX_PASS source={name} B={count} teacher_steps_per_row=4 teacher_EOS=true unequal_frontiers=true each_all42=CPU_B1_exact state_only_status_bytes=4 sampler=0 future_full248320=exact abandoned_stale_invalid=unchanged final_reserved=0"
+        "P12_NATIVE_PREFIX_PASS source={name} B={count} teacher_steps_per_row=4 teacher_EOS=true unequal_frontiers=true each_all_state_domains=CPU_B1_exact state_only_status_bytes=4 sampler=0 future_full248320=exact abandoned_stale_invalid=unchanged final_reserved=0"
     );
     Ok(())
 }
@@ -442,7 +442,7 @@ async fn qualify_prefix_pressure(name: &str) -> Result<()> {
     drop(sessions);
     reclaim(model).await?;
     println!(
-        "P12_NATIVE_PREFIX_PRESSURE_PASS source={name} actual_scratch_lease=true B8_refusal_before_launch=true B4_under_pressure_B8_after_release=CPU_B1_all42_exact state_only_sampler=0 final_reserved=0"
+        "P12_NATIVE_PREFIX_PRESSURE_PASS source={name} actual_scratch_lease=true B8_refusal_before_launch=true B4_under_pressure_B8_after_release=CPU_B1_all_state_domains_exact state_only_sampler=0 final_reserved=0"
     );
     Ok(())
 }
@@ -534,7 +534,7 @@ async fn qualify_prefix_abort(name: &str) -> Result<()> {
     assert!(budget.fenced);
     assert!(crate::physical_quarantine::quarantined_handles_for(&client)? >= quarantine);
     println!(
-        "P12_NATIVE_PREFIX_ABORT_PASS source={name} B=2 actual_state_only_launch=true roots_all42_prior=unchanged original_handles={handles} quarantine_retained=true service_fenced=true provider_cap_retained=true recovery=false"
+        "P12_NATIVE_PREFIX_ABORT_PASS source={name} B=2 actual_state_only_launch=true roots_all_state_domains_prior=unchanged original_handles={handles} quarantine_retained=true service_fenced=true provider_cap_retained=true recovery=false"
     );
     Ok(())
 }

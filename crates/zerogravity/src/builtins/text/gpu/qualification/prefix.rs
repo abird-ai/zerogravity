@@ -230,7 +230,7 @@ fn ragged_prefixes(fixture: &Fixture) {
     assert!(fixture.stats.snapshot().fused_sampler > 0);
     drop(references);
     println!(
-        "P12_NATIVE_PREFIX_WORKER_PASS rows={width} actual_teacher_EOS=true each_teacher_CPU_B1_all42=exact ragged_arrival=true no_prefix_Text_ID_Done_usage=true tail_fullV_packets_and_final_events=exact"
+        "P12_NATIVE_PREFIX_WORKER_PASS rows={width} actual_teacher_EOS=true each_teacher_CPU_B1_all_state_domains=exact ragged_arrival=true no_prefix_Text_ID_Done_usage=true tail_fullV_packets_and_final_events=exact"
     );
 }
 

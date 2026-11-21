@@ -35,7 +35,7 @@ fn same_domains(expected: &Domains, actual: &Domains) -> Result<()> {
         exact(
             expected,
             actual.get(&slot).expect("missing state slot"),
-            "admission all42",
+            "admission all state domains",
         )?;
     }
     Ok(())
@@ -223,7 +223,7 @@ async fn refused_without_effects(
     }
     assert_eq!(model.service.resident_bytes()?, bytes);
     println!(
-        "P12_NATIVE_ADMISSION_REFUSAL_PASS idle_rows={idle_rows:?} B8=None invalid_host_foreign_producer=Err legacy=Limit allocation_queue_upload_root_all42=unchanged unfenced=true"
+        "P12_NATIVE_ADMISSION_REFUSAL_PASS idle_rows={idle_rows:?} B8=None invalid_host_foreign_producer=Err legacy=Limit allocation_queue_upload_root_all_state_domains=unchanged unfenced=true"
     );
     Ok(())
 }
@@ -323,7 +323,7 @@ async fn advance(
     assert_eq!(model.service.pending_events()?, 0);
     model.service.ensure_usable()?;
     println!(
-        "P12_NATIVE_ADMISSION_PROGRESS_PASS B={count} row_start={start} actual_dispatches={dispatches} CPU_B1_full_logits_packets_all42=exact independent_roots=true"
+        "P12_NATIVE_ADMISSION_PROGRESS_PASS B={count} row_start={start} actual_dispatches={dispatches} CPU_B1_full_logits_packets_all_state_domains=exact independent_roots=true"
     );
     Ok(())
 }
@@ -452,7 +452,7 @@ async fn qualify(name: &str) -> Result<()> {
     assert_eq!(final_state.reserved, 0);
     assert!(!final_state.fenced);
     println!(
-        "P12_NATIVE_ADMISSION_PHYSICAL_PASS source={name} actual_pressure=true cold_warm_refusal=prelaunch B4_under_pressure_B8_after_release=CPU_B1_exact all42=true idle_handles_preserved=true final_reserved=0 unfenced=true"
+        "P12_NATIVE_ADMISSION_PHYSICAL_PASS source={name} actual_pressure=true cold_warm_refusal=prelaunch B4_under_pressure_B8_after_release=CPU_B1_exact all_state_domains=true idle_handles_preserved=true final_reserved=0 unfenced=true"
     );
     Ok(())
 }

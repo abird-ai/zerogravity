@@ -811,7 +811,7 @@ fn proof_cases(
     let after_eos =
         server.wait_health(|h| h["active_sessions"] == 0 && h["queued_requests"] == 0)?;
     // This external check proves actual native execution and trained stop on
-    // the wire. Prompt-tail phases/all42 domains are checked internally.
+    // the wire. Prompt-tail phases/all state domains are checked internally.
     if counter(&after_eos, "gpu_fused_batches")? <= counter(&first, "gpu_fused_batches")? {
         return Err("actual trained-EOS HTTP pair never executed a native batch".into());
     }
@@ -1020,7 +1020,7 @@ fn wide_proof_cases(
         "P12_HTTP_CUDA_NATIVE_WIDE_PASS rows={width} actual_queued_aliases=shared \
         JSON_SSE_text_usage=CPU_exact trained_EOS_JSON_SSE=stop_exact terminal_usage_DONE=once \
         live_disconnect_survivors_replay=exact weighted_cohort_width_and_sampler=exact \
-        all42_state=internal_gate vLLM_performance=not_qualified health={final_health}"
+        all_state_domains_state=internal_gate vLLM_performance=not_qualified health={final_health}"
     );
     Ok(())
 }

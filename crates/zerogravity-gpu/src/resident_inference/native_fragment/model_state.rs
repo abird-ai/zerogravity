@@ -106,7 +106,7 @@ fn domain(domains: &[Domain], slot: StateSlot) -> Result<&Domain> {
 }
 
 impl ResidentSession {
-    /// The existing transaction allocates/carries all42 original domains.
+    /// The existing transaction allocates/carries the original values for all state domains.
     /// A genuine previous phase may be prepared unready; enqueue requires its
     /// actual original completion through the same borrowed session permit.
     pub(super) fn bind_full_model_state(

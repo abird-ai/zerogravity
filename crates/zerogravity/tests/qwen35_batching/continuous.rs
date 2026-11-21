@@ -111,7 +111,10 @@ impl Expected {
                 )?;
             }
         }
-        ensure(states.len() == 84, "all42 consumed and candidate domains")?;
+        ensure(
+            states.len() == 84,
+            "all consumed and candidate state domains",
+        )?;
         ensure(
             record.call().rows().ids().len() == 1,
             "one original cached teacher ID",
@@ -386,7 +389,7 @@ async fn step(
     }
     conservation(model, host)?;
     println!(
-        "QWEN35_BATCHING_SAME_PRIOR_PASS frontiers={:?} request_batch_size=4 all24=exact dual_sums=24 all42_prior_candidate=exact fullV=exact autoregressive=exact",
+        "QWEN35_BATCHING_SAME_PRIOR_PASS frontiers={:?} request_batch_size=4 all24=exact dual_sums=24 all_state_domain_prior_candidate=exact fullV=exact autoregressive=exact",
         roots.iter().map(|r| r.frontier()).collect::<Vec<_>>()
     );
     Ok(())

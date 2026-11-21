@@ -8,8 +8,9 @@ are `cuda_forward` / `CudaForward*`. Text execution now uses the semantic pipeli
 `InvocationInput -> BoundInvocation -> TextInvocation`; live owners are `ResidentText*`,
 with backend body `text_execution` and observation `TextFrame` / `TextObserver`. Committed
 model-selected feedback is `autoregressive`: active runtime ownership and APIs use
-`Autoregressive*` / `autoregressive_*`. Historical milestone text below retains the names
-that were current when those checkpoints were written.
+`Autoregressive*` / `autoregressive_*`. Complete state coverage is named `all state domains`,
+never by the current Qwen count. Historical milestone text below retains the names that were
+current when those checkpoints were written.
 
 [Fabric transition](../fabric-vnext-transition/TODO.md) is accepted through source
 `8c43844`, docs `1c99929`. Genuine multi-row and populated1K–16K0.8B/2B HIP now pass native/SDK/HTTP

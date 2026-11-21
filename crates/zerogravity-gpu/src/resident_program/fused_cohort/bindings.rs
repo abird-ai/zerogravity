@@ -120,7 +120,7 @@ impl CohortBindings {
                 }
             }
             if slots.len() != requirements.len() || slots.len() != 42 {
-                return Err(Error::State("cohort all42 domains in every row".into()));
+                return Err(Error::State("cohort all state domains in every row".into()));
             }
             for requirement in requirements {
                 let binding = slots
@@ -285,7 +285,9 @@ impl CohortBindings {
                     proposals.push((*version, binding.candidate.clone()));
                 }
                 if proposals.len() != 42 {
-                    return Err(Error::State("cohort terminal all42 domains per row".into()));
+                    return Err(Error::State(
+                        "cohort terminal all state domains per row".into(),
+                    ));
                 }
                 Ok(proposals)
             })

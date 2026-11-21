@@ -349,11 +349,11 @@ async fn run(root: &Path, width: usize, check_b1: bool) {
         .unwrap_or("unknown");
     if check_b1 {
         println!(
-            "P12_NATIVE_TEMPORAL_PASS source={source_name} B={width} state_chunk=4 terminal_chunk=2 unpublished_abandon=true roots=atomic CPU_B1_all42=exact terminal_greedy=exact final_reserved=0"
+            "P12_NATIVE_TEMPORAL_PASS source={source_name} B={width} state_chunk=4 terminal_chunk=2 unpublished_abandon=true roots=atomic CPU_B1_all_state_domains=exact terminal_greedy=exact final_reserved=0"
         );
     } else {
         println!(
-            "P12_NATIVE_TEMPORAL_CUDA_CPU_PASS source={source_name} B={width} state_chunk=4 terminal_chunk=2 unpublished_abandon=true roots=atomic CPU_all42=exact terminal_greedy=exact B1=separate final_reserved=0"
+            "P12_NATIVE_TEMPORAL_CUDA_CPU_PASS source={source_name} B={width} state_chunk=4 terminal_chunk=2 unpublished_abandon=true roots=atomic CPU_all_state_domains=exact terminal_greedy=exact B1=separate final_reserved=0"
         );
     }
 }

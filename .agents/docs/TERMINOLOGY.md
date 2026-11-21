@@ -55,8 +55,9 @@ authority explicit.
   the next decoding step. Runtime/input/state/publication/reuse ownership uses
   `Autoregressive*` and `autoregressive_*`; the historical `natural*` runtime
   vocabulary is retired.
-- **all state domains** is preferred over `all42`; the number is a model
-  property, not the concept.
+- **all state domains** is the canonical term for the complete model state-domain
+  set. Do not encode the current Qwen domain count into semantic names; `all42`
+  is retired outside frozen archive/schema/provenance coordinates.
 - Describe fixed qualification trajectories semantically, e.g.
   **prefill 47 + decode 48–50**, rather than `cached47`, `canonical47`, or
   `case5`.
@@ -75,6 +76,11 @@ Frozen external reference packages may retain `natural` in versioned schemas,
 artifact filenames, receipt fields and historical diagnostic entrypoint names;
 those are compatibility/provenance boundaries, not runtime vocabulary.
 
-The next isolated terminology debt is `all42` / other qualification shorthand.
-Keep the separate standard-RMS naming problem out of that migration until its
-exact arithmetic distinction has a clear replacement.
+The historical `all42` shorthand is retired from active code, tests and
+current documentation. Frozen reference archive coordinates/keys may retain it
+at their compatibility boundary.
+
+The next isolated terminology debt is remaining fixture shorthand such as
+`canonical47`, `full24`, `fullV` and similar qualification archaeology. Keep the
+separate standard-RMS naming problem out of that migration until its exact
+arithmetic distinction has a clear replacement.

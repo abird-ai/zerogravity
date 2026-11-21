@@ -536,7 +536,7 @@ async fn qualify(name: &str) -> Result<()> {
         assert_eq!(model.service.resident_bytes()?, baseline + workspace_bytes);
         assert_eq!(model.service.pending_events()?, 0);
         println!(
-            "P12_RAGGED_SOURCE_PASS source={name} B={width} initial_positions={:?} full248320_CPU_B1_native=bit_exact all42=bit_exact valid256_257=true independent_frontiers=true B1_to_native=true native_to_B1=true refill=true Ready_abandon=true foreign_stale_packet_prelaunch=refused warm_uploads=0",
+            "P12_RAGGED_SOURCE_PASS source={name} B={width} initial_positions={:?} full248320_CPU_B1_native=bit_exact all_state_domains=bit_exact valid256_257=true independent_frontiers=true B1_to_native=true native_to_B1=true refill=true Ready_abandon=true foreign_stale_packet_prelaunch=refused warm_uploads=0",
             &POSITIONS[..width]
         );
     }
@@ -549,13 +549,13 @@ async fn qualify(name: &str) -> Result<()> {
 }
 
 #[test]
-#[ignore = "release physical CUDA; approved original .8B source, CPU prefixes and all42/fullV references"]
+#[ignore = "release physical CUDA; approved original .8B source, CPU prefixes and all state domains/fullV references"]
 fn original_qwen35_08b_native_unequal_frontiers() -> Result<()> {
     futures_lite::future::block_on(qualify("qwen35-0.8b"))
 }
 
 #[test]
-#[ignore = "release physical CUDA; approved original 2B source, CPU prefixes and all42/fullV references"]
+#[ignore = "release physical CUDA; approved original 2B source, CPU prefixes and all state domains/fullV references"]
 fn original_qwen35_2b_native_unequal_frontiers() -> Result<()> {
     futures_lite::future::block_on(qualify("qwen35-2b"))
 }

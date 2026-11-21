@@ -227,7 +227,7 @@ impl ResidentSession {
         )?;
         if submitted.logits.is_some() || submitted.proposals.len() != 42 {
             return Err(Error::State(
-                "autoregressive full24 must propose exactly all42 original domains".into(),
+                "autoregressive full24 must propose exactly all original state domains".into(),
             ));
         }
         // launch_attempt_fragment already enqueues/counts the exact same-map
@@ -261,7 +261,7 @@ impl ResidentSession {
                 for (p, c) in prior_domains.iter().zip(&domains) {
                     if p.slot != c.slot {
                         return Err(Error::State(
-                            "autoregressive original all42 canonical domain order differs".into(),
+                            "autoregressive original canonical order across all state domains differs".into(),
                         ));
                     }
                     if matches!(p.slot, StateSlot::Kv(_)) {

@@ -309,7 +309,7 @@ where
     let base = session.binding();
     if base.frontier() != 0 {
         return Err(Error::State(
-            "fragment requires genuine initial all42 root".into(),
+            "fragment requires genuine initial all-state-domain root".into(),
         ));
     }
     not_cancelled(cancelled)?;

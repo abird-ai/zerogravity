@@ -870,8 +870,12 @@ mod cuda_paged_tests {
     fn exact_checkpoint(expected: &Checkpoint, actual: &Checkpoint, label: &str) {
         assert_eq!(expected.frontier, actual.frontier, "{label} frontier");
         exact_words(&expected.logits, &actual.logits, label);
-        assert_eq!(expected.domains.len(), 42, "{label} expected all42");
-        assert_eq!(actual.domains.len(), 42, "{label} actual all42");
+        assert_eq!(
+            expected.domains.len(),
+            42,
+            "{label} expected all state domains"
+        );
+        assert_eq!(actual.domains.len(), 42, "{label} actual all state domains");
         for (slot, expected) in &expected.domains {
             let actual = actual
                 .domains
@@ -888,8 +892,8 @@ mod cuda_paged_tests {
         actual: &[(crate::accelerator::program::StateSlot, Vec<f32>)],
         label: &str,
     ) {
-        assert_eq!(expected.len(), 42, "{label} expected all42");
-        assert_eq!(actual.len(), 42, "{label} actual all42");
+        assert_eq!(expected.len(), 42, "{label} expected all state domains");
+        assert_eq!(actual.len(), 42, "{label} actual all state domains");
         for (slot, expected) in expected {
             let actual = actual
                 .iter()
@@ -1188,7 +1192,7 @@ mod cuda_paged_tests {
             }
         }
         println!(
-            "P12_SOURCE_PAGED_NATIVE_TRANSPORT_PASS widths=2,4,8 prefill=exact decode=exact all42=exact contiguous_reference=true final_shutdown=true"
+            "P12_SOURCE_PAGED_NATIVE_TRANSPORT_PASS widths=2,4,8 prefill=exact decode=exact all_state_domains=exact contiguous_reference=true final_shutdown=true"
         );
     }
 
@@ -1341,7 +1345,7 @@ mod cuda_paged_tests {
             exact_domains(
                 &replay_domains,
                 &fork_domains,
-                "shared prefix continuation all42",
+                "shared prefix continuation across all state domains",
             );
             exact_domains(
                 &cached_domains,
@@ -1353,7 +1357,7 @@ mod cuda_paged_tests {
             model.shutdown().await.unwrap();
         });
         println!(
-            "P12_SOURCE_PAGED_PREFIX_FORK_PASS prefix_tokens={} append_tokens=1 root_independent=true no_replay=true logits=exact all42=exact cached_snapshot_immutable=true final_shutdown=true",
+            "P12_SOURCE_PAGED_PREFIX_FORK_PASS prefix_tokens={} append_tokens=1 root_independent=true no_replay=true logits=exact all_state_domains=exact cached_snapshot_immutable=true final_shutdown=true",
             page_tokens - 1
         );
     }
@@ -1715,7 +1719,7 @@ mod cuda_paged_tests {
             ]
         );
         println!(
-            "P12_SOURCE_PAGED_B1_PASS page_tokens={page_tokens} max_append_tokens={max_append_tokens} frontiers={},{},{},{} full_vocab=exact all42=exact contiguous_reference=true final_shutdown=true",
+            "P12_SOURCE_PAGED_B1_PASS page_tokens={page_tokens} max_append_tokens={max_append_tokens} frontiers={},{},{},{} full_vocab=exact all_state_domains=exact contiguous_reference=true final_shutdown=true",
             page_tokens - 1,
             page_tokens,
             page_tokens + 1,
@@ -1935,7 +1939,7 @@ mod cuda_paged_tests {
             drop(session);
             model.shutdown().await.unwrap();
             println!(
-                "P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens={page_tokens} cold_load=true prelaunch_cancel=true abandoned_ready=true cancel_after_ready=true restore_before_boundary=true restore_at_boundary=true all42=exact final_shutdown=true"
+                "P12_SOURCE_PAGED_LIFECYCLE_PASS page_tokens={page_tokens} cold_load=true prelaunch_cancel=true abandoned_ready=true cancel_after_ready=true restore_before_boundary=true restore_at_boundary=true all_state_domains=exact final_shutdown=true"
             );
         });
     }
@@ -2279,7 +2283,7 @@ mod cuda_paged_tests {
             drop(session);
             model.shutdown().await.unwrap();
             println!(
-                "P12_SOURCE_PAGED_INFLIGHT_CANCEL_PASS page_tokens={page_tokens} max_append_tokens={max_append_tokens} submitted_handles={submitted_handles} cancelled_before_ready=true root_unchanged=true all42=exact vector_held=true staging_held=true pages_held=true completion=known retired_exact=true replay=true final_shutdown=true"
+                "P12_SOURCE_PAGED_INFLIGHT_CANCEL_PASS page_tokens={page_tokens} max_append_tokens={max_append_tokens} submitted_handles={submitted_handles} cancelled_before_ready=true root_unchanged=true all_state_domains=exact vector_held=true staging_held=true pages_held=true completion=known retired_exact=true replay=true final_shutdown=true"
             );
         });
     }

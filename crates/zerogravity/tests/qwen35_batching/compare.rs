@@ -287,7 +287,7 @@ pub(super) fn completed(
         )?;
     }
     println!(
-        "QWEN35_BATCHING_NUMERIC_PASS call={call} physical_rows={} actual_request_batch_size=4 all24=exact all42_priors=exact all42_candidates=exact dual_sums=24 fullV=exact all327_independent=false",
+        "QWEN35_BATCHING_NUMERIC_PASS call={call} physical_rows={} actual_request_batch_size=4 all24=exact all_state_domain_priors=exact all_state_domain_candidates=exact dual_sums=24 fullV=exact all327_independent=false",
         4 * rows
     );
     Ok(())

@@ -523,7 +523,7 @@ fn handoff_and_lengths(fixture: &Fixture) {
         "fixture did not exercise unequal generation lengths/B1 survivor"
     );
     println!(
-        "P12_B5_B1_NATIVE_B1_HANDOFF_PASS full_packets_and_all42domains=exact \
+        "P12_B5_B1_NATIVE_B1_HANDOFF_PASS full_packets_and_all_state_domains=exact \
         unequal_lengths=2,5 event_text_usage_Done=exact"
     );
 }
@@ -778,7 +778,7 @@ fn source_eos(fixture: &Fixture) {
     assert_eq!(left_trace.done[0].3, "stop");
     println!(
         "P12_B5_TRAINED_EOS_GPU_PASS actual_original_source_selected_EOS=true \
-        CPU_B1_packets_all42=exact stop_excludes_EOS_usage=true sibling_independent=true"
+        CPU_B1_packets_all_state_domains=exact stop_excludes_EOS_usage=true sibling_independent=true"
     );
 }
 
@@ -963,7 +963,7 @@ fn wide_prompt_lengths(fixture: &Fixture) {
     finish_observed(&mut active, fixture, &mut references, &mut observed);
     println!(
         "P12_WIDE_PROMPT_RETIRE_PASS rows={width} distinct_source_tokens_and_sessions=true \
-        maxima=1..{width} native_to_B1=true CPU_B1_packets_all42=exact text_usage_Done=once"
+        maxima=1..{width} native_to_B1=true CPU_B1_packets_all_state_domains=exact text_usage_Done=once"
     );
 }
 
@@ -985,7 +985,7 @@ fn wide_b1_handoff(fixture: &Fixture) {
     require_single_transition(&active, &prior);
     update(&active, &mut references);
     finish_observed(&mut active, fixture, &mut references, &mut observed);
-    println!("P12_WIDE_B1_NATIVE_HANDOFF_PASS rows={width} CPU_B1_packets_all42=exact");
+    println!("P12_WIDE_B1_NATIVE_HANDOFF_PASS rows={width} CPU_B1_packets_all_state_domains=exact");
 }
 
 fn wide_cancel_after_ready(fixture: &Fixture) {
@@ -1058,7 +1058,7 @@ fn wide_cancel_after_ready(fixture: &Fixture) {
     assert_eq!(cancelled.trace.text, expected_text);
     println!(
         "P12_WIDE_READY_CANCEL_PASS rows={width} whole_candidate_discard=true \
-        survivors_regrouped=true original_roots_packets_all42=exact text_usage_Done=once"
+        survivors_regrouped=true original_roots_packets_all_state_domains=exact text_usage_Done=once"
     );
 }
 
@@ -1137,7 +1137,7 @@ fn wide_credit_park(fixture: &Fixture) {
     finish_observed(&mut active, fixture, &mut references, &mut observed);
     println!(
         "P12_WIDE_REAL_CREDIT_PASS rows={width} channel_capacity=1 \
-        healthy_survivors_progress=true parked_packet_root_all42=exact resumed_events=once"
+        healthy_survivors_progress=true parked_packet_root_all_state_domains=exact resumed_events=once"
     );
 }
 
@@ -1204,7 +1204,7 @@ fn wide_source_eos(fixture: &Fixture) {
     );
     println!(
         "P12_WIDE_TRAINED_EOS_PASS rows={width} source_selected_EOS=true \
-        CPU_B1_packets_all42=exact EOS_excluded_usage=true terminal_Done=once"
+        CPU_B1_packets_all_state_domains=exact EOS_excluded_usage=true terminal_Done=once"
     );
 }
 
@@ -1223,7 +1223,7 @@ fn qualify_wide(name: &str, cohort_width: usize) {
     fixture.close();
     println!(
         "P12_WIDE_NATIVE_WORKER_PHYSICAL_PASS source={name} rows={cohort_width} \
-        original_authorities_CPU_B1_all42=exact final_active=0 final_reserved=0 \
+        original_authorities_CPU_B1_all_state_domains=exact final_active=0 final_reserved=0 \
         actual_HTTP_wire=separate_gate vLLM_performance=not_qualified"
     );
 }
@@ -1342,7 +1342,7 @@ fn unequal_arrival_metrics(name: &str) {
     drop(second_trace);
     fixture.close();
     println!(
-        "P12_UNEQUAL_ARRIVAL_WORKER_PASS source={name} actual_GPU_prefill=true bounded_credit_park=true native_membership_frontiers=observed CPU_B1_packets_all42=exact final_reserved=0"
+        "P12_UNEQUAL_ARRIVAL_WORKER_PASS source={name} actual_GPU_prefill=true bounded_credit_park=true native_membership_frontiers=observed CPU_B1_packets_all_state_domains=exact final_reserved=0"
     );
 }
 

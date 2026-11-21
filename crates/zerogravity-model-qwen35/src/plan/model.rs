@@ -961,7 +961,7 @@ impl QwenPlanBuilder {
             || boundaries.capacity() > 24
         {
             return Err(Error::State(
-                "full24 record requires all42 domains/24 boundaries/no frontier".into(),
+                "full24 record requires all state domains/24 boundaries/no frontier".into(),
             ));
         }
         for slot in self.core.required_domains() {

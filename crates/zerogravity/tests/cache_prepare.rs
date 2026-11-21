@@ -609,7 +609,7 @@ fn qualify_approved_models(route: ImportRoute) {
             0
         );
         println!(
-            "A3_CACHE_CPU_PASS model={name} tokens=2 full_vocab=exact all42domains=exact independent_sessions=1 rawlease_lifetime=exact mutation_isolated=1 reclamation_isolated=1"
+            "A3_CACHE_CPU_PASS model={name} tokens=2 full_vocab=exact all_state_domains=exact independent_sessions=1 rawlease_lifetime=exact mutation_isolated=1 reclamation_isolated=1"
         );
     }
 }

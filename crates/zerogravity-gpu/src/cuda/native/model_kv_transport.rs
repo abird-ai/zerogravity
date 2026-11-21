@@ -253,7 +253,7 @@ mod tests {
     #[test]
     fn native_head_paired_planes_and_canonical_capacity_do_not_alias() {
         for block in [1, 4] {
-            // Actual all42 step metadata, not a contiguous-shape inference.
+            // Actual metadata for all state domains, not a contiguous-shape inference.
             assert_eq!(
                 native_index(block, 1, 0, false).unwrap()
                     - native_index(block, 0, 0, false).unwrap(),

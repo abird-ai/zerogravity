@@ -579,7 +579,7 @@ where
             for (_, span) in &prior {
                 if raw[span.clone()].iter().any(|v| v.iter().any(|b| *b != 0)) {
                     return Err(Error::State(
-                        "whole genuine all42 fresh priors not zero".into(),
+                        "whole genuine fresh priors across all state domains not zero".into(),
                     ));
                 }
             }

@@ -1,5 +1,5 @@
 //! ROOT-only real CUDA differential: original copy +original finite certificate.
-//! Synthetic state words only; trained all42/fullV/worker gates are separate.
+//! Synthetic state words only; trained all state domains/fullV/worker gates are separate.
 use super::*;
 use crate::resident_leases::{ResidentLease, ResidentService};
 use crate::resident_state_transport::{PreparedCertifiedScatter, geometry};
@@ -541,7 +541,7 @@ async fn qualify(device: Device, path: &Path, stop: Stop) -> Result<()> {
         ));
     }
     println!(
-        "CUDA_CERTIFIED_SCATTER_PASS B=2,4,8 cases={} words={} original_scatter_plus_certificate_launchsites={} fused_field_launchsites={} status=byte_exact_OR finite_signedzero_subnormal_Inf_NaN=preserved all_rows_fields=checked prefix_suffix_status_canaries=unchanged original_queue_leases_Ready=1 warm_uploads=0 final_reserved=0 roots_published=0 all42_fullmodel_worker_graph_speed=separate_gates",
+        "CUDA_CERTIFIED_SCATTER_PASS B=2,4,8 cases={} words={} original_scatter_plus_certificate_launchsites={} fused_field_launchsites={} status=byte_exact_OR finite_signedzero_subnormal_Inf_NaN=preserved all_rows_fields=checked prefix_suffix_status_canaries=unchanged original_queue_leases_Ready=1 warm_uploads=0 final_reserved=0 roots_published=0 all_state_domains_fullmodel_worker_graph_speed=separate_gates",
         counts.0, counts.1, counts.2, counts.3
     );
     Ok(())

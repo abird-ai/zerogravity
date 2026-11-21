@@ -159,7 +159,7 @@ impl SequenceProbe {
             || owners.candidates.iter().any(|d| d.len() != 42)
         {
             return Err(Error::State(
-                "uncertain sequence failed exact original Ready/owners/cohorts/all42 retention"
+                "uncertain sequence failed exact original Ready/owners/cohorts/retention across all state domains"
                     .into(),
             ));
         }

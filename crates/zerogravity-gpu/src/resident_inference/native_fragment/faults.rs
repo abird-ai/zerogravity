@@ -160,7 +160,7 @@ impl Probe {
             || owners < 2
             || service.ensure_usable().is_ok()
         {
-            return Err(Error::State("actual native fragment uncertainty did not retain exact original graph/all42 roots/cohort/envelope".into()));
+            return Err(Error::State("actual native fragment uncertainty did not retain exact original graph/all-state-domain roots/cohort/envelope".into()));
         }
         Ok(GdnFragmentFaultOutcome {
             fault,

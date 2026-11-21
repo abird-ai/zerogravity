@@ -160,7 +160,7 @@ impl ResidentSession {
         )?;
         if submitted.logits.is_some() || submitted.proposals.len() != 42 {
             return Err(Error::State(
-                "canonical original all42 provisional domains required".into(),
+                "canonical original provisional values for all state domains required".into(),
             ));
         }
         body.require_publication_finished()?;
@@ -183,7 +183,7 @@ impl ResidentSession {
                     for ((ps, pr), (cs, cr)) in prior.iter().zip(&candidate) {
                         if ps != cs {
                             return Err(Error::State(
-                                "canonical all42 prior/candidate order".into(),
+                                "canonical prior/candidate order across all state domains".into(),
                             ));
                         }
                         if matches!(ps, StateSlot::Kv(_)) {

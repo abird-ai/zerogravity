@@ -239,7 +239,7 @@ fn qwen_cuda_populated_context_sdk_replays() {
     runtime.shutdown().unwrap();
     assert!(runtime.status().closed);
     println!(
-        "P12_CUDA_POPULATED_CONTEXT_PASS model={model} context={context} prompt_tokens={prompt_tokens} output_tokens={OUTPUT} replay=exact independent_sessions=true producer_frontiers=exact final_shutdown=true independent_all42_reference=false"
+        "P12_CUDA_POPULATED_CONTEXT_PASS model={model} context={context} prompt_tokens={prompt_tokens} output_tokens={OUTPUT} replay=exact independent_sessions=true producer_frontiers=exact final_shutdown=true independent_all_state_domains_reference=false"
     );
 }
 

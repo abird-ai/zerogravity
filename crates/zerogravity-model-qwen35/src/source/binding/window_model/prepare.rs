@@ -328,7 +328,9 @@ fn require_state_layout(source: &OriginalWindowModelSource, plan: &ForwardPlan) 
         || source.state_specs().len() != 24
         || plan.prefix_capacity() != 512
     {
-        return Err(Error::Unsupported("Qwen all42 source state layout".into()));
+        return Err(Error::Unsupported(
+            "Qwen all-state-domain source state layout".into(),
+        ));
     }
     let mut slots = Vec::with_capacity(42);
     for (layer, spec) in source.state_specs().iter().enumerate() {
@@ -352,7 +354,7 @@ fn require_state_layout(source: &OriginalWindowModelSource, plan: &ForwardPlan) 
     slots.sort();
     if slots != plan.required_domains() {
         return Err(Error::State(
-            "Qwen source all42 state slots differ from plan".into(),
+            "Qwen source all-state-domain state slots differ from plan".into(),
         ));
     }
     Ok(())

@@ -250,7 +250,7 @@ fn completed_fixed(
         }
     }
     println!(
-        "QWEN35_CUDA_NUMERIC_CALL_PASS rows={prompt_rows} call={call} all24_boundaries=exact all42_post=exact consumed_priors=exact independent_dual_f32=24 fullV=exact autoregressive_id={selected} all327_independent=false"
+        "QWEN35_CUDA_NUMERIC_CALL_PASS rows={prompt_rows} call={call} all24_boundaries=exact all_state_domains_post=exact consumed_priors=exact independent_dual_f32=24 fullV=exact autoregressive_id={selected} all327_independent=false"
     );
     Ok(())
 }
