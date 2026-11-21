@@ -1,8 +1,8 @@
 //! Host-only admission sweep. Estimates do not reserve memory or qualify inference.
 use super::source::need;
-use zerogravity::{Error, Result, gpu::ResidentModel, qwen35::plan::OrdinaryQwenPlan};
+use zerogravity::{Error, Result, gpu::ResidentModel, qwen35::plan::QwenForwardPlan};
 
-pub fn inspect(original: &OrdinaryQwenPlan, label: &str) -> Result<()> {
+pub fn inspect(original: &QwenForwardPlan, label: &str) -> Result<()> {
     let source = original.source();
     let baseline = source.workspace_reserved_bytes()?;
     for context in [512, 1024, 2048, 4096, 8192, 16384, 32768] {
@@ -13,7 +13,7 @@ pub fn inspect(original: &OrdinaryQwenPlan, label: &str) -> Result<()> {
                     plan.model_profile() == original.model_profile(),
                     "same source capacity geometry",
                 )?;
-                match ResidentModel::ordinary_cpu_source_preflight(
+                match ResidentModel::cpu_forward_source_preflight(
                     source.clone(),
                     plan.plan().clone(),
                     active,

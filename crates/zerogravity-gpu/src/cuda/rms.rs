@@ -275,5 +275,5 @@ pub(crate) use pooled::{
 pub(crate) mod cohort;
 
 #[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
-#[path = "rms/ordinary_tests.rs"]
-mod ordinary_tests;
+#[path = "rms/forward_tests.rs"]
+mod forward_tests;

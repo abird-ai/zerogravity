@@ -190,7 +190,7 @@ fn source_rows_cannot_relax_cpu_legacy_or_full_plan_profile_guards() {
         .is_err()
     );
     assert!(
-        b.ordinary_rms_profiled(parameter(source), &x, RmsContract::TorchCpuBf16Avx2)
+        b.forward_rms_profiled(parameter(source), &x, RmsContract::TorchCpuBf16Avx2)
             .is_err()
     );
     assert!(b.add("unqualified eager residual", &x, &x).is_err());

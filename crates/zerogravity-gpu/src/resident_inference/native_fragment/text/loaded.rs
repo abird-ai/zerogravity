@@ -850,7 +850,7 @@ async fn prepare_text_profile(
             logit_accesses: Vec::new(),
             batch: None,
             #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-            ordinary_cohort_values: None,
+            forward_cohort_values: None,
         }),
         allocation: Mutex::new(()),
         states,

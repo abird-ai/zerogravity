@@ -614,7 +614,7 @@ pub async fn prepare_fixed_prompt_natural_with_profile(
             logit_accesses: Vec::new(),
             batch: None,
             #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-            ordinary_cohort_values: None,
+            forward_cohort_values: None,
         }),
         allocation: Mutex::new(()),
         states,

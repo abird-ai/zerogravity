@@ -9,16 +9,16 @@ use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::source::TensorSource;
 mod variant;
 pub use variant::QwenModelVariant;
-mod ordinary;
-pub(crate) use ordinary::build_ordinary_plan;
+mod forward;
+pub(crate) use forward::build_forward_plan;
 #[cfg(all(test, feature = "cpu"))]
-pub(crate) use ordinary::build_test_ordinary_plan;
+pub(crate) use forward::build_test_forward_plan;
 #[cfg(feature = "diagnostic-cpu-checkpoint")]
-pub use ordinary::diagnostic_ordinary_plan;
-pub use ordinary::{
-    ORDINARY_CUDA_MAX_CHUNK_ROWS, ORDINARY_CUDA_MAX_CONTEXT, ORDINARY_CUDA_MIN_CONTEXT,
-    ORDINARY_SOURCE_MAX_CHUNK_ROWS, ORDINARY_SOURCE_MAX_CONTEXT, ORDINARY_SOURCE_MIN_CONTEXT,
-    OrdinaryQwenGeometry, OrdinaryQwenInvocation, OrdinaryQwenPlan,
+pub use forward::diagnostic_forward_plan;
+pub use forward::{
+    FORWARD_CUDA_MAX_CHUNK_ROWS, FORWARD_CUDA_MAX_CONTEXT, FORWARD_CUDA_MIN_CONTEXT,
+    FORWARD_SOURCE_MAX_CHUNK_ROWS, FORWARD_SOURCE_MAX_CONTEXT, FORWARD_SOURCE_MIN_CONTEXT,
+    QwenForwardGeometry, QwenForwardInvocation, QwenForwardPlan,
 };
 mod prompt;
 pub use prompt::{PromptCall, PromptSpan, PromptWorkload};

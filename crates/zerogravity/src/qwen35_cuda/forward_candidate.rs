@@ -1,0 +1,201 @@
+//! Explicit qualification-only adapter for the Qwen forward CUDA path.
+//!
+//! This is deliberately not the public backend selector. It exists so the
+//! integrated forward path can be qualified on real source/model/root data
+//! before forward capability is allowed to succeed.
+
+use super::forward_source;
+use crate::{
+    Error, Result,
+    accelerator::program::SourceCallMode,
+    gpu::{InferenceReadback, ResidentModel, ResidentSession},
+    qwen35::plan::{QwenForwardGeometry, QwenForwardPlan},
+    resource_arbiter::ResourceOwner,
+};
+use std::{
+    path::Path,
+    sync::{Arc, atomic::AtomicBool},
+};
+
+#[derive(Clone, Debug)]
+pub struct SourceMetadata {
+    pub family: &'static str,
+    pub repository: &'static str,
+    pub revision: &'static str,
+    pub hidden_width: usize,
+}
+
+pub struct Model {
+    plan: QwenForwardPlan,
+    profile: QwenForwardGeometry,
+    resident: Arc<ResidentModel>,
+    metadata: SourceMetadata,
+}
+impl Model {
+    #[allow(clippy::too_many_arguments)]
+    pub async fn load(
+        device: crate::gpu::Device,
+        hf_directory: &Path,
+        context_capacity_tokens: usize,
+        host_mib: usize,
+        provider_capacity_bytes: usize,
+        device_capacity_bytes: u64,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<Arc<Self>> {
+        let host = forward_source::host_admission_mib(
+            host_mib,
+            ResourceOwner::new("qwen35-cuda-forward-candidate", "forward-source")?,
+        )?;
+        let opened = forward_source::open(hf_directory, &host, cancelled)?;
+        let geometry = opened.seal.model_profile();
+        let profile = geometry;
+        let plan = opened.seal.build_plan(context_capacity_tokens)?;
+        if plan.model_profile() != geometry
+            || plan.source().source_identity() != opened.seal.source_identity()
+            || plan.context_capacity_tokens() != context_capacity_tokens
+        {
+            return Err(Error::State(
+                "Qwen forward candidate plan/source/profile differs".into(),
+            ));
+        }
+        let resident = ResidentModel::load_cuda_forward(
+            device,
+            opened.seal.source().clone(),
+            plan.plan().clone(),
+            provider_capacity_bytes,
+            device_capacity_bytes,
+            cancelled,
+        )
+        .await?;
+        Ok(Arc::new(Self {
+            plan,
+            profile,
+            resident,
+            metadata: SourceMetadata {
+                family: opened.metadata.family,
+                repository: opened.metadata.repository,
+                revision: opened.metadata.revision,
+                hidden_width: opened.metadata.hidden_width,
+            },
+        }))
+    }
+
+    pub fn model_profile(&self) -> QwenForwardGeometry {
+        self.profile
+    }
+
+    pub fn context_capacity_tokens(&self) -> usize {
+        self.plan.context_capacity_tokens()
+    }
+
+    pub fn source_metadata(&self) -> &SourceMetadata {
+        &self.metadata
+    }
+
+    pub fn plan(&self) -> &QwenForwardPlan {
+        &self.plan
+    }
+
+    pub fn resident(&self) -> &Arc<ResidentModel> {
+        &self.resident
+    }
+
+    pub async fn shutdown(self: Arc<Self>) -> Result<()> {
+        let model = Arc::try_unwrap(self).map_err(|_| {
+            Error::State("Qwen forward candidate still has live session/model owners".into())
+        })?;
+        model.resident.shutdown_cuda_forward().await
+    }
+
+    pub async fn session(self: &Arc<Self>) -> Result<Session> {
+        Ok(Session {
+            model: self.clone(),
+            resident: self.resident.session().await?,
+        })
+    }
+}
+
+pub struct Session {
+    model: Arc<Model>,
+    resident: ResidentSession,
+}
+impl Session {
+    pub fn binding(&self) -> crate::session_root::RootBinding {
+        self.resident.binding()
+    }
+
+    pub fn model(&self) -> &Arc<Model> {
+        &self.model
+    }
+
+    pub fn snapshot(&self) -> crate::gpu::ResidentSnapshot {
+        self.resident.snapshot()
+    }
+
+    pub async fn forward(
+        &mut self,
+        mode: SourceCallMode,
+        ids: &[u32],
+        emit_logits: bool,
+    ) -> Result<InferenceReadback> {
+        self.forward_inner(mode, ids, emit_logits, None).await
+    }
+
+    pub async fn forward_cancellable(
+        &mut self,
+        mode: SourceCallMode,
+        ids: &[u32],
+        emit_logits: bool,
+        cancelled: &AtomicBool,
+    ) -> Result<InferenceReadback> {
+        self.forward_inner(mode, ids, emit_logits, Some(cancelled))
+            .await
+    }
+
+    async fn forward_inner(
+        &mut self,
+        mode: SourceCallMode,
+        ids: &[u32],
+        emit_logits: bool,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<InferenceReadback> {
+        if cancelled.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire)) {
+            return Err(Error::State(
+                "Qwen forward candidate request cancelled".into(),
+            ));
+        }
+        if ids.is_empty() || ids.len() > self.model.plan.max_chunk_rows() {
+            return Err(Error::Malformed(
+                "Qwen forward candidate request row count".into(),
+            ));
+        }
+        let base = self.resident.binding();
+        if base.source() != self.model.plan.source().source_identity() {
+            return Err(Error::State(
+                "Qwen forward candidate session source differs".into(),
+            ));
+        }
+        let invocation = self.model.plan.bind_invocation(
+            mode,
+            usize::try_from(base.frontier())
+                .map_err(|_| Error::Limit("Qwen forward candidate frontier".into()))?,
+            Arc::from(ids),
+            emit_logits,
+        )?;
+        let request = invocation.materialize_source_plan()?;
+        match (emit_logits, cancelled) {
+            (true, Some(cancelled)) => {
+                self.resident
+                    .forward_cuda_cancellable(request, cancelled)
+                    .await
+            }
+            (false, Some(cancelled)) => {
+                self.resident
+                    .forward_cuda_state_only_cancellable(request, cancelled)
+                    .await
+            }
+            (true, None) => self.resident.forward_cuda(request).await,
+            (false, None) => self.resident.forward_cuda_state_only(request).await,
+        }
+    }
+}

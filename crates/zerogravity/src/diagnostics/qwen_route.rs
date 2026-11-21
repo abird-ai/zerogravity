@@ -57,7 +57,7 @@ pub fn require_route_capability() -> Result<()> {
     }
     #[cfg(all(feature = "qwen35-cuda", not(feature = "qwen35-cuda-qualification")))]
     {
-        crate::qwen35_cuda::require_ordinary_capability()
+        crate::qwen35_cuda::require_forward_capability()
     }
     #[cfg(not(feature = "qwen35-cuda"))]
     {

@@ -551,7 +551,7 @@ impl ResidentPhysical {
         feature = "cuda",
         any(feature = "qualification", feature = "cuda-native")
     ))]
-    #[allow(dead_code)] // Staged ordinary CUDA constructor; selector remains refused.
+    #[allow(dead_code)] // Staged CUDA forward constructor; selector remains refused.
     pub(crate) fn new_pinned_cuda(
         device: Device,
         provider_cap: usize,

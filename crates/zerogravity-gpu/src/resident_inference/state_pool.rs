@@ -1139,11 +1139,11 @@ mod tests {
     #[ignore = "physical CUDA current-root-aware hybrid candidate one-flight composition"]
     fn physical_hybrid_candidate_one_flight() -> Result<()> {
         use crate::cuda::{
-            ordinary_text::{
+            test_support::CudaDiagnostic,
+            text_forward::{
                 Access as OrdinaryAccess, BufferRole as OrdinaryRole, Geometry, LaunchBinding,
                 Program, Step,
             },
-            test_support::CudaDiagnostic,
         };
         use cubecl::CubeElement;
         use zerogravity_core::accelerator::program::NumericalContract;

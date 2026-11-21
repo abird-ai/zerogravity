@@ -143,7 +143,7 @@ fn gdn_swish_alias_does_not_change_full_attention_gate_or_query_layout() {
 }
 
 #[test]
-fn ordinary_text_index_rejects_missing_extra_or_wrong_layer_roles() {
+fn text_forward_index_rejects_missing_extra_or_wrong_layer_roles() {
     let config = parse(&declared_27b()).unwrap();
     let raw = index_for(&config);
     let directory = config

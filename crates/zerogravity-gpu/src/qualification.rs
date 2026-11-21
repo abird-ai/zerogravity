@@ -217,7 +217,7 @@ pub use crate::resident_program::typed_slice::qualification::{
 ))]
 // Cross-profile smoke on low-dynamic-range fixtures, not the CUDA rounding oracle.
 fn qualify_head_rms_low_dynamic_range(device: Device) -> zerogravity_core::Result<()> {
-    use crate::cuda::ordinary_text::{Access, BufferRole, Geometry, LaunchBinding, Program};
+    use crate::cuda::text_forward::{Access, BufferRole, Geometry, LaunchBinding, Program};
     use zerogravity_core::{Error, Result};
 
     const WIDTH: usize = 256;
@@ -449,7 +449,7 @@ fn ordinary_head_rms_low_dynamic_range_on_nvidia() -> zerogravity_core::Result<(
 
 #[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
 fn qualify_ordinary_nonlinear_source_parity(device: Device) -> zerogravity_core::Result<()> {
-    use crate::cuda::ordinary_text::{Access, BufferRole, Geometry, LaunchBinding, Program};
+    use crate::cuda::text_forward::{Access, BufferRole, Geometry, LaunchBinding, Program};
     use zerogravity_core::{Error, Result};
 
     const INTERMEDIATE: usize = 3584;
@@ -687,7 +687,7 @@ fn ordinary_nonlinear_matches_source_reference_on_nvidia() -> zerogravity_core::
 
 #[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
 fn qualify_ordinary_multiply_and_kv(device: Device) -> zerogravity_core::Result<()> {
-    use crate::cuda::ordinary_text::{Access, BufferRole, Geometry, LaunchBinding, Program, Step};
+    use crate::cuda::text_forward::{Access, BufferRole, Geometry, LaunchBinding, Program, Step};
     use zerogravity_core::{Error, Result};
 
     const QUERY_WIDTH: usize = 2048;
@@ -926,7 +926,7 @@ fn ordinary_multiply_and_kv_on_nvidia() -> zerogravity_core::Result<()> {
 
 #[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
 fn qualify_ordinary_embedding(device: Device) -> zerogravity_core::Result<()> {
-    use crate::cuda::ordinary_text::{
+    use crate::cuda::text_forward::{
         Access, BufferRole, Geometry, LaunchBinding, Program, STATUS_OUT_OF_RANGE,
     };
     use cubecl::bytes::Bytes;
@@ -1123,8 +1123,8 @@ async fn qualify_ordinary_owned_blas_identity(
 ) -> zerogravity_core::Result<()> {
     use crate::{
         resident_leases::ResidentService,
-        resident_program::ordinary_cuda::blas_reference::{
-            OrdinaryCudaBlas, OrdinaryCudaProviderPaths,
+        resident_program::cuda_forward::blas_reference::{
+            CudaForwardBlas, CudaForwardProviderPaths,
         },
     };
     use cubecl::cuda::Bf16GemmOperation;
@@ -1189,8 +1189,8 @@ async fn qualify_ordinary_owned_blas_identity(
     drop(init.complete_sync().await?);
     slot.finish()?;
 
-    let paths = OrdinaryCudaProviderPaths::new(cublas, cublas_lt)?;
-    let blas = OrdinaryCudaBlas::prepare(service.clone(), 0, &paths).await?;
+    let paths = CudaForwardProviderPaths::new(cublas, cublas_lt)?;
+    let blas = CudaForwardBlas::prepare(service.clone(), 0, &paths).await?;
 
     for rows in [1usize, 2, 17, 64] {
         let operation = Bf16GemmOperation::reference(WIDTH, rows, WIDTH)
@@ -1299,7 +1299,7 @@ fn cuda_rotary_preserves_fp32_products_until_final_bf16() {
 
 #[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
 fn qualify_ordinary_rope_source_parity(device: Device) -> zerogravity_core::Result<()> {
-    use crate::resident_program::ordinary_cuda::rotary::enqueue_source_exact_raw;
+    use crate::resident_program::cuda_forward::rotary::enqueue_source_exact_raw;
     use zerogravity_core::{Error, Result};
 
     const QUERY_ELEMENTS: usize = 8 * 256;
@@ -1519,7 +1519,7 @@ fn qualify_ordinary_rope_source_parity(device: Device) -> zerogravity_core::Resu
 #[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
 #[test]
 #[ignore = "actual NVIDIA fused-FP32 RoPE versus independent host FMA reference"]
-fn ordinary_source_exact_rotary_matches_source_reference_on_nvidia() -> zerogravity_core::Result<()>
+fn forward_source_exact_rotary_matches_source_reference_on_nvidia() -> zerogravity_core::Result<()>
 {
     qualify_ordinary_rope_source_parity(Device::cuda(0).map_err(|error| {
         zerogravity_core::Error::State(format!("CUDA device 0 unavailable: {error}"))

@@ -2,14 +2,14 @@ use super::*;
 use std::collections::BTreeSet;
 use zerogravity::accelerator::program::{PlanOperation, SourceOperatorKind, StateSlot};
 use zerogravity::gpu::{SourceCallFrame, SourceCallFrameKind, SourceCallObserver};
-use zerogravity::qwen35::plan::OrdinaryQwenPlan;
+use zerogravity::qwen35::plan::QwenForwardPlan;
 
 pub struct ObservationMap {
     values: BTreeMap<u32, (String, Option<usize>)>,
     capacity: usize,
 }
 impl ObservationMap {
-    pub fn new(plan: &OrdinaryQwenPlan) -> Result<Self> {
+    pub fn new(plan: &QwenForwardPlan) -> Result<Self> {
         let mut values = BTreeMap::new();
         for n in plan.plan().nodes() {
             if let PlanOperation::SourceOperatorTemplate { descriptor, .. } = &n.operation

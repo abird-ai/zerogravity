@@ -350,7 +350,7 @@ fn unaware_provider_never_gets_partial_source_or_legacy_norm_fallback() {
     );
     assert!(
         unaware
-            .ordinary_rms_profiled(
+            .forward_rms_profiled(
                 operators
                     .parameter_descriptor(QwenParameterRole::InputNorm(0))
                     .unwrap(),
@@ -458,9 +458,9 @@ fn window_model_metadata_retains_one_original_issuer_and_stays_execution_closed(
 }
 
 #[test]
-fn ordinary_plan_and_invocation_retain_exact_source_and_workspace_without_a_cycle() {
-    use crate::plan::{QwenModelVariant, build_test_ordinary_plan};
-    use crate::source::binding::{OrdinaryCudaSourceSeal, OriginalWindowModelSource};
+fn forward_plan_and_invocation_retain_exact_source_and_workspace_without_a_cycle() {
+    use crate::plan::{QwenModelVariant, build_test_forward_plan};
+    use crate::source::binding::{ForwardSourceSeal, OriginalWindowModelSource};
     use crate::source::owned::QwenOriginalWindowText;
     let fixture = Fixture::new();
     let loaded = source_with_options(&fixture, true, 256, true, |_| {});
@@ -478,9 +478,9 @@ fn ordinary_plan_and_invocation_retain_exact_source_and_workspace_without_a_cycl
     let owner_witness = Arc::downgrade(&owner);
     let model = OriginalWindowModelSource::from_owner(owner.clone()).unwrap();
     let before_seal = reserved(&admission);
-    let seal = OrdinaryCudaSourceSeal::for_test(model.clone(), QwenModelVariant::Qwen800M).unwrap();
+    let seal = ForwardSourceSeal::for_test(model.clone(), QwenModelVariant::Qwen800M).unwrap();
     assert_eq!(reserved(&admission), before_seal + 64 * 1024);
-    let plan = build_test_ordinary_plan(&seal, 512).unwrap();
+    let plan = build_test_forward_plan(&seal, 512).unwrap();
     assert!(plan.source().same_issuer(&source));
     assert!(plan.source_seal().source().same_issuer(&source));
     assert_eq!(plan.plan().source(), source.source_identity());

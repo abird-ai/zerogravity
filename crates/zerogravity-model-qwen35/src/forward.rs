@@ -102,7 +102,7 @@ pub(crate) fn pure_ordinary_rms_slice<B: MathematicalBackend>(
             "pure ordinary RMS exact hidden input".into(),
         ));
     }
-    let output = math.ordinary_rms_profiled(
+    let output = math.forward_rms_profiled(
         source.parameter_descriptor(role)?,
         input,
         RmsContract::TorchCpuBf16Avx2,
@@ -334,7 +334,7 @@ pub(crate) fn embedding_input_norm_projection_slice<B: MathematicalBackend>(
         token,
         model.embedding_contract(),
     )?;
-    let normalized = math.ordinary_rms_profiled(
+    let normalized = math.forward_rms_profiled(
         model.parameter_descriptor(QwenParameterRole::InputNorm(0))?,
         &embedding,
         RmsContract::TorchCpuBf16Avx2,
@@ -401,8 +401,8 @@ pub(crate) fn attention_projection_norm_slice<B: MathematicalBackend>(
     )?;
     let gate = math.contiguous(&gate_view)?;
     let normalized_query =
-        math.ordinary_rms_profiled(roles.query_norm, &query, RmsContract::TorchCpuBf16Avx2)?;
-    let normalized_key = math.ordinary_rms_profiled(
+        math.forward_rms_profiled(roles.query_norm, &query, RmsContract::TorchCpuBf16Avx2)?;
+    let normalized_key = math.forward_rms_profiled(
         roles.key_norm,
         &key_projection,
         RmsContract::TorchCpuBf16Avx2,

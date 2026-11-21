@@ -2,12 +2,18 @@
 
 ## Current direction — signed shared composition; resident HIP comparison
 
+Current source-backed Qwen execution terminology is `forward`: model semantics are
+`QwenForward*`, authenticated source authority is `ForwardSourceSeal`, and CUDA mechanics
+are `cuda_forward` / `CudaForward*`. Historical milestone text below retains the names that
+were current when those checkpoints were written. The next terminology cleanup is the
+separate `SourceCall*` family.
+
 [Fabric transition](../fabric-vnext-transition/TODO.md) is accepted through source
 `8c43844`, docs `1c99929`. Genuine multi-row and populated1K–16K0.8B/2B HIP now pass native/SDK/HTTP
 correctness and original retirement; final isolated gate passes.
 Signed `8ffb511` closes the populated0.8B/2B HIP checkpoint.
 Owner prioritizes roadmap items1/2: item1 is signed complete; advance CUDA
-reference/state/executable closure on l5 while ordinary27B remains open.
+reference/state/executable closure on l5 while 27B HIP full-model qualification remains open.
 Missing legacy CUDA authority remains distinct from new vLLM references.
 Native batching remains subsequent; matched baselines need not wait for it.
 Preserve accepted source/operator/lifetime evidence; no repeated Fabric extraction.

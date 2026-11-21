@@ -12,8 +12,8 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
 
 - [x] The current CUDA admission/storage choice is now re-derived from the **same
   helper the loader uses**, exposed host-only as
-  `ResidentModel::ordinary_cuda_source_preflight`; no parallel estimator remains.
-  Under active1/native_rows0/provider4608MiB at32K:0.8B is Resident with
+  `ResidentModel::cuda_forward_source_preflight`; no parallel estimator remains.
+  Under active1/cohort_width0/provider4608MiB at32K:0.8B is Resident with
   source_weight=1,503,789,056B and total admission=3,427,684,813B;2B is Streamed with
   source_weight=3,762,552,832B, resident_weight=0 and total admission=1,925,110,221B.
   Both use4 roots of422,854,656B and11,736B runtime reserve. This supersedes the28Oct
@@ -34,7 +34,7 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
   VRAM/admission failure. Simple partial-resident source placement (~2.9GiB resident),
   state-path-first pack ordering and a16MiB serial source page did not materially move
   the timeout, so those experimental production changes were removed. The obsolete
-  ordinary CUDA attention reserve is now removed from the real admission/ownership graph:
+  CUDA-forward attention reserve is now removed from the real admission/ownership graph:
   the selected tile-local kernel uses no global scratch, saving138,428,516B at32K. This
   makes the low-level two-root2B32K inventory fully resident. Public active1 still
   retains four **logical** lifecycle roots, but the paged-state inventory now stops
@@ -65,7 +65,7 @@ Two independent source audits are reconciled there; implementation remains open.
   checkout receives fresh `BufferLeaseId`/allocation generations. `ResidentReadback`
   and `ResidentReady` retain the checked-out lease/use; a set returns idle only after
   the device ledger proves every backing view idle. Failed/unknown retirement poisons
-  the use and fences/quarantines instead of reusing it. Ordinary CUDA/HIP source
+  the use and fences/quarantines instead of reusing it. CUDA-forward/HIP source
   sessions install this pool through `install_window_root_pool`. Remaining work in
   this roadmap item is the broader authenticated transfer-slot/ring and physical-
   backing identity adoption across source/staging paths; do not add another root pool.
@@ -75,7 +75,7 @@ Two independent source audits are reconciled there; implementation remains open.
 Source comparison: [families09–13](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md).
 The following extends existing owners; source-byte qualification is not inference.
 
-- [~] The first ordinary-CUDA source-page transfer cleanup now uses the existing
+- [~] The first CUDA-forward source-page transfer cleanup now uses the existing
   **owned authenticated window** boundary directly. `TensorWindow` remains the exact
   source/cache/authentication owner and already carries the real `TransferStaging` lease;
   CUDA wraps only that owner in an `Arc`, installs it in the page's existing pending state
@@ -109,7 +109,7 @@ The following extends existing owners; source-byte qualification is not inferenc
   per-lease identity field. The same primitive now replaces backend-handle range checks in
   the native B4 embedding preparation path for output/table/status and feedback aliases;
   its four-packet diagnostic pairwise check simply reuses `overlaps_any`. The production
-  ordinary-CUDA body now has the first **prepared-set** consumer too: shared
+  CUDA-forward body now has the first **prepared-set** consumer too: shared
   `ResidentService::pairwise_disjoint` validates the complete deduplicated resident lease
   set under one ledger lock before binding, while `BufferRange`/`OwnedRanges` remain only
   for their legitimate kernel-handle geometry role. The prepared streamed BF16 vocabulary
@@ -117,7 +117,7 @@ The following extends existing owners; source-byte qualification is not inferenc
   distinct logical lease IDs cannot hide overlapping physical backing before the existing
   two-slot authenticated retirement ring starts. The ring, source-owner lifetime and
   same-stream overwrite/retirement protocol are unchanged; no second transfer abstraction
-  was added. The production HIP ordinary source-call path now uses the same authority too:
+  was added. The production HIP source-call path now uses the same authority too:
   cold workspace owners are pairwise ledger-checked once, while per-request root binding
   uses a one-lock incremental disjointness check against that already-validated workspace
   plus earlier new roots. This preserves the old O(root*workspace + root²) validation shape

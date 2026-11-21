@@ -51,7 +51,7 @@ pub fn load_qwen35_cuda(
     bundle: Option<&Path>,
 ) -> Result<Router, ServiceError> {
     validate_profile(backend, &profile, host_mib, bundle)?;
-    source::require_ordinary_capability().map_err(unsupported_capability)?;
+    source::require_forward_capability().map_err(unsupported_capability)?;
     unreachable!("ordinary Qwen CUDA capability always refuses")
 }
 

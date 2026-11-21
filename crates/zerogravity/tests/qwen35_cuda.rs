@@ -1,5 +1,5 @@
 #![cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
-//! Explicit real-source/GPU suite; never part of ordinary CPU test execution.
+//! Explicit real-source/GPU suite; never part of default CPU test execution.
 //! A fresh 47-token prompt commits frontier 47; frontiers 48–50 consume one cached token each.
 //! Historical routing does not admit fresh 48–50-token prompts. The separate
 //! ignored fresh-prefill test below admits exactly one initial call for rows 47–50.
@@ -509,15 +509,15 @@ fn fresh_prefill_state_logits_root_and_cleanup_agreement() -> Result<()> {
 
 #[test]
 #[ignore = "phase 1: fresh release CUDA process captures authenticated historical reference evidence, then exits"]
-fn ordinary_cached47_to50_capture_reference_evidence() -> Result<()> {
+fn forward_prefill47_decode48_to50_capture_reference_evidence() -> Result<()> {
     ensure(!cfg!(debug_assertions), "release physical matrix only")?;
     let source = env("ZG_QWEN35_MODEL_DIR")?;
     let bundle = env("ZG_QWEN35_CUDA_KERNEL_DIR")?;
-    let evidence = env("ZG_QWEN35_ORDINARY_PARITY_EVIDENCE")?;
+    let evidence = env("ZG_QWEN35_FORWARD_PARITY_EVIDENCE")?;
     let device =
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;
     let receipt = block_on(
-        qwen35_cuda::ordinary_parity::capture_current_source_cached_47_to_50_evidence(
+        qwen35_cuda::forward_parity::capture_current_source_prefill47_decode48_to50_evidence(
             device, &source, &bundle, &evidence, None,
         ),
     )?;
@@ -527,25 +527,25 @@ fn ordinary_cached47_to50_capture_reference_evidence() -> Result<()> {
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
     println!(
-        "QWEN35_ORDINARY_CUDA_CACHED47_50_REFERENCE_EVIDENCE_PASS sha256={digest} windows={} retired_windows={}",
+        "QWEN35_FORWARD_CUDA_PREFILL47_DECODE48_50_REFERENCE_EVIDENCE_PASS sha256={digest} windows={} retired_windows={}",
         receipt.close.source_weight_windows, receipt.close.retirement_source_weight_windows,
     );
     Ok(())
 }
 
 #[test]
-#[ignore = "phase 2: fresh release CUDA process independently loads ordinary path and compares host evidence"]
-fn ordinary_cached47_to50_compare_reference_evidence() -> Result<()> {
+#[ignore = "phase 2: fresh release CUDA process independently loads the forward path and compares host evidence"]
+fn forward_prefill47_decode48_to50_compare_reference_evidence() -> Result<()> {
     ensure(!cfg!(debug_assertions), "release physical matrix only")?;
     let source = env("ZG_QWEN35_MODEL_DIR")?;
-    let evidence = env("ZG_QWEN35_ORDINARY_PARITY_EVIDENCE")?;
-    let expected = std::env::var("ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256")
-        .map_err(|_| fail("ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256 required"))
-        .and_then(|value| qwen35_cuda::ordinary_parity::parse_evidence_sha256(&value))?;
+    let evidence = env("ZG_QWEN35_FORWARD_PARITY_EVIDENCE")?;
+    let expected = std::env::var("ZG_QWEN35_FORWARD_PARITY_EXPECTED_SHA256")
+        .map_err(|_| fail("ZG_QWEN35_FORWARD_PARITY_EXPECTED_SHA256 required"))
+        .and_then(|value| qwen35_cuda::forward_parity::parse_evidence_sha256(&value))?;
     let device =
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;
     let receipt = block_on(
-        qwen35_cuda::ordinary_parity::compare_current_source_cached_47_to_50_evidence(
+        qwen35_cuda::forward_parity::compare_current_source_prefill47_decode48_to50_evidence(
             device, &source, &evidence, expected, None,
         ),
     )?;
@@ -556,7 +556,7 @@ fn ordinary_cached47_to50_compare_reference_evidence() -> Result<()> {
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
     println!(
-        "QWEN35_ORDINARY_CUDA_CACHED47_50_PARITY_PASS steps={} exact=true natural_feedback=true two_process=true evidence_sha256={digest}",
+        "QWEN35_FORWARD_CUDA_PREFILL47_DECODE48_50_PARITY_PASS steps={} exact=true natural_feedback=true two_process=true evidence_sha256={digest}",
         receipt.parity.steps.len()
     );
     Ok(())

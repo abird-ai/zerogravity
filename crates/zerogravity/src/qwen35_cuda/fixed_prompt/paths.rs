@@ -1,5 +1,5 @@
 //! Fixed-prompt native artifact path resolution. Held source directory and
-//! digest helpers are shared with ordinary CUDA source authentication.
+//! digest helpers are shared with forward CUDA source authentication.
 
 use super::*;
 pub(crate) use crate::qwen35_cuda::{held_directory::Directory, source_inventory::digest};

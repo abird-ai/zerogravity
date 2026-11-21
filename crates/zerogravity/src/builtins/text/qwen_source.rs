@@ -2,7 +2,7 @@
 use crate::{
     gpu::{SourceCallModel, SourceCallSession},
     identity::SourceIdentity,
-    qwen35::plan::OrdinaryQwenPlan,
+    qwen35::plan::QwenForwardPlan,
     resource_arbiter::{AllocationClass, GlobalResourceLease},
 };
 use std::sync::{Arc, Mutex};
@@ -32,9 +32,9 @@ pub struct QwenServingProfile {
 }
 impl QwenServingProfile {
     pub(crate) fn validate_base(self) -> Result<(), ServiceError> {
-        use crate::qwen35::plan::{ORDINARY_SOURCE_MAX_CONTEXT, ORDINARY_SOURCE_MIN_CONTEXT};
+        use crate::qwen35::plan::{FORWARD_SOURCE_MAX_CONTEXT, FORWARD_SOURCE_MIN_CONTEXT};
         if !(1..=zerogravity_engine::router::MAX_ACTIVE_PER_WORKER).contains(&self.active)
-            || !(ORDINARY_SOURCE_MIN_CONTEXT..=ORDINARY_SOURCE_MAX_CONTEXT).contains(&self.context)
+            || !(FORWARD_SOURCE_MIN_CONTEXT..=FORWARD_SOURCE_MAX_CONTEXT).contains(&self.context)
             || self.output == 0
             || self.output > self.context
             || self.output > zerogravity_engine::router::MAX_OUTPUT_TOKENS
@@ -69,7 +69,7 @@ impl QwenServingProfile {
     }
 }
 struct Source {
-    plan: OrdinaryQwenPlan,
+    plan: QwenForwardPlan,
     metadata: crate::qwen35_source::Metadata,
     _snapshot: Arc<crate::cache::SnapshotDescriptorLease>,
     // Source/canonical metadata and plan allocation, not device/root storage.

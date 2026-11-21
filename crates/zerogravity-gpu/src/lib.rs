@@ -297,4 +297,4 @@ pub use hip::native::HipSourceBudget;
 #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
 pub use resident_inference::SourceCallInventory;
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-pub use resident_inference::{OrdinaryCudaSourceInventory, OrdinaryCudaWeightStorage};
+pub use resident_inference::{CudaForwardSourceInventory, CudaForwardWeightStorage};

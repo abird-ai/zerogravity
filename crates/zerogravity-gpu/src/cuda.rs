@@ -18,9 +18,6 @@ pub mod gdn;
 pub(crate) mod kernel;
 #[cfg(feature = "cuda-native-qualification")]
 pub mod native;
-#[cfg(feature = "cuda-native")]
-#[allow(dead_code)] // Internal candidate API; no production selector yet.
-pub mod ordinary_text;
 #[cfg(all(feature = "cuda-native", target_os = "linux"))]
 #[expect(
     dead_code,
@@ -29,6 +26,9 @@ pub mod ordinary_text;
 pub(crate) mod performance_candidates;
 #[cfg(feature = "cuda-native-qualification")]
 pub mod rms;
+#[cfg(feature = "cuda-native")]
+#[allow(dead_code)] // Internal candidate API; no production selector yet.
+pub mod text_forward;
 #[cfg(feature = "cuda-native")]
 pub(crate) mod word_transport;
 

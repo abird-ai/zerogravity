@@ -458,7 +458,7 @@ fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unawar
         .unwrap();
     let contract = RmsContract::TorchCpuBf16Avx2;
     let normalized = math
-        .ordinary_rms_profiled(parameter.clone(), &input, contract)
+        .forward_rms_profiled(parameter.clone(), &input, contract)
         .unwrap();
     assert_eq!(normalized.into_vec().unwrap(), [2.0; 256]);
     for changed in [
@@ -484,7 +484,7 @@ fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unawar
         },
     ] {
         assert!(
-            math.ordinary_rms_profiled(changed, &input, contract)
+            math.forward_rms_profiled(changed, &input, contract)
                 .is_err()
         );
     }
@@ -513,18 +513,18 @@ fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unawar
         256
     );
     assert!(matches!(
-        math.ordinary_rms_profiled(parameter.clone(), &view, contract),
+        math.forward_rms_profiled(parameter.clone(), &view, contract),
         Err(Error::State(message)) if message.contains("contiguous")
     ));
     let packed = math.contiguous(&view).unwrap();
     let normalized = math
-        .ordinary_rms_profiled(parameter.clone(), &packed, contract)
+        .forward_rms_profiled(parameter.clone(), &packed, contract)
         .unwrap();
     assert_eq!(normalized.into_vec().unwrap(), [2.0; 256]);
     let mut foreign = crate::host_math::HostMath::for_operator_slice(&second, None);
     assert!(
         foreign
-            .ordinary_rms_profiled(
+            .forward_rms_profiled(
                 second
                     .parameter_descriptor(QwenParameterRole::InputNorm(0))
                     .unwrap(),
@@ -554,7 +554,7 @@ fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unawar
     let mut unaware = crate::host_math::HostMath::for_operator_slice(&first, Some(&provider));
     assert!(
         unaware
-            .ordinary_rms_profiled(parameter, &input, contract)
+            .forward_rms_profiled(parameter, &input, contract)
             .is_err()
     );
     assert!(!provider.0.load(Ordering::Relaxed));
@@ -592,7 +592,7 @@ fn typed_ordinary_rms_refuses_unqualified_source_epsilon_before_recording_or_exe
         )
         .unwrap();
     assert!(
-        math.ordinary_rms_profiled(
+        math.forward_rms_profiled(
             model
                 .parameter_descriptor(QwenParameterRole::InputNorm(0))
                 .unwrap(),

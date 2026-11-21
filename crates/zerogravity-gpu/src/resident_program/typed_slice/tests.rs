@@ -153,7 +153,7 @@ fn record(source: &VerifiedTensorSource, extra: bool) -> Result<RecordedOperator
         PlanBuilder::inputs().token,
         EmbeddingContract::Bf16OutputInput,
     )?;
-    let n = b.ordinary_rms_profiled(
+    let n = b.forward_rms_profiled(
         source.parameter("gamma")?.source_parameter(),
         &x,
         RmsContract::TorchCpuBf16Avx2,

@@ -15,7 +15,7 @@ use std::{
 use zerogravity::{
     Result,
     gpu::{Device, ResidentModel},
-    qwen35::plan::OrdinaryQwenPlan,
+    qwen35::plan::QwenForwardPlan,
     resource_arbiter::ResourceArbiter,
 };
 
@@ -98,12 +98,7 @@ impl Held {
     }
 }
 
-pub fn run(
-    loaded: Arc<Loaded>,
-    plan: OrdinaryQwenPlan,
-    directory: &Path,
-    hash: &str,
-) -> Result<()> {
+pub fn run(loaded: Arc<Loaded>, plan: QwenForwardPlan, directory: &Path, hash: &str) -> Result<()> {
     let _host = plan.source().reserve_backend_workspace(16 * 1024 * 1024)?;
     let manifest_path = directory.join("source-trig-reference-r1.json");
     let manifest_size = reference::stamp(&reference::open(&manifest_path)?)?[2] as usize;
@@ -146,12 +141,12 @@ pub fn run(
         )?;
     }
     drive::block_on(async {
-        let inventory = ResidentModel::ordinary_cpu_source_preflight(
+        let inventory = ResidentModel::cpu_forward_source_preflight(
             plan.source().clone(),
             plan.plan().clone(),
             2,
         )?;
-        let model = ResidentModel::load_ordinary_cpu_source(
+        let model = ResidentModel::load_cpu_forward_source(
             Device::Hip(Default::default()),
             plan.source().clone(),
             loaded.clone(),
@@ -160,7 +155,7 @@ pub fn run(
             None,
         )
         .await?;
-        let probe = model.ordinary_cpu_source_native_probe().await?;
+        let probe = model.cpu_forward_source_native_probe().await?;
         let active = probe.observe()?;
         need(
             active.retained && active.pending_events == 0 && active.quarantined_handles == 0,
@@ -207,7 +202,7 @@ pub fn run(
             )?;
         }
         drop(actual);
-        model.shutdown_ordinary_cpu_source().await?;
+        model.shutdown_cpu_forward_source().await?;
         let terminal = probe.observe()?;
         need(
             !terminal.retained

@@ -15,7 +15,7 @@ use zerogravity::{
     Result,
     accelerator::program::{ConvDomain, KvDomain, RecurrentDomain, SourceCallMode, StateSlot},
     gpu::Device,
-    qwen35_cuda::{self, ordinary_candidate::Model},
+    qwen35_cuda::{self, forward_candidate::Model},
     resource_arbiter::{
         AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
     },

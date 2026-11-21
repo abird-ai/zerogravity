@@ -196,7 +196,7 @@ fn normalize_cuda_smart_input(
 struct CudaSmartCandidate {
     state_policy: crate::models::QwenCudaStatePolicy,
     cohort_width: usize,
-    inventory: crate::gpu::OrdinaryCudaSourceInventory,
+    inventory: crate::gpu::CudaForwardSourceInventory,
 }
 
 #[cfg(feature = "qwen35-cuda")]
@@ -216,7 +216,7 @@ fn resolve_cuda_smart_config(
     backend: SourceBackend,
 ) -> Result<(SourceBackend, QwenServingProfile), ServiceError> {
     use crate::{
-        gpu::{OrdinaryCudaWeightStorage, ResidentModel},
+        gpu::{CudaForwardWeightStorage, ResidentModel},
         smart_config::{SmartConfigDecision, SmartConfigMode, SmartConfigSource},
     };
 
@@ -324,7 +324,7 @@ fn resolve_cuda_smart_config(
     let mut refusals = Vec::new();
     for cohort_width in native_values {
         for state_policy in &state_values {
-            match ResidentModel::ordinary_cuda_source_preflight_for_state_policy(
+            match ResidentModel::cuda_forward_source_preflight_for_state_policy(
                 plan.clone(),
                 profile.active,
                 cohort_width,
@@ -349,7 +349,7 @@ fn resolve_cuda_smart_config(
         .max_by_key(|candidate| {
             (
                 usize::from(
-                    candidate.inventory.weight_storage == OrdinaryCudaWeightStorage::Resident,
+                    candidate.inventory.weight_storage == CudaForwardWeightStorage::Resident,
                 ),
                 candidate.cohort_width,
                 usize::from(matches!(
@@ -519,23 +519,21 @@ pub(crate) fn load_router(
     // reconstruction and no alternate scheduler/publisher.
     let resident = match backend {
         #[cfg(feature = "qwen35-hip")]
-        SourceBackend::Hip(budget) => {
-            block_on(ResidentModel::load_ordinary_cpu_source_with_budget(
-                Device::Hip(Default::default()),
-                source.plan.source().clone(),
-                source.clone(),
-                source.plan.plan().clone(),
-                profile.active,
-                budget,
-                None,
-            ))
-        }
+        SourceBackend::Hip(budget) => block_on(ResidentModel::load_cpu_forward_source_with_budget(
+            Device::Hip(Default::default()),
+            source.plan.source().clone(),
+            source.clone(),
+            source.plan.plan().clone(),
+            profile.active,
+            budget,
+            None,
+        )),
         #[cfg(feature = "qwen35-cuda")]
         SourceBackend::Cuda {
             provider_bytes,
             device_bytes,
             smart_config,
-        } => block_on(ResidentModel::load_ordinary_cuda_source_with_state_policy(
+        } => block_on(ResidentModel::load_cuda_forward_source_with_state_policy(
             Device::Cuda(Default::default()),
             source.plan.source().clone(),
             source.clone(),
@@ -741,7 +739,7 @@ mod tests {
         );
         assert_eq!(plan.context_capacity_tokens(), 514);
         assert_eq!(plan.max_chunk_rows(), 64);
-        let inventory = ResidentModel::ordinary_cpu_source_preflight(
+        let inventory = ResidentModel::cpu_forward_source_preflight(
             plan.source().clone(),
             plan.plan().clone(),
             2,
@@ -981,7 +979,7 @@ mod cuda_paged_tests {
 
     async fn trajectory(
         model: &Arc<SourceCallModel>,
-        plan: &crate::qwen35::plan::OrdinaryQwenPlan,
+        plan: &crate::qwen35::plan::QwenForwardPlan,
         tokens: &[u32],
         page_tokens: usize,
     ) -> crate::Result<Vec<Checkpoint>> {
@@ -1029,7 +1027,7 @@ mod cuda_paged_tests {
 
     async fn native_trajectory(
         model: &Arc<SourceCallModel>,
-        plan: &crate::qwen35::plan::OrdinaryQwenPlan,
+        plan: &crate::qwen35::plan::QwenForwardPlan,
         tokens: &[u32],
         width: usize,
     ) -> crate::Result<Vec<(NativeCheckpoint, NativeCheckpoint)>> {
@@ -1127,7 +1125,7 @@ mod cuda_paged_tests {
         let (parts, page_tokens, max_append_tokens, tokens) =
             paged_source_fixture("paged-source-native-transport");
         let run = |policy| {
-            ResidentModel::load_ordinary_cuda_source_with_state_policy(
+            ResidentModel::load_cuda_forward_source_with_state_policy(
                 Device::Cuda(Default::default()),
                 parts.source.plan.source().clone(),
                 parts.source.clone(),
@@ -1199,7 +1197,7 @@ mod cuda_paged_tests {
     fn original_source_paged_complete_prefix_fork_matches_replay() {
         let (parts, page_tokens, max_append_tokens, tokens) =
             paged_source_fixture("paged-source-prefix-fork");
-        let model = block_on(ResidentModel::load_ordinary_cuda_source_with_state_policy(
+        let model = block_on(ResidentModel::load_cuda_forward_source_with_state_policy(
             Device::Cuda(Default::default()),
             parts.source.plan.source().clone(),
             parts.source.clone(),
@@ -1664,7 +1662,7 @@ mod cuda_paged_tests {
         tokens.truncate(needed);
 
         let run = |policy| {
-            ResidentModel::load_ordinary_cuda_source_with_state_policy(
+            ResidentModel::load_cuda_forward_source_with_state_policy(
                 Device::Cuda(Default::default()),
                 parts.source.plan.source().clone(),
                 parts.source.clone(),
@@ -1731,7 +1729,7 @@ mod cuda_paged_tests {
         let (parts, page_tokens, max_append_tokens, tokens) =
             paged_source_fixture("paged-source-lifecycle");
         block_on(async {
-            let model = ResidentModel::load_ordinary_cuda_source_with_state_policy(
+            let model = ResidentModel::load_cuda_forward_source_with_state_policy(
                 Device::Cuda(Default::default()),
                 parts.source.plan.source().clone(),
                 parts.source.clone(),
@@ -1954,7 +1952,7 @@ mod cuda_paged_tests {
             .prompt_tokens(&" a".repeat(65), false)
             .unwrap();
         assert_eq!(tokens.len(), 65);
-        let model = block_on(ResidentModel::load_ordinary_cuda_source_with_state_policy(
+        let model = block_on(ResidentModel::load_cuda_forward_source_with_state_policy(
             Device::Cuda(Default::default()),
             parts.source.plan.source().clone(),
             parts.source.clone(),
@@ -2145,7 +2143,7 @@ mod cuda_paged_tests {
         let (parts, page_tokens, max_append_tokens, tokens) =
             paged_source_fixture("paged-source-inflight-cancel");
         block_on(async {
-            let model = ResidentModel::load_ordinary_cuda_source_with_state_policy(
+            let model = ResidentModel::load_cuda_forward_source_with_state_policy(
                 Device::Cuda(Default::default()),
                 parts.source.plan.source().clone(),
                 parts.source.clone(),
@@ -2292,7 +2290,7 @@ mod cuda_paged_tests {
         let (parts, page_tokens, max_append_tokens, tokens) =
             paged_source_fixture("paged-source-unknown-completion");
         block_on(async {
-            let model = ResidentModel::load_ordinary_cuda_source_with_state_policy(
+            let model = ResidentModel::load_cuda_forward_source_with_state_policy(
                 Device::Cuda(Default::default()),
                 parts.source.plan.source().clone(),
                 parts.source.clone(),

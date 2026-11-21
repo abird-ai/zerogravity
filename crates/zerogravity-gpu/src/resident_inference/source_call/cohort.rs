@@ -92,7 +92,7 @@ impl SourceCallModel {
         }
         let Some(inner) = self
             .inner
-            .prepare_ordinary_source_decode_cohort(&sessions, &requests, &scopes)
+            .prepare_forward_source_decode_cohort(&sessions, &requests, &scopes)
             .await?
         else {
             return Ok(SourceCallCohortPreparation::Capacity);
@@ -147,7 +147,7 @@ impl SourceCallModel {
         }
         let Some(inner) = self
             .inner
-            .prepare_ordinary_source_prefill_cohort(&sessions, &requests, &scopes, emit_logits)
+            .prepare_forward_source_prefill_cohort(&sessions, &requests, &scopes, emit_logits)
             .await?
         else {
             return Ok(SourceCallCohortPreparation::Capacity);
@@ -159,11 +159,11 @@ impl SourceCallModel {
 }
 
 impl ResidentModel {
-    async fn ordinary_source_cohort_candidates(
+    async fn forward_source_cohort_candidates(
         &self,
         sessions: &[&ResidentSession],
         tokens: &[usize],
-    ) -> Result<Option<(Vec<OrdinaryCandidateState>, Vec<Vec<StateBinding>>)>> {
+    ) -> Result<Option<(Vec<ForwardCandidateState>, Vec<Vec<StateBinding>>)>> {
         if sessions.len() != tokens.len() {
             return Err(Error::State(
                 "ordinary source cohort candidate coverage differs".into(),
@@ -174,7 +174,7 @@ impl ResidentModel {
             let position = usize::try_from(session.binding().frontier())
                 .map_err(|_| Error::Limit("ordinary source cohort frontier".into()))?;
             match self
-                .ordinary_candidate_state(&session.domains, tokens, position)
+                .forward_candidate_state(&session.domains, tokens, position)
                 .await
             {
                 Ok(candidate) => candidates.push(candidate),
@@ -196,7 +196,7 @@ impl ResidentModel {
         Ok(Some((candidates, bindings)))
     }
 
-    async fn prepare_ordinary_source_prefill_cohort(
+    async fn prepare_forward_source_prefill_cohort(
         self: &Arc<Self>,
         sessions: &[&ResidentSession],
         requests: &[ForwardPlan],
@@ -293,7 +293,7 @@ impl ResidentModel {
             .map(|call| call.rows().len())
             .collect::<Vec<_>>();
         let Some((candidates, bindings)) = self
-            .ordinary_source_cohort_candidates(sessions, &row_counts)
+            .forward_source_cohort_candidates(sessions, &row_counts)
             .await?
         else {
             return Ok(None);
@@ -325,21 +325,19 @@ impl ResidentModel {
         )?;
         let mut slot = ticket.wait().await?;
         let workspace = self.workspace.lock().await;
-        if !workspace.program.is_ordinary_source() {
+        if !workspace.program.is_forward_source() {
             return Err(Error::State(
                 "ordinary source prefill cohort reached another resident model".into(),
             ));
         }
         for (request, binding) in requests.iter().zip(&bindings) {
-            workspace
-                .program
-                .validate_ordinary_source_request(request)?;
+            workspace.program.validate_forward_source_request(request)?;
             workspace
                 .program
                 .validate_source_call_states(request, binding)?;
         }
         let values = workspace
-            .ordinary_cohort_values
+            .forward_cohort_values
             .as_ref()
             .filter(|values| values.width() >= width)
             .ok_or_else(|| {
@@ -398,7 +396,7 @@ impl ResidentModel {
         }
         let mut submitted = workspace
             .program
-            .launch_ordinary_source_prefill_cohort(
+            .launch_forward_source_prefill_cohort(
                 &mut flight,
                 requests,
                 &bindings,
@@ -594,7 +592,7 @@ impl ResidentModel {
         }))
     }
 
-    async fn prepare_ordinary_source_decode_cohort(
+    async fn prepare_forward_source_decode_cohort(
         self: &Arc<Self>,
         sessions: &[&ResidentSession],
         requests: &[ForwardPlan],
@@ -667,7 +665,7 @@ impl ResidentModel {
         }
         let tokens = vec![1usize; width];
         let Some((candidates, bindings)) = self
-            .ordinary_source_cohort_candidates(sessions, &tokens)
+            .forward_source_cohort_candidates(sessions, &tokens)
             .await?
         else {
             return Ok(None);
@@ -692,21 +690,19 @@ impl ResidentModel {
         )?;
         let mut slot = ticket.wait().await?;
         let workspace = self.workspace.lock().await;
-        if !workspace.program.is_ordinary_source() {
+        if !workspace.program.is_forward_source() {
             return Err(Error::State(
                 "ordinary source cohort reached another resident model".into(),
             ));
         }
         for (request, binding) in requests.iter().zip(&bindings) {
-            workspace
-                .program
-                .validate_ordinary_source_request(request)?;
+            workspace.program.validate_forward_source_request(request)?;
             workspace
                 .program
                 .validate_source_call_states(request, binding)?;
         }
         let values = workspace
-            .ordinary_cohort_values
+            .forward_cohort_values
             .as_ref()
             .filter(|values| values.width() >= width)
             .ok_or_else(|| {
@@ -750,7 +746,7 @@ impl ResidentModel {
         }
         let mut submitted = workspace
             .program
-            .launch_ordinary_source_decode_cohort(
+            .launch_forward_source_decode_cohort(
                 &mut flight,
                 requests,
                 &bindings,

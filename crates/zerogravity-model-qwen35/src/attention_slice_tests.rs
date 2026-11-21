@@ -369,7 +369,7 @@ fn exact_role_provider_and_foreign_issuer_refusals_have_no_partial_output() {
         256
     );
     assert!(
-        math.ordinary_rms_profiled(gdn_gamma, &imported, RmsContract::TorchCpuBf16Avx2)
+        math.forward_rms_profiled(gdn_gamma, &imported, RmsContract::TorchCpuBf16Avx2)
             .is_err()
     );
     assert!(
@@ -387,7 +387,7 @@ fn exact_role_provider_and_foreign_issuer_refusals_have_no_partial_output() {
             .is_err()
     );
     assert!(
-        math.ordinary_rms_profiled(
+        math.forward_rms_profiled(
             operators
                 .parameter_descriptor(QwenParameterRole::QueryNorm(3))
                 .unwrap(),

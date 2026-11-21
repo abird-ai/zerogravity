@@ -152,7 +152,7 @@ pub(super) fn open(
             manifest_sha256: spec.manifest_sha,
             hidden_width: spec.hidden,
             vocabulary_size: 248320,
-            // Ordinary backend discovery is not implemented. Keep capability
+            // Forward backend discovery is not implemented. Keep capability
             // inventory empty rather than advertising qualification captures.
             prompt_token_counts: &[],
             max_output_tokens: 0,

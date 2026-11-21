@@ -1,4 +1,4 @@
-//! Explicit real-source ordinary CUDA lifecycle target; fresh process per terminal cut.
+//! Explicit real-source CUDA forward lifecycle target; fresh process per terminal cut.
 use std::{
     future::{Future, poll_fn},
     path::PathBuf,
@@ -46,10 +46,10 @@ fn block_on<F: Future>(future: F) -> F::Output {
 }
 
 #[test]
-#[ignore = "isolated release ordinary real-model lifecycle; normal/cancel/unknown mode"]
-fn ordinary_lifecycle_on_nvidia() -> Result<()> {
+#[ignore = "isolated release forward real-model lifecycle; normal/cancel/unknown mode"]
+fn forward_lifecycle_on_nvidia() -> Result<()> {
     require(!cfg!(debug_assertions), "release lifecycle target required")?;
-    let mode = std::env::var("ZG_QWEN35_ORDINARY_LIFECYCLE")
+    let mode = std::env::var("ZG_QWEN35_FORWARD_LIFECYCLE")
         .map_err(|_| Error::State("lifecycle mode required".into()))?;
     require(
         matches!(
@@ -81,7 +81,7 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
     };
     block_on(async {
         let device = Device::cuda(0).map_err(|e| Error::State(format!("CUDA device: {e}")))?;
-        let loaded = qwen35_cuda::ordinary_candidate::Model::load(
+        let loaded = qwen35_cuda::forward_candidate::Model::load(
             device,
             &directory,
             capacity,
@@ -95,14 +95,14 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
             return match loaded {
                 Err(Error::Resource(detail)) => {
                     println!(
-                        "ORDINARY_CUDA_ADMISSION_REFUSAL_PASS capacity={capacity} available={provider_bytes} preflight=true detail={detail}"
+                        "FORWARD_CUDA_ADMISSION_REFUSAL_PASS capacity={capacity} available={provider_bytes} preflight=true detail={detail}"
                     );
                     Ok(())
                 }
-                Err(Error::Limit(detail)) if detail.starts_with("ordinary CUDA workspace/") => {
+                Err(Error::Limit(detail)) if detail.starts_with("CUDA forward workspace/") => {
                     // Admission precedes physical-owner creation; historical resident-only32K refusal remains historical.
                     println!(
-                        "ORDINARY_CUDA_ADMISSION_REFUSAL_PASS capacity={capacity} available={provider_bytes} preflight=true detail={detail}"
+                        "FORWARD_CUDA_ADMISSION_REFUSAL_PASS capacity={capacity} available={provider_bytes} preflight=true detail={detail}"
                     );
                     Ok(())
                 }
@@ -132,7 +132,7 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
         let cancelled = AtomicBool::new(true);
         require(
             session
-                .prepare_ordinary_cuda_cancellable(
+                .prepare_cuda_forward_cancellable(
                     request(SourceCallMode::Prefill, 0, prompt.as_slice())?,
                     &cancelled,
                 )
@@ -149,7 +149,7 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
         service.ensure_usable()?;
         cancelled.store(false, Ordering::Release);
         let output = session
-            .forward_ordinary_cuda(request(SourceCallMode::Prefill, 0, prompt.as_slice())?)
+            .forward_cuda(request(SourceCallMode::Prefill, 0, prompt.as_slice())?)
             .await?;
         require(
             output.logits.len() == 248_320 && output.logits.iter().all(|x| x.is_finite()),
@@ -172,7 +172,7 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
         )?;
         if mode == "normal" {
             let prepared = session
-                .prepare_ordinary_cuda(request(SourceCallMode::Decode, 47, &[token])?)
+                .prepare_cuda_forward(request(SourceCallMode::Decode, 47, &[token])?)
                 .await?;
             require(session.binding() == before, "prepare published a root")?;
             session.restore(&prior)?;
@@ -184,7 +184,7 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
             let observed = session.snapshot().read_domains().await?;
             diagnostics::compare_domains(&expected, &observed)?;
             let _ = session
-                .forward_ordinary_cuda(request(SourceCallMode::Decode, 47, &[token])?)
+                .forward_cuda(request(SourceCallMode::Decode, 47, &[token])?)
                 .await?;
             require(
                 session.binding().frontier() == 48 && service.pending_events()? == 0,
@@ -207,7 +207,7 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
                 "normal shutdown namespace/event/fence differs",
             )?;
             println!(
-                "ORDINARY_CUDA_LIFECYCLE_PASS mode=normal family={family} capacity={capacity} active=48 precancel=true stale_ready=refused restore=exact shutdown=retired"
+                "FORWARD_CUDA_LIFECYCLE_PASS mode=normal family={family} capacity={capacity} active=48 precancel=true stale_ready=refused restore=exact shutdown=retired"
             );
             return Ok(());
         }
@@ -217,7 +217,7 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
         if !page_cut {
             resident.qualification_arm_abort(1);
         }
-        let mut future = Box::pin(session.prepare_ordinary_cuda_cancellable(
+        let mut future = Box::pin(session.prepare_cuda_forward_cancellable(
             request(SourceCallMode::Decode, 47, &[token])?,
             &cancelled,
         ));
@@ -243,7 +243,7 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
             cancelled.store(true, Ordering::Release);
             resident.qualification_reset_launch_seen();
             require(
-                matches!(future.await, Err(Error::State(reason)) if reason == "ordinary CUDA request cancelled"),
+                matches!(future.await, Err(Error::State(reason)) if reason == "CUDA forward request cancelled"),
                 "after-launch cancellation returned another result",
             )?;
         } else {
@@ -258,7 +258,7 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
             diagnostics::compare_domains(&expected, &session.snapshot().read_domains().await?)?;
             cancelled.store(false, Ordering::Release);
             let _ = session
-                .forward_ordinary_cuda(request(SourceCallMode::Decode, 47, &[token])?)
+                .forward_cuda(request(SourceCallMode::Decode, 47, &[token])?)
                 .await?;
             require(
                 session.binding().frontier() == 48 && service.pending_events()? == 0,
@@ -275,7 +275,7 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
                 "streamed cancellation shutdown did not retire",
             )?;
             println!(
-                "ORDINARY_CUDA_LIFECYCLE_PASS mode={mode} family={family} streamed=true completed_discard=true root_unchanged=true replay=true shutdown=retired"
+                "FORWARD_CUDA_LIFECYCLE_PASS mode={mode} family={family} streamed=true completed_discard=true root_unchanged=true replay=true shutdown=retired"
             );
             return Ok(());
         }
@@ -298,7 +298,7 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
         let other = diagnostics::QualificationService::new(
             Device::cuda(0).map_err(|e| Error::State(format!("CUDA: {e}")))?,
             SourceIdentity::for_new_allocation()?,
-            ResourceOwner::new("ordinary-fault-peer", "refused")?,
+            ResourceOwner::new("forward-fault-peer", "refused")?,
             MIB,
             (qwen35_cuda::DEVICE_MIB * MIB) as u64,
         );
@@ -318,7 +318,7 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
             "quarantine released original charges after external drops",
         )?;
         println!(
-            "ORDINARY_CUDA_LIFECYCLE_PASS mode={mode} family={family} capacity={capacity} submitted_handles={handles} quarantined={quarantined} root_unchanged=true prior_bits=exact tail=zero peer=refused retained_bytes={retained} recovery=false"
+            "FORWARD_CUDA_LIFECYCLE_PASS mode={mode} family={family} capacity={capacity} submitted_handles={handles} quarantined={quarantined} root_unchanged=true prior_bits=exact tail=zero peer=refused retained_bytes={retained} recovery=false"
         );
         Ok(())
     })

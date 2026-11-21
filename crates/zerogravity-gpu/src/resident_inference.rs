@@ -92,7 +92,7 @@ use crate::resident_leases::{
     ResidentLease, ResidentPhysical, ResidentReady, ResidentService, ResidentSource,
 };
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-use crate::resident_program::ordinary_cuda;
+use crate::resident_program::cuda_forward;
 use crate::resident_program::{
     AllocationInit, BatchProgram, DeviceBuffer, ResidentBufferLayout, ResidentBufferRole,
     ResidentOutput, ResidentPhysicalType, ResidentPreflight, ResidentProgram, RuntimeParameters,
@@ -126,7 +126,7 @@ struct Workspace {
     greedy: Option<[Handle; 2]>,
     batch: Option<BatchWorkspace>,
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-    ordinary_cohort_values: Option<Arc<ordinary_cuda::OrdinaryCudaCohortValues>>,
+    forward_cohort_values: Option<Arc<cuda_forward::CudaForwardCohortValues>>,
     program: ResidentProgram,
     // Raw aliases/programs drop before final leases trigger source cleanup.
     leases: Vec<(ResidentLease, DeviceAccess)>,
@@ -146,22 +146,22 @@ struct BatchWorkspace {
 
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum OrdinaryCudaWeightStorage {
+pub enum CudaForwardWeightStorage {
     Resident,
     Streamed,
 }
 
-/// Exact host-only result of the same cold-fit calculation used by ordinary
+/// Exact host-only result of the same cold-fit calculation used by forward
 /// CUDA model loading. No device/client/resource owner is created.
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct OrdinaryCudaSourceInventory {
+pub struct CudaForwardSourceInventory {
     pub provider_capacity_bytes: usize,
     pub fit_capacity_bytes: usize,
     pub context_capacity_tokens: usize,
     pub root_count: usize,
     pub cohort_width: usize,
-    pub weight_storage: OrdinaryCudaWeightStorage,
+    pub weight_storage: CudaForwardWeightStorage,
     pub source_weight_bytes: usize,
     pub resident_weight_bytes: usize,
     pub value_bytes: usize,
@@ -201,7 +201,7 @@ struct Domain {
 impl Domain {
     #[allow(
         dead_code,
-        reason = "canonical paged KV Domain construction is selected by the next ordinary-session slice"
+        reason = "canonical paged KV Domain construction is selected by the next forward-session slice"
     )]
     fn from_paged_kv(paged_kv: paged_state::ResidentPagedKvDomain) -> Result<Self> {
         let slot = paged_kv.slot();
@@ -459,7 +459,7 @@ fn canonical_write_outputs(current: &[Domain], candidate: &[Domain]) -> Result<V
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
-fn ordinary_cancel_requested(cancelled: Option<&std::sync::atomic::AtomicBool>) -> bool {
+fn forward_cancel_requested(cancelled: Option<&std::sync::atomic::AtomicBool>) -> bool {
     cancelled.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire))
 }
 
@@ -467,9 +467,9 @@ fn ordinary_cancel_requested(cancelled: Option<&std::sync::atomic::AtomicBool>) 
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
-fn ordinary_not_cancelled(cancelled: Option<&std::sync::atomic::AtomicBool>) -> Result<()> {
-    if ordinary_cancel_requested(cancelled) {
-        return Err(Error::State("ordinary CUDA request cancelled".into()));
+fn forward_not_cancelled(cancelled: Option<&std::sync::atomic::AtomicBool>) -> Result<()> {
+    if forward_cancel_requested(cancelled) {
+        return Err(Error::State("CUDA forward request cancelled".into()));
     }
     Ok(())
 }
@@ -478,7 +478,7 @@ fn ordinary_not_cancelled(cancelled: Option<&std::sync::atomic::AtomicBool>) -> 
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
-async fn retire_ordinary_cancelled(
+async fn retire_forward_cancelled(
     flight: crate::resident_leases::ResidentSubmission<'_>,
     accesses: &[(ResidentLease, DeviceAccess)],
     status: &Handle,
@@ -487,7 +487,7 @@ async fn retire_ordinary_cancelled(
     let read = flight.retire_cancelled_with_readback(&[status]).await?;
     if read.len() != 1 || !all_zero(&read[0]) {
         return Err(Error::State(
-            "cancelled ordinary source work reported a nonzero status".into(),
+            "cancelled forward source work reported a nonzero status".into(),
         ));
     }
     Ok(())
@@ -597,17 +597,17 @@ impl zerogravity_core::provider::PreparedExecutable for ResidentModel {
 }
 
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-fn ordinary_cuda_source_admission(
+fn cuda_forward_source_admission(
     plan: Arc<ForwardPlan>,
     provider_cap: usize,
     roots: usize,
     cohort_width: usize,
     state_reserve_bytes: Option<usize>,
 ) -> Result<(
-    ordinary_cuda::OrdinaryCudaAdmission,
-    OrdinaryCudaSourceInventory,
+    cuda_forward::CudaForwardAdmission,
+    CudaForwardSourceInventory,
 )> {
-    let admission = ordinary_cuda::OrdinaryCudaAdmission::analyze(plan)?;
+    let admission = cuda_forward::CudaForwardAdmission::analyze(plan)?;
     let admission = match state_reserve_bytes {
         Some(bytes) => admission.with_state_reserve(roots, bytes)?,
         None => admission.with_roots(roots)?,
@@ -617,23 +617,23 @@ fn ordinary_cuda_source_admission(
         .into_iter()
         .try_fold(0usize, |sum, bytes| {
             sum.checked_add(bytes)
-                .ok_or_else(|| Error::Limit("ordinary CUDA greedy workspace overflow".into()))
+                .ok_or_else(|| Error::Limit("CUDA forward greedy workspace overflow".into()))
         })?;
     let cohort_value_reserve = admission.cohort_value_bytes(cohort_width)?;
     let greedy_reserve = greedy_workspace
         .checked_add(
             roots
                 .checked_mul(12)
-                .ok_or_else(|| Error::Limit("ordinary CUDA greedy packet reserve".into()))?,
+                .ok_or_else(|| Error::Limit("CUDA forward greedy packet reserve".into()))?,
         )
-        .ok_or_else(|| Error::Limit("ordinary CUDA greedy reserve overflow".into()))?;
+        .ok_or_else(|| Error::Limit("CUDA forward greedy reserve overflow".into()))?;
     let runtime_reserve = greedy_reserve
         .checked_add(cohort_value_reserve)
-        .ok_or_else(|| Error::Limit("ordinary CUDA runtime reserve overflow".into()))?;
+        .ok_or_else(|| Error::Limit("CUDA forward runtime reserve overflow".into()))?;
     let fit_cap = provider_cap.checked_sub(runtime_reserve).ok_or_else(|| {
         Error::resource(
             "CUDA provider memory / VRAM budget",
-            "ordinary CUDA runtime reserve admission",
+            "CUDA forward runtime reserve admission",
             runtime_reserve as u64,
             provider_cap as u64,
         )
@@ -642,11 +642,11 @@ fn ordinary_cuda_source_admission(
     let model_admission_bytes = admission.total_bytes()?;
     let total = model_admission_bytes
         .checked_add(runtime_reserve)
-        .ok_or_else(|| Error::Limit("ordinary CUDA total admission overflow".into()))?;
+        .ok_or_else(|| Error::Limit("CUDA forward total admission overflow".into()))?;
     if total > provider_cap {
         return Err(Error::resource(
             "CUDA provider memory / VRAM budget",
-            "ordinary CUDA cold/root/runtime admission",
+            "CUDA forward cold/root/runtime admission",
             total as u64,
             provider_cap as u64,
         ));
@@ -655,19 +655,19 @@ fn ordinary_cuda_source_admission(
     let resident_weight_bytes = preflight.source_bytes;
     if resident_weight_bytes != 0 && resident_weight_bytes != source_weight_bytes {
         return Err(Error::State(
-            "ordinary CUDA fitted source residency is neither full nor streamed".into(),
+            "CUDA forward fitted source residency is neither full nor streamed".into(),
         ));
     }
-    let inventory = OrdinaryCudaSourceInventory {
+    let inventory = CudaForwardSourceInventory {
         provider_capacity_bytes: provider_cap,
         fit_capacity_bytes: fit_cap,
         context_capacity_tokens: admission.capacity(),
         root_count: roots,
         cohort_width,
         weight_storage: if resident_weight_bytes == 0 {
-            OrdinaryCudaWeightStorage::Streamed
+            CudaForwardWeightStorage::Streamed
         } else {
-            OrdinaryCudaWeightStorage::Resident
+            CudaForwardWeightStorage::Resident
         },
         source_weight_bytes,
         resident_weight_bytes,
@@ -684,12 +684,12 @@ fn ordinary_cuda_source_admission(
 
 impl ResidentModel {
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-    pub fn ordinary_cuda_source_preflight(
+    pub fn cuda_forward_source_preflight(
         plan: Arc<ForwardPlan>,
         max_sessions: usize,
         cohort_width: usize,
         provider_cap: usize,
-    ) -> Result<OrdinaryCudaSourceInventory> {
+    ) -> Result<CudaForwardSourceInventory> {
         if !(1..=64).contains(&max_sessions)
             || !matches!(cohort_width, 0 | 4 | 8)
             || (cohort_width != 0 && max_sessions < cohort_width)
@@ -700,7 +700,7 @@ impl ResidentModel {
             .checked_mul(2)
             .and_then(|n| n.checked_add(2))
             .ok_or_else(|| Error::Limit("source-call root count overflow".into()))?;
-        ordinary_cuda_source_admission(plan, provider_cap, roots, cohort_width, None)
+        cuda_forward_source_admission(plan, provider_cap, roots, cohort_width, None)
             .map(|(_, inventory)| inventory)
     }
 
@@ -747,7 +747,7 @@ impl ResidentModel {
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
     #[allow(clippy::too_many_arguments)]
-    pub async fn load_ordinary_cuda(
+    pub async fn load_cuda_forward(
         device: Device,
         source: VerifiedTensorSource,
         plan: Arc<ForwardPlan>,
@@ -755,7 +755,7 @@ impl ResidentModel {
         device_cap: u64,
         cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<Arc<Self>> {
-        Self::load_ordinary_cuda_roots(
+        Self::load_cuda_forward_roots(
             device,
             source,
             plan,
@@ -772,7 +772,7 @@ impl ResidentModel {
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
     #[allow(clippy::too_many_arguments)]
-    async fn load_ordinary_cuda_roots(
+    async fn load_cuda_forward_roots(
         device: Device,
         source: VerifiedTensorSource,
         plan: Arc<ForwardPlan>,
@@ -787,7 +787,7 @@ impl ResidentModel {
         validate_provider(&device)?;
         if !matches!(device, Device::Cuda(_)) {
             return Err(Error::Unsupported(
-                "ordinary CUDA resident model requires CUDA".into(),
+                "CUDA forward resident model requires CUDA".into(),
             ));
         }
 
@@ -795,7 +795,7 @@ impl ResidentModel {
         // CUDA. A live shared-card observation below may only LOWER this cap;
         // when it does, rerun this exact same placement helper rather than
         // introducing a second estimator.
-        let (configured_admission, _inventory) = ordinary_cuda_source_admission(
+        let (configured_admission, _inventory) = cuda_forward_source_admission(
             plan.clone(),
             provider_cap,
             roots,
@@ -805,7 +805,7 @@ impl ResidentModel {
         let source_identity = configured_admission.source();
         if source.source_identity() != source_identity {
             return Err(Error::State(
-                "ordinary CUDA verified source differs from plan".into(),
+                "CUDA forward verified source differs from plan".into(),
             ));
         }
 
@@ -814,7 +814,7 @@ impl ResidentModel {
         let admission = if effective_cap == provider_cap {
             configured_admission
         } else {
-            ordinary_cuda_source_admission(
+            cuda_forward_source_admission(
                 plan,
                 effective_cap,
                 roots,
@@ -827,7 +827,7 @@ impl ResidentModel {
         let vocab = admission.vocabulary() as u64;
         let expected_preflight = admission.preflight().clone();
         let owner = ResourceOwner {
-            model: format!("ordinary-qwen-source-{source_identity:?}"),
+            model: format!("forward-qwen-source-{source_identity:?}"),
             session: "resident-program".into(),
         };
         let service = physical.attach_model(
@@ -835,7 +835,7 @@ impl ResidentModel {
             owner,
             effective_cap,
         )?;
-        let prepared = ordinary_cuda::prepare_program(
+        let prepared = cuda_forward::prepare_program(
             service.clone(),
             admission,
             source,
@@ -854,20 +854,20 @@ impl ResidentModel {
                     .iter()
                     .try_fold(0usize, |sum, (lease, _)| {
                         sum.checked_add(lease.bytes()).ok_or_else(|| {
-                            Error::Limit("ordinary CUDA owned access byte sum".into())
+                            Error::Limit("CUDA forward owned access byte sum".into())
                         })
                     })?
             || program.budget().prior_state_bytes != expected_preflight.prior_state_bytes
             || program.budget().candidate_state_bytes != expected_preflight.candidate_state_bytes
         {
             return Err(Error::State(
-                "ordinary CUDA bound resident model/preflight differs".into(),
+                "CUDA forward bound resident model/preflight differs".into(),
             ));
         }
         let states = program.budget().states.clone();
         let state_bytes = program.budget().prior_state_bytes;
         let greedy = prepared.greedy;
-        let ordinary_cohort_values = prepared.cohort_values;
+        let forward_cohort_values = prepared.cohort_values;
         let mut leases = prepared.owned_accesses;
         leases.extend(prepared.cohort_value_accesses);
         leases.extend(prepared.greedy_accesses);
@@ -887,7 +887,7 @@ impl ResidentModel {
             workspace: Mutex::new(Workspace {
                 program,
                 greedy: Some(greedy),
-                ordinary_cohort_values,
+                forward_cohort_values,
                 leases,
                 state_accesses: prepared.state_accesses,
                 logit_accesses: prepared.logit_accesses,
@@ -898,17 +898,17 @@ impl ResidentModel {
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-    pub async fn shutdown_ordinary_cuda(self: Arc<Self>) -> Result<()> {
-        let model = into_unique_owner(self, "ordinary CUDA resident model")?;
+    pub async fn shutdown_cuda_forward(self: Arc<Self>) -> Result<()> {
+        let model = into_unique_owner(self, "CUDA forward resident model")?;
         let service = model.service.clone();
         {
             let workspace = model.workspace.lock().await;
-            if !workspace.program.is_ordinary_cuda() {
+            if !workspace.program.is_cuda_forward() {
                 return Err(Error::State(
-                    "ordinary CUDA shutdown requested from another resident model".into(),
+                    "CUDA forward shutdown requested from another resident model".into(),
                 ));
             }
-            workspace.program.retire_ordinary_cuda().await?;
+            workspace.program.retire_cuda_forward().await?;
         }
 
         // No sessions can remain after the unique-owner check. Dropping the
@@ -918,10 +918,10 @@ impl ResidentModel {
         service
             .client()
             .memory_cleanup()
-            .map_err(|error| Error::State(format!("ordinary CUDA shutdown cleanup: {error}")))?;
+            .map_err(|error| Error::State(format!("CUDA forward shutdown cleanup: {error}")))?;
         if service.resident_bytes()? != 0 || service.model_events()? != 0 {
             return Err(Error::State(
-                "ordinary CUDA shutdown left resident bytes or events".into(),
+                "CUDA forward shutdown left resident bytes or events".into(),
             ));
         }
         service.close_model_namespace()
@@ -1095,7 +1095,7 @@ impl ResidentModel {
                 program,
                 greedy: Some(greedy),
                 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-                ordinary_cohort_values: None,
+                forward_cohort_values: None,
                 leases,
                 state_accesses,
                 logit_accesses,
@@ -2018,7 +2018,7 @@ impl ResidentModel {
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
-enum OrdinaryCandidateState {
+enum ForwardCandidateState {
     Contiguous {
         domains: Vec<Domain>,
         bindings: Vec<StateBinding>,
@@ -2031,7 +2031,7 @@ enum OrdinaryCandidateState {
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
-impl OrdinaryCandidateState {
+impl ForwardCandidateState {
     fn bindings(&self) -> &[StateBinding] {
         match self {
             Self::Contiguous { bindings, .. } => bindings,
@@ -2132,7 +2132,7 @@ fn dedupe_resident_accesses(
                     || !Arc::ptr_eq(existing.service(), lease.service())
                 {
                     return Err(Error::State(
-                        "ordinary resident access identity aliases".into(),
+                        "forward resident access identity aliases".into(),
                     ));
                 }
                 if access == DeviceAccess::Write {
@@ -2149,18 +2149,18 @@ fn dedupe_resident_accesses(
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
 impl ResidentModel {
-    async fn ordinary_candidate_state(
+    async fn forward_candidate_state(
         &self,
         prior: &[Domain],
         tokens: usize,
         position: usize,
-    ) -> Result<OrdinaryCandidateState> {
+    ) -> Result<ForwardCandidateState> {
         if let Some(storage) = self.state_pool.get()
             && let state_pool::PooledStateStorage::Hybrid(pools) = &storage.storage
         {
             #[cfg(feature = "cuda-cublas")]
             {
-                return Ok(OrdinaryCandidateState::Hybrid(pools.candidate(
+                return Ok(ForwardCandidateState::Hybrid(pools.candidate(
                     &self.states,
                     prior,
                     tokens,
@@ -2171,25 +2171,25 @@ impl ResidentModel {
             {
                 let _ = (pools, tokens);
                 return Err(Error::Unsupported(
-                    "hybrid paged state requires ordinary CUDA".into(),
+                    "hybrid paged state requires CUDA forward".into(),
                 ));
             }
         }
         let domains = self.allocate_state(false).await?;
         self.validate_domains(&domains, false)?;
         let bindings = bind_domains(prior, &domains, position)?;
-        Ok(OrdinaryCandidateState::Contiguous { domains, bindings })
+        Ok(ForwardCandidateState::Contiguous { domains, bindings })
     }
 
-    async fn execute_ordinary_source(
+    async fn execute_forward_source(
         &self,
         base: RootBinding,
         prior: &[Domain],
-        candidate: OrdinaryCandidateState,
+        candidate: ForwardCandidateState,
         request: &ForwardPlan,
-        options: OrdinarySourceOptions<'_, '_>,
+        options: ForwardSourceOptions<'_, '_>,
     ) -> Result<(Vec<Domain>, ResidentReady, InferenceReadback)> {
-        let OrdinarySourceOptions {
+        let ForwardSourceOptions {
             output,
             readout,
             device_token,
@@ -2198,7 +2198,7 @@ impl ResidentModel {
             completion_owner,
             submitted: submitted_flag,
         } = options;
-        ordinary_not_cancelled(cancelled)?;
+        forward_not_cancelled(cancelled)?;
         self.service.ensure_usable()?;
         if !matches!(
             (output, readout),
@@ -2207,12 +2207,12 @@ impl ResidentModel {
                 | (ResidentOutput::Logits, Readout::Greedy)
         ) {
             return Err(Error::State(
-                "ordinary CUDA execution/readout policy differs".into(),
+                "CUDA forward execution/readout policy differs".into(),
             ));
         }
         let call = request
             .source_call()
-            .ok_or_else(|| Error::State("ordinary CUDA materialized call absent".into()))?;
+            .ok_or_else(|| Error::State("CUDA forward materialized call absent".into()))?;
         if base.source() != self.service.source_identity()
             || call.source() != base.source()
             || call.rows().base() as u64 != base.frontier()
@@ -2221,7 +2221,7 @@ impl ResidentModel {
             || call.rows().frontier() > self.capacity
         {
             return Err(Error::State(
-                "ordinary CUDA session root/call geometry differs".into(),
+                "CUDA forward session root/call geometry differs".into(),
             ));
         }
         if let Some(token) = &device_token
@@ -2233,18 +2233,18 @@ impl ResidentModel {
                 || !Arc::ptr_eq(token.lease.service(), &self.service))
         {
             return Err(Error::State(
-                "ordinary CUDA device token differs from request root/input".into(),
+                "CUDA forward device token differs from request root/input".into(),
             ));
         }
         self.validate_domains(prior, true)?;
         let bindings = candidate.bindings();
 
-        ordinary_not_cancelled(cancelled)?;
+        forward_not_cancelled(cancelled)?;
         let ticket = self.service.queue().submit(
             self.service.budget(),
             ResourceOwner {
                 model: self.service.owner().model.clone(),
-                session: format!("ordinary-session-{}", base.session().get()),
+                session: format!("forward-session-{}", base.session().get()),
             },
             &[AllocationRequest {
                 kind: AllocationClass::Scratch,
@@ -2253,16 +2253,14 @@ impl ResidentModel {
             None,
         )?;
         let mut slot = ticket.wait().await?;
-        ordinary_not_cancelled(cancelled)?;
+        forward_not_cancelled(cancelled)?;
         let workspace = self.workspace.lock().await;
-        if !workspace.program.is_ordinary_source() {
+        if !workspace.program.is_forward_source() {
             return Err(Error::State(
-                "ordinary CUDA request reached another resident model".into(),
+                "CUDA forward request reached another resident model".into(),
             ));
         }
-        workspace
-            .program
-            .validate_ordinary_source_request(request)?;
+        workspace.program.validate_forward_source_request(request)?;
         workspace
             .program
             .validate_source_call_states(request, bindings)?;
@@ -2276,7 +2274,7 @@ impl ResidentModel {
         };
         let packet = if matches!(readout, Readout::Greedy) {
             let greedy = workspace.greedy.as_ref().ok_or_else(|| {
-                Error::Unsupported("ordinary CUDA model has no greedy workspace".into())
+                Error::Unsupported("CUDA forward model has no greedy workspace".into())
             })?;
             for handle in greedy {
                 accesses.push((
@@ -2297,7 +2295,7 @@ impl ResidentModel {
             accesses.push((token.lease.clone(), DeviceAccess::Read));
         }
         let accesses = dedupe_resident_accesses(accesses)?;
-        ordinary_not_cancelled(cancelled)?;
+        forward_not_cancelled(cancelled)?;
         slot.begin_submission()?;
         let mut flight = self.service.submit(base.root(), &accesses)?;
         if let Some(owner) = completion_owner {
@@ -2310,7 +2308,7 @@ impl ResidentModel {
         let gather_dispatches = candidate.enqueue_gather_cuda(&flight)?;
         let submitted = workspace
             .program
-            .launch_ordinary_source(
+            .launch_forward_source(
                 &mut flight,
                 request,
                 bindings,
@@ -2331,7 +2329,7 @@ impl ResidentModel {
                 .dispatches
                 .checked_add(gather_dispatches)
                 .and_then(|n| n.checked_add(scatter_dispatches))
-                .ok_or_else(|| Error::Limit("ordinary hybrid state dispatch count".into()))?;
+                .ok_or_else(|| Error::Limit("forward hybrid state dispatch count".into()))?;
             submitted
         };
         #[cfg(not(feature = "cuda-cublas"))]
@@ -2340,9 +2338,9 @@ impl ResidentModel {
             let logits = submitted
                 .logits
                 .as_ref()
-                .ok_or_else(|| Error::State("ordinary CUDA greedy logits absent".into()))?;
+                .ok_or_else(|| Error::State("CUDA forward greedy logits absent".into()))?;
             let greedy = workspace.greedy.as_ref().ok_or_else(|| {
-                Error::Unsupported("ordinary CUDA model has no greedy workspace".into())
+                Error::Unsupported("CUDA forward model has no greedy workspace".into())
             })?;
             #[cfg(feature = "cuda-cublas")]
             {
@@ -2364,30 +2362,30 @@ impl ResidentModel {
             {
                 let _ = (logits, greedy, packet);
                 return Err(Error::Unsupported(
-                    "ordinary source device greedy requires CUDA".into(),
+                    "forward source device greedy requires CUDA".into(),
                 ));
             }
         }
         #[cfg(feature = "hardware-abort-probe")]
         self.qualification_after_launch(flight.handles().len())
             .await;
-        if !wait_on_cancel && ordinary_cancel_requested(cancelled) {
-            retire_ordinary_cancelled(flight, &accesses, &submitted.status).await?;
+        if !wait_on_cancel && forward_cancel_requested(cancelled) {
+            retire_forward_cancelled(flight, &accesses, &submitted.status).await?;
             slot.finish()?;
-            return Err(Error::State("ordinary CUDA request cancelled".into()));
+            return Err(Error::State("CUDA forward request cancelled".into()));
         }
 
         let expected = workspace.program.plan().proposed_domains();
         if submitted.proposals.len() != expected.len() {
             return Err(Error::State(
-                "ordinary CUDA incomplete state effect receipt".into(),
+                "CUDA forward incomplete state effect receipt".into(),
             ));
         }
         for ((version, buffers), expected) in submitted.proposals.iter().zip(expected) {
             let binding = bindings
                 .iter()
                 .find(|binding| binding.slot == version.slot)
-                .ok_or_else(|| Error::State("ordinary CUDA foreign state proposal".into()))?;
+                .ok_or_else(|| Error::State("CUDA forward foreign state proposal".into()))?;
             let actual = buffers.handles();
             let target = binding.candidate.handles();
             if version.slot != expected.slot
@@ -2396,7 +2394,7 @@ impl ResidentModel {
                 || actual.iter().zip(target).any(|(a, b)| !same_handle(a, &b))
             {
                 return Err(Error::State(
-                    "ordinary CUDA state effect version/allocation mismatch".into(),
+                    "CUDA forward state effect version/allocation mismatch".into(),
                 ));
             }
         }
@@ -2408,7 +2406,7 @@ impl ResidentModel {
                 let logits = submitted
                     .logits
                     .as_ref()
-                    .ok_or_else(|| Error::State("ordinary CUDA logits receipt absent".into()))?;
+                    .ok_or_else(|| Error::State("CUDA forward logits receipt absent".into()))?;
                 let lease = lease_for(&accesses, &logits.handle)?;
                 cohort.push(logits.readback(
                     lease,
@@ -2421,14 +2419,14 @@ impl ResidentModel {
                 cohort.push(
                     packet
                         .as_ref()
-                        .ok_or_else(|| Error::State("ordinary CUDA greedy packet absent".into()))?
+                        .ok_or_else(|| Error::State("CUDA forward greedy packet absent".into()))?
                         .readback(0, 12)?,
                 );
             }
             Readout::None => {
                 if submitted.logits.is_some() {
                     return Err(Error::State(
-                        "ordinary CUDA state-only execution returned logits".into(),
+                        "CUDA forward state-only execution returned logits".into(),
                     ));
                 }
                 cohort.push(lease_for(&accesses, &submitted.status)?.readback(0, 4)?);
@@ -2438,10 +2436,10 @@ impl ResidentModel {
         let mut promoted = candidate.write_outputs()?;
         promoted.extend(packet.iter().cloned());
         let expected_readback_bytes = cohort.iter().map(|item| item.bytes()).sum();
-        if !wait_on_cancel && ordinary_cancel_requested(cancelled) {
-            retire_ordinary_cancelled(flight, &accesses, &submitted.status).await?;
+        if !wait_on_cancel && forward_cancel_requested(cancelled) {
+            retire_forward_cancelled(flight, &accesses, &submitted.status).await?;
             slot.finish()?;
-            return Err(Error::State("ordinary CUDA request cancelled".into()));
+            return Err(Error::State("CUDA forward request cancelled".into()));
         }
         let (ready, read) = flight
             .complete_with_readback(&promoted, &cohort, |values| {
@@ -2449,17 +2447,17 @@ impl ResidentModel {
                     Readout::Logits => {
                         if !all_zero(&values[0]) {
                             return Err(Error::State(
-                                "ordinary CUDA shared status rejected proposed graph".into(),
+                                "CUDA forward shared status rejected proposed graph".into(),
                             ));
                         }
                         if !words(&values[1])?.iter().all(|value| value.is_finite()) {
-                            return Err(Error::State("ordinary CUDA nonfinite F32 logits".into()));
+                            return Err(Error::State("CUDA forward nonfinite F32 logits".into()));
                         }
                     }
                     Readout::Greedy => {
                         let packet = &values[0];
                         if packet.len() != 12 {
-                            return Err(Error::State("ordinary CUDA greedy packet extent".into()));
+                            return Err(Error::State("CUDA forward greedy packet extent".into()));
                         }
                         let id = u32::from_ne_bytes(packet[0..4].try_into().unwrap());
                         let bits = u32::from_ne_bytes(packet[4..8].try_into().unwrap());
@@ -2468,13 +2466,13 @@ impl ResidentModel {
                             || !f32::from_bits(bits).is_finite()
                             || flags != 0
                         {
-                            return Err(Error::State("ordinary CUDA invalid greedy packet".into()));
+                            return Err(Error::State("CUDA forward invalid greedy packet".into()));
                         }
                     }
                     Readout::None => {
                         if !all_zero(&values[0]) {
                             return Err(Error::State(
-                                "ordinary CUDA shared status rejected proposed graph".into(),
+                                "CUDA forward shared status rejected proposed graph".into(),
                             ));
                         }
                     }
@@ -2484,7 +2482,7 @@ impl ResidentModel {
             .await?;
         slot.finish()?;
         if !wait_on_cancel {
-            ordinary_not_cancelled(cancelled)?;
+            forward_not_cancelled(cancelled)?;
         }
         let candidate = candidate.into_domains()?;
         self.validate_domains(&candidate, true)?;
@@ -2492,7 +2490,7 @@ impl ResidentModel {
         let device_token = if matches!(readout, Readout::Greedy) {
             Some(ResidentToken {
                 lease: packet.ok_or_else(|| {
-                    Error::State("ordinary CUDA greedy packet absent after completion".into())
+                    Error::State("CUDA forward greedy packet absent after completion".into())
                 })?,
                 producer: None,
                 id: u32::from_ne_bytes(read[0][0..4].try_into().unwrap()),
@@ -2987,11 +2985,11 @@ impl ResidentSession {
         })
     }
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-    pub async fn prepare_ordinary_cuda(&self, request: ForwardPlan) -> Result<PreparedInference> {
-        self.prepare_ordinary_source_mode(
+    pub async fn prepare_cuda_forward(&self, request: ForwardPlan) -> Result<PreparedInference> {
+        self.prepare_forward_source_mode(
             request,
             zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1,
-            OrdinarySourceOptions {
+            ForwardSourceOptions {
                 output: ResidentOutput::Logits,
                 readout: Readout::Logits,
                 device_token: None,
@@ -3005,15 +3003,15 @@ impl ResidentSession {
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-    pub async fn prepare_ordinary_cuda_cancellable(
+    pub async fn prepare_cuda_forward_cancellable(
         &self,
         request: ForwardPlan,
         cancelled: &std::sync::atomic::AtomicBool,
     ) -> Result<PreparedInference> {
-        self.prepare_ordinary_source_mode(
+        self.prepare_forward_source_mode(
             request,
             zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1,
-            OrdinarySourceOptions {
+            ForwardSourceOptions {
                 output: ResidentOutput::Logits,
                 readout: Readout::Logits,
                 device_token: None,
@@ -3027,14 +3025,14 @@ impl ResidentSession {
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-    pub async fn prepare_ordinary_cuda_state_only(
+    pub async fn prepare_cuda_forward_state_only(
         &self,
         request: ForwardPlan,
     ) -> Result<PreparedInference> {
-        self.prepare_ordinary_source_mode(
+        self.prepare_forward_source_mode(
             request,
             zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1,
-            OrdinarySourceOptions {
+            ForwardSourceOptions {
                 output: ResidentOutput::StateOnly,
                 readout: Readout::None,
                 device_token: None,
@@ -3048,15 +3046,15 @@ impl ResidentSession {
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-    pub async fn prepare_ordinary_cuda_state_only_cancellable(
+    pub async fn prepare_cuda_forward_state_only_cancellable(
         &self,
         request: ForwardPlan,
         cancelled: &std::sync::atomic::AtomicBool,
     ) -> Result<PreparedInference> {
-        self.prepare_ordinary_source_mode(
+        self.prepare_forward_source_mode(
             request,
             zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1,
-            OrdinarySourceOptions {
+            ForwardSourceOptions {
                 output: ResidentOutput::StateOnly,
                 readout: Readout::None,
                 device_token: None,
@@ -3073,22 +3071,22 @@ impl ResidentSession {
         target_os = "linux",
         any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
     ))]
-    async fn prepare_ordinary_source_mode(
+    async fn prepare_forward_source_mode(
         &self,
         request: ForwardPlan,
         contract: zerogravity_core::accelerator::program::NumericalContract,
-        options: OrdinarySourceOptions<'_, '_>,
+        options: ForwardSourceOptions<'_, '_>,
     ) -> Result<PreparedInference> {
         let cancelled = options.cancelled;
-        ordinary_not_cancelled(cancelled)?;
+        forward_not_cancelled(cancelled)?;
         if request.numerical_profile() != contract.program_profile() {
             return Err(Error::Unsupported(
-                "ordinary source request numerical contract differs".into(),
+                "forward source request numerical contract differs".into(),
             ));
         }
         let call = request
             .source_call()
-            .ok_or_else(|| Error::State("ordinary CUDA request call absent".into()))?
+            .ok_or_else(|| Error::State("CUDA forward request call absent".into()))?
             .clone();
         let base = self.binding();
         if call.source() != base.source()
@@ -3098,40 +3096,40 @@ impl ResidentSession {
             || call.rows().frontier() > self.model.capacity
         {
             return Err(Error::State(
-                "ordinary CUDA request differs from current session root".into(),
+                "CUDA forward request differs from current session root".into(),
             ));
         }
 
         // Validate source semantics/topology before candidate-root allocation.
         {
             let workspace = self.model.workspace.lock().await;
-            if !workspace.program.is_ordinary_source() {
+            if !workspace.program.is_forward_source() {
                 return Err(Error::State(
-                    "ordinary CUDA request belongs to another resident model".into(),
+                    "CUDA forward request belongs to another resident model".into(),
                 ));
             }
             workspace
                 .program
-                .validate_ordinary_source_request(&request)?;
+                .validate_forward_source_request(&request)?;
         }
 
-        ordinary_not_cancelled(cancelled)?;
+        forward_not_cancelled(cancelled)?;
         let count = u64::try_from(call.rows().len())
-            .map_err(|_| Error::Limit("ordinary CUDA request row count".into()))?;
+            .map_err(|_| Error::Limit("CUDA forward request row count".into()))?;
         let attempt = self.authority.begin_advance(count)?;
-        ordinary_not_cancelled(cancelled)?;
+        forward_not_cancelled(cancelled)?;
         let candidate = self
             .model
-            .ordinary_candidate_state(&self.domains, call.rows().len(), call.rows().base())
+            .forward_candidate_state(&self.domains, call.rows().len(), call.rows().base())
             .await?;
-        ordinary_not_cancelled(cancelled)?;
+        forward_not_cancelled(cancelled)?;
         let retained_call = options.completion_owner.is_some();
         let (domains, ready, readback) = self
             .model
-            .execute_ordinary_source(base, &self.domains, candidate, &request, options)
+            .execute_forward_source(base, &self.domains, candidate, &request, options)
             .await?;
         if !retained_call {
-            ordinary_not_cancelled(cancelled)?;
+            forward_not_cancelled(cancelled)?;
         }
         Ok(PreparedInference {
             attempt,
@@ -3143,46 +3141,43 @@ impl ResidentSession {
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-    pub async fn forward_ordinary_cuda(
-        &mut self,
-        request: ForwardPlan,
-    ) -> Result<InferenceReadback> {
-        let prepared = self.prepare_ordinary_cuda(request).await?;
+    pub async fn forward_cuda(&mut self, request: ForwardPlan) -> Result<InferenceReadback> {
+        let prepared = self.prepare_cuda_forward(request).await?;
         self.commit(prepared)
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-    pub async fn forward_ordinary_cuda_cancellable(
+    pub async fn forward_cuda_cancellable(
         &mut self,
         request: ForwardPlan,
         cancelled: &std::sync::atomic::AtomicBool,
     ) -> Result<InferenceReadback> {
         let prepared = self
-            .prepare_ordinary_cuda_cancellable(request, cancelled)
+            .prepare_cuda_forward_cancellable(request, cancelled)
             .await?;
-        ordinary_not_cancelled(Some(cancelled))?;
+        forward_not_cancelled(Some(cancelled))?;
         self.commit(prepared)
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-    pub async fn forward_ordinary_cuda_state_only(
+    pub async fn forward_cuda_state_only(
         &mut self,
         request: ForwardPlan,
     ) -> Result<InferenceReadback> {
-        let prepared = self.prepare_ordinary_cuda_state_only(request).await?;
+        let prepared = self.prepare_cuda_forward_state_only(request).await?;
         self.commit(prepared)
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-    pub async fn forward_ordinary_cuda_state_only_cancellable(
+    pub async fn forward_cuda_state_only_cancellable(
         &mut self,
         request: ForwardPlan,
         cancelled: &std::sync::atomic::AtomicBool,
     ) -> Result<InferenceReadback> {
         let prepared = self
-            .prepare_ordinary_cuda_state_only_cancellable(request, cancelled)
+            .prepare_cuda_forward_state_only_cancellable(request, cancelled)
             .await?;
-        ordinary_not_cancelled(Some(cancelled))?;
+        forward_not_cancelled(Some(cancelled))?;
         self.commit(prepared)
     }
 
@@ -3613,7 +3608,7 @@ impl CheckpointFixture for ResidentSession {
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
-struct OrdinarySourceOptions<'a, 'b> {
+struct ForwardSourceOptions<'a, 'b> {
     output: ResidentOutput,
     readout: Readout,
     device_token: Option<ResidentToken>,
@@ -3624,7 +3619,7 @@ struct OrdinarySourceOptions<'a, 'b> {
 }
 
 #[cfg(test)]
-mod ordinary_shutdown_owner_tests {
+mod forward_shutdown_owner_tests {
     use super::into_unique_owner;
     use std::sync::Arc;
 
@@ -3632,24 +3627,24 @@ mod ordinary_shutdown_owner_tests {
     fn shutdown_requires_unique_model_owner() {
         let owner = Arc::new(17usize);
         let sibling = owner.clone();
-        assert!(into_unique_owner(owner, "ordinary CUDA test model").is_err());
+        assert!(into_unique_owner(owner, "CUDA forward test model").is_err());
         drop(sibling);
 
         let owner = Arc::new(23usize);
         assert_eq!(
-            into_unique_owner(owner, "ordinary CUDA test model").unwrap(),
+            into_unique_owner(owner, "CUDA forward test model").unwrap(),
             23
         );
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
     #[test]
-    fn ordinary_cancellation_is_explicit_and_fail_closed() {
+    fn forward_cancellation_is_explicit_and_fail_closed() {
         let flag = std::sync::atomic::AtomicBool::new(false);
-        assert!(super::ordinary_not_cancelled(Some(&flag)).is_ok());
+        assert!(super::forward_not_cancelled(Some(&flag)).is_ok());
         flag.store(true, std::sync::atomic::Ordering::Release);
-        assert!(super::ordinary_not_cancelled(Some(&flag)).is_err());
-        assert!(super::ordinary_not_cancelled(None).is_ok());
+        assert!(super::forward_not_cancelled(Some(&flag)).is_err());
+        assert!(super::forward_not_cancelled(None).is_ok());
     }
 
     #[test]

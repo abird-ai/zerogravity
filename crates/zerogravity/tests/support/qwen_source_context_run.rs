@@ -4,12 +4,12 @@ use reference::{ObservationMap, Observer};
 use zerogravity::{
     accelerator::program::SourceCallMode,
     gpu::{ResidentOutput, SourceCallModel, SourceCallPreparation, SourceCallPublication},
-    qwen35::plan::OrdinaryQwenPlan,
+    qwen35::plan::QwenForwardPlan,
 };
 
 pub async fn trajectories(
     model: &Arc<SourceCallModel>,
-    plan: &OrdinaryQwenPlan,
+    plan: &QwenForwardPlan,
     expected: &Expected,
     case: usize,
     capacity: usize,

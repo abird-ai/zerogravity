@@ -33,8 +33,14 @@ authority explicit.
   `fused`, `cubin`, `device`, or another exact mechanism when that is what
   is meant.
 - **forward** is the canonical term for the normal source-backed model
-  execution path. Historical `ordinary*` code is being migrated to
-  `forward*`; do not introduce new `ordinary` names.
+  execution path. Qwen model semantics use `QwenForward*`, authenticated source
+  authority uses one backend-neutral `ForwardSourceSeal`, and CUDA mechanics use
+  `cuda_forward` / `CudaForward*`. The historical `ordinary*` Qwen execution
+  vocabulary is retired; do not reintroduce it.
+- **standard RMSNorm** is a separate arithmetic distinction from the forward
+  execution path. Historical `ordinary RMS` names are not mechanically
+  `forward RMS`; rename them only when their exact numerical distinction has a
+  clear replacement.
 - **autoregressive** is preferred over historical `natural` for committed
   model output fed into the next decoding step.
 - **all state domains** is preferred over `all42`; the number is a model
@@ -46,3 +52,7 @@ authority explicit.
 Historical commit messages, externally stable schema strings and provenance
 identifiers are not rewritten merely for style. Active APIs, modules, tests,
 diagnostics and current documentation should use the canonical vocabulary.
+
+The next isolated terminology family is `SourceCall*`: rename it around the
+actual invocation/source-execution concept rather than mixing that change into
+backend or model-forward naming.

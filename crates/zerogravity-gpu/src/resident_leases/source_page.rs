@@ -29,11 +29,11 @@ use zerogravity_core::encoding::StoredTensorEncoding;
 
 pub(crate) const PAGE_BYTES: usize = 1024 * 1024;
 const CONTROL_BYTES: usize = 64 * 1024;
-/// Ordinary source windows retained behind the same 1 MiB device page.
+/// Forward source windows retained behind the same 1 MiB device page.
 #[cfg(feature = "hip")]
 pub(crate) const RETIRED_PAGE_TRANSFERS: usize = 2;
 
-/// Exact host charge of the retained ordinary transfers. On the HIP route at
+/// Exact host charge of the retained forward transfers. On the HIP route at
 /// most two page-sized source windows live; each staged read is charged by its
 /// whole intersecting integrity chunks plus offset metadata, exactly as
 /// `TensorWindow::charged_staging_bytes` charges it. The persistent window
@@ -43,7 +43,7 @@ pub(crate) const RETIRED_PAGE_TRANSFERS: usize = 2;
 /// output leases are counted exactly; the old/new page metadata stays inside
 /// the existing 64 KiB control reservation, proved at construction.
 ///
-/// The serial route has no ring/page retirement: one ordinary window is staged
+/// The serial route has no ring/page retirement: one forward window is staged
 /// by its whole intersecting integrity chunks plus offset metadata. CUDA retains
 /// that exact authenticated owner through the existing consumer checkpoint and
 /// lets the original actor enqueue its bounded H2D directly; the portable route
@@ -617,7 +617,7 @@ impl ResidentSourcePage {
     ) -> Result<Arc<Self>> {
         Self::allocate_with(source, service, init, None)
     }
-    /// Shared original-actor page for ordinary windows; `None` keeps the
+    /// Shared original-actor page for forward windows; `None` keeps the
     /// existing serial generic path.
     #[cfg(feature = "hip")]
     pub(crate) fn allocate_observed(
@@ -773,13 +773,13 @@ impl ResidentSourcePage {
         }
         Ok(())
     }
-    /// Retire the oldest retained ordinary window before the next read or host
+    /// Retire the oldest retained forward window before the next read or host
     /// owner is allocated.
     #[cfg(feature = "hip")]
     fn make_room(&self) -> Result<()> {
         self.reap(false)
     }
-    /// Wait for every retained ordinary window; used at an operand boundary,
+    /// Wait for every retained forward window; used at an operand boundary,
     /// before a cached row, and at the original actual terminal boundaries.
     pub(crate) fn drain(&self) -> Result<()> {
         #[cfg(feature = "hip")]
@@ -787,7 +787,7 @@ impl ResidentSourcePage {
         #[cfg(not(feature = "hip"))]
         Ok(())
     }
-    /// Terminal body readiness: every ordinary window issued by this original
+    /// Terminal body readiness: every forward window issued by this original
     /// flight is retired; no forced pending count. On the known-healthy path
     /// this also destroys the retired HIP events on the ORIGINAL actor and drops
     /// this page's per-flight run reference while the source/owner/service are
@@ -985,7 +985,7 @@ impl ResidentSourcePage {
         }
         Ok(())
     }
-    /// Queue up to two ordinary windows on the same original page. Each write
+    /// Queue up to two forward windows on the same original page. Each write
     /// is recorded with its exact consumers; the host retires the oldest window
     /// with the real event, never by assuming enqueue equals completion.
     #[cfg(feature = "hip")]
@@ -1540,7 +1540,7 @@ impl ResidentSourcePage {
             .await
     }
     /// Explicit immutable single-row reuse in this SAME page. Another matrix,
-    /// ordinary page write or failed/uncertain consumer cannot produce a hit.
+    /// forward page write or failed/uncertain consumer cannot produce a hit.
     #[cfg(feature = "gemma-bf16-qualification")]
     pub(crate) async fn with_cached_row(
         self: &Arc<Self>,
@@ -1583,7 +1583,7 @@ impl ResidentSourcePage {
                     .await;
             }
             // Cached-row reuse remains the original completed-only synchronous
-            // path: retire the ordinary run first, then execute the serial
+            // path: retire the forward run first, then execute the serial
             // consumer checkpoint. No whole-flight Ready comes from a mark.
             self.drain()?;
         }
@@ -1833,7 +1833,7 @@ mod transport_tests {
     use super::*;
 
     #[test]
-    fn ordinary_windows_charge_actual_integrity_chunks_once() {
+    fn forward_windows_charge_actual_integrity_chunks_once() {
         // Default production scan chunk is 4 MiB. An unaligned page-sized
         // window intersects two whole chunks; two retained windows charge four
         // chunks, not two nominal page payloads.
@@ -1958,7 +1958,7 @@ mod source_fixture {
     }
 }
 
-/// Serial (non-HIP) source transport has no ring: one ordinary window is
+/// Serial (non-HIP) source transport has no ring: one forward window is
 /// staged by whole intersecting integrity chunks. The host charge must be that
 /// source-derived amount on top of the unchanged three-page family baseline.
 #[cfg(all(

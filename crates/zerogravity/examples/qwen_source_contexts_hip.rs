@@ -65,7 +65,7 @@ fn run() -> Result<()> {
         Arc::ptr_eq(original.owner(), loaded.model.owner()),
         "same original source owner",
     )?;
-    let seal = original.bind_ordinary_cpu_source()?;
+    let seal = original.bind_cpu_forward_source()?;
     if mode == "trig" {
         require_device()?;
         let plan = seal.build_plan(512)?;
@@ -116,11 +116,8 @@ fn run() -> Result<()> {
             reference::Observer::new(&expected, &map, call)?;
         }
     }
-    let inventory = ResidentModel::ordinary_cpu_source_preflight(
-        plan.source().clone(),
-        plan.plan().clone(),
-        2,
-    )?;
+    let inventory =
+        ResidentModel::cpu_forward_source_preflight(plan.source().clone(), plan.plan().clone(), 2)?;
     println!(
         "SOURCE_CONTEXT_REFERENCE model={} context={capacity} manifest={} inventory={inventory:?}",
         args[1], args[5]
@@ -139,7 +136,7 @@ fn run() -> Result<()> {
     let diagnose_latency = matches!(mode, "diagnose-latency" | "diagnose-kernels");
     let measure_kernels = mode == "diagnose-kernels";
     drive::block_on(async move {
-        let resident = ResidentModel::load_ordinary_cpu_source(
+        let resident = ResidentModel::load_cpu_forward_source(
             Device::Hip(Default::default()),
             plan.source().clone(),
             loaded.clone(),
@@ -148,7 +145,7 @@ fn run() -> Result<()> {
             None,
         )
         .await?;
-        let probe = resident.ordinary_cpu_source_native_probe().await?;
+        let probe = resident.cpu_forward_source_native_probe().await?;
         let active = probe.observe()?;
         need(
             active.retained
@@ -164,7 +161,7 @@ fn run() -> Result<()> {
         } else {
             context_run::trajectories(&resident, &plan, &expected, case, capacity).await?;
         }
-        resident.shutdown_ordinary_cpu_source().await?;
+        resident.shutdown_cpu_forward_source().await?;
         let terminal = probe.observe()?;
         need(
             !terminal.retained

@@ -26,7 +26,7 @@ use zerogravity::{
         Device, ResidentModel, ResidentOutput, SourceCallModel, SourceCallPreparation,
         SourceCallPublication,
     },
-    qwen35::{plan::OrdinaryQwenPlan, source::binding::OriginalWindowModelSource},
+    qwen35::{plan::QwenForwardPlan, source::binding::OriginalWindowModelSource},
 };
 
 fn selected(logits: &[f32]) -> Result<(u32, u32)> {
@@ -39,7 +39,7 @@ fn selected(logits: &[f32]) -> Result<(u32, u32)> {
 }
 async fn trajectories(
     model: &Arc<SourceCallModel>,
-    plan: &OrdinaryQwenPlan,
+    plan: &QwenForwardPlan,
     expected: &Expected,
     map: &ObservationMap,
     observed: bool,
@@ -236,7 +236,7 @@ fn run() -> Result<()> {
         original.owner().text_tensor_count(),
         original.owner().other_tensor_count()
     );
-    let plan = original.bind_ordinary_cpu_source()?.build_plan(514)?;
+    let plan = original.bind_cpu_forward_source()?.build_plan(514)?;
     let map = ObservationMap::new(&plan)?;
     for call in expected.calls() {
         let invocation = plan.bind_invocation(
@@ -257,7 +257,7 @@ fn run() -> Result<()> {
         Observer::new(&expected, &map, call)?;
     }
     let budget = source_budget::explicit()?.unwrap_or_default();
-    let inventory = ResidentModel::ordinary_cpu_source_preflight_with_budget(
+    let inventory = ResidentModel::cpu_forward_source_preflight_with_budget(
         plan.source().clone(),
         plan.plan().clone(),
         2,
@@ -292,7 +292,7 @@ fn run() -> Result<()> {
     drop(original);
     let label = args[1].as_str();
     drive::block_on(async move {
-        let resident = ResidentModel::load_ordinary_cpu_source_with_budget(
+        let resident = ResidentModel::load_cpu_forward_source_with_budget(
             Device::Hip(Default::default()),
             plan.source().clone(),
             loaded.clone(),
@@ -302,7 +302,7 @@ fn run() -> Result<()> {
             None,
         )
         .await?;
-        let probe = resident.ordinary_cpu_source_native_probe().await?;
+        let probe = resident.cpu_forward_source_native_probe().await?;
         let active = probe.observe()?;
         need(
             active.retained
@@ -372,7 +372,7 @@ fn run() -> Result<()> {
         if matches!(mode, "parity" | "state-parity") {
             trajectories(&resident, &plan, &expected, &map, mode == "parity").await?;
         }
-        resident.shutdown_ordinary_cpu_source().await?;
+        resident.shutdown_cpu_forward_source().await?;
         let terminal = probe.observe()?;
         need(
             !terminal.retained

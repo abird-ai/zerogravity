@@ -611,7 +611,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         let output = output.retain_workspace(workspace)?;
         Ok(output)
     }
-    fn ordinary_rms_profiled(
+    fn forward_rms_profiled(
         &mut self,
         parameter: SourceParameter,
         input: &HostValue,

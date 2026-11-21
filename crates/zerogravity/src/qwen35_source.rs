@@ -1,7 +1,7 @@
 //! Original Qwen source authentication shared by runtime and diagnostic callers.
 //!
 //! This opens only the exact approved original HF source and constructs the
-//! source-semantic seal used by the call-free ordinary plan. It owns no
+//! source-semantic seal used by the call-free forward plan. It owns no
 //! tokenizer, native artifact, capture table, GPU allocation or root authority.
 
 use self::source_inventory::{digest, member, select};
@@ -9,7 +9,7 @@ use crate::{
     Error, Result,
     accelerator::program::NumericalContract,
     qwen35::source::{
-        binding::{OrdinarySourceSeal, OriginalWindowModelSource},
+        binding::{ForwardSourceSeal, OriginalWindowModelSource},
         owned::QwenOriginalWindowText,
     },
     resource_arbiter::TransferAdmission,
@@ -44,7 +44,7 @@ pub(crate) struct Metadata {
 }
 
 pub(crate) struct Opened {
-    pub(crate) seal: OrdinarySourceSeal,
+    pub(crate) seal: ForwardSourceSeal,
     pub(crate) metadata: Metadata,
     #[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
     pub(crate) tokenizer: Option<Vec<u8>>,
@@ -91,9 +91,7 @@ pub(crate) fn open(
         }
         if name.ends_with(".safetensors") {
             if shards.len() >= spec.shard_count {
-                return Err(Error::Malformed(
-                    "ordinary Qwen original shard count".into(),
-                ));
+                return Err(Error::Malformed("Qwen forward original shard count".into()));
             }
             shards.push(ExpectedSourceShard::new(
                 name.into(),
@@ -131,7 +129,7 @@ pub(crate) fn open(
 
     if shards.len() != spec.shard_count {
         return Err(Error::Malformed(
-            "ordinary Qwen original shards absent".into(),
+            "Qwen forward original shards absent".into(),
         ));
     }
     let index = index.ok_or_else(|| Error::Malformed("original source index absent".into()))?;
@@ -162,17 +160,17 @@ pub(crate) fn open(
     )?);
     let model = OriginalWindowModelSource::from_owner(owner)?;
     let seal = match numerical {
-        NumericalContract::CudaSm86Bf16ReferenceV1 => model.bind_ordinary_cuda_source()?,
-        NumericalContract::TorchCpuAvx2Bf16MixedV1 => model.bind_ordinary_cpu_source()?,
+        NumericalContract::CudaSm86Bf16ReferenceV1 => model.bind_cuda_forward_source()?,
+        NumericalContract::TorchCpuAvx2Bf16MixedV1 => model.bind_cpu_forward_source()?,
         _ => {
             return Err(Error::Unsupported(
-                "ordinary source numerical contract".into(),
+                "forward source numerical contract".into(),
             ));
         }
     };
     if seal.model_profile().hidden_size() != spec.hidden {
         return Err(Error::State(
-            "ordinary Qwen actual source/profile differs from inventory".into(),
+            "Qwen forward actual source/profile differs from inventory".into(),
         ));
     }
     Ok(Opened {

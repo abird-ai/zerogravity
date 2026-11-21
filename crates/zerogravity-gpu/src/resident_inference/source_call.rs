@@ -74,7 +74,7 @@ pub struct SourceCallModel {
     state_policy: CudaSourceStatePolicy,
     #[cfg(feature = "cuda-cublas")]
     prefill_projection_classes:
-        Option<crate::resident_program::ordinary_cuda::PrefillProjectionClasses>,
+        Option<crate::resident_program::cuda_forward::PrefillProjectionClasses>,
     _source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
 }
 pub struct SourceCallSession {
@@ -154,7 +154,7 @@ impl SourceCallSnapshot {
 
 #[cfg(all(feature = "hip-source", feature = "hip"))]
 impl ResidentModel {
-    pub fn ordinary_cpu_source_preflight(
+    pub fn cpu_forward_source_preflight(
         source: VerifiedTensorSource,
         plan: Arc<ForwardPlan>,
         max_sessions: usize,
@@ -163,7 +163,7 @@ impl ResidentModel {
             .inventory()
             .clone())
     }
-    pub fn ordinary_cpu_source_preflight_with_budget(
+    pub fn cpu_forward_source_preflight_with_budget(
         source: VerifiedTensorSource,
         plan: Arc<ForwardPlan>,
         max_sessions: usize,
@@ -175,7 +175,7 @@ impl ResidentModel {
                 .clone(),
         )
     }
-    pub async fn load_ordinary_cpu_source(
+    pub async fn load_cpu_forward_source(
         device: Device,
         source: VerifiedTensorSource,
         source_owner: Arc<dyn std::any::Any + Send + Sync>,
@@ -183,7 +183,7 @@ impl ResidentModel {
         max_sessions: usize,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<SourceCallModel>> {
-        Self::load_ordinary_cpu_source_with_budget(
+        Self::load_cpu_forward_source_with_budget(
             device,
             source,
             source_owner,
@@ -195,7 +195,7 @@ impl ResidentModel {
         .await
     }
     #[allow(clippy::too_many_arguments)]
-    pub async fn load_ordinary_cpu_source_with_budget(
+    pub async fn load_cpu_forward_source_with_budget(
         device: Device,
         source: VerifiedTensorSource,
         source_owner: Arc<dyn std::any::Any + Send + Sync>,
@@ -204,7 +204,7 @@ impl ResidentModel {
         budget: crate::hip::native::HipSourceBudget,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<SourceCallModel>> {
-        ordinary_not_cancelled(cancelled)?;
+        forward_not_cancelled(cancelled)?;
         let control = source.reserve_workspace(CONTROL_BYTES)?;
         let capacity = plan.prefix_capacity();
         let admission =
@@ -241,7 +241,7 @@ impl ResidentModel {
             launch_seen: std::sync::atomic::AtomicUsize::new(0),
         });
         model.install_window_root_pool(source.clone(), prepared.inventory.root_count)?;
-        ordinary_not_cancelled(cancelled)?;
+        forward_not_cancelled(cancelled)?;
         Ok(Arc::new(SourceCallModel {
             inner: model,
             source,
@@ -285,7 +285,7 @@ impl ResidentModel {
                     ));
                 }
                 let admission =
-                    crate::resident_program::ordinary_cuda::OrdinaryCudaAdmission::analyze(
+                    crate::resident_program::cuda_forward::CudaForwardAdmission::analyze(
                         plan.clone(),
                     )?;
                 let preflight = admission.preflight();
@@ -305,13 +305,13 @@ impl ResidentModel {
     /// Pure source-call admission for one explicit state representation.
     /// No device/context/source owner is created. Smart startup selectors use
     /// this once at model load to compare only qualified physical policies.
-    pub fn ordinary_cuda_source_preflight_for_state_policy(
+    pub fn cuda_forward_source_preflight_for_state_policy(
         plan: Arc<ForwardPlan>,
         max_sessions: usize,
         cohort_width: usize,
         provider_cap: usize,
         state_policy: CudaSourceStatePolicy,
-    ) -> Result<OrdinaryCudaSourceInventory> {
+    ) -> Result<CudaForwardSourceInventory> {
         if !(1..=64).contains(&max_sessions)
             || !matches!(cohort_width, 0 | 4 | 8)
             || (cohort_width != 0 && max_sessions < cohort_width)
@@ -321,7 +321,7 @@ impl ResidentModel {
         let roots = Self::source_call_root_count(max_sessions)?;
         let state_reserve_bytes =
             Self::source_call_state_reserve(&plan, roots, max_sessions, state_policy)?;
-        super::ordinary_cuda_source_admission(
+        super::cuda_forward_source_admission(
             plan,
             provider_cap,
             roots,
@@ -332,7 +332,7 @@ impl ResidentModel {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn load_ordinary_cuda_source(
+    pub async fn load_cuda_forward_source(
         device: Device,
         source: VerifiedTensorSource,
         source_owner: Arc<dyn std::any::Any + Send + Sync>,
@@ -343,7 +343,7 @@ impl ResidentModel {
         device_cap: u64,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<SourceCallModel>> {
-        Self::load_ordinary_cuda_source_with_state_policy(
+        Self::load_cuda_forward_source_with_state_policy(
             device,
             source,
             source_owner,
@@ -359,7 +359,7 @@ impl ResidentModel {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn load_ordinary_cuda_source_with_state_policy(
+    pub async fn load_cuda_forward_source_with_state_policy(
         device: Device,
         source: VerifiedTensorSource,
         source_owner: Arc<dyn std::any::Any + Send + Sync>,
@@ -371,7 +371,7 @@ impl ResidentModel {
         state_policy: CudaSourceStatePolicy,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<SourceCallModel>> {
-        ordinary_not_cancelled(cancelled)?;
+        forward_not_cancelled(cancelled)?;
         if !(1..=64).contains(&max_sessions)
             || !matches!(cohort_width, 0 | 4 | 8)
             || (cohort_width != 0 && max_sessions < cohort_width)
@@ -383,9 +383,9 @@ impl ResidentModel {
             Self::source_call_state_reserve(&plan, roots, max_sessions, state_policy)?;
         let control = source.reserve_workspace(CONTROL_BYTES)?;
         let prefill_projection_classes = Some(
-            crate::resident_program::ordinary_cuda::PrefillProjectionClasses::from_plan(&plan)?,
+            crate::resident_program::cuda_forward::PrefillProjectionClasses::from_plan(&plan)?,
         );
-        let model = Self::load_ordinary_cuda_roots(
+        let model = Self::load_cuda_forward_roots(
             device,
             source.clone(),
             plan,
@@ -416,7 +416,7 @@ impl ResidentModel {
                 )?;
             }
         }
-        ordinary_not_cancelled(cancelled)?;
+        forward_not_cancelled(cancelled)?;
         Ok(Arc::new(SourceCallModel {
             inner: model,
             source,
@@ -472,7 +472,7 @@ impl SourceCallModel {
         })
     }
 
-    pub async fn shutdown_ordinary_cpu_source(self: Arc<Self>) -> Result<()> {
+    pub async fn shutdown_cpu_forward_source(self: Arc<Self>) -> Result<()> {
         self.shutdown().await
     }
     pub async fn shutdown(self: Arc<Self>) -> Result<()> {
@@ -486,9 +486,9 @@ impl SourceCallModel {
         #[cfg(feature = "cuda-cublas")]
         let cuda = {
             let workspace = self.inner.workspace.lock().await;
-            let cuda = workspace.program.is_ordinary_cuda();
+            let cuda = workspace.program.is_cuda_forward();
             if cuda {
-                workspace.program.retire_ordinary_cuda().await?;
+                workspace.program.retire_cuda_forward().await?;
             }
             cuda
         };
@@ -609,7 +609,7 @@ impl SourceCallModel {
         feature = "hip-source",
         feature = "hip"
     ))]
-    pub async fn ordinary_cpu_source_native_probe(
+    pub async fn cpu_forward_source_native_probe(
         &self,
     ) -> Result<super::source_native_probe::SourceTextNativeProbe> {
         let workspace = self.inner.workspace.lock().await;
@@ -690,7 +690,7 @@ impl SourceCallSession {
     ) -> Result<SourceCallPreparation> {
         if !self.supports_device_greedy() {
             return Err(Error::Unsupported(
-                "source-call device greedy requires ordinary CUDA".into(),
+                "source-call device greedy requires CUDA forward".into(),
             ));
         }
         self.prepare_inner(
@@ -788,10 +788,10 @@ impl SourceCallSession {
         let submitted = AtomicBool::new(false);
         let prepared = self
             .inner
-            .prepare_ordinary_source_mode(
+            .prepare_forward_source_mode(
                 request,
                 self.model.contract,
-                OrdinarySourceOptions {
+                ForwardSourceOptions {
                     output,
                     readout,
                     device_token: device_token.cloned(),
@@ -845,7 +845,7 @@ impl SourceCallSession {
 // errors (including cancellation-looking errors after submission) stay fatal.
 fn preparation_failure(error: Error, submitted: bool) -> Result<SourceCallPreparation> {
     match error {
-        Error::State(reason) if !submitted && reason == "ordinary CUDA request cancelled" => {
+        Error::State(reason) if !submitted && reason == "CUDA forward request cancelled" => {
             Ok(SourceCallPreparation::CancelledBeforeLaunch)
         }
         Error::Resource(_) if !submitted => Ok(SourceCallPreparation::Capacity),
@@ -870,14 +870,14 @@ mod tests {
     fn paged_2b_32k_prices_reachable_state_and_keeps_weights_resident() {
         const MIB: usize = 1024 * 1024;
         const PROVIDER_CAP: usize = 4608 * MIB;
-        let plan = zerogravity_model_qwen35::plan::diagnostic_ordinary_plan(
+        let plan = zerogravity_model_qwen35::plan::diagnostic_forward_plan(
             zerogravity_model_qwen35::plan::QwenModelVariant::Qwen2B,
             32_768,
         )
         .unwrap();
         let roots = 4;
         let admission =
-            crate::resident_program::ordinary_cuda::OrdinaryCudaAdmission::analyze(plan.clone())
+            crate::resident_program::cuda_forward::CudaForwardAdmission::analyze(plan.clone())
                 .unwrap();
         let preflight = admission.preflight();
         let paged_state = super::super::state_pool::hybrid_state_reserve_bytes(
@@ -890,7 +890,7 @@ mod tests {
         )
         .unwrap();
         assert!(paged_state < preflight.prior_state_bytes * roots);
-        let (_, inventory) = super::super::ordinary_cuda_source_admission(
+        let (_, inventory) = super::super::cuda_forward_source_admission(
             plan,
             PROVIDER_CAP,
             roots,
@@ -900,7 +900,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             inventory.weight_storage,
-            super::super::OrdinaryCudaWeightStorage::Resident
+            super::super::CudaForwardWeightStorage::Resident
         );
         assert_eq!(
             inventory.resident_weight_bytes,
@@ -911,10 +911,7 @@ mod tests {
     #[test]
     fn only_proven_prelaunch_refusals_become_scheduler_outcomes() {
         assert!(matches!(
-            preparation_failure(
-                Error::State("ordinary CUDA request cancelled".into()),
-                false
-            ),
+            preparation_failure(Error::State("CUDA forward request cancelled".into()), false),
             Ok(SourceCallPreparation::CancelledBeforeLaunch)
         ));
         let resource = Error::resource("device memory", "test admission", 2, 1);
@@ -937,7 +934,7 @@ mod tests {
             assert!(preparation_failure(Error::Limit(reason.into()), true).is_err());
         }
         assert!(
-            preparation_failure(Error::State("ordinary CUDA request cancelled".into()), true)
+            preparation_failure(Error::State("CUDA forward request cancelled".into()), true)
                 .is_err()
         );
         for submitted in [false, true] {

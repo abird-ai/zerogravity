@@ -11,17 +11,28 @@ and live TODOs are authoritative.
 
 ### Terminology architecture — 21 Nov 2026
 
-Active naming now follows [TERMINOLOGY.md](TERMINOLOGY.md). The first cleanup
-slice separates model identity from runtime policy
+Active naming follows [TERMINOLOGY.md](TERMINOLOGY.md). The first cleanup
+separates model identity from runtime policy
 (`QwenModelVariant::{Qwen800M,Qwen2B}` vs `QwenServingProfile`), shortens
 arithmetic names to `NumericalProfile` / `NumericalContract`, replaces
 `native_rows` and bare B-width scheduler language with explicit
 `cohort_width` / fused cohorts, and stores historical GDN captures under
-`reference/<variant>/<phase>/<tokens>`. No compatibility aliases retain the
-superseded vocabulary. Historical schemas/provenance remain byte/name stable.
-The next terminology slice is the larger architectural
-`ordinary* -> forward*` migration; do not introduce new `ordinary` names in
-the meantime.
+`reference/<variant>/<phase>/<tokens>`. The second cleanup is now complete:
+the normal Qwen source-backed path is `QwenForwardPlan` /
+`QwenForwardInvocation` with one backend-neutral `ForwardSourceSeal`; CUDA
+mechanics live under `cuda_forward` / `CudaForward*`, and active qualification
+uses semantic `prefill47 + decode48–50` names plus `FORWARD_*` env/receipt
+labels. No compatibility aliases retain the superseded execution vocabulary.
+Historical chronology/schemas/provenance remain intact. The next isolated
+terminology family is `SourceCall*`.
+
+Terminology validation is behavior-free and green across strict Qwen model/GPU/public
+CUDA Clippy plus public HIP and CUDA qualification compilation. The existing Qwen forward
+plan suite passes 5/5 and the exact source/workspace retention test passes 1/1. The renamed
+`cuda::text_forward` static suite is 16/17 because one pre-existing assertion expects five
+`!isfinite(mean)` / inverse-zero guards while the byte-identical kernel already contained
+six at `b88d3b3`; this is baseline fixture drift, not a rename regression. No physical GPU
+run was added for this naming-only slice.
 
 ### Error architecture — 21 Nov 2026
 
@@ -440,7 +451,7 @@ Vulkan-only retry passed, so no source failure follows.
   public-SDK 0.8B context1024/prompt48 replay cell also passes physically after recreating
   the documented CUDA13.4 include view: exact two-token replay, distinct sessions, exact
   producer frontiers and clean shutdown in14.42s. The next production source consumer is
-  now canonical too: HIP ordinary source-call cold workspace leases use
+  now canonical too: HIP source-call cold workspace leases use
   `pairwise_disjoint`, and request root validation uses
   `pairwise_disjoint_extension` to compare only new roots against the already-disjoint
   workspace and earlier roots under one ledger lock. This avoids a workspace² hot-path
@@ -930,7 +941,7 @@ the work ledgers are:
   cancellation behavior. Its TODO retains the full serving chronology from the
   initial CPU/OpenAI router through resident GPU cohorts.
 - **numerics-and-context** — active P1: independent numerical/source acceptance,
-  genuine context progression, reference capture, ordinary CUDA/HIP parity and
+  genuine context progression, reference capture, CUDA-forward/HIP parity and
   remaining long-context/backend cells. The common acceptance rules are in
   `CORRECTNESS_POLICY.md`.
 - **memory-and-streaming** — active P1: exact admission/fit, source windows,
@@ -1296,7 +1307,7 @@ takeover map.
 - Compact greedy feedback moved to a tiny device packet instead of full-vocab host
   readback.
 - Exact decode GEMV specializations landed.
-- B4 ordinary source cohorts shared stateless projection/head while preserving
+- 4-row forward-source cohorts shared stateless projection/head while preserving
   private state.
 - B4 GDN convolution, recurrent core and full attention became genuine physical
   batching primitives.
@@ -1479,7 +1490,7 @@ Rejected after CTA256:
   repeatability bar. Temporary consumer/selector/runner/include-view artifacts were
   removed; keep the model-neutral primitive for a materially different consumer.
 
-## Current ordinary CUDA selected path
+## Current CUDA forward selected path
 
 ### Selected
 
@@ -1859,7 +1870,7 @@ is already green; repeat it only if host/runtime state changes.
 > - exact partial-tail paged COW ownership is already closed; do not build another
 >   COW abstraction;
 > - canonical `DeviceBufferIdentity` is the physical allocation/range authority;
->   ordinary CUDA prepared resident sets and source-page/native-embedding alias
+>   CUDA-forward prepared resident sets and source-page/native-embedding alias
 >   safety already use ledger identity. Handle ranges remain execution binding
 >   geometry, not ownership truth.
 >

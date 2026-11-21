@@ -60,6 +60,10 @@ pub(crate) use enqueue::{
     )
 ))]
 pub(crate) use native_cache::NativeCacheBudget;
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+pub(crate) mod forward_parameter_upload;
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+pub(crate) mod forward_projection_upload;
 #[cfg(all(
     any(feature = "gemma-bf16-qualification", feature = "hip-source"),
     target_os = "linux"
@@ -67,10 +71,6 @@ pub(crate) use native_cache::NativeCacheBudget;
 pub(crate) mod frame_checkpoint;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod model_upload;
-#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-pub(crate) mod ordinary_parameter_upload;
-#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-pub(crate) mod ordinary_projection_upload;
 #[cfg(all(
     any(feature = "qualification", feature = "hip-source"),
     target_os = "linux"
@@ -253,7 +253,7 @@ impl ResidentService {
         feature = "cuda",
         any(feature = "qualification", feature = "cuda-native")
     ))]
-    #[allow(dead_code)] // Staged ordinary CUDA constructor; public route remains refused.
+    #[allow(dead_code)] // Staged CUDA forward constructor; public route remains refused.
     pub fn new_pinned_cuda(
         device: Device,
         source: SourceIdentity,

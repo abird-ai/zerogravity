@@ -53,7 +53,7 @@ pub(crate) mod cohort_rows;
 mod batch;
 pub(crate) use batch::BatchProgram;
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-pub(crate) mod ordinary_cuda;
+pub(crate) mod cuda_forward;
 #[cfg(all(feature = "qualification", target_os = "linux"))]
 pub(crate) mod typed_slice;
 #[cfg(all(
@@ -363,7 +363,7 @@ pub(crate) enum StateBuffers {
     /// bind transient contiguous staging before reaching a program consumer.
     #[allow(
         dead_code,
-        reason = "canonical paged KV binding is selected by the next ordinary-session slice"
+        reason = "canonical paged KV binding is selected by the next forward-session slice"
     )]
     PagedKv,
 }
@@ -397,7 +397,7 @@ pub(crate) enum StateBindingMode {
     Distinct,
     /// Prior/candidate are the same transient KV staging pair. The caller must
     /// have gathered the committed paged prefix into this pair on the same
-    /// original physical submission before ordinary execution.
+    /// original physical submission before forward execution.
     KvInPlace,
 }
 struct NativeExecution<'a> {
@@ -620,7 +620,7 @@ enum ResidentProgramBody {
     #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
     SourceCall(Arc<source_call::Cold>),
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-    OrdinaryCuda(Arc<ordinary_cuda::body::OrdinaryCudaBody>),
+    CudaForward(Arc<cuda_forward::body::CudaForwardBody>),
     #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
     Bf16TextSource(Arc<bf16_text_source::Bf16TextSourceBody>),
     Legacy(Box<LegacyProgram>),
@@ -677,7 +677,7 @@ pub(crate) mod bf16_text_source;
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
-mod ordinary_source;
+mod forward_source;
 #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
 pub(crate) mod source_call;
 
@@ -749,8 +749,8 @@ impl ResidentProgram {
                 "source-call body cannot enter legacy execution".into(),
             )),
             #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-            ResidentProgramBody::OrdinaryCuda(_) => Err(Error::Unsupported(
-                "ordinary CUDA body cannot enter legacy execution".into(),
+            ResidentProgramBody::CudaForward(_) => Err(Error::Unsupported(
+                "CUDA forward body cannot enter legacy execution".into(),
             )),
             #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
             ResidentProgramBody::Bf16TextSource(_) => Err(Error::Unsupported(
@@ -781,8 +781,8 @@ impl ResidentProgram {
                 "source-call body cannot enter legacy execution".into(),
             )),
             #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-            ResidentProgramBody::OrdinaryCuda(_) => Err(Error::Unsupported(
-                "ordinary CUDA body cannot enter legacy execution".into(),
+            ResidentProgramBody::CudaForward(_) => Err(Error::Unsupported(
+                "CUDA forward body cannot enter legacy execution".into(),
             )),
             #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
             ResidentProgramBody::Bf16TextSource(_) => Err(Error::Unsupported(
@@ -1608,7 +1608,7 @@ impl ResidentProgram {
     /// This is cold binding metadata, not a second allocation or program.
     pub fn execution_handles(&self, output: ResidentOutput) -> Vec<Handle> {
         #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-        if let ResidentProgramBody::OrdinaryCuda(body) = &self.body {
+        if let ResidentProgramBody::CudaForward(body) = &self.body {
             return body
                 .accesses(output)
                 .iter()
@@ -3723,7 +3723,7 @@ mod tests {
                         })
                         .count();
                     assert!(prepared_projections > 0);
-                    // Ordinary schedule has two packs per full-attention
+                    // Forward schedule has two packs per full-attention
                     // layer; complete GDN diagnostics add two per GDN layer.
                     assert!([12, 48].contains(&alias_count));
                     let unaliased: usize = plan

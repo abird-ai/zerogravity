@@ -16,7 +16,7 @@ use zerogravity::resource_arbiter::{
     AllocationClass, AllocationRequest, ResourceArbiter, ResourceOwner,
 };
 use zerogravity::{
-    Error, Result, accelerator::program::SourceCallMode, qwen35::plan::OrdinaryQwenPlan,
+    Error, Result, accelerator::program::SourceCallMode, qwen35::plan::QwenForwardPlan,
 };
 use zerogravity_gpu::{
     ResidentOutput, SourceCallModel, SourceCallPending, SourceCallPreparation,
@@ -69,7 +69,7 @@ fn selected(logits: &[f32]) -> Result<(u32, u32)> {
 }
 async fn prepare(
     session: &SourceCallSession,
-    plan: &OrdinaryQwenPlan,
+    plan: &QwenForwardPlan,
     call: &Call,
     token: Option<u32>,
     cancelled: Option<Arc<AtomicBool>>,
@@ -134,7 +134,7 @@ fn until_submitted<F: Future<Output = Result<SourceCallPreparation>>>(
 pub async fn run(
     mode: &str,
     model: Arc<SourceCallModel>,
-    plan: OrdinaryQwenPlan,
+    plan: QwenForwardPlan,
     expected: &Expected,
 ) -> Result<()> {
     need(supported(mode), "source-call lifecycle mode")?;
@@ -147,7 +147,7 @@ pub async fn run(
     let first = calls[0];
     let next = calls[1];
     let last = calls[2];
-    let native = model.ordinary_cpu_source_native_probe().await?;
+    let native = model.cpu_forward_source_native_probe().await?;
     let before = native.observe()?;
     let resource = before.physical.clone();
     let mut session = model.session().await?;
@@ -300,7 +300,7 @@ pub async fn run(
         drop(session);
         drop(peer);
         drop(plan);
-        model.shutdown_ordinary_cpu_source().await?;
+        model.shutdown_cpu_forward_source().await?;
         println!(
             "SOURCE_LIFECYCLE_HEALTHY prelaunch_cancel=true capacity=true session_limit=true cross_session_refusal=true submitted_cancel=completed_discard dispatches={completed} snapshot_restore_reset_replay=true independent_sessions=true"
         );
@@ -405,7 +405,7 @@ pub async fn run(
                     drop(plan);
                     let weak = Arc::downgrade(&model);
                     need(
-                        model.shutdown_ordinary_cpu_source().await.is_err()
+                        model.shutdown_cpu_forward_source().await.is_err()
                             && weak.strong_count() > 0,
                         "original final readback prevents premature shutdown",
                     )?;
@@ -429,7 +429,7 @@ pub async fn run(
                     drop(plan);
                     let weak = Arc::downgrade(&model);
                     need(
-                        model.shutdown_ordinary_cpu_source().await.is_err()
+                        model.shutdown_cpu_forward_source().await.is_err()
                             && weak.strong_count() > 0,
                         "snapshot host reader prevents premature shutdown",
                     )?;

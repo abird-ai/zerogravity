@@ -356,7 +356,7 @@ impl BoundFullModelSource {
             require_qwen2b_arithmetic(kind, cut, record.call().rows(), arithmetic)?;
         }
         let metadata = source.source().source().reserve_workspace(METADATA_BYTES)?;
-        require_ordinary_source(source.source(), kind)?;
+        require_forward_source(source.source(), kind)?;
         let call = record.call();
         let plan = record.plan();
         if source.model_profile() != kind.profile()
@@ -687,7 +687,7 @@ impl BoundFullModelSource {
 }
 
 // Ordinary RMS had these gates independently of the component post-RMS binder.
-fn require_ordinary_source(
+fn require_forward_source(
     model: &OriginalWindowModelSource,
     kind: ModelComponentKind,
 ) -> Result<()> {

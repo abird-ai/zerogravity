@@ -27,15 +27,15 @@ pub mod fixed_prompt;
 use crate::qwen35_source::held_directory;
 #[cfg(feature = "qwen35-cuda-qualification")]
 use crate::qwen35_source::held_file;
+mod forward;
+#[cfg(feature = "qwen35-cuda-qualification")]
+pub mod forward_candidate;
+#[cfg(feature = "qwen35-cuda-qualification")]
+pub mod forward_parity;
+#[cfg(feature = "qwen35-cuda-qualification")]
+mod forward_source;
 #[cfg(feature = "qwen35-cuda-qualification")]
 mod manifest;
-mod ordinary;
-#[cfg(feature = "qwen35-cuda-qualification")]
-pub mod ordinary_candidate;
-#[cfg(feature = "qwen35-cuda-qualification")]
-pub mod ordinary_parity;
-#[cfg(feature = "qwen35-cuda-qualification")]
-mod ordinary_source;
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub mod qualification;
 #[cfg(feature = "qwen35-cuda-qualification")]
@@ -50,30 +50,28 @@ mod templates;
 pub use session::Session;
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub use source::RouteTokenizer;
-const ORDINARY_CAPABILITY_REFUSAL: &str = "ordinary Qwen CUDA is integrated but qualification-only: physical current-source parity and fault/cancellation/retirement/shutdown certification remain; no production backend is exposed";
+const FORWARD_CAPABILITY_REFUSAL: &str = "forward Qwen CUDA is integrated but qualification-only: physical current-source parity and fault/cancellation/retirement/shutdown certification remain; no production backend is exposed";
 
-/// Ordinary run/serve must refuse before source, device or driver discovery.
-pub fn require_ordinary_capability() -> Result<()> {
-    Err(Error::Unsupported(ORDINARY_CAPABILITY_REFUSAL.into()))
+/// Forward run/serve must refuse before source, device or driver discovery.
+pub fn require_forward_capability() -> Result<()> {
+    Err(Error::Unsupported(FORWARD_CAPABILITY_REFUSAL.into()))
 }
 
-/// Audit an authenticated ordinary plan/invocation against the checked CUDA
+/// Audit an authenticated forward plan/invocation against the checked CUDA
 /// contracts. This grants no production routing; the integrated path remains
 /// qualification-only until physical current-source parity and lifecycle gates close.
-pub fn require_ordinary_invocation_capability(
-    plan: &crate::qwen35::plan::OrdinaryQwenPlan,
-    invocation: &crate::qwen35::plan::OrdinaryQwenInvocation,
+pub fn require_forward_invocation_capability(
+    plan: &crate::qwen35::plan::QwenForwardPlan,
+    invocation: &crate::qwen35::plan::QwenForwardInvocation,
 ) -> Result<()> {
-    ordinary::require_binding(plan, invocation)
+    forward::require_binding(plan, invocation)
 }
 
 #[cfg(test)]
-mod ordinary_refusal_tests {
+mod forward_refusal_tests {
     #[test]
-    fn ordinary_backend_is_explicitly_qualification_only_not_dead_allowed() {
-        let error = super::require_ordinary_capability()
-            .unwrap_err()
-            .to_string();
+    fn forward_backend_is_explicitly_qualification_only_not_dead_allowed() {
+        let error = super::require_forward_capability().unwrap_err().to_string();
         assert!(error.contains("integrated but qualification-only"));
         assert!(error.contains("physical current-source parity"));
         assert!(error.contains("fault/cancellation/retirement/shutdown certification"));
@@ -98,8 +96,8 @@ pub const PROVIDER_MIB: usize = 4608;
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub const DEVICE_MIB: usize = 5120;
 
-/// Authenticated source geometry plus ordinary backend capability inventory.
-/// Empty/zero capability fields mean no ordinary implementation is available;
+/// Authenticated source geometry plus forward backend capability inventory.
+/// Empty/zero capability fields mean no forward implementation is available;
 /// explicit qualification captures are intentionally not advertised here.
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub struct SourceMetadata {

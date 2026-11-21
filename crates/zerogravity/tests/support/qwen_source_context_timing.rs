@@ -13,7 +13,7 @@ use zerogravity::{
         ResidentOutput, SourceCallFrame, SourceCallFrameKind, SourceCallModel, SourceCallObserver,
         SourceCallPreparation, SourceCallPublication,
     },
-    qwen35::plan::OrdinaryQwenPlan,
+    qwen35::plan::QwenForwardPlan,
 };
 
 struct Timing<'a> {
@@ -59,7 +59,7 @@ impl SourceCallObserver for Timing<'_> {
 
 pub async fn run(
     model: &Arc<SourceCallModel>,
-    plan: &OrdinaryQwenPlan,
+    plan: &QwenForwardPlan,
     expected: &Expected,
     case: usize,
     capacity: usize,

@@ -425,7 +425,7 @@ pub trait MathematicalBackend {
             "backend has no exact source-operator contract".into(),
         ))
     }
-    fn ordinary_rms_profiled(
+    fn forward_rms_profiled(
         &mut self,
         _parameter: SourceParameter,
         _input: &Self::Value,
@@ -1664,7 +1664,7 @@ impl MathematicalBackend for PlanBuilder {
             None,
         )
     }
-    fn ordinary_rms_profiled(
+    fn forward_rms_profiled(
         &mut self,
         parameter: SourceParameter,
         input: &PlanValue,

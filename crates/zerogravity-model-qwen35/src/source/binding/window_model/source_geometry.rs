@@ -1,14 +1,14 @@
 //! Complete original role/type/shape validation shared by ordinary and finite binders.
 use super::*;
-use crate::plan::OrdinaryQwenGeometry;
+use crate::plan::QwenForwardGeometry;
 use zerogravity_core::encoding::ScalarDType;
 
 pub(super) fn require_roles(
     model: &OriginalWindowModelSource,
-    profile: OrdinaryQwenGeometry,
+    profile: QwenForwardGeometry,
     gdn_a_norm_kind: ScalarDType,
 ) -> Result<()> {
-    if OrdinaryQwenGeometry::from_config(model.owner().config())? != profile {
+    if QwenForwardGeometry::from_config(model.owner().config())? != profile {
         return Err(Error::Unsupported(
             "closed full-model source/profile geometry".into(),
         ));
