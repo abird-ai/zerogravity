@@ -16,15 +16,16 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
   physical owner/allocation. This is a fit result, not a correctness grant.
 - [~] Physically qualify each admitted context independently. Preserve current
   F32/F32/BF16 two-root semantics; never change precision/source/root semantics merely
-  to make a cell fit. Current public CUDA serving now physically passes4K and8K for
+  to make a cell fit. Current public CUDA serving now physically passes4K/8K/16K for
   both0.8B and2B with exact replay/frontiers and clean retirement;1K/2K separately have
-  retained resident all42/finite-state qualification.16K remains next.
+  retained resident all42/finite-state qualification. This reaches2B's admitted fit
+  boundary;0.8B32K remains.
 - [~] Preserve complete recurrent/conv/KV state history, chunk continuation,
-  cancellation/quarantine and readback owners at512/1K/2K/4K/8K, then16K/32K.
-  Public4K/8K execution proves the current chunk-continuation/serving path, but the
-  independent populated all42 archive is absent on L5, so complete4K/8K state-history
-  numerical closure remains open. A context plan or benchmark prompt alone is still not
-  physical or numerical support.
+  cancellation/quarantine and readback owners at512/1K/2K/4K/8K/16K, then32K.
+  Public4K/8K/16K execution proves the current chunk-continuation/serving path, but the
+  independent populated all42 archive is absent on L5, so complete4K/8K/16K
+  state-history numerical closure remains open. Next prove0.8B32K execution and the
+  existing2B32K pre-allocation refusal on the retained current-path surface.
 
 23Oct allocation/boundary adoption: [shared pools, layouts and transfer APIs](../cpu-gpu-optimization/SHARED_MEMORY_AND_BOUNDARIES.md).
 Two independent source audits are reconciled there; implementation remains open.

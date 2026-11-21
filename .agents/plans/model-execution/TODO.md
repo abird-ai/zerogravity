@@ -384,14 +384,16 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 - [x] Extend small CUDA to genuine populated contexts. Qualification-only resident
   trajectories cover both0.8B and2B through exact1K/2K frontiers using the existing64-row
   chunk contract with finite terminal logits/all42 finite state/clean retirement. The
-  current **public SDK path now also physically passes4K and8K for both models** using
-  one retained parameterized qualifier: context-2 prompt tokens +2 generated tokens,
+  current **public SDK path now physically passes4K,8K and16K for both models** using one
+  retained parameterized qualifier: context-2 prompt tokens +2 generated tokens,
   GPU-rooted per-token observations, exact producer frontiers, exact replay on a distinct
-  session and clean shutdown. 0.8B8K had one external SIGKILL after test entry and no
-  residue/kernel signal; one cached retry passed, so the kill is not used as a model
-  result. The4K/8K SDK cells are serving/continuation evidence only; the independent
-  populated all42 archive is absent on L5, so do not upgrade them to same-contract
-  numerical closure. Next admitted public-context cell is16K.
+  session and clean shutdown. In the16K slice, the first0.8B attempt was externally
+  SIGKILLed during Rust compilation before test entry; residue/GPU/kernel checks were
+  clean and one cached retry passed (~62s).2B16K passed directly (~76s), closing current
+  public serving through2B's admitted fit boundary. These SDK cells remain
+  serving/continuation evidence only; the independent populated all42 archive is absent
+  on L5, so do not upgrade them to same-contract numerical closure. Next context work:
+  0.8B32K execution and explicit2B32K pre-allocation refusal.
 - [ ] Localize ROCm2B C4 warmup and C16/32/64 warmup/timed divergence (task39),
   without repinning expected IDs or attributing an unlocalized failure to kernels.
 - [~] Close ordinary27B HIP HTTP504 and populated1K/2K references/serving (task11).

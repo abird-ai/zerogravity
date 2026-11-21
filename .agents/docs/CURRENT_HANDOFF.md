@@ -968,18 +968,20 @@ serving, memory and composition plans.
   temporary Qwen-specific wiring/probe was removed. Re-evaluate the retained candidate
   on other model/shape cells rather than reconstructing it. Next L5 implementation/
   qualification target was the genuine populated-context ladder rather than another
-  batching fixture. **21 Nov current public CUDA serving now passes both4K and8K for
-  0.8B and2B.** A retained env-parameterized public-SDK qualifier loads only the approved
-  small snapshots, uses active1/native_rows0 and the declared context capacity, submits
-  an exact context-2 token prompt, observes two GPU-rooted output tokens, then repeats the
-  request on a fresh session. All four cells pass exact replay, distinct session IDs,
-  exact producer frontiers and clean shutdown:0.8B4K/2B4K, then0.8B8K (one first attempt
-  was externally SIGKILLed after test entry with no residue/kernel signal; one cached
-  retry passed) and2B8K. The qualifier is retained in `fabric_sdk.rs` rather than
-  discarded. This proves current public serving/chunk continuation at those capacities;
-  it does **not** claim independent all42/full-logit numerical closure because the
-  populated reference archive is absent on L5. Next context slice is16K, not another
-  4K/8K fixture or batching micro-tune.
+  batching fixture. **21 Nov current public CUDA serving now passes4K,8K and16K for both
+  0.8B and2B.** The retained env-parameterized public-SDK qualifier loads only the
+  approved small snapshots, uses active1/native_rows0 and the declared context capacity,
+  submits an exact context-2 token prompt, observes two GPU-rooted output tokens, then
+  repeats the request on a fresh session.4K/8K were already green; the16K slice now also
+  passes0.8B and2B with exact replay, distinct session IDs, exact producer frontiers and
+  clean shutdown. The first0.8B16K attempt was externally SIGKILLed during Rust compile,
+  before the test binary ran; residue/GPU/kernel checks were clean and one cached retry
+  passed in~62s.2B16K then passed in~76s. The qualifier remains retained in
+  `fabric_sdk.rs`; no new fixture or token pin was added. This proves current public
+  serving/chunk continuation through **2B's admitted fit boundary**; it does **not**
+  claim independent all42/full-logit numerical closure because the populated reference
+  archive is absent on L5. Next context slice is0.8B32K plus explicit2B32K
+  pre-allocation refusal, not another4K/8K/16K fixture or batching micro-tune.
 - **Retained-candidate policy:** reusable performance experiments are no longer deleted
   merely because one model/shape loses an A/B. Model-neutral candidates live dormant,
   with no production selector/callsite, so Qwen2B/27B, Gemma4 and future models can
