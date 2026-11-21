@@ -73,7 +73,7 @@ fn qwen_cuda_context_runtime(model: &str, context: usize, output: usize) -> Runt
         "2b" => "88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52",
         _ => panic!("explicit approved small CUDA source required"),
     };
-    assert!(matches!(context, 1024 | 2048 | 4096 | 8192 | 16384));
+    assert!(matches!(context, 1024 | 2048 | 4096 | 8192 | 16384 | 32768));
     assert!((1..=3).contains(&output) && output < context);
 
     let runtime = Runtime::builder()

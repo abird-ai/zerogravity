@@ -978,10 +978,19 @@ serving, memory and composition plans.
   before the test binary ran; residue/GPU/kernel checks were clean and one cached retry
   passed in~62s.2B16K then passed in~76s. The qualifier remains retained in
   `fabric_sdk.rs`; no new fixture or token pin was added. This proves current public
-  serving/chunk continuation through **2B's admitted fit boundary**; it does **not**
-  claim independent all42/full-logit numerical closure because the populated reference
-  archive is absent on L5. Next context slice is0.8B32K plus explicit2B32K
-  pre-allocation refusal, not another4K/8K/16K fixture or batching micro-tune.
+  serving/chunk continuation through16K; it does **not** claim independent
+  all42/full-logit numerical closure because the populated reference archive is absent
+  on L5. **The old2B32K mandatory-refusal statement is now superseded.** It came from
+  the28Oct fully-resident-weight calculation (~8.98MiB over4608MiB), but current shared
+  source admission has supported streamed-weight fallback since `d16f096` on8Nov.
+  A21Nov public2B32K `QwenCuda` load returned `Ok(())`, so current code must not be
+  forced back to that historical refusal.32K execution itself is still unaccepted:
+  0.8B32K was externally SIGKILLed twice after test entry (~20s) with clean
+  process/GPU/kernel residue, while2B32K loaded successfully and stayed in the real
+  qualifier for~230s before an external SIGKILL, again with clean residue and no runtime
+  error. The retained qualifier now accepts32768; no new fixture/token pin was added.
+  Re-derive the exact current resident-vs-streamed admission inventory before making a
+  new fit-boundary claim, then localize the external32K termination without retry loops.
 - **Retained-candidate policy:** reusable performance experiments are no longer deleted
   merely because one model/shape loses an A/B. Model-neutral candidates live dormant,
   with no production selector/callsite, so Qwen2B/27B, Gemma4 and future models can
@@ -2064,9 +2073,11 @@ CUDA/Torch comparisons:16 cases across widths1024/2048, rows1/2/17/64 and residu
 modes pass exactly, including non-BF16 residual sums, guards and retirement.
 Real post-launch cancellation and abandoned-future probes pass:396 original
 handles quarantined, prior bits/tails intact, unchanged root, peer refusal and
-retained charges after external drops. Normal lifecycle passes all13 admitted
-capacities (`.8B` through32K,2B through16K), each at48 active tokens;2B32K refuses
-at pure preflight. Long-active-context/2B numerical parity remains open. Final
+retained charges after external drops. At that historical pre-streaming checkpoint,
+normal lifecycle passed all13 admitted capacities (`.8B` through32K,2B through16K),
+each at48 active tokens;2B32K refused at pure preflight. This refusal is superseded by
+the21Nov current-source streamed-admission note above. Long-active-context/2B numerical
+parity remains open. Final
 isolated repository gate passes2,129 Rust executions/0fail/83ignored;14 Python
 suites and ancillary gates pass. CUDA/native host675/0fail/54ignored and strict
 CUDA/HIP/Vulkan feature checks pass.
@@ -2183,7 +2194,9 @@ All fit admission.
 
 512 through 16K fit.
 
-32K exceeds 4,831,838,208 B by 8,980,841 B and must refuse before physical allocation.
+Historically, before streamed-weight admission became the current shared-source policy,
+32K exceeded 4,831,838,208 B by 8,980,841 B and was expected to refuse before physical
+allocation. The21Nov public2B32K load supersedes that refusal as current authority.
 
 These are admission/fit results only. Every admitted context still needs real-model correctness, continuation, fault and ownership qualification.
 

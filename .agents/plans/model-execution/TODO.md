@@ -390,10 +390,18 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   session and clean shutdown. In the16K slice, the first0.8B attempt was externally
   SIGKILLed during Rust compilation before test entry; residue/GPU/kernel checks were
   clean and one cached retry passed (~62s).2B16K passed directly (~76s), closing current
-  public serving through2B's admitted fit boundary. These SDK cells remain
-  serving/continuation evidence only; the independent populated all42 archive is absent
-  on L5, so do not upgrade them to same-contract numerical closure. Next context work:
-  0.8B32K execution and explicit2B32K pre-allocation refusal.
+  public serving through16K. These SDK cells remain serving/continuation evidence only;
+  the independent populated all42 archive is absent on L5, so do not upgrade them to
+  same-contract numerical closure. **32K changed the admission conclusion rather than
+  closing execution:** the retained qualifier now accepts32768.0.8B32K entered the test
+  twice and was externally SIGKILLed after~20s each with clean residue. A temporary
+  assertion that2B32K must refuse exposed a stale assumption: public `QwenCuda` load
+  actually succeeds. Current admission has supported streamed-weight fallback since
+  `d16f096` (8Nov), whereas the old8.98MiB-over calculation predates that policy.
+  The false refusal assertion was removed. A direct2B32K qualifier then stayed alive
+  ~230s before an external SIGKILL, with no model/runtime error and clean GPU/process
+  retirement. Re-derive current resident-vs-streamed inventory and localize the external
+  32K termination; do not repin outputs or resurrect the old refusal rule.
 - [ ] Localize ROCm2B C4 warmup and C16/32/64 warmup/timed divergence (task39),
   without repinning expected IDs or attributing an unlocalized failure to kernels.
 - [~] Close ordinary27B HIP HTTP504 and populated1K/2K references/serving (task11).
@@ -1220,7 +1228,8 @@ than old “remaining” milestones to select work. HTTP/context closure is stil
 
 - [ ] Extend populated contexts beyond accepted0.8B/2B HIP scopes to remaining
   CUDA/general27B routes; retain full-logit/state truth, cancellation and physical
-  ownership at actual extents.32K refusal remains a capacity result, not inference.
+  ownership at actual extents. The older32K refusal was a pre-streaming capacity result;
+  current public2B32K load is admitted, while32K execution remains indeterminate.
 - [ ] Extend/qualify serving concurrency through C1..C64 and general27B/CUDA;
   preserve missing-source/kernel/runtime refusals. Offered C64/active≤8 singleton
   execution is only a baseline, not native-batch acceptance.
@@ -3354,8 +3363,9 @@ build or general model/backend grant. Historical failures keep their source scop
     32K=2,581,889,105. All fit admission.
   - 2B: 512=3,911,845,969 B; 1K=3,926,591,569; 2K=3,956,082,769;
     4K=4,015,065,169; 8K=4,133,029,969; 16K=4,368,959,569;
-    32K=4,840,818,769. 512 through 16K fit; 32K exceeds 4608 MiB
-    (4,831,838,208 B) by 8,980,561 B and must refuse before allocation.
+    32K=4,840,818,769. At this28Oct fully-resident checkpoint,512 through16K fit
+    and32K exceeded4608MiB (4,831,838,208B) by8,980,561B. This historical refusal is
+    superseded by current shared-source streamed admission; see the21Nov32K note above.
 - [ ] These are fit/admission results only. Physical correctness, continuation,
   replay, faults and state-history qualification remain required for each cell
   before production use; .8B real-model qualification is blocked on a qualified
@@ -3430,7 +3440,9 @@ build or general model/backend grant. Historical failures keep their source scop
   passes positions 0,1,47,48,49,50,511,512,1023,2047,4095,8191,16383,32767
   for query/key BF16 bits exactly.
 - [x] Context admission totals were re-derived after the rotary scratch change;
-  the fit matrix is unchanged (.8B through 32K, 2B through 16K; 2B 32K refuses).
+  at that28Oct fully-resident checkpoint the fit matrix was unchanged (.8B through32K,
+  2B through16K;2B32K refused). Current streamed-weight admission supersedes that
+  refusal; see the21Nov32K note above.
 
 ### 28 Oct 2026 — ordinary owned-cuBLAS physical qualification harness
 

@@ -755,9 +755,15 @@ or a change to the active correctness/benchmark/27B order.
   does not substitute for the missing independent all42 populated archive. The first
   0.8B16K attempt was externally SIGKILLed during Rust compilation before test entry;
   clean residue/GPU/kernel checks plus a cached retry pass make that an infrastructure
-  event, not a model result.2B16K passes too, so current serving reaches2B's fit boundary.
-  Next context slice is0.8B32K plus2B32K refusal; do not return to the residual paged gap
-  or add duplicate context fixtures.
+  event, not a model result.2B16K passes too. The32K slice then invalidated the old
+  admission assumption rather than producing a serving pass: the retained qualifier now
+  accepts32768;0.8B32K was externally SIGKILLed twice soon after test entry, while2B32K
+  public model load succeeded and the real qualifier ran~230s before external SIGKILL.
+  Clean residue/GPU/kernel checks followed each termination. The old2B32K refusal came
+  from the pre-streaming resident-weight calculation; shared source admission has had
+  streamed-weight fallback since `d16f096`. Do not force a refusal or add another
+  context fixture. Next re-derive current32K storage inventory and isolate the external
+  termination on the retained path; do not return to residual paged micro-tuning.
 - [x] A clean dynamic-prefill grouping candidate was measured and rejected from the
   current selector rather than discarded globally. For the already-compatible mixed
   native-B8 row pattern

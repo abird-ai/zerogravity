@@ -10,22 +10,28 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
 
 ### Qwen long-context fit boundary — 27 Oct
 
-- [x] Exact production admission analysis is closed for the current two-root
-  ordinary plans: `.8B` 512..32K all fit the 4608 MiB provider allowance;
-  `2B` 512..16K fit and 32K is 8,980,561 B over the allowance and refuses before
-  physical owner/allocation. This is a fit result, not a correctness grant.
+- [~] The28Oct fully-resident-weight admission calculation is historical, not the
+  current total-storage contract. It found `.8B` through32K under4608MiB and2B32K
+  8,980,561B over the allowance. Shared source execution subsequently gained explicit
+  streamed-weight fallback in `d16f096` (8Nov): when fixed workspace/roots fit but
+  weights exceed the residual model-device budget, the authenticated weights remain
+  source-streamed instead of forcing resident placement. On21Nov the public2B32K
+  `QwenCuda` load succeeded, so do not assert the old pre-allocation refusal. Re-derive
+  the exact current inventory/storage choice before declaring a new fit boundary.
 - [~] Physically qualify each admitted context independently. Preserve current
   F32/F32/BF16 two-root semantics; never change precision/source/root semantics merely
-  to make a cell fit. Current public CUDA serving now physically passes4K/8K/16K for
-  both0.8B and2B with exact replay/frontiers and clean retirement;1K/2K separately have
-  retained resident all42/finite-state qualification. This reaches2B's admitted fit
-  boundary;0.8B32K remains.
+  to make a cell fit. Public CUDA serving passes4K/8K/16K for both0.8B and2B with exact
+  replay/frontiers and clean retirement;1K/2K separately retain all42/finite-state
+  qualification.32K is admitted far enough to enter current execution, but is not
+  accepted:0.8B32K had two external SIGKILLs shortly after test entry;2B32K public load
+  succeeded and execution remained alive~230s before external SIGKILL. All runs returned
+  to37MiB/0% GPU with no process residue or available kernel OOM/Xid signal.
 - [~] Preserve complete recurrent/conv/KV state history, chunk continuation,
   cancellation/quarantine and readback owners at512/1K/2K/4K/8K/16K, then32K.
   Public4K/8K/16K execution proves the current chunk-continuation/serving path, but the
-  independent populated all42 archive is absent on L5, so complete4K/8K/16K
-  state-history numerical closure remains open. Next prove0.8B32K execution and the
-  existing2B32K pre-allocation refusal on the retained current-path surface.
+  independent populated all42 archive is absent on L5.32K remains both execution- and
+  numerical-open; use the retained32768 qualifier and current storage policy rather than
+  adding another context fixture or restoring the obsolete refusal assumption.
 
 23Oct allocation/boundary adoption: [shared pools, layouts and transfer APIs](../cpu-gpu-optimization/SHARED_MEMORY_AND_BOUNDARIES.md).
 Two independent source audits are reconciled there; implementation remains open.
