@@ -46,6 +46,7 @@ pub(crate) fn load_text(
             device_bytes,
             crate::models::SmartConfig::enabled(crate::models::QwenCudaSmartOverrides {
                 state_policy: Some(state_policy),
+                native_rows: None,
             }),
             limits,
         ),
@@ -76,7 +77,8 @@ pub(crate) fn load_text(
             profile,
             budget,
         } => {
-            profile.validate()?;
+            profile.validate_base()?;
+            profile.validate_native_rows(profile.native_rows)?;
             validate_limits(1, profile.active, profile.max_pending, limits)?;
             super::text::qwen_source::load_router(
                 aliases,
@@ -93,7 +95,8 @@ pub(crate) fn load_text(
             snapshot,
             profile,
         } => {
-            profile.validate()?;
+            profile.validate_base()?;
+            profile.validate_native_rows(profile.native_rows)?;
             validate_limits(1, profile.active, profile.max_pending, limits)?;
             super::text::qwen_source::load_router(
                 aliases,
@@ -170,7 +173,7 @@ fn load_qwen_cuda(
     smart_config: crate::models::SmartConfig<crate::models::QwenCudaSmartOverrides>,
     limits: SchedulerLimits,
 ) -> Result<Router, ServiceError> {
-    profile.validate()?;
+    profile.validate_base()?;
     validate_limits(1, profile.active, profile.max_pending, limits)?;
     super::text::qwen_source::load_router(
         aliases,
@@ -304,6 +307,7 @@ mod tests {
         };
         let overrides = QwenCudaSmartOverrides {
             state_policy: Some(invalid),
+            native_rows: None,
         };
 
         for config in [

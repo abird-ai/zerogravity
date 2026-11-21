@@ -1126,14 +1126,26 @@ serving, memory and composition plans.
   Auto evaluation may consume a fresh read-only runtime/device observation, but ordinary
   resource admission remains authoritative and no decision enters the token hot path.
   Resolved choices emit one compact `smart-config` startup line with mode, observation time,
-  source (`auto`/`user`/`default`) and rationale. Qwen CUDA is the first adapter: its first
-  smart knob is `state_policy`; Auto compares exact Contiguous vs qualified Paged64/64
-  source-call admission against current CUDA ordinal0 free VRAM. Canonical `QwenCuda` now
-  uses `Enabled`; legacy `QwenCudaWithStatePolicy` supplies the user value for this knob;
-  `QwenCudaWithSmartConfig` exposes the global mode plus extensible `QwenCudaSmartOverrides`.
+  source (`auto`/`user`/`default`) and rationale. Qwen CUDA is the first adapter and now
+  resolves **two independent knobs jointly**: `state_policy` and `native_rows`. Candidate
+  startup configs are tiny (at most `{Contiguous,Paged64/64} × {8,4,0}` filtered by active
+  capacity/user constraints) and use the exact source-call preflight against current CUDA
+  ordinal0 free VRAM. Selection priority is deliberately simple: preserve resident weights
+  first, then widest qualified native cohort, then Contiguous as the lower-overhead tie.
+  This prevents smart batching from accidentally reintroducing weight streaming. Canonical
+  `QwenCuda` uses `Enabled`; `QwenCudaWithStatePolicy` supplies only that user knob while
+  native width remains Auto; `QwenCudaWithSmartConfig` exposes the global mode plus
+  extensible `QwenCudaSmartOverrides`. Legacy nonzero `profile.native_rows` is folded into
+  the override map; zero means unspecified under smart CUDA. Explicit `Some(0)` forces
+  sequential execution without disabling Auto for other knobs.
   Physical default-Qwen acceptance on2B/32K/1024 logged Auto selecting paged because
   contiguous streamed weights while paged stayed resident, then passed in26.51s with exact
-  replay/frontiers and clean shutdown. **Authoritative live CUDA admission now follows the
+  replay/frontiers and clean shutdown. The existing active8 native SDK cell now leaves
+  `native_rows=0` unspecified: Auto selected **8** for both halves while the state knob was
+  Auto→Contiguous on one half and user→Paged4/64 on the other. Actual publication remained
+  `{8}` with exact tokens/clean shutdown; matched opt1 measured176.498ms/135.979 tok/s
+  contiguous and180.446ms/133.004 tok/s paged. No new benchmark fixture was added.
+  **Authoritative live CUDA admission now follows the
   advisory smart decision.** `new_pinned_cuda` cleans reclaimable cold allocator/cache
   blocks, queries device-wide free VRAM from the original CUDA actor/context, preserves the
   configured `device_cap-provider_cap` headroom, and clamps the provider envelope to

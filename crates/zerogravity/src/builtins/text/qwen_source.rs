@@ -24,10 +24,14 @@ pub struct QwenSourceProfile {
     pub context: usize,
     pub output: usize,
     pub max_pending: Option<usize>,
+    /// Legacy/public cohort-width value. Under CUDA smart config, nonzero values
+    /// are treated as user overrides; zero leaves the knob eligible for Auto.
+    /// Use `QwenCudaSmartOverrides::native_rows = Some(0)` to explicitly force
+    /// sequential execution while keeping smart selection enabled for other knobs.
     pub native_rows: usize,
 }
 impl QwenSourceProfile {
-    pub(crate) fn validate(self) -> Result<(), ServiceError> {
+    pub(crate) fn validate_base(self) -> Result<(), ServiceError> {
         use crate::qwen35::plan::{ORDINARY_SOURCE_MAX_CONTEXT, ORDINARY_SOURCE_MIN_CONTEXT};
         if !(1..=zerogravity_engine::router::MAX_ACTIVE_PER_WORKER).contains(&self.active)
             || !(ORDINARY_SOURCE_MIN_CONTEXT..=ORDINARY_SOURCE_MAX_CONTEXT).contains(&self.context)
@@ -35,13 +39,11 @@ impl QwenSourceProfile {
             || self.output > self.context
             || self.output > zerogravity_engine::router::MAX_OUTPUT_TOKENS
             || self.max_pending == Some(0)
-            || !matches!(self.native_rows, 0 | 4 | 8)
-            || (self.native_rows != 0 && self.active < self.native_rows)
         {
             return Err(ServiceError::new(
                 400,
                 "invalid_source_profile",
-                "source GPU requires active=1..8, context=512..32768, output=1..512, positive pending bound, native_rows=0|4|8 with active>=native_rows",
+                "source GPU requires active=1..8, context=512..32768, output=1..512 and a positive pending bound",
             ));
         }
         // Keep every shared worker refusal before source IO or device creation.
@@ -53,6 +55,17 @@ impl QwenSourceProfile {
             self.output,
             self.max_pending,
         )
+    }
+
+    pub(crate) fn validate_native_rows(self, native_rows: usize) -> Result<(), ServiceError> {
+        if !matches!(native_rows, 0 | 4 | 8) || (native_rows != 0 && self.active < native_rows) {
+            return Err(ServiceError::new(
+                400,
+                "invalid_source_profile",
+                "source GPU requires native_rows=0|4|8 with active>=native_rows",
+            ));
+        }
+        Ok(())
     }
 }
 struct Source {
@@ -131,9 +144,14 @@ mod tests {
             max_pending: Some(4),
             native_rows: 0,
         };
-        assert!(good.validate().is_ok());
+        let valid = |profile: QwenSourceProfile| {
+            profile
+                .validate_base()
+                .and_then(|_| profile.validate_native_rows(profile.native_rows))
+        };
+        assert!(valid(good).is_ok());
         for context in [8192, 16384, 32768] {
-            assert!(QwenSourceProfile { context, ..good }.validate().is_ok());
+            assert!(valid(QwenSourceProfile { context, ..good }).is_ok());
         }
         for bad in [
             QwenSourceProfile { active: 0, ..good },
@@ -169,7 +187,7 @@ mod tests {
                 ..good
             },
         ] {
-            assert!(bad.validate().is_err());
+            assert!(valid(bad).is_err());
         }
     }
 
@@ -198,6 +216,7 @@ mod tests {
                                 page_tokens,
                                 max_append_tokens,
                             }),
+                            native_rows: None,
                         },
                     ),
                 },

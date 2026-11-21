@@ -432,12 +432,17 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   model-start `smart_config` layer now makes this class of choice once at cold start, not in
   the hot path. Modes: Exclusive ignores user values for supported smart knobs; Enabled
   (default) lets per-knob user values override Auto; Disabled uses user values/static
-  defaults only. Qwen's first extensible override field is `state_policy`; Auto evaluates
-  exact Contiguous/Paged64 admission using a fresh ordinal0 VRAM observation. Canonical
-  `QwenCuda` now uses Enabled. A default2B32K/1024 physical run logged Auto→Paged because
-  contiguous streamed weights while paged stayed resident and passed in26.51s exact.
-  Future knobs (batch width, page geometry, placement, kernel/capture policy, etc.) should
-  plug into the same generic precedence/report layer, not create model-local mode enums.
+  defaults only. Qwen now has two extensible smart override fields: `state_policy` and
+  `native_rows`. Auto evaluates their qualified cross-product with one exact source-call
+  preflight per candidate using a fresh ordinal0 VRAM observation, prioritizing resident
+  weights > wider native cohort > Contiguous tie. Canonical `QwenCuda` uses Enabled. A
+  default2B32K/1024 run logged Auto→Paged and passed in26.51s exact. The existing active8
+  public SDK cell now leaves native width unspecified; Auto chose width8 for both the
+  Auto→Contiguous and user→Paged4/64 halves, actual cohort publication stayed `{8}`, and
+  matched opt1 measured135.979/133.004 tok/s with exact tokens/clean shutdown. Nonzero
+  legacy `profile.native_rows` becomes a user override; explicit `Some(0)` forces
+  sequential while leaving other knobs smart. Future page geometry, placement,
+  kernel/capture policy, etc. should plug into this same generic precedence/report layer.
   Do not repin outputs or resurrect the old refusal rule.
 - [ ] Localize ROCm2B C4 warmup and C16/32/64 warmup/timed divergence (task39),
   without repinning expected IDs or attributing an unlocalized failure to kernels.

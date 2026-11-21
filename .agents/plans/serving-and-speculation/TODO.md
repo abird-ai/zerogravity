@@ -782,8 +782,11 @@ or a change to the active correctness/benchmark/27B order.
   1024-token public A/B is283.22s contiguous-streamed vs28.56s paged-resident (~9.9x),
   and the retained full32766-token paged run passes in224.80s execution/260.34s wall with
   exact replay/frontiers and clean shutdown. Canonical `QwenCuda` now runs Enabled smart
-  config and automatically selects Paged64/64 when exact current admission shows it avoids
-  weight streaming; user state-policy values still win under Enabled. No benchmark result
+  config and jointly resolves state representation + native cohort width from exact current
+  admission: resident weights first, then widest qualified B8/B4 cohort, then Contiguous
+  as a tie-break. User values still win per knob under Enabled. The existing active8 SDK
+  cell with native width unspecified Auto-selects8 and physically publishes `{8}` for both
+  Contiguous and user-Paged halves at135.979/133.004 tok/s. No benchmark result
   from the earlier killed
   short2B B8 attempt is retained; do not return to residual paged micro-tuning.
 - [x] A clean dynamic-prefill grouping candidate was measured and rejected from the

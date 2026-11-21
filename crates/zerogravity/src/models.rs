@@ -12,6 +12,9 @@ pub use crate::smart_config::{SmartConfig, SmartConfigMode};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct QwenCudaSmartOverrides {
     pub state_policy: Option<QwenCudaStatePolicy>,
+    /// `Some(0|4|8)` is an explicit user value. `None` leaves cohort width
+    /// eligible for smart selection when the layer is Enabled/Exclusive.
+    pub native_rows: Option<usize>,
 }
 
 #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]

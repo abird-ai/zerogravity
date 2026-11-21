@@ -31,7 +31,7 @@ fn qwen_cuda_native_runtime(paged: bool) -> Runtime {
         context: 512,
         output: 3,
         max_pending: Some(16),
-        native_rows: 8,
+        native_rows: 0,
     };
     let load = if paged {
         ModelLoadRequest::QwenCudaWithStatePolicy {
