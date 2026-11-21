@@ -13,7 +13,12 @@
 
 use crate::state::{CommittedOutput, PreparedDomain, TaskCoordinator};
 use crate::{Error, Result};
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::atomic::{AtomicU64, Ordering},
+};
+
+static NEXT_DEVICE_LEDGER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BufferLeaseId(u64);
@@ -29,10 +34,14 @@ use backing::{BackingAllocation, BackingRange};
 /// metadata only: it is not a backend pointer, source identity or authorization.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeviceBufferIdentity {
+    ledger: DeviceLedgerId,
     allocation: DeviceBufferAllocation,
     offset: usize,
     bytes: usize,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct DeviceLedgerId(u64);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum DeviceBufferAllocation {
@@ -50,6 +59,9 @@ impl DeviceBufferIdentity {
     }
 
     pub fn same_allocation(self, other: Self) -> bool {
+        if self.ledger != other.ledger {
+            return false;
+        }
         match (self.allocation, other.allocation) {
             (DeviceBufferAllocation::Direct(a), DeviceBufferAllocation::Direct(b)) => a == b,
             (DeviceBufferAllocation::Backing(a), DeviceBufferAllocation::Backing(b)) => a == b,
@@ -104,14 +116,20 @@ struct Lease {
     backing: Option<BackingRange>,
 }
 
-fn physical_identity(id: BufferLeaseId, lease: &Lease) -> DeviceBufferIdentity {
+fn physical_identity(
+    ledger: DeviceLedgerId,
+    id: BufferLeaseId,
+    lease: &Lease,
+) -> DeviceBufferIdentity {
     match lease.backing {
         Some(range) => DeviceBufferIdentity {
+            ledger,
             allocation: DeviceBufferAllocation::Backing(range.id),
             offset: range.offset,
             bytes: lease.bytes,
         },
         None => DeviceBufferIdentity {
+            ledger,
             allocation: DeviceBufferAllocation::Direct(id),
             offset: 0,
             bytes: lease.bytes,
@@ -127,6 +145,7 @@ struct Event {
 /// Single-device event control. One instance belongs to one actual service
 /// and task epoch; a higher ResourceArbiter may own coarse admission.
 pub struct DeviceEventLedger {
+    identity: DeviceLedgerId,
     epoch: u64,
     budget_bytes: usize,
     resident_bytes: usize,
@@ -143,7 +162,14 @@ impl DeviceEventLedger {
         if budget_bytes == 0 {
             return Err(Error::Limit("device lease budget must be positive".into()));
         }
+        let identity = NEXT_DEVICE_LEDGER
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+                next.checked_add(1)
+            })
+            .map(DeviceLedgerId)
+            .map_err(|_| Error::Limit("device ledger identity exhausted".into()))?;
         Ok(Self {
+            identity,
             epoch,
             budget_bytes,
             resident_bytes: 0,
@@ -169,7 +195,7 @@ impl DeviceEventLedger {
             .leases
             .get(&id)
             .ok_or_else(|| Error::State("unknown device buffer lease".into()))?;
-        Ok(physical_identity(id, lease))
+        Ok(physical_identity(self.identity, id, lease))
     }
 
     pub fn admit(&mut self, bytes: usize, role: BufferRole) -> Result<BufferLeaseId> {

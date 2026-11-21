@@ -59,17 +59,21 @@ Source comparison: [families09–13](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.
 The following extends existing owners; source-byte qualification is not inference.
 
 - [~] Canonical physical buffer identity now exists in the model-neutral device
-  ledger. `DeviceBufferIdentity` is an opaque process-local allocation owner + exact
-  byte range: direct allocations are owned by their original lease allocation, while
-  pooled/aliased views name the retained `DeviceBackingId`. Equality/`same_allocation`/
-  `overlaps` therefore describe real storage rather than hashes, chunk coordinates or
-  backend handles. `DeviceEventLedger::buffer_identity` is the sole public constructor,
-  and production overlapping-alias admission now uses the same identity semantics.
-  Six backing-ledger tests cover direct-vs-backed identity, exact offsets/ranges,
-  overlap/disjoint aliases, continuous charge, cancellation and unknown fencing.
-  Remaining adoption is to carry/query this identity only where prepared packs, graph
-  views, source windows and transfer staging actually need it, without adding per-lease
-  storage or mandatory hot-path bookkeeping. Encoded/captured/queued readers still
+  ledger. `DeviceBufferIdentity` is an opaque process-local **ledger namespace +
+  allocation owner + exact byte range**: direct allocations are owned by their original
+  lease allocation, while pooled/aliased views name the retained `DeviceBackingId`.
+  The non-wrapping ledger namespace prevents identical local lease/backing counters from
+  separate resident services from comparing equal. Equality/`same_allocation`/`overlaps`
+  therefore describe real storage rather than hashes, chunk coordinates or backend
+  handles. `DeviceEventLedger::buffer_identity` is the sole public constructor, and
+  production overlapping-alias admission now uses the same identity semantics. The first
+  resident consumer is the source-page immutable-cache/output alias guard: both HIP and
+  CUDA paths validate all outputs under one on-demand ledger lock, replacing backend-
+  handle range inference without adding a field to every `ResidentLease`. Six backing-ledger tests cover cross-ledger
+  separation, direct-vs-backed identity, exact offsets/ranges, overlap/disjoint aliases,
+  continuous charge, cancellation and unknown fencing. Remaining adoption is to query
+  this identity only where prepared packs, graph views and transfer staging actually need
+  it, without mandatory hot-path bookkeeping. Encoded/captured/queued readers still
   remain part of the broader retirement work.
 - [ ] Add measured lifetime-aware scratch reuse/phase lending only when no live
   root, graph, transfer or reader needs the range. Price borrowed capacity,

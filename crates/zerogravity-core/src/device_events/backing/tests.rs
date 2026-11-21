@@ -31,6 +31,12 @@ fn physical_identity_tracks_real_allocation_and_exact_range() {
     assert!(head.overlaps(overlap));
     assert!(!head.overlaps(tail));
     assert!(overlap.overlaps(tail));
+
+    let mut other_ledger = DeviceEventLedger::new(1, 64).unwrap();
+    let other = other_ledger.admit(64, BufferRole::Scratch).unwrap();
+    let other = other_ledger.buffer_identity(other).unwrap();
+    assert!(!direct_a.same_allocation(other));
+    assert!(!direct_a.overlaps(other));
 }
 
 #[test]

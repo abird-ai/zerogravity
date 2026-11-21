@@ -121,7 +121,7 @@ impl DeviceEventLedger {
             let lease = &self.leases[&id];
             let Some(range) = lease.backing else { continue };
             let backing = &self.backings[&range.id];
-            let identity = physical_identity(id, lease);
+            let identity = physical_identity(self.identity, id, lease);
             if backing.fenced {
                 return Err(Error::State("device backing completion uncertain".into()));
             }
@@ -130,7 +130,7 @@ impl DeviceEventLedger {
                     continue;
                 }
                 let other = &self.leases[alias];
-                if !identity.overlaps(physical_identity(*alias, other)) {
+                if !identity.overlaps(physical_identity(self.identity, *alias, other)) {
                     continue;
                 }
                 if selected.get(alias).is_some_and(|&other_access| {

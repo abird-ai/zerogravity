@@ -672,6 +672,25 @@ impl ResidentSourcePage {
     pub(crate) fn lease(&self) -> &ResidentLease {
         &self.lease
     }
+    fn require_disjoint_outputs(&self, outputs: &[ResidentLease]) -> Result<()> {
+        for output in outputs {
+            self.service.check_lease(output)?;
+        }
+        let ledger = self
+            .service
+            .ledger
+            .lock()
+            .map_err(|_| Error::State("resident source-page ledger poisoned".into()))?;
+        let page = ledger.buffer_identity(self.lease.id())?;
+        for output in outputs {
+            if page.overlaps(ledger.buffer_identity(output.id())?) {
+                return Err(Error::State(
+                    "source page consumer output aliases immutable cached rows".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
     #[cfg(all(
         feature = "hip",
         feature = "hardware-abort-probe",
@@ -1162,16 +1181,9 @@ impl ResidentSourcePage {
             .lock()
             .map_err(|_| Error::State("source page output owner poisoned".into()))? =
             outputs.clone();
-        let page_range = crate::resident_program::BufferRange::new(&self.lease.handle())?;
-        for output in &outputs {
-            if page_range.overlaps(&crate::resident_program::BufferRange::new(
-                &output.handle(),
-            )?) {
-                self.record_and_push(flight, owner, &outputs, completion)?;
-                return Err(Error::State(
-                    "source page consumer output aliases immutable cached rows".into(),
-                ));
-            }
+        if let Err(error) = self.require_disjoint_outputs(&outputs) {
+            self.record_and_push(flight, owner, &outputs, completion)?;
+            return Err(error);
         }
         flight.require_accesses(outputs.iter().map(|l| (l, DeviceAccess::Write)))?;
         self.record_and_push(flight, owner, &outputs, completion)?;
@@ -1720,16 +1732,7 @@ impl ResidentSourcePage {
                 "source page requires original consumer output barrier".into(),
             ));
         }
-        let page_range = crate::resident_program::BufferRange::new(&self.lease.handle())?;
-        for output in &outputs {
-            if page_range.overlaps(&crate::resident_program::BufferRange::new(
-                &output.handle(),
-            )?) {
-                return Err(Error::State(
-                    "source page consumer output aliases immutable cached rows".into(),
-                ));
-            }
-        }
+        self.require_disjoint_outputs(&outputs)?;
         flight.require_accesses(outputs.iter().map(|l| (l, DeviceAccess::Write)))?;
         let mut barriers = outputs
             .iter()

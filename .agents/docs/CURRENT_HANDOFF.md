@@ -387,14 +387,19 @@ Vulkan-only retry passed, so no source failure follows.
   owners retain the checkout, and reuse occurs only after ledger-proven idle backing;
   unknown retirement poisons/fences/quarantines rather than returning a set idle.
   **Physical alias identity now has one shared core representation too.**
-  `device_events::DeviceBufferIdentity` identifies an opaque real allocation plus exact
-  byte range; direct buffers use their lease allocation while pooled/views use the
-  retained backing allocation. The ledger is the sole constructor/query authority and
-  its production alias-conflict path now calls the same `overlaps` primitive, so there
-  is no parallel hash/handle/range definition. This adds no resident-lease field or
-  hot-path allocation. Core strict Clippy plus six backing-ledger tests pass. Adoption
-  across prepared packs, graph/source views and transfer staging remains incremental;
-  do not cache this identity into every lease merely for future diagnostics.
+  `device_events::DeviceBufferIdentity` identifies an opaque process-unique ledger
+  namespace + real allocation + exact byte range; direct buffers use their lease
+  allocation while pooled/views use the retained backing allocation. The extra ledger
+  namespace is required so independent services that both mint local ID1 cannot alias by
+  value. The ledger is the sole constructor/query authority and its production
+  alias-conflict path calls the same `overlaps` primitive, so there is no parallel
+  hash/handle/range definition. The first resident adoption is the source-page immutable
+  cache/output alias guard: both HIP and CUDA paths validate the page plus all outputs
+  under one on-demand ledger lock rather than reconstructing backend-handle ranges. This
+  adds no resident-lease field and no ordinary hot-path allocation. Core/GPU strict Clippy and the public CUDA-serving compile surface
+  pass; six backing-ledger tests include cross-ledger separation. Adoption across
+  prepared packs, graph views and transfer staging remains incremental; do not cache
+  identity into every lease merely for future diagnostics.
   **Scoped worker prefix reuse is
   now implemented and physically accepted.** `PrefixSharingScope` is a validated
   nonzero Copy ID. Existing `Request` stays unchanged; ordinary `request_text`

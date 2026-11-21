@@ -159,6 +159,12 @@ impl ResidentLedger {
         self.leases.insert(view, (model, 0));
         Ok(view)
     }
+    pub(super) fn buffer_identity(
+        &self,
+        id: BufferLeaseId,
+    ) -> Result<zerogravity_core::device_events::DeviceBufferIdentity> {
+        self.events.buffer_identity(id)
+    }
     pub(super) fn release_lease(&mut self, id: BufferLeaseId) -> Result<()> {
         let (model, bytes) = *self
             .leases
