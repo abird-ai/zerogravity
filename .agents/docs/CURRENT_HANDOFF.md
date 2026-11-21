@@ -1346,12 +1346,14 @@ serving, memory and composition plans.
   private-KV transition, batched rotary, grouped state transport and stateless fused
   math were not duplicated. The dormant inventory now includes
   `performance_candidates::LaneRegroupPlan`,
-  `cuda::performance_candidates::launch_copy_zero_tail`, thirteen
+  `cuda::performance_candidates::launch_copy_zero_tail`, seventeen
   `Bf16GemmCandidateKind` strategies, two recurrent-transpose directions and cached-GDN
   occupancy candidates for min-block hints8/16/24. The GEMM set covers the prior
   inner-major LaneBlocked B2/B4/B8, LaneStrided CTA64/CTA256, RoundedSegments M32/K64,
   paired-BF16 unpack, Ordered M128/N16, row-major shared-input/paired-column/split4 and
-  inner-major warp-shared/paired-column/unroll8 strategies. Git history plus1,433
+  inner-major warp-shared/paired-column/unroll8 strategies, plus the22Nov recovery of
+  LaneBlocked shared-row terms64, Rounded-K64 paired BF16 segment-boundary conversion,
+  Ordered-K64 weight-only `.cg` staging and Rounded-K64 weight-only `.cg` staging. Git history plus1,433
   unreachable blobs contained the historical measurements/docs but no surviving source
   blobs for those uncommitted A/B kernels, so they are clean reconstructions over the
   current accepted arithmetic source rather than falsely claimed byte recovery. The
@@ -1361,8 +1363,18 @@ serving, memory and composition plans.
   candidate modules.
   Physical compile-only SM86 checks passed first for the initial five GEMM candidates,
   then for7 GEMM +2 recurrent +3 GDN occupancy candidates, and finally for the expanded
-  candidate translation unit after the remaining GEMM strategies were added. These are
-  code-readiness results only, not numerical/performance acceptance for a new model.
+  candidate translation unit after the remaining GEMM strategies were added. The22Nov
+  recovery extension also physically compiled all four newly restored GEMM variants on
+  SM86; the reconstructed paired BF16 boundary variant additionally matched accepted
+  Rounded-K64 bytes and status exactly on a physical two-segment case. These are
+  code-readiness/correctness results only, not performance acceptance for a new model.
+  A fresh sweep of the remaining historical `removed` candidate notes found no other lost
+  reusable implementation: grouped recurrent/Conv, packed greedy, head partials, dual RMS,
+  certified recurrent, shared-input projection, attention/KV/rotary and stateless mechanics
+  are already retained; partial residency, pack ordering, page-size and CTA-width trials are
+  parameter/policy experiments over mechanisms that still exist; temporary profilers/runners
+  remain disposable; and ownership/ABI-invalid forms such as the >32-binding single-launch
+  B8 KV design remain intentionally dead rather than preserved as unsafe primitives.
 - **GPU test/cfg drift exposed by the restoration sweep was repaired without changing
   runtime behavior.** `ResidentPlaneLayout` ownership is no longer hidden behind an
   unrelated feature gate; graph witness/test-support/quarantine observers are available
@@ -1980,9 +1992,12 @@ is already green; repeat it only if host/runtime state changes.
 >   geometry, not ownership truth.
 >
 > Current reusable performance work must not be lost: dormant lane-regroup,
-> copy+tail-zero, 13 BF16 GEMM strategies, recurrent transpose and GDN occupancy
-> variants are retained without production consumers. Do not delete a clean
-> reusable primitive merely because its first consumer lost an A/B.
+> copy+tail-zero, 17 BF16 GEMM strategies, recurrent transpose, GDN occupancy and
+> backend transfer-retirement variants are retained without production consumers.
+> **Reject the selector/consumer, not a correct reusable primitive.** Delete the
+> primitive only for correctness/safety/resource-contract failure or when an
+> equivalent retained primitive strictly supersedes it; remove temporary probes,
+> runners and model-specific wiring normally.
 >
 > Fresh matched vLLM is still deferred by environment, not policy: the pinned
 > `vllm-0.31.0-cu129` store exists, but this connector cannot enter the rootless

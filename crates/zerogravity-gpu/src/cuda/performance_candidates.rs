@@ -145,6 +145,93 @@ fn bf16_gemm_candidate_source() -> Arc<str> {
     }))
 }
 
+fn transform_bf16_gemm_section(
+    start: &str,
+    end: &str,
+    from: &str,
+    to: &str,
+    label: &str,
+) -> Result<Arc<str>> {
+    let begin = BF16_GEMM_BASE_SOURCE
+        .find(start)
+        .ok_or_else(|| Error::State(format!("{label} start marker differs")))?;
+    let section_end = BF16_GEMM_BASE_SOURCE[begin..]
+        .find(end)
+        .map(|offset| begin + offset)
+        .ok_or_else(|| Error::State(format!("{label} end marker differs")))?;
+    let section = &BF16_GEMM_BASE_SOURCE[begin..section_end];
+    if section.matches(from).count() != 1 {
+        return Err(Error::State(format!("{label} transform marker differs")));
+    }
+    let replaced = section.replacen(from, to, 1);
+    let mut source = String::with_capacity(
+        BF16_GEMM_BASE_SOURCE.len() + replaced.len().saturating_sub(section.len()),
+    );
+    source.push_str(&BF16_GEMM_BASE_SOURCE[..begin]);
+    source.push_str(&replaced);
+    source.push_str(&BF16_GEMM_BASE_SOURCE[section_end..]);
+    Ok(Arc::from(source))
+}
+
+fn bf16_gemm_paired_boundary_source() -> Result<Arc<str>> {
+    static SOURCE: OnceLock<Arc<str>> = OnceLock::new();
+    if let Some(source) = SOURCE.get() {
+        return Ok(Arc::clone(source));
+    }
+    const FROM: &str = r#"            #pragma unroll
+            for (unsigned i = 0; i < 4; ++i) {
+                rounded[i] += widen_bf16(round_bf16(d[i]));
+                d[i] = 0;
+            }"#;
+    const TO: &str = r#"            unsigned pair01, pair23;
+            asm("cvt.rn.bf16x2.f32 %0, %1, %2;"
+                : "=r"(pair01) : "f"(d[1]), "f"(d[0]));
+            asm("cvt.rn.bf16x2.f32 %0, %1, %2;"
+                : "=r"(pair23) : "f"(d[3]), "f"(d[2]));
+            rounded[0] += widen_bf16(static_cast<unsigned short>(pair01));
+            rounded[1] += widen_bf16(static_cast<unsigned short>(pair01 >> 16));
+            rounded[2] += widen_bf16(static_cast<unsigned short>(pair23));
+            rounded[3] += widen_bf16(static_cast<unsigned short>(pair23 >> 16));
+            #pragma unroll
+            for (unsigned i = 0; i < 4; ++i) d[i] = 0;"#;
+    let source = transform_bf16_gemm_section(
+        "__device__ __forceinline__ void gemm_segmented_narrow_k64_body(",
+        "extern \"C\" __global__ __launch_bounds__(128) void bf16_gemm_segmented_narrow_k64(",
+        FROM,
+        TO,
+        "paired BF16 segment boundary",
+    )?;
+    Ok(Arc::clone(SOURCE.get_or_init(|| source)))
+}
+
+fn bf16_gemm_weight_cg_source() -> Result<Arc<str>> {
+    static SOURCE: OnceLock<Arc<str>> = OnceLock::new();
+    if let Some(source) = SOURCE.get() {
+        return Ok(Arc::clone(source));
+    }
+    const FROM: &str = r#"        if (aligned) {
+            copy16(target, source, valid * 2);
+        } else {"#;
+    const TO: &str = r#"        if (aligned) {
+            if (weight) {
+                unsigned address =
+                    static_cast<unsigned>(__cvta_generic_to_shared(target));
+                asm volatile("cp.async.cg.shared.global [%0], [%1], 16, %2;"
+                             :: "r"(address), "l"(source), "r"(valid * 2));
+            } else {
+                copy16(target, source, valid * 2);
+            }
+        } else {"#;
+    let source = transform_bf16_gemm_section(
+        "template<int BN>\n__device__ __forceinline__ void stage64(",
+        "__device__ __forceinline__ float widen_bf16(",
+        FROM,
+        TO,
+        "K64 weight-cache policy",
+    )?;
+    Ok(Arc::clone(SOURCE.get_or_init(|| source)))
+}
+
 /// Dormant exact-arithmetic physical specializations recovered from earlier A/B work.
 ///
 /// None is a production selector. Each keeps the accepted reduction order and varies
@@ -152,9 +239,17 @@ fn bf16_gemm_candidate_source() -> Arc<str> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Bf16GemmCandidateKind {
     LaneBlockedInnerMajor,
+    LaneBlockedSharedRowsTerms64,
     LaneStridedBatch8Threads64,
     LaneStridedBatch8Threads256,
     RoundedSegmentsBatch8M32K64 {
+        terms: usize,
+    },
+    RoundedSegmentsBatch8PairedBoundary {
+        terms: usize,
+    },
+    OrderedBatch8K64WeightCg,
+    RoundedSegmentsBatch8K64WeightCg {
         terms: usize,
     },
     LaneStridedBatch8PairedUnpack,
@@ -185,6 +280,16 @@ impl Bf16GemmCandidate {
     ) -> Result<Self> {
         let shape = Bf16GemmShape::new(columns, rows, inner)?;
         let output_bytes = output_span(columns, rows, output_stride)?;
+        let source = match kind {
+            Bf16GemmCandidateKind::RoundedSegmentsBatch8PairedBoundary { .. } => {
+                bf16_gemm_paired_boundary_source()?
+            }
+            Bf16GemmCandidateKind::OrderedBatch8K64WeightCg
+            | Bf16GemmCandidateKind::RoundedSegmentsBatch8K64WeightCg { .. } => {
+                bf16_gemm_weight_cg_source()?
+            }
+            _ => bf16_gemm_candidate_source(),
+        };
         let (entry, threads, terms, lane_shift, tile_columns, tile_rows, alignment) = match kind {
             Bf16GemmCandidateKind::LaneBlockedInnerMajor if matches!(rows, 2 | 4 | 8) => (
                 match rows {
@@ -199,6 +304,20 @@ impl Bf16GemmCandidate {
                 4usize,
                 rows,
                 rows * 2,
+            ),
+            Bf16GemmCandidateKind::LaneBlockedSharedRowsTerms64 if matches!(rows, 2 | 4 | 8) => (
+                match rows {
+                    2 => "zg_candidate_lane_blocked_batch2_terms64_certified",
+                    4 => "zg_candidate_lane_blocked_batch4_terms64_certified",
+                    8 => "zg_candidate_lane_blocked_batch8_terms64_certified",
+                    _ => unreachable!(),
+                },
+                128,
+                64,
+                5,
+                4,
+                rows,
+                2,
             ),
             Bf16GemmCandidateKind::LaneStridedBatch8Threads64 if rows == 8 => (
                 "zg_candidate_lane_strided_b8_inner_major_t64_certified",
@@ -229,6 +348,41 @@ impl Bf16GemmCandidate {
                     32,
                     8,
                     2,
+                )
+            }
+            Bf16GemmCandidateKind::RoundedSegmentsBatch8PairedBoundary { terms }
+                if rows == 8 && terms != 0 && terms.is_multiple_of(64) && inner >= 64 =>
+            {
+                (
+                    "bf16_gemm_segmented_narrow_k64_certified",
+                    128,
+                    terms,
+                    0,
+                    64,
+                    8,
+                    16,
+                )
+            }
+            Bf16GemmCandidateKind::OrderedBatch8K64WeightCg if rows == 8 && inner >= 64 => (
+                "bf16_gemm_ordered_narrow_k64_certified",
+                128,
+                32,
+                0,
+                64,
+                8,
+                16,
+            ),
+            Bf16GemmCandidateKind::RoundedSegmentsBatch8K64WeightCg { terms }
+                if rows == 8 && terms != 0 && terms.is_multiple_of(64) && inner >= 64 =>
+            {
+                (
+                    "bf16_gemm_segmented_narrow_k64_certified",
+                    128,
+                    terms,
+                    0,
+                    64,
+                    8,
+                    16,
                 )
             }
             Bf16GemmCandidateKind::LaneStridedBatch8PairedUnpack if rows == 8 => (
@@ -349,7 +503,7 @@ impl Bf16GemmCandidate {
         )?;
         let kernel = PinnedKernel::new_with_static_scalars(
             entry,
-            bf16_gemm_candidate_source(),
+            source,
             threads,
             vec![
                 (shape.weight_bytes(), BufferIOAttr::ReadOnly),
@@ -551,5 +705,37 @@ mod tests {
         assert_eq!(COPY_ZERO_TAIL_ENTRY, "zg_candidate_copy_zero_tail_words_v1");
         assert!(!COPY_ZERO_TAIL_SOURCE.is_empty());
         assert_eq!(MAX_WORDS, 2 * 1024 * 1024);
+    }
+
+    #[test]
+    fn recovered_bf16_candidates_keep_bounded_constructor_contracts() {
+        for (kind, columns, rows, inner) in [
+            (
+                Bf16GemmCandidateKind::LaneBlockedSharedRowsTerms64,
+                256,
+                8,
+                2048,
+            ),
+            (
+                Bf16GemmCandidateKind::RoundedSegmentsBatch8PairedBoundary { terms: 2048 },
+                256,
+                8,
+                6144,
+            ),
+            (
+                Bf16GemmCandidateKind::OrderedBatch8K64WeightCg,
+                8192,
+                8,
+                2048,
+            ),
+            (
+                Bf16GemmCandidateKind::RoundedSegmentsBatch8K64WeightCg { terms: 2048 },
+                2048,
+                8,
+                6144,
+            ),
+        ] {
+            Bf16GemmCandidate::new(kind, columns, rows, inner, columns).unwrap();
+        }
     }
 }

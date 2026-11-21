@@ -364,12 +364,20 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   rather than deleting reusable mechanics. The21 Nov sweep reconciled the historical
   "fully removed" entries: selectors/runners/timing harnesses stay removed, while
   reusable kernels now live behind zero-consumer candidate components. The inventory is
-  allocation-free lane regrouping; copy+zero-tail;13 BF16 GEMM strategies
-  (LaneBlocked/CTA64/CTA256/M32-K64/paired-unpack/M128/N16 plus row-major shared-input,
-  paired-column, split4 and inner-major warp-share, paired-column, unroll8); a padded
+  allocation-free lane regrouping; copy+zero-tail;17 BF16 GEMM strategies: the original
+  13 LaneBlocked/CTA64/CTA256/M32-K64/paired-unpack/M128/N16 plus row-major shared-input,
+  paired-column, split4 and inner-major warp-share, paired-column, unroll8, and the22Nov
+  recovery of LaneBlocked shared-row terms64, Rounded-K64 paired BF16 segment-boundary
+  conversion, Ordered-K64 weight-only `.cg`, and Rounded-K64 weight-only `.cg`; a padded
   32x32 recurrent U32 transpose in both directions; and cached-GDN launch-bounds
   min8/16/24. Existing already-retained B4/B8 attention, packed private KV, rotary,
   grouped state transport and stateless primitives were intentionally not duplicated.
+  The22Nov additions physically compile on SM86; the reconstructed paired-boundary variant
+  is byte/status exact against accepted Rounded-K64 on a physical two-segment case.
+  Negative A/B results remove selectors/consumers, not these reusable mechanics. Parameter/
+  policy experiments (partial residency, pack ordering, page size, CTA width) do not require
+  duplicate primitives when the underlying mechanism remains available; invalid ownership/
+  ABI designs such as the >32-binding single-launch B8 KV form remain intentionally dead.
   No production selector references these candidates. The initial and final candidate
   CUDA translation units compile through NVRTC on RTX3060/SM86; no model-performance
   claim follows. For old A/B strategies whose literal working-tree source did not survive

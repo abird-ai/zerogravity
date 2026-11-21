@@ -119,6 +119,16 @@ remain part of the implementation wherever needed.
   features for this separation. Enforce it through review and these conventions,
   not additional placement-policy tests. Keep meaningful numerical, runtime,
   state, cancellation and physical ownership tests for behavior changes.
+- **Preserve reusable performance primitives.** A negative A/B on one model,
+  shape, backend or device rejects that production selector/consumer; it is not
+  grounds to delete a clean reusable implementation. Keep model-neutral kernels,
+  transports, layouts, scheduling transforms and ownership/completion mechanics
+  dormant and composable with zero production consumers when useful elsewhere.
+  Remove temporary benchmark probes/runners/selectors and model-specific wiring.
+  Delete a primitive itself only when it is incorrect/unsafe, violates numerical,
+  ownership or resource contracts, or is strictly superseded by an equivalent
+  retained primitive. Record that distinction in the owning plan so future work
+  can remeasure the primitive on other models/hardware without reconstructing it.
 
 ## Execution cadence
 

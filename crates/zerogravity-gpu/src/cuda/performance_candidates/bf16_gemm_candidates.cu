@@ -88,6 +88,63 @@ ZG_CANDIDATE_LANE_BLOCKED_INNER_ENTRY(4)
 ZG_CANDIDATE_LANE_BLOCKED_INNER_ENTRY(8)
 #undef ZG_CANDIDATE_LANE_BLOCKED_INNER_ENTRY
 
+// Historical shared-weight LaneBlocked experiment generalized the accepted
+// terms32 row-sharing arithmetic to terms64. It remains dormant: exact rows
+// share each weight load, while every row preserves its own contiguous
+// 64-term accumulation and the same 32-lane halving reduction tree.
+template<unsigned ROWS, unsigned TERMS>
+__device__ __forceinline__ void zg_candidate_lane_blocked_shared_rows(
+    const unsigned short* w, const unsigned short* x, unsigned short* y,
+    unsigned* status, GemmShape s) {
+    constexpr unsigned LANES = 32, CONTROL = 31;
+    static_assert(TERMS == 64, "retained LaneBlocked terms64 candidate");
+    const unsigned lane = threadIdx.x & (LANES - 1);
+    const unsigned long long col =
+        (unsigned long long)blockIdx.x * (128 / LANES) + (threadIdx.x / LANES);
+    float total[ROWS] = {};
+    constexpr unsigned long long STEP = LANES * TERMS;
+    for (unsigned long long start = 0; start < s.inner; start += STEP) {
+        const unsigned long long first = start + lane * TERMS;
+        const unsigned long long end =
+            s.inner < first + TERMS ? s.inner : first + TERMS;
+        for (unsigned long long k = first; k < end; ++k) {
+            if (col < s.columns) {
+                const float weight = widen_bf16(w[col * s.inner + k]);
+                #pragma unroll
+                for (unsigned row = 0; row < ROWS; ++row) {
+                    total[row] = add_product(
+                        total[row], weight, widen_bf16(x[row * s.inner + k]));
+                }
+            }
+        }
+    }
+    for (unsigned delta = LANES >> 1; delta; delta >>= 1) {
+        #pragma unroll
+        for (unsigned row = 0; row < ROWS; ++row) {
+            const float other = lane_down(total[row], delta, CONTROL);
+            if (lane < delta) total[row] += other;
+        }
+    }
+    if (lane == 0 && col < s.columns) {
+        #pragma unroll
+        for (unsigned row = 0; row < ROWS; ++row) {
+            store_bf16(y, row * s.output_stride + col, total[row], status);
+        }
+    }
+}
+
+#define ZG_CANDIDATE_LANE_BLOCKED_T64_ENTRY(ROWS) \
+extern "C" __global__ __launch_bounds__(128) \
+void zg_candidate_lane_blocked_batch##ROWS##_terms64_certified( \
+    const unsigned short* w, const unsigned short* x, unsigned short* y, \
+    unsigned* status, GemmShape s) { \
+    zg_candidate_lane_blocked_shared_rows<ROWS, 64>(w, x, y, status, s); \
+}
+ZG_CANDIDATE_LANE_BLOCKED_T64_ENTRY(2)
+ZG_CANDIDATE_LANE_BLOCKED_T64_ENTRY(4)
+ZG_CANDIDATE_LANE_BLOCKED_T64_ENTRY(8)
+#undef ZG_CANDIDATE_LANE_BLOCKED_T64_ENTRY
+
 template<unsigned THREADS>
 __device__ __forceinline__ void zg_candidate_lane_strided_b8_inner_major(
     const unsigned short* w, const unsigned short* x, unsigned short* y,
