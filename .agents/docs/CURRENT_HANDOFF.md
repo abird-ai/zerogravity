@@ -118,6 +118,33 @@ qualification and integration compilation remain green; do not repair those test
 issues absent direct relevance. No physical GPU run was added for this behavior-free naming
 slice.
 
+### Nix-native matched vLLM provider — 22 Nov 2026
+
+The old Podman dependency is no longer required for the CUDA baseline. The repo now owns a
+small reusable Nix provider around a frozen upstream wheel graph under
+`benchmarks/vllm/cuda`: pinned nixpkgs supplies Python3.12.14 + uv0.12.17, `uv.lock`
+(SHA256 `3c9c500b8e990187df6ede3f5a475250b123f2d6ccbbe32416a0a036827c3b96`)
+resolves vLLM0.33.0 / torch2.14.0+cu130, and the provider borrows only the live NVIDIA
+driver. NixOS-specific runtime seams are explicit rather than emulated with an FHS image:
+the pinned C++ runtime is on `LD_LIBRARY_PATH` and Triton gets
+`TRITON_LIBCUDA_PATH=/run/opengl-driver/lib`. `prepare` is the only network-capable action
+and materializes the frozen environment plus matching FlashInfer kernels; `check` and
+`serve` run the exact persistent interpreter offline. No host Python packages or host CUDA
+toolkit are required.
+
+L5 private-loopback correctness is physically accepted on the exact local Qwen3.5 0.8B and
+2B snapshots. Both providers advertise the expected `/v1/models` name, accept a
+temperature-zero `/v1/completions` request, return one deterministic completion, and shut
+down with the RTX3060 back at37MiB. The correctness smoke deliberately used eager mode;
+matched performance must use vLLM's normal optimized execution. pvl-a1 is a compatible
+second CUDA target (RTX4060 Laptop 8GiB, driver620.70.06/CUDA UMD13.5 and the same private
+loopback envelope), but the exact L5 0.8B/2B snapshots are absent there. Next transfer those
+exact source directories through verified host transport, sync this exact Git checkpoint,
+repeat provider correctness on A1, then run the existing `serve-compare.py` /
+`serve-matrix.py` C1/C4/C8/C16/C32/C64 campaign on both L5 and A1. Do not invent a second
+benchmark framework. The same provider constructor is the intended basis for a later ROCm
+sibling on X2 after its environment gate is repaired.
+
 ### Error architecture — 21 Nov 2026
 
 The cross-layer error contract is now intentionally small and typed:

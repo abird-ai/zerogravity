@@ -29,6 +29,11 @@
   cross = import ./cross.nix {inherit nixpkgs overlay sourceRoot version mkCraneLib;};
 
   development = forAllSystems (system: import ./dev.nix {native = native.${system};});
+  vllm = forAllSystems (system:
+    import ./vllm.nix {
+      inherit sourceRoot;
+      pkgs = native.${system}.pkgs;
+    });
 in {
   nixosModules = {
     default = import ./module.nix {inherit self;};
@@ -41,19 +46,29 @@ in {
       zerogravity = native.${system}.package;
       deps = native.${system}.cargoArtifacts;
     }
+    // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+      vllm-cuda = vllm.${system}.cuda.provider;
+    }
     // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") (import ./release.nix {
       inherit system nixpkgs version;
       inherit (cross) mkTarget mkCross;
       inherit (native.${system}) pkgs;
     }));
 
-  apps = forAllSystems (system: {
-    default = {
-      type = "app";
-      program = "${native.${system}.package}/bin/zerogravity";
-    };
-    zerogravity = self.apps.${system}.default;
-  });
+  apps = forAllSystems (system:
+    {
+      default = {
+        type = "app";
+        program = "${native.${system}.package}/bin/zerogravity";
+      };
+      zerogravity = self.apps.${system}.default;
+    }
+    // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+      vllm-cuda = {
+        type = "app";
+        program = "${vllm.${system}.cuda.provider}/bin/zerogravity-vllm-cuda";
+      };
+    });
 
   checks = forAllSystems (system:
     import ./checks.nix {
@@ -62,9 +77,13 @@ in {
       module = self.nixosModules.default;
     });
 
-  devShells = forAllSystems (system: {
-    default = development.${system}.shell;
-  });
+  devShells = forAllSystems (system:
+    {
+      default = development.${system}.shell;
+    }
+    // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+      vllm-cuda = vllm.${system}.cuda.shell;
+    });
 
   formatter = forAllSystems (system: development.${system}.formatter);
 }

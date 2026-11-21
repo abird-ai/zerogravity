@@ -9,7 +9,8 @@ migration. Populated0.8B/2B HIP correctness and its final gate pass. Finish
 remaining populated CUDA/general27B, then configurable native continuous batching:
 independent queue/active/member/token limits, including all eligible admitted
 work when it fits. Current offered-C64/active≤8 singleton coverage is not native
-batching. Matched vLLM performance follows correctness and batching.
+batching. The matched vLLM provider is now container-free and Nix-native on L5; paired
+performance still follows provider correctness and the retained serving contract.
 Recurrence`17aafa71` stays cancelled; no new acquisition or production permit.
 
 
@@ -23,6 +24,20 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ### Current continuation — 14 Nov 2026
 
+- [x] **22 Nov Nix-native vLLM CUDA baseline:** replace the Podman dependency with
+  one reusable Nix provider plus a frozen `uv.lock`. The pinned environment is
+  Python3.12.14 / uv0.12.17 / vLLM0.33.0 / torch2.14.0+cu130; runtime borrows only
+  the host NVIDIA driver and explicitly points Triton at `/run/opengl-driver/lib`.
+  One network-capable `prepare` materializes the locked environment + matching
+  FlashInfer kernels; `check`/`serve` are offline. L5 private-loopback correctness
+  passes the exact local Qwen3.5 0.8B and2B snapshots: `/v1/models` + deterministic
+  `/v1/completions` return200 for both and RTX3060 returns to37MiB after shutdown.
+  No Podman, host Python packages or host CUDA toolkit are required.
+- [ ] **Next matched baseline unit:** sync this exact source checkpoint and the exact
+  L5 0.8B/2B snapshots to pvl-a1 using verified transport, prove the same provider
+  on its RTX4060, then reuse existing `serve-compare.py` / `serve-matrix.py` for
+  C1/C4/C8/C16/C32/C64 on both L5 and A1. Do not create a second benchmark harness.
+  The same provider constructor is intended to grow a ROCm/X2 sibling later.
 - [x] `c282f20` restores HIP-only source-profile compilation after a shared CUDA
   optimization accidentally gated the model-neutral packed-BF16 numeric-zero
   greedy kernel behind `cuda-cublas`; stale HIP test/support profiles now specify
