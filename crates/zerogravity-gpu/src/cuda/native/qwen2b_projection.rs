@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, atomic::AtomicBool};
 use zerogravity_artifacts::source_weights::{TensorWindow, VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::accelerator::program::{
-    SourceNumericalContract, SourceOperator, SourceOperatorKind,
+    NumericalContract, SourceOperator, SourceOperatorKind,
 };
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::{Error, Result};
@@ -27,10 +27,10 @@ mod qualification;
 mod tests;
 mod weights;
 pub use faults::{
-    Qwen2bProjectionFault, Qwen2bProjectionFaultOutcome, qualify_qwen2b_projection_fault,
+    Qwen2BProjectionFault, Qwen2BProjectionFaultOutcome, qualify_qwen2b_projection_fault,
 };
 pub use qualification::{
-    Qwen2bProjectionFixture, Qwen2bProjectionReadback, Qwen2bProjectionReceipt,
+    Qwen2BProjectionFixture, Qwen2BProjectionReadback, Qwen2BProjectionReceipt,
     qualify_qwen2b_projections,
 };
 pub(crate) use weights::{PendingProjectionWeights, ProjectionWeights};
@@ -45,7 +45,7 @@ impl Role {
         operator.validate()?;
         crate::cuda::gdn::GdnPhase::for_reference_call(operator.call())?;
         if operator.kind() != (SourceOperatorKind::Projection { selected_row: None })
-            || operator.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+            || operator.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
             || !operator.parameters().is_empty()
             || operator.matrices().len() != 2
             || operator.matrices().iter().any(|m| m.columns != 2048)
@@ -93,13 +93,13 @@ struct Launch {
 #[derive(Clone, Copy)]
 enum PacketScope {
     Original,
-    Qwen2bMlp,
+    Qwen2BMlp,
 }
 impl PacketScope {
     fn launches(self, rows: usize, role: Role) -> Result<Vec<Launch>> {
         match self {
             Self::Original => manifests::launches(rows, role),
-            Self::Qwen2bMlp => manifests::mlp_launches(rows, role),
+            Self::Qwen2BMlp => manifests::mlp_launches(rows, role),
         }
     }
 }
@@ -245,7 +245,7 @@ impl ProjectionPrograms {
             images,
             weights,
             std::slice::from_ref(recipe.bindings()),
-            PacketScope::Qwen2bMlp,
+            PacketScope::Qwen2BMlp,
             init,
             cancelled,
         )
@@ -408,7 +408,7 @@ pub(crate) fn mlp_diagnostic_manifests(
     let mut out = Vec::new();
     for role in [Role::Qkvz, Role::Ba] {
         out.extend(
-            PacketScope::Qwen2bMlp
+            PacketScope::Qwen2BMlp
                 .launches(rows, role)?
                 .into_iter()
                 .map(|p| (p.image, p.manifest)),

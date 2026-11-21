@@ -83,7 +83,7 @@ fn old_invocation_and_call_constructors_keep_exact_finite_guards() {
         let call = QwenSourceCall::new(old).unwrap();
         assert_eq!(
             QwenEmbedding::for_model(
-                QwenSourceProfile::Qwen08,
+                QwenModelVariant::Qwen800M,
                 embedding(&call).tensor().clone(),
                 call.request().teachers().clone()
             )
@@ -101,7 +101,7 @@ fn old_invocation_and_call_constructors_keep_exact_finite_guards() {
     }
     let semantic = request(source, SourceCallMode::Prefill, 0, 47);
     assert!(QwenSourceCall::new(semantic.clone()).is_err());
-    assert!(QwenSourceCall::for_profile(QwenSourceProfile::Qwen2B, semantic.clone()).is_err());
+    assert!(QwenSourceCall::for_profile(QwenModelVariant::Qwen2B, semantic.clone()).is_err());
     let call = QwenSourceCall::from_span(semantic.clone()).unwrap();
     assert!(
         QwenEmbedding::new(
@@ -112,7 +112,7 @@ fn old_invocation_and_call_constructors_keep_exact_finite_guards() {
     );
     assert!(
         QwenEmbedding::for_model(
-            QwenSourceProfile::Qwen08,
+            QwenModelVariant::Qwen800M,
             embedding(&call).tensor().clone(),
             call.request().teachers().clone()
         )
@@ -129,7 +129,7 @@ fn true47_and_cached47_through53_spans_have_no_legacy_native_phase() {
     assert_eq!((initial.rows(), initial.teachers().base()), (47, 0));
     assert!(initial.reference_phase().is_err());
     let call = QwenSourceCall::from_span(initial).unwrap();
-    assert_eq!(call.model_profile(), QwenSourceProfile::Qwen08);
+    assert_eq!(call.model_profile(), QwenModelVariant::Qwen800M);
     for base in 47..=53 {
         let next = request(source, SourceCallMode::Decode, base, 1);
         assert_eq!(next.teachers().base() + next.rows(), base + 1);
@@ -310,7 +310,7 @@ fn new_semantic_span_never_enables_unaware_backend_or_unbound_slice_provenance()
         Err(Error::Unsupported(_))
     ));
     let mut slice =
-        QwenPlanBuilder::new_operator_slice(source, ProgramNumericalProfile::SourceCudaSm86Bf16V1)
+        QwenPlanBuilder::new_operator_slice(source, NumericalProfile::CudaSm86Bf16ReferenceV1)
             .unwrap();
     let raw = slice.source_embedding(&embedding(&call)).unwrap();
     let tag = slice.value_provenance(&raw).unwrap().unwrap();

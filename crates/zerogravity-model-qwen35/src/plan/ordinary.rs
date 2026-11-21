@@ -148,14 +148,14 @@ impl OrdinaryQwenInvocation {
 }
 
 fn require_source_phase(
-    numerical: SourceNumericalContract,
+    numerical: NumericalContract,
     mode: SourceCallMode,
     base: usize,
     rows: usize,
 ) -> Result<()> {
     // Original HF takes cached recurrence for every initialized single-row call.
     // Refuse a contradictory declaration; never silently rewrite the phase.
-    if numerical == SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1
+    if numerical == NumericalContract::TorchCpuAvx2Bf16MixedV1
         && base > 0
         && rows == 1
         && mode != SourceCallMode::Decode
@@ -208,7 +208,7 @@ pub(crate) fn build_ordinary_plan(
 fn record_ordinary_plan(
     identity: SourceIdentity,
     profile: impl Into<OrdinaryQwenGeometry>,
-    numerical: SourceNumericalContract,
+    numerical: NumericalContract,
     context_capacity_tokens: usize,
     mut matrix: impl FnMut(QwenMatrixRole) -> Result<SourceTensor>,
     mut parameter: impl FnMut(QwenParameterRole) -> Result<SourceParameter>,
@@ -291,7 +291,7 @@ type MatrixResolver<'a> = &'a mut dyn FnMut(QwenMatrixRole) -> Result<SourceTens
 type ParameterResolver<'a> = &'a mut dyn FnMut(QwenParameterRole) -> Result<SourceParameter>;
 struct OrdinaryRecorder<'a> {
     profile: OrdinaryQwenGeometry,
-    numerical: SourceNumericalContract,
+    numerical: NumericalContract,
     geometry: SourcePlanGeometry,
     builder: CorePlanBuilder,
     matrix: MatrixResolver<'a>,
@@ -520,7 +520,7 @@ impl crate::hybrid_decoder::HybridDecoder for OrdinaryRecorder<'_> {
 
 fn mathematical_kind(
     profile: OrdinaryQwenGeometry,
-    numerical: SourceNumericalContract,
+    numerical: NumericalContract,
     layer: Option<usize>,
     operation: QwenOperation,
 ) -> Result<SourceOperatorKind> {
@@ -551,10 +551,10 @@ fn mathematical_kind(
                 key_width: 128,
                 value_width: 128,
                 epsilon: 1e-6,
-                contract: if numerical == SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1 {
-                    SourceGdnContract::TorchCpuAvx2L2SiluBf16V1
+                contract: if numerical == NumericalContract::TorchCpuAvx2Bf16MixedV1 {
+                    GdnContract::TorchCpuAvx2L2SiluBf16V1
                 } else {
-                    SourceGdnContract::ReferenceCudaSm86L2SiluBf16V1
+                    GdnContract::ReferenceCudaSm86L2SiluBf16V1
                 },
             },
         },
@@ -637,7 +637,7 @@ fn roles(
 
 #[cfg(feature = "diagnostic-cpu-checkpoint")]
 pub fn diagnostic_ordinary_plan(
-    profile: QwenSourceProfile,
+    profile: QwenModelVariant,
     context_capacity_tokens: usize,
 ) -> Result<Arc<ForwardPlan>> {
     let source = SourceIdentity::for_new_allocation()?;
@@ -645,7 +645,7 @@ pub fn diagnostic_ordinary_plan(
     let recorded = record_ordinary_plan(
         source,
         profile,
-        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        NumericalContract::CudaSm86Bf16ReferenceV1,
         context_capacity_tokens,
         |role| Ok(diagnostic_matrix(source, profile, role)),
         |role| Ok(diagnostic_parameter(source, profile, role)),

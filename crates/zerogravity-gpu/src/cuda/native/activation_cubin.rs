@@ -143,7 +143,7 @@ async fn qualify_activation_inner(
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source_identity(),
-        ResourceOwner::new("qwen08-cuda-cubin", "original-activation-leaf")?,
+        ResourceOwner::new("qwen800m-cuda-cubin", "original-activation-leaf")?,
         PROVIDER_CAP,
         inputs.device_cap,
     )?;

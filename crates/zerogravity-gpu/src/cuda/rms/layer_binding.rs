@@ -1,7 +1,7 @@
 //! Actual RMS operator/source join; family config/roles are checked by its factory.
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_core::accelerator::program::{
-    SourceGamma, SourceNumericalContract, SourceOperator, SourceOperatorKind, SourceParameter,
+    NumericalContract, SourceGamma, SourceOperator, SourceOperatorKind, SourceParameter,
     SourceRmsGeometry,
 };
 use zerogravity_core::{Error, Result};
@@ -30,7 +30,7 @@ impl BoundRmsSource {
                 epsilon: 1e-6,
                 gamma: SourceGamma::OnePlus,
             })
-            || operator.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+            || operator.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
             || operator.call().source() != source.source_identity()
             || operator.parameters().len() != 1
         {

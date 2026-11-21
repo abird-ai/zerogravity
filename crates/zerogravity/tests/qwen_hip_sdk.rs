@@ -22,7 +22,7 @@ use std::{
 use zerogravity::{
     Runtime,
     cache::CacheOptions,
-    models::{ModelLoadRequest, QwenHipProfile},
+    models::{ModelLoadRequest, QwenServingProfile},
     resource_arbiter::{
         AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
     },
@@ -102,7 +102,7 @@ fn reference(path: &Path, label: &str) -> Reference {
         result.status,
         "CAPTURED_ORIGINAL_SOURCE_CALL_REFERENCE_ONLY"
     );
-    assert_eq!(result.numerical_profile, "TorchCpuBf16Avx2MixedSourceV1");
+    assert_eq!(result.numerical_profile, "TorchCpuAvx2Bf16MixedV1");
     assert!(result.original_full_forward && !result.rust_or_gpu_parity);
     assert_eq!(result.active_context, 514);
     assert_eq!(result.calls.len(), 66);
@@ -158,7 +158,7 @@ fn complete(events: RequestEvents, tokens: usize, tokenizer: &dyn TextTokenizer)
                 assert_eq!(token.index, result.ids.len());
                 let root = token.gpu.expect("actual source publication observation");
                 assert_eq!(root.producer_frontier, (tokens + token.index) as u64);
-                assert!(root.producer_root.is_some() && root.native_cohort.is_none());
+                assert!(root.producer_root.is_some() && root.fused_cohort.is_none());
                 result.ids.push(token.id);
                 result.roots.push(root);
                 result.output.push_str(&text);
@@ -263,12 +263,12 @@ fn original_source_public_sdk_completion_cancellation_and_retirement() {
             aliases: vec!["source".into(), "alias".into()],
             cache: CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
             snapshot: snapshot.into(),
-            profile: QwenHipProfile {
+            profile: QwenServingProfile {
                 active: 2,
                 context: 514,
                 output: 3,
                 max_pending: Some(4),
-                native_rows: 0,
+                cohort_width: 0,
             },
         })
         .unwrap();
@@ -387,7 +387,7 @@ fn original_source_public_sdk_completion_cancellation_and_retirement() {
     assert!(!final_host.fenced);
     drop((reference, support, bootstrap, serving));
     println!(
-        "SOURCE_PUBLIC_SDK_PASS model={label} mode={mode} original_ids=6 prompt_tail65=replayed independent_sessions=true native_cohorts=false device_context_bytes={} host_with_support_bytes={} full_float_comparisons=0",
+        "SOURCE_PUBLIC_SDK_PASS model={label} mode={mode} original_ids=6 prompt_tail65=replayed independent_sessions=true fused_cohorts=false device_context_bytes={} host_with_support_bytes={} full_float_comparisons=0",
         physical.reserved, final_host.reserved
     );
 }

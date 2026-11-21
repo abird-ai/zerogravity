@@ -27,7 +27,7 @@ fn input(call: SourceCall) -> SourceOperator {
                 epsilon_bits: 1e-6_f32.to_bits(),
             },
         },
-        SourceNumericalContract::GgmlSourceF32V1,
+        NumericalContract::GgmlF32V1,
         vec![],
         vec![norm(call.source())],
     )
@@ -37,7 +37,7 @@ fn projection(call: SourceCall) -> SourceOperator {
     SourceOperator::new(
         call.clone(),
         SourceOperatorKind::Projection { selected_row: None },
-        SourceNumericalContract::GgmlQ4Repack8x8F32V1,
+        NumericalContract::GgmlQ4Repack8x8F32V1,
         vec![SourceTensor {
             source: call.source(),
             name: "fixture.matrix".into(),
@@ -60,7 +60,7 @@ fn f32_source_chain_keeps_issuer_stage_precision_and_state_free_boundary() {
     let import = input(call.clone());
     let project = projection(call.clone());
     let mut builder =
-        PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1).unwrap();
+        PlanBuilder::new_operator_slice(source, NumericalProfile::GgufReferenceV1).unwrap();
     let retained = one(&mut builder, &import, &[]).unwrap();
     let foreign = projection(
         super::super::SourceCall::new(
@@ -80,7 +80,7 @@ fn f32_source_chain_keeps_issuer_stage_precision_and_state_free_boundary() {
             channels: 96,
             kernel: 4,
         },
-        SourceNumericalContract::GgmlSourceF32V1,
+        NumericalContract::GgmlF32V1,
         vec![],
         vec![SourceParameter {
             source,
@@ -101,7 +101,7 @@ fn f32_source_chain_keeps_issuer_stage_precision_and_state_free_boundary() {
             epsilon: 1e-6 / 32.0,
             scale: 1.0 / 32.0_f32.sqrt(),
         }),
-        SourceNumericalContract::GgmlSourceF32V1,
+        NumericalContract::GgmlF32V1,
         vec![],
         vec![],
     )
@@ -121,14 +121,13 @@ fn f32_source_chain_keeps_issuer_stage_precision_and_state_free_boundary() {
             .all(|p| *p == ActivationPrecision::F32)
     );
     let mut bf16 =
-        PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::SourceCudaSm86Bf16V1)
-            .unwrap();
+        PlanBuilder::new_operator_slice(source, NumericalProfile::CudaSm86Bf16ReferenceV1).unwrap();
     assert!(one(&mut bf16, &import, &[]).is_err());
     let mut full =
         PlanBuilder::new(source, 128, vec![StateSlot::Conv(ConvDomain(0))], false).unwrap();
     assert!(one(&mut full, &import, &[]).is_err());
     let mut other =
-        PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1).unwrap();
+        PlanBuilder::new_operator_slice(source, NumericalProfile::GgufReferenceV1).unwrap();
     assert!(one(&mut other, &project, &[retained]).is_err());
 }
 #[test]
@@ -152,7 +151,7 @@ fn codecs_gamma_and_f32_numerical_schedules_cannot_substitute() {
         SourceOperator::new(
             call.clone(),
             good.kind(),
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
             good.matrices().to_vec(),
             vec![]
         )
@@ -166,7 +165,7 @@ fn codecs_gamma_and_f32_numerical_schedules_cannot_substitute() {
                 epsilon: 1e-6,
                 gamma: SourceGamma::OnePlus
             }),
-            SourceNumericalContract::GgmlSourceF32V1,
+            NumericalContract::GgmlF32V1,
             vec![],
             vec![norm(source)]
         )
@@ -176,7 +175,7 @@ fn codecs_gamma_and_f32_numerical_schedules_cannot_substitute() {
         SourceOperator::new(
             call,
             good.kind(),
-            SourceNumericalContract::OpenBlas033Zen16Q8F32V1,
+            NumericalContract::OpenBlas033Zen16Q8F32V1,
             good.matrices().to_vec(),
             vec![]
         )
@@ -193,7 +192,7 @@ fn retained_rms_metadata_cannot_retag_source_math_or_layout() {
         layout,
         norm(source),
         1e-6,
-        SourceNumericalContract::GgmlSourceF32V1,
+        NumericalContract::GgmlF32V1,
     )
     .unwrap();
     let other = RetainedRmsRows::new(
@@ -201,7 +200,7 @@ fn retained_rms_metadata_cannot_retag_source_math_or_layout() {
         layout,
         norm(source),
         1e-6,
-        SourceNumericalContract::GgmlSourceF32V1,
+        NumericalContract::GgmlF32V1,
     )
     .unwrap();
     assert_ne!(valid, other);
@@ -211,7 +210,7 @@ fn retained_rms_metadata_cannot_retag_source_math_or_layout() {
             layout,
             norm(SourceIdentity::for_new_allocation().unwrap()),
             1e-6,
-            SourceNumericalContract::GgmlSourceF32V1
+            NumericalContract::GgmlF32V1
         )
         .is_err()
     );
@@ -222,7 +221,7 @@ fn retained_rms_metadata_cannot_retag_source_math_or_layout() {
                 layout,
                 norm(source),
                 epsilon,
-                SourceNumericalContract::GgmlSourceF32V1
+                NumericalContract::GgmlF32V1
             )
             .is_err()
         );
@@ -233,7 +232,7 @@ fn retained_rms_metadata_cannot_retag_source_math_or_layout() {
             layout,
             norm(source),
             1e-6,
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1
+            NumericalContract::CudaSm86Bf16ReferenceV1
         )
         .is_err()
     );
@@ -243,7 +242,7 @@ fn retained_rms_metadata_cannot_retag_source_math_or_layout() {
             BulkF32Layout::dense([32, 1, 1, 1]).unwrap(),
             norm(source),
             1e-6,
-            SourceNumericalContract::GgmlSourceF32V1
+            NumericalContract::GgmlF32V1
         )
         .is_err()
     );

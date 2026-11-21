@@ -201,7 +201,7 @@ pub async fn qualify_qkvz_cubin(
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source_identity(),
-        ResourceOwner::new("qwen08-cuda-cubin", "source-rms-qkvz-n1")?,
+        ResourceOwner::new("qwen800m-cuda-cubin", "source-rms-qkvz-n1")?,
         PROVIDER_CAP,
         device_cap,
     )?;

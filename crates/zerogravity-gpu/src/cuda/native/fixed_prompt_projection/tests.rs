@@ -2,8 +2,8 @@
 use super::*;
 use zerogravity_core::accelerator::SourceIdentity;
 use zerogravity_core::accelerator::program::{
-    MatrixAxes, SourceCall, SourceNumericalContract, SourceOperator, SourceOperatorKind,
-    SourceRows, SourceTensor, TextCallGeometry,
+    MatrixAxes, NumericalContract, SourceCall, SourceOperator, SourceOperatorKind, SourceRows,
+    SourceTensor, TextCallGeometry,
 };
 use zerogravity_core::encoding::StoredTensorEncoding;
 fn call(source: SourceIdentity) -> SourceCall {
@@ -26,7 +26,7 @@ fn operator(call: &SourceCall, role: Role) -> SourceOperator {
     SourceOperator::new(
         call.clone(),
         SourceOperatorKind::Projection { selected_row: None },
-        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        NumericalContract::CudaSm86Bf16ReferenceV1,
         rows.into_iter()
             .enumerate()
             .map(|(index, rows)| SourceTensor {

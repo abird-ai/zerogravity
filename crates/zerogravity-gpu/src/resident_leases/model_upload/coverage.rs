@@ -30,16 +30,16 @@ impl Coverage {
     pub(super) fn members(&self) -> &'static [usize] {
         match self.layout {
             SourceWeightLayout::Vocabulary08 | SourceWeightLayout::Vocabulary2b => &[248320],
-            SourceWeightLayout::GdnQkvz | SourceWeightLayout::Qwen2bGdnQkvz => &[6144, 2048],
-            SourceWeightLayout::GdnBa | SourceWeightLayout::Qwen2bGdnBa => &[16, 16],
-            SourceWeightLayout::AttentionQkv | SourceWeightLayout::Qwen2bAttentionQkv => {
+            SourceWeightLayout::GdnQkvz | SourceWeightLayout::Qwen2BGdnQkvz => &[6144, 2048],
+            SourceWeightLayout::GdnBa | SourceWeightLayout::Qwen2BGdnBa => &[16, 16],
+            SourceWeightLayout::AttentionQkv | SourceWeightLayout::Qwen2BAttentionQkv => {
                 &[4096, 512, 512]
             }
             SourceWeightLayout::MlpGateUp => &[3584, 3584],
-            SourceWeightLayout::Qwen2bMlpGateUp => &[6144, 6144],
-            SourceWeightLayout::Qwen2bMlpDown
-            | SourceWeightLayout::Qwen2bGdnOutput
-            | SourceWeightLayout::Qwen2bAttentionOutput => &[2048],
+            SourceWeightLayout::Qwen2BMlpGateUp => &[6144, 6144],
+            SourceWeightLayout::Qwen2BMlpDown
+            | SourceWeightLayout::Qwen2BGdnOutput
+            | SourceWeightLayout::Qwen2BAttentionOutput => &[2048],
             _ => &[1024],
         }
     }
@@ -206,13 +206,13 @@ mod tests {
     fn qwen2b_ordered_members_and_non_mebibyte_down_tail_are_exact() {
         for (layout, members, expected_count, expected_tail) in [
             (
-                SourceWeightLayout::Qwen2bMlpGateUp,
+                SourceWeightLayout::Qwen2BMlpGateUp,
                 &[6144, 6144][..],
                 48,
                 (5888, 6144, 1048576),
             ),
             (
-                SourceWeightLayout::Qwen2bMlpDown,
+                SourceWeightLayout::Qwen2BMlpDown,
                 &[2048][..],
                 25,
                 (2040, 2048, 98304),
@@ -250,13 +250,13 @@ mod tests {
     #[test]
     fn full_2b_groups_use_authentic_member_order_and_2676_real_windows() {
         let layouts = [
-            (SourceWeightLayout::Qwen2bGdnQkvz, 32),
-            (SourceWeightLayout::Qwen2bGdnBa, 2),
-            (SourceWeightLayout::Qwen2bGdnOutput, 8),
-            (SourceWeightLayout::Qwen2bAttentionQkv, 20),
-            (SourceWeightLayout::Qwen2bAttentionOutput, 8),
-            (SourceWeightLayout::Qwen2bMlpGateUp, 48),
-            (SourceWeightLayout::Qwen2bMlpDown, 25),
+            (SourceWeightLayout::Qwen2BGdnQkvz, 32),
+            (SourceWeightLayout::Qwen2BGdnBa, 2),
+            (SourceWeightLayout::Qwen2BGdnOutput, 8),
+            (SourceWeightLayout::Qwen2BAttentionQkv, 20),
+            (SourceWeightLayout::Qwen2BAttentionOutput, 8),
+            (SourceWeightLayout::Qwen2BMlpGateUp, 48),
+            (SourceWeightLayout::Qwen2BMlpDown, 25),
         ];
         let mut counts = Vec::new();
         for (layout, expected) in layouts {

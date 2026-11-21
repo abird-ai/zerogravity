@@ -177,11 +177,11 @@ impl QwenGdnCall {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QwenProjectionContract {
-    ReferenceCudaSm86Bf16V1,
+    CudaSm86Bf16ReferenceV1,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QwenSiluContract {
-    ReferenceCudaSm86Bf16V1,
+    CudaSm86Bf16ReferenceV1,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -256,7 +256,7 @@ impl QwenGdnProjection {
         &self.members
     }
     pub fn contract(&self) -> QwenProjectionContract {
-        QwenProjectionContract::ReferenceCudaSm86Bf16V1
+        QwenProjectionContract::CudaSm86Bf16ReferenceV1
     }
     pub fn input_elements(&self) -> usize {
         self.invocation.rows() * self.kind.input_width()
@@ -325,7 +325,7 @@ impl QwenSiluAndMul {
         &self.invocation
     }
     pub fn contract(&self) -> QwenSiluContract {
-        QwenSiluContract::ReferenceCudaSm86Bf16V1
+        QwenSiluContract::CudaSm86Bf16ReferenceV1
     }
     pub fn input_elements(&self) -> usize {
         self.invocation.rows() * 7168
@@ -509,7 +509,7 @@ fn input_precision(
 ) -> Result<ActivationPrecision> {
     invocation.validate()?;
     if !(builder.operator_slice || builder.fragment_call.is_some())
-        || builder.profile != ProgramNumericalProfile::SourceCudaSm86Bf16V1
+        || builder.profile != NumericalProfile::CudaSm86Bf16ReferenceV1
         || builder.source != invocation.layer.source()
         || input.len() != 1
         || input[0].precision() != ActivationPrecision::Bf16WidenedF32

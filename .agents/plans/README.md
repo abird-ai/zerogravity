@@ -6,6 +6,10 @@ this folder keeps the live queue and per-plan checklists.
 
 Current source, tests, and TODO.md are authoritative. Git retains retired history; deleted takeover snapshots are not live instructions.
 
+Repository naming follows the short canonical vocabulary in
+[TERMINOLOGY.md](../docs/TERMINOLOGY.md). New code must name the engineering
+concept rather than historical qualification shorthand.
+
 Cross-window continuation starts at [the canonical current handoff](../docs/CURRENT_HANDOFF.md). For a new agent that needs the complete design/decision/evidence lineage from the beginning, read the [21 Nov comprehensive takeover pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-21.md). The 21 Nov pack embeds the current handoff, current owning-plan snapshots, the exact post-20-Nov signed chronology and the complete 20 Nov pack; the 20 Nov pack carries the earlier 18 Nov/15 Nov/14 Nov/October lineage. The current handoff remains an index/pointer into this maintained plan/status set, not a generated archive.
 
 ## Layout

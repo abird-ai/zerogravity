@@ -2,8 +2,8 @@
 use super::*;
 use crate::cuda::native::RetainedSource;
 use crate::resident_leases::{
-    Qwen2bMlpSourceVerification as SourceVerification, Qwen2bMlpWeightCohort as Cohort,
-    Qwen2bMlpWeights as Weights,
+    Qwen2BMlpSourceVerification as SourceVerification, Qwen2BMlpWeightCohort as Cohort,
+    Qwen2BMlpWeights as Weights,
 };
 use crate::resident_program::qwen2b_component::ComponentRecipe;
 use cubecl::Device;
@@ -18,7 +18,7 @@ const LEADING: usize = 16_384;
 const UNKNOWN: &str = "deliberate cold2B W unknown after completed source read";
 const REFUSED: &str = "deliberate cold2B W trusted validator refusal";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Qwen2bMlpWeightMode {
+pub enum Qwen2BMlpWeightMode {
     Complete,
     Pressure,
     LegacyUploadRefusal,
@@ -31,7 +31,7 @@ pub enum Qwen2bMlpWeightMode {
     ValidatorRefusal,
     EmptyComputeOutputs,
 }
-impl Qwen2bMlpWeightMode {
+impl Qwen2BMlpWeightMode {
     fn cut(self) -> Option<(usize, bool)> {
         match self {
             Self::UnknownAfterFirstRead => Some((1, false)),
@@ -51,8 +51,8 @@ impl Qwen2bMlpWeightMode {
     }
 }
 #[derive(Debug)]
-pub struct Qwen2bMlpWeightOutcome {
-    pub mode: Qwen2bMlpWeightMode,
+pub struct Qwen2BMlpWeightOutcome {
+    pub mode: Qwen2BMlpWeightMode,
     pub status: &'static str,
     pub rows: usize,
     pub copies_enqueued: usize,
@@ -80,13 +80,13 @@ pub struct Qwen2bMlpWeightOutcome {
     pub native_mlp_qualified: bool,
 }
 pub(super) struct ReadProbe {
-    mode: Qwen2bMlpWeightMode,
+    mode: Qwen2BMlpWeightMode,
     completed: AtomicUsize,
     bytes: AtomicUsize,
     validator: AtomicBool,
 }
 impl ReadProbe {
-    fn new(mode: Qwen2bMlpWeightMode) -> Self {
+    fn new(mode: Qwen2BMlpWeightMode) -> Self {
         Self {
             mode,
             completed: AtomicUsize::new(0),
@@ -160,7 +160,7 @@ struct Probe {
     rows: usize,
 }
 impl Probe {
-    fn new(prepared: &Arc<Prepared>, plan: &Arc<Qwen2bMlpSourceVerification>) -> Self {
+    fn new(prepared: &Arc<Prepared>, plan: &Arc<Qwen2BMlpSourceVerification>) -> Self {
         Self {
             source: prepared.owner.source.weak_owner(),
             prepared: Arc::downgrade(prepared),
@@ -180,7 +180,7 @@ impl Probe {
             rows: prepared.owner.cohort.bindings.call().rows().len(),
         }
     }
-    fn inspect(self, mode: Qwen2bMlpWeightMode) -> Result<Qwen2bMlpWeightOutcome> {
+    fn inspect(self, mode: Qwen2BMlpWeightMode) -> Result<Qwen2BMlpWeightOutcome> {
         // All caller/run/armed-flight strong owners have dropped; only Weak crosses run.
         let source = self
             .source
@@ -206,7 +206,7 @@ impl Probe {
         let compared = state.bytes.load(Ordering::Acquire);
         let validator = state.validator.load(Ordering::Acquire);
         let expected = mode.cut().map(|(n, _)| n).unwrap_or(
-            if mode == Qwen2bMlpWeightMode::ValidatorRefusal {
+            if mode == Qwen2BMlpWeightMode::ValidatorRefusal {
                 73
             } else {
                 0
@@ -228,7 +228,7 @@ impl Probe {
             crate::physical_quarantine::quarantined_completion_owners_for(service.client())?;
         let physical = ResourceArbiter::process_shared().snapshot(&service.physical_key())?;
         if count != expected
-            || validator != (mode == Qwen2bMlpWeightMode::ValidatorRefusal)
+            || validator != (mode == Qwen2BMlpWeightMode::ValidatorRefusal)
             || ids != self.ids
             || ids.len() != 2
             || ids[0] == ids[1]
@@ -273,7 +273,7 @@ impl Probe {
             Snapshot {
                 count,
                 compared,
-                leading: if mode == Qwen2bMlpWeightMode::EmptyComputeOutputs {
+                leading: if mode == Qwen2BMlpWeightMode::EmptyComputeOutputs {
                     0
                 } else {
                     LEADING
@@ -319,16 +319,16 @@ fn compared_at(count: usize) -> Result<usize> {
     })
 }
 fn outcome(
-    mode: Qwen2bMlpWeightMode,
+    mode: Qwen2BMlpWeightMode,
     rows: usize,
     status: &'static str,
     s: Snapshot,
-) -> Qwen2bMlpWeightOutcome {
+) -> Qwen2BMlpWeightOutcome {
     let allocated = !matches!(
         mode,
-        Qwen2bMlpWeightMode::Pressure | Qwen2bMlpWeightMode::LegacyUploadRefusal
+        Qwen2BMlpWeightMode::Pressure | Qwen2BMlpWeightMode::LegacyUploadRefusal
     );
-    Qwen2bMlpWeightOutcome {
+    Qwen2BMlpWeightOutcome {
         mode,
         status,
         rows,
@@ -391,10 +391,10 @@ pub async fn qualify_qwen2b_mlp_weights(
     source: Arc<RetainedSource>,
     recipe: Arc<ComponentRecipe>,
     record_admission: Arc<WindowWorkspace>,
-    mode: Qwen2bMlpWeightMode,
+    mode: Qwen2BMlpWeightMode,
     device_cap: u64,
     cancelled: Option<&AtomicBool>,
-) -> Result<Qwen2bMlpWeightOutcome> {
+) -> Result<Qwen2BMlpWeightOutcome> {
     let inputs = Inputs {
         recipe,
         source,
@@ -407,10 +407,10 @@ pub async fn qualify_qwen2b_mlp_weights(
         return result;
     }
     let intended = match &result {
-        Err(Error::State(why)) if mode == Qwen2bMlpWeightMode::EmptyComputeOutputs => {
+        Err(Error::State(why)) if mode == Qwen2BMlpWeightMode::EmptyComputeOutputs => {
             why == "resident Ready requires outputs"
         }
-        Err(Error::State(why)) if mode == Qwen2bMlpWeightMode::ValidatorRefusal => why == REFUSED,
+        Err(Error::State(why)) if mode == Qwen2BMlpWeightMode::ValidatorRefusal => why == REFUSED,
         Err(Error::State(why)) if mode.cut().is_some_and(|(_, cancel)| cancel) => {
             why == "original full-model learned upload cancelled"
         }
@@ -430,9 +430,9 @@ pub async fn qualify_qwen2b_mlp_weights(
 async fn run(
     device: Device,
     inputs: Inputs,
-    controls: (Qwen2bMlpWeightMode, u64, Option<&AtomicBool>),
+    controls: (Qwen2BMlpWeightMode, u64, Option<&AtomicBool>),
     probe: &mut Option<Probe>,
-) -> Result<Qwen2bMlpWeightOutcome> {
+) -> Result<Qwen2BMlpWeightOutcome> {
     let (mode, device_cap, cancelled) = controls;
     not_cancelled(cancelled)?;
     if inputs.record_admission.bytes() != 32 * MIB
@@ -460,12 +460,12 @@ async fn run(
     let source = inputs.source;
     let cohort = Cohort::bind(&inputs.recipe)?;
     let rows = cohort.bindings().call().rows().len();
-    if mode == Qwen2bMlpWeightMode::LegacyUploadRefusal {
+    if mode == Qwen2BMlpWeightMode::LegacyUploadRefusal {
         return Err(Error::Unsupported(
             "legacy family upload refusal belongs to model/application qualification".into(),
         ));
     }
-    if cohort.arithmetic() != Qwen2bGdnArithmetic::OwnedSolve4Recompute3 {
+    if cohort.arithmetic() != Qwen2BGdnArithmetic::OwnedSolve4Recompute3 {
         return Err(Error::State("cold2B finite arithmetic source seal".into()));
     }
     if cfg!(debug_assertions) || !matches!(device, Device::Cuda(_)) {
@@ -486,7 +486,7 @@ async fn run(
             "cold2B exact512B allocation alignment".into(),
         ));
     }
-    if mode == Qwen2bMlpWeightMode::Pressure {
+    if mode == Qwen2BMlpWeightMode::Pressure {
         let refusal = service.allocate_uninitialized(BYTES + 1, BufferRole::ImmutableWeights);
         if !matches!(refusal,Err(Error::Limit(ref why)) if why=="resident plus opaque provider budget exceeded")
             || service.resident_bytes()? != 0
@@ -574,7 +574,7 @@ async fn run(
         .cold_probe
         .as_ref()
         .ok_or_else(|| Error::State("cold2B plan metadata absent".into()))?;
-    if mode == Qwen2bMlpWeightMode::EmptyComputeOutputs {
+    if mode == Qwen2BMlpWeightMode::EmptyComputeOutputs {
         let _ = plan
             .complete_compute(flight, &[], &prepared.reads, cancelled, |_| {
                 Err(Error::State(
@@ -587,7 +587,7 @@ async fn run(
     let raw = plan
         .complete_retirement(flight, &prepared.reads, cancelled, |raw| {
             state.validator.store(true, Ordering::Release);
-            if mode == Qwen2bMlpWeightMode::ValidatorRefusal {
+            if mode == Qwen2BMlpWeightMode::ValidatorRefusal {
                 return Err(Error::State(REFUSED.into()));
             }
             prepared.compare_leading(raw, cancelled)

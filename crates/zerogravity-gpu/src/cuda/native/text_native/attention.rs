@@ -30,7 +30,7 @@ use std::{
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::{ParameterWindow, WindowWorkspace};
 use zerogravity_core::accelerator::program::{
-    SourceNumericalContract, SourceOperator, SourceOperatorKind,
+    NumericalContract, SourceOperator, SourceOperatorKind,
 };
 use zerogravity_core::{
     Error, Result,
@@ -113,7 +113,7 @@ fn require_qk(descriptor: &SourceOperator) -> Result<()> {
         || g.theta.to_bits() != 10_000_000f32.to_bits()
         || g.epsilon.to_bits() != 1e-6f32.to_bits()
         || descriptor.parameters().len() != 2
-        || descriptor.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+        || descriptor.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
     {
         return Err(Error::Unsupported(
             "text captured QK geometry/arithmetic differs".into(),

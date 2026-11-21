@@ -406,7 +406,7 @@ mod tests {
                 .is_err()
         );
         assert!(
-            CubinSetPolicy::ConnectedQwen08
+            CubinSetPolicy::ConnectedQwen800M
                 .limits(7, 12, 21, false, false)
                 .is_err()
         );

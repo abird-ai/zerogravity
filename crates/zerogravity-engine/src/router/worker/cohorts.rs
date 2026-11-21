@@ -25,7 +25,7 @@ pub(super) fn advance<A: Executor>(
                 singles(rows, active, stats);
             }
         }
-        Cohorts::Native {
+        Cohorts::Fused {
             split_prefix: true, ..
         } => {
             let prefill = rows.len() > 1
@@ -52,7 +52,7 @@ pub(super) fn advance<A: Executor>(
                 singles(rows, active, stats);
             }
         }
-        Cohorts::Native {
+        Cohorts::Fused {
             split_prefix: false,
             ..
         } => {
@@ -60,7 +60,7 @@ pub(super) fn advance<A: Executor>(
                 .into_iter()
                 .filter_map(|r| eligible(r, active, stats))
                 .collect::<Vec<_>>();
-            compatible_bands(eligible, active, stats, policy, ceiling, false);
+            compatible_cohorts(eligible, active, stats, policy, ceiling, false);
         }
     }
 }
@@ -91,7 +91,7 @@ fn regroup<A: Executor>(
                 CohortWork {
                     phase,
                     state_only: false,
-                    native_rows: 0,
+                    cohort_width: 0,
                 },
             );
         } else {
@@ -100,7 +100,7 @@ fn regroup<A: Executor>(
     } else if phase == Phase::Prefill
         && matches!(
             policy,
-            Cohorts::Native {
+            Cohorts::Fused {
                 split_prefix: true,
                 ..
             }
@@ -109,13 +109,13 @@ fn regroup<A: Executor>(
         let (prefix, tail) = eligible
             .into_iter()
             .partition(|r: &Active<A>| r.prefill_has_successor());
-        compatible_bands(prefix, active, stats, policy, ceiling, true);
-        compatible_bands(tail, active, stats, policy, ceiling, false);
+        compatible_cohorts(prefix, active, stats, policy, ceiling, true);
+        compatible_cohorts(tail, active, stats, policy, ceiling, false);
     } else {
-        bands(eligible, active, stats, policy, phase, ceiling, false);
+        execute_cohorts(eligible, active, stats, policy, phase, ceiling, false);
     }
 }
-fn compatible_bands<A: Executor>(
+fn compatible_cohorts<A: Executor>(
     rows: Vec<Active<A>>,
     active: &mut VecDeque<Active<A>>,
     stats: &WorkStats,
@@ -145,10 +145,10 @@ fn compatible_bands<A: Executor>(
         } else {
             Phase::Decode
         };
-        bands(group, active, stats, policy, phase, ceiling, state_only);
+        execute_cohorts(group, active, stats, policy, phase, ceiling, state_only);
     }
 }
-fn bands<A: Executor>(
+fn execute_cohorts<A: Executor>(
     rows: Vec<Active<A>>,
     active: &mut VecDeque<Active<A>>,
     stats: &WorkStats,
@@ -157,15 +157,15 @@ fn bands<A: Executor>(
     ceiling: usize,
     state_only: bool,
 ) {
-    let Cohorts::Native { widths, .. } = policy else {
-        unreachable!("native band policy")
+    let Cohorts::Fused { widths, .. } = policy else {
+        unreachable!("fused cohort policy")
     };
     let widths = widths
         .iter()
         .copied()
         .filter(|&n| n <= ceiling)
         .collect::<Vec<_>>();
-    let planned = match waves::qualified_bands(rows.len(), &widths) {
+    let planned = match waves::partition_supported_cohorts(rows.len(), &widths) {
         Ok(widths) => widths,
         Err(error) => {
             for row in rows {
@@ -187,7 +187,7 @@ fn bands<A: Executor>(
                 CohortWork {
                     phase,
                     state_only,
-                    native_rows: width,
+                    cohort_width: width,
                 },
             );
         }
@@ -213,14 +213,14 @@ fn retry_cancel<A: Executor>(
 ) {
     if matches!(
         policy,
-        Cohorts::Native {
+        Cohorts::Fused {
             retry: RetryOrder::NextRound,
             ..
         }
     ) {
         next_round(rows, active, stats);
     } else if rows.iter().any(|row| row.cancelled.load(Ordering::Acquire)) {
-        regroup(rows, active, stats, policy, work.phase, work.native_rows);
+        regroup(rows, active, stats, policy, work.phase, work.cohort_width);
     } else {
         // Immediate retry must remove a member. Capacity uses a smaller ceiling
         // separately; a malformed executor cannot grow an unbounded retry stack.
@@ -264,24 +264,24 @@ fn execute<A: Executor>(
         Ok(Preparation::Ready(ready)) => ready,
         Ok(Preparation::Capacity) => {
             stats
-                .native_admission_refusals
+                .cohort_admission_refusals
                 .fetch_add(1, Ordering::Relaxed);
             if matches!(
                 policy,
-                Cohorts::Native {
+                Cohorts::Fused {
                     retry: RetryOrder::NextRound,
                     ..
                 }
             ) {
                 singles(rows, active, stats);
-            } else if work.native_rows > 1 {
+            } else if work.cohort_width > 1 {
                 regroup(
                     rows,
                     active,
                     stats,
                     policy,
                     work.phase,
-                    work.native_rows / 2,
+                    work.cohort_width / 2,
                 );
             } else {
                 for row in rows {
@@ -313,8 +313,8 @@ fn execute<A: Executor>(
         .completed
         .fetch_add(completed.completion.quanta, Ordering::Relaxed);
     stats.record(completed.completion);
-    let native = completed.native;
-    if work.native_rows != 0 && !native {
+    let fused = completed.fused;
+    if work.cohort_width != 0 && !fused {
         drop(completed);
         stats.discarded_cohorts.fetch_add(1, Ordering::Relaxed);
         for row in rows {
@@ -323,18 +323,18 @@ fn execute<A: Executor>(
                 stats,
                 ServiceError::new(
                     500,
-                    "missing_native_receipt",
-                    "cohort lacks actual native model/readout receipts",
+                    "missing_fused_cohort_receipt",
+                    "cohort lacks actual fused model/readout receipts",
                 ),
             );
         }
         return;
     }
-    // Composite/native GGUF Ready is known-complete before this cancellation
+    // Composite/fused GGUF Ready is known-complete before this cancellation
     // boundary. Other executors retain their original cancellation-aware commit.
     if !matches!(
         policy,
-        Cohorts::Native {
+        Cohorts::Fused {
             retry: RetryOrder::NextRound,
             ..
         }
@@ -352,8 +352,8 @@ fn execute<A: Executor>(
                 .cohort_publications
                 .fetch_add(1, Ordering::Relaxed)
                 .checked_add(1);
-            let observed = if native {
-                sequence.map(|publication_sequence| NativeCohortObservation {
+            let observed = if fused {
+                sequence.map(|publication_sequence| FusedCohortObservation {
                     publication_sequence,
                     width: rows.len(),
                 })

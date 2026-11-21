@@ -90,7 +90,7 @@ fn fixed_prompt_dense_extents_and_masked_final_warp_are_exact() -> Result<()> {
     assert_eq!(loads.last(), Some(&(47 * 1024 - 1)));
     assert_eq!(stores, (0..47).collect());
     for stage in Stage::ORDER {
-        assert!(specification_for(stage, rows, Columns::Qwen2b).is_err());
+        assert!(specification_for(stage, rows, Columns::Qwen2B).is_err());
     }
     Ok(())
 }
@@ -98,11 +98,11 @@ fn fixed_prompt_dense_extents_and_masked_final_warp_are_exact() -> Result<()> {
 #[test]
 fn all_legacy_rendered_sources_layouts_and_kernel_ids_are_identical() -> Result<()> {
     use cubecl_runtime::kernel::KernelMetadata;
-    for columns in [Columns::Qwen08, Columns::Qwen2b] {
+    for columns in [Columns::Qwen800M, Columns::Qwen2B] {
         for rows in [Rows::One, Rows::Two, Rows::SixtyFour] {
             let count = columns.count();
             let n = rows.count();
-            let factor = if columns == Columns::Qwen08 {
+            let factor = if columns == Columns::Qwen800M {
                 "0x1p-10f"
             } else {
                 "0x1p-11f"
@@ -169,7 +169,7 @@ fn text_mean_visits_true_rows_once_and_masks_only_invalid_tail() -> Result<()> {
             prompt_tokens: count,
         };
         assert_eq!(rows.count(), count);
-        for columns in [Columns::Qwen08, Columns::Qwen2b] {
+        for columns in [Columns::Qwen800M, Columns::Qwen2B] {
             let width = columns.count();
             let (block_x, block_y) = columns.mean_block(rows);
             assert_eq!((block_x, block_y), (32, 16));

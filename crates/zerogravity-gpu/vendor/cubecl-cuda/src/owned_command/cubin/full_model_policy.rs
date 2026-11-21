@@ -411,21 +411,21 @@ mod tests {
             .collect::<std::collections::BTreeSet<_>>();
         assert_eq!((images.len(), derived.len()), (14, 5));
         assert!(RULES.len() <= RECORDS);
-        CubinSetPolicy::FullQwen08
+        CubinSetPolicy::FullQwen800M
             .limits(13, 21, 47, true, true)
             .unwrap();
         assert!(
-            CubinSetPolicy::FullQwen08
+            CubinSetPolicy::FullQwen800M
                 .limits(14, 22, 48, false, false)
                 .is_err()
         );
         assert!(
-            CubinSetPolicy::FullQwen08
+            CubinSetPolicy::FullQwen800M
                 .limits(14, 21, 47, true, true)
                 .is_err()
         );
         assert!(
-            CubinSetPolicy::FullQwen08
+            CubinSetPolicy::FullQwen800M
                 .limits(13, 22, 47, true, true)
                 .is_err()
         );
@@ -437,11 +437,11 @@ mod tests {
                 .limits(6, 8, 19, false, false)
                 .is_err()
         );
-        CubinSetPolicy::ConnectedQwen08
+        CubinSetPolicy::ConnectedQwen800M
             .limits(6, 11, 20, true, true)
             .unwrap();
         assert!(
-            CubinSetPolicy::ConnectedQwen08
+            CubinSetPolicy::ConnectedQwen800M
                 .limits(7, 12, 21, false, false)
                 .is_err()
         );

@@ -24,7 +24,7 @@ impl GgufPrefixSlice {
     ) -> Result<Self> {
         not_cancelled(cancelled)?;
         zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
-        if model.numerical_profile() != QwenNumericalProfile::GgufSourceV1
+        if model.numerical_profile() != QwenNumericalProfile::GgufReferenceV1
             || model.geometry().hidden_size != 2048
             || model.geometry().vocab_size != 248320
             || model.geometry().layers.first() != Some(&crate::config::LayerKind::LinearAttention)
@@ -75,7 +75,7 @@ impl GgufPrefixSlice {
     pub fn record(&self) -> Result<RecordedOperatorSlice> {
         let mut builder = PlanBuilder::new_operator_slice(
             self.descriptor().source(),
-            ProgramNumericalProfile::GgufSourceV1,
+            NumericalProfile::GgufReferenceV1,
         )?;
         let (_, normalized) = crate::forward::gguf_prefix_slice(&mut builder, self.descriptor())?;
         builder.finish_operator_slice(normalized)

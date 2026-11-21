@@ -169,7 +169,7 @@ impl GdnFamilyIdentity {
             catalogue: ORIGINAL2B_CATALOGUE,
         }
     }
-    pub(crate) fn original08() -> Self {
+    pub(crate) fn original800m() -> Self {
         Self {
             text_implementation: false,
             text_config: None,
@@ -223,7 +223,7 @@ impl GdnFamilyIdentity {
 
 #[derive(Clone, Copy)]
 pub(super) enum GdnArithmeticFamily {
-    Original08,
+    Original800M,
     #[cfg(any(test, target_os = "linux"))]
     Original2b,
     #[cfg(target_os = "linux")]
@@ -281,7 +281,7 @@ impl StageArithmetic {
         bindings: &[BindingSpec],
     ) -> Result<Self> {
         match family {
-            GdnArithmeticFamily::Original08 => Self::original08(phase, stage, asset, bindings),
+            GdnArithmeticFamily::Original800M => Self::original800m(phase, stage, asset, bindings),
             #[cfg(any(test, target_os = "linux"))]
             GdnArithmeticFamily::Original2b => Self::original2b(phase, stage, asset, bindings),
             #[cfg(target_os = "linux")]
@@ -296,7 +296,7 @@ impl StageArithmetic {
         }
     }
     // Only the existing closed factory calls this; no caller-supplied code loader.
-    pub(super) fn original08(
+    pub(super) fn original800m(
         phase: GdnPhase,
         stage: GdnStage,
         asset: &assets::Asset,
@@ -308,11 +308,11 @@ impl StageArithmetic {
             asset,
             bindings,
             &assets::select(phase, stage)?,
-            GdnFamilyIdentity::original08(),
+            GdnFamilyIdentity::original800m(),
         )
     }
     // Metadata only. Actual2B source/SSA/lease/root authority is retained by
-    // ComponentCode::Qwen2b; this constructor cannot select that code path.
+    // ComponentCode::Qwen2B; this constructor cannot select that code path.
     #[cfg(any(test, target_os = "linux"))]
     pub(super) fn original2b(
         phase: GdnPhase,

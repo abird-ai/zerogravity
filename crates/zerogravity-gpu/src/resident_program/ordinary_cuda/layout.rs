@@ -20,7 +20,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{
-        ForwardPlan, PlanOperation, SourceNumericalContract, SourceOperatorKind, SourceParameter,
+        ForwardPlan, NumericalContract, PlanOperation, SourceOperatorKind, SourceParameter,
         SourceTensor, StateSlot, ValueId, ValueStorageBinding, ValueStorageLimits,
         ValueStorageRetention, ValueStorageReusePolicy,
     },
@@ -339,7 +339,7 @@ fn require_plan_shape(plan: &ForwardPlan) -> Result<()> {
         };
         if descriptor.source() != plan.source()
             || descriptor.max_rows() != MAX_ROWS
-            || descriptor.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+            || descriptor.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
         {
             return Err(Error::State(
                 "ordinary CUDA template source/rows/vocabulary differs".into(),

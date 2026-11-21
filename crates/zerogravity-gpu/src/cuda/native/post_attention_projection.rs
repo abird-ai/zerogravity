@@ -37,10 +37,10 @@ pub(crate) fn require_mlp_recipe(recipe: &ComponentRecipe) -> Result<()> {
     require_source_recipe(recipe)
 }
 pub(crate) fn require_qwen2b_mlp_recipe(recipe: &ComponentRecipe) -> Result<()> {
-    if recipe.cut() != ComponentCut::Qwen2bMlp
-        || recipe.kind() != ComponentKind::Qwen2b
+    if recipe.cut() != ComponentCut::Qwen2BMlp
+        || recipe.kind() != ComponentKind::Qwen2B
         || recipe.qwen2b_arithmetic()
-            != Some(crate::cuda::gdn::Qwen2bGdnArithmetic::OwnedSolve4Recompute3)
+            != Some(crate::cuda::gdn::Qwen2BGdnArithmetic::OwnedSolve4Recompute3)
     {
         return Err(Error::Unsupported(
             "explicit owned2B MLP source cut required".into(),
@@ -52,7 +52,7 @@ fn require_bound_recipe(recipe: &ComponentRecipe) -> Result<()> {
     match recipe.cut() {
         ComponentCut::PostAttention => require_recipe(recipe),
         ComponentCut::Mlp => require_mlp_recipe(recipe),
-        ComponentCut::Qwen2bMlp => require_qwen2b_mlp_recipe(recipe),
+        ComponentCut::Qwen2BMlp => require_qwen2b_mlp_recipe(recipe),
         _ => Err(Error::Unsupported(
             "source-bound postAttention producer cut required".into(),
         )),
@@ -63,8 +63,12 @@ fn require_source_recipe(recipe: &ComponentRecipe) -> Result<()> {
     let op = recipe.operator(6)?;
     let node = &recipe.nodes()[6];
     if op.call() != &recipe.bindings().call().clone()
-        || op.kind() != (zerogravity_core::accelerator::program::SourceOperatorKind::Projection { selected_row: None })
-        || op.numerical_contract() != zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1
+        || op.kind()
+            != (zerogravity_core::accelerator::program::SourceOperatorKind::Projection {
+                selected_row: None,
+            })
+        || op.numerical_contract()
+            != zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1
         || op.matrices().len() != 1
         || !op.parameters().is_empty()
         || node.inputs != [ValueId(6)]
@@ -259,7 +263,7 @@ pub(crate) fn validate_images(
         return Err(Error::Limit("postAttention image controls".into()));
     }
     let mut required = match recipe.kind() {
-        ComponentKind::Qwen2b => crate::cuda::native::qwen2b_projection::required_images(
+        ComponentKind::Qwen2B => crate::cuda::native::qwen2b_projection::required_images(
             std::slice::from_ref(recipe.bindings()),
         )?,
         ComponentKind::FixedPrompt(_) => {
@@ -289,7 +293,7 @@ pub(crate) fn model_fixed_prompt_packet() -> Result<super::fixed_prompt_model_na
 pub(crate) fn qwen2b_mlp_diagnostic_manifest(
     rows: usize,
 ) -> Result<(ProjectionImage, CubinKernelManifest)> {
-    manifests::launch(ComponentKind::Qwen2b, rows)
+    manifests::launch(ComponentKind::Qwen2B, rows)
 }
 
 pub(crate) fn require_matrix_source(

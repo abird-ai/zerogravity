@@ -11,7 +11,7 @@ const PROVIDER: usize = 128 * 1024 * 1024;
 struct Inputs {
     source: RmsLeafSource,
     teachers: [Vec<u32>; 5],
-    leaves: [Qwen2bDualRmsLeaf; 5],
+    leaves: [Qwen2BDualRmsLeaf; 5],
     _payload: WindowWorkspace,
     _metadata: WindowWorkspace,
 }
@@ -19,7 +19,7 @@ impl Inputs {
     fn new(
         source: RmsLeafSource,
         teachers: [Vec<u32>; 5],
-        leaves: [Qwen2bDualRmsLeaf; 5],
+        leaves: [Qwen2BDualRmsLeaf; 5],
         validate_ids: impl Fn(&[u32]) -> Result<()>,
     ) -> Result<Arc<Self>> {
         let metadata = source.source().reserve_workspace(64 * 1024)?;
@@ -47,7 +47,7 @@ impl Inputs {
         }))
     }
 }
-pub(super) fn validate_fixture(ids: &[u32], leaf: &Qwen2bDualRmsLeaf, count: usize) -> Result<()> {
+pub(super) fn validate_fixture(ids: &[u32], leaf: &Qwen2BDualRmsLeaf, count: usize) -> Result<()> {
     Rows::new(count)?;
     let bytes = count
         .checked_mul(4096)
@@ -70,7 +70,7 @@ async fn ordinary(
     service: &Arc<ResidentService>,
     owner: &Arc<Inputs>,
     case: usize,
-    validate: &mut impl FnMut(Qwen2bRmsReadback<'_>) -> Result<()>,
+    validate: &mut impl FnMut(Qwen2BRmsReadback<'_>) -> Result<()>,
     cancelled: Option<&AtomicBool>,
 ) -> Result<()> {
     let requests = [AllocationRequest {
@@ -108,7 +108,7 @@ async fn ordinary(
     let (ready, raw) = flight
         .complete_with_readback(prepared.outputs(), &reads, |raw: &[Bytes]| {
             let normalized = prepared.validate_readback(raw)?;
-            validate(Qwen2bRmsReadback::SourceInput {
+            validate(Qwen2BRmsReadback::SourceInput {
                 case,
                 teacher_ids: &owner.teachers[case],
                 embedding: &raw[1][..],
@@ -125,7 +125,7 @@ async fn dual_leaf(
     service: &Arc<ResidentService>,
     owner: &Arc<Inputs>,
     case: usize,
-    validate: &mut impl FnMut(Qwen2bRmsReadback<'_>) -> Result<()>,
+    validate: &mut impl FnMut(Qwen2BRmsReadback<'_>) -> Result<()>,
     cancelled: Option<&AtomicBool>,
 ) -> Result<()> {
     let requests = [AllocationRequest {
@@ -197,7 +197,7 @@ async fn dual_leaf(
                 return Err(Error::State("2B actual dual-leaf operands changed".into()));
             }
             prepared.validate_readback(&raw[..4])?;
-            validate(Qwen2bRmsReadback::FinalDualLeaf {
+            validate(Qwen2BRmsReadback::FinalDualLeaf {
                 case,
                 sum_f32: &raw[1][..],
                 normalized: &raw[2][..],
@@ -227,12 +227,12 @@ pub async fn qualify_qwen2b_rms(
     device: Device,
     source: RmsLeafSource,
     teachers: [Vec<u32>; 5],
-    leaves: [Qwen2bDualRmsLeaf; 5],
+    leaves: [Qwen2BDualRmsLeaf; 5],
     device_cap: u64,
-    mut validate: impl FnMut(Qwen2bRmsReadback<'_>) -> Result<()>,
+    mut validate: impl FnMut(Qwen2BRmsReadback<'_>) -> Result<()>,
     cancelled: Option<&AtomicBool>,
     validate_ids: impl Fn(&[u32]) -> Result<()>,
-) -> Result<Qwen2bRmsReceipt> {
+) -> Result<Qwen2BRmsReceipt> {
     // True pre-cancel wins before source metadata, service or provider work.
     not_cancelled(cancelled)?;
     let owner = Inputs::new(source, teachers, leaves, validate_ids)?;
@@ -272,7 +272,7 @@ pub async fn qualify_qwen2b_rms(
     }
     drop(owner);
     let words = COUNTS.iter().sum::<usize>() * 2048;
-    Ok(Qwen2bRmsReceipt {
+    Ok(Qwen2BRmsReceipt {
         source_embedding_bf16_words: words,
         ordinary_bf16_words: words,
         dual_sum_f32_words: words,

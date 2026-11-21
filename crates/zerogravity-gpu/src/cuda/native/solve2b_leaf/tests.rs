@@ -71,7 +71,7 @@ fn no_variant_alias_or_new_math_source_and_two_fresh_cohorts() {
     );
     assert_eq!(
         REFERENCE,
-        Qwen2bOriginalGdnReference::ObservedSolve4Recompute4
+        Qwen2BOriginalGdnReference::ObservedSolve4Recompute4
     );
     assert_eq!(INPUT_BYTES + 2 * OUTPUT_BYTES, 2_105_360);
     assert!(resident::host_bound().unwrap() <= READBACK_HOST);

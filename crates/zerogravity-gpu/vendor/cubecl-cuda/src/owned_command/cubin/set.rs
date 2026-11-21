@@ -122,7 +122,7 @@ impl OwnedCudaQueue {
     /// their original host admissions and prepaid native-module charge.
     /// Only the fixed connected operators may prepare/enqueue on this set;
     /// this is not a model/profile eligibility permit or caller capacity knob.
-    pub unsafe fn admit_connected_qwen08_cubin_set(
+    pub unsafe fn admit_connected_qwen800m_cubin_set(
         self: &Arc<Self>,
         owner: Arc<dyn Any + Send + Sync>,
     ) -> Result<Arc<OwnedCudaModuleSet>, ServerError> {
@@ -130,7 +130,7 @@ impl OwnedCudaQueue {
         let retained = owner.clone();
         self.actor
             .submit_blocking(move |server| {
-                server.admit_owned_connected_qwen08_cubin_set(key, retained)
+                server.admit_owned_connected_qwen800m_cubin_set(key, retained)
             })
             .map_err(|e| failure(format!("original cubin set admission actor: {e:?}")))??;
         Ok(Arc::new(OwnedCudaModuleSet {
@@ -409,14 +409,14 @@ impl OwnedCudaQueue {
     /// immutable source and SAME prepaid native charge before native work.
     /// Caller supplies the finite original source-weight/parameter owners;
     /// all manifests still pass the exact image/provenance/whole-ABI union.
-    pub unsafe fn admit_full_qwen08_cubin_set(
+    pub unsafe fn admit_full_qwen800m_cubin_set(
         self: &Arc<Self>,
         owner: Arc<dyn Any + Send + Sync>,
     ) -> Result<Arc<OwnedCudaModuleSet>, ServerError> {
         let key = identity()?;
         let retained = owner.clone();
         self.actor
-            .submit_blocking(move |server| server.admit_owned_full_qwen08_cubin_set(key, retained))
+            .submit_blocking(move |server| server.admit_owned_full_qwen800m_cubin_set(key, retained))
             .map_err(|error| failure(format!("original full24 set admission actor:{error:?}")))??;
         Ok(Arc::new(OwnedCudaModuleSet {
             queue: self.clone(),

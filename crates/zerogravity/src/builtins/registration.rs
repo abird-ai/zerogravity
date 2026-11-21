@@ -46,7 +46,7 @@ pub(crate) fn load_text(
             device_bytes,
             crate::models::SmartConfig::enabled(crate::models::QwenCudaSmartOverrides {
                 state_policy: Some(state_policy),
-                native_rows: None,
+                cohort_width: None,
             }),
             limits,
         ),
@@ -78,7 +78,7 @@ pub(crate) fn load_text(
             budget,
         } => {
             profile.validate_base()?;
-            profile.validate_native_rows(profile.native_rows)?;
+            profile.validate_cohort_width(profile.cohort_width)?;
             validate_limits(1, profile.active, profile.max_pending, limits)?;
             super::text::qwen_source::load_router(
                 aliases,
@@ -96,7 +96,7 @@ pub(crate) fn load_text(
             profile,
         } => {
             profile.validate_base()?;
-            profile.validate_native_rows(profile.native_rows)?;
+            profile.validate_cohort_width(profile.cohort_width)?;
             validate_limits(1, profile.active, profile.max_pending, limits)?;
             super::text::qwen_source::load_router(
                 aliases,
@@ -167,7 +167,7 @@ fn load_qwen_cuda(
     aliases: Vec<String>,
     cache: crate::cache::CacheOptions,
     snapshot: String,
-    profile: crate::models::QwenSourceProfile,
+    profile: crate::models::QwenServingProfile,
     provider_bytes: usize,
     device_bytes: u64,
     smart_config: crate::models::SmartConfig<crate::models::QwenCudaSmartOverrides>,
@@ -214,7 +214,7 @@ mod tests {
     use super::*;
     use crate::{
         cache::CacheOptions,
-        models::{QwenCudaSmartOverrides, QwenCudaStatePolicy, QwenSourceProfile, SmartConfig},
+        models::{QwenCudaSmartOverrides, QwenCudaStatePolicy, QwenServingProfile, SmartConfig},
     };
 
     fn limits() -> SchedulerLimits {
@@ -224,13 +224,13 @@ mod tests {
         }
     }
 
-    fn profile(active: usize, native_rows: usize) -> QwenSourceProfile {
-        QwenSourceProfile {
+    fn profile(active: usize, cohort_width: usize) -> QwenServingProfile {
+        QwenServingProfile {
             active,
             context: 512,
             output: 1,
             max_pending: Some(1),
-            native_rows,
+            cohort_width,
         }
     }
 
@@ -307,7 +307,7 @@ mod tests {
         };
         let overrides = QwenCudaSmartOverrides {
             state_policy: Some(invalid),
-            native_rows: None,
+            cohort_width: None,
         };
 
         for config in [

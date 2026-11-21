@@ -68,7 +68,7 @@ impl CudaServer {
         self.cubin_set = Some(CubinModuleSet::new(key, owner));
         Ok(())
     }
-    pub(crate) fn admit_owned_connected_qwen08_cubin_set(
+    pub(crate) fn admit_owned_connected_qwen800m_cubin_set(
         &mut self,
         key: u64,
         owner: Arc<dyn std::any::Any + Send + Sync>,
@@ -80,7 +80,7 @@ impl CudaServer {
         self.cubin_set = Some(CubinModuleSet::new_with_policy(
             key,
             owner,
-            CubinSetPolicy::ConnectedQwen08,
+            CubinSetPolicy::ConnectedQwen800M,
         ));
         Ok(())
     }
@@ -110,7 +110,7 @@ impl CudaServer {
         self.cubin_set = Some(CubinModuleSet::new_with_policy(
             key,
             owner,
-            CubinSetPolicy::Qwen2bMlp,
+            CubinSetPolicy::Qwen2BMlp,
         ));
         Ok(())
     }
@@ -300,7 +300,7 @@ impl CudaServer {
         ));
         Ok(())
     }
-    pub(crate) fn admit_owned_full_qwen08_cubin_set(
+    pub(crate) fn admit_owned_full_qwen800m_cubin_set(
         &mut self,
         key: u64,
         owner: Arc<dyn std::any::Any + Send + Sync>,
@@ -311,7 +311,7 @@ impl CudaServer {
         self.cubin_set = Some(CubinModuleSet::new_with_policy(
             key,
             owner,
-            CubinSetPolicy::FullQwen08,
+            CubinSetPolicy::FullQwen800M,
         ));
         Ok(())
     }

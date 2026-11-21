@@ -26,7 +26,7 @@ fn source_inventory(family: &str) -> Result<(&'static str, &'static str)> {
     match family {
         "0.8b" => Ok((
             include_str!("../../src/qwen35_cuda/source08.json"),
-            "Qwen08",
+            "Qwen800M",
         )),
         "2b" => Ok((
             include_str!("../../src/qwen35_cuda/source2b.json"),
@@ -160,7 +160,7 @@ fn hash(raw: &[u8]) -> String {
 }
 fn reference_protocol(
     prompt: &[u32],
-    profile: zerogravity::qwen35::plan::QwenSourceProfile,
+    profile: zerogravity::qwen35::plan::QwenModelVariant,
 ) -> Result<Value> {
     ensure(
         prompt.len() == 47 && prompt.iter().all(|id| *id < 248320),
@@ -172,7 +172,7 @@ fn reference_protocol(
     }
     Ok(
         json!({"prompt_profile":"canonical47-repeated-v1","prompt_u32_le_sha256":hash(&raw),
-        "native_definition_source_scope_sha256":if profile == zerogravity::qwen35::plan::QwenSourceProfile::Qwen2B {
+        "native_definition_source_scope_sha256":if profile == zerogravity::qwen35::plan::QwenModelVariant::Qwen2B {
             CACHED2B_DEFINITION_SOURCE_SCOPE_SHA
         } else { REFERENCE_SCOPE_SHA },
         "original_source7_closure_sha256":"572a76b4016f23c8b716b5088b05bc5426a5f5c4f1efde637a99b1a6f3ea96ba",
@@ -272,7 +272,7 @@ pub(super) struct Export {
     directory_identity: (u64, u64),
     _charge: Option<zerogravity::resource_arbiter::GlobalResourceLease>,
     source: Value,
-    profile: zerogravity::qwen35::plan::QwenSourceProfile,
+    profile: zerogravity::qwen35::plan::QwenModelVariant,
     native: Value,
     members: Vec<Member>,
     sections: Vec<Value>,

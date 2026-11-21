@@ -269,7 +269,7 @@ impl Templates {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::qwen35::plan::QwenSourceProfile;
+    use crate::qwen35::plan::QwenModelVariant;
 
     #[test]
     fn bounded_lazy_wrapper_charge_does_not_encode_historical_call_count() {
@@ -334,41 +334,41 @@ mod tests {
 
     #[test]
     fn qualification_owns_exact_historical_recipe_envelope() -> Result<()> {
-        use crate::qwen35::plan::QwenSourceProfile::{Qwen2B, Qwen08};
+        use crate::qwen35::plan::QwenModelVariant::{Qwen2B, Qwen800M};
 
         let expected = [
             (
-                Qwen08,
+                Qwen800M,
                 47,
                 false,
                 "b24e5fb2ac4b0e591cb907e8226cd1d80bc24507c0586ecfb5238ea4f3c91f8b",
             ),
             (
-                Qwen08,
+                Qwen800M,
                 57,
                 false,
                 "9ec9c52e82e99b9654d3136f22e10523e1fa6f786a6136f7adefaaedec2aed43",
             ),
             (
-                Qwen08,
+                Qwen800M,
                 62,
                 false,
                 "f487c0f5bcb5580da48fd33f047c4cf67d4098e496e1040e07a4eeafca0c5a65",
             ),
             (
-                Qwen08,
+                Qwen800M,
                 67,
                 false,
                 "213a13cfb815791936bca556a1ab66730b03ac71fe9c72f6586cc5fcab0be3e5",
             ),
             (
-                Qwen08,
+                Qwen800M,
                 72,
                 false,
                 "d2226726eda06c919709e3b7767d019e0dd33f633db925ce266a9f67b48f1d9e",
             ),
             (
-                Qwen08,
+                Qwen800M,
                 1,
                 true,
                 "cf3ef9d3fa84410540c6d969212a3e29c912255d9b404d2430905155c1cf201e",
@@ -417,7 +417,7 @@ mod tests {
             );
             assert!(qualification::gdn_implementation(profile, tokens, decode)?.is_some());
         }
-        for profile in [Qwen08, Qwen2B] {
+        for profile in [Qwen800M, Qwen2B] {
             for tokens in [48, 49, 50] {
                 assert_eq!(
                     qualification::gdn_recipe_sha256(profile, tokens, false)?,
@@ -449,7 +449,7 @@ mod tests {
         ];
         for (rows, stages) in expected {
             let actual = qualification::fresh_prefill_gdn_implementation(
-                QwenSourceProfile::Qwen08,
+                QwenModelVariant::Qwen800M,
                 rows,
                 false,
             )?
@@ -462,11 +462,11 @@ mod tests {
             );
         }
         assert!(
-            qualification::fresh_prefill_gdn_implementation(QwenSourceProfile::Qwen08, 1, true,)?
+            qualification::fresh_prefill_gdn_implementation(QwenModelVariant::Qwen800M, 1, true,)?
                 .is_none()
         );
         assert!(
-            qualification::fresh_prefill_gdn_implementation(QwenSourceProfile::Qwen2B, 48, false,)?
+            qualification::fresh_prefill_gdn_implementation(QwenModelVariant::Qwen2B, 48, false,)?
                 .is_none()
         );
         Ok(())
@@ -484,22 +484,25 @@ mod tests {
             Err(Error::Unsupported(_))
         ));
         assert!(
-            qualification::seal_gdn_implementation(QwenSourceProfile::Qwen08, 47, false, None,)
+            qualification::seal_gdn_implementation(QwenModelVariant::Qwen800M, 47, false, None,)
                 .is_err()
         );
 
-        let qwen08_47 = qualification::gdn_implementation(QwenSourceProfile::Qwen08, 47, false)
-            .unwrap()
-            .unwrap();
-        let qwen2b_47 = qualification::gdn_implementation(QwenSourceProfile::Qwen2B, 47, false)
-            .unwrap()
-            .unwrap();
-        let qwen2b_57 = qualification::gdn_implementation(QwenSourceProfile::Qwen2B, 57, false)
-            .unwrap()
-            .unwrap();
-        assert_eq!(qwen08_47.config(), qwen2b_57.config());
-        assert_ne!(qwen08_47.config(), qwen2b_47.config());
-        assert!(bindings::gdn_implementation(Some(qwen08_47), 48, false).is_err());
+        let qwen800m_prefill47 =
+            qualification::gdn_implementation(QwenModelVariant::Qwen800M, 47, false)
+                .unwrap()
+                .unwrap();
+        let qwen2b_prefill47 =
+            qualification::gdn_implementation(QwenModelVariant::Qwen2B, 47, false)
+                .unwrap()
+                .unwrap();
+        let qwen2b_prefill57 =
+            qualification::gdn_implementation(QwenModelVariant::Qwen2B, 57, false)
+                .unwrap()
+                .unwrap();
+        assert_eq!(qwen800m_prefill47.config(), qwen2b_prefill57.config());
+        assert_ne!(qwen800m_prefill47.config(), qwen2b_prefill47.config());
+        assert!(bindings::gdn_implementation(Some(qwen800m_prefill47), 48, false).is_err());
 
         let explicit = GdnKernelConfig::from_stages(
             GdnKktKernel::Bk32W4S3,
@@ -512,7 +515,7 @@ mod tests {
         assert_eq!(mismatched.config(), Some(explicit));
         assert!(
             qualification::seal_gdn_implementation(
-                QwenSourceProfile::Qwen08,
+                QwenModelVariant::Qwen800M,
                 47,
                 false,
                 Some(mismatched),
@@ -520,7 +523,7 @@ mod tests {
             .is_err()
         );
         assert!(
-            qualification::gdn_implementation(QwenSourceProfile::Qwen08, 48, false)
+            qualification::gdn_implementation(QwenModelVariant::Qwen800M, 48, false)
                 .unwrap()
                 .is_none()
         );

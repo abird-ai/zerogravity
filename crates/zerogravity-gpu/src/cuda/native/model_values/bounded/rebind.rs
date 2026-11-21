@@ -103,8 +103,8 @@ mod tests {
     use zerogravity_core::accelerator::program::StateSlot;
     use zerogravity_core::accelerator::program::StateVersion;
     use zerogravity_core::accelerator::program::{
-        AttentionGeometry, SourceAttentionMask, SourceCall, SourceCallMode,
-        SourceNumericalContract, SourceOperator, SourceOperatorKind, SourceRows, TextCallGeometry,
+        AttentionGeometry, NumericalContract, SourceAttentionMask, SourceCall, SourceCallMode,
+        SourceOperator, SourceOperatorKind, SourceRows, TextCallGeometry,
     };
     fn node(source: SourceIdentity, base: usize) -> Result<PlanNode> {
         let call = SourceCall::new(
@@ -130,7 +130,7 @@ mod tests {
                         scale: 0.0625,
                         mask: SourceAttentionMask::Causal,
                     },
-                    SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+                    NumericalContract::CudaSm86Bf16ReferenceV1,
                     vec![],
                     vec![],
                 )?),

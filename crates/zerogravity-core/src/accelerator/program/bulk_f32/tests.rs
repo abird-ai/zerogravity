@@ -111,13 +111,11 @@ fn same_builder_three_nodes_stay_pure_and_legacy_use_or_foreign_values_refuse() 
     let span = span();
     let operation = matrix(&span);
     let mut b =
-        PlanBuilder::new_operator_slice(span.source(), ProgramNumericalProfile::GgufSourceV1)
-            .unwrap();
+        PlanBuilder::new_operator_slice(span.source(), NumericalProfile::GgufReferenceV1).unwrap();
     let left = b.bulk_f32_input(operation.left()).unwrap();
     let right = b.bulk_f32_input(operation.right()).unwrap();
     let mut other =
-        PlanBuilder::new_operator_slice(span.source(), ProgramNumericalProfile::GgufSourceV1)
-            .unwrap();
+        PlanBuilder::new_operator_slice(span.source(), NumericalProfile::GgufReferenceV1).unwrap();
     let foreign = other.bulk_f32_input(operation.right()).unwrap();
     assert!(b.bulk_f32_matmul(&operation, &left, &foreign).is_err());
     assert!(b.silu("legacy", &right, None).is_err());

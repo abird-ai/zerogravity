@@ -69,7 +69,7 @@ fn reference(builder: &PlanBuilder, inputs: &[PlanValue]) -> Result<()> {
         }
         return Err(Error::State("BF16 text candidate arithmetic input".into()));
     }
-    if builder.profile != ProgramNumericalProfile::AnalyticF32TextV1
+    if builder.profile != NumericalProfile::AnalyticF32TextV1
         || inputs
             .iter()
             .any(|value| value.precision != ActivationPrecision::F32)

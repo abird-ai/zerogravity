@@ -114,7 +114,7 @@ fn dynamic_prefills_and_cached_spans_preserve_issuer() {
         assert_eq!(span, clone);
         assert_ne!(span, PromptSpan::prefill(source, workload, &ids).unwrap());
         assert_eq!((span.base(), span.len(), span.capacity()), (0, rows, 512));
-        for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+        for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
             let call = PromptCall::new(profile, span.clone()).unwrap();
             assert_eq!(call.request().teachers().prompt_span(), Some(&span));
             assert_eq!(call.request().teachers().ids(), &ids);
@@ -171,7 +171,7 @@ fn short_cached66_cannot_be_retagged_as_reference_phase_or_standalone_embedding(
         11,
     )
     .unwrap();
-    let call = PromptCall::new(QwenSourceProfile::Qwen08, span).unwrap();
+    let call = PromptCall::new(QwenModelVariant::Qwen800M, span).unwrap();
     let request = call.request();
     let layer = QwenPrefixLayer::new(source, 0).unwrap();
     assert!(request.reference_phase().is_err());
@@ -183,12 +183,12 @@ fn short_cached66_cannot_be_retagged_as_reference_phase_or_standalone_embedding(
     );
     assert!(QwenSourceCall::new(request.clone()).is_err());
     assert!(QwenSourceCall::from_span(request.clone()).is_err());
-    assert!(QwenSourceCall::for_profile(QwenSourceProfile::Qwen2B, request.clone()).is_err());
+    assert!(QwenSourceCall::for_profile(QwenModelVariant::Qwen2B, request.clone()).is_err());
     let raw = embedding(&call);
     assert!(QwenEmbedding::new(raw.tensor().clone(), request.teachers().clone()).is_err());
     assert!(QwenPlanBuilder::new_gdn_attempt_phase(request.clone()).is_err());
     let mut slice =
-        QwenPlanBuilder::new_operator_slice(source, ProgramNumericalProfile::SourceCudaSm86Bf16V1)
+        QwenPlanBuilder::new_operator_slice(source, NumericalProfile::CudaSm86Bf16ReferenceV1)
             .unwrap();
     assert!(slice.source_embedding(&raw).is_err());
     let old = QwenGdnCall::new(
@@ -203,7 +203,7 @@ fn short_cached66_cannot_be_retagged_as_reference_phase_or_standalone_embedding(
 #[test]
 fn full_operator_shapes_use_true_rows_source_roles_and_family_widths() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+    for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
         for prompt_tokens in PROMPT_TOKEN_COUNTS {
             let workload = PromptWorkload::from_prompt_tokens(prompt_tokens).unwrap();
             for span in [
@@ -262,7 +262,7 @@ fn full_operator_shapes_use_true_rows_source_roles_and_family_widths() {
 #[test]
 fn full_builder_keeps_actual_short_teacher_provenance_and_no_reference_phase() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+    for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
         for span in [
             PromptSpan::prefill(
                 source,
@@ -309,7 +309,7 @@ fn full_builder_keeps_actual_short_teacher_provenance_and_no_reference_phase() {
 fn short_metadata_does_not_enable_an_unaware_backend() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let call = PromptCall::new(
-        QwenSourceProfile::Qwen2B,
+        QwenModelVariant::Qwen2B,
         PromptSpan::prefill(
             source,
             PromptWorkload::from_prompt_tokens(67).unwrap(),

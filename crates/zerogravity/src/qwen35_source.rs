@@ -7,7 +7,7 @@
 use self::source_inventory::{digest, member, select};
 use crate::{
     Error, Result,
-    accelerator::program::SourceNumericalContract,
+    accelerator::program::NumericalContract,
     qwen35::source::{
         binding::{OrdinarySourceSeal, OriginalWindowModelSource},
         owned::QwenOriginalWindowText,
@@ -59,7 +59,7 @@ pub(crate) fn not_cancelled(flag: Option<&AtomicBool>) -> Result<()> {
 
 pub(crate) fn open(
     dir: Inputs<'_>,
-    numerical: SourceNumericalContract,
+    numerical: NumericalContract,
     host: &TransferAdmission,
     cancelled: Option<&AtomicBool>,
 ) -> Result<Opened> {
@@ -162,10 +162,8 @@ pub(crate) fn open(
     )?);
     let model = OriginalWindowModelSource::from_owner(owner)?;
     let seal = match numerical {
-        SourceNumericalContract::ReferenceCudaSm86Bf16V1 => model.bind_ordinary_cuda_source()?,
-        SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1 => {
-            model.bind_ordinary_cpu_source()?
-        }
+        NumericalContract::CudaSm86Bf16ReferenceV1 => model.bind_ordinary_cuda_source()?,
+        NumericalContract::TorchCpuAvx2Bf16MixedV1 => model.bind_ordinary_cpu_source()?,
         _ => {
             return Err(Error::Unsupported(
                 "ordinary source numerical contract".into(),

@@ -32,7 +32,7 @@ const CLOCK: &str = "request_monotonic_seconds";
 const COMMIT_SEMANTICS: &str = "observer immediately after existing source-root publication; not a GPU event clock or independent numerical proof";
 const DELIVERY_SEMANTICS: &str = "successful HTTP token-event write/flush to socket; not client receipt; absent for nonstream responses";
 const AGGREGATE_SEMANTICS: &str = "generation/mean ITL use provider commit-observed intervals; scheduled-start TTFT, queue time and scheduled throughput are unavailable; request-origin first commit is separate";
-const GPU_SEMANTICS: &str = "optional exact committed producer frontier; native cohort sequence/width from the existing successful atomic-publication counter; absent native cohort for B1/interleaved; observation is not independent state or mathematics proof";
+const GPU_SEMANTICS: &str = "optional exact committed producer frontier; fused cohort sequence/width from the existing successful atomic-publication counter; absent fused cohort for singleton/interleaved execution; observation is not independent state or mathematics proof";
 
 /// Largest JSON number/identifier text this module can emit (`u64` decimal,
 /// `f64` shortest-round-trip and a JSON `null`).
@@ -147,13 +147,13 @@ pub fn record_envelope() -> u64 {
         "session_epoch".len() as u64,
         "root".len() as u64,
     ]);
-    let native_cohort = json_object(["publication_sequence".len() as u64, "width".len() as u64]);
+    let fused_cohort = json_object(["publication_sequence".len() as u64, "width".len() as u64]);
     let gpu = json_object([
         "producer_frontier".len() as u64,
         "producer_root".len() as u64,
-        "native_cohort".len() as u64,
+        "fused_cohort".len() as u64,
     ]) + producer_root
-        + native_cohort;
+        + fused_cohort;
     let record_keys = [
         "index".len() as u64,
         "token_id".len() as u64,
@@ -174,7 +174,7 @@ pub fn record_envelope() -> u64 {
         + json_member("session_id".len() as u64)
         + json_member("session_epoch".len() as u64)
         + json_member("root".len() as u64)
-        + json_member("native_cohort".len() as u64)
+        + json_member("fused_cohort".len() as u64)
         + json_member("publication_sequence".len() as u64)
         + json_member("width".len() as u64)
         + 32; // object/array punctuation
@@ -314,7 +314,7 @@ impl TokenMetrics {
                     || gpu
                         .producer_root
                         .is_some_and(|root| root.session_id == 0 || root.root == 0)
-                    || gpu.native_cohort.is_some_and(|cohort| {
+                    || gpu.fused_cohort.is_some_and(|cohort| {
                         cohort.publication_sequence == 0 || !matches!(cohort.width, 2 | 4 | 8)
                     })
             })
@@ -562,7 +562,7 @@ mod tests {
     }
     #[test]
     fn gpu_observations_preserve_b1_and_native_producer_frontiers() {
-        use super::super::dispatch::NativeCohortObservation;
+        use super::super::dispatch::FusedCohortObservation;
         let started = Instant::now() - Duration::from_secs(1);
         let mut metrics = TokenMetrics::new(
             TokenMetricsRequest {
@@ -571,9 +571,9 @@ mod tests {
             },
             "chatcmpl-gpu".into(),
         );
-        for (index, native_cohort) in [
+        for (index, fused_cohort) in [
             None,
-            Some(NativeCohortObservation {
+            Some(FusedCohortObservation {
                 publication_sequence: 7,
                 width: 2,
             }),
@@ -589,7 +589,7 @@ mod tests {
                     gpu: Some(GpuTokenObservation {
                         producer_frontier: 11 + index as u64,
                         producer_root: None,
-                        native_cohort,
+                        fused_cohort,
                     }),
                 })
                 .unwrap();
@@ -604,29 +604,29 @@ mod tests {
                     gpu: Some(GpuTokenObservation {
                         producer_frontier: 12,
                         producer_root: None,
-                        native_cohort: None
+                        fused_cohort: None
                     })
                 })
                 .is_err()
         );
         let (_, full) = metrics.finish(2).unwrap();
         assert_eq!(full["tokens"][0]["gpu"]["producer_frontier"], 11);
-        assert!(full["tokens"][0]["gpu"]["native_cohort"].is_null());
+        assert!(full["tokens"][0]["gpu"]["fused_cohort"].is_null());
         assert_eq!(
-            full["tokens"][1]["gpu"]["native_cohort"]["publication_sequence"],
+            full["tokens"][1]["gpu"]["fused_cohort"]["publication_sequence"],
             7
         );
-        assert_eq!(full["tokens"][1]["gpu"]["native_cohort"]["width"], 2);
+        assert_eq!(full["tokens"][1]["gpu"]["fused_cohort"]["width"], 2);
         for gpu in [
             GpuTokenObservation {
                 producer_frontier: 0,
                 producer_root: None,
-                native_cohort: None,
+                fused_cohort: None,
             },
             GpuTokenObservation {
                 producer_frontier: 1,
                 producer_root: None,
-                native_cohort: Some(NativeCohortObservation {
+                fused_cohort: Some(FusedCohortObservation {
                     publication_sequence: 0,
                     width: 2,
                 }),
@@ -634,7 +634,7 @@ mod tests {
             GpuTokenObservation {
                 producer_frontier: 1,
                 producer_root: None,
-                native_cohort: Some(NativeCohortObservation {
+                fused_cohort: Some(FusedCohortObservation {
                     publication_sequence: 1,
                     width: 3,
                 }),
@@ -710,7 +710,7 @@ mod tests {
                     + WIRE_ID_STRINGS
                     + WIRE_HEADER_OWNER
         );
-        // Four leaves: record, gpu, producer_root and native_cohort.
+        // Four leaves: record, gpu, producer_root and fused_cohort.
         assert!(record_envelope() >= std::mem::size_of::<Record>() as u64 + 4 * MAP_LEAF);
         assert!(
             records_growth()

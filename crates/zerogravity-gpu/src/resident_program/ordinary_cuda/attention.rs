@@ -328,10 +328,10 @@ impl OrdinaryCudaAttention {
         operator: &zerogravity_core::accelerator::program::SourceOperator,
     ) -> Result<()> {
         use zerogravity_core::accelerator::program::{
-            SourceAttentionMask, SourceNumericalContract, SourceOperatorKind,
+            NumericalContract, SourceAttentionMask, SourceOperatorKind,
         };
         operator.validate()?;
-        if operator.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+        if operator.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
             || operator.call().rows().capacity() != self.capacity
             || !matches!(
                 operator.kind(),

@@ -73,10 +73,10 @@ fn rms(call: &QwenSourceCall) -> QwenOperator {
 }
 
 #[test]
-fn old_constructor_and_projection_geometry_remain_qwen08() {
+fn old_constructor_and_projection_geometry_remain_qwen800m() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let call = QwenSourceCall::new(request(source, ReferencePhase::InitialOne)).unwrap();
-    assert_eq!(call.model_profile(), QwenSourceProfile::Qwen08);
+    assert_eq!(call.model_profile(), QwenModelVariant::Qwen800M);
     for p in [
         QwenProjection::Qkvz,
         QwenProjection::Ba,
@@ -103,7 +103,7 @@ fn qwen2b_exact_source_members_and_truephase_head_dimensions() {
         ReferencePhase::CachedOne,
     ] {
         let call =
-            QwenSourceCall::for_profile(QwenSourceProfile::Qwen2B, request(source, phase)).unwrap();
+            QwenSourceCall::for_profile(QwenModelVariant::Qwen2B, request(source, phase)).unwrap();
         for (p, k, m) in [
             (QwenProjection::Qkvz, 2048, 8192),
             (QwenProjection::Ba, 2048, 32),
@@ -183,14 +183,14 @@ fn qwen2b_embedding_requires_matching_full_model_builder() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let request = request(source, ReferencePhase::InitialOne);
     let old = QwenSourceCall::new(request.clone()).unwrap();
-    let two = QwenSourceCall::for_profile(QwenSourceProfile::Qwen2B, request).unwrap();
+    let two = QwenSourceCall::for_profile(QwenModelVariant::Qwen2B, request).unwrap();
     let mut old_builder = QwenPlanBuilder::new_small_model(old.clone()).unwrap();
     assert!(old_builder.source_embedding(&embedding(&two)).is_err());
     assert!(QwenPlanBuilder::new_small_model(two.clone()).is_err());
     let mut two_builder = QwenPlanBuilder::new_model(two.clone()).unwrap();
     assert!(two_builder.source_embedding(&embedding(&old)).is_err());
     let mut slice =
-        QwenPlanBuilder::new_operator_slice(source, ProgramNumericalProfile::SourceCudaSm86Bf16V1)
+        QwenPlanBuilder::new_operator_slice(source, NumericalProfile::CudaSm86Bf16ReferenceV1)
             .unwrap();
     assert!(slice.source_embedding(&embedding(&two)).is_err());
     let raw = two_builder.source_embedding(&embedding(&two)).unwrap();
@@ -209,7 +209,7 @@ fn qwen2b_embedding_requires_matching_full_model_builder() {
 fn full_model_value_origin_preserves_profile_and_same_teacher_issuer() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let call = QwenSourceCall::for_profile(
-        QwenSourceProfile::Qwen2B,
+        QwenModelVariant::Qwen2B,
         request(source, ReferencePhase::InitialOne),
     )
     .unwrap();
@@ -220,13 +220,13 @@ fn full_model_value_origin_preserves_profile_and_same_teacher_issuer() {
     let QwenValueOrigin::FullModel(origin) = tag.origin() else {
         panic!("missing actual full-model origin")
     };
-    assert_eq!(origin.call().model_profile(), QwenSourceProfile::Qwen2B);
+    assert_eq!(origin.call().model_profile(), QwenModelVariant::Qwen2B);
     assert_eq!(
         origin.call().request().teachers(),
         call.request().teachers()
     );
     let foreign = QwenSourceCall::for_profile(
-        QwenSourceProfile::Qwen2B,
+        QwenModelVariant::Qwen2B,
         request(source, ReferencePhase::InitialOne),
     )
     .unwrap();
@@ -261,7 +261,7 @@ fn full_model_value_origin_preserves_profile_and_same_teacher_issuer() {
 fn qwen2b_parameter_shape_and_layer_kind_do_not_accept_legacy_width() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let call = QwenSourceCall::for_profile(
-        QwenSourceProfile::Qwen2B,
+        QwenModelVariant::Qwen2B,
         request(source, ReferencePhase::InitialOne),
     )
     .unwrap();
@@ -301,7 +301,7 @@ fn qwen2b_parameter_shape_and_layer_kind_do_not_accept_legacy_width() {
 fn qwen2b_metadata_never_uses_legacy_backend_fallback() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let call = QwenSourceCall::for_profile(
-        QwenSourceProfile::Qwen2B,
+        QwenModelVariant::Qwen2B,
         request(source, ReferencePhase::InitialOne),
     )
     .unwrap();

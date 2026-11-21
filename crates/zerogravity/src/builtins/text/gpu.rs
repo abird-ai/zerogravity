@@ -41,7 +41,7 @@ pub struct GpuProfile {
     pub output: usize,
     pub provider_mib: usize,
     pub device_mib: usize,
-    pub native_rows: usize,
+    pub cohort_width: usize,
     pub host_mib: usize,
     pub max_pending: Option<usize>,
 }
@@ -53,7 +53,7 @@ struct Model {
     group: usize,
     hidden_width: usize,
     vocabulary_size: u64,
-    native_rows: usize,
+    cohort_width: usize,
     max_token_bytes: usize,
     readers: Arc<AtomicUsize>,
     _metadata: Arc<zerogravity_engine::router::pending::ServingCharge>,
@@ -121,10 +121,10 @@ struct State {
     device_token: Option<ResidentToken>,
 }
 type Row = Active<NativeText>;
-fn policy(active: usize, native_rows: usize) -> WorkPolicy {
+fn policy(active: usize, cohort_width: usize) -> WorkPolicy {
     WorkPolicy::Waves(WavePolicy {
-        max_members: if native_rows != 0 {
-            native_rows
+        max_members: if cohort_width != 0 {
+            cohort_width
         } else {
             active
         },
@@ -136,12 +136,12 @@ fn policy(active: usize, native_rows: usize) -> WorkPolicy {
         },
         prefill_quantum: 32,
         unequal_prefill: false,
-        unequal_decode: native_rows != 0,
-        native_rows,
-        cohorts: if native_rows == 0 {
+        unequal_decode: cohort_width != 0,
+        cohort_width,
+        cohorts: if cohort_width == 0 {
             Cohorts::PromptTails
         } else {
-            Cohorts::Native {
+            Cohorts::Fused {
                 widths: &[8, 4, 2, 1],
                 split_prefix: true,
                 retry: RetryOrder::Regroup,
@@ -153,7 +153,7 @@ fn start(
     models: BTreeMap<String, Arc<Model>>,
     active: usize,
     output: usize,
-    native_rows: usize,
+    cohort_width: usize,
     host: ServingHost,
     max_pending: Option<usize>,
 ) -> Result<Router, ServiceError> {
@@ -166,7 +166,7 @@ fn start(
             context: GPU_CAPACITY,
             output,
             max_pending,
-            policy: policy(active, native_rows),
+            policy: policy(active, cohort_width),
         },
     )
 }
@@ -195,7 +195,7 @@ impl Executor for NativeText {
         ))
     }
     fn prefill(model: &Self::Model) -> Prefill {
-        Prefill::Chunks(match model.native_rows {
+        Prefill::Chunks(match model.cohort_width {
             0 => 32,
             2 | 4 | 8 => 4,
             _ => 1,
@@ -220,7 +220,7 @@ impl Executor for NativeText {
         state.device_token.is_some()
     }
     fn cohort_eligible(row: &Row) -> bool {
-        matches!(row.model.native_rows, 2 | 4 | 8)
+        matches!(row.model.cohort_width, 2 | 4 | 8)
             && row.cursor < row.prompt.len()
             && row.state.device_token.is_none()
     }
@@ -347,7 +347,7 @@ fn install(
     let observation = GpuTokenObservation {
         producer_frontier: row.state.session.binding().frontier(),
         producer_root: None,
-        native_cohort: None,
+        fused_cohort: None,
     };
     row.state.device_token = Some(token);
     Ok(Published {

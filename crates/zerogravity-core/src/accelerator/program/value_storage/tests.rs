@@ -1,7 +1,7 @@
 use super::*;
 use crate::accelerator::SourceIdentity;
 use crate::accelerator::program::{
-    EmbeddingContract, MathematicalBackend, MatrixAxes, PlanBuilder, ProgramNumericalProfile,
+    EmbeddingContract, MathematicalBackend, MatrixAxes, NumericalProfile, PlanBuilder,
     RecordedOperatorSlice, SourceTensor,
 };
 use crate::encoding::StoredTensorEncoding;
@@ -22,9 +22,9 @@ fn chain(count: usize, bf16: bool) -> RecordedOperatorSlice {
     let mut b = PlanBuilder::new_operator_slice(
         source,
         if bf16 {
-            ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+            NumericalProfile::TorchCpuAvx2Bf16MixedV1
         } else {
-            ProgramNumericalProfile::GgufSourceV1
+            NumericalProfile::GgufReferenceV1
         },
     )
     .unwrap();
@@ -242,8 +242,7 @@ fn late_pinned_output_gets_a_new_slot_but_escape_can_reuse_early_dead_storage() 
 #[test]
 fn exact_aligned_policy_never_grows_or_borrows_a_different_native_size_class() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let mut b =
-        PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1).unwrap();
+    let mut b = PlanBuilder::new_operator_slice(source, NumericalProfile::GgufReferenceV1).unwrap();
     let mut value = b
         .embed(
             tensor(
@@ -305,8 +304,7 @@ fn exact_aligned_policy_never_grows_or_borrows_a_different_native_size_class() {
 #[test]
 fn fork_and_late_residual_keep_all_actual_node_operands_nonaliasing() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let mut b =
-        PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1).unwrap();
+    let mut b = PlanBuilder::new_operator_slice(source, NumericalProfile::GgufReferenceV1).unwrap();
     let original = b
         .embed(
             tensor(

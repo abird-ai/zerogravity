@@ -1,6 +1,6 @@
 //! Small genuine source-owner pipelines; not trained27B numerical qualification.
 use super::*;
-use crate::accelerator::program::{ActivationPrecision, PlanBuilder, ProgramNumericalProfile};
+use crate::accelerator::program::{ActivationPrecision, NumericalProfile, PlanBuilder};
 use crate::operator_slice::pure::PureSliceInput;
 
 fn tail_source(fixture: &Fixture) -> Loaded {
@@ -26,7 +26,7 @@ fn tail_source(fixture: &Fixture) -> Loaded {
 fn input<'a>(operators: &OriginalWindowOperators, bytes: &'a [u8]) -> PureSliceInput<'a> {
     PureSliceInput::from_bf16_bytes(
         operators.source().source_identity(),
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1,
         bytes,
     )
     .unwrap()
@@ -79,7 +79,7 @@ fn output_tail_records_one_existing_schedule_without_state_or_external_producer(
     let operators = bind_windows(source.clone(), &loaded);
     let mut builder = PlanBuilder::new_operator_slice(
         source.source_identity(),
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1,
     )
     .unwrap();
     let value = builder
@@ -144,7 +144,7 @@ fn output_tail_rejects_foreign_short_cancelled_and_pressure_inputs_without_leaks
     let (foreign, foreign_admission) = windows(&fixture, &loaded);
     let foreign_input = PureSliceInput::from_bf16_bytes(
         foreign.source_identity(),
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1,
         &bytes,
     )
     .unwrap();

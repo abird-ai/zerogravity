@@ -21,7 +21,7 @@ impl BoundFullModelSource {
     /// Consume the existing authenticated metadata owner; no duplicate admission.
     pub fn prepare_qualification_source(
         self,
-        profile: QwenSourceProfile,
+        profile: QwenModelVariant,
     ) -> Result<PreparedQualificationSource> {
         if self.model_profile() != profile {
             return Err(Error::Unsupported(
@@ -37,7 +37,7 @@ impl BoundFullModelSource {
 impl OriginalWindowModelSource {
     pub fn prepare_qualification_source(
         self: &Arc<Self>,
-        profile: QwenSourceProfile,
+        profile: QwenModelVariant,
     ) -> Result<PreparedQualificationSource> {
         let bound = self.bind_full_model_source()?;
         if bound.model_profile() != profile || self.source().staging_chunk_bytes() != 1024 * 1024 {
@@ -102,7 +102,7 @@ fn require_rotary_source(source: &Arc<OriginalWindowModelSource>, text: bool) ->
     let g = c.geometry();
     if !matches!(
         bound.model_profile(),
-        crate::plan::QwenSourceProfile::Qwen08 | crate::plan::QwenSourceProfile::Qwen2B
+        crate::plan::QwenModelVariant::Qwen800M | crate::plan::QwenModelVariant::Qwen2B
     ) || g.family != Family::QwenHybrid
         || g.head_dim != 256
         || g.vocab_size != 248320

@@ -1,7 +1,7 @@
 use super::*;
 use zerogravity_core::accelerator::SourceIdentity;
 use zerogravity_core::accelerator::program::{
-    ConvDomain, MathematicalBackend, MatrixAxes, PlanBuilder, SourceNumericalContract,
+    ConvDomain, MathematicalBackend, MatrixAxes, NumericalContract, PlanBuilder,
     SourceOperatorTemplate, SourcePlanGeometry, SourceRowSelection, StateSlot,
 };
 use zerogravity_core::encoding::StoredTensorEncoding;
@@ -61,7 +61,7 @@ fn neutral(d: &QwenGdnProjection) -> SourceOperator {
     SourceOperator::new(
         d.invocation().source_call().unwrap(),
         SourceOperatorKind::Projection { selected_row: None },
-        zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1,
         d.members().to_vec(),
         vec![],
     )
@@ -86,7 +86,7 @@ fn captured_native_image_selection_refuses_call_free_templates() {
         geometry,
         SourceRowSelection::AllActive,
         SourceOperatorKind::EmbeddingRows,
-        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        NumericalContract::CudaSm86Bf16ReferenceV1,
         vec![matrix("embedding", 16, 4)],
         vec![],
     )
@@ -100,7 +100,7 @@ fn captured_native_image_selection_refuses_call_free_templates() {
         geometry,
         SourceRowSelection::AllActive,
         SourceOperatorKind::StateCarry { slot },
-        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        NumericalContract::CudaSm86Bf16ReferenceV1,
         vec![],
         vec![],
     )
@@ -115,7 +115,7 @@ fn captured_native_image_selection_refuses_call_free_templates() {
         geometry,
         SourceRowSelection::LastActive,
         SourceOperatorKind::Projection { selected_row: None },
-        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        NumericalContract::CudaSm86Bf16ReferenceV1,
         vec![matrix("head", 8, 4)],
         vec![],
     )
@@ -339,7 +339,7 @@ fn immutable_plan_value_join_refuses_generic_tag_loss_wrong_id_and_precision() {
     let call = invocation(0, ReferencePhase::InitialOne);
     let source = call.layer().source();
     let mut b =
-        QwenPlanBuilder::new_operator_slice(source, ProgramNumericalProfile::SourceCudaSm86Bf16V1)
+        QwenPlanBuilder::new_operator_slice(source, NumericalProfile::CudaSm86Bf16ReferenceV1)
             .unwrap();
     let input = b
         .source_embedding(
@@ -384,7 +384,7 @@ fn immutable_plan_value_join_refuses_generic_tag_loss_wrong_id_and_precision() {
         .is_err()
     );
     let mut legacy =
-        PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1).unwrap();
+        PlanBuilder::new_operator_slice(source, NumericalProfile::GgufReferenceV1).unwrap();
     let value = legacy
         .embed(
             SourceTensor {
@@ -418,7 +418,7 @@ fn native_operation_cannot_silently_consume_multi_input_stateful_or_aliased_node
         PlanOperation::SourceOperator {
             descriptor: Box::new(SourceOperator::new(call.source_call().unwrap(),
                 SourceOperatorKind::SiluAndMul { width: 3584 },
-                zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+                zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1,
                 vec![], vec![]).unwrap()), state: None,
         },
         vec![ValueId(1)],
@@ -468,11 +468,9 @@ fn default_image_factory_derives_exact_projection_set_and_refuses_activation_upg
     for activate in [false, true] {
         let call = invocation(0, ReferencePhase::InitialOne);
         let source = call.layer().source();
-        let mut b = QwenPlanBuilder::new_operator_slice(
-            source,
-            ProgramNumericalProfile::SourceCudaSm86Bf16V1,
-        )
-        .unwrap();
+        let mut b =
+            QwenPlanBuilder::new_operator_slice(source, NumericalProfile::CudaSm86Bf16ReferenceV1)
+                .unwrap();
         let input = b
             .source_embedding(
                 &QwenEmbedding::new(
@@ -525,7 +523,7 @@ fn connected_image_requirement_requires_typed_activation_but_default_still_refus
     let call = invocation(0, ReferencePhase::InitialOne);
     let mut b = QwenPlanBuilder::new_operator_slice(
         call.layer().source(),
-        ProgramNumericalProfile::SourceCudaSm86Bf16V1,
+        NumericalProfile::CudaSm86Bf16ReferenceV1,
     )
     .unwrap();
     let emb = QwenEmbedding::new(

@@ -106,7 +106,7 @@ impl FiniteCohortLeases {
     /// B4 sealed binding from the call-local cohort value leases, the cold
     /// candidate membership and the census-derived sole-producer proof.
     pub(in crate::resident_program) fn for_cohort(
-        values: &Arc<crate::resident_program::native_cohort::values::CohortValues>,
+        values: &Arc<crate::resident_program::fused_cohort::values::CohortValues>,
         status: ResidentLease,
         candidates: Box<[Box<[ValueId]>]>,
         proof: &crate::cuda::native::model_values::bounded::RetainedFiniteProof,
@@ -148,7 +148,7 @@ pub(in crate::resident_program) enum ProducerWitness {
     Values(Arc<ModelValues>),
     /// B4: the call-local cohort node/storage cursors. The run is owned by the
     /// body; this Weak back-reference creates no Arc cycle.
-    Cohort(Weak<crate::resident_program::native_cohort::FullModelCohort>),
+    Cohort(Weak<crate::resident_program::fused_cohort::FullModelCohort>),
 }
 impl ProducerWitness {
     /// The deferred observation happens exactly while the original loop is

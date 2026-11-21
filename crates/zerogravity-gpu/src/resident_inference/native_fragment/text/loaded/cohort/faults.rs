@@ -1,7 +1,7 @@
 //! Fresh-process diagnostics use the real submitted flight's unknown quarantine.
 use super::*;
-use crate::resident_program::native_cohort::FullModelCohort;
-pub use crate::resident_program::native_cohort::TextCohortFault;
+use crate::resident_program::fused_cohort::FullModelCohort;
+pub use crate::resident_program::fused_cohort::TextCohortFault;
 use std::sync::Mutex;
 pub(super) struct Probe {
     pub(super) fault: TextCohortFault,

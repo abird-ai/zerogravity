@@ -1,6 +1,6 @@
 //! Config/header-bound roles only; source bytes and CPU arithmetic stay unchanged.
 use super::*;
-use crate::accelerator::program::{OrdinaryRmsContract, TorchCpuGdnContract};
+use crate::accelerator::program::{RmsContract, TorchCpuGdnContract};
 use zerogravity_core::encoding::StoredTensorEncoding;
 
 const MAX_INPUT: usize = 17408;
@@ -59,7 +59,7 @@ impl OriginalWindowOperators {
         let hidden = usize::try_from(self.geometry().hidden_size)
             .map_err(|_| Error::Limit("ordinary hidden norm width".into()))?;
         if parameter.source != self.source_identity()
-            || OrdinaryRmsContract::TorchCpuBf16Avx2.validate(&parameter, hidden)? != hidden
+            || RmsContract::TorchCpuBf16Avx2.validate(&parameter, hidden)? != hidden
         {
             return Err(Error::State(
                 "ordinary hidden norm full raw parameter".into(),
@@ -86,7 +86,7 @@ impl OriginalWindowOperators {
             })
         {
             if parameter.source != self.source_identity()
-                || OrdinaryRmsContract::TorchCpuBf16Avx2.validate(parameter, elements)? != hidden
+                || RmsContract::TorchCpuBf16Avx2.validate(parameter, elements)? != hidden
             {
                 return Err(Error::State(
                     "ordinary hidden norm exact source/width".into(),

@@ -389,7 +389,7 @@ mod tests {
             8,
             vec![StateSlot::Kv(KvDomain(0))],
             true,
-            ProgramNumericalProfile::AnalyticF32TextV1,
+            NumericalProfile::AnalyticF32TextV1,
         )
         .unwrap();
         let value = builder

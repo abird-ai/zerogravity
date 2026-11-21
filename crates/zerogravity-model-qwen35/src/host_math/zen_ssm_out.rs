@@ -27,7 +27,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
             || self.bulk_call.is_some()
             || self.gguf_gdn_upstream_call.is_some()
             || self.gguf_prefix_call.is_some()
-            || self.source.program_numerical_profile() != ProgramNumericalProfile::GgufSourceV1
+            || self.source.program_numerical_profile() != NumericalProfile::GgufReferenceV1
         {
             return Err(Error::Unsupported(
                 "Zen ssm_out private same-engine host slice only".into(),
@@ -71,7 +71,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
             || descriptor.source() != self.source.source_identity()
             || descriptor.span() != owner.gated.recurrent().coefficients().span()
             || input.source != Some(descriptor.source())
-            || input.profile != Some(ProgramNumericalProfile::GgufSourceV1)
+            || input.profile != Some(NumericalProfile::GgufReferenceV1)
             || input.precision != ActivationPrecision::F32
             || input.elements != descriptor.layout().backing_words()
             || input.view != TensorView::vector(0, input.elements)

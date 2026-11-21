@@ -1,7 +1,7 @@
 //! Finite, deterministic source-aware GPU request wave formation.
 //!
 //! A wave is scheduler membership, not physical completion or memory credit.
-//! The GPU worker separately selects qualified native bands or original B1
+//! The GPU worker separately selects supported fused cohorts or singleton
 //! execution and reports actual Ready/dispatch/root receipts.
 
 use super::ServiceError;
@@ -198,27 +198,31 @@ pub(crate) fn fair_round(
     })
 }
 
-/// Contiguous, unpadded native bands; B1 carries an unmatched survivor.
+/// Contiguous, unpadded cohort widths; width 1 carries an unmatched survivor.
 /// Ceiling 1 is the final prelaunch capacity fallback.
-pub fn native_bands(count: usize, ceiling: usize) -> Result<Vec<usize>, ServiceError> {
+pub fn partition_cohorts(count: usize, ceiling: usize) -> Result<Vec<usize>, ServiceError> {
     if !matches!(ceiling, 1 | 2 | 4 | 8) {
         return Err(ServiceError::new(
             400,
-            "invalid_native_bands",
-            "native ceiling1/2/4/8",
+            "invalid_cohort_widths",
+            "cohort width ceiling must be 1, 2, 4, or 8",
         ));
     }
     let widths = [8, 4, 2, 1]
         .into_iter()
         .filter(|&n| n <= ceiling)
         .collect::<Vec<_>>();
-    qualified_bands(count, &widths)
+    partition_supported_cohorts(count, &widths)
 }
 
-/// Use only the actual prepared provider's finite widths. In particular a
-/// qualified B4/B8 cohort does not imply B2; unmatched survivors stay B1.
+/// Use only the actual prepared provider's finite widths. Support for
+/// 4-row/8-row cohorts does not imply 2-row support; unmatched survivors stay
+/// singleton.
 /// This plans membership only. A submitted/unknown error is never fallback.
-pub fn qualified_bands(count: usize, widths: &[usize]) -> Result<Vec<usize>, ServiceError> {
+pub fn partition_supported_cohorts(
+    count: usize,
+    widths: &[usize],
+) -> Result<Vec<usize>, ServiceError> {
     if count > 64
         || widths.is_empty()
         || widths.len() > 4
@@ -228,8 +232,8 @@ pub fn qualified_bands(count: usize, widths: &[usize]) -> Result<Vec<usize>, Ser
     {
         return Err(ServiceError::new(
             400,
-            "invalid_native_bands",
-            "exact descending qualified widths ending in B1",
+            "invalid_cohort_widths",
+            "descending supported cohort widths ending in singleton width 1",
         ));
     }
     let mut left = count;
@@ -243,27 +247,27 @@ pub fn qualified_bands(count: usize, widths: &[usize]) -> Result<Vec<usize>, Ser
     Ok(result)
 }
 
-/// BF16/HF source bands never inherit the GGUF B2 qualification.
+/// BF16/HF source cohorts never inherit GGUF's 2-row qualification.
 #[cfg(test)]
-pub fn bf16_bands(count: usize, ceiling: usize) -> Result<Vec<usize>, ServiceError> {
+pub fn partition_bf16_cohorts(count: usize, ceiling: usize) -> Result<Vec<usize>, ServiceError> {
     if count > 64 || !matches!(ceiling, 1 | 4 | 8) {
         return Err(ServiceError::new(
             400,
-            "invalid_bf16_bands",
-            "BF16 bands require width8/4/1",
+            "invalid_bf16_cohort_widths",
+            "BF16 cohorts require width 8, 4, or 1",
         ));
     }
     let mut remaining = count;
-    let mut bands = Vec::new();
+    let mut cohorts = Vec::new();
     for width in [8, 4, 1] {
         if width <= ceiling {
             while remaining >= width {
-                bands.push(width);
+                cohorts.push(width);
                 remaining -= width;
             }
         }
     }
-    Ok(bands)
+    Ok(cohorts)
 }
 /// Every caller's ready work is included exactly once, using first-seen
 /// source/phase/frontier grouping and finite quota-split waves. No sorting
@@ -273,7 +277,7 @@ pub fn form(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, ServiceError> 
 }
 
 /// Atomic source prefill consumes its actual whole quantum; quotas never split
-/// a member or turn wave membership into native/completion authority.
+/// a member or turn wave membership into fused/completion authority.
 /// Caller already validated each source's prompt and execution route.
 pub fn form_with_prefill_quantum(
     slots: &[Ready],
@@ -321,9 +325,9 @@ pub fn form_decode(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, Service
     form_with_frontiers(slots, bounds, true, false, 32)
 }
 
-/// Every native row consumes exactly one teacher/device token at its own
+/// Every fused-cohort row consumes exactly one teacher/device token at its own
 /// committed frontier. Prompt readout barriers are partitioned by the owner.
-pub fn form_native(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, ServiceError> {
+pub fn form_fused(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, ServiceError> {
     if slots.iter().all(|row| row.phase == Phase::Decode) {
         form_decode(slots, bounds)
     } else {
@@ -470,7 +474,7 @@ mod tests {
     }
 
     #[test]
-    fn native_teacher_waves_bind_independent_frontiers_without_losing_phase_or_source() {
+    fn fused_teacher_cohorts_bind_independent_frontiers_without_losing_phase_or_source() {
         let ready = [
             r(1, Phase::Prefill, 0, 1),
             r(1, Phase::Decode, 12, 1),
@@ -484,7 +488,7 @@ mod tests {
             max_tokens: 4,
             max_scratch: 4096,
         };
-        let waves = form_native(&ready, bounds()).unwrap();
+        let waves = form_fused(&ready, bounds()).unwrap();
         assert_eq!(
             waves
                 .iter()
@@ -500,20 +504,23 @@ mod tests {
         assert_eq!(form_decode(&ready, bounds()).unwrap().len(), 5);
         assert_eq!(form(&ready, bounds()).unwrap().len(), 6);
         for phase in [Phase::Prefill, Phase::Decode] {
-            assert!(form_native(&[r(1, phase, 0, 2)], bounds()).is_err());
+            assert!(form_fused(&[r(1, phase, 0, 2)], bounds()).is_err());
         }
     }
 
     #[test]
-    fn hf_partial_batches_never_invent_an_unqualified_band_or_pad_survivors() {
+    fn hf_partial_batches_use_only_supported_cohorts_without_padding() {
         for count in 0..=64 {
-            let bands = qualified_bands(count, &[8, 4, 1]).unwrap();
-            assert_eq!(bands.iter().sum::<usize>(), count);
-            assert!(bands.iter().all(|n| [8, 4, 1].contains(n)));
+            let cohorts = partition_supported_cohorts(count, &[8, 4, 1]).unwrap();
+            assert_eq!(cohorts.iter().sum::<usize>(), count);
+            assert!(cohorts.iter().all(|n| [8, 4, 1].contains(n)));
         }
-        assert_eq!(qualified_bands(7, &[8, 4, 1]).unwrap(), [4, 1, 1, 1]);
-        assert_eq!(qualified_bands(8, &[4, 1]).unwrap(), [4, 4]);
-        assert_eq!(qualified_bands(3, &[1]).unwrap(), [1, 1, 1]);
+        assert_eq!(
+            partition_supported_cohorts(7, &[8, 4, 1]).unwrap(),
+            [4, 1, 1, 1]
+        );
+        assert_eq!(partition_supported_cohorts(8, &[4, 1]).unwrap(), [4, 4]);
+        assert_eq!(partition_supported_cohorts(3, &[1]).unwrap(), [1, 1, 1]);
         for bad in [
             &[][..],
             &[8, 4][..],
@@ -521,19 +528,19 @@ mod tests {
             &[1, 4][..],
             &[3, 1][..],
         ] {
-            assert!(qualified_bands(8, bad).is_err());
+            assert!(partition_supported_cohorts(8, bad).is_err());
         }
     }
     #[test]
-    fn native_bands_cover_every_row_in_order_without_padding() {
+    fn cohort_partition_covers_every_row_in_order_without_padding() {
         for ceiling in [1, 2, 4, 8] {
             for count in 0..=64 {
-                let bands = native_bands(count, ceiling).unwrap();
-                assert_eq!(bands.iter().sum::<usize>(), count);
-                assert!(bands.windows(2).all(|pair| pair[0] >= pair[1]));
+                let cohorts = partition_cohorts(count, ceiling).unwrap();
+                assert_eq!(cohorts.iter().sum::<usize>(), count);
+                assert!(cohorts.windows(2).all(|pair| pair[0] >= pair[1]));
                 let mut frontier = 0;
                 let mut rows = Vec::new();
-                for width in bands {
+                for width in cohorts {
                     assert!(matches!(width, 1 | 2 | 4 | 8));
                     assert!(width <= ceiling);
                     assert!(frontier + width <= count);
@@ -549,24 +556,24 @@ mod tests {
     }
 
     #[test]
-    fn native_bands_repartition_survivors_and_lower_capacity_ceilings() {
-        assert_eq!(native_bands(8, 8).unwrap(), [8]);
-        assert_eq!(native_bands(7, 8).unwrap(), [4, 2, 1]);
-        assert_eq!(native_bands(6, 8).unwrap(), [4, 2]);
-        assert_eq!(native_bands(5, 8).unwrap(), [4, 1]);
-        assert_eq!(native_bands(3, 4).unwrap(), [2, 1]);
-        assert_eq!(native_bands(8, 4).unwrap(), [4, 4]);
-        assert_eq!(native_bands(4, 2).unwrap(), [2, 2]);
-        assert_eq!(native_bands(2, 1).unwrap(), [1, 1]);
+    fn cohort_partition_repartitions_survivors_and_lower_capacity_ceilings() {
+        assert_eq!(partition_cohorts(8, 8).unwrap(), [8]);
+        assert_eq!(partition_cohorts(7, 8).unwrap(), [4, 2, 1]);
+        assert_eq!(partition_cohorts(6, 8).unwrap(), [4, 2]);
+        assert_eq!(partition_cohorts(5, 8).unwrap(), [4, 1]);
+        assert_eq!(partition_cohorts(3, 4).unwrap(), [2, 1]);
+        assert_eq!(partition_cohorts(8, 4).unwrap(), [4, 4]);
+        assert_eq!(partition_cohorts(4, 2).unwrap(), [2, 2]);
+        assert_eq!(partition_cohorts(2, 1).unwrap(), [1, 1]);
     }
 
     #[test]
-    fn native_bands_reject_unbounded_or_unsupported_shapes() {
+    fn cohort_partition_rejects_unbounded_or_unsupported_shapes() {
         for ceiling in [0, 3, 5, 6, 7, 9, usize::MAX] {
-            assert!(native_bands(8, ceiling).is_err());
+            assert!(partition_cohorts(8, ceiling).is_err());
         }
         for count in [65, usize::MAX] {
-            assert!(native_bands(count, 8).is_err());
+            assert!(partition_cohorts(count, 8).is_err());
         }
     }
 
@@ -852,7 +859,7 @@ mod tests {
     }
 
     #[test]
-    fn eight_atomic47_prefills_keep_real_credit_and_decode_uses_one_b1_wave() {
+    fn eight_atomic47_prefills_keep_real_credit_and_decode_uses_one_singleton_wave() {
         let bounds = || Limits {
             max_members: 8,
             max_tokens: 64,
@@ -877,7 +884,7 @@ mod tests {
         assert_eq!(waves[0].indices, (0..8).collect::<Vec<_>>());
         assert_eq!(waves[0].tokens, 8);
         assert!(form(&prefill, bounds()).is_err());
-        assert!(form_native(&prefill, bounds()).is_err());
+        assert!(form_fused(&prefill, bounds()).is_err());
     }
 
     fn atomic_bounds(tokens: usize) -> Limits {
@@ -901,7 +908,7 @@ mod tests {
         assert_eq!(waves.iter().map(|w| w.tokens).sum::<usize>(), 94);
         assert!(form(&ready, atomic_bounds(64)).is_err());
         assert!(form_decode(&ready, atomic_bounds(64)).is_err());
-        assert!(form_native(&ready, atomic_bounds(64)).is_err());
+        assert!(form_fused(&ready, atomic_bounds(64)).is_err());
     }
 
     #[test]
@@ -946,10 +953,10 @@ mod tests {
     fn every_phase_respects_each_rows_admitted_context() {
         for phase in [Phase::Prefill, Phase::Decode] {
             let last = r(1, phase, 511, 1);
-            assert!(form_native(&[last], atomic_bounds(64)).is_ok());
+            assert!(form_fused(&[last], atomic_bounds(64)).is_ok());
             for frontier in [512, usize::MAX] {
                 let invalid = r(1, phase, frontier, 1);
-                assert!(form_native(&[invalid], atomic_bounds(64)).is_err());
+                assert!(form_fused(&[invalid], atomic_bounds(64)).is_err());
                 assert!(form_with_prefill_quantum(&[invalid], atomic_bounds(64), 47).is_err());
             }
         }
@@ -997,11 +1004,11 @@ mod tests {
         assert!(form_with_prefill_quantum(&[valid], insufficient_scratch, 47).is_err());
         let edge = r(1, Phase::Prefill, 465, 47);
         assert!(form_with_prefill_quantum(&[edge], atomic_bounds(64), 47).is_ok());
-        // Existing32-token and native1-token APIs retain their own contracts.
+        // Existing 32-token and fused single-token APIs retain their own contracts.
         assert!(form(&[r(1, Phase::Prefill, 0, 32)], atomic_bounds(64)).is_ok());
         assert!(form(&[r(1, Phase::Prefill, 0, 33)], atomic_bounds(64)).is_err());
-        assert!(form_native(&[r(1, Phase::Prefill, 0, 1)], atomic_bounds(64)).is_ok());
-        assert!(form_native(&[r(1, Phase::Prefill, 0, 2)], atomic_bounds(64)).is_err());
+        assert!(form_fused(&[r(1, Phase::Prefill, 0, 1)], atomic_bounds(64)).is_ok());
+        assert!(form_fused(&[r(1, Phase::Prefill, 0, 2)], atomic_bounds(64)).is_err());
     }
 }
 

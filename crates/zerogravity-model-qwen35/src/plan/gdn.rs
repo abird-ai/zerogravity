@@ -167,7 +167,7 @@ fn require_dense(
     widths: &[usize],
 ) -> Result<()> {
     invocation.validate()?;
-    if builder.profile != ProgramNumericalProfile::SourceCudaSm86Bf16V1
+    if builder.profile != NumericalProfile::CudaSm86Bf16ReferenceV1
         || builder.source != invocation.layer().source()
         || !(builder.operator_slice || builder.fragment_call.is_some())
         || inputs.len() != widths.len()
@@ -461,7 +461,7 @@ impl QwenFragmentMetadata {
         self.invocation.validate()?;
         let call = self.invocation.source_call()?;
         if plan.source() != self.invocation.layer().source()
-            || plan.numerical_profile() != ProgramNumericalProfile::SourceCudaSm86Bf16V1
+            || plan.numerical_profile() != NumericalProfile::CudaSm86Bf16ReferenceV1
             || plan.source_call() != Some(&call)
             || plan.is_operator_slice()
             || plan.values().len() != self.provenance.len()
@@ -674,7 +674,7 @@ impl QwenPlanBuilder {
             let descriptor = SourceOperator::new(
                 call.clone(),
                 SourceOperatorKind::StateCarry { slot },
-                SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+                NumericalContract::CudaSm86Bf16ReferenceV1,
                 Vec::new(),
                 Vec::new(),
             )?;

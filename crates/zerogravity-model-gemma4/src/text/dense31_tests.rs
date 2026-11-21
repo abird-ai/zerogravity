@@ -17,7 +17,7 @@ fn full_dense31_plan_reuses_family_schedule_and_sixty_owning_domains() {
         8,
         domains.into_iter().map(StateSlot::Kv).collect(),
         true,
-        ProgramNumericalProfile::AnalyticF32TextV1,
+        NumericalProfile::AnalyticF32TextV1,
     )
     .unwrap();
     let logits = forward(&fixture, &mut math, PlanBuilder::inputs(), true).unwrap();
@@ -60,7 +60,7 @@ fn full_dense31_plan_reuses_family_schedule_and_sixty_owning_domains() {
     assert!(plan.nodes().iter().any(|n|matches!(&n.operation,PlanOperation::Project{tensor} if tensor.name=="model.language_model.embed_tokens.weight"&&tensor.columns==5376&&tensor.rows==262144)));
     assert_eq!(
         plan.numerical_profile(),
-        ProgramNumericalProfile::AnalyticF32TextV1
+        NumericalProfile::AnalyticF32TextV1
     );
 }
 

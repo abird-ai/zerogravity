@@ -1,6 +1,6 @@
 //! Metadata refusals only; no trained source, native execution or root permit.
 use super::*;
-use crate::plan::{PromptSpan, PromptWorkload, QwenSourceProfile};
+use crate::plan::{PromptSpan, PromptWorkload, QwenModelVariant};
 use zerogravity_core::accelerator::SourceIdentity;
 
 mod fixture {
@@ -8,11 +8,11 @@ mod fixture {
     use super::*;
     use crate::plan::QwenPlanBuilder;
     use crate::plan::{
-        PromptCall, PromptSpan, PromptWorkload, QwenEmbedding, QwenLayer, QwenOperation,
-        QwenOperator, QwenPlan, QwenProjection, QwenRmsSite, QwenSourceCall, QwenSourceProfile,
+        PromptCall, PromptSpan, PromptWorkload, QwenEmbedding, QwenLayer, QwenModelVariant,
+        QwenOperation, QwenOperator, QwenPlan, QwenProjection, QwenRmsSite, QwenSourceCall,
     };
     use zerogravity_core::encoding::StoredTensorEncoding;
-    fn members(p: QwenProjection, profile: QwenSourceProfile) -> Vec<(&'static str, usize)> {
+    fn members(p: QwenProjection, profile: QwenModelVariant) -> Vec<(&'static str, usize)> {
         match p {
             QwenProjection::Qkvz => vec![
                 ("linear_attn.in_proj_qkv.weight", 6144),
@@ -41,7 +41,7 @@ mod fixture {
     }
     pub(super) fn call(
         source: SourceIdentity,
-        profile: QwenSourceProfile,
+        profile: QwenModelVariant,
         workload: PromptWorkload,
         base: Option<usize>,
         id: u32,
@@ -270,7 +270,7 @@ mod fixture {
 #[test]
 fn head_selects_actual_last_row_for_each_variant_and_phase() -> Result<()> {
     let source = SourceIdentity::for_new_allocation()?;
-    for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+    for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
         let row = profile.hidden_size() * 2;
         for count in [47, 57, 62, 67, 72] {
             let workload = PromptWorkload::from_prompt_tokens(count)?;
@@ -307,7 +307,7 @@ fn fa_uses_the_original_appended_private_read_and_never_a_fake_write() -> Result
     use zerogravity_core::accelerator::program::{ConvDomain, StateEffect, StateVersion};
     let source = SourceIdentity::for_new_allocation()?;
     let call = PromptCall::new(
-        QwenSourceProfile::Qwen2B,
+        QwenModelVariant::Qwen2B,
         PromptSpan::prefill(
             source,
             PromptWorkload::from_prompt_tokens(67).unwrap(),
@@ -369,7 +369,7 @@ fn fa_uses_the_original_appended_private_read_and_never_a_fake_write() -> Result
 #[test]
 fn complete_metadata_for_both_variants_and_every_supported_call() -> Result<()> {
     let source = SourceIdentity::for_new_allocation()?;
-    for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+    for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
         for prompt_tokens in [47, 57, 62, 67, 72] {
             let workload = PromptWorkload::from_prompt_tokens(prompt_tokens).unwrap();
             for base in std::iter::once(None).chain(workload.cached_bases().map(Some)) {
@@ -415,7 +415,7 @@ fn fresh_ids_profile_phase_and_foreign_source_cannot_retag_a_record() -> Result<
     let other = SourceIdentity::for_new_allocation()?;
     let first = fixture::call(
         source,
-        QwenSourceProfile::Qwen08,
+        QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
         None,
         11,
@@ -424,42 +424,42 @@ fn fresh_ids_profile_phase_and_foreign_source_cannot_retag_a_record() -> Result<
     for (identity, profile, workload, base, id) in [
         (
             source,
-            QwenSourceProfile::Qwen08,
+            QwenModelVariant::Qwen800M,
             PromptWorkload::from_prompt_tokens(47).unwrap(),
             None,
             11,
         ),
         (
             source,
-            QwenSourceProfile::Qwen08,
+            QwenModelVariant::Qwen800M,
             PromptWorkload::from_prompt_tokens(47).unwrap(),
             None,
             353,
         ),
         (
             source,
-            QwenSourceProfile::Qwen2B,
+            QwenModelVariant::Qwen2B,
             PromptWorkload::from_prompt_tokens(47).unwrap(),
             None,
             11,
         ),
         (
             source,
-            QwenSourceProfile::Qwen08,
+            QwenModelVariant::Qwen800M,
             PromptWorkload::from_prompt_tokens(57).unwrap(),
             None,
             11,
         ),
         (
             source,
-            QwenSourceProfile::Qwen08,
+            QwenModelVariant::Qwen800M,
             PromptWorkload::from_prompt_tokens(47).unwrap(),
             Some(47),
             11,
         ),
         (
             other,
-            QwenSourceProfile::Qwen08,
+            QwenModelVariant::Qwen800M,
             PromptWorkload::from_prompt_tokens(47).unwrap(),
             None,
             11,
@@ -477,7 +477,7 @@ fn every_source_member_failure_stops_preparation() -> Result<()> {
     let source = SourceIdentity::for_new_allocation()?;
     let call = fixture::call(
         source,
-        QwenSourceProfile::Qwen2B,
+        QwenModelVariant::Qwen2B,
         PromptWorkload::from_prompt_tokens(67).unwrap(),
         None,
         11,
@@ -504,7 +504,7 @@ fn into_plan_moves_graph_and_preserves_unpublished_math_and_issuer() -> Result<(
     let source = SourceIdentity::for_new_allocation()?;
     let call = fixture::call(
         source,
-        QwenSourceProfile::Qwen08,
+        QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
         None,
         11,
@@ -527,7 +527,7 @@ fn selection_outside_the_actual_graph_is_refused() -> Result<()> {
     let source = SourceIdentity::for_new_allocation()?;
     let call = fixture::call(
         source,
-        QwenSourceProfile::Qwen08,
+        QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
         None,
         11,
@@ -546,7 +546,7 @@ fn actual_role_owner_rejects_swapped_members_and_foreign_source() -> Result<()> 
     let foreign = SourceIdentity::for_new_allocation()?;
     let call = fixture::call(
         source,
-        QwenSourceProfile::Qwen08,
+        QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
         None,
         11,

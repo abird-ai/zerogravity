@@ -12,13 +12,13 @@ pub enum SourceWeightLayout {
     AttentionOutput,
     MlpGateUp,
     MlpDown,
-    Qwen2bGdnQkvz,
-    Qwen2bGdnBa,
-    Qwen2bGdnOutput,
-    Qwen2bAttentionQkv,
-    Qwen2bAttentionOutput,
-    Qwen2bMlpGateUp,
-    Qwen2bMlpDown,
+    Qwen2BGdnQkvz,
+    Qwen2BGdnBa,
+    Qwen2BGdnOutput,
+    Qwen2BAttentionQkv,
+    Qwen2BAttentionOutput,
+    Qwen2BMlpGateUp,
+    Qwen2BMlpDown,
     Vocabulary08,
     Vocabulary2b,
 }
@@ -27,26 +27,26 @@ impl SourceWeightLayout {
         match self {
             Self::GdnOutput | Self::AttentionOutput => 2048,
             Self::MlpDown => 3584,
-            Self::Qwen2bGdnQkvz
-            | Self::Qwen2bGdnBa
-            | Self::Qwen2bGdnOutput
-            | Self::Qwen2bAttentionQkv
-            | Self::Qwen2bAttentionOutput
-            | Self::Qwen2bMlpGateUp
+            Self::Qwen2BGdnQkvz
+            | Self::Qwen2BGdnBa
+            | Self::Qwen2BGdnOutput
+            | Self::Qwen2BAttentionQkv
+            | Self::Qwen2BAttentionOutput
+            | Self::Qwen2BMlpGateUp
             | Self::Vocabulary2b => 2048,
-            Self::Qwen2bMlpDown => 6144,
+            Self::Qwen2BMlpDown => 6144,
             _ => 1024,
         }
     }
     pub const fn rows(self) -> usize {
         match self {
             Self::Vocabulary08 | Self::Vocabulary2b => 248320,
-            Self::GdnQkvz | Self::Qwen2bGdnQkvz => 8192,
-            Self::GdnBa | Self::Qwen2bGdnBa => 32,
-            Self::AttentionQkv | Self::Qwen2bAttentionQkv => 5120,
+            Self::GdnQkvz | Self::Qwen2BGdnQkvz => 8192,
+            Self::GdnBa | Self::Qwen2BGdnBa => 32,
+            Self::AttentionQkv | Self::Qwen2BAttentionQkv => 5120,
             Self::MlpGateUp => 7168,
-            Self::Qwen2bMlpGateUp => 12288,
-            Self::Qwen2bMlpDown | Self::Qwen2bGdnOutput | Self::Qwen2bAttentionOutput => 2048,
+            Self::Qwen2BMlpGateUp => 12288,
+            Self::Qwen2BMlpDown | Self::Qwen2BGdnOutput | Self::Qwen2BAttentionOutput => 2048,
             _ => 1024,
         }
     }
@@ -207,8 +207,8 @@ mod tests {
     }
     #[test]
     fn qwen2b_distinct_layouts_preserve_exact_rows_and_reject_padding() {
-        let gate = SourceWeightLayout::Qwen2bMlpGateUp;
-        let down = SourceWeightLayout::Qwen2bMlpDown;
+        let gate = SourceWeightLayout::Qwen2BMlpGateUp;
+        let down = SourceWeightLayout::Qwen2BMlpDown;
         assert_eq!(
             (gate.rows(), gate.columns(), gate.bytes()),
             (12288, 2048, 50331648)
@@ -239,11 +239,11 @@ mod tests {
     #[test]
     fn text_2b_learned_layouts_preserve_real_widths_and_window_bounds() {
         for (layout, rows, bytes) in [
-            (SourceWeightLayout::Qwen2bGdnQkvz, 8192, 33554432),
-            (SourceWeightLayout::Qwen2bGdnBa, 32, 131072),
-            (SourceWeightLayout::Qwen2bGdnOutput, 2048, 8388608),
-            (SourceWeightLayout::Qwen2bAttentionQkv, 5120, 20971520),
-            (SourceWeightLayout::Qwen2bAttentionOutput, 2048, 8388608),
+            (SourceWeightLayout::Qwen2BGdnQkvz, 8192, 33554432),
+            (SourceWeightLayout::Qwen2BGdnBa, 32, 131072),
+            (SourceWeightLayout::Qwen2BGdnOutput, 2048, 8388608),
+            (SourceWeightLayout::Qwen2BAttentionQkv, 5120, 20971520),
+            (SourceWeightLayout::Qwen2BAttentionOutput, 2048, 8388608),
         ] {
             assert_eq!(
                 (layout.rows(), layout.columns(), layout.bytes()),

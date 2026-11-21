@@ -15,8 +15,7 @@ use std::sync::{
 };
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::accelerator::program::{
-    ActivationPrecision, ProgramNumericalProfile, SourceCall, SourceOperatorKind, ValueId,
-    ValueShape,
+    ActivationPrecision, NumericalProfile, SourceCall, SourceOperatorKind, ValueId, ValueShape,
 };
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::{Error, Result};
@@ -44,7 +43,7 @@ fn require_head(record: &SourceBindings) -> Result<()> {
     let id = record.selection().output();
     if plan.source() != call.source()
         || plan.source_call() != Some(call)
-        || plan.numerical_profile() != ProgramNumericalProfile::SourceCudaSm86Bf16V1
+        || plan.numerical_profile() != NumericalProfile::CudaSm86Bf16ReferenceV1
         || plan.is_operator_slice()
         || plan.frontier_delta() != 0
         || plan.logits().is_some()

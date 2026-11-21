@@ -160,7 +160,7 @@ pub struct OrdinaryCudaSourceInventory {
     pub fit_capacity_bytes: usize,
     pub context_capacity_tokens: usize,
     pub root_count: usize,
-    pub native_rows: usize,
+    pub cohort_width: usize,
     pub weight_storage: OrdinaryCudaWeightStorage,
     pub source_weight_bytes: usize,
     pub resident_weight_bytes: usize,
@@ -601,7 +601,7 @@ fn ordinary_cuda_source_admission(
     plan: Arc<ForwardPlan>,
     provider_cap: usize,
     roots: usize,
-    native_rows: usize,
+    cohort_width: usize,
     state_reserve_bytes: Option<usize>,
 ) -> Result<(
     ordinary_cuda::OrdinaryCudaAdmission,
@@ -619,7 +619,7 @@ fn ordinary_cuda_source_admission(
             sum.checked_add(bytes)
                 .ok_or_else(|| Error::Limit("ordinary CUDA greedy workspace overflow".into()))
         })?;
-    let cohort_value_reserve = admission.cohort_value_bytes(native_rows)?;
+    let cohort_value_reserve = admission.cohort_value_bytes(cohort_width)?;
     let greedy_reserve = greedy_workspace
         .checked_add(
             roots
@@ -663,7 +663,7 @@ fn ordinary_cuda_source_admission(
         fit_capacity_bytes: fit_cap,
         context_capacity_tokens: admission.capacity(),
         root_count: roots,
-        native_rows,
+        cohort_width,
         weight_storage: if resident_weight_bytes == 0 {
             OrdinaryCudaWeightStorage::Streamed
         } else {
@@ -687,12 +687,12 @@ impl ResidentModel {
     pub fn ordinary_cuda_source_preflight(
         plan: Arc<ForwardPlan>,
         max_sessions: usize,
-        native_rows: usize,
+        cohort_width: usize,
         provider_cap: usize,
     ) -> Result<OrdinaryCudaSourceInventory> {
         if !(1..=64).contains(&max_sessions)
-            || !matches!(native_rows, 0 | 4 | 8)
-            || (native_rows != 0 && max_sessions < native_rows)
+            || !matches!(cohort_width, 0 | 4 | 8)
+            || (cohort_width != 0 && max_sessions < cohort_width)
         {
             return Err(Error::Limit("source-call session capacity".into()));
         }
@@ -700,7 +700,7 @@ impl ResidentModel {
             .checked_mul(2)
             .and_then(|n| n.checked_add(2))
             .ok_or_else(|| Error::Limit("source-call root count overflow".into()))?;
-        ordinary_cuda_source_admission(plan, provider_cap, roots, native_rows, None)
+        ordinary_cuda_source_admission(plan, provider_cap, roots, cohort_width, None)
             .map(|(_, inventory)| inventory)
     }
 
@@ -779,7 +779,7 @@ impl ResidentModel {
         provider_cap: usize,
         device_cap: u64,
         roots: usize,
-        native_rows: usize,
+        cohort_width: usize,
         state_reserve_bytes: Option<usize>,
         source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
         cancelled: Option<&std::sync::atomic::AtomicBool>,
@@ -799,7 +799,7 @@ impl ResidentModel {
             plan.clone(),
             provider_cap,
             roots,
-            native_rows,
+            cohort_width,
             state_reserve_bytes,
         )?;
         let source_identity = configured_admission.source();
@@ -818,7 +818,7 @@ impl ResidentModel {
                 plan,
                 effective_cap,
                 roots,
-                native_rows,
+                cohort_width,
                 state_reserve_bytes,
             )?
             .0
@@ -840,7 +840,7 @@ impl ResidentModel {
             admission,
             source,
             source_owner,
-            native_rows,
+            cohort_width,
             cancelled,
         )
         .await?;
@@ -2988,10 +2988,20 @@ impl ResidentSession {
     }
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
     pub async fn prepare_ordinary_cuda(&self, request: ForwardPlan) -> Result<PreparedInference> {
-        self.prepare_ordinary_source_mode(request,
-            zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1,
-            OrdinarySourceOptions { output: ResidentOutput::Logits, readout: Readout::Logits, device_token: None, cancelled: None, observer: None, completion_owner: None, submitted: None })
-            .await
+        self.prepare_ordinary_source_mode(
+            request,
+            zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1,
+            OrdinarySourceOptions {
+                output: ResidentOutput::Logits,
+                readout: Readout::Logits,
+                device_token: None,
+                cancelled: None,
+                observer: None,
+                completion_owner: None,
+                submitted: None,
+            },
+        )
+        .await
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
@@ -3000,10 +3010,20 @@ impl ResidentSession {
         request: ForwardPlan,
         cancelled: &std::sync::atomic::AtomicBool,
     ) -> Result<PreparedInference> {
-        self.prepare_ordinary_source_mode(request,
-            zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1,
-            OrdinarySourceOptions { output: ResidentOutput::Logits, readout: Readout::Logits, device_token: None, cancelled: Some(cancelled), observer: None, completion_owner: None, submitted: None })
-            .await
+        self.prepare_ordinary_source_mode(
+            request,
+            zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1,
+            OrdinarySourceOptions {
+                output: ResidentOutput::Logits,
+                readout: Readout::Logits,
+                device_token: None,
+                cancelled: Some(cancelled),
+                observer: None,
+                completion_owner: None,
+                submitted: None,
+            },
+        )
+        .await
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
@@ -3011,10 +3031,20 @@ impl ResidentSession {
         &self,
         request: ForwardPlan,
     ) -> Result<PreparedInference> {
-        self.prepare_ordinary_source_mode(request,
-            zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1,
-            OrdinarySourceOptions { output: ResidentOutput::StateOnly, readout: Readout::None, device_token: None, cancelled: None, observer: None, completion_owner: None, submitted: None })
-            .await
+        self.prepare_ordinary_source_mode(
+            request,
+            zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1,
+            OrdinarySourceOptions {
+                output: ResidentOutput::StateOnly,
+                readout: Readout::None,
+                device_token: None,
+                cancelled: None,
+                observer: None,
+                completion_owner: None,
+                submitted: None,
+            },
+        )
+        .await
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
@@ -3023,10 +3053,20 @@ impl ResidentSession {
         request: ForwardPlan,
         cancelled: &std::sync::atomic::AtomicBool,
     ) -> Result<PreparedInference> {
-        self.prepare_ordinary_source_mode(request,
-            zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1,
-            OrdinarySourceOptions { output: ResidentOutput::StateOnly, readout: Readout::None, device_token: None, cancelled: Some(cancelled), observer: None, completion_owner: None, submitted: None })
-            .await
+        self.prepare_ordinary_source_mode(
+            request,
+            zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1,
+            OrdinarySourceOptions {
+                output: ResidentOutput::StateOnly,
+                readout: Readout::None,
+                device_token: None,
+                cancelled: Some(cancelled),
+                observer: None,
+                completion_owner: None,
+                submitted: None,
+            },
+        )
+        .await
     }
 
     #[cfg(all(
@@ -3036,7 +3076,7 @@ impl ResidentSession {
     async fn prepare_ordinary_source_mode(
         &self,
         request: ForwardPlan,
-        contract: zerogravity_core::accelerator::program::SourceNumericalContract,
+        contract: zerogravity_core::accelerator::program::NumericalContract,
         options: OrdinarySourceOptions<'_, '_>,
     ) -> Result<PreparedInference> {
         let cancelled = options.cancelled;
@@ -3446,8 +3486,8 @@ pub use native_fragment::{
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
-    Qwen2bGdnComponentFault, Qwen2bGdnComponentFaultOutcome, Qwen2bGdnComponentReadback,
-    Qwen2bGdnComponentReceipt, qualify_qwen2b_gdn_component,
+    Qwen2BGdnComponentFault, Qwen2BGdnComponentFaultOutcome, Qwen2BGdnComponentReadback,
+    Qwen2BGdnComponentReceipt, qualify_qwen2b_gdn_component,
     qualify_qwen2b_gdn_component_arithmetic, qualify_qwen2b_gdn_component_fault,
 };
 
@@ -3492,8 +3532,8 @@ pub use native_fragment::{
 };
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
-    Qwen2bMlpComponentFault, Qwen2bMlpComponentFaultOutcome, Qwen2bMlpComponentReceipt,
-    Qwen2bMlpComponentSource, qualify_qwen2b_mlp_component, qualify_qwen2b_mlp_component_fault,
+    Qwen2BMlpComponentFault, Qwen2BMlpComponentFaultOutcome, Qwen2BMlpComponentReceipt,
+    Qwen2BMlpComponentSource, qualify_qwen2b_mlp_component, qualify_qwen2b_mlp_component_fault,
 };
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]

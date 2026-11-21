@@ -7,8 +7,8 @@ use zerogravity_core::accelerator::program::PlanBuilder as CorePlanBuilder;
 use zerogravity_core::accelerator::{SourceIdentity, program::*};
 use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::source::TensorSource;
-mod source_profile;
-pub use source_profile::QwenSourceProfile;
+mod variant;
+pub use variant::QwenModelVariant;
 mod ordinary;
 pub(crate) use ordinary::build_ordinary_plan;
 #[cfg(all(test, feature = "cpu"))]
@@ -51,7 +51,7 @@ pub struct QwenPlanBuilder {
     fragment_call: Option<QwenGdnCall>,
     provenance: Vec<Option<QwenValueProvenance>>,
     source: SourceIdentity,
-    profile: ProgramNumericalProfile,
+    profile: NumericalProfile,
     operator_slice: bool,
 }
 impl std::ops::Deref for QwenPlanBuilder {
@@ -78,10 +78,7 @@ impl QwenPlanBuilder {
             provenance: Vec::new(),
         }
     }
-    pub fn new_operator_slice(
-        source: SourceIdentity,
-        profile: ProgramNumericalProfile,
-    ) -> Result<Self> {
+    pub fn new_operator_slice(source: SourceIdentity, profile: NumericalProfile) -> Result<Self> {
         Ok(Self::from_core(CorePlanBuilder::new_operator_slice(
             source, profile,
         )?))
@@ -91,7 +88,7 @@ impl QwenPlanBuilder {
         capacity: usize,
         required: Vec<StateSlot>,
         capture: bool,
-        profile: ProgramNumericalProfile,
+        profile: NumericalProfile,
     ) -> Result<Self> {
         Ok(Self::from_core(CorePlanBuilder::new_with_profile(
             source, capacity, required, capture, profile,

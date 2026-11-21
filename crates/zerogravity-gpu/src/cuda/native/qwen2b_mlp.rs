@@ -27,10 +27,10 @@ use zerogravity_core::{Error, Result};
 mod manifests;
 #[cfg(test)]
 mod tests;
-use crate::cuda::gdn::Qwen2bGdnArithmetic;
-use crate::resident_leases::Qwen2bMlpWeights;
+use crate::cuda::gdn::Qwen2BGdnArithmetic;
+use crate::resident_leases::Qwen2BMlpWeights;
 
-pub struct Qwen2bMlpQualificationInputs {
+pub struct Qwen2BMlpQualificationInputs {
     pub projections: CubinQualificationInputs,
     /// None is accepted only by entry cancellation or cold admission-pressure probes.
     pub activation: Option<CubinActivationImage>,
@@ -54,9 +54,9 @@ struct PreparedLaunch {
 
 pub(crate) fn require_recipe(recipe: &ComponentRecipe) -> Result<()> {
     super::post_attention_projection::require_qwen2b_mlp_recipe(recipe)?;
-    if recipe.cut() != ComponentCut::Qwen2bMlp
-        || recipe.kind() != ComponentKind::Qwen2b
-        || recipe.qwen2b_arithmetic() != Some(Qwen2bGdnArithmetic::OwnedSolve4Recompute3)
+    if recipe.cut() != ComponentCut::Qwen2BMlp
+        || recipe.kind() != ComponentKind::Qwen2B
+        || recipe.qwen2b_arithmetic() != Some(Qwen2BGdnArithmetic::OwnedSolve4Recompute3)
         || recipe.nodes().len() != 11
         || !recipe.qwen2b_mlp_record_admission_retained()
     {
@@ -90,7 +90,7 @@ pub(crate) fn required_images(rows: usize) -> Result<BTreeSet<ProjectionImage>> 
 }
 pub(crate) fn validate_inputs(
     recipe: &ComponentRecipe,
-    inputs: &Qwen2bMlpQualificationInputs,
+    inputs: &Qwen2BMlpQualificationInputs,
 ) -> Result<()> {
     require_recipe(recipe)?;
     manifests::require_memory_semantics()?;
@@ -129,9 +129,9 @@ pub(crate) fn validate_inputs(
     validate_activation_image(source, activation)
 }
 
-pub(crate) struct Qwen2bMlpPrograms {
+pub(crate) struct Qwen2BMlpPrograms {
     values: Arc<ComponentValues>,
-    weights: Arc<Qwen2bMlpWeights>,
+    weights: Arc<Qwen2BMlpWeights>,
     prefix: Arc<super::qwen2b_projection::ProjectionPrograms>,
     out: Arc<super::post_attention_projection::OutPrograms>,
     launches: BTreeMap<usize, Vec<PreparedLaunch>>,
@@ -141,11 +141,11 @@ pub(crate) struct Qwen2bMlpPrograms {
     down1_enqueues: AtomicUsize,
     _metadata: Arc<zerogravity_artifacts::source_weights::WindowWorkspace>,
 }
-impl Qwen2bMlpPrograms {
+impl Qwen2BMlpPrograms {
     pub(crate) fn prepare(
         values: Arc<ComponentValues>,
-        weights: Arc<Qwen2bMlpWeights>,
-        inputs: Qwen2bMlpQualificationInputs,
+        weights: Arc<Qwen2BMlpWeights>,
+        inputs: Qwen2BMlpQualificationInputs,
         init: &mut ResidentInitialization<'_>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {

@@ -370,7 +370,7 @@ impl BoundSourceInvocation {
     }
 }
 
-pub use crate::numerics::SourceNumericalContract;
+pub use crate::numerics::NumericalContract;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SourceRetainedOrigin {
     Normalized { epsilon_bits: u32 },
@@ -404,7 +404,7 @@ pub struct SourceConvGeometry {
 }
 /// L2 Q/K normalization, recurrent FP32 accumulation, source SiLU output gate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SourceGdnContract {
+pub enum GdnContract {
     // Prior arithmetic name: Vllm031CudaSm86L2SiluBf16V1.
     ReferenceCudaSm86L2SiluBf16V1,
     TorchCpuAvx2L2SiluBf16V1,
@@ -416,7 +416,7 @@ pub struct SourceGdnGeometry {
     pub key_width: usize,
     pub value_width: usize,
     pub epsilon: f32,
-    pub contract: SourceGdnContract,
+    pub contract: GdnContract,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SourceQkRotaryGeometry {
@@ -498,7 +498,7 @@ pub struct SourceOperator {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SourceOperatorSemantics {
     kind: SourceOperatorKind,
-    numerical: SourceNumericalContract,
+    numerical: NumericalContract,
     matrices: Vec<SourceTensor>,
     parameters: Vec<SourceParameter>,
 }
@@ -523,7 +523,7 @@ impl SourceOperatorTemplate {
         geometry: SourcePlanGeometry,
         row_selection: SourceRowSelection,
         kind: SourceOperatorKind,
-        numerical: SourceNumericalContract,
+        numerical: NumericalContract,
         matrices: Vec<SourceTensor>,
         parameters: Vec<SourceParameter>,
     ) -> Result<Self> {
@@ -575,7 +575,7 @@ impl SourceOperatorTemplate {
     pub fn kind(&self) -> SourceOperatorKind {
         self.semantics.kind
     }
-    pub fn numerical_contract(&self) -> SourceNumericalContract {
+    pub fn numerical_contract(&self) -> NumericalContract {
         self.semantics.numerical
     }
     pub fn matrices(&self) -> &[SourceTensor] {
@@ -695,7 +695,7 @@ impl SourceOperator {
     pub fn new(
         call: SourceCall,
         kind: SourceOperatorKind,
-        numerical: SourceNumericalContract,
+        numerical: NumericalContract,
         matrices: Vec<SourceTensor>,
         parameters: Vec<SourceParameter>,
     ) -> Result<Self> {
@@ -717,7 +717,7 @@ impl SourceOperator {
     pub fn kind(&self) -> SourceOperatorKind {
         self.semantics.kind
     }
-    pub fn numerical_contract(&self) -> SourceNumericalContract {
+    pub fn numerical_contract(&self) -> NumericalContract {
         self.semantics.numerical
     }
     pub fn matrices(&self) -> &[SourceTensor] {
@@ -879,10 +879,10 @@ impl SourceOperator {
             }
             GatedDelta { geometry, .. } => {
                 let expected = match self.numerical_contract() {
-                    SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1 => {
-                        SourceGdnContract::TorchCpuAvx2L2SiluBf16V1
+                    NumericalContract::TorchCpuAvx2Bf16MixedV1 => {
+                        GdnContract::TorchCpuAvx2L2SiluBf16V1
                     }
-                    _ => SourceGdnContract::ReferenceCudaSm86L2SiluBf16V1,
+                    _ => GdnContract::ReferenceCudaSm86L2SiluBf16V1,
                 };
                 if geometry.contract != expected {
                     return Err(Error::Unsupported(
@@ -1093,14 +1093,14 @@ impl PlanBuilder {
         Self::new_source_template_with_contract(
             geometry,
             required,
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
         )
     }
     /// Same recorder/issuers; selecting arithmetic grants no backend capability.
     pub fn new_source_template_with_contract(
         geometry: SourcePlanGeometry,
         required: Vec<StateSlot>,
-        numerical: SourceNumericalContract,
+        numerical: NumericalContract,
     ) -> Result<Self> {
         if numerical.is_f32() {
             return Err(Error::Unsupported(
@@ -1115,7 +1115,7 @@ impl PlanBuilder {
             numerical.program_profile(),
             false,
         )?;
-        if numerical == SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1 {
+        if numerical == NumericalContract::TorchCpuAvx2Bf16MixedV1 {
             builder.standalone_exp = Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1);
         }
         builder.source_template = Some(geometry);
@@ -1134,13 +1134,13 @@ impl PlanBuilder {
         Self::new_source_program_with_contract(
             call,
             required,
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
         )
     }
     pub fn new_source_program_with_contract(
         call: SourceCall,
         required: Vec<StateSlot>,
-        numerical: SourceNumericalContract,
+        numerical: NumericalContract,
     ) -> Result<Self> {
         if numerical.is_f32() {
             return Err(Error::Unsupported(
@@ -1155,7 +1155,7 @@ impl PlanBuilder {
             numerical.program_profile(),
             false,
         )?;
-        if numerical == SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1 {
+        if numerical == NumericalContract::TorchCpuAvx2Bf16MixedV1 {
             builder.standalone_exp = Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1);
         }
         builder.source_call = Some(call);
@@ -1175,7 +1175,7 @@ impl PlanBuilder {
     pub fn source(&self) -> SourceIdentity {
         self.source
     }
-    pub fn numerical_profile(&self) -> ProgramNumericalProfile {
+    pub fn numerical_profile(&self) -> NumericalProfile {
         self.profile
     }
     pub fn nodes(&self) -> &[PlanNode] {
@@ -1473,9 +1473,9 @@ impl ForwardPlan {
             .ok_or_else(overflow)
     }
 }
-fn matches_numerical(builder: &PlanBuilder, numerical: SourceNumericalContract) -> bool {
+fn matches_numerical(builder: &PlanBuilder, numerical: NumericalContract) -> bool {
     builder.profile == numerical.program_profile()
-        && (numerical != SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1
+        && (numerical != NumericalContract::TorchCpuAvx2Bf16MixedV1
             || builder.standalone_exp == Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1))
 }
 

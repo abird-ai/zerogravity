@@ -1,6 +1,6 @@
 //! Family role validation precedes this translation to common mathematical data.
 use super::*;
-const NUMERICAL: SourceNumericalContract = SourceNumericalContract::ReferenceCudaSm86Bf16V1;
+const NUMERICAL: NumericalContract = NumericalContract::CudaSm86Bf16ReferenceV1;
 fn rms(width: usize) -> SourceRmsGeometry {
     SourceRmsGeometry {
         width,
@@ -23,7 +23,7 @@ fn gdn() -> SourceGdnGeometry {
         key_width: 128,
         value_width: 128,
         epsilon: 1e-6,
-        contract: SourceGdnContract::ReferenceCudaSm86L2SiluBf16V1,
+        contract: GdnContract::ReferenceCudaSm86L2SiluBf16V1,
     }
 }
 impl QwenOperator {

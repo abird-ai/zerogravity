@@ -1,7 +1,7 @@
 //! One pure projection or ordinary norm on explicit private BF16 input.
 //! No producer, session, activation nonlinearities or model execution is asserted.
 use crate::accelerator::SourceIdentity;
-use crate::accelerator::program::{ActivationPrecision, ProgramNumericalProfile};
+use crate::accelerator::program::{ActivationPrecision, NumericalProfile};
 #[cfg(all(feature = "source-binding", target_os = "linux"))]
 use crate::accelerator::program::{PlanBuilder, PlanValue};
 use crate::source::binding::{QwenMatrixRole, QwenParameterRole};
@@ -12,13 +12,13 @@ use crate::{Error, Result};
 #[derive(Clone, Copy)]
 pub struct PureSliceInput<'a> {
     source: SourceIdentity,
-    profile: ProgramNumericalProfile,
+    profile: NumericalProfile,
     bytes: &'a [u8],
 }
 impl<'a> PureSliceInput<'a> {
     pub fn from_bf16_bytes(
         source: SourceIdentity,
-        profile: ProgramNumericalProfile,
+        profile: NumericalProfile,
         bytes: &'a [u8],
     ) -> Result<Self> {
         let input = Self {
@@ -32,7 +32,7 @@ impl<'a> PureSliceInput<'a> {
     pub fn source_identity(self) -> SourceIdentity {
         self.source
     }
-    pub fn numerical_profile(self) -> ProgramNumericalProfile {
+    pub fn numerical_profile(self) -> NumericalProfile {
         self.profile
     }
     pub fn precision(self) -> ActivationPrecision {
@@ -42,9 +42,7 @@ impl<'a> PureSliceInput<'a> {
         self.bytes
     }
     pub(crate) fn validate(self) -> Result<()> {
-        if !self.source.is_bound()
-            || self.profile != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
-        {
+        if !self.source.is_bound() || self.profile != NumericalProfile::TorchCpuAvx2Bf16MixedV1 {
             return Err(Error::State("pure input source/profile".into()));
         }
         if self.bytes.is_empty()
@@ -154,8 +152,8 @@ impl PureSliceOutput {
     pub fn source_identity(&self) -> SourceIdentity {
         self.source
     }
-    pub fn numerical_profile(&self) -> ProgramNumericalProfile {
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+    pub fn numerical_profile(&self) -> NumericalProfile {
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1
     }
     pub fn precision(&self) -> ActivationPrecision {
         ActivationPrecision::Bf16WidenedF32

@@ -4,10 +4,10 @@ use zerogravity_core::accelerator::{
     SourceIdentity,
     program::{
         BulkF32Contract, BulkF32Layout, BulkF32Matrix, BulkF32Operand, BulkF32Side,
-        MathematicalBackend, MatrixAxes, PlanBuilder, ProgramNumericalProfile, SourceCall,
-        SourceCallMode, SourceGamma, SourceGroupedQkGeometry, SourceNumericalContract,
-        SourceOperator, SourceOperatorKind, SourceParameter, SourceRetainedOrigin,
-        SourceRmsGeometry, SourceRows, SourceTensor, TeacherSpan,
+        MathematicalBackend, MatrixAxes, NumericalContract, NumericalProfile, PlanBuilder,
+        SourceCall, SourceCallMode, SourceGamma, SourceGroupedQkGeometry, SourceOperator,
+        SourceOperatorKind, SourceParameter, SourceRetainedOrigin, SourceRmsGeometry, SourceRows,
+        SourceTensor, TeacherSpan,
     },
 };
 use zerogravity_core::encoding::StoredTensorEncoding;
@@ -43,8 +43,7 @@ fn bulk_operator_slice_refuses_before_source_access() -> Result<()> {
         BulkF32Layout::dense([8, 2, 1, 1])?,
     )?;
     let matrix = BulkF32Matrix::new(left, right, BulkF32Contract::HaswellTinyBlasF32V1)?;
-    let mut builder =
-        PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1)?;
+    let mut builder = PlanBuilder::new_operator_slice(source, NumericalProfile::GgufReferenceV1)?;
     let left = builder.bulk_f32_input(matrix.left())?;
     let right = builder.bulk_f32_input(matrix.right())?;
     let output = builder.bulk_f32_matmul(&matrix, &left, &right)?;
@@ -75,7 +74,7 @@ fn source_one(
 fn quantized_projection_cut_refuses_before_source_callbacks() -> Result<()> {
     let source = SourceIdentity::for_new_allocation()?;
     let call = source_call(source)?;
-    let mut b = PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1)?;
+    let mut b = PlanBuilder::new_operator_slice(source, NumericalProfile::GgufReferenceV1)?;
     let input = source_one(
         &mut b,
         SourceOperator::new(
@@ -84,7 +83,7 @@ fn quantized_projection_cut_refuses_before_source_callbacks() -> Result<()> {
                 width: 2048,
                 origin: SourceRetainedOrigin::Gated,
             },
-            SourceNumericalContract::OpenBlas033Zen16Q8F32V1,
+            NumericalContract::OpenBlas033Zen16Q8F32V1,
             vec![],
             vec![],
         )?,
@@ -95,7 +94,7 @@ fn quantized_projection_cut_refuses_before_source_callbacks() -> Result<()> {
         SourceOperator::new(
             call,
             SourceOperatorKind::Projection { selected_row: None },
-            SourceNumericalContract::OpenBlas033Zen16Q8F32V1,
+            NumericalContract::OpenBlas033Zen16Q8F32V1,
             vec![SourceTensor {
                 source,
                 name: "fixture.projection".into(),
@@ -121,13 +120,13 @@ fn quantized_projection_cut_refuses_before_source_callbacks() -> Result<()> {
 fn embedding_direct_rms_cut_refuses_before_source_callbacks() -> Result<()> {
     let source = SourceIdentity::for_new_allocation()?;
     let call = source_call(source)?;
-    let mut b = PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1)?;
+    let mut b = PlanBuilder::new_operator_slice(source, NumericalProfile::GgufReferenceV1)?;
     let input = source_one(
         &mut b,
         SourceOperator::new(
             call.clone(),
             SourceOperatorKind::EmbeddingRows,
-            SourceNumericalContract::GgmlSourceF32V1,
+            NumericalContract::GgmlF32V1,
             vec![SourceTensor {
                 source,
                 name: "fixture.embedding".into(),
@@ -149,7 +148,7 @@ fn embedding_direct_rms_cut_refuses_before_source_callbacks() -> Result<()> {
                 epsilon: 1e-6,
                 gamma: SourceGamma::Direct,
             }),
-            SourceNumericalContract::GgmlSourceF32V1,
+            NumericalContract::GgmlF32V1,
             vec![],
             vec![SourceParameter {
                 source,
@@ -172,7 +171,7 @@ fn embedding_direct_rms_cut_refuses_before_source_callbacks() -> Result<()> {
 fn quantized_conv_qk_chain_refuses_before_source_callbacks() -> Result<()> {
     let source = SourceIdentity::for_new_allocation()?;
     let call = source_call(source)?;
-    let mut b = PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1)?;
+    let mut b = PlanBuilder::new_operator_slice(source, NumericalProfile::GgufReferenceV1)?;
     let input = source_one(
         &mut b,
         SourceOperator::new(
@@ -183,7 +182,7 @@ fn quantized_conv_qk_chain_refuses_before_source_callbacks() -> Result<()> {
                     epsilon_bits: 1e-6_f32.to_bits(),
                 },
             },
-            SourceNumericalContract::GgmlSourceF32V1,
+            NumericalContract::GgmlF32V1,
             vec![],
             vec![SourceParameter {
                 source,
@@ -200,7 +199,7 @@ fn quantized_conv_qk_chain_refuses_before_source_callbacks() -> Result<()> {
         SourceOperator::new(
             call.clone(),
             SourceOperatorKind::Projection { selected_row: None },
-            SourceNumericalContract::GgmlQ4Repack8x8F32V1,
+            NumericalContract::GgmlQ4Repack8x8F32V1,
             vec![SourceTensor {
                 source,
                 name: "fixture.projection".into(),
@@ -223,7 +222,7 @@ fn quantized_conv_qk_chain_refuses_before_source_callbacks() -> Result<()> {
                 channels: 96,
                 kernel: 4,
             },
-            SourceNumericalContract::GgmlSourceF32V1,
+            NumericalContract::GgmlF32V1,
             vec![],
             vec![SourceParameter {
                 source,
@@ -245,7 +244,7 @@ fn quantized_conv_qk_chain_refuses_before_source_callbacks() -> Result<()> {
                 epsilon: 1e-6 / 32.0,
                 scale: 1.0 / 32.0_f32.sqrt(),
             }),
-            SourceNumericalContract::GgmlSourceF32V1,
+            NumericalContract::GgmlF32V1,
             vec![],
             vec![],
         )?,

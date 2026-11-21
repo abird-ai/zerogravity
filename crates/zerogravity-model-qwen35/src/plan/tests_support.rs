@@ -53,7 +53,7 @@ impl UnawareBackend {
         let operator = SourceOperator::new(
             call,
             SourceOperatorKind::EmbeddingRows,
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
             vec![descriptor.tensor().clone()],
             vec![],
         )?;

@@ -60,7 +60,7 @@ fn fresh_reference_cell(root: &Path, rows: usize) -> PathBuf {
 fn fresh_reference_prompt(cell: &Path, rows: usize) -> Result<Vec<u32>> {
     oracle::FixedCell::open_fresh(
         cell,
-        zerogravity::qwen35::plan::QwenSourceProfile::Qwen08,
+        zerogravity::qwen35::plan::QwenModelVariant::Qwen800M,
         rows,
     )?
     .prompt_ids(rows)
@@ -409,7 +409,7 @@ fn fresh_reference_cells_open_when_configured() -> Result<()> {
     for rows in [47, 48, 49, 50] {
         let cell = oracle::FixedCell::open_fresh(
             &fresh_reference_cell(&root, rows),
-            zerogravity::qwen35::plan::QwenSourceProfile::Qwen08,
+            zerogravity::qwen35::plan::QwenModelVariant::Qwen800M,
             rows,
         )?;
         cell.json("trajectory-validation.json", 16 * MIB)?;

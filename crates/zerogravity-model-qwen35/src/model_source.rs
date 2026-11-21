@@ -1,5 +1,5 @@
 //! Truthful shared model metadata. Never a partial TensorSource or model permit.
-use crate::accelerator::program::{ProgramNumericalProfile, SourceParameter, SourceTensor};
+use crate::accelerator::program::{NumericalProfile, SourceParameter, SourceTensor};
 #[cfg(all(feature = "source-binding", target_os = "linux"))]
 use crate::source::binding::OriginalWindowModelSource;
 use crate::source::binding::{QwenMatrixRole, QwenParameterRole};
@@ -46,7 +46,7 @@ impl<'a> QwenModelMetadata<'a> {
             Self::VerifiedWindows(model) => model.state_specs(),
         }
     }
-    pub fn program_numerical_profile(self) -> ProgramNumericalProfile {
+    pub fn program_numerical_profile(self) -> NumericalProfile {
         match self {
             Self::Owned(model) => model.program_numerical_profile(),
             #[cfg(all(feature = "source-binding", target_os = "linux"))]

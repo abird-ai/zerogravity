@@ -67,7 +67,7 @@ pub(super) fn verify(document: &Value, expected: &[u32], id: &str, prompt_tokens
             token["gpu"]["producer_root"]["session_epoch"],
             first["session_epoch"]
         );
-        assert!(token["gpu"]["native_cohort"].is_null());
+        assert!(token["gpu"]["fused_cohort"].is_null());
         if i != 0 {
             assert_ne!(
                 token["gpu"]["producer_root"]["root"],

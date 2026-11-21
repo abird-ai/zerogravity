@@ -153,8 +153,8 @@ fn source_rows_cannot_relax_cpu_legacy_or_full_plan_profile_guards() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let descriptor = descriptor(source, 2);
     for profile in [
-        ProgramNumericalProfile::GgufSourceV1,
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+        NumericalProfile::GgufReferenceV1,
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1,
     ] {
         let mut b = QwenPlanBuilder::new_operator_slice(source, profile).unwrap();
         assert!(b.source_embedding(&descriptor).is_err());
@@ -190,7 +190,7 @@ fn source_rows_cannot_relax_cpu_legacy_or_full_plan_profile_guards() {
         .is_err()
     );
     assert!(
-        b.ordinary_rms_profiled(parameter(source), &x, OrdinaryRmsContract::TorchCpuBf16Avx2)
+        b.ordinary_rms_profiled(parameter(source), &x, RmsContract::TorchCpuBf16Avx2)
             .is_err()
     );
     assert!(b.add("unqualified eager residual", &x, &x).is_err());
@@ -216,7 +216,7 @@ fn dense_inputs_refuse_foreign_builder_f32_wrong_length_and_unpacked_views() {
     );
     // Obtain a real recorded F32 value through the unchanged GGUF recorder.
     let mut legacy =
-        QwenPlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1).unwrap();
+        QwenPlanBuilder::new_operator_slice(source, NumericalProfile::GgufReferenceV1).unwrap();
     legacy
         .embed(
             descriptor(source, 1).tensor().clone(),

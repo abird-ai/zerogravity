@@ -246,8 +246,8 @@ impl RmsPrepared {
             }
             Payload::Host(host) => {
                 let width = match self.owner.columns {
-                    Columns::Qwen08 => TextEmbeddingWidth::H1024,
-                    Columns::Qwen2b => TextEmbeddingWidth::H2048,
+                    Columns::Qwen800M => TextEmbeddingWidth::H1024,
+                    Columns::Qwen2B => TextEmbeddingWidth::H2048,
                 };
                 // SAFETY: same original submitted Write cohort retains the actual
                 // source/FD/window/admission owner before bounded real H2D.

@@ -281,7 +281,7 @@ impl PrefixBinding {
         SourceOperator::new(
             call(self.span())?,
             SourceOperatorKind::EmbeddingRows,
-            SourceNumericalContract::GgmlSourceF32V1,
+            NumericalContract::GgmlF32V1,
             vec![self.embedding.clone()],
             vec![],
         )
@@ -295,7 +295,7 @@ impl PrefixBinding {
                 epsilon: self.epsilon(),
                 gamma: SourceGamma::Direct,
             }),
-            SourceNumericalContract::GgmlSourceF32V1,
+            NumericalContract::GgmlF32V1,
             vec![],
             vec![self.norm.clone()],
         )
@@ -307,7 +307,7 @@ impl PrefixBinding {
             self.layout,
             &self.norm,
             self.epsilon(),
-            SourceNumericalContract::GgmlSourceF32V1,
+            NumericalContract::GgmlF32V1,
         ) {
             return Err(Error::State(
                 "prefix exact retained RMS metadata/issuer".into(),
@@ -322,7 +322,7 @@ impl PrefixBinding {
             self.layout,
             self.norm.clone(),
             self.epsilon(),
-            SourceNumericalContract::GgmlSourceF32V1,
+            NumericalContract::GgmlF32V1,
         )
     }
 }
@@ -337,7 +337,7 @@ impl GdnUpstreamBinding {
                     epsilon_bits: self.prefix.epsilon().to_bits(),
                 },
             },
-            SourceNumericalContract::GgmlSourceF32V1,
+            NumericalContract::GgmlF32V1,
             vec![],
             vec![self.prefix.norm().clone()],
         )
@@ -347,7 +347,7 @@ impl GdnUpstreamBinding {
         SourceOperator::new(
             call(self.span())?,
             SourceOperatorKind::Projection { selected_row: None },
-            SourceNumericalContract::GgmlQ4Repack8x8F32V1,
+            NumericalContract::GgmlQ4Repack8x8F32V1,
             vec![self.tensor(projection).clone()],
             vec![],
         )
@@ -360,7 +360,7 @@ impl GdnUpstreamBinding {
                 channels: 6144,
                 kernel: 4,
             },
-            SourceNumericalContract::GgmlSourceF32V1,
+            NumericalContract::GgmlF32V1,
             vec![],
             vec![self.convolution.clone()],
         )
@@ -375,7 +375,7 @@ impl GdnUpstreamBinding {
                 epsilon: self.prefix.epsilon() / 128.0,
                 scale: 1.0 / 128.0_f32.sqrt(),
             }),
-            SourceNumericalContract::GgmlSourceF32V1,
+            NumericalContract::GgmlF32V1,
             vec![],
             vec![],
         )
@@ -390,7 +390,7 @@ impl GdnOutputBinding {
                 width: 2048,
                 origin: SourceRetainedOrigin::Gated,
             },
-            SourceNumericalContract::OpenBlas033Zen16Q8F32V1,
+            NumericalContract::OpenBlas033Zen16Q8F32V1,
             vec![],
             vec![],
         )
@@ -400,7 +400,7 @@ impl GdnOutputBinding {
         SourceOperator::new(
             call(self.span())?,
             SourceOperatorKind::Projection { selected_row: None },
-            SourceNumericalContract::OpenBlas033Zen16Q8F32V1,
+            NumericalContract::OpenBlas033Zen16Q8F32V1,
             vec![self.tensor.clone()],
             vec![],
         )

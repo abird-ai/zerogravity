@@ -136,10 +136,8 @@ impl OriginalWindowModelSource {
         }
         Ok(())
     }
-    pub fn program_numerical_profile(
-        &self,
-    ) -> crate::accelerator::program::ProgramNumericalProfile {
-        crate::accelerator::program::ProgramNumericalProfile::SourceCudaSm86Bf16V1
+    pub fn program_numerical_profile(&self) -> crate::accelerator::program::NumericalProfile {
+        crate::accelerator::program::NumericalProfile::CudaSm86Bf16ReferenceV1
     }
     pub(crate) fn require_execution_profile(&self) -> Result<()> {
         Err(Error::Unsupported(

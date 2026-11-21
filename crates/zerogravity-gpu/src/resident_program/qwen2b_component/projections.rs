@@ -5,8 +5,8 @@ use crate::cuda::native::fixed_prompt_mlp::{
 };
 use crate::cuda::native::fixed_prompt_projection::component::ConnectedProjectionPrograms;
 use crate::cuda::native::post_attention_projection::OutPrograms;
-use crate::cuda::native::qwen2b_mlp::{Qwen2bMlpPrograms, Qwen2bMlpQualificationInputs};
-use crate::resident_leases::Qwen2bMlpWeights;
+use crate::cuda::native::qwen2b_mlp::{Qwen2BMlpPrograms, Qwen2BMlpQualificationInputs};
+use crate::resident_leases::Qwen2BMlpWeights;
 use std::collections::{BTreeMap, BTreeSet};
 use zerogravity_core::accelerator::program::SourceOperator;
 
@@ -17,7 +17,7 @@ enum PreparedOperation {
     PackedFixedPrompt(Arc<ConnectedProjectionPrograms>),
     Output(Arc<OutPrograms>),
     MlpFixedPrompt(Arc<FixedPromptMlpPrograms>),
-    MlpReference(Arc<Qwen2bMlpPrograms>),
+    MlpReference(Arc<Qwen2BMlpPrograms>),
 }
 impl PreparedOperation {
     fn identity(&self) -> (u8, usize) {
@@ -175,7 +175,7 @@ impl ComponentProjections {
             ));
         }
         let (prefix, out) = match (recipe.kind(), recipe.cut()) {
-            (ComponentKind::Qwen2b, ComponentCut::Gated) => (
+            (ComponentKind::Qwen2B, ComponentCut::Gated) => (
                 PreparedOperation::PackedReference(
                     crate::cuda::native::qwen2b_component::prepare_projections(
                         recipe.clone(),
@@ -199,7 +199,7 @@ impl ComponentProjections {
                 ),
                 None,
             ),
-            (ComponentKind::Qwen2b, ComponentCut::PostAttention) => {
+            (ComponentKind::Qwen2B, ComponentCut::PostAttention) => {
                 let (p, o) =
                     crate::cuda::native::qwen2b_component::prepare_post_attention_projections(
                         values.clone(),
@@ -249,15 +249,15 @@ impl ComponentProjections {
     }
     pub(super) fn prepare_qwen2b_mlp(
         values: Arc<ComponentValues>,
-        weights: Arc<Qwen2bMlpWeights>,
-        inputs: Qwen2bMlpQualificationInputs,
+        weights: Arc<Qwen2BMlpWeights>,
+        inputs: Qwen2BMlpQualificationInputs,
         init: &mut ResidentInitialization<'_>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
         crate::cuda::native::qwen2b_mlp::require_recipe(values.recipe())?;
         weights.require_bindings(values.recipe().bindings(), values.service())?;
         let metadata = values.recipe().source().reserve_workspace(64 * 1024)?;
-        let p = Qwen2bMlpPrograms::prepare(values.clone(), weights, inputs, init, cancelled)?;
+        let p = Qwen2BMlpPrograms::prepare(values.clone(), weights, inputs, init, cancelled)?;
         Self::from_nodes(
             &values,
             metadata,
@@ -277,7 +277,7 @@ impl ComponentProjections {
         }
         Ok(&first.operation)
     }
-    fn reference_mlp(&self) -> Result<&Arc<Qwen2bMlpPrograms>> {
+    fn reference_mlp(&self) -> Result<&Arc<Qwen2BMlpPrograms>> {
         match self.nodes.get(&10).map(|node| &node.operation) {
             Some(PreparedOperation::MlpReference(p)) => Ok(p),
             _ => Err(Error::Unsupported(

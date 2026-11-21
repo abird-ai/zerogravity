@@ -39,16 +39,31 @@ fn packed_conv_reversibly_specializes_to_every_retained_prefill_source() {
     use sha2::{Digest, Sha256};
 
     const LEGACY: [(u32, &str); 10] = [
-        (492, include_str!("../qwen08_47/conv.cu")),
-        (492, include_str!("../qwen08_57/conv.cu")),
-        (492, include_str!("../qwen08_62/conv.cu")),
-        (492, include_str!("../qwen08_67/conv.cu")),
-        (492, include_str!("../qwen08_72/conv.cu")),
-        (157, include_str!("../qwen2b_47/conv.cu")),
-        (157, include_str!("../qwen2b_57/conv.cu")),
-        (157, include_str!("../qwen2b_62/conv.cu")),
-        (157, include_str!("../qwen2b_67/conv.cu")),
-        (157, include_str!("../qwen2b_72/conv.cu")),
+        (
+            492,
+            include_str!("../reference/qwen800m/prefill/47/conv.cu"),
+        ),
+        (
+            492,
+            include_str!("../reference/qwen800m/prefill/57/conv.cu"),
+        ),
+        (
+            492,
+            include_str!("../reference/qwen800m/prefill/62/conv.cu"),
+        ),
+        (
+            492,
+            include_str!("../reference/qwen800m/prefill/67/conv.cu"),
+        ),
+        (
+            492,
+            include_str!("../reference/qwen800m/prefill/72/conv.cu"),
+        ),
+        (157, include_str!("../reference/qwen2b/prefill/47/conv.cu")),
+        (157, include_str!("../reference/qwen2b/prefill/57/conv.cu")),
+        (157, include_str!("../reference/qwen2b/prefill/62/conv.cu")),
+        (157, include_str!("../reference/qwen2b/prefill/67/conv.cu")),
+        (157, include_str!("../reference/qwen2b/prefill/72/conv.cu")),
     ];
     for (cache_lines, legacy) in LEGACY {
         assert_eq!(specialize_packed_conv(cache_lines), legacy);
@@ -105,32 +120,32 @@ fn parameterized_prefill_reversibly_specializes_to_all_retained_sources_and_labe
     use sha2::{Digest, Sha256};
 
     const PREP: [(u32, &str); 10] = [
-        (47, include_str!("../qwen08_47/prep.cu")),
-        (57, include_str!("../qwen08_57/prep.cu")),
-        (62, include_str!("../qwen08_62/prep.cu")),
-        (67, include_str!("../qwen08_67/prep.cu")),
-        (72, include_str!("../qwen08_72/prep.cu")),
-        (47, include_str!("../qwen2b_47/prep.cu")),
-        (57, include_str!("../qwen2b_57/prep.cu")),
-        (62, include_str!("../qwen2b_62/prep.cu")),
-        (67, include_str!("../qwen2b_67/prep.cu")),
-        (72, include_str!("../qwen2b_72/prep.cu")),
+        (47, include_str!("../reference/qwen800m/prefill/47/prep.cu")),
+        (57, include_str!("../reference/qwen800m/prefill/57/prep.cu")),
+        (62, include_str!("../reference/qwen800m/prefill/62/prep.cu")),
+        (67, include_str!("../reference/qwen800m/prefill/67/prep.cu")),
+        (72, include_str!("../reference/qwen800m/prefill/72/prep.cu")),
+        (47, include_str!("../reference/qwen2b/prefill/47/prep.cu")),
+        (57, include_str!("../reference/qwen2b/prefill/57/prep.cu")),
+        (62, include_str!("../reference/qwen2b/prefill/62/prep.cu")),
+        (67, include_str!("../reference/qwen2b/prefill/67/prep.cu")),
+        (72, include_str!("../reference/qwen2b/prefill/72/prep.cu")),
     ];
     for (tokens, legacy) in PREP {
         assert_eq!(specialize_packed_prep(tokens), legacy);
     }
 
     const CUMSUM: [&str; 10] = [
-        include_str!("../qwen08_47/cumsum.cu"),
-        include_str!("../qwen08_57/cumsum.cu"),
-        include_str!("../qwen08_62/cumsum.cu"),
-        include_str!("../qwen08_67/cumsum.cu"),
-        include_str!("../qwen08_72/cumsum.cu"),
-        include_str!("../qwen2b_47/cumsum.cu"),
-        include_str!("../qwen2b_57/cumsum.cu"),
-        include_str!("../qwen2b_62/cumsum.cu"),
-        include_str!("../qwen2b_67/cumsum.cu"),
-        include_str!("../qwen2b_72/cumsum.cu"),
+        include_str!("../reference/qwen800m/prefill/47/cumsum.cu"),
+        include_str!("../reference/qwen800m/prefill/57/cumsum.cu"),
+        include_str!("../reference/qwen800m/prefill/62/cumsum.cu"),
+        include_str!("../reference/qwen800m/prefill/67/cumsum.cu"),
+        include_str!("../reference/qwen800m/prefill/72/cumsum.cu"),
+        include_str!("../reference/qwen2b/prefill/47/cumsum.cu"),
+        include_str!("../reference/qwen2b/prefill/57/cumsum.cu"),
+        include_str!("../reference/qwen2b/prefill/62/cumsum.cu"),
+        include_str!("../reference/qwen2b/prefill/67/cumsum.cu"),
+        include_str!("../reference/qwen2b/prefill/72/cumsum.cu"),
     ];
     let cumsum = specialize_pointer_source(
         super::super::parameterized_prefill::CUMSUM_SOURCE,
@@ -143,43 +158,43 @@ fn parameterized_prefill_reversibly_specializes_to_all_retained_sources_and_labe
     const SOLVE: [(&str, &str); 10] = [
         (
             "zg_vllm_116d2ffe705b6643",
-            include_str!("../qwen08_47/solve.cu"),
+            include_str!("../reference/qwen800m/prefill/47/solve.cu"),
         ),
         (
             "zg_vllm_b58e94d8cfdcf47d",
-            include_str!("../qwen08_57/solve.cu"),
+            include_str!("../reference/qwen800m/prefill/57/solve.cu"),
         ),
         (
             "zg_vllm_116d2ffe705b6643",
-            include_str!("../qwen08_62/solve.cu"),
+            include_str!("../reference/qwen800m/prefill/62/solve.cu"),
         ),
         (
             "zg_vllm_64d5095f294cb1c1",
-            include_str!("../qwen08_67/solve.cu"),
+            include_str!("../reference/qwen800m/prefill/67/solve.cu"),
         ),
         (
             "zg_vllm_b58e94d8cfdcf47d",
-            include_str!("../qwen08_72/solve.cu"),
+            include_str!("../reference/qwen800m/prefill/72/solve.cu"),
         ),
         (
             "zg_vllm_b58e94d8cfdcf47d",
-            include_str!("../qwen2b_47/solve.cu"),
+            include_str!("../reference/qwen2b/prefill/47/solve.cu"),
         ),
         (
             "zg_vllm_116d2ffe705b6643",
-            include_str!("../qwen2b_57/solve.cu"),
+            include_str!("../reference/qwen2b/prefill/57/solve.cu"),
         ),
         (
             "zg_vllm_116d2ffe705b6643",
-            include_str!("../qwen2b_62/solve.cu"),
+            include_str!("../reference/qwen2b/prefill/62/solve.cu"),
         ),
         (
             "zg_vllm_b58e94d8cfdcf47d",
-            include_str!("../qwen2b_67/solve.cu"),
+            include_str!("../reference/qwen2b/prefill/67/solve.cu"),
         ),
         (
             "zg_vllm_116d2ffe705b6643",
-            include_str!("../qwen2b_72/solve.cu"),
+            include_str!("../reference/qwen2b/prefill/72/solve.cu"),
         ),
     ];
     let provenance = "// Reversible dead-T candidate SHA256s: ffd4eeb0f041223092c6a198d70eb2eb1d3cf4fa8aff3166f85a42d83f05a9b6,00860d3b61c543fa9f9a5223d6a4a62aa16dd6e01eaa56105c538263c017d6e1,7178fd11687f132ffc6941a31027339aa6c997c95e16082694f8925e32be821e\n";
@@ -249,16 +264,37 @@ fn parameterized_gated_reversibly_specializes_to_all_retained_sources() {
         operands,
     );
     const LEGACY: [(u32, &str); 10] = [
-        (752, include_str!("../qwen08_47/gated.cu")),
-        (912, include_str!("../qwen08_57/gated.cu")),
-        (992, include_str!("../qwen08_62/gated.cu")),
-        (1072, include_str!("../qwen08_67/gated.cu")),
-        (1152, include_str!("../qwen08_72/gated.cu")),
-        (752, include_str!("../qwen2b_47/gated.cu")),
-        (912, include_str!("../qwen2b_57/gated.cu")),
-        (992, include_str!("../qwen2b_62/gated.cu")),
-        (1072, include_str!("../qwen2b_67/gated.cu")),
-        (1152, include_str!("../qwen2b_72/gated.cu")),
+        (
+            752,
+            include_str!("../reference/qwen800m/prefill/47/gated.cu"),
+        ),
+        (
+            912,
+            include_str!("../reference/qwen800m/prefill/57/gated.cu"),
+        ),
+        (
+            992,
+            include_str!("../reference/qwen800m/prefill/62/gated.cu"),
+        ),
+        (
+            1072,
+            include_str!("../reference/qwen800m/prefill/67/gated.cu"),
+        ),
+        (
+            1152,
+            include_str!("../reference/qwen800m/prefill/72/gated.cu"),
+        ),
+        (752, include_str!("../reference/qwen2b/prefill/47/gated.cu")),
+        (912, include_str!("../reference/qwen2b/prefill/57/gated.cu")),
+        (992, include_str!("../reference/qwen2b/prefill/62/gated.cu")),
+        (
+            1072,
+            include_str!("../reference/qwen2b/prefill/67/gated.cu"),
+        ),
+        (
+            1152,
+            include_str!("../reference/qwen2b/prefill/72/gated.cu"),
+        ),
     ];
     for (m, legacy) in LEGACY {
         let specialized = base
@@ -310,8 +346,8 @@ fn parameterized_cached_sources_reverse_to_both_retained_profiles() {
         ", \"r\"(static_cast<unsigned int>(zg_scalars.words[0])), \"r\"(static_cast<unsigned int>(zg_scalars.words[1])), \"l\"(zg_scalars.words[2]), \"l\"(zg_scalars.words[3])",
     );
     for (cache_lines, legacy) in [
-        (492, include_str!("../qwen08_cached/conv.cu")),
-        (157, include_str!("../qwen2b_cached/conv.cu")),
+        (492, include_str!("../reference/qwen800m/decode/conv.cu")),
+        (157, include_str!("../reference/qwen2b/decode/conv.cu")),
     ] {
         assert_eq!(
             conv.replace(
@@ -343,8 +379,11 @@ fn parameterized_cached_sources_reverse_to_both_retained_profiles() {
         ", \"r\"(static_cast<unsigned int>(zg_scalars.words[0]))",
     )
     .replace("\\tmov.b32 %%zg_orig_r51, %10;\\n", "\\tmov.b32 %%zg_orig_r51, 1035273459;\\n");
-    assert_eq!(decode, include_str!("../qwen08_cached/decode.cu"));
-    assert_eq!(decode, include_str!("../qwen2b_cached/decode.cu"));
+    assert_eq!(
+        decode,
+        include_str!("../reference/qwen800m/decode/decode.cu")
+    );
+    assert_eq!(decode, include_str!("../reference/qwen2b/decode/decode.cu"));
 
     let gated_provenance = format!(
         "// Reversible candidate SHA256: {}\n",
@@ -363,8 +402,8 @@ fn parameterized_cached_sources_reverse_to_both_retained_profiles() {
     .replace("\\tmov.b32 %%zg_orig_r20, %7;\\n", "\\tmov.b32 %%zg_orig_r20, 128;\\n")
     .replace("\\tmov.b32 %%zg_orig_r22, %8;\\n", "\\tmov.b32 %%zg_orig_r22, 16;\\n")
     .replace("\\tmov.b32 %%zg_orig_r23, %9;\\n", "\\tmov.b32 %%zg_orig_r23, 897988541;\\n");
-    assert_eq!(gated, include_str!("../qwen08_cached/gated.cu"));
-    assert_eq!(gated, include_str!("../qwen2b_cached/gated.cu"));
+    assert_eq!(gated, include_str!("../reference/qwen800m/decode/gated.cu"));
+    assert_eq!(gated, include_str!("../reference/qwen2b/decode/gated.cu"));
 
     for (source, expected) in [
         (
@@ -428,64 +467,64 @@ fn reverse_configured_prefill_source(
 fn configured_prefill_reverses_all_40_historical_stage_tuples() -> Result<()> {
     const LEGACY: [[&str; 4]; 10] = [
         [
-            include_str!("../qwen08_47/kkt.cu"),
-            include_str!("../qwen08_47/recompute.cu"),
-            include_str!("../qwen08_47/h.cu"),
-            include_str!("../qwen08_47/output.cu"),
+            include_str!("../reference/qwen800m/prefill/47/kkt.cu"),
+            include_str!("../reference/qwen800m/prefill/47/recompute.cu"),
+            include_str!("../reference/qwen800m/prefill/47/h.cu"),
+            include_str!("../reference/qwen800m/prefill/47/output.cu"),
         ],
         [
-            include_str!("../qwen08_57/kkt.cu"),
-            include_str!("../qwen08_57/recompute.cu"),
-            include_str!("../qwen08_57/h.cu"),
-            include_str!("../qwen08_57/output.cu"),
+            include_str!("../reference/qwen800m/prefill/57/kkt.cu"),
+            include_str!("../reference/qwen800m/prefill/57/recompute.cu"),
+            include_str!("../reference/qwen800m/prefill/57/h.cu"),
+            include_str!("../reference/qwen800m/prefill/57/output.cu"),
         ],
         [
-            include_str!("../qwen08_62/kkt.cu"),
-            include_str!("../qwen08_62/recompute.cu"),
-            include_str!("../qwen08_62/h.cu"),
-            include_str!("../qwen08_62/output.cu"),
+            include_str!("../reference/qwen800m/prefill/62/kkt.cu"),
+            include_str!("../reference/qwen800m/prefill/62/recompute.cu"),
+            include_str!("../reference/qwen800m/prefill/62/h.cu"),
+            include_str!("../reference/qwen800m/prefill/62/output.cu"),
         ],
         [
-            include_str!("../qwen08_67/kkt.cu"),
-            include_str!("../qwen08_67/recompute.cu"),
-            include_str!("../qwen08_67/h.cu"),
-            include_str!("../qwen08_67/output.cu"),
+            include_str!("../reference/qwen800m/prefill/67/kkt.cu"),
+            include_str!("../reference/qwen800m/prefill/67/recompute.cu"),
+            include_str!("../reference/qwen800m/prefill/67/h.cu"),
+            include_str!("../reference/qwen800m/prefill/67/output.cu"),
         ],
         [
-            include_str!("../qwen08_72/kkt.cu"),
-            include_str!("../qwen08_72/recompute.cu"),
-            include_str!("../qwen08_72/h.cu"),
-            include_str!("../qwen08_72/output.cu"),
+            include_str!("../reference/qwen800m/prefill/72/kkt.cu"),
+            include_str!("../reference/qwen800m/prefill/72/recompute.cu"),
+            include_str!("../reference/qwen800m/prefill/72/h.cu"),
+            include_str!("../reference/qwen800m/prefill/72/output.cu"),
         ],
         [
-            include_str!("../qwen2b_47/kkt.cu"),
-            include_str!("../qwen2b_47/recompute.cu"),
-            include_str!("../qwen2b_47/h.cu"),
-            include_str!("../qwen2b_47/output.cu"),
+            include_str!("../reference/qwen2b/prefill/47/kkt.cu"),
+            include_str!("../reference/qwen2b/prefill/47/recompute.cu"),
+            include_str!("../reference/qwen2b/prefill/47/h.cu"),
+            include_str!("../reference/qwen2b/prefill/47/output.cu"),
         ],
         [
-            include_str!("../qwen2b_57/kkt.cu"),
-            include_str!("../qwen2b_57/recompute.cu"),
-            include_str!("../qwen2b_57/h.cu"),
-            include_str!("../qwen2b_57/output.cu"),
+            include_str!("../reference/qwen2b/prefill/57/kkt.cu"),
+            include_str!("../reference/qwen2b/prefill/57/recompute.cu"),
+            include_str!("../reference/qwen2b/prefill/57/h.cu"),
+            include_str!("../reference/qwen2b/prefill/57/output.cu"),
         ],
         [
-            include_str!("../qwen2b_62/kkt.cu"),
-            include_str!("../qwen2b_62/recompute.cu"),
-            include_str!("../qwen2b_62/h.cu"),
-            include_str!("../qwen2b_62/output.cu"),
+            include_str!("../reference/qwen2b/prefill/62/kkt.cu"),
+            include_str!("../reference/qwen2b/prefill/62/recompute.cu"),
+            include_str!("../reference/qwen2b/prefill/62/h.cu"),
+            include_str!("../reference/qwen2b/prefill/62/output.cu"),
         ],
         [
-            include_str!("../qwen2b_67/kkt.cu"),
-            include_str!("../qwen2b_67/recompute.cu"),
-            include_str!("../qwen2b_67/h.cu"),
-            include_str!("../qwen2b_67/output.cu"),
+            include_str!("../reference/qwen2b/prefill/67/kkt.cu"),
+            include_str!("../reference/qwen2b/prefill/67/recompute.cu"),
+            include_str!("../reference/qwen2b/prefill/67/h.cu"),
+            include_str!("../reference/qwen2b/prefill/67/output.cu"),
         ],
         [
-            include_str!("../qwen2b_72/kkt.cu"),
-            include_str!("../qwen2b_72/recompute.cu"),
-            include_str!("../qwen2b_72/h.cu"),
-            include_str!("../qwen2b_72/output.cu"),
+            include_str!("../reference/qwen2b/prefill/72/kkt.cu"),
+            include_str!("../reference/qwen2b/prefill/72/recompute.cu"),
+            include_str!("../reference/qwen2b/prefill/72/h.cu"),
+            include_str!("../reference/qwen2b/prefill/72/output.cu"),
         ],
     ];
     let stages = [

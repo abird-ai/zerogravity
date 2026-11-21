@@ -24,7 +24,7 @@ mod fixed_prompt_tests {
         let exact = request(&FIXED_PROMPT_IDS, 0, 512, 0);
         kind.require_request(&exact).unwrap();
         assert!(exact.reference_phase().is_err());
-        assert!(ModelComponentKind::Qwen2b.require_request(&exact).is_err());
+        assert!(ModelComponentKind::Qwen2B.require_request(&exact).is_err());
         assert!(
             ModelComponentKind::FixedPrompt(A::OriginalPlainSolve2)
                 .require_request(&exact)
@@ -45,14 +45,14 @@ mod fixed_prompt_tests {
     #[test]
     fn old_source_family_and_equal_id_new_teacher_issuer_remain_distinct() {
         let old = request(&[11; 64], 0, 512, 0);
-        ModelComponentKind::Qwen2b.require_request(&old).unwrap();
+        ModelComponentKind::Qwen2B.require_request(&old).unwrap();
         assert_eq!(
-            ModelComponentKind::Qwen2b.profile(),
-            QwenSourceProfile::Qwen2B
+            ModelComponentKind::Qwen2B.profile(),
+            QwenModelVariant::Qwen2B
         );
-        assert_eq!(ModelComponentKind::Qwen2b.columns(), 2048);
+        assert_eq!(ModelComponentKind::Qwen2B.columns(), 2048);
         let new = ModelComponentKind::FixedPrompt(A::OwnedFixedPromptSolve4);
-        assert_eq!(new.profile(), QwenSourceProfile::Qwen08);
+        assert_eq!(new.profile(), QwenModelVariant::Qwen800M);
         assert_eq!(new.columns(), 1024);
         assert!(new.require_request(&old).is_err());
         let a = request(&FIXED_PROMPT_IDS, 0, 512, 0);
@@ -78,7 +78,7 @@ mod fixed_prompt_tests {
         kind.require_request(&request(&FIXED_PROMPT_IDS, 0, 512, 0))
             .unwrap();
         let short = PromptCall::new(
-            QwenSourceProfile::Qwen08,
+            QwenModelVariant::Qwen800M,
             PromptSpan::prefill(
                 source,
                 PromptWorkload::from_prompt_tokens(47).unwrap(),
@@ -95,7 +95,7 @@ mod fixed_prompt_tests {
         ));
         for base in 47..=53 {
             let short = PromptCall::new(
-                QwenSourceProfile::Qwen08,
+                QwenModelVariant::Qwen800M,
                 PromptSpan::cached(
                     source,
                     PromptWorkload::from_prompt_tokens(47).unwrap(),
@@ -115,7 +115,7 @@ mod fixed_prompt_tests {
 mod explicit2b_post_attention_tests {
     // Metadata rejection tests; original source and physical tests remain separate.
     use super::ComponentImplementation as FixedPromptGdnArithmetic;
-    use super::ComponentImplementation as Qwen2bGdnArithmetic;
+    use super::ComponentImplementation as Qwen2BGdnArithmetic;
     use super::*;
     use crate::plan::{QwenGdnCall, QwenInputRows, QwenPrefixLayer};
     use zerogravity_core::accelerator::{SourceIdentity, program::TeacherSpan};
@@ -142,21 +142,21 @@ mod explicit2b_post_attention_tests {
     }
     #[test]
     fn explicit_tuple_extends_only_initial2b_gated_to_post_attention() {
-        let owned = Qwen2bGdnArithmetic::OwnedSolve4Recompute3;
+        let owned = Qwen2BGdnArithmetic::OwnedSolve4Recompute3;
         assert_eq!(
-            ModelComponentKind::Qwen2b.profile(),
-            QwenSourceProfile::Qwen2B
+            ModelComponentKind::Qwen2B.profile(),
+            QwenModelVariant::Qwen2B
         );
-        assert_eq!(ModelComponentKind::Qwen2b.columns(), 2048);
+        assert_eq!(ModelComponentKind::Qwen2B.columns(), 2048);
         assert_eq!(ModelComponentCut::PostAttention.node_end(), 8);
         assert_eq!(ModelComponentCut::PostAttention.value_end(), 10);
         for rows in [1, 64] {
             for cut in [ModelComponentCut::Gated, ModelComponentCut::PostAttention] {
-                require_qwen2b_arithmetic(ModelComponentKind::Qwen2b, cut, rows, owned).unwrap();
+                require_qwen2b_arithmetic(ModelComponentKind::Qwen2B, cut, rows, owned).unwrap();
             }
             assert!(
                 require_qwen2b_arithmetic(
-                    ModelComponentKind::Qwen2b,
+                    ModelComponentKind::Qwen2B,
                     ModelComponentCut::Mlp,
                     rows,
                     owned
@@ -167,7 +167,7 @@ mod explicit2b_post_attention_tests {
         for rows in [0, 2, 47, 63, 65, 512] {
             assert!(
                 require_qwen2b_arithmetic(
-                    ModelComponentKind::Qwen2b,
+                    ModelComponentKind::Qwen2B,
                     ModelComponentCut::PostAttention,
                     rows,
                     owned
@@ -188,7 +188,7 @@ mod explicit2b_post_attention_tests {
     #[test]
     fn exact_request_still_requires_initial_layer0_base0_capacity512() {
         for rows in [1, 64] {
-            ModelComponentKind::Qwen2b
+            ModelComponentKind::Qwen2B
                 .require_request(&request(rows, 0, 512, 0, SourceCallMode::Prefill))
                 .unwrap();
         }
@@ -199,7 +199,7 @@ mod explicit2b_post_attention_tests {
             request(64, 0, 512, 1, SourceCallMode::Prefill),
             request(1, 64, 512, 0, SourceCallMode::Decode),
         ] {
-            assert!(ModelComponentKind::Qwen2b.require_request(&wrong).is_err());
+            assert!(ModelComponentKind::Qwen2B.require_request(&wrong).is_err());
         }
     }
     #[test]
@@ -242,7 +242,7 @@ mod mlp_cut_tests {
         assert_eq!(ModelComponentCut::Mlp.provider_bytes(), 224 * 1024 * 1024);
         assert!(
             ModelComponentCut::Mlp
-                .require_kind(ModelComponentKind::Qwen2b)
+                .require_kind(ModelComponentKind::Qwen2B)
                 .is_err()
         );
         assert!(
@@ -274,18 +274,18 @@ mod qwen2b_mlp_scope_tests {
     use super::*;
     #[test]
     fn new_mlp_cut_keeps_old47_and_six_eight_node_guards() {
-        let cut = ModelComponentCut::Qwen2bMlp;
+        let cut = ModelComponentCut::Qwen2BMlp;
         assert_eq!(
             (cut.node_end(), cut.value_end(), cut.provider_bytes()),
             (11, 13, 320 * 1024 * 1024)
         );
         assert!(cut.includes_mlp() && cut.includes_post_attention());
-        assert!(cut.require_kind(ModelComponentKind::Qwen2b).is_ok());
+        assert!(cut.require_kind(ModelComponentKind::Qwen2B).is_ok());
         let old = ModelComponentKind::FixedPrompt(ComponentImplementation::OwnedFixedPromptSolve4);
         assert!(cut.require_kind(old).is_err());
         assert!(
             ModelComponentCut::Mlp
-                .require_kind(ModelComponentKind::Qwen2b)
+                .require_kind(ModelComponentKind::Qwen2B)
                 .is_err()
         );
         assert_eq!(ModelComponentCut::Mlp.provider_bytes(), 224 * 1024 * 1024);
@@ -310,8 +310,8 @@ mod qwen2b_mlp_scope_tests {
         for rows in [1, 64] {
             assert!(
                 require_qwen2b_arithmetic(
-                    ModelComponentKind::Qwen2b,
-                    ModelComponentCut::Qwen2bMlp,
+                    ModelComponentKind::Qwen2B,
+                    ModelComponentCut::Qwen2BMlp,
                     rows,
                     a
                 )
@@ -321,8 +321,8 @@ mod qwen2b_mlp_scope_tests {
         for rows in [0, 2, 47, 65] {
             assert!(
                 require_qwen2b_arithmetic(
-                    ModelComponentKind::Qwen2b,
-                    ModelComponentCut::Qwen2bMlp,
+                    ModelComponentKind::Qwen2B,
+                    ModelComponentCut::Qwen2BMlp,
                     rows,
                     a
                 )
@@ -330,7 +330,7 @@ mod qwen2b_mlp_scope_tests {
             );
         }
         assert!(
-            require_qwen2b_arithmetic(ModelComponentKind::Qwen2b, ModelComponentCut::Mlp, 1, a)
+            require_qwen2b_arithmetic(ModelComponentKind::Qwen2B, ModelComponentCut::Mlp, 1, a)
                 .is_err()
         );
     }
@@ -341,7 +341,7 @@ mod weight_source_policy {
     use super::*;
     use crate::plan::QwenInputRows;
     use crate::plan::QwenPrefixLayer;
-    use crate::plan::{QwenGdnCall, QwenSourceProfile};
+    use crate::plan::{QwenGdnCall, QwenModelVariant};
     use zerogravity_core::accelerator::SourceIdentity;
     use zerogravity_core::accelerator::program::TeacherSpan;
     fn request(
@@ -372,10 +372,10 @@ mod weight_source_policy {
         ] {
             let req = request(rows, 0, 512, 0, SourceCallMode::Prefill);
             assert_eq!(
-                require_weight_request(QwenSourceProfile::Qwen2B, &req).unwrap(),
+                require_weight_request(QwenModelVariant::Qwen2B, &req).unwrap(),
                 phase
             );
-            assert!(require_weight_request(QwenSourceProfile::Qwen08, &req).is_err());
+            assert!(require_weight_request(QwenModelVariant::Qwen800M, &req).is_err());
         }
         for req in [
             request(47, 0, 512, 0, SourceCallMode::Prefill),
@@ -384,7 +384,7 @@ mod weight_source_policy {
             request(64, 0, 1024, 0, SourceCallMode::Prefill),
             request(1, 64, 512, 0, SourceCallMode::Decode),
         ] {
-            assert!(require_weight_request(QwenSourceProfile::Qwen2B, &req).is_err());
+            assert!(require_weight_request(QwenModelVariant::Qwen2B, &req).is_err());
         }
     }
     #[test]
@@ -420,7 +420,7 @@ mod projection_source_policy {
     use crate::plan::QwenInputRows;
     use crate::plan::QwenPrefixLayer;
     use crate::plan::QwenSourceCall;
-    use crate::plan::{QwenOperation, QwenOperator, QwenProjection, QwenSourceProfile};
+    use crate::plan::{QwenModelVariant, QwenOperation, QwenOperator, QwenProjection};
     use zerogravity_core::accelerator::SourceIdentity;
     use zerogravity_core::accelerator::program::MatrixAxes;
     use zerogravity_core::accelerator::program::SourceTensor;
@@ -533,7 +533,7 @@ mod projection_source_policy {
         use crate::plan::PromptWorkload;
         let source = SourceIdentity::for_new_allocation().unwrap();
         let short = PromptCall::new(
-            QwenSourceProfile::Qwen08,
+            QwenModelVariant::Qwen800M,
             PromptSpan::prefill(
                 source,
                 PromptWorkload::from_prompt_tokens(47).unwrap(),
@@ -555,7 +555,7 @@ mod projection_source_policy {
         }
         for base in 47..=53 {
             let short = PromptCall::new(
-                QwenSourceProfile::Qwen08,
+                QwenModelVariant::Qwen800M,
                 PromptSpan::cached(
                     source,
                     PromptWorkload::from_prompt_tokens(47).unwrap(),

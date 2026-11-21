@@ -333,7 +333,7 @@ fn dual_rms_joins_same_teachers_and_phase_with_distinct_actual_producer_roles() 
     let c = call(1);
     let mut b = QwenPlanBuilder::new_operator_slice(
         c.layer().source(),
-        ProgramNumericalProfile::SourceCudaSm86Bf16V1,
+        NumericalProfile::CudaSm86Bf16ReferenceV1,
     )
     .unwrap();
     let raw = b.source_embedding(&embedding(&c)).unwrap();

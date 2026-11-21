@@ -74,18 +74,18 @@ enum ComponentCode {
     #[cfg(target_os = "linux")]
     Text(Arc<super::text::TextGdnCode>),
     #[cfg(target_os = "linux")]
-    Qwen2b(Arc<crate::cuda::native::qwen2b_component::ComponentGdnBinding>),
+    Qwen2B(Arc<crate::cuda::native::qwen2b_component::ComponentGdnBinding>),
     #[cfg(target_os = "linux")]
     FixedPrompt(Arc<crate::cuda::native::qwen2b_component::ComponentGdnBinding>),
 }
 impl ComponentCode {
     fn arithmetic_family(&self) -> super::arithmetic::GdnFamilyIdentity {
         match self {
-            Self::Default => super::arithmetic::GdnFamilyIdentity::original08(),
+            Self::Default => super::arithmetic::GdnFamilyIdentity::original800m(),
             #[cfg(target_os = "linux")]
             Self::Text(binding) => binding.family(),
             #[cfg(target_os = "linux")]
-            Self::Qwen2b(binding) | Self::FixedPrompt(binding) => *binding.arithmetic_family(),
+            Self::Qwen2B(binding) | Self::FixedPrompt(binding) => *binding.arithmetic_family(),
         }
     }
     fn require(&self, service: &Arc<ResidentService>, phase: GdnPhase) -> Result<()> {
@@ -97,13 +97,13 @@ impl ComponentCode {
                 Ok(())
             }
             #[cfg(target_os = "linux")]
-            Self::Qwen2b(binding) | Self::FixedPrompt(binding) => {
+            Self::Qwen2B(binding) | Self::FixedPrompt(binding) => {
                 binding.require_source(service)?;
                 if !matches!(
                     (self, binding.values().recipe().kind()),
                     (
-                        Self::Qwen2b(_),
-                        crate::resident_program::qwen2b_component::ComponentKind::Qwen2b
+                        Self::Qwen2B(_),
+                        crate::resident_program::qwen2b_component::ComponentKind::Qwen2B
                     ) | (
                         Self::FixedPrompt(_),
                         crate::resident_program::qwen2b_component::ComponentKind::FixedPrompt(_)
@@ -151,9 +151,9 @@ impl ComponentCode {
                 "fixed_prompt requires genuine typed outputs".into(),
             )),
             #[cfg(target_os = "linux")]
-            Self::Qwen2b(_) if typed => kernel_qwen2b_component(phase, stage),
+            Self::Qwen2B(_) if typed => kernel_qwen2b_component(phase, stage),
             #[cfg(target_os = "linux")]
-            Self::Qwen2b(_) => Err(Error::State(
+            Self::Qwen2B(_) => Err(Error::State(
                 "source2B code requires genuine typed outputs".into(),
             )),
         }
@@ -190,7 +190,7 @@ impl ComponentCode {
                 Ok(())
             }
             #[cfg(target_os = "linux")]
-            Self::Qwen2b(binding) | Self::FixedPrompt(binding) => {
+            Self::Qwen2B(binding) | Self::FixedPrompt(binding) => {
                 init.retain_completion_owner(binding.clone())
             }
         }

@@ -411,8 +411,8 @@ mod completed_tests {
     #[test]
     fn qwen2b_completed_windows_preserve_upload_order_and_full_tail() {
         for (shape, count) in [
-            (SourceWeightLayout::Qwen2bMlpGateUp, 48),
-            (SourceWeightLayout::Qwen2bMlpDown, 25),
+            (SourceWeightLayout::Qwen2BMlpGateUp, 48),
+            (SourceWeightLayout::Qwen2BMlpDown, 25),
         ] {
             // Callback observes ranges only; no 72MiB expected/shadow pack.
             let raw = vec![0; shape.bytes()];
@@ -430,7 +430,7 @@ mod completed_tests {
             upload.require_complete().unwrap();
             let last = last.unwrap();
             assert_eq!(last.destination_offset + last.bytes, shape.bytes());
-            if shape == SourceWeightLayout::Qwen2bMlpDown {
+            if shape == SourceWeightLayout::Qwen2BMlpDown {
                 assert_eq!((last.first, last.end, last.bytes), (2040, 2048, 98304));
             }
         }

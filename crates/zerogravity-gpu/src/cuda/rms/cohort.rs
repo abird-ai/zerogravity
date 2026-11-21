@@ -6,7 +6,7 @@ use crate::{
     physical_quarantine::CompletionOwner,
     resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextCallInput},
     resident_leases::{ResidentInitialization, ResidentLease, ResidentService},
-    resident_program::{BufferRange, native_cohort::values::CohortValues},
+    resident_program::{BufferRange, fused_cohort::values::CohortValues},
 };
 use std::{
     collections::BTreeMap,
@@ -20,15 +20,15 @@ use zerogravity_core::Error;
 use zerogravity_core::Result;
 use zerogravity_core::accelerator::program::PlanOperation;
 use zerogravity_core::accelerator::program::{
-    SourceNumericalContract, SourceOperator, SourceOperatorKind,
+    NumericalContract, SourceOperator, SourceOperatorKind,
 };
 use zerogravity_core::device_events::BufferRole;
 use zerogravity_core::device_events::DeviceAccess;
 
 fn columns(capture: TextKernelCapture) -> Result<Columns> {
     match capture.hidden_width() {
-        1024 => Ok(Columns::Qwen08),
-        2048 => Ok(Columns::Qwen2b),
+        1024 => Ok(Columns::Qwen800M),
+        2048 => Ok(Columns::Qwen2B),
         _ => Err(Error::Unsupported(
             "B4 RMS captured width outside actual kernels".into(),
         )),
@@ -53,7 +53,7 @@ impl CohortGamma {
         if !matches!(
             descriptor.kind(),
             SourceOperatorKind::Rms(_) | SourceOperatorKind::ResidualRms(_)
-        ) || descriptor.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+        ) || descriptor.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
             || descriptor.parameters().len() != 1
             || lease.bytes()
                 != match descriptor.kind() {

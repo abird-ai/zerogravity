@@ -1,22 +1,22 @@
 //! Finite source/weight ownership only. No native packet or model-cut permission.
 use super::*;
-use crate::cuda::gdn::Qwen2bGdnArithmetic;
+use crate::cuda::gdn::Qwen2BGdnArithmetic;
 use crate::physical_quarantine::CompletionOwner;
 use zerogravity_core::accelerator::program::PlanOperation;
 
 mod cold_probe;
 mod compute_probe;
-pub use cold_probe::{Qwen2bMlpWeightMode, Qwen2bMlpWeightOutcome, qualify_qwen2b_mlp_weights};
+pub use cold_probe::{Qwen2BMlpWeightMode, Qwen2BMlpWeightOutcome, qualify_qwen2b_mlp_weights};
 use compute_probe::ComputeReadProbe;
-pub(crate) use compute_probe::{Qwen2bMlpComputeProgress, Qwen2bMlpComputeReadCut};
+pub(crate) use compute_probe::{Qwen2BMlpComputeProgress, Qwen2BMlpComputeReadCut};
 
-pub(crate) struct Qwen2bMlpWeightCohort {
+pub(crate) struct Qwen2BMlpWeightCohort {
     source: zerogravity_artifacts::source_weights::VerifiedTensorSource,
     bindings: Arc<crate::resident_program::source_bindings::SourceBindings>,
-    arithmetic: Qwen2bGdnArithmetic,
+    arithmetic: Qwen2BGdnArithmetic,
     _metadata: WindowWorkspace,
 }
-impl Qwen2bMlpWeightCohort {
+impl Qwen2BMlpWeightCohort {
     pub(crate) fn bind(
         recipe: &Arc<crate::resident_program::qwen2b_component::ComponentRecipe>,
     ) -> Result<Arc<Self>> {
@@ -37,7 +37,7 @@ impl Qwen2bMlpWeightCohort {
     ) -> &Arc<crate::resident_program::source_bindings::SourceBindings> {
         &self.bindings
     }
-    pub(crate) fn arithmetic(&self) -> Qwen2bGdnArithmetic {
+    pub(crate) fn arithmetic(&self) -> Qwen2BGdnArithmetic {
         self.arithmetic
     }
     fn source_operator(
@@ -77,15 +77,15 @@ impl Qwen2bMlpWeightCohort {
 impl ResidentInitialization<'_> {
     pub(crate) async fn upload_qwen2b_mlp_weight(
         &mut self,
-        cohort: &Arc<Qwen2bMlpWeightCohort>,
+        cohort: &Arc<Qwen2BMlpWeightCohort>,
         index: usize,
         cancelled: Option<&AtomicBool>,
     ) -> Result<PendingModelWeight> {
         not_cancelled(cancelled)?;
         cohort.require_service(self.service)?;
         let layout = match index {
-            8 => SourceWeightLayout::Qwen2bMlpGateUp,
-            10 => SourceWeightLayout::Qwen2bMlpDown,
+            8 => SourceWeightLayout::Qwen2BMlpGateUp,
+            10 => SourceWeightLayout::Qwen2BMlpDown,
             _ => {
                 return Err(Error::Unsupported(
                     "component MLP learned packing only".into(),
@@ -102,16 +102,16 @@ impl ResidentInitialization<'_> {
     }
 }
 
-pub(crate) struct Qwen2bMlpWeights {
-    cohort: Arc<Qwen2bMlpWeightCohort>,
+pub(crate) struct Qwen2BMlpWeights {
+    cohort: Arc<Qwen2BMlpWeightCohort>,
     service: Arc<ResidentService>,
     generation: u64,
     gate_up: Arc<ModelWeight>,
     down: Arc<ModelWeight>,
 }
-impl Qwen2bMlpWeights {
+impl Qwen2BMlpWeights {
     pub(crate) async fn upload(
-        cohort: Arc<Qwen2bMlpWeightCohort>,
+        cohort: Arc<Qwen2BMlpWeightCohort>,
         service: Arc<ResidentService>,
         completion_owner: CompletionOwner,
         cancelled: Option<&AtomicBool>,
@@ -242,10 +242,10 @@ impl Qwen2bMlpWeights {
     pub(crate) fn verification_plan(
         self: &Arc<Self>,
         upstream: CompletionOwner,
-    ) -> Result<Arc<Qwen2bMlpSourceVerification>> {
+    ) -> Result<Arc<Qwen2BMlpSourceVerification>> {
         self.require_initialized()?;
         let host = Arc::new(self.cohort.source.reserve_workspace(2 * 1024 * 1024)?);
-        Ok(Arc::new(Qwen2bMlpSourceVerification {
+        Ok(Arc::new(Qwen2BMlpSourceVerification {
             weights: self.clone(),
             _upstream: upstream,
             _host: host,
@@ -256,8 +256,8 @@ impl Qwen2bMlpWeights {
     pub(crate) fn compute_verification_plan(
         self: &Arc<Self>,
         upstream: CompletionOwner,
-        cut: Option<Qwen2bMlpComputeReadCut>,
-    ) -> Result<Arc<Qwen2bMlpSourceVerification>> {
+        cut: Option<Qwen2BMlpComputeReadCut>,
+    ) -> Result<Arc<Qwen2BMlpSourceVerification>> {
         let mut plan = self.verification_plan(upstream)?;
         Arc::get_mut(&mut plan)
             .ok_or_else(|| Error::State("fresh exclusive2B compute plan required".into()))?
@@ -268,17 +268,17 @@ impl Qwen2bMlpWeights {
 
 /// Sealed actual W/source/graph owner, installed BEFORE the first math enqueue.
 /// Holds no expected rows, raw-copy authority or native/Root permission.
-pub(crate) struct Qwen2bMlpSourceVerification {
-    weights: Arc<Qwen2bMlpWeights>,
+pub(crate) struct Qwen2BMlpSourceVerification {
+    weights: Arc<Qwen2BMlpWeights>,
     _upstream: CompletionOwner,
     _host: Arc<WindowWorkspace>,
     cold_probe: Option<Arc<cold_probe::ReadProbe>>,
     compute_probe: Option<Arc<ComputeReadProbe>>,
 }
-impl Qwen2bMlpSourceVerification {
+impl Qwen2BMlpSourceVerification {
     pub(crate) fn retains_compute_graph(
         &self,
-        weights: &Arc<Qwen2bMlpWeights>,
+        weights: &Arc<Qwen2BMlpWeights>,
         upstream: &CompletionOwner,
     ) -> bool {
         self.compute_probe.is_some()
@@ -286,7 +286,7 @@ impl Qwen2bMlpSourceVerification {
             && Arc::ptr_eq(&self.weights, weights)
             && Arc::ptr_eq(&self._upstream, upstream)
     }
-    pub(crate) fn compute_progress(&self) -> Result<Qwen2bMlpComputeProgress> {
+    pub(crate) fn compute_progress(&self) -> Result<Qwen2BMlpComputeProgress> {
         Ok(self
             .compute_probe
             .as_ref()

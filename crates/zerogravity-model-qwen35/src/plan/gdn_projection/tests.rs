@@ -49,8 +49,7 @@ fn embedding(call: &QwenGdnCall) -> QwenEmbedding {
     .unwrap()
 }
 fn builder(source: SourceIdentity) -> QwenPlanBuilder {
-    QwenPlanBuilder::new_operator_slice(source, ProgramNumericalProfile::SourceCudaSm86Bf16V1)
-        .unwrap()
+    QwenPlanBuilder::new_operator_slice(source, NumericalProfile::CudaSm86Bf16ReferenceV1).unwrap()
 }
 
 #[test]
@@ -384,12 +383,12 @@ fn source_and_old_profile_never_fall_into_cuda_contract_or_mint_provenance() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let call = invocation(source, 0, ReferencePhase::InitialOne);
     for profile in [
-        ProgramNumericalProfile::GgufSourceV1,
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+        NumericalProfile::GgufReferenceV1,
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1,
     ] {
         let mut b = QwenPlanBuilder::new_operator_slice(source, profile).unwrap();
         let tensor = embedding(&call).tensor().clone();
-        let input = if profile == ProgramNumericalProfile::GgufSourceV1 {
+        let input = if profile == NumericalProfile::GgufReferenceV1 {
             b.embed(tensor, QwenPlanBuilder::inputs().token).unwrap()
         } else {
             b.embed_profiled(

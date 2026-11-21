@@ -67,8 +67,7 @@ fn explicit_cpu_pointwise_preserves_legacy_refusal_and_builder_ownership() {
             .is_err()
     );
     let mut other_profile =
-        PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::SourceCudaSm86Bf16V1)
-            .unwrap();
+        PlanBuilder::new_operator_slice(source, NumericalProfile::CudaSm86Bf16ReferenceV1).unwrap();
     assert!(
         other_profile
             .torch_cpu_bf16_add("wrong_source_profile", &sum, &sum)
@@ -121,11 +120,7 @@ impl TensorSource for Original {
     }
 }
 fn builder(source: SourceIdentity) -> PlanBuilder {
-    PlanBuilder::new_operator_slice(
-        source,
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
-    )
-    .unwrap()
+    PlanBuilder::new_operator_slice(source, NumericalProfile::TorchCpuAvx2Bf16MixedV1).unwrap()
 }
 fn input(b: &mut PlanBuilder, matrix: SourceTensor) -> PlanValue {
     b.embed_profiled(
@@ -224,7 +219,7 @@ fn pure_typed_slice_records_contracts_views_and_no_fake_state_or_frontier() {
     assert!(plan.is_operator_slice());
     assert_eq!(
         plan.numerical_profile(),
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1
     );
     assert_eq!(plan.values().len(), plan.precisions().len());
     assert!(
@@ -299,8 +294,7 @@ fn typed_recorder_refuses_foreign_values_wrong_precision_axes_codec_and_legacy_m
 fn packed_bf16_does_not_change_legacy_f32_operations_or_select_cpu64() {
     let source = Original::new();
     let mut old =
-        PlanBuilder::new_operator_slice(source.source, ProgramNumericalProfile::GgufSourceV1)
-            .unwrap();
+        PlanBuilder::new_operator_slice(source.source, NumericalProfile::GgufReferenceV1).unwrap();
     let embedded = old
         .embed(source.matrix("embedding"), PlanBuilder::inputs().token)
         .unwrap();
@@ -382,11 +376,7 @@ fn ordinary_rms_records_raw_parameter_and_bf16_precision_without_static_gamma_or
     let mut b = builder(source.id);
     let embedding = input(&mut b, source.matrix());
     let normalized = b
-        .ordinary_rms_profiled(
-            raw.clone(),
-            &embedding,
-            OrdinaryRmsContract::TorchCpuBf16Avx2,
-        )
+        .ordinary_rms_profiled(raw.clone(), &embedding, RmsContract::TorchCpuBf16Avx2)
         .unwrap();
     assert_eq!(normalized.precision(), ActivationPrecision::Bf16WidenedF32);
     let slice = b.finish_operator_slice(normalized).unwrap();
@@ -400,7 +390,7 @@ fn ordinary_rms_records_raw_parameter_and_bf16_precision_without_static_gamma_or
         panic!("missing typed raw-parameter ordinary RMS");
     };
     assert_eq!(parameter, &raw);
-    assert_eq!(*contract, OrdinaryRmsContract::TorchCpuBf16Avx2);
+    assert_eq!(*contract, RmsContract::TorchCpuBf16Avx2);
     assert!(plan.constants().is_empty());
     assert!(plan.required_domains().is_empty() && plan.proposed_domains().is_empty());
     assert_eq!(plan.frontier_delta(), 0);
@@ -447,7 +437,7 @@ fn ordinary_rms_refuses_foreign_parameters_values_precision_and_unqualified_meta
         },
     ] {
         assert!(
-            b.ordinary_rms_profiled(changed, &embedding, OrdinaryRmsContract::TorchCpuBf16Avx2)
+            b.ordinary_rms_profiled(changed, &embedding, RmsContract::TorchCpuBf16Avx2)
                 .is_err()
         );
         assert_eq!(b.nodes.len(), original_nodes);
@@ -455,35 +445,23 @@ fn ordinary_rms_refuses_foreign_parameters_values_precision_and_unqualified_meta
     let mut foreign = builder(source.id);
     let other = input(&mut foreign, source.matrix());
     assert!(
-        b.ordinary_rms_profiled(
-            parameter.clone(),
-            &other,
-            OrdinaryRmsContract::TorchCpuBf16Avx2
-        )
-        .is_err()
+        b.ordinary_rms_profiled(parameter.clone(), &other, RmsContract::TorchCpuBf16Avx2)
+            .is_err()
     );
     let mut forged = embedding;
     forged.precision = ActivationPrecision::F32;
     assert!(
-        b.ordinary_rms_profiled(
-            parameter.clone(),
-            &forged,
-            OrdinaryRmsContract::TorchCpuBf16Avx2
-        )
-        .is_err()
+        b.ordinary_rms_profiled(parameter.clone(), &forged, RmsContract::TorchCpuBf16Avx2)
+            .is_err()
     );
     let mut old =
-        PlanBuilder::new_operator_slice(source.id, ProgramNumericalProfile::GgufSourceV1).unwrap();
+        PlanBuilder::new_operator_slice(source.id, NumericalProfile::GgufReferenceV1).unwrap();
     let old_value = old
         .embed(source.matrix(), PlanBuilder::inputs().token)
         .unwrap();
     assert!(
-        old.ordinary_rms_profiled(
-            parameter.clone(),
-            &old_value,
-            OrdinaryRmsContract::TorchCpuBf16Avx2
-        )
-        .is_err()
+        old.ordinary_rms_profiled(parameter.clone(), &old_value, RmsContract::TorchCpuBf16Avx2)
+            .is_err()
     );
     for width in [256usize, 1024, 2048, 5120] {
         for (kind, bytes) in [
@@ -503,18 +481,18 @@ fn ordinary_rms_refuses_foreign_parameters_values_precision_and_unqualified_meta
                 ..parameter.clone()
             };
             assert_eq!(
-                OrdinaryRmsContract::TorchCpuBf16Avx2
+                RmsContract::TorchCpuBf16Avx2
                     .validate(&descriptor, width * 2)
                     .unwrap(),
                 width
             );
             assert!(
-                OrdinaryRmsContract::TorchCpuBf16Avx2
+                RmsContract::TorchCpuBf16Avx2
                     .validate(&descriptor, width - 1)
                     .is_err()
             );
             assert!(
-                OrdinaryRmsContract::TorchCpuBf16Avx2
+                RmsContract::TorchCpuBf16Avx2
                     .validate(&descriptor, width * 8192)
                     .is_err()
             );
@@ -577,11 +555,7 @@ fn unaware_backend_refuses_new_contract_without_legacy_or_metadata_callbacks() {
         Err(Error::Unsupported(_))
     ));
     assert!(matches!(
-        unaware.ordinary_rms_profiled(
-            parameter,
-            &vec![1.0; 256],
-            OrdinaryRmsContract::TorchCpuBf16Avx2
-        ),
+        unaware.ordinary_rms_profiled(parameter, &vec![1.0; 256], RmsContract::TorchCpuBf16Avx2),
         Err(Error::Unsupported(_))
     ));
 }
@@ -590,7 +564,7 @@ fn unaware_backend_refuses_new_contract_without_legacy_or_metadata_callbacks() {
 fn ordinary_rms_requires_explicit_packing_for_valid_geometry_strided_input() {
     let source = NormSource::with_columns(1024);
     let parameter = SourceParameter::from_source(&source, "input.norm").unwrap();
-    let contract = OrdinaryRmsContract::TorchCpuBf16Avx2;
+    let contract = RmsContract::TorchCpuBf16Avx2;
     let mut b = builder(source.id);
     let embedding = input(&mut b, source.matrix());
     let strided = b
@@ -664,7 +638,7 @@ fn source_operator_requires_explicit_backend_implementation() {
     let descriptor = SourceOperator::new(
         call,
         SourceOperatorKind::EmbeddingRows,
-        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        NumericalContract::CudaSm86Bf16ReferenceV1,
         vec![SourceTensor {
             source,
             name: "actual.embedding".into(),

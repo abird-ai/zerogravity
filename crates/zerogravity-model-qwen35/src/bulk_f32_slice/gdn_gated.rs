@@ -32,7 +32,7 @@ impl BulkGdnGatedSlice {
         let gamma = model.tensor_info("blk.0.ssm_norm.weight")?;
         if observed.span != *coefficients.span()
             || model.source_identity() != coefficients.source_identity()
-            || model.numerical_profile() != QwenNumericalProfile::GgufSourceV1
+            || model.numerical_profile() != QwenNumericalProfile::GgufReferenceV1
             || gamma.kind
                 != zerogravity_core::encoding::StoredTensorEncoding::Scalar(
                     zerogravity_core::encoding::ScalarDType::F32,

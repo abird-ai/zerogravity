@@ -4,8 +4,7 @@
 use super::{CachedLayer, LoadedQwenModel, layer_tensor};
 use crate::accelerator::program::{
     AttentionGeometry, ConvDomain, ForwardInputs, ForwardPlan, KvDomain, MathematicalBackend,
-    OrdinaryRmsContract, PlanBuilder, RecurrentDomain, RopeGeometry, SourceVector, StateSlot,
-    TensorView,
+    PlanBuilder, RecurrentDomain, RmsContract, RopeGeometry, SourceVector, StateSlot, TensorView,
 };
 use crate::config::LayerKind;
 use crate::operator_slice::OperatorSliceSource;
@@ -59,9 +58,9 @@ pub(crate) fn pure_projection_slice<B: MathematicalBackend>(
     role: QwenMatrixRole,
     input: &B::Value,
 ) -> Result<B::Value> {
-    use crate::accelerator::program::{ActivationPrecision, ProgramNumericalProfile};
+    use crate::accelerator::program::{ActivationPrecision, NumericalProfile};
     let tensor = source.matrix_descriptor(role)?;
-    if source.program_numerical_profile() != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+    if source.program_numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
         || math.precision(input) != ActivationPrecision::Bf16WidenedF32
         || math.elements(input) != tensor.columns
     {
@@ -86,8 +85,8 @@ pub(crate) fn pure_ordinary_rms_slice<B: MathematicalBackend>(
     role: QwenParameterRole,
     input: &B::Value,
 ) -> Result<B::Value> {
-    use crate::accelerator::program::{ActivationPrecision, ProgramNumericalProfile};
-    if source.program_numerical_profile() != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+    use crate::accelerator::program::{ActivationPrecision, NumericalProfile};
+    if source.program_numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
         || source.rms_epsilon().to_bits() != 1e-6f32.to_bits()
         || math.precision(input) != ActivationPrecision::Bf16WidenedF32
     {
@@ -106,7 +105,7 @@ pub(crate) fn pure_ordinary_rms_slice<B: MathematicalBackend>(
     let output = math.ordinary_rms_profiled(
         source.parameter_descriptor(role)?,
         input,
-        OrdinaryRmsContract::TorchCpuBf16Avx2,
+        RmsContract::TorchCpuBf16Avx2,
     )?;
     if math.elements(&output) != elements
         || math.precision(&output) != ActivationPrecision::Bf16WidenedF32
@@ -279,23 +278,23 @@ pub(crate) fn embedding_projection_slice<B: MathematicalBackend>(
     role: QwenMatrixRole,
 ) -> Result<(B::Value, B::Value)> {
     let expected = match model.program_numerical_profile() {
-        crate::accelerator::program::ProgramNumericalProfile::GgufSourceV1 => {
+        crate::accelerator::program::NumericalProfile::GgufReferenceV1 => {
             crate::accelerator::program::ActivationPrecision::F32
         }
-        crate::accelerator::program::ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1 => {
+        crate::accelerator::program::NumericalProfile::TorchCpuAvx2Bf16MixedV1 => {
             crate::accelerator::program::ActivationPrecision::Bf16WidenedF32
         }
-        crate::accelerator::program::ProgramNumericalProfile::SourceCudaSm86Bf16V1 => {
+        crate::accelerator::program::NumericalProfile::CudaSm86Bf16ReferenceV1 => {
             return Err(Error::Unsupported(
                 "existing embedding/projection slice has no vLLM CUDA contract".into(),
             ));
         }
-        crate::accelerator::program::ProgramNumericalProfile::AnalyticF32TextV1 => {
+        crate::accelerator::program::NumericalProfile::AnalyticF32TextV1 => {
             return Err(Error::Unsupported(
                 "Qwen slice has no analytic F32 text contract".into(),
             ));
         }
-        crate::accelerator::program::ProgramNumericalProfile::DirectGammaBf16TextCandidateV1 => {
+        crate::accelerator::program::NumericalProfile::DirectGammaBf16TextCandidateV1 => {
             return Err(Error::Unsupported(
                 "Qwen slice has no Gemma BF16 text contract".into(),
             ));
@@ -322,8 +321,8 @@ pub(crate) fn embedding_input_norm_projection_slice<B: MathematicalBackend>(
     math: &mut B,
     token: B::Index,
 ) -> Result<(B::Value, B::Value, B::Value)> {
-    use crate::accelerator::program::{ActivationPrecision, ProgramNumericalProfile};
-    if model.program_numerical_profile() != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+    use crate::accelerator::program::{ActivationPrecision, NumericalProfile};
+    if model.program_numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
         || model.rms_epsilon().to_bits() != 1e-6f32.to_bits()
     {
         return Err(Error::Unsupported(
@@ -338,7 +337,7 @@ pub(crate) fn embedding_input_norm_projection_slice<B: MathematicalBackend>(
     let normalized = math.ordinary_rms_profiled(
         model.parameter_descriptor(QwenParameterRole::InputNorm(0))?,
         &embedding,
-        OrdinaryRmsContract::TorchCpuBf16Avx2,
+        RmsContract::TorchCpuBf16Avx2,
     )?;
     let projected = project(model, math, QwenMatrixRole::GdnQkv(0), &normalized)?;
     if [&embedding, &normalized, &projected]
@@ -401,15 +400,12 @@ pub(crate) fn attention_projection_norm_slice<B: MathematicalBackend>(
         },
     )?;
     let gate = math.contiguous(&gate_view)?;
-    let normalized_query = math.ordinary_rms_profiled(
-        roles.query_norm,
-        &query,
-        OrdinaryRmsContract::TorchCpuBf16Avx2,
-    )?;
+    let normalized_query =
+        math.ordinary_rms_profiled(roles.query_norm, &query, RmsContract::TorchCpuBf16Avx2)?;
     let normalized_key = math.ordinary_rms_profiled(
         roles.key_norm,
         &key_projection,
-        OrdinaryRmsContract::TorchCpuBf16Avx2,
+        RmsContract::TorchCpuBf16Avx2,
     )?;
     if [
         &query_gate_projection,

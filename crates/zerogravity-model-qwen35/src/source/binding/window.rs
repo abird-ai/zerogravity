@@ -1,8 +1,8 @@
 //! Pure original operators over one sealed source, never a model/session.
 use super::*;
 use crate::accelerator::program::{
-    EmbeddingContract, PlanBuilder, ProgramNumericalProfile, ProjectionContract,
-    RecordedOperatorSlice, SourceParameter,
+    EmbeddingContract, NumericalProfile, PlanBuilder, ProjectionContract, RecordedOperatorSlice,
+    SourceParameter,
 };
 use crate::operator_slice::OperatorSliceSource;
 use crate::source::owned::QwenOriginalWindowText;
@@ -302,8 +302,8 @@ impl OperatorSliceSource for OriginalWindowOperators {
     fn source_identity(&self) -> crate::accelerator::SourceIdentity {
         self.checked.source_identity()
     }
-    fn program_numerical_profile(&self) -> ProgramNumericalProfile {
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+    fn program_numerical_profile(&self) -> NumericalProfile {
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1
     }
     fn rms_epsilon(&self) -> f32 {
         self.binding.config.rms_norm_eps() as f32
@@ -364,8 +364,8 @@ impl WindowOperatorOutput {
     pub fn source_identity(&self) -> crate::accelerator::SourceIdentity {
         self.source
     }
-    pub fn numerical_profile(&self) -> ProgramNumericalProfile {
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+    pub fn numerical_profile(&self) -> NumericalProfile {
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1
     }
     pub fn embedding(&self) -> Result<&[f32]> {
         self.embedding.as_slice()

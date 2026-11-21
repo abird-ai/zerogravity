@@ -1,27 +1,27 @@
 //! Actual recipe join, not synthetic source/lease/completion qualification.
 use super::*;
-use crate::cuda::gdn::{FixedPromptGdnArithmetic, Qwen2bGdnArithmetic};
+use crate::cuda::gdn::{FixedPromptGdnArithmetic, Qwen2BGdnArithmetic};
 
 #[test]
 fn callback_choice_requires_same_actual_body_explicit_seal() {
-    let owned = Qwen2bGdnArithmetic::OwnedSolve4Recompute3;
-    let explicit = PostAttentionArithmetic::Qwen2bExplicit(owned);
+    let owned = Qwen2BGdnArithmetic::OwnedSolve4Recompute3;
+    let explicit = PostAttentionArithmetic::Qwen2BExplicit(owned);
     explicit
         .require_binding_parts(
-            ComponentKind::Qwen2b,
+            ComponentKind::Qwen2B,
             ComponentCut::PostAttention,
             Some(owned),
         )
         .unwrap();
     assert!(
         explicit
-            .require_binding_parts(ComponentKind::Qwen2b, ComponentCut::PostAttention, None)
+            .require_binding_parts(ComponentKind::Qwen2B, ComponentCut::PostAttention, None)
             .is_err()
     );
     assert!(
-        PostAttentionArithmetic::Qwen2bOwned
+        PostAttentionArithmetic::Qwen2BOwned
             .require_binding_parts(
-                ComponentKind::Qwen2b,
+                ComponentKind::Qwen2B,
                 ComponentCut::PostAttention,
                 Some(owned)
             )
@@ -30,7 +30,7 @@ fn callback_choice_requires_same_actual_body_explicit_seal() {
     for cut in [ComponentCut::Gated, ComponentCut::Mlp] {
         assert!(
             explicit
-                .require_binding_parts(ComponentKind::Qwen2b, cut, Some(owned))
+                .require_binding_parts(ComponentKind::Qwen2B, cut, Some(owned))
                 .is_err()
         );
     }
@@ -43,8 +43,8 @@ fn callback_choice_requires_same_actual_body_explicit_seal() {
 }
 #[test]
 fn old_none_and_47_bindings_remain_distinct_from_explicit2b() {
-    let old = PostAttentionArithmetic::Qwen2bOwned;
-    old.require_binding_parts(ComponentKind::Qwen2b, ComponentCut::PostAttention, None)
+    let old = PostAttentionArithmetic::Qwen2BOwned;
+    old.require_binding_parts(ComponentKind::Qwen2B, ComponentCut::PostAttention, None)
         .unwrap();
     assert_eq!(old.explicit_qwen2b(), None);
     let arithmetic = FixedPromptGdnArithmetic::OwnedFixedPromptSolve4;
@@ -59,7 +59,7 @@ fn old_none_and_47_bindings_remain_distinct_from_explicit2b() {
     assert_eq!(old47.explicit_qwen2b(), None);
     assert!(
         old47
-            .require_binding_parts(ComponentKind::Qwen2b, ComponentCut::PostAttention, None)
+            .require_binding_parts(ComponentKind::Qwen2B, ComponentCut::PostAttention, None)
             .is_err()
     );
 }

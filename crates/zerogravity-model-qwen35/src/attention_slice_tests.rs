@@ -1,7 +1,7 @@
 //! Synthetic exact-role transport/ownership only; no trained hidden-state claim.
 use super::*;
 use crate::accelerator::program::{
-    ActivationPrecision, PlanBuilder, ProgramNumericalProfile, ProjectionContract,
+    ActivationPrecision, NumericalProfile, PlanBuilder, ProjectionContract,
 };
 use crate::operator_slice::attention::AttentionSliceInput;
 
@@ -40,12 +40,8 @@ fn raw_input() -> Vec<u8> {
     bytes
 }
 fn input(source: crate::accelerator::SourceIdentity, bytes: &[u8]) -> AttentionSliceInput<'_> {
-    AttentionSliceInput::from_bf16_bytes(
-        source,
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
-        bytes,
-    )
-    .unwrap()
+    AttentionSliceInput::from_bf16_bytes(source, NumericalProfile::TorchCpuAvx2Bf16MixedV1, bytes)
+        .unwrap()
 }
 
 #[test]
@@ -320,7 +316,7 @@ fn raw_bf16_import_preserves_zero_subnormal_bits_and_checks_before_admission() {
     assert!(
         AttentionSliceInput::from_bf16_bytes(
             source.source_identity(),
-            ProgramNumericalProfile::GgufSourceV1,
+            NumericalProfile::GgufReferenceV1,
             &bytes
         )
         .is_err()
@@ -367,13 +363,13 @@ fn exact_role_provider_and_foreign_issuer_refusals_have_no_partial_output() {
         .parameter_descriptor(QwenParameterRole::GdnNorm(0))
         .unwrap();
     assert_eq!(
-        OrdinaryRmsContract::TorchCpuBf16Avx2
+        RmsContract::TorchCpuBf16Avx2
             .validate(&gdn_gamma, 256)
             .unwrap(),
         256
     );
     assert!(
-        math.ordinary_rms_profiled(gdn_gamma, &imported, OrdinaryRmsContract::TorchCpuBf16Avx2)
+        math.ordinary_rms_profiled(gdn_gamma, &imported, RmsContract::TorchCpuBf16Avx2)
             .is_err()
     );
     assert!(
@@ -382,7 +378,7 @@ fn exact_role_provider_and_foreign_issuer_refusals_have_no_partial_output() {
                 QwenMatrixRole::Embedding,
                 crate::operator_slice::pure::PureSliceInput::from_bf16_bytes(
                     source.source_identity(),
-                    ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+                    NumericalProfile::TorchCpuAvx2Bf16MixedV1,
                     &bytes,
                 )
                 .unwrap(),
@@ -396,7 +392,7 @@ fn exact_role_provider_and_foreign_issuer_refusals_have_no_partial_output() {
                 .parameter_descriptor(QwenParameterRole::QueryNorm(3))
                 .unwrap(),
             &imported,
-            OrdinaryRmsContract::TorchCpuBf16Avx2
+            RmsContract::TorchCpuBf16Avx2
         )
         .is_err()
     ); // Two query heads required.

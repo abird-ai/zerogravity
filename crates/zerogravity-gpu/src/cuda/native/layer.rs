@@ -219,7 +219,7 @@ pub async fn qualify_layer(
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source_identity(),
-        ResourceOwner::new("qwen08-cuda-layer", "connected-original-layer0")?,
+        ResourceOwner::new("qwen800m-cuda-layer", "connected-original-layer0")?,
         PROVIDER_CAP,
         device_cap,
     )?;

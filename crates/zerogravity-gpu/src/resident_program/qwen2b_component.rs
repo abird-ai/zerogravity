@@ -13,7 +13,7 @@ use crate::cuda::rms::{FusedRmsPrepared, RmsPrepared};
 use crate::physical_quarantine::CompletionOwner;
 use crate::resident_inference::{gdn_state::BoundGdnDomains, native_fragment::PrefixPhaseEnqueue};
 use crate::resident_leases::{
-    Qwen2bMlpSourceVerification, Qwen2bMlpWeightCohort, Qwen2bMlpWeights, ResidentInitialization,
+    Qwen2BMlpSourceVerification, Qwen2BMlpWeightCohort, Qwen2BMlpWeights, ResidentInitialization,
     ResidentLease, ResidentReadback, ResidentService,
 };
 use cubecl::bytes::Bytes;
@@ -57,7 +57,7 @@ struct ComponentProducer {
     workspace: ResidentLease,
     projections: OnceLock<Arc<ComponentProjections>>,
     mlp_weights: OnceLock<Arc<FixedPromptMlpWeights>>,
-    qwen2b_mlp_weights: OnceLock<Arc<Qwen2bMlpWeights>>,
+    qwen2b_mlp_weights: OnceLock<Arc<Qwen2BMlpWeights>>,
 }
 pub(crate) struct ComponentProgram {
     // Certificate handles retire before the original value/status leases.
@@ -115,7 +115,7 @@ impl ComponentProgram {
         })?;
         let physical_rows = match recipe.kind() {
             ComponentKind::FixedPrompt(_) => crate::cuda::rms::Rows::FixedPrompt,
-            ComponentKind::Qwen2b => {
+            ComponentKind::Qwen2B => {
                 crate::cuda::rms::Rows::new(recipe.bindings().call().rows().len())?
             }
         };
@@ -371,7 +371,7 @@ impl ComponentProgram {
         self: &Arc<Self>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<()> {
-        if self.recipe.cut() != ComponentCut::Qwen2bMlp
+        if self.recipe.cut() != ComponentCut::Qwen2BMlp
             || self.gdn.get().is_none()
             || self.producer.projections.get().is_some()
             || self.producer.qwen2b_mlp_weights.get().is_some()
@@ -380,8 +380,8 @@ impl ComponentProgram {
                 "new2B W requires same managed graph before native activation".into(),
             ));
         }
-        let cohort = Qwen2bMlpWeightCohort::bind(&self.recipe)?;
-        let weights = Qwen2bMlpWeights::upload(
+        let cohort = Qwen2BMlpWeightCohort::bind(&self.recipe)?;
+        let weights = Qwen2BMlpWeights::upload(
             cohort,
             self.producer.values.service().clone(),
             self.completion_owner(),
@@ -394,8 +394,8 @@ impl ComponentProgram {
             .set(weights)
             .map_err(|_| Error::State("new2B W installed twice".into()))
     }
-    fn qwen2b_mlp_weights(&self) -> Result<&Arc<Qwen2bMlpWeights>> {
-        if self.recipe.cut() != ComponentCut::Qwen2bMlp {
+    fn qwen2b_mlp_weights(&self) -> Result<&Arc<Qwen2BMlpWeights>> {
+        if self.recipe.cut() != ComponentCut::Qwen2BMlp {
             return Err(Error::Unsupported("new2B MLP W cut only".into()));
         }
         self.producer
@@ -405,14 +405,14 @@ impl ComponentProgram {
     }
     pub(crate) fn qwen2b_mlp_verification_plan(
         self: &Arc<Self>,
-        cut: Option<crate::resident_leases::Qwen2bMlpComputeReadCut>,
-    ) -> Result<Arc<Qwen2bMlpSourceVerification>> {
+        cut: Option<crate::resident_leases::Qwen2BMlpComputeReadCut>,
+    ) -> Result<Arc<Qwen2BMlpSourceVerification>> {
         self.qwen2b_mlp_weights()?
             .compute_verification_plan(self.completion_owner(), cut)
     }
     pub(crate) fn qwen2b_mlp_retirement_plan(
         self: &Arc<Self>,
-    ) -> Result<Arc<Qwen2bMlpSourceVerification>> {
+    ) -> Result<Arc<Qwen2BMlpSourceVerification>> {
         self.qwen2b_mlp_weights()?
             .verification_plan(self.completion_owner())
     }
@@ -424,7 +424,7 @@ impl ComponentProgram {
     }
     pub(crate) fn qwen2b_mlp_plan_retained(
         self: &Arc<Self>,
-        plan: &Arc<Qwen2bMlpSourceVerification>,
+        plan: &Arc<Qwen2BMlpSourceVerification>,
     ) -> Result<bool> {
         Ok(
             plan.retains_compute_graph(self.qwen2b_mlp_weights()?, &self.completion_owner())
@@ -432,18 +432,18 @@ impl ComponentProgram {
         )
     }
     pub(crate) fn qwen2b_mlp_graph_retained(&self) -> Result<bool> {
-        Ok(self.recipe.cut() == ComponentCut::Qwen2bMlp
+        Ok(self.recipe.cut() == ComponentCut::Qwen2BMlp
             && self.producer.qwen2b_mlp_weights.get().is_some()
             && self.post_attention_graph_retained()?)
     }
     pub(crate) fn prepare_qwen2b_mlp_native(
         self: &Arc<Self>,
-        inputs: crate::cuda::native::qwen2b_mlp::Qwen2bMlpQualificationInputs,
+        inputs: crate::cuda::native::qwen2b_mlp::Qwen2BMlpQualificationInputs,
         init: &mut ResidentInitialization<'_>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<()> {
         not_cancelled(cancelled)?;
-        if self.recipe.cut() != ComponentCut::Qwen2bMlp
+        if self.recipe.cut() != ComponentCut::Qwen2BMlp
             || self.gdn.get().is_none()
             || self.producer.projections.get().is_some()
         {
@@ -604,7 +604,7 @@ impl ComponentProgram {
                     if self.fault.load(Ordering::Acquire) == 1 {
                         return Err(Error::State(
                             match self.recipe.kind() {
-                                ComponentKind::Qwen2b => {
+                                ComponentKind::Qwen2B => {
                                     "deliberate source2B unknown after actual Conv"
                                 }
                                 ComponentKind::FixedPrompt(_) => {
@@ -682,7 +682,7 @@ impl ComponentProgram {
                     self.cut.store(true, Ordering::Release);
                     if self.fault.load(Ordering::Acquire) == 5 {
                         return Err(Error::State(
-                            if self.recipe.cut() == ComponentCut::Qwen2bMlp {
+                            if self.recipe.cut() == ComponentCut::Qwen2BMlp {
                                 "deliberate qwen2b MLP unknown after actual GateUp"
                             } else {
                                 "deliberate canonical47 MLP unknown after actual GateUp"
@@ -792,7 +792,7 @@ impl ComponentProgram {
         if self.recipe.cut() == ComponentCut::Mlp {
             merge(&mut accesses, self.mlp_weights()?.accesses());
         }
-        if self.recipe.cut() == ComponentCut::Qwen2bMlp {
+        if self.recipe.cut() == ComponentCut::Qwen2BMlp {
             merge(&mut accesses, self.qwen2b_mlp_weights()?.accesses());
         }
         Ok(accesses)
@@ -926,7 +926,7 @@ impl ComponentProgram {
             .qwen2b_native_launches()
     }
     pub(crate) fn qwen2b_down1_enqueues(&self) -> Result<usize> {
-        if self.recipe.cut() != ComponentCut::Qwen2bMlp
+        if self.recipe.cut() != ComponentCut::Qwen2BMlp
             || self.recipe.bindings().call().rows().len() != 1
         {
             return Err(Error::Unsupported(
@@ -949,7 +949,7 @@ impl ComponentProgram {
     pub(crate) fn arm_fault(&self, value: usize) -> Result<()> {
         if value > 8
             || value > 6
-                && (self.recipe.cut() != ComponentCut::Qwen2bMlp
+                && (self.recipe.cut() != ComponentCut::Qwen2BMlp
                     || self.recipe.bindings().call().rows().len() != 1)
             || value > 4 && !self.recipe.cut().includes_mlp()
             || value > 2 && !self.recipe.cut().includes_post_attention()
@@ -988,12 +988,12 @@ impl ResidentProgram {
             values,
             status: body.status().handle(),
             owned_ranges: OwnedRanges::new(service.client().service_id()),
-            body: ResidentProgramBody::Qwen2bComponent(body),
+            body: ResidentProgramBody::Qwen2BComponent(body),
         })
     }
     pub(crate) fn qwen2b_component(&self) -> Result<&Arc<ComponentProgram>> {
         match &self.body {
-            ResidentProgramBody::Qwen2bComponent(body) => Ok(body),
+            ResidentProgramBody::Qwen2BComponent(body) => Ok(body),
             _ => Err(Error::Unsupported(
                 "not a source2B component program".into(),
             )),

@@ -17,9 +17,9 @@ pub struct TorchCpuGdnContract {
     pub value_heads: usize,
 }
 impl TorchCpuGdnContract {
-    pub const fn arithmetic_identity(&self) -> (ProgramNumericalProfile, u64) {
+    pub const fn arithmetic_identity(&self) -> (NumericalProfile, u64) {
         (
-            ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+            NumericalProfile::TorchCpuAvx2Bf16MixedV1,
             self.standalone_exp.arithmetic_revision(),
         )
     }
@@ -105,7 +105,7 @@ pub(super) fn result_precision(
         channels * 3,
         state,
     ];
-    if builder.profile != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+    if builder.profile != NumericalProfile::TorchCpuAvx2Bf16MixedV1
         || builder.standalone_exp != Some(contract.standalone_exp)
         || inputs.len() != expected.len()
         || inputs.iter().zip(expected).enumerate().any(|(i, (v, n))| {
@@ -133,7 +133,7 @@ pub(super) fn full_convolution_precision(
             "full convolution actual producer arity".into(),
         ));
     };
-    if builder.profile != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+    if builder.profile != NumericalProfile::TorchCpuAvx2Bf16MixedV1
         || input.elements == 0
         || input.elements > 16384
         || input.elements.checked_mul(4) != Some(prior.elements)

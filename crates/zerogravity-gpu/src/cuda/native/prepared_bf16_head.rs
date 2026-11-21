@@ -17,7 +17,7 @@ use std::sync::{
 use zerogravity_artifacts::source_weights::TensorWindow;
 use zerogravity_core::{
     Error, Result,
-    accelerator::program::{ProgramNumericalProfile, SourceTensor},
+    accelerator::program::{NumericalProfile, SourceTensor},
     device_events::{BufferRole, DeviceAccess},
     resource_arbiter::HostWorkspace,
 };
@@ -59,7 +59,7 @@ impl AsRef<[u8]> for WindowBytes {
 pub(crate) struct HeadPreparation {
     pub(crate) matrix: Bf16MatrixSource,
     pub(crate) operand: SourceTensor,
-    pub(crate) numerical: ProgramNumericalProfile,
+    pub(crate) numerical: NumericalProfile,
     pub(crate) manifest: CubinKernelManifest,
     pub(crate) images: Arc<PreparedImages>,
     pub(crate) resident: Option<Arc<ResidentMatrix>>,
@@ -75,7 +75,7 @@ pub(crate) struct PreparedBf16Head {
     _images: Arc<PreparedImages>,
     matrix: Bf16MatrixSource,
     operand: SourceTensor,
-    numerical: ProgramNumericalProfile,
+    numerical: NumericalProfile,
     layout: SourceWeightLayout,
     _metadata: Arc<HostWorkspace>,
     _verification_admission: Option<Arc<HostWorkspace>>,
@@ -239,7 +239,7 @@ impl PreparedBf16Head {
         input_rows: usize,
         selected_row: usize,
         operand: &SourceTensor,
-        numerical: ProgramNumericalProfile,
+        numerical: NumericalProfile,
         input: ResidentLease,
         output: ResidentLease,
     ) -> Result<Arc<Bf16HeadCall>> {
@@ -274,10 +274,10 @@ impl PreparedBf16Head {
 fn require_operand(
     matrix: &Bf16MatrixSource,
     operand: &SourceTensor,
-    numerical: ProgramNumericalProfile,
+    numerical: NumericalProfile,
 ) -> Result<()> {
     let actual = matrix.matrix();
-    if numerical != ProgramNumericalProfile::SourceCudaSm86Bf16V1
+    if numerical != NumericalProfile::CudaSm86Bf16ReferenceV1
         || operand.source != matrix.source().source_identity()
         || operand.name != actual.tensor().name
         || operand.kind != actual.tensor().kind

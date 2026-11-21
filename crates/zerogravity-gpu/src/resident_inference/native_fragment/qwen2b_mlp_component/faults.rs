@@ -1,12 +1,12 @@
 //! Deliberate original-flight cuts; completed comparisons are not GPU failures.
 use super::*;
-use crate::resident_leases::{Qwen2bMlpComputeReadCut as ReadCut, Qwen2bMlpSourceVerification};
+use crate::resident_leases::{Qwen2BMlpComputeReadCut as ReadCut, Qwen2BMlpSourceVerification};
 use std::sync::{Mutex as StdMutex, Weak};
 use zerogravity_artifacts::source_weights::SourceOwnerWitness;
 use zerogravity_core::device_events::BufferLeaseId;
 use zerogravity_core::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Qwen2bMlpComponentFault {
+pub enum Qwen2BMlpComponentFault {
     AdmissionPressure,
     UnknownAfterGateUp,
     CancelBeforeActivation,
@@ -20,7 +20,7 @@ pub enum Qwen2bMlpComponentFault {
     UnknownAfterDownMain,
     CancelBeforeDownReducer,
 }
-impl Qwen2bMlpComponentFault {
+impl Qwen2BMlpComponentFault {
     pub(super) fn read_cut(self) -> Option<ReadCut> {
         match self {
             Self::UnknownAfterFirstSourceRead => Some(ReadCut::UnknownFirst),
@@ -52,9 +52,9 @@ impl Qwen2bMlpComponentFault {
     }
 }
 #[derive(Clone, Debug)]
-pub struct Qwen2bMlpComponentFaultOutcome {
-    pub arithmetic: Qwen2bGdnArithmetic,
-    pub fault: Qwen2bMlpComponentFault,
+pub struct Qwen2BMlpComponentFaultOutcome {
+    pub arithmetic: Qwen2BGdnArithmetic,
+    pub fault: Qwen2BMlpComponentFault,
     pub status: &'static str,
     pub rows: usize,
     pub native_launches: usize,
@@ -87,7 +87,7 @@ struct Witness {
     service: Weak<ResidentService>,
     body: Weak<ComponentProgram>,
     cohort: Weak<Vec<ResidentReadback>>,
-    plan: Weak<Qwen2bMlpSourceVerification>,
+    plan: Weak<Qwen2BMlpSourceVerification>,
     descriptors: Vec<(BufferLeaseId, usize, usize)>,
     submitted: Vec<BufferLeaseId>,
     base: RootBinding,
@@ -101,7 +101,7 @@ impl Probe {
         service: &Arc<ResidentService>,
         body: &Arc<ComponentProgram>,
         cohort: &Arc<Vec<ResidentReadback>>,
-        plan: &Arc<Qwen2bMlpSourceVerification>,
+        plan: &Arc<Qwen2BMlpSourceVerification>,
         accesses: &[(ResidentLease, DeviceAccess)],
         base: RootBinding,
     ) -> Result<()> {
@@ -130,9 +130,9 @@ impl Probe {
     }
     fn inspect(
         &self,
-        fault: Qwen2bMlpComponentFault,
-        arithmetic: Qwen2bGdnArithmetic,
-    ) -> Result<Qwen2bMlpComponentFaultOutcome> {
+        fault: Qwen2BMlpComponentFault,
+        arithmetic: Qwen2BGdnArithmetic,
+    ) -> Result<Qwen2BMlpComponentFaultOutcome> {
         let lock = self
             .0
             .lock()
@@ -184,15 +184,15 @@ impl Probe {
         };
         let native_cut = matches!(
             fault,
-            Qwen2bMlpComponentFault::UnknownAfterGateUp
-                | Qwen2bMlpComponentFault::CancelBeforeActivation
-                | Qwen2bMlpComponentFault::UnknownAfterDownMain
-                | Qwen2bMlpComponentFault::CancelBeforeDownReducer
+            Qwen2BMlpComponentFault::UnknownAfterGateUp
+                | Qwen2BMlpComponentFault::CancelBeforeActivation
+                | Qwen2BMlpComponentFault::UnknownAfterDownMain
+                | Qwen2BMlpComponentFault::CancelBeforeDownReducer
         );
         let down_cut = matches!(
             fault,
-            Qwen2bMlpComponentFault::UnknownAfterDownMain
-                | Qwen2bMlpComponentFault::CancelBeforeDownReducer
+            Qwen2BMlpComponentFault::UnknownAfterDownMain
+                | Qwen2BMlpComponentFault::CancelBeforeDownReducer
         );
         if down_cut
             && (body.recipe().bindings().call().rows().len() != 1
@@ -219,7 +219,7 @@ impl Probe {
             || !body.outputs_unpromoted()?
             || p.completed_reads != expected
             || p.compared_source_bytes != expected_bytes
-            || p.trusted_validator_entered != (fault == Qwen2bMlpComponentFault::ValidatorRefusal)
+            || p.trusted_validator_entered != (fault == Qwen2BMlpComponentFault::ValidatorRefusal)
             || (native_cut && !down_cut && !body.cut_reached())
             || (!native_cut && body.finish_nodes().is_err())
         {
@@ -227,7 +227,7 @@ impl Probe {
                 "2B actual compute graph/ticket/source/plan quarantine mismatch".into(),
             ));
         }
-        Ok(Qwen2bMlpComponentFaultOutcome {
+        Ok(Qwen2BMlpComponentFaultOutcome {
             arithmetic,
             fault,
             status: "DELIBERATE_COMPUTE_FLIGHT_REFUSAL_RETAINED",
@@ -269,8 +269,8 @@ impl Probe {
 }
 pub(super) fn pressure(
     service: Arc<ResidentService>,
-    arithmetic: Qwen2bGdnArithmetic,
-) -> Result<Qwen2bMlpComponentFaultOutcome> {
+    arithmetic: Qwen2BGdnArithmetic,
+) -> Result<Qwen2BMlpComponentFaultOutcome> {
     let key = service.physical_key();
     if !matches!(service.allocate_uninitialized(PROVIDER_BYTES+1,BufferRole::Scratch),
         Err(Error::Limit(ref s)) if s=="resident plus opaque provider budget exceeded")
@@ -287,9 +287,9 @@ pub(super) fn pressure(
     if p.fenced || p.reserved != 0 {
         return Err(Error::State("2B pressure finalphysical0".into()));
     }
-    Ok(Qwen2bMlpComponentFaultOutcome {
+    Ok(Qwen2BMlpComponentFaultOutcome {
         arithmetic,
-        fault: Qwen2bMlpComponentFault::AdmissionPressure,
+        fault: Qwen2BMlpComponentFault::AdmissionPressure,
         status: "PRESSURE_REFUSED_BEFORE_ALLOCATION",
         rows: 0,
         native_launches: 0,
@@ -318,22 +318,22 @@ pub(super) fn pressure(
         root_published: false,
     })
 }
-fn intended(error: &Error, fault: Qwen2bMlpComponentFault) -> bool {
+fn intended(error: &Error, fault: Qwen2BMlpComponentFault) -> bool {
     let Error::State(message) = error else {
         return false;
     };
     match fault {
-        Qwen2bMlpComponentFault::UnknownAfterGateUp => {
+        Qwen2BMlpComponentFault::UnknownAfterGateUp => {
             message == "deliberate qwen2b MLP unknown after actual GateUp"
         }
-        Qwen2bMlpComponentFault::CancelBeforeActivation => message == "native plan cancelled",
-        Qwen2bMlpComponentFault::UnknownAfterDownMain => {
+        Qwen2BMlpComponentFault::CancelBeforeActivation => message == "native plan cancelled",
+        Qwen2BMlpComponentFault::UnknownAfterDownMain => {
             message == "deliberate qwen2b MLP unknown after actual Down main"
         }
-        Qwen2bMlpComponentFault::CancelBeforeDownReducer => {
+        Qwen2BMlpComponentFault::CancelBeforeDownReducer => {
             message == "closed original cubin qualification cancelled"
         }
-        Qwen2bMlpComponentFault::ValidatorRefusal => {
+        Qwen2BMlpComponentFault::ValidatorRefusal => {
             message == "deliberate qwen2b MLP trusted validator refusal"
         }
         _ if fault.is_source_cancel() => message == "original full-model learned upload cancelled",
@@ -345,12 +345,12 @@ fn intended(error: &Error, fault: Qwen2bMlpComponentFault) -> bool {
 }
 pub async fn qualify_qwen2b_mlp_component_fault(
     device: Device,
-    source: Qwen2bMlpComponentSource,
-    arithmetic: Qwen2bGdnArithmetic,
-    inputs: Qwen2bMlpQualificationInputs,
-    fault: Qwen2bMlpComponentFault,
+    source: Qwen2BMlpComponentSource,
+    arithmetic: Qwen2BGdnArithmetic,
+    inputs: Qwen2BMlpQualificationInputs,
+    fault: Qwen2BMlpComponentFault,
     cancelled: Option<&AtomicBool>,
-) -> Result<Qwen2bMlpComponentFaultOutcome> {
+) -> Result<Qwen2BMlpComponentFaultOutcome> {
     let probe = Probe::default();
     let result = run(
         device,

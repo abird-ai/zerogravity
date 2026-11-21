@@ -54,8 +54,7 @@ impl HostMath<'_, '_, '_> {
             .checked_mul(4)
             .filter(|n| *n > 0)
             .ok_or_else(|| Error::Limit("full convolution extent".into()))?;
-        if self.source.program_numerical_profile()
-            != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+        if self.source.program_numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
             || prior.elements != four
             || minimal.elements != channels * 3
         {
@@ -120,8 +119,7 @@ impl HostMath<'_, '_, '_> {
         if self.engine.is_some()
             || self.region_kernel.is_some()
             || self.state.is_some()
-            || self.source.program_numerical_profile()
-                != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+            || self.source.program_numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
         {
             return Err(Error::Unsupported("diagnostic GDN profile/provider".into()));
         }

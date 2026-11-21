@@ -196,10 +196,10 @@ fn every_old_native_policy_stays_closed_to_streamed_windows() {
     for policy in [
         P::SourceRotary,
         P::ProjectionSix,
-        P::FullQwen08,
-        P::ConnectedQwen08,
+        P::FullQwen800M,
+        P::ConnectedQwen800M,
         P::FixedPromptMlp,
-        P::Qwen2bMlp,
+        P::Qwen2BMlp,
         P::FixedPromptQkv,
         P::FixedPromptQkKv,
         P::FixedPromptFa,

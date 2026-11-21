@@ -13,7 +13,7 @@ use zerogravity_core::accelerator::program::PlanOperation;
 use zerogravity_core::accelerator::program::SourceParameter;
 use zerogravity_core::accelerator::program::ValueId;
 use zerogravity_core::accelerator::program::{
-    SourceCall, SourceCallMode, SourceGdnContract, SourceOperator, SourceOperatorKind,
+    GdnContract, SourceCall, SourceCallMode, SourceOperator, SourceOperatorKind,
 };
 
 struct ParameterPayload {
@@ -217,7 +217,7 @@ pub(crate) fn operands(
         || rg.key_width != 128
         || rg.value_width != 128
         || rg.epsilon != 1e-6
-        || rg.contract != SourceGdnContract::ReferenceCudaSm86L2SiluBf16V1
+        || rg.contract != GdnContract::ReferenceCudaSm86L2SiluBf16V1
         || cd.call() != bindings.call()
         || rd.call() != bindings.call()
         || nodes[0] >= nodes[1]

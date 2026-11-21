@@ -31,7 +31,7 @@ fn load(host: &TransferAdmission) -> Result<Arc<qwen35_cuda::Model>> {
             && model.source_metadata().hidden_width == 2048
             && model.source_metadata().manifest_sha256
                 == "88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52"
-            && model.resident().native_cohort_width() == 4
+            && model.resident().fused_cohort_width() == 4
             && model.resident().initial_cohort_width() == 0
             && model.resident().resources().root_count == 18,
         "exact prepared2B cached-only source/phase/root authority",

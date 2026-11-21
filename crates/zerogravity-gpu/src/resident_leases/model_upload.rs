@@ -5,16 +5,16 @@ use cubecl::cuda::SourceWeightLayout;
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::{TensorWindow, VerifiedMatrix, WindowWorkspace};
 use zerogravity_core::accelerator::program::{
-    SourceNumericalContract, SourceOperator, SourceOperatorKind,
+    NumericalContract, SourceOperator, SourceOperatorKind,
 };
 use zerogravity_core::encoding::StoredTensorEncoding;
 
 mod coverage;
 mod qwen2b_mlp;
 pub(crate) use qwen2b_mlp::{
-    Qwen2bMlpComputeReadCut, Qwen2bMlpSourceVerification, Qwen2bMlpWeightCohort, Qwen2bMlpWeights,
+    Qwen2BMlpComputeReadCut, Qwen2BMlpSourceVerification, Qwen2BMlpWeightCohort, Qwen2BMlpWeights,
 };
-pub use qwen2b_mlp::{Qwen2bMlpWeightMode, Qwen2bMlpWeightOutcome, qualify_qwen2b_mlp_weights};
+pub use qwen2b_mlp::{Qwen2BMlpWeightMode, Qwen2BMlpWeightOutcome, qualify_qwen2b_mlp_weights};
 mod verify;
 use coverage::Coverage;
 const METADATA_BYTES: usize = 64 * 1024;
@@ -31,7 +31,7 @@ fn require_layout(operator: &SourceOperator, shape: SourceWeightLayout) -> Resul
     operator.validate()?;
     let members = Coverage::new(shape);
     if !matches!(operator.kind(), SourceOperatorKind::Projection { .. })
-        || operator.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+        || operator.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
         || !operator.parameters().is_empty()
         || operator.matrices().len() != members.members().len()
         || operator
@@ -68,13 +68,13 @@ pub(crate) fn layout_for_operator(operator: &SourceOperator) -> Result<SourceWei
         SourceWeightLayout::MlpGateUp,
         SourceWeightLayout::MlpDown,
         SourceWeightLayout::Vocabulary08,
-        SourceWeightLayout::Qwen2bGdnQkvz,
-        SourceWeightLayout::Qwen2bGdnBa,
-        SourceWeightLayout::Qwen2bGdnOutput,
-        SourceWeightLayout::Qwen2bAttentionQkv,
-        SourceWeightLayout::Qwen2bAttentionOutput,
-        SourceWeightLayout::Qwen2bMlpGateUp,
-        SourceWeightLayout::Qwen2bMlpDown,
+        SourceWeightLayout::Qwen2BGdnQkvz,
+        SourceWeightLayout::Qwen2BGdnBa,
+        SourceWeightLayout::Qwen2BGdnOutput,
+        SourceWeightLayout::Qwen2BAttentionQkv,
+        SourceWeightLayout::Qwen2BAttentionOutput,
+        SourceWeightLayout::Qwen2BMlpGateUp,
+        SourceWeightLayout::Qwen2BMlpDown,
         SourceWeightLayout::Vocabulary2b,
     ] {
         if require_layout(operator, shape).is_ok() {
@@ -418,7 +418,7 @@ mod layout_tests {
         SourceOperator::new(
             call,
             SourceOperatorKind::Projection { selected_row: None },
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
             matrices,
             vec![],
         )

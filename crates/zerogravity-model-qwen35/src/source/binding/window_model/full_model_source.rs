@@ -1,6 +1,6 @@
 //! Source-owned geometry seal. No native/model/session/publication permit.
 use super::*;
-use crate::plan::{QwenGdnCall, QwenPlan, QwenSourceCall, QwenSourceProfile};
+use crate::plan::{QwenGdnCall, QwenModelVariant, QwenPlan, QwenSourceCall};
 
 mod prompt;
 pub use prompt::BoundPromptCall;
@@ -16,14 +16,14 @@ const MIB: usize = 1024 * 1024;
 // retain their independent source checks and admission.
 struct SourceOwner {
     model: Arc<OriginalWindowModelSource>,
-    profile: QwenSourceProfile,
+    profile: QwenModelVariant,
     _metadata: WindowWorkspace,
     prompt: std::sync::Mutex<std::collections::VecDeque<prompt::PreparedRecord>>,
 }
 #[derive(Clone)]
 pub struct BoundFullModelSource(Arc<SourceOwner>);
 impl BoundFullModelSource {
-    pub fn model_profile(&self) -> QwenSourceProfile {
+    pub fn model_profile(&self) -> QwenModelVariant {
         self.0.profile
     }
     pub fn source(&self) -> &Arc<OriginalWindowModelSource> {
@@ -45,9 +45,9 @@ impl BoundFullModelSource {
 impl OriginalWindowModelSource {
     pub fn bind_full_model_source(self: &Arc<Self>) -> Result<BoundFullModelSource> {
         let profile = if self.owner().config_sha256() == CONFIG2B {
-            QwenSourceProfile::Qwen2B
+            QwenModelVariant::Qwen2B
         } else {
-            QwenSourceProfile::Qwen08
+            QwenModelVariant::Qwen800M
         };
         require_source(self, profile)?;
         // Source descriptors/roles were validated before this admission.
@@ -85,9 +85,9 @@ fn require_2b_pins(
 
 pub(super) fn require_source(
     model: &OriginalWindowModelSource,
-    profile: QwenSourceProfile,
+    profile: QwenModelVariant,
 ) -> Result<()> {
-    if profile == QwenSourceProfile::Qwen08 {
+    if profile == QwenModelVariant::Qwen800M {
         model.require_small_model_source()?;
     } else {
         require_2b_pins(

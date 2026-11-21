@@ -190,7 +190,7 @@ impl OriginalGemma4Text {
                 .map(StateSlot::Kv)
                 .collect(),
             true,
-            ProgramNumericalProfile::AnalyticF32TextV1,
+            NumericalProfile::AnalyticF32TextV1,
         )?;
         let logits = forward(self.as_ref(), &mut math, PlanBuilder::inputs(), true)?;
         let plan = math.finish(logits)?;

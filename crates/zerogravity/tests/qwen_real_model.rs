@@ -216,7 +216,7 @@ fn both_real_qwen_models_cpu_gemv_match_gpu_source_oracles() {
 
 #[test]
 #[ignore = "requires local Qwen3.5 0.8B GGUF/config and official tokenizer; exercises true GPU-independent CPU state changes"]
-fn real_qwen08_cpu_snapshot_replay_transaction_and_foreign_rejection() {
+fn real_qwen800m_cpu_snapshot_replay_transaction_and_foreign_rejection() {
     use zerogravity::qwen35::QwenDenseCpu;
     let dir = common::workspace_path("target/models/qwen35-0.8b");
     let mut engine = QwenDenseCpu::open(&dir.join("model.gguf"), &dir.join("config.json")).unwrap();

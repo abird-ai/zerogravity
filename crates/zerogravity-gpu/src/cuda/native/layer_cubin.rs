@@ -603,7 +603,7 @@ async fn qualify_layer_inner_with_activation(
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source_identity(),
-        ResourceOwner::new("qwen08-cuda-cubin", "connected-original-layer0")?,
+        ResourceOwner::new("qwen800m-cuda-cubin", "connected-original-layer0")?,
         scope.provider_cap(),
         inputs.device_cap,
     )?;

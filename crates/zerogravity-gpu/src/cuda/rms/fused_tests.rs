@@ -8,7 +8,7 @@ fn only_original_observed_row_extents_have_fixed_fused_specs() -> Result<()> {
     for (count, grid) in [(1, [4, 1, 1]), (2, [8, 1, 1]), (64, [256, 1, 1])] {
         let rows = Rows::new(count)?;
         assert_eq!(
-            fused_specification(Stage::InputWiden, rows, Columns::Qwen08)?.grid,
+            fused_specification(Stage::InputWiden, rows, Columns::Qwen800M)?.grid,
             grid
         );
     }
@@ -21,7 +21,7 @@ fn fused_add_binds_two_original_inputs_and_separate_output_widths() {
     for rows in [Rows::One, Rows::Two, Rows::SixtyFour] {
         let n = rows.count() * 1024;
         assert_eq!(
-            add_bindings(rows, Columns::Qwen08).as_ref(),
+            add_bindings(rows, Columns::Qwen800M).as_ref(),
             [(n * 2, R), (n * 2, R), (n * 4, W), (n * 2, W)]
         );
         assert_eq!(
@@ -52,7 +52,7 @@ fn normalization_uses_unrounded_sum_and_keeps_original_reduction_grids() -> Resu
         (Rows::SixtyFour, [4, 1, 1]),
     ] {
         assert_eq!(
-            fused_specification(Stage::Mean, rows, Columns::Qwen08)?.grid,
+            fused_specification(Stage::Mean, rows, Columns::Qwen800M)?.grid,
             grid
         );
     }
@@ -63,7 +63,7 @@ fn normalization_uses_unrounded_sum_and_keeps_original_reduction_grids() -> Resu
 fn owned_budget_includes_both_outputs_and_excludes_borrowed_inputs() {
     use std::collections::BTreeSet;
     for rows in [Rows::One, Rows::Two, Rows::SixtyFour] {
-        let layout = Buffer::owned(rows, Columns::Qwen08);
+        let layout = Buffer::owned(rows, Columns::Qwen800M);
         assert_eq!(layout.len(), 12);
         assert!(
             layout
@@ -89,10 +89,10 @@ fn dual2b_real_physical_outputs_and_unrounded_sum_use_same_stages() -> Result<()
     for rows in [Rows::One, Rows::Two, Rows::SixtyFour] {
         let n = rows.count() * 2048;
         assert_eq!(
-            add_bindings(rows, Columns::Qwen2b).as_ref(),
+            add_bindings(rows, Columns::Qwen2B).as_ref(),
             [(n * 2, R), (n * 2, R), (n * 4, W), (n * 2, W)]
         );
-        let layout = Buffer::owned(rows, Columns::Qwen2b);
+        let layout = Buffer::owned(rows, Columns::Qwen2B);
         assert_eq!(
             layout.iter().map(|(_, bytes)| bytes).sum::<usize>(),
             20480 + rows.count() * (20 * 2048 + 12)
@@ -109,7 +109,7 @@ fn dual2b_real_physical_outputs_and_unrounded_sum_use_same_stages() -> Result<()
             [Buffer::SumF32, Buffer::Inverse, Buffer::NormalizedF32]
         );
         assert_eq!(
-            fused_specification(Stage::InputWiden, rows, Columns::Qwen2b)?.grid,
+            fused_specification(Stage::InputWiden, rows, Columns::Qwen2B)?.grid,
             [(n.div_ceil(256)) as u32, 1, 1]
         );
     }
@@ -122,20 +122,20 @@ fn fixed_prompt_dual_keeps_true_dense_outputs_and_same_unrounded_stages() -> Res
     let rows = Rows::FixedPrompt;
     let n = 47 * 1024;
     assert_eq!(
-        add_bindings(rows, Columns::Qwen08).as_ref(),
+        add_bindings(rows, Columns::Qwen800M).as_ref(),
         [(n * 2, R), (n * 2, R), (n * 4, W), (n * 2, W)]
     );
-    let layout = Buffer::owned(rows, Columns::Qwen08);
+    let layout = Buffer::owned(rows, Columns::Qwen800M);
     assert_eq!(layout.iter().map(|(_, bytes)| bytes).sum::<usize>(), 973364);
     assert!(layout.contains(&(Buffer::SumF32, n * 4)));
     assert!(layout.contains(&(Buffer::NormalizedBf16, n * 2)));
     assert!(layout.contains(&(Buffer::ResidualBf16, n * 2)));
     assert_eq!(
-        fused_specification(Stage::InputWiden, rows, Columns::Qwen08)?.grid,
+        fused_specification(Stage::InputWiden, rows, Columns::Qwen800M)?.grid,
         [188, 1, 1]
     );
     assert_eq!(
-        fused_specification(Stage::Mean, rows, Columns::Qwen08)?.grid,
+        fused_specification(Stage::Mean, rows, Columns::Qwen800M)?.grid,
         [3, 1, 1]
     );
     assert_eq!(
@@ -147,7 +147,7 @@ fn fixed_prompt_dual_keeps_true_dense_outputs_and_same_unrounded_stages() -> Res
         [Buffer::SumF32, Buffer::Inverse, Buffer::NormalizedF32]
     );
     for stage in Stage::ORDER {
-        assert!(fused_specification(stage, rows, Columns::Qwen2b).is_err());
+        assert!(fused_specification(stage, rows, Columns::Qwen2B).is_err());
     }
     Ok(())
 }
@@ -156,7 +156,7 @@ fn fixed_prompt_dual_keeps_true_dense_outputs_and_same_unrounded_stages() -> Res
 fn all_legacy_fused_add_sources_and_layouts_are_identical() -> Result<()> {
     use BufferIOAttr::{ReadOnly as R, WriteOnly as W};
     use cubecl_runtime::kernel::KernelMetadata;
-    for columns in [Columns::Qwen08, Columns::Qwen2b] {
+    for columns in [Columns::Qwen800M, Columns::Qwen2B] {
         for rows in [Rows::One, Rows::Two, Rows::SixtyFour] {
             let n = rows.count() * columns.count();
             let original: Arc<str> = format!(
@@ -186,7 +186,7 @@ fn text_dual_keeps_unrounded_sum_and_exact_two_public_stores() -> Result<()> {
         let rows = Rows::Text {
             prompt_tokens: count,
         };
-        for columns in [Columns::Qwen08, Columns::Qwen2b] {
+        for columns in [Columns::Qwen800M, Columns::Qwen2B] {
             let dense = count * columns.count();
             assert_eq!(
                 add_bindings(rows, columns).as_ref(),

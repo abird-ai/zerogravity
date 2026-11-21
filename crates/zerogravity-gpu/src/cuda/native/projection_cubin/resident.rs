@@ -127,7 +127,7 @@ enum ImageScope {
     Projection,
     Connected,
     FixedPromptMlp,
-    Qwen2bMlp,
+    Qwen2BMlp,
     FixedPromptQkv,
     FixedPromptQkKv,
     FixedPromptFa,
@@ -317,7 +317,7 @@ impl AdmittedImages {
                 "exact2B four projection images plus activation".into(),
             ));
         }
-        self.prepare_images_inner(sources, init, cancelled, ImageScope::Qwen2bMlp)
+        self.prepare_images_inner(sources, init, cancelled, ImageScope::Qwen2BMlp)
     }
     pub(in crate::cuda::native) fn prepare_fixed_prompt_qkv_images(
         self,
@@ -641,9 +641,9 @@ impl AdmittedImages {
                     queue.admit_text_cubin_set(owner.clone(), capture.wide())
                 }
                 ImageScope::SourceRotary => queue.admit_source_rotary_cubin_set(owner.clone()),
-                ImageScope::Connected => queue.admit_connected_qwen08_cubin_set(owner.clone()),
+                ImageScope::Connected => queue.admit_connected_qwen800m_cubin_set(owner.clone()),
                 ImageScope::FixedPromptMlp => queue.admit_fixed_prompt_mlp_cubin_set(owner.clone()),
-                ImageScope::Qwen2bMlp => queue.admit_qwen2b_mlp_cubin_set(owner.clone()),
+                ImageScope::Qwen2BMlp => queue.admit_qwen2b_mlp_cubin_set(owner.clone()),
                 ImageScope::FixedPromptQkv => queue.admit_fixed_prompt_qkv_cubin_set(owner.clone()),
                 ImageScope::FixedPromptQkKv => {
                     queue.admit_fixed_prompt_qkkv_cubin_set(owner.clone())
@@ -662,7 +662,7 @@ impl AdmittedImages {
                 ImageScope::AttentionGate => {
                     queue.admit_first_attention_gate_cubin_set(owner.clone())
                 }
-                ImageScope::FullModel => queue.admit_full_qwen08_cubin_set(owner.clone()),
+                ImageScope::FullModel => queue.admit_full_qwen800m_cubin_set(owner.clone()),
                 ImageScope::Projection => queue.admit_cubin_set(owner.clone()),
                 ImageScope::VocabularyHead => queue.admit_vocabulary_head_cubin_set(owner.clone()),
             }

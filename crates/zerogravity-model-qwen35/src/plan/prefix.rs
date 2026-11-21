@@ -215,7 +215,7 @@ mod tests {
                         QwenInputRows::new(source, 0, 64, &vec![11; rows]).unwrap(),
                     )
                     .unwrap();
-                    let profile = ProgramNumericalProfile::SourceCudaSm86Bf16V1;
+                    let profile = NumericalProfile::CudaSm86Bf16ReferenceV1;
                     let mut builder = QwenPlanBuilder::new_operator_slice(source, profile).unwrap();
                     let branch = builder.source_embedding(&descriptor).unwrap();
                     let prior = builder.source_embedding(&descriptor).unwrap();

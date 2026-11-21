@@ -1,13 +1,13 @@
 //! Authenticated ordinary original-HF source seal and static plan factory.
 //! No native backend, session root, invocation IDs or completion authority.
 use super::*;
-use crate::plan::{OrdinaryQwenGeometry, OrdinaryQwenPlan, QwenSourceProfile, build_ordinary_plan};
-use zerogravity_core::numerics::SourceNumericalContract;
+use crate::plan::{OrdinaryQwenGeometry, OrdinaryQwenPlan, QwenModelVariant, build_ordinary_plan};
+use zerogravity_core::numerics::NumericalContract;
 
 struct OrdinarySourceOwner {
     model: Arc<OriginalWindowModelSource>,
     profile: OrdinaryQwenGeometry,
-    numerical: SourceNumericalContract,
+    numerical: NumericalContract,
     _metadata: WindowWorkspace,
 }
 
@@ -34,7 +34,7 @@ impl OrdinarySourceSeal {
     pub fn model_profile(&self) -> OrdinaryQwenGeometry {
         self.0.profile
     }
-    pub fn numerical_contract(&self) -> SourceNumericalContract {
+    pub fn numerical_contract(&self) -> NumericalContract {
         self.0.numerical
     }
     pub fn source(&self) -> &VerifiedTensorSource {
@@ -60,13 +60,13 @@ impl OrdinarySourceSeal {
     #[cfg(all(test, feature = "cpu"))]
     pub(crate) fn for_test(
         model: Arc<OriginalWindowModelSource>,
-        profile: QwenSourceProfile,
+        profile: QwenModelVariant,
     ) -> Result<Self> {
         let metadata = model.source().reserve_workspace(64 * 1024)?;
         Ok(Self(Arc::new(OrdinarySourceOwner {
             model,
             profile: profile.into(),
-            numerical: SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            numerical: NumericalContract::CudaSm86Bf16ReferenceV1,
             _metadata: metadata,
         })))
     }
@@ -76,15 +76,15 @@ impl OriginalWindowModelSource {
     /// Authenticate once without creating request data, a prompt cache,
     /// native image or execution owner.
     pub fn bind_ordinary_cuda_source(self: &Arc<Self>) -> Result<OrdinaryCudaSourceSeal> {
-        self.bind_ordinary_source(SourceNumericalContract::ReferenceCudaSm86Bf16V1)
+        self.bind_ordinary_source(NumericalContract::CudaSm86Bf16ReferenceV1)
     }
     /// Original mixed CPU-source arithmetic; no native/model execution permit.
     pub fn bind_ordinary_cpu_source(self: &Arc<Self>) -> Result<OrdinarySourceSeal> {
-        self.bind_ordinary_source(SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1)
+        self.bind_ordinary_source(NumericalContract::TorchCpuAvx2Bf16MixedV1)
     }
     fn bind_ordinary_source(
         self: &Arc<Self>,
-        numerical: SourceNumericalContract,
+        numerical: NumericalContract,
     ) -> Result<OrdinarySourceSeal> {
         let profile = if self.owner().config_sha256() == CONFIG_LARGE {
             require_large_pins(self)?;
@@ -97,9 +97,9 @@ impl OriginalWindowModelSource {
             )?;
             return self.seal_ordinary_source(geometry, numerical);
         } else if self.owner().config_sha256() == super::full_model_source::CONFIG2B {
-            QwenSourceProfile::Qwen2B
+            QwenModelVariant::Qwen2B
         } else {
-            QwenSourceProfile::Qwen08
+            QwenModelVariant::Qwen800M
         };
         super::full_model_source::require_source(self, profile)?;
         self.seal_ordinary_source(profile.into(), numerical)
@@ -107,7 +107,7 @@ impl OriginalWindowModelSource {
     fn seal_ordinary_source(
         self: &Arc<Self>,
         profile: OrdinaryQwenGeometry,
-        numerical: SourceNumericalContract,
+        numerical: NumericalContract,
     ) -> Result<OrdinarySourceSeal> {
         let metadata = self.source().reserve_workspace(64 * 1024)?;
         Ok(OrdinarySourceSeal(Arc::new(OrdinarySourceOwner {

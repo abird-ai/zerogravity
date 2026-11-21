@@ -32,7 +32,7 @@ pub(super) struct CapturedModel {
     pub group: usize,
     pub hidden_width: usize,
     pub vocabulary_size: u64,
-    pub native_rows: usize,
+    pub cohort_width: usize,
     pub max_token_bytes: usize,
     pub readers: Arc<AtomicUsize>,
     pub _metadata: Arc<ServingCharge>,
@@ -106,33 +106,33 @@ pub(super) fn start(
     models: BTreeMap<String, Arc<CapturedModel>>,
     active: usize,
     output: usize,
-    native_rows: usize,
+    cohort_width: usize,
     host: ServingHost,
     max_pending: Option<usize>,
 ) -> Result<Router, ServiceError> {
     let qwen = qwen35_cuda::models_present(&models);
     let policy = WorkPolicy::Waves(WavePolicy {
-        max_members: if native_rows != 0 {
-            native_rows
+        max_members: if cohort_width != 0 {
+            cohort_width
         } else {
             active
         },
-        max_tokens: if qwen { 72 * native_rows.max(1) } else { 64 },
+        max_tokens: if qwen { 72 * cohort_width.max(1) } else { 64 },
         max_scratch: 256 * 1024 * 1024,
         fairness: Fairness {
             round_tokens: if qwen {
-                72 * native_rows.max(1) + active
+                72 * cohort_width.max(1) + active
             } else {
                 64 + active
             },
             prefill_age_rounds: 2,
         },
         prefill_quantum: if qwen { 72 } else { 47 },
-        unequal_decode: native_rows != 0,
+        unequal_decode: cohort_width != 0,
         unequal_prefill: false,
-        native_rows,
-        cohorts: if native_rows == 4 && qwen {
-            Cohorts::Native {
+        cohort_width,
+        cohorts: if cohort_width == 4 && qwen {
+            Cohorts::Fused {
                 widths: &[4, 1],
                 split_prefix: false,
                 retry: RetryOrder::NextRound,
@@ -279,7 +279,7 @@ impl Executor for CapturedText {
                 observation: Some(GpuTokenObservation {
                     producer_frontier: root.frontier(),
                     producer_root: observe_root.then(|| GpuRootObservation::committed(root)),
-                    native_cohort: None,
+                    fused_cohort: None,
                 }),
             }),
         })

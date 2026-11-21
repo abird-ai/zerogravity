@@ -13,15 +13,15 @@ mod tests {
     fn observed_operations_lower_to_identical_generic_contracts() {
         use ObservedBf16Gemm::*;
         for observed in [
-            Qwen08Layer0QkvzDecode,
-            Qwen08Layer0BaDecode,
-            Qwen08Layer0QkvzPrefill,
-            Qwen08Layer0BaPrefill,
-            Qwen08Layer0OutProjectionDecode,
-            Qwen08Layer0OutProjectionPrefill,
-            Qwen08Layer0QkvzContinuedPrefill,
-            Qwen08Layer0BaContinuedPrefill,
-            Qwen08Layer0OutProjectionContinuedPrefill,
+            Qwen800MLayer0QkvzDecode,
+            Qwen800MLayer0BaDecode,
+            Qwen800MLayer0QkvzPrefill,
+            Qwen800MLayer0BaPrefill,
+            Qwen800MLayer0OutProjectionDecode,
+            Qwen800MLayer0OutProjectionPrefill,
+            Qwen800MLayer0QkvzContinuedPrefill,
+            Qwen800MLayer0BaContinuedPrefill,
+            Qwen800MLayer0OutProjectionContinuedPrefill,
         ] {
             let operation = observed.operation();
             assert_eq!(
@@ -98,15 +98,15 @@ pub use derived_cubin::{PinnedBf16Cubin, PinnedBf16CubinDerivation};
 /// Actual pinned layer0 calls; phase semantics remain the caller's contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ObservedBf16Gemm {
-    Qwen08Layer0QkvzDecode,
-    Qwen08Layer0BaDecode,
-    Qwen08Layer0QkvzPrefill,
-    Qwen08Layer0BaPrefill,
-    Qwen08Layer0OutProjectionDecode,
-    Qwen08Layer0OutProjectionPrefill,
-    Qwen08Layer0QkvzContinuedPrefill,
-    Qwen08Layer0BaContinuedPrefill,
-    Qwen08Layer0OutProjectionContinuedPrefill,
+    Qwen800MLayer0QkvzDecode,
+    Qwen800MLayer0BaDecode,
+    Qwen800MLayer0QkvzPrefill,
+    Qwen800MLayer0BaPrefill,
+    Qwen800MLayer0OutProjectionDecode,
+    Qwen800MLayer0OutProjectionPrefill,
+    Qwen800MLayer0QkvzContinuedPrefill,
+    Qwen800MLayer0BaContinuedPrefill,
+    Qwen800MLayer0OutProjectionContinuedPrefill,
 }
 
 impl ObservedBf16Gemm {
@@ -122,31 +122,31 @@ impl ObservedBf16Gemm {
 
     pub const fn m(self) -> usize {
         match self {
-            Self::Qwen08Layer0QkvzDecode
-            | Self::Qwen08Layer0QkvzPrefill
-            | Self::Qwen08Layer0QkvzContinuedPrefill => 8192,
-            Self::Qwen08Layer0BaDecode
-            | Self::Qwen08Layer0BaPrefill
-            | Self::Qwen08Layer0BaContinuedPrefill => 32,
+            Self::Qwen800MLayer0QkvzDecode
+            | Self::Qwen800MLayer0QkvzPrefill
+            | Self::Qwen800MLayer0QkvzContinuedPrefill => 8192,
+            Self::Qwen800MLayer0BaDecode
+            | Self::Qwen800MLayer0BaPrefill
+            | Self::Qwen800MLayer0BaContinuedPrefill => 32,
             _ => 1024,
         }
     }
     pub const fn n(self) -> usize {
         match self {
-            Self::Qwen08Layer0QkvzDecode
-            | Self::Qwen08Layer0BaDecode
-            | Self::Qwen08Layer0OutProjectionDecode => 1,
-            Self::Qwen08Layer0QkvzPrefill
-            | Self::Qwen08Layer0BaPrefill
-            | Self::Qwen08Layer0OutProjectionPrefill => 64,
+            Self::Qwen800MLayer0QkvzDecode
+            | Self::Qwen800MLayer0BaDecode
+            | Self::Qwen800MLayer0OutProjectionDecode => 1,
+            Self::Qwen800MLayer0QkvzPrefill
+            | Self::Qwen800MLayer0BaPrefill
+            | Self::Qwen800MLayer0OutProjectionPrefill => 64,
             _ => 2,
         }
     }
     pub const fn k(self) -> usize {
         match self {
-            Self::Qwen08Layer0OutProjectionDecode
-            | Self::Qwen08Layer0OutProjectionPrefill
-            | Self::Qwen08Layer0OutProjectionContinuedPrefill => 2048,
+            Self::Qwen800MLayer0OutProjectionDecode
+            | Self::Qwen800MLayer0OutProjectionPrefill
+            | Self::Qwen800MLayer0OutProjectionContinuedPrefill => 2048,
             _ => 1024,
         }
     }

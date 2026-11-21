@@ -7,7 +7,7 @@ use std::{
 use zerogravity::{
     Runtime,
     cache::CacheOptions,
-    models::{ModelLoadRequest, QwenSourceProfile},
+    models::{ModelLoadRequest, QwenServingProfile},
     resource_arbiter::{
         AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
         TransferAdmission,
@@ -61,7 +61,7 @@ fn observe(
                 }
                 let gpu = token.gpu.unwrap();
                 assert_eq!(gpu.producer_frontier, rows as u64 + ids.len() as u64);
-                assert!(gpu.native_cohort.is_none());
+                assert!(gpu.fused_cohort.is_none());
                 let published = gpu.producer_root.unwrap();
                 if let Some(session) = session {
                     assert_eq!(published.session_id, session);
@@ -184,12 +184,12 @@ fn public_completion_cancellation_and_retirement() {
             aliases: vec!["source".into(), "alias".into()],
             cache: CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
             snapshot: snapshot.into(),
-            profile: QwenSourceProfile {
+            profile: QwenServingProfile {
                 active: 2,
                 context: 1024,
                 output: 3,
                 max_pending: Some(4),
-                native_rows: 0,
+                cohort_width: 0,
             },
             provider_bytes: if streamed { 512 * MIB } else { 4608 * MIB },
             device_bytes: 5120 * MIB as u64,

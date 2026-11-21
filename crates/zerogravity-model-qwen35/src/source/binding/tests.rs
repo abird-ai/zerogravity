@@ -387,7 +387,7 @@ fn original_binding_refuses_changed_pins_profile_axes_and_non_bf16_matrix() {
             loaded.index_sha256
         };
         let profile = if bad == 2 {
-            QwenNumericalProfile::GgufSourceV1
+            QwenNumericalProfile::GgufReferenceV1
         } else {
             QwenNumericalProfile::OriginalHfTorchCpuSlowBf16Avx2
         };

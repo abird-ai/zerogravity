@@ -165,9 +165,9 @@ mod tests {
     #[test]
     fn pooled_roles_are_first_written_inside_each_complete_actor() {
         for (rows, columns) in [
-            (Rows::One, Columns::Qwen08),
-            (Rows::One, Columns::Qwen2b),
-            (Rows::FixedPrompt, Columns::Qwen08),
+            (Rows::One, Columns::Qwen800M),
+            (Rows::One, Columns::Qwen2B),
+            (Rows::FixedPrompt, Columns::Qwen800M),
         ] {
             let mut written = BTreeSet::new();
             for stage in Stage::ORDER {

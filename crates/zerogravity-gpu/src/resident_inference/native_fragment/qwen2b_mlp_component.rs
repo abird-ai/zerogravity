@@ -3,8 +3,8 @@
 use super::continuation::{AttemptPhaseBinding, GdnAttemptSchedule};
 use super::mlp_component::MlpComponentReadback;
 use super::*;
-use crate::cuda::gdn::Qwen2bGdnArithmetic;
-use crate::cuda::native::qwen2b_mlp::{Qwen2bMlpQualificationInputs, validate_inputs};
+use crate::cuda::gdn::Qwen2BGdnArithmetic;
+use crate::cuda::native::qwen2b_mlp::{Qwen2BMlpQualificationInputs, validate_inputs};
 use crate::resident_inference::gdn_state::GdnPhasePlan;
 use crate::resident_leases::ResidentReadback;
 use crate::resident_program::qwen2b_component::{
@@ -13,13 +13,13 @@ use crate::resident_program::qwen2b_component::{
 };
 
 /// Preexisting source/record/admission. Only the controlled helper establishes reserve-before-record chronology.
-pub struct Qwen2bMlpComponentSource {
+pub struct Qwen2BMlpComponentSource {
     recipe: Arc<ComponentRecipe>,
 }
-impl Qwen2bMlpComponentSource {
+impl Qwen2BMlpComponentSource {
     pub fn new(recipe: Arc<ComponentRecipe>) -> Result<Self> {
-        if recipe.cut() != ComponentCut::Qwen2bMlp
-            || recipe.kind() != ComponentKind::Qwen2b
+        if recipe.cut() != ComponentCut::Qwen2BMlp
+            || recipe.kind() != ComponentKind::Qwen2B
             || !recipe.qwen2b_mlp_record_admission_retained()
         {
             return Err(Error::State(
@@ -33,11 +33,11 @@ impl Qwen2bMlpComponentSource {
 #[path = "qwen2b_mlp_component/faults.rs"]
 mod faults;
 pub use faults::{
-    Qwen2bMlpComponentFault, Qwen2bMlpComponentFaultOutcome, qualify_qwen2b_mlp_component_fault,
+    Qwen2BMlpComponentFault, Qwen2BMlpComponentFaultOutcome, qualify_qwen2b_mlp_component_fault,
 };
 #[derive(Clone, Debug)]
-pub struct Qwen2bMlpComponentReceipt {
-    pub arithmetic: Qwen2bGdnArithmetic,
+pub struct Qwen2BMlpComponentReceipt {
+    pub arithmetic: Qwen2BGdnArithmetic,
     pub expected_trajectory: &'static str,
     pub original_selected_ptx_equals_owned_tuple: Option<bool>,
     pub parent_model_accepted: bool,
@@ -57,23 +57,23 @@ pub struct Qwen2bMlpComponentReceipt {
     pub final_physical_reserved_bytes: u64,
 }
 struct RunMode<'a> {
-    arithmetic: Qwen2bGdnArithmetic,
-    fault: Option<Qwen2bMlpComponentFault>,
+    arithmetic: Qwen2BGdnArithmetic,
+    fault: Option<Qwen2BMlpComponentFault>,
     probe: Option<&'a faults::Probe>,
 }
 enum Outcome {
-    Compared(Qwen2bMlpComponentReceipt),
-    Pressure(Qwen2bMlpComponentFaultOutcome),
+    Compared(Qwen2BMlpComponentReceipt),
+    Pressure(Qwen2BMlpComponentFaultOutcome),
 }
 /// Expected outputs are available ONLY inside original trusted completion.
 pub async fn qualify_qwen2b_mlp_component<F>(
     device: Device,
-    source: Qwen2bMlpComponentSource,
-    arithmetic: Qwen2bGdnArithmetic,
-    inputs: Qwen2bMlpQualificationInputs,
+    source: Qwen2BMlpComponentSource,
+    arithmetic: Qwen2BGdnArithmetic,
+    inputs: Qwen2BMlpQualificationInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
-) -> Result<Qwen2bMlpComponentReceipt>
+) -> Result<Qwen2BMlpComponentReceipt>
 where
     F: FnOnce(MlpComponentReadback<'_>) -> Result<()>,
 {
@@ -97,8 +97,8 @@ where
 }
 async fn run<F>(
     device: Device,
-    source: Qwen2bMlpComponentSource,
-    inputs: Qwen2bMlpQualificationInputs,
+    source: Qwen2BMlpComponentSource,
+    inputs: Qwen2BMlpQualificationInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
     mode: RunMode<'_>,
@@ -112,10 +112,10 @@ where
         probe,
     } = mode;
     not_cancelled(cancelled)?;
-    let Qwen2bMlpComponentSource { recipe } = source;
+    let Qwen2BMlpComponentSource { recipe } = source;
     validate_component(&recipe)?;
-    if recipe.cut() != ComponentCut::Qwen2bMlp
-        || recipe.kind() != ComponentKind::Qwen2b
+    if recipe.cut() != ComponentCut::Qwen2BMlp
+        || recipe.kind() != ComponentKind::Qwen2B
         || recipe.qwen2b_arithmetic() != Some(arithmetic)
         || !recipe.qwen2b_mlp_record_admission_retained()
     {
@@ -139,8 +139,8 @@ where
         && matches!(
             fault,
             Some(
-                Qwen2bMlpComponentFault::UnknownAfterDownMain
-                    | Qwen2bMlpComponentFault::CancelBeforeDownReducer
+                Qwen2BMlpComponentFault::UnknownAfterDownMain
+                    | Qwen2BMlpComponentFault::CancelBeforeDownReducer
             )
         )
     {
@@ -148,7 +148,7 @@ where
             "Down main/reducer cut is one-row only".into(),
         ));
     }
-    if fault != Some(Qwen2bMlpComponentFault::AdmissionPressure) {
+    if fault != Some(Qwen2BMlpComponentFault::AdmissionPressure) {
         validate_inputs(&recipe, &inputs)?;
     }
     validate_provider(&device)?;
@@ -178,7 +178,7 @@ where
             "MLP component requires solitary original envelope".into(),
         ));
     }
-    if fault == Some(Qwen2bMlpComponentFault::AdmissionPressure) {
+    if fault == Some(Qwen2BMlpComponentFault::AdmissionPressure) {
         return faults::pressure(service, arithmetic).map(Outcome::Pressure);
     }
     let ticket = service.queue().submit(
@@ -267,7 +267,7 @@ where
     body.prepare_gdn(domains.clone(), cancelled).await?;
     body.prepare_qwen2b_mlp_weights(cancelled).await?;
     let source_plan =
-        body.qwen2b_mlp_verification_plan(fault.and_then(Qwen2bMlpComponentFault::read_cut))?;
+        body.qwen2b_mlp_verification_plan(fault.and_then(Qwen2BMlpComponentFault::read_cut))?;
     // Last real W upload is the native preparation guard. No managed owner is
     // allocated after these native records activate their original pool.
     let mut init = service.begin_initialization(base.root())?;
@@ -326,10 +326,10 @@ where
     }
     let cohort = Arc::new(reads);
     body.arm_fault(match fault {
-        Some(Qwen2bMlpComponentFault::UnknownAfterGateUp) => 5,
-        Some(Qwen2bMlpComponentFault::CancelBeforeActivation) => 6,
-        Some(Qwen2bMlpComponentFault::UnknownAfterDownMain) => 7,
-        Some(Qwen2bMlpComponentFault::CancelBeforeDownReducer) => 8,
+        Some(Qwen2BMlpComponentFault::UnknownAfterGateUp) => 5,
+        Some(Qwen2BMlpComponentFault::CancelBeforeActivation) => 6,
+        Some(Qwen2BMlpComponentFault::UnknownAfterDownMain) => 7,
+        Some(Qwen2BMlpComponentFault::CancelBeforeDownReducer) => 8,
         _ => 0,
     })?;
     if let Some(probe) = probe {
@@ -372,7 +372,7 @@ where
     let (ready, actual) = source_plan
         .complete_compute(flight, &promoted, &cohort, cancelled, |raw| {
             source_plan.enter_compute_validator()?;
-            if fault == Some(Qwen2bMlpComponentFault::ValidatorRefusal) {
+            if fault == Some(Qwen2BMlpComponentFault::ValidatorRefusal) {
                 return Err(Error::State(
                     "deliberate qwen2b MLP trusted validator refusal".into(),
                 ));
@@ -535,7 +535,7 @@ where
             "MLP original physical envelope did not retire".into(),
         ));
     }
-    Ok(Outcome::Compared(Qwen2bMlpComponentReceipt {
+    Ok(Outcome::Compared(Qwen2BMlpComponentReceipt {
         arithmetic,
         expected_trajectory: "CallerValidatedCoherentOriginal2B",
         original_selected_ptx_equals_owned_tuple: None,

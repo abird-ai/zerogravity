@@ -361,7 +361,7 @@ impl FullModelProgram {
         Ok((
             Arc::new(Self {
                 attention_sites: attention_sites(&record)?,
-                gdn_family: GdnFamilyIdentity::original08(),
+                gdn_family: GdnFamilyIdentity::original800m(),
                 fixed_prompt,
                 source,
                 record,

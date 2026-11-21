@@ -20,7 +20,7 @@ impl BulkGdnSsmOutSlice {
         let coefficients = gated.recurrent().coefficients();
         let model = coefficients.model().clone();
         if coefficients.span().len() != 64
-            || model.numerical_profile() != QwenNumericalProfile::GgufSourceV1
+            || model.numerical_profile() != QwenNumericalProfile::GgufReferenceV1
             || model.source_identity() != coefficients.source_identity()
             || gated.gated().len() != 131072
             || gated.gated().iter().any(|v| !v.is_finite())
@@ -61,7 +61,7 @@ impl BulkGdnSsmOutSlice {
     pub fn record(&self) -> Result<RecordedOperatorSlice> {
         let mut builder = PlanBuilder::new_operator_slice(
             self.descriptor().source(),
-            ProgramNumericalProfile::GgufSourceV1,
+            NumericalProfile::GgufReferenceV1,
         )?;
         let output = crate::forward::zen_ssm_out_slice(&mut builder, self.descriptor())?;
         builder.finish_operator_slice(output)

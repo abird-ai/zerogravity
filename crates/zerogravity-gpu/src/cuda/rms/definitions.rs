@@ -28,7 +28,7 @@ impl RmsDefinitions {
     }
     #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     fn build_specs(rows: Rows, columns: Columns) -> Result<(Vec<Spec>, Vec<Spec>)> {
-        if matches!(rows, Rows::CohortB4 { initial: true }) && columns != Columns::Qwen08 {
+        if matches!(rows, Rows::CohortB4 { initial: true }) && columns != Columns::Qwen800M {
             return Err(Error::Unsupported(
                 "B4 RMS definitions require original1024 columns".into(),
             ));
@@ -109,13 +109,13 @@ mod tests {
     #[test]
     fn compiler_context_pooled_rms_shares_nine_exact_keys_and_preserves_geometry() -> Result<()> {
         for (rows, columns) in [
-            (Rows::One, Columns::Qwen08),
-            (Rows::FixedPrompt, Columns::Qwen08),
-            (Rows::One, Columns::Qwen2b),
-            (Rows::Text { prompt_tokens: 47 }, Columns::Qwen2b),
-            (Rows::CohortB4 { initial: true }, Columns::Qwen08),
-            (Rows::CohortB4 { initial: false }, Columns::Qwen08),
-            (Rows::CohortB4 { initial: false }, Columns::Qwen2b),
+            (Rows::One, Columns::Qwen800M),
+            (Rows::FixedPrompt, Columns::Qwen800M),
+            (Rows::One, Columns::Qwen2B),
+            (Rows::Text { prompt_tokens: 47 }, Columns::Qwen2B),
+            (Rows::CohortB4 { initial: true }, Columns::Qwen800M),
+            (Rows::CohortB4 { initial: false }, Columns::Qwen800M),
+            (Rows::CohortB4 { initial: false }, Columns::Qwen2B),
         ] {
             let (ordinary, dual) = RmsDefinitions::build_specs(rows, columns)?;
             assert_eq!((ordinary.len(), dual.len()), (10, 10));
@@ -130,7 +130,7 @@ mod tests {
             assert!(retained <= RmsDefinitions::metadata_bound()?);
         }
         assert!(
-            RmsDefinitions::build_specs(Rows::CohortB4 { initial: true }, Columns::Qwen2b).is_err()
+            RmsDefinitions::build_specs(Rows::CohortB4 { initial: true }, Columns::Qwen2B).is_err()
         );
         Ok(())
     }

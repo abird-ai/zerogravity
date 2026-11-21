@@ -158,7 +158,7 @@ pub(crate) fn provider_bound(
 
 /// Only the new complete forced-full24 qualifier scope. Host tickets bound
 /// owned source/metadata/readback allocations; this is not host RSS capacity.
-pub fn qwen08_model_host_bound() -> Result<usize> {
+pub fn qwen800m_model_host_bound() -> Result<usize> {
     let mut retained = 0usize;
     // Existing original source metadata/opening +independent expected reader.
     add(&mut retained, 64 * MIB + 128 * MIB + 4 * MIB)?;

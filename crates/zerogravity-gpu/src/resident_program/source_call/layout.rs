@@ -1,10 +1,9 @@
 //! Allocation-free lowering of the original CPU-arithmetic source template.
 use super::*;
 use zerogravity_core::accelerator::program::{
-    ProgramNumericalProfile, SourceAttentionMask, SourceGamma, SourceGdnContract,
-    SourceOperatorKind, SourceParameter, SourceRowSelection, SourceStateAccess, SourceTensor,
-    StandaloneExpProfile, ValueStorageBinding, ValueStorageLimits, ValueStorageRetention,
-    ValueStorageReusePolicy,
+    GdnContract, NumericalProfile, SourceAttentionMask, SourceGamma, SourceOperatorKind,
+    SourceParameter, SourceRowSelection, SourceStateAccess, SourceTensor, StandaloneExpProfile,
+    ValueStorageBinding, ValueStorageLimits, ValueStorageRetention, ValueStorageReusePolicy,
 };
 use zerogravity_core::encoding::{ScalarDType, StoredTensorEncoding};
 
@@ -89,7 +88,7 @@ impl Layout {
         if plan.source_call().is_some()
             || plan.frontier_delta() != 0
             || plan.is_operator_slice()
-            || plan.numerical_profile() != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+            || plan.numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
             || plan.standalone_exp_profile()
                 != Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1)
             || !(1..=32768).contains(&plan.prefix_capacity())
@@ -157,7 +156,7 @@ impl Layout {
                 ));
             };
             if d.source() != plan.source()
-                || d.numerical_contract() != SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1
+                || d.numerical_contract() != NumericalContract::TorchCpuAvx2Bf16MixedV1
                 || d.max_rows() != MAX_ROWS
                 || vocabulary != 0 && vocabulary != d.vocabulary()
             {
@@ -235,7 +234,7 @@ impl Layout {
                     domain,
                     geometry: g,
                 } => {
-                    if g.contract != SourceGdnContract::TorchCpuAvx2L2SiluBf16V1
+                    if g.contract != GdnContract::TorchCpuAvx2L2SiluBf16V1
                         || g.key_width != 128
                         || g.value_width != 128
                         || !(1..=16).contains(&g.key_heads)

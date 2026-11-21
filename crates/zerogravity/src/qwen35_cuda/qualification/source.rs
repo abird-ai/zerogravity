@@ -1,7 +1,7 @@
 //! Family eligibility/metadata factories for the existing physical qualification paths.
 use super::*;
 use crate::gpu::cuda::{native, rms::RmsLeafSource};
-use crate::qwen35::{plan::QwenSourceProfile, source::binding::BoundFullModelSource};
+use crate::qwen35::{plan::QwenModelVariant, source::binding::BoundFullModelSource};
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 
 pub(super) use crate::qwen35_cuda::bindings::retained;
@@ -9,7 +9,7 @@ pub(super) use crate::qwen35_cuda::bindings::retained;
 /// Exact family source/profile before physical projection/solve preparation.
 pub fn prepare_leaf_source(
     model: &Arc<OriginalWindowModelSource>,
-    profile: QwenSourceProfile,
+    profile: QwenModelVariant,
 ) -> Result<Arc<native::RetainedSource>> {
     Ok(retained(model.prepare_qualification_source(profile)?))
 }
@@ -24,7 +24,7 @@ pub fn prepare_rotary_source(
 
 pub fn prepare_rms_leaf_source(
     model: &Arc<OriginalWindowModelSource>,
-    profile: QwenSourceProfile,
+    profile: QwenModelVariant,
 ) -> Result<RmsLeafSource> {
     let prepared = Arc::new(model.prepare_rms_source(profile)?);
     rms_leaf_source(model, prepared)
@@ -78,16 +78,16 @@ pub async fn qualify_qwen2b_mlp_weights(
     source: BoundFullModelSource,
     recipe: Arc<crate::gpu::ComponentRecipe>,
     record_admission: Arc<WindowWorkspace>,
-    mode: native::Qwen2bMlpWeightMode,
+    mode: native::Qwen2BMlpWeightMode,
     device_cap: u64,
     cancelled: Option<&AtomicBool>,
-) -> Result<native::Qwen2bMlpWeightOutcome> {
+) -> Result<native::Qwen2BMlpWeightOutcome> {
     if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
         return Err(Error::State(
             "original full-model learned upload cancelled".into(),
         ));
     }
-    if mode == native::Qwen2bMlpWeightMode::LegacyUploadRefusal {
+    if mode == native::Qwen2BMlpWeightMode::LegacyUploadRefusal {
         let rows = recipe.mlp_weight_rows(source.source().source(), &record_admission)?;
         let result = source.source().require_small_model_source();
         if !matches!(result,Err(Error::Unsupported(ref why)) if why=="closed original .8B24 source/config/rotary geometry")
@@ -96,7 +96,7 @@ pub async fn qualify_qwen2b_mlp_weights(
                 "legacy .8B upload did not reject exact actual2B source geometry".into(),
             ));
         }
-        return Ok(native::Qwen2bMlpWeightOutcome {
+        return Ok(native::Qwen2BMlpWeightOutcome {
             mode,
             status: "LEGACY_08_UPLOAD_REJECTED_ACTUAL_2B_SOURCE",
             rows,

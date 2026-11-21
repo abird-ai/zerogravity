@@ -97,19 +97,19 @@ const FIXED_PROMPT_CAPTURE: &str =
     "dd8c09131ee5e88efca478044a9a41869532453a9c93f972b2861022740bb2dd";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ModelComponentKind {
-    Qwen2b,
+    Qwen2B,
     FixedPrompt(ComponentImplementation),
 }
 impl ModelComponentKind {
-    pub(super) fn profile(self) -> QwenSourceProfile {
+    pub(super) fn profile(self) -> QwenModelVariant {
         match self {
-            Self::Qwen2b => QwenSourceProfile::Qwen2B,
-            Self::FixedPrompt(_) => QwenSourceProfile::Qwen08,
+            Self::Qwen2B => QwenModelVariant::Qwen2B,
+            Self::FixedPrompt(_) => QwenModelVariant::Qwen800M,
         }
     }
     pub(super) fn columns(self) -> usize {
         match self {
-            Self::Qwen2b => 2048,
+            Self::Qwen2B => 2048,
             Self::FixedPrompt(_) => 1024,
         }
     }
@@ -125,7 +125,7 @@ impl ModelComponentKind {
             ));
         }
         match self {
-            Self::Qwen2b
+            Self::Qwen2B
                 if matches!(
                     request.reference_phase()?,
                     ReferencePhase::InitialOne | ReferencePhase::Initial64
@@ -157,14 +157,14 @@ pub(super) enum ModelComponentCut {
     Gated,
     PostAttention,
     Mlp,
-    Qwen2bMlp,
+    Qwen2BMlp,
 }
 impl ModelComponentCut {
     pub(super) fn includes_post_attention(self) -> bool {
-        matches!(self, Self::PostAttention | Self::Mlp | Self::Qwen2bMlp)
+        matches!(self, Self::PostAttention | Self::Mlp | Self::Qwen2BMlp)
     }
     pub(super) fn includes_mlp(self) -> bool {
-        matches!(self, Self::Mlp | Self::Qwen2bMlp)
+        matches!(self, Self::Mlp | Self::Qwen2BMlp)
     }
     fn require_kind(self, kind: ModelComponentKind) -> Result<()> {
         if self == Self::Mlp && !matches!(kind, ModelComponentKind::FixedPrompt(_)) {
@@ -172,7 +172,7 @@ impl ModelComponentCut {
                 "MLP component is canonical47 only".into(),
             ));
         }
-        if self == Self::Qwen2bMlp && kind != ModelComponentKind::Qwen2b {
+        if self == Self::Qwen2BMlp && kind != ModelComponentKind::Qwen2B {
             return Err(Error::Unsupported(
                 "explicit2B MLP source family only".into(),
             ));
@@ -183,21 +183,21 @@ impl ModelComponentCut {
         match self {
             Self::Gated => NODE_END,
             Self::PostAttention => 8,
-            Self::Mlp | Self::Qwen2bMlp => 11,
+            Self::Mlp | Self::Qwen2BMlp => 11,
         }
     }
     pub(super) fn value_end(self) -> usize {
         match self {
             Self::Gated => VALUE_END,
             Self::PostAttention => 10,
-            Self::Mlp | Self::Qwen2bMlp => 13,
+            Self::Mlp | Self::Qwen2BMlp => 13,
         }
     }
     pub(super) fn provider_bytes(self) -> usize {
         match self {
             Self::Gated => 192 * 1024 * 1024,
             Self::PostAttention | Self::Mlp => 224 * 1024 * 1024,
-            Self::Qwen2bMlp => 320 * 1024 * 1024,
+            Self::Qwen2BMlp => 320 * 1024 * 1024,
         }
     }
 }
@@ -207,12 +207,12 @@ fn require_qwen2b_arithmetic(
     rows: usize,
     arithmetic: ComponentImplementation,
 ) -> Result<()> {
-    if kind != ModelComponentKind::Qwen2b
+    if kind != ModelComponentKind::Qwen2B
         || !matches!(
             cut,
             ModelComponentCut::Gated
                 | ModelComponentCut::PostAttention
-                | ModelComponentCut::Qwen2bMlp
+                | ModelComponentCut::Qwen2BMlp
         )
     {
         return Err(Error::Unsupported(
@@ -231,11 +231,11 @@ fn require_qwen2b_arithmetic(
 }
 
 fn require_weight_request(
-    profile: QwenSourceProfile,
+    profile: QwenModelVariant,
     request: &crate::plan::QwenGdnCall,
 ) -> Result<ReferencePhase> {
     request.validate()?;
-    if profile != QwenSourceProfile::Qwen2B
+    if profile != QwenModelVariant::Qwen2B
         || request.layer().index() != 0
         || request.mode() != SourceCallMode::Prefill
         || request.teachers().base() != 0
@@ -265,10 +265,10 @@ fn require_component_projection(operator: &QwenOperator) -> Result<ModelProjecti
         ));
     }
     match operator.call().model_profile() {
-        QwenSourceProfile::Qwen2B => {
+        QwenModelVariant::Qwen2B => {
             operator.call().request().reference_phase()?;
         }
-        QwenSourceProfile::Qwen08 => {
+        QwenModelVariant::Qwen800M => {
             ModelComponentKind::FixedPrompt(ComponentImplementation::OwnedFixedPromptSolve4)
                 .require_request(operator.call().request())?
         }
@@ -303,14 +303,14 @@ impl BoundFullModelSource {
     ) -> Result<PreparedComponent> {
         let source = self;
         let (kind, qwen2b_arithmetic) = match (self.model_profile(), implementation) {
-            (QwenSourceProfile::Qwen2B, ComponentImplementation::Reference) => {
-                (ModelComponentKind::Qwen2b, None)
+            (QwenModelVariant::Qwen2B, ComponentImplementation::Reference) => {
+                (ModelComponentKind::Qwen2B, None)
             }
-            (QwenSourceProfile::Qwen2B, ComponentImplementation::OwnedSolve4Recompute3) => {
-                (ModelComponentKind::Qwen2b, Some(implementation))
+            (QwenModelVariant::Qwen2B, ComponentImplementation::OwnedSolve4Recompute3) => {
+                (ModelComponentKind::Qwen2B, Some(implementation))
             }
             (
-                QwenSourceProfile::Qwen08,
+                QwenModelVariant::Qwen800M,
                 ComponentImplementation::OwnedFixedPromptSolve4
                 | ComponentImplementation::OriginalPlainSolve2,
             ) => (ModelComponentKind::FixedPrompt(implementation), None),
@@ -323,18 +323,18 @@ impl BoundFullModelSource {
         let cut = match (output, kind) {
             (ComponentOutput::Gated, _) => ModelComponentCut::Gated,
             (ComponentOutput::PostAttention, _) => ModelComponentCut::PostAttention,
-            (ComponentOutput::Mlp, ModelComponentKind::Qwen2b) => ModelComponentCut::Qwen2bMlp,
+            (ComponentOutput::Mlp, ModelComponentKind::Qwen2B) => ModelComponentCut::Qwen2BMlp,
             (ComponentOutput::Mlp, ModelComponentKind::FixedPrompt(_)) => ModelComponentCut::Mlp,
         };
         cut.require_kind(kind)?;
-        if cut == ModelComponentCut::Qwen2bMlp {
+        if cut == ModelComponentCut::Qwen2BMlp {
             require_weight_request(source.model_profile(), record.call().request())?;
         }
         match (cut, record_admission.as_ref()) {
-            (ModelComponentCut::Qwen2bMlp, Some(ticket))
+            (ModelComponentCut::Qwen2BMlp, Some(ticket))
                 if ticket.bytes() == 32 * 1024 * 1024
                     && ticket.source().same_issuer(source.source().source()) => {}
-            (ModelComponentCut::Qwen2bMlp, _) => {
+            (ModelComponentCut::Qwen2BMlp, _) => {
                 return Err(Error::State(
                     "same real2B record32MiB admission required".into(),
                 ));
@@ -346,7 +346,7 @@ impl BoundFullModelSource {
                 ));
             }
         }
-        if cut == ModelComponentCut::Qwen2bMlp && qwen2b_arithmetic.is_none() {
+        if cut == ModelComponentCut::Qwen2BMlp && qwen2b_arithmetic.is_none() {
             return Err(Error::Unsupported(
                 "new2B MLP requires explicit owned arithmetic".into(),
             ));
@@ -565,8 +565,7 @@ impl BoundFullModelSource {
             if geometry.width != kind.columns()
                 || geometry.epsilon != 1e-6
                 || geometry.gamma != SourceGamma::OnePlus
-                || descriptor.numerical_contract()
-                    != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+                || descriptor.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
             {
                 return Err(Error::Unsupported(
                     "component exact RMS epsilon/gamma/width/arithmetic".into(),
@@ -580,7 +579,7 @@ impl BoundFullModelSource {
         if cut.includes_mlp() {
             widths.extend(match cut {
                 ModelComponentCut::Mlp => [7168, 3584, 1024],
-                ModelComponentCut::Qwen2bMlp => [12288, 6144, 2048],
+                ModelComponentCut::Qwen2BMlp => [12288, 6144, 2048],
                 _ => unreachable!(),
             });
         }
@@ -670,7 +669,7 @@ impl BoundFullModelSource {
         };
         let capture = ComponentKernelCapture {
             recipe_sha256: match kind {
-                ModelComponentKind::Qwen2b => REFERENCE_2B_CAPTURE,
+                ModelComponentKind::Qwen2B => REFERENCE_2B_CAPTURE,
                 ModelComponentKind::FixedPrompt(_) => FIXED_PROMPT_CAPTURE,
             },
             explicit_owned: qwen2b_arithmetic.is_some(),
@@ -695,7 +694,7 @@ fn require_ordinary_source(
     use zerogravity_core::encoding::StoredTensorEncoding;
     let hidden = kind.columns();
     match kind {
-        ModelComponentKind::Qwen2b => {
+        ModelComponentKind::Qwen2B => {
             let c = model.owner().config();
             let g = model.geometry();
             if model.owner().config_sha256()

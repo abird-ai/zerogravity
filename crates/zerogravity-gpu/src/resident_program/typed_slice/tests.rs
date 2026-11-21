@@ -8,8 +8,8 @@ use zerogravity_artifacts::{
 };
 use zerogravity_core::{
     accelerator::program::{
-        EmbeddingContract, MathematicalBackend, MatrixAxes, OrdinaryRmsContract, PlanBuilder,
-        ProjectionContract, SourceTensor,
+        EmbeddingContract, MathematicalBackend, MatrixAxes, PlanBuilder, ProjectionContract,
+        RmsContract, SourceTensor,
     },
     resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner},
 };
@@ -156,7 +156,7 @@ fn record(source: &VerifiedTensorSource, extra: bool) -> Result<RecordedOperator
     let n = b.ordinary_rms_profiled(
         source.parameter("gamma")?.source_parameter(),
         &x,
-        OrdinaryRmsContract::TorchCpuBf16Avx2,
+        RmsContract::TorchCpuBf16Avx2,
     )?;
     let y = b.project_profiled(
         descriptor(source, "projection")?,

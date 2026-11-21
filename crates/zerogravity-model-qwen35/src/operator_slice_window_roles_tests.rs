@@ -1,13 +1,13 @@
 //! Source-free full-header fixtures; no trained27B/operator independence claim.
 use super::*;
-use crate::accelerator::program::ProgramNumericalProfile;
+use crate::accelerator::program::NumericalProfile;
 use crate::operator_slice::pure::PureSliceInput;
 use zerogravity_core::resource_arbiter::AllocationClass;
 
 fn input<'a>(source: &OriginalWindowOperators, bytes: &'a [u8]) -> PureSliceInput<'a> {
     PureSliceInput::from_bf16_bytes(
         source.source().source_identity(),
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1,
         bytes,
     )
     .unwrap()
@@ -112,7 +112,7 @@ fn same_plan_projection_and_norm_nodes_do_not_create_state_or_external_producers
     let operators = bind_windows(source.clone(), &loaded);
     let mut builder = PlanBuilder::new_operator_slice(
         source.source_identity(),
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1,
     )
     .unwrap();
     let embedding = builder
@@ -226,7 +226,7 @@ fn invalid_input_role_capacity_and_cancel_refuse_without_leaking_or_fencing() {
         assert!(
             PureSliceInput::from_bf16_bytes(
                 source.source_identity(),
-                ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+                NumericalProfile::TorchCpuAvx2Bf16MixedV1,
                 &bad
             )
             .is_err()
@@ -389,7 +389,7 @@ fn valid_two_hidden_qkv_producer_cannot_record_one_hidden_norm_or_partial_node()
     assert_eq!(matrix.columns, 256);
     let mut builder = PlanBuilder::new_operator_slice(
         source.source_identity(),
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1,
     )
     .unwrap();
     let embedding = builder

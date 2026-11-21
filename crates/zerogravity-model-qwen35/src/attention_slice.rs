@@ -2,8 +2,8 @@
 use super::OperatorSliceSource;
 use crate::accelerator::SourceIdentity;
 use crate::accelerator::program::{
-    ActivationPrecision, MatrixAxes, OrdinaryRmsContract, PlanBuilder, PlanValue,
-    ProgramNumericalProfile, SourceParameter, SourceTensor,
+    ActivationPrecision, MatrixAxes, NumericalProfile, PlanBuilder, PlanValue, RmsContract,
+    SourceParameter, SourceTensor,
 };
 use crate::source::binding::{QwenMatrixRole, QwenParameterRole};
 use crate::{Error, LoadedQwenModel, Result};
@@ -26,7 +26,7 @@ pub(crate) fn attention_roles(
     source: &impl OperatorSliceSource,
     layer: usize,
 ) -> Result<AttentionRoles> {
-    if source.program_numerical_profile() != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+    if source.program_numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
         || source.rms_epsilon().to_bits() != 1e-6f32.to_bits()
         || !source.source_identity().is_bound()
     {
@@ -96,7 +96,7 @@ pub(crate) fn attention_roles(
     ] {
         if parameter.name != format!("{namespace}.{suffix}.weight")
             || parameter.source != source.source_identity()
-            || OrdinaryRmsContract::TorchCpuBf16Avx2.validate(parameter, elements)? != width
+            || RmsContract::TorchCpuBf16Avx2.validate(parameter, elements)? != width
         {
             return Err(Error::State(
                 "attention original Q/K norm role/width".into(),
@@ -170,13 +170,13 @@ impl LoadedQwenModel {
 #[derive(Clone, Copy)]
 pub struct AttentionSliceInput<'a> {
     source: SourceIdentity,
-    profile: ProgramNumericalProfile,
+    profile: NumericalProfile,
     bytes: &'a [u8],
 }
 impl<'a> AttentionSliceInput<'a> {
     pub fn from_bf16_bytes(
         source: SourceIdentity,
-        profile: ProgramNumericalProfile,
+        profile: NumericalProfile,
         bytes: &'a [u8],
     ) -> Result<Self> {
         let value = Self {
@@ -190,7 +190,7 @@ impl<'a> AttentionSliceInput<'a> {
     pub fn source_identity(self) -> SourceIdentity {
         self.source
     }
-    pub fn numerical_profile(self) -> ProgramNumericalProfile {
+    pub fn numerical_profile(self) -> NumericalProfile {
         self.profile
     }
     pub fn precision(self) -> ActivationPrecision {
@@ -200,9 +200,7 @@ impl<'a> AttentionSliceInput<'a> {
         self.bytes
     }
     pub(crate) fn validate(self) -> Result<()> {
-        if !self.source.is_bound()
-            || self.profile != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
-        {
+        if !self.source.is_bound() || self.profile != NumericalProfile::TorchCpuAvx2Bf16MixedV1 {
             return Err(Error::State(
                 "attention private input source/profile".into(),
             ));
@@ -238,8 +236,8 @@ impl AttentionProjectionNormOutput {
     pub fn layer(&self) -> usize {
         self.layer
     }
-    pub fn numerical_profile(&self) -> ProgramNumericalProfile {
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+    pub fn numerical_profile(&self) -> NumericalProfile {
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1
     }
     pub fn precision(&self) -> ActivationPrecision {
         ActivationPrecision::Bf16WidenedF32

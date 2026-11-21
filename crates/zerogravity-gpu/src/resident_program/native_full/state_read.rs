@@ -32,8 +32,8 @@ mod tests {
     use super::*;
     use zerogravity_core::accelerator::SourceIdentity;
     use zerogravity_core::accelerator::program::{
-        AttentionGeometry, KvDomain, SourceAttentionMask, SourceCall, SourceCallMode,
-        SourceNumericalContract, SourceRows, TensorView, TextCallGeometry,
+        AttentionGeometry, KvDomain, NumericalContract, SourceAttentionMask, SourceCall,
+        SourceCallMode, SourceRows, TensorView, TextCallGeometry,
     };
     use zerogravity_core::accelerator::program::{
         ConvDomain, RecurrentDomain, StateEffect, StateVersion, ValueId,
@@ -68,7 +68,7 @@ mod tests {
         SourceOperator::new(
             call.clone(),
             kind,
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
             Vec::new(),
             Vec::new(),
         )

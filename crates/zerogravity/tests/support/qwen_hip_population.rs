@@ -74,12 +74,12 @@ impl Harness {
             .unwrap();
         let explicit = source_budget::explicit().unwrap();
         let budget = explicit.unwrap_or_default();
-        let profile = QwenHipProfile {
+        let profile = QwenServingProfile {
             active,
             context,
             output,
             max_pending: Some(pending),
-            native_rows: 0,
+            cohort_width: 0,
         };
         let aliases = vec!["source".into(), "alias".into()];
         let cache = CacheOptions::new(None, 96 * 1024 * 1024 * 1024);
@@ -257,7 +257,7 @@ fn public_source_population_completion_cancel_and_shutdown() {
         state
     };
     println!(
-        "SOURCE_POPULATION_OUTCOME model={label} mode={mode} offered={clients} completed_readers={completed} cancel_requested={canceled} unique_observed_sessions={} active_limit={active} native_cohorts=false original_ids=true full_float_comparisons=0 offered_state={offered} terminal_state={terminal}",
+        "SOURCE_POPULATION_OUTCOME model={label} mode={mode} offered={clients} completed_readers={completed} cancel_requested={canceled} unique_observed_sessions={} active_limit={active} fused_cohorts=false original_ids=true full_float_comparisons=0 offered_state={offered} terminal_state={terminal}",
         sessions.len()
     );
     h.retire();

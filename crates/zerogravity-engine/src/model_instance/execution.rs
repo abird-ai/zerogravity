@@ -47,7 +47,7 @@ pub enum Cohorts {
     None,
     /// Independent final-prompt calls still publish through one all-row barrier.
     PromptTails,
-    Native {
+    Fused {
         widths: &'static [usize],
         split_prefix: bool,
         retry: RetryOrder,
@@ -64,7 +64,7 @@ pub struct WavePolicy {
     pub unequal_prefill: bool,
     pub unequal_decode: bool,
     pub cohorts: Cohorts,
-    pub native_rows: usize,
+    pub cohort_width: usize,
 }
 #[derive(Clone, Copy, Debug)]
 pub enum WorkPolicy {
@@ -87,8 +87,8 @@ pub struct WorkerConfig {
 pub struct CohortWork {
     pub phase: Phase,
     pub state_only: bool,
-    /// Zero: composite all-row publication, not a fused native width.
-    pub native_rows: usize,
+    /// Zero: composite all-row publication, not a fused cohort width.
+    pub cohort_width: usize,
 }
 /// Actual completed work, distinct from publication and output usage.
 #[derive(Clone, Copy, Debug, Default)]
@@ -98,9 +98,9 @@ pub struct Completion {
     pub dispatches: u64,
     pub model_tokens: u64,
     pub committed_roots: u64,
-    pub native_projections: u64,
-    pub native_sampler: u64,
-    pub native_rows: usize,
+    pub fused_projections: u64,
+    pub fused_sampler: u64,
+    pub cohort_width: usize,
     pub state_only: bool,
 }
 /// Only returned after the original source/session publisher succeeds.
@@ -118,7 +118,7 @@ pub struct SingleCompleted {
 pub struct Completed<R> {
     pub ready: R,
     pub completion: Completion,
-    pub native: bool,
+    pub fused: bool,
 }
 pub enum Preparation<R> {
     Ready(Completed<R>),
@@ -191,7 +191,7 @@ pub trait Executor: Sized + Send + Sync + 'static {
     fn cohort_eligible(_row: &Active<Self>) -> bool {
         false
     }
-    /// Pairwise physical compatibility for native cohort formation. The
+    /// Pairwise physical compatibility for fused cohort formation. The
     /// scheduler requires this relation in both directions for every pair, so
     /// implementations need not be trusted to be symmetric or transitive and
     /// must not rely on one distinguished anchor row.

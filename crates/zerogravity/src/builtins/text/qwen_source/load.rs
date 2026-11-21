@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    accelerator::program::SourceNumericalContract,
+    accelerator::program::NumericalContract,
     cache::{CacheOptions, CacheStore},
     gpu::{Device, ResidentModel},
     qwen35_source::{self, Inputs},
@@ -23,7 +23,7 @@ pub(crate) enum SourceBackend {
     },
 }
 impl SourceBackend {
-    fn validate(self, profile: QwenSourceProfile) -> Result<(), ServiceError> {
+    fn validate(self, profile: QwenServingProfile) -> Result<(), ServiceError> {
         #[cfg(feature = "qwen35-cuda")]
         if let Self::Cuda {
             provider_bytes,
@@ -46,14 +46,14 @@ impl SourceBackend {
             if let Some(policy) = smart_config.overrides.state_policy {
                 validate_cuda_state_policy(profile, policy)?;
             }
-            if let Some(native_rows) = smart_config.overrides.native_rows {
-                profile.validate_native_rows(native_rows)?;
+            if let Some(cohort_width) = smart_config.overrides.cohort_width {
+                profile.validate_cohort_width(cohort_width)?;
             }
         }
         #[cfg(feature = "qwen35-hip")]
         if matches!(self, Self::Hip(_)) {
             profile.validate_base()?;
-            profile.validate_native_rows(profile.native_rows)?;
+            profile.validate_cohort_width(profile.cohort_width)?;
         } else {
             profile.validate_base()?;
         }
@@ -61,19 +61,19 @@ impl SourceBackend {
         profile.validate_base()?;
         Ok(())
     }
-    fn contract(self) -> SourceNumericalContract {
+    fn contract(self) -> NumericalContract {
         match self {
             #[cfg(feature = "qwen35-hip")]
-            Self::Hip(_) => SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1,
+            Self::Hip(_) => NumericalContract::TorchCpuAvx2Bf16MixedV1,
             #[cfg(feature = "qwen35-cuda")]
-            Self::Cuda { .. } => SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            Self::Cuda { .. } => NumericalContract::CudaSm86Bf16ReferenceV1,
         }
     }
 }
 
 #[cfg(feature = "qwen35-cuda")]
 fn validate_cuda_state_policy(
-    profile: QwenSourceProfile,
+    profile: QwenServingProfile,
     policy: crate::models::QwenCudaStatePolicy,
 ) -> Result<(), ServiceError> {
     if let crate::models::QwenCudaStatePolicy::Paged {
@@ -164,19 +164,19 @@ fn smart_cuda_provider_cap(
 
 #[cfg(feature = "qwen35-cuda")]
 fn normalize_cuda_smart_input(
-    mut profile: QwenSourceProfile,
+    mut profile: QwenServingProfile,
     backend: SourceBackend,
-) -> (QwenSourceProfile, SourceBackend) {
+) -> (QwenServingProfile, SourceBackend) {
     match backend {
         SourceBackend::Cuda {
             provider_bytes,
             device_bytes,
             mut smart_config,
         } => {
-            if smart_config.overrides.native_rows.is_none() && profile.native_rows != 0 {
-                smart_config.overrides.native_rows = Some(profile.native_rows);
+            if smart_config.overrides.cohort_width.is_none() && profile.cohort_width != 0 {
+                smart_config.overrides.cohort_width = Some(profile.cohort_width);
             }
-            profile.native_rows = 0;
+            profile.cohort_width = 0;
             (
                 profile,
                 SourceBackend::Cuda {
@@ -195,12 +195,12 @@ fn normalize_cuda_smart_input(
 #[derive(Clone)]
 struct CudaSmartCandidate {
     state_policy: crate::models::QwenCudaStatePolicy,
-    native_rows: usize,
+    cohort_width: usize,
     inventory: crate::gpu::OrdinaryCudaSourceInventory,
 }
 
 #[cfg(feature = "qwen35-cuda")]
-fn automatic_native_rows(active: usize) -> &'static [usize] {
+fn automatic_cohort_width(active: usize) -> &'static [usize] {
     match active {
         8.. => &[8, 4, 0],
         4..=7 => &[4, 0],
@@ -211,10 +211,10 @@ fn automatic_native_rows(active: usize) -> &'static [usize] {
 #[cfg(feature = "qwen35-cuda")]
 fn resolve_cuda_smart_config(
     model: &str,
-    mut profile: QwenSourceProfile,
+    mut profile: QwenServingProfile,
     plan: std::sync::Arc<crate::accelerator::program::ForwardPlan>,
     backend: SourceBackend,
-) -> Result<(SourceBackend, QwenSourceProfile), ServiceError> {
+) -> Result<(SourceBackend, QwenServingProfile), ServiceError> {
     use crate::{
         gpu::{OrdinaryCudaWeightStorage, ResidentModel},
         smart_config::{SmartConfigDecision, SmartConfigMode, SmartConfigSource},
@@ -234,7 +234,7 @@ fn resolve_cuda_smart_config(
 
     let mode = smart_config.mode;
     let state_user = smart_config.overrides.state_policy;
-    let native_user = smart_config.overrides.native_rows;
+    let native_user = smart_config.overrides.cohort_width;
 
     if mode == SmartConfigMode::Disabled {
         let state = crate::smart_config::resolve(
@@ -245,12 +245,12 @@ fn resolve_cuda_smart_config(
         )
         .map_err(ServiceError::inference)?;
         let native = crate::smart_config::resolve(mode, native_user, 0usize, || {
-            unreachable!("disabled smart config does not evaluate auto native rows")
+            unreachable!("disabled smart config does not evaluate auto cohort width")
         })
         .map_err(ServiceError::inference)?;
         validate_cuda_state_policy(profile, state.value)?;
-        profile.validate_native_rows(native.value)?;
-        profile.native_rows = native.value;
+        profile.validate_cohort_width(native.value)?;
+        profile.cohort_width = native.value;
 
         let mut report = crate::smart_config::SmartConfigReport::new(model, "cuda", mode, None);
         report.push(
@@ -260,7 +260,7 @@ fn resolve_cuda_smart_config(
             state.reason,
         );
         report.push(
-            "native_rows",
+            "cohort_width",
             native.value.to_string(),
             native.source,
             native.reason,
@@ -273,7 +273,7 @@ fn resolve_cuda_smart_config(
                 smart_config: crate::smart_config::SmartConfig::disabled(
                     crate::models::QwenCudaSmartOverrides {
                         state_policy: Some(state.value),
-                        native_rows: Some(native.value),
+                        cohort_width: Some(native.value),
                     },
                 ),
             },
@@ -306,38 +306,38 @@ fn resolve_cuda_smart_config(
     let native_values = if mode == SmartConfigMode::Enabled {
         native_user
             .map(|rows| vec![rows])
-            .unwrap_or_else(|| automatic_native_rows(profile.active).to_vec())
+            .unwrap_or_else(|| automatic_cohort_width(profile.active).to_vec())
     } else {
-        automatic_native_rows(profile.active).to_vec()
+        automatic_cohort_width(profile.active).to_vec()
     };
 
     for state in &state_values {
         validate_cuda_state_policy(profile, *state)?;
     }
     for rows in &native_values {
-        profile.validate_native_rows(*rows)?;
+        profile.validate_cohort_width(*rows)?;
     }
 
     let (effective_cap, observed_unix_ms, observation) =
         smart_cuda_provider_cap(provider_bytes, device_bytes);
     let mut candidates = Vec::with_capacity(state_values.len() * native_values.len());
     let mut refusals = Vec::new();
-    for native_rows in native_values {
+    for cohort_width in native_values {
         for state_policy in &state_values {
             match ResidentModel::ordinary_cuda_source_preflight_for_state_policy(
                 plan.clone(),
                 profile.active,
-                native_rows,
+                cohort_width,
                 effective_cap,
                 (*state_policy).into(),
             ) {
                 Ok(inventory) => candidates.push(CudaSmartCandidate {
                     state_policy: *state_policy,
-                    native_rows,
+                    cohort_width,
                     inventory,
                 }),
                 Err(error) => refusals.push(format!(
-                    "state={} native_rows={native_rows}: {error}",
+                    "state={} cohort_width={cohort_width}: {error}",
                     describe_cuda_state_policy(*state_policy)
                 )),
             }
@@ -351,7 +351,7 @@ fn resolve_cuda_smart_config(
                 usize::from(
                     candidate.inventory.weight_storage == OrdinaryCudaWeightStorage::Resident,
                 ),
-                candidate.native_rows,
+                candidate.cohort_width,
                 usize::from(matches!(
                     candidate.state_policy,
                     crate::models::QwenCudaStatePolicy::Contiguous
@@ -398,7 +398,7 @@ fn resolve_cuda_smart_config(
     let native_reason = if native_source == SmartConfigSource::User {
         format!("user value constrains smart candidate grid; {common_reason}")
     } else if mode == SmartConfigMode::Exclusive && native_user.is_some() {
-        format!("{common_reason}; user native_rows ignored by exclusive mode")
+        format!("{common_reason}; user cohort_width ignored by exclusive mode")
     } else {
         common_reason
     };
@@ -408,12 +408,12 @@ fn resolve_cuda_smart_config(
         reason: state_reason,
     };
     let native = SmartConfigDecision {
-        value: selected.native_rows,
+        value: selected.cohort_width,
         source: native_source,
         reason: native_reason,
     };
 
-    profile.native_rows = native.value;
+    profile.cohort_width = native.value;
     let mut report =
         crate::smart_config::SmartConfigReport::new(model, "cuda", mode, observed_unix_ms);
     report.push(
@@ -423,7 +423,7 @@ fn resolve_cuda_smart_config(
         state.reason,
     );
     report.push(
-        "native_rows",
+        "cohort_width",
         native.value.to_string(),
         native.source,
         native.reason,
@@ -437,7 +437,7 @@ fn resolve_cuda_smart_config(
             smart_config: crate::smart_config::SmartConfig::disabled(
                 crate::models::QwenCudaSmartOverrides {
                     state_policy: Some(state.value),
-                    native_rows: Some(native.value),
+                    cohort_width: Some(native.value),
                 },
             ),
         },
@@ -469,18 +469,18 @@ pub(crate) fn load_router(
     aliases: Vec<String>,
     cache: CacheOptions,
     snapshot: String,
-    profile: QwenSourceProfile,
+    profile: QwenServingProfile,
     backend: SourceBackend,
 ) -> Result<Router, ServiceError> {
     #[cfg(feature = "qwen35-cuda")]
     let (profile, backend) = normalize_cuda_smart_input(profile, backend);
     backend.validate(profile)?;
     #[cfg(feature = "qwen35-hip")]
-    if profile.native_rows != 0 && matches!(backend, SourceBackend::Hip(_)) {
+    if profile.cohort_width != 0 && matches!(backend, SourceBackend::Hip(_)) {
         return Err(ServiceError::new(
             400,
             "unsupported_source_batch",
-            "source native_rows currently requires CUDA",
+            "source cohort_width currently requires CUDA",
         ));
     }
     validate_aliases(&aliases)?;
@@ -541,7 +541,7 @@ pub(crate) fn load_router(
             source.clone(),
             source.plan.plan().clone(),
             profile.active,
-            profile.native_rows,
+            profile.cohort_width,
             provider_bytes,
             device_bytes,
             smart_config
@@ -587,23 +587,23 @@ pub(crate) fn load_router(
             context: profile.context,
             output: profile.output,
             max_pending: profile.max_pending,
-            policy: if profile.native_rows == 0 {
+            policy: if profile.cohort_width == 0 {
                 WorkPolicy::Sequential
             } else {
                 WorkPolicy::Waves(WavePolicy {
-                    max_members: profile.native_rows,
-                    max_tokens: profile.native_rows * 64,
+                    max_members: profile.cohort_width,
+                    max_tokens: profile.cohort_width * 64,
                     max_scratch: 256 * 1024 * 1024,
                     fairness: Fairness {
-                        round_tokens: profile.native_rows * 64 + profile.active,
+                        round_tokens: profile.cohort_width * 64 + profile.active,
                         prefill_age_rounds: 2,
                     },
                     prefill_quantum: 64,
                     unequal_prefill: false,
                     unequal_decode: true,
-                    native_rows: profile.native_rows,
-                    cohorts: Cohorts::Native {
-                        widths: if profile.native_rows == 8 {
+                    cohort_width: profile.cohort_width,
+                    cohorts: Cohorts::Fused {
+                        widths: if profile.cohort_width == 8 {
                             &[8, 4, 2, 1]
                         } else {
                             &[4, 2, 1]
@@ -629,7 +629,7 @@ fn open_source(
     snapshot: &str,
     context: usize,
     host: &ServingHost,
-    contract: SourceNumericalContract,
+    contract: NumericalContract,
 ) -> Result<SourceParts, ServiceError> {
     let admission = host.transfer_admission(alias, "original-source")?;
     // Bounds and real credit precede cache metadata, source parsing and plan.
@@ -731,13 +731,13 @@ mod tests {
             &snapshot,
             514,
             &host,
-            SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1,
+            NumericalContract::TorchCpuAvx2Bf16MixedV1,
         )
         .unwrap();
         let plan = &parts.source.plan;
         assert_eq!(
             plan.source_seal().numerical_contract(),
-            SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1
+            NumericalContract::TorchCpuAvx2Bf16MixedV1
         );
         assert_eq!(plan.context_capacity_tokens(), 514);
         assert_eq!(plan.max_chunk_rows(), 64);
@@ -960,7 +960,7 @@ mod cuda_paged_tests {
             &snapshot,
             512,
             &host,
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
         )
         .unwrap();
         let needed = page_tokens * 2 + 2;
@@ -1122,7 +1122,7 @@ mod cuda_paged_tests {
     }
 
     #[test]
-    #[ignore = "approved original HF cache; native B2/B4/B8 contiguous-vs-paged state transport"]
+    #[ignore = "approved original HF cache; fused 2/4/8-row cohort contiguous-vs-paged state transport"]
     fn original_source_native_paged_state_transport_matches_contiguous() {
         let (parts, page_tokens, max_append_tokens, tokens) =
             paged_source_fixture("paged-source-native-transport");
@@ -1376,12 +1376,12 @@ mod cuda_paged_tests {
             vec!["source".into()],
             CacheOptions::new(root, 96 * 1024 * 1024 * 1024),
             snapshot,
-            QwenSourceProfile {
+            QwenServingProfile {
                 active: 2,
                 context: 512,
                 output: 1,
                 max_pending: Some(4),
-                native_rows: 0,
+                cohort_width: 0,
             },
             SourceBackend::Cuda {
                 provider_bytes: PROVIDER_BYTES,
@@ -1392,7 +1392,7 @@ mod cuda_paged_tests {
                             page_tokens: 4,
                             max_append_tokens: 64,
                         }),
-                        native_rows: None,
+                        cohort_width: None,
                     },
                 ),
             },
@@ -1494,12 +1494,12 @@ mod cuda_paged_tests {
             vec!["source".into()],
             CacheOptions::new(root, 96 * 1024 * 1024 * 1024),
             snapshot,
-            QwenSourceProfile {
+            QwenServingProfile {
                 active: 1,
                 context: 512,
                 output: 1,
                 max_pending: Some(2),
-                native_rows: 0,
+                cohort_width: 0,
             },
             SourceBackend::Cuda {
                 provider_bytes: PROVIDER_BYTES,
@@ -1510,7 +1510,7 @@ mod cuda_paged_tests {
                             page_tokens: 4,
                             max_append_tokens: 64,
                         }),
-                        native_rows: None,
+                        cohort_width: None,
                     },
                 ),
             },
@@ -1656,7 +1656,7 @@ mod cuda_paged_tests {
     }
 
     #[test]
-    #[ignore = "approved original HF cache; exact contiguous-vs-paged CUDA B1 all42"]
+    #[ignore = "approved original HF cache; exact contiguous-vs-paged CUDA singleton all-state-domain comparison"]
     fn original_source_b1_paged_matches_contiguous_at_page_boundaries() {
         let (parts, page_tokens, max_append_tokens, mut tokens) =
             paged_source_fixture("paged-source-differential");
@@ -1701,7 +1701,11 @@ mod cuda_paged_tests {
         assert_eq!(expected.len(), 4);
         assert_eq!(actual.len(), 4);
         for (index, (expected, actual)) in expected.iter().zip(&actual).enumerate() {
-            exact_checkpoint(expected, actual, &format!("paged B1 checkpoint {index}"));
+            exact_checkpoint(
+                expected,
+                actual,
+                &format!("paged singleton checkpoint {index}"),
+            );
         }
         assert_eq!(
             actual.iter().map(|c| c.frontier).collect::<Vec<_>>(),
@@ -1722,7 +1726,7 @@ mod cuda_paged_tests {
     }
 
     #[test]
-    #[ignore = "approved original HF cache; paged CUDA B1 cancel/discard/restore lifecycle"]
+    #[ignore = "approved original HF cache; paged CUDA singleton cancel/discard/restore lifecycle"]
     fn original_source_b1_paged_lifecycle_rolls_back_exactly() {
         let (parts, page_tokens, max_append_tokens, tokens) =
             paged_source_fixture("paged-source-lifecycle");

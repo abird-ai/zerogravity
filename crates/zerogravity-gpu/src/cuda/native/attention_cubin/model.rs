@@ -21,7 +21,7 @@ use std::{
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::{ParameterWindow, WindowWorkspace};
 use zerogravity_core::accelerator::program::{
-    SourceCallMode, SourceNumericalContract, SourceOperator, SourceOperatorKind,
+    NumericalContract, SourceCallMode, SourceOperator, SourceOperatorKind,
 };
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::{Error, Result};
@@ -111,7 +111,7 @@ impl ModelAttentionParameters {
             if g.attention.width == 256 && g.attention.query_heads == 8
                 && g.attention.kv_heads == 2 && g.rotary_dimensions == 64
                 && g.theta == 10_000_000.0 && g.epsilon == 1e-6)
-            || operator.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+            || operator.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
             || operator.call().rows().capacity() != 512
             || operator.call().rows().vocabulary() != 248320
             || operator.parameters().iter().any(|p| {
@@ -581,7 +581,7 @@ mod source_operator_tests {
                 theta,
                 epsilon: 1e-6,
             }),
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
             vec![],
             parameters,
         )

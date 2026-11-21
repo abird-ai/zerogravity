@@ -2,7 +2,7 @@
 use super::*;
 use std::sync::atomic::AtomicUsize;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Qwen2bMlpComputeReadCut {
+pub(crate) enum Qwen2BMlpComputeReadCut {
     UnknownFirst,
     UnknownMiddle,
     UnknownLast,
@@ -10,7 +10,7 @@ pub(crate) enum Qwen2bMlpComputeReadCut {
     CancelMiddle,
     CancelLast,
 }
-impl Qwen2bMlpComputeReadCut {
+impl Qwen2BMlpComputeReadCut {
     fn point(self) -> (usize, bool) {
         match self {
             Self::UnknownFirst => (1, false),
@@ -23,19 +23,19 @@ impl Qwen2bMlpComputeReadCut {
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Qwen2bMlpComputeProgress {
+pub(crate) struct Qwen2BMlpComputeProgress {
     pub completed_reads: usize,
     pub compared_source_bytes: usize,
     pub trusted_validator_entered: bool,
 }
 pub(super) struct ComputeReadProbe {
-    cut: Option<Qwen2bMlpComputeReadCut>,
+    cut: Option<Qwen2BMlpComputeReadCut>,
     completed: AtomicUsize,
     bytes: AtomicUsize,
     validator: AtomicBool,
 }
 impl ComputeReadProbe {
-    pub(super) fn new(cut: Option<Qwen2bMlpComputeReadCut>) -> Self {
+    pub(super) fn new(cut: Option<Qwen2BMlpComputeReadCut>) -> Self {
         Self {
             cut,
             completed: AtomicUsize::new(0),
@@ -43,8 +43,8 @@ impl ComputeReadProbe {
             validator: AtomicBool::new(false),
         }
     }
-    pub(super) fn progress(&self) -> Qwen2bMlpComputeProgress {
-        Qwen2bMlpComputeProgress {
+    pub(super) fn progress(&self) -> Qwen2BMlpComputeProgress {
+        Qwen2BMlpComputeProgress {
             completed_reads: self.completed.load(Ordering::Acquire),
             compared_source_bytes: self.bytes.load(Ordering::Acquire),
             trusted_validator_entered: self.validator.load(Ordering::Acquire),
@@ -118,12 +118,12 @@ mod tests {
     #[test]
     fn source_cut_is_after_real_progress_and_never_resets() {
         for cut in [
-            Qwen2bMlpComputeReadCut::UnknownFirst,
-            Qwen2bMlpComputeReadCut::UnknownMiddle,
-            Qwen2bMlpComputeReadCut::UnknownLast,
-            Qwen2bMlpComputeReadCut::CancelFirst,
-            Qwen2bMlpComputeReadCut::CancelMiddle,
-            Qwen2bMlpComputeReadCut::CancelLast,
+            Qwen2BMlpComputeReadCut::UnknownFirst,
+            Qwen2BMlpComputeReadCut::UnknownMiddle,
+            Qwen2BMlpComputeReadCut::UnknownLast,
+            Qwen2BMlpComputeReadCut::CancelFirst,
+            Qwen2BMlpComputeReadCut::CancelMiddle,
+            Qwen2BMlpComputeReadCut::CancelLast,
         ] {
             let p = ComputeReadProbe::new(Some(cut));
             for n in 1..cut.point().0 {

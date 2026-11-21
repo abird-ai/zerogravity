@@ -59,10 +59,10 @@ impl SourceCallModel {
         self: &Arc<Self>,
         rows: &[(&SourceCallSession, &BoundSourceInvocation, &ResidentToken)],
     ) -> Result<SourceCallCohortPreparation> {
-        if !matches!(self.native_rows, 4 | 8)
+        if !matches!(self.cohort_width, 4 | 8)
             || !matches!(rows.len(), 2 | 4 | 8)
-            || rows.len() > self.native_rows
-            || self.contract != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+            || rows.len() > self.cohort_width
+            || self.contract != NumericalContract::CudaSm86Bf16ReferenceV1
         {
             return Err(Error::Unsupported(
                 "source CUDA decode cohort requires a qualified width under the admitted model"
@@ -109,10 +109,10 @@ impl SourceCallModel {
         self: &Arc<Self>,
         rows: &[(&SourceCallSession, &BoundSourceInvocation)],
     ) -> Result<SourceCallCohortPreparation> {
-        if !matches!(self.native_rows, 4 | 8)
+        if !matches!(self.cohort_width, 4 | 8)
             || !matches!(rows.len(), 2 | 4 | 8)
-            || rows.len() > self.native_rows
-            || self.contract != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+            || rows.len() > self.cohort_width
+            || self.contract != NumericalContract::CudaSm86Bf16ReferenceV1
         {
             return Err(Error::Unsupported(
                 "source CUDA prefill cohort requires a qualified width under the admitted model"

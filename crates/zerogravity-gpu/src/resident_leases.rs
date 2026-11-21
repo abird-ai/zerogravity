@@ -104,11 +104,11 @@ pub(crate) use foreign_provider::ForeignProviderCharge;
 use foreign_provider::ResidentLedger;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) use model_upload::{
-    ModelWeight, PendingModelWeight, Qwen2bMlpComputeReadCut, Qwen2bMlpSourceVerification,
-    Qwen2bMlpWeightCohort, Qwen2bMlpWeights,
+    ModelWeight, PendingModelWeight, Qwen2BMlpComputeReadCut, Qwen2BMlpSourceVerification,
+    Qwen2BMlpWeightCohort, Qwen2BMlpWeights,
 };
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-pub use model_upload::{Qwen2bMlpWeightMode, Qwen2bMlpWeightOutcome, qualify_qwen2b_mlp_weights};
+pub use model_upload::{Qwen2BMlpWeightMode, Qwen2BMlpWeightOutcome, qualify_qwen2b_mlp_weights};
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) use resident_matrix::ResidentMatrix;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
@@ -1236,7 +1236,7 @@ impl ResidentSubmission<'_> {
         self,
         mode: SourceCompletionMode<'_>,
         cohort: &[ResidentReadback],
-        plan: &Arc<Qwen2bMlpSourceVerification>,
+        plan: &Arc<Qwen2BMlpSourceVerification>,
         cancelled: Option<&AtomicBool>,
         validate: F,
     ) -> Result<(ResidentReady, Vec<Bytes>)>

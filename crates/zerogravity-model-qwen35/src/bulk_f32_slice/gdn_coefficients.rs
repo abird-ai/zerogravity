@@ -35,7 +35,7 @@ impl BulkGdnCoefficientSlice {
     ) -> Result<Self> {
         not_cancelled(cancelled)?;
         if layer != 0
-            || model.numerical_profile() != QwenNumericalProfile::GgufSourceV1
+            || model.numerical_profile() != QwenNumericalProfile::GgufReferenceV1
             || model.geometry().hidden_size != 2048
             || model.geometry().recurrent_value_heads != Some(16)
             || model.geometry().layers.first() != Some(&crate::config::LayerKind::LinearAttention)
@@ -111,7 +111,7 @@ impl BulkGdnCoefficientSlice {
         not_cancelled(cancelled)?;
         zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         let model = prefix.model();
-        if model.numerical_profile() != QwenNumericalProfile::GgufSourceV1
+        if model.numerical_profile() != QwenNumericalProfile::GgufReferenceV1
             || model.geometry().hidden_size != 2048
             || model.geometry().recurrent_value_heads != Some(16)
             || model.geometry().layers.first() != Some(&crate::config::LayerKind::LinearAttention)

@@ -59,7 +59,7 @@ fn compiler_source_identity_covers_each_actual_options_load_and_lifetime_unit() 
         text
     };
     assert_eq!(COMPILATION_SOURCE.context_source, source(None));
-    let actual = GdnFamilyIdentity::original08();
+    let actual = GdnFamilyIdentity::original800m();
     for index in 0..units.len() {
         let mut changed = actual;
         changed.compile_source.context_source = Box::leak(source(Some(index)).into_boxed_str());
@@ -111,7 +111,7 @@ fn static_info_transport_and_locked_metadata_source_are_code_identity() {
         "name = \"cubecl-runtime\"\nversion = \"0.11.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"a1c2bdd3bfe667906cd55cc8f0a956a8476124263b6838cc5d7d68d9edacfea0\""
     ));
 
-    let actual = GdnFamilyIdentity::original08();
+    let actual = GdnFamilyIdentity::original800m();
     for change in 0..3 {
         let mut changed = actual;
         match change {
@@ -196,10 +196,10 @@ fn arbitrary_source_or_foreign_original_identity_cannot_enter_closed_factory() {
     let spec = kernel(phase, stage).unwrap();
     let mut asset = assets::select(phase, stage).unwrap();
     asset.ptx_sha256 = "8201e612 not an admitted default solve";
-    assert!(StageArithmetic::original08(phase, stage, &asset, &spec.bindings).is_err());
+    assert!(StageArithmetic::original800m(phase, stage, &asset, &spec.bindings).is_err());
     let mut asset = assets::select(phase, stage).unwrap();
     asset.source = "same dimensions but different arithmetic";
-    assert!(StageArithmetic::original08(phase, stage, &asset, &spec.bindings).is_err());
+    assert!(StageArithmetic::original800m(phase, stage, &asset, &spec.bindings).is_err());
     assert!(kernel(GdnPhase::CachedDecode, GdnStage::Solve).is_err());
     assert!(kernel(GdnPhase::Initial64, GdnStage::Decode).is_err());
 }
@@ -320,7 +320,7 @@ fn explicit_two_b_factory_keeps_actual_code_while_foreign_family_refuses() {
     let two = assets::select_qwen2b(phase, GdnStage::Conv).unwrap();
     assert!(
         StageArithmetic::for_family(
-            GdnArithmeticFamily::Original08,
+            GdnArithmeticFamily::Original800M,
             phase,
             GdnStage::Conv,
             &two,
@@ -329,7 +329,7 @@ fn explicit_two_b_factory_keeps_actual_code_while_foreign_family_refuses() {
         .is_err()
     );
     assert!(
-        GdnFamilyIdentity::original08()
+        GdnFamilyIdentity::original800m()
             .require_same(&GdnFamilyIdentity::original2b())
             .is_err()
     );
@@ -447,7 +447,7 @@ fn immutable_source_shortcuts_preserve_content_and_length_equality() {
 
 #[test]
 fn exact_family_shortcut_matches_every_original_source_and_compiler_field() {
-    let mut actual = GdnFamilyIdentity::original08();
+    let mut actual = GdnFamilyIdentity::original800m();
     // Small immutable fixtures also exercise distinct slice/string allocations.
     actual.selectors = &["selector A", "selector B"];
     actual.catalogue = &["code A", "code B"];
@@ -523,7 +523,7 @@ fn exact_family_shortcut_matches_every_original_source_and_compiler_field() {
         assert_eq!(actual == changed, reference_family_eq(&actual, &changed));
     }
     for family in [
-        GdnFamilyIdentity::original08(),
+        GdnFamilyIdentity::original800m(),
         GdnFamilyIdentity::original2b(),
     ] {
         assert_eq!(actual == family, reference_family_eq(&actual, &family));
@@ -562,7 +562,7 @@ fn exact_stage_shortcut_keeps_source_bytes_abi_order_and_launch_coordinates() {
     asset.entry = separate_text(asset.entry);
     asset.source = separate_text(asset.source);
     asset.ptx_sha256 = separate_text(asset.ptx_sha256);
-    let equal = StageArithmetic::original08(phase, stage, &asset, &actual.bindings).unwrap();
+    let equal = StageArithmetic::original800m(phase, stage, &asset, &actual.bindings).unwrap();
     assert!(!std::ptr::eq(
         actual.owned_source.as_ptr(),
         equal.owned_source.as_ptr()
@@ -572,7 +572,7 @@ fn exact_stage_shortcut_keeps_source_bytes_abi_order_and_launch_coordinates() {
     let mut bytes = asset.source.as_bytes().to_vec();
     bytes[0] ^= 1;
     asset.source = separate_text(&String::from_utf8(bytes).unwrap());
-    assert!(StageArithmetic::original08(phase, stage, &asset, &actual.bindings).is_err());
+    assert!(StageArithmetic::original800m(phase, stage, &asset, &actual.bindings).is_err());
     assert!(actual.bindings.len() > 1);
     for change in 0..11 {
         let mut changed = equal.clone();

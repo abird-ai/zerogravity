@@ -676,8 +676,8 @@ pub use natural_reuse::{
 
 mod qwen2b_component;
 pub use qwen2b_component::{
-    Qwen2bGdnComponentFault, Qwen2bGdnComponentFaultOutcome, Qwen2bGdnComponentReadback,
-    Qwen2bGdnComponentReceipt, qualify_qwen2b_gdn_component,
+    Qwen2BGdnComponentFault, Qwen2BGdnComponentFaultOutcome, Qwen2BGdnComponentReadback,
+    Qwen2BGdnComponentReceipt, qualify_qwen2b_gdn_component,
     qualify_qwen2b_gdn_component_arithmetic, qualify_qwen2b_gdn_component_fault,
 };
 
@@ -732,8 +732,8 @@ pub use fixed_prompt_full_model::{
 };
 #[cfg(target_os = "linux")]
 pub use qwen2b_mlp_component::{
-    Qwen2bMlpComponentFault, Qwen2bMlpComponentFaultOutcome, Qwen2bMlpComponentReceipt,
-    Qwen2bMlpComponentSource, qualify_qwen2b_mlp_component, qualify_qwen2b_mlp_component_fault,
+    Qwen2BMlpComponentFault, Qwen2BMlpComponentFaultOutcome, Qwen2BMlpComponentReceipt,
+    Qwen2BMlpComponentSource, qualify_qwen2b_mlp_component, qualify_qwen2b_mlp_component_fault,
 };
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]

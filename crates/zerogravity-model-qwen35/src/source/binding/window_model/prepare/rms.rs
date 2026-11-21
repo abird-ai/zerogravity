@@ -1,9 +1,7 @@
 //! Model-owned exact RMS source policies; observed leaves imply no full-model execution.
-// Former binders: FixedPromptRmsSource, Qwen2bRmsSource; final source policy from BoundFinalRmsSource.
+// Former binders: FixedPromptRmsSource, Qwen2BRmsSource; final source policy from BoundFinalRmsSource.
 use super::*;
-use zerogravity_core::accelerator::program::{
-    SourceGamma, SourceNumericalContract, SourceRmsGeometry,
-};
+use zerogravity_core::accelerator::program::{NumericalContract, SourceGamma, SourceRmsGeometry};
 use zerogravity_core::encoding::StoredTensorEncoding;
 const CONFIG: &str = "ed1c1723241f23f7f4e23430759cbd7dcfb4103cbdfe052bfe7626b57c2615b4";
 const INDEX: &str = "aca8afed9da75b0f050b408d270766fd77627f1af401e240f61c3b47d0db02f9";
@@ -24,7 +22,7 @@ const PROMPT: [u32; COUNT] = [
 /// Authentic family source/roles and charged cold metadata; no device or root authority.
 pub struct PreparedRmsSource {
     model: Arc<OriginalWindowModelSource>,
-    profile: QwenSourceProfile,
+    profile: QwenModelVariant,
     embedding: SourceTensor,
     input_gamma: SourceParameter,
     final_gamma: SourceParameter,
@@ -53,19 +51,19 @@ impl PreparedRmsSource {
             gamma: SourceGamma::OnePlus,
         }
     }
-    pub fn numerical_contract(&self) -> SourceNumericalContract {
-        SourceNumericalContract::ReferenceCudaSm86Bf16V1
+    pub fn numerical_contract(&self) -> NumericalContract {
+        NumericalContract::CudaSm86Bf16ReferenceV1
     }
     pub fn row_counts(&self) -> &[usize] {
         match self.profile {
-            QwenSourceProfile::Qwen08 => &[47],
-            QwenSourceProfile::Qwen2B => &COUNTS,
+            QwenModelVariant::Qwen800M => &[47],
+            QwenModelVariant::Qwen2B => &COUNTS,
         }
     }
     pub fn require_ids(&self, ids: &[u32]) -> Result<()> {
         let valid = match self.profile {
-            QwenSourceProfile::Qwen08 => ids == PROMPT,
-            QwenSourceProfile::Qwen2B => {
+            QwenModelVariant::Qwen800M => ids == PROMPT,
+            QwenModelVariant::Qwen2B => {
                 matches!(ids.len(), 1 | 2 | 64) && ids.iter().all(|id| *id < 248320)
             }
         };
@@ -80,12 +78,12 @@ impl PreparedRmsSource {
 impl OriginalWindowModelSource {
     pub fn prepare_rms_source(
         self: &Arc<Self>,
-        profile: QwenSourceProfile,
+        profile: QwenModelVariant,
     ) -> Result<PreparedRmsSource> {
         let metadata = Arc::new(self.source().reserve_workspace(64 * 1024)?);
         match profile {
-            QwenSourceProfile::Qwen08 => require_fixed_source(self)?,
-            QwenSourceProfile::Qwen2B => require_reference_source(self)?,
+            QwenModelVariant::Qwen800M => require_fixed_source(self)?,
+            QwenModelVariant::Qwen2B => require_reference_source(self)?,
         }
         let embedding = self.matrix_descriptor(QwenMatrixRole::Embedding)?;
         let input_gamma = self.parameter_descriptor(QwenParameterRole::InputNorm(0))?;
@@ -123,8 +121,8 @@ impl PreparedFinalRmsSource {
             gamma: SourceGamma::OnePlus,
         }
     }
-    pub fn numerical_contract(&self) -> SourceNumericalContract {
-        SourceNumericalContract::ReferenceCudaSm86Bf16V1
+    pub fn numerical_contract(&self) -> NumericalContract {
+        NumericalContract::CudaSm86Bf16ReferenceV1
     }
     pub fn metadata(&self) -> Arc<WindowWorkspace> {
         self.metadata.clone()

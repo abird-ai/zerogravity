@@ -437,14 +437,14 @@ impl ResidentPagedKvDomain {
         requirement: &StateRequirement,
         pool: Arc<ResidentPagePool>,
         page_tokens: usize,
-        contract: zerogravity_core::accelerator::program::SourceNumericalContract,
+        contract: zerogravity_core::accelerator::program::NumericalContract,
     ) -> Result<Self> {
         let numerical = match contract {
-            zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1 => 1,
-            zerogravity_core::accelerator::program::SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1 => 2,
-            zerogravity_core::accelerator::program::SourceNumericalContract::GgmlSourceF32V1 => 3,
-            zerogravity_core::accelerator::program::SourceNumericalContract::GgmlQ4Repack8x8F32V1 => 4,
-            zerogravity_core::accelerator::program::SourceNumericalContract::OpenBlas033Zen16Q8F32V1 => 5,
+            zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1 => 1,
+            zerogravity_core::accelerator::program::NumericalContract::TorchCpuAvx2Bf16MixedV1 => 2,
+            zerogravity_core::accelerator::program::NumericalContract::GgmlF32V1 => 3,
+            zerogravity_core::accelerator::program::NumericalContract::GgmlQ4Repack8x8F32V1 => 4,
+            zerogravity_core::accelerator::program::NumericalContract::OpenBlas033Zen16Q8F32V1 => 5,
         };
         let StateLayout::Kv { slab, capacity } = requirement.layout else {
             return Err(Error::State(

@@ -427,7 +427,7 @@ async fn qualify_projection_inner(
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source_identity(),
-        ResourceOwner::new("qwen08-cuda-cubin", "original-projection-leaf")?,
+        ResourceOwner::new("qwen800m-cuda-cubin", "original-projection-leaf")?,
         PROVIDER_CAP,
         inputs.device_cap,
     )?;

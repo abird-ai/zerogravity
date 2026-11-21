@@ -102,14 +102,14 @@ fn add_bindings(rows: Rows, columns: Columns) -> Arc<[(usize, BufferIOAttr)]> {
 
 pub(super) fn fused_specification(stage: Stage, rows: Rows, columns: Columns) -> Result<Spec> {
     if matches!(rows, Rows::FixedPrompt | Rows::CohortB4 { initial: true })
-        && columns != Columns::Qwen08
+        && columns != Columns::Qwen800M
     {
         return Err(Error::Unsupported(
             "fixed_prompt dual RMS is original1024 only".into(),
         ));
     }
     if stage != Stage::InputWiden {
-        return if columns == Columns::Qwen08 {
+        return if columns == Columns::Qwen800M {
             specification(stage, rows)
         } else {
             specification_for(stage, rows, columns)
@@ -175,12 +175,12 @@ enum RmsSource {
 impl RmsSource {
     fn columns(&self) -> Columns {
         match self {
-            Self::Model(binding) if binding.geometry().width == 2048 => Columns::Qwen2b,
+            Self::Model(binding) if binding.geometry().width == 2048 => Columns::Qwen2B,
             #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-            Self::Final(binding) if binding.geometry().width == 2048 => Columns::Qwen2b,
+            Self::Final(binding) if binding.geometry().width == 2048 => Columns::Qwen2B,
             #[cfg(target_os = "linux")]
             Self::LeafFinal(source) => source.columns(),
-            _ => Columns::Qwen08,
+            _ => Columns::Qwen800M,
         }
     }
     fn source(&self) -> &VerifiedTensorSource {
@@ -330,7 +330,7 @@ fn source_owner(
         return Err(Error::State("original post-attention gamma source".into()));
     }
     // SAME actual loaded BF16 gamma conversion as original input RMS.
-    let gamma = if columns == Columns::Qwen08 {
+    let gamma = if columns == Columns::Qwen800M {
         super::resident::loaded_gamma(&parameter)?
     } else {
         super::resident::loaded_gamma_for(&parameter, columns)?
@@ -641,7 +641,7 @@ impl FusedRmsPrepared {
     ) -> Result<Arc<Self>> {
         let (correlation, cancelled) = control;
         not_cancelled(cancelled)?;
-        if rows == Rows::FixedPrompt && binding.columns() != Columns::Qwen08 {
+        if rows == Rows::FixedPrompt && binding.columns() != Columns::Qwen800M {
             return Err(Error::Unsupported("fixed_prompt dual source width".into()));
         }
         if binding.source().source_identity() != service.source_identity() {

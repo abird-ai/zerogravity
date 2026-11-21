@@ -400,7 +400,7 @@ mod tests {
 
 mod execution;
 mod faults;
-use crate::resident_program::native_cohort::CohortLibrary;
+use crate::resident_program::fused_cohort::CohortLibrary;
 pub use execution::{TextCohortPreparation, TextCohortReadback};
 pub use faults::{TextCohortFault, TextCohortFaultOutcome, TextCohortFaultRetention};
 
@@ -437,7 +437,7 @@ impl ColdCohort {
     }
     pub(super) fn initialization_host_bytes() -> Result<usize> {
         // Owned zero payload plus the original backend pinned/fallback staging.
-        crate::resident_program::native_cohort::CACHE_BYTES
+        crate::resident_program::fused_cohort::CACHE_BYTES
             .checked_mul(2)
             .ok_or_else(|| Error::Limit("B4 cold cache staging extent".into()))
     }
@@ -476,7 +476,7 @@ impl ColdCohort {
         // Retain admission before any H2D; unknown completion retains it too.
         init.retain_completion_owner(staging)?;
         let cache = init.upload_zeroed(
-            crate::resident_program::native_cohort::CACHE_BYTES,
+            crate::resident_program::fused_cohort::CACHE_BYTES,
             BufferRole::RecurrentState,
         )?;
         // Only complete_sync's real upload event may initialize this cache.

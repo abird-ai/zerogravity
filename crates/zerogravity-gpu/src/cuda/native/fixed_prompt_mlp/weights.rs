@@ -29,7 +29,7 @@ pub(super) fn require_recipe(recipe: &ComponentRecipe) -> Result<()> {
     }
     for (index, arity) in [(8, 2), (10, 1)] {
         let op = recipe.operator(index)?;
-        if op.call()!=recipe.bindings().call() || op.kind()!=(zerogravity_core::accelerator::program::SourceOperatorKind::Projection{selected_row:None}) || op.numerical_contract()!=zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1 || !op.parameters().is_empty() || op.matrices().len()!=arity{return Err(Error::State("MLP actual source operator/member arity differs".into()));}
+        if op.call()!=recipe.bindings().call() || op.kind()!=(zerogravity_core::accelerator::program::SourceOperatorKind::Projection{selected_row:None}) || op.numerical_contract()!=zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1 || !op.parameters().is_empty() || op.matrices().len()!=arity{return Err(Error::State("MLP actual source operator/member arity differs".into()));}
         for member in op.matrices() {
             super::super::post_attention_projection::require_matrix_source(
                 recipe.source(),

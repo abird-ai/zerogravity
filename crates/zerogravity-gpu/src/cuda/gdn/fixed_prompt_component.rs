@@ -93,7 +93,7 @@ impl FixedPromptGdnArithmetic {
     }
     pub(crate) fn require_prepared(self, actual: &GdnArithmetic) -> Result<()> {
         self.require_owned()?;
-        GdnFamilyIdentity::original08().require_same(actual.family())?;
+        GdnFamilyIdentity::original800m().require_same(actual.family())?;
         actual.require_instance(GdnPhase::FixedPrompt, GdnCacheSlot::One, true)
     }
 }

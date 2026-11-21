@@ -17,9 +17,8 @@ use zerogravity_artifacts::source_weights::{
     ParameterWindow, VerifiedTensorSource, WindowWorkspace,
 };
 use zerogravity_core::accelerator::program::{
-    ConvDomain, RecurrentDomain, SourceCall, SourceConvGeometry, SourceGdnContract,
-    SourceGdnGeometry, SourceNumericalContract, SourceOperator, SourceOperatorKind,
-    SourceParameter,
+    ConvDomain, GdnContract, NumericalContract, RecurrentDomain, SourceCall, SourceConvGeometry,
+    SourceGdnGeometry, SourceOperator, SourceOperatorKind, SourceParameter,
 };
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::{Error, Result};
@@ -46,8 +45,8 @@ fn require_native_gdn_pair(
         ));
     };
     if conv.call() != recurrent.call()
-        || conv.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
-        || recurrent.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+        || conv.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
+        || recurrent.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
         || cg
             != (SourceConvGeometry {
                 qkv_channels: 6144,
@@ -62,7 +61,7 @@ fn require_native_gdn_pair(
                 key_width: 128,
                 value_width: 128,
                 epsilon: 1e-6,
-                contract: SourceGdnContract::ReferenceCudaSm86L2SiluBf16V1,
+                contract: GdnContract::ReferenceCudaSm86L2SiluBf16V1,
             })
         || conv.parameters().len() != 1
         || recurrent.parameters().len() != 3

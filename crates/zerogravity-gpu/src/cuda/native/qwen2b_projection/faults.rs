@@ -1,6 +1,6 @@
 //! SAME positive preparation/first native call; Weak-only uncertain inspection.
 use super::super::projection_cubin::resident::NativeRetentionWitness;
-use super::qualification::{PreparedJobs, Qwen2bProjectionFixture, SourceOwner};
+use super::qualification::{PreparedJobs, Qwen2BProjectionFixture, SourceOwner};
 use super::*;
 use crate::cuda::native::RetainedSource;
 use cubecl::Device;
@@ -11,14 +11,14 @@ const MIB: usize = 1024 * 1024;
 pub(super) const UNKNOWN: &str = "deliberate original2B projection unknown after actual QKVZ";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Qwen2bProjectionFault {
+pub enum Qwen2BProjectionFault {
     Pressure,
     UnknownAfterQkvz,
     CancelBeforeBa,
 }
 #[derive(Debug)]
-pub struct Qwen2bProjectionFaultOutcome {
-    pub fault: Qwen2bProjectionFault,
+pub struct Qwen2BProjectionFaultOutcome {
+    pub fault: Qwen2BProjectionFault,
     pub actual_native_launches: usize,
     pub actual_prepared_buffers: usize,
     pub actual_submitted_buffers: usize,
@@ -97,7 +97,7 @@ impl Probe {
             native: 0,
         })
     }
-    fn inspect(self, fault: Qwen2bProjectionFault) -> Result<Qwen2bProjectionFaultOutcome> {
+    fn inspect(self, fault: Qwen2BProjectionFault) -> Result<Qwen2BProjectionFaultOutcome> {
         // Every actual run() local/armed flight/fair slot has dropped first.
         let _source = self
             .source
@@ -164,7 +164,7 @@ impl Probe {
                 "original2B actual native uncertain cohort/fence differs".into(),
             ));
         }
-        Ok(Qwen2bProjectionFaultOutcome {
+        Ok(Qwen2BProjectionFaultOutcome {
             fault,
             actual_native_launches: self.native,
             actual_prepared_buffers: self.ids.len(),
@@ -192,7 +192,7 @@ async fn pressure(
     bound: Arc<RetainedSource>,
     device_cap: u64,
     cancelled: Option<&AtomicBool>,
-) -> Result<Qwen2bProjectionFaultOutcome> {
+) -> Result<Qwen2BProjectionFaultOutcome> {
     not_cancelled(cancelled)?;
     let source = bound.weak_owner();
     let service = ResidentService::new_pinned_cuda(
@@ -221,8 +221,8 @@ async fn pressure(
             "2B projection pressure source/envelope not retired".into(),
         ));
     }
-    Ok(Qwen2bProjectionFaultOutcome {
-        fault: Qwen2bProjectionFault::Pressure,
+    Ok(Qwen2BProjectionFaultOutcome {
+        fault: Qwen2BProjectionFault::Pressure,
         actual_native_launches: 0,
         actual_prepared_buffers: 0,
         actual_submitted_buffers: 0,
@@ -246,18 +246,18 @@ async fn pressure(
 pub async fn qualify_qwen2b_projection_fault(
     device: Device,
     bound: Arc<RetainedSource>,
-    fixtures: Vec<Qwen2bProjectionFixture>,
+    fixtures: Vec<Qwen2BProjectionFixture>,
     inputs: CubinQualificationInputs,
-    fault: Qwen2bProjectionFault,
+    fault: Qwen2BProjectionFault,
     cancelled: Option<&AtomicBool>,
-) -> Result<Qwen2bProjectionFaultOutcome> {
+) -> Result<Qwen2BProjectionFaultOutcome> {
     not_cancelled(cancelled)?;
     if cfg!(debug_assertions) || !matches!(device, Device::Cuda(_)) {
         return Err(Error::Unsupported(
             "release original CUDA2B projection fault".into(),
         ));
     }
-    if fault == Qwen2bProjectionFault::Pressure {
+    if fault == Qwen2BProjectionFault::Pressure {
         let result = pressure(device, bound, inputs.device_cap, cancelled).await;
         drop((fixtures, inputs));
         return result;
@@ -272,7 +272,7 @@ pub async fn qualify_qwen2b_projection_fault(
         super::qualification::RunHooks {
             fault: Some(fault),
             probe: &mut probe,
-            validate_actual: |_: super::qualification::Qwen2bProjectionReadback<'_>| {
+            validate_actual: |_: super::qualification::Qwen2BProjectionReadback<'_>| {
                 Err(Error::State(
                     "uncertain2B projection reached trusted callback".into(),
                 ))
@@ -280,8 +280,8 @@ pub async fn qualify_qwen2b_projection_fault(
         },
     )
     .await;
-    let intended = matches!((&result,fault),(Err(Error::State(why)),Qwen2bProjectionFault::UnknownAfterQkvz) if why==UNKNOWN)
-        || matches!((&result,fault),(Err(Error::State(why)),Qwen2bProjectionFault::CancelBeforeBa) if why=="closed original cubin qualification cancelled");
+    let intended = matches!((&result,fault),(Err(Error::State(why)),Qwen2BProjectionFault::UnknownAfterQkvz) if why==UNKNOWN)
+        || matches!((&result,fault),(Err(Error::State(why)),Qwen2BProjectionFault::CancelBeforeBa) if why=="closed original cubin qualification cancelled");
     if !intended {
         return match result {
             Err(error) => Err(error),

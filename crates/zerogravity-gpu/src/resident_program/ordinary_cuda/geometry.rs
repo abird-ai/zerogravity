@@ -3,7 +3,7 @@ use crate::cuda::{gdn::head_tile::HeadGroups, ordinary_text::Geometry};
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{
-        ForwardPlan, PlanOperation, SourceGamma, SourceGdnContract, SourceOperatorKind,
+        ForwardPlan, GdnContract, PlanOperation, SourceGamma, SourceOperatorKind,
     },
 };
 
@@ -70,7 +70,7 @@ pub(super) fn derive(plan: &ForwardPlan) -> Result<(Geometry, HeadGroups)> {
                 consistent(&mut conv, geometry)?;
             }
             SourceOperatorKind::GatedDelta { geometry, .. } => {
-                if geometry.contract != SourceGdnContract::ReferenceCudaSm86L2SiluBf16V1
+                if geometry.contract != GdnContract::ReferenceCudaSm86L2SiluBf16V1
                     || geometry.key_width != 128
                     || geometry.value_width != 128
                     || geometry.epsilon.to_bits() != 1e-6f32.to_bits()

@@ -298,14 +298,14 @@ fn full_official_e2b_records_one_schedule_and_fifteen_real_kv_owners() {
         8,
         domains.into_iter().map(StateSlot::Kv).collect(),
         true,
-        ProgramNumericalProfile::AnalyticF32TextV1,
+        NumericalProfile::AnalyticF32TextV1,
     )
     .unwrap();
     let output = forward(&fixture, &mut builder, PlanBuilder::inputs(), true).unwrap();
     let plan = builder.finish(output).unwrap();
     assert_eq!(
         plan.numerical_profile(),
-        ProgramNumericalProfile::AnalyticF32TextV1
+        NumericalProfile::AnalyticF32TextV1
     );
     assert_eq!(
         plan.nodes()
@@ -604,9 +604,9 @@ fn unit_attention_scale_and_sliding_mask_use_the_same_actual_kv_owner() {
 fn analytic_ops_are_not_an_implicit_legacy_or_torch_profile_fallback() {
     let fixture = Fixture::tiny();
     for profile in [
-        ProgramNumericalProfile::GgufSourceV1,
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
-        ProgramNumericalProfile::SourceCudaSm86Bf16V1,
+        NumericalProfile::GgufReferenceV1,
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1,
+        NumericalProfile::CudaSm86Bf16ReferenceV1,
     ] {
         let mut builder = PlanBuilder::new_operator_slice(fixture.source, profile).unwrap();
         let input = builder.embed(
@@ -627,7 +627,7 @@ fn analytic_ops_are_not_an_implicit_legacy_or_torch_profile_fallback() {
 fn bf16_buffer_scalar_is_not_recorded_under_the_analytic_native_profile() {
     let fixture = Fixture::tiny();
     let mut builder =
-        PlanBuilder::new_operator_slice(fixture.source, ProgramNumericalProfile::AnalyticF32TextV1)
+        PlanBuilder::new_operator_slice(fixture.source, NumericalProfile::AnalyticF32TextV1)
             .unwrap();
     let input = builder
         .embed(
@@ -690,7 +690,7 @@ fn full_26b_plan_records_thirty_sparse_branches_and_true_global_key_equals_value
             .map(StateSlot::Kv)
             .collect(),
         true,
-        ProgramNumericalProfile::AnalyticF32TextV1,
+        NumericalProfile::AnalyticF32TextV1,
     )
     .unwrap();
     let logits = forward(&fixture, &mut builder, PlanBuilder::inputs(), true).unwrap();
@@ -899,8 +899,7 @@ fn sparse_contract_refuses_foreign_source_bad_shapes_and_legacy_plan_profile() {
         assert!(wrong.validate(fixture.source, 4, router, expert).is_err());
     }
     let mut builder =
-        PlanBuilder::new_operator_slice(fixture.source, ProgramNumericalProfile::GgufSourceV1)
-            .unwrap();
+        PlanBuilder::new_operator_slice(fixture.source, NumericalProfile::GgufReferenceV1).unwrap();
     let x = builder
         .embed(
             fixture.matrix(Gemma4MatrixRole::Embedding).unwrap(),

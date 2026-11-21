@@ -26,9 +26,9 @@ const FIXTURE_ADMISSION: usize = 4 * MIB;
 const READBACK_HOST: usize = 16 * MIB;
 const CANCELLED: &str = "original2B/T64 solve leaf cancelled";
 
-use crate::cuda::gdn::{Qwen2bGdnArithmetic, Qwen2bOriginalGdnReference};
-const OWNED: Qwen2bGdnArithmetic = Qwen2bGdnArithmetic::OwnedSolve4Recompute3;
-const REFERENCE: Qwen2bOriginalGdnReference = Qwen2bOriginalGdnReference::ObservedSolve4Recompute4;
+use crate::cuda::gdn::{Qwen2BGdnArithmetic, Qwen2BOriginalGdnReference};
+const OWNED: Qwen2BGdnArithmetic = Qwen2BGdnArithmetic::OwnedSolve4Recompute3;
+const REFERENCE: Qwen2BOriginalGdnReference = Qwen2BOriginalGdnReference::ObservedSolve4Recompute4;
 /// Reserve SAME original source 4MiB ticket before constructing these Vecs.
 /// No expected Ai/W/U field exists; all seven fields are declared leaf inputs.
 pub struct Solve2bFixture {
@@ -69,8 +69,8 @@ impl Solve2bFixture {
 }
 /// Borrowed only by the trusted original completion callback.
 pub struct Solve2bReadback<'a> {
-    pub arithmetic: Qwen2bGdnArithmetic,
-    pub original_reference: Qwen2bOriginalGdnReference,
+    pub arithmetic: Qwen2BGdnArithmetic,
+    pub original_reference: Qwen2BOriginalGdnReference,
     pub repeat: usize,
     pub inputs: [&'a [u8]; 7],
     pub ai: &'a [u8],
@@ -80,8 +80,8 @@ pub struct Solve2bReadback<'a> {
 #[derive(Debug)]
 pub struct Solve2bReceipt {
     pub completed_cohorts: usize,
-    pub arithmetic: Qwen2bGdnArithmetic,
-    pub original_reference: Qwen2bOriginalGdnReference,
+    pub arithmetic: Qwen2BGdnArithmetic,
+    pub original_reference: Qwen2BOriginalGdnReference,
     pub original_selected_tuple_equals_owned: bool,
     pub zero_dispatches: usize,
     pub solve_dispatches: usize,

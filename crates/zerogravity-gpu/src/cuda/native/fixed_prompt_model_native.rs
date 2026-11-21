@@ -21,7 +21,7 @@ use std::{
 };
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 use zerogravity_core::accelerator::program::{
-    SourceGdnContract, SourceNumericalContract, SourceOperator, SourceOperatorKind, ValueId,
+    GdnContract, NumericalContract, SourceOperator, SourceOperatorKind, ValueId,
 };
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::{Error, Result};
@@ -47,7 +47,7 @@ impl Operation {
     ];
     fn of(op: &SourceOperator) -> Result<Self> {
         op.validate()?;
-        if op.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1 {
+        if op.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1 {
             return Err(Error::Unsupported(
                 "fixed prompt native arithmetic contract".into(),
             ));
@@ -123,9 +123,8 @@ fn is_gdn_output(record: &SourceBindings, input: ValueId) -> Result<bool> {
     }
     match previous.kind() {
         SourceOperatorKind::GatedDelta { geometry, .. }
-            if geometry.contract == SourceGdnContract::ReferenceCudaSm86L2SiluBf16V1
-                && previous.numerical_contract()
-                    == SourceNumericalContract::ReferenceCudaSm86Bf16V1 =>
+            if geometry.contract == GdnContract::ReferenceCudaSm86L2SiluBf16V1
+                && previous.numerical_contract() == NumericalContract::CudaSm86Bf16ReferenceV1 =>
         {
             Ok(true)
         }

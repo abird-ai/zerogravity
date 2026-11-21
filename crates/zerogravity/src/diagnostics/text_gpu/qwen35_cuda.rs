@@ -15,8 +15,8 @@ fn validate_profile(
         || p.context != 512
         || !(1..=8).contains(&p.output)
         || !(1..=8).contains(&p.active)
-        || !matches!(p.native_rows, 0 | 4)
-        || (p.native_rows != 0 && p.active < p.native_rows)
+        || !matches!(p.cohort_width, 0 | 4)
+        || (p.cohort_width != 0 && p.active < p.cohort_width)
         || p.provider_mib == 0
         || p.provider_mib > p.device_mib
         || p.device_mib != 5120
@@ -130,7 +130,7 @@ pub fn load_qwen35_cuda(
             ServiceError::new(400, "invalid_provider_budget", "provider bytes overflow")
         })?;
     let loaded = block_on(async {
-        if profile.native_rows == 4 {
+        if profile.cohort_width == 4 {
             source::qualification::load_b4(device, directory, bundle, &admitted, capacity, None)
                 .await
         } else {
@@ -151,7 +151,7 @@ pub fn load_qwen35_cuda(
         )?,
         engine: ModelEngine::Qwen35Cuda(loaded.clone()),
         group: 0,
-        native_rows: profile.native_rows,
+        cohort_width: profile.cohort_width,
         max_token_bytes: loaded
             .tokenizer()
             .max_token_bytes()
@@ -164,7 +164,7 @@ pub fn load_qwen35_cuda(
         models,
         profile.active,
         profile.output,
-        profile.native_rows,
+        profile.cohort_width,
         serving_host,
         profile.max_pending,
     )
@@ -197,7 +197,7 @@ pub(super) fn health(
             "schema":"zerogravity.qwen35-cuda.serving-source.v1","model":meta.family,
             "repository":meta.repository,"revision":meta.revision,"index_sha256":meta.index_sha256,
             "source_manifest_sha256":meta.manifest_sha256,"prompt_token_counts":meta.prompt_token_counts,
-            "max_cached_tokens":meta.max_cached_tokens,"native_cohort_width":model.resident().native_cohort_width(),"initial_cohort_width":model.resident().initial_cohort_width(),"max_output_tokens":meta.max_output_tokens,"context_capacity_tokens":meta.context_capacity_tokens,
+            "max_cached_tokens":meta.max_cached_tokens,"fused_cohort_width":model.resident().fused_cohort_width(),"initial_cohort_width":model.resident().initial_cohort_width(),"max_output_tokens":meta.max_output_tokens,"context_capacity_tokens":meta.context_capacity_tokens,
         }),
         serde_json::json!({
             "provider_capacity_bytes":observed.provider_capacity_bytes,"resident_bytes":observed.resident_bytes,
@@ -220,7 +220,7 @@ pub(super) fn health(
             "compiler_cumulative_key_source_charged_bytes":observed.compiler_cumulative_usage.key_source_bytes,
             "compiler_cumulative_ptx_charged_bytes":observed.compiler_cumulative_usage.ptx_bytes,
             "readiness_n1_prompt_rows":model.resident().readiness_n1_prompt_rows(),"readiness_n1_cached_rows":model.resident().readiness_n1_cached_rows(),
-            "readiness_b4":model.resident().native_cohort_width()==4,
+            "readiness_b4":model.resident().fused_cohort_width()==4,
             "readiness_finite_grouping_complete":model.resident().readiness_finite_grouping_complete(),
         }),
     ))
@@ -258,7 +258,7 @@ mod tests {
             output: 8,
             provider_mib: 4096,
             device_mib: 5120,
-            native_rows: 0,
+            cohort_width: 0,
             host_mib: 4096,
             max_pending: None,
         }
@@ -333,7 +333,7 @@ mod tests {
             .is_err()
         );
         let mut opted_in = profile();
-        opted_in.native_rows = 4;
+        opted_in.cohort_width = 4;
         assert!(
             validate_profile(
                 GpuBackend::Cuda,
@@ -380,7 +380,7 @@ mod tests {
                 "output" => p.output = value,
                 "provider" => p.provider_mib = value,
                 "device" => p.device_mib = value,
-                "native" => p.native_rows = value,
+                "native" => p.cohort_width = value,
                 _ => unreachable!(),
             }
             assert!(

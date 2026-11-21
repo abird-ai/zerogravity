@@ -514,7 +514,7 @@ fn full_four_frame_transport_rejects_foreign_issuer_and_wrong_precision() {
 
 #[test]
 fn source_token_recording_uses_actual_domains_frontier_and_original_metadata_owner() {
-    use crate::accelerator::program::{ActivationPrecision, ProgramNumericalProfile};
+    use crate::accelerator::program::{ActivationPrecision, NumericalProfile};
     let f = Fixture::new();
     let loaded = source(&f);
     let (raw, host) = windows(&f, &loaded);
@@ -533,7 +533,7 @@ fn source_token_recording_uses_actual_domains_frontier_and_original_metadata_own
         let plan = step.plan();
         assert_eq!(
             plan.numerical_profile(),
-            ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+            NumericalProfile::TorchCpuAvx2Bf16MixedV1
         );
         assert!(!plan.is_operator_slice());
         assert_eq!(plan.frontier_delta(), 1);

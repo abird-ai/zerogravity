@@ -123,7 +123,7 @@ impl PromptSpan {
             rows: SourceRows::new(
                 TextCallGeometry::new(
                     source,
-                    QwenSourceProfile::Qwen08.vocabulary_size(),
+                    QwenModelVariant::Qwen800M.vocabulary_size(),
                     workload.context_capacity_tokens(),
                 )?,
                 base,
@@ -154,7 +154,7 @@ impl PromptSpan {
                 .is_none_or(|end| end > workload.context_capacity_tokens())
             || ids
                 .iter()
-                .any(|&id| id as usize >= QwenSourceProfile::Qwen08.vocabulary_size())
+                .any(|&id| id as usize >= QwenModelVariant::Qwen800M.vocabulary_size())
         {
             return Err(Error::Malformed(
                 "bounded prompt exact source/workload/span/IDs".into(),
@@ -211,7 +211,7 @@ pub struct PromptCall {
     call: QwenSourceCall,
 }
 impl PromptCall {
-    pub fn new(profile: QwenSourceProfile, span: PromptSpan) -> Result<Self> {
+    pub fn new(profile: QwenModelVariant, span: PromptSpan) -> Result<Self> {
         profile.validate_prompt_workload(span.workload())?;
         let request = QwenGdnCall::from_prompt_span(span.clone())?;
         let call = QwenSourceCall::from_request(profile, request)?;
@@ -222,7 +222,7 @@ impl PromptCall {
     pub fn span(&self) -> &PromptSpan {
         &self.span
     }
-    pub fn model_profile(&self) -> QwenSourceProfile {
+    pub fn model_profile(&self) -> QwenModelVariant {
         self.call.model_profile()
     }
     pub fn request(&self) -> &QwenGdnCall {

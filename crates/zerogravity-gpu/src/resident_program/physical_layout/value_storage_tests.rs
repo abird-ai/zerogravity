@@ -2,7 +2,7 @@ use super::*;
 use zerogravity_core::accelerator::{
     SourceIdentity,
     program::{
-        MathematicalBackend, MatrixAxes, PlanBuilder, ProgramNumericalProfile, SourceTensor,
+        MathematicalBackend, MatrixAxes, NumericalProfile, PlanBuilder, SourceTensor,
         ValueStorageFormat, ValueStorageLimits, ValueStorageRetention, ValueStorageReusePolicy,
     },
 };
@@ -12,7 +12,7 @@ use zerogravity_core::encoding::StoredTensorEncoding;
 fn physical_adapter_refuses_growing_slots_and_preserves_explicit_exact_classes() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let mut builder =
-        PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1).unwrap();
+        PlanBuilder::new_operator_slice(source, NumericalProfile::GgufReferenceV1).unwrap();
     let value = builder
         .embed(
             SourceTensor {

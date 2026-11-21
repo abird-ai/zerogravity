@@ -197,7 +197,7 @@ mod tests {
         }
         for policy in [
             CubinSetPolicy::ProjectionSix,
-            CubinSetPolicy::ConnectedQwen08,
+            CubinSetPolicy::ConnectedQwen800M,
             CubinSetPolicy::FirstAttentionCaptured,
         ] {
             assert!(policy.limits(11, 15, 25, false, false).is_err());

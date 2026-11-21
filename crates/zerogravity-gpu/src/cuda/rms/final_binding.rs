@@ -2,7 +2,7 @@
 use std::sync::Arc;
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::accelerator::program::{
-    SourceGamma, SourceNumericalContract, SourceParameter, SourceRmsGeometry,
+    NumericalContract, SourceGamma, SourceParameter, SourceRmsGeometry,
 };
 use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::{Error, Result};
@@ -19,13 +19,13 @@ impl BoundFinalRmsSource {
         source: VerifiedTensorSource,
         parameter: SourceParameter,
         geometry: SourceRmsGeometry,
-        contract: SourceNumericalContract,
+        contract: NumericalContract,
         metadata: Arc<WindowWorkspace>,
     ) -> Result<Self> {
         if !matches!(geometry.width, 1024 | 2048)
             || geometry.epsilon.to_bits() != 1e-6f32.to_bits()
             || geometry.gamma != SourceGamma::OnePlus
-            || contract != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+            || contract != NumericalContract::CudaSm86Bf16ReferenceV1
             || parameter.source != source.source_identity()
             || parameter.kind
                 != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)

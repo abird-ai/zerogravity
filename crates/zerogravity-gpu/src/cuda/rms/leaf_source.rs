@@ -5,7 +5,7 @@ use zerogravity_artifacts::source_weights::{
     VerifiedMatrix, VerifiedParameter, VerifiedTensorSource, WindowWorkspace,
 };
 use zerogravity_core::accelerator::program::{
-    MatrixAxes, SourceNumericalContract, SourceParameter, SourceRmsGeometry, SourceTensor,
+    MatrixAxes, NumericalContract, SourceParameter, SourceRmsGeometry, SourceTensor,
 };
 use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::{Error, Result};
@@ -25,7 +25,7 @@ impl RmsLeafSource {
         input_gamma: SourceParameter,
         final_gamma: SourceParameter,
         geometry: SourceRmsGeometry,
-        contract: SourceNumericalContract,
+        contract: NumericalContract,
         metadata: Arc<WindowWorkspace>,
     ) -> Result<Self> {
         if embedding.source != source.source_identity()
@@ -104,9 +104,9 @@ impl RmsLeafSource {
     }
     pub(super) fn columns(&self) -> Columns {
         if self.0.embedding.columns == 2048 {
-            Columns::Qwen2b
+            Columns::Qwen2B
         } else {
-            Columns::Qwen08
+            Columns::Qwen800M
         }
     }
     pub(crate) fn final_gamma_name(&self) -> &str {

@@ -1,7 +1,7 @@
 //! One original fair slot, workspace, physical event and grouped publication.
 use super::*;
 use crate::resident_leases::ResidentReadback;
-use crate::resident_program::{ResidentProgram, native_cohort::FullModelCohort};
+use crate::resident_program::{ResidentProgram, fused_cohort::FullModelCohort};
 use std::collections::BTreeMap;
 use std::ops::Range;
 use zerogravity_core::accelerator::program::StateSlot;
@@ -101,7 +101,7 @@ fn domains(
         .collect()
 }
 impl TextLoaded {
-    pub fn native_cohort_width(&self) -> usize {
+    pub fn fused_cohort_width(&self) -> usize {
         if self.cohort.is_some() { 4 } else { 0 }
     }
     /// Prepared INITIAL width; cached-only models retain the genuine N1 path.

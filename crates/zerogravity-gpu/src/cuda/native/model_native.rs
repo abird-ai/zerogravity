@@ -20,7 +20,7 @@ use std::{
 };
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 use zerogravity_core::accelerator::program::{
-    SourceGdnContract, SourceNumericalContract, SourceOperator, SourceOperatorKind,
+    GdnContract, NumericalContract, SourceOperator, SourceOperatorKind,
 };
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::{Error, Result};
@@ -68,9 +68,8 @@ fn operation(
                 let SourceOperatorKind::GatedDelta { geometry, .. } = previous.kind() else {
                     return Ok(None);
                 };
-                if geometry.contract != SourceGdnContract::ReferenceCudaSm86L2SiluBf16V1
-                    || previous.numerical_contract()
-                        != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+                if geometry.contract != GdnContract::ReferenceCudaSm86L2SiluBf16V1
+                    || previous.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
                     || record.plan().nodes()[producer.node_index()]
                         .outputs
                         .get(producer.output_index())
@@ -95,7 +94,7 @@ fn operation(
     };
     if selected.is_some()
         && (operator.call() != record.call()
-            || operator.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1)
+            || operator.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1)
     {
         return Err(Error::State(
             "native actual source/call/arithmetic contract differs".into(),

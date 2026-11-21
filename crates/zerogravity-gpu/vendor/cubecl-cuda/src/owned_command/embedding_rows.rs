@@ -227,7 +227,7 @@ impl OwnedCudaQueue {
     /// IDs from its private authenticated call. The SAME armed flight retains
     /// both complete original leases and the call/table owner before enqueue;
     /// table is Read, exclusive destination Activation is Write. No Ready here.
-    pub unsafe fn enqueue_qwen08_embedding_rows(
+    pub unsafe fn enqueue_qwen800m_embedding_rows(
         &self,
         table: Handle,
         destination: Handle,

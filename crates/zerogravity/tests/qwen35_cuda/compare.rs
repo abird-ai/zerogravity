@@ -11,7 +11,7 @@ pub(super) fn completed(
     reference: &Path,
     call: usize,
     prompt_rows: usize,
-    profile: zerogravity::qwen35::plan::QwenSourceProfile,
+    profile: zerogravity::qwen35::plan::QwenModelVariant,
 ) -> Result<()> {
     completed_fixed(
         read,
@@ -26,7 +26,7 @@ pub(super) fn completed_fresh(
     observed: &Path,
     call: usize,
     prompt_rows: usize,
-    profile: zerogravity::qwen35::plan::QwenSourceProfile,
+    profile: zerogravity::qwen35::plan::QwenModelVariant,
 ) -> Result<()> {
     completed_fixed(
         read,

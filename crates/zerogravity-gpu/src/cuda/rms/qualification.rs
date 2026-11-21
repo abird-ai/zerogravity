@@ -140,7 +140,7 @@ pub async fn qualify_input_rms(
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source_identity(),
-        ResourceOwner::new("qwen08-cuda-source", "embedding-input-rms")?,
+        ResourceOwner::new("qwen800m-cuda-source", "embedding-input-rms")?,
         PROVIDER_CAP,
         device_cap,
     )?;

@@ -9,13 +9,13 @@ use zerogravity_core::resource_arbiter::{
 };
 
 const MIB: usize = 1024 * 1024;
-pub struct Qwen2bProjectionFixture {
+pub struct Qwen2BProjectionFixture {
     pub record: Arc<SourceBindings>,
     pub normalized: Vec<u8>,
     /// SAME source: admit before constructing this recipe/Vec payload cohort.
     pub admission: WindowWorkspace,
 }
-impl Qwen2bProjectionFixture {
+impl Qwen2BProjectionFixture {
     /// Original release/device and static native memory contract, before family policy.
     pub fn preflight_route(device: &Device) -> Result<()> {
         if cfg!(debug_assertions) || !matches!(device, Device::Cuda(_)) {
@@ -27,7 +27,7 @@ impl Qwen2bProjectionFixture {
     }
 }
 /// Borrowed only within the original trusted actual-completion callback.
-pub struct Qwen2bProjectionReadback<'a> {
+pub struct Qwen2BProjectionReadback<'a> {
     pub case: usize,
     pub record: &'a Arc<SourceBindings>,
     pub normalized: &'a [u8],
@@ -35,7 +35,7 @@ pub struct Qwen2bProjectionReadback<'a> {
     pub ba: &'a [u8],
 }
 #[derive(Debug, Default)]
-pub struct Qwen2bProjectionReceipt {
+pub struct Qwen2BProjectionReceipt {
     pub calls: usize,
     pub native_launches: usize,
     pub bf16_words: usize,
@@ -46,7 +46,7 @@ pub struct Qwen2bProjectionReceipt {
 }
 pub(super) struct SourceOwner {
     records: Vec<Arc<SourceBindings>>,
-    fixtures: Vec<Qwen2bProjectionFixture>,
+    fixtures: Vec<Qwen2BProjectionFixture>,
     pub(super) bound: Arc<RetainedSource>,
     // Each source TensorWindow has its own actual complete-chunk ticket.
     _fixture_host: WindowWorkspace,
@@ -63,7 +63,7 @@ pub(super) struct PreparedJobs {
     pub(super) jobs: Vec<Arc<Job>>,
     pub(super) workspace: ResidentLease,
 }
-fn validate(bound: &Arc<RetainedSource>, fixtures: &[Qwen2bProjectionFixture]) -> Result<()> {
+fn validate(bound: &Arc<RetainedSource>, fixtures: &[Qwen2BProjectionFixture]) -> Result<()> {
     if fixtures.len() != 5 || bound.source().staging_chunk_bytes() != MIB {
         return Err(Error::Unsupported(
             "closed original2B five-call projection leaf".into(),
@@ -125,13 +125,13 @@ fn validate(bound: &Arc<RetainedSource>, fixtures: &[Qwen2bProjectionFixture]) -
 pub async fn qualify_qwen2b_projections<F>(
     device: Device,
     bound: Arc<RetainedSource>,
-    fixtures: Vec<Qwen2bProjectionFixture>,
+    fixtures: Vec<Qwen2BProjectionFixture>,
     inputs: CubinQualificationInputs,
     validate_actual: F,
     cancelled: Option<&AtomicBool>,
-) -> Result<Qwen2bProjectionReceipt>
+) -> Result<Qwen2BProjectionReceipt>
 where
-    F: FnMut(Qwen2bProjectionReadback<'_>) -> Result<()>,
+    F: FnMut(Qwen2BProjectionReadback<'_>) -> Result<()>,
 {
     let mut probe = None;
     run(
@@ -149,20 +149,20 @@ where
     .await
 }
 pub(super) struct RunHooks<'a, F> {
-    pub(super) fault: Option<super::faults::Qwen2bProjectionFault>,
+    pub(super) fault: Option<super::faults::Qwen2BProjectionFault>,
     pub(super) probe: &'a mut Option<super::faults::Probe>,
     pub(super) validate_actual: F,
 }
 pub(super) async fn run<F>(
     device: Device,
     bound: Arc<RetainedSource>,
-    fixtures: Vec<Qwen2bProjectionFixture>,
+    fixtures: Vec<Qwen2BProjectionFixture>,
     inputs: CubinQualificationInputs,
     cancelled: Option<&AtomicBool>,
     hooks: RunHooks<'_, F>,
-) -> Result<Qwen2bProjectionReceipt>
+) -> Result<Qwen2BProjectionReceipt>
 where
-    F: FnMut(Qwen2bProjectionReadback<'_>) -> Result<()>,
+    F: FnMut(Qwen2BProjectionReadback<'_>) -> Result<()>,
 {
     let RunHooks {
         fault,
@@ -170,7 +170,7 @@ where
         mut validate_actual,
     } = hooks;
     not_cancelled(cancelled)?;
-    Qwen2bProjectionFixture::preflight_route(&device)?;
+    Qwen2BProjectionFixture::preflight_route(&device)?;
     validate(&bound, &fixtures)?;
     if fixtures.capacity() > 8 || inputs.images.capacity() > 8 {
         return Err(Error::Limit(
@@ -288,7 +288,7 @@ where
     )?;
     drop(init.complete_sync().await?);
     slot.finish()?;
-    let mut receipt = Qwen2bProjectionReceipt::default();
+    let mut receipt = Qwen2BProjectionReceipt::default();
     for (index, job) in jobs.jobs.iter().enumerate() {
         not_cancelled(cancelled)?;
         let ticket = service.queue().submit(
@@ -324,10 +324,10 @@ where
                 .ok_or_else(|| Error::State("actual2B projection witness absent".into()))?
                 .native = native;
             return match fault {
-                super::faults::Qwen2bProjectionFault::UnknownAfterQkvz => {
+                super::faults::Qwen2BProjectionFault::UnknownAfterQkvz => {
                     Err(Error::State(super::faults::UNKNOWN.into()))
                 }
-                super::faults::Qwen2bProjectionFault::CancelBeforeBa => {
+                super::faults::Qwen2BProjectionFault::CancelBeforeBa => {
                     let flag = AtomicBool::new(true);
                     programs.enqueue(
                         &job.operators[1],
@@ -340,7 +340,7 @@ where
                         "original2B late cancel failed to refuse BA".into(),
                     ))
                 }
-                super::faults::Qwen2bProjectionFault::Pressure => {
+                super::faults::Qwen2BProjectionFault::Pressure => {
                     Err(Error::State("2B pressure reached native work".into()))
                 }
             };
@@ -366,7 +366,7 @@ where
                         "original2B QKVZ/BA leaf{index} actual bytes differ"
                     )));
                 }
-                validate_actual(Qwen2bProjectionReadback {
+                validate_actual(Qwen2BProjectionReadback {
                     case: index,
                     record: &fixture.record,
                     normalized: &raw[0],

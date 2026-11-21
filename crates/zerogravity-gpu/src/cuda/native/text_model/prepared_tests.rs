@@ -1,7 +1,7 @@
 //! Actual common graph fixtures; no trained source or physical permit.
 use super::*;
 use zerogravity_core::accelerator::SourceIdentity;
-use zerogravity_model_qwen35::plan::{PromptWorkload, QwenSourceProfile};
+use zerogravity_model_qwen35::plan::{PromptWorkload, QwenModelVariant};
 #[path = "fixture.rs"]
 mod fixture;
 fn selection(record: &zerogravity_model_qwen35::plan::QwenPlan) -> SourceSelection {
@@ -18,7 +18,7 @@ fn selection(record: &zerogravity_model_qwen35::plan::QwenPlan) -> SourceSelecti
 #[test]
 fn actual_source_sites_and_head_values_survive_only_same_math_rebinding() -> Result<()> {
     let source = SourceIdentity::for_new_allocation()?;
-    for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+    for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
         for prompt_tokens in [47, 57, 62, 67, 72] {
             let workload = PromptWorkload::new(prompt_tokens, 512)?;
             let cached = workload.prompt_tokens()..=workload.prompt_tokens() + 6;
@@ -72,7 +72,7 @@ fn selected_head_cannot_replace_actual_normalized_input_row_or_producer() -> Res
     let source = SourceIdentity::for_new_allocation()?;
     let call = fixture::call(
         source,
-        QwenSourceProfile::Qwen08,
+        QwenModelVariant::Qwen800M,
         PromptWorkload::new(47, 512)?,
         None,
         11,

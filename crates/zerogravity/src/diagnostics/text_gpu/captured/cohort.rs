@@ -28,8 +28,8 @@ pub(super) fn compatible(first: &Row, row: &Row) -> bool {
         return false;
     };
     if !Arc::ptr_eq(a, b)
-        || first.model.native_rows != 4
-        || row.model.native_rows != 4
+        || first.model.cohort_width != 4
+        || row.model.cohort_width != 4
         || row.prompt.len() != 47
     {
         return false;
@@ -80,15 +80,15 @@ pub(super) fn prepare(rows: &mut [Row]) -> Result<Preparation<TextPendingCohort>
         dispatches: ready.dispatches() as u64,
         model_tokens: if prefill { 188 } else { 4 },
         committed_roots: 0,
-        native_projections: ready.native_projection_launches() as u64,
-        native_sampler: ready.sampler_dispatches() as u64,
-        native_rows: 4,
+        fused_projections: ready.native_projection_launches() as u64,
+        fused_sampler: ready.sampler_dispatches() as u64,
+        cohort_width: 4,
         state_only: false,
     };
     Ok(Preparation::Ready(Completed {
         ready,
         completion,
-        native: true,
+        fused: true,
     }))
 }
 pub(super) fn commit(
@@ -145,7 +145,7 @@ pub(super) fn commit(
                 observation: Some(GpuTokenObservation {
                     producer_frontier: result.root.frontier(),
                     producer_root: Some(GpuRootObservation::committed(result.root)),
-                    native_cohort: None,
+                    fused_cohort: None,
                 }),
             })
         })

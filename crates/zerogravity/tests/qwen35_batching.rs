@@ -74,8 +74,8 @@ fn conservation(model: &qwen35_cuda::Model, host: &TransferAdmission) -> Result<
     let r = loaded.resources();
     let root = r.root_initialization_host_bytes / 3;
     let (roots, provider_mib) = match model.source_profile() {
-        zerogravity::qwen35::plan::QwenSourceProfile::Qwen08 => (22, 4096),
-        zerogravity::qwen35::plan::QwenSourceProfile::Qwen2B => (18, 4608),
+        zerogravity::qwen35::plan::QwenModelVariant::Qwen800M => (22, 4096),
+        zerogravity::qwen35::plan::QwenModelVariant::Qwen2B => (18, 4608),
     };
     ensure(
         r.root_count == roots
@@ -328,7 +328,7 @@ fn prompt_batch_and_decode_preserve_request_state() -> Result<()> {
         cfg!(debug_assertions)
     );
     ensure(
-        model.resident().native_cohort_width() == 4 && model.source_metadata().family == "0.8b",
+        model.resident().fused_cohort_width() == 4 && model.source_metadata().family == "0.8b",
         "only explicit actual B4 .8B profile",
     )?;
     let observation = model.resident().observation();
@@ -401,7 +401,7 @@ fn cached_decode_matches_single_request() -> Result<()> {
         cfg!(debug_assertions)
     );
     ensure(
-        model.resident().native_cohort_width() == 4 && model.source_metadata().family == "0.8b",
+        model.resident().fused_cohort_width() == 4 && model.source_metadata().family == "0.8b",
         "only explicit actual B4 .8B profile",
     )?;
     let observation = model.resident().observation();
@@ -474,7 +474,7 @@ fn export_batched_decode_reference_composition() -> Result<()> {
         cfg!(debug_assertions)
     );
     ensure(
-        model.resident().native_cohort_width() == 4 && model.source_metadata().family == "0.8b",
+        model.resident().fused_cohort_width() == 4 && model.source_metadata().family == "0.8b",
         "only explicit actual B4 .8B profile",
     )?;
     let observation = model.resident().observation();

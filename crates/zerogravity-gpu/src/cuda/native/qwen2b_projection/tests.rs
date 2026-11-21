@@ -1,6 +1,6 @@
 use super::*;
 use zerogravity_core::accelerator::SourceIdentity;
-use zerogravity_core::accelerator::program::{SourceNumericalContract, SourceOperatorKind};
+use zerogravity_core::accelerator::program::{NumericalContract, SourceOperatorKind};
 
 #[test]
 fn exact_source_dimensions_and_actual_native_record_union_stay_closed() {
@@ -134,7 +134,7 @@ fn matching_width_does_not_replace_actual_native_operator_kind() {
                 epsilon: 1e-6,
                 gamma: SourceGamma::OnePlus,
             }),
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
             vec![],
             vec![SourceParameter {
                 source,
@@ -207,14 +207,14 @@ fn shared_weights_preserve_reference_call_eligibility_for_fresh_issuers() -> Res
         SourceOperator::new(
             call.clone(),
             SourceOperatorKind::Projection { selected_row: None },
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
             vec![member("in_proj_qkv", 6144), member("in_proj_z", 2048)],
             vec![],
         )?,
         SourceOperator::new(
             call.clone(),
             SourceOperatorKind::Projection { selected_row: None },
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
             vec![member("in_proj_b", 16), member("in_proj_a", 16)],
             vec![],
         )?,

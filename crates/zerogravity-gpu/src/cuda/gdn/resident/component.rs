@@ -96,8 +96,8 @@ impl ComponentGdnAdapter {
             || !prepared.typed_outputs
             || !match (&prepared.code, self.binding.values().recipe().kind()) {
                 (
-                    ComponentCode::Qwen2b(b),
-                    crate::resident_program::qwen2b_component::ComponentKind::Qwen2b,
+                    ComponentCode::Qwen2B(b),
+                    crate::resident_program::qwen2b_component::ComponentKind::Qwen2B,
                 ) => Arc::ptr_eq(b, &self.binding),
                 (
                     ComponentCode::FixedPrompt(b),
@@ -155,7 +155,7 @@ impl GdnPrepared {
         not_cancelled(cancelled)?;
         binding.require_source(binding.values().service())?;
         if binding.values().recipe().kind()
-            != crate::resident_program::qwen2b_component::ComponentKind::Qwen2b
+            != crate::resident_program::qwen2b_component::ComponentKind::Qwen2B
         {
             return Err(Error::Unsupported(
                 "original2B component code remains closed".into(),
@@ -167,7 +167,7 @@ impl GdnPrepared {
             binding.slot(),
             inputs,
             Some(outputs),
-            ComponentCode::Qwen2b(binding),
+            ComponentCode::Qwen2B(binding),
             cancelled,
         )
         .await

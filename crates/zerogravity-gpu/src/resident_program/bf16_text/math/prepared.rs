@@ -93,9 +93,16 @@ pub(in crate::resident_program::bf16_text) fn enumerate(
     let selection =
         crate::resident_program::bf16_text::storage::Selection::derive(recorded, storage)?;
     let plan = recorded.plan();
-    if plan.numerical_profile() != zerogravity_core::accelerator::program::ProgramNumericalProfile::DirectGammaBf16TextCandidateV1
-        || plan.prefix_capacity() != 64 || plan.nodes().len() > 8192 || plan.values().len() > 4096
-    { return Err(Error::Unsupported("complete source-issued BF16 text kernel inventory".into())); }
+    if plan.numerical_profile()
+        != zerogravity_core::accelerator::program::NumericalProfile::DirectGammaBf16TextCandidateV1
+        || plan.prefix_capacity() != 64
+        || plan.nodes().len() > 8192
+        || plan.values().len() > 4096
+    {
+        return Err(Error::Unsupported(
+            "complete source-issued BF16 text kernel inventory".into(),
+        ));
+    }
     let metadata = recorded
         .source()
         .reserve_workspace(PREPARATION_METADATA_BYTES)?;

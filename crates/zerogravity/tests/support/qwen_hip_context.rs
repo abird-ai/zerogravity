@@ -48,7 +48,7 @@ impl ContextReference {
                 _ => panic!("source model"),
             }
         );
-        assert_eq!(r.numerical_profile, "TorchCpuBf16Avx2MixedSourceV1");
+        assert_eq!(r.numerical_profile, "TorchCpuAvx2Bf16MixedV1");
         assert!(
             r.original_full_forward
                 && r.all_original_source_and_mapped_bytes_unchanged
@@ -142,7 +142,7 @@ fn public_source_populated_context_completion_cancel_and_replay() {
         assert_eq!(token.id, expected[0]);
         let root = token.gpu.unwrap();
         assert_eq!(root.producer_frontier, (capacity - 2) as u64);
-        assert!(root.native_cohort.is_none());
+        assert!(root.fused_cohort.is_none());
         first.cancel();
         drop(first);
         root.producer_root.unwrap().session_id
@@ -169,7 +169,7 @@ fn public_source_populated_context_completion_cancel_and_replay() {
     assert_eq!(admission["gpu_fused_batches"], 0);
     assert!(admission["peak_active_sessions"].as_u64().unwrap() <= 2);
     println!(
-        "SOURCE_CONTEXT_SDK_OUTCOME model={label} context={capacity} mode={mode} prompt_tokens={} original_ids=true independent_roots=true replay=true cancel_requested_after_populated_token={} native_cohorts=false full_float_comparisons=0 admission={admission}",
+        "SOURCE_CONTEXT_SDK_OUTCOME model={label} context={capacity} mode={mode} prompt_tokens={} original_ids=true independent_roots=true replay=true cancel_requested_after_populated_token={} fused_cohorts=false full_float_comparisons=0 admission={admission}",
         capacity - 2,
         mode == "cancel"
     );
@@ -211,12 +211,12 @@ fn public_source_32k_capacity_refuses_before_native_creation() {
             aliases: vec!["source".into()],
             cache: CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
             snapshot: snapshot.into(),
-            profile: QwenHipProfile {
+            profile: QwenServingProfile {
                 active: 1,
                 context: 32768,
                 output: 3,
                 max_pending: Some(4),
-                native_rows: 0,
+                cohort_width: 0,
             },
         })
         .unwrap_err();

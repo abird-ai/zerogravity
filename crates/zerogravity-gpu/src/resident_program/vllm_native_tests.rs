@@ -29,10 +29,8 @@ fn both_native_typed_operators_refuse_cold_before_source_access() -> Result<()> 
             ReferencePhase::InitialOne,
             teachers.clone(),
         )?;
-        let mut b = QwenPlanBuilder::new_operator_slice(
-            source,
-            ProgramNumericalProfile::SourceCudaSm86Bf16V1,
-        )?;
+        let mut b =
+            QwenPlanBuilder::new_operator_slice(source, NumericalProfile::CudaSm86Bf16ReferenceV1)?;
         let input = b.source_embedding(&QwenEmbedding::new(
             SourceTensor {
                 source,

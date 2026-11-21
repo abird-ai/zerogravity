@@ -180,7 +180,7 @@ pub(super) fn run() -> Result<()> {
     let cell = reference.join("0.8b-47");
     let ids = oracle::FixedCell::open(
         &cell,
-        zerogravity::qwen35::plan::QwenSourceProfile::Qwen08,
+        zerogravity::qwen35::plan::QwenModelVariant::Qwen800M,
         47,
     )?
     .prompt_ids(47)?;

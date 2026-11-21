@@ -1,5 +1,5 @@
 use super::*;
-const NUMERICAL: SourceNumericalContract = SourceNumericalContract::ReferenceCudaSm86Bf16V1;
+const NUMERICAL: NumericalContract = NumericalContract::CudaSm86Bf16ReferenceV1;
 fn call(source: SourceIdentity, ids: &[u32]) -> SourceCall {
     SourceCall::new(
         SourceRows::new(
@@ -435,7 +435,7 @@ fn cpu_source_templates_preserve_arithmetic_issuer_and_reject_cuda_mixing() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let geometry = SourcePlanGeometry::new(source, 17, 514, 64).unwrap();
     let slot = StateSlot::Recurrent(RecurrentDomain(0));
-    let numerical = SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1;
+    let numerical = NumericalContract::TorchCpuAvx2Bf16MixedV1;
     let original = embedding(&call(source, &[1]));
     let template = SourceOperatorTemplate::new(
         geometry,
@@ -477,7 +477,7 @@ fn cpu_source_templates_preserve_arithmetic_issuer_and_reject_cuda_mixing() {
     let plan = Arc::new(cpu.finish_source_template(logits).unwrap());
     assert_eq!(
         plan.numerical_profile(),
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1
     );
     assert_eq!(
         plan.standalone_exp_profile(),
@@ -542,7 +542,7 @@ fn gdn_source_preserves_bf16_and_f32_storage_for_each_arithmetic_contract() {
         shape: vec![elements as u64],
         bytes: elements * if dtype == F32 { 4 } else { 2 },
     };
-    let cpu = SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1;
+    let cpu = NumericalContract::TorchCpuAvx2Bf16MixedV1;
     for a_kind in [Bf16, F32] {
         for norm_kind in [Bf16, F32] {
             let parameters = vec![
@@ -560,9 +560,9 @@ fn gdn_source_preserves_bf16_and_f32_storage_for_each_arithmetic_contract() {
                         value_width: 128,
                         epsilon: 1e-6,
                         contract: if numerical == cpu {
-                            SourceGdnContract::TorchCpuAvx2L2SiluBf16V1
+                            GdnContract::TorchCpuAvx2L2SiluBf16V1
                         } else {
-                            SourceGdnContract::ReferenceCudaSm86L2SiluBf16V1
+                            GdnContract::ReferenceCudaSm86L2SiluBf16V1
                         },
                     },
                 };

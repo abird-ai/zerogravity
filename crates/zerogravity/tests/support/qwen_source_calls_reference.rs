@@ -236,7 +236,7 @@ impl Expected {
                 && doc.calls.len() == calls_count
                 && doc.records.len() == records_count
                 && doc.prompts.len() == if populated { cases } else { 0 }
-                && doc.numerical_profile == "TorchCpuBf16Avx2MixedSourceV1"
+                && doc.numerical_profile == "TorchCpuAvx2Bf16MixedV1"
                 && doc.original_full_forward
                 && doc.all_original_source_and_mapped_bytes_unchanged,
             "source-call original scope",

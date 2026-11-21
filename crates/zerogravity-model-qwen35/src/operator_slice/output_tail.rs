@@ -4,7 +4,7 @@ use super::OperatorSliceSource;
 #[cfg(feature = "cpu")]
 use super::pure::PureSliceInput;
 #[cfg(feature = "cpu")]
-use crate::accelerator::program::ProgramNumericalProfile;
+use crate::accelerator::program::NumericalProfile;
 use crate::accelerator::program::{PlanBuilder, PlanValue};
 use crate::source::binding::{OriginalWindowOperators, QwenMatrixRole, QwenParameterRole};
 use crate::{Error, Result};
@@ -107,8 +107,8 @@ impl WindowOutputTail {
     pub fn source_identity(&self) -> crate::accelerator::SourceIdentity {
         self.source
     }
-    pub fn numerical_profile(&self) -> ProgramNumericalProfile {
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+    pub fn numerical_profile(&self) -> NumericalProfile {
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1
     }
     pub fn layer(&self) -> usize {
         self.layer

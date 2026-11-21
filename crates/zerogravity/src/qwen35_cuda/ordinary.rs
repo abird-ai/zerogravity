@@ -10,7 +10,7 @@ use crate::gpu::cuda::ordinary_text::{
 };
 use crate::qwen35::plan::{OrdinaryQwenInvocation, OrdinaryQwenPlan};
 use zerogravity_core::accelerator::program::{
-    PlanOperation, SourceGamma, SourceNumericalContract, SourceOperatorKind, TensorView,
+    NumericalContract, PlanOperation, SourceGamma, SourceOperatorKind, TensorView,
 };
 
 const EPSILON: f32 = 1e-6;
@@ -68,7 +68,7 @@ fn audit(plan: &OrdinaryQwenPlan, invocation: &OrdinaryQwenInvocation) -> Result
         };
         if descriptor.source() != plan.plan().source()
             || descriptor.max_rows() != plan.max_chunk_rows()
-            || descriptor.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+            || descriptor.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
         {
             return Err(Error::State(
                 "ordinary Qwen source template identity/contract differs".into(),

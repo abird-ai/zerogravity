@@ -2,7 +2,7 @@
 use super::*;
 
 pub(super) fn validate(op: &SourceOperator) -> Result<()> {
-    use SourceNumericalContract::*;
+    use NumericalContract::*;
     use SourceOperatorKind::*;
     let bad = || Error::Unsupported("source F32 kind/codec/layout/numerical contract".into());
     if op.matrices().len() > 1
@@ -28,7 +28,7 @@ pub(super) fn validate(op: &SourceOperator) -> Result<()> {
         }
     }
     let arity = match (op.numerical_contract(), op.kind()) {
-        (GgmlSourceF32V1, EmbeddingRows) => {
+        (GgmlF32V1, EmbeddingRows) => {
             let m = op.matrices().first().ok_or_else(bad)?;
             if m.kind != StoredTensorEncoding::Quantized(crate::encoding::QuantScheme::Q6K)
                 || m.rows != op.call().rows().vocabulary()
@@ -37,7 +37,7 @@ pub(super) fn validate(op: &SourceOperator) -> Result<()> {
             }
             (1, 0)
         }
-        (GgmlSourceF32V1, Rms(g)) => {
+        (GgmlF32V1, Rms(g)) => {
             if g.gamma != SourceGamma::Direct || !g.epsilon.is_finite() || g.epsilon <= 0.0 {
                 return Err(bad());
             }
@@ -51,7 +51,7 @@ pub(super) fn validate(op: &SourceOperator) -> Result<()> {
             (0, 1)
         }
         (
-            GgmlSourceF32V1,
+            GgmlF32V1,
             RetainedRows {
                 width,
                 origin: SourceRetainedOrigin::Normalized { epsilon_bits },
@@ -100,7 +100,7 @@ pub(super) fn validate(op: &SourceOperator) -> Result<()> {
             }
             (1, 0)
         }
-        (GgmlSourceF32V1, CausalConvSiluZero { channels, kernel }) => {
+        (GgmlF32V1, CausalConvSiluZero { channels, kernel }) => {
             if kernel != 4 {
                 return Err(bad());
             }
@@ -113,7 +113,7 @@ pub(super) fn validate(op: &SourceOperator) -> Result<()> {
             )?;
             (0, 1)
         }
-        (GgmlSourceF32V1, GroupedQkNormalize(g)) => {
+        (GgmlF32V1, GroupedQkNormalize(g)) => {
             SourceOperator::product(g.heads, g.width)?;
             if !g.epsilon.is_finite()
                 || g.epsilon <= 0.0
@@ -139,10 +139,10 @@ pub(super) fn precision(
     op: &SourceOperator,
     inputs: &[PlanValue],
 ) -> Result<ActivationPrecision> {
-    use SourceNumericalContract::*;
+    use NumericalContract::*;
     use SourceOperatorKind::*;
     if !builder.operator_slice
-        || builder.profile != ProgramNumericalProfile::GgufSourceV1
+        || builder.profile != NumericalProfile::GgufReferenceV1
         || builder.source != op.call().source()
         || inputs.len() != op.input_elements()?.len()
     {
@@ -176,13 +176,11 @@ pub(super) fn precision(
             prior.numerical_contract(),
             prior.kind(),
         ) {
-            (GgmlSourceF32V1, Rms(g), GgmlSourceF32V1, EmbeddingRows) => {
-                prior.matrices()[0].columns == g.width
-            }
+            (GgmlF32V1, Rms(g), GgmlF32V1, EmbeddingRows) => prior.matrices()[0].columns == g.width,
             (
                 GgmlQ4Repack8x8F32V1,
                 Projection { .. },
-                GgmlSourceF32V1,
+                GgmlF32V1,
                 RetainedRows {
                     origin: SourceRetainedOrigin::Normalized { .. },
                     ..
@@ -198,17 +196,14 @@ pub(super) fn precision(
                 },
             ) => true,
             (
-                GgmlSourceF32V1,
+                GgmlF32V1,
                 CausalConvSiluZero { channels, .. },
                 GgmlQ4Repack8x8F32V1,
                 Projection { .. },
             ) => prior.matrices()[0].rows == channels,
-            (
-                GgmlSourceF32V1,
-                GroupedQkNormalize(g),
-                GgmlSourceF32V1,
-                CausalConvSiluZero { channels, .. },
-            ) => channels == 3 * g.heads * g.width,
+            (GgmlF32V1, GroupedQkNormalize(g), GgmlF32V1, CausalConvSiluZero { channels, .. }) => {
+                channels == 3 * g.heads * g.width
+            }
             _ => false,
         };
         if !allowed {

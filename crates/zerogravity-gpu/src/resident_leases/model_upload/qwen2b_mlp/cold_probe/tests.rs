@@ -13,12 +13,12 @@ fn exact_three_completed_read_positions_are_closed_and_total_tail_included() {
 #[test]
 fn read_cut_refuses_at_exact_completed_byte_prefix_without_validator_entry() {
     for mode in [
-        Qwen2bMlpWeightMode::UnknownAfterFirstRead,
-        Qwen2bMlpWeightMode::UnknownAfterMiddleRead,
-        Qwen2bMlpWeightMode::UnknownAfterLastRead,
-        Qwen2bMlpWeightMode::CancelAfterFirstRead,
-        Qwen2bMlpWeightMode::CancelAfterMiddleRead,
-        Qwen2bMlpWeightMode::CancelAfterLastRead,
+        Qwen2BMlpWeightMode::UnknownAfterFirstRead,
+        Qwen2BMlpWeightMode::UnknownAfterMiddleRead,
+        Qwen2BMlpWeightMode::UnknownAfterLastRead,
+        Qwen2BMlpWeightMode::CancelAfterFirstRead,
+        Qwen2BMlpWeightMode::CancelAfterMiddleRead,
+        Qwen2BMlpWeightMode::CancelAfterLastRead,
     ] {
         let probe = ReadProbe::new(mode);
         let (cut, cancel) = mode.cut().unwrap();
@@ -44,8 +44,8 @@ fn read_cut_refuses_at_exact_completed_byte_prefix_without_validator_entry() {
 #[test]
 fn complete_and_validator_modes_never_inject_an_earlier_read_failure() {
     for mode in [
-        Qwen2bMlpWeightMode::Complete,
-        Qwen2bMlpWeightMode::ValidatorRefusal,
+        Qwen2BMlpWeightMode::Complete,
+        Qwen2BMlpWeightMode::ValidatorRefusal,
     ] {
         let probe = ReadProbe::new(mode);
         for index in 1..=73 {

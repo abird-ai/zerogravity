@@ -1,7 +1,7 @@
 //! Pure explicit default-bulk F32 fragment, not a model producer/forward permit.
 use crate::accelerator::program::{
     BulkF32Contract, BulkF32Layout, BulkF32Matrix, BulkF32Operand, BulkF32Origin, BulkF32Side,
-    PlanBuilder, ProgramNumericalProfile, RecordedOperatorSlice, TeacherSpan,
+    NumericalProfile, PlanBuilder, RecordedOperatorSlice, TeacherSpan,
 };
 use crate::source::binding::{QwenMatrixRole, QwenNumericalProfile};
 use crate::{Error, LoadedQwenModel, Result};
@@ -192,7 +192,7 @@ impl BulkF32Slice {
         cancelled: Option<&AtomicBool>,
     ) -> Result<Self> {
         not_cancelled(cancelled)?;
-        if model.numerical_profile() != QwenNumericalProfile::GgufSourceV1
+        if model.numerical_profile() != QwenNumericalProfile::GgufReferenceV1
             || admission.resource.backend != "host"
         {
             return Err(Error::Unsupported(
@@ -268,7 +268,7 @@ impl BulkF32Slice {
         metadata: GlobalResourceLease,
     ) -> Result<Self> {
         not_cancelled(cancelled)?;
-        if model.numerical_profile() != QwenNumericalProfile::GgufSourceV1
+        if model.numerical_profile() != QwenNumericalProfile::GgufReferenceV1
             || admission.resource.backend != "host"
             || span.source() != model.source_identity()
             || span
@@ -398,7 +398,7 @@ impl BulkF32Slice {
     pub fn record(&self) -> Result<RecordedOperatorSlice> {
         let mut builder = PlanBuilder::new_operator_slice(
             self.matrix().source(),
-            ProgramNumericalProfile::GgufSourceV1,
+            NumericalProfile::GgufReferenceV1,
         )?;
         let output = crate::forward::bulk_f32_slice(&mut builder, self.matrix())?;
         builder.finish_operator_slice(output)

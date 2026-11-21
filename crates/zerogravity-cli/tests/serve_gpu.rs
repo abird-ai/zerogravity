@@ -753,9 +753,9 @@ fn physical_accounting(health: &Value) -> Proof<()> {
             != batches
         || counter(health, "gpu_fused_state_only_rows")?
             > counter(health, "gpu_fused_rows_completed")?
-        || counter(health, "native_sampler_dispatches_completed")?
+        || counter(health, "fused_sampler_dispatches_completed")?
             != 4 * counter(health, "gpu_fused_greedy_batches")?
-        || counter(health, "native_admission_refusals")? != 0
+        || counter(health, "cohort_admission_refusals")? != 0
     {
         return Err(format!("wide HTTP physical accounting differs: {health}"));
     }
@@ -854,7 +854,7 @@ fn proof_cases(
     if counter(&final_health, "failed_gpu_quanta")? != 0
         || counter(&final_health, "completed_forward_kernel_dispatches")? == 0
         || counter(&final_health, "native_projection_dispatches_completed")? == 0
-        || counter(&final_health, "native_sampler_dispatches_completed")? == 0
+        || counter(&final_health, "fused_sampler_dispatches_completed")? == 0
         || counter(&final_health, "gpu_fused_rows_completed")?
             != 2 * counter(&final_health, "gpu_fused_batches")?
         || counter(&final_health, "gpu_fused_state_only_batches")?
@@ -862,7 +862,7 @@ fn proof_cases(
             != counter(&final_health, "gpu_fused_batches")?
         || counter(&final_health, "gpu_fused_state_only_rows")?
             != 2 * counter(&final_health, "gpu_fused_state_only_batches")?
-        || counter(&final_health, "native_sampler_dispatches_completed")?
+        || counter(&final_health, "fused_sampler_dispatches_completed")?
             != 4 * counter(&final_health, "gpu_fused_greedy_batches")?
     {
         return Err(format!(
@@ -1019,7 +1019,7 @@ fn wide_proof_cases(
     println!(
         "P12_HTTP_CUDA_NATIVE_WIDE_PASS rows={width} actual_queued_aliases=shared \
         JSON_SSE_text_usage=CPU_exact trained_EOS_JSON_SSE=stop_exact terminal_usage_DONE=once \
-        live_disconnect_survivors_replay=exact weighted_native_rows_and_sampler=exact \
+        live_disconnect_survivors_replay=exact weighted_cohort_width_and_sampler=exact \
         all42_state=internal_gate vLLM_performance=not_qualified health={final_health}"
     );
     Ok(())
@@ -1397,8 +1397,8 @@ fn qualify_unequal_arrival_metrics(name: &str) -> Proof<()> {
         .map_err(|_| "first observed SSE reader panicked")??;
     let paired = first_records.iter().find_map(|a| {
         second_records.iter().find_map(|b| {
-            let ca = &a["gpu"]["native_cohort"];
-            let cb = &b["gpu"]["native_cohort"];
+            let ca = &a["gpu"]["fused_cohort"];
+            let cb = &b["gpu"]["fused_cohort"];
             let sequence = ca["publication_sequence"].as_u64()?;
             (sequence > 0
                 && ca == cb

@@ -225,11 +225,11 @@ pub(super) fn role_for_operator(
     descriptors: &[SourceOperator; 2],
     operator: &zerogravity_core::accelerator::program::SourceOperator,
 ) -> Result<Role> {
-    use zerogravity_core::accelerator::program::{SourceNumericalContract, SourceOperatorKind};
+    use zerogravity_core::accelerator::program::{NumericalContract, SourceOperatorKind};
     if !matches!(
         operator.kind(),
         SourceOperatorKind::Projection { selected_row: None }
-    ) || operator.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+    ) || operator.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
         || !operator.parameters().is_empty()
     {
         return Err(Error::State(

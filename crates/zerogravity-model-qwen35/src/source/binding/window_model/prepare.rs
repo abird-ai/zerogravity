@@ -3,8 +3,8 @@
 use super::*;
 use crate::plan::{
     GdnProjection, PromptCall, QwenFragmentPlan, QwenFragmentView, QwenGdnCall, QwenGdnConv,
-    QwenGdnRecurrent, QwenOperation, QwenOperator, QwenPlan, QwenProjection, QwenRmsSite,
-    QwenSourceProfile,
+    QwenGdnRecurrent, QwenModelVariant, QwenOperation, QwenOperator, QwenPlan, QwenProjection,
+    QwenRmsSite,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
@@ -310,7 +310,7 @@ fn require_embedding(source: &OriginalWindowModelSource, plan: &ForwardPlan) -> 
         ));
     };
     if descriptor.kind() != SourceOperatorKind::EmbeddingRows
-        || descriptor.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+        || descriptor.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
         || descriptor.matrices().len() != 1
         || !node.inputs.is_empty()
         || node.outputs.len() != 1
@@ -690,7 +690,7 @@ fn require_reference_record(source: &OriginalWindowModelSource, record: &QwenPla
     positions::require_reference_positions(source)?;
     source.require_small_model_source()?;
     record.call().validate()?;
-    if record.call().model_profile() != QwenSourceProfile::Qwen08 {
+    if record.call().model_profile() != QwenModelVariant::Qwen800M {
         return Err(Error::Unsupported(
             "native full24 source geometry remains .8B only".into(),
         ));
@@ -748,8 +748,7 @@ fn source_descriptor<'a>(node: &'a PlanNode, call: &QwenGdnCall) -> Result<&'a S
             descriptor,
             state: None,
         } if descriptor.call() == &call.source_call()?
-            && descriptor.numerical_contract()
-                == SourceNumericalContract::ReferenceCudaSm86Bf16V1 =>
+            && descriptor.numerical_contract() == NumericalContract::CudaSm86Bf16ReferenceV1 =>
         {
             Ok(descriptor)
         }

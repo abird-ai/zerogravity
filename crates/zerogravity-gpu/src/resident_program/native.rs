@@ -22,7 +22,7 @@ use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 use zerogravity_core::accelerator::program::SourceCall;
 use zerogravity_core::accelerator::program::{
-    ActivationPrecision, SourceGamma, SourceNumericalContract, SourceOperator, SourceOperatorKind,
+    ActivationPrecision, NumericalContract, SourceGamma, SourceOperator, SourceOperatorKind,
     SourceRmsGeometry,
 };
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
@@ -94,8 +94,7 @@ fn source_descriptor<'a>(node: &'a PlanNode, call: &SourceCall) -> Result<&'a So
             descriptor,
             state: None,
         } if descriptor.call() == call
-            && descriptor.numerical_contract()
-                == SourceNumericalContract::ReferenceCudaSm86Bf16V1 =>
+            && descriptor.numerical_contract() == NumericalContract::CudaSm86Bf16ReferenceV1 =>
         {
             Ok(descriptor)
         }

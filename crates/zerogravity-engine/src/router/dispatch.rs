@@ -119,7 +119,7 @@ pub struct TokenObservation {
     pub gpu: Option<GpuTokenObservation>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
-pub struct NativeCohortObservation {
+pub struct FusedCohortObservation {
     pub publication_sequence: u64,
     pub width: usize,
 }
@@ -145,7 +145,7 @@ pub struct GpuTokenObservation {
     pub producer_frontier: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub producer_root: Option<GpuRootObservation>,
-    pub native_cohort: Option<NativeCohortObservation>,
+    pub fused_cohort: Option<FusedCohortObservation>,
 }
 pub enum ResponseEvent {
     Text(String),
@@ -561,7 +561,7 @@ impl Router {
                     unequal_prefill: false,
                     unequal_decode: false,
                     cohorts: Cohorts::None,
-                    native_rows: 0,
+                    cohort_width: 0,
                 }),
             },
         )
@@ -663,23 +663,23 @@ impl Router {
                 ));
             }
             match policy.cohorts {
-                Cohorts::Native { widths, .. } => {
-                    waves::qualified_bands(0, widths)?;
-                    if !widths.contains(&policy.native_rows)
-                        || policy.native_rows > policy.max_members
+                Cohorts::Fused { widths, .. } => {
+                    waves::partition_supported_cohorts(0, widths)?;
+                    if !widths.contains(&policy.cohort_width)
+                        || policy.cohort_width > policy.max_members
                     {
                         return Err(ServiceError::new(
                             400,
                             "invalid_config",
-                            "native ceiling exceeds admitted wave or original widths",
+                            "cohort width exceeds admitted wave or supported widths",
                         ));
                     }
                 }
-                _ if policy.native_rows != 0 => {
+                _ if policy.cohort_width != 0 => {
                     return Err(ServiceError::new(
                         400,
                         "invalid_config",
-                        "non-native policy has a native ceiling",
+                        "non-cohort policy has a cohort width",
                     ));
                 }
                 _ => {}
@@ -812,9 +812,9 @@ impl Router {
             queue: self.queue_snapshot(),
             host: self.memory_snapshot(),
             active_limit: self.active_limit,
-            native_rows: match self.policy {
+            cohort_width: match self.policy {
                 WorkPolicy::Sequential => 0,
-                WorkPolicy::Waves(p) => p.native_rows,
+                WorkPolicy::Waves(p) => p.cohort_width,
             },
             counters: self.stats.snapshot(),
         })
@@ -1502,7 +1502,7 @@ mod tests {
                     root: 3,
                     session_epoch: 2,
                 }),
-                native_cohort: None,
+                fused_cohort: None,
             };
             let mut output = GeneratedText::new(output_tokenizer(false), sender, stream, 1, 47)
                 .observed(

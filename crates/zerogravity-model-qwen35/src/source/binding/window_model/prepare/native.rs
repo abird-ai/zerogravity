@@ -6,13 +6,13 @@ pub struct ReferenceKernelCapture {
 }
 impl ReferenceKernelCapture {
     /// Inventory selection only; the source factory still authenticates execution.
-    pub fn for_profile(profile: QwenSourceProfile) -> Self {
+    pub fn for_profile(profile: QwenModelVariant) -> Self {
         Self {
             recipe_sha256: match profile {
-                QwenSourceProfile::Qwen08 => {
+                QwenModelVariant::Qwen800M => {
                     "39b9a6180ca95f95510aac6471e0255ba62100200bf6daeac6f5a4fc8d2bb30d"
                 }
-                QwenSourceProfile::Qwen2B => {
+                QwenModelVariant::Qwen2B => {
                     "4d77cb6637843a57a17fc093ad1e5241ddf083bf8d9ade0c9bbaa118bc9448e2"
                 }
             },

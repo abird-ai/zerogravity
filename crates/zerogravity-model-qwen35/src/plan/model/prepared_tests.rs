@@ -6,7 +6,7 @@ use zerogravity_core::resource_arbiter::{
 
 fn call(
     source: SourceIdentity,
-    profile: QwenSourceProfile,
+    profile: QwenModelVariant,
     workload: PromptWorkload,
     base: Option<usize>,
     id: u32,
@@ -227,7 +227,7 @@ fn record(call: &PromptCall) -> QwenPlan {
 #[test]
 fn every_shape_shares_semantics_but_rebinds_all_nodes_and_producers() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+    for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
         for prompt_tokens in [47, 57, 62, 67, 72] {
             let workload = PromptWorkload::from_prompt_tokens(prompt_tokens).unwrap();
             for base in std::iter::once(None).chain(workload.cached_bases().map(Some)) {
@@ -316,7 +316,7 @@ fn prepared_binding_refuses_source_profile_phase_frontier_and_workload_changes()
     let source = SourceIdentity::for_new_allocation().unwrap();
     let prepared = record(&call(
         source,
-        QwenSourceProfile::Qwen08,
+        QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
         None,
         11,
@@ -324,28 +324,28 @@ fn prepared_binding_refuses_source_profile_phase_frontier_and_workload_changes()
     for actual in [
         call(
             SourceIdentity::for_new_allocation().unwrap(),
-            QwenSourceProfile::Qwen08,
+            QwenModelVariant::Qwen800M,
             PromptWorkload::from_prompt_tokens(47).unwrap(),
             None,
             11,
         ),
         call(
             source,
-            QwenSourceProfile::Qwen2B,
+            QwenModelVariant::Qwen2B,
             PromptWorkload::from_prompt_tokens(47).unwrap(),
             None,
             11,
         ),
         call(
             source,
-            QwenSourceProfile::Qwen08,
+            QwenModelVariant::Qwen800M,
             PromptWorkload::from_prompt_tokens(57).unwrap(),
             None,
             11,
         ),
         call(
             source,
-            QwenSourceProfile::Qwen08,
+            QwenModelVariant::Qwen800M,
             PromptWorkload::from_prompt_tokens(47).unwrap(),
             Some(47),
             11,
@@ -355,7 +355,7 @@ fn prepared_binding_refuses_source_profile_phase_frontier_and_workload_changes()
     }
     let cached = record(&call(
         source,
-        QwenSourceProfile::Qwen08,
+        QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
         Some(47),
         11,
@@ -364,7 +364,7 @@ fn prepared_binding_refuses_source_profile_phase_frontier_and_workload_changes()
         cached
             .bind_prompt_call(&call(
                 source,
-                QwenSourceProfile::Qwen08,
+                QwenModelVariant::Qwen800M,
                 PromptWorkload::from_prompt_tokens(47).unwrap(),
                 Some(48),
                 11
@@ -373,7 +373,7 @@ fn prepared_binding_refuses_source_profile_phase_frontier_and_workload_changes()
     );
     let cached = record(&call(
         source,
-        QwenSourceProfile::Qwen08,
+        QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(57).unwrap(),
         Some(62),
         11,
@@ -382,7 +382,7 @@ fn prepared_binding_refuses_source_profile_phase_frontier_and_workload_changes()
         cached
             .bind_prompt_call(&call(
                 source,
-                QwenSourceProfile::Qwen08,
+                QwenModelVariant::Qwen800M,
                 PromptWorkload::from_prompt_tokens(62).unwrap(),
                 Some(62),
                 11
@@ -400,7 +400,7 @@ fn shared_semantics_retain_the_original_host_charge_after_cache_owner_drops() {
     arbiter.register(key.clone(), bytes).unwrap();
     let actual = call(
         source,
-        QwenSourceProfile::Qwen08,
+        QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
         None,
         11,
@@ -422,7 +422,7 @@ fn shared_semantics_retain_the_original_host_charge_after_cache_owner_drops() {
     let bound = prepared
         .bind_prompt_call(&call(
             source,
-            QwenSourceProfile::Qwen08,
+            QwenModelVariant::Qwen800M,
             PromptWorkload::from_prompt_tokens(47).unwrap(),
             None,
             353,
@@ -443,7 +443,7 @@ fn cold_operator_adapter_checks_actual_common_semantics_and_original_row_issuer(
     let source = SourceIdentity::for_new_allocation().unwrap();
     let first = call(
         source,
-        QwenSourceProfile::Qwen08,
+        QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
         None,
         11,
@@ -464,7 +464,7 @@ fn cold_operator_adapter_checks_actual_common_semantics_and_original_row_issuer(
     }
     let second = call(
         source,
-        QwenSourceProfile::Qwen08,
+        QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
         None,
         353,
@@ -480,7 +480,7 @@ fn prepared_operator_comparison_rejects_foreign_issuer_geometry_and_member_order
     let source = SourceIdentity::for_new_allocation().unwrap();
     let first = call(
         source,
-        QwenSourceProfile::Qwen08,
+        QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
         None,
         11,
@@ -490,7 +490,7 @@ fn prepared_operator_comparison_rejects_foreign_issuer_geometry_and_member_order
     let expected = rms.mathematical_operator().unwrap();
     let foreign = call(
         source,
-        QwenSourceProfile::Qwen08,
+        QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
         None,
         11,

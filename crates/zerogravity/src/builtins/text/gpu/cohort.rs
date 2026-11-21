@@ -52,9 +52,9 @@ pub(super) fn validate(rows: &[Row], work: CohortWork) -> Result<(), ServiceErro
                             || !r.packet_presented
                             || r.state.device_token.is_none()
                             || r.blocked_since.is_some()))
-            }) || (work.state_only && (work.phase != Phase::Prefill || work.native_rows == 0))
-                || (work.native_rows != 0
-                    && (!matches!(work.native_rows, 2 | 4 | 8) || rows.len() != work.native_rows))
+            }) || (work.state_only && (work.phase != Phase::Prefill || work.cohort_width == 0))
+                || (work.cohort_width != 0
+                    && (!matches!(work.cohort_width, 2 | 4 | 8) || rows.len() != work.cohort_width))
             {
                 return Err(crate::Error::State(
                     "incompatible original GPU cohort".into(),
@@ -89,7 +89,7 @@ pub(super) fn prepare(
                 .collect::<Vec<_>>();
             if work.state_only {
                 block_on(model.prepare_state_temporal_fused_cohort_admitted(&inputs))
-            } else if work.native_rows != 0 {
+            } else if work.cohort_width != 0 {
                 block_on(model.prepare_greedy_temporal_fused_cohort_admitted(&inputs))
             } else {
                 Err(crate::Error::State(
@@ -104,7 +104,7 @@ pub(super) fn prepare(
                 .collect::<Vec<_>>();
             if work.state_only {
                 block_on(model.prepare_state_fused_cohort_admitted(&inputs))
-            } else if work.native_rows != 0 {
+            } else if work.cohort_width != 0 {
                 block_on(model.prepare_greedy_fused_cohort_admitted(&inputs))
             } else {
                 block_on(model.prepare_greedy_cohort(&inputs)).map(Some)
@@ -115,7 +115,7 @@ pub(super) fn prepare(
     let Some(ready) = prepared else {
         return Ok(Preparation::Capacity);
     };
-    let native = ready.fused_dispatches() != 0
+    let fused = ready.fused_dispatches() != 0
         && if work.state_only {
             ready.native_greedy_dispatches() == 0
         } else {
@@ -128,7 +128,7 @@ pub(super) fn prepare(
     };
     let completion = Completion {
         quanta: ready.len() as u64,
-        forwards: if native {
+        forwards: if fused {
             tokens as u64
         } else {
             ready.len() as u64
@@ -136,21 +136,21 @@ pub(super) fn prepare(
         dispatches: ready.dispatches() as u64,
         model_tokens: (ready.len() * tokens) as u64,
         committed_roots: 0,
-        native_projections: if native {
+        fused_projections: if fused {
             ready.fused_dispatches() as u64
         } else {
             0
         },
-        native_sampler: if native {
+        fused_sampler: if fused {
             ready.native_greedy_dispatches() as u64
         } else {
             0
         },
-        native_rows: if native { ready.len() } else { 0 },
+        cohort_width: if fused { ready.len() } else { 0 },
         state_only: work.state_only,
     };
     #[cfg(test)]
-    if work.native_rows == 0 || native {
+    if work.cohort_width == 0 || native {
         let hook = AFTER_COHORT_READY.with(|slot| slot.borrow_mut().take());
         if let Some(hook) = hook {
             hook();
@@ -159,7 +159,7 @@ pub(super) fn prepare(
     Ok(Preparation::Ready(Completed {
         ready,
         completion,
-        native,
+        fused,
     }))
 }
 pub(super) fn commit(

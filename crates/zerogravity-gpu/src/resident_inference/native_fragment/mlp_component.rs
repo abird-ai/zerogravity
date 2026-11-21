@@ -59,9 +59,9 @@ fn mlp_readback_columns(
             Ok(1024)
         }
         (
-            ComponentKind::Qwen2b,
-            PostAttentionArithmetic::Qwen2bExplicit(
-                crate::cuda::gdn::Qwen2bGdnArithmetic::OwnedSolve4Recompute3,
+            ComponentKind::Qwen2B,
+            PostAttentionArithmetic::Qwen2BExplicit(
+                crate::cuda::gdn::Qwen2BGdnArithmetic::OwnedSolve4Recompute3,
             ),
             1 | 64,
         ) => Ok(2048),
@@ -80,8 +80,8 @@ impl<'a> MlpComponentReadback<'a> {
     ) -> Result<Self> {
         let value = Self {
             kind,
-            arithmetic: PostAttentionArithmetic::Qwen2bExplicit(
-                crate::cuda::gdn::Qwen2bGdnArithmetic::OwnedSolve4Recompute3,
+            arithmetic: PostAttentionArithmetic::Qwen2BExplicit(
+                crate::cuda::gdn::Qwen2BGdnArithmetic::OwnedSolve4Recompute3,
             ),
             record,
             raw,
@@ -215,7 +215,7 @@ where
     not_cancelled(cancelled)?;
     let owned = match arithmetic {
         PostAttentionArithmetic::FixedPrompt(a) => a,
-        PostAttentionArithmetic::Qwen2bOwned | PostAttentionArithmetic::Qwen2bExplicit(_) => {
+        PostAttentionArithmetic::Qwen2BOwned | PostAttentionArithmetic::Qwen2BExplicit(_) => {
             return Err(Error::Unsupported(
                 "MLP eleven-node component is canonical47 only".into(),
             ));
@@ -623,13 +623,13 @@ where
     Ok(Outcome::Compared(MlpComponentReceipt {
         arithmetic,
         expected_trajectory: match arithmetic {
-            PostAttentionArithmetic::Qwen2bOwned | PostAttentionArithmetic::Qwen2bExplicit(_) => {
+            PostAttentionArithmetic::Qwen2BOwned | PostAttentionArithmetic::Qwen2BExplicit(_) => {
                 "Original2B"
             }
             PostAttentionArithmetic::FixedPrompt(_) => "ObservedOriginal47",
         },
         original_selected_ptx_equals_owned_tuple: match arithmetic {
-            PostAttentionArithmetic::Qwen2bOwned | PostAttentionArithmetic::Qwen2bExplicit(_) => {
+            PostAttentionArithmetic::Qwen2BOwned | PostAttentionArithmetic::Qwen2BExplicit(_) => {
                 None
             }
             PostAttentionArithmetic::FixedPrompt(_) => Some(false),
@@ -656,17 +656,17 @@ mod qwen2b_readback_scope_tests {
     use super::*;
     #[test]
     fn readback_width_requires_whole_explicit_source_family_and_geometry() {
-        let owned = PostAttentionArithmetic::Qwen2bExplicit(
-            crate::cuda::gdn::Qwen2bGdnArithmetic::OwnedSolve4Recompute3,
+        let owned = PostAttentionArithmetic::Qwen2BExplicit(
+            crate::cuda::gdn::Qwen2BGdnArithmetic::OwnedSolve4Recompute3,
         );
         for rows in [1, 64] {
             assert_eq!(
-                mlp_readback_columns(ComponentKind::Qwen2b, owned, rows).unwrap(),
+                mlp_readback_columns(ComponentKind::Qwen2B, owned, rows).unwrap(),
                 2048
             );
         }
         for rows in [0, 2, 47, 65] {
-            assert!(mlp_readback_columns(ComponentKind::Qwen2b, owned, rows).is_err());
+            assert!(mlp_readback_columns(ComponentKind::Qwen2B, owned, rows).is_err());
         }
         assert!(
             mlp_readback_columns(
@@ -680,8 +680,8 @@ mod qwen2b_readback_scope_tests {
         );
         assert!(
             mlp_readback_columns(
-                ComponentKind::Qwen2b,
-                PostAttentionArithmetic::Qwen2bOwned,
+                ComponentKind::Qwen2B,
+                PostAttentionArithmetic::Qwen2BOwned,
                 1
             )
             .is_err()
@@ -700,6 +700,6 @@ mod qwen2b_readback_scope_tests {
             .unwrap(),
             1024
         );
-        assert!(mlp_readback_columns(ComponentKind::Qwen2b, legacy, 47).is_err());
+        assert!(mlp_readback_columns(ComponentKind::Qwen2B, legacy, 47).is_err());
     }
 }

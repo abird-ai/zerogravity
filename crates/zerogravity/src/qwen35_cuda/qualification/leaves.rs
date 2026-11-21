@@ -2,7 +2,7 @@
 use super::source::{retained, rms_leaf_source};
 use super::*;
 use crate::gpu::cuda::native;
-use crate::qwen35::{plan::QwenSourceProfile, source::binding::BoundFullModelSource};
+use crate::qwen35::{plan::QwenModelVariant, source::binding::BoundFullModelSource};
 
 fn preempt(cancelled: Option<&AtomicBool>, reason: &'static str) -> Result<()> {
     if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
@@ -72,7 +72,7 @@ where
     preempt(cancelled, "closed original cubin qualification cancelled")?;
     require_release_cuda(&device, "release original CUDA47 projection leaf")?;
     native::FixedPromptProjectionFixture::preflight_route(&device)?;
-    let source = retained(source.prepare_qualification_source(QwenSourceProfile::Qwen08)?);
+    let source = retained(source.prepare_qualification_source(QwenModelVariant::Qwen800M)?);
     native::qualify_fixed_prompt_projections(device, source, fixtures, inputs, validate, cancelled)
         .await
 }
@@ -90,7 +90,7 @@ pub async fn qualify_fixed_prompt_projection_fault(
     if fault != native::FixedPromptProjectionFault::Pressure {
         native::FixedPromptProjectionFixture::preflight_route(&device)?;
     }
-    let source = retained(source.prepare_qualification_source(QwenSourceProfile::Qwen08)?);
+    let source = retained(source.prepare_qualification_source(QwenModelVariant::Qwen800M)?);
     native::qualify_fixed_prompt_projection_fault(
         device, source, fixtures, inputs, fault, cancelled,
     )
@@ -100,35 +100,35 @@ pub async fn qualify_fixed_prompt_projection_fault(
 pub async fn qualify_qwen2b_projections<F>(
     device: Device,
     source: BoundFullModelSource,
-    fixtures: Vec<native::Qwen2bProjectionFixture>,
+    fixtures: Vec<native::Qwen2BProjectionFixture>,
     inputs: native::CubinQualificationInputs,
     validate: F,
     cancelled: Option<&AtomicBool>,
-) -> Result<native::Qwen2bProjectionReceipt>
+) -> Result<native::Qwen2BProjectionReceipt>
 where
-    F: FnMut(native::Qwen2bProjectionReadback<'_>) -> Result<()>,
+    F: FnMut(native::Qwen2BProjectionReadback<'_>) -> Result<()>,
 {
     preempt(cancelled, "closed original cubin qualification cancelled")?;
     require_release_cuda(&device, "release original CUDA2B projection leaf")?;
-    native::Qwen2bProjectionFixture::preflight_route(&device)?;
-    let source = retained(source.prepare_qualification_source(QwenSourceProfile::Qwen2B)?);
+    native::Qwen2BProjectionFixture::preflight_route(&device)?;
+    let source = retained(source.prepare_qualification_source(QwenModelVariant::Qwen2B)?);
     native::qualify_qwen2b_projections(device, source, fixtures, inputs, validate, cancelled).await
 }
 
 pub async fn qualify_qwen2b_projection_fault(
     device: Device,
     source: BoundFullModelSource,
-    fixtures: Vec<native::Qwen2bProjectionFixture>,
+    fixtures: Vec<native::Qwen2BProjectionFixture>,
     inputs: native::CubinQualificationInputs,
-    fault: native::Qwen2bProjectionFault,
+    fault: native::Qwen2BProjectionFault,
     cancelled: Option<&AtomicBool>,
-) -> Result<native::Qwen2bProjectionFaultOutcome> {
+) -> Result<native::Qwen2BProjectionFaultOutcome> {
     preempt(cancelled, "closed original cubin qualification cancelled")?;
     require_release_cuda(&device, "release original CUDA2B projection fault")?;
-    if fault != native::Qwen2bProjectionFault::Pressure {
-        native::Qwen2bProjectionFixture::preflight_route(&device)?;
+    if fault != native::Qwen2BProjectionFault::Pressure {
+        native::Qwen2BProjectionFixture::preflight_route(&device)?;
     }
-    let source = retained(source.prepare_qualification_source(QwenSourceProfile::Qwen2B)?);
+    let source = retained(source.prepare_qualification_source(QwenModelVariant::Qwen2B)?);
     native::qualify_qwen2b_projection_fault(device, source, fixtures, inputs, fault, cancelled)
         .await
 }
@@ -142,7 +142,7 @@ pub async fn qualify_fixed_prompt_solve_leaves(
     cancelled: Option<&AtomicBool>,
 ) -> Result<native::FixedPromptSolveReceipt> {
     preempt(cancelled, "original47 solve leaf cancelled")?;
-    let source = super::prepare_leaf_source(&model, QwenSourceProfile::Qwen08)?;
+    let source = super::prepare_leaf_source(&model, QwenModelVariant::Qwen800M)?;
     drop(model);
     native::qualify_fixed_prompt_solve_leaves(
         device, source, fixture, device_cap, validate, cancelled,
@@ -165,7 +165,7 @@ pub async fn qualify_fixed_prompt_solve_fault(
             "fixed-prompt solve pressure has no fixture/H2D prerequisite".into(),
         ));
     }
-    let source = super::prepare_leaf_source(&model, QwenSourceProfile::Qwen08)?;
+    let source = super::prepare_leaf_source(&model, QwenModelVariant::Qwen800M)?;
     drop(model);
     native::qualify_fixed_prompt_solve_fault(device, source, fixture, fault, device_cap, cancelled)
         .await
@@ -180,7 +180,7 @@ pub async fn qualify_solve2b_owned_leaves(
     cancelled: Option<&AtomicBool>,
 ) -> Result<native::Solve2bReceipt> {
     preempt(cancelled, "original2B/T64 solve leaf cancelled")?;
-    let source = super::prepare_leaf_source(&model, QwenSourceProfile::Qwen2B)?;
+    let source = super::prepare_leaf_source(&model, QwenModelVariant::Qwen2B)?;
     drop(model);
     native::qualify_solve2b_owned_leaves(device, source, fixture, device_cap, validate, cancelled)
         .await
@@ -204,7 +204,7 @@ pub async fn qualify_solve2b_owned_fault(
             "solve2b pressure has no fixture/H2D prerequisite".into(),
         ));
     }
-    let source = super::prepare_leaf_source(&model, QwenSourceProfile::Qwen2B)?;
+    let source = super::prepare_leaf_source(&model, QwenModelVariant::Qwen2B)?;
     drop(model);
     native::qualify_solve2b_owned_fault(device, source, fixture, fault, device_cap, cancelled).await
 }
@@ -219,7 +219,7 @@ pub async fn qualify_fixed_prompt_rms(
     cancelled: Option<&AtomicBool>,
 ) -> Result<native::FixedPromptRmsReceipt> {
     preempt(cancelled, "fixed_prompt RMS cancelled")?;
-    let prepared = Arc::new(model.prepare_rms_source(QwenSourceProfile::Qwen08)?);
+    let prepared = Arc::new(model.prepare_rms_source(QwenModelVariant::Qwen800M)?);
     let ids_source = prepared.clone();
     let source = rms_leaf_source(&model, prepared)?;
     drop(model);
@@ -240,13 +240,13 @@ pub async fn qualify_qwen2b_rms(
     device: Device,
     model: Arc<OriginalWindowModelSource>,
     teachers: [Vec<u32>; 5],
-    leaves: [native::Qwen2bDualRmsLeaf; 5],
+    leaves: [native::Qwen2BDualRmsLeaf; 5],
     device_cap: u64,
-    validate: impl FnMut(native::Qwen2bRmsReadback<'_>) -> Result<()>,
+    validate: impl FnMut(native::Qwen2BRmsReadback<'_>) -> Result<()>,
     cancelled: Option<&AtomicBool>,
-) -> Result<native::Qwen2bRmsReceipt> {
+) -> Result<native::Qwen2BRmsReceipt> {
     preempt(cancelled, "original2B RMS cancelled")?;
-    let prepared = Arc::new(model.prepare_rms_source(QwenSourceProfile::Qwen2B)?);
+    let prepared = Arc::new(model.prepare_rms_source(QwenModelVariant::Qwen2B)?);
     let ids_source = prepared.clone();
     let source = rms_leaf_source(&model, prepared)?;
     drop(model);
@@ -275,7 +275,7 @@ pub async fn qualify_fixed_prompt_rms_fault(
         &device,
         "release original CUDA required forfixed_prompt RMS fault",
     )?;
-    let source = super::prepare_rms_leaf_source(&model, QwenSourceProfile::Qwen08)?;
+    let source = super::prepare_rms_leaf_source(&model, QwenModelVariant::Qwen800M)?;
     drop(model);
     native::qualify_fixed_prompt_rms_fault(device, source, fault, device_cap, cancelled).await
 }
@@ -283,13 +283,13 @@ pub async fn qualify_fixed_prompt_rms_fault(
 pub async fn qualify_qwen2b_rms_fault(
     device: Device,
     model: Arc<OriginalWindowModelSource>,
-    fault: native::Qwen2bRmsFault,
+    fault: native::Qwen2BRmsFault,
     device_cap: u64,
     cancelled: Option<&AtomicBool>,
-) -> Result<native::Qwen2bRmsFaultOutcome> {
+) -> Result<native::Qwen2BRmsFaultOutcome> {
     preempt(cancelled, "original2B RMS cancelled")?;
     require_release_cuda(&device, "release original CUDA required for2B RMS fault")?;
-    let source = super::prepare_rms_leaf_source(&model, QwenSourceProfile::Qwen2B)?;
+    let source = super::prepare_rms_leaf_source(&model, QwenModelVariant::Qwen2B)?;
     drop(model);
     native::qualify_qwen2b_rms_fault(device, source, fault, device_cap, cancelled).await
 }

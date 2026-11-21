@@ -266,7 +266,7 @@ impl ComponentGdnPrepared {
             windows.push(window);
         }
         let code_host = source.reserve_workspace(match values.recipe().kind() {
-            ComponentKind::Qwen2b => GdnPrepared::qwen2b_component_code_bytes(phase(&values)?)?,
+            ComponentKind::Qwen2B => GdnPrepared::qwen2b_component_code_bytes(phase(&values)?)?,
             ComponentKind::FixedPrompt(arithmetic) => {
                 GdnPrepared::fixed_prompt_component_code_bytes(arithmetic)?
             }
@@ -295,8 +295,8 @@ impl ComponentGdnPrepared {
         drop(init.complete_sync().await?);
         let binding = Arc::new(ComponentGdnBinding {
             arithmetic_family: match payload.values.recipe().kind() {
-                ComponentKind::Qwen2b => GdnFamilyIdentity::original2b(),
-                ComponentKind::FixedPrompt(_) => GdnFamilyIdentity::original08(),
+                ComponentKind::Qwen2B => GdnFamilyIdentity::original2b(),
+                ComponentKind::FixedPrompt(_) => GdnFamilyIdentity::original800m(),
             },
             payload,
             parameters,
@@ -320,7 +320,7 @@ impl ComponentGdnPrepared {
             gated: binding.values().lease(ValueId(6))?.clone(),
         };
         let prepared = match binding.values().recipe().kind() {
-            ComponentKind::Qwen2b => {
+            ComponentKind::Qwen2B => {
                 GdnPrepared::prepare_qwen2b_component_outputs(
                     binding.clone(),
                     inputs,
@@ -514,7 +514,7 @@ pub(crate) fn prepare_post_attention_projections(
     let recipe = values.recipe();
     not_cancelled(cancelled)?;
     init.require_service(service)?;
-    if recipe.kind() != ComponentKind::Qwen2b
+    if recipe.kind() != ComponentKind::Qwen2B
         || !Arc::ptr_eq(values.service(), service)
         || inputs.images.capacity() > 8
         || zerogravity_core::resource_arbiter::ResourceArbiter::process_shared()

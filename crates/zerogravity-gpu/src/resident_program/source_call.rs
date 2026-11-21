@@ -5,7 +5,7 @@ use super::{
     StateLayout, StateRequirement, StateSlot,
 };
 use std::{collections::BTreeMap, sync::Arc};
-use zerogravity_core::{Error, Result, accelerator::program::SourceNumericalContract};
+use zerogravity_core::{Error, Result, accelerator::program::NumericalContract};
 mod body;
 mod cold;
 #[cfg(all(

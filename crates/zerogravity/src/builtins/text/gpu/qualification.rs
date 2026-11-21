@@ -65,11 +65,11 @@ struct Fixture {
 }
 impl Fixture {
     fn new(name: &str) -> Self {
-        Self::with_native_rows(name, 2)
+        Self::with_cohort_width(name, 2)
     }
 
-    fn with_native_rows(name: &str, native_rows: usize) -> Self {
-        assert!(matches!(native_rows, 2 | 4 | 8));
+    fn with_cohort_width(name: &str, cohort_width: usize) -> Self {
+        assert!(matches!(cohort_width, 2 | 4 | 8));
         if cfg!(debug_assertions) {
             panic!("physical serving qualification requires --release");
         }
@@ -148,7 +148,7 @@ impl Fixture {
             group: 0,
             hidden_width: source.geometry().hidden_size as usize,
             vocabulary_size: source.geometry().vocab_size,
-            native_rows,
+            cohort_width,
             max_token_bytes,
             readers: Arc::new(AtomicUsize::new(0)),
             _metadata: metadata,
@@ -232,7 +232,7 @@ impl Fixture {
                 context: GPU_CAPACITY,
                 output: maximum,
                 max_pending: Some(1),
-                policy: policy(8, self.model.native_rows),
+                policy: policy(8, self.model.cohort_width),
             },
             &self._host,
             Arc::clone(&self.stats),
@@ -434,9 +434,9 @@ fn round(active: &mut VecDeque<Row>, stats: &WorkStats) {
     if active.is_empty() {
         return;
     }
-    let native_rows = active[0].model.native_rows;
-    assert!(active.iter().all(|r| r.model.native_rows == native_rows));
-    let WorkPolicy::Waves(policy) = policy(8, native_rows) else {
+    let cohort_width = active[0].model.cohort_width;
+    assert!(active.iter().all(|r| r.model.cohort_width == cohort_width));
+    let WorkPolicy::Waves(policy) = policy(8, cohort_width) else {
         unreachable!()
     };
     zerogravity_engine::router::worker::advance_wave(
@@ -492,7 +492,7 @@ fn handoff_and_lengths(fixture: &Fixture) {
     let fused_before = fixture.stats.snapshot().fused_batches;
     let model_tokens = fixture.stats.snapshot().model_tokens;
     let committed = fixture.stats.snapshot().committed_roots;
-    let sampler = fixture.stats.snapshot().native_sampler;
+    let sampler = fixture.stats.snapshot().fused_sampler;
     let mut active = VecDeque::from([left, right]);
     round(&mut active, &fixture.stats);
     left_trace.drain();
@@ -504,7 +504,7 @@ fn handoff_and_lengths(fixture: &Fixture) {
     );
     assert_eq!(fixture.stats.snapshot().model_tokens, model_tokens + 2);
     assert_eq!(fixture.stats.snapshot().committed_roots, committed + 2);
-    assert_eq!(fixture.stats.snapshot().native_sampler, sampler + 4);
+    assert_eq!(fixture.stats.snapshot().fused_sampler, sampler + 4);
     assert!(
         active
             .iter()
@@ -576,7 +576,7 @@ fn cancel_after_ready(fixture: &Fixture) {
     let discarded = fixture.stats.snapshot().discarded_cohorts;
     let committed = fixture.stats.snapshot().committed_roots;
     let model_tokens = fixture.stats.snapshot().model_tokens;
-    let sampler = fixture.stats.snapshot().native_sampler;
+    let sampler = fixture.stats.snapshot().fused_sampler;
     let mut active = VecDeque::from([left, right]);
     round(&mut active, &fixture.stats);
     AFTER_COHORT_READY
@@ -599,7 +599,7 @@ fn cancel_after_ready(fixture: &Fixture) {
         model_tokens + 3,
         "two discarded physical rows plus one committed B1 retry"
     );
-    assert_eq!(fixture.stats.snapshot().native_sampler, sampler + 4);
+    assert_eq!(fixture.stats.snapshot().fused_sampler, sampler + 4);
     update(&active, &mut references);
     left_reference.snapshot(&saved);
     finish(
@@ -790,8 +790,8 @@ fn qualify(name: &str) {
     credit_park(&fixture);
     source_eos(&fixture);
     assert!(fixture.stats.snapshot().kernel_dispatches > 0);
-    assert!(fixture.stats.snapshot().native_projections > 0);
-    assert!(fixture.stats.snapshot().native_sampler > 0);
+    assert!(fixture.stats.snapshot().fused_projections > 0);
+    assert!(fixture.stats.snapshot().fused_sampler > 0);
     fixture.close();
     println!(
         "P12_B5_NATIVE_WORKER_PHYSICAL_PASS source={name} final_active=0 final_reserved=0 \
@@ -859,7 +859,7 @@ fn finish_observed(
 }
 
 fn band_counts(stats: &WorkStats) -> [u64; 3] {
-    stats.snapshot().native_bands
+    stats.snapshot().cohorts_by_width
 }
 
 fn require_bands(stats: &WorkStats, before: [u64; 3], expected: &[usize]) {
@@ -904,7 +904,7 @@ fn survivor_bands(width: usize) -> &'static [usize] {
 }
 
 fn wide_prompt_lengths(fixture: &Fixture) {
-    let width = fixture.model.native_rows;
+    let width = fixture.model.cohort_width;
     let mut active = VecDeque::new();
     let mut observed = Vec::new();
     for (index, input) in ["a", "b", "c", "d", "e", "f", "g", "h"]
@@ -968,7 +968,7 @@ fn wide_prompt_lengths(fixture: &Fixture) {
 }
 
 fn wide_b1_handoff(fixture: &Fixture) {
-    let width = fixture.model.native_rows;
+    let width = fixture.model.cohort_width;
     let mut active = VecDeque::new();
     let mut observed = Vec::new();
     for _ in 0..width {
@@ -989,7 +989,7 @@ fn wide_b1_handoff(fixture: &Fixture) {
 }
 
 fn wide_cancel_after_ready(fixture: &Fixture) {
-    let width = fixture.model.native_rows;
+    let width = fixture.model.cohort_width;
     let mut active = VecDeque::new();
     let mut observed = Vec::new();
     for _ in 0..width {
@@ -1063,7 +1063,7 @@ fn wide_cancel_after_ready(fixture: &Fixture) {
 }
 
 fn wide_credit_park(fixture: &Fixture) {
-    let width = fixture.model.native_rows;
+    let width = fixture.model.cohort_width;
     let mut active = VecDeque::new();
     let mut observed = Vec::new();
     for index in 0..width {
@@ -1142,7 +1142,7 @@ fn wide_credit_park(fixture: &Fixture) {
 }
 
 fn wide_source_eos(fixture: &Fixture) {
-    let width = fixture.model.native_rows;
+    let width = fixture.model.cohort_width;
     let input =
         find_source_eos(fixture).expect("wide cohort requires an actual trained-source EOS");
     let length = fixture
@@ -1208,21 +1208,21 @@ fn wide_source_eos(fixture: &Fixture) {
     );
 }
 
-fn qualify_wide(name: &str, native_rows: usize) {
-    let fixture = Fixture::with_native_rows(name, native_rows);
+fn qualify_wide(name: &str, cohort_width: usize) {
+    let fixture = Fixture::with_cohort_width(name, cohort_width);
     wide_prompt_lengths(&fixture);
     wide_b1_handoff(&fixture);
     wide_cancel_after_ready(&fixture);
     wide_credit_park(&fixture);
     wide_source_eos(&fixture);
     assert!(fixture.stats.snapshot().kernel_dispatches > 0);
-    assert!(fixture.stats.snapshot().native_projections > 0);
-    assert!(fixture.stats.snapshot().native_sampler > 0);
-    assert!(band_counts(&fixture.stats)[if native_rows == 4 { 1 } else { 2 }] > 0);
-    assert_eq!(fixture.stats.snapshot().native_admission_refusals, 0);
+    assert!(fixture.stats.snapshot().fused_projections > 0);
+    assert!(fixture.stats.snapshot().fused_sampler > 0);
+    assert!(band_counts(&fixture.stats)[if cohort_width == 4 { 1 } else { 2 }] > 0);
+    assert_eq!(fixture.stats.snapshot().cohort_admission_refusals, 0);
     fixture.close();
     println!(
-        "P12_WIDE_NATIVE_WORKER_PHYSICAL_PASS source={name} rows={native_rows} \
+        "P12_WIDE_NATIVE_WORKER_PHYSICAL_PASS source={name} rows={cohort_width} \
         original_authorities_CPU_B1_all42=exact final_active=0 final_reserved=0 \
         actual_HTTP_wire=separate_gate vLLM_performance=not_qualified"
     );
@@ -1230,7 +1230,7 @@ fn qualify_wide(name: &str, native_rows: usize) {
 
 #[test]
 #[ignore = "physical release CUDA; approved original .8B; isolated sequential GPU coordinator"]
-fn original_qwen08b_native_b2_worker() {
+fn original_qwen800m_native_b2_worker() {
     qualify("qwen35-0.8b");
 }
 
@@ -1242,13 +1242,13 @@ fn original_qwen2b_native_b2_worker() {
 
 #[test]
 #[ignore = "physical release CUDA B4; approved original .8B; isolated sequential GPU coordinator"]
-fn original_qwen08b_native_b4_worker() {
+fn original_qwen800m_native_b4_worker() {
     qualify_wide("qwen35-0.8b", 4);
 }
 
 #[test]
 #[ignore = "physical release CUDA B8; approved original .8B; isolated sequential GPU coordinator"]
-fn original_qwen08b_native_b8_worker() {
+fn original_qwen800m_native_b8_worker() {
     qualify_wide("qwen35-0.8b", 8);
 }
 
@@ -1313,8 +1313,8 @@ fn unequal_arrival_metrics(name: &str) {
         .iter()
         .map(|lane| lane.token_observation.unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(produced[0].native_cohort, produced[1].native_cohort);
-    assert_eq!(produced[0].native_cohort.unwrap().width, 2);
+    assert_eq!(produced[0].fused_cohort, produced[1].fused_cohort);
+    assert_eq!(produced[0].fused_cohort.unwrap().width, 2);
     assert_ne!(produced[0].producer_frontier, produced[1].producer_frontier);
     finish(
         &mut active,
@@ -1331,8 +1331,8 @@ fn unequal_arrival_metrics(name: &str) {
             .iter()
             .any(|left| second_tokens.iter().any(|right| {
                 let (a, b) = (left.gpu.unwrap(), right.gpu.unwrap());
-                a.native_cohort.is_some()
-                    && a.native_cohort == b.native_cohort
+                a.fused_cohort.is_some()
+                    && a.fused_cohort == b.fused_cohort
                     && a.producer_frontier != b.producer_frontier
             })),
         "wire observations must retain actual unequal-frontier native membership"
@@ -1348,7 +1348,7 @@ fn unequal_arrival_metrics(name: &str) {
 
 #[test]
 #[ignore = "release physical CUDA unequal-frontier worker; approved .8B source; serial"]
-fn original_qwen08b_native_unequal_arrival_token_observations() {
+fn original_qwen800m_native_unequal_arrival_token_observations() {
     unequal_arrival_metrics("qwen35-0.8b");
 }
 

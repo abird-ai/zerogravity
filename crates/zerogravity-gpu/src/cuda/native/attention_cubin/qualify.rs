@@ -423,7 +423,7 @@ pub(super) async fn inner(
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source_identity(),
-        ResourceOwner::new("qwen08-cuda-cubin", "original-attention-leaf")?,
+        ResourceOwner::new("qwen800m-cuda-cubin", "original-attention-leaf")?,
         PROVIDER_CAP,
         inputs.device_cap,
     )?;

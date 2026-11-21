@@ -309,8 +309,8 @@ impl Executor for SourceText {
                 .all(|row| work.state_only == row.prefill_has_successor()),
             Phase::Decode => !work.state_only,
         };
-        if !matches!(work.native_rows, 2 | 4 | 8)
-            || rows.len() != work.native_rows
+        if !matches!(work.cohort_width, 2 | 4 | 8)
+            || rows.len() != work.cohort_width
             || !phase_matches
             || !output_matches
             || rows.iter().any(|row| !Self::cohort_eligible(row))
@@ -409,7 +409,7 @@ impl Executor for SourceText {
                 }
             }
         };
-        let native = ready.fused_dispatches() != 0;
+        let fused = ready.fused_dispatches() != 0;
         Ok(Preparation::Ready(Completed {
             completion: Completion {
                 quanta: rows.len() as u64,
@@ -417,13 +417,13 @@ impl Executor for SourceText {
                 dispatches: ready.dispatches() as u64,
                 model_tokens,
                 committed_roots: 0,
-                native_projections: ready.fused_dispatches() as u64,
-                native_sampler: 0,
-                native_rows: if native { rows.len() } else { 0 },
+                fused_projections: ready.fused_dispatches() as u64,
+                fused_sampler: 0,
+                cohort_width: if fused { rows.len() } else { 0 },
                 state_only: work.state_only,
             },
             ready,
-            native,
+            fused,
         }))
     }
     #[cfg(feature = "qwen35-cuda")]
@@ -503,7 +503,7 @@ impl Executor for SourceText {
                     observation: Some(GpuTokenObservation {
                         producer_frontier: root.frontier(),
                         producer_root: Some(GpuRootObservation::committed(root)),
-                        native_cohort: None,
+                        fused_cohort: None,
                     }),
                 })
             })
@@ -635,7 +635,7 @@ impl Executor for SourceText {
                     observation: readout.then(|| GpuTokenObservation {
                         producer_frontier: root.frontier(),
                         producer_root: Some(GpuRootObservation::committed(root)),
-                        native_cohort: None,
+                        fused_cohort: None,
                     }),
                 })
             }
@@ -748,17 +748,13 @@ mod tests {
     #[test]
     fn native_prefill_requires_same_base_and_reduction_compatible_rows() {
         assert!(native_phase_compatible(Some((0, 48)), Some((0, 49)), true));
-        assert!(!native_phase_compatible(
-            Some((0, 47)),
-            Some((0, 48)),
-            false
-        ));
-        assert!(!native_phase_compatible(
+        assert!(!fused_phase_compatible(Some((0, 47)), Some((0, 48)), false));
+        assert!(!fused_phase_compatible(
             Some((47, 17)),
             Some((48, 17)),
             true
         ));
-        assert!(!native_phase_compatible(Some((47, 17)), None, true));
+        assert!(!fused_phase_compatible(Some((47, 17)), None, true));
         assert!(native_phase_compatible(None, None, false));
     }
     #[test]

@@ -9,6 +9,20 @@ and plans. It is deliberately **not** the retired monolithic SHA/archive/evidenc
 handoff model. Git history retains superseded checkpoints; current source, tests
 and live TODOs are authoritative.
 
+### Terminology architecture — 21 Nov 2026
+
+Active naming now follows [TERMINOLOGY.md](TERMINOLOGY.md). The first cleanup
+slice separates model identity from runtime policy
+(`QwenModelVariant::{Qwen800M,Qwen2B}` vs `QwenServingProfile`), shortens
+arithmetic names to `NumericalProfile` / `NumericalContract`, replaces
+`native_rows` and bare B-width scheduler language with explicit
+`cohort_width` / fused cohorts, and stores historical GDN captures under
+`reference/<variant>/<phase>/<tokens>`. No compatibility aliases retain the
+superseded vocabulary. Historical schemas/provenance remain byte/name stable.
+The next terminology slice is the larger architectural
+`ordinary* -> forward*` migration; do not introduce new `ordinary` names in
+the meantime.
+
 ### Error architecture — 21 Nov 2026
 
 The cross-layer error contract is now intentionally small and typed:

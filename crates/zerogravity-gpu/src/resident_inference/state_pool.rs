@@ -292,7 +292,7 @@ pub(super) struct HybridPooledStates {
     pub vector_pool: Arc<ResidentPool>,
     pub staging_pool: Arc<ResidentPool>,
     pub page_pool: Arc<ResidentPagePool>,
-    pub numerical: zerogravity_core::accelerator::program::SourceNumericalContract,
+    pub numerical: zerogravity_core::accelerator::program::NumericalContract,
 }
 
 #[cfg(feature = "cuda-cublas")]
@@ -468,7 +468,7 @@ impl HybridPooledStates {
         vector_metadata: zerogravity_core::resource_arbiter::HostWorkspace,
         staging_metadata: zerogravity_core::resource_arbiter::HostWorkspace,
         page_metadata: zerogravity_core::resource_arbiter::HostWorkspace,
-        numerical: zerogravity_core::accelerator::program::SourceNumericalContract,
+        numerical: zerogravity_core::accelerator::program::NumericalContract,
     ) -> Result<Arc<Self>> {
         let vector_pool = ResidentPool::prepare(
             service.clone(),
@@ -829,7 +829,7 @@ impl ResidentModel {
         staging_sets: usize,
         page_tokens: usize,
         max_append_tokens: usize,
-        numerical: zerogravity_core::accelerator::program::SourceNumericalContract,
+        numerical: zerogravity_core::accelerator::program::NumericalContract,
     ) -> Result<()> {
         if source.source_identity() != self.service.source_identity()
             || self.state_pool.get().is_some()
@@ -1002,7 +1002,7 @@ mod tests {
     #[ignore = "physical CUDA hybrid vector/staging/page pool envelope"]
     fn physical_hybrid_pool_matches_original_root_envelope() -> Result<()> {
         use crate::cuda::test_support::CudaDiagnostic;
-        use zerogravity_core::accelerator::program::SourceNumericalContract;
+        use zerogravity_core::accelerator::program::NumericalContract;
         use zerogravity_core::resource_arbiter::{
             AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
         };
@@ -1060,7 +1060,7 @@ mod tests {
             vector_metadata,
             staging_metadata,
             page_metadata,
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
         )?;
 
         let mut vector_roots = Vec::new();
@@ -1146,7 +1146,7 @@ mod tests {
             test_support::CudaDiagnostic,
         };
         use cubecl::CubeElement;
-        use zerogravity_core::accelerator::program::SourceNumericalContract;
+        use zerogravity_core::accelerator::program::NumericalContract;
         use zerogravity_core::resource_arbiter::{
             AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
         };
@@ -1247,7 +1247,7 @@ mod tests {
                     "zerogravity-hybrid-candidate-page-metadata",
                     ResidentPagePool::metadata_bytes(24)?,
                 )?,
-                SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+                NumericalContract::CudaSm86Bf16ReferenceV1,
             )?;
 
             let vector_root = pools.vector_pool.checkout()?;

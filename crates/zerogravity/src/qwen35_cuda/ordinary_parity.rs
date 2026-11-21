@@ -13,7 +13,7 @@ use crate::{
     Error, Result,
     accelerator::program::{ConvDomain, KvDomain, RecurrentDomain, SourceCallMode, StateSlot},
     gpu::{ResidentPhysicalType, StateLayout},
-    qwen35::{plan::QwenSourceProfile, source::binding::OriginalWindowModelSource},
+    qwen35::{plan::QwenModelVariant, source::binding::OriginalWindowModelSource},
     resource_arbiter::ResourceOwner,
 };
 use std::{
@@ -267,7 +267,7 @@ pub async fn capture_reference_cached_47_to_50(
     model: &Arc<ReferenceModel>,
     cancelled: Option<&AtomicBool>,
 ) -> Result<Cached47To50Reference> {
-    if model.source_profile() != QwenSourceProfile::Qwen08
+    if model.source_profile() != QwenModelVariant::Qwen800M
         || model.source_metadata().context_capacity_tokens != CURRENT_PARITY_CAPACITY
     {
         return Err(Error::Unsupported(
@@ -331,7 +331,7 @@ pub async fn compare_ordinary_cached_47_to_50(
     reference: &Cached47To50Reference,
     cancelled: Option<&AtomicBool>,
 ) -> Result<Cached47To50ParityReport> {
-    if model.model_profile() != QwenSourceProfile::Qwen08.into()
+    if model.model_profile() != QwenModelVariant::Qwen800M.into()
         || model.context_capacity_tokens() != reference.capacity
         || reference.prompt.as_ref() != OriginalWindowModelSource::fixed_prompt_ids().as_slice()
         || reference.steps.len() != FRONTIERS.len()

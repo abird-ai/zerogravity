@@ -12,14 +12,14 @@ pub(super) struct FixedCell {
 impl FixedCell {
     pub(super) fn open(
         root: &Path,
-        profile: zerogravity::qwen35::plan::QwenSourceProfile,
+        profile: zerogravity::qwen35::plan::QwenModelVariant,
         rows: usize,
     ) -> Result<Self> {
         Self::open_at(root, &root.join("plain"), profile, rows, "")
     }
     pub(super) fn open_fresh(
         observed: &Path,
-        profile: zerogravity::qwen35::plan::QwenSourceProfile,
+        profile: zerogravity::qwen35::plan::QwenModelVariant,
         rows: usize,
     ) -> Result<Self> {
         ensure(
@@ -34,14 +34,14 @@ impl FixedCell {
     fn open_at(
         metadata_root: &Path,
         archive_root: &Path,
-        profile: zerogravity::qwen35::plan::QwenSourceProfile,
+        profile: zerogravity::qwen35::plan::QwenModelVariant,
         rows: usize,
         key_prefix: &str,
     ) -> Result<Self> {
-        use zerogravity::qwen35::plan::QwenSourceProfile;
+        use zerogravity::qwen35::plan::QwenModelVariant;
         let model = match profile {
-            QwenSourceProfile::Qwen08 => "0.8b",
-            QwenSourceProfile::Qwen2B => "2b",
+            QwenModelVariant::Qwen800M => "0.8b",
+            QwenModelVariant::Qwen2B => "2b",
         };
         let catalogue: serde_json::Value =
             serde_json::from_str(include_str!("oracle-pins.json"))

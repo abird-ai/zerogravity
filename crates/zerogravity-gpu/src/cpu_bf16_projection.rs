@@ -27,7 +27,7 @@ use cubecl::prelude::*;
 use std::ops::Range;
 use std::sync::Arc;
 use zerogravity_artifacts::source_weights::{TensorWindow, VerifiedTensorSource, WindowWorkspace};
-use zerogravity_core::accelerator::program::{MatrixAxes, ProgramNumericalProfile, SourceTensor};
+use zerogravity_core::accelerator::program::{MatrixAxes, NumericalProfile, SourceTensor};
 use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::{Error, Result};
 
@@ -40,7 +40,7 @@ const MAX_WEIGHT_BYTES: usize = 32 * 1024 * 1024;
 const MAX_ROWS: usize = 16384;
 const MAX_COLUMNS: usize = 8192;
 const LANES: usize = 64;
-const PROFILE: ProgramNumericalProfile = ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1;
+const PROFILE: NumericalProfile = NumericalProfile::TorchCpuAvx2Bf16MixedV1;
 
 fn malformed(message: &str) -> Error {
     Error::Malformed(format!("CPU-profile BF16 CUDA: {message}"))
@@ -100,7 +100,7 @@ impl Bf16Window {
         owner: Arc<TensorWindow>,
         descriptor: SourceTensor,
         rows: Range<usize>,
-        profile: ProgramNumericalProfile,
+        profile: NumericalProfile,
     ) -> Result<Self> {
         let matrix = owner.matrix();
         let raw = matrix.tensor();
@@ -177,7 +177,7 @@ pub(crate) struct Bf16Inputs {
 impl Bf16Inputs {
     pub(crate) fn bind(
         source: VerifiedTensorSource,
-        profile: ProgramNumericalProfile,
+        profile: NumericalProfile,
         rows: usize,
         columns: usize,
         batch: usize,
@@ -196,7 +196,7 @@ impl Bf16Inputs {
 }
 fn validate_input(
     source: zerogravity_core::accelerator::SourceIdentity,
-    profile: ProgramNumericalProfile,
+    profile: NumericalProfile,
     rows: usize,
     columns: usize,
     batch: usize,
@@ -307,7 +307,7 @@ mod tests {
         assert!(
             validate_input(
                 source,
-                ProgramNumericalProfile::GgufSourceV1,
+                NumericalProfile::GgufReferenceV1,
                 1,
                 64,
                 1,

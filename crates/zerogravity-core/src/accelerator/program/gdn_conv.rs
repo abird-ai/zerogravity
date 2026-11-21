@@ -48,7 +48,7 @@ pub(super) fn result_precision(
     inputs: &[PlanValue],
 ) -> Result<ActivationPrecision> {
     if !builder.operator_slice
-        || builder.profile != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+        || builder.profile != NumericalProfile::TorchCpuAvx2Bf16MixedV1
         || parameter.source != builder.source
         || inputs.len() != 2
         || inputs
@@ -101,11 +101,8 @@ mod tests {
     fn fixture() -> (PlanBuilder, SourceParameter) {
         let source = SourceIdentity::for_new_allocation().unwrap();
         (
-            PlanBuilder::new_operator_slice(
-                source,
-                ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
-            )
-            .unwrap(),
+            PlanBuilder::new_operator_slice(source, NumericalProfile::TorchCpuAvx2Bf16MixedV1)
+                .unwrap(),
             SourceParameter {
                 source,
                 name: "original.conv.weight".into(),

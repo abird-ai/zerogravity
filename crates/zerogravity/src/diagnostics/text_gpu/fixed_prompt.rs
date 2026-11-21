@@ -11,7 +11,7 @@ pub(super) fn validate_profile(
         || profile.workers != 1
         || profile.context != 512
         || !(1..=8).contains(&profile.output)
-        || profile.native_rows != 0
+        || profile.cohort_width != 0
         || profile.device_mib != source::DEVICE_MIB
     {
         return Err(ServiceError::new(
@@ -110,7 +110,7 @@ pub fn load_fixed_prompt(
         group: 0,
         hidden_width: 1024,
         vocabulary_size: 248320,
-        native_rows: 0,
+        cohort_width: 0,
         max_token_bytes,
         _metadata: metadata,
         readers: Arc::new(AtomicUsize::new(0)),
@@ -190,7 +190,7 @@ mod active8_tests {
             output: 8,
             provider_mib,
             device_mib: 5120,
-            native_rows: 0,
+            cohort_width: 0,
             host_mib: 4096,
             max_pending: None,
         }
@@ -216,9 +216,9 @@ mod active8_tests {
             assert!(validate_profile(GpuBackend::Cuda, &profile(active, provider), host).is_err());
         }
         let mut wrong = profile(8, 4096);
-        wrong.native_rows = 8;
+        wrong.cohort_width = 8;
         assert!(validate_profile(GpuBackend::Cuda, &wrong, 4096).is_err());
-        wrong.native_rows = 0;
+        wrong.cohort_width = 0;
         wrong.device_mib = 4096;
         assert!(validate_profile(GpuBackend::Cuda, &wrong, 4096).is_err());
     }

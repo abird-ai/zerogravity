@@ -84,7 +84,7 @@ impl FusedRmsRetentionWitness {
                 ));
             }
         }
-        for (role, bytes) in Buffer::owned(owner.rows, Columns::Qwen08)
+        for (role, bytes) in Buffer::owned(owner.rows, Columns::Qwen800M)
             .into_iter()
             .chain([
                 (Buffer::Attention, owner.rows.count() * COLUMNS * 2),

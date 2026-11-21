@@ -1,8 +1,8 @@
 use super::*;
 use zerogravity_core::accelerator::program::{
-    ConvDomain, EmbeddingContract, MathematicalBackend, MatrixAxes, PlanBuilder,
-    ProgramNumericalProfile, ProjectionContract, SourceNumericalContract, SourceOperatorKind,
-    SourceOperatorTemplate, SourcePlanGeometry, SourceRowSelection, StateSlot,
+    ConvDomain, EmbeddingContract, MathematicalBackend, MatrixAxes, NumericalContract,
+    NumericalProfile, PlanBuilder, ProjectionContract, SourceOperatorKind, SourceOperatorTemplate,
+    SourcePlanGeometry, SourceRowSelection, StateSlot,
 };
 
 struct UnreadSource;
@@ -26,11 +26,8 @@ fn typed_original_slice_refuses_before_source_reads_or_resident_budget_work() {
         columns: 4,
         rows: 8,
     };
-    let mut builder = PlanBuilder::new_operator_slice(
-        source,
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
-    )
-    .unwrap();
+    let mut builder =
+        PlanBuilder::new_operator_slice(source, NumericalProfile::TorchCpuAvx2Bf16MixedV1).unwrap();
     let input = builder
         .embed_profiled(
             tensor.clone(),
@@ -66,7 +63,7 @@ fn call_free_source_template_refuses_before_legacy_source_or_batch_lowering() {
         geometry,
         SourceRowSelection::AllActive,
         SourceOperatorKind::EmbeddingRows,
-        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        NumericalContract::CudaSm86Bf16ReferenceV1,
         vec![matrix("embedding", 16, 4)],
         vec![],
     )
@@ -80,7 +77,7 @@ fn call_free_source_template_refuses_before_legacy_source_or_batch_lowering() {
         geometry,
         SourceRowSelection::AllActive,
         SourceOperatorKind::StateCarry { slot },
-        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        NumericalContract::CudaSm86Bf16ReferenceV1,
         vec![],
         vec![],
     )
@@ -95,7 +92,7 @@ fn call_free_source_template_refuses_before_legacy_source_or_batch_lowering() {
         geometry,
         SourceRowSelection::LastActive,
         SourceOperatorKind::Projection { selected_row: None },
-        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        NumericalContract::CudaSm86Bf16ReferenceV1,
         vec![matrix("head", 8, 4)],
         vec![],
     )
@@ -128,7 +125,7 @@ fn even_legacy_operator_fragment_cannot_impersonate_full_state_transition() {
         rows: 8,
     };
     let mut builder =
-        PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1).unwrap();
+        PlanBuilder::new_operator_slice(source, NumericalProfile::GgufReferenceV1).unwrap();
     let output = builder.embed(tensor, PlanBuilder::inputs().token).unwrap();
     let slice = builder.finish_operator_slice(output).unwrap();
     assert!(matches!(

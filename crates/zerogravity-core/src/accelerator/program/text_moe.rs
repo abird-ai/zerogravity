@@ -89,7 +89,7 @@ pub(super) fn record(
     c: &TextMoeContract,
     input: TextMoeInputs<'_, PlanValue>,
 ) -> Result<PlanValue> {
-    if builder.profile != ProgramNumericalProfile::AnalyticF32TextV1
+    if builder.profile != NumericalProfile::AnalyticF32TextV1
         || input.normalized.precision != ActivationPrecision::F32
         || input.router_input.precision != ActivationPrecision::F32
         || input.normalized.shape != input.router_input.shape

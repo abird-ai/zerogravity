@@ -9,8 +9,7 @@ impl HostMath<'_, '_, '_> {
         if self.region_kernel.is_some()
             || self.engine.is_some()
             || self.state.is_some()
-            || self.source.program_numerical_profile()
-                != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+            || self.source.program_numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
         {
             return Err(Error::Unsupported(
                 "convolution requires private pinned CPU window contract".into(),

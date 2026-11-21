@@ -1,7 +1,6 @@
 //! State-free operators through the existing schedule/backend, never a token.
 use crate::accelerator::program::{
-    EmbeddingContract, PlanBuilder, ProgramNumericalProfile, ProjectionContract,
-    RecordedOperatorSlice,
+    EmbeddingContract, NumericalProfile, PlanBuilder, ProjectionContract, RecordedOperatorSlice,
 };
 use crate::source::binding::{QwenMatrixRole, QwenNumericalProfile};
 use crate::{Error, LoadedQwenModel, Result};
@@ -10,7 +9,7 @@ use crate::{Error, LoadedQwenModel, Result};
 pub(crate) trait OperatorSliceSource {
     fn geometry(&self) -> &crate::config::ModelGeometry;
     fn source_identity(&self) -> crate::accelerator::SourceIdentity;
-    fn program_numerical_profile(&self) -> ProgramNumericalProfile;
+    fn program_numerical_profile(&self) -> NumericalProfile;
     fn rms_epsilon(&self) -> f32;
     fn matrix_descriptor(
         &self,
@@ -30,7 +29,7 @@ impl OperatorSliceSource for LoadedQwenModel {
     fn source_identity(&self) -> crate::accelerator::SourceIdentity {
         LoadedQwenModel::source_identity(self)
     }
-    fn program_numerical_profile(&self) -> ProgramNumericalProfile {
+    fn program_numerical_profile(&self) -> NumericalProfile {
         LoadedQwenModel::program_numerical_profile(self)
     }
     fn rms_epsilon(&self) -> f32 {
@@ -58,17 +57,17 @@ impl OperatorSliceSource for LoadedQwenModel {
 
 impl LoadedQwenModel {
     /// Numerical contract only; the full execution/session guard is separate.
-    pub fn program_numerical_profile(&self) -> ProgramNumericalProfile {
+    pub fn program_numerical_profile(&self) -> NumericalProfile {
         match self.numerical_profile() {
-            QwenNumericalProfile::GgufSourceV1 => ProgramNumericalProfile::GgufSourceV1,
+            QwenNumericalProfile::GgufReferenceV1 => NumericalProfile::GgufReferenceV1,
             QwenNumericalProfile::OriginalHfTorchCpuSlowBf16Avx2 => {
-                ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+                NumericalProfile::TorchCpuAvx2Bf16MixedV1
             }
         }
     }
     pub(crate) fn embedding_contract(&self) -> EmbeddingContract {
         match self.numerical_profile() {
-            QwenNumericalProfile::GgufSourceV1 => EmbeddingContract::Source,
+            QwenNumericalProfile::GgufReferenceV1 => EmbeddingContract::Source,
             QwenNumericalProfile::OriginalHfTorchCpuSlowBf16Avx2 => {
                 EmbeddingContract::Bf16OutputInput
             }
@@ -76,16 +75,14 @@ impl LoadedQwenModel {
     }
     pub(crate) fn projection_contract(&self) -> ProjectionContract {
         match self.numerical_profile() {
-            QwenNumericalProfile::GgufSourceV1 => ProjectionContract::Source,
+            QwenNumericalProfile::GgufReferenceV1 => ProjectionContract::Source,
             QwenNumericalProfile::OriginalHfTorchCpuSlowBf16Avx2 => {
                 ProjectionContract::TorchCpuBf16Avx2
             }
         }
     }
     fn require_operator_slice(&self) -> Result<()> {
-        if self.program_numerical_profile()
-            != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
-        {
+        if self.program_numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1 {
             return Err(Error::Unsupported(
                 "closed original embedding/projection profile".into(),
             ));
@@ -165,7 +162,7 @@ impl LoadedQwenModel {
 #[cfg(feature = "cpu")]
 pub struct EmbeddingInputNormProjectionOutput {
     source: crate::accelerator::SourceIdentity,
-    profile: ProgramNumericalProfile,
+    profile: NumericalProfile,
     embedding: Vec<f32>,
     normalized: Vec<f32>,
     projected: Vec<f32>,
@@ -175,7 +172,7 @@ impl EmbeddingInputNormProjectionOutput {
     pub fn source_identity(&self) -> crate::accelerator::SourceIdentity {
         self.source
     }
-    pub fn numerical_profile(&self) -> ProgramNumericalProfile {
+    pub fn numerical_profile(&self) -> NumericalProfile {
         self.profile
     }
     pub fn precision(&self) -> crate::accelerator::program::ActivationPrecision {
@@ -196,7 +193,7 @@ impl EmbeddingInputNormProjectionOutput {
 #[cfg(feature = "cpu")]
 pub struct EmbeddingProjectionOutput {
     source: crate::accelerator::SourceIdentity,
-    profile: ProgramNumericalProfile,
+    profile: NumericalProfile,
     embedding: Vec<f32>,
     projected: Vec<f32>,
 }
@@ -205,7 +202,7 @@ impl EmbeddingProjectionOutput {
     pub fn source_identity(&self) -> crate::accelerator::SourceIdentity {
         self.source
     }
-    pub fn numerical_profile(&self) -> ProgramNumericalProfile {
+    pub fn numerical_profile(&self) -> NumericalProfile {
         self.profile
     }
     pub fn precision(&self) -> crate::accelerator::program::ActivationPrecision {

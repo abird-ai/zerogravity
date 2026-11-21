@@ -214,7 +214,7 @@ impl ProjectionUse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zerogravity_model_qwen35::plan::{QwenSourceProfile, diagnostic_ordinary_plan};
+    use zerogravity_model_qwen35::plan::{QwenModelVariant, diagnostic_ordinary_plan};
 
     #[test]
     fn source_reductions_preserve_partial_precision_and_k_grouping() -> Result<()> {
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn prefill_projection_classes_follow_complete_static_reduction_signatures() -> Result<()> {
-        for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+        for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
             let plan = diagnostic_ordinary_plan(profile, 1024)?;
             let classes = PrefillProjectionClasses::from_plan(&plan)?;
             assert!(classes.compatible(48, 49));
@@ -331,7 +331,7 @@ mod tests {
         // current 2B plan. The classifier discovers that boundary from the
         // complete plan; importantly, it does *not* invent a 47/48 boundary
         // from an isolated projection geometry that is absent here.
-        let plan = diagnostic_ordinary_plan(QwenSourceProfile::Qwen2B, 1024)?;
+        let plan = diagnostic_ordinary_plan(QwenModelVariant::Qwen2B, 1024)?;
         assert_ne!(
             prefill_reduction_signature(&plan, 1)?,
             prefill_reduction_signature(&plan, 2)?

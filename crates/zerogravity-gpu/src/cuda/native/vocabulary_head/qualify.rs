@@ -162,7 +162,10 @@ pub(super) async fn inner(
     let service = ResidentService::new_pinned_cuda(
         device,
         owner.source.source_identity(),
-        ResourceOwner::new("qwen08-tied-vocabulary-head", "closed-original-five-phases")?,
+        ResourceOwner::new(
+            "qwen800m-tied-vocabulary-head",
+            "closed-original-five-phases",
+        )?,
         HEAD_CAP,
         inputs.device_cap,
     )?;

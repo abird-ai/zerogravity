@@ -6,16 +6,16 @@ use crate::source::TensorSource;
 use crate::{Error, Result};
 
 pub use crate::numerics::{
-    ActivationPrecision, EmbeddingContract, ProgramNumericalProfile, ProjectionContract,
+    ActivationPrecision, EmbeddingContract, NumericalProfile, ProjectionContract,
 };
 
 /// Qualified ordinary RMS only: raw(1+weight), FP32 stages, final BF16.
 /// Epsilon1e-6 and the four CPU reduction widths are part of this contract.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum OrdinaryRmsContract {
+pub enum RmsContract {
     TorchCpuBf16Avx2,
 }
-impl OrdinaryRmsContract {
+impl RmsContract {
     pub fn validate(self, parameter: &SourceParameter, elements: usize) -> Result<usize> {
         if !parameter.source.is_bound() || parameter.name.is_empty() {
             return Err(Error::State("ordinary RMS parameter binding".into()));

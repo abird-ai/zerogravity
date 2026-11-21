@@ -54,7 +54,7 @@ impl GgufGdnUpstreamSlice {
     pub fn record(&self) -> Result<RecordedOperatorSlice> {
         let mut builder = PlanBuilder::new_operator_slice(
             self.descriptor().source(),
-            ProgramNumericalProfile::GgufSourceV1,
+            NumericalProfile::GgufReferenceV1,
         )?;
         let values = crate::forward::gguf_gdn_upstream_slice(&mut builder, self.descriptor())?;
         builder.finish_operator_slice(values.operands)

@@ -20,7 +20,7 @@ async fn run() -> Result<()> {
     let service = &diagnostic.service;
     let queue = service.pinned_cuda_queue()?;
     let mut failed = 0;
-    for columns in [Columns::Qwen08, Columns::Qwen2b] {
+    for columns in [Columns::Qwen800M, Columns::Qwen2B] {
         let width = columns.count();
         let program = Program::new(if width == 1024 {
             Geometry::qwen35_08()

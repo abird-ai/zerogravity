@@ -21,7 +21,7 @@ use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{
-        ForwardPlan, PlanOperation, SourceNumericalContract, SourceOperatorKind, SourceParameter,
+        ForwardPlan, NumericalContract, PlanOperation, SourceOperatorKind, SourceParameter,
         SourceTensor,
     },
     device_events::{BufferRole, DeviceAccess},
@@ -275,7 +275,7 @@ impl OrdinaryCudaCold {
             let PlanOperation::SourceOperatorTemplate { descriptor, .. } = &node.operation else {
                 unreachable!("layout accepted only source templates")
             };
-            if descriptor.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1 {
+            if descriptor.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1 {
                 return Err(Error::State(
                     "ordinary CUDA source numerical contract differs".into(),
                 ));

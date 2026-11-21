@@ -12,14 +12,14 @@ use zerogravity_core::resource_arbiter::{
 const PROVIDER: usize = 128 * 1024 * 1024;
 const UNKNOWN: &str = "deliberate original2B RMS unknown after actual Mean";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Qwen2bRmsFault {
+pub enum Qwen2BRmsFault {
     Pressure,
     UnknownAfterMean,
     CancelAfterMean,
 }
 #[derive(Clone, Debug)]
-pub struct Qwen2bRmsFaultOutcome {
-    pub fault: Qwen2bRmsFault,
+pub struct Qwen2BRmsFaultOutcome {
+    pub fault: Qwen2BRmsFault,
     pub actual_stage_dispatches: usize,
     pub uploaded_value_bytes: u64,
     pub prepared_buffers: usize,
@@ -47,7 +47,7 @@ struct Probe {
 async fn cut(
     device: Device,
     source: RmsLeafSource,
-    fault: Qwen2bRmsFault,
+    fault: Qwen2BRmsFault,
     device_cap: u64,
     probe: &mut Option<Probe>,
     cancelled: Option<&AtomicBool>,
@@ -102,27 +102,27 @@ async fn cut(
     let actual = prepared.enqueue_2b_through_mean()?;
     probe.as_mut().unwrap().stages = actual;
     match fault {
-        Qwen2bRmsFault::UnknownAfterMean => Err(Error::State(UNKNOWN.into())),
-        Qwen2bRmsFault::CancelAfterMean => {
+        Qwen2BRmsFault::UnknownAfterMean => Err(Error::State(UNKNOWN.into())),
+        Qwen2BRmsFault::CancelAfterMean => {
             let flag = AtomicBool::new(true);
             not_cancelled(Some(&flag))
         }
-        Qwen2bRmsFault::Pressure => Err(Error::State("pressure cannot reach RMS enqueue".into())),
+        Qwen2BRmsFault::Pressure => Err(Error::State("pressure cannot reach RMS enqueue".into())),
     }
     // Armed flight/fair slot and ALL strong locals drop before outer inspection.
 }
-fn intended(fault: Qwen2bRmsFault, result: &Result<()>) -> bool {
+fn intended(fault: Qwen2BRmsFault, result: &Result<()>) -> bool {
     matches!((fault,result),
-        (Qwen2bRmsFault::UnknownAfterMean,Err(Error::State(why))) if why==UNKNOWN)
+        (Qwen2BRmsFault::UnknownAfterMean,Err(Error::State(why))) if why==UNKNOWN)
         || matches!((fault,result),
-        (Qwen2bRmsFault::CancelAfterMean,Err(Error::State(why))) if why=="original2B RMS cancelled")
+        (Qwen2BRmsFault::CancelAfterMean,Err(Error::State(why))) if why=="original2B RMS cancelled")
 }
 async fn pressure(
     device: Device,
     source: RmsLeafSource,
     device_cap: u64,
     cancelled: Option<&AtomicBool>,
-) -> Result<Qwen2bRmsFaultOutcome> {
+) -> Result<Qwen2BRmsFaultOutcome> {
     let weak = source.retained_source()?.weak_owner();
     let service = ResidentService::new_pinned_cuda(
         device,
@@ -151,8 +151,8 @@ async fn pressure(
             "2B original pressure source/envelope did not retire".into(),
         ));
     }
-    Ok(Qwen2bRmsFaultOutcome {
-        fault: Qwen2bRmsFault::Pressure,
+    Ok(Qwen2BRmsFaultOutcome {
+        fault: Qwen2BRmsFault::Pressure,
         actual_stage_dispatches: 0,
         uploaded_value_bytes: 0,
         prepared_buffers: 0,
@@ -173,17 +173,17 @@ async fn pressure(
 pub async fn qualify_qwen2b_rms_fault(
     device: Device,
     source: RmsLeafSource,
-    fault: Qwen2bRmsFault,
+    fault: Qwen2BRmsFault,
     device_cap: u64,
     cancelled: Option<&AtomicBool>,
-) -> Result<Qwen2bRmsFaultOutcome> {
+) -> Result<Qwen2BRmsFaultOutcome> {
     not_cancelled(cancelled)?;
     if cfg!(debug_assertions) || !matches!(device, Device::Cuda(_)) {
         return Err(Error::Unsupported(
             "release original CUDA required for2B RMS fault".into(),
         ));
     }
-    if fault == Qwen2bRmsFault::Pressure {
+    if fault == Qwen2BRmsFault::Pressure {
         return pressure(device, source, device_cap, cancelled).await;
     }
     let mut probe = None;
@@ -241,7 +241,7 @@ pub async fn qualify_qwen2b_rms_fault(
             "2B original uncertain actual source/cohort/fence changed".into(),
         ));
     }
-    Ok(Qwen2bRmsFaultOutcome {
+    Ok(Qwen2BRmsFaultOutcome {
         fault,
         actual_stage_dispatches: probe.stages,
         uploaded_value_bytes: probe.uploaded,
@@ -266,17 +266,17 @@ mod tests {
     #[test]
     fn deliberate_cut_acceptance_requires_exact_original_cause() {
         assert!(intended(
-            Qwen2bRmsFault::UnknownAfterMean,
+            Qwen2BRmsFault::UnknownAfterMean,
             &Err(Error::State(UNKNOWN.into()))
         ));
         assert!(intended(
-            Qwen2bRmsFault::CancelAfterMean,
+            Qwen2BRmsFault::CancelAfterMean,
             &Err(Error::State("original2B RMS cancelled".into()))
         ));
         for fault in [
-            Qwen2bRmsFault::UnknownAfterMean,
-            Qwen2bRmsFault::CancelAfterMean,
-            Qwen2bRmsFault::Pressure,
+            Qwen2BRmsFault::UnknownAfterMean,
+            Qwen2BRmsFault::CancelAfterMean,
+            Qwen2BRmsFault::Pressure,
         ] {
             assert!(!intended(fault, &Ok(())));
             assert!(!intended(
@@ -286,7 +286,7 @@ mod tests {
             assert!(!intended(fault, &Err(Error::Limit(UNKNOWN.into()))));
         }
         assert!(!intended(
-            Qwen2bRmsFault::UnknownAfterMean,
+            Qwen2BRmsFault::UnknownAfterMean,
             &Err(Error::State("original2B RMS cancelled".into()))
         ));
     }

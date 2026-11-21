@@ -342,7 +342,7 @@ fn unaware_physical_provider_refuses_before_embedding_or_projection_callback() {
 
 #[test]
 fn typed_ordinary_rms_slice_uses_original_parameter_and_one_shared_backend() {
-    use crate::accelerator::program::{ActivationPrecision, OrdinaryRmsContract, PlanOperation};
+    use crate::accelerator::program::{ActivationPrecision, PlanOperation, RmsContract};
     use crate::source::binding::QwenParameterRole;
     for raw_bf16 in [false, true] {
         let fixture = Fixture::new();
@@ -367,7 +367,7 @@ fn typed_ordinary_rms_slice_uses_original_parameter_and_one_shared_backend() {
             panic!("missing raw source ordinary RMS node");
         };
         assert_eq!(recorded, &parameter);
-        assert_eq!(*contract, OrdinaryRmsContract::TorchCpuBf16Avx2);
+        assert_eq!(*contract, RmsContract::TorchCpuBf16Avx2);
         assert!(slice.plan().constants().is_empty());
         assert!(
             slice.plan().required_domains().is_empty()
@@ -431,7 +431,7 @@ fn typed_ordinary_rms_slice_uses_original_parameter_and_one_shared_backend() {
 #[test]
 fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unaware_paths() {
     use crate::accelerator::program::{
-        MathematicalBackend, OrdinaryRmsContract, ProjectionContract, TensorView,
+        MathematicalBackend, ProjectionContract, RmsContract, TensorView,
     };
     use crate::source::binding::QwenParameterRole;
     use zerogravity_core::encoding::StoredTensorEncoding;
@@ -456,7 +456,7 @@ fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unawar
     let parameter = first
         .parameter_descriptor(QwenParameterRole::InputNorm(0))
         .unwrap();
-    let contract = OrdinaryRmsContract::TorchCpuBf16Avx2;
+    let contract = RmsContract::TorchCpuBf16Avx2;
     let normalized = math
         .ordinary_rms_profiled(parameter.clone(), &input, contract)
         .unwrap();
@@ -564,7 +564,7 @@ fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unawar
 
 #[test]
 fn typed_ordinary_rms_refuses_unqualified_source_epsilon_before_recording_or_execution() {
-    use crate::accelerator::program::{MathematicalBackend, OrdinaryRmsContract};
+    use crate::accelerator::program::{MathematicalBackend, RmsContract};
     use crate::source::binding::QwenParameterRole;
     let fixture = Fixture::new();
     let mut loaded = source_with_options(&fixture, true, 256, true, |_| {});
@@ -597,7 +597,7 @@ fn typed_ordinary_rms_refuses_unqualified_source_epsilon_before_recording_or_exe
                 .parameter_descriptor(QwenParameterRole::InputNorm(0))
                 .unwrap(),
             &embedding,
-            OrdinaryRmsContract::TorchCpuBf16Avx2,
+            RmsContract::TorchCpuBf16Avx2,
         )
         .is_err()
     );

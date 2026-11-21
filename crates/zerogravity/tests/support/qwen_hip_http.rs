@@ -95,7 +95,7 @@ fn public_source_http_population_json_sse_disconnect_and_replay() {
     assert_eq!(admission["failed_gpu_quanta"], 0);
     assert_eq!(admission["gpu_fused_batches"], 0);
     println!(
-        "SOURCE_HTTP_OUTCOME model={label} mode={mode} offered={clients} completed_readers={} disconnect_requested={disconnects} active_limit={} accepted_http_requests={} native_cohorts=false original_ids=true sdk_replay=true full_float_comparisons=0 admission={admission}",
+        "SOURCE_HTTP_OUTCOME model={label} mode={mode} offered={clients} completed_readers={} disconnect_requested={disconnects} active_limit={} accepted_http_requests={} fused_cohorts=false original_ids=true sdk_replay=true full_float_comparisons=0 admission={admission}",
         responses.len(),
         clients.min(8),
         metrics.accepted_requests
@@ -164,7 +164,7 @@ fn public_source_http_completion_disconnect_and_replay() {
     assert_eq!(admission["queued_requests"], 0);
     assert_eq!(admission["gpu_fused_batches"], 0);
     println!(
-        "SOURCE_HTTP_SEQUENTIAL_OUTCOME model={label} concurrent_clients=1 active_limit=1 completed_readers=2 disconnect_requested=1 json=true sse=true original_ids=true sdk_replay=true native_cohorts=false full_float_comparisons=0 admission={admission}"
+        "SOURCE_HTTP_SEQUENTIAL_OUTCOME model={label} concurrent_clients=1 active_limit=1 completed_readers=2 disconnect_requested=1 json=true sse=true original_ids=true sdk_replay=true fused_cohorts=false full_float_comparisons=0 admission={admission}"
     );
     h.retire();
     println!("SOURCE_HTTP_SEQUENTIAL_PASS model={label}");
@@ -232,7 +232,7 @@ fn public_source_populated_http_json_sse_disconnect_and_replay() {
     assert_eq!(admission["queued_requests"], 0);
     assert_eq!(admission["gpu_fused_batches"], 0);
     println!(
-        "SOURCE_CONTEXT_HTTP_OUTCOME model={label} context={capacity} mode={mode} offered=2 concurrent_clients=1 completed_readers={} disconnect_requested={disconnects} prompt_tokens={} original_ids=true sdk_replay=true native_cohorts=false full_float_comparisons=0 admission={admission}",
+        "SOURCE_CONTEXT_HTTP_OUTCOME model={label} context={capacity} mode={mode} offered=2 concurrent_clients=1 completed_readers={} disconnect_requested={disconnects} prompt_tokens={} original_ids=true sdk_replay=true fused_cohorts=false full_float_comparisons=0 admission={admission}",
         responses.len(),
         capacity - 2
     );

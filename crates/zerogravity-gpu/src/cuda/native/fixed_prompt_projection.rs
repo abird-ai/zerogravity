@@ -16,7 +16,7 @@ use std::sync::{Arc, atomic::AtomicBool};
 use zerogravity_artifacts::source_weights::{TensorWindow, VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::accelerator::program::SourceCallMode;
 use zerogravity_core::accelerator::program::{
-    SourceNumericalContract, SourceOperator, SourceOperatorKind,
+    NumericalContract, SourceOperator, SourceOperatorKind,
 };
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::{Error, Result};
@@ -62,7 +62,7 @@ impl Role {
             ));
         }
         if operator.kind() != (SourceOperatorKind::Projection { selected_row: None })
-            || operator.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+            || operator.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
             || !operator.parameters().is_empty()
             || operator.matrices().len() != 2
             || operator.matrices().iter().any(|m| m.columns != 1024)

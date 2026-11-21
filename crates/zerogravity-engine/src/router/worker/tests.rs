@@ -202,12 +202,12 @@ impl Executor for StatusOnly {
                         width: rows.len(),
                         control,
                     },
-                    native: true,
+                    fused: true,
                     completion: Completion {
                         quanta: rows.len() as u64,
                         forwards: 1,
                         model_tokens: rows.len() as u64,
-                        native_rows: rows.len(),
+                        cohort_width: rows.len(),
                         state_only: work.state_only,
                         ..Completion::default()
                     },
@@ -364,8 +364,8 @@ fn policy(rows: usize, retry: RetryOrder) -> WavePolicy {
         prefill_quantum: 32,
         unequal_prefill: true,
         unequal_decode: true,
-        native_rows: rows,
-        cohorts: Cohorts::Native {
+        cohort_width: rows,
+        cohorts: Cohorts::Fused {
             widths: if retry == RetryOrder::Regroup {
                 &[8, 4, 2, 1]
             } else {
@@ -395,7 +395,7 @@ fn operations(log: &Log) -> Vec<String> {
 }
 
 #[test]
-fn prelaunch_capacity_reduces_only_original_bands_without_padding() {
+fn prelaunch_capacity_reduces_only_supported_cohorts_without_padding() {
     let mut rig = Rig::new();
     let log = Arc::default();
     let policy = policy(8, RetryOrder::Regroup);
@@ -422,7 +422,7 @@ fn prelaunch_capacity_reduces_only_original_bands_without_padding() {
             "single:1:7"
         ]
     );
-    assert_eq!(rig.stats.snapshot().native_admission_refusals, 7);
+    assert_eq!(rig.stats.snapshot().cohort_admission_refusals, 7);
     assert_eq!(rig.stats.snapshot().completed, 0);
     rig.close();
 }
@@ -530,7 +530,7 @@ fn fatal_or_unknown_preparation_is_never_retried_as_smaller_work() {
     assert_eq!(
         (
             rig.stats.snapshot().failed,
-            rig.stats.snapshot().native_admission_refusals
+            rig.stats.snapshot().cohort_admission_refusals
         ),
         (8, 0)
     );
@@ -664,7 +664,7 @@ fn non_fused_prompt_tails_still_enter_one_complete_cohort() {
     let log = Arc::default();
     let mut policy = policy(4, RetryOrder::Regroup);
     policy.cohorts = Cohorts::PromptTails;
-    policy.native_rows = 0;
+    policy.cohort_width = 0;
     let mut rows = rig.rows(1, 3, vec![Action::Fatal], policy, &log);
     // Scheduling inputs only; the fixture refuses every physical operation.
     for row in &mut rows {
@@ -758,10 +758,10 @@ fn invalid_wave_controls_refuse_before_worker_or_session_creation() {
     p.prefill_quantum = 513;
     bad.push(p);
     let mut p = original;
-    p.native_rows = 8;
+    p.cohort_width = 8;
     bad.push(p);
     let mut p = original;
-    p.cohorts = Cohorts::Native {
+    p.cohorts = Cohorts::Fused {
         widths: &[8, 4, 2, 1, 1],
         split_prefix: true,
         retry: RetryOrder::Regroup,

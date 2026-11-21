@@ -58,8 +58,7 @@ impl HostMath<'_, '_, '_> {
     fn require_torch_values(&self, inputs: [&HostValue; 2], silu: bool) -> Result<()> {
         self.check_torch_cancel()?;
         if self.region_kernel.is_some()
-            || self.source.program_numerical_profile()
-                != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+            || self.source.program_numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
             || inputs[0].elements == 0
             || inputs[0].elements > 17408
             || inputs[0].elements != inputs[1].elements

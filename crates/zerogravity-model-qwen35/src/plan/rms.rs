@@ -6,7 +6,7 @@ const WIDTH: usize = 1024;
 const VOCABULARY: usize = 248_320;
 const EMBEDDING: &str = "model.language_model.embed_tokens.weight";
 const POST_NORM: &str = "model.language_model.layers.0.post_attention_layernorm.weight";
-const PROFILE: ProgramNumericalProfile = ProgramNumericalProfile::SourceCudaSm86Bf16V1;
+const PROFILE: NumericalProfile = NumericalProfile::CudaSm86Bf16ReferenceV1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QwenResidualRmsContract {
@@ -202,15 +202,15 @@ impl QwenInputRows {
 pub struct QwenEmbedding {
     tensor: Arc<SourceTensor>,
     teachers: QwenInputRows,
-    model_profile: QwenSourceProfile,
+    model_profile: QwenModelVariant,
 }
 impl QwenEmbedding {
     pub fn new(tensor: SourceTensor, teachers: QwenInputRows) -> Result<Self> {
-        Self::for_model(QwenSourceProfile::Qwen08, tensor, teachers)
+        Self::for_model(QwenModelVariant::Qwen800M, tensor, teachers)
     }
     /// Full-model metadata only; recording requires a matching full-model call.
     pub fn for_model(
-        model_profile: QwenSourceProfile,
+        model_profile: QwenModelVariant,
         tensor: SourceTensor,
         teachers: QwenInputRows,
     ) -> Result<Self> {
@@ -243,7 +243,7 @@ impl QwenEmbedding {
         }
         Ok(value)
     }
-    pub fn model_profile(&self) -> QwenSourceProfile {
+    pub fn model_profile(&self) -> QwenModelVariant {
         self.model_profile
     }
     pub fn tensor(&self) -> &SourceTensor {
@@ -328,7 +328,7 @@ pub(super) fn embedding_precision(
         .model_call
         .as_ref()
         .is_some_and(|call| call.model_profile() != descriptor.model_profile)
-        || descriptor.model_profile == QwenSourceProfile::Qwen2B && builder.model_call.is_none()
+        || descriptor.model_profile == QwenModelVariant::Qwen2B && builder.model_call.is_none()
     {
         return Err(Error::Unsupported(
             "source embedding/full-model geometry profile".into(),

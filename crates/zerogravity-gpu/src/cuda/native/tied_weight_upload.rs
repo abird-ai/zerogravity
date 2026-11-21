@@ -74,7 +74,7 @@ pub async fn qualify_tied_weight_upload(
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source_identity(),
-        ResourceOwner::new("qwen08-original-tied-table", "finite-source-upload")?,
+        ResourceOwner::new("qwen800m-original-tied-table", "finite-source-upload")?,
         PROVIDER_CAP,
         device_cap,
     )?;

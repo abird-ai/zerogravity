@@ -24,7 +24,7 @@ pub struct BoundPromptCall {
 }
 fn require_call(
     source: crate::accelerator::SourceIdentity,
-    profile: QwenSourceProfile,
+    profile: QwenModelVariant,
     call: &PromptCall,
 ) -> Result<()> {
     call.validate()?;
@@ -124,7 +124,7 @@ mod tests {
 
     fn call(
         source: SourceIdentity,
-        profile: QwenSourceProfile,
+        profile: QwenModelVariant,
         prompt_tokens: usize,
         capacity: usize,
         base: Option<usize>,
@@ -143,14 +143,14 @@ mod tests {
     fn source_profile_join_rejects_foreign_owner_without_shape_equivalence() {
         let source = SourceIdentity::for_new_allocation().unwrap();
         let foreign = SourceIdentity::for_new_allocation().unwrap();
-        for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+        for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
             let actual = call(source, profile, 73, 512, None, 11);
             require_call(source, profile, &actual).unwrap();
             assert!(require_call(foreign, profile, &actual).is_err());
-            let other = if profile == QwenSourceProfile::Qwen08 {
-                QwenSourceProfile::Qwen2B
+            let other = if profile == QwenModelVariant::Qwen800M {
+                QwenModelVariant::Qwen2B
             } else {
-                QwenSourceProfile::Qwen08
+                QwenModelVariant::Qwen800M
             };
             assert!(require_call(source, other, &actual).is_err());
         }
@@ -160,17 +160,17 @@ mod tests {
     fn shape_keys_preserve_context_frontier_profile_and_issuer() {
         let source = SourceIdentity::for_new_allocation().unwrap();
         let foreign = SourceIdentity::for_new_allocation().unwrap();
-        let a = call(source, QwenSourceProfile::Qwen08, 48, 512, None, 11);
-        let equal_shape = call(source, QwenSourceProfile::Qwen08, 48, 512, None, 353);
+        let a = call(source, QwenModelVariant::Qwen800M, 48, 512, None, 11);
+        let equal_shape = call(source, QwenModelVariant::Qwen800M, 48, 512, None, 353);
         assert_ne!(a, equal_shape);
         assert!(same_shape(&a, &equal_shape));
         for different in [
-            call(foreign, QwenSourceProfile::Qwen08, 48, 512, None, 11),
-            call(source, QwenSourceProfile::Qwen2B, 48, 512, None, 11),
-            call(source, QwenSourceProfile::Qwen08, 49, 512, None, 11),
-            call(source, QwenSourceProfile::Qwen08, 48, 1024, None, 11),
-            call(source, QwenSourceProfile::Qwen08, 48, 512, Some(48), 11),
-            call(source, QwenSourceProfile::Qwen08, 48, 512, Some(49), 11),
+            call(foreign, QwenModelVariant::Qwen800M, 48, 512, None, 11),
+            call(source, QwenModelVariant::Qwen2B, 48, 512, None, 11),
+            call(source, QwenModelVariant::Qwen800M, 49, 512, None, 11),
+            call(source, QwenModelVariant::Qwen800M, 48, 1024, None, 11),
+            call(source, QwenModelVariant::Qwen800M, 48, 512, Some(48), 11),
+            call(source, QwenModelVariant::Qwen800M, 48, 512, Some(49), 11),
         ] {
             assert!(!same_shape(&a, &different));
         }

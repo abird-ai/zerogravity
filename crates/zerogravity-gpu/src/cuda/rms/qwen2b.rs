@@ -17,13 +17,13 @@ pub(super) fn not_cancelled(cancelled: Option<&AtomicBool>) -> Result<()> {
 
 /// Observed final branch/residual inputs are explicitly LEAF operands. They
 /// establish neither source-produced upstream layers nor a wholemodel route.
-pub struct Qwen2bDualRmsLeaf {
+pub struct Qwen2BDualRmsLeaf {
     pub branch: Vec<u8>,
     pub residual: Vec<u8>,
 }
 
 /// Expected archives may be opened only by this post-completion callback.
-pub enum Qwen2bRmsReadback<'a> {
+pub enum Qwen2BRmsReadback<'a> {
     SourceInput {
         case: usize,
         teacher_ids: &'a [u32],
@@ -38,7 +38,7 @@ pub enum Qwen2bRmsReadback<'a> {
     },
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Qwen2bRmsReceipt {
+pub struct Qwen2BRmsReceipt {
     pub source_embedding_bf16_words: usize,
     pub ordinary_bf16_words: usize,
     pub dual_sum_f32_words: usize,
@@ -57,4 +57,4 @@ mod tests;
 
 #[path = "qwen2b/faults.rs"]
 mod faults;
-pub use faults::{Qwen2bRmsFault, Qwen2bRmsFaultOutcome, qualify_qwen2b_rms_fault};
+pub use faults::{Qwen2BRmsFault, Qwen2BRmsFaultOutcome, qualify_qwen2b_rms_fault};

@@ -84,7 +84,7 @@ pub(super) fn result_precision(
     } else {
         vec![q, kv, kv, q, position * kv, position * kv]
     };
-    if builder.profile != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+    if builder.profile != NumericalProfile::TorchCpuAvx2Bf16MixedV1
         || inputs.len() != expected.len()
         || inputs
             .iter()

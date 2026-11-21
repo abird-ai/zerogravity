@@ -19,18 +19,18 @@ pub(crate) use load::{SourceBackend, load_router};
 /// One cold raw-text source, shared by aliases. CUDA may opt into an aligned
 /// four-row decode cohort; host/provider/context bounds remain backend-owned.
 #[derive(Clone, Copy, Debug)]
-pub struct QwenSourceProfile {
+pub struct QwenServingProfile {
     pub active: usize,
     pub context: usize,
     pub output: usize,
     pub max_pending: Option<usize>,
     /// Legacy/public cohort-width value. Under CUDA smart config, nonzero values
     /// are treated as user overrides; zero leaves the knob eligible for Auto.
-    /// Use `QwenCudaSmartOverrides::native_rows = Some(0)` to explicitly force
+    /// Use `QwenCudaSmartOverrides::cohort_width = Some(0)` to explicitly force
     /// sequential execution while keeping smart selection enabled for other knobs.
-    pub native_rows: usize,
+    pub cohort_width: usize,
 }
-impl QwenSourceProfile {
+impl QwenServingProfile {
     pub(crate) fn validate_base(self) -> Result<(), ServiceError> {
         use crate::qwen35::plan::{ORDINARY_SOURCE_MAX_CONTEXT, ORDINARY_SOURCE_MIN_CONTEXT};
         if !(1..=zerogravity_engine::router::MAX_ACTIVE_PER_WORKER).contains(&self.active)
@@ -57,12 +57,12 @@ impl QwenSourceProfile {
         )
     }
 
-    pub(crate) fn validate_native_rows(self, native_rows: usize) -> Result<(), ServiceError> {
-        if !matches!(native_rows, 0 | 4 | 8) || (native_rows != 0 && self.active < native_rows) {
+    pub(crate) fn validate_cohort_width(self, cohort_width: usize) -> Result<(), ServiceError> {
+        if !matches!(cohort_width, 0 | 4 | 8) || (cohort_width != 0 && self.active < cohort_width) {
             return Err(ServiceError::new(
                 400,
                 "invalid_source_profile",
-                "source GPU requires native_rows=0|4|8 with active>=native_rows",
+                "source GPU requires cohort_width=0|4|8 with active>=cohort_width",
             ));
         }
         Ok(())
@@ -136,54 +136,54 @@ impl PreparedModel for Model {
 mod tests {
     use super::*;
     #[test]
-    fn source_profile_refuses_unsupported_limits_before_io() {
-        let good = QwenSourceProfile {
+    fn serving_profile_refuses_unsupported_limits_before_io() {
+        let good = QwenServingProfile {
             active: 2,
             context: 514,
             output: 2,
             max_pending: Some(4),
-            native_rows: 0,
+            cohort_width: 0,
         };
-        let valid = |profile: QwenSourceProfile| {
+        let valid = |profile: QwenServingProfile| {
             profile
                 .validate_base()
-                .and_then(|_| profile.validate_native_rows(profile.native_rows))
+                .and_then(|_| profile.validate_cohort_width(profile.cohort_width))
         };
         assert!(valid(good).is_ok());
         for context in [8192, 16384, 32768] {
-            assert!(valid(QwenSourceProfile { context, ..good }).is_ok());
+            assert!(valid(QwenServingProfile { context, ..good }).is_ok());
         }
         for bad in [
-            QwenSourceProfile { active: 0, ..good },
-            QwenSourceProfile { active: 9, ..good },
-            QwenSourceProfile {
+            QwenServingProfile { active: 0, ..good },
+            QwenServingProfile { active: 9, ..good },
+            QwenServingProfile {
                 context: 511,
                 ..good
             },
-            QwenSourceProfile {
+            QwenServingProfile {
                 context: 32769,
                 ..good
             },
-            QwenSourceProfile {
+            QwenServingProfile {
                 context: 16384,
                 output: 513,
                 ..good
             },
-            QwenSourceProfile {
+            QwenServingProfile {
                 output: 515,
                 ..good
             },
-            QwenSourceProfile {
+            QwenServingProfile {
                 max_pending: Some(0),
                 ..good
             },
-            QwenSourceProfile {
-                native_rows: 2,
+            QwenServingProfile {
+                cohort_width: 2,
                 ..good
             },
-            QwenSourceProfile {
+            QwenServingProfile {
                 active: 2,
-                native_rows: 4,
+                cohort_width: 4,
                 ..good
             },
         ] {
@@ -194,12 +194,12 @@ mod tests {
     #[cfg(feature = "qwen35-cuda")]
     #[test]
     fn paged_cuda_policy_refuses_invalid_shape_before_source_io() {
-        let base = QwenSourceProfile {
+        let base = QwenServingProfile {
             active: 4,
             context: 1024,
             output: 2,
             max_pending: Some(4),
-            native_rows: 0,
+            cohort_width: 0,
         };
         let load = |profile, page_tokens, max_append_tokens| {
             load::load_router(
@@ -216,7 +216,7 @@ mod tests {
                                 page_tokens,
                                 max_append_tokens,
                             }),
-                            native_rows: None,
+                            cohort_width: None,
                         },
                     ),
                 },

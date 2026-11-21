@@ -1,5 +1,5 @@
 //! Completed source/state observations; no model, root or publication authority.
-// Previous names: Qwen08ModelReadback, Qwen08DomainReadback.
+// Previous names: Qwen800MModelReadback, Qwen800MDomainReadback.
 use crate::SourceBindings;
 use cubecl::bytes::Bytes;
 use zerogravity_core::accelerator::program::StateSlot;

@@ -1,11 +1,10 @@
 use super::*;
 use zerogravity_core::accelerator::program::{
-    ActivationPrecision, EmbeddingContract, MatrixAxes, OrdinaryRmsContract, ParameterSlot,
-    ProgramNumericalProfile, ProjectionContract, SourceParameter, SourceTensor,
+    ActivationPrecision, EmbeddingContract, MatrixAxes, NumericalProfile, ParameterSlot,
+    ProjectionContract, RmsContract, SourceParameter, SourceTensor,
 };
 
-pub(super) const PROFILE: ProgramNumericalProfile =
-    ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1;
+pub(super) const PROFILE: NumericalProfile = NumericalProfile::TorchCpuAvx2Bf16MixedV1;
 #[derive(Clone)]
 pub(super) struct Shape {
     pub embedding: SourceTensor,
@@ -51,7 +50,7 @@ impl Shape {
         };
         let PlanOperation::TypedOrdinaryRms {
             parameter: gamma,
-            contract: OrdinaryRmsContract::TorchCpuBf16Avx2,
+            contract: RmsContract::TorchCpuBf16Avx2,
         } = &b.operation
         else {
             return Err(Error::Unsupported(

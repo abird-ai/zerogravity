@@ -1,6 +1,6 @@
 //! Synthetic role/wiring/lease checks; genuine trained qualification is separate.
 use super::*;
-use crate::accelerator::program::{CausalConvSiluContract, ProgramNumericalProfile};
+use crate::accelerator::program::{CausalConvSiluContract, NumericalProfile};
 use crate::operator_slice::gdn_conv::{ConvInputPhase, GdnConvSliceInput};
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
 
@@ -37,7 +37,7 @@ fn private<'a>(
 ) -> GdnConvSliceInput<'a> {
     GdnConvSliceInput::from_bf16_bytes(
         source,
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1,
         phase,
         x,
         h,
@@ -124,7 +124,7 @@ fn initial_padding_is_explicit_and_never_canonicalizes_signed_zero() {
     assert!(
         GdnConvSliceInput::from_bf16_bytes(
             id,
-            ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+            NumericalProfile::TorchCpuAvx2Bf16MixedV1,
             ConvInputPhase::InitialPadding,
             &x,
             &negative
@@ -136,7 +136,7 @@ fn initial_padding_is_explicit_and_never_canonicalizes_signed_zero() {
         assert!(
             GdnConvSliceInput::from_bf16_bytes(
                 id,
-                ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+                NumericalProfile::TorchCpuAvx2Bf16MixedV1,
                 ConvInputPhase::CachedTail,
                 &bytes,
                 &zero
@@ -339,7 +339,7 @@ fn actual_role_plan_append_uses_same_builder_and_never_adds_state() {
     let operators = bind_windows(source.clone(), &loaded);
     let mut builder = PlanBuilder::new_operator_slice(
         source.source_identity(),
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1,
     )
     .unwrap();
     let embedding = builder

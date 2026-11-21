@@ -87,7 +87,7 @@ pub(super) fn prepare(
     source: &OriginalWindowModelSource,
     record: QwenPlan,
 ) -> Result<PreparedPlan> {
-    if record.call().model_profile() != QwenSourceProfile::Qwen08
+    if record.call().model_profile() != QwenModelVariant::Qwen800M
         || source.source().source_bytes() != 1_746_942_600
         || source.source().staging_chunk_bytes() != 1024 * 1024
         || source.owner().config().rms_norm_eps() != 1e-6
@@ -238,7 +238,7 @@ mod tests {
             assert!(CallKind::of(&call).is_err());
         }
         let tagged = PromptCall::new(
-            QwenSourceProfile::Qwen08,
+            QwenModelVariant::Qwen800M,
             PromptSpan::prefill(source, PromptWorkload::new(47, 512)?, &PROMPT_IDS)?,
         )?;
         assert!(CallKind::of(tagged.request()).is_err());

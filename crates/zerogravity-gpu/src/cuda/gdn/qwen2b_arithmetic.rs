@@ -4,17 +4,17 @@ use super::{GdnArithmetic, GdnCacheSlot, GdnFamilyIdentity, GdnPhase, GdnStage, 
 use zerogravity_core::{Error, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Qwen2bGdnArithmetic {
+pub enum Qwen2BGdnArithmetic {
     OwnedSolve4Recompute3,
 }
 
 /// Actual retired original reference choices; neither selects an owned kernel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Qwen2bOriginalGdnReference {
+pub enum Qwen2BOriginalGdnReference {
     ObservedSolve4Recompute4,
     PlainSolve2Recompute3,
 }
-impl Qwen2bGdnArithmetic {
+impl Qwen2BGdnArithmetic {
     pub fn solve_ptx_sha256(self) -> &'static str {
         "fcae68be445ab7ec2b7dcc127d3d4c0851340ce3d237be00e909b4391e67c135"
     }
@@ -149,7 +149,7 @@ mod tests {
     use super::*;
     #[test]
     fn explicit_owned_tuple_does_not_admit_other_phase_or_original_choice() {
-        let owned = Qwen2bGdnArithmetic::OwnedSolve4Recompute3;
+        let owned = Qwen2BGdnArithmetic::OwnedSolve4Recompute3;
         for phase in [GdnPhase::InitialOne, GdnPhase::Initial64] {
             owned.require_owned(phase).unwrap();
             for stage in phase.stages() {
@@ -176,8 +176,8 @@ mod tests {
             "5731fd146617cf5b6cc13f28b2622c31135df4a35907567ffba83ff9b0b10c9a"
         );
         assert_ne!(
-            Qwen2bOriginalGdnReference::ObservedSolve4Recompute4,
-            Qwen2bOriginalGdnReference::PlainSolve2Recompute3
+            Qwen2BOriginalGdnReference::ObservedSolve4Recompute4,
+            Qwen2BOriginalGdnReference::PlainSolve2Recompute3
         );
     }
 }

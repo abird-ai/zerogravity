@@ -6,9 +6,9 @@ use super::{
 };
 use crate::accelerator::program::{
     ActivationPrecision, AttentionGeometry, CoefficientValues, ConvDomain, EmbeddingContract,
-    KvDomain, MathematicalBackend, OrdinaryRmsContract, ProgramNumericalProfile,
-    ProjectionContract, QkValues, RecurrentDomain, RopeGeometry, RopeValues, SourceParameter,
-    SourceTensor, SourceVector, StateSlot, TensorView,
+    KvDomain, MathematicalBackend, NumericalProfile, ProjectionContract, QkValues, RecurrentDomain,
+    RmsContract, RopeGeometry, RopeValues, SourceParameter, SourceTensor, SourceVector, StateSlot,
+    TensorView,
 };
 use crate::accelerator::{
     AttentionQkRegion, AttentionSoftmaxRegion, AttentionValueRegion, BinaryOperation, BinaryRegion,
@@ -51,7 +51,7 @@ impl HostSource<'_> {
     fn source_identity(&self) -> crate::accelerator::SourceIdentity {
         self.metadata().source_identity()
     }
-    fn program_numerical_profile(&self) -> ProgramNumericalProfile {
+    fn program_numerical_profile(&self) -> NumericalProfile {
         self.metadata().program_numerical_profile()
     }
     fn rms_epsilon(&self) -> f32 {
@@ -83,7 +83,7 @@ pub(super) struct HostValue {
     elements: usize,
     precision: ActivationPrecision,
     source: Option<crate::accelerator::SourceIdentity>,
-    profile: Option<ProgramNumericalProfile>,
+    profile: Option<NumericalProfile>,
 }
 impl HostValue {
     fn new(values: Vec<f32>) -> Self {
@@ -107,7 +107,7 @@ impl HostValue {
         values: Vec<f32>,
         precision: ActivationPrecision,
         source: crate::accelerator::SourceIdentity,
-        profile: ProgramNumericalProfile,
+        profile: NumericalProfile,
     ) -> Result<Self> {
         if !source.is_bound() {
             return Err(Error::State("unbound typed host activation".into()));
@@ -385,7 +385,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
                 "bulk F32 values require explicit matrix contract".into(),
             ));
         }
-        if self.source.program_numerical_profile() != ProgramNumericalProfile::GgufSourceV1
+        if self.source.program_numerical_profile() != NumericalProfile::GgufReferenceV1
             || values
                 .iter()
                 .any(|value| value.precision != ActivationPrecision::F32)
@@ -488,8 +488,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
             ));
         }
         self.tensor(&tensor)?;
-        if self.source.program_numerical_profile()
-            != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+        if self.source.program_numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
             || tensor.kind
                 != zerogravity_core::encoding::StoredTensorEncoding::Scalar(
                     zerogravity_core::encoding::ScalarDType::Bf16,
@@ -540,8 +539,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
             ));
         }
         self.tensor(&tensor)?;
-        if self.source.program_numerical_profile()
-            != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+        if self.source.program_numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
             || input.precision != ActivationPrecision::Bf16WidenedF32
             || input.source != Some(self.source.source_identity())
             || input.profile != Some(self.source.program_numerical_profile())
@@ -617,15 +615,14 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         &mut self,
         parameter: SourceParameter,
         input: &HostValue,
-        contract: OrdinaryRmsContract,
+        contract: RmsContract,
     ) -> Result<HostValue> {
         if self.region_kernel.is_some() {
             return Err(Error::Unsupported(
                 "physical provider does not declare typed ordinary RMS contract".into(),
             ));
         }
-        if self.source.program_numerical_profile()
-            != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+        if self.source.program_numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
             || self.source.rms_epsilon().to_bits() != 1e-6f32.to_bits()
             || input.precision != ActivationPrecision::Bf16WidenedF32
             || input.source != Some(self.source.source_identity())
@@ -1214,7 +1211,7 @@ mod typed_value_tests {
     #[test]
     fn typed_values_require_explicit_source_precision_and_keep_profile() {
         let source = crate::accelerator::SourceIdentity::for_new_allocation().unwrap();
-        let profile = ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1;
+        let profile = NumericalProfile::TorchCpuAvx2Bf16MixedV1;
         assert!(
             HostValue::typed(
                 vec![1.0],

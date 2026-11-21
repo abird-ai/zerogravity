@@ -113,7 +113,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
             || self.zen_ssm_out_call.is_some()
             || self.gguf_prefix_call.is_some()
             || self.gguf_gdn_upstream_call.is_some()
-            || self.source.program_numerical_profile() != ProgramNumericalProfile::GgufSourceV1
+            || self.source.program_numerical_profile() != NumericalProfile::GgufReferenceV1
         {
             return Err(Error::Unsupported(
                 "bulk F32 private same-engine host slice only".into(),
@@ -171,7 +171,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
                 .owner()
                 .is_none_or(|actual| !Arc::ptr_eq(actual, owner))
                 || value.source != Some(matrix.source())
-                || value.profile != Some(ProgramNumericalProfile::GgufSourceV1)
+                || value.profile != Some(NumericalProfile::GgufReferenceV1)
                 || value.precision != ActivationPrecision::F32
                 || value.elements != operand.layout().backing_words()
                 || value.view != TensorView::vector(0, value.elements)
@@ -258,7 +258,7 @@ impl HostValue {
             elements,
             precision: ActivationPrecision::F32,
             source: Some(source),
-            profile: Some(ProgramNumericalProfile::GgufSourceV1),
+            profile: Some(NumericalProfile::GgufReferenceV1),
         })
     }
 }

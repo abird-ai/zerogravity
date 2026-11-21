@@ -1,8 +1,7 @@
 //! Synthetic original full-header sources; no trained27B parity claim.
 use super::*;
 use crate::accelerator::program::{
-    EmbeddingContract, MathematicalBackend, OrdinaryRmsContract, PlanOperation, SourceCallMode,
-    TensorView,
+    EmbeddingContract, MathematicalBackend, PlanOperation, RmsContract, SourceCallMode, TensorView,
 };
 use crate::operator_slice::OperatorSliceSource;
 use crate::source::binding::{OriginalWindowOperators, QwenParameterRole};
@@ -103,7 +102,7 @@ fn window_three_nodes_match_owned_source_and_retain_buffers_after_callers_drop()
             &loaded.config,
             &digest(&loaded.config),
             &loaded.index_sha256,
-            QwenNumericalProfile::GgufSourceV1
+            QwenNumericalProfile::GgufReferenceV1
         )
         .is_err()
     );
@@ -356,7 +355,7 @@ fn unaware_provider_never_gets_partial_source_or_legacy_norm_fallback() {
                     .parameter_descriptor(QwenParameterRole::InputNorm(0))
                     .unwrap(),
                 &input,
-                OrdinaryRmsContract::TorchCpuBf16Avx2
+                RmsContract::TorchCpuBf16Avx2
             )
             .is_err()
     );
@@ -426,7 +425,7 @@ fn window_model_metadata_retains_one_original_issuer_and_stays_execution_closed(
     assert_eq!(view.geometry().layers.len(), view.state_specs().len());
     assert_eq!(
         view.program_numerical_profile(),
-        crate::accelerator::program::ProgramNumericalProfile::SourceCudaSm86Bf16V1
+        crate::accelerator::program::NumericalProfile::CudaSm86Bf16ReferenceV1
     );
     assert!(matches!(
         view.require_execution_profile(),
@@ -460,7 +459,7 @@ fn window_model_metadata_retains_one_original_issuer_and_stays_execution_closed(
 
 #[test]
 fn ordinary_plan_and_invocation_retain_exact_source_and_workspace_without_a_cycle() {
-    use crate::plan::{QwenSourceProfile, build_test_ordinary_plan};
+    use crate::plan::{QwenModelVariant, build_test_ordinary_plan};
     use crate::source::binding::{OrdinaryCudaSourceSeal, OriginalWindowModelSource};
     use crate::source::owned::QwenOriginalWindowText;
     let fixture = Fixture::new();
@@ -479,7 +478,7 @@ fn ordinary_plan_and_invocation_retain_exact_source_and_workspace_without_a_cycl
     let owner_witness = Arc::downgrade(&owner);
     let model = OriginalWindowModelSource::from_owner(owner.clone()).unwrap();
     let before_seal = reserved(&admission);
-    let seal = OrdinaryCudaSourceSeal::for_test(model.clone(), QwenSourceProfile::Qwen08).unwrap();
+    let seal = OrdinaryCudaSourceSeal::for_test(model.clone(), QwenModelVariant::Qwen800M).unwrap();
     assert_eq!(reserved(&admission), before_seal + 64 * 1024);
     let plan = build_test_ordinary_plan(&seal, 512).unwrap();
     assert!(plan.source().same_issuer(&source));

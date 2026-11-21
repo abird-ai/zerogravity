@@ -3,7 +3,7 @@ use super::*;
 use zerogravity_core::accelerator::SourceIdentity;
 use zerogravity_model_qwen35::plan::PromptSpan;
 use zerogravity_model_qwen35::plan::PromptWorkload;
-use zerogravity_model_qwen35::plan::{PromptCall, QwenSourceProfile};
+use zerogravity_model_qwen35::plan::{PromptCall, QwenModelVariant};
 
 fn i32s(bytes: &[u8]) -> Vec<i32> {
     bytes
@@ -14,7 +14,7 @@ fn i32s(bytes: &[u8]) -> Vec<i32> {
 #[test]
 fn one_prefill_has_true_chunk_indices_scratch_and_final_offsets() -> Result<()> {
     let source = SourceIdentity::for_new_allocation()?;
-    for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+    for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
         for rows in [47, 57, 62, 67, 72] {
             let workload = PromptWorkload::new(rows, 512)?;
             let call = PromptCall::new(
@@ -24,7 +24,7 @@ fn one_prefill_has_true_chunk_indices_scratch_and_final_offsets() -> Result<()> 
             let geometry = TextGdnGeometry::for_call(
                 &call.as_source_call().request().source_call()?,
                 fixture_implementation(
-                    if profile == QwenSourceProfile::Qwen08 {
+                    if profile == QwenModelVariant::Qwen800M {
                         0
                     } else {
                         1
@@ -93,7 +93,7 @@ fn one_prefill_has_true_chunk_indices_scratch_and_final_offsets() -> Result<()> 
 #[test]
 fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Result<()> {
     let source = SourceIdentity::for_new_allocation()?;
-    for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+    for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
         for rows in [47, 57, 62, 67, 72] {
             let workload = PromptWorkload::new(rows, 512)?;
             let call = PromptCall::new(
@@ -103,7 +103,7 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
             let g = TextGdnGeometry::for_call(
                 &call.as_source_call().request().source_call()?,
                 fixture_implementation(
-                    if profile == QwenSourceProfile::Qwen08 {
+                    if profile == QwenModelVariant::Qwen800M {
                         0
                     } else {
                         1
@@ -140,7 +140,7 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
                             _ => unreachable!(),
                         }
                     );
-                    if profile == QwenSourceProfile::Qwen08
+                    if profile == QwenModelVariant::Qwen800M
                         && rows == 47
                         && stage == GdnStage::Cumsum
                     {
@@ -153,11 +153,11 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
             }
         }
     }
-    for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+    for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
         for stage in [GdnStage::Conv, GdnStage::Decode, GdnStage::Gated] {
             let phase = GdnPhase::CachedDecode;
             let implementation = fixture_implementation(
-                if profile == QwenSourceProfile::Qwen08 {
+                if profile == QwenModelVariant::Qwen800M {
                     0
                 } else {
                     1
@@ -184,25 +184,25 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
             assert_eq!(spec.grid, expected);
         }
     }
-    let qwen08_47 = fixture_implementation(0, 47, false)?;
-    let qwen2b_47 = fixture_implementation(1, 47, false)?;
-    let qwen2b_57 = fixture_implementation(1, 57, false)?;
+    let qwen800m_prefill47 = fixture_implementation(0, 47, false)?;
+    let qwen2b_prefill47 = fixture_implementation(1, 47, false)?;
+    let qwen2b_prefill57 = fixture_implementation(1, 57, false)?;
     assert_eq!(
-        GdnFamilyIdentity::text(qwen08_47.config()),
-        GdnFamilyIdentity::text(qwen2b_57.config()),
+        GdnFamilyIdentity::text(qwen800m_prefill47.config()),
+        GdnFamilyIdentity::text(qwen2b_prefill57.config()),
         "same explicit config across historical cells is one implementation family"
     );
     assert_ne!(
-        GdnFamilyIdentity::text(qwen08_47.config()),
-        GdnFamilyIdentity::text(qwen2b_47.config()),
+        GdnFamilyIdentity::text(qwen800m_prefill47.config()),
+        GdnFamilyIdentity::text(qwen2b_prefill47.config()),
         "different explicit configs are different implementation families"
     );
     assert_ne!(
-        GdnFamilyIdentity::text(qwen08_47.config()),
-        GdnFamilyIdentity::original08()
+        GdnFamilyIdentity::text(qwen800m_prefill47.config()),
+        GdnFamilyIdentity::original800m()
     );
     assert_ne!(
-        GdnFamilyIdentity::text(qwen2b_47.config()),
+        GdnFamilyIdentity::text(qwen2b_prefill47.config()),
         GdnFamilyIdentity::original2b()
     );
     Ok(())
@@ -1126,7 +1126,7 @@ fn parameterized_gated_has_exact_bits_extents_packets_and_new_identity() -> Resu
         spec.kernel.id(),
         PinnedKernel::new(
             "zg_vllm_820c1a61c99ce579",
-            Arc::from(include_str!("qwen08_47/gated.cu")),
+            Arc::from(include_str!("reference/qwen800m/prefill/47/gated.cu")),
             32,
             spec.bindings
                 .iter()

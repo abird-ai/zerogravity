@@ -108,7 +108,7 @@ pub(super) fn select(
                 Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
-                    source: include_str!("qwen08_47/prep.cu"),
+                    source: include_str!("reference/qwen800m/prefill/47/prep.cu"),
                     threads: 128,
                     grid: [3, 32, 1],
                     shared: 0,
@@ -116,7 +116,7 @@ pub(super) fn select(
                 },
                 Cumsum => assets::Asset {
                     entry: "zg_vllm_a2ad2ccfa6e953f5",
-                    source: include_str!("qwen08_47/cumsum.cu"),
+                    source: include_str!("reference/qwen800m/prefill/47/cumsum.cu"),
                     threads: 128,
                     grid: [1, 16, 1],
                     shared: 8,
@@ -124,7 +124,7 @@ pub(super) fn select(
                 },
                 Kkt => assets::Asset {
                     entry: "zg_vllm_68bc016c3bcb6095",
-                    source: include_str!("qwen08_47/kkt.cu"),
+                    source: include_str!("reference/qwen800m/prefill/47/kkt.cu"),
                     threads: 256,
                     grid: [1, 16, 1],
                     shared: 16384,
@@ -132,7 +132,7 @@ pub(super) fn select(
                 },
                 Solve => assets::Asset {
                     entry: "zg_vllm_116d2ffe705b6643",
-                    source: include_str!("qwen08_47/solve.cu"),
+                    source: include_str!("reference/qwen800m/prefill/47/solve.cu"),
                     threads: 128,
                     grid: [1, 16, 1],
                     shared: 10240,
@@ -140,7 +140,7 @@ pub(super) fn select(
                 },
                 Recompute => assets::Asset {
                     entry: "zg_vllm_a73872840c0a9697",
-                    source: include_str!("qwen08_47/recompute.cu"),
+                    source: include_str!("reference/qwen800m/prefill/47/recompute.cu"),
                     threads: 256,
                     grid: [1, 16, 1],
                     shared: 40960,
@@ -148,7 +148,7 @@ pub(super) fn select(
                 },
                 H => assets::Asset {
                     entry: "zg_vllm_444aa643ee60a35a",
-                    source: include_str!("qwen08_47/h.cu"),
+                    source: include_str!("reference/qwen800m/prefill/47/h.cu"),
                     threads: 128,
                     grid: [2, 16, 1],
                     shared: 49412,
@@ -156,7 +156,7 @@ pub(super) fn select(
                 },
                 Output => assets::Asset {
                     entry: "zg_vllm_81c9eabf9b9a78e0",
-                    source: include_str!("qwen08_47/output.cu"),
+                    source: include_str!("reference/qwen800m/prefill/47/output.cu"),
                     threads: 128,
                     grid: [4, 1, 16],
                     shared: 12288,
@@ -164,7 +164,7 @@ pub(super) fn select(
                 },
                 Gated => assets::Asset {
                     entry: "zg_vllm_820c1a61c99ce579",
-                    source: include_str!("qwen08_47/gated.cu"),
+                    source: include_str!("reference/qwen800m/prefill/47/gated.cu"),
                     threads: 32,
                     grid: [188, 1, 1],
                     shared: 0,
@@ -179,7 +179,7 @@ pub(super) fn select(
                 Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
-                    source: include_str!("qwen08_57/prep.cu"),
+                    source: include_str!("reference/qwen800m/prefill/57/prep.cu"),
                     threads: 128,
                     grid: [4, 32, 1],
                     shared: 0,
@@ -187,7 +187,7 @@ pub(super) fn select(
                 },
                 Cumsum => assets::Asset {
                     entry: "zg_vllm_a2ad2ccfa6e953f5",
-                    source: include_str!("qwen08_57/cumsum.cu"),
+                    source: include_str!("reference/qwen800m/prefill/57/cumsum.cu"),
                     threads: 128,
                     grid: [1, 16, 1],
                     shared: 8,
@@ -195,7 +195,7 @@ pub(super) fn select(
                 },
                 Kkt => assets::Asset {
                     entry: "zg_vllm_68bc016c3bcb6095",
-                    source: include_str!("qwen08_57/kkt.cu"),
+                    source: include_str!("reference/qwen800m/prefill/57/kkt.cu"),
                     threads: 256,
                     grid: [1, 16, 1],
                     shared: 16384,
@@ -203,7 +203,7 @@ pub(super) fn select(
                 },
                 Solve => assets::Asset {
                     entry: "zg_vllm_b58e94d8cfdcf47d",
-                    source: include_str!("qwen08_57/solve.cu"),
+                    source: include_str!("reference/qwen800m/prefill/57/solve.cu"),
                     threads: 128,
                     grid: [1, 16, 1],
                     shared: 10240,
@@ -211,7 +211,7 @@ pub(super) fn select(
                 },
                 Recompute => assets::Asset {
                     entry: "zg_vllm_a73872840c0a9697",
-                    source: include_str!("qwen08_57/recompute.cu"),
+                    source: include_str!("reference/qwen800m/prefill/57/recompute.cu"),
                     threads: 256,
                     grid: [1, 16, 1],
                     shared: 40960,
@@ -219,7 +219,7 @@ pub(super) fn select(
                 },
                 H => assets::Asset {
                     entry: "zg_vllm_444aa643ee60a35a",
-                    source: include_str!("qwen08_57/h.cu"),
+                    source: include_str!("reference/qwen800m/prefill/57/h.cu"),
                     threads: 128,
                     grid: [2, 16, 1],
                     shared: 49412,
@@ -227,7 +227,7 @@ pub(super) fn select(
                 },
                 Output => assets::Asset {
                     entry: "zg_vllm_a3d74997c0201bf1",
-                    source: include_str!("qwen08_57/output.cu"),
+                    source: include_str!("reference/qwen800m/prefill/57/output.cu"),
                     threads: 128,
                     grid: [4, 1, 16],
                     shared: 20480,
@@ -235,7 +235,7 @@ pub(super) fn select(
                 },
                 Gated => assets::Asset {
                     entry: "zg_vllm_820c1a61c99ce579",
-                    source: include_str!("qwen08_57/gated.cu"),
+                    source: include_str!("reference/qwen800m/prefill/57/gated.cu"),
                     threads: 32,
                     grid: [228, 1, 1],
                     shared: 0,
@@ -250,7 +250,7 @@ pub(super) fn select(
                 Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
-                    source: include_str!("qwen08_62/prep.cu"),
+                    source: include_str!("reference/qwen800m/prefill/62/prep.cu"),
                     threads: 128,
                     grid: [4, 32, 1],
                     shared: 0,
@@ -258,7 +258,7 @@ pub(super) fn select(
                 },
                 Cumsum => assets::Asset {
                     entry: "zg_vllm_a2ad2ccfa6e953f5",
-                    source: include_str!("qwen08_62/cumsum.cu"),
+                    source: include_str!("reference/qwen800m/prefill/62/cumsum.cu"),
                     threads: 128,
                     grid: [1, 16, 1],
                     shared: 8,
@@ -266,7 +266,7 @@ pub(super) fn select(
                 },
                 Kkt => assets::Asset {
                     entry: "zg_vllm_68bc016c3bcb6095",
-                    source: include_str!("qwen08_62/kkt.cu"),
+                    source: include_str!("reference/qwen800m/prefill/62/kkt.cu"),
                     threads: 256,
                     grid: [1, 16, 1],
                     shared: 16384,
@@ -274,7 +274,7 @@ pub(super) fn select(
                 },
                 Solve => assets::Asset {
                     entry: "zg_vllm_116d2ffe705b6643",
-                    source: include_str!("qwen08_62/solve.cu"),
+                    source: include_str!("reference/qwen800m/prefill/62/solve.cu"),
                     threads: 128,
                     grid: [1, 16, 1],
                     shared: 10240,
@@ -282,7 +282,7 @@ pub(super) fn select(
                 },
                 Recompute => assets::Asset {
                     entry: "zg_vllm_a73872840c0a9697",
-                    source: include_str!("qwen08_62/recompute.cu"),
+                    source: include_str!("reference/qwen800m/prefill/62/recompute.cu"),
                     threads: 256,
                     grid: [1, 16, 1],
                     shared: 40960,
@@ -290,7 +290,7 @@ pub(super) fn select(
                 },
                 H => assets::Asset {
                     entry: "zg_vllm_444aa643ee60a35a",
-                    source: include_str!("qwen08_62/h.cu"),
+                    source: include_str!("reference/qwen800m/prefill/62/h.cu"),
                     threads: 128,
                     grid: [2, 16, 1],
                     shared: 49412,
@@ -298,7 +298,7 @@ pub(super) fn select(
                 },
                 Output => assets::Asset {
                     entry: "zg_vllm_a3d74997c0201bf1",
-                    source: include_str!("qwen08_62/output.cu"),
+                    source: include_str!("reference/qwen800m/prefill/62/output.cu"),
                     threads: 128,
                     grid: [4, 1, 16],
                     shared: 20480,
@@ -306,7 +306,7 @@ pub(super) fn select(
                 },
                 Gated => assets::Asset {
                     entry: "zg_vllm_820c1a61c99ce579",
-                    source: include_str!("qwen08_62/gated.cu"),
+                    source: include_str!("reference/qwen800m/prefill/62/gated.cu"),
                     threads: 32,
                     grid: [248, 1, 1],
                     shared: 0,
@@ -321,7 +321,7 @@ pub(super) fn select(
                 Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
-                    source: include_str!("qwen08_67/prep.cu"),
+                    source: include_str!("reference/qwen800m/prefill/67/prep.cu"),
                     threads: 128,
                     grid: [5, 32, 1],
                     shared: 0,
@@ -329,7 +329,7 @@ pub(super) fn select(
                 },
                 Cumsum => assets::Asset {
                     entry: "zg_vllm_a2ad2ccfa6e953f5",
-                    source: include_str!("qwen08_67/cumsum.cu"),
+                    source: include_str!("reference/qwen800m/prefill/67/cumsum.cu"),
                     threads: 128,
                     grid: [2, 16, 1],
                     shared: 8,
@@ -337,7 +337,7 @@ pub(super) fn select(
                 },
                 Kkt => assets::Asset {
                     entry: "zg_vllm_2456e5b08ad199dc",
-                    source: include_str!("qwen08_67/kkt.cu"),
+                    source: include_str!("reference/qwen800m/prefill/67/kkt.cu"),
                     threads: 256,
                     grid: [2, 16, 1],
                     shared: 24576,
@@ -345,7 +345,7 @@ pub(super) fn select(
                 },
                 Solve => assets::Asset {
                     entry: "zg_vllm_64d5095f294cb1c1",
-                    source: include_str!("qwen08_67/solve.cu"),
+                    source: include_str!("reference/qwen800m/prefill/67/solve.cu"),
                     threads: 128,
                     grid: [2, 16, 1],
                     shared: 10240,
@@ -353,7 +353,7 @@ pub(super) fn select(
                 },
                 Recompute => assets::Asset {
                     entry: "zg_vllm_eded6623852de87d",
-                    source: include_str!("qwen08_67/recompute.cu"),
+                    source: include_str!("reference/qwen800m/prefill/67/recompute.cu"),
                     threads: 256,
                     grid: [2, 16, 1],
                     shared: 32768,
@@ -361,7 +361,7 @@ pub(super) fn select(
                 },
                 H => assets::Asset {
                     entry: "zg_vllm_9f97b7023b619918",
-                    source: include_str!("qwen08_67/h.cu"),
+                    source: include_str!("reference/qwen800m/prefill/67/h.cu"),
                     threads: 128,
                     grid: [4, 16, 1],
                     shared: 41220,
@@ -369,7 +369,7 @@ pub(super) fn select(
                 },
                 Output => assets::Asset {
                     entry: "zg_vllm_a3d74997c0201bf1",
-                    source: include_str!("qwen08_67/output.cu"),
+                    source: include_str!("reference/qwen800m/prefill/67/output.cu"),
                     threads: 128,
                     grid: [4, 2, 16],
                     shared: 20480,
@@ -377,7 +377,7 @@ pub(super) fn select(
                 },
                 Gated => assets::Asset {
                     entry: "zg_vllm_820c1a61c99ce579",
-                    source: include_str!("qwen08_67/gated.cu"),
+                    source: include_str!("reference/qwen800m/prefill/67/gated.cu"),
                     threads: 32,
                     grid: [268, 1, 1],
                     shared: 0,
@@ -392,7 +392,7 @@ pub(super) fn select(
                 Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
-                    source: include_str!("qwen08_72/prep.cu"),
+                    source: include_str!("reference/qwen800m/prefill/72/prep.cu"),
                     threads: 128,
                     grid: [5, 32, 1],
                     shared: 0,
@@ -400,7 +400,7 @@ pub(super) fn select(
                 },
                 Cumsum => assets::Asset {
                     entry: "zg_vllm_a2ad2ccfa6e953f5",
-                    source: include_str!("qwen08_72/cumsum.cu"),
+                    source: include_str!("reference/qwen800m/prefill/72/cumsum.cu"),
                     threads: 128,
                     grid: [2, 16, 1],
                     shared: 8,
@@ -408,7 +408,7 @@ pub(super) fn select(
                 },
                 Kkt => assets::Asset {
                     entry: "zg_vllm_68bc016c3bcb6095",
-                    source: include_str!("qwen08_72/kkt.cu"),
+                    source: include_str!("reference/qwen800m/prefill/72/kkt.cu"),
                     threads: 256,
                     grid: [2, 16, 1],
                     shared: 16384,
@@ -416,7 +416,7 @@ pub(super) fn select(
                 },
                 Solve => assets::Asset {
                     entry: "zg_vllm_b58e94d8cfdcf47d",
-                    source: include_str!("qwen08_72/solve.cu"),
+                    source: include_str!("reference/qwen800m/prefill/72/solve.cu"),
                     threads: 128,
                     grid: [2, 16, 1],
                     shared: 10240,
@@ -424,7 +424,7 @@ pub(super) fn select(
                 },
                 Recompute => assets::Asset {
                     entry: "zg_vllm_a73872840c0a9697",
-                    source: include_str!("qwen08_72/recompute.cu"),
+                    source: include_str!("reference/qwen800m/prefill/72/recompute.cu"),
                     threads: 256,
                     grid: [2, 16, 1],
                     shared: 40960,
@@ -432,7 +432,7 @@ pub(super) fn select(
                 },
                 H => assets::Asset {
                     entry: "zg_vllm_9f97b7023b619918",
-                    source: include_str!("qwen08_72/h.cu"),
+                    source: include_str!("reference/qwen800m/prefill/72/h.cu"),
                     threads: 128,
                     grid: [4, 16, 1],
                     shared: 41220,
@@ -440,7 +440,7 @@ pub(super) fn select(
                 },
                 Output => assets::Asset {
                     entry: "zg_vllm_81c9eabf9b9a78e0",
-                    source: include_str!("qwen08_72/output.cu"),
+                    source: include_str!("reference/qwen800m/prefill/72/output.cu"),
                     threads: 128,
                     grid: [4, 2, 16],
                     shared: 12288,
@@ -448,7 +448,7 @@ pub(super) fn select(
                 },
                 Gated => assets::Asset {
                     entry: "zg_vllm_820c1a61c99ce579",
-                    source: include_str!("qwen08_72/gated.cu"),
+                    source: include_str!("reference/qwen800m/prefill/72/gated.cu"),
                     threads: 32,
                     grid: [288, 1, 1],
                     shared: 0,
@@ -462,7 +462,7 @@ pub(super) fn select(
             Ok(match stage {
                 Conv => assets::Asset {
                     entry: "zg_vllm_c8f85203ea21f242",
-                    source: include_str!("qwen08_cached/conv.cu"),
+                    source: include_str!("reference/qwen800m/decode/conv.cu"),
                     threads: 128,
                     grid: [1, 24, 1],
                     shared: 0,
@@ -470,7 +470,7 @@ pub(super) fn select(
                 },
                 Decode => assets::Asset {
                     entry: "zg_vllm_ebe262b1b494d65e",
-                    source: include_str!("qwen08_cached/decode.cu"),
+                    source: include_str!("reference/qwen800m/decode/decode.cu"),
                     threads: 32,
                     grid: [4, 16, 1],
                     shared: 64,
@@ -478,7 +478,7 @@ pub(super) fn select(
                 },
                 Gated => assets::Asset {
                     entry: "zg_vllm_c15586587b4a279e",
-                    source: include_str!("qwen08_cached/gated.cu"),
+                    source: include_str!("reference/qwen800m/decode/gated.cu"),
                     threads: 32,
                     grid: [16, 1, 1],
                     shared: 0,
@@ -493,7 +493,7 @@ pub(super) fn select(
                 Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
-                    source: include_str!("qwen2b_47/prep.cu"),
+                    source: include_str!("reference/qwen2b/prefill/47/prep.cu"),
                     threads: 128,
                     grid: [3, 32, 1],
                     shared: 0,
@@ -501,7 +501,7 @@ pub(super) fn select(
                 },
                 Cumsum => assets::Asset {
                     entry: "zg_vllm_a2ad2ccfa6e953f5",
-                    source: include_str!("qwen2b_47/cumsum.cu"),
+                    source: include_str!("reference/qwen2b/prefill/47/cumsum.cu"),
                     threads: 128,
                     grid: [1, 16, 1],
                     shared: 8,
@@ -509,7 +509,7 @@ pub(super) fn select(
                 },
                 Kkt => assets::Asset {
                     entry: "zg_vllm_79e779d50e66d224",
-                    source: include_str!("qwen2b_47/kkt.cu"),
+                    source: include_str!("reference/qwen2b/prefill/47/kkt.cu"),
                     threads: 128,
                     grid: [1, 16, 1],
                     shared: 8192,
@@ -517,7 +517,7 @@ pub(super) fn select(
                 },
                 Solve => assets::Asset {
                     entry: "zg_vllm_b58e94d8cfdcf47d",
-                    source: include_str!("qwen2b_47/solve.cu"),
+                    source: include_str!("reference/qwen2b/prefill/47/solve.cu"),
                     threads: 128,
                     grid: [1, 16, 1],
                     shared: 10240,
@@ -525,7 +525,7 @@ pub(super) fn select(
                 },
                 Recompute => assets::Asset {
                     entry: "zg_vllm_a73872840c0a9697",
-                    source: include_str!("qwen2b_47/recompute.cu"),
+                    source: include_str!("reference/qwen2b/prefill/47/recompute.cu"),
                     threads: 256,
                     grid: [1, 16, 1],
                     shared: 40960,
@@ -533,7 +533,7 @@ pub(super) fn select(
                 },
                 H => assets::Asset {
                     entry: "zg_vllm_444aa643ee60a35a",
-                    source: include_str!("qwen2b_47/h.cu"),
+                    source: include_str!("reference/qwen2b/prefill/47/h.cu"),
                     threads: 128,
                     grid: [2, 16, 1],
                     shared: 49412,
@@ -541,7 +541,7 @@ pub(super) fn select(
                 },
                 Output => assets::Asset {
                     entry: "zg_vllm_a3d74997c0201bf1",
-                    source: include_str!("qwen2b_47/output.cu"),
+                    source: include_str!("reference/qwen2b/prefill/47/output.cu"),
                     threads: 128,
                     grid: [4, 1, 16],
                     shared: 20480,
@@ -549,7 +549,7 @@ pub(super) fn select(
                 },
                 Gated => assets::Asset {
                     entry: "zg_vllm_820c1a61c99ce579",
-                    source: include_str!("qwen2b_47/gated.cu"),
+                    source: include_str!("reference/qwen2b/prefill/47/gated.cu"),
                     threads: 32,
                     grid: [188, 1, 1],
                     shared: 0,
@@ -564,7 +564,7 @@ pub(super) fn select(
                 Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
-                    source: include_str!("qwen2b_57/prep.cu"),
+                    source: include_str!("reference/qwen2b/prefill/57/prep.cu"),
                     threads: 128,
                     grid: [4, 32, 1],
                     shared: 0,
@@ -572,7 +572,7 @@ pub(super) fn select(
                 },
                 Cumsum => assets::Asset {
                     entry: "zg_vllm_a2ad2ccfa6e953f5",
-                    source: include_str!("qwen2b_57/cumsum.cu"),
+                    source: include_str!("reference/qwen2b/prefill/57/cumsum.cu"),
                     threads: 128,
                     grid: [1, 16, 1],
                     shared: 8,
@@ -580,7 +580,7 @@ pub(super) fn select(
                 },
                 Kkt => assets::Asset {
                     entry: "zg_vllm_68bc016c3bcb6095",
-                    source: include_str!("qwen2b_57/kkt.cu"),
+                    source: include_str!("reference/qwen2b/prefill/57/kkt.cu"),
                     threads: 256,
                     grid: [1, 16, 1],
                     shared: 16384,
@@ -588,7 +588,7 @@ pub(super) fn select(
                 },
                 Solve => assets::Asset {
                     entry: "zg_vllm_116d2ffe705b6643",
-                    source: include_str!("qwen2b_57/solve.cu"),
+                    source: include_str!("reference/qwen2b/prefill/57/solve.cu"),
                     threads: 128,
                     grid: [1, 16, 1],
                     shared: 10240,
@@ -596,7 +596,7 @@ pub(super) fn select(
                 },
                 Recompute => assets::Asset {
                     entry: "zg_vllm_a73872840c0a9697",
-                    source: include_str!("qwen2b_57/recompute.cu"),
+                    source: include_str!("reference/qwen2b/prefill/57/recompute.cu"),
                     threads: 256,
                     grid: [1, 16, 1],
                     shared: 40960,
@@ -604,7 +604,7 @@ pub(super) fn select(
                 },
                 H => assets::Asset {
                     entry: "zg_vllm_444aa643ee60a35a",
-                    source: include_str!("qwen2b_57/h.cu"),
+                    source: include_str!("reference/qwen2b/prefill/57/h.cu"),
                     threads: 128,
                     grid: [2, 16, 1],
                     shared: 49412,
@@ -612,7 +612,7 @@ pub(super) fn select(
                 },
                 Output => assets::Asset {
                     entry: "zg_vllm_81c9eabf9b9a78e0",
-                    source: include_str!("qwen2b_57/output.cu"),
+                    source: include_str!("reference/qwen2b/prefill/57/output.cu"),
                     threads: 128,
                     grid: [4, 1, 16],
                     shared: 12288,
@@ -620,7 +620,7 @@ pub(super) fn select(
                 },
                 Gated => assets::Asset {
                     entry: "zg_vllm_820c1a61c99ce579",
-                    source: include_str!("qwen2b_57/gated.cu"),
+                    source: include_str!("reference/qwen2b/prefill/57/gated.cu"),
                     threads: 32,
                     grid: [228, 1, 1],
                     shared: 0,
@@ -635,7 +635,7 @@ pub(super) fn select(
                 Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
-                    source: include_str!("qwen2b_62/prep.cu"),
+                    source: include_str!("reference/qwen2b/prefill/62/prep.cu"),
                     threads: 128,
                     grid: [4, 32, 1],
                     shared: 0,
@@ -643,7 +643,7 @@ pub(super) fn select(
                 },
                 Cumsum => assets::Asset {
                     entry: "zg_vllm_a2ad2ccfa6e953f5",
-                    source: include_str!("qwen2b_62/cumsum.cu"),
+                    source: include_str!("reference/qwen2b/prefill/62/cumsum.cu"),
                     threads: 128,
                     grid: [1, 16, 1],
                     shared: 8,
@@ -651,7 +651,7 @@ pub(super) fn select(
                 },
                 Kkt => assets::Asset {
                     entry: "zg_vllm_68bc016c3bcb6095",
-                    source: include_str!("qwen2b_62/kkt.cu"),
+                    source: include_str!("reference/qwen2b/prefill/62/kkt.cu"),
                     threads: 256,
                     grid: [1, 16, 1],
                     shared: 16384,
@@ -659,7 +659,7 @@ pub(super) fn select(
                 },
                 Solve => assets::Asset {
                     entry: "zg_vllm_116d2ffe705b6643",
-                    source: include_str!("qwen2b_62/solve.cu"),
+                    source: include_str!("reference/qwen2b/prefill/62/solve.cu"),
                     threads: 128,
                     grid: [1, 16, 1],
                     shared: 10240,
@@ -667,7 +667,7 @@ pub(super) fn select(
                 },
                 Recompute => assets::Asset {
                     entry: "zg_vllm_a73872840c0a9697",
-                    source: include_str!("qwen2b_62/recompute.cu"),
+                    source: include_str!("reference/qwen2b/prefill/62/recompute.cu"),
                     threads: 256,
                     grid: [1, 16, 1],
                     shared: 40960,
@@ -675,7 +675,7 @@ pub(super) fn select(
                 },
                 H => assets::Asset {
                     entry: "zg_vllm_9f97b7023b619918",
-                    source: include_str!("qwen2b_62/h.cu"),
+                    source: include_str!("reference/qwen2b/prefill/62/h.cu"),
                     threads: 128,
                     grid: [4, 16, 1],
                     shared: 41220,
@@ -683,7 +683,7 @@ pub(super) fn select(
                 },
                 Output => assets::Asset {
                     entry: "zg_vllm_81c9eabf9b9a78e0",
-                    source: include_str!("qwen2b_62/output.cu"),
+                    source: include_str!("reference/qwen2b/prefill/62/output.cu"),
                     threads: 128,
                     grid: [4, 1, 16],
                     shared: 12288,
@@ -691,7 +691,7 @@ pub(super) fn select(
                 },
                 Gated => assets::Asset {
                     entry: "zg_vllm_820c1a61c99ce579",
-                    source: include_str!("qwen2b_62/gated.cu"),
+                    source: include_str!("reference/qwen2b/prefill/62/gated.cu"),
                     threads: 32,
                     grid: [248, 1, 1],
                     shared: 0,
@@ -706,7 +706,7 @@ pub(super) fn select(
                 Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
-                    source: include_str!("qwen2b_67/prep.cu"),
+                    source: include_str!("reference/qwen2b/prefill/67/prep.cu"),
                     threads: 128,
                     grid: [5, 32, 1],
                     shared: 0,
@@ -714,7 +714,7 @@ pub(super) fn select(
                 },
                 Cumsum => assets::Asset {
                     entry: "zg_vllm_a2ad2ccfa6e953f5",
-                    source: include_str!("qwen2b_67/cumsum.cu"),
+                    source: include_str!("reference/qwen2b/prefill/67/cumsum.cu"),
                     threads: 128,
                     grid: [2, 16, 1],
                     shared: 8,
@@ -722,7 +722,7 @@ pub(super) fn select(
                 },
                 Kkt => assets::Asset {
                     entry: "zg_vllm_68bc016c3bcb6095",
-                    source: include_str!("qwen2b_67/kkt.cu"),
+                    source: include_str!("reference/qwen2b/prefill/67/kkt.cu"),
                     threads: 256,
                     grid: [2, 16, 1],
                     shared: 16384,
@@ -730,7 +730,7 @@ pub(super) fn select(
                 },
                 Solve => assets::Asset {
                     entry: "zg_vllm_b58e94d8cfdcf47d",
-                    source: include_str!("qwen2b_67/solve.cu"),
+                    source: include_str!("reference/qwen2b/prefill/67/solve.cu"),
                     threads: 128,
                     grid: [2, 16, 1],
                     shared: 10240,
@@ -738,7 +738,7 @@ pub(super) fn select(
                 },
                 Recompute => assets::Asset {
                     entry: "zg_vllm_a73872840c0a9697",
-                    source: include_str!("qwen2b_67/recompute.cu"),
+                    source: include_str!("reference/qwen2b/prefill/67/recompute.cu"),
                     threads: 256,
                     grid: [2, 16, 1],
                     shared: 40960,
@@ -746,7 +746,7 @@ pub(super) fn select(
                 },
                 H => assets::Asset {
                     entry: "zg_vllm_9f97b7023b619918",
-                    source: include_str!("qwen2b_67/h.cu"),
+                    source: include_str!("reference/qwen2b/prefill/67/h.cu"),
                     threads: 128,
                     grid: [4, 16, 1],
                     shared: 41220,
@@ -754,7 +754,7 @@ pub(super) fn select(
                 },
                 Output => assets::Asset {
                     entry: "zg_vllm_81c9eabf9b9a78e0",
-                    source: include_str!("qwen2b_67/output.cu"),
+                    source: include_str!("reference/qwen2b/prefill/67/output.cu"),
                     threads: 128,
                     grid: [4, 2, 16],
                     shared: 12288,
@@ -762,7 +762,7 @@ pub(super) fn select(
                 },
                 Gated => assets::Asset {
                     entry: "zg_vllm_820c1a61c99ce579",
-                    source: include_str!("qwen2b_67/gated.cu"),
+                    source: include_str!("reference/qwen2b/prefill/67/gated.cu"),
                     threads: 32,
                     grid: [268, 1, 1],
                     shared: 0,
@@ -777,7 +777,7 @@ pub(super) fn select(
                 Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
-                    source: include_str!("qwen2b_72/prep.cu"),
+                    source: include_str!("reference/qwen2b/prefill/72/prep.cu"),
                     threads: 128,
                     grid: [5, 32, 1],
                     shared: 0,
@@ -785,7 +785,7 @@ pub(super) fn select(
                 },
                 Cumsum => assets::Asset {
                     entry: "zg_vllm_a2ad2ccfa6e953f5",
-                    source: include_str!("qwen2b_72/cumsum.cu"),
+                    source: include_str!("reference/qwen2b/prefill/72/cumsum.cu"),
                     threads: 128,
                     grid: [2, 16, 1],
                     shared: 8,
@@ -793,7 +793,7 @@ pub(super) fn select(
                 },
                 Kkt => assets::Asset {
                     entry: "zg_vllm_79e779d50e66d224",
-                    source: include_str!("qwen2b_72/kkt.cu"),
+                    source: include_str!("reference/qwen2b/prefill/72/kkt.cu"),
                     threads: 128,
                     grid: [2, 16, 1],
                     shared: 8192,
@@ -801,7 +801,7 @@ pub(super) fn select(
                 },
                 Solve => assets::Asset {
                     entry: "zg_vllm_116d2ffe705b6643",
-                    source: include_str!("qwen2b_72/solve.cu"),
+                    source: include_str!("reference/qwen2b/prefill/72/solve.cu"),
                     threads: 128,
                     grid: [2, 16, 1],
                     shared: 10240,
@@ -809,7 +809,7 @@ pub(super) fn select(
                 },
                 Recompute => assets::Asset {
                     entry: "zg_vllm_a73872840c0a9697",
-                    source: include_str!("qwen2b_72/recompute.cu"),
+                    source: include_str!("reference/qwen2b/prefill/72/recompute.cu"),
                     threads: 256,
                     grid: [2, 16, 1],
                     shared: 40960,
@@ -817,7 +817,7 @@ pub(super) fn select(
                 },
                 H => assets::Asset {
                     entry: "zg_vllm_9f97b7023b619918",
-                    source: include_str!("qwen2b_72/h.cu"),
+                    source: include_str!("reference/qwen2b/prefill/72/h.cu"),
                     threads: 128,
                     grid: [4, 16, 1],
                     shared: 41220,
@@ -825,7 +825,7 @@ pub(super) fn select(
                 },
                 Output => assets::Asset {
                     entry: "zg_vllm_a3d74997c0201bf1",
-                    source: include_str!("qwen2b_72/output.cu"),
+                    source: include_str!("reference/qwen2b/prefill/72/output.cu"),
                     threads: 128,
                     grid: [4, 2, 16],
                     shared: 20480,
@@ -833,7 +833,7 @@ pub(super) fn select(
                 },
                 Gated => assets::Asset {
                     entry: "zg_vllm_820c1a61c99ce579",
-                    source: include_str!("qwen2b_72/gated.cu"),
+                    source: include_str!("reference/qwen2b/prefill/72/gated.cu"),
                     threads: 32,
                     grid: [288, 1, 1],
                     shared: 0,
@@ -847,7 +847,7 @@ pub(super) fn select(
             Ok(match stage {
                 Conv => assets::Asset {
                     entry: "zg_vllm_c8f85203ea21f242",
-                    source: include_str!("qwen2b_cached/conv.cu"),
+                    source: include_str!("reference/qwen2b/decode/conv.cu"),
                     threads: 128,
                     grid: [1, 24, 1],
                     shared: 0,
@@ -855,7 +855,7 @@ pub(super) fn select(
                 },
                 Decode => assets::Asset {
                     entry: "zg_vllm_ebe262b1b494d65e",
-                    source: include_str!("qwen2b_cached/decode.cu"),
+                    source: include_str!("reference/qwen2b/decode/decode.cu"),
                     threads: 32,
                     grid: [4, 16, 1],
                     shared: 64,
@@ -863,7 +863,7 @@ pub(super) fn select(
                 },
                 Gated => assets::Asset {
                     entry: "zg_vllm_c15586587b4a279e",
-                    source: include_str!("qwen2b_cached/gated.cu"),
+                    source: include_str!("reference/qwen2b/decode/gated.cu"),
                     threads: 32,
                     grid: [16, 1, 1],
                     shared: 0,

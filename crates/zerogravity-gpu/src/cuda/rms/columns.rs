@@ -3,33 +3,33 @@ use super::Rows;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Columns {
-    Qwen08,
-    Qwen2b,
+    Qwen800M,
+    Qwen2B,
 }
 impl Columns {
     pub(super) const fn count(self) -> usize {
         match self {
-            Self::Qwen08 => 1024,
-            Self::Qwen2b => 2048,
+            Self::Qwen800M => 1024,
+            Self::Qwen2B => 2048,
         }
     }
     pub(super) const fn mean_factor(self) -> &'static str {
         match self {
-            Self::Qwen08 => "0x1p-10f",
-            Self::Qwen2b => "0x1p-11f",
+            Self::Qwen800M => "0x1p-10f",
+            Self::Qwen2B => "0x1p-11f",
         }
     }
     pub(super) const fn mean_block(self, rows: Rows) -> (u32, u32) {
         match (self, rows) {
-            (Self::Qwen08, _) => rows.mean_block(),
-            (Self::Qwen2b, Rows::CohortB4 { initial: true }) => {
+            (Self::Qwen800M, _) => rows.mean_block(),
+            (Self::Qwen2B, Rows::CohortB4 { initial: true }) => {
                 panic!("2B INITIAL B4 RMS is outside source capability")
             }
-            (Self::Qwen2b, Rows::CohortB4 { initial: false }) => (128, 4),
-            (Self::Qwen2b, Rows::One) => (512, 1),
-            (Self::Qwen2b, Rows::Two) => (256, 2),
+            (Self::Qwen2B, Rows::CohortB4 { initial: false }) => (128, 4),
+            (Self::Qwen2B, Rows::One) => (512, 1),
+            (Self::Qwen2B, Rows::Two) => (256, 2),
             // Legacy FixedPrompt/2048 stays closed; typed text uses the same warp reduction.
-            (Self::Qwen2b, Rows::FixedPrompt | Rows::SixtyFour | Rows::Text { .. }) => (32, 16),
+            (Self::Qwen2B, Rows::FixedPrompt | Rows::SixtyFour | Rows::Text { .. }) => (32, 16),
         }
     }
 }
@@ -39,7 +39,7 @@ mod tests {
     use super::*;
     #[test]
     fn torch_reduce_vector4_geometry_has_no_y_or_global_reduction() {
-        for columns in [Columns::Qwen08, Columns::Qwen2b] {
+        for columns in [Columns::Qwen800M, Columns::Qwen2B] {
             for rows in [Rows::One, Rows::Two, Rows::SixtyFour] {
                 let (width, height) = columns.mean_block(rows);
                 assert!(width * height <= 512);
@@ -56,9 +56,9 @@ mod tests {
                 assert_eq!(visited, vectors);
             }
         }
-        assert_eq!(Columns::Qwen2b.mean_block(Rows::One), (512, 1));
-        assert_eq!(Columns::Qwen08.mean_block(Rows::One), (256, 1));
-        for columns in [Columns::Qwen08, Columns::Qwen2b] {
+        assert_eq!(Columns::Qwen2B.mean_block(Rows::One), (512, 1));
+        assert_eq!(Columns::Qwen800M.mean_block(Rows::One), (256, 1));
+        for columns in [Columns::Qwen800M, Columns::Qwen2B] {
             let (x, y) = columns.mean_block(Rows::CohortB4 { initial: false });
             assert_eq!((x, y), (128, 4));
             let vector_count = columns.count() / 4;
@@ -74,7 +74,7 @@ mod tests {
             );
             assert_eq!(visited.len(), vector_count);
         }
-        assert_eq!(Columns::Qwen2b.mean_factor(), "0x1p-11f");
-        assert_eq!(Columns::Qwen08.mean_factor(), "0x1p-10f");
+        assert_eq!(Columns::Qwen2B.mean_factor(), "0x1p-11f");
+        assert_eq!(Columns::Qwen800M.mean_factor(), "0x1p-10f");
     }
 }

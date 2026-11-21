@@ -108,8 +108,8 @@ fn bindings(record: &SourceBindings) -> Result<BTreeMap<usize, BoundModelRmsSour
 }
 pub(super) fn physical_columns(width: usize) -> Result<Columns> {
     match width {
-        1024 => Ok(Columns::Qwen08),
-        2048 => Ok(Columns::Qwen2b),
+        1024 => Ok(Columns::Qwen800M),
+        2048 => Ok(Columns::Qwen2B),
         _ => Err(Error::Unsupported(
             "pooled RMS physical width1024/2048".into(),
         )),

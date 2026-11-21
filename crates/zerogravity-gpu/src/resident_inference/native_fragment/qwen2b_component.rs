@@ -13,10 +13,10 @@ use crate::resident_program::source_bindings::SourceBindings;
 #[path = "qwen2b_component/faults.rs"]
 mod faults;
 pub use faults::{
-    Qwen2bGdnComponentFault, Qwen2bGdnComponentFaultOutcome, qualify_qwen2b_gdn_component_fault,
+    Qwen2BGdnComponentFault, Qwen2BGdnComponentFaultOutcome, qualify_qwen2b_gdn_component_fault,
 };
 #[derive(Clone, Debug)]
-pub struct Qwen2bGdnComponentReceipt {
+pub struct Qwen2BGdnComponentReceipt {
     pub rows: usize,
     pub executed_nodes: usize,
     pub native_launches: usize,
@@ -29,15 +29,15 @@ pub struct Qwen2bGdnComponentReceipt {
     pub final_resident_bytes: usize,
     pub final_physical_reserved_bytes: u64,
 }
-pub struct Qwen2bGdnComponentReadback<'a> {
+pub struct Qwen2BGdnComponentReadback<'a> {
     record: &'a Arc<SourceBindings>,
     raw: &'a [Bytes],
     prior: &'a [(StateSlot, std::ops::Range<usize>)],
     candidate: &'a [(StateSlot, std::ops::Range<usize>)],
-    arithmetic: Option<crate::cuda::gdn::Qwen2bGdnArithmetic>,
+    arithmetic: Option<crate::cuda::gdn::Qwen2BGdnArithmetic>,
 }
-impl Qwen2bGdnComponentReadback<'_> {
-    pub fn arithmetic(&self) -> Option<crate::cuda::gdn::Qwen2bGdnArithmetic> {
+impl Qwen2BGdnComponentReadback<'_> {
+    pub fn arithmetic(&self) -> Option<crate::cuda::gdn::Qwen2BGdnArithmetic> {
         self.arithmetic
     }
     pub fn record(&self) -> &Arc<SourceBindings> {
@@ -75,12 +75,12 @@ impl Qwen2bGdnComponentReadback<'_> {
     }
 }
 struct RunMode<'a> {
-    fault: Option<Qwen2bGdnComponentFault>,
+    fault: Option<Qwen2BGdnComponentFault>,
     probe: Option<&'a faults::Probe>,
 }
 enum Outcome {
-    Compared(Qwen2bGdnComponentReceipt),
-    Pressure(Qwen2bGdnComponentFaultOutcome),
+    Compared(Qwen2BGdnComponentReceipt),
+    Pressure(Qwen2BGdnComponentFaultOutcome),
 }
 /// Expected outputs are available ONLY inside original trusted completion.
 pub async fn qualify_qwen2b_gdn_component<F>(
@@ -89,9 +89,9 @@ pub async fn qualify_qwen2b_gdn_component<F>(
     inputs: CubinQualificationInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
-) -> Result<Qwen2bGdnComponentReceipt>
+) -> Result<Qwen2BGdnComponentReceipt>
 where
-    F: FnOnce(Qwen2bGdnComponentReadback<'_>) -> Result<()>,
+    F: FnOnce(Qwen2BGdnComponentReadback<'_>) -> Result<()>,
 {
     match run(
         device,
@@ -114,13 +114,13 @@ where
 pub async fn qualify_qwen2b_gdn_component_arithmetic<F>(
     device: Device,
     recipe: Arc<ComponentRecipe>,
-    arithmetic: crate::cuda::gdn::Qwen2bGdnArithmetic,
+    arithmetic: crate::cuda::gdn::Qwen2BGdnArithmetic,
     inputs: CubinQualificationInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
-) -> Result<Qwen2bGdnComponentReceipt>
+) -> Result<Qwen2BGdnComponentReceipt>
 where
-    F: FnOnce(Qwen2bGdnComponentReadback<'_>) -> Result<()>,
+    F: FnOnce(Qwen2BGdnComponentReadback<'_>) -> Result<()>,
 {
     match run_with_arithmetic(
         device,
@@ -153,7 +153,7 @@ async fn run<F>(
     mode: RunMode<'_>,
 ) -> Result<Outcome>
 where
-    F: FnOnce(Qwen2bGdnComponentReadback<'_>) -> Result<()>,
+    F: FnOnce(Qwen2BGdnComponentReadback<'_>) -> Result<()>,
 {
     run_with_arithmetic(
         device,
@@ -169,7 +169,7 @@ where
     .await
 }
 struct ArithmeticInputs {
-    arithmetic: Option<crate::cuda::gdn::Qwen2bGdnArithmetic>,
+    arithmetic: Option<crate::cuda::gdn::Qwen2BGdnArithmetic>,
     inputs: CubinQualificationInputs,
 }
 async fn run_with_arithmetic<F>(
@@ -181,14 +181,14 @@ async fn run_with_arithmetic<F>(
     mode: RunMode<'_>,
 ) -> Result<Outcome>
 where
-    F: FnOnce(Qwen2bGdnComponentReadback<'_>) -> Result<()>,
+    F: FnOnce(Qwen2BGdnComponentReadback<'_>) -> Result<()>,
 {
     let RunMode { fault, probe } = mode;
     let ArithmeticInputs { arithmetic, inputs } = inputs;
     not_cancelled(cancelled)?;
     validate_component(&recipe)?;
     if recipe.cut() != ComponentCut::Gated
-        || recipe.kind() != ComponentKind::Qwen2b
+        || recipe.kind() != ComponentKind::Qwen2B
         || recipe.qwen2b_arithmetic() != arithmetic
     {
         return Err(Error::State(
@@ -204,7 +204,7 @@ where
             crate::cuda::gdn::GdnPhase::Initial64
         })?;
     }
-    if fault != Some(Qwen2bGdnComponentFault::AdmissionPressure) {
+    if fault != Some(Qwen2BGdnComponentFault::AdmissionPressure) {
         crate::cuda::native::qwen2b_component::validate_component_images(
             &source, &record, &inputs,
         )?;
@@ -230,7 +230,7 @@ where
             "source2B component requires solitary original envelope".into(),
         ));
     }
-    if fault == Some(Qwen2bGdnComponentFault::AdmissionPressure) {
+    if fault == Some(Qwen2BGdnComponentFault::AdmissionPressure) {
         return faults::pressure(service).map(Outcome::Pressure);
     }
     let ticket = service.queue().submit(
@@ -371,8 +371,8 @@ where
     }
     let cohort = Arc::new(reads);
     body.arm_fault(match fault {
-        Some(Qwen2bGdnComponentFault::UnknownAfterConvolution) => 1,
-        Some(Qwen2bGdnComponentFault::CancelBeforeRecurrent) => 2,
+        Some(Qwen2BGdnComponentFault::UnknownAfterConvolution) => 1,
+        Some(Qwen2BGdnComponentFault::CancelBeforeRecurrent) => 2,
         _ => 0,
     })?;
     if let Some(probe) = probe {
@@ -447,7 +447,7 @@ where
                     ));
                 }
             }
-            validate(Qwen2bGdnComponentReadback {
+            validate(Qwen2BGdnComponentReadback {
                 record: &record,
                 raw,
                 prior: &prior,
@@ -541,7 +541,7 @@ where
             "source2B original physical envelope did not retire".into(),
         ));
     }
-    Ok(Outcome::Compared(Qwen2bGdnComponentReceipt {
+    Ok(Outcome::Compared(Qwen2BGdnComponentReceipt {
         rows,
         executed_nodes: 6,
         native_launches,

@@ -117,13 +117,13 @@ pub(super) fn parameter(
 
 fn plan(
     source: SourceIdentity,
-    profile: QwenSourceProfile,
+    profile: QwenModelVariant,
     capacity: usize,
 ) -> Result<RecordedOrdinaryPlan> {
     record_ordinary_plan(
         source,
         profile,
-        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        NumericalContract::CudaSm86Bf16ReferenceV1,
         capacity,
         |role| Ok(matrix(source, profile, role)),
         |role| Ok(parameter(source, profile, role)),
@@ -132,7 +132,7 @@ fn plan(
 
 fn invocation(
     plan: &RecordedOrdinaryPlan,
-    profile: QwenSourceProfile,
+    profile: QwenModelVariant,
     mode: SourceCallMode,
     base: usize,
     ids: Arc<[u32]>,
@@ -154,7 +154,7 @@ fn invocation(
 
 #[test]
 fn one_static_plan_serves_runtime_lengths_ids_and_emit_policy_for_both_profiles() {
-    for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+    for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
         let source = SourceIdentity::for_new_allocation().unwrap();
         for capacity in [512, 4096, 32_768] {
             let plan = plan(source, profile, capacity).unwrap();
@@ -274,7 +274,7 @@ fn one_static_plan_serves_runtime_lengths_ids_and_emit_policy_for_both_profiles(
 #[test]
 fn ordinary_plan_refuses_bad_context_chunk_frontier_ids_and_source_descriptors() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let profile = QwenSourceProfile::Qwen08;
+    let profile = QwenModelVariant::Qwen800M;
     for capacity in [0, 511, 32_769] {
         assert!(plan(source, profile, capacity).is_err());
     }
@@ -377,7 +377,7 @@ fn ordinary_plan_refuses_bad_context_chunk_frontier_ids_and_source_descriptors()
         record_ordinary_plan(
             source,
             profile,
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
             512,
             |role| Ok(matrix(foreign, profile, role)),
             |role| Ok(parameter(source, profile, role)),
@@ -388,7 +388,7 @@ fn ordinary_plan_refuses_bad_context_chunk_frontier_ids_and_source_descriptors()
         record_ordinary_plan(
             source,
             profile,
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
             512,
             |role| Ok(matrix(source, profile, role)),
             |role| Ok(parameter(foreign, profile, role)),
@@ -399,9 +399,9 @@ fn ordinary_plan_refuses_bad_context_chunk_frontier_ids_and_source_descriptors()
 
 #[test]
 fn cpu_source_plan_reuses_family_traversal_with_distinct_gdn_arithmetic() {
-    for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+    for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
         let source = SourceIdentity::for_new_allocation().unwrap();
-        let numerical = SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1;
+        let numerical = NumericalContract::TorchCpuAvx2Bf16MixedV1;
         let recorded = record_ordinary_plan(
             source,
             profile,
@@ -415,7 +415,7 @@ fn cpu_source_plan_reuses_family_traversal_with_distinct_gdn_arithmetic() {
         assert_eq!(recorded.boundaries.len(), 24);
         assert_eq!(
             recorded.plan.numerical_profile(),
-            ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+            NumericalProfile::TorchCpuAvx2Bf16MixedV1
         );
         let mut recurrent = 0;
         for node in recorded.plan.nodes() {
@@ -425,10 +425,7 @@ fn cpu_source_plan_reuses_family_traversal_with_distinct_gdn_arithmetic() {
             assert_eq!(descriptor.numerical_contract(), numerical);
             if let SourceOperatorKind::GatedDelta { geometry, .. } = descriptor.kind() {
                 recurrent += 1;
-                assert_eq!(
-                    geometry.contract,
-                    SourceGdnContract::TorchCpuAvx2L2SiluBf16V1
-                );
+                assert_eq!(geometry.contract, GdnContract::TorchCpuAvx2L2SiluBf16V1);
             }
         }
         assert_eq!(recurrent, 18);
@@ -455,7 +452,7 @@ fn cpu_source_plan_reuses_family_traversal_with_distinct_gdn_arithmetic() {
 
 #[test]
 fn cpu_source_cached_one_cannot_be_relabelled_as_chunk_prefill() {
-    let cpu = SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1;
+    let cpu = NumericalContract::TorchCpuAvx2Bf16MixedV1;
     assert!(require_source_phase(cpu, SourceCallMode::Prefill, 47, 1).is_err());
     assert!(require_source_phase(cpu, SourceCallMode::Decode, 47, 1).is_ok());
     assert!(require_source_phase(cpu, SourceCallMode::Prefill, 0, 1).is_ok());
@@ -463,7 +460,7 @@ fn cpu_source_cached_one_cannot_be_relabelled_as_chunk_prefill() {
     // The distinct CUDA source contract retains its explicit chunk semantics.
     assert!(
         require_source_phase(
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
             SourceCallMode::Prefill,
             47,
             1
@@ -475,16 +472,16 @@ fn cpu_source_cached_one_cannot_be_relabelled_as_chunk_prefill() {
 #[test]
 fn source_geometry_extends_the_same_plan_without_extending_captured_cuda() {
     let profile = geometry::large_fixture();
-    assert!(QwenSourceProfile::try_from(profile).is_err());
-    for small in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+    assert!(QwenModelVariant::try_from(profile).is_err());
+    for small in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
         assert_eq!(
-            QwenSourceProfile::try_from(OrdinaryQwenGeometry::from(small)).unwrap(),
+            QwenModelVariant::try_from(OrdinaryQwenGeometry::from(small)).unwrap(),
             small
         );
     }
     for numerical in [
-        SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1,
-        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        NumericalContract::TorchCpuAvx2Bf16MixedV1,
+        NumericalContract::CudaSm86Bf16ReferenceV1,
     ] {
         let source = SourceIdentity::for_new_allocation().unwrap();
         let recorded = record_ordinary_plan(

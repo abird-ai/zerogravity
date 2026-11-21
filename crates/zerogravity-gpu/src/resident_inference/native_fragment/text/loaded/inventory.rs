@@ -429,21 +429,21 @@ impl TextResourceInventory {
             device.extend(super::cohort::DecodeCohortWorkspace::allocation_layout(
                 capture, scopes,
             )?)?;
-            device.extend([crate::resident_program::native_cohort::CACHE_BYTES, 4])?;
+            device.extend([crate::resident_program::fused_cohort::CACHE_BYTES, 4])?;
             // Exactly one current body; completed Pending retains only original
             // candidate roots and fresh packets already priced by22 roots.
             // Price only source-supported phases. Both .8B phases remain
             // conservatively summed despite exclusive execution.
             for initial in phases.iter() {
                 device.extend(
-                    crate::resident_program::native_cohort::FullModelCohort::allocation_layout(
+                    crate::resident_program::fused_cohort::FullModelCohort::allocation_layout(
                         initial, capture,
                     ),
                 )?;
             }
             let body_host = phases.iter().try_fold(0usize, |peak, initial| {
                 Ok::<_, Error>(peak.max(
-                    crate::resident_program::native_cohort::FullModelCohort::host_bytes(
+                    crate::resident_program::fused_cohort::FullModelCohort::host_bytes(
                         initial, capture,
                     )?,
                 ))
@@ -457,7 +457,7 @@ impl TextResourceInventory {
                 retained,
                 diagnostic_delta,
                 super::cohort::DecodeCohortWorkspace::host_bytes()?,
-                crate::resident_program::native_cohort::CohortLibrary::host_bytes(capture)?,
+                crate::resident_program::fused_cohort::CohortLibrary::host_bytes(capture)?,
                 body_host,
                 // Four genuine current records/scope/state/provenance owners;
                 // price each with the existing complete N1 bound, no Arc shortcut.
@@ -548,7 +548,7 @@ mod tests {
     }
     #[test]
     fn cohort_complete_host_delta_uses_original_exclusive_readback_owner() -> Result<()> {
-        use crate::resident_program::native_cohort::{CohortLibrary, FullModelCohort};
+        use crate::resident_program::fused_cohort::{CohortLibrary, FullModelCohort};
         let readback_delta = super::super::cohort::READBACK_BYTES - 192 * MIB;
         let geometry = super::super::cohort::DecodeCohortWorkspace::host_bytes()?;
         let capture = TextKernelCapture::bind(

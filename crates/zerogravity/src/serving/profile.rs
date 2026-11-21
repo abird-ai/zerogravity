@@ -97,7 +97,7 @@ impl TextProfile {
                         output: options.max_output,
                         provider_mib: options.provider_mib,
                         device_mib: options.device_mib,
-                        native_rows: if options.source_profile == "qwen35-cuda-bf16" {
+                        cohort_width: if options.source_profile == "qwen35-cuda-bf16" {
                             options.native_batch_rows
                         } else if options.batch_mode == "fused" {
                             options.batch_rows

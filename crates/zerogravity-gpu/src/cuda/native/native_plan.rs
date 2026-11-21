@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, atomic::AtomicBool};
 use zerogravity_artifacts::source_weights::{TensorWindow, VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::accelerator::program::{
-    ActivationPrecision, ForwardPlan, PlanNode, PlanOperation, ProgramNumericalProfile, SourceCall,
+    ActivationPrecision, ForwardPlan, NumericalProfile, PlanNode, PlanOperation, SourceCall,
     SourceOperator, SourceOperatorKind, SourceTensor, ValueId, ValueShape,
 };
 use zerogravity_core::device_events::{BufferLeaseId, BufferRole, DeviceAccess};
@@ -40,7 +40,7 @@ fn projection_images_inner(
     plan: &ForwardPlan,
     connected: bool,
 ) -> Result<BTreeSet<ProjectionImage>> {
-    if plan.numerical_profile() != ProgramNumericalProfile::SourceCudaSm86Bf16V1 {
+    if plan.numerical_profile() != NumericalProfile::CudaSm86Bf16ReferenceV1 {
         return Err(Error::Unsupported(
             "native image factory exact typed profile".into(),
         ));
@@ -678,7 +678,7 @@ fn prepare_bindings(
         || plan.source() != context.service.source_identity()
         || !std::ptr::eq(plan, context.bindings.plan())
         || plan.source_call() != Some(context.bindings.call())
-        || plan.numerical_profile() != ProgramNumericalProfile::SourceCudaSm86Bf16V1
+        || plan.numerical_profile() != NumericalProfile::CudaSm86Bf16ReferenceV1
         || values.len() != plan.values().len()
     {
         return Err(Error::Unsupported(

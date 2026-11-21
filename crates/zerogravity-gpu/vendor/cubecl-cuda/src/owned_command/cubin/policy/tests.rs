@@ -60,7 +60,7 @@ fn original_limits_stay_six_eight_nineteen() {
 
 #[test]
 fn connected_limits_admit_exact_frontier_but_never_an_extra_record() {
-    let scope = CubinSetPolicy::ConnectedQwen08;
+    let scope = CubinSetPolicy::ConnectedQwen800M;
     assert!(scope.limits(6, 11, 20, true, true).is_ok());
     assert!(scope.limits(7, 12, 20, false, false).is_ok());
     for (modules, functions, records, new_module, new_function) in [

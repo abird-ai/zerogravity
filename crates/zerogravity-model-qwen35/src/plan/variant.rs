@@ -1,15 +1,15 @@
 //! Original source-family geometry.
-//! SourceIdentity and ProgramNumericalProfile/provider semantics stay independent.
+//! SourceIdentity and NumericalProfile/provider semantics stay independent.
 //! No source/runtime/state authority or learned-source substitution.
 use super::{PromptWorkload, QwenProjection};
 use crate::{Error, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum QwenSourceProfile {
-    Qwen08,
+pub enum QwenModelVariant {
+    Qwen800M,
     Qwen2B,
 }
-impl QwenSourceProfile {
+impl QwenModelVariant {
     pub const fn vocabulary_size(self) -> usize {
         248_320
     }
@@ -47,13 +47,13 @@ impl QwenSourceProfile {
     }
     pub fn hidden_size(self) -> usize {
         match self {
-            Self::Qwen08 => 1024,
+            Self::Qwen800M => 1024,
             Self::Qwen2B => 2048,
         }
     }
     pub fn intermediate_size(self) -> usize {
         match self {
-            Self::Qwen08 => 3584,
+            Self::Qwen800M => 3584,
             Self::Qwen2B => 6144,
         }
     }
@@ -82,7 +82,7 @@ mod tests {
 
     #[test]
     fn model_geometry_accepts_dynamic_spans_but_not_invalid_context_or_ids() {
-        for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+        for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
             assert_eq!(profile.vocabulary_size(), 248_320);
             assert_eq!(profile.layer_count(), 24);
             assert_eq!(profile.max_position_embeddings(), 262_144);

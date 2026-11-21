@@ -39,12 +39,12 @@ pub async fn qualify_grouped_state_transport(
     host: &zerogravity_core::resource_arbiter::PhysicalDeviceKey,
     owner: ResourceOwner,
 ) -> Result<usize> {
-    crate::resident_program::native_cohort::qualify_grouped_transport(device, host, owner).await
+    crate::resident_program::fused_cohort::qualify_grouped_transport(device, host, owner).await
 }
 
 #[cfg(target_os = "linux")]
 pub use crate::resident_leases::{
-    Qwen2bMlpWeightMode, Qwen2bMlpWeightOutcome, qualify_qwen2b_mlp_weights,
+    Qwen2BMlpWeightMode, Qwen2BMlpWeightOutcome, qualify_qwen2b_mlp_weights,
 };
 
 #[cfg(target_os = "linux")]
@@ -91,7 +91,7 @@ pub use activation_manifest::Activation as CubinActivation;
 #[cfg(target_os = "linux")]
 pub use fixed_prompt_mlp::FixedPromptMlpQualificationInputs;
 #[cfg(target_os = "linux")]
-pub use qwen2b_mlp::Qwen2bMlpQualificationInputs;
+pub use qwen2b_mlp::Qwen2BMlpQualificationInputs;
 
 #[cfg(feature = "cuda-cublas")]
 mod blas;
@@ -109,7 +109,7 @@ mod gdn;
 #[cfg(target_os = "linux")]
 mod solve2b_leaf;
 #[cfg(target_os = "linux")]
-pub use crate::cuda::gdn::{Qwen2bGdnArithmetic, Qwen2bOriginalGdnReference};
+pub use crate::cuda::gdn::{Qwen2BGdnArithmetic, Qwen2BOriginalGdnReference};
 #[cfg(target_os = "linux")]
 pub use fixed_prompt_solve::{
     FixedPromptSolveFault, FixedPromptSolveFaultOutcome, FixedPromptSolveFixture,
@@ -152,7 +152,7 @@ pub use crate::cuda::rms::{
 pub use crate::cuda::rms::{InputRmsFixture, qualify_input_rms};
 #[cfg(target_os = "linux")]
 pub use crate::cuda::rms::{
-    Qwen2bDualRmsLeaf, Qwen2bRmsFault, Qwen2bRmsFaultOutcome, Qwen2bRmsReadback, Qwen2bRmsReceipt,
+    Qwen2BDualRmsLeaf, Qwen2BRmsFault, Qwen2BRmsFaultOutcome, Qwen2BRmsReadback, Qwen2BRmsReceipt,
     qualify_qwen2b_rms, qualify_qwen2b_rms_fault,
 };
 #[cfg(feature = "cuda-cublas")]
@@ -410,7 +410,7 @@ pub async fn qualify_gated_norm(
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source_identity(),
-        ResourceOwner::new("qwen08-cuda-leaf", "gated-rms")?,
+        ResourceOwner::new("qwen800m-cuda-leaf", "gated-rms")?,
         PROVIDER_CAP,
         device_cap,
     )?;
@@ -505,7 +505,7 @@ pub use crate::resident_inference::{
     qualify_source_model_fault,
 };
 #[cfg(target_os = "linux")]
-pub use full_model_budget::qwen08_model_host_bound;
+pub use full_model_budget::qwen800m_model_host_bound;
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use crate::resident_inference::{
@@ -526,8 +526,8 @@ pub use crate::resident_inference::{
 pub(crate) mod qwen2b_projection;
 #[cfg(target_os = "linux")]
 pub use qwen2b_projection::{
-    Qwen2bProjectionFault, Qwen2bProjectionFaultOutcome, Qwen2bProjectionFixture,
-    Qwen2bProjectionReadback, Qwen2bProjectionReceipt, qualify_qwen2b_projection_fault,
+    Qwen2BProjectionFault, Qwen2BProjectionFaultOutcome, Qwen2BProjectionFixture,
+    Qwen2BProjectionReadback, Qwen2BProjectionReceipt, qualify_qwen2b_projection_fault,
     qualify_qwen2b_projections,
 };
 
@@ -535,8 +535,8 @@ pub use qwen2b_projection::{
 pub(crate) mod qwen2b_component;
 #[cfg(target_os = "linux")]
 pub use crate::resident_inference::{
-    Qwen2bGdnComponentFault, Qwen2bGdnComponentFaultOutcome, Qwen2bGdnComponentReadback,
-    Qwen2bGdnComponentReceipt, qualify_qwen2b_gdn_component,
+    Qwen2BGdnComponentFault, Qwen2BGdnComponentFaultOutcome, Qwen2BGdnComponentReadback,
+    Qwen2BGdnComponentReceipt, qualify_qwen2b_gdn_component,
     qualify_qwen2b_gdn_component_arithmetic, qualify_qwen2b_gdn_component_fault,
 };
 
@@ -595,8 +595,8 @@ pub use crate::resident_inference::{
 };
 #[cfg(target_os = "linux")]
 pub use crate::resident_inference::{
-    Qwen2bMlpComponentFault, Qwen2bMlpComponentFaultOutcome, Qwen2bMlpComponentReceipt,
-    Qwen2bMlpComponentSource, qualify_qwen2b_mlp_component, qualify_qwen2b_mlp_component_fault,
+    Qwen2BMlpComponentFault, Qwen2BMlpComponentFaultOutcome, Qwen2BMlpComponentReceipt,
+    Qwen2BMlpComponentSource, qualify_qwen2b_mlp_component, qualify_qwen2b_mlp_component_fault,
 };
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]

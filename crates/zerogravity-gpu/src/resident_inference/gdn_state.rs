@@ -3,7 +3,7 @@ use super::native_fragment::continuation::{AttemptPhaseBinding, PrefixPhaseEnque
 use super::*;
 use crate::cuda::gdn::GdnPhase;
 use zerogravity_core::accelerator::program::ConvDomain;
-use zerogravity_core::accelerator::program::ProgramNumericalProfile;
+use zerogravity_core::accelerator::program::NumericalProfile;
 use zerogravity_core::accelerator::program::RecurrentDomain;
 use zerogravity_core::accelerator::program::StateEffect;
 use zerogravity_core::accelerator::program::{
@@ -181,7 +181,7 @@ impl ResidentSession {
             || u64::try_from(invocation.rows().vocabulary()).ok() != Some(self.model.vocab)
             || plan.source() != base.source()
             || base.source() != self.model.service.source_identity()
-            || plan.numerical_profile() != ProgramNumericalProfile::SourceCudaSm86Bf16V1
+            || plan.numerical_profile() != NumericalProfile::CudaSm86Bf16ReferenceV1
             || plan.is_operator_slice()
             || plan.frontier_delta() != 0
             || plan.source_call() != Some(invocation)

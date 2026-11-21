@@ -101,7 +101,7 @@ struct SourceOwner {
 fn source_embedding(
     bindings: &crate::resident_program::source_bindings::SourceBindings,
 ) -> Result<VerifiedMatrix> {
-    use zerogravity_core::accelerator::program::{SourceNumericalContract, SourceOperatorKind};
+    use zerogravity_core::accelerator::program::{NumericalContract, SourceOperatorKind};
     let descriptor = bindings
         .operator(0)?
         .ok_or_else(|| Error::State("RMS actual embedding operator absent".into()))?;
@@ -110,7 +110,7 @@ fn source_embedding(
     };
     if descriptor.kind() != SourceOperatorKind::EmbeddingRows
         || descriptor.call() != bindings.call()
-        || descriptor.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+        || descriptor.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
     {
         return Err(Error::State(
             "RMS actual embedding source/call/contract differs".into(),
@@ -137,7 +137,7 @@ pub(super) fn finite_bf16(bytes: &[u8]) -> bool {
 }
 
 pub(super) fn loaded_gamma(window: &ParameterWindow) -> Result<Vec<u8>> {
-    loaded_gamma_for(window, Columns::Qwen08)
+    loaded_gamma_for(window, Columns::Qwen800M)
 }
 
 pub(super) fn loaded_gamma_for(window: &ParameterWindow, columns: Columns) -> Result<Vec<u8>> {
@@ -190,7 +190,7 @@ fn source_owner_rows(
     columns: Columns,
     rows: Rows,
 ) -> Result<Arc<SourceOwner>> {
-    if ids.len() != rows.count() || (rows == Rows::FixedPrompt && columns != Columns::Qwen08) {
+    if ids.len() != rows.count() || (rows == Rows::FixedPrompt && columns != Columns::Qwen800M) {
         return Err(Error::Unsupported("closed source RMS rows/columns".into()));
     }
     source_owner_rows_storage(source, ids, columns, rows, None)
@@ -295,7 +295,7 @@ fn source_owner_rows_storage_bound(
         embedding.extend_from_slice(window.as_slice());
         windows.push(window);
     }
-    let gamma = if columns == Columns::Qwen08 {
+    let gamma = if columns == Columns::Qwen800M {
         loaded_gamma(&parameter)?
     } else {
         loaded_gamma_for(&parameter, columns)?
@@ -430,8 +430,8 @@ impl RmsPrepared {
             ));
         }
         let columns = match binding.geometry().width {
-            1024 => Columns::Qwen08,
-            2048 => Columns::Qwen2b,
+            1024 => Columns::Qwen800M,
+            2048 => Columns::Qwen2B,
             _ => return Err(Error::Unsupported("ordinary source RMS width".into())),
         };
         let mut owner = source_owner_rows_storage_bound(
@@ -482,7 +482,7 @@ impl RmsPrepared {
         if source.source_identity() != service.source_identity() {
             return Err(Error::State("RMS producer source/service identity".into()));
         }
-        let owner = source_owner(source, teacher_ids, Columns::Qwen08)?;
+        let owner = source_owner(source, teacher_ids, Columns::Qwen800M)?;
         Self::prepare_owner(service, owner, correlation, None).await
     }
 
@@ -499,14 +499,14 @@ impl RmsPrepared {
         if source.source().source_identity() != service.source_identity() {
             return Err(Error::State("2B RMS source/service issuer".into()));
         }
-        if source.columns() != Columns::Qwen2b {
+        if source.columns() != Columns::Qwen2B {
             return Err(Error::State("wide RMS leaf actual width differs".into()));
         }
         let (matrix, parameter) = source.ordinary_members()?;
         let mut owner = source_owner_rows_storage_bound(
             source.source().clone(),
             teacher_ids,
-            Columns::Qwen2b,
+            Columns::Qwen2B,
             Rows::new(teacher_ids.len())?,
             None,
             matrix,
@@ -533,14 +533,14 @@ impl RmsPrepared {
                 "fixed_prompt RMS source/service issuer".into(),
             ));
         }
-        if source.columns() != Columns::Qwen08 {
+        if source.columns() != Columns::Qwen800M {
             return Err(Error::State("fixed RMS leaf actual width differs".into()));
         }
         let (matrix, parameter) = source.ordinary_members()?;
         let mut owner = source_owner_rows_storage_bound(
             source.source().clone(),
             teacher_ids,
-            Columns::Qwen08,
+            Columns::Qwen800M,
             Rows::FixedPrompt,
             None,
             matrix,
@@ -748,7 +748,7 @@ impl RmsPrepared {
     }
     #[cfg(target_os = "linux")]
     pub(super) fn enqueue_2b_through_mean(&self) -> Result<usize> {
-        if self.owner.columns != Columns::Qwen2b || self.owner._leaf.is_none() {
+        if self.owner.columns != Columns::Qwen2B || self.owner._leaf.is_none() {
             return Err(Error::State(
                 "2B RMS fault cannot retag ordinary source".into(),
             ));
@@ -763,7 +763,7 @@ impl RmsPrepared {
     }
     #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(super) fn enqueue_fixed_prompt_through_mean(&self) -> Result<usize> {
-        if self.owner.columns != Columns::Qwen08
+        if self.owner.columns != Columns::Qwen800M
             || self.owner.rows != Rows::FixedPrompt
             || self.owner._leaf.is_none()
         {

@@ -1,8 +1,9 @@
 //! Source-bound cold registration through the runtime's one engine/catalog.
-#[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
-pub use crate::builtins::text::QwenHipProfile;
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
-pub use crate::builtins::text::QwenSourceProfile;
+#[cfg(all(
+    any(feature = "qwen35-hip", feature = "qwen35-cuda"),
+    target_os = "linux"
+))]
+pub use crate::builtins::text::QwenServingProfile;
 #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
 pub use crate::gpu::HipSourceBudget;
 
@@ -14,7 +15,7 @@ pub struct QwenCudaSmartOverrides {
     pub state_policy: Option<QwenCudaStatePolicy>,
     /// `Some(0|4|8)` is an explicit user value. `None` leaves cohort width
     /// eligible for smart selection when the layer is Enabled/Exclusive.
-    pub native_rows: Option<usize>,
+    pub cohort_width: Option<usize>,
 }
 
 #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
@@ -60,7 +61,7 @@ pub enum ModelLoadRequest {
         aliases: Vec<String>,
         cache: crate::cache::CacheOptions,
         snapshot: String,
-        profile: QwenSourceProfile,
+        profile: QwenServingProfile,
         /// Provider capacity, not total device memory.
         provider_bytes: usize,
         /// Physical device admission, including the backend's context owners.
@@ -73,7 +74,7 @@ pub enum ModelLoadRequest {
         aliases: Vec<String>,
         cache: crate::cache::CacheOptions,
         snapshot: String,
-        profile: QwenSourceProfile,
+        profile: QwenServingProfile,
         provider_bytes: usize,
         device_bytes: u64,
         state_policy: QwenCudaStatePolicy,
@@ -84,7 +85,7 @@ pub enum ModelLoadRequest {
         aliases: Vec<String>,
         cache: crate::cache::CacheOptions,
         snapshot: String,
-        profile: QwenSourceProfile,
+        profile: QwenServingProfile,
         provider_bytes: usize,
         device_bytes: u64,
         smart_config: SmartConfig<QwenCudaSmartOverrides>,
@@ -95,7 +96,7 @@ pub enum ModelLoadRequest {
         aliases: Vec<String>,
         cache: crate::cache::CacheOptions,
         snapshot: String,
-        profile: QwenHipProfile,
+        profile: QwenServingProfile,
     },
     /// Same cold HIP route with an explicit total device envelope, including context.
     #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
@@ -103,7 +104,7 @@ pub enum ModelLoadRequest {
         aliases: Vec<String>,
         cache: crate::cache::CacheOptions,
         snapshot: String,
-        profile: QwenHipProfile,
+        profile: QwenServingProfile,
         budget: HipSourceBudget,
     },
     /// Existing serving source profiles, including explicitly finite diagnostics.

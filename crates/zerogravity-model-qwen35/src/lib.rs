@@ -519,7 +519,7 @@ impl LoadedQwenModel {
     }
     /// Borrow the source-bound embedding descriptor without decoding a row.
     pub fn embedding_source(&self, token: u32) -> Result<crate::accelerator::EmbeddingRegion<'_>> {
-        if self.numerical_profile() != source::binding::QwenNumericalProfile::GgufSourceV1 {
+        if self.numerical_profile() != source::binding::QwenNumericalProfile::GgufReferenceV1 {
             let tensor = self.matrix_descriptor(source::binding::QwenMatrixRole::Embedding)?;
             let region = crate::accelerator::EmbeddingRegion {
                 source_identity: self.source_identity(),

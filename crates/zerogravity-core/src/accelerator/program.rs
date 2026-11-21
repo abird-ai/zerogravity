@@ -37,8 +37,8 @@ pub use text_moe::{TextExpertTensor, TextMoeContract, TextMoeInputs};
 mod typed;
 pub use text::{TextElementwise, TextRotary};
 pub use typed::{
-    ActivationPrecision, EmbeddingContract, OrdinaryRmsContract, ProgramNumericalProfile,
-    ProjectionContract, SourceParameter,
+    ActivationPrecision, EmbeddingContract, NumericalProfile, ProjectionContract, RmsContract,
+    SourceParameter,
 };
 
 mod text_bindings;
@@ -49,9 +49,9 @@ pub use text_bindings::{
 pub use text_step::TextStepBindings;
 mod source_program;
 pub use source_program::{
-    BoundSourceInvocation, SourceAttentionMask, SourceCall, SourceCallMode, SourceConvGeometry,
-    SourceGamma, SourceGdnContract, SourceGdnGeometry, SourceGroupedQkGeometry, SourceInvocation,
-    SourceNumericalContract, SourceOperator, SourceOperatorKind, SourceOperatorSemantics,
+    BoundSourceInvocation, GdnContract, NumericalContract, SourceAttentionMask, SourceCall,
+    SourceCallMode, SourceConvGeometry, SourceGamma, SourceGdnGeometry, SourceGroupedQkGeometry,
+    SourceInvocation, SourceOperator, SourceOperatorKind, SourceOperatorSemantics,
     SourceOperatorTemplate, SourcePlanGeometry, SourceQkRotaryGeometry, SourceRetainedOrigin,
     SourceRmsGeometry, SourceRowSelection, SourceRows, SourceStateAccess, SourceValueProvenance,
 };
@@ -429,7 +429,7 @@ pub trait MathematicalBackend {
         &mut self,
         _parameter: SourceParameter,
         _input: &Self::Value,
-        _contract: OrdinaryRmsContract,
+        _contract: RmsContract,
     ) -> Result<Self::Value> {
         Err(Error::Unsupported(
             "backend does not implement explicit ordinary RMS contract".into(),
@@ -691,7 +691,7 @@ pub enum PlanOperation {
     },
     TypedOrdinaryRms {
         parameter: SourceParameter,
-        contract: OrdinaryRmsContract,
+        contract: RmsContract,
     },
     Embed {
         tensor: SourceTensor,
@@ -823,7 +823,7 @@ pub struct ForwardPlanSemantics {
     metadata: Option<Arc<PreparedPlanMetadata>>,
     source_template: Option<SourcePlanGeometry>,
     source: SourceIdentity,
-    profile: ProgramNumericalProfile,
+    profile: NumericalProfile,
     standalone_exp: Option<StandaloneExpProfile>,
     bf16_text: Option<Arc<Bf16TextContract>>,
     operator_slice: bool,
@@ -875,7 +875,7 @@ impl RecordedOperatorSlice {
     }
 }
 impl ForwardPlan {
-    pub fn numerical_profile(&self) -> ProgramNumericalProfile {
+    pub fn numerical_profile(&self) -> NumericalProfile {
         self.profile
     }
     /// Explicit operator arithmetic revision retained by the original record.
@@ -932,7 +932,7 @@ pub struct PlanBuilder {
     source_template: Option<SourcePlanGeometry>,
     source_provenance: Vec<Option<SourceValueProvenance>>,
     owner: u64,
-    profile: ProgramNumericalProfile,
+    profile: NumericalProfile,
     standalone_exp: Option<StandaloneExpProfile>,
     bf16_text: Option<Arc<Bf16TextContract>>,
     operator_slice: bool,
@@ -960,7 +960,7 @@ impl PlanBuilder {
             prefix_capacity,
             required,
             capture,
-            ProgramNumericalProfile::GgufSourceV1,
+            NumericalProfile::GgufReferenceV1,
             false,
         )
     }
@@ -969,9 +969,9 @@ impl PlanBuilder {
         prefix_capacity: usize,
         required: Vec<StateSlot>,
         capture: bool,
-        profile: ProgramNumericalProfile,
+        profile: NumericalProfile,
     ) -> Result<Self> {
-        if profile == ProgramNumericalProfile::DirectGammaBf16TextCandidateV1 {
+        if profile == NumericalProfile::DirectGammaBf16TextCandidateV1 {
             return Err(Error::Unsupported(
                 "BF16 text requires an explicit mathematical contract".into(),
             ));
@@ -994,7 +994,7 @@ impl PlanBuilder {
             prefix_capacity,
             required,
             capture,
-            ProgramNumericalProfile::DirectGammaBf16TextCandidateV1,
+            NumericalProfile::DirectGammaBf16TextCandidateV1,
             false,
         )?;
         builder.bf16_text = Some(Arc::new(contract));
@@ -1013,16 +1013,13 @@ impl PlanBuilder {
             prefix_capacity,
             required,
             capture,
-            ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+            NumericalProfile::TorchCpuAvx2Bf16MixedV1,
         )?;
         builder.standalone_exp = Some(standalone_exp);
         Ok(builder)
     }
-    pub fn new_operator_slice(
-        source: SourceIdentity,
-        profile: ProgramNumericalProfile,
-    ) -> Result<Self> {
-        if profile == ProgramNumericalProfile::DirectGammaBf16TextCandidateV1 {
+    pub fn new_operator_slice(source: SourceIdentity, profile: NumericalProfile) -> Result<Self> {
+        if profile == NumericalProfile::DirectGammaBf16TextCandidateV1 {
             return Err(Error::Unsupported(
                 "BF16 text requires a complete explicit contract".into(),
             ));
@@ -1034,7 +1031,7 @@ impl PlanBuilder {
         prefix_capacity: usize,
         required: Vec<StateSlot>,
         capture: bool,
-        profile: ProgramNumericalProfile,
+        profile: NumericalProfile,
         operator_slice: bool,
     ) -> Result<Self> {
         let expected_count = required.len();
@@ -1092,7 +1089,7 @@ impl PlanBuilder {
             contract.validate_constant(&vector)?;
         } else if !matches!(
             self.profile,
-            ProgramNumericalProfile::GgufSourceV1 | ProgramNumericalProfile::AnalyticF32TextV1
+            NumericalProfile::GgufReferenceV1 | NumericalProfile::AnalyticF32TextV1
         ) {
             return Err(Error::Unsupported(
                 "profiled operators require raw source parameter descriptors".into(),
@@ -1161,7 +1158,7 @@ impl PlanBuilder {
                 ..
             } => {
                 typed::validate_bf16_matrix(tensor)?;
-                if self.profile != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1 {
+                if self.profile != NumericalProfile::TorchCpuAvx2Bf16MixedV1 {
                     return Err(Error::Unsupported(
                         "typed embedding numerical profile".into(),
                     ));
@@ -1173,7 +1170,7 @@ impl PlanBuilder {
                 contract: ProjectionContract::TorchCpuBf16Avx2,
             } => {
                 typed::validate_bf16_matrix(tensor)?;
-                if self.profile != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+                if self.profile != NumericalProfile::TorchCpuAvx2Bf16MixedV1
                     || inputs.len() != 1
                     || inputs[0].precision != ActivationPrecision::Bf16WidenedF32
                 {
@@ -1187,7 +1184,7 @@ impl PlanBuilder {
                 parameter,
                 contract,
             } => {
-                if self.profile != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+                if self.profile != NumericalProfile::TorchCpuAvx2Bf16MixedV1
                     || parameter.source != self.source
                     || inputs.len() != 1
                     || inputs[0].precision != ActivationPrecision::Bf16WidenedF32
@@ -1219,7 +1216,7 @@ impl PlanBuilder {
                 contract,
             } => gdn_conv::result_precision(self, parameter, *contract, inputs),
             PlanOperation::Silu { multiplied: true } | PlanOperation::Add
-                if self.profile == ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+                if self.profile == NumericalProfile::TorchCpuAvx2Bf16MixedV1
                     && inputs.len() == 2
                     && inputs[0].shape == inputs[1].shape
                     && inputs[0].elements > 0
@@ -1239,7 +1236,7 @@ impl PlanBuilder {
             PlanOperation::Observe { .. } | PlanOperation::CheckFinite { .. } => {
                 Ok(ActivationPrecision::F32)
             }
-            _ if self.profile == ProgramNumericalProfile::AnalyticF32TextV1
+            _ if self.profile == NumericalProfile::AnalyticF32TextV1
                 && inputs
                     .iter()
                     .all(|input| input.precision == ActivationPrecision::F32)
@@ -1261,7 +1258,7 @@ impl PlanBuilder {
             {
                 Ok(ActivationPrecision::F32)
             }
-            _ if self.profile == ProgramNumericalProfile::GgufSourceV1
+            _ if self.profile == NumericalProfile::GgufReferenceV1
                 && inputs
                     .iter()
                     .all(|input| input.precision == ActivationPrecision::F32)
@@ -1671,7 +1668,7 @@ impl MathematicalBackend for PlanBuilder {
         &mut self,
         parameter: SourceParameter,
         input: &PlanValue,
-        contract: OrdinaryRmsContract,
+        contract: RmsContract,
     ) -> Result<PlanValue> {
         let name = parameter.name.clone();
         self.one(
@@ -1792,7 +1789,7 @@ impl MathematicalBackend for PlanBuilder {
         gate: &PlanValue,
         up: &PlanValue,
     ) -> Result<PlanValue> {
-        if self.profile != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1 {
+        if self.profile != NumericalProfile::TorchCpuAvx2Bf16MixedV1 {
             return Err(Error::Unsupported(
                 "staged BF16 SiLU/multiply CPU profile".into(),
             ));
@@ -1811,7 +1808,7 @@ impl MathematicalBackend for PlanBuilder {
         left: &PlanValue,
         right: &PlanValue,
     ) -> Result<PlanValue> {
-        if self.profile != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1 {
+        if self.profile != NumericalProfile::TorchCpuAvx2Bf16MixedV1 {
             return Err(Error::Unsupported("BF16 residual CPU profile".into()));
         }
         self.one(name, PlanOperation::Add, &[*left, *right], left.shape, None)
@@ -1822,7 +1819,7 @@ impl MathematicalBackend for PlanBuilder {
         input: &PlanValue,
         multiplier: Option<&PlanValue>,
     ) -> Result<PlanValue> {
-        if self.profile != ProgramNumericalProfile::GgufSourceV1 {
+        if self.profile != NumericalProfile::GgufReferenceV1 {
             return Err(Error::Unsupported(
                 "legacy SiLU requires original GGUF profile".into(),
             ));
@@ -1845,7 +1842,7 @@ impl MathematicalBackend for PlanBuilder {
         )
     }
     fn add(&mut self, name: &str, left: &PlanValue, right: &PlanValue) -> Result<PlanValue> {
-        if self.profile != ProgramNumericalProfile::GgufSourceV1 {
+        if self.profile != NumericalProfile::GgufReferenceV1 {
             return Err(Error::Unsupported(
                 "legacy add requires original GGUF profile".into(),
             ));

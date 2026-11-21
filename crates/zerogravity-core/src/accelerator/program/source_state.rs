@@ -37,7 +37,7 @@ impl SourceStateBinding {
     }
 }
 fn require_profile(builder: &PlanBuilder, binding: &SourceStateBinding) -> Result<()> {
-    if builder.profile != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+    if builder.profile != NumericalProfile::TorchCpuAvx2Bf16MixedV1
         || builder.standalone_exp.is_none()
         || builder.operator_slice
         || !builder.required.contains(&binding.slot)

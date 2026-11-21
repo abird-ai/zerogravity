@@ -140,7 +140,7 @@ impl SourceBindings {
             .source_call()
             .ok_or_else(|| Error::State("source binding actual call absent".into()))?;
         if plan.numerical_profile()
-            != zerogravity_core::accelerator::program::ProgramNumericalProfile::SourceCudaSm86Bf16V1
+            != zerogravity_core::accelerator::program::NumericalProfile::CudaSm86Bf16ReferenceV1
             || plan.source() != source.source_identity()
             || call.source() != source.source_identity()
             || call.rows().capacity() != plan.prefix_capacity()
@@ -166,7 +166,7 @@ impl SourceBindings {
             };
             descriptor.validate()?;
             if descriptor.call() != call
-                || descriptor.numerical_contract() != zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1
+                || descriptor.numerical_contract() != zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1
             {
                 return Err(Error::State(
                     "source binding foreign operator call issuer".into(),
@@ -605,7 +605,7 @@ mod tests {
         let embedding = SourceOperator::new(
             call.clone(),
             SourceOperatorKind::EmbeddingRows,
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
             vec![SourceTensor {
                 source,
                 name: "fixture.embedding".into(),
@@ -624,7 +624,7 @@ mod tests {
             let carry = SourceOperator::new(
                 call.clone(),
                 SourceOperatorKind::StateCarry { slot },
-                SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+                NumericalContract::CudaSm86Bf16ReferenceV1,
                 vec![],
                 vec![],
             )

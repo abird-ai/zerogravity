@@ -22,7 +22,7 @@ pub struct SchedulerSnapshot {
     pub queue: super::pending::QueueSnapshot,
     pub host: Option<(u64, u64, u64, u64)>,
     pub active_limit: usize,
-    pub native_rows: usize,
+    pub cohort_width: usize,
     pub counters: Counters,
 }
 pub(crate) struct ActiveCharge(Arc<WorkStats>);
@@ -263,7 +263,7 @@ impl<A: Executor> Active<A> {
     pub fn install(
         &mut self,
         mut published: Published,
-        cohort: Option<NativeCohortObservation>,
+        cohort: Option<FusedCohortObservation>,
     ) -> Result<(), ServiceError> {
         let cache_prefix = if self.cursor < self.prompt.len() {
             let end = self
@@ -298,7 +298,7 @@ impl<A: Executor> Active<A> {
         }
         if published.readout {
             if let Some(observation) = &mut published.observation {
-                observation.native_cohort = cohort;
+                observation.fused_cohort = cohort;
             }
             self.token_observation = published.observation;
             self.token_commit_observed_at = Some(published.observed_at);
@@ -622,7 +622,7 @@ pub fn advance_round<A: Executor>(
             .iter()
             .map(|&i| pending[i].take().expect("unique scheduler wave row"))
             .collect::<Vec<_>>();
-        cohorts::advance(rows, active, stats, policy.cohorts, policy.native_rows);
+        cohorts::advance(rows, active, stats, policy.cohorts, policy.cohort_width);
     }
     debug_assert!(pending.iter().all(Option::is_none));
 }

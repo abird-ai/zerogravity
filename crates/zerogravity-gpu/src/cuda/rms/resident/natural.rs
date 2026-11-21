@@ -197,7 +197,7 @@ impl RmsPrepared {
                         rows.destination.handle(),
                         rows.ids.clone(),
                     ),
-                _ => queue.enqueue_qwen08_embedding_rows(
+                _ => queue.enqueue_qwen800m_embedding_rows(
                     rows.table.lease().handle(),
                     rows.destination.handle(),
                     rows.ids.clone(),

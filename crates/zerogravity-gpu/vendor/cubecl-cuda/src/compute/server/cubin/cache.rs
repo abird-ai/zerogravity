@@ -117,11 +117,11 @@ pub(super) fn policy_limits(
         | CubinSetPolicy::Text08Cohort4
         | CubinSetPolicy::Text2B
         | CubinSetPolicy::Text2BCachedCohort4
-        | CubinSetPolicy::FullQwen08
+        | CubinSetPolicy::FullQwen800M
         | CubinSetPolicy::SourceRotary
-        | CubinSetPolicy::ConnectedQwen08
+        | CubinSetPolicy::ConnectedQwen800M
         | CubinSetPolicy::FixedPromptMlp
-        | CubinSetPolicy::Qwen2bMlp
+        | CubinSetPolicy::Qwen2BMlp
         | CubinSetPolicy::FixedPromptQkv
         | CubinSetPolicy::FixedPromptQkKv
         | CubinSetPolicy::FixedPromptFa

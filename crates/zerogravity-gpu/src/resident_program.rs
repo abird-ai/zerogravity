@@ -24,7 +24,7 @@ use std::{
 use zerogravity_core::Error;
 use zerogravity_core::Result;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-use zerogravity_core::accelerator::program::{SourceNumericalContract, SourceOperatorKind};
+use zerogravity_core::accelerator::program::{NumericalContract, SourceOperatorKind};
 use zerogravity_core::accelerator::{
     MatVecRegion, SourceIdentity,
     program::{
@@ -633,9 +633,9 @@ enum ResidentProgramBody {
     #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     NativeFull(Arc<native_full::FullModelProgram>),
     #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-    NativeCohort(Arc<native_cohort::FullModelCohort>),
+    FusedCohort(Arc<fused_cohort::FullModelCohort>),
     #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-    Qwen2bComponent(Arc<qwen2b_component::ComponentProgram>),
+    Qwen2BComponent(Arc<qwen2b_component::ComponentProgram>),
 }
 pub(crate) struct ResidentProgram {
     _source_owner: ResidentProgramSource,
@@ -649,9 +649,9 @@ pub(crate) struct ResidentProgram {
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod fixed_prompt_binding;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-pub(crate) mod native;
+pub(crate) mod fused_cohort;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-pub(crate) mod native_cohort;
+pub(crate) mod native;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod native_full;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
@@ -715,8 +715,8 @@ impl ResidentProgram {
                 self.body,
                 ResidentProgramBody::Native(_)
                     | ResidentProgramBody::NativeFull(_)
-                    | ResidentProgramBody::NativeCohort(_)
-                    | ResidentProgramBody::Qwen2bComponent(_)
+                    | ResidentProgramBody::FusedCohort(_)
+                    | ResidentProgramBody::Qwen2BComponent(_)
             )
         }
         #[cfg(not(all(feature = "cuda-native-qualification", target_os = "linux")))]
@@ -767,8 +767,8 @@ impl ResidentProgram {
             #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             ResidentProgramBody::Native(_)
             | ResidentProgramBody::NativeFull(_)
-            | ResidentProgramBody::NativeCohort(_)
-            | ResidentProgramBody::Qwen2bComponent(_) => Err(Error::Unsupported(
+            | ResidentProgramBody::FusedCohort(_)
+            | ResidentProgramBody::Qwen2BComponent(_) => Err(Error::Unsupported(
                 "native fragment cannot use legacy F32 program".into(),
             )),
         }
@@ -799,17 +799,15 @@ impl ResidentProgram {
             #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             ResidentProgramBody::Native(_)
             | ResidentProgramBody::NativeFull(_)
-            | ResidentProgramBody::NativeCohort(_)
-            | ResidentProgramBody::Qwen2bComponent(_) => Err(Error::Unsupported(
+            | ResidentProgramBody::FusedCohort(_)
+            | ResidentProgramBody::Qwen2BComponent(_) => Err(Error::Unsupported(
                 "native fragment cannot use legacy F32 program".into(),
             )),
         }
     }
     fn require_legacy_contract(plan: &ForwardPlan) -> Result<()> {
-        use zerogravity_core::accelerator::program::{
-            ActivationPrecision, ProgramNumericalProfile,
-        };
-        if plan.numerical_profile() != ProgramNumericalProfile::GgufSourceV1
+        use zerogravity_core::accelerator::program::{ActivationPrecision, NumericalProfile};
+        if plan.numerical_profile() != NumericalProfile::GgufReferenceV1
             || plan.is_operator_slice()
             || plan
                 .precisions()
@@ -1633,14 +1631,14 @@ impl ResidentProgram {
             ResidentProgramBody::NativeFull(native) => {
                 return native.handles().expect("sealed full24 phase accesses");
             }
-            ResidentProgramBody::NativeCohort(body) => {
+            ResidentProgramBody::FusedCohort(body) => {
                 return body
                     .accesses()
                     .iter()
                     .map(|(lease, _)| lease.handle())
                     .collect();
             }
-            ResidentProgramBody::Qwen2bComponent(body) => {
+            ResidentProgramBody::Qwen2BComponent(body) => {
                 return body.handles().expect("sealed source2B component accesses");
             }
             _ => {}
@@ -1733,7 +1731,7 @@ impl ResidentProgram {
                 native.validate_runtime(p)?;
                 true
             }
-            ResidentProgramBody::Qwen2bComponent(body) => {
+            ResidentProgramBody::Qwen2BComponent(body) => {
                 body.validate_runtime(p)?;
                 true
             }
@@ -1890,7 +1888,7 @@ impl ResidentProgram {
         match &self.body {
             ResidentProgramBody::Native(body) => body.require_attempt(permit)?,
             ResidentProgramBody::NativeFull(body) => body.require_attempt(permit)?,
-            ResidentProgramBody::Qwen2bComponent(body) => body.require_attempt(permit)?,
+            ResidentProgramBody::Qwen2BComponent(body) => body.require_attempt(permit)?,
             _ => return Err(Error::Unsupported("original native body required".into())),
         }
         self.launch_impl(
@@ -1931,7 +1929,7 @@ impl ResidentProgram {
         match &current {
             CurrentExecution::Single { parameters, states } => {
                 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-                if matches!(self.body, ResidentProgramBody::NativeCohort(_)) {
+                if matches!(self.body, ResidentProgramBody::FusedCohort(_)) {
                     return Err(Error::State(
                         "cohort requires every original row permit".into(),
                     ));
@@ -1940,7 +1938,7 @@ impl ResidentProgram {
             }
             #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             CurrentExecution::Cohort { permits } => {
-                let ResidentProgramBody::NativeCohort(body) = &self.body else {
+                let ResidentProgramBody::FusedCohort(body) = &self.body else {
                     return Err(Error::State(
                         "cohort current execution requires sealed cohort body".into(),
                     ));
@@ -1959,7 +1957,7 @@ impl ResidentProgram {
             ResidentProgramBody::NativeFull(native) => {
                 native.begin_launch(cancelled, execution.phase)?
             }
-            ResidentProgramBody::Qwen2bComponent(body) => {
+            ResidentProgramBody::Qwen2BComponent(body) => {
                 body.begin_launch(cancelled, execution.phase)?
             }
             _ => {}
@@ -2011,9 +2009,9 @@ impl ResidentProgram {
         );
         #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         let nodes = match &self.body {
-            ResidentProgramBody::Qwen2bComponent(body) => body.recipe().nodes(),
+            ResidentProgramBody::Qwen2BComponent(body) => body.recipe().nodes(),
             ResidentProgramBody::NativeFull(body) => body.execution_nodes()?,
-            ResidentProgramBody::NativeCohort(body) => body.nodes(),
+            ResidentProgramBody::FusedCohort(body) => body.nodes(),
             #[cfg(all(feature = "qualification", target_os = "linux"))]
             ResidentProgramBody::TypedSlice(_) => self.plan.nodes(),
             _ => output.nodes(&self.plan),
@@ -2031,7 +2029,7 @@ impl ResidentProgram {
                 }
                 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
                 CurrentExecution::Cohort { permits } => {
-                    let ResidentProgramBody::NativeCohort(body) = &self.body else {
+                    let ResidentProgramBody::FusedCohort(body) = &self.body else {
                         unreachable!("validated cohort body")
                     };
                     body.enqueue(index, node, permits, cancelled)?
@@ -2050,7 +2048,7 @@ impl ResidentProgram {
                     ResidentProgramBody::NativeFull(body) => {
                         body.finish_value_storage_node(index)?
                     }
-                    ResidentProgramBody::NativeCohort(body) => {
+                    ResidentProgramBody::FusedCohort(body) => {
                         body.finish_value_storage_node(index)?
                     }
                     _ => {}
@@ -2092,11 +2090,11 @@ impl ResidentProgram {
                             dispatches += n;
                             continue;
                         }
-                        ResidentProgramBody::NativeCohort(body) => {
+                        ResidentProgramBody::FusedCohort(body) => {
                             dispatches += body.certify(value, &self.status)?;
                             continue;
                         }
-                        ResidentProgramBody::Qwen2bComponent(body) => {
+                        ResidentProgramBody::Qwen2BComponent(body) => {
                             body.certify(value, &self.status)?
                         }
                         _ => self.certify(client, &value.handle, value.elements),
@@ -2109,7 +2107,7 @@ impl ResidentProgram {
             #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             match &self.body {
                 ResidentProgramBody::NativeFull(body) => body.finish_value_storage_node(index)?,
-                ResidentProgramBody::NativeCohort(body) => body.finish_value_storage_node(index)?,
+                ResidentProgramBody::FusedCohort(body) => body.finish_value_storage_node(index)?,
                 _ => {}
             }
             #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
@@ -2130,13 +2128,13 @@ impl ResidentProgram {
                 ResidentProgramBody::NativeFull(body) => {
                     dispatches += body.flush_certificates(cancelled)?;
                 }
-                ResidentProgramBody::NativeCohort(body) => {
+                ResidentProgramBody::FusedCohort(body) => {
                     dispatches += body.flush_certificates(cancelled)?;
                 }
                 _ => {}
             }
             let carries = match &self.body {
-                ResidentProgramBody::Qwen2bComponent(body) => {
+                ResidentProgramBody::Qwen2BComponent(body) => {
                     body.finish_nodes()?;
                     body.recipe().carries().collect::<Vec<_>>()
                 }
@@ -2200,7 +2198,7 @@ impl ResidentProgram {
             CurrentExecution::Single { states, .. } => vec![states],
             #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             CurrentExecution::Cohort { .. } => {
-                let ResidentProgramBody::NativeCohort(body) = &self.body else {
+                let ResidentProgramBody::FusedCohort(body) = &self.body else {
                     unreachable!("validated cohort body")
                 };
                 body.state_bindings().collect()
@@ -2219,7 +2217,7 @@ impl ResidentProgram {
             dispatches += native.enqueue_output(cancelled)?;
         }
         #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-        if let ResidentProgramBody::NativeCohort(body) = &self.body {
+        if let ResidentProgramBody::FusedCohort(body) = &self.body {
             dispatches += body.enqueue_output(cancelled)?;
         }
         let proposals = match &current {
@@ -2241,7 +2239,7 @@ impl ResidentProgram {
         let cohort_proposals = match &current {
             CurrentExecution::Single { .. } => None,
             CurrentExecution::Cohort { .. } => {
-                let ResidentProgramBody::NativeCohort(body) = &self.body else {
+                let ResidentProgramBody::FusedCohort(body) = &self.body else {
                     unreachable!("validated cohort body")
                 };
                 Some(body.proposals()?)
@@ -2299,8 +2297,8 @@ impl ResidentProgram {
                     match &self.body {
                         ResidentProgramBody::Native(native) => native.native_launches(),
                         ResidentProgramBody::NativeFull(native) => native.native_launches(),
-                        ResidentProgramBody::NativeCohort(body) => body.native_launches(),
-                        ResidentProgramBody::Qwen2bComponent(body) => body.native_launches(),
+                        ResidentProgramBody::FusedCohort(body) => body.native_launches(),
+                        ResidentProgramBody::Qwen2BComponent(body) => body.native_launches(),
                         _ => 0,
                     }
                 }
@@ -2407,7 +2405,7 @@ impl ResidentProgram {
             return native.enqueue(index, node, cancelled, execution.phase);
         }
         #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-        if let ResidentProgramBody::Qwen2bComponent(body) = &self.body {
+        if let ResidentProgramBody::Qwen2BComponent(body) = &self.body {
             return body.enqueue(index, node, cancelled, execution.phase);
         }
         #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
@@ -2426,8 +2424,7 @@ impl ResidentProgram {
                     .source_call()
                     .ok_or_else(|| Error::State("native carry source call absent".into()))?;
                 if descriptor.call() != actual_call
-                    || descriptor.numerical_contract()
-                        != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+                    || descriptor.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
                     || !node.inputs.is_empty()
                     || !node.outputs.is_empty()
                     || effect.read.slot != slot

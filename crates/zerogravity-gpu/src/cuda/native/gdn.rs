@@ -239,7 +239,7 @@ async fn qualify_gdn_inner(
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source_identity(),
-        ResourceOwner::new("qwen08-cuda-gdn-leaf", "observed-projection-boundary")?,
+        ResourceOwner::new("qwen800m-cuda-gdn-leaf", "observed-projection-boundary")?,
         PROVIDER_CAP,
         device_cap,
     )?;

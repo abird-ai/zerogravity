@@ -136,7 +136,7 @@ pub(crate) fn selection_allowed(
             matches!(policy, P::FixedPromptFull | P::FixedPromptNatural)
         }
         VocabularyHeadSelection::WholeSelected if policy == P::FixedPromptNatural => true,
-        _ => matches!(policy, P::VocabularyHead | P::FullQwen08),
+        _ => matches!(policy, P::VocabularyHead | P::FullQwen800M),
     }
 }
 impl VocabularyHeadSelection {
@@ -269,7 +269,7 @@ mod tests {
         ));
         for old in [
             P::VocabularyHead,
-            P::FullQwen08,
+            P::FullQwen800M,
             P::FixedPromptLayer3,
             P::FixedPromptFa,
         ] {
@@ -282,7 +282,7 @@ mod tests {
         ] {
             assert!(!selection_allowed(P::FixedPromptFull, old));
             assert!(selection_allowed(P::VocabularyHead, old));
-            assert!(selection_allowed(P::FullQwen08, old));
+            assert!(selection_allowed(P::FullQwen800M, old));
         }
     }
     #[test]
@@ -351,7 +351,7 @@ mod tests {
         CubinSetPolicy::ProjectionSix
             .limits(5, 7, 18, true, true)
             .unwrap();
-        CubinSetPolicy::ConnectedQwen08
+        CubinSetPolicy::ConnectedQwen800M
             .limits(6, 11, 20, true, true)
             .unwrap();
         CubinSetPolicy::FirstAttentionCaptured
@@ -467,7 +467,7 @@ mod tests {
             ) {
                 for old in [
                     P::VocabularyHead,
-                    P::FullQwen08,
+                    P::FullQwen800M,
                     P::FixedPromptFull,
                     P::FixedPromptNatural,
                 ] {

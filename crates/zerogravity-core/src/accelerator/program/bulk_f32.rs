@@ -183,7 +183,7 @@ pub struct RetainedRmsRows {
     layout: BulkF32Layout,
     norm: SourceParameter,
     epsilon_bits: u32,
-    contract: SourceNumericalContract,
+    contract: NumericalContract,
 }
 impl RetainedRmsRows {
     pub fn new(
@@ -191,7 +191,7 @@ impl RetainedRmsRows {
         layout: BulkF32Layout,
         norm: SourceParameter,
         epsilon: f32,
-        contract: SourceNumericalContract,
+        contract: NumericalContract,
     ) -> Result<Self> {
         let value = Self {
             span,
@@ -210,7 +210,7 @@ impl RetainedRmsRows {
         layout: BulkF32Layout,
         norm: &SourceParameter,
         epsilon: f32,
-        contract: SourceNumericalContract,
+        contract: NumericalContract,
     ) -> bool {
         self.span == *span
             && self.layout == layout
@@ -228,7 +228,7 @@ impl RetainedRmsRows {
         let shape = self.layout.shape();
         let width = shape[0];
         let epsilon = f32::from_bits(self.epsilon_bits);
-        if self.contract != SourceNumericalContract::GgmlSourceF32V1
+        if self.contract != NumericalContract::GgmlF32V1
             || !self.layout.is_dense()
             || shape != [width, self.span.len(), 1, 1]
             || self.norm.source != self.span.source()
@@ -432,7 +432,7 @@ impl BulkF32Matrix {
 
 fn check_builder(builder: &PlanBuilder, source: SourceIdentity) -> Result<()> {
     if !builder.operator_slice
-        || builder.profile != ProgramNumericalProfile::GgufSourceV1
+        || builder.profile != NumericalProfile::GgufReferenceV1
         || builder.source != source
     {
         return Err(Error::Unsupported(

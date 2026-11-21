@@ -13,28 +13,28 @@ use crate::resident_program::qwen2b_component::{
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PostAttentionArithmetic {
-    Qwen2bOwned,
-    Qwen2bExplicit(crate::cuda::gdn::Qwen2bGdnArithmetic),
+    Qwen2BOwned,
+    Qwen2BExplicit(crate::cuda::gdn::Qwen2BGdnArithmetic),
     FixedPrompt(FixedPromptGdnArithmetic),
 }
 impl PostAttentionArithmetic {
     fn kind(self) -> ComponentKind {
         match self {
-            Self::Qwen2bOwned | Self::Qwen2bExplicit(_) => ComponentKind::Qwen2b,
+            Self::Qwen2BOwned | Self::Qwen2BExplicit(_) => ComponentKind::Qwen2B,
             Self::FixedPrompt(a) => ComponentKind::FixedPrompt(a),
         }
     }
-    fn explicit_qwen2b(self) -> Option<crate::cuda::gdn::Qwen2bGdnArithmetic> {
+    fn explicit_qwen2b(self) -> Option<crate::cuda::gdn::Qwen2BGdnArithmetic> {
         match self {
-            Self::Qwen2bExplicit(arithmetic) => Some(arithmetic),
-            Self::Qwen2bOwned | Self::FixedPrompt(_) => None,
+            Self::Qwen2BExplicit(arithmetic) => Some(arithmetic),
+            Self::Qwen2BOwned | Self::FixedPrompt(_) => None,
         }
     }
     fn require_binding_parts(
         self,
         kind: ComponentKind,
         cut: ComponentCut,
-        bound: Option<crate::cuda::gdn::Qwen2bGdnArithmetic>,
+        bound: Option<crate::cuda::gdn::Qwen2BGdnArithmetic>,
     ) -> Result<()> {
         if kind != self.kind()
             || cut != ComponentCut::PostAttention
@@ -194,7 +194,7 @@ where
 pub async fn qualify_qwen2b_post_attention_component_arithmetic<F>(
     device: Device,
     recipe: Arc<ComponentRecipe>,
-    arithmetic: crate::cuda::gdn::Qwen2bGdnArithmetic,
+    arithmetic: crate::cuda::gdn::Qwen2BGdnArithmetic,
     inputs: CubinQualificationInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
@@ -205,7 +205,7 @@ where
     qualify_post_attention_component(
         device,
         recipe,
-        PostAttentionArithmetic::Qwen2bExplicit(arithmetic),
+        PostAttentionArithmetic::Qwen2BExplicit(arithmetic),
         inputs,
         cancelled,
         validate,
@@ -337,8 +337,8 @@ where
             plan: workspace.program.plan(),
             invocation,
             phase: match (arithmetic.kind(), invocation.rows().len()) {
-                (ComponentKind::Qwen2b, 1) => crate::cuda::gdn::GdnPhase::InitialOne,
-                (ComponentKind::Qwen2b, 64) => crate::cuda::gdn::GdnPhase::Initial64,
+                (ComponentKind::Qwen2B, 1) => crate::cuda::gdn::GdnPhase::InitialOne,
+                (ComponentKind::Qwen2B, 64) => crate::cuda::gdn::GdnPhase::Initial64,
                 _ => crate::cuda::gdn::GdnPhase::FixedPrompt,
             },
             nodes: [4, 5],
@@ -590,13 +590,13 @@ where
     Ok(Outcome::Compared(PostAttentionComponentReceipt {
         arithmetic,
         expected_trajectory: match arithmetic {
-            PostAttentionArithmetic::Qwen2bOwned | PostAttentionArithmetic::Qwen2bExplicit(_) => {
+            PostAttentionArithmetic::Qwen2BOwned | PostAttentionArithmetic::Qwen2BExplicit(_) => {
                 "Original2B"
             }
             PostAttentionArithmetic::FixedPrompt(_) => "ObservedOriginal47",
         },
         original_selected_ptx_equals_owned_tuple: match arithmetic {
-            PostAttentionArithmetic::Qwen2bOwned | PostAttentionArithmetic::Qwen2bExplicit(_) => {
+            PostAttentionArithmetic::Qwen2BOwned | PostAttentionArithmetic::Qwen2BExplicit(_) => {
                 None
             }
             PostAttentionArithmetic::FixedPrompt(_) => Some(false),

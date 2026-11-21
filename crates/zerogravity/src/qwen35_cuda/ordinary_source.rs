@@ -5,7 +5,7 @@
 //! tokenizer, native artifact, capture table, GPU allocation or root authority.
 
 use super::held_directory::Directory;
-use crate::accelerator::program::SourceNumericalContract;
+use crate::accelerator::program::NumericalContract;
 use crate::qwen35_source::Opened;
 use crate::{
     Error, Result,
@@ -45,7 +45,7 @@ pub(crate) fn open(
     let dir = Directory::open(directory)?;
     crate::qwen35_source::open(
         crate::qwen35_source::Inputs::Directory(&dir),
-        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        NumericalContract::CudaSm86Bf16ReferenceV1,
         host,
         cancelled,
     )

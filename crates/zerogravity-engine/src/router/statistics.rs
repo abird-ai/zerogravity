@@ -22,11 +22,11 @@ pub struct WorkStats {
     pub(crate) fused_state_only_batches: AtomicU64,
     pub(crate) fused_state_only_rows: AtomicU64,
     pub(crate) fused_greedy_batches: AtomicU64,
-    pub(crate) native_bands: [AtomicU64; 3],
-    pub(crate) native_admission_refusals: AtomicU64,
+    pub(crate) cohorts_by_width: [AtomicU64; 3],
+    pub(crate) cohort_admission_refusals: AtomicU64,
     pub(crate) fused_rows: AtomicU64,
-    pub(crate) native_projections: AtomicU64,
-    pub(crate) native_sampler: AtomicU64,
+    pub(crate) fused_projections: AtomicU64,
+    pub(crate) fused_sampler: AtomicU64,
     pub(crate) discarded_cohorts: AtomicU64,
     pub(crate) output_tokens: AtomicU64,
     pub(crate) parked: AtomicUsize,
@@ -52,11 +52,11 @@ pub struct Counters {
     pub fused_state_only_batches: u64,
     pub fused_state_only_rows: u64,
     pub fused_greedy_batches: u64,
-    pub native_bands: [u64; 3],
-    pub native_admission_refusals: u64,
+    pub cohorts_by_width: [u64; 3],
+    pub cohort_admission_refusals: u64,
     pub fused_rows: u64,
-    pub native_projections: u64,
-    pub native_sampler: u64,
+    pub fused_projections: u64,
+    pub fused_sampler: u64,
     pub discarded_cohorts: u64,
     pub output_tokens: u64,
     pub parked: usize,
@@ -82,11 +82,13 @@ impl WorkStats {
             fused_state_only_batches: self.fused_state_only_batches.load(Ordering::Acquire),
             fused_state_only_rows: self.fused_state_only_rows.load(Ordering::Acquire),
             fused_greedy_batches: self.fused_greedy_batches.load(Ordering::Acquire),
-            native_bands: std::array::from_fn(|i| self.native_bands[i].load(Ordering::Relaxed)),
-            native_admission_refusals: self.native_admission_refusals.load(Ordering::Acquire),
+            cohorts_by_width: std::array::from_fn(|i| {
+                self.cohorts_by_width[i].load(Ordering::Relaxed)
+            }),
+            cohort_admission_refusals: self.cohort_admission_refusals.load(Ordering::Acquire),
             fused_rows: self.fused_rows.load(Ordering::Acquire),
-            native_projections: self.native_projections.load(Ordering::Acquire),
-            native_sampler: self.native_sampler.load(Ordering::Acquire),
+            fused_projections: self.fused_projections.load(Ordering::Acquire),
+            fused_sampler: self.fused_sampler.load(Ordering::Acquire),
             discarded_cohorts: self.discarded_cohorts.load(Ordering::Acquire),
             output_tokens: self.output_tokens.load(Ordering::Acquire),
             parked: self.parked.load(Ordering::Acquire),
@@ -100,24 +102,24 @@ impl WorkStats {
             .fetch_add(c.model_tokens, Ordering::Relaxed);
         self.committed_roots
             .fetch_add(c.committed_roots, Ordering::Relaxed);
-        if c.native_rows != 0 {
+        if c.cohort_width != 0 {
             self.fused_batches.fetch_add(1, Ordering::Relaxed);
             self.fused_rows
-                .fetch_add(c.native_rows as u64, Ordering::Relaxed);
-            self.native_projections
-                .fetch_add(c.native_projections, Ordering::Relaxed);
-            self.native_sampler
-                .fetch_add(c.native_sampler, Ordering::Relaxed);
+                .fetch_add(c.cohort_width as u64, Ordering::Relaxed);
+            self.fused_projections
+                .fetch_add(c.fused_projections, Ordering::Relaxed);
+            self.fused_sampler
+                .fetch_add(c.fused_sampler, Ordering::Relaxed);
             if c.state_only {
                 self.fused_state_only_batches
                     .fetch_add(1, Ordering::Relaxed);
                 self.fused_state_only_rows
-                    .fetch_add(c.native_rows as u64, Ordering::Relaxed);
+                    .fetch_add(c.cohort_width as u64, Ordering::Relaxed);
             } else {
                 self.fused_greedy_batches.fetch_add(1, Ordering::Relaxed);
             }
-            if let Some(i) = [2, 4, 8].iter().position(|&n| n == c.native_rows) {
-                self.native_bands[i].fetch_add(1, Ordering::Relaxed);
+            if let Some(i) = [2, 4, 8].iter().position(|&n| n == c.cohort_width) {
+                self.cohorts_by_width[i].fetch_add(1, Ordering::Relaxed);
             }
         }
     }

@@ -1,6 +1,6 @@
 //! Data-only names for exact compiled kinds. No caller entrypoint/hash/scalar fields.
 use super::*;
-use crate::qwen35::plan::QwenSourceProfile;
+use crate::qwen35::plan::QwenModelVariant;
 use crate::qwen35_cuda::fixed_prompt::paths;
 use native::{
     CubinActivationImage, CubinImage, CubinImageKind as K, CubinQualificationInputs,
@@ -57,7 +57,7 @@ fn image_map(rows: Vec<Image>, expected: &[K]) -> Result<BTreeMap<K, String>> {
 impl Bundle {
     pub(super) fn open(
         directory: &Path,
-        profile: QwenSourceProfile,
+        profile: QwenModelVariant,
         cohort_b4: bool,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Self> {

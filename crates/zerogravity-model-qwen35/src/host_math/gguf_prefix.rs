@@ -72,7 +72,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
             || self.bulk_call.is_some()
             || self.gguf_gdn_upstream_call.is_some()
             || self.zen_ssm_out_call.is_some()
-            || self.source.program_numerical_profile() != ProgramNumericalProfile::GgufSourceV1
+            || self.source.program_numerical_profile() != NumericalProfile::GgufReferenceV1
             || descriptor != &call.slice.owner.descriptor
             || descriptor.source() != self.source.source_identity()
         {
@@ -142,7 +142,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
         let call = self.prefix_call(descriptor)?;
         let owner = &call.slice.owner;
         if input.source != Some(descriptor.source())
-            || input.profile != Some(ProgramNumericalProfile::GgufSourceV1)
+            || input.profile != Some(NumericalProfile::GgufReferenceV1)
             || input.precision != ActivationPrecision::F32
             || input.elements != WORDS
             || input.view != TensorView::vector(0, WORDS)

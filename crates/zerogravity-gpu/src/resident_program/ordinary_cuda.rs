@@ -39,7 +39,7 @@ pub(crate) mod rotary;
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{
-        SourceNumericalContract, SourceOperator, SourceOperatorKind, SourceOperatorTemplate,
+        NumericalContract, SourceOperator, SourceOperatorKind, SourceOperatorTemplate,
         SourceRowSelection,
     },
     device_events::{BufferRole, DeviceAccess},
@@ -83,7 +83,7 @@ impl OrdinaryCudaProjection {
         arithmetic: ProjectionUse,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
-        if template.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1 {
+        if template.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1 {
             return Err(Error::Unsupported(
                 "ordinary CUDA projection numerical contract differs".into(),
             ));
@@ -110,7 +110,7 @@ impl OrdinaryCudaProjection {
         weights: Arc<BoundSourceMatrices>,
         arithmetic: ProjectionUse,
     ) -> Result<Arc<Self>> {
-        if template.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+        if template.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
             || !matches!(
                 template.kind(),
                 SourceOperatorKind::Projection { selected_row: None }
@@ -489,8 +489,8 @@ impl OrdinaryCudaAdmission {
     pub(crate) fn preflight(&self) -> &crate::resident_program::ResidentPreflight {
         self.layout.preflight()
     }
-    pub(crate) fn cohort_value_bytes(&self, native_rows: usize) -> Result<usize> {
-        OrdinaryCudaCohortValues::required_bytes(&self.layout, native_rows)
+    pub(crate) fn cohort_value_bytes(&self, cohort_width: usize) -> Result<usize> {
+        OrdinaryCudaCohortValues::required_bytes(&self.layout, cohort_width)
     }
 }
 
@@ -539,7 +539,7 @@ pub(crate) async fn prepare_program(
     admission: OrdinaryCudaAdmission,
     source: VerifiedTensorSource,
     source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
-    native_rows: usize,
+    cohort_width: usize,
     cancelled: Option<&AtomicBool>,
 ) -> Result<PreparedOrdinaryCuda> {
     service.ensure_usable()?;
@@ -555,7 +555,7 @@ pub(crate) async fn prepare_program(
         sum.checked_add(bytes)
             .ok_or_else(|| Error::Limit("ordinary CUDA greedy workspace overflow".into()))
     })?;
-    let cohort_value_bytes = admission.cohort_value_bytes(native_rows)?;
+    let cohort_value_bytes = admission.cohort_value_bytes(cohort_width)?;
     let cold_bytes = admission.preflight().owned_bytes()?;
     let remaining = service.remaining_capacity()?;
     let required = admission
@@ -580,7 +580,7 @@ pub(crate) async fn prepare_program(
     let gemm = OrdinaryCudaGemm::prepare(
         service.clone(),
         &source,
-        native_rows,
+        cohort_width,
         admission.layout.geometry(),
     )?;
     service
@@ -609,11 +609,11 @@ pub(crate) async fn prepare_program(
         cancelled,
     )
     .await?;
-    let (cohort_values, cohort_value_accesses) = if native_rows == 0 {
+    let (cohort_values, cohort_value_accesses) = if cohort_width == 0 {
         (None, Vec::new())
     } else {
         let (values, accesses) =
-            OrdinaryCudaCohortValues::allocate(&admission.layout, native_rows, &mut init)?;
+            OrdinaryCudaCohortValues::allocate(&admission.layout, cohort_width, &mut init)?;
         (Some(values), accesses)
     };
     let mut greedy_accesses = Vec::with_capacity(greedy_sizes.len());
@@ -658,7 +658,7 @@ pub(crate) async fn prepare_program(
 mod admission_matrix_tests {
     use super::OrdinaryCudaAdmission;
     use crate::{OrdinaryCudaWeightStorage, ResidentModel};
-    use zerogravity_model_qwen35::plan::{QwenSourceProfile, diagnostic_ordinary_plan};
+    use zerogravity_model_qwen35::plan::{QwenModelVariant, diagnostic_ordinary_plan};
 
     const MIB: usize = 1024 * 1024;
     const PROVIDER_CAP: usize = 4608 * MIB;
@@ -667,11 +667,11 @@ mod admission_matrix_tests {
     fn public_32k_preflight_reports_current_storage_fit() {
         for (profile, storage) in [
             (
-                QwenSourceProfile::Qwen08,
+                QwenModelVariant::Qwen800M,
                 OrdinaryCudaWeightStorage::Resident,
             ),
             (
-                QwenSourceProfile::Qwen2B,
+                QwenModelVariant::Qwen2B,
                 OrdinaryCudaWeightStorage::Streamed,
             ),
         ] {
@@ -681,7 +681,7 @@ mod admission_matrix_tests {
             eprintln!("ordinary-32k-current-fit profile={profile:?} inventory={inventory:?}");
             assert_eq!(inventory.context_capacity_tokens, 32_768);
             assert_eq!(inventory.root_count, 4);
-            assert_eq!(inventory.native_rows, 0);
+            assert_eq!(inventory.cohort_width, 0);
             assert_eq!(inventory.weight_storage, storage);
             assert!(inventory.source_weight_bytes > 0);
             assert_eq!(
@@ -698,7 +698,7 @@ mod admission_matrix_tests {
 
     #[test]
     fn b4_activation_reserve_is_bounded_and_priced_before_residency() {
-        for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+        for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
             let plan = diagnostic_ordinary_plan(profile, 1024).unwrap();
             let admission = OrdinaryCudaAdmission::analyze(plan.clone())
                 .unwrap()
@@ -724,7 +724,7 @@ mod admission_matrix_tests {
 
     #[test]
     fn placement_streams_only_weights_and_preserves_two_root_inventory() {
-        let plan = diagnostic_ordinary_plan(QwenSourceProfile::Qwen08, 1024).unwrap();
+        let plan = diagnostic_ordinary_plan(QwenModelVariant::Qwen800M, 1024).unwrap();
         let resident = OrdinaryCudaAdmission::analyze(plan.clone()).unwrap();
         let streamed = OrdinaryCudaAdmission::analyze(plan.clone())
             .unwrap()
@@ -760,7 +760,7 @@ mod admission_matrix_tests {
 
     #[test]
     fn placement_prices_every_original_root_before_selecting_residency() {
-        let plan = diagnostic_ordinary_plan(QwenSourceProfile::Qwen08, 1024).unwrap();
+        let plan = diagnostic_ordinary_plan(QwenModelVariant::Qwen800M, 1024).unwrap();
         let base = OrdinaryCudaAdmission::analyze(plan.clone()).unwrap();
         let state = base.preflight().prior_state_bytes;
         for roots in [2, 4, 6, 18] {
@@ -812,7 +812,7 @@ mod admission_matrix_tests {
     #[test]
     fn source_semantic_context_matrix_reports_two_root_fit() {
         let capacities = [512usize, 1024, 2048, 4096, 8192, 16_384, 32_768];
-        for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+        for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
             let mut previous = 0usize;
             for capacity in capacities {
                 let plan = diagnostic_ordinary_plan(profile, capacity).unwrap();

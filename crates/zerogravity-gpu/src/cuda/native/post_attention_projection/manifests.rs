@@ -186,8 +186,8 @@ pub(super) fn launch(
     rows: usize,
 ) -> Result<(ProjectionImage, CubinKernelManifest)> {
     match (kind, rows) {
-        (ComponentKind::Qwen2b, 1) => Ok(launch_0()),
-        (ComponentKind::Qwen2b, 64) => Ok(launch_1()),
+        (ComponentKind::Qwen2B, 1) => Ok(launch_0()),
+        (ComponentKind::Qwen2B, 64) => Ok(launch_1()),
         (ComponentKind::FixedPrompt(a), 47) => {
             a.require_owned()?;
             Ok(launch_2())
@@ -254,7 +254,7 @@ mod tests {
     fn finite_packet_geometry_cannot_retag_a_different_request() {
         use crate::cuda::gdn::FixedPromptGdnArithmetic as A;
         for n in [0, 2, 47, 65] {
-            assert!(launch(ComponentKind::Qwen2b, n).is_err());
+            assert!(launch(ComponentKind::Qwen2B, n).is_err());
         }
         assert!(launch(ComponentKind::FixedPrompt(A::OriginalPlainSolve2), 47).is_err());
         assert!(launch(ComponentKind::FixedPrompt(A::OwnedFixedPromptSolve4), 64).is_err());

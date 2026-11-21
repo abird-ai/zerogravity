@@ -54,7 +54,7 @@ fn require_tied_member(
     service: &Arc<ResidentService>,
 ) -> Result<()> {
     use zerogravity_core::{
-        accelerator::program::SourceNumericalContract, encoding::StoredTensorEncoding,
+        accelerator::program::NumericalContract, encoding::StoredTensorEncoding,
     };
     descriptor.validate()?;
     let [member] = descriptor.matrices() else {
@@ -64,7 +64,7 @@ fn require_tied_member(
     let matrix = source.matrix(&member.name, member.axes)?;
     if !source.same_issuer(tied.source())
         || descriptor.call() != input.call()
-        || descriptor.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+        || descriptor.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
         || member.source != source.source_identity()
         || member.kind
             != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
@@ -1239,7 +1239,7 @@ impl ResidentProgram {
             values,
             status: body.status.handle(),
             owned_ranges,
-            body: ResidentProgramBody::NativeCohort(body),
+            body: ResidentProgramBody::FusedCohort(body),
         })
     }
 }

@@ -172,7 +172,7 @@ mod tests {
             );
         }
         assert!(P::FixedPromptQkv.limits(6, 9, 10, false, false).is_err());
-        assert!(P::Qwen2bMlp.limits(5, 7, 7, false, false).is_err());
+        assert!(P::Qwen2BMlp.limits(5, 7, 7, false, false).is_err());
     }
     #[test]
     fn new_scope_cannot_inherit_a_legacy_layout_or_hash_only_permit() {

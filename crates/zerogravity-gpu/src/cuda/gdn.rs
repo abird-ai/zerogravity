@@ -27,7 +27,7 @@ mod qwen2b_arithmetic;
 ))]
 pub(crate) mod state_transport;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-pub use qwen2b_arithmetic::{Qwen2bGdnArithmetic, Qwen2bOriginalGdnReference};
+pub use qwen2b_arithmetic::{Qwen2BGdnArithmetic, Qwen2BOriginalGdnReference};
 #[cfg(feature = "cuda-native-qualification")]
 pub(crate) mod resident;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
@@ -718,7 +718,7 @@ fn kernel_impl(phase: GdnPhase, stage: GdnStage, typed_outputs: bool) -> Result<
         stage,
         typed_outputs,
         assets::select(phase, stage)?,
-        arithmetic::GdnArithmeticFamily::Original08,
+        arithmetic::GdnArithmeticFamily::Original800M,
     )
 }
 #[cfg(target_os = "linux")]

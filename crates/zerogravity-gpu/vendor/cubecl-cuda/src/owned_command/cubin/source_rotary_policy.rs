@@ -191,7 +191,7 @@ mod tests {
         }
         for p in [
             CubinSetPolicy::ProjectionSix,
-            CubinSetPolicy::ConnectedQwen08,
+            CubinSetPolicy::ConnectedQwen800M,
             CubinSetPolicy::FirstAttentionCaptured,
             CubinSetPolicy::VocabularyHead,
         ] {

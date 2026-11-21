@@ -23,7 +23,7 @@ pub use leaf_source::RmsLeafSource;
 mod qwen2b;
 #[cfg(target_os = "linux")]
 pub use qwen2b::{
-    Qwen2bDualRmsLeaf, Qwen2bRmsFault, Qwen2bRmsFaultOutcome, Qwen2bRmsReadback, Qwen2bRmsReceipt,
+    Qwen2BDualRmsLeaf, Qwen2BRmsFault, Qwen2BRmsFaultOutcome, Qwen2BRmsReadback, Qwen2BRmsReceipt,
     qualify_qwen2b_rms, qualify_qwen2b_rms_fault,
 };
 const SOURCE: &str = include_str!("rms/kernels.cu");
@@ -154,7 +154,7 @@ impl Stage {
         }
     }
     fn buffers(self, rows: Rows) -> Arc<[(usize, BufferIOAttr)]> {
-        self.buffers_for(rows, Columns::Qwen08)
+        self.buffers_for(rows, Columns::Qwen800M)
     }
     fn buffers_for(self, rows: Rows, columns: Columns) -> Arc<[(usize, BufferIOAttr)]> {
         let columns = columns.count();
@@ -185,12 +185,12 @@ pub(crate) struct Spec {
 /// No device allocation, stream, completion, source substitution or traversal API.
 /// The source-derived kernel remains unqualified until genuine CUDA tests pass.
 pub(crate) fn specification(stage: Stage, rows: Rows) -> Result<Spec> {
-    specification_for(stage, rows, Columns::Qwen08)
+    specification_for(stage, rows, Columns::Qwen800M)
 }
 
 fn rendered_source(rows: Rows, columns: Columns) -> Result<Arc<str>> {
     if matches!(rows, Rows::FixedPrompt | Rows::CohortB4 { initial: true })
-        && columns != Columns::Qwen08
+        && columns != Columns::Qwen800M
     {
         return Err(Error::Unsupported(
             "fixed_prompt RMS is original1024 only".into(),
@@ -235,7 +235,7 @@ fn specification_for(stage: Stage, rows: Rows, columns: Columns) -> Result<Spec>
             stage.entry(),
             source,
             threads,
-            if columns == Columns::Qwen08 {
+            if columns == Columns::Qwen800M {
                 stage.buffers(rows)
             } else {
                 stage.buffers_for(rows, columns)

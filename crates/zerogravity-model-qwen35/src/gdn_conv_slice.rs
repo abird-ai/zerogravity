@@ -3,8 +3,8 @@
 use super::OperatorSliceSource;
 use crate::accelerator::SourceIdentity;
 use crate::accelerator::program::{
-    ActivationPrecision, CausalConvSiluContract, CausalConvValues, PlanBuilder, PlanValue,
-    ProgramNumericalProfile, SourceParameter,
+    ActivationPrecision, CausalConvSiluContract, CausalConvValues, NumericalProfile, PlanBuilder,
+    PlanValue, SourceParameter,
 };
 use crate::source::binding::{QwenMatrixRole, QwenParameterRole};
 use crate::{Error, LoadedQwenModel, Result};
@@ -13,7 +13,7 @@ pub(crate) fn convolution_role(
     source: &impl OperatorSliceSource,
     layer: usize,
 ) -> Result<(SourceParameter, usize)> {
-    if source.program_numerical_profile() != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+    if source.program_numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
         || !source.source_identity().is_bound()
         || source.geometry().layers.get(layer) != Some(&crate::config::LayerKind::LinearAttention)
     {
@@ -55,7 +55,7 @@ pub enum ConvInputPhase {
 #[derive(Clone, Copy)]
 pub struct GdnConvSliceInput<'a> {
     source: SourceIdentity,
-    profile: ProgramNumericalProfile,
+    profile: NumericalProfile,
     phase: ConvInputPhase,
     activation: &'a [u8],
     history: &'a [u8],
@@ -63,7 +63,7 @@ pub struct GdnConvSliceInput<'a> {
 impl<'a> GdnConvSliceInput<'a> {
     pub fn from_bf16_bytes(
         source: SourceIdentity,
-        profile: ProgramNumericalProfile,
+        profile: NumericalProfile,
         phase: ConvInputPhase,
         activation: &'a [u8],
         history: &'a [u8],
@@ -81,7 +81,7 @@ impl<'a> GdnConvSliceInput<'a> {
     pub fn source_identity(self) -> SourceIdentity {
         self.source
     }
-    pub fn numerical_profile(self) -> ProgramNumericalProfile {
+    pub fn numerical_profile(self) -> NumericalProfile {
         self.profile
     }
     pub fn phase(self) -> ConvInputPhase {
@@ -99,7 +99,7 @@ impl<'a> GdnConvSliceInput<'a> {
     pub(crate) fn validate(self) -> Result<usize> {
         let channels = self.activation.len() / 2;
         if !self.source.is_bound()
-            || self.profile != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+            || self.profile != NumericalProfile::TorchCpuAvx2Bf16MixedV1
             || channels == 0
             || channels > 16384
             || !channels.is_multiple_of(32)
@@ -149,8 +149,8 @@ impl GdnConvolutionSiluOutput {
     pub fn source_identity(&self) -> SourceIdentity {
         self.source
     }
-    pub fn numerical_profile(&self) -> ProgramNumericalProfile {
-        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+    pub fn numerical_profile(&self) -> NumericalProfile {
+        NumericalProfile::TorchCpuAvx2Bf16MixedV1
     }
     pub fn precision(&self) -> ActivationPrecision {
         ActivationPrecision::Bf16WidenedF32

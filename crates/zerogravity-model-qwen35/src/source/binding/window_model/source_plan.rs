@@ -1,8 +1,8 @@
 //! Original source recipe, through the existing family layer traversal.
 use super::*;
 use crate::plan::{
-    QwenEmbedding, QwenLayer, QwenOperation, QwenOperator, QwenPlan, QwenPlanBuilder,
-    QwenProjection, QwenRmsSite, QwenSourceCall, QwenSourceProfile,
+    QwenEmbedding, QwenLayer, QwenModelVariant, QwenOperation, QwenOperator, QwenPlan,
+    QwenPlanBuilder, QwenProjection, QwenRmsSite, QwenSourceCall,
 };
 use zerogravity_core::accelerator::program::{PlanValue, SourceCall};
 
@@ -13,7 +13,7 @@ impl OriginalWindowModelSource {
         call.validate()?;
         call.request().reference_phase()?;
         let actual = call.request().source_call()?;
-        if call.model_profile() != QwenSourceProfile::Qwen08
+        if call.model_profile() != QwenModelVariant::Qwen800M
             || call.source() != self.source_identity()
             || call.request().layer().index() != 0
             || actual.rows().capacity() != 512
@@ -82,7 +82,7 @@ impl OriginalWindowModelSource {
     /// execution eligibility or model publication follows from this record.
     pub fn record_small_model(&self, call: QwenSourceCall) -> Result<QwenPlan> {
         self.require_small_model_source()?;
-        if call.model_profile() != QwenSourceProfile::Qwen08 {
+        if call.model_profile() != QwenModelVariant::Qwen800M {
             return Err(Error::Unsupported(
                 "original .8B recording constructor profile".into(),
             ));

@@ -16,7 +16,7 @@ pub use raw_state::{
 /// Numerical semantics are independent of the packed source encoding.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum QwenNumericalProfile {
-    GgufSourceV1,
+    GgufReferenceV1,
     /// Reserved mixed-source CPU target. No trained execution is admitted.
     /// Preserves original F32 parameters; not the all-BF16 loader or CUDA FLA.
     OriginalHfTorchCpuSlowBf16Avx2,
@@ -358,10 +358,10 @@ impl crate::LoadedQwenModel {
         if self.original.is_some() {
             return QwenNumericalProfile::OriginalHfTorchCpuSlowBf16Avx2;
         }
-        QwenNumericalProfile::GgufSourceV1
+        QwenNumericalProfile::GgufReferenceV1
     }
     pub(crate) fn require_execution_profile(&self) -> Result<()> {
-        if self.numerical_profile() != QwenNumericalProfile::GgufSourceV1 {
+        if self.numerical_profile() != QwenNumericalProfile::GgufReferenceV1 {
             return Err(Error::Unsupported(
                 "original HF source bound; numerical profile/plan operators remain unqualified"
                     .into(),

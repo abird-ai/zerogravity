@@ -87,12 +87,12 @@ mod prefix {
         let descriptor = source.descriptor(source.span());
         let foreign = source.descriptor(source.span());
         let mut builder =
-            PlanBuilder::new_operator_slice(source.identity, ProgramNumericalProfile::GgufSourceV1)
+            PlanBuilder::new_operator_slice(source.identity, NumericalProfile::GgufReferenceV1)
                 .unwrap();
         let embedding = one(&mut builder, descriptor.embedding_operator(), &[]).unwrap();
         assert!(one(&mut builder, foreign.rms_operator(), &[embedding]).is_err());
         let mut other =
-            PlanBuilder::new_operator_slice(source.identity, ProgramNumericalProfile::GgufSourceV1)
+            PlanBuilder::new_operator_slice(source.identity, NumericalProfile::GgufReferenceV1)
                 .unwrap();
         let foreign_value = one(&mut other, descriptor.embedding_operator(), &[]).unwrap();
         assert!(one(&mut builder, descriptor.rms_operator(), &[foreign_value]).is_err());
@@ -121,13 +121,13 @@ mod prefix {
         assert!(one(&mut full, descriptor.embedding_operator(), &[]).is_err());
         let mut bf16 = PlanBuilder::new_operator_slice(
             source.identity,
-            ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+            NumericalProfile::TorchCpuAvx2Bf16MixedV1,
         )
         .unwrap();
         assert!(one(&mut bf16, descriptor.embedding_operator(), &[]).is_err());
         let mut wrong_source = PlanBuilder::new_operator_slice(
             SourceIdentity::for_new_allocation().unwrap(),
-            ProgramNumericalProfile::GgufSourceV1,
+            NumericalProfile::GgufReferenceV1,
         )
         .unwrap();
         assert!(one(&mut wrong_source, descriptor.embedding_operator(), &[]).is_err());
@@ -159,7 +159,7 @@ mod prefix {
         let matrix =
             BulkF32Matrix::new(left, right, BulkF32Contract::HaswellTinyBlasF32V1).unwrap();
         let mut builder =
-            PlanBuilder::new_operator_slice(source.identity, ProgramNumericalProfile::GgufSourceV1)
+            PlanBuilder::new_operator_slice(source.identity, NumericalProfile::GgufReferenceV1)
                 .unwrap();
         let a = builder.bulk_f32_input(matrix.left()).unwrap();
         let b = builder.bulk_f32_input(&observed).unwrap();
@@ -268,7 +268,7 @@ mod upstream {
         let source = Original::new();
         let descriptor = source.descriptor();
         let mut b =
-            PlanBuilder::new_operator_slice(source.source, ProgramNumericalProfile::GgufSourceV1)
+            PlanBuilder::new_operator_slice(source.source, NumericalProfile::GgufReferenceV1)
                 .unwrap();
         let input = one(&mut b, descriptor.input_operator(), &[]).unwrap();
         assert!(b.silu("legacy", &input, None).is_err());
@@ -311,7 +311,7 @@ mod upstream {
         let descriptor = source.descriptor();
         let foreign = source.descriptor();
         let mut b =
-            PlanBuilder::new_operator_slice(source.source, ProgramNumericalProfile::GgufSourceV1)
+            PlanBuilder::new_operator_slice(source.source, NumericalProfile::GgufReferenceV1)
                 .unwrap();
         let input = one(&mut b, descriptor.input_operator(), &[]).unwrap();
         assert!(
@@ -323,7 +323,7 @@ mod upstream {
             .is_err()
         );
         let mut other =
-            PlanBuilder::new_operator_slice(source.source, ProgramNumericalProfile::GgufSourceV1)
+            PlanBuilder::new_operator_slice(source.source, NumericalProfile::GgufReferenceV1)
                 .unwrap();
         let value = one(&mut other, descriptor.input_operator(), &[]).unwrap();
         assert!(
@@ -336,7 +336,7 @@ mod upstream {
         );
         let mut bf16 = PlanBuilder::new_operator_slice(
             source.source,
-            ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+            NumericalProfile::TorchCpuAvx2Bf16MixedV1,
         )
         .unwrap();
         assert!(one(&mut bf16, descriptor.input_operator(), &[]).is_err());
@@ -441,7 +441,7 @@ mod output {
         let same_ids_foreign_issuer = source.descriptor(source.span()).unwrap();
         assert_ne!(descriptor, same_ids_foreign_issuer);
         let mut b =
-            PlanBuilder::new_operator_slice(source.identity, ProgramNumericalProfile::GgufSourceV1)
+            PlanBuilder::new_operator_slice(source.identity, NumericalProfile::GgufReferenceV1)
                 .unwrap();
         let input = one(&mut b, descriptor.input_operator(), &[]).unwrap();
         assert!(
@@ -453,7 +453,7 @@ mod output {
             .is_err()
         );
         let mut other =
-            PlanBuilder::new_operator_slice(source.identity, ProgramNumericalProfile::GgufSourceV1)
+            PlanBuilder::new_operator_slice(source.identity, NumericalProfile::GgufReferenceV1)
                 .unwrap();
         let foreign = one(&mut other, descriptor.input_operator(), &[]).unwrap();
         assert!(one(&mut b, descriptor.projection_operator(), &[foreign]).is_err());
@@ -478,13 +478,13 @@ mod output {
         assert!(one(&mut full, descriptor.input_operator(), &[]).is_err());
         let mut bf16 = PlanBuilder::new_operator_slice(
             source.identity,
-            ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+            NumericalProfile::TorchCpuAvx2Bf16MixedV1,
         )
         .unwrap();
         assert!(one(&mut bf16, descriptor.input_operator(), &[]).is_err());
         let mut other_source = PlanBuilder::new_operator_slice(
             SourceIdentity::for_new_allocation().unwrap(),
-            ProgramNumericalProfile::GgufSourceV1,
+            NumericalProfile::GgufReferenceV1,
         )
         .unwrap();
         assert!(one(&mut other_source, descriptor.input_operator(), &[]).is_err());
@@ -506,7 +506,7 @@ mod output {
             BulkF32Operand::external(span, BulkF32Side::Right, "B", descriptor.layout()).unwrap();
         let tiny = BulkF32Matrix::new(left, right, BulkF32Contract::HaswellTinyBlasF32V1).unwrap();
         let mut b =
-            PlanBuilder::new_operator_slice(source.identity, ProgramNumericalProfile::GgufSourceV1)
+            PlanBuilder::new_operator_slice(source.identity, NumericalProfile::GgufReferenceV1)
                 .unwrap();
         let a = b.bulk_f32_input(tiny.left()).unwrap();
         let observed = b.bulk_f32_input(tiny.right()).unwrap();

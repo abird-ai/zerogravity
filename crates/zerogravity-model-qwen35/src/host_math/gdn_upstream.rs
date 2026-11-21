@@ -78,7 +78,7 @@ fn lease(
 }
 fn full(value: &HostValue, owner: &GgufGdnUpstreamOwner, words: usize) -> bool {
     value.source == Some(owner.descriptor.source())
-        && value.profile == Some(ProgramNumericalProfile::GgufSourceV1)
+        && value.profile == Some(NumericalProfile::GgufReferenceV1)
         && value.precision == ActivationPrecision::F32
         && value.elements == words
         && value.view == TensorView::vector(0, words)
@@ -103,7 +103,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
             || self.bulk_call.is_some()
             || self.zen_ssm_out_call.is_some()
             || self.gguf_prefix_call.is_some()
-            || self.source.program_numerical_profile() != ProgramNumericalProfile::GgufSourceV1
+            || self.source.program_numerical_profile() != NumericalProfile::GgufReferenceV1
             || descriptor != &call.slice.owner.descriptor
             || descriptor.source() != self.source.source_identity()
         {

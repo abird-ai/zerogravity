@@ -33,7 +33,7 @@ fn require_arithmetic(
     actual.require_instance(phase, GdnCacheSlot::One, true)?;
     actual
         .family()
-        .require_same(&GdnFamilyIdentity::original08())?;
+        .require_same(&GdnFamilyIdentity::original800m())?;
     if scope.kind() == FixedPromptCallKind::Prefill {
         scope.require_gdn_arithmetic(
             layer,

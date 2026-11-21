@@ -152,38 +152,38 @@ impl HistoricalGdnImplementation {
 /// Exact independently captured recipes. Qualification authenticates this
 /// finite envelope before constructing a recipe-free GPU descriptor.
 fn historical_gdn_implementation(
-    profile: crate::qwen35::plan::QwenSourceProfile,
+    profile: crate::qwen35::plan::QwenModelVariant,
     input_tokens: usize,
     is_decode: bool,
 ) -> Result<Option<HistoricalGdnImplementation>> {
-    use crate::qwen35::plan::QwenSourceProfile::{Qwen2B, Qwen08};
+    use crate::qwen35::plan::QwenModelVariant::{Qwen2B, Qwen800M};
     use GdnKktKernel::{Bk32W4S3, Bk32W8S3, Bk64W8S4};
     use GdnOutputKernel::{Bk32Bv32W4S2, Bk32Bv32W4S3};
     use GdnRecomputeKernel::{Bk64Bv64W8S3, Bk64Bv64W8S4};
     use GdnStateKernel::{Bv32W4S2, Bv64W4S2};
 
     let (recipe_sha256, stages) = match (profile, input_tokens, is_decode) {
-        (Qwen08, 47, false) => (
+        (Qwen800M, 47, false) => (
             "b24e5fb2ac4b0e591cb907e8226cd1d80bc24507c0586ecfb5238ea4f3c91f8b",
             Some((Bk32W8S3, Bk64Bv64W8S4, Bv64W4S2, Bk32Bv32W4S2)),
         ),
-        (Qwen08, 57, false) => (
+        (Qwen800M, 57, false) => (
             "9ec9c52e82e99b9654d3136f22e10523e1fa6f786a6136f7adefaaedec2aed43",
             Some((Bk32W8S3, Bk64Bv64W8S4, Bv64W4S2, Bk32Bv32W4S3)),
         ),
-        (Qwen08, 62, false) => (
+        (Qwen800M, 62, false) => (
             "f487c0f5bcb5580da48fd33f047c4cf67d4098e496e1040e07a4eeafca0c5a65",
             Some((Bk32W8S3, Bk64Bv64W8S4, Bv64W4S2, Bk32Bv32W4S3)),
         ),
-        (Qwen08, 67, false) => (
+        (Qwen800M, 67, false) => (
             "213a13cfb815791936bca556a1ab66730b03ac71fe9c72f6586cc5fcab0be3e5",
             Some((Bk64W8S4, Bk64Bv64W8S3, Bv32W4S2, Bk32Bv32W4S3)),
         ),
-        (Qwen08, 72, false) => (
+        (Qwen800M, 72, false) => (
             "d2226726eda06c919709e3b7767d019e0dd33f633db925ce266a9f67b48f1d9e",
             Some((Bk32W8S3, Bk64Bv64W8S4, Bv32W4S2, Bk32Bv32W4S2)),
         ),
-        (Qwen08, 1, true) => (
+        (Qwen800M, 1, true) => (
             "cf3ef9d3fa84410540c6d969212a3e29c912255d9b404d2430905155c1cf201e",
             None,
         ),
@@ -227,7 +227,7 @@ fn historical_gdn_implementation(
 }
 
 pub(super) fn gdn_implementation(
-    profile: crate::qwen35::plan::QwenSourceProfile,
+    profile: crate::qwen35::plan::QwenModelVariant,
     input_tokens: usize,
     is_decode: bool,
 ) -> Result<Option<TextGdnImplementation>> {
@@ -237,17 +237,17 @@ pub(super) fn gdn_implementation(
 }
 
 pub(super) fn fresh_prefill_gdn_implementation(
-    profile: crate::qwen35::plan::QwenSourceProfile,
+    profile: crate::qwen35::plan::QwenModelVariant,
     input_tokens: usize,
     is_decode: bool,
 ) -> Result<Option<TextGdnImplementation>> {
-    use crate::qwen35::plan::QwenSourceProfile::Qwen08;
+    use crate::qwen35::plan::QwenModelVariant::Qwen800M;
     use GdnKktKernel::{Bk32W4S3, Bk32W8S3};
     use GdnOutputKernel::{Bk32Bv32W4S2, Bk32Bv32W4S3, Bk32Bv64W4S3};
     use GdnRecomputeKernel::{Bk64Bv64W8S3, Bk64Bv64W8S4};
     use GdnStateKernel::Bv64W4S2;
 
-    if profile != Qwen08 || is_decode {
+    if profile != Qwen800M || is_decode {
         return Ok(None);
     }
     let stages = match input_tokens {
@@ -264,7 +264,7 @@ pub(super) fn fresh_prefill_gdn_implementation(
 
 #[cfg(test)]
 pub(super) fn gdn_recipe_sha256(
-    profile: crate::qwen35::plan::QwenSourceProfile,
+    profile: crate::qwen35::plan::QwenModelVariant,
     input_tokens: usize,
     is_decode: bool,
 ) -> Result<Option<&'static str>> {
@@ -277,7 +277,7 @@ pub(super) fn gdn_recipe_sha256(
 /// Seal exactly the descriptor selected by the finite qualification table.
 /// This comparison runs before source-record or workspace preparation.
 pub(super) fn seal_gdn_implementation(
-    profile: crate::qwen35::plan::QwenSourceProfile,
+    profile: crate::qwen35::plan::QwenModelVariant,
     input_tokens: usize,
     is_decode: bool,
     candidate: Option<TextGdnImplementation>,

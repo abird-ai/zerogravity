@@ -4,13 +4,13 @@ use zerogravity_core::accelerator::SourceIdentity;
 use zerogravity_core::accelerator::program::KvDomain;
 use zerogravity_model_qwen35::plan::PromptSpan;
 use zerogravity_model_qwen35::plan::PromptWorkload;
-use zerogravity_model_qwen35::plan::QwenSourceProfile;
+use zerogravity_model_qwen35::plan::QwenModelVariant;
 use zerogravity_model_qwen35::plan::{PromptCall, QwenOperation, QwenOperator};
 
 #[test]
 fn actual_last_prompt_row_and_both_source_widths_are_not_legacy_case_retags() -> Result<()> {
     let source = SourceIdentity::for_new_allocation()?;
-    for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
+    for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
         let row = profile.hidden_size() * 2;
         for count in [47, 57, 62, 67, 72] {
             let workload = PromptWorkload::new(count, 512)?;
@@ -57,7 +57,7 @@ fn fa_uses_the_original_appended_private_read_and_never_a_fake_write() -> Result
     use zerogravity_core::accelerator::program::{ConvDomain, StateEffect, StateVersion};
     let source = SourceIdentity::for_new_allocation()?;
     let call = PromptCall::new(
-        QwenSourceProfile::Qwen2B,
+        QwenModelVariant::Qwen2B,
         PromptSpan::prefill(source, PromptWorkload::new(67, 512).unwrap(), &[11; 67])?,
     )?;
     for layer in [3, 7, 11, 15, 19, 23] {

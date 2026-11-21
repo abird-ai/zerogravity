@@ -13,10 +13,10 @@ pub(crate) enum CubinSetPolicy {
     Text2BCachedCohort4,
     SourceRotary,
     ProjectionSix,
-    FullQwen08,
-    ConnectedQwen08,
+    FullQwen800M,
+    ConnectedQwen800M,
     FixedPromptMlp,
-    Qwen2bMlp,
+    Qwen2BMlp,
     FixedPromptQkv,
     FixedPromptQkKv,
     FixedPromptFa,
@@ -78,7 +78,7 @@ impl CubinSetPolicy {
                 16,
                 "closed canonical47 full model twelve-module/fifteen-function/sixteen-record capacity",
             ),
-            Self::Qwen2bMlp => (
+            Self::Qwen2BMlp => (
                 5,
                 7,
                 7,
@@ -114,7 +114,7 @@ impl CubinSetPolicy {
                 8,
                 "closed canonical47 MLP five-module/seven-function/eight-record capacity",
             ),
-            Self::FullQwen08 => (
+            Self::FullQwen800M => (
                 super::full_model_policy::MODULES,
                 super::full_model_policy::FUNCTIONS,
                 super::full_model_policy::RECORDS,
@@ -150,11 +150,11 @@ impl CubinSetPolicy {
                 19,
                 "closed cubin six-module/eight-function/nineteen-record capacity",
             ),
-            Self::ConnectedQwen08 => (
+            Self::ConnectedQwen800M => (
                 7,
                 12,
                 21,
-                "closed connected qwen08 seven-module/twelve-function/twenty-one-record capacity",
+                "closed connected qwen800m seven-module/twelve-function/twenty-one-record capacity",
             ),
         };
         if modules > max_modules
@@ -189,7 +189,7 @@ impl CubinSetPolicy {
         if self == Self::FixedPromptFull {
             return super::fixed_prompt_full_policy::require(image, manifest);
         }
-        if self == Self::Qwen2bMlp {
+        if self == Self::Qwen2BMlp {
             return super::qwen2b_mlp_policy::require(image, manifest);
         }
         if self == Self::FixedPromptLayer3 {
@@ -207,7 +207,7 @@ impl CubinSetPolicy {
         if self == Self::FixedPromptMlp {
             return super::fixed_prompt_mlp_policy::require(image, manifest);
         }
-        if self == Self::FullQwen08 {
+        if self == Self::FullQwen800M {
             return super::full_model_policy::require(image, manifest);
         }
         if self == Self::SourceRotary {
@@ -268,7 +268,7 @@ impl ConnectedImage {
             (None, Some(C::CutlassWmmaBf16Sm80)) => Ok(Self::Cutlass),
             (None, Some(C::SiluAndMulBf16Sm86)) => Ok(Self::Activation),
             _ => Err(failure(
-                "connected qwen08 exact seven sealed image provenance kinds",
+                "connected qwen800m exact seven sealed image provenance kinds",
             )),
         }
     }
@@ -393,7 +393,7 @@ fn require_connected_manifest(
     let rule = RULES
         .iter()
         .find(|rule| rule.image == image && rule.entry == manifest.entry)
-        .ok_or_else(|| failure("connected qwen08 exact pinned image/function pair"))?;
+        .ok_or_else(|| failure("connected qwen800m exact pinned image/function pair"))?;
     if manifest.binary_sm != image.binary_sm()
         || manifest.dynamic_shared_bytes != rule.shared
         || manifest.parameters.len() != rule.params.len()
@@ -406,7 +406,7 @@ fn require_connected_manifest(
             })
     {
         return Err(failure(
-            "connected qwen08 exact reflected layout/shared allowance",
+            "connected qwen800m exact reflected layout/shared allowance",
         ));
     }
     Ok(())

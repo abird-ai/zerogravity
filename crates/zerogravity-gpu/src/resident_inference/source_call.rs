@@ -7,7 +7,7 @@ pub use program::SourceCallInventory;
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 use zerogravity_core::accelerator::program::{
-    BoundSourceInvocation, SourceCallMode, SourceNumericalContract,
+    BoundSourceInvocation, NumericalContract, SourceCallMode,
 };
 
 #[cfg(feature = "cuda-cublas")]
@@ -67,9 +67,9 @@ pub struct SourceCallModel {
     source: VerifiedTensorSource,
     sessions: Arc<async_lock::Semaphore>,
     _control: WindowWorkspace,
-    contract: SourceNumericalContract,
+    contract: NumericalContract,
     #[cfg(feature = "cuda-cublas")]
-    native_rows: usize,
+    cohort_width: usize,
     #[cfg(feature = "cuda-cublas")]
     state_policy: CudaSourceStatePolicy,
     #[cfg(feature = "cuda-cublas")]
@@ -247,9 +247,9 @@ impl ResidentModel {
             source,
             sessions: Arc::new(async_lock::Semaphore::new(max_sessions)),
             _control: control,
-            contract: SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1,
+            contract: NumericalContract::TorchCpuAvx2Bf16MixedV1,
             #[cfg(feature = "cuda-cublas")]
-            native_rows: 0,
+            cohort_width: 0,
             #[cfg(feature = "cuda-cublas")]
             state_policy: CudaSourceStatePolicy::Contiguous,
             #[cfg(feature = "cuda-cublas")]
@@ -308,13 +308,13 @@ impl ResidentModel {
     pub fn ordinary_cuda_source_preflight_for_state_policy(
         plan: Arc<ForwardPlan>,
         max_sessions: usize,
-        native_rows: usize,
+        cohort_width: usize,
         provider_cap: usize,
         state_policy: CudaSourceStatePolicy,
     ) -> Result<OrdinaryCudaSourceInventory> {
         if !(1..=64).contains(&max_sessions)
-            || !matches!(native_rows, 0 | 4 | 8)
-            || (native_rows != 0 && max_sessions < native_rows)
+            || !matches!(cohort_width, 0 | 4 | 8)
+            || (cohort_width != 0 && max_sessions < cohort_width)
         {
             return Err(Error::Limit("source-call session capacity".into()));
         }
@@ -325,7 +325,7 @@ impl ResidentModel {
             plan,
             provider_cap,
             roots,
-            native_rows,
+            cohort_width,
             state_reserve_bytes,
         )
         .map(|(_, inventory)| inventory)
@@ -338,7 +338,7 @@ impl ResidentModel {
         source_owner: Arc<dyn std::any::Any + Send + Sync>,
         plan: Arc<ForwardPlan>,
         max_sessions: usize,
-        native_rows: usize,
+        cohort_width: usize,
         provider_cap: usize,
         device_cap: u64,
         cancelled: Option<&AtomicBool>,
@@ -349,7 +349,7 @@ impl ResidentModel {
             source_owner,
             plan,
             max_sessions,
-            native_rows,
+            cohort_width,
             provider_cap,
             device_cap,
             CudaSourceStatePolicy::Contiguous,
@@ -365,7 +365,7 @@ impl ResidentModel {
         source_owner: Arc<dyn std::any::Any + Send + Sync>,
         plan: Arc<ForwardPlan>,
         max_sessions: usize,
-        native_rows: usize,
+        cohort_width: usize,
         provider_cap: usize,
         device_cap: u64,
         state_policy: CudaSourceStatePolicy,
@@ -373,8 +373,8 @@ impl ResidentModel {
     ) -> Result<Arc<SourceCallModel>> {
         ordinary_not_cancelled(cancelled)?;
         if !(1..=64).contains(&max_sessions)
-            || !matches!(native_rows, 0 | 4 | 8)
-            || (native_rows != 0 && max_sessions < native_rows)
+            || !matches!(cohort_width, 0 | 4 | 8)
+            || (cohort_width != 0 && max_sessions < cohort_width)
         {
             return Err(Error::Limit("source-call session capacity".into()));
         }
@@ -392,7 +392,7 @@ impl ResidentModel {
             provider_cap,
             device_cap,
             roots,
-            native_rows,
+            cohort_width,
             state_reserve_bytes,
             Some(source_owner.clone()),
             cancelled,
@@ -412,7 +412,7 @@ impl ResidentModel {
                     max_sessions,
                     page_tokens,
                     max_append_tokens,
-                    SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+                    NumericalContract::CudaSm86Bf16ReferenceV1,
                 )?;
             }
         }
@@ -422,8 +422,8 @@ impl ResidentModel {
             source,
             sessions: Arc::new(async_lock::Semaphore::new(max_sessions)),
             _control: control,
-            contract: SourceNumericalContract::ReferenceCudaSm86Bf16V1,
-            native_rows,
+            contract: NumericalContract::CudaSm86Bf16ReferenceV1,
+            cohort_width,
             state_policy,
             prefill_projection_classes,
             _source_owner: Some(source_owner),
@@ -438,7 +438,7 @@ impl SourceCallModel {
 
     #[cfg(feature = "cuda-cublas")]
     pub fn prefill_rows_compatible(&self, left: usize, right: usize) -> bool {
-        self.native_rows != 0
+        self.cohort_width != 0
             && self
                 .prefill_projection_classes
                 .as_ref()
@@ -627,7 +627,7 @@ impl SourceCallSession {
         {
             matches!(
                 self.model.contract,
-                SourceNumericalContract::ReferenceCudaSm86Bf16V1
+                NumericalContract::CudaSm86Bf16ReferenceV1
             )
         }
         #[cfg(not(feature = "cuda-cublas"))]
@@ -871,7 +871,7 @@ mod tests {
         const MIB: usize = 1024 * 1024;
         const PROVIDER_CAP: usize = 4608 * MIB;
         let plan = zerogravity_model_qwen35::plan::diagnostic_ordinary_plan(
-            zerogravity_model_qwen35::plan::QwenSourceProfile::Qwen2B,
+            zerogravity_model_qwen35::plan::QwenModelVariant::Qwen2B,
             32_768,
         )
         .unwrap();

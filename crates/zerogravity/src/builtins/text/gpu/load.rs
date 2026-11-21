@@ -91,7 +91,7 @@ pub fn load_gpu_router(
         output,
         provider_mib,
         device_mib,
-        native_rows,
+        cohort_width,
         host_mib,
         max_pending,
     } = profile;
@@ -110,10 +110,10 @@ pub fn load_gpu_router(
         ));
     }
     validate_profile(workers, active, context, output, provider_mib, device_mib)?;
-    if native_rows != 0
-        && (!matches!(native_rows, 2 | 4 | 8)
+    if cohort_width != 0
+        && (!matches!(cohort_width, 2 | 4 | 8)
             || backend != GpuBackend::Cuda
-            || active < native_rows)
+            || active < cohort_width)
     {
         return Err(ServiceError::new(
             400,
@@ -240,7 +240,7 @@ pub fn load_gpu_router(
             group: unique.len(),
             hidden_width,
             vocabulary_size,
-            native_rows,
+            cohort_width,
             max_token_bytes,
             readers: Arc::new(AtomicUsize::new(0)),
             _metadata: metadata,
@@ -248,7 +248,7 @@ pub fn load_gpu_router(
         unique.insert(path, Arc::clone(&shared));
         models.insert(alias, shared);
     }
-    start(models, active, output, native_rows, host, max_pending)
+    start(models, active, output, cohort_width, host, max_pending)
 }
 #[cfg(test)]
 mod tests {
@@ -268,7 +268,7 @@ mod tests {
             output: 1,
             provider_mib: 256,
             device_mib: 256,
-            native_rows: 0,
+            cohort_width: 0,
             host_mib: 256,
             max_pending: Some(1),
         };

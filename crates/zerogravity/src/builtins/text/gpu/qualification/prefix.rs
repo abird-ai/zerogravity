@@ -113,7 +113,7 @@ const PROMPTS: [&str; 8] = [
 ];
 
 fn ragged_prefixes(fixture: &Fixture) {
-    let width = fixture.model.native_rows;
+    let width = fixture.model.cohort_width;
     let mut active = VecDeque::new();
     let mut traces = BTreeMap::new();
     let mut prefix = BTreeMap::new();
@@ -132,13 +132,13 @@ fn ragged_prefixes(fixture: &Fixture) {
         active.push_back(lane);
     }
     let before = band_counts(&fixture.stats);
-    let sampler = fixture.stats.snapshot().native_sampler;
+    let sampler = fixture.stats.snapshot().fused_sampler;
     let state_batches = fixture.stats.snapshot().fused_state_only_batches;
     let state_rows = fixture.stats.snapshot().fused_state_only_rows;
     let greedy_batches = fixture.stats.snapshot().fused_greedy_batches;
     teacher_round(&mut active, &fixture.stats);
     require_bands(&fixture.stats, before, &[width]);
-    assert_eq!(fixture.stats.snapshot().native_sampler, sampler);
+    assert_eq!(fixture.stats.snapshot().fused_sampler, sampler);
     assert_eq!(
         fixture.stats.snapshot().fused_state_only_batches,
         state_batches + 1
@@ -227,7 +227,7 @@ fn ragged_prefixes(fixture: &Fixture) {
     }
     assert_eq!(fixture.stats.snapshot().active, 0);
     assert!(fixture.stats.snapshot().fused_batches > 1);
-    assert!(fixture.stats.snapshot().native_sampler > 0);
+    assert!(fixture.stats.snapshot().fused_sampler > 0);
     drop(references);
     println!(
         "P12_NATIVE_PREFIX_WORKER_PASS rows={width} actual_teacher_EOS=true each_teacher_CPU_B1_all42=exact ragged_arrival=true no_prefix_Text_ID_Done_usage=true tail_fullV_packets_and_final_events=exact"
@@ -254,7 +254,7 @@ fn cancel_after_prefix_ready(fixture: &Fixture) {
     let model_tokens = fixture.stats.snapshot().model_tokens;
     let committed = fixture.stats.snapshot().committed_roots;
     let discarded = fixture.stats.snapshot().discarded_cohorts;
-    let sampler = fixture.stats.snapshot().native_sampler;
+    let sampler = fixture.stats.snapshot().fused_sampler;
     let output = fixture.stats.snapshot().output_tokens;
     AFTER_COHORT_READY.with(|slot| {
         *slot.borrow_mut() = Some(Box::new(move || {
@@ -296,7 +296,7 @@ fn cancel_after_prefix_ready(fixture: &Fixture) {
     );
     assert_eq!(fixture.stats.snapshot().committed_roots, committed + 1);
     assert_eq!(fixture.stats.snapshot().discarded_cohorts, discarded + 1);
-    assert_eq!(fixture.stats.snapshot().native_sampler, sampler);
+    assert_eq!(fixture.stats.snapshot().fused_sampler, sampler);
     assert_eq!(fixture.stats.snapshot().output_tokens, output);
     drop(left_saved);
     while survivor.cursor < survivor.prompt.len() {
@@ -355,13 +355,13 @@ fn parked_decode_does_not_block_prefix(fixture: &Fixture) {
     ]);
     let mut traces = BTreeMap::from([(left_id, left_trace), (right_id, right_trace)]);
     let mut references = BTreeMap::from([(decode_id, reference)]);
-    let sampler = fixture.stats.snapshot().native_sampler;
+    let sampler = fixture.stats.snapshot().fused_sampler;
     let cancelled_before = fixture.stats.snapshot().cancelled;
     let before = band_counts(&fixture.stats);
     let mut active = VecDeque::from([decode, left, right, cancelled]);
     teacher_round(&mut active, &fixture.stats);
     require_bands(&fixture.stats, before, &[2]);
-    assert_eq!(fixture.stats.snapshot().native_sampler, sampler);
+    assert_eq!(fixture.stats.snapshot().fused_sampler, sampler);
     assert_eq!(fixture.stats.snapshot().cancelled, cancelled_before + 1);
     let parked = active
         .iter()
@@ -416,7 +416,7 @@ fn parked_decode_does_not_block_prefix(fixture: &Fixture) {
 }
 
 fn qualify(name: &str, width: usize) {
-    let fixture = Fixture::with_native_rows(name, width);
+    let fixture = Fixture::with_cohort_width(name, width);
     ragged_prefixes(&fixture);
     cancel_after_prefix_ready(&fixture);
     parked_decode_does_not_block_prefix(&fixture);
@@ -426,7 +426,7 @@ fn qualify(name: &str, width: usize) {
             + fixture.stats.snapshot().fused_greedy_batches
     );
     assert_eq!(
-        fixture.stats.snapshot().native_sampler,
+        fixture.stats.snapshot().fused_sampler,
         4 * fixture.stats.snapshot().fused_greedy_batches
     );
     fixture.close();
@@ -440,9 +440,9 @@ macro_rules! case {
         }
     };
 }
-case!(original_qwen08b_native_prefix_b2_worker, "qwen35-0.8b", 2);
-case!(original_qwen08b_native_prefix_b4_worker, "qwen35-0.8b", 4);
-case!(original_qwen08b_native_prefix_b8_worker, "qwen35-0.8b", 8);
+case!(original_qwen800m_native_prefix_b2_worker, "qwen35-0.8b", 2);
+case!(original_qwen800m_native_prefix_b4_worker, "qwen35-0.8b", 4);
+case!(original_qwen800m_native_prefix_b8_worker, "qwen35-0.8b", 8);
 case!(original_qwen2b_native_prefix_b2_worker, "qwen35-2b", 2);
 case!(original_qwen2b_native_prefix_b4_worker, "qwen35-2b", 4);
 case!(original_qwen2b_native_prefix_b8_worker, "qwen35-2b", 8);

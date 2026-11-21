@@ -14,8 +14,7 @@ impl HostMath<'_, '_, '_> {
             ));
         };
         if self.region_kernel.is_some()
-            || self.source.program_numerical_profile()
-                != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+            || self.source.program_numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
         {
             return Err(Error::Unsupported(
                 "eager CPU attention provider/profile".into(),

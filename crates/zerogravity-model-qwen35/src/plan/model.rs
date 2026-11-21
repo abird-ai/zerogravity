@@ -6,14 +6,14 @@ use super::*;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QwenSourceCall {
     request: QwenGdnCall,
-    model_profile: QwenSourceProfile,
+    model_profile: QwenModelVariant,
 }
 impl QwenSourceCall {
     pub fn new(request: QwenGdnCall) -> Result<Self> {
-        Self::for_profile(QwenSourceProfile::Qwen08, request)
+        Self::for_profile(QwenModelVariant::Qwen800M, request)
     }
     /// Geometry metadata only; the original source owner must bind the profile.
-    pub fn for_profile(model_profile: QwenSourceProfile, request: QwenGdnCall) -> Result<Self> {
+    pub fn for_profile(model_profile: QwenModelVariant, request: QwenGdnCall) -> Result<Self> {
         request.reference_phase()?;
         Self::from_request(model_profile, request)
     }
@@ -24,10 +24,10 @@ impl QwenSourceCall {
                 "bounded prompt issuer requires its source-profile call".into(),
             ));
         }
-        Self::from_request(QwenSourceProfile::Qwen08, request)
+        Self::from_request(QwenModelVariant::Qwen800M, request)
     }
     pub(super) fn from_request(
-        model_profile: QwenSourceProfile,
+        model_profile: QwenModelVariant,
         request: QwenGdnCall,
     ) -> Result<Self> {
         request.validate()?;
@@ -46,7 +46,7 @@ impl QwenSourceCall {
             model_profile,
         })
     }
-    pub fn model_profile(&self) -> QwenSourceProfile {
+    pub fn model_profile(&self) -> QwenModelVariant {
         self.model_profile
     }
     pub fn request(&self) -> &QwenGdnCall {
@@ -133,8 +133,8 @@ impl QwenProjection {
             _ => 1024,
         }
     }
-    fn members_for_profile(self, profile: QwenSourceProfile) -> &'static [(&'static str, usize)] {
-        if profile == QwenSourceProfile::Qwen08 {
+    fn members_for_profile(self, profile: QwenModelVariant) -> &'static [(&'static str, usize)] {
+        if profile == QwenModelVariant::Qwen800M {
             return self.members();
         }
         match self {
@@ -513,7 +513,7 @@ pub(super) fn precision(
     d.validate()?;
     if builder.model_call.as_ref() != Some(&d.call)
         || builder.operator_slice
-        || builder.profile != ProgramNumericalProfile::SourceCudaSm86Bf16V1
+        || builder.profile != NumericalProfile::CudaSm86Bf16ReferenceV1
         || builder.source != d.call.source()
         || inputs.len() != d.input_elements().len()
     {
@@ -903,7 +903,7 @@ fn all_domains() -> Result<Vec<StateSlot>> {
 }
 impl QwenPlanBuilder {
     pub fn new_small_model(call: QwenSourceCall) -> Result<Self> {
-        if call.model_profile() != QwenSourceProfile::Qwen08 {
+        if call.model_profile() != QwenModelVariant::Qwen800M {
             return Err(Error::Unsupported(
                 "original .8B builder constructor profile".into(),
             ));
@@ -930,7 +930,7 @@ impl QwenPlanBuilder {
         if self
             .model_call
             .as_ref()
-            .is_some_and(|call| call.model_profile() != QwenSourceProfile::Qwen08)
+            .is_some_and(|call| call.model_profile() != QwenModelVariant::Qwen800M)
         {
             return Err(Error::Unsupported(
                 "original .8B finish constructor profile".into(),

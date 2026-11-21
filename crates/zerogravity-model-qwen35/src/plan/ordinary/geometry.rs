@@ -1,5 +1,5 @@
 //! Source-derived ordinary geometry, independent of finite captured recipes.
-use super::QwenSourceProfile;
+use super::QwenModelVariant;
 use crate::config::{Family, LayerKind};
 use crate::source::safetensors::{GdnOutputGate, QwenTextConfig};
 use crate::{Error, Result};
@@ -116,8 +116,8 @@ impl OrdinaryQwenGeometry {
     }
 }
 
-impl From<QwenSourceProfile> for OrdinaryQwenGeometry {
-    fn from(profile: QwenSourceProfile) -> Self {
+impl From<QwenModelVariant> for OrdinaryQwenGeometry {
+    fn from(profile: QwenModelVariant) -> Self {
         Self {
             hidden: profile.hidden_size(),
             intermediate: profile.intermediate_size(),
@@ -131,10 +131,10 @@ impl From<QwenSourceProfile> for OrdinaryQwenGeometry {
     }
 }
 
-impl TryFrom<OrdinaryQwenGeometry> for QwenSourceProfile {
+impl TryFrom<OrdinaryQwenGeometry> for QwenModelVariant {
     type Error = Error;
     fn try_from(geometry: OrdinaryQwenGeometry) -> Result<Self> {
-        [Self::Qwen08, Self::Qwen2B]
+        [Self::Qwen800M, Self::Qwen2B]
             .into_iter()
             .find(|profile| OrdinaryQwenGeometry::from(*profile) == geometry)
             .ok_or_else(|| {

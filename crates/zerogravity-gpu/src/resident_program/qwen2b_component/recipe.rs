@@ -10,19 +10,19 @@ pub(super) const VALUE_END: usize = 7;
 // Explicit physical catalogue identity. Never selected from matching geometry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ComponentKind {
-    Qwen2b,
+    Qwen2B,
     FixedPrompt(crate::cuda::gdn::FixedPromptGdnArithmetic),
 }
 impl ComponentKind {
     pub(crate) fn columns(self) -> usize {
         match self {
-            Self::Qwen2b => 2048,
+            Self::Qwen2B => 2048,
             Self::FixedPrompt(_) => 1024,
         }
     }
     pub(crate) fn require_call(self, call: &SourceCall) -> Result<()> {
         let valid = match self {
-            Self::Qwen2b => matches!(call.rows().len(), 1 | 64),
+            Self::Qwen2B => matches!(call.rows().len(), 1 | 64),
             Self::FixedPrompt(arithmetic) => {
                 arithmetic.require_owned()?;
                 call.rows().len() == 47
@@ -51,41 +51,41 @@ pub(crate) enum ComponentCut {
     Gated,
     PostAttention,
     Mlp,
-    Qwen2bMlp,
+    Qwen2BMlp,
 }
 impl ComponentCut {
     pub(crate) fn includes_post_attention(self) -> bool {
-        matches!(self, Self::PostAttention | Self::Mlp | Self::Qwen2bMlp)
+        matches!(self, Self::PostAttention | Self::Mlp | Self::Qwen2BMlp)
     }
     pub(crate) fn includes_mlp(self) -> bool {
-        matches!(self, Self::Mlp | Self::Qwen2bMlp)
+        matches!(self, Self::Mlp | Self::Qwen2BMlp)
     }
     pub(crate) fn node_end(self) -> usize {
         match self {
             Self::Gated => NODE_END,
             Self::PostAttention => 8,
-            Self::Mlp | Self::Qwen2bMlp => 11,
+            Self::Mlp | Self::Qwen2BMlp => 11,
         }
     }
     pub(crate) fn value_end(self) -> usize {
         match self {
             Self::Gated => VALUE_END,
             Self::PostAttention => 10,
-            Self::Mlp | Self::Qwen2bMlp => 13,
+            Self::Mlp | Self::Qwen2BMlp => 13,
         }
     }
     pub(crate) fn provider_bytes(self) -> usize {
         match self {
             Self::Gated => super::PROVIDER_BYTES,
             Self::PostAttention | Self::Mlp => super::POST_ATTENTION_PROVIDER_BYTES,
-            Self::Qwen2bMlp => super::QWEN2B_MLP_PROVIDER_BYTES,
+            Self::Qwen2BMlp => super::QWEN2B_MLP_PROVIDER_BYTES,
         }
     }
 }
 pub struct ComponentRecipe {
     cut: ComponentCut,
     kind: ComponentKind,
-    qwen2b_arithmetic: Option<crate::cuda::gdn::Qwen2bGdnArithmetic>,
+    qwen2b_arithmetic: Option<crate::cuda::gdn::Qwen2BGdnArithmetic>,
     bindings: Arc<SourceBindings>,
     record_admission: Option<Arc<WindowWorkspace>>,
     _metadata: WindowWorkspace,
@@ -115,9 +115,9 @@ impl ComponentRecipe {
     ) -> Result<Arc<Self>> {
         let (kind, qwen2b_arithmetic) = match recipe_sha256 {
             REFERENCE_2B_CAPTURE => (
-                ComponentKind::Qwen2b,
+                ComponentKind::Qwen2B,
                 explicit_owned
-                    .then_some(crate::cuda::gdn::Qwen2bGdnArithmetic::OwnedSolve4Recompute3),
+                    .then_some(crate::cuda::gdn::Qwen2BGdnArithmetic::OwnedSolve4Recompute3),
             ),
             FIXED_PROMPT_CAPTURE if !explicit_owned => (
                 ComponentKind::FixedPrompt(
@@ -134,7 +134,7 @@ impl ComponentRecipe {
         let cut = match (output, kind) {
             (ComponentOutput::Gated, _) => ComponentCut::Gated,
             (ComponentOutput::PostAttention, _) => ComponentCut::PostAttention,
-            (ComponentOutput::Mlp, ComponentKind::Qwen2b) => ComponentCut::Qwen2bMlp,
+            (ComponentOutput::Mlp, ComponentKind::Qwen2B) => ComponentCut::Qwen2BMlp,
             (ComponentOutput::Mlp, ComponentKind::FixedPrompt(_)) => ComponentCut::Mlp,
         };
         kind.require_call(bindings.call())?;
@@ -150,14 +150,14 @@ impl ComponentRecipe {
             })?;
         }
         match (cut, record_admission.as_ref()) {
-            (ComponentCut::Qwen2bMlp, Some(ticket))
+            (ComponentCut::Qwen2BMlp, Some(ticket))
                 if qwen2b_arithmetic.is_some()
                     && ticket.bytes() == 32 * 1024 * 1024
                     && ticket.source().same_issuer(bindings.source())
                     && bindings
                         .source_record_admission()
                         .is_some_and(|retained| Arc::ptr_eq(ticket, retained)) => {}
-            (ComponentCut::Qwen2bMlp, _) => {
+            (ComponentCut::Qwen2BMlp, _) => {
                 return Err(Error::State(
                     "same owned component32MiB record admission required".into(),
                 ));
@@ -201,8 +201,7 @@ impl ComponentRecipe {
             };
             descriptor.validate()?;
             if descriptor.call() != call
-                || descriptor.numerical_contract()
-                    != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+                || descriptor.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
             {
                 return Err(Error::State(
                     "component foreign actual operator/call/contract".into(),
@@ -268,7 +267,7 @@ impl ComponentRecipe {
         if cut.includes_mlp() {
             widths.extend(match cut {
                 ComponentCut::Mlp => [7168, 3584, 1024],
-                ComponentCut::Qwen2bMlp => [12288, 6144, 2048],
+                ComponentCut::Qwen2BMlp => [12288, 6144, 2048],
                 _ => return Err(Error::State("component MLP extent".into())),
             });
         }
@@ -293,7 +292,7 @@ impl ComponentRecipe {
         }))
     }
     pub(crate) fn qwen2b_mlp_record_admission_retained(&self) -> bool {
-        self.cut == ComponentCut::Qwen2bMlp
+        self.cut == ComponentCut::Qwen2BMlp
             && self.record_admission.as_ref().is_some_and(|ticket| {
                 ticket.bytes() == 32 * 1024 * 1024
                     && ticket.source().same_issuer(self.source())
@@ -303,7 +302,7 @@ impl ComponentRecipe {
                         .is_some_and(|retained| Arc::ptr_eq(ticket, retained))
             })
     }
-    pub(crate) fn qwen2b_arithmetic(&self) -> Option<crate::cuda::gdn::Qwen2bGdnArithmetic> {
+    pub(crate) fn qwen2b_arithmetic(&self) -> Option<crate::cuda::gdn::Qwen2BGdnArithmetic> {
         self.qwen2b_arithmetic
     }
     pub(crate) fn cut(&self) -> ComponentCut {

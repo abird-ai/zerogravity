@@ -129,7 +129,7 @@ impl Model {
     pub fn source_identity(&self) -> crate::identity::SourceIdentity {
         self.templates.source().source().source_identity()
     }
-    pub fn source_profile(&self) -> crate::qwen35::plan::QwenSourceProfile {
+    pub fn source_profile(&self) -> crate::qwen35::plan::QwenModelVariant {
         self.templates.source().model_profile()
     }
     pub async fn shutdown(
@@ -337,7 +337,7 @@ pub struct RouteMetadata {
     pub provider_bytes: usize,
     /// Selected finite CUDA HOST requirement, distinct from provider/device.
     pub host_bytes: usize,
-    profile: crate::qwen35::plan::QwenSourceProfile,
+    profile: crate::qwen35::plan::QwenModelVariant,
 }
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub fn inspect_route(directory: &Path, native_directory: &Path) -> Result<RouteMetadata> {
@@ -675,8 +675,8 @@ mod b4_inventory_tests {
             let limit = zerogravity_core::optimization::MemoryFootprint {
                 host_bytes: opened.source.source().workspace_limit_bytes()?,
                 device_bytes: (match bound.model_profile() {
-                    crate::qwen35::plan::QwenSourceProfile::Qwen08 => 4096,
-                    crate::qwen35::plan::QwenSourceProfile::Qwen2B => 4608,
+                    crate::qwen35::plan::QwenModelVariant::Qwen800M => 4096,
+                    crate::qwen35::plan::QwenModelVariant::Qwen2B => 4608,
                 } * MIB) as u64,
             };
             // Keep actual Ok/Err from the existing cost inspection; only this
@@ -704,13 +704,13 @@ mod b4_inventory_tests {
                 Err(error) => return Ok(SourceCostOutcome::Refused(error)),
             };
             let provider = match bound.model_profile() {
-                crate::qwen35::plan::QwenSourceProfile::Qwen08 => 4096,
-                crate::qwen35::plan::QwenSourceProfile::Qwen2B => 4608,
+                crate::qwen35::plan::QwenModelVariant::Qwen800M => 4096,
+                crate::qwen35::plan::QwenModelVariant::Qwen2B => 4608,
             };
             let (roots, cohort_values) = if cohort_b4 {
                 match bound.model_profile() {
-                    crate::qwen35::plan::QwenSourceProfile::Qwen08 => (22, 316_002_304),
-                    crate::qwen35::plan::QwenSourceProfile::Qwen2B => (18, 11_342_848),
+                    crate::qwen35::plan::QwenModelVariant::Qwen800M => (22, 316_002_304),
+                    crate::qwen35::plan::QwenModelVariant::Qwen2B => (18, 11_342_848),
                 }
             } else {
                 (14, 0)

@@ -21,11 +21,11 @@ impl OrdinaryCudaGemm {
     pub(super) fn prepare(
         service: Arc<ResidentService>,
         source: &VerifiedTensorSource,
-        native_rows: usize,
+        cohort_width: usize,
         geometry: crate::cuda::ordinary_text::Geometry,
     ) -> Result<Arc<Self>> {
         service.ensure_usable()?;
-        if !matches!(native_rows, 0 | 4 | 8) {
+        if !matches!(cohort_width, 0 | 4 | 8) {
             return Err(Error::Unsupported(
                 "ordinary CUDA native decode rows must be zero, four or eight".into(),
             ));
@@ -57,7 +57,7 @@ impl OrdinaryCudaGemm {
         // Shared attention code uses the same admitted compiler/context owner.
         crate::cuda::bf16_attention::Bf16CausalAttention::new(1, 0, 1, 8, 2, 256, 0.0625)?
             .prepare_code(service.pinned_cuda_queue()?)?;
-        if matches!(native_rows, 4 | 8) {
+        if matches!(cohort_width, 4 | 8) {
             for terms in [256, 512] {
                 for rows in [2, 4] {
                     Bf16Gemm::with_reduction_input_layout_certified(
@@ -69,7 +69,7 @@ impl OrdinaryCudaGemm {
                     )?
                     .prepare_code(service.pinned_cuda_queue()?)?;
                 }
-                if native_rows == 8 {
+                if cohort_width == 8 {
                     Bf16Gemm::with_reduction_input_layout_certified(
                         64,
                         8,
@@ -102,7 +102,7 @@ impl OrdinaryCudaGemm {
                 },
             )?
             .prepare_code(service.pinned_cuda_queue()?)?;
-            if native_rows == 8 {
+            if cohort_width == 8 {
                 Bf16Gemm::with_reduction_certified(64, 8, 2048, Bf16GemmReduction::Ordered)?
                     .prepare_code(service.pinned_cuda_queue()?)?;
                 Bf16Gemm::with_reduction_certified(

@@ -1,7 +1,7 @@
 //! Complete logical owners and aligned device bytes; no allocation permit.
 use super::*;
 use zerogravity_core::accelerator::program::{
-    ActivationPrecision, ProgramNumericalProfile, ValueStorageBinding, ValueStorageLimits,
+    ActivationPrecision, NumericalProfile, ValueStorageBinding, ValueStorageLimits,
     ValueStorageRetention, ValueStorageReusePolicy,
 };
 
@@ -103,7 +103,7 @@ impl Layout {
     ) -> Result<Self> {
         let selection = storage::Selection::derive(recorded, storage)?;
         let p = recorded.plan();
-        if p.numerical_profile() != ProgramNumericalProfile::DirectGammaBf16TextCandidateV1
+        if p.numerical_profile() != NumericalProfile::DirectGammaBf16TextCandidateV1
             || p.is_operator_slice()
             || p.prefix_capacity() != 64
             || p.frontier_delta() != 1

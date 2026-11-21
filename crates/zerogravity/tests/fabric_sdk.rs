@@ -12,7 +12,7 @@ mod qwen_source_http;
 fn qwen_cuda_native_runtime(paged: bool) -> Runtime {
     use zerogravity::{
         cache::CacheOptions,
-        models::{ModelLoadRequest, QwenCudaStatePolicy, QwenSourceProfile},
+        models::{ModelLoadRequest, QwenCudaStatePolicy, QwenServingProfile},
         runtime::SchedulerLimits,
     };
     const MIB: usize = 1024 * 1024;
@@ -26,12 +26,12 @@ fn qwen_cuda_native_runtime(paged: bool) -> Runtime {
         })
         .build()
         .unwrap();
-    let profile = QwenSourceProfile {
+    let profile = QwenServingProfile {
         active: 8,
         context: 512,
         output: 3,
         max_pending: Some(16),
-        native_rows: 0,
+        cohort_width: 0,
     };
     let load = if paged {
         ModelLoadRequest::QwenCudaWithStatePolicy {
@@ -64,7 +64,7 @@ fn qwen_cuda_native_runtime(paged: bool) -> Runtime {
 fn qwen_cuda_context_runtime(model: &str, context: usize, output: usize) -> Runtime {
     use zerogravity::{
         cache::CacheOptions,
-        models::{ModelLoadRequest, QwenCudaStatePolicy, QwenSourceProfile},
+        models::{ModelLoadRequest, QwenCudaStatePolicy, QwenServingProfile},
         runtime::SchedulerLimits,
     };
     const MIB: usize = 1024 * 1024;
@@ -84,12 +84,12 @@ fn qwen_cuda_context_runtime(model: &str, context: usize, output: usize) -> Runt
         })
         .build()
         .unwrap();
-    let profile = QwenSourceProfile {
+    let profile = QwenServingProfile {
         active: 1,
         context,
         output,
         max_pending: Some(1),
-        native_rows: 0,
+        cohort_width: 0,
     };
     let request = if std::env::var_os("ZG_QWEN_CUDA_PAGED").is_some() {
         ModelLoadRequest::QwenCudaWithStatePolicy {
@@ -208,7 +208,7 @@ fn qwen_cuda_populated_context_sdk_replays() {
                 ResponseEvent::TokenText { token, .. } => {
                     let gpu = token.gpu.expect("populated CUDA token GPU metadata");
                     assert_eq!(gpu.producer_frontier, (prompt_tokens + ids.len()) as u64);
-                    assert!(gpu.native_cohort.is_none());
+                    assert!(gpu.fused_cohort.is_none());
                     roots.push(gpu.producer_root.expect("populated CUDA producer root"));
                     ids.push(token.id);
                 }
@@ -290,7 +290,7 @@ fn qwen_cuda_paged_native_sdk_matches_contiguous() {
                         .expect("paged SDK response deadline")
                     {
                         ResponseEvent::TokenText { token, .. } => {
-                            if let Some(cohort) = token.gpu.and_then(|gpu| gpu.native_cohort) {
+                            if let Some(cohort) = token.gpu.and_then(|gpu| gpu.fused_cohort) {
                                 cohort_widths.insert(cohort.width);
                             }
                             token_commit_ms[ids.len()] += token
@@ -419,7 +419,7 @@ fn qwen_cuda_paged_native_http_matches_contiguous() {
                 .as_array()
                 .unwrap()
             {
-                if let Some(width) = token["gpu"]["native_cohort"]["width"].as_u64() {
+                if let Some(width) = token["gpu"]["fused_cohort"]["width"].as_u64() {
                     cohort_widths.insert(width as usize);
                 }
             }
@@ -455,7 +455,7 @@ fn qwen_cuda_paged_scoped_http_skips_replay() {
     };
     use zerogravity::{
         cache::CacheOptions,
-        models::{ModelLoadRequest, QwenCudaStatePolicy, QwenSourceProfile},
+        models::{ModelLoadRequest, QwenCudaStatePolicy, QwenServingProfile},
         runtime::{PrefixSharingScope, SchedulerLimits},
     };
 
@@ -476,12 +476,12 @@ fn qwen_cuda_paged_scoped_http_skips_replay() {
             aliases: vec!["source".into()],
             cache: CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
             snapshot: SNAPSHOT.into(),
-            profile: QwenSourceProfile {
+            profile: QwenServingProfile {
                 active: 2,
                 context: 512,
                 output: 1,
                 max_pending: Some(4),
-                native_rows: 0,
+                cohort_width: 0,
             },
             provider_bytes: 4608 * MIB,
             device_bytes: 5120 * MIB as u64,
@@ -595,19 +595,19 @@ fn qwen_cuda_paged_scoped_http_skips_replay() {
 fn canonical_hip_registration_checks_runtime_limits_and_aliases_before_source_io() {
     use zerogravity::{
         cache::CacheOptions,
-        models::{ModelLoadRequest, QwenHipProfile},
+        models::{ModelLoadRequest, QwenServingProfile},
     };
     let runtime = Runtime::builder().build().unwrap();
     let request = |active, aliases| ModelLoadRequest::QwenHip {
         aliases,
         cache: CacheOptions::new(Some("/source-not-opened".into()), 96 * 1024 * 1024 * 1024),
         snapshot: "88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52".into(),
-        profile: QwenHipProfile {
+        profile: QwenServingProfile {
             active,
             context: 514,
             output: 2,
             max_pending: Some(1),
-            native_rows: 0,
+            cohort_width: 0,
         },
     };
     let error = runtime
@@ -691,7 +691,7 @@ fn ordinary_gpu_sdk_obeys_runtime_limits_and_close_before_source_or_device_looku
         output: 1,
         provider_mib: 256,
         device_mib: 256,
-        native_rows: 0,
+        cohort_width: 0,
         host_mib: 256,
         max_pending: Some(1),
     };

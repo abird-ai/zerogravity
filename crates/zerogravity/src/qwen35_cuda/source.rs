@@ -179,9 +179,9 @@ pub(super) fn route_metadata(directory: &Path) -> Result<super::RouteMetadata> {
         },
         host_bytes: 8192 * MIB,
         profile: if spec.family == "0.8b" {
-            crate::qwen35::plan::QwenSourceProfile::Qwen08
+            crate::qwen35::plan::QwenModelVariant::Qwen800M
         } else {
-            crate::qwen35::plan::QwenSourceProfile::Qwen2B
+            crate::qwen35::plan::QwenModelVariant::Qwen2B
         },
     })
 }

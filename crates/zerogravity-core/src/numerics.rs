@@ -27,12 +27,12 @@ impl ActivationPrecision {
 
 /// Reserved program contract, not inference support or a backend-global dtype.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum ProgramNumericalProfile {
+pub enum NumericalProfile {
     #[default]
-    GgufSourceV1,
-    TorchCpuBf16Avx2MixedSourceV1,
+    GgufReferenceV1,
+    TorchCpuAvx2Bf16MixedV1,
     /// Prior name: Vllm031CudaSm86Bf16SourceV1. Arithmetic unchanged; no eligibility.
-    SourceCudaSm86Bf16V1,
+    CudaSm86Bf16ReferenceV1,
     /// Bounded mathematical text reference; no trained/framework parity grant.
     AnalyticF32TextV1,
     /// Prior name: Gemma4E2bBf16TextCandidateV1. Direct gamma; no qualification.
@@ -52,31 +52,29 @@ pub enum ProjectionContract {
 
 /// Exact historical arithmetic identity, independent of a model's source roles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SourceNumericalContract {
+pub enum NumericalContract {
     // Prior arithmetic name: Vllm031CudaSm86Bf16V1.
-    ReferenceCudaSm86Bf16V1,
+    CudaSm86Bf16ReferenceV1,
     /// Original Torch CPU AVX2 BF16/mixed parameters and normal-domain MKL exp.
     /// A mathematical identity, not CPU/HIP execution eligibility.
-    TorchCpuBf16Avx2MixedSourceV1,
-    GgmlSourceF32V1,
+    TorchCpuAvx2Bf16MixedV1,
+    GgmlF32V1,
     GgmlQ4Repack8x8F32V1,
     OpenBlas033Zen16Q8F32V1,
 }
-impl SourceNumericalContract {
+impl NumericalContract {
     pub fn is_f32(self) -> bool {
         matches!(
             self,
-            Self::GgmlSourceF32V1 | Self::GgmlQ4Repack8x8F32V1 | Self::OpenBlas033Zen16Q8F32V1
+            Self::GgmlF32V1 | Self::GgmlQ4Repack8x8F32V1 | Self::OpenBlas033Zen16Q8F32V1
         )
     }
-    pub fn program_profile(self) -> ProgramNumericalProfile {
+    pub fn program_profile(self) -> NumericalProfile {
         match self {
-            Self::ReferenceCudaSm86Bf16V1 => ProgramNumericalProfile::SourceCudaSm86Bf16V1,
-            Self::TorchCpuBf16Avx2MixedSourceV1 => {
-                ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
-            }
-            Self::GgmlSourceF32V1 | Self::GgmlQ4Repack8x8F32V1 | Self::OpenBlas033Zen16Q8F32V1 => {
-                ProgramNumericalProfile::GgufSourceV1
+            Self::CudaSm86Bf16ReferenceV1 => NumericalProfile::CudaSm86Bf16ReferenceV1,
+            Self::TorchCpuAvx2Bf16MixedV1 => NumericalProfile::TorchCpuAvx2Bf16MixedV1,
+            Self::GgmlF32V1 | Self::GgmlQ4Repack8x8F32V1 | Self::OpenBlas033Zen16Q8F32V1 => {
+                NumericalProfile::GgufReferenceV1
             }
         }
     }

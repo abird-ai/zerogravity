@@ -43,7 +43,7 @@ impl CudaServer {
                 | CubinSetPolicy::Text2BCachedCohort4
                 | CubinSetPolicy::FirstAttentionCaptured
                 | CubinSetPolicy::FirstAttentionComputedGate
-                | CubinSetPolicy::FullQwen08
+                | CubinSetPolicy::FullQwen800M
                 | CubinSetPolicy::FixedPromptNatural
         ) {
             return Err(failure("attention copy outside exact captured-leaf set"));

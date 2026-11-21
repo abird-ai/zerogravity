@@ -22,7 +22,7 @@ impl ResidentProgram {
             return Ok(None);
         }
         if self.plan.numerical_profile()
-            != zerogravity_core::accelerator::program::ProgramNumericalProfile::GgufSourceV1
+            != zerogravity_core::accelerator::program::NumericalProfile::GgufReferenceV1
             || self.plan.is_operator_slice()
         {
             return Err(Error::Unsupported(

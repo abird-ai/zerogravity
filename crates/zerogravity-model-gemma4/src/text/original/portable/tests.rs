@@ -85,7 +85,7 @@ fn complete35_uses_same_forward_all15_states_and_explicit_bf16_contract() {
     let p = record(&f).unwrap();
     assert_eq!(
         p.numerical_profile(),
-        ProgramNumericalProfile::DirectGammaBf16TextCandidateV1
+        NumericalProfile::DirectGammaBf16TextCandidateV1
     );
     assert_eq!(p.frontier_delta(), 1);
     assert_eq!(

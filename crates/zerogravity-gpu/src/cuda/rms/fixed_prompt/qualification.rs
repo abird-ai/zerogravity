@@ -214,7 +214,7 @@ pub async fn qualify_fixed_prompt_rms(
     let service = ResidentService::new_pinned_cuda(
         device,
         owner.source.source().source_identity(),
-        ResourceOwner::new("qwen08-cuda-source", "fixed_prompt-rms-leaves")?,
+        ResourceOwner::new("qwen800m-cuda-source", "fixed_prompt-rms-leaves")?,
         PROVIDER,
         device_cap,
     )?;

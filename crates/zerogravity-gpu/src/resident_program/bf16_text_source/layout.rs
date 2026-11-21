@@ -1,7 +1,7 @@
 //! Typed source-record storage, with a separately guarded finite adapter.
 use super::*;
 use zerogravity_core::accelerator::program::{
-    ProgramNumericalProfile, SourceParameter, StandaloneExpProfile, ValueStorageBinding,
+    NumericalProfile, SourceParameter, StandaloneExpProfile, ValueStorageBinding,
     ValueStorageLimits, ValueStorageRetention, ValueStorageReusePolicy,
 };
 
@@ -56,7 +56,7 @@ pub(super) fn sum(values: impl IntoIterator<Item = usize>) -> Result<usize> {
 impl Layout {
     pub(super) fn require_source_record(recorded: &TextStepBindings) -> Result<()> {
         let p = recorded.plan();
-        if p.numerical_profile() != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+        if p.numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
             || p.standalone_exp_profile() != Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1)
             || p.is_operator_slice()
             || !(1..=64).contains(&recorded.capacity())
@@ -77,7 +77,7 @@ impl Layout {
     }
     pub(super) fn require_record(recorded: &TextStepBindings) -> Result<()> {
         let plan = recorded.plan();
-        if plan.numerical_profile() != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+        if plan.numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
             || plan.standalone_exp_profile()
                 != Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1)
             || plan.is_operator_slice()

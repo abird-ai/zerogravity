@@ -65,7 +65,7 @@ fn finite_union_has_exact_capacity_and_preserves_existing_scopes() {
         );
     }
     assert!(
-        super::super::policy::CubinSetPolicy::ConnectedQwen08
+        super::super::policy::CubinSetPolicy::ConnectedQwen800M
             .limits(7, 12, 20, false, false)
             .is_ok()
     );

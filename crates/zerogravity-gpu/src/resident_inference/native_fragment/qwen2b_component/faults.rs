@@ -6,14 +6,14 @@ use zerogravity_core::device_events::BufferLeaseId;
 use zerogravity_core::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Qwen2bGdnComponentFault {
+pub enum Qwen2BGdnComponentFault {
     AdmissionPressure,
     UnknownAfterConvolution,
     CancelBeforeRecurrent,
 }
 #[derive(Clone, Debug)]
-pub struct Qwen2bGdnComponentFaultOutcome {
-    pub fault: Qwen2bGdnComponentFault,
+pub struct Qwen2BGdnComponentFaultOutcome {
+    pub fault: Qwen2BGdnComponentFault,
     pub status: &'static str,
     pub native_launches: usize,
     pub submitted_buffers: usize,
@@ -74,7 +74,7 @@ impl Probe {
         });
         Ok(())
     }
-    fn inspect(&self, fault: Qwen2bGdnComponentFault) -> Result<Qwen2bGdnComponentFaultOutcome> {
+    fn inspect(&self, fault: Qwen2BGdnComponentFault) -> Result<Qwen2BGdnComponentFaultOutcome> {
         let guard = self
             .0
             .lock()
@@ -130,7 +130,7 @@ impl Probe {
                     .into(),
             ));
         }
-        Ok(Qwen2bGdnComponentFaultOutcome {
+        Ok(Qwen2BGdnComponentFaultOutcome {
             fault,
             status: "UNKNOWN_RETAINED",
             native_launches: body.native_launches(),
@@ -151,7 +151,7 @@ impl Probe {
         })
     }
 }
-pub(super) fn pressure(service: Arc<ResidentService>) -> Result<Qwen2bGdnComponentFaultOutcome> {
+pub(super) fn pressure(service: Arc<ResidentService>) -> Result<Qwen2BGdnComponentFaultOutcome> {
     let key = service.physical_key();
     if !matches!(service.allocate_uninitialized(PROVIDER_BYTES+1,BufferRole::Scratch),
         Err(Error::Limit(ref s)) if s=="resident plus opaque provider budget exceeded")
@@ -170,8 +170,8 @@ pub(super) fn pressure(service: Arc<ResidentService>) -> Result<Qwen2bGdnCompone
             "source2B cold pressure envelope retained".into(),
         ));
     }
-    Ok(Qwen2bGdnComponentFaultOutcome {
-        fault: Qwen2bGdnComponentFault::AdmissionPressure,
+    Ok(Qwen2BGdnComponentFaultOutcome {
+        fault: Qwen2BGdnComponentFault::AdmissionPressure,
         status: "PRESSURE_REFUSED_BEFORE_ALLOCATION",
         native_launches: 0,
         submitted_buffers: 0,
@@ -194,9 +194,9 @@ pub async fn qualify_qwen2b_gdn_component_fault(
     device: Device,
     recipe: Arc<ComponentRecipe>,
     inputs: CubinQualificationInputs,
-    fault: Qwen2bGdnComponentFault,
+    fault: Qwen2BGdnComponentFault,
     cancelled: Option<&AtomicBool>,
-) -> Result<Qwen2bGdnComponentFaultOutcome> {
+) -> Result<Qwen2BGdnComponentFaultOutcome> {
     let probe = Probe::default();
     let result = run(
         device,

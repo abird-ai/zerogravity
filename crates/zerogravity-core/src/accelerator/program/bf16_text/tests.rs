@@ -152,7 +152,7 @@ fn explicit_direct_gamma_contract_keeps_precision_and_foreign_value_guards() {
     assert_eq!(n.precision(), ActivationPrecision::Bf16WidenedF32);
     assert_eq!(b.constants[0].values[0].to_bits(), 0); // direct zero, never1+gamma
     assert!(
-        OrdinaryRmsContract::TorchCpuBf16Avx2
+        RmsContract::TorchCpuBf16Avx2
             .validate(
                 &SourceParameter {
                     source,
@@ -180,18 +180,15 @@ fn explicit_direct_gamma_contract_keeps_precision_and_foreign_value_guards() {
         .is_err()
     );
     assert!(
-        PlanBuilder::new_operator_slice(
-            source,
-            ProgramNumericalProfile::DirectGammaBf16TextCandidateV1
-        )
-        .is_err()
+        PlanBuilder::new_operator_slice(source, NumericalProfile::DirectGammaBf16TextCandidateV1)
+            .is_err()
     );
     let mut analytic = PlanBuilder::new_with_profile(
         source,
         64,
         vec![StateSlot::Kv(KvDomain(0))],
         false,
-        ProgramNumericalProfile::AnalyticF32TextV1,
+        NumericalProfile::AnalyticF32TextV1,
     )
     .unwrap();
     let a = analytic
@@ -226,7 +223,7 @@ fn explicit_contract_refuses_missing_policy_duplicate_domains_and_malformed_geom
             8,
             contract().required_domains,
             true,
-            ProgramNumericalProfile::DirectGammaBf16TextCandidateV1
+            NumericalProfile::DirectGammaBf16TextCandidateV1
         )
         .is_err()
     );

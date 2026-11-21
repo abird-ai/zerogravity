@@ -440,7 +440,7 @@ pub async fn selector_fixtures(
         per_row_cases=5 tile_boundary_ties=first_ID signed_zero_subnormal_dense_bits=exact \
         genuine_tokenizer_EOS_winner=row_private packet_alias=refused \
         one_row_nonfinite=all_rows_invalid preexisting_status=preserved_all_rows_invalid \
-        native_sampler_dispatches_per_case=4 private_packet_transport_dispatches_per_case={count} \
+        fused_sampler_dispatches_per_case=4 private_packet_transport_dispatches_per_case={count} \
         published_roots=0 trained_model_EOS_stop=not_claimed"
     );
     Ok(())

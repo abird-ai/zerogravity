@@ -4,10 +4,10 @@ use zerogravity_core::accelerator::program::*;
 use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_model_qwen35::plan::QwenPlanBuilder;
 use zerogravity_model_qwen35::plan::{
-    PromptCall, PromptSpan, PromptWorkload, QwenEmbedding, QwenLayer, QwenOperation, QwenOperator,
-    QwenPlan, QwenProjection, QwenRmsSite, QwenSourceCall, QwenSourceProfile,
+    PromptCall, PromptSpan, PromptWorkload, QwenEmbedding, QwenLayer, QwenModelVariant,
+    QwenOperation, QwenOperator, QwenPlan, QwenProjection, QwenRmsSite, QwenSourceCall,
 };
-fn members(p: QwenProjection, profile: QwenSourceProfile) -> Vec<(&'static str, usize)> {
+fn members(p: QwenProjection, profile: QwenModelVariant) -> Vec<(&'static str, usize)> {
     match p {
         QwenProjection::Qkvz => vec![
             ("linear_attn.in_proj_qkv.weight", 6144),
@@ -34,7 +34,7 @@ fn members(p: QwenProjection, profile: QwenSourceProfile) -> Vec<(&'static str, 
 }
 pub(super) fn call(
     source: SourceIdentity,
-    profile: QwenSourceProfile,
+    profile: QwenModelVariant,
     workload: PromptWorkload,
     base: Option<usize>,
     id: u32,

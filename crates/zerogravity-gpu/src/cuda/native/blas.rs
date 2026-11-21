@@ -53,15 +53,15 @@ pub(super) fn source_weights(source: &VerifiedTensorSource) -> Result<OriginalPr
 pub(super) fn operation(rows: usize, projection: usize) -> ObservedBf16Gemm {
     use ObservedBf16Gemm::*;
     match (rows, projection) {
-        (1, 0) => Qwen08Layer0QkvzDecode,
-        (1, 1) => Qwen08Layer0BaDecode,
-        (1, _) => Qwen08Layer0OutProjectionDecode,
-        (64, 0) => Qwen08Layer0QkvzPrefill,
-        (64, 1) => Qwen08Layer0BaPrefill,
-        (64, _) => Qwen08Layer0OutProjectionPrefill,
-        (2, 0) => Qwen08Layer0QkvzContinuedPrefill,
-        (2, 1) => Qwen08Layer0BaContinuedPrefill,
-        (2, _) => Qwen08Layer0OutProjectionContinuedPrefill,
+        (1, 0) => Qwen800MLayer0QkvzDecode,
+        (1, 1) => Qwen800MLayer0BaDecode,
+        (1, _) => Qwen800MLayer0OutProjectionDecode,
+        (64, 0) => Qwen800MLayer0QkvzPrefill,
+        (64, 1) => Qwen800MLayer0BaPrefill,
+        (64, _) => Qwen800MLayer0OutProjectionPrefill,
+        (2, 0) => Qwen800MLayer0QkvzContinuedPrefill,
+        (2, 1) => Qwen800MLayer0BaContinuedPrefill,
+        (2, _) => Qwen800MLayer0OutProjectionContinuedPrefill,
         _ => unreachable!("closed observed rows"),
     }
 }
@@ -114,7 +114,7 @@ pub async fn qualify_projections(
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source_identity(),
-        ResourceOwner::new("qwen08-cuda-leaf", "original-projections")?,
+        ResourceOwner::new("qwen800m-cuda-leaf", "original-projections")?,
         PROVIDER_CAP,
         device_cap,
     )?;
@@ -328,15 +328,15 @@ mod tests {
     fn owned_bf16_gemm_descriptor_preserves_observed_calls_and_accepts_dynamic_rows() {
         use ObservedBf16Gemm::*;
         for observed in [
-            Qwen08Layer0QkvzDecode,
-            Qwen08Layer0BaDecode,
-            Qwen08Layer0QkvzPrefill,
-            Qwen08Layer0BaPrefill,
-            Qwen08Layer0OutProjectionDecode,
-            Qwen08Layer0OutProjectionPrefill,
-            Qwen08Layer0QkvzContinuedPrefill,
-            Qwen08Layer0BaContinuedPrefill,
-            Qwen08Layer0OutProjectionContinuedPrefill,
+            Qwen800MLayer0QkvzDecode,
+            Qwen800MLayer0BaDecode,
+            Qwen800MLayer0QkvzPrefill,
+            Qwen800MLayer0BaPrefill,
+            Qwen800MLayer0OutProjectionDecode,
+            Qwen800MLayer0OutProjectionPrefill,
+            Qwen800MLayer0QkvzContinuedPrefill,
+            Qwen800MLayer0BaContinuedPrefill,
+            Qwen800MLayer0OutProjectionContinuedPrefill,
         ] {
             let operation = observed.operation();
             assert_eq!(
