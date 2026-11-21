@@ -192,7 +192,7 @@ impl ProductionGraphCache {
         Ok(Some((graph, retirement_root)))
     }
 
-    #[cfg(feature = "qualification")]
+    #[cfg(any(feature = "qualification", test))]
     fn witness(&self) -> &'static str {
         match self.state {
             ProductionGraphState::Cold => "cold",

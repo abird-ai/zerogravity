@@ -538,7 +538,9 @@ impl MlpProjection {
             GdnPhase::InitialOne | GdnPhase::CachedDecode => [Self::GateUp1, Self::Down1],
             GdnPhase::Initial64 => [Self::GateUp64, Self::Down64],
             GdnPhase::ContinuedTwo => [Self::GateUp2, Self::Down2],
-            GdnPhase::FixedPrompt | GdnPhase::TextPrefill(_) => {
+            GdnPhase::FixedPrompt
+            | GdnPhase::TextPrefill(_)
+            | GdnPhase::TextPrefillCohort { .. } => {
                 return Err(Error::Unsupported(
                     "original opaque manifest does not admit47 rows".into(),
                 ));

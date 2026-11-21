@@ -1,15 +1,7 @@
 //! Shared .8B/2B root checkout: fresh logical leases, unchanged domain binding.
 use super::*;
-use crate::resident_leases::backing_pool::ResidentPagePool;
-#[cfg(any(
-    feature = "cuda-native",
-    feature = "cuda-native-qualification",
-    feature = "cuda-cublas",
-    feature = "gemma-bf16-qualification",
-    feature = "hip-source"
-))]
-use crate::resident_leases::backing_pool::ResidentPlaneLayout;
 use crate::resident_leases::backing_pool::ResidentPool;
+use crate::resident_leases::backing_pool::{ResidentPagePool, ResidentPlaneLayout};
 #[cfg(feature = "cuda-cublas")]
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};

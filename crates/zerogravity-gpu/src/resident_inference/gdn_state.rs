@@ -32,7 +32,9 @@ fn validate_phase(current: RootBinding, attempt: &RootAttempt, phase: GdnPhase) 
             GdnPhase::InitialOne | GdnPhase::Initial64 => current.frontier() == 0,
             GdnPhase::ContinuedTwo => current.frontier() == 64,
             GdnPhase::CachedDecode => matches!(current.frontier(), 1 | 66),
-            GdnPhase::FixedPrompt | GdnPhase::TextPrefill(_) => false,
+            GdnPhase::FixedPrompt
+            | GdnPhase::TextPrefill(_)
+            | GdnPhase::TextPrefillCohort { .. } => false,
         }
     {
         return Err(Error::State(
@@ -439,7 +441,9 @@ mod tests {
                     GdnPhase::InitialOne | GdnPhase::Initial64 => base == 0,
                     GdnPhase::ContinuedTwo => base == 64,
                     GdnPhase::CachedDecode => matches!(base, 1 | 66),
-                    GdnPhase::FixedPrompt | GdnPhase::TextPrefill(_) => false,
+                    GdnPhase::FixedPrompt
+                    | GdnPhase::TextPrefill(_)
+                    | GdnPhase::TextPrefillCohort { .. } => false,
                 };
                 assert_eq!(
                     validate_phase(authority.binding(), &other_attempt, other_phase).is_ok(),

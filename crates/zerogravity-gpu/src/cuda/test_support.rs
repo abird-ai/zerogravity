@@ -300,7 +300,7 @@ fn resident_dual_flights_retire_independently() -> Result<()> {
 
 pub(crate) struct CudaDiagnostic {
     pub(crate) service: Arc<ResidentService>,
-    pub(crate) compiler: Arc<(GlobalResourceLease, GlobalResourceLease)>,
+    _compiler: Arc<(GlobalResourceLease, GlobalResourceLease)>,
     _payload: GlobalResourceLease,
 }
 impl CudaDiagnostic {
@@ -355,7 +355,7 @@ impl CudaDiagnostic {
         let payload = reserve(&host, (128 * MIB) as u64)?;
         Ok(Self {
             service,
-            compiler,
+            _compiler: compiler,
             _payload: payload,
         })
     }

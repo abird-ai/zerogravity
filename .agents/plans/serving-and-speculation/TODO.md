@@ -750,8 +750,9 @@ or a change to the active correctness/benchmark/27B order.
   kernel path. The temporary refill probe was removed too. Fresh vLLM remains
   unavailable and is now explicitly owner-deferred. Do not spend the next turn on the
   residual paged gap; advance the admitted populated CUDA context ladder on L5 instead.
-- [x] A clean dynamic-prefill grouping candidate was measured and rejected rather than
-  retained speculatively. For the already-compatible mixed native-B8 row pattern
+- [x] A clean dynamic-prefill grouping candidate was measured and rejected from the
+  current selector rather than discarded globally. For the already-compatible mixed
+  native-B8 row pattern
   [49,48,49,48,49,48,49,48], the candidate clustered private physical lanes by row
   count while preserving scheduler/publication order, then reused the existing B4
   attention kernel for equal-row quartets with per-lane leftovers. It added no allocation
@@ -760,7 +761,12 @@ or a change to the active correctness/benchmark/27B order.
   (~8.1%/~4.5% slower). The Qwen-specific wiring/probe was removed, while the reusable
   fixed-width regroup implementation is retained dormant for cross-model A/B. Do not
   select it for this .8B cell merely to reduce attention launches; measure it separately
-  on Qwen2B/27B, Gemma4 or other eligible shapes.
+  on Qwen2B/27B, Gemma4 or other eligible shapes. The later21 Nov restoration sweep
+  generalizes that rule to historical CUDA experiments: reusable physical mechanics are
+  dormant candidate components, while old serving selectors/runners remain removed.
+  Cross-model A/B can now reuse the retained lane regroup, transport, GEMM,
+  recurrent-transpose and GDN-occupancy implementations without changing production
+  routing.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

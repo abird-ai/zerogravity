@@ -973,10 +973,39 @@ serving, memory and composition plans.
 - **Retained-candidate policy:** reusable performance experiments are no longer deleted
   merely because one model/shape loses an A/B. Model-neutral candidates live dormant,
   with no production selector/callsite, so Qwen2B/27B, Gemma4 and future models can
-  measure them independently. Current retained implementations are
-  `performance_candidates::LaneRegroupPlan` and
-  `cuda::performance_candidates::launch_copy_zero_tail`. Production behavior is
-  unchanged; a negative result remains authoritative only for its measured cell.
+  measure them independently. A negative result remains authoritative only for its
+  measured cell.
+- **21 Nov deleted-candidate restoration sweep is complete for the recoverable kernel
+  mechanics.** Existing retained primitives such as ragged B4/B8 attention, packed
+  private-KV transition, batched rotary, grouped state transport and stateless fused
+  math were not duplicated. The dormant inventory now includes
+  `performance_candidates::LaneRegroupPlan`,
+  `cuda::performance_candidates::launch_copy_zero_tail`, thirteen
+  `Bf16GemmCandidateKind` strategies, two recurrent-transpose directions and cached-GDN
+  occupancy candidates for min-block hints8/16/24. The GEMM set covers the prior
+  inner-major LaneBlocked B2/B4/B8, LaneStrided CTA64/CTA256, RoundedSegments M32/K64,
+  paired-BF16 unpack, Ordered M128/N16, row-major shared-input/paired-column/split4 and
+  inner-major warp-shared/paired-column/unroll8 strategies. Git history plus1,433
+  unreachable blobs contained the historical measurements/docs but no surviving source
+  blobs for those uncommitted A/B kernels, so they are clean reconstructions over the
+  current accepted arithmetic source rather than falsely claimed byte recovery. The
+  shared-input candidate is explicitly named `...SharedInputF32` because the old notes
+  establish shared staging+widening but not the vanished literal implementation.
+  Production selection is unchanged and there are zero callsites outside the dormant
+  candidate modules.
+  Physical compile-only SM86 checks passed first for the initial five GEMM candidates,
+  then for7 GEMM +2 recurrent +3 GDN occupancy candidates, and finally for the expanded
+  candidate translation unit after the remaining GEMM strategies were added. These are
+  code-readiness results only, not numerical/performance acceptance for a new model.
+- **GPU test/cfg drift exposed by the restoration sweep was repaired without changing
+  runtime behavior.** `ResidentPlaneLayout` ownership is no longer hidden behind an
+  unrelated feature gate; graph witness/test-support/quarantine observers are available
+  under the test cfgs that consume them; old cached-GDN manifests explicitly reject the
+  newer `TextPrefillCohort` phase; and stale GDN runtime tests pass the required lane
+  count. Default, plain-`qualification` and CUDA-native `cargo check --tests` now
+  type-check. The larger `cuda-native-qualification` test/library checks were repeatedly
+  externally SIGKILLed immediately after entering the GPU crate with no Rust diagnostic;
+  do not claim that matrix green or infer a source failure from those kills.
 - ROCm2B C4 warmup plus C16/C32/C64 warmup/timed mismatches remain unlocalized.
   Preserve failed cells and expected IDs; do not repin expectations.
 - These remaining campaigns are explicitly authorized X2 execution/test work;

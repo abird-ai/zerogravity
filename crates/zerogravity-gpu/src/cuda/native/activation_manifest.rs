@@ -39,7 +39,9 @@ impl Activation {
             GdnPhase::InitialOne | GdnPhase::CachedDecode => Self::Rows1,
             GdnPhase::Initial64 => Self::Rows64,
             GdnPhase::ContinuedTwo => Self::Rows2,
-            GdnPhase::FixedPrompt | GdnPhase::TextPrefill(_) => {
+            GdnPhase::FixedPrompt
+            | GdnPhase::TextPrefill(_)
+            | GdnPhase::TextPrefillCohort { .. } => {
                 return Err(Error::Unsupported(
                     "original opaque manifest does not admit47 rows".into(),
                 ));

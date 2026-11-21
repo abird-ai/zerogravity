@@ -768,7 +768,9 @@ impl Projection {
             GdnPhase::InitialOne | GdnPhase::CachedDecode => [Self::Qkvz1, Self::Ba1, Self::Out1],
             GdnPhase::Initial64 => [Self::Qkvz64, Self::Ba64, Self::Out64],
             GdnPhase::ContinuedTwo => [Self::Qkvz2, Self::Ba2, Self::Out2],
-            GdnPhase::FixedPrompt | GdnPhase::TextPrefill(_) => {
+            GdnPhase::FixedPrompt
+            | GdnPhase::TextPrefill(_)
+            | GdnPhase::TextPrefillCohort { .. } => {
                 return Err(Error::Unsupported(
                     "original opaque manifest does not admit47 rows".into(),
                 ));

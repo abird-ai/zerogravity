@@ -107,15 +107,18 @@ pub(crate) fn quarantine_uncertain_with_owners(
     });
 }
 
-#[cfg(all(
-    feature = "qualification",
-    any(
-        feature = "cuda",
-        all(
-            feature = "hip",
-            feature = "hip-source",
-            feature = "hardware-abort-probe",
-            target_os = "linux"
+#[cfg(any(
+    all(test, feature = "cuda-cublas"),
+    all(
+        feature = "qualification",
+        any(
+            feature = "cuda",
+            all(
+                feature = "hip",
+                feature = "hip-source",
+                feature = "hardware-abort-probe",
+                target_os = "linux"
+            )
         )
     )
 ))]

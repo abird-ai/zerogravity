@@ -344,6 +344,30 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   vLLM is still unavailable; next prefer that matched baseline, otherwise profile the
   longer-decode paged residual before adding direct page-table attention or overlap.
 
+- [x] Preserve rejected performance implementations as dormant cross-model candidates
+  rather than deleting reusable mechanics. The21 Nov sweep reconciled the historical
+  "fully removed" entries: selectors/runners/timing harnesses stay removed, while
+  reusable kernels now live behind zero-consumer candidate components. The inventory is
+  allocation-free lane regrouping; copy+zero-tail;13 BF16 GEMM strategies
+  (LaneBlocked/CTA64/CTA256/M32-K64/paired-unpack/M128/N16 plus row-major shared-input,
+  paired-column, split4 and inner-major warp-share, paired-column, unroll8); a padded
+  32x32 recurrent U32 transpose in both directions; and cached-GDN launch-bounds
+  min8/16/24. Existing already-retained B4/B8 attention, packed private KV, rotary,
+  grouped state transport and stateless primitives were intentionally not duplicated.
+  No production selector references these candidates. The initial and final candidate
+  CUDA translation units compile through NVRTC on RTX3060/SM86; no model-performance
+  claim follows. For old A/B strategies whose literal working-tree source did not survive
+  Git/unreachable-blob recovery, the component is explicitly a reconstruction over the
+  accepted arithmetic source, not a source-identical historical blob.
+- [x] Repair the stale GPU test/feature matrix exposed while retaining candidates:
+  unconditional inventory types now have unconditional imports; test-only graph/support/
+  quarantine observers follow their actual consumers; `TextPrefillCohort` is handled
+  explicitly by legacy cached-GDN manifests; and GDN runtime test helpers use the current
+  lane-aware signature. Default, `qualification` and CUDA-native `cargo check --tests`
+  pass. The largest `cuda-native-qualification` test and library checks remain
+  infrastructure-incomplete because repeated attempts were externally SIGKILLed before
+  any Rust diagnostic.
+
 ### Next continuation — no live campaign
 
 - [ ] Establish independent large-CUDA distribution/state accuracy (session task44)

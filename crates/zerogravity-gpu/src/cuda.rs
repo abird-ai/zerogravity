@@ -32,10 +32,5 @@ pub mod rms;
 #[cfg(feature = "cuda-native")]
 pub(crate) mod word_transport;
 
-#[cfg(all(
-    test,
-    feature = "qualification",
-    feature = "cuda-cublas",
-    target_os = "linux"
-))]
+#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
 pub(crate) mod test_support;

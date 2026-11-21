@@ -95,6 +95,7 @@ fn chunk64_and_tail_share_one_workspace_and_advance_explicit_state() -> Result<(
             destination: local_state_view(
                 GdnRuntimeBuffer::InitialState,
                 GdnRuntimeStateKind::RecurrentInitial,
+                1,
             ),
         }
     );
@@ -105,6 +106,7 @@ fn chunk64_and_tail_share_one_workspace_and_advance_explicit_state() -> Result<(
             destination: local_state_view(
                 GdnRuntimeBuffer::InitialState,
                 GdnRuntimeStateKind::RecurrentInitial,
+                1,
             ),
         }
     );
@@ -114,6 +116,7 @@ fn chunk64_and_tail_share_one_workspace_and_advance_explicit_state() -> Result<(
             source: local_state_view(
                 GdnRuntimeBuffer::FinalState,
                 GdnRuntimeStateKind::RecurrentFinal,
+                1,
             ),
             destination: cache_recurrent_view(slot),
         }

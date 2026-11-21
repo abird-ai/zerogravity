@@ -958,6 +958,14 @@ allocation-free lane-regroup/equal-group implementation is retained dormant in
 `performance_candidates` for other-model measurements. Preserve ragged shared
 projection/GDN support and do not equate fewer attention launches with a serving win;
 retest the retained primitive independently on different models/shapes.
+
+The21 Nov restoration sweep generalizes that rule beyond batching: rejected selectors are
+not production-enabled, but reusable implementation mechanics are kept dormant. The
+candidate library now preserves lane regrouping, copy+tail-zero,13 BF16 GEMM physical
+strategies, padded recurrent transpose and cached-GDN occupancy variants. Existing
+already-retained attention/KV/rotary/state-transport primitives are reused rather than
+duplicated. There are no production callsites; future Qwen2B/27B, Gemma4 or other model
+qualification can measure these components explicitly.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 
