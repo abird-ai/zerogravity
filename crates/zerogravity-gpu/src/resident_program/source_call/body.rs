@@ -10,26 +10,24 @@ impl Cold {
         self.service.ensure_usable()?;
         self.native
             .require_live(self.service.client(), self.source.source_identity())?;
+        let physical = self
+            .accesses
+            .iter()
+            .map(|(lease, _)| lease.clone())
+            .collect::<Vec<_>>();
+        if !self.service.pairwise_disjoint(&physical)? {
+            return Err(Error::State("source-call distinct physical owners".into()));
+        }
         let mut owned_ranges = OwnedRanges::new(self.service.client().service_id());
-        let mut ranges = Vec::new();
-        let mut ids = std::collections::BTreeSet::new();
         for (lease, _) in &self.accesses {
-            if !Arc::ptr_eq(lease.service(), &self.service)
-                || lease.source_identity() != self.layout.plan.source()
-                || lease.service_generation() != self.service.generation()
-                || !ids.insert(lease.id())
-            {
+            if lease.source_identity() != self.layout.plan.source() {
                 return Err(Error::State(
                     "source-call original owned lease provenance".into(),
                 ));
             }
             let range = BufferRange::new(&lease.handle())?;
             range.require_exact_len(lease.bytes())?;
-            if ranges.iter().any(|r: &BufferRange| r.overlaps(&range)) {
-                return Err(Error::State("source-call distinct physical owners".into()));
-            }
-            owned_ranges.insert(range.clone())?;
-            ranges.push(range);
+            owned_ranges.insert(range)?;
         }
         if layout::sum(self.accesses.iter().map(|(l, _)| l.bytes()))?
             != self.layout.preflight.owned_bytes()?

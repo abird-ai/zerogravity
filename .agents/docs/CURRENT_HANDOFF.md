@@ -425,9 +425,18 @@ Vulkan-only retry passed, so no source failure follows.
   geometry. Production `cuda-cublas` and public `qwen35-cuda` checks pass. The retained
   public-SDK 0.8B context1024/prompt48 replay cell also passes physically after recreating
   the documented CUDA13.4 include view: exact two-token replay, distinct sessions, exact
-  producer frontiers and clean shutdown in14.42s. No new alias fixture was added.
-  Remaining identity adoption is incremental for additional real graph/transfer
-  consumers; do not cache identity into every lease merely for future diagnostics.
+  producer frontiers and clean shutdown in14.42s. The next production source consumer is
+  now canonical too: HIP ordinary source-call cold workspace leases use
+  `pairwise_disjoint`, and request root validation uses
+  `pairwise_disjoint_extension` to compare only new roots against the already-disjoint
+  workspace and earlier roots under one ledger lock. This avoids a workspace² hot-path
+  recheck while preserving exact handle ranges solely for execution-view geometry. HIP
+  GPU/public composition checks compile, existing source-call admission tests pass2/2,
+  and the retained CUDA context1024/prompt48 public-SDK cell passes again in15.23s after
+  the shared helper refactor. X2 HIP physical execution remains behind the recorded ROCm
+  ABI environment gate. No new alias fixture was added. Remaining identity adoption is
+  incremental for additional real graph/transfer consumers; do not cache identity into
+  every lease merely for future diagnostics.
   **Scoped worker prefix reuse is
   now implemented and physically accepted.** `PrefixSharingScope` is a validated
   nonzero Copy ID. Existing `Request` stays unchanged; ordinary `request_text`

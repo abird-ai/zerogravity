@@ -98,13 +98,20 @@ The following extends existing owners; source-byte qualification is not inferenc
   distinct logical lease IDs cannot hide overlapping physical backing before the existing
   two-slot authenticated retirement ring starts. The ring, source-owner lifetime and
   same-stream overwrite/retirement protocol are unchanged; no second transfer abstraction
-  was added. The helper allocates nothing and caches no identity into leases. Existing B8
-  public-SDK Contiguous/Paged execution remains exact/clean, and a retained 0.8B
-  context1024/prompt48 public-SDK replay cell passes the transfer-head migration with exact
-  tokens/frontiers, independent sessions and clean shutdown. No new alias fixture was
-  added. Six backing-ledger tests cover cross-ledger separation, direct-vs-backed identity,
-  exact offsets/ranges, overlap/disjoint aliases, continuous charge, cancellation and
-  unknown fencing. Remaining adoption is to query this identity only where additional
+  was added. The production HIP ordinary source-call path now uses the same authority too:
+  cold workspace owners are pairwise ledger-checked once, while per-request root binding
+  uses a one-lock incremental disjointness check against that already-validated workspace
+  plus earlier new roots. This preserves the old O(root*workspace + root²) validation shape
+  instead of rechecking workspace² on every token, and keeps exact handle ranges only for
+  execution-view length/binding geometry. The helpers allocate nothing internally and cache
+  no identity into leases. HIP source/public composition checks and the two existing host
+  source-admission tests pass; X2 physical execution remains environment-gated. Existing B8
+  public-SDK Contiguous/Paged execution remains exact/clean, and the retained 0.8B
+  context1024/prompt48 public-SDK replay cell passes again after the shared helper refactor
+  with exact tokens/frontiers, independent sessions and clean shutdown. No new alias fixture
+  was added. Six backing-ledger tests cover cross-ledger separation, direct-vs-backed
+  identity, exact offsets/ranges, overlap/disjoint aliases, continuous charge, cancellation
+  and unknown fencing. Remaining adoption is to query this identity only where additional
   graph views or transfer consumers actually need it, without mandatory hot-path bookkeeping.
   Encoded/captured/queued readers still remain part of the broader retirement work.
 - [ ] Add measured lifetime-aware scratch reuse/phase lending only when no live

@@ -611,16 +611,28 @@ impl ResidentService {
     /// Cold validation only: one ledger lock, no backend handle inspection,
     /// and no per-lease identity cache on the runtime object.
     pub(crate) fn pairwise_disjoint(self: &Arc<Self>, leases: &[ResidentLease]) -> Result<bool> {
-        for lease in leases {
+        self.pairwise_disjoint_extension(&[], leases)
+    }
+
+    /// Canonical incremental alias check. The base is an already-disjoint
+    /// retained set; added leases must be disjoint from every base lease and
+    /// from earlier additions. One ledger lock, no heap allocation or backend
+    /// handle inspection.
+    pub(crate) fn pairwise_disjoint_extension(
+        self: &Arc<Self>,
+        base: &[ResidentLease],
+        added: &[ResidentLease],
+    ) -> Result<bool> {
+        for lease in base.iter().chain(added) {
             self.check_lease(lease)?;
         }
         let ledger = self
             .ledger
             .lock()
             .map_err(|_| Error::State("resident alias ledger poisoned".into()))?;
-        for (index, lease) in leases.iter().enumerate() {
+        for (index, lease) in added.iter().enumerate() {
             let identity = ledger.buffer_identity(lease.id())?;
-            for prior in &leases[..index] {
+            for prior in base.iter().chain(&added[..index]) {
                 if identity.overlaps(ledger.buffer_identity(prior.id())?) {
                     return Ok(false);
                 }

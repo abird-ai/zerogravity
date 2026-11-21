@@ -49,12 +49,12 @@ impl Cold {
             return Err(Error::State("source-call root domain count".into()));
         }
         let mut map = BTreeMap::new();
-        let mut ranges = Vec::new();
-        let owned = self
+        let base_len = self.accesses.len();
+        let mut physical = self
             .accesses
             .iter()
-            .map(|(l, _)| BufferRange::new(&l.handle()))
-            .collect::<Result<Vec<_>>>()?;
+            .map(|(lease, _)| lease.clone())
+            .collect::<Vec<_>>();
         for (b, expected) in states.iter().zip(&self.layout.preflight.states) {
             if b.slot != expected.slot
                 || map.insert(b.slot, b).is_some()
@@ -85,16 +85,15 @@ impl Cold {
                     }
                     let range = BufferRange::new(&buffer.handle)?;
                     range.require_exact_len(shape.bytes()?)?;
-                    if ranges.iter().any(|r: &BufferRange| r.overlaps(&range))
-                        || owned.iter().any(|r| r.overlaps(&range))
-                    {
-                        return Err(Error::State(
-                            "source-call independent root/workspace owners overlap".into(),
-                        ));
-                    }
-                    ranges.push(range);
+                    physical.push(lease.clone());
                 }
             }
+        }
+        let (workspace, roots) = physical.split_at(base_len);
+        if !self.service.pairwise_disjoint_extension(workspace, roots)? {
+            return Err(Error::State(
+                "source-call independent root/workspace owners overlap".into(),
+            ));
         }
         Ok(map)
     }
