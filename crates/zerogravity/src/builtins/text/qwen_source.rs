@@ -192,10 +192,14 @@ mod tests {
                 load::SourceBackend::Cuda {
                     provider_bytes: 1,
                     device_bytes: 1,
-                    state_policy: crate::gpu::CudaSourceStatePolicy::Paged {
-                        page_tokens,
-                        max_append_tokens,
-                    },
+                    smart_config: crate::models::SmartConfig::enabled(
+                        crate::models::QwenCudaSmartOverrides {
+                            state_policy: Some(crate::models::QwenCudaStatePolicy::Paged {
+                                page_tokens,
+                                max_append_tokens,
+                            }),
+                        },
+                    ),
                 },
             )
         };

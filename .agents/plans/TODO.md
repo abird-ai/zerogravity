@@ -305,10 +305,10 @@ handles and completion owners remain quarantined, and pool backing is not reused
 Two external-SIGKILL attempts before semantic completion remain incomplete; the
 direct known-completion run and the final heartbeat-assisted unknown run both
 exit0. Heartbeat output is transport plumbing only, not correctness.
-**19 Nov explicit high-level paged selection is now wired without changing the
-default.** Public `QwenCudaStatePolicy::{Contiguous,Paged}` is carried only by the
-new `ModelLoadRequest::QwenCudaWithStatePolicy`; the existing `QwenCuda` request
-continues to select Contiguous exactly. Native rows4/8 now use the same explicit
+**Historical19 Nov explicit high-level paged selector:** public
+`QwenCudaStatePolicy::{Contiguous,Paged}` was first carried only by
+`ModelLoadRequest::QwenCudaWithStatePolicy`; the fixed Contiguous `QwenCuda` default from
+that checkpoint is superseded by the21 Nov generic smart-config layer. Native rows4/8 now use the same explicit
 Paged policy and shared Hybrid state owner. Cohort preparation reuses
 `OrdinaryCandidateState` lane-by-lane: gather -> unchanged native body -> scatter
 under one flight, with actual write outputs promoted and canonical paged Domains
@@ -475,7 +475,7 @@ activating held routes; vLLM comparison is owner-deferred for now.
 
 ## Active
 
-- [ ] P1 serving-and-speculation — @pvl — l5 CUDA `.8B`/`2B`, x2 ROCm `.8B`/`2B`/`27B`: source-real correctness/paged/prefix/native B2/B4/B8 accepted; multi-token prefill + natural refill/regroup now fast under matched opt1, short-wave paged overhead is ~1.7%, and current68-token refill is169.837/160.919 tok/s contiguous/paged (~5.5% wall-time gap). Public CUDA serving physically passes4K/8K/16K on both small models,0.8B32K has one full current-path pass, and explicit paged2B32K now passes the full32766-token retained SDK cell in224.80s execution/260.34s wall. Same32K-capacity1024-token A/B is283.22s contiguous-streamed vs28.56s paged-resident (~9.9x), localizing the old600s timeout to the contiguous storage cliff. The obsolete attention reserve is removed, and paged admission preserves four logical lifecycle roots while pricing only physically reachable shared-prefix/COW pages so all2B weights remain resident. Default `QwenCuda` stays Contiguous; explicit paged policy is the accepted32K path. Independent populated all42 closure remains open. Owner defers vLLM; X2 ROCm remains environment-gated — [details](serving-and-speculation/TODO.md)
+- [ ] P1 serving-and-speculation — @pvl — l5 CUDA `.8B`/`2B`, x2 ROCm `.8B`/`2B`/`27B`: source-real correctness/paged/prefix/native B2/B4/B8 accepted; multi-token prefill + natural refill/regroup now fast under matched opt1, short-wave paged overhead is ~1.7%, and current68-token refill is169.837/160.919 tok/s. Public CUDA serving passes4K/8K/16K on both small models,0.8B32K has one full pass, and paged2B32K passes32766 tokens in224.80s execution. Same32K-capacity1024-token A/B is283.22s contiguous-streamed vs28.56s paged-resident (~9.9x). A new generic cold-start smart-config layer now resolves extensible model knobs from fresh runtime observations: Exclusive=ignore user knob values, Enabled(default)=user values override Auto per knob, Disabled=no Auto. Qwen's first knob is state_policy; canonical `QwenCuda` Auto-selects Paged64/64 when it preserves residency and Contiguous when it already fits, logging the chosen config+rationale. Default2B32K/1024 physically selects paged and passes in26.51s exact. Independent populated all42 closure remains open; owner defers vLLM; X2 ROCm remains environment-gated — [details](serving-and-speculation/TODO.md)
 - [~] P1 numerics-and-context — @pvl — exact cached47→50, lifecycle/capacity and final gate pass; active-context/2B reference inputs missing — [details](numerics-and-context/TODO.md)
 - [~] P1 memory-and-streaming — @pvl — current streamed-weight admission closes32K storage policy and0.8B32K has one full public-SDK pass;2B32K execution remains open. Shared completed-root reuse is active, common-frontier reconciliation is allocation-free in engine, and canonical cross-ledger physical allocation+range identity now feeds one allocation-free/single-lock resident `overlaps_any` primitive used by HIP/CUDA source-page safety and native B4 embedding preparation. Other prepared-pack/graph/transfer adoption, transfer rings and exact partial-tail COW remain open — [details](memory-and-streaming/TODO.md)
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)

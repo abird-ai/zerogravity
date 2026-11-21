@@ -260,6 +260,77 @@ impl ResidentModel {
 }
 #[cfg(feature = "cuda-cublas")]
 impl ResidentModel {
+    fn source_call_root_count(max_sessions: usize) -> Result<usize> {
+        max_sessions
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(2))
+            .ok_or_else(|| Error::Limit("source-call root count overflow".into()))
+    }
+
+    fn source_call_state_reserve(
+        plan: &Arc<ForwardPlan>,
+        roots: usize,
+        max_sessions: usize,
+        state_policy: CudaSourceStatePolicy,
+    ) -> Result<Option<usize>> {
+        match state_policy {
+            CudaSourceStatePolicy::Contiguous => Ok(None),
+            CudaSourceStatePolicy::Paged {
+                page_tokens,
+                max_append_tokens,
+            } => {
+                if page_tokens == 0 || max_append_tokens == 0 {
+                    return Err(Error::Unsupported(
+                        "paged source-call state requires positive page/append policy".into(),
+                    ));
+                }
+                let admission =
+                    crate::resident_program::ordinary_cuda::OrdinaryCudaAdmission::analyze(
+                        plan.clone(),
+                    )?;
+                let preflight = admission.preflight();
+                super::state_pool::hybrid_state_reserve_bytes(
+                    &preflight.states,
+                    preflight.prior_state_bytes,
+                    roots,
+                    max_sessions,
+                    page_tokens,
+                    max_append_tokens,
+                )
+                .map(Some)
+            }
+        }
+    }
+
+    /// Pure source-call admission for one explicit state representation.
+    /// No device/context/source owner is created. Smart startup selectors use
+    /// this once at model load to compare only qualified physical policies.
+    pub fn ordinary_cuda_source_preflight_for_state_policy(
+        plan: Arc<ForwardPlan>,
+        max_sessions: usize,
+        native_rows: usize,
+        provider_cap: usize,
+        state_policy: CudaSourceStatePolicy,
+    ) -> Result<OrdinaryCudaSourceInventory> {
+        if !(1..=64).contains(&max_sessions)
+            || !matches!(native_rows, 0 | 4 | 8)
+            || (native_rows != 0 && max_sessions < native_rows)
+        {
+            return Err(Error::Limit("source-call session capacity".into()));
+        }
+        let roots = Self::source_call_root_count(max_sessions)?;
+        let state_reserve_bytes =
+            Self::source_call_state_reserve(&plan, roots, max_sessions, state_policy)?;
+        super::ordinary_cuda_source_admission(
+            plan,
+            provider_cap,
+            roots,
+            native_rows,
+            state_reserve_bytes,
+        )
+        .map(|(_, inventory)| inventory)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn load_ordinary_cuda_source(
         device: Device,
@@ -307,38 +378,9 @@ impl ResidentModel {
         {
             return Err(Error::Limit("source-call session capacity".into()));
         }
-        if let CudaSourceStatePolicy::Paged {
-            page_tokens,
-            max_append_tokens,
-        } = state_policy
-            && (page_tokens == 0 || max_append_tokens == 0)
-        {
-            return Err(Error::Unsupported(
-                "paged source-call state requires positive page/append policy".into(),
-            ));
-        }
-        let roots = max_sessions * 2 + 2;
-        let state_reserve_bytes = match state_policy {
-            CudaSourceStatePolicy::Contiguous => None,
-            CudaSourceStatePolicy::Paged {
-                page_tokens,
-                max_append_tokens,
-            } => {
-                let admission =
-                    crate::resident_program::ordinary_cuda::OrdinaryCudaAdmission::analyze(
-                        plan.clone(),
-                    )?;
-                let preflight = admission.preflight();
-                Some(super::state_pool::hybrid_state_reserve_bytes(
-                    &preflight.states,
-                    preflight.prior_state_bytes,
-                    roots,
-                    max_sessions,
-                    page_tokens,
-                    max_append_tokens,
-                )?)
-            }
-        };
+        let roots = Self::source_call_root_count(max_sessions)?;
+        let state_reserve_bytes =
+            Self::source_call_state_reserve(&plan, roots, max_sessions, state_policy)?;
         let control = source.reserve_workspace(CONTROL_BYTES)?;
         let prefill_projection_classes = Some(
             crate::resident_program::ordinary_cuda::PrefillProjectionClasses::from_plan(&plan)?,

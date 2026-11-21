@@ -19,11 +19,11 @@ pub(crate) enum SourceBackend {
     Cuda {
         provider_bytes: usize,
         device_bytes: u64,
-        state_policy: crate::gpu::CudaSourceStatePolicy,
+        smart_config: crate::models::SmartConfig<crate::models::QwenCudaSmartOverrides>,
     },
 }
 impl SourceBackend {
-    fn validate(self) -> Result<(), ServiceError> {
+    fn validate(self, profile: QwenSourceProfile) -> Result<(), ServiceError> {
         #[cfg(feature = "qwen35-cuda")]
         if let Self::Cuda {
             provider_bytes,
@@ -39,6 +39,13 @@ impl SourceBackend {
                 "CUDA requires a positive provider capacity within physical device admission",
             ));
         }
+        #[cfg(feature = "qwen35-cuda")]
+        if let Self::Cuda { smart_config, .. } = self
+            && smart_config.mode != crate::smart_config::SmartConfigMode::Exclusive
+            && let Some(policy) = smart_config.overrides.state_policy
+        {
+            validate_cuda_state_policy(profile, policy)?;
+        }
         Ok(())
     }
     fn contract(self) -> SourceNumericalContract {
@@ -48,6 +55,249 @@ impl SourceBackend {
             #[cfg(feature = "qwen35-cuda")]
             Self::Cuda { .. } => SourceNumericalContract::ReferenceCudaSm86Bf16V1,
         }
+    }
+}
+
+#[cfg(feature = "qwen35-cuda")]
+fn validate_cuda_state_policy(
+    profile: QwenSourceProfile,
+    policy: crate::models::QwenCudaStatePolicy,
+) -> Result<(), ServiceError> {
+    if let crate::models::QwenCudaStatePolicy::Paged {
+        page_tokens,
+        max_append_tokens,
+    } = policy
+        && (page_tokens == 0
+            || max_append_tokens == 0
+            || page_tokens > profile.context
+            || max_append_tokens > profile.context)
+    {
+        return Err(ServiceError::new(
+            400,
+            "invalid_source_state_policy",
+            "paged CUDA state requires positive page/append tokens within context",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "qwen35-cuda")]
+fn describe_cuda_state_policy(policy: crate::models::QwenCudaStatePolicy) -> String {
+    match policy {
+        crate::models::QwenCudaStatePolicy::Contiguous => "contiguous".into(),
+        crate::models::QwenCudaStatePolicy::Paged {
+            page_tokens,
+            max_append_tokens,
+        } => format!("paged(page_tokens={page_tokens},max_append_tokens={max_append_tokens})"),
+    }
+}
+
+#[cfg(feature = "qwen35-cuda")]
+fn smart_cuda_provider_cap(
+    configured_provider: usize,
+    device_bytes: u64,
+) -> (usize, Option<u128>, String) {
+    let Ok(inventory) = crate::devices::discover() else {
+        return (
+            configured_provider,
+            None,
+            "current CUDA observation unavailable; using configured provider envelope".into(),
+        );
+    };
+    if crate::devices::fresh(&inventory).is_err() {
+        return (
+            configured_provider,
+            Some(inventory.observed_unix_ms),
+            "current CUDA observation stale; using configured provider envelope".into(),
+        );
+    }
+    let Some(device) = inventory.devices.iter().find(|device| {
+        device.vendor == "nvidia" && device.cuda_ordinal == Some(0) && device.exclusion.is_none()
+    }) else {
+        return (
+            configured_provider,
+            Some(inventory.observed_unix_ms),
+            "CUDA ordinal0 current availability unavailable; using configured provider envelope"
+                .into(),
+        );
+    };
+    let Some(free) = device
+        .available
+        .and_then(|bytes| usize::try_from(bytes).ok())
+    else {
+        return (
+            configured_provider,
+            Some(inventory.observed_unix_ms),
+            "CUDA ordinal0 free VRAM unavailable; using configured provider envelope".into(),
+        );
+    };
+    let Some(device_bytes) = usize::try_from(device_bytes).ok() else {
+        return (
+            configured_provider,
+            Some(inventory.observed_unix_ms),
+            "configured device envelope exceeds host usize; using provider envelope".into(),
+        );
+    };
+    let headroom = device_bytes.saturating_sub(configured_provider);
+    let effective = configured_provider.min(free.saturating_sub(headroom));
+    (
+        effective,
+        Some(inventory.observed_unix_ms),
+        format!(
+            "fresh CUDA ordinal0 available={free}B configured_provider={configured_provider}B device_headroom={headroom}B"
+        ),
+    )
+}
+
+#[cfg(feature = "qwen35-cuda")]
+fn auto_cuda_state_policy(
+    plan: std::sync::Arc<crate::accelerator::program::ForwardPlan>,
+    profile: QwenSourceProfile,
+    provider_bytes: usize,
+    device_bytes: u64,
+) -> crate::Result<(crate::models::QwenCudaStatePolicy, String, Option<u128>)> {
+    use crate::gpu::{OrdinaryCudaWeightStorage, ResidentModel};
+
+    const PAGE_TOKENS: usize = 64;
+    const MAX_APPEND_TOKENS: usize = 64;
+    let paged = crate::models::QwenCudaStatePolicy::Paged {
+        page_tokens: PAGE_TOKENS,
+        max_append_tokens: MAX_APPEND_TOKENS,
+    };
+    let (effective_cap, observed_unix_ms, observation) =
+        smart_cuda_provider_cap(provider_bytes, device_bytes);
+    let contiguous = ResidentModel::ordinary_cuda_source_preflight_for_state_policy(
+        plan.clone(),
+        profile.active,
+        profile.native_rows,
+        effective_cap,
+        crate::gpu::CudaSourceStatePolicy::Contiguous,
+    );
+    let paged_fit = ResidentModel::ordinary_cuda_source_preflight_for_state_policy(
+        plan,
+        profile.active,
+        profile.native_rows,
+        effective_cap,
+        paged.into(),
+    );
+
+    match (contiguous, paged_fit) {
+        (Ok(contiguous), Ok(paged_inventory)) => {
+            let contiguous_resident =
+                contiguous.weight_storage == OrdinaryCudaWeightStorage::Resident;
+            let paged_resident =
+                paged_inventory.weight_storage == OrdinaryCudaWeightStorage::Resident;
+            let (policy, why) = if contiguous_resident {
+                (
+                    crate::models::QwenCudaStatePolicy::Contiguous,
+                    "contiguous keeps weights resident; avoid paged gather/COW overhead",
+                )
+            } else if paged_resident {
+                (
+                    paged,
+                    "contiguous streams weights while paged state keeps weights resident",
+                )
+            } else {
+                (
+                    crate::models::QwenCudaStatePolicy::Contiguous,
+                    "both qualified policies stream weights; prefer simpler contiguous state",
+                )
+            };
+            Ok((
+                policy,
+                format!(
+                    "{why}; {observation}; contiguous={{storage:{:?},total:{}}} paged={{storage:{:?},total:{}}}",
+                    contiguous.weight_storage,
+                    contiguous.total_admission_bytes,
+                    paged_inventory.weight_storage,
+                    paged_inventory.total_admission_bytes
+                ),
+                observed_unix_ms,
+            ))
+        }
+        (Ok(contiguous), Err(paged_error)) => Ok((
+            crate::models::QwenCudaStatePolicy::Contiguous,
+            format!(
+                "paged candidate refused ({paged_error}); {observation}; contiguous={{storage:{:?},total:{}}}",
+                contiguous.weight_storage, contiguous.total_admission_bytes
+            ),
+            observed_unix_ms,
+        )),
+        (Err(contiguous_error), Ok(paged_inventory)) => Ok((
+            paged,
+            format!(
+                "contiguous candidate refused ({contiguous_error}); {observation}; paged={{storage:{:?},total:{}}}",
+                paged_inventory.weight_storage, paged_inventory.total_admission_bytes
+            ),
+            observed_unix_ms,
+        )),
+        (Err(contiguous_error), Err(paged_error)) => {
+            if effective_cap < provider_bytes {
+                Err(crate::Error::resource(
+                    "GPU provider memory / VRAM budget",
+                    "smart model startup candidate selection",
+                    provider_bytes as u64,
+                    effective_cap as u64,
+                ))
+            } else {
+                Err(crate::Error::State(format!(
+                    "no qualified CUDA state policy: contiguous={contiguous_error}; paged={paged_error}"
+                )))
+            }
+        }
+    }
+}
+
+#[cfg(feature = "qwen35-cuda")]
+fn resolve_cuda_smart_backend(
+    model: &str,
+    profile: QwenSourceProfile,
+    plan: std::sync::Arc<crate::accelerator::program::ForwardPlan>,
+    backend: SourceBackend,
+) -> Result<SourceBackend, ServiceError> {
+    match backend {
+        SourceBackend::Cuda {
+            provider_bytes,
+            device_bytes,
+            smart_config,
+        } => {
+            let mode = smart_config.mode;
+            let user = smart_config.overrides.state_policy;
+            let mut observed_unix_ms = None;
+            let decision = crate::smart_config::resolve(
+                mode,
+                user,
+                crate::models::QwenCudaStatePolicy::Contiguous,
+                || {
+                    let (policy, reason, observed) =
+                        auto_cuda_state_policy(plan, profile, provider_bytes, device_bytes)?;
+                    observed_unix_ms = observed;
+                    Ok((policy, reason))
+                },
+            )
+            .map_err(ServiceError::inference)?;
+            validate_cuda_state_policy(profile, decision.value)?;
+            let mut report =
+                crate::smart_config::SmartConfigReport::new(model, "cuda", mode, observed_unix_ms);
+            report.push(
+                "state_policy",
+                describe_cuda_state_policy(decision.value),
+                decision.source,
+                decision.reason,
+            );
+            report.emit();
+            Ok(SourceBackend::Cuda {
+                provider_bytes,
+                device_bytes,
+                smart_config: crate::smart_config::SmartConfig::disabled(
+                    crate::models::QwenCudaSmartOverrides {
+                        state_policy: Some(decision.value),
+                    },
+                ),
+            })
+        }
+        #[cfg(feature = "qwen35-hip")]
+        SourceBackend::Hip(_) => Ok(backend),
     }
 }
 
@@ -79,27 +329,7 @@ pub(crate) fn load_router(
     backend: SourceBackend,
 ) -> Result<Router, ServiceError> {
     profile.validate()?;
-    backend.validate()?;
-    #[cfg(feature = "qwen35-cuda")]
-    if let SourceBackend::Cuda {
-        state_policy:
-            crate::gpu::CudaSourceStatePolicy::Paged {
-                page_tokens,
-                max_append_tokens,
-            },
-        ..
-    } = backend
-        && (page_tokens == 0
-            || max_append_tokens == 0
-            || page_tokens > profile.context
-            || max_append_tokens > profile.context)
-    {
-        return Err(ServiceError::new(
-            400,
-            "invalid_source_state_policy",
-            "paged CUDA state requires positive page/append tokens within context",
-        ));
-    }
+    backend.validate(profile)?;
     #[cfg(feature = "qwen35-hip")]
     if profile.native_rows != 0 && matches!(backend, SourceBackend::Hip(_)) {
         return Err(ServiceError::new(
@@ -135,6 +365,9 @@ pub(crate) fn load_router(
         &host,
         backend.contract(),
     )?;
+    #[cfg(feature = "qwen35-cuda")]
+    let backend =
+        resolve_cuda_smart_backend(&aliases[0], profile, source.plan.plan().clone(), backend)?;
     // Exact original source/template/owner. No qualification loader or program
     // reconstruction and no alternate scheduler/publisher.
     let resident = match backend {
@@ -154,7 +387,7 @@ pub(crate) fn load_router(
         SourceBackend::Cuda {
             provider_bytes,
             device_bytes,
-            state_policy,
+            smart_config,
         } => block_on(ResidentModel::load_ordinary_cuda_source_with_state_policy(
             Device::Cuda(Default::default()),
             source.plan.source().clone(),
@@ -164,7 +397,11 @@ pub(crate) fn load_router(
             profile.native_rows,
             provider_bytes,
             device_bytes,
-            state_policy,
+            smart_config
+                .overrides
+                .state_policy
+                .expect("resolved CUDA smart config")
+                .into(),
             None,
         )),
     }
@@ -1002,10 +1239,14 @@ mod cuda_paged_tests {
             SourceBackend::Cuda {
                 provider_bytes: PROVIDER_BYTES,
                 device_bytes: DEVICE_BYTES,
-                state_policy: crate::gpu::CudaSourceStatePolicy::Paged {
-                    page_tokens: 4,
-                    max_append_tokens: 64,
-                },
+                smart_config: crate::models::SmartConfig::enabled(
+                    crate::models::QwenCudaSmartOverrides {
+                        state_policy: Some(crate::models::QwenCudaStatePolicy::Paged {
+                            page_tokens: 4,
+                            max_append_tokens: 64,
+                        }),
+                    },
+                ),
             },
         )
         .unwrap();
@@ -1115,10 +1356,14 @@ mod cuda_paged_tests {
             SourceBackend::Cuda {
                 provider_bytes: PROVIDER_BYTES,
                 device_bytes: DEVICE_BYTES,
-                state_policy: crate::gpu::CudaSourceStatePolicy::Paged {
-                    page_tokens: 4,
-                    max_append_tokens: 64,
-                },
+                smart_config: crate::models::SmartConfig::enabled(
+                    crate::models::QwenCudaSmartOverrides {
+                        state_policy: Some(crate::models::QwenCudaStatePolicy::Paged {
+                            page_tokens: 4,
+                            max_append_tokens: 64,
+                        }),
+                    },
+                ),
             },
         )
         .unwrap();

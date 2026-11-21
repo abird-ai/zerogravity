@@ -240,8 +240,9 @@ The following extends existing owners; source-byte qualification is not inferenc
   quarantines the pending event,396 handles and completion owners without pool
   reuse or root publication. Two externally SIGKILLed attempts remain incomplete;
   the terminal known/unknown runs pass. **19 Nov high-level selection is now
-  explicit but still non-default:** `QwenCudaWithStatePolicy` carries public
-  `QwenCudaStatePolicy::Paged`, while legacy `QwenCuda` remains Contiguous. The
+  explicit but still non-default at the19 Nov checkpoint:** `QwenCudaWithStatePolicy`
+  carries public `QwenCudaStatePolicy::Paged`; the21 Nov smart-config layer supersedes
+  the fixed Contiguous default while retaining this API as a user override. The
   `page_tokens` remains explicit. Native rows4/8 now share the same Hybrid pool
   and per-lane candidate abstraction: paged gather/body/scatter stays under the
   original cohort submission and only actual fresh/COW outputs can become Ready.

@@ -608,8 +608,9 @@ or a change to the active correctness/benchmark/27B order.
   and heartbeat-assisted unknown-completion runs both exit0. Heartbeat is optional
   transport plumbing only. **19 Nov explicit high-level selector accepted without
   changing defaults:** public `QwenCudaStatePolicy::{Contiguous,Paged}` is exposed
-  only through `ModelLoadRequest::QwenCudaWithStatePolicy`; the historical
-  `QwenCuda` request remains exactly Contiguous. Paged now admits native rows4/8
+  only through `ModelLoadRequest::QwenCudaWithStatePolicy`; that historical fixed
+  `QwenCuda` Contiguous default is superseded by the21 Nov generic smart-config layer.
+  Paged now admits native rows4/8
   through the same Hybrid owner; zero/out-of-context bounds still fail before
   source IO. Native B2/B4/B8 cohort state transport is implemented by reusing
   `OrdinaryCandidateState` gather/body/scatter per lane under one cohort flight.
@@ -780,8 +781,10 @@ or a change to the active correctness/benchmark/27B order.
   four logical lifecycle roots while keeping all2B32K weights resident. Same32K capacity,
   1024-token public A/B is283.22s contiguous-streamed vs28.56s paged-resident (~9.9x),
   and the retained full32766-token paged run passes in224.80s execution/260.34s wall with
-  exact replay/frontiers and clean shutdown. Default `QwenCuda` remains Contiguous; the
-  accepted closure is explicit paged policy. No benchmark result from the earlier killed
+  exact replay/frontiers and clean shutdown. Canonical `QwenCuda` now runs Enabled smart
+  config and automatically selects Paged64/64 when exact current admission shows it avoids
+  weight streaming; user state-policy values still win under Enabled. No benchmark result
+  from the earlier killed
   short2B B8 attempt is retained; do not return to residual paged micro-tuning.
 - [x] A clean dynamic-prefill grouping candidate was measured and rejected from the
   current selector rather than discarded globally. For the already-compatible mixed

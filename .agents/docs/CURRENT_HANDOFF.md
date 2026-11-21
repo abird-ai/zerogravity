@@ -80,9 +80,11 @@ Vulkan-only retry passed, so no source failure follows.
   a call exceeds the admitted append bound.
   At `1413f72` the high-level/public `ModelLoadRequest` was intentionally
   unchanged and production registration passed `CudaSourceStatePolicy::Contiguous`
-  explicitly. The 19 Nov follow-up now adds an explicit policy-bearing high-level
-  request while preserving legacy `QwenCuda` as Contiguous; no default switched.
-  Pre-source-IO unit tests prove invalid paged/native/bound policies return
+  explicitly. The 19 Nov follow-up added an explicit policy-bearing high-level request
+  while preserving `QwenCuda` as Contiguous **at that checkpoint**. That fixed default is
+  superseded by the21 Nov generic smart-config layer recorded below; the explicit request
+  now supplies a user value for that knob under Enabled mode. Pre-source-IO unit tests
+  prove invalid paged/native/bound policies return
   `invalid_source_state_policy` before cache/device access.
   The real managed L5 cache is now visible at
   `/home/pvl/.cache/abird/zerogravity/models` with the exact approved0.8B
@@ -316,10 +318,9 @@ Vulkan-only retry passed, so no source failure follows.
   heartbeat-assisted unknown-completion runs exit0. Heartbeat is optional transport
   plumbing only. Run physical cells through `native-gpu`; reserve
   `--require-private-network` for genuine TCP/UDP loopback gates.
-  **19 Nov explicit high-level paged selection is accepted without changing the
-  default.** Public `QwenCudaStatePolicy::{Contiguous,Paged}` is available only via
-  new `ModelLoadRequest::QwenCudaWithStatePolicy`; existing `QwenCuda` remains
-  exactly Contiguous. **Native paged B2/B4/B8 state transport is now implemented**
+  **Historical19 Nov selector checkpoint (superseded for default selection on21 Nov).**
+  Public `QwenCudaStatePolicy::{Contiguous,Paged}` was initially available only via
+  `ModelLoadRequest::QwenCudaWithStatePolicy`, with `QwenCuda` then exactly Contiguous. **Native paged B2/B4/B8 state transport is now implemented**
   by reusing `OrdinaryCandidateState`: each lane gathers paged KV into its admitted
   staging, executes the existing native cohort body, scatters under the same flight,
   promotes only actual Vector/fresh-COW Writes, then materializes canonical paged
@@ -1113,10 +1114,24 @@ serving, memory and composition plans.
   both exact with clean shutdown. The retained full32766-token paged qualifier then passed
   end-to-end in224.80s test execution /260.34s wall, inside the existing600s first-response
   contract, with exact replay, independent sessions, exact producer frontiers and clean
-  shutdown. Default `QwenCuda` remains Contiguous by policy; this acceptance is for the
-  explicit `QwenCudaWithStatePolicy::Paged { page_tokens:64, max_append_tokens:64 }` path.
-  The qualifier reuses the existing test with environment-selected prompt/state policy;
-  no duplicate fixture or token pin was added.
+  shutdown. **Model-start smart configuration now owns the default choice.** The shared
+  `smart_config` layer is model-neutral and resolves independent typed knobs once at cold
+  model start; adapters can add/remove knobs without changing the core precedence/report
+  contract. Modes are exactly: `Exclusive` = Auto owns supported knobs and user values for
+  those knobs are ignored; `Enabled` (default) = user-provided values win per knob and Auto
+  resolves the rest; `Disabled` = no Auto, use user values or static model defaults. Each
+  Auto evaluation may consume a fresh read-only runtime/device observation, but ordinary
+  resource admission remains authoritative and no decision enters the token hot path.
+  Resolved choices emit one compact `smart-config` startup line with mode, observation time,
+  source (`auto`/`user`/`default`) and rationale. Qwen CUDA is the first adapter: its first
+  smart knob is `state_policy`; Auto compares exact Contiguous vs qualified Paged64/64
+  source-call admission against current CUDA ordinal0 free VRAM. Canonical `QwenCuda` now
+  uses `Enabled`; legacy `QwenCudaWithStatePolicy` supplies the user value for this knob;
+  `QwenCudaWithSmartConfig` exposes the global mode plus extensible `QwenCudaSmartOverrides`.
+  Physical default-Qwen acceptance on2B/32K/1024 logged Auto selecting paged because
+  contiguous streamed weights while paged stayed resident, then passed in26.51s with exact
+  replay/frontiers and clean shutdown. The qualifier reuses the existing test; no duplicate
+  fixture or token pin was added.
 - **Retained-candidate policy:** reusable performance experiments are no longer deleted
   merely because one model/shape loses an A/B. Model-neutral candidates live dormant,
   with no production selector/callsite, so Qwen2B/27B, Gemma4 and future models can

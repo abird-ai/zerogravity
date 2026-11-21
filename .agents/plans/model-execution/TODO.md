@@ -83,9 +83,10 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 ### 19 Nov 2026 — explicit high-level paged selector accepted
 
 - [x] Added public `QwenCudaStatePolicy::{Contiguous,Paged}` plus
-  `ModelLoadRequest::QwenCudaWithStatePolicy`. Existing `ModelLoadRequest::QwenCuda`
-  remains hard-bound to Contiguous, so current callers/default production behavior
-  do not change. The new request maps to the already accepted low-level
+  `ModelLoadRequest::QwenCudaWithStatePolicy`. **Historical19 Nov behavior** kept
+  `ModelLoadRequest::QwenCuda` hard-bound to Contiguous; this is superseded by the21 Nov
+  generic smart-config layer, where the explicit state policy supplies a user value for
+  one knob. The request maps to the already accepted low-level
   `CudaSourceStatePolicy` only at the Qwen CUDA registration seam.
 - [x] Existing fail-closed paged policy validation remains authoritative before
   source IO for positive page/append extents and context bounds. The original
@@ -427,9 +428,17 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   slabs. Host admission keeps all2B32K weights resident. Physical public-SDK A/B at the
   same32K capacity/1024-token prompt is283.22s contiguous-streamed versus28.56s
   paged-resident (~9.9x faster), and the full32766-token paged run passes in224.80s
-  execution/260.34s wall with exact replay/frontiers and clean shutdown. Keep default
-  `QwenCuda` Contiguous; the accepted closure is explicit `QwenCudaWithStatePolicy::Paged`
-  with page_tokens64/max_append64. Do not repin outputs or resurrect the old refusal rule.
+  execution/260.34s wall with exact replay/frontiers and clean shutdown. A generic
+  model-start `smart_config` layer now makes this class of choice once at cold start, not in
+  the hot path. Modes: Exclusive ignores user values for supported smart knobs; Enabled
+  (default) lets per-knob user values override Auto; Disabled uses user values/static
+  defaults only. Qwen's first extensible override field is `state_policy`; Auto evaluates
+  exact Contiguous/Paged64 admission using a fresh ordinal0 VRAM observation. Canonical
+  `QwenCuda` now uses Enabled. A default2B32K/1024 physical run logged Auto→Paged because
+  contiguous streamed weights while paged stayed resident and passed in26.51s exact.
+  Future knobs (batch width, page geometry, placement, kernel/capture policy, etc.) should
+  plug into the same generic precedence/report layer, not create model-local mode enums.
+  Do not repin outputs or resurrect the old refusal rule.
 - [ ] Localize ROCm2B C4 warmup and C16/32/64 warmup/timed divergence (task39),
   without repinning expected IDs or attributing an unlocalized failure to kernels.
 - [~] Close ordinary27B HIP HTTP504 and populated1K/2K references/serving (task11).

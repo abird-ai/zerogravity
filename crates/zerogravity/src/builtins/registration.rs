@@ -25,7 +25,7 @@ pub(crate) fn load_text(
             profile,
             provider_bytes,
             device_bytes,
-            crate::models::QwenCudaStatePolicy::Contiguous,
+            crate::models::SmartConfig::default(),
             limits,
         ),
         #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
@@ -44,7 +44,28 @@ pub(crate) fn load_text(
             profile,
             provider_bytes,
             device_bytes,
-            state_policy,
+            crate::models::SmartConfig::enabled(crate::models::QwenCudaSmartOverrides {
+                state_policy: Some(state_policy),
+            }),
+            limits,
+        ),
+        #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+        ModelLoadRequest::QwenCudaWithSmartConfig {
+            aliases,
+            cache,
+            snapshot,
+            profile,
+            provider_bytes,
+            device_bytes,
+            smart_config,
+        } => load_qwen_cuda(
+            aliases,
+            cache,
+            snapshot,
+            profile,
+            provider_bytes,
+            device_bytes,
+            smart_config,
             limits,
         ),
         #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
@@ -146,7 +167,7 @@ fn load_qwen_cuda(
     profile: crate::models::QwenSourceProfile,
     provider_bytes: usize,
     device_bytes: u64,
-    state_policy: crate::models::QwenCudaStatePolicy,
+    smart_config: crate::models::SmartConfig<crate::models::QwenCudaSmartOverrides>,
     limits: SchedulerLimits,
 ) -> Result<Router, ServiceError> {
     profile.validate()?;
@@ -159,7 +180,7 @@ fn load_qwen_cuda(
         super::text::qwen_source::SourceBackend::Cuda {
             provider_bytes,
             device_bytes,
-            state_policy: state_policy.into(),
+            smart_config,
         },
     )
 }
@@ -190,7 +211,7 @@ mod tests {
     use super::*;
     use crate::{
         cache::CacheOptions,
-        models::{QwenCudaStatePolicy, QwenSourceProfile},
+        models::{QwenCudaSmartOverrides, QwenCudaStatePolicy, QwenSourceProfile, SmartConfig},
     };
 
     fn limits() -> SchedulerLimits {
@@ -218,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn qwen_cuda_default_request_remains_contiguous() {
+    fn qwen_cuda_default_request_enables_smart_config() {
         let error = expect_pre_source_error(ModelLoadRequest::QwenCuda {
             aliases: vec!["default-contiguous".into()],
             cache: CacheOptions::new(None, 1),
@@ -264,5 +285,36 @@ mod tests {
             ));
             assert_ne!(valid.code, "invalid_source_state_policy");
         }
+    }
+
+    #[test]
+    fn smart_config_modes_apply_user_precedence_before_source_io() {
+        let invalid = QwenCudaStatePolicy::Paged {
+            page_tokens: 0,
+            max_append_tokens: 4,
+        };
+        let request = |smart_config| ModelLoadRequest::QwenCudaWithSmartConfig {
+            aliases: vec!["smart-mode".into()],
+            cache: CacheOptions::new(None, 1),
+            snapshot: "not-a-source-digest".into(),
+            profile: profile(1, 0),
+            provider_bytes: 1,
+            device_bytes: 1,
+            smart_config,
+        };
+        let overrides = QwenCudaSmartOverrides {
+            state_policy: Some(invalid),
+        };
+
+        for config in [
+            SmartConfig::enabled(overrides),
+            SmartConfig::disabled(overrides),
+        ] {
+            let error = expect_pre_source_error(request(config));
+            assert_eq!(error.code, "invalid_source_state_policy");
+        }
+
+        let exclusive = expect_pre_source_error(request(SmartConfig::exclusive(overrides)));
+        assert_ne!(exclusive.code, "invalid_source_state_policy");
     }
 }

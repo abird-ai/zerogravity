@@ -6,6 +6,14 @@ pub use crate::builtins::text::QwenSourceProfile;
 #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
 pub use crate::gpu::HipSourceBudget;
 
+pub use crate::smart_config::{SmartConfig, SmartConfigMode};
+
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct QwenCudaSmartOverrides {
+    pub state_policy: Option<QwenCudaStatePolicy>,
+}
+
 #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum QwenCudaStatePolicy {
@@ -43,7 +51,7 @@ pub use zerogravity_engine::{
 /// One complete cold route set. This is not live model replacement or residency.
 /// Aliases share the original source; an already configured runtime refuses.
 pub enum ModelLoadRequest {
-    /// Canonical original source; shared CUDA worker and bounded matrix placement.
+    /// Canonical original source with smart startup configuration Enabled.
     #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
     QwenCuda {
         aliases: Vec<String>,
@@ -55,7 +63,8 @@ pub enum ModelLoadRequest {
         /// Physical device admission, including the backend's context owners.
         device_bytes: u64,
     },
-    /// Explicit CUDA state representation. `QwenCuda` remains Contiguous.
+    /// User state-policy value; under Enabled it overrides this knob while
+    /// future unspecified smart-config knobs remain eligible for Auto selection.
     #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
     QwenCudaWithStatePolicy {
         aliases: Vec<String>,
@@ -65,6 +74,17 @@ pub enum ModelLoadRequest {
         provider_bytes: usize,
         device_bytes: u64,
         state_policy: QwenCudaStatePolicy,
+    },
+    /// Explicit control of the shared startup smart-config layer.
+    #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+    QwenCudaWithSmartConfig {
+        aliases: Vec<String>,
+        cache: crate::cache::CacheOptions,
+        snapshot: String,
+        profile: QwenSourceProfile,
+        provider_bytes: usize,
+        device_bytes: u64,
+        smart_config: SmartConfig<QwenCudaSmartOverrides>,
     },
     /// Canonical original HF source through the shared worker; cold HIP only.
     #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
