@@ -1,4 +1,4 @@
-//! Generated actual canonical47B4 source instructions; unqualified until physical replay.
+//! Generated actual prefill-47 4-row source instructions; unqualified until physical replay.
 use super::gdn_code::{Role, StageSource};
 use cubecl_runtime::kernel::BufferIOAttr::{ReadOnly as R, ReadWrite as RW, WriteOnly as W};
 // Whole source-unit manifest SHA256: fec1cd9573c6ae5411249b3f4b5b019315549c280eb6f8291bd51b67f7c89daf

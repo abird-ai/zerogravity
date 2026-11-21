@@ -36,25 +36,24 @@ fn provider_bytes(kind: FixedPromptPrefixKind) -> Result<usize> {
         FixedPromptPrefixKind::FirstThree => Ok(PROVIDER_BYTES),
         FixedPromptPrefixKind::ThroughLayer3 => {
             LAYER3_HOST_BOUND.ok_or_else(|| {
-                Error::Unsupported("canonical47 layer3 host bound unqualified".into())
+                Error::Unsupported("prefill 47 layer3 host bound unqualified".into())
             })?;
             LAYER3_PROVIDER_BYTES.ok_or_else(|| {
-                Error::Unsupported("canonical47 layer3 provider envelope unqualified".into())
+                Error::Unsupported("prefill 47 layer3 provider envelope unqualified".into())
             })
         }
         FixedPromptPrefixKind::ThroughAttentionFa => {
-            FA_HOST_BOUND.ok_or_else(|| {
-                Error::Unsupported("canonical47 FA host bound unqualified".into())
-            })?;
+            FA_HOST_BOUND
+                .ok_or_else(|| Error::Unsupported("prefill 47 FA host bound unqualified".into()))?;
             FA_PROVIDER_BYTES.ok_or_else(|| {
-                Error::Unsupported("canonical47 FA provider envelope unqualified".into())
+                Error::Unsupported("prefill 47 FA provider envelope unqualified".into())
             })
         }
         FixedPromptPrefixKind::ThroughAttentionKv => QK_KV_PROVIDER_BYTES.ok_or_else(|| {
-            Error::Unsupported("canonical47 QK/KV provider envelope unqualified".into())
+            Error::Unsupported("prefill 47 QK/KV provider envelope unqualified".into())
         }),
         FixedPromptPrefixKind::ThroughAttentionQkv => QKV_PROVIDER_BYTES.ok_or_else(|| {
-            Error::Unsupported("canonical47 QKV provider envelope unqualified".into())
+            Error::Unsupported("prefill 47 QKV provider envelope unqualified".into())
         }),
     }
 }
@@ -62,7 +61,7 @@ fn rms_sum_index(value_count: usize, dual_nodes: &[usize], node: usize) -> Resul
     let index = dual_nodes
         .iter()
         .position(|id| *id == node)
-        .ok_or_else(|| Error::Unsupported("canonical47 computed dual RMS node absent".into()))?;
+        .ok_or_else(|| Error::Unsupported("prefill 47 computed dual RMS node absent".into()))?;
     Ok(7 + value_count + index * 4 + 1)
 }
 
@@ -94,15 +93,15 @@ impl FixedPromptModelPrefixReadback<'_> {
     /// Same source-produced control, available only inside actual completion.
     pub fn positions(&self) -> Result<&[u8]> {
         let index = self.positions.ok_or_else(|| {
-            Error::Unsupported("canonical47 source positions not in this cut".into())
+            Error::Unsupported("prefill 47 source positions not in this cut".into())
         })?;
         let bytes = self
             .raw
             .get(index)
-            .ok_or_else(|| Error::State("canonical47 actual positions descriptor absent".into()))?;
+            .ok_or_else(|| Error::State("prefill 47 actual positions descriptor absent".into()))?;
         if bytes.len() != 1560 {
             return Err(Error::State(
-                "canonical47 exact pitch65 positions extent".into(),
+                "prefill 47 exact pitch65 positions extent".into(),
             ));
         }
         Ok(&bytes[..])
@@ -111,14 +110,14 @@ impl FixedPromptModelPrefixReadback<'_> {
     pub fn kv_transport_status(&self) -> Result<&[u8]> {
         let index = self
             .positions
-            .ok_or_else(|| Error::Unsupported("canonical47 KV status not in this cut".into()))?
+            .ok_or_else(|| Error::Unsupported("prefill 47 KV status not in this cut".into()))?
             + 1;
         let bytes = self
             .raw
             .get(index)
-            .ok_or_else(|| Error::State("canonical47 actual KV status descriptor absent".into()))?;
+            .ok_or_else(|| Error::State("prefill 47 actual KV status descriptor absent".into()))?;
         if bytes.len() != 4 {
-            return Err(Error::State("canonical47 exact four-byte KV status".into()));
+            return Err(Error::State("prefill 47 exact four-byte KV status".into()));
         }
         Ok(&bytes[..])
     }
@@ -130,7 +129,7 @@ impl FixedPromptModelPrefixReadback<'_> {
     pub fn value(&self, id: ValueId) -> Result<&[u8]> {
         if id.0 as usize >= self.value_count {
             return Err(Error::Unsupported(
-                "canonical47 prefix has no future value".into(),
+                "prefill 47 prefix has no future value".into(),
             ));
         }
         Ok(self.raw[7 + id.0 as usize].as_ref())
@@ -141,10 +140,10 @@ impl FixedPromptModelPrefixReadback<'_> {
         let bytes = self
             .raw
             .get(index)
-            .ok_or_else(|| Error::State("canonical47 dual sum descriptor absent".into()))?;
+            .ok_or_else(|| Error::State("prefill 47 dual sum descriptor absent".into()))?;
         if bytes.len() != 47 * 1024 * 4 {
             return Err(Error::State(
-                "canonical47 exact47x1024 F32 dual sum extent".into(),
+                "prefill 47 exact47x1024 F32 dual sum extent".into(),
             ));
         }
         Ok(bytes.as_ref())
@@ -158,7 +157,7 @@ impl FixedPromptModelPrefixReadback<'_> {
         let (_, span) = keys
             .iter()
             .find(|(key, _)| *key == slot)
-            .ok_or_else(|| Error::State("canonical47 actual canonical state absent".into()))?;
+            .ok_or_else(|| Error::State("prefill 47 actual canonical state absent".into()))?;
         Ok((
             self.raw[span.start].as_ref(),
             if span.len() == 2 {
@@ -201,7 +200,7 @@ struct ColdOwners {
 }
 /// Caller pins ONE coherent original observed trajectory, then declares exact
 /// compared boundaries/states separately. No expected value enters native inputs.
-/// Existing source tuple is OwnedCanonical47Solve4; no original-PTX tuple equality.
+/// Existing source tuple comes from the fixed-prompt solve fixture; no original-PTX tuple equality.
 pub async fn qualify_fixed_prompt_model_prefix<F>(
     device: Device,
     source: VerifiedTensorSource,
@@ -232,7 +231,7 @@ where
     {
         Outcome::Compared(value) => Ok(value),
         Outcome::Fault(_) => Err(Error::State(
-            "canonical47 first3 positive returned fault outcome".into(),
+            "prefill 47 first3 positive returned fault outcome".into(),
         )),
     }
 }
@@ -269,7 +268,7 @@ where
     {
         Outcome::Compared(value) => Ok(value),
         Outcome::Fault(_) => Err(Error::State(
-            "canonical47 QKV positive returned fault outcome".into(),
+            "prefill 47 QKV positive returned fault outcome".into(),
         )),
     }
 }
@@ -311,7 +310,7 @@ where
     {
         Outcome::Compared(value) => Ok(value),
         Outcome::Fault(_) => Err(Error::State(
-            "canonical47 QK/KV positive returned fault outcome".into(),
+            "prefill 47 QK/KV positive returned fault outcome".into(),
         )),
     }
 }
@@ -348,7 +347,7 @@ where
     {
         Outcome::Compared(value) => Ok(value),
         Outcome::Fault(_) => Err(Error::State(
-            "canonical47 FA positive returned fault outcome".into(),
+            "prefill 47 FA positive returned fault outcome".into(),
         )),
     }
 }
@@ -385,7 +384,7 @@ where
     {
         Outcome::Compared(value) => Ok(value),
         Outcome::Fault(_) => Err(Error::State(
-            "canonical47 layer3 positive returned fault outcome".into(),
+            "prefill 47 layer3 positive returned fault outcome".into(),
         )),
     }
 }
@@ -434,7 +433,7 @@ where
         crate::cuda::native::attention_cubin::fixed_prompt_packets::require_memory_qualification()?;
         let prefix = rotary
             .ok_or_else(|| {
-                Error::State("canonical47 genuine completed rotary constructor required".into())
+                Error::State("prefill 47 genuine completed rotary constructor required".into())
             })?
             .into_fixed_prefix()?;
         prefix.require_source(&source)?;
@@ -443,7 +442,7 @@ where
     } else {
         if rotary.is_some() {
             return Err(Error::State(
-                "legacy canonical47 cut cannot accept rotary owner".into(),
+                "legacy prefill 47 cut cannot accept rotary owner".into(),
             ));
         }
         None
@@ -462,23 +461,20 @@ where
     validate_provider(&device)?;
     if cfg!(debug_assertions) {
         return Err(Error::Unsupported(
-            "release canonical47 model prefix required".into(),
+            "release prefill 47 model prefix required".into(),
         ));
     }
     let metadata = source.reserve_workspace(4 * 1024 * 1024)?;
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source_identity(),
-        ResourceOwner::new(
-            "source-canonical47-first3",
-            "unpublished-original-model-cut",
-        )?,
+        ResourceOwner::new("source-prefill47-first3", "unpublished-original-model-cut")?,
         provider_bytes,
         inputs.projections.device_cap,
     )?;
     if service.client().properties().memory.alignment != 512 {
         return Err(Error::Unsupported(
-            "canonical47 first3 exact512-byte managed alignment".into(),
+            "prefill 47 first3 exact512-byte managed alignment".into(),
         ));
     }
     let key = service.physical_key();
@@ -486,7 +482,7 @@ where
         zerogravity_core::resource_arbiter::ResourceArbiter::process_shared().snapshot(&key)?;
     if physical.fenced || physical.reserved != provider_bytes as u64 {
         return Err(Error::State(
-            "canonical47 first3 solitary original physical envelope".into(),
+            "prefill 47 first3 solitary original physical envelope".into(),
         ));
     }
     if mode.is_pressure() {
@@ -618,7 +614,7 @@ where
         let pair = scope.gdn_site(layer)?.nodes();
         let operator = |i: usize| {
             record.operator(i)?.ok_or_else(|| {
-                Error::State("canonical47 actual model GDN parameter descriptor".into())
+                Error::State("prefill 47 actual model GDN parameter descriptor".into())
             })
         };
         parameters.push(ModelGdnParameters::prepare(
@@ -775,7 +771,7 @@ where
     let mut reads = body.readbacks()?;
     if reads.len() != body_reads {
         return Err(Error::State(
-            "canonical47 exact narrow body readback count".into(),
+            "prefill 47 exact narrow body readback count".into(),
         ));
     }
     let positions_index = attention.as_ref().map(|_| reads.len());
@@ -799,7 +795,7 @@ where
     body.require_readback_capacity(readback_bytes)?;
     if readback_bytes > 128 * 1024 * 1024 || service.resident_bytes()? > provider_bytes {
         return Err(Error::Limit(
-            "canonical47 original D2H cohort/provider bound exceeded".into(),
+            "prefill 47 original D2H cohort/provider bound exceeded".into(),
         ));
     }
     let cohort = Arc::new(reads);
@@ -835,12 +831,12 @@ where
     )?;
     if !matches!(&mode, Mode::Compare) {
         return Err(Error::State(
-            "canonical47 first3 intended fault cut was not observed".into(),
+            "prefill 47 first3 intended fault cut was not observed".into(),
         ));
     }
     if submitted.logits.is_some() || submitted.proposals.len() != 42 {
         return Err(Error::State(
-            "canonical47 first3 cannot publish logits/root or omit canonical proposals".into(),
+            "prefill 47 first3 cannot publish logits/root or omit canonical proposals".into(),
         ));
     }
     let promoted = accesses
@@ -853,7 +849,7 @@ where
             not_cancelled(cancelled)?;
             if raw.len() != cohort.len() {
                 return Err(Error::State(
-                    "canonical47 complete exact math/state cohort".into(),
+                    "prefill 47 complete exact math/state cohort".into(),
                 ));
             }
             body.validate_readbacks(&raw[..body_reads])?;
@@ -863,7 +859,7 @@ where
             for (_, span) in &prior {
                 if raw[span.clone()].iter().any(|v| v.iter().any(|b| *b != 0)) {
                     return Err(Error::State(
-                        "canonical47 genuine fresh prior values across all state domains differ from zero".into(),
+                        "prefill 47 genuine fresh prior values across all state domains differ from zero".into(),
                     ));
                 }
             }
@@ -871,11 +867,11 @@ where
                 let (_, a) = prior
                     .iter()
                     .find(|(s, _)| s == slot)
-                    .ok_or_else(|| Error::State("canonical47 carry prior absent".into()))?;
+                    .ok_or_else(|| Error::State("prefill 47 carry prior absent".into()))?;
                 let (_, b) = proposed
                     .iter()
                     .find(|(s, _)| s == slot)
-                    .ok_or_else(|| Error::State("canonical47 carry candidate absent".into()))?;
+                    .ok_or_else(|| Error::State("prefill 47 carry candidate absent".into()))?;
                 if a.len() != b.len()
                     || raw[a.clone()]
                         .iter()
@@ -883,14 +879,14 @@ where
                         .any(|(x, y)| x[..] != y[..])
                 {
                     return Err(Error::State(
-                        "canonical47 remaining36 domains not exact original prior copies".into(),
+                        "prefill 47 remaining36 domains not exact original prior copies".into(),
                     ));
                 }
             }
             for (actual, (_, expected)) in raw[parameter_start..].iter().zip(&immutable) {
                 if &actual[..] != *expected {
                     return Err(Error::State(
-                        "canonical47 original GDN parameters changed".into(),
+                        "prefill 47 original GDN parameters changed".into(),
                     ));
                 }
             }
@@ -910,7 +906,7 @@ where
     slot.finish()?;
     if session.binding() != base {
         return Err(Error::State(
-            "canonical47 finite diagnostic published original root".into(),
+            "prefill 47 finite diagnostic published original root".into(),
         ));
     }
     // After diagnostic Ready/callback: serial original W verifier flights.
@@ -953,7 +949,7 @@ where
                 || raw.iter().zip(&immutable).any(|(a, (_, b))| &a[..] != *b)
             {
                 return Err(Error::State(
-                    "canonical47 immutable GDN parameters changed at retirement".into(),
+                    "prefill 47 immutable GDN parameters changed at retirement".into(),
                 ));
             }
             Ok(())
@@ -1001,7 +997,7 @@ where
     let final_resident_bytes = service.resident_bytes()?;
     if final_resident_bytes != 0 || service.pending_events()? != 0 {
         return Err(Error::State(
-            "canonical47 original managed ledger did not retire".into(),
+            "prefill 47 original managed ledger did not retire".into(),
         ));
     }
     drop(service);
@@ -1009,7 +1005,7 @@ where
         zerogravity_core::resource_arbiter::ResourceArbiter::process_shared().snapshot(&key)?;
     if physical.fenced || physical.reserved != 0 {
         return Err(Error::State(
-            "canonical47 physical envelope did not retire".into(),
+            "prefill 47 physical envelope did not retire".into(),
         ));
     }
     Ok(Outcome::Compared(FixedPromptModelPrefixReceipt {

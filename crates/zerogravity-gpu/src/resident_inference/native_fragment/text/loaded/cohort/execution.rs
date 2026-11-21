@@ -195,7 +195,7 @@ impl TextLoaded {
                 .any(|session| !Arc::ptr_eq(&session.loaded, self))
         {
             return Err(Error::Unsupported(
-                "canonical47 actual B4 source cohort only".into(),
+                "prefill 47 actual B4 source cohort only".into(),
             ));
         }
         inputs.require_current(sessions)?;

@@ -20,7 +20,7 @@ impl FullModelProgram {
         let scope = self
             .fixed_prompt
             .as_ref()
-            .ok_or_else(|| Error::State("canonical47 model source scope absent".into()))?;
+            .ok_or_else(|| Error::State("prefill 47 model source scope absent".into()))?;
         if !Arc::ptr_eq(scope, cut.scope())
             || !Arc::ptr_eq(&self.record, scope.record())
             || !self.source.same_issuer(scope.source())
@@ -49,7 +49,7 @@ impl FullModelProgram {
             .is_ok()
         {
             return Err(Error::State(
-                "canonical47 prefix cannot retain future uncomputed value leases".into(),
+                "prefill 47 prefix cannot retain future uncomputed value leases".into(),
             ));
         }
         let mut layers = BTreeSet::new();
@@ -61,7 +61,7 @@ impl FullModelProgram {
                     .is_some_and(|first| !first.same_request(state))
             {
                 return Err(Error::State(
-                    "canonical47 same original schedule/source/layer states".into(),
+                    "prefill 47 same original schedule/source/layer states".into(),
                 ));
             }
             state.require_fixed_prompt_whole(&cut)?;
@@ -96,7 +96,7 @@ impl FullModelProgram {
         let gdn_arithmetic = gdn
             .values()
             .next()
-            .ok_or_else(|| Error::State("canonical47 GDN arithmetic absent".into()))?
+            .ok_or_else(|| Error::State("prefill 47 GDN arithmetic absent".into()))?
             .arithmetic()
             .clone();
         self.gdn_family.require_same(gdn_arithmetic.family())?;
@@ -115,7 +115,7 @@ impl FullModelProgram {
             .collect::<BTreeSet<_>>();
         if self.fused.keys().copied().collect::<BTreeSet<_>>() != expected_fused {
             return Err(Error::State(
-                "canonical47 original five indexed dual RMS actors".into(),
+                "prefill 47 original five indexed dual RMS actors".into(),
             ));
         }
         let mut accesses = BTreeMap::new();
@@ -158,7 +158,7 @@ impl FullModelProgram {
                 attention: BTreeMap::new(),
                 accesses: accesses.into_values().collect(),
             })
-            .map_err(|_| Error::State("canonical47 model prefix already bound".into()))
+            .map_err(|_| Error::State("prefill 47 model prefix already bound".into()))
     }
     pub(crate) fn arm_fixed_prompt_whole_fault(&self, mode: usize) -> Result<()> {
         let cut = &self

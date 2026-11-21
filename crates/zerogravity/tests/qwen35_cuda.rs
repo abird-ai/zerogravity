@@ -3,7 +3,6 @@
 //! A fresh 47-token prompt commits frontier 47; frontiers 48–50 consume one cached token each.
 //! Historical routing does not admit fresh 48–50-token prompts. The separate
 //! ignored fresh-prefill test below admits exactly one initial call for rows 47–50.
-// Former names: short_hf, canonical47, case5. Historical oracle labels remain exact.
 
 use std::{
     future::Future,

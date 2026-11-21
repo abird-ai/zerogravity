@@ -128,7 +128,7 @@ fn legacy_invocation_constructors_keep_exact_finite_guards() {
 }
 
 #[test]
-fn true47_and_cached47_through53_spans_have_no_legacy_native_phase() {
+fn prefill47_and_decode_bases47_through53_have_no_legacy_reference_phase() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let initial = request(source, InvocationPhase::Prefill, 0, 47);
     assert_eq!((initial.rows(), initial.teachers().base()), (47, 0));

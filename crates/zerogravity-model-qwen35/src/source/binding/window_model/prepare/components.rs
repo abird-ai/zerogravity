@@ -169,7 +169,7 @@ impl ModelComponentCut {
     fn require_kind(self, kind: ModelComponentKind) -> Result<()> {
         if self == Self::Mlp && !matches!(kind, ModelComponentKind::FixedPrompt(_)) {
             return Err(Error::Unsupported(
-                "MLP component is canonical47 only".into(),
+                "MLP component is prefill 47 only".into(),
             ));
         }
         if self == Self::Qwen2BMlp && kind != ModelComponentKind::Qwen2B {

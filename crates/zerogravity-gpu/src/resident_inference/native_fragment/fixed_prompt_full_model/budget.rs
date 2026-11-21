@@ -7,9 +7,9 @@ pub(super) const DESCRIPTORS: usize = 753;
 fn require_gates(provider: Option<usize>, host: Option<usize>) -> Result<(usize, usize)> {
     Ok((
         provider.ok_or_else(|| {
-            Error::Unsupported("canonical47 whole physical envelope unqualified".into())
+            Error::Unsupported("prefill 47 whole physical envelope unqualified".into())
         })?,
-        host.ok_or_else(|| Error::Unsupported("canonical47 whole host bound unqualified".into()))?,
+        host.ok_or_else(|| Error::Unsupported("prefill 47 whole host bound unqualified".into()))?,
     ))
 }
 pub(super) fn require(cut: &FixedPromptPrefixCut) -> Result<usize> {
@@ -24,7 +24,7 @@ pub(super) fn require(cut: &FixedPromptPrefixCut) -> Result<usize> {
         || cut.scope().source().staging_chunk_bytes() != MIB
     {
         return Err(Error::State(
-            "canonical47 whole exact source-bound capacity geometry".into(),
+            "prefill 47 whole exact source-bound capacity geometry".into(),
         ));
     }
     let public = cut
@@ -49,7 +49,7 @@ pub(super) fn require(cut: &FixedPromptPrefixCut) -> Result<usize> {
         || !(1_369_203_644..=1536 * MIB).contains(&host)
     {
         return Err(Error::Limit(
-            "canonical47 whole reviewed envelope/source dimensions differ".into(),
+            "prefill 47 whole reviewed envelope/source dimensions differ".into(),
         ));
     }
     Ok(cap)

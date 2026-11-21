@@ -1,5 +1,4 @@
 //! Model-owned source/recipe preparation; one shared plan, no device/root permit.
-//! Prior binders: short_hf_model, canonical47_model, resident_program::native.
 use super::*;
 use crate::plan::{
     GdnProjection, PromptInvocation, QwenFragmentPlan, QwenFragmentView, QwenGdnConv,

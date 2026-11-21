@@ -91,7 +91,7 @@ impl FixedPromptPrefixCut {
         }
         if scope.kind() != FixedPromptInvocationKind::Prefill {
             return Err(Error::Unsupported(
-                "fixed_prompt first3 cut is initial Prefill47 only".into(),
+                "fixed-prompt first-three cut requires prefill 47".into(),
             ));
         }
         let record = scope.record();

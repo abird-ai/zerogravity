@@ -34,7 +34,7 @@ impl FixedPromptInvocationKind {
             (InvocationPhase::Prefill, 0, 47) => Ok(Self::Prefill),
             (InvocationPhase::Decode, base @ 47..=53, 1) => Ok(Self::Decode { base }),
             _ => Err(Error::Unsupported(
-                "fixed prompt physical Prefill47/Decode47..53".into(),
+                "fixed prompt physical prefill 47 / decode bases 47..53".into(),
             )),
         }
     }

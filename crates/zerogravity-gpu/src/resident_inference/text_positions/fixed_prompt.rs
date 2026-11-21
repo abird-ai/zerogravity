@@ -1,4 +1,4 @@
-//! Exact original Prefill47 position issuer; legacy five spans remain closed.
+//! Exact original prefill-47 position issuer; legacy five spans remain closed.
 use super::*;
 use crate::cuda::native::fixed_prompt_model::FixedPromptInvocationKind;
 use crate::cuda::native::fixed_prompt_model_prefix::FixedPromptPrefixCut;
@@ -17,7 +17,7 @@ impl ResidentSession {
         let call = scope.record().invocation();
         if !cut.is_attention_cut() || scope.kind() != FixedPromptInvocationKind::Prefill {
             return Err(Error::Unsupported(
-                "closed canonical47 QK/KV position cut".into(),
+                "closed prefill 47 QK/KV position cut".into(),
             ));
         }
         phase.require_fixed_prompt_model_prefix_binding(self, attempt, call)?;
@@ -33,7 +33,7 @@ impl ResidentSession {
             || self.model.service.source_identity() != base.source()
         {
             return Err(Error::State(
-                "canonical47 source positions original attempt/root/service".into(),
+                "prefill 47 source positions original attempt/root/service".into(),
             ));
         }
         self.model.service.ensure_usable()?;

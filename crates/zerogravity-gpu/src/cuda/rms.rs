@@ -1,7 +1,6 @@
 //! Closed .8B HF layer0 input RMS diagnostic; no route/profile capability.
 //! Caller admits metadata and every stage buffer before constructing specs,
 //! and retains original source/queue/flight leases through completion.
-// Former names: Vllm08, short_hf, canonical47. Width/row guards unchanged.
 use crate::cuda::kernel::PinnedKernel;
 use cubecl_runtime::kernel::BufferIOAttr;
 use std::{borrow::Cow, sync::Arc};

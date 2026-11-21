@@ -149,7 +149,7 @@ fn new_partial_faults_cold_refuse_old_cut_and_require_exact_intended_errors() {
     ] {
         require_fault_cut(FixedPromptPrefixKind::FirstThree, fault).unwrap();
     }
-    let unknown = Error::State("deliberate canonical47 unknown after actual QKV main".into());
+    let unknown = Error::State("deliberate prefill 47 unknown after actual QKV main".into());
     let cancel = Error::State("closed original cubin qualification cancelled".into());
     assert!(intended_error(&unknown, F::UnknownAfterQkvMain));
     assert!(!intended_error(&unknown, F::CancelBeforeQkvReducer));
@@ -192,7 +192,7 @@ fn qk_kv_partial_faults_refuse_both_old_cuts_and_keep_exact_errors() {
         (
             F::UnknownAfterQk,
             5,
-            "deliberate canonical47 unknown after actual QK",
+            "deliberate prefill 47 unknown after actual QK",
         ),
         (
             F::CancelBeforeKvAppend,
@@ -202,7 +202,7 @@ fn qk_kv_partial_faults_refuse_both_old_cuts_and_keep_exact_errors() {
         (
             F::UnknownAfterKvAppend,
             7,
-            "deliberate canonical47 unknown after actual KV append",
+            "deliberate prefill 47 unknown after actual KV append",
         ),
         (
             F::CancelBeforeKvTransport,
@@ -286,14 +286,14 @@ fn fa_faults_are_cold_restricted_and_witness_actual_native_delta() {
 #[test]
 fn fa_diagnostic_errors_cannot_accept_an_unrelated_fault() {
     use FixedPromptModelPrefixFault as F;
-    let u = Error::State("deliberate canonical47 unknown after actual FA".into());
+    let u = Error::State("deliberate prefill 47 unknown after actual FA".into());
     let c = Error::State("closed original cubin qualification cancelled".into());
     assert!(intended_error(&u, F::UnknownAfterFa));
     assert!(intended_error(&c, F::CancelBeforeFa));
     assert!(!intended_error(&u, F::CancelBeforeFa));
     assert!(!intended_error(&c, F::UnknownAfterFa));
     assert!(!intended_error(
-        &Error::Limit("deliberate canonical47 unknown after actual FA".into()),
+        &Error::Limit("deliberate prefill 47 unknown after actual FA".into()),
         F::UnknownAfterFa
     ));
 }
@@ -346,15 +346,15 @@ fn layer3_faults_never_accept_another_stage_or_error_class() {
     for (fault, message) in [
         (
             F::UnknownAfterSigmoid,
-            "deliberate canonical47 unknown after actual Sigmoid",
+            "deliberate prefill 47 unknown after actual Sigmoid",
         ),
         (
             F::UnknownAfterAttentionOut,
-            "deliberate canonical47 unknown after actual AttentionOut",
+            "deliberate prefill 47 unknown after actual AttentionOut",
         ),
         (
             F::UnknownAfterLayer3DownMain,
-            "deliberate canonical47 unknown after actual layer3 Down main",
+            "deliberate prefill 47 unknown after actual layer3 Down main",
         ),
         (
             F::CancelBeforeMultiply,

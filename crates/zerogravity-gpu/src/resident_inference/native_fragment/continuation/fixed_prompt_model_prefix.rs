@@ -1,4 +1,4 @@
-//! Genuine one-call Prefill47 attempt, exactly three GDN layers, no publication.
+//! Genuine one-call prefill-47 attempt, exactly three GDN layers, no publication.
 use super::*;
 use crate::cuda::native::fixed_prompt_model::{FixedPromptInvocationKind, FixedPromptModelBinding};
 use zerogravity_core::accelerator::program::TextInvocation;
@@ -14,7 +14,7 @@ impl GdnAttemptSchedule {
             || attempt.frontier() != 47
         {
             return Err(Error::Unsupported(
-                "genuine canonical47 first3 initial model attempt only".into(),
+                "genuine prefill 47 first3 initial model attempt only".into(),
             ));
         }
         Ok(Arc::new(Self {
@@ -37,7 +37,7 @@ impl AttemptPhaseBinding {
             || self.schedule.invocation(0)? != call
         {
             return Err(Error::State(
-                "exact original canonical47 first3 model schedule required".into(),
+                "exact original prefill 47 first3 model schedule required".into(),
             ));
         }
         Ok(())

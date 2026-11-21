@@ -11,7 +11,8 @@ model-selected feedback is `autoregressive`: active runtime ownership and APIs u
 `Autoregressive*` / `autoregressive_*`. Complete state coverage is named `all state domains`,
 complete model execution `full model`, complete layer coverage `all layers`, and complete
 vocabulary coverage `full vocabulary`; none encode current Qwen dimensions. Historical
-milestone text below retains the names that were current when those checkpoints were written.
+milestone text below retains the names that were current when those checkpoints were written. Fixed 47-token qualification uses `prefill47`
+in identifiers and **prefill 47** in prose; decode continuation is named by explicit bases/frontiers.
 
 [Fabric transition](../fabric-vnext-transition/TODO.md) is accepted through source
 `8c43844`, docs `1c99929`. Genuine multi-row and populated1K–16K0.8B/2B HIP now pass native/SDK/HTTP

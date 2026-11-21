@@ -103,7 +103,10 @@ struct Snapshot {
 impl Snapshot {
     fn require_same(&self, actual: &Self) -> Result<()> {
         if self != actual {
-            return Err(Error::State("canonical47 first3 retained graph/descriptor/initialization/native metadata changed".into()));
+            return Err(Error::State(
+                "prefill 47 first3 retained graph/descriptor/initialization/native metadata changed"
+                    .into(),
+            ));
         }
         Ok(())
     }
@@ -115,7 +118,7 @@ fn require_future_uninitialized(
 ) -> Result<()> {
     if future.is_empty() || !future.is_subset(uninitialized) {
         return Err(Error::State(
-            "canonical47 unknown future value/candidate was initialized".into(),
+            "prefill 47 unknown future value/candidate was initialized".into(),
         ));
     }
     Ok(())
@@ -134,7 +137,7 @@ fn require_partial_qkv_witness(
     ) && (!qkv_cut || enqueues != 1 || !output_unpromoted)
     {
         return Err(Error::State(
-            "canonical47 actual one-main/no-reducer/unpromoted-Y witness absent".into(),
+            "prefill 47 actual one-main/no-reducer/unpromoted-Y witness absent".into(),
         ));
     }
     Ok(())
@@ -155,7 +158,7 @@ fn require_partial_kv_witness(
     };
     if !cut || counts != (1, expected_kv, 0) || !qk_unpromoted || !kv_unpromoted {
         return Err(Error::State(
-            "canonical47 actual QK/KV partial cut/no-transport/unpromoted-output witness".into(),
+            "prefill 47 actual QK/KV partial cut/no-transport/unpromoted-output witness".into(),
         ));
     }
     Ok(())
@@ -176,7 +179,7 @@ fn require_partial_fa_witness(
     };
     if !cut || counts != (1, 1, 1) || fa != expected || !output_unpromoted {
         return Err(Error::State(
-            "canonical47 actual FA cut/unpromoted O/LSE witness absent".into(),
+            "prefill 47 actual FA cut/unpromoted O/LSE witness absent".into(),
         ));
     }
     Ok(())
@@ -204,7 +207,7 @@ fn require_tail_witness(
         && (!cut || prior != (1, 1, 1) || fa != 1 || counts != expected || !unpromoted)
     {
         return Err(Error::State(
-            "canonical47 actual layer3 tail partial/native/unpromoted witness absent".into(),
+            "prefill 47 actual layer3 tail partial/native/unpromoted witness absent".into(),
         ));
     }
     Ok(())
@@ -234,7 +237,7 @@ fn snapshot(owners: &PreparedOwners, service: &ResidentService) -> Result<Snapsh
         })
     }) {
         return Err(Error::State(
-            "canonical47 actual readback descriptor outside prepared graph".into(),
+            "prefill 47 actual readback descriptor outside prepared graph".into(),
         ));
     }
     let uninitialized = actual
@@ -297,11 +300,9 @@ impl Probe {
         let mut guard = self
             .0
             .lock()
-            .map_err(|_| Error::State("canonical47 first3 probe poisoned".into()))?;
+            .map_err(|_| Error::State("prefill 47 first3 probe poisoned".into()))?;
         if guard.is_some() {
-            return Err(Error::State(
-                "canonical47 first3 probe already armed".into(),
-            ));
+            return Err(Error::State("prefill 47 first3 probe already armed".into()));
         }
         let prepared = snapshot(owners, service)?;
         let current = accesses
@@ -316,7 +317,7 @@ impl Probe {
             || pending_before != 0
         {
             return Err(Error::State(
-                "canonical47 first3 exact prepared/submitted cohort required".into(),
+                "prefill 47 first3 exact prepared/submitted cohort required".into(),
             ));
         }
         *guard = Some(Witness {
@@ -335,7 +336,7 @@ impl Probe {
         let guard = self
             .0
             .lock()
-            .map_err(|_| Error::State("canonical47 first3 probe poisoned".into()))?;
+            .map_err(|_| Error::State("prefill 47 first3 probe poisoned".into()))?;
         Ok(guard
             .as_ref()
             .and_then(|w| w.owners.upgrade())
@@ -349,24 +350,24 @@ impl Probe {
         let guard = self
             .0
             .lock()
-            .map_err(|_| Error::State("canonical47 first3 probe poisoned".into()))?;
+            .map_err(|_| Error::State("prefill 47 first3 probe poisoned".into()))?;
         let w = guard
             .as_ref()
-            .ok_or_else(|| Error::State("canonical47 first3 refused before intended cut".into()))?;
+            .ok_or_else(|| Error::State("prefill 47 first3 refused before intended cut".into()))?;
         // The failed inner future and its caller-owned inputs are gone. Only
         // original quarantine ownership may keep these Weak targets alive.
         if !w.source.retained() {
-            return Err(Error::State("canonical47 unknown source released".into()));
+            return Err(Error::State("prefill 47 unknown source released".into()));
         }
         let source = &w.source;
         let owners = w
             .owners
             .upgrade()
-            .ok_or_else(|| Error::State("canonical47 unknown prepared graph released".into()))?;
+            .ok_or_else(|| Error::State("prefill 47 unknown prepared graph released".into()))?;
         let service = w
             .service
             .upgrade()
-            .ok_or_else(|| Error::State("canonical47 unknown service released".into()))?;
+            .ok_or_else(|| Error::State("prefill 47 unknown service released".into()))?;
 
         let after = snapshot(&owners, &service)?;
         w.snapshot.require_same(&after)?;
@@ -428,7 +429,10 @@ impl Probe {
             || handles < w.current.len()
             || completion_owners == 0
         {
-            return Err(Error::State("canonical47 first3 actual submitted unknown did not preserve original fence/owners".into()));
+            return Err(Error::State(
+                "prefill 47 first3 actual submitted unknown did not preserve original fence/owners"
+                    .into(),
+            ));
         }
         Ok(FixedPromptModelPrefixFaultOutcome {
             fault,
@@ -596,23 +600,23 @@ fn intended_error(error: &Error, fault: FixedPromptModelPrefixFault) -> bool {
             if message == "closed original cubin qualification cancelled")
         || matches!((error, fault),
         (Error::State(message), FixedPromptModelPrefixFault::UnknownAfterQkvMain)
-            if message == "deliberate canonical47 unknown after actual QKV main")
+            if message == "deliberate prefill 47 unknown after actual QKV main")
         || matches!((error, fault),
         (Error::State(message), FixedPromptModelPrefixFault::CancelBeforeQkvReducer)
             if message == "closed original cubin qualification cancelled")
         || matches!((error,fault),(Error::State(message),FixedPromptModelPrefixFault::UnknownAfterQk)
-            if message=="deliberate canonical47 unknown after actual QK")
+            if message=="deliberate prefill 47 unknown after actual QK")
         || matches!((error,fault),(Error::State(message),FixedPromptModelPrefixFault::UnknownAfterKvAppend)
-            if message=="deliberate canonical47 unknown after actual KV append")
+            if message=="deliberate prefill 47 unknown after actual KV append")
         || matches!((error,fault),(Error::State(message),FixedPromptModelPrefixFault::CancelBeforeKvAppend|FixedPromptModelPrefixFault::CancelBeforeKvTransport)
             if message=="full model original KV transport cancelled")
         || matches!((error,fault),(Error::State(message),FixedPromptModelPrefixFault::UnknownAfterFa)
-            if message=="deliberate canonical47 unknown after actual FA")
+            if message=="deliberate prefill 47 unknown after actual FA")
         || matches!((error,fault),(Error::State(message),FixedPromptModelPrefixFault::CancelBeforeFa)
             if message=="closed original cubin qualification cancelled")
-        || matches!((error,fault),(Error::State(message),FixedPromptModelPrefixFault::UnknownAfterSigmoid) if message=="deliberate canonical47 unknown after actual Sigmoid")
-        || matches!((error,fault),(Error::State(message),FixedPromptModelPrefixFault::UnknownAfterAttentionOut) if message=="deliberate canonical47 unknown after actual AttentionOut")
-        || matches!((error,fault),(Error::State(message),FixedPromptModelPrefixFault::UnknownAfterLayer3DownMain) if message=="deliberate canonical47 unknown after actual layer3 Down main")
+        || matches!((error,fault),(Error::State(message),FixedPromptModelPrefixFault::UnknownAfterSigmoid) if message=="deliberate prefill 47 unknown after actual Sigmoid")
+        || matches!((error,fault),(Error::State(message),FixedPromptModelPrefixFault::UnknownAfterAttentionOut) if message=="deliberate prefill 47 unknown after actual AttentionOut")
+        || matches!((error,fault),(Error::State(message),FixedPromptModelPrefixFault::UnknownAfterLayer3DownMain) if message=="deliberate prefill 47 unknown after actual layer3 Down main")
         || matches!((error,fault),(Error::State(message),FixedPromptModelPrefixFault::CancelBeforeMultiply|FixedPromptModelPrefixFault::CancelBeforeActivation|FixedPromptModelPrefixFault::CancelBeforeLayer3DownReducer) if message=="closed original cubin qualification cancelled")
 }
 
@@ -628,7 +632,7 @@ fn require_fault_cut(
         )
     {
         return Err(Error::Unsupported(
-            "canonical47 partial QKV faults require original33-node cut".into(),
+            "prefill 47 partial QKV faults require original33-node cut".into(),
         ));
     }
     if !matches!(
@@ -644,7 +648,7 @@ fn require_fault_cut(
             | FixedPromptModelPrefixFault::CancelBeforeKvTransport
     ) {
         return Err(Error::Unsupported(
-            "canonical47 QK/KV partial faults require original35-node cut".into(),
+            "prefill 47 QK/KV partial faults require original35-node cut".into(),
         ));
     }
     if !matches!(
@@ -655,12 +659,12 @@ fn require_fault_cut(
         FixedPromptModelPrefixFault::UnknownAfterFa | FixedPromptModelPrefixFault::CancelBeforeFa
     ) {
         return Err(Error::Unsupported(
-            "canonical47 FA faults require original36-node cut".into(),
+            "prefill 47 FA faults require original36-node cut".into(),
         ));
     }
     if kind != FixedPromptPrefixKind::ThroughLayer3 && expected_tail_counts(fault).is_some() {
         return Err(Error::Unsupported(
-            "canonical47 tail faults require original43-node cut".into(),
+            "prefill 47 tail faults require original43-node cut".into(),
         ));
     }
     Ok(())
@@ -823,7 +827,7 @@ async fn qualify_fault(
         },
         |_: FixedPromptModelPrefixReadback<'_>| {
             Err(Error::State(
-                "canonical47 first3 fault cannot compare/readback".into(),
+                "prefill 47 first3 fault cannot compare/readback".into(),
             ))
         },
     )
@@ -831,7 +835,7 @@ async fn qualify_fault(
     match result {
         Ok(Outcome::Fault(value)) => Ok(*value),
         Ok(Outcome::Compared(_)) => Err(Error::State(
-            "canonical47 first3 fault completed positive prefix".into(),
+            "prefill 47 first3 fault completed positive prefix".into(),
         )),
         Err(error) => {
             if intended_error(&error, fault) && probe.cut_observed()? {

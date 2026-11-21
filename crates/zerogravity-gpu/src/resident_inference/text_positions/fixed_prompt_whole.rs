@@ -16,7 +16,7 @@ impl ResidentSession {
         let call = scope.record().invocation();
         if !cut.is_whole() || scope.kind() != FixedPromptInvocationKind::Prefill {
             return Err(Error::Unsupported(
-                "closed canonical47 QK/KV position cut".into(),
+                "closed prefill 47 QK/KV position cut".into(),
             ));
         }
         phase.require_fixed_prompt_whole_binding(self, attempt, call)?;
@@ -32,7 +32,7 @@ impl ResidentSession {
             || self.model.service.source_identity() != base.source()
         {
             return Err(Error::State(
-                "canonical47 source positions original attempt/root/service".into(),
+                "prefill 47 source positions original attempt/root/service".into(),
             ));
         }
         self.model.service.ensure_usable()?;

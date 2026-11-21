@@ -221,7 +221,7 @@ where
         PostAttentionArithmetic::FixedPrompt(a) => a,
         PostAttentionArithmetic::Qwen2BOwned | PostAttentionArithmetic::Qwen2BExplicit(_) => {
             return Err(Error::Unsupported(
-                "MLP eleven-node component is canonical47 only".into(),
+                "MLP eleven-node component is prefill 47 only".into(),
             ));
         }
     };
@@ -246,10 +246,7 @@ where
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source_identity(),
-        ResourceOwner::new(
-            "source-canonical47-mlp",
-            "unpublished-eleven-node-component",
-        )?,
+        ResourceOwner::new("source-prefill47-mlp", "unpublished-eleven-node-component")?,
         PROVIDER_BYTES,
         inputs.projections.device_cap,
     )?;

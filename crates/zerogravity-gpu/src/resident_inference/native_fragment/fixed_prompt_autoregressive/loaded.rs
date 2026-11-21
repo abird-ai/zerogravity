@@ -563,7 +563,7 @@ pub async fn prepare_fixed_prompt_autoregressive_with_profile(
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source_identity(),
-        ResourceOwner::new("canonical47-bf16", "shared-native-two-geometry")?,
+        ResourceOwner::new("prefill47-bf16", "shared-native-two-geometry")?,
         provider,
         inputs.projections.device_cap,
     )?;

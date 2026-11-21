@@ -70,13 +70,13 @@ impl FixedPromptGdnComponentReadback<'_> {
     pub fn value(&self, id: ValueId) -> Result<&[u8]> {
         if id.0 >= 7 {
             return Err(Error::Unsupported(
-                "canonical47 cut has no value after Gated".into(),
+                "prefill 47 cut has no value after Gated".into(),
             ));
         }
         self.raw
             .get(2 + id.0 as usize)
             .map(|v| v.as_ref())
-            .ok_or_else(|| Error::State("canonical47 actual value absent".into()))
+            .ok_or_else(|| Error::State("prefill 47 actual value absent".into()))
     }
     pub fn state(&self, slot: StateSlot, candidate: bool) -> Result<(&[u8], Option<&[u8]>)> {
         let keys = if candidate {
@@ -87,7 +87,7 @@ impl FixedPromptGdnComponentReadback<'_> {
         let (_, span) = keys
             .iter()
             .find(|(key, _)| *key == slot)
-            .ok_or_else(|| Error::State("canonical47 actual canonical domain absent".into()))?;
+            .ok_or_else(|| Error::State("prefill 47 actual canonical domain absent".into()))?;
         Ok((
             self.raw[span.start].as_ref(),
             if span.len() == 2 {
@@ -173,7 +173,7 @@ where
     validate_provider(&device)?;
     if cfg!(debug_assertions) {
         return Err(Error::Unsupported(
-            "release canonical47 component required".into(),
+            "release prefill 47 component required".into(),
         ));
     }
     let service = ResidentService::new_pinned_cuda(
@@ -188,7 +188,7 @@ where
         .snapshot(&physical_key)?;
     if initial.fenced || initial.reserved != PROVIDER_BYTES as u64 {
         return Err(Error::State(
-            "canonical47 component requires solitary original envelope".into(),
+            "prefill 47 component requires solitary original envelope".into(),
         ));
     }
     if fault == Some(FixedPromptGdnComponentFault::AdmissionPressure) {
@@ -238,7 +238,7 @@ where
     let base = session.binding();
     if base.frontier() != 0 {
         return Err(Error::State(
-            "canonical47 component genuine initial root required".into(),
+            "prefill 47 component genuine initial root required".into(),
         ));
     }
     not_cancelled(cancelled)?;
@@ -324,7 +324,7 @@ where
     let readback_bytes = reads.iter().map(ResidentReadback::bytes).sum();
     if readback_bytes > 128 * 1024 * 1024 {
         return Err(Error::Limit(
-            "canonical47 original admitted128MiB readback cohort".into(),
+            "prefill 47 original admitted128MiB readback cohort".into(),
         ));
     }
     let cohort = Arc::new(reads);
@@ -361,7 +361,7 @@ where
     )?;
     if submitted.logits.is_some() || submitted.proposals.len() != 42 {
         return Err(Error::State(
-            "canonical47 cut cannot publish logits/root or omit canonical proposals".into(),
+            "prefill 47 cut cannot publish logits/root or omit canonical proposals".into(),
         ));
     }
     let promoted = accesses
@@ -377,7 +377,7 @@ where
                 let (_, prior_span) = prior
                     .iter()
                     .find(|(key, _)| key == slot)
-                    .ok_or_else(|| Error::State("canonical47 carry prior absent".into()))?;
+                    .ok_or_else(|| Error::State("prefill 47 carry prior absent".into()))?;
                 let changed = matches!(
                     slot,
                     StateSlot::Conv(zerogravity_core::accelerator::program::ConvDomain(0))
@@ -393,7 +393,7 @@ where
                             .any(|(a, b)| a[..] != b[..]))
                 {
                     return Err(Error::State(
-                        "canonical47 remaining40 canonical domains not exact prior copies".into(),
+                        "prefill 47 remaining40 canonical domains not exact prior copies".into(),
                     ));
                 }
             }
@@ -401,7 +401,7 @@ where
                 let actual: &[u8] = actual.as_ref();
                 if actual != *expected {
                     return Err(Error::State(
-                        "canonical47 immutable source W/parameters changed".into(),
+                        "prefill 47 immutable source W/parameters changed".into(),
                     ));
                 }
             }
@@ -420,7 +420,7 @@ where
     slot.finish()?;
     if session.binding() != base || attempt.base() != base {
         return Err(Error::State(
-            "canonical47 diagnostic advanced original root".into(),
+            "prefill 47 diagnostic advanced original root".into(),
         ));
     }
     let retire_accesses = weights
@@ -453,7 +453,7 @@ where
                 let actual: &[u8] = actual.as_ref();
                 if actual != *expected {
                     return Err(Error::State(
-                        "canonical47 source W changed during guarded retirement".into(),
+                        "prefill 47 source W changed during guarded retirement".into(),
                     ));
                 }
             }
@@ -489,7 +489,7 @@ where
     let final_resident_bytes = service.resident_bytes()?;
     if final_resident_bytes != 0 || service.pending_events()? != 0 {
         return Err(Error::State(
-            "canonical47 original ledger did not retire to zero".into(),
+            "prefill 47 original ledger did not retire to zero".into(),
         ));
     }
     drop(service);
@@ -497,7 +497,7 @@ where
         .snapshot(&physical_key)?;
     if physical.fenced || physical.reserved != 0 {
         return Err(Error::State(
-            "canonical47 original physical envelope did not retire".into(),
+            "prefill 47 original physical envelope did not retire".into(),
         ));
     }
     Ok(Outcome::Compared(FixedPromptGdnComponentReceipt {

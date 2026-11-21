@@ -78,7 +78,7 @@ impl InvocationKind {
             }
             (InvocationPhase::Decode, base @ 47..=53, 1) => Ok(Self::Decode { base }),
             _ => Err(Error::Unsupported(
-                "fixed prompt prefill47/decode47..53 source span".into(),
+                "fixed prompt prefill 47 / decode bases 47..53 source span".into(),
             )),
         }
     }

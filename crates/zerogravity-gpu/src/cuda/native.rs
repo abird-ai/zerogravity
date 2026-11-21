@@ -1,5 +1,4 @@
 //! Explicit genuine-operand leaf proofs; never a model eligibility permit.
-// Former names: vllm08, short_hf, canonical47, solve47_leaf. No compatibility aliases.
 use crate::cuda::gdn::{GdnBuffer, GdnPhase, GdnStage, kernel, loaded_gamma};
 use crate::resident_leases::{ResidentLease, ResidentService};
 use cubecl::{Device, bytes::Bytes};

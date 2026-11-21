@@ -53,7 +53,7 @@ impl CohortBindings {
                 })
             {
                 return Err(Error::Unsupported(
-                    "cohort canonical47 original phase/row geometry".into(),
+                    "cohort prefill 47 original phase/row geometry".into(),
                 ));
             }
             let bindings = state.runtime_bindings(permit.session())?;

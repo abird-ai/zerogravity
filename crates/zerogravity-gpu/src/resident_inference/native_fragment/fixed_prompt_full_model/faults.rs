@@ -420,10 +420,10 @@ fn intended_error(error: &Error, fault: FixedPromptFullModelFault) -> bool {
             message == "closed original cubin qualification cancelled"
         }
         FixedPromptFullModelFault::UnknownAfterLastFa => {
-            message == "deliberate canonical47 whole unknown after last FA"
+            message == "deliberate prefill 47 whole unknown after last FA"
         }
         FixedPromptFullModelFault::UnknownAfterHead => {
-            message == "deliberate canonical47 whole unknown after Head"
+            message == "deliberate prefill 47 whole unknown after Head"
         }
         FixedPromptFullModelFault::AdmissionPressure => false,
     }

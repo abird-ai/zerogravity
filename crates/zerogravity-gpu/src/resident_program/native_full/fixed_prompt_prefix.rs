@@ -14,7 +14,7 @@ impl BoundPhase {
     pub(super) fn full_library(&self) -> Result<&Arc<FullModelLibrary>> {
         if self.fixed_prompt_prefix.is_some() {
             return Err(Error::Unsupported(
-                "canonical47 first3 cannot enter full-model/attention/Head library".into(),
+                "prefill 47 first3 cannot enter full-model/attention/Head library".into(),
             ));
         }
         self.library
@@ -41,7 +41,7 @@ impl FullModelProgram {
         let scope = self
             .fixed_prompt
             .as_ref()
-            .ok_or_else(|| Error::State("canonical47 model source scope absent".into()))?;
+            .ok_or_else(|| Error::State("prefill 47 model source scope absent".into()))?;
         if !Arc::ptr_eq(scope, cut.scope())
             || !Arc::ptr_eq(&self.record, scope.record())
             || !self.source.same_issuer(scope.source())
@@ -56,7 +56,7 @@ impl FullModelProgram {
             || gdn.len() != 3
         {
             return Err(Error::State(
-                "canonical47 exactly once-bound real first3 model body".into(),
+                "prefill 47 exactly once-bound real first3 model body".into(),
             ));
         }
         scope.require_values(&self.values)?;
@@ -70,7 +70,7 @@ impl FullModelProgram {
             .is_ok()
         {
             return Err(Error::State(
-                "canonical47 prefix cannot retain future uncomputed value leases".into(),
+                "prefill 47 prefix cannot retain future uncomputed value leases".into(),
             ));
         }
         let mut layers = BTreeSet::new();
@@ -82,12 +82,12 @@ impl FullModelProgram {
                     .is_some_and(|first| !first.same_request(state))
             {
                 return Err(Error::State(
-                    "canonical47 same original schedule/source/layer states".into(),
+                    "prefill 47 same original schedule/source/layer states".into(),
                 ));
             }
             if state.kv_domain().is_ok() {
                 let attention = native.attention_binding().ok_or_else(|| {
-                    Error::State("canonical47 actual Kv3 native owner absent".into())
+                    Error::State("prefill 47 actual Kv3 native owner absent".into())
                 })?;
                 state.require_fixed_prompt_attention_kv(scope)?;
                 if !cut.includes_kv()
@@ -95,14 +95,14 @@ impl FullModelProgram {
                     || !Arc::ptr_eq(state, attention.domains())
                 {
                     return Err(Error::State(
-                        "canonical47 same original Kv3 state/native owner".into(),
+                        "prefill 47 same original Kv3 state/native owner".into(),
                     ));
                 }
             } else {
                 state.require_fixed_prompt_model_prefix(scope)?;
                 let prepared = gdn
                     .get(&state.layer())
-                    .ok_or_else(|| Error::State("canonical47 actual indexed GDN absent".into()))?;
+                    .ok_or_else(|| Error::State("prefill 47 actual indexed GDN absent".into()))?;
                 prepared.require_value_state(&self.values, state)?;
                 prepared.require_fixed_prompt_binding(scope, arithmetic)?;
             }
@@ -111,13 +111,13 @@ impl FullModelProgram {
             || gdn.keys().copied().collect::<BTreeSet<_>>() != (0..3).collect()
         {
             return Err(Error::State(
-                "canonical47 exact actual GDN0..2 and optional Kv3 owners".into(),
+                "prefill 47 exact actual GDN0..2 and optional Kv3 owners".into(),
             ));
         }
         let gdn_arithmetic = gdn
             .values()
             .next()
-            .ok_or_else(|| Error::State("canonical47 GDN arithmetic absent".into()))?
+            .ok_or_else(|| Error::State("prefill 47 GDN arithmetic absent".into()))?
             .arithmetic()
             .clone();
         self.gdn_family.require_same(gdn_arithmetic.family())?;
@@ -136,7 +136,7 @@ impl FullModelProgram {
             .collect::<BTreeSet<_>>();
         if self.fused.keys().copied().collect::<BTreeSet<_>>() != expected_fused {
             return Err(Error::State(
-                "canonical47 original five indexed dual RMS actors".into(),
+                "prefill 47 original five indexed dual RMS actors".into(),
             ));
         }
         let mut accesses = BTreeMap::new();
@@ -179,7 +179,7 @@ impl FullModelProgram {
                 attention: BTreeMap::new(),
                 accesses: accesses.into_values().collect(),
             })
-            .map_err(|_| Error::State("canonical47 model prefix already bound".into()))
+            .map_err(|_| Error::State("prefill 47 model prefix already bound".into()))
     }
     pub(crate) fn execution_nodes(&self) -> Result<&[PlanNode]> {
         let bound = self
@@ -206,9 +206,9 @@ impl FullModelProgram {
             .bound
             .get()
             .and_then(|b| b.fixed_prompt_prefix.as_ref())
-            .ok_or_else(|| Error::State("canonical47 finite prefix binding absent".into()))?;
+            .ok_or_else(|| Error::State("prefill 47 finite prefix binding absent".into()))?;
         if !self.launched.load(Ordering::Acquire) {
-            return Err(Error::State("canonical47 prefix never launched".into()));
+            return Err(Error::State("prefill 47 prefix never launched".into()));
         }
         prefix
             .cut
@@ -235,7 +235,7 @@ impl FullModelProgram {
             .bound
             .get()
             .and_then(|b| b.fixed_prompt_prefix.as_ref())
-            .ok_or_else(|| Error::State("canonical47 exact readback cut absent".into()))?
+            .ok_or_else(|| Error::State("prefill 47 exact readback cut absent".into()))?
             .cut;
         let status = if cut.is_whole() { 19 } else { 4 };
         let values = cut.values().len();
@@ -243,7 +243,7 @@ impl FullModelProgram {
             || raw[..status].iter().any(|r| r[..] != [0; 4])
         {
             return Err(Error::State(
-                "canonical47 exactly original status/39 values/five dual readbacks".into(),
+                "prefill 47 exactly original status/39 values/five dual readbacks".into(),
             ));
         }
         self.rms.validate_readback(&raw[status..status + 3])?;
@@ -254,7 +254,7 @@ impl FullModelProgram {
         for (index, actual) in raw[status + 3..status + 3 + values].iter().enumerate() {
             if actual.len() != self.values.lease(ValueId(index as u32))?.bytes() {
                 return Err(Error::State(
-                    "canonical47 complete actual computed value bytes".into(),
+                    "prefill 47 complete actual computed value bytes".into(),
                 ));
             }
         }

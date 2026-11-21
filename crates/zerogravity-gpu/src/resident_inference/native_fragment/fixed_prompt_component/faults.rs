@@ -57,9 +57,9 @@ impl Probe {
         let mut guard = self
             .0
             .lock()
-            .map_err(|_| Error::State("canonical47 fault witness lock".into()))?;
+            .map_err(|_| Error::State("prefill 47 fault witness lock".into()))?;
         if guard.is_some() {
-            return Err(Error::State("canonical47 fault witness armed twice".into()));
+            return Err(Error::State("prefill 47 fault witness armed twice".into()));
         }
         *guard = Some(Witness {
             service: Arc::downgrade(service),
@@ -84,27 +84,27 @@ impl Probe {
         let guard = self
             .0
             .lock()
-            .map_err(|_| Error::State("canonical47 fault witness lock".into()))?;
+            .map_err(|_| Error::State("prefill 47 fault witness lock".into()))?;
         let w = guard.as_ref().ok_or_else(|| {
-            Error::State("canonical47 failure before real component flight".into())
+            Error::State("prefill 47 failure before real component flight".into())
         })?;
         if !w.source.retained() {
-            return Err(Error::State("canonical47 uncertain source released".into()));
+            return Err(Error::State("prefill 47 uncertain source released".into()));
         }
         let source = &w.source;
         let service = w
             .service
             .upgrade()
-            .ok_or_else(|| Error::State("canonical47 uncertain service released".into()))?;
+            .ok_or_else(|| Error::State("prefill 47 uncertain service released".into()))?;
         let body = w
             .body
             .upgrade()
-            .ok_or_else(|| Error::State("canonical47 uncertain body released".into()))?;
+            .ok_or_else(|| Error::State("prefill 47 uncertain body released".into()))?;
 
         let cohort = w
             .cohort
             .upgrade()
-            .ok_or_else(|| Error::State("canonical47 actual D2H descriptors released".into()))?;
+            .ok_or_else(|| Error::State("prefill 47 actual D2H descriptors released".into()))?;
         let descriptors = cohort
             .iter()
             .map(|r| (r.lease_id(), r.offset(), r.bytes()))
@@ -132,7 +132,7 @@ impl Probe {
             || !body.outputs_unpromoted()?
         {
             return Err(Error::State(
-                "canonical47 exact submitted/retained graph or original uncertainty envelope differs"
+                "prefill 47 exact submitted/retained graph or original uncertainty envelope differs"
                     .into(),
             ));
         }
@@ -171,14 +171,14 @@ pub(super) fn pressure(
         || service.uploaded_value_bytes() != 0
     {
         return Err(Error::State(
-            "canonical47 pressure was not refused before original provider handles/H2D".into(),
+            "prefill 47 pressure was not refused before original provider handles/H2D".into(),
         ));
     }
     drop(service);
     let physical = ResourceArbiter::process_shared().snapshot(&key)?;
     if physical.fenced || physical.reserved != 0 {
         return Err(Error::State(
-            "canonical47 cold pressure envelope retained".into(),
+            "prefill 47 cold pressure envelope retained".into(),
         ));
     }
     Ok(FixedPromptGdnComponentFaultOutcome {
@@ -219,7 +219,7 @@ pub async fn qualify_fixed_prompt_gdn_component_fault(
         cancelled,
         |_: FixedPromptGdnComponentReadback<'_>| {
             Err(Error::State(
-                "canonical47 uncertain path must never compare".into(),
+                "prefill 47 uncertain path must never compare".into(),
             ))
         },
         RunMode {
@@ -233,19 +233,19 @@ pub async fn qualify_fixed_prompt_gdn_component_fault(
     match result {
         Ok(Outcome::Pressure(out)) => Ok(out),
         Ok(Outcome::Compared(_)) => Err(Error::State(
-            "canonical47 fault completed positive math".into(),
+            "prefill 47 fault completed positive math".into(),
         )),
         Err(error) => {
             let reached = probe
                 .0
                 .lock()
-                .map_err(|_| Error::State("canonical47 probe lock".into()))?
+                .map_err(|_| Error::State("prefill 47 probe lock".into()))?
                 .as_ref()
                 .and_then(|w| w.body.upgrade())
                 .is_some_and(|b| b.cut_reached());
             let intended = match (&error, fault) {
                 (Error::State(message), FixedPromptGdnComponentFault::UnknownAfterConvolution) => {
-                    message == "deliberate canonical47 unknown after actual Conv"
+                    message == "deliberate prefill 47 unknown after actual Conv"
                 }
                 (Error::State(message), FixedPromptGdnComponentFault::CancelBeforeRecurrent) => {
                     message == "closed vLLM GDN phase cancelled"

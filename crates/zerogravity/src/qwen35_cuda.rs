@@ -16,7 +16,6 @@ use std::{
 };
 #[cfg(feature = "qwen35-cuda-qualification")]
 use zerogravity_artifacts::cache::TransferAdmission;
-// Previous entrypoints: short_hf, canonical47.
 #[cfg(feature = "qwen35-cuda-qualification")]
 mod bindings;
 #[cfg(feature = "qwen35-cuda-qualification")]

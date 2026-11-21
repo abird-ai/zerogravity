@@ -15,13 +15,13 @@ impl ResidentSession {
     ) -> Result<Arc<BoundModelState>> {
         if !cut.is_attention_cut() {
             return Err(Error::Unsupported(
-                "canonical47 original35-node Kv3 state cut".into(),
+                "prefill 47 original35-node Kv3 state cut".into(),
             ));
         }
         let scope = cut.scope();
         if scope.kind() != FixedPromptInvocationKind::Prefill {
             return Err(Error::Unsupported(
-                "canonical47 initial Kv3 text invocation".into(),
+                "prefill 47 initial Kv3 text invocation".into(),
             ));
         }
         let bound =
@@ -41,7 +41,7 @@ impl BoundModelState {
             .plan()
             .nodes()
             .get(34)
-            .ok_or_else(|| Error::State("canonical47 actual Kv3 node absent".into()))?;
+            .ok_or_else(|| Error::State("prefill 47 actual Kv3 node absent".into()))?;
         if !matches!(&self.scope, ModelStateScope::FixedPromptPrefix)
             || scope.kind() != FixedPromptInvocationKind::Prefill
             || self.invocation != *call
@@ -67,7 +67,7 @@ impl BoundModelState {
             || self.effects[0].write.ordinal != 1
         {
             return Err(Error::State(
-                "canonical47 same original call/root/Kv3 version/effect".into(),
+                "prefill 47 same original call/root/Kv3 version/effect".into(),
             ));
         }
         Ok(())

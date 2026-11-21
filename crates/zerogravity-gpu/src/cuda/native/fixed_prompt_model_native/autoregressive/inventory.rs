@@ -357,7 +357,7 @@ fn inventory() -> Result<Inventory> {
 #[ignore = "ROOT compiled metadata collector only; no native or payload reads"]
 fn actual_fixed_prompt_autoregressive_factories_for_root_registry() {
     println!(
-        "CANONICAL47_AUTOREGRESSIVE_FACTORY_INVENTORY={}",
+        "PREFILL47_AUTOREGRESSIVE_FACTORY_INVENTORY={}",
         inventory().unwrap().json()
     );
 }

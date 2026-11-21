@@ -212,7 +212,7 @@ pub(super) fn pressure(
 fn intended_fault(error: &Error, fault: MlpComponentFault) -> bool {
     match (error, fault) {
         (Error::State(message), MlpComponentFault::UnknownAfterGateUp) => {
-            message == "deliberate canonical47 MLP unknown after actual GateUp"
+            message == "deliberate prefill 47 MLP unknown after actual GateUp"
         }
         (Error::State(message), MlpComponentFault::CancelBeforeActivation) => {
             message == "native plan cancelled"
@@ -272,7 +272,7 @@ mod cause_tests {
     use super::*;
     #[test]
     fn actual_cut_flag_does_not_accept_an_unrelated_error_cause() {
-        let unknown = Error::State("deliberate canonical47 MLP unknown after actual GateUp".into());
+        let unknown = Error::State("deliberate prefill 47 MLP unknown after actual GateUp".into());
         let cancel = Error::State("native plan cancelled".into());
         assert!(intended_fault(
             &unknown,

@@ -68,7 +68,7 @@ impl PositionSpan {
     fn bytes_fixed_prompt(self) -> Result<[u8; POSITION_BYTES]> {
         if self != (Self { base: 0, rows: 47 }) {
             return Err(Error::Unsupported(
-                "closed canonical47 source position span".into(),
+                "closed prefill 47 source position span".into(),
             ));
         }
         self.encode()
@@ -181,7 +181,7 @@ impl BoundTextPositions {
             Some(scope) => {
                 if scope.record().invocation() != &self.invocation {
                     return Err(Error::State(
-                        "canonical47 positions changed original call issuer".into(),
+                        "prefill 47 positions changed original call issuer".into(),
                     ));
                 }
                 self.span.bytes_fixed_prompt()
@@ -214,15 +214,14 @@ impl BoundTextPositions {
             let binding = self
                 .phase
                 .as_ref()
-                .ok_or_else(|| Error::State("canonical47 original position phase absent".into()))?;
-            let permit = permit.ok_or_else(|| {
-                Error::State("canonical47 original position permit absent".into())
-            })?;
+                .ok_or_else(|| Error::State("prefill 47 original position phase absent".into()))?;
+            let permit = permit
+                .ok_or_else(|| Error::State("prefill 47 original position permit absent".into()))?;
             if scope.record().invocation() != &self.invocation
                 || !scope.source().same_issuer(&self.source)
             {
                 return Err(Error::State(
-                    "canonical47 position source/call owner changed".into(),
+                    "prefill 47 position source/call owner changed".into(),
                 ));
             }
             if binding.fixed_prompt_whole_position_scope() {

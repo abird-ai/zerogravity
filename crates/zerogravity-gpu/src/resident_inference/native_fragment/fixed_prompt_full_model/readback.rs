@@ -30,7 +30,7 @@ impl Layout {
             || dual_nodes.last() != Some(&253)
         {
             return Err(Error::State(
-                "canonical47 whole actual ordered readback layout".into(),
+                "prefill 47 whole actual ordered readback layout".into(),
             ));
         }
         Ok(Self {

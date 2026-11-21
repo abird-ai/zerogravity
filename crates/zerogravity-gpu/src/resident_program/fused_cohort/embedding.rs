@@ -55,7 +55,7 @@ impl CohortEmbedding {
             || !matches!(rows, 4 | 188)
         {
             return Err(Error::Unsupported(
-                "B4 source embedding canonical47 initial/cache".into(),
+                "B4 source embedding prefill 47 initial/cache".into(),
             ));
         }
         let mut ids = if rows == 188 {

@@ -108,7 +108,7 @@ impl CohortGdnPacking {
         let service = values.service();
         if inputs.len() != 4 {
             return Err(Error::Unsupported(
-                "GDN actual canonical47 B4 packets only".into(),
+                "GDN actual prefill 47 B4 packets only".into(),
             ));
         }
         let initial = (inputs[0].rows(), inputs[0].base()) == (47, 0);

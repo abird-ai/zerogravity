@@ -66,9 +66,11 @@ authority explicit.
 - **full vocabulary** is the canonical term for complete vocabulary/logit
   coverage. Use `full_vocabulary` in machine-readable labels; historical
   `fullV` / `fullv` are retired outside frozen provenance fields.
-- Describe fixed qualification trajectories semantically, e.g.
-  **prefill 47 + decode 48–50**, rather than `cached47`, `canonical47`, or
-  `case5`.
+- **prefill 47** is the canonical name for the fixed 47-token prefill trajectory;
+  use `prefill47` in identifiers/receipt labels. Describe continuation explicitly
+  by decode bases/frontiers or, for the accepted parity path, **decode 48–50**.
+  Historical `canonical47`, `cached47`, `true47` and `case5` are retired outside
+  frozen provenance fields.
 
 Historical commit messages, externally stable schema strings and provenance
 identifiers are not rewritten merely for style. Active APIs, modules, tests,
@@ -93,7 +95,12 @@ code, tests and current documentation. `full24` maps to full-model execution,
 `all24` to all-layer coverage, and `fullV` to full-vocabulary coverage. Frozen
 acceptance/schema keys may retain the old spelling at their compatibility boundary.
 
-The next isolated terminology debt is fixed-trajectory/provider shorthand such
-as `canonical47`, `cached47`, `active8`, `temporal4` and similar qualification
-archaeology. Keep the separate standard-RMS naming problem out of that migration
-until its exact arithmetic distinction has a clear replacement.
+The historical `canonical47` / `cached47` / `true47` / `case5` trajectory
+shorthand is retired from active code and current documentation. The frozen
+`canonical47-repeated-v1` oracle profile remains unchanged at its compatibility
+boundary.
+
+The next isolated terminology debt is provider/workload shorthand such as
+`active8`, `temporal4` and similar qualification archaeology. Keep the separate
+standard-RMS naming problem out of that migration until its exact arithmetic
+distinction has a clear replacement.

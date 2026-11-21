@@ -21,7 +21,7 @@ arithmetic names to `NumericalProfile` / `NumericalContract`, replaces
 the normal Qwen source-backed path is `QwenForwardPlan` /
 `QwenForwardInvocation` with one backend-neutral `ForwardSourceSeal`; CUDA
 mechanics live under `cuda_forward` / `CudaForward*`, and active qualification
-uses semantic `prefill47 + decode48–50` names plus `FORWARD_*` env/receipt
+uses semantic `prefill 47 + decode 48–50` names plus `FORWARD_*` env/receipt
 labels. No compatibility aliases retain the superseded execution vocabulary.
 Historical chronology/schemas/provenance remain intact. The third cleanup is now
 complete too: the old `SourceCall*` family is replaced by the core semantic pipeline
@@ -63,6 +63,12 @@ Active production diagnostics, errors, tests and receipt labels no longer use `f
 `common_final_fullv_greedy_validation` and the older
 `all24_all42_post_validation` key remain unchanged provenance/compatibility values. Real
 numeric dimensions such as `full248320` are not terminology and remain untouched.
+
+The seventh cleanup retires fixed-trajectory archaeology from active code: the 47-token
+prefill is **prefill 47** / `prefill47`; decode continuation is named by explicit bases or
+frontiers; and `canonical47`, `cached47`, `true47` and `case5` no longer appear in active
+runtime/test terminology. The frozen batching oracle profile `canonical47-repeated-v1`
+remains unchanged as a compatibility/provenance value.
 
 Cumulative terminology validation remains green across strict core/Qwen/GPU/public-CUDA
 Clippy plus public CUDA/HIP, CUDA qualification, 27B HIP qualification and CUDA CLI

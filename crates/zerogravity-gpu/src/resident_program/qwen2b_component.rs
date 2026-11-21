@@ -616,7 +616,7 @@ impl ComponentProgram {
                                     "deliberate source2B unknown after actual Conv"
                                 }
                                 ComponentKind::FixedPrompt(_) => {
-                                    "deliberate canonical47 unknown after actual Conv"
+                                    "deliberate prefill 47 unknown after actual Conv"
                                 }
                             }
                             .into(),
@@ -693,7 +693,7 @@ impl ComponentProgram {
                             if self.recipe.cut() == ComponentCut::Qwen2BMlp {
                                 "deliberate qwen2b MLP unknown after actual GateUp"
                             } else {
-                                "deliberate canonical47 MLP unknown after actual GateUp"
+                                "deliberate prefill 47 MLP unknown after actual GateUp"
                             }
                             .into(),
                         ));

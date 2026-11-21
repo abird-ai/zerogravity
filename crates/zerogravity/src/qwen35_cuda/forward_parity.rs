@@ -113,7 +113,7 @@ impl Prefill47Decode48To50ParityReport {
         if self.steps.len() != FRONTIERS.len() || self.steps.iter().any(|step| !step_is_exact(step))
         {
             return Err(Error::State(format!(
-                "CUDA forward prefill47 + decode48–50 exact source parity failed: steps={} first_failure={:?}",
+                "CUDA forward prefill 47 + decode48–50 exact source parity failed: steps={} first_failure={:?}",
                 self.steps.len(),
                 self.steps.iter().find(|step| !step_is_exact(step)),
             )));
@@ -154,13 +154,13 @@ pub async fn capture_current_source_prefill47_decode48_to50_evidence(
     // Once loaded, cancellation never skips physical/source teardown.
     let close = model.shutdown(None).await;
     let (reference, close) =
-        combine_run_and_close("reference prefill47 + decode48–50", run, close)?;
+        combine_run_and_close("reference prefill 47 + decode48–50", run, close)?;
     drop(host);
     require_reference_close(&close)?;
     require_reference(&reference)?;
     if identity.capacity != CURRENT_PARITY_CAPACITY {
         return Err(Error::State(
-            "reference prefill47 + decode48–50 qualification context must be 512".into(),
+            "reference prefill 47 + decode48–50 qualification context must be 512".into(),
         ));
     }
     let evidence = evidence::ReferenceEvidence {
@@ -215,7 +215,7 @@ pub async fn compare_current_source_prefill47_decode48_to50_evidence(
     }
     .await;
     let close = model.shutdown().await;
-    let (parity, ()) = combine_run_and_close("forward prefill47 + decode48–50", run, close)?;
+    let (parity, ()) = combine_run_and_close("forward prefill 47 + decode48–50", run, close)?;
     let receipt = ForwardEvidenceReceipt { sha256, parity };
     receipt.require_exact()?;
     Ok(receipt)
@@ -261,7 +261,7 @@ fn require_reference_close(close: &crate::gpu::cuda::native::TextCloseReceipt) -
         || close.resident_head_windows != close.retirement_resident_head_windows
     {
         return Err(Error::State(
-            "reference prefill47 + decode48–50 source retirement receipt differs".into(),
+            "reference prefill 47 + decode48–50 source retirement receipt differs".into(),
         ));
     }
     Ok(())
@@ -275,14 +275,14 @@ pub async fn capture_reference_prefill47_decode48_to50(
         || model.source_metadata().context_capacity_tokens != CURRENT_PARITY_CAPACITY
     {
         return Err(Error::Unsupported(
-            "prefill47 + decode48–50 reference requires approved .8B 512-token context".into(),
+            "prefill 47 + decode48–50 reference requires approved .8B 512-token context".into(),
         ));
     }
     let prompt: Arc<[u32]> = Arc::from(OriginalWindowModelSource::fixed_prompt_ids().as_slice());
     let mut session = model.session(cancelled).await?;
     if session.binding().frontier() != 0 {
         return Err(Error::State(
-            "prefill47 + decode48–50 reference session must start empty".into(),
+            "prefill 47 + decode48–50 reference session must start empty".into(),
         ));
     }
 
@@ -320,7 +320,7 @@ pub async fn capture_reference_prefill47_decode48_to50(
     }
     if session.binding().frontier() != 50 {
         return Err(Error::State(
-            "prefill47 + decode48–50 reference final frontier differs".into(),
+            "prefill 47 + decode48–50 reference final frontier differs".into(),
         ));
     }
     Ok(Prefill47Decode48To50Reference {
@@ -341,13 +341,13 @@ pub async fn compare_forward_prefill47_decode48_to50(
         || reference.steps.len() != FRONTIERS.len()
     {
         return Err(Error::State(
-            "forward/reference prefill47 + decode48–50 profile or prompt differs".into(),
+            "forward/reference prefill 47 + decode48–50 profile or prompt differs".into(),
         ));
     }
     let mut session = model.session().await?;
     if session.binding().frontier() != 0 {
         return Err(Error::State(
-            "forward prefill47 + decode48–50 session must start empty".into(),
+            "forward prefill 47 + decode48–50 session must start empty".into(),
         ));
     }
 
@@ -363,7 +363,7 @@ pub async fn compare_forward_prefill47_decode48_to50(
         } else {
             let id = autoregressive_feedback.as_ref().ok_or_else(|| {
                 Error::State(
-                    "forward prefill47 + decode48–50 autoregressive feedback absent".into(),
+                    "forward prefill 47 + decode48–50 autoregressive feedback absent".into(),
                 )
             })?;
             (InvocationPhase::Decode, std::slice::from_ref(id))
@@ -379,7 +379,7 @@ pub async fn compare_forward_prefill47_decode48_to50(
         let binding = session.binding();
         if binding.frontier() as usize != expected_frontier {
             return Err(Error::State(
-                "forward prefill47 + decode48–50 committed frontier differs".into(),
+                "forward prefill 47 + decode48–50 committed frontier differs".into(),
             ));
         }
         let domains = session.snapshot().read_domains().await?;
@@ -406,7 +406,7 @@ fn require_reference(reference: &Prefill47Decode48To50Reference) -> Result<()> {
         || reference.steps.len() != FRONTIERS.len()
     {
         return Err(Error::State(
-            "prefill47 + decode48–50 reference fixed context/prompt/step count differs".into(),
+            "prefill 47 + decode48–50 reference fixed context/prompt/step count differs".into(),
         ));
     }
     let slots = expected_domain_slots();
@@ -417,7 +417,7 @@ fn require_reference(reference: &Prefill47Decode48To50Reference) -> Result<()> {
             || greedy(&step.logits)? != (step.selected_id, step.max_bits)
         {
             return Err(Error::State(
-                "prefill47 + decode48–50 reference step/logit/greedy contract differs".into(),
+                "prefill 47 + decode48–50 reference step/logit/greedy contract differs".into(),
             ));
         }
         let domains = step
@@ -427,7 +427,7 @@ fn require_reference(reference: &Prefill47Decode48To50Reference) -> Result<()> {
             .collect::<BTreeMap<_, _>>();
         if domains.len() != slots.len() || domains.keys().ne(slots.iter()) {
             return Err(Error::State(
-                "prefill47 + decode48–50 reference exact domain set differs".into(),
+                "prefill 47 + decode48–50 reference exact domain set differs".into(),
             ));
         }
         for &slot in &slots {
@@ -438,7 +438,7 @@ fn require_reference(reference: &Prefill47Decode48To50Reference) -> Result<()> {
                     && values.iter().any(|value| value.to_bits() & 0xffff != 0))
             {
                 return Err(Error::State(
-                    "prefill47 + decode48–50 reference domain extent/numerical contract differs"
+                    "prefill 47 + decode48–50 reference domain extent/numerical contract differs"
                         .into(),
                 ));
             }
@@ -471,10 +471,10 @@ pub(super) fn expected_domain_values(slot: StateSlot, frontier: usize) -> Result
             .checked_mul(512)
             .and_then(|n| n.checked_mul(frontier))
             .ok_or_else(|| {
-                Error::Limit("prefill47 + decode48–50 expected KV domain extent".into())
+                Error::Limit("prefill 47 + decode48–50 expected KV domain extent".into())
             }),
         _ => Err(Error::State(
-            "prefill47 + decode48–50 unexpected state-domain geometry".into(),
+            "prefill 47 + decode48–50 unexpected state-domain geometry".into(),
         )),
     }
 }
@@ -490,7 +490,7 @@ fn step_is_exact(step: &ParityStepReport) -> bool {
 fn require_not_cancelled(cancelled: Option<&AtomicBool>) -> Result<()> {
     if cancelled.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire)) {
         return Err(Error::State(
-            "prefill47 + decode48–50 parity harness cancelled".into(),
+            "prefill 47 + decode48–50 parity harness cancelled".into(),
         ));
     }
     Ok(())
@@ -550,7 +550,7 @@ fn capture_reference_step(readback: TextReadback<'_>) -> Result<ReferenceParityS
     }
     if domains.len() != 42 {
         return Err(Error::State(
-            "reference prefill47 + decode48–50 state-domain coverage differs".into(),
+            "reference prefill 47 + decode48–50 state-domain coverage differs".into(),
         ));
     }
     Ok(ReferenceParityStep {
@@ -573,7 +573,7 @@ fn finalize_reference_step(
         || receipt.max_bits != step.max_bits
     {
         return Err(Error::State(
-            "reference prefill47 + decode48–50 readback/commit receipt differs".into(),
+            "reference prefill 47 + decode48–50 readback/commit receipt differs".into(),
         ));
     }
     Ok(step)

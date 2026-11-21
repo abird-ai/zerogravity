@@ -2,7 +2,6 @@
 //! Explicit genuine B188 initial prefill -> same private B4 roots -> cached epochs.
 //! A fresh 47-token prompt commits frontier 47; frontiers 48–50 consume one cached token each.
 //! Fresh 48–50-token prompts are not implemented or qualified by this suite.
-// Former names: short_hf, canonical47, case5. Historical oracle labels remain exact.
 
 use std::{
     future::Future,

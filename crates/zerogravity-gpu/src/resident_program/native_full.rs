@@ -972,7 +972,7 @@ impl FullModelProgram {
                 let prefix = bound
                     .fixed_prompt_prefix
                     .as_ref()
-                    .ok_or_else(|| Error::State("canonical47 QKV cut absent".into()))?;
+                    .ok_or_else(|| Error::State("prefill 47 QKV cut absent".into()))?;
                 // One original armed flight covers producer and reducer. No
                 // initialization certificate or cursor advancement between them.
                 let mode = self.fault.load(Ordering::Acquire);
@@ -987,7 +987,7 @@ impl FullModelProgram {
                     .enqueued_records()
                     .checked_sub(before)
                     .ok_or_else(|| {
-                        Error::State("canonical47 native enqueue counter regressed".into())
+                        Error::State("prefill 47 native enqueue counter regressed".into())
                     })?;
                 self.native_launches.fetch_add(enqueued, Ordering::AcqRel);
                 if matches!(mode, 3 | 4)
@@ -1009,7 +1009,7 @@ impl FullModelProgram {
                 let prefix = bound
                     .fixed_prompt_prefix
                     .as_ref()
-                    .ok_or_else(|| Error::State("canonical47 QK/KV cut absent".into()))?;
+                    .ok_or_else(|| Error::State("prefill 47 QK/KV cut absent".into()))?;
                 let mode = self.fault.load(Ordering::Acquire);
                 let before = prefix.native.attention_counts();
                 let result = prefix.native.enqueue_attention(
@@ -1022,7 +1022,7 @@ impl FullModelProgram {
                 let enqueued = (after.0 + after.1)
                     .checked_sub(before.0 + before.1)
                     .ok_or_else(|| {
-                        Error::State("canonical47 QK/KV enqueue counter regressed".into())
+                        Error::State("prefill 47 QK/KV enqueue counter regressed".into())
                     })?;
                 self.native_launches.fetch_add(enqueued, Ordering::AcqRel);
                 let reached = match mode {
@@ -1044,7 +1044,7 @@ impl FullModelProgram {
                 let prefix = bound
                     .fixed_prompt_prefix
                     .as_ref()
-                    .ok_or_else(|| Error::State("canonical47 FA cut absent".into()))?;
+                    .ok_or_else(|| Error::State("prefill 47 FA cut absent".into()))?;
                 let mode = self.fault.load(Ordering::Acquire);
                 let before = prefix.native.fa_enqueues();
                 let result = prefix.native.enqueue_attention(
@@ -1056,7 +1056,7 @@ impl FullModelProgram {
                 let after = prefix.native.fa_enqueues();
                 let delta = after
                     .checked_sub(before)
-                    .ok_or_else(|| Error::State("canonical47 FA counter regressed".into()))?;
+                    .ok_or_else(|| Error::State("prefill 47 FA counter regressed".into()))?;
                 self.native_launches.fetch_add(delta, Ordering::AcqRel);
                 if matches!(mode, 9 | 10)
                     && result.is_err()
@@ -1081,7 +1081,7 @@ impl FullModelProgram {
                 let prefix = bound
                     .fixed_prompt_prefix
                     .as_ref()
-                    .ok_or_else(|| Error::State("canonical47 full layer3 binding absent".into()))?;
+                    .ok_or_else(|| Error::State("prefill 47 full layer3 binding absent".into()))?;
                 let mode = self.fault.load(Ordering::Acquire);
                 let before = prefix.native.enqueued_records();
                 let result = prefix.native.enqueue_layer3(
@@ -1093,7 +1093,7 @@ impl FullModelProgram {
                 self.native_launches.fetch_add(
                     after
                         .checked_sub(before)
-                        .ok_or_else(|| Error::State("canonical47 tail counter regressed".into()))?,
+                        .ok_or_else(|| Error::State("prefill 47 tail counter regressed".into()))?,
                     Ordering::AcqRel,
                 );
                 let expected = match mode {
@@ -1240,7 +1240,7 @@ impl FullModelProgram {
             self.finish_fixed_prompt_prefix_nodes()?;
             if self.greedy.get().is_some() || self.output_submitted.swap(true, Ordering::AcqRel) {
                 return Err(Error::State(
-                    "canonical47 finite prefix has no Head/output consumer; finish once".into(),
+                    "prefill 47 finite prefix has no Head/output consumer; finish once".into(),
                 ));
             }
             return Ok(0);

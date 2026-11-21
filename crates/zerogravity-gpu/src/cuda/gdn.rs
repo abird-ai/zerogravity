@@ -4,7 +4,6 @@
 )]
 //! Private SM86 .8B layer0 qualification; original generated instructions.
 //! Runtime storage comes from the original resident owner, never a trace.
-// Former names: VllmGdnPhase, short_hf, canonical47. Native ABI/source pins unchanged.
 use crate::cuda::kernel::{PinnedKernel, StaticScalarBlock};
 use cubecl_runtime::kernel::BufferIOAttr;
 #[cfg(test)]

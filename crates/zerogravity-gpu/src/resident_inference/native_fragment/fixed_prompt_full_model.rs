@@ -139,7 +139,7 @@ where
     validate_provider(&device)?;
     if cfg!(debug_assertions) {
         return Err(Error::Unsupported(
-            "release canonical47 whole model required".into(),
+            "release prefill 47 whole model required".into(),
         ));
     }
     let FixedPromptQkKvQualificationInputs {
@@ -164,7 +164,7 @@ where
         device,
         source.source_identity(),
         ResourceOwner::new(
-            "source-canonical47-all-layers",
+            "source-prefill47-all-layers",
             "unpublished-original-initial47",
         )?,
         provider,

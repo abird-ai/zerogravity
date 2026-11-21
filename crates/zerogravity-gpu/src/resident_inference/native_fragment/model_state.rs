@@ -136,7 +136,7 @@ impl ResidentSession {
             || layer >= 3
         {
             return Err(Error::Unsupported(
-                "canonical47 first3 actual model GDN domains only".into(),
+                "prefill 47 first3 actual model GDN domains only".into(),
             ));
         }
         scope.gdn_site(layer)?;
@@ -482,7 +482,7 @@ impl BoundModelState {
             || self.base.frontier() != 0
         {
             return Err(Error::State(
-                "canonical47 genuine model source/layer/root domains differ".into(),
+                "prefill 47 genuine model source/layer/root domains differ".into(),
             ));
         }
         scope.gdn_site(self.layer)?;
