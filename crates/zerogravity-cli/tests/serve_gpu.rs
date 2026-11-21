@@ -772,7 +772,7 @@ fn proof_cases(
     let expected8 = oracle.expected(tokenizer, 8)?;
     let initial = server.health()?["admission"].clone();
     if initial["batch_mode"] != "fused" || initial["native_batch_rows_max"] != 2 {
-        return Err("HTTP did not advertise only native CUDA B2".into());
+        return Err("HTTP did not advertise only the native CUDA 2-row cohort".into());
     }
     let (json, sse) = queued_pair(
         server,
@@ -1144,13 +1144,13 @@ fn original_qwen35_2b_native_b2_http_json_sse_disconnect_and_replay() -> Proof<(
 }
 
 #[test]
-#[ignore = "release physical CUDA B4/B8 HTTP; approved original .8B source; run serially"]
+#[ignore = "release physical CUDA 4/8-row HTTP; approved original .8B source; run serially"]
 fn original_qwen35_08b_native_wide_http_json_sse_disconnect_and_replay() -> Proof<()> {
     qualify_wide("qwen35-0.8b")
 }
 
 #[test]
-#[ignore = "release physical CUDA B4/B8 HTTP; approved original 2B source; run serially"]
+#[ignore = "release physical CUDA 4/8-row HTTP; approved original 2B source; run serially"]
 fn original_qwen35_2b_native_wide_http_json_sse_disconnect_and_replay() -> Proof<()> {
     qualify_wide("qwen35-2b")
 }
@@ -1437,7 +1437,7 @@ fn qualify_unequal_arrival_metrics(name: &str) -> Proof<()> {
 
 fn qualify_temporal_prefill_http(name: &str, width: usize) -> Proof<()> {
     if !matches!(width, 2 | 4 | 8) {
-        return Err("temporal HTTP qualification requires B2/B4/B8".into());
+        return Err("temporal HTTP qualification requires 2/4/8-row cohorts".into());
     }
     let _serial = GPU_HTTP_LOCK
         .lock()
@@ -1531,31 +1531,31 @@ fn original_qwen35_08b_native_temporal_prefill_http() -> Proof<()> {
 }
 
 #[test]
-#[ignore = "physical CUDA temporal-prefill B4 HTTP; approved .8B source; serial"]
+#[ignore = "physical CUDA temporal-prefill 4-row HTTP; approved .8B source; serial"]
 fn original_qwen35_08b_native_temporal_b4_http() -> Proof<()> {
     qualify_temporal_prefill_http("qwen35-0.8b", 4)
 }
 
 #[test]
-#[ignore = "physical CUDA temporal-prefill B8 HTTP; approved .8B source; serial"]
+#[ignore = "physical CUDA temporal-prefill 8-row HTTP; approved .8B source; serial"]
 fn original_qwen35_08b_native_temporal_b8_http() -> Proof<()> {
     qualify_temporal_prefill_http("qwen35-0.8b", 8)
 }
 
 #[test]
-#[ignore = "physical CUDA temporal-prefill B2 HTTP; approved 2B source; serial"]
+#[ignore = "physical CUDA temporal-prefill 2-row HTTP; approved 2B source; serial"]
 fn original_qwen35_2b_native_temporal_b2_http() -> Proof<()> {
     qualify_temporal_prefill_http("qwen35-2b", 2)
 }
 
 #[test]
-#[ignore = "physical CUDA temporal-prefill B4 HTTP; approved 2B source; serial"]
+#[ignore = "physical CUDA temporal-prefill 4-row HTTP; approved 2B source; serial"]
 fn original_qwen35_2b_native_temporal_b4_http() -> Proof<()> {
     qualify_temporal_prefill_http("qwen35-2b", 4)
 }
 
 #[test]
-#[ignore = "physical CUDA temporal-prefill B8 HTTP; approved 2B source; serial"]
+#[ignore = "physical CUDA temporal-prefill 8-row HTTP; approved 2B source; serial"]
 fn original_qwen35_2b_native_temporal_b8_http() -> Proof<()> {
     qualify_temporal_prefill_http("qwen35-2b", 8)
 }

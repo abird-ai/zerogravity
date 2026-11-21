@@ -314,7 +314,7 @@ impl Executor for CapturedText {
             Err(ServiceError::new(
                 500,
                 "bf16_cohort_membership",
-                "source B4 eligibility changed",
+                "source 4-row cohort eligibility changed",
             ))
         } else {
             Ok(())

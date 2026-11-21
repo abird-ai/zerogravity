@@ -500,7 +500,7 @@ fn handoff_and_lengths(fixture: &Fixture) {
     update(&active, &mut references);
     assert!(
         fixture.stats.snapshot().fused_batches > fused_before,
-        "B1-produced packets were not consumed by a native model cohort"
+        "singleton-produced packets were not consumed by a native model cohort"
     );
     assert_eq!(fixture.stats.snapshot().model_tokens, model_tokens + 2);
     assert_eq!(fixture.stats.snapshot().committed_roots, committed + 2);
@@ -520,7 +520,7 @@ fn handoff_and_lengths(fixture: &Fixture) {
     right_trace.verify(&references[&right_id], fixture.model.tokenizer.as_ref(), 5);
     assert!(
         references[&right_id].sequence.len() > references[&left_id].sequence.len(),
-        "fixture did not exercise unequal generation lengths/B1 survivor"
+        "fixture did not exercise unequal generation lengths/singleton survivor"
     );
     println!(
         "P12_B5_B1_NATIVE_B1_HANDOFF_PASS full_packets_and_all_state_domains=exact \
@@ -587,7 +587,7 @@ fn cancel_after_ready(fixture: &Fixture) {
     assert_eq!(
         survivor.state.session.binding().root(),
         initial_right.root() + 1,
-        "discarded native proposal published before B1 retry"
+        "discarded native proposal published before singleton retry"
     );
     assert_eq!(
         survivor.state.session.binding().frontier(),
@@ -597,7 +597,7 @@ fn cancel_after_ready(fixture: &Fixture) {
     assert_eq!(
         fixture.stats.snapshot().model_tokens,
         model_tokens + 3,
-        "two discarded physical rows plus one committed B1 retry"
+        "two discarded physical rows plus one committed singleton retry"
     );
     assert_eq!(fixture.stats.snapshot().fused_sampler, sampler + 4);
     update(&active, &mut references);
@@ -899,7 +899,7 @@ fn survivor_bands(width: usize) -> &'static [usize] {
     match width {
         4 => &[2, 1],
         8 => &[4, 2, 1],
-        _ => panic!("wide fixture requires B4/B8"),
+        _ => panic!("wide fixture requires 4-row or 8-row cohorts"),
     }
 }
 
@@ -957,7 +957,7 @@ fn wide_prompt_lengths(fixture: &Fixture) {
     assert_eq!(
         fixture.stats.snapshot().gpu_forwards,
         forwards + survivor_bands(width).len() as u64,
-        "native packet includes the exact B1 residual handoff"
+        "native packet includes the exact singleton residual handoff"
     );
     update(&active, &mut references);
     finish_observed(&mut active, fixture, &mut references, &mut observed);
@@ -1241,25 +1241,25 @@ fn original_qwen2b_native_b2_worker() {
 }
 
 #[test]
-#[ignore = "physical release CUDA B4; approved original .8B; isolated sequential GPU coordinator"]
+#[ignore = "physical release CUDA 4-row cohort; approved original .8B; isolated sequential GPU coordinator"]
 fn original_qwen800m_native_b4_worker() {
     qualify_wide("qwen35-0.8b", 4);
 }
 
 #[test]
-#[ignore = "physical release CUDA B8; approved original .8B; isolated sequential GPU coordinator"]
+#[ignore = "physical release CUDA 8-row cohort; approved original .8B; isolated sequential GPU coordinator"]
 fn original_qwen800m_native_b8_worker() {
     qualify_wide("qwen35-0.8b", 8);
 }
 
 #[test]
-#[ignore = "physical release CUDA B4; approved original 2B; isolated sequential GPU coordinator"]
+#[ignore = "physical release CUDA 4-row cohort; approved original 2B; isolated sequential GPU coordinator"]
 fn original_qwen2b_native_b4_worker() {
     qualify_wide("qwen35-2b", 4);
 }
 
 #[test]
-#[ignore = "physical release CUDA B8; approved original 2B; isolated sequential GPU coordinator"]
+#[ignore = "physical release CUDA 8-row cohort; approved original 2B; isolated sequential GPU coordinator"]
 fn original_qwen2b_native_b8_worker() {
     qualify_wide("qwen35-2b", 8);
 }

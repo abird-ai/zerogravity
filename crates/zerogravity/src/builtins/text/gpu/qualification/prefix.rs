@@ -55,7 +55,7 @@ impl PrefixOracle {
                 .as_ref()
                 .expect("prompt tail greedy packet");
             assert_eq!((actual.id, actual.max_bits), expected);
-            // Actual accepted B1 greedy selection is an independent packet oracle.
+            // Actual accepted singleton greedy selection is an independent packet oracle.
             self.gpu.restore(&prior).unwrap();
             let read = block_on(self.gpu.forward_greedy(&[id])).unwrap();
             let packet = read.device_token.unwrap();
@@ -69,7 +69,9 @@ impl PrefixOracle {
     }
     fn into_reference(self, lane: &Row) -> Reference {
         assert_eq!(self.consumed, lane.prompt.len());
-        let packet = self.packet.expect("independently produced B1 tail packet");
+        let packet = self
+            .packet
+            .expect("independently produced singleton tail packet");
         let reference = Reference {
             cpu: self.cpu,
             gpu: self.gpu,
@@ -292,7 +294,7 @@ fn cancel_after_prefix_ready(fixture: &Fixture) {
     assert_eq!(
         fixture.stats.snapshot().model_tokens,
         model_tokens + 3,
-        "actual discarded B2 launch plus survivor B1 must remain counted"
+        "actual discarded 2-row launch plus singleton survivor must remain counted"
     );
     assert_eq!(fixture.stats.snapshot().committed_roots, committed + 1);
     assert_eq!(fixture.stats.snapshot().discarded_cohorts, discarded + 1);

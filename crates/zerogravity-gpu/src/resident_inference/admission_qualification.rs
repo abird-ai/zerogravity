@@ -253,7 +253,7 @@ async fn advance(
         exact(
             &logits,
             &single.logits,
-            "independent CPU/B1 full vocabulary under admission pressure",
+            "independent CPU/singleton full vocabulary under admission pressure",
         )?;
         reference.selected[row] = selected(&logits);
     }
@@ -380,7 +380,7 @@ async fn qualify(name: &str) -> Result<()> {
         exact(
             &logits,
             &single.forward(&[input], false).await?.logits,
-            "admission independent initial CPU/B1 logits",
+            "admission independent initial CPU/singleton logits",
         )?;
         let mut session = model.session().await?;
         let mut read = session.forward_greedy(&[input]).await?;
@@ -411,7 +411,7 @@ async fn qualify(name: &str) -> Result<()> {
     let available = model.service.remaining_capacity()?;
     assert!(
         need8 <= available,
-        "B8 must fit again after real pressure drops"
+        "8-row cohort must fit again after real pressure drops"
     );
     let pressure_bytes = available
         .checked_sub(need4)

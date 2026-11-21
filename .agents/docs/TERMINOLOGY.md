@@ -18,7 +18,12 @@ authority explicit.
   imply backend eligibility.
 - **Cohort width** — number of rows/requests executed together by one fused
   path. Use `cohort_width`, **singleton**, and **2-row / 4-row / 8-row
-  cohort**. Do not use `native_rows` or bare `B1/B2/B4/B8`.
+  cohort**. Do not use `native_rows` or bare `B1/B2/B4/B8` for scheduler/runtime
+  semantics. Fixed ABI/kernel/artifact names may retain `B4`/`B8` when the width
+  is genuinely part of that physical interface.
+- **Concurrency** — number of simultaneously offered/active requests in a
+  serving or benchmark cell. Current prose/config uses `active=N` or
+  `concurrency=N`; `C1`/`C4`/`C8` remains only in historical benchmark coordinates.
 - **Fused cohort** — scheduler/backend work that actually executes multiple
   rows together. Scheduler policy uses `Cohorts::Fused`; membership planning
   uses `partition_cohorts` / `partition_supported_cohorts`.
@@ -108,8 +113,11 @@ prefill is described as **4-token equal-frontier prefill chunks**; and generic
 scheduler configuration uses the explicit **32-token prefill quantum** when that
 value matters.
 
-The next isolated terminology debt is residual row-width/concurrency shorthand
-(`B2`/`B4`/`B8`, `native8`, `C1`/`C4`/`C8`, etc.) where it is active engineering
-vocabulary rather than an ABI, artifact, or historical benchmark coordinate.
-Keep the separate standard-RMS naming problem isolated until its exact arithmetic
-distinction has a clear replacement.
+Bare row-width/concurrency shorthand is retired from the active semantic surface.
+`B4`/`B8` remains only for fixed physical ABI/kernel/artifact names or historical
+provenance; `C*` remains only in historical benchmark coordinates. Current
+scheduler/runtime prose uses singleton / N-row cohort, and current workload prose
+uses `active=N` / `concurrency=N`.
+
+The next isolated terminology debt is the separate standard-RMS naming problem;
+inspect its exact arithmetic distinction before renaming anything mechanically.

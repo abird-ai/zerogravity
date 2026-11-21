@@ -13,8 +13,8 @@ Current source/tests outrank this inspection snapshot. Parent queues:
 
 | Capability | Inspected scope | Remaining work |
 | --- | --- | --- |
-| Native request batching | Original GGUF .8B/2B CUDA B2/B4/B8; B1 survivors, unequal causal positions and compatible refill | Integrate and independently qualify every additional numerical profile/backend |
-| Prompt processing | Native waves consume one teacher token per request; B1 supports bounded prompt quanta | Actual multi-token temporal prefill, qualified chunk partitions and fair prefill/decode scheduling |
+| Native request batching | Original GGUF .8B/2B CUDA 2/4/8-row cohorts; singleton survivors, unequal causal positions and compatible refill | Integrate and independently qualify every additional numerical profile/backend |
+| Prompt processing | Native waves consume one teacher token per request; singleton execution supports bounded prompt quanta | Actual multi-token temporal prefill, qualified chunk partitions and fair prefill/decode scheduling |
 | KV/recurrent ownership | Private per-session state, fixed-capacity contiguous KV allocations, original admission/leases/publication | Paged state allocation, block-table attention and complete-domain prefix reuse/COW |
 | GPU HTTP scope | One worker, context512, at most8 active requests; fused mode is opt-in | Separately qualify larger contexts/concurrency; CPU8K results do not qualify GPU8K |
 | Concurrency | Bounded request interleaving and actual multi-row kernels | Independent-stream/event-backed overlap, with physical lifetime tests |
@@ -79,7 +79,7 @@ overriding later named acceptance in the live TODO.
   must account scratch/copies and cannot be advertised as an efficient native
   paged kernel. Qualify direct page-table kernels and measure the difference.
 - Verify appends across page boundaries, partial/empty tails, shuffled physical
-  pages, row-specific lengths and B1/B2/B4/B8 transitions. No full-prefix copy
+  pages, row-specific lengths and singleton / 2/4/8-row cohort transitions. No full-prefix copy
   on every append in the intended fast path; measure actual copies/dispatches.
 
 ## Complete-domain prefix reuse and COW — memory plan
@@ -480,10 +480,10 @@ cells pass.
 
 Next: make page policy explicit at source-call load time and select
 `install_window_hybrid_state_pools` only for that policy. Keep the current
-contiguous default. First qualify original0.8B/2B B1 full logits + all42 state at
+contiguous default. First qualify original0.8B/2B singleton full logits + all state domains at
 page_size-1/page_size/page_size+1 and multi-page, with cancel-before-submit,
 in-flight cancel, abandon-after-Ready/root rollback and snapshot/restore. Then
-adapt native B2/B4/B8 state transport and production HTTP. Do not begin
+adapt native 2/4/8-row cohort state transport and production HTTP. Do not begin
 complete-domain prefix reuse until those state gates pass, and do not begin
 event/lease physical overlap until prefix/state ownership is accepted.
 
@@ -495,13 +495,13 @@ seam without publishing a new high-level serving capability.
 
 `ResidentModel::load_ordinary_cuda_source` remains a Contiguous compatibility
 wrapper. `load_ordinary_cuda_source_with_state_policy` is the explicit internal
-selector. Paged currently requires native_rows=0; zero page/append bounds refuse.
+selector. Paged currently requires `cohort_width=0`; zero page/append bounds refuse.
 `HybridStateInventoryPlan` rejects max_append_tokens above state capacity, and
 `HybridPooledStates::candidate` returns `Limit` before checkout when an actual
 call exceeds its admitted append bound. Production qwen source registration
 passes Contiguous explicitly. No high-level paged `ModelLoadRequest` is exposed.
 
-The source-real B1 differential opens one
+The source-real singleton differential opens one
 authenticated original HF source, runs a complete Contiguous model first, shuts
 it down, then runs the same source through Paged. It compares every F32
 full-vocabulary logit bit and every all42 state-domain word at frontiers
@@ -655,7 +655,7 @@ original0.8B Contiguous-vs-Paged B2/B4/B8 prefill/decode/all42 cell is physicall
 accepted: exit0 in306.84s with exact prefill/decode/all42 and clean shutdown; two
 earlier externally SIGKILLed attempts remain incomplete only. The next public-SDK
 cell reuses the public library facade rather than a fixture corpus:8 concurrent
-4-token page-boundary requests,2 outputs, explicit Paged/native_rows8 versus
+4-token page-boundary requests,2 outputs, explicit Paged/`cohort_width=8` versus
 Contiguous, actual native cohort width8 on both and identical token IDs; exit0 in
 340.78s with clean shutdown. Public HTTP then passes the same workload under the
 explicit child-private-net wrapper: actual B8 `{8}` on Contiguous/Paged, exact token

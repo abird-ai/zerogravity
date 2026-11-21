@@ -153,7 +153,7 @@ impl ResidentModel {
             || rows.iter().any(|(_, tokens)| tokens.len() != steps)
         {
             return Err(Error::Unsupported(
-                "temporal resident cohort requires B2/B4/B8 equal chunks of 2..32 tokens".into(),
+                "temporal resident cohort requires 2/4/8-row equal chunks of 2..32 tokens".into(),
             ));
         }
 
@@ -814,7 +814,7 @@ impl ResidentModel {
                 graph_cache: super::graph::ProductionGraphCache::cold(),
             });
             // Initialization reached a real terminal sync. Retire its slot,
-            // then release the workspace before waiting for execution: a B1
+            // then release the workspace before waiting for execution: a singleton
             // worker selected meanwhile may need that same workspace lock.
             slot.finish()?;
             drop(workspace);

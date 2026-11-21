@@ -312,18 +312,18 @@ that checkpoint is superseded by the21 Nov generic smart-config layer. Native ro
 Paged policy and shared Hybrid state owner. Cohort preparation reuses
 `OrdinaryCandidateState` lane-by-lane: gather -> unchanged native body -> scatter
 under one flight, with actual write outputs promoted and canonical paged Domains
-created only after completion. Contiguous B8 retains its private-KV fast path;
+created only after completion. Contiguous 8-row execution retains its private-KV fast path;
 paged `KvInPlace` falls back to the existing per-lane append. Focused policy tests,
 strict `qwen35-cuda` clippy and `qwen35-cuda-serving` composition check pass. One
-compact original0.8B B2/B4/B8 Contiguous-vs-Paged prefill/decode/all42 comparison
-is physically accepted: exit0 in306.84s, exact prefill/decode/all42 and clean
+compact original0.8B 2/4/8-row Contiguous-vs-Paged prefill/decode/all-state-domain comparison
+is physically accepted: exit0 in306.84s, exact prefill/decode/all-state-domain state and clean
 shutdown. The two earlier external-SIGKILL attempts remain incomplete only. A
 single public `fabric_sdk` cell then loads Contiguous and explicit Paged with
-native_rows8, offers8 concurrent4-token/page-boundary requests with2 output tokens,
-observes actual B8 cohorts `{8}` on both, exact returned token IDs and clean
+`cohort_width=8`, offers8 concurrent4-token/page-boundary requests with2 output tokens,
+observes actual 8-row cohorts `{8}` on both, exact returned token IDs and clean
 shutdown; exit0 in340.78s. Public HTTP is now accepted through the explicit
 child-private-net wrapper: the same8 concurrent page-boundary workload observes
-native B8 `{8}` for both Contiguous/Paged, exact returned IDs and clean shutdown;
+native 8-row cohorts `{8}` for both Contiguous/Paged, exact returned IDs and clean shutdown;
 exit0 in358.07s. Strict serving-test Clippy passes. No local vLLM executable/module
 exists here, and retained C8 numbers are not workload-matched with this SDK/HTTP
 cell, so no fresh vLLM claim is made. The child-net full-gate attempt exposed and
@@ -463,7 +463,7 @@ Fabric migration is complete; the unfinished Qwen campaign remains next.
 Preserve signed native GDN`e2559b6`/pause`1c35172` and all accepted bounded
 model/lifetime evidence. Recurrence`17aafa71` remains cancelled; no implicit
 hardware restart. S0 → S1–S3 → F0–F4 → Q0/Q1/Q2 are accepted within their named
-scopes. Return to the Qwen model/context/C1..C64 mission without silently
+scopes. Return to the Qwen model/context `concurrency=1..64` mission without silently
 activating held routes; vLLM comparison is owner-deferred for now.
 
 - [x] Cross-cutting error architecture — real memory/resource exhaustion is now typed

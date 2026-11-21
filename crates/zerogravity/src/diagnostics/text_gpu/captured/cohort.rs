@@ -1,4 +1,4 @@
-//! Actual captured B4 eligibility and original prepare/commit only.
+//! Actual captured 4-row cohort eligibility and original prepare/commit only.
 use super::*;
 
 pub(super) fn eligible(row: &Row) -> bool {

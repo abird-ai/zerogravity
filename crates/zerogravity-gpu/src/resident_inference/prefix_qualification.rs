@@ -117,7 +117,7 @@ async fn qualify_prefix(name: &str, count: usize) -> Result<()> {
             exact(
                 &expected,
                 &b1.forward(&[id], false).await?.logits,
-                "prefix B1 seed",
+                "prefix singleton seed",
             )?;
             exact(
                 &expected,
@@ -198,13 +198,13 @@ async fn qualify_prefix(name: &str, count: usize) -> Result<()> {
             unchanged_domains(&sessions, &original_domains).await?;
             drop(saved);
         }
-        // Independent CPU and accepted complete-vocabulary B1 reference per row.
+        // Independent CPU and accepted complete-vocabulary singleton reference per row.
         for ((reference, b1), &id) in cpu.iter_mut().zip(&mut single).zip(&ids) {
             let expected = reference.forward(id)?;
             exact(
                 &expected,
                 &b1.forward(&[id], false).await?.logits,
-                "prefix each teacher full CPU/B1",
+                "prefix each teacher full CPU/singleton reference",
             )?;
         }
         state(&single, &cpu).await?;
@@ -240,7 +240,7 @@ async fn qualify_prefix(name: &str, count: usize) -> Result<()> {
         exact(
             &logits,
             &b1.forward(&[id], false).await?.logits,
-            "prefix future CPU/B1 logits",
+            "prefix future CPU/singleton logits",
         )?;
         expected.push(logits);
     }
@@ -278,7 +278,7 @@ async fn qualify_prefix(name: &str, count: usize) -> Result<()> {
         exact(
             &logits,
             &b1.forward(&[id], false).await?.logits,
-            "prefix later greedy full CPU/B1",
+            "prefix later greedy full CPU/singleton reference",
         )?;
         let index = (0..logits.len())
             .max_by(|a, b| logits[*a].total_cmp(&logits[*b]).then_with(|| b.cmp(a)))
@@ -329,7 +329,7 @@ async fn pressure_advance(
         exact(
             &reference.forward(id)?,
             &b1.forward(&[id], false).await?.logits,
-            "prefix pressure CPU/B1 full vocabulary",
+            "prefix pressure CPU/singleton full vocabulary",
         )?;
     }
     let before = bindings(sessions);

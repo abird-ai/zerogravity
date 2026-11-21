@@ -79,6 +79,15 @@ prefill is described as **4-token equal-frontier prefill chunks** rather than `t
 The generic scheduler's real `prefill_quantum: 32` value remains unchanged; only the opaque
 `quantum32` nickname was removed.
 
+The ninth cleanup retires bare row-width/concurrency shorthand from the active semantic
+surface. Scheduler/config code uses `cohort_width`; prose uses **singleton** and
+**2/4/8-row cohort**; current workload prose uses `active=N` / `concurrency=N`.
+`B4`/`B8` remains intentionally in fixed physical ABI/kernel/artifact names and historical
+provenance, while `C*` remains only in historical benchmark coordinates. Public CLI help,
+high-level scheduler/qualification assertions and the normative batching design now use
+explicit row-count language; qualification receipt markers are preserved as evidence
+coordinates rather than churned for style.
+
 Cumulative terminology validation remains green across strict core/Qwen/GPU/public-CUDA
 Clippy plus public CUDA/HIP, CUDA qualification, 27B HIP qualification and CUDA CLI
 compilation. Core invocation tests pass 10/10; the Qwen forward suite passes 5/5; the
