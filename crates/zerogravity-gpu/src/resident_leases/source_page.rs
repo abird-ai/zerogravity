@@ -231,7 +231,7 @@ impl PageGeometry {
 struct PendingPage {
     _window: Option<TensorWindow>,
     _bytes: Option<Bytes>,
-    _staging: Option<WindowWorkspace>,
+    _staging: Option<[WindowWorkspace; 2]>,
     serial: u64,
 }
 #[derive(Default)]
@@ -1654,7 +1654,14 @@ impl ResidentSourcePage {
                     "source page authentic original window differs".into(),
                 ));
             }
-            let staging = self.source.reserve_workspace(2 * n)?;
+            // The source contract deliberately caps each workspace ticket at
+            // 32 MiB. The serial path retains two page-sized host owners:
+            // the Bytes payload and backend/bounce headroom. Keep them as two
+            // independently bounded tickets instead of one 2*n reservation.
+            let staging = [
+                self.source.reserve_workspace(n)?,
+                self.source.reserve_workspace(n)?,
+            ];
             let copy = window.as_slice().to_vec();
             if copy.capacity() != n {
                 return Err(Error::Limit("source page copy capacity".into()));

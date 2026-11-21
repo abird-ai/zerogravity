@@ -1092,9 +1092,12 @@ serving, memory and composition plans.
   production: keeping~2.9GiB of3.76GiB source weights resident, prioritizing packs used
   by `state_nodes()`, and increasing the serial source page through16MiB did not
   materially move the deadline. A32MiB page experiment hit the then-current verified
-  source-workspace ticket bound before inference; later concurrent two-ticket staging
-  work is preserved separately and was not used to claim a32MiB result here. All
-  partial-residency/sized-page production wiring from this experiment was removed.
+  source-workspace ticket bound before inference. The underlying host-accounting bug is
+  now fixed generically: the serial source path retains two independent page-sized host
+  owners (`Bytes` payload + backend/bounce headroom), so it holds two separately bounded
+  `WindowWorkspace` tickets instead of one artificial `2*n` ticket. The existing
+  per-ticket32MiB source bound is unchanged; no bound was weakened. Partial-residency and
+  sized-page production selection from the old experiment remain removed.
   One source-only admission cleanup is now accepted before further profiling: ordinary
   CUDA attention carried a capacity-sized `workspace_reserve` even though the retained
   tile-local attention kernel consumes no global scratch. Removing that dead lease from
@@ -1130,8 +1133,18 @@ serving, memory and composition plans.
   `QwenCudaWithSmartConfig` exposes the global mode plus extensible `QwenCudaSmartOverrides`.
   Physical default-Qwen acceptance on2B/32K/1024 logged Auto selecting paged because
   contiguous streamed weights while paged stayed resident, then passed in26.51s with exact
-  replay/frontiers and clean shutdown. The qualifier reuses the existing test; no duplicate
-  fixture or token pin was added.
+  replay/frontiers and clean shutdown. **Authoritative live CUDA admission now follows the
+  advisory smart decision.** `new_pinned_cuda` cleans reclaimable cold allocator/cache
+  blocks, queries device-wide free VRAM from the original CUDA actor/context, preserves the
+  configured `device_cap-provider_cap` headroom, and clamps the provider envelope to
+  `min(configured_provider, free-headroom)`. If the cap falls, the loader reruns the same
+  exact admission/placement helper under that lower cap before source binding/allocation;
+  the resident ledger then sub-admits inside that clamped envelope. This is intentionally
+  distinct from the read-only smart observation: a race or changed environment cannot
+  overrule final resource admission. Pure arithmetic tests cover full-cap, reduced-cap,
+  headroom exhaustion and invalid envelopes. A real default2B/32K/1024 run through this
+  actor-side clamp passed in27.58s exact with clean shutdown on an idle card. The qualifier
+  reuses the existing test; no duplicate fixture or token pin was added.
 - **Retained-candidate policy:** reusable performance experiments are no longer deleted
   merely because one model/shape loses an A/B. Model-neutral candidates live dormant,
   with no production selector/callsite, so Qwen2B/27B, Gemma4 and future models can

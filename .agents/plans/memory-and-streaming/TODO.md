@@ -42,15 +42,19 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
   sets while snapshots/displaced/Pending candidates share immutable prefixes and reserve
   only bounded divergent COW/appended pages. This preserves lifecycle authority and makes
   explicit paged2B32K fully weight-resident. Same-capacity1024-token public A/B improves
-  283.22→28.56s, and full32766-token paged serving passes in224.80s. Keep default
-  contiguous policy unchanged; use explicit paged policy where selected.
+  283.22→28.56s, and full32766-token paged serving passes in224.80s. The21 Nov generic
+  smart-config layer supersedes the fixed Contiguous default: canonical `QwenCuda` uses
+  Enabled mode and Auto selects Paged64/64 when it preserves weight residency, while user
+  values still win per knob. Final CUDA admission independently re-observes free VRAM from
+  the original actor and clamps the provider envelope before allocation.
 - [~] Preserve complete recurrent/conv/KV state history, chunk continuation,
   cancellation/quarantine and readback owners at512/1K/2K/4K/8K/16K, then32K.
-  Public4K/8K/16K execution proves the current chunk-continuation/serving path, and
-  0.8B32K now has one full retained public-SDK pass;2B32K is admitted but exceeds the
-  current600s first-response contract on repeated healthy runs. The
-  independent populated all42 archive is absent on L5, so32K numerical closure remains
-  open; use the retained32768 qualifier and current storage policy rather than
+  Public4K/8K/16K execution proves the current chunk-continuation/serving path;0.8B32K
+  has one full retained public-SDK pass and2B32K now passes the full32766-token retained
+  cell under explicit Paged64/64 in224.80s. Canonical default2B32K/1024 also physically
+  Auto-selects that paged policy and passes through the live actor-side VRAM clamp. The
+  independent populated all42 archive is absent on L5, so32K **numerical** closure remains
+  open; use the retained32768 qualifier and current smart/storage policy rather than
   adding another context fixture or restoring the obsolete refusal assumption.
 
 23Oct allocation/boundary adoption: [shared pools, layouts and transfer APIs](../cpu-gpu-optimization/SHARED_MEMORY_AND_BOUNDARIES.md).

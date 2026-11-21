@@ -180,6 +180,33 @@ impl Drop for ModelAdmission {
     }
 }
 impl ResidentPhysical {
+    #[cfg(all(
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-native")
+    ))]
+    fn live_cuda_provider_cap(
+        provider_cap: usize,
+        device_cap: u64,
+        free_bytes: usize,
+    ) -> Result<usize> {
+        let device_cap = usize::try_from(device_cap)
+            .map_err(|_| Error::Limit("CUDA device capacity overflow".into()))?;
+        let headroom = device_cap.checked_sub(provider_cap).ok_or_else(|| {
+            Error::Limit("CUDA provider capacity exceeds configured device capacity".into())
+        })?;
+        let available = free_bytes.saturating_sub(headroom);
+        let effective = provider_cap.min(available);
+        if effective == 0 {
+            return Err(Error::resource(
+                "CUDA device free memory / VRAM",
+                "provider headroom admission",
+                headroom.saturating_add(1) as u64,
+                free_bytes as u64,
+            ));
+        }
+        Ok(effective)
+    }
+
     pub fn new(device: Device, provider_cap: usize, device_cap: u64) -> Result<Arc<Self>> {
         crate::backend::validate_provider(&device)?;
         let provider = crate::backend::Provider::selected(&device)?;
@@ -539,6 +566,16 @@ impl ResidentPhysical {
         let (client, pinned) =
             unsafe { cubecl::cuda::OwnedCudaQueue::pin_cold(device.client()) }
                 .map_err(|e| Error::State(format!("pin original CUDA queue: {e}")))?;
+        // Drop reclaimable cold allocator/cache blocks before observing free
+        // device memory. Otherwise the live-cap query double-counts memory
+        // already owned by this actor but still reusable by the provider.
+        client
+            .memory_cleanup()
+            .map_err(|e| Error::State(format!("cleanup original CUDA allocator: {e}")))?;
+        let (free_bytes, _) = pinned
+            .memory_info()
+            .map_err(|e| Error::State(format!("query original CUDA free memory: {e}")))?;
+        let provider_cap = Self::live_cuda_provider_cap(provider_cap, device_cap, free_bytes)?;
         let mut physical = Self::from_client(device, client, provider_cap, device_cap, provider)?;
         physical.pinned_cuda_queue = Some(Arc::new(pinned));
         Ok(Arc::new(physical))
@@ -553,6 +590,28 @@ mod tests {
     use zerogravity_core::source::{SourceTensorRef, TensorSource};
 
     struct Source(SourceIdentity);
+
+    #[cfg(all(
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-native")
+    ))]
+    #[test]
+    fn live_cuda_provider_cap_preserves_headroom_and_only_lowers_provider() {
+        const MIB: usize = 1024 * 1024;
+        let provider = 4608 * MIB;
+        let device = 5120 * MIB as u64;
+
+        assert_eq!(
+            ResidentPhysical::live_cuda_provider_cap(provider, device, 6144 * MIB).unwrap(),
+            provider
+        );
+        assert_eq!(
+            ResidentPhysical::live_cuda_provider_cap(provider, device, 4096 * MIB).unwrap(),
+            3584 * MIB
+        );
+        assert!(ResidentPhysical::live_cuda_provider_cap(provider, device, 512 * MIB).is_err());
+        assert!(ResidentPhysical::live_cuda_provider_cap(5121 * MIB, device, 6144 * MIB).is_err());
+    }
     impl TensorSource for Source {
         fn source_identity(&self) -> SourceIdentity {
             self.0

@@ -1408,6 +1408,12 @@ impl ServerStorage for CudaServer {
 mod bf16_provider;
 
 impl CudaServer {
+    pub(crate) fn owned_memory_info(&mut self) -> Result<(usize, usize), ServerError> {
+        self.ctx.unsafe_set_current()?;
+        cudarc::driver::result::mem_get_info()
+            .map_err(|error| ServerError::graph_state(format!("CUDA memory info: {error}")))
+    }
+
     pub(crate) fn owned_compiler_context_usage(
         &self,
     ) -> Option<super::context::CompilerContextUsage> {

@@ -791,32 +791,50 @@ impl ResidentModel {
             ));
         }
 
-        // Pure source-plan/resource analysis. This MUST precede physical owner
-        // creation, source attachment, cleanup, queue work, or allocation.
-        let (admission, _inventory) = ordinary_cuda_source_admission(
-            plan,
+        // Validate the configured source/plan envelope before touching physical
+        // CUDA. A live shared-card observation below may only LOWER this cap;
+        // when it does, rerun this exact same placement helper rather than
+        // introducing a second estimator.
+        let (configured_admission, _inventory) = ordinary_cuda_source_admission(
+            plan.clone(),
             provider_cap,
             roots,
             native_rows,
             state_reserve_bytes,
         )?;
-        let source_identity = admission.source();
+        let source_identity = configured_admission.source();
         if source.source_identity() != source_identity {
             return Err(Error::State(
                 "ordinary CUDA verified source differs from plan".into(),
             ));
         }
+
+        let physical = ResidentPhysical::new_pinned_cuda(device, provider_cap, device_cap)?;
+        let effective_cap = physical.available_model_capacity()?;
+        let admission = if effective_cap == provider_cap {
+            configured_admission
+        } else {
+            ordinary_cuda_source_admission(
+                plan,
+                effective_cap,
+                roots,
+                native_rows,
+                state_reserve_bytes,
+            )?
+            .0
+        };
         let capacity = admission.capacity();
         let vocab = admission.vocabulary() as u64;
         let expected_preflight = admission.preflight().clone();
-
-        let physical = ResidentPhysical::new_pinned_cuda(device, provider_cap, device_cap)?;
         let owner = ResourceOwner {
             model: format!("ordinary-qwen-source-{source_identity:?}"),
             session: "resident-program".into(),
         };
-        let service =
-            physical.attach_model(ResidentSource::Windows(source.clone()), owner, provider_cap)?;
+        let service = physical.attach_model(
+            ResidentSource::Windows(source.clone()),
+            owner,
+            effective_cap,
+        )?;
         let prepared = ordinary_cuda::prepare_program(
             service.clone(),
             admission,

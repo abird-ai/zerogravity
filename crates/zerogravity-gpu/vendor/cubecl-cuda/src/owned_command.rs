@@ -95,6 +95,16 @@ impl OwnedCudaQueue {
         self.stream
     }
 
+    /// Current device-wide CUDA free/total memory from the original actor/context.
+    /// This is an instantaneous admission observation, never a reservation.
+    pub fn memory_info(&self) -> Result<(usize, usize), ServerError> {
+        self.actor
+            .submit_blocking(|server| server.owned_memory_info())
+            .map_err(|error| {
+                ServerError::graph_state(format!("CUDA memory info original actor: {error:?}"))
+            })?
+    }
+
     /// Bind one same-service client clone to a fresh logical CUDA stream while
     /// retaining the original actor/context. This creates no second service.
     ///
