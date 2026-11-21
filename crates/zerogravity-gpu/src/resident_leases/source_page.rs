@@ -673,21 +673,10 @@ impl ResidentSourcePage {
         &self.lease
     }
     fn require_disjoint_outputs(&self, outputs: &[ResidentLease]) -> Result<()> {
-        for output in outputs {
-            self.service.check_lease(output)?;
-        }
-        let ledger = self
-            .service
-            .ledger
-            .lock()
-            .map_err(|_| Error::State("resident source-page ledger poisoned".into()))?;
-        let page = ledger.buffer_identity(self.lease.id())?;
-        for output in outputs {
-            if page.overlaps(ledger.buffer_identity(output.id())?) {
-                return Err(Error::State(
-                    "source page consumer output aliases immutable cached rows".into(),
-                ));
-            }
+        if self.service.overlaps_any(&self.lease, outputs)? {
+            return Err(Error::State(
+                "source page consumer output aliases immutable cached rows".into(),
+            ));
         }
         Ok(())
     }

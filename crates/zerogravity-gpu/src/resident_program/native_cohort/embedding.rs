@@ -118,12 +118,13 @@ impl CohortEmbedding {
                 "B4 exact physical source embedding output".into(),
             ));
         }
-        for other in [table, &status] {
-            if BufferRange::new(&output.handle())?.overlaps(&BufferRange::new(&other.handle())?) {
-                return Err(Error::State(
-                    "B4 embedding output aliases table/status".into(),
-                ));
-            }
+        if values
+            .service()
+            .overlaps_any(&output, &[table.clone(), status.clone()])?
+        {
+            return Err(Error::State(
+                "B4 embedding output aliases table/status".into(),
+            ));
         }
         let metadata = Arc::new(inputs[0].source().reserve_workspace(64 * 1024)?);
         init.retain_completion_owner(metadata.clone())?;
@@ -146,27 +147,22 @@ impl CohortEmbedding {
                             "B4 original completed feedback owner/extent".into(),
                         ));
                     }
-                    for other in [table, &output, &status] {
-                        if BufferRange::new(&lease.handle())?
-                            .overlaps(&BufferRange::new(&other.handle())?)
-                        {
-                            return Err(Error::State(
-                                "B4 feedback aliases source/output/status".into(),
-                            ));
-                        }
+                    if values
+                        .service()
+                        .overlaps_any(lease, &[table.clone(), output.clone(), status.clone()])?
+                    {
+                        return Err(Error::State(
+                            "B4 feedback aliases source/output/status".into(),
+                        ));
                     }
                     Ok(lease.clone())
                 })
                 .collect::<Result<Vec<_>>>()?;
             for (index, lease) in leases.iter().enumerate() {
-                for other in &leases[..index] {
-                    if BufferRange::new(&lease.handle())?
-                        .overlaps(&BufferRange::new(&other.handle())?)
-                    {
-                        return Err(Error::State(
-                            "B4 independent feedback packets overlap".into(),
-                        ));
-                    }
+                if values.service().overlaps_any(lease, &leases[..index])? {
+                    return Err(Error::State(
+                        "B4 independent feedback packets overlap".into(),
+                    ));
                 }
             }
             Ids::Feedback(

@@ -411,8 +411,12 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   producer frontiers/clean shutdown, then the next identical run receives explicit
   `SIGKILL from outside` at~80.7s. Record0.8B32K as current capability-passing but
   infrastructure-flaky; do not upgrade this to independent all42 numerical closure.
-  2B32K remains execution-open. Do not repin outputs, resurrect the old refusal rule, or
-  spend model turns on retry loops.
+  A later retained2B32K retry built cleanly, entered real execution and eventually ended
+  with exit101 after~1904.7s rather than SIGKILL, but its spool was released during an
+  interrupted turn before the Rust failure text could be recovered. This is unlocalized
+  and not acceptance evidence. A bounded rerun was deferred while another owner had dirty
+  ordinary-CUDA source plus an active~4.0GiB GPU workload.2B32K remains execution-open.
+  Do not repin outputs, resurrect the old refusal rule, or spend model turns on retry loops.
 - [ ] Localize ROCm2B C4 warmup and C16/32/64 warmup/timed divergence (task39),
   without repinning expected IDs or attributing an unlocalized failure to kernels.
 - [~] Close ordinary27B HIP HTTP504 and populated1K/2K references/serving (task11).

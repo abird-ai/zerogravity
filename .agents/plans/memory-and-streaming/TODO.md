@@ -68,12 +68,16 @@ The following extends existing owners; source-byte qualification is not inferenc
   handles. `DeviceEventLedger::buffer_identity` is the sole public constructor, and
   production overlapping-alias admission now uses the same identity semantics. The first
   resident consumer is the source-page immutable-cache/output alias guard: both HIP and
-  CUDA paths validate all outputs under one on-demand ledger lock, replacing backend-
-  handle range inference without adding a field to every `ResidentLease`. Six backing-ledger tests cover cross-ledger
+  CUDA paths validate all outputs through shared `ResidentService::overlaps_any`, which
+  checks service ownership and performs one ledger lock with no heap allocation or
+  per-lease identity field. The same primitive now replaces backend-handle range checks in
+  the native B4 embedding preparation path for output/table/status and feedback aliases;
+  its four-packet diagnostic pairwise check simply reuses `overlaps_any` rather than
+  growing another qualification-only API. Six backing-ledger tests cover cross-ledger
   separation, direct-vs-backed identity, exact offsets/ranges, overlap/disjoint aliases,
   continuous charge, cancellation and unknown fencing. Remaining adoption is to query
-  this identity only where prepared packs, graph views and transfer staging actually need
-  it, without mandatory hot-path bookkeeping. Encoded/captured/queued readers still
+  this identity only where other prepared packs, graph views and transfer staging actually
+  need it, without mandatory hot-path bookkeeping. Encoded/captured/queued readers still
   remain part of the broader retirement work.
 - [ ] Add measured lifetime-aware scratch reuse/phase lending only when no live
   root, graph, transfer or reader needs the range. Price borrowed capacity,

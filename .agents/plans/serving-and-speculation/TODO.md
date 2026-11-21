@@ -771,9 +771,14 @@ or a change to the active correctness/benchmark/27B order.
   run1 completed in185.18s with exact replay, independent sessions, exact producer
   frontiers and clean shutdown; run2 received `SIGKILL from outside` at~80.7s after
   >60s execution. So0.8B32K serving capability is now positively established once, but
-  physical-run reliability is still infrastructure-flaky.2B32K execution remains open.
-  No benchmark result from the killed short2B B8 attempt is retained and its temporary
-  parameterization was removed. Continue progress without retry-looping the flaky cells;
+  physical-run reliability is still infrastructure-flaky. A later retained2B32K retry
+  built cleanly in44.24s and entered real execution, then was found terminal at~1904.7s
+  with exit101 rather than SIGKILL after the conversation turn was interrupted. Its job
+  spool had already been released, so the Rust failure text is lost and no cause/pass is
+  claimed. A reproduction was deliberately deferred because another owner had active
+  ordinary-CUDA edits plus~4.0GiB GPU residency.2B32K remains execution-open. No benchmark
+  result from the killed short2B B8 attempt is retained and its temporary parameterization
+  was removed. Continue progress without retry-looping the flaky cells;
   do not return to residual paged micro-tuning.
 - [x] A clean dynamic-prefill grouping candidate was measured and rejected from the
   current selector rather than discarded globally. For the already-compatible mixed

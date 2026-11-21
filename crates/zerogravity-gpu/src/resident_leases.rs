@@ -582,6 +582,31 @@ impl ResidentService {
         Ok(())
     }
 
+    /// Canonical physical alias check over one retained resident service.
+    /// Cold validation only: one ledger lock, no heap allocation or backend
+    /// handle inspection.
+    pub(crate) fn overlaps_any(
+        self: &Arc<Self>,
+        reference: &ResidentLease,
+        others: &[ResidentLease],
+    ) -> Result<bool> {
+        self.check_lease(reference)?;
+        for lease in others {
+            self.check_lease(lease)?;
+        }
+        let ledger = self
+            .ledger
+            .lock()
+            .map_err(|_| Error::State("resident alias ledger poisoned".into()))?;
+        let reference = ledger.buffer_identity(reference.id())?;
+        for lease in others {
+            if reference.overlaps(ledger.buffer_identity(lease.id())?) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     /// Caller holds the selected fair worker slot and begins it immediately
     /// before this method. Accesses are whole-lease, unique, and retain every
     /// actual source/input/scratch/candidate handle until physical retirement.

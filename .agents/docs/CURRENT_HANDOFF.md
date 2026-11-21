@@ -393,13 +393,17 @@ Vulkan-only retry passed, so no source failure follows.
   namespace is required so independent services that both mint local ID1 cannot alias by
   value. The ledger is the sole constructor/query authority and its production
   alias-conflict path calls the same `overlaps` primitive, so there is no parallel
-  hash/handle/range definition. The first resident adoption is the source-page immutable
-  cache/output alias guard: both HIP and CUDA paths validate the page plus all outputs
-  under one on-demand ledger lock rather than reconstructing backend-handle ranges. This
-  adds no resident-lease field and no ordinary hot-path allocation. Core/GPU strict Clippy and the public CUDA-serving compile surface
-  pass; six backing-ledger tests include cross-ledger separation. Adoption across
-  prepared packs, graph views and transfer staging remains incremental; do not cache
-  identity into every lease merely for future diagnostics.
+  hash/handle/range definition. Shared resident `overlaps_any` now checks lease/service
+  ownership and resolves one reference against a lease slice under a single ledger lock,
+  with no heap allocation or per-lease identity field. Both HIP/CUDA source-page alias
+  guards use it, and the native B4 embedding preparation now uses the same primitive for
+  output/table/status and feedback alias checks instead of reconstructing backend-handle
+  ranges. The four-packet diagnostic pairwise check reuses `overlaps_any`; no second
+  qualification-only helper was retained. Core/GPU strict Clippy, native-qualification
+  compile, workspace check and public CUDA-serving compile pass; six backing-ledger tests
+  include cross-ledger separation. Adoption across other prepared packs, graph views and
+  transfer staging remains incremental; do not cache identity into every lease merely for
+  future diagnostics.
   **Scoped worker prefix reuse is
   now implemented and physically accepted.** `PrefixSharingScope` is a validated
   nonzero Copy ID. Existing `Request` stays unchanged; ordinary `request_text`
@@ -1076,8 +1080,16 @@ serving, memory and composition plans.
   pids-limit events=0, CPU quota unlimited, and no visible oomd/journal kill record.
   Therefore separate model capability from infrastructure reliability:0.8B32K has one
   full current-path pass; repeated execution is still host/external-SIGKILL flaky.
-  2B32K remains execution-open. The retained qualifier accepts32768; no duplicate
-  fixture/token pin was added.
+  A later retry of the retained **2B32K** qualifier after the reported SIGKILL repair
+  completed its optimized build in44.24s and entered real execution; when revalidated
+  after an interrupted model turn, the job had terminated with ordinary Cargo/Rust exit
+  **101 after~1904.7s, not SIGKILL**. Its stdout/stderr spool had already been released,
+  so the actual Rust failure text is unavailable and the run proves neither pass nor a
+  localized model failure. Do not infer timeout/OOM/numerical cause from exit101 alone.
+  A bounded reproduction was not started because another source owner then had four
+  ordinary-CUDA files dirty and an active~4.0GiB/12–49% GPU workload; preserve that work
+  and avoid contention.2B32K therefore remains execution-open. The retained qualifier
+  accepts32768; no duplicate fixture/token pin was added.
 - **Retained-candidate policy:** reusable performance experiments are no longer deleted
   merely because one model/shape loses an A/B. Model-neutral candidates live dormant,
   with no production selector/callsite, so Qwen2B/27B, Gemma4 and future models can
