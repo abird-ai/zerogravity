@@ -409,12 +409,16 @@ Vulkan-only retry passed, so no source failure follows.
   with no heap allocation or per-lease identity field. Both HIP/CUDA source-page alias
   guards use it, and the native B4 embedding preparation now uses the same primitive for
   output/table/status and feedback alias checks instead of reconstructing backend-handle
-  ranges. The four-packet diagnostic pairwise check reuses `overlaps_any`; no second
-  qualification-only helper was retained. Core/GPU strict Clippy, native-qualification
-  compile, workspace check and public CUDA-serving compile pass; six backing-ledger tests
-  include cross-ledger separation. Adoption across other prepared packs, graph views and
-  transfer staging remains incremental; do not cache identity into every lease merely for
-  future diagnostics.
+  ranges. The four-packet diagnostic pairwise check reuses `overlaps_any`. The production
+  ordinary-CUDA body now also uses canonical identity for the complete prepared resident
+  lease set via `ResidentService::pairwise_disjoint`: one ledger lock, no heap allocation
+  inside the helper, and no backend handle inspection. This cleanly separates physical
+  ownership truth from the still-required `BufferRange`/`OwnedRanges` kernel binding
+  geometry. Strict CUDA Clippy/serving compile pass and the existing native-B8 public SDK
+  Contiguous/Paged cell remains exact with clean shutdown after the migration; no new
+  fixture was added. Six backing-ledger tests include cross-ledger separation. Adoption
+  across graph views and transfer staging remains incremental; do not cache identity into
+  every lease merely for future diagnostics.
   **Scoped worker prefix reuse is
   now implemented and physically accepted.** `PrefixSharingScope` is a validated
   nonzero Copy ID. Existing `Request` stays unchanged; ordinary `request_text`

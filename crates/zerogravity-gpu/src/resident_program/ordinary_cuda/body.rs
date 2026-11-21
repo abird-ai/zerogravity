@@ -52,21 +52,20 @@ impl OrdinaryCudaBody {
                 .or_insert((lease, access));
         }
         let accesses = unique.into_values().collect::<Vec<_>>();
+        let leases = accesses
+            .iter()
+            .map(|(lease, _)| lease.clone())
+            .collect::<Vec<_>>();
+        if !cold.service().pairwise_disjoint(&leases)? {
+            return Err(Error::State(
+                "ordinary CUDA bound physical allocations overlap".into(),
+            ));
+        }
         let mut owned_ranges = OwnedRanges::new(cold.service().client().service_id());
-        let mut ranges = Vec::with_capacity(accesses.len());
         for (lease, _) in &accesses {
             let range = BufferRange::new(&lease.handle())?;
             range.require_exact_len(lease.bytes())?;
-            if ranges
-                .iter()
-                .any(|prior: &BufferRange| prior.overlaps(&range))
-            {
-                return Err(Error::State(
-                    "ordinary CUDA bound physical allocations overlap".into(),
-                ));
-            }
             owned_ranges.insert(range.clone())?;
-            ranges.push(range);
         }
 
         let preflight = cold.layout().preflight().clone();

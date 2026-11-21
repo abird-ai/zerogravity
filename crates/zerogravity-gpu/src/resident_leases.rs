@@ -607,6 +607,28 @@ impl ResidentService {
         Ok(false)
     }
 
+    /// Canonical physical alias check for one prepared resident lease set.
+    /// Cold validation only: one ledger lock, no backend handle inspection,
+    /// and no per-lease identity cache on the runtime object.
+    pub(crate) fn pairwise_disjoint(self: &Arc<Self>, leases: &[ResidentLease]) -> Result<bool> {
+        for lease in leases {
+            self.check_lease(lease)?;
+        }
+        let ledger = self
+            .ledger
+            .lock()
+            .map_err(|_| Error::State("resident alias ledger poisoned".into()))?;
+        for (index, lease) in leases.iter().enumerate() {
+            let identity = ledger.buffer_identity(lease.id())?;
+            for prior in &leases[..index] {
+                if identity.overlaps(ledger.buffer_identity(prior.id())?) {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
+    }
+
     /// Caller holds the selected fair worker slot and begins it immediately
     /// before this method. Accesses are whole-lease, unique, and retain every
     /// actual source/input/scratch/candidate handle until physical retirement.

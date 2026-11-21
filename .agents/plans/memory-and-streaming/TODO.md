@@ -89,13 +89,18 @@ The following extends existing owners; source-byte qualification is not inferenc
   checks service ownership and performs one ledger lock with no heap allocation or
   per-lease identity field. The same primitive now replaces backend-handle range checks in
   the native B4 embedding preparation path for output/table/status and feedback aliases;
-  its four-packet diagnostic pairwise check simply reuses `overlaps_any` rather than
-  growing another qualification-only API. Six backing-ledger tests cover cross-ledger
-  separation, direct-vs-backed identity, exact offsets/ranges, overlap/disjoint aliases,
-  continuous charge, cancellation and unknown fencing. Remaining adoption is to query
-  this identity only where other prepared packs, graph views and transfer staging actually
-  need it, without mandatory hot-path bookkeeping. Encoded/captured/queued readers still
-  remain part of the broader retirement work.
+  its four-packet diagnostic pairwise check simply reuses `overlaps_any`. The production
+  ordinary-CUDA body now has the first **prepared-set** consumer too: shared
+  `ResidentService::pairwise_disjoint` validates the complete deduplicated resident lease
+  set under one ledger lock before binding, while `BufferRange`/`OwnedRanges` remain only
+  for their legitimate kernel-handle geometry role. The helper allocates nothing and
+  caches no identity into leases. Existing B8 public-SDK Contiguous/Paged execution passes
+  exact tokens/clean shutdown after the migration, so no new alias fixture was added. Six
+  backing-ledger tests cover cross-ledger separation, direct-vs-backed identity, exact
+  offsets/ranges, overlap/disjoint aliases, continuous charge, cancellation and unknown
+  fencing. Remaining adoption is to query this identity only where graph views and
+  transfer staging actually need it, without mandatory hot-path bookkeeping.
+  Encoded/captured/queued readers still remain part of the broader retirement work.
 - [ ] Add measured lifetime-aware scratch reuse/phase lending only when no live
   root, graph, transfer or reader needs the range. Price borrowed capacity,
   old/new COW copies and following decode residency; do not import a hidden arena.
