@@ -824,7 +824,7 @@ impl ResidentProgram {
                         | PlanOperation::TypedBulkF32Matmul { .. }
                         | PlanOperation::TypedEmbed { .. }
                         | PlanOperation::TypedProject { .. }
-                        | PlanOperation::TypedOrdinaryRms { .. }
+                        | PlanOperation::TypedZeroCenteredRms { .. }
                         | PlanOperation::SourceOperator { .. }
                         | PlanOperation::SourceOperatorTemplate { .. }
                         | PlanOperation::TypedCausalConvSilu { .. }
@@ -2511,7 +2511,7 @@ impl ResidentProgram {
                 | PlanOperation::TypedBulkF32Matmul { .. }
                 | PlanOperation::TypedEmbed { .. }
                 | PlanOperation::TypedProject { .. }
-                | PlanOperation::TypedOrdinaryRms { .. }
+                | PlanOperation::TypedZeroCenteredRms { .. }
                 | PlanOperation::SourceOperator { .. }
                 | PlanOperation::SourceOperatorTemplate { .. }
                 | PlanOperation::TypedCausalConvSilu { .. } => Err(Error::Unsupported(

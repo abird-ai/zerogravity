@@ -115,7 +115,7 @@ fn threads() -> CubeDim {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn ordinary_rms(
+pub(super) fn zero_centered_rms(
     client: &Client,
     s: &Scratch<'_>,
     input: &Handle,
@@ -133,7 +133,7 @@ pub(super) fn ordinary_rms(
         || width * groups > 6144
     {
         return Err(Error::Unsupported(
-            "source ordinary RMS finite shape".into(),
+            "source zero-centered RMS finite shape".into(),
         ));
     }
     crate::source_rms::launch(

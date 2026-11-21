@@ -4,7 +4,8 @@
 use super::{CachedLayer, LoadedQwenModel, layer_tensor};
 use crate::accelerator::program::{
     AttentionGeometry, ConvDomain, ForwardInputs, ForwardPlan, KvDomain, MathematicalBackend,
-    PlanBuilder, RecurrentDomain, RmsContract, RopeGeometry, SourceVector, StateSlot, TensorView,
+    PlanBuilder, RecurrentDomain, RopeGeometry, SourceVector, StateSlot, TensorView,
+    ZeroCenteredRmsContract,
 };
 use crate::config::LayerKind;
 use crate::operator_slice::OperatorSliceSource;
@@ -79,7 +80,7 @@ pub(crate) fn pure_projection_slice<B: MathematicalBackend>(
 }
 
 #[cfg(all(feature = "source-binding", target_os = "linux"))]
-pub(crate) fn pure_ordinary_rms_slice<B: MathematicalBackend>(
+pub(crate) fn pure_zero_centered_rms_slice<B: MathematicalBackend>(
     source: &impl OperatorSliceSource,
     math: &mut B,
     role: QwenParameterRole,
@@ -91,27 +92,27 @@ pub(crate) fn pure_ordinary_rms_slice<B: MathematicalBackend>(
         || math.precision(input) != ActivationPrecision::Bf16WidenedF32
     {
         return Err(Error::State(
-            "pure ordinary RMS source profile/precision".into(),
+            "pure zero-centered RMS source profile/precision".into(),
         ));
     }
     let elements = math.elements(input);
     let hidden = usize::try_from(source.geometry().hidden_size)
-        .map_err(|_| Error::Limit("pure ordinary RMS hidden width".into()))?;
+        .map_err(|_| Error::Limit("pure zero-centered RMS hidden width".into()))?;
     if elements != hidden {
         return Err(Error::Malformed(
-            "pure ordinary RMS exact hidden input".into(),
+            "pure zero-centered RMS exact hidden input".into(),
         ));
     }
-    let output = math.forward_rms_profiled(
+    let output = math.zero_centered_rms_profiled(
         source.parameter_descriptor(role)?,
         input,
-        RmsContract::TorchCpuBf16Avx2,
+        ZeroCenteredRmsContract::TorchCpuBf16Avx2,
     )?;
     if math.elements(&output) != elements
         || math.precision(&output) != ActivationPrecision::Bf16WidenedF32
     {
         return Err(Error::State(
-            "pure ordinary RMS complete typed output".into(),
+            "pure zero-centered RMS complete typed output".into(),
         ));
     }
     Ok(output)
@@ -136,7 +137,7 @@ pub(crate) fn output_tail_slice<B: MathematicalBackend>(
         residual,
     } = source_ffn_layer(source, math, layer, input)?;
     let normalized =
-        pure_ordinary_rms_slice(source, math, QwenParameterRole::FinalNorm, &residual)?;
+        pure_zero_centered_rms_slice(source, math, QwenParameterRole::FinalNorm, &residual)?;
     let logits = pure_projection_slice(source, math, QwenMatrixRole::Output, &normalized)?;
     Ok(OutputTailValues {
         normalized_ffn,
@@ -166,7 +167,7 @@ fn source_ffn_layer<B: MathematicalBackend>(
     input: &B::Value,
 ) -> Result<SourceFfnValues<B::Value>> {
     let normalized_ffn =
-        pure_ordinary_rms_slice(source, math, QwenParameterRole::FfnNorm(layer), input)?;
+        pure_zero_centered_rms_slice(source, math, QwenParameterRole::FfnNorm(layer), input)?;
     let gate = pure_projection_slice(
         source,
         math,
@@ -237,7 +238,7 @@ pub(crate) fn attention_output_tail_slice<B: MathematicalBackend>(
     use crate::operator_slice::attention_tail::AttentionTailValues;
     let s = source.attention_tail_spec()?;
     let normalized_input =
-        pure_ordinary_rms_slice(source, math, QwenParameterRole::InputNorm(s.layer), input)?;
+        pure_zero_centered_rms_slice(source, math, QwenParameterRole::InputNorm(s.layer), input)?;
     let projections = attention_projection_norm_slice(source, math, s.layer, &normalized_input)?;
     let attention = math.torch_cpu_bf16_attention(
         "original.final_attention",
@@ -326,7 +327,7 @@ pub(crate) fn embedding_input_norm_projection_slice<B: MathematicalBackend>(
         || model.rms_epsilon().to_bits() != 1e-6f32.to_bits()
     {
         return Err(Error::Unsupported(
-            "original ordinary RMS slice profile/epsilon".into(),
+            "original zero-centered RMS slice profile/epsilon".into(),
         ));
     }
     let embedding = math.embed_profiled(
@@ -334,10 +335,10 @@ pub(crate) fn embedding_input_norm_projection_slice<B: MathematicalBackend>(
         token,
         model.embedding_contract(),
     )?;
-    let normalized = math.forward_rms_profiled(
+    let normalized = math.zero_centered_rms_profiled(
         model.parameter_descriptor(QwenParameterRole::InputNorm(0))?,
         &embedding,
-        RmsContract::TorchCpuBf16Avx2,
+        ZeroCenteredRmsContract::TorchCpuBf16Avx2,
     )?;
     let projected = project(model, math, QwenMatrixRole::GdnQkv(0), &normalized)?;
     if [&embedding, &normalized, &projected]
@@ -345,7 +346,7 @@ pub(crate) fn embedding_input_norm_projection_slice<B: MathematicalBackend>(
         .any(|value| math.precision(value) != ActivationPrecision::Bf16WidenedF32)
     {
         return Err(Error::State(
-            "ordinary RMS slice activation precision".into(),
+            "zero-centered RMS slice activation precision".into(),
         ));
     }
     Ok((embedding, normalized, projected))
@@ -400,12 +401,15 @@ pub(crate) fn attention_projection_norm_slice<B: MathematicalBackend>(
         },
     )?;
     let gate = math.contiguous(&gate_view)?;
-    let normalized_query =
-        math.forward_rms_profiled(roles.query_norm, &query, RmsContract::TorchCpuBf16Avx2)?;
-    let normalized_key = math.forward_rms_profiled(
+    let normalized_query = math.zero_centered_rms_profiled(
+        roles.query_norm,
+        &query,
+        ZeroCenteredRmsContract::TorchCpuBf16Avx2,
+    )?;
+    let normalized_key = math.zero_centered_rms_profiled(
         roles.key_norm,
         &key_projection,
-        RmsContract::TorchCpuBf16Avx2,
+        ZeroCenteredRmsContract::TorchCpuBf16Avx2,
     )?;
     if [
         &query_gate_projection,
@@ -1020,7 +1024,7 @@ impl<B: MathematicalBackend, O: crate::source::binding::SourceObserver<B::Value>
                 "source Torch residual must materialize at original BF16 boundary".into(),
             ));
         }
-        let normal = pure_ordinary_rms_slice(
+        let normal = pure_zero_centered_rms_slice(
             self.source,
             self.math,
             QwenParameterRole::InputNorm(layer),
@@ -1201,7 +1205,7 @@ impl<B: MathematicalBackend, O: crate::source::binding::SourceObserver<B::Value>
             self.math
                 .torch_cpu_bf16_add("original.model.attention.residual", &carried, &branch)?;
         self.observe(layer, S::PostAttention, &residual);
-        let normal = pure_ordinary_rms_slice(
+        let normal = pure_zero_centered_rms_slice(
             self.source,
             self.math,
             QwenParameterRole::FfnNorm(layer),
@@ -1259,7 +1263,7 @@ impl<B: MathematicalBackend, O: crate::source::binding::SourceObserver<B::Value>
         if !self.output.logits {
             return Ok(branch);
         }
-        let normalized = pure_ordinary_rms_slice(
+        let normalized = pure_zero_centered_rms_slice(
             self.source,
             self.math,
             QwenParameterRole::FinalNorm,

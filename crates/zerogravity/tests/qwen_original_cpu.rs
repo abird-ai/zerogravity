@@ -364,14 +364,14 @@ mod original_numerics {
         let bound = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
         let math = LayerMath::new(&bound);
         let x = [3., 4.];
-        let zero = math.ordinary_norm(&x, &[0., 0.]).unwrap();
+        let zero = math.zero_centered_norm(&x, &[0., 0.]).unwrap();
         near(zero[0], 3.0 / (12.5f32 + 1e-6).sqrt(), 1e-6);
         near(zero[1], 4.0 / (12.5f32 + 1e-6).sqrt(), 1e-6);
-        let doubled = math.ordinary_norm(&x, &[1., 1.]).unwrap();
+        let doubled = math.zero_centered_norm(&x, &[1., 1.]).unwrap();
         assert_eq!(doubled, [2.0 * zero[0], 2.0 * zero[1]]);
-        assert_eq!(math.ordinary_norm(&x, &[-1., -1.]).unwrap(), [0., 0.]);
-        assert!(math.ordinary_norm(&x, &[0.]).is_err());
-        assert!(math.ordinary_norm(&x, &[f32::INFINITY, 0.]).is_err());
+        assert_eq!(math.zero_centered_norm(&x, &[-1., -1.]).unwrap(), [0., 0.]);
+        assert!(math.zero_centered_norm(&x, &[0.]).is_err());
+        assert!(math.zero_centered_norm(&x, &[f32::INFINITY, 0.]).is_err());
     }
 
     #[test]
@@ -845,7 +845,7 @@ mod original_full_model_tests {
         );
         // Independent synthetic all-ones analytical oracle: the
         // positive uniform final residual RMS-normalizes to ~one per
-        // lane, but original Qwen ordinary RMS uses (1 + stored_weight).
+        // lane, but original Qwen zero-centered RMS uses (1 + stored_weight).
         // Stored norm weights are 1, so each lane becomes ~2 and the
         // untied all-ones output row sums four lanes to approximately 8.
         assert!((discarded.logits()[0] - 8.0).abs() < 0.01);
@@ -1076,9 +1076,9 @@ mod original_bf16_diagnostic_tests {
         let source_bf16 = LayerMath::bf16_diagnostic(&cpu);
         let x = [0.10123456f32, f32::from_bits(0x3f80_8000), 1.019, 1.25];
         let gamma = [0.0f32, 0.5, -0.2, 0.3];
-        let normalized = source_bf16.ordinary_norm(&x, &gamma).unwrap();
+        let normalized = source_bf16.zero_centered_norm(&x, &gamma).unwrap();
         assert!(normalized.iter().copied().all(bf16_representable));
-        let raw = source_f32.ordinary_norm(&x, &gamma).unwrap();
+        let raw = source_f32.zero_centered_norm(&x, &gamma).unwrap();
         assert_ne!(raw, normalized);
         let stage_f32 = source_f32.propose_ffn(0, &x).unwrap();
         let stage_bf16 = source_bf16.propose_ffn(0, &x).unwrap();

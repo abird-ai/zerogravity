@@ -45,7 +45,7 @@ impl Inputs {
     }
 }
 
-async fn ordinary(
+async fn input_rms(
     service: &Arc<ResidentService>,
     owner: &Arc<Inputs>,
     validate: &mut impl FnMut(FixedPromptRmsReadback<'_>) -> Result<()>,
@@ -219,10 +219,10 @@ pub async fn qualify_fixed_prompt_rms(
         device_cap,
     )?;
     let key = service.physical_key();
-    ordinary(&service, &owner, &mut validate, cancelled).await?;
+    input_rms(&service, &owner, &mut validate, cancelled).await?;
     if service.resident_bytes()? != 0 || service.pending_events()? != 0 {
         return Err(Error::State(
-            "fixed_prompt ordinary retained allocations/events".into(),
+            "fixed_prompt input RMS retained allocations/events".into(),
         ));
     }
     dual_leaf(&service, &owner, &mut validate, cancelled).await?;

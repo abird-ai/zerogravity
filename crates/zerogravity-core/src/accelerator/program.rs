@@ -37,8 +37,8 @@ pub use text_moe::{TextExpertTensor, TextMoeContract, TextMoeInputs};
 mod typed;
 pub use text::{TextElementwise, TextRotary};
 pub use typed::{
-    ActivationPrecision, EmbeddingContract, NumericalProfile, ProjectionContract, RmsContract,
-    SourceParameter,
+    ActivationPrecision, EmbeddingContract, NumericalProfile, ProjectionContract, SourceParameter,
+    ZeroCenteredRmsContract,
 };
 
 mod text_bindings;
@@ -426,14 +426,14 @@ pub trait MathematicalBackend {
             "backend has no exact source-operator contract".into(),
         ))
     }
-    fn forward_rms_profiled(
+    fn zero_centered_rms_profiled(
         &mut self,
         _parameter: SourceParameter,
         _input: &Self::Value,
-        _contract: RmsContract,
+        _contract: ZeroCenteredRmsContract,
     ) -> Result<Self::Value> {
         Err(Error::Unsupported(
-            "backend does not implement explicit ordinary RMS contract".into(),
+            "backend does not implement explicit zero-centered RMS contract".into(),
         ))
     }
     /// Pure original convolution window; no state owner or implicit fallback.
@@ -690,9 +690,9 @@ pub enum PlanOperation {
         parameter: SourceParameter,
         contract: CausalConvSiluContract,
     },
-    TypedOrdinaryRms {
+    TypedZeroCenteredRms {
         parameter: SourceParameter,
-        contract: RmsContract,
+        contract: ZeroCenteredRmsContract,
     },
     Embed {
         tensor: SourceTensor,
@@ -1181,7 +1181,7 @@ impl PlanBuilder {
                 }
                 Ok(ActivationPrecision::Bf16WidenedF32)
             }
-            PlanOperation::TypedOrdinaryRms {
+            PlanOperation::TypedZeroCenteredRms {
                 parameter,
                 contract,
             } => {
@@ -1191,7 +1191,7 @@ impl PlanBuilder {
                     || inputs[0].precision != ActivationPrecision::Bf16WidenedF32
                 {
                     return Err(Error::Unsupported(
-                        "ordinary RMS numerical profile/source/precision".into(),
+                        "zero-centered RMS numerical profile/source/precision".into(),
                     ));
                 }
                 contract.validate(parameter, inputs[0].elements)?;
@@ -1271,7 +1271,7 @@ impl PlanBuilder {
                         | PlanOperation::TypedBulkF32Matmul { .. }
                         | PlanOperation::TypedEmbed { .. }
                         | PlanOperation::TypedProject { .. }
-                        | PlanOperation::TypedOrdinaryRms { .. }
+                        | PlanOperation::TypedZeroCenteredRms { .. }
                         | PlanOperation::TypedCausalConvSilu { .. }
                         | PlanOperation::TypedSourceStateRead { .. }
                         | PlanOperation::TypedSourceStateWrite { .. }
@@ -1665,16 +1665,16 @@ impl MathematicalBackend for PlanBuilder {
             None,
         )
     }
-    fn forward_rms_profiled(
+    fn zero_centered_rms_profiled(
         &mut self,
         parameter: SourceParameter,
         input: &PlanValue,
-        contract: RmsContract,
+        contract: ZeroCenteredRmsContract,
     ) -> Result<PlanValue> {
         let name = parameter.name.clone();
         self.one(
             &name,
-            PlanOperation::TypedOrdinaryRms {
+            PlanOperation::TypedZeroCenteredRms {
                 parameter,
                 contract,
             },

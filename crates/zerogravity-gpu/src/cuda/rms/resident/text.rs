@@ -179,13 +179,13 @@ impl RmsPrepared {
                 != &self.owner._parameter.parameter().source_parameter()
         {
             return Err(Error::State(
-                "text ordinary authentic source/gamma/geometry rebind".into(),
+                "text input RMS authentic source/gamma/geometry rebind".into(),
             ));
         }
         let pooled = self
             .pooled
             .as_ref()
-            .ok_or_else(|| Error::State("text ordinary cold pool actor absent".into()))?
+            .ok_or_else(|| Error::State("text input RMS cold pool actor absent".into()))?
             .rebind(&scope, 1)?;
         let rows = EmbeddingRows::fresh(scope, tied)?;
         let mut accesses = self.accesses.clone();

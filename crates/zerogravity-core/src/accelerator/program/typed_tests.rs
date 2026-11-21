@@ -370,27 +370,31 @@ impl TensorSource for NormSource {
 }
 
 #[test]
-fn ordinary_rms_records_raw_parameter_and_bf16_precision_without_static_gamma_or_state() {
+fn zero_centered_rms_records_raw_parameter_and_bf16_precision_without_static_gamma_or_state() {
     let source = NormSource::new();
     let raw = SourceParameter::from_source(&source, "input.norm").unwrap();
     let mut b = builder(source.id);
     let embedding = input(&mut b, source.matrix());
     let normalized = b
-        .forward_rms_profiled(raw.clone(), &embedding, RmsContract::TorchCpuBf16Avx2)
+        .zero_centered_rms_profiled(
+            raw.clone(),
+            &embedding,
+            ZeroCenteredRmsContract::TorchCpuBf16Avx2,
+        )
         .unwrap();
     assert_eq!(normalized.precision(), ActivationPrecision::Bf16WidenedF32);
     let slice = b.finish_operator_slice(normalized).unwrap();
     let plan = slice.plan();
     assert_eq!(plan.nodes().len(), 2);
-    let PlanOperation::TypedOrdinaryRms {
+    let PlanOperation::TypedZeroCenteredRms {
         parameter,
         contract,
     } = &plan.nodes()[1].operation
     else {
-        panic!("missing typed raw-parameter ordinary RMS");
+        panic!("missing typed raw-parameter zero-centered RMS");
     };
     assert_eq!(parameter, &raw);
-    assert_eq!(*contract, RmsContract::TorchCpuBf16Avx2);
+    assert_eq!(*contract, ZeroCenteredRmsContract::TorchCpuBf16Avx2);
     assert!(plan.constants().is_empty());
     assert!(plan.required_domains().is_empty() && plan.proposed_domains().is_empty());
     assert_eq!(plan.frontier_delta(), 0);
@@ -403,7 +407,7 @@ fn ordinary_rms_records_raw_parameter_and_bf16_precision_without_static_gamma_or
 }
 
 #[test]
-fn ordinary_rms_refuses_foreign_parameters_values_precision_and_unqualified_metadata() {
+fn zero_centered_rms_refuses_foreign_parameters_values_precision_and_unqualified_metadata() {
     let source = NormSource::new();
     let parameter = SourceParameter::from_source(&source, "input.norm").unwrap();
     let mut b = builder(source.id);
@@ -437,22 +441,34 @@ fn ordinary_rms_refuses_foreign_parameters_values_precision_and_unqualified_meta
         },
     ] {
         assert!(
-            b.forward_rms_profiled(changed, &embedding, RmsContract::TorchCpuBf16Avx2)
-                .is_err()
+            b.zero_centered_rms_profiled(
+                changed,
+                &embedding,
+                ZeroCenteredRmsContract::TorchCpuBf16Avx2
+            )
+            .is_err()
         );
         assert_eq!(b.nodes.len(), original_nodes);
     }
     let mut foreign = builder(source.id);
     let other = input(&mut foreign, source.matrix());
     assert!(
-        b.forward_rms_profiled(parameter.clone(), &other, RmsContract::TorchCpuBf16Avx2)
-            .is_err()
+        b.zero_centered_rms_profiled(
+            parameter.clone(),
+            &other,
+            ZeroCenteredRmsContract::TorchCpuBf16Avx2
+        )
+        .is_err()
     );
     let mut forged = embedding;
     forged.precision = ActivationPrecision::F32;
     assert!(
-        b.forward_rms_profiled(parameter.clone(), &forged, RmsContract::TorchCpuBf16Avx2)
-            .is_err()
+        b.zero_centered_rms_profiled(
+            parameter.clone(),
+            &forged,
+            ZeroCenteredRmsContract::TorchCpuBf16Avx2
+        )
+        .is_err()
     );
     let mut old =
         PlanBuilder::new_operator_slice(source.id, NumericalProfile::GgufReferenceV1).unwrap();
@@ -460,8 +476,12 @@ fn ordinary_rms_refuses_foreign_parameters_values_precision_and_unqualified_meta
         .embed(source.matrix(), PlanBuilder::inputs().token)
         .unwrap();
     assert!(
-        old.forward_rms_profiled(parameter.clone(), &old_value, RmsContract::TorchCpuBf16Avx2)
-            .is_err()
+        old.zero_centered_rms_profiled(
+            parameter.clone(),
+            &old_value,
+            ZeroCenteredRmsContract::TorchCpuBf16Avx2
+        )
+        .is_err()
     );
     for width in [256usize, 1024, 2048, 5120] {
         for (kind, bytes) in [
@@ -481,18 +501,18 @@ fn ordinary_rms_refuses_foreign_parameters_values_precision_and_unqualified_meta
                 ..parameter.clone()
             };
             assert_eq!(
-                RmsContract::TorchCpuBf16Avx2
+                ZeroCenteredRmsContract::TorchCpuBf16Avx2
                     .validate(&descriptor, width * 2)
                     .unwrap(),
                 width
             );
             assert!(
-                RmsContract::TorchCpuBf16Avx2
+                ZeroCenteredRmsContract::TorchCpuBf16Avx2
                     .validate(&descriptor, width - 1)
                     .is_err()
             );
             assert!(
-                RmsContract::TorchCpuBf16Avx2
+                ZeroCenteredRmsContract::TorchCpuBf16Avx2
                     .validate(&descriptor, width * 8192)
                     .is_err()
             );
@@ -555,16 +575,20 @@ fn unaware_backend_refuses_new_contract_without_legacy_or_metadata_callbacks() {
         Err(Error::Unsupported(_))
     ));
     assert!(matches!(
-        unaware.forward_rms_profiled(parameter, &vec![1.0; 256], RmsContract::TorchCpuBf16Avx2),
+        unaware.zero_centered_rms_profiled(
+            parameter,
+            &vec![1.0; 256],
+            ZeroCenteredRmsContract::TorchCpuBf16Avx2
+        ),
         Err(Error::Unsupported(_))
     ));
 }
 
 #[test]
-fn ordinary_rms_requires_explicit_packing_for_valid_geometry_strided_input() {
+fn zero_centered_rms_requires_explicit_packing_for_valid_geometry_strided_input() {
     let source = NormSource::with_columns(1024);
     let parameter = SourceParameter::from_source(&source, "input.norm").unwrap();
-    let contract = RmsContract::TorchCpuBf16Avx2;
+    let contract = ZeroCenteredRmsContract::TorchCpuBf16Avx2;
     let mut b = builder(source.id);
     let embedding = input(&mut b, source.matrix());
     let strided = b
@@ -585,13 +609,13 @@ fn ordinary_rms_requires_explicit_packing_for_valid_geometry_strided_input() {
     );
     let nodes = b.nodes.len();
     assert!(matches!(
-        b.forward_rms_profiled(parameter.clone(), &strided, contract),
+        b.zero_centered_rms_profiled(parameter.clone(), &strided, contract),
         Err(Error::State(message)) if message.contains("contiguous")
     ));
     assert_eq!(b.nodes.len(), nodes);
     let packed = b.contiguous(&strided).unwrap();
     let normalized = b
-        .forward_rms_profiled(parameter, &packed, contract)
+        .zero_centered_rms_profiled(parameter, &packed, contract)
         .unwrap();
     let slice = b.finish_operator_slice(normalized).unwrap();
     assert_eq!(slice.plan().nodes().len(), 4);

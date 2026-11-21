@@ -276,7 +276,7 @@ impl QwenOperator {
         match self.kind {
             QwenOperation::InputRms if self.layer.map(QwenLayer::index) != Some(0) => {
                 return Err(Error::Unsupported(
-                    "ordinary input RMS only original layer0".into(),
+                    "zero-centered input RMS only original layer0".into(),
                 ));
             }
             QwenOperation::ResidualRms(QwenRmsSite::Input)

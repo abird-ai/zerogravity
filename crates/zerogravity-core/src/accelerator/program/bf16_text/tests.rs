@@ -152,7 +152,7 @@ fn explicit_direct_gamma_contract_keeps_precision_and_foreign_value_guards() {
     assert_eq!(n.precision(), ActivationPrecision::Bf16WidenedF32);
     assert_eq!(b.constants[0].values[0].to_bits(), 0); // direct zero, never1+gamma
     assert!(
-        RmsContract::TorchCpuBf16Avx2
+        ZeroCenteredRmsContract::TorchCpuBf16Avx2
             .validate(
                 &SourceParameter {
                     source,

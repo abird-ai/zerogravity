@@ -159,7 +159,7 @@ fn complete35_uses_same_forward_all15_states_and_explicit_bf16_contract() {
     )));
     assert!(!p.nodes().iter().any(|n| matches!(
         n.operation,
-        PlanOperation::TypedOrdinaryRms { .. }
+        PlanOperation::TypedZeroCenteredRms { .. }
             | PlanOperation::SourceOperator { .. }
             | PlanOperation::SourceOperatorTemplate { .. }
             | PlanOperation::TextMoe { .. }

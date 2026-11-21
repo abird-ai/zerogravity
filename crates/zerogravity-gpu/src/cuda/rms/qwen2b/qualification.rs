@@ -66,7 +66,7 @@ pub(super) fn validate_fixture(ids: &[u32], leaf: &Qwen2BDualRmsLeaf, count: usi
     Ok(())
 }
 
-async fn ordinary(
+async fn input_rms(
     service: &Arc<ResidentService>,
     owner: &Arc<Inputs>,
     case: usize,
@@ -220,7 +220,7 @@ async fn dual_leaf(
 }
 
 /// Ten bounded leaf calls, each with a genuine original physical completion.
-/// Ordinary inputs are ORIGINAL source rows/gamma; final dual inputs explicitly
+/// Input-RMS calls use ORIGINAL source rows/gamma; final dual inputs explicitly
 /// remain observed leaves. No StateRoot/PreparedInference/model support follows.
 #[expect(clippy::too_many_arguments)]
 pub async fn qualify_qwen2b_rms(
@@ -245,7 +245,7 @@ pub async fn qualify_qwen2b_rms(
     let service = ResidentService::new_pinned_cuda(
         device,
         owner.source.source().source_identity(),
-        ResourceOwner::new("qwen2b-cuda-source", "ordinary-and-dual-rms-leaves")?,
+        ResourceOwner::new("qwen2b-cuda-source", "input-and-dual-rms-leaves")?,
         PROVIDER,
         device_cap,
     )?;
@@ -255,7 +255,7 @@ pub async fn qualify_qwen2b_rms(
             if dual {
                 dual_leaf(&service, &owner, case, &mut validate, cancelled).await?;
             } else {
-                ordinary(&service, &owner, case, &mut validate, cancelled).await?;
+                input_rms(&service, &owner, case, &mut validate, cancelled).await?;
             }
             if service.resident_bytes()? != 0 || service.pending_events()? != 0 {
                 return Err(Error::State(

@@ -1,7 +1,8 @@
 //! Synthetic original full-header sources; no trained27B parity claim.
 use super::*;
 use crate::accelerator::program::{
-    EmbeddingContract, InvocationPhase, MathematicalBackend, PlanOperation, RmsContract, TensorView,
+    EmbeddingContract, InvocationPhase, MathematicalBackend, PlanOperation, TensorView,
+    ZeroCenteredRmsContract,
 };
 use crate::operator_slice::OperatorSliceSource;
 use crate::source::binding::{OriginalWindowOperators, QwenParameterRole};
@@ -125,7 +126,7 @@ fn window_three_nodes_match_owned_source_and_retain_buffers_after_callers_drop()
     ));
     assert!(matches!(
         plan.plan().nodes()[1].operation,
-        PlanOperation::TypedOrdinaryRms { .. }
+        PlanOperation::TypedZeroCenteredRms { .. }
     ));
     assert!(matches!(
         plan.plan().nodes()[2].operation,
@@ -350,12 +351,12 @@ fn unaware_provider_never_gets_partial_source_or_legacy_norm_fallback() {
     );
     assert!(
         unaware
-            .forward_rms_profiled(
+            .zero_centered_rms_profiled(
                 operators
                     .parameter_descriptor(QwenParameterRole::InputNorm(0))
                     .unwrap(),
                 &input,
-                RmsContract::TorchCpuBf16Avx2
+                ZeroCenteredRmsContract::TorchCpuBf16Avx2
             )
             .is_err()
     );

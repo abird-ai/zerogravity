@@ -37,7 +37,7 @@ impl OriginalWindowOperators {
             theta: config.rope_theta() as f32,
         };
         geometry.validate(0)?;
-        self.ordinary_hidden_role(QwenParameterRole::InputNorm(layer))?;
+        self.zero_centered_hidden_role(QwenParameterRole::InputNorm(layer))?;
         let output = self.projection_role(QwenMatrixRole::AttentionOutput(layer))?;
         if !config.attention_output_gate()
             || output.columns != r.query_heads * r.width

@@ -42,12 +42,12 @@ fn private_rms_layout(rows: usize, width: usize) -> Result<Vec<usize>> {
     if layout.len() != 9 {
         return Err(Error::State("text exact nine shared RMS owners".into()));
     }
-    let ordinary = RmsPrepared::text_private_layout(rows, width)?;
+    let input_rms = RmsPrepared::text_private_layout(rows, width)?;
     let dual = FusedRmsPrepared::text_private_layout(rows, width)?;
-    if ordinary.len() != 1 || dual.len() != 2 {
+    if input_rms.len() != 1 || dual.len() != 2 {
         return Err(Error::State("text gamma/raw SumF32 private cohort".into()));
     }
-    layout.extend(ordinary);
+    layout.extend(input_rms);
     for _ in 0..48 {
         layout.extend_from_slice(&dual);
     }

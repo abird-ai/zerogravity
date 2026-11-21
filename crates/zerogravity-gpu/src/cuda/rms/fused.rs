@@ -787,7 +787,7 @@ impl FusedRmsPrepared {
             .as_ref()
             .or(self.owner._model_binding.as_ref())
             .ok_or_else(|| {
-                Error::State("ordinary/prefix RMS cannot stand in for a full-model producer".into())
+                Error::State("input/prefix RMS cannot stand in for a full-model producer".into())
             })?;
         binding.require_source(&self.owner.source)?;
         if binding.operator() != actual {
@@ -814,7 +814,7 @@ impl FusedRmsPrepared {
             .as_ref()
             .or(self.owner._model_binding.as_ref())
             .ok_or_else(|| {
-                Error::State("ordinary/prefix RMS cannot stand in for a full-model producer".into())
+                Error::State("input/prefix RMS cannot stand in for a full-model producer".into())
             })?;
         binding.require_source(&self.owner.source)?;
         if binding.operator() != operator

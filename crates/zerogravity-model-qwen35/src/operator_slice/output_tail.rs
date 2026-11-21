@@ -37,8 +37,8 @@ impl OriginalWindowOperators {
         let up = self.projection_role(QwenMatrixRole::FfnUp(layer))?;
         let down = self.projection_role(QwenMatrixRole::FfnDown(layer))?;
         let head = self.projection_role(QwenMatrixRole::Output)?;
-        self.ordinary_hidden_role(QwenParameterRole::FfnNorm(layer))?;
-        self.ordinary_hidden_role(QwenParameterRole::FinalNorm)?;
+        self.zero_centered_hidden_role(QwenParameterRole::FfnNorm(layer))?;
+        self.zero_centered_hidden_role(QwenParameterRole::FinalNorm)?;
         if gate.columns != hidden
             || up.columns != hidden
             || gate.rows != up.rows

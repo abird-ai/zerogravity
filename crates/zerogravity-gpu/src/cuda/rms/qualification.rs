@@ -150,7 +150,7 @@ pub async fn qualify_input_rms(
         compared += source_rms(service.clone(), owner.clone(), index).await?;
         if service.resident_bytes()? != 0 || service.pending_events()? != 0 {
             return Err(Error::State(
-                "input RMS retained ordinary completed device allocations/events".into(),
+                "input RMS retained completed device allocations/events".into(),
             ));
         }
     }

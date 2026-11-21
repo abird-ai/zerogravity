@@ -474,7 +474,7 @@ impl StorageBuilder {
             .ok_or_else(|| Error::State("bounded earlier producer is not bound".into()))?
             .original_lease()
     }
-    pub(crate) fn bind_ordinary(
+    pub(crate) fn bind_input_rms(
         &mut self,
         actor: &Arc<RmsPrepared>,
         rms: &Arc<FullModelRmsScratch>,

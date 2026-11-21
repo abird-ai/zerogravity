@@ -104,7 +104,7 @@ impl CanonicalColdValues {
             record: input.record().clone(),
             values,
             rms,
-            _ordinary_binding: input.scope().rms(1)?.clone(),
+            _input_rms_binding: input.scope().rms(1)?.clone(),
             fused,
             certificates: self.body.certificates.clone(),
             bound: OnceLock::new(),

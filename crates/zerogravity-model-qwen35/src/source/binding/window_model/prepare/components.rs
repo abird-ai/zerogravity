@@ -557,9 +557,7 @@ impl BoundFullModelSource {
             let geometry = match (index, descriptor.kind()) {
                 (1, SourceOperatorKind::Rms(g)) | (7, SourceOperatorKind::ResidualRms(g)) => g,
                 _ => {
-                    return Err(Error::State(
-                        "component ordinary/post RMS kind differs".into(),
-                    ));
+                    return Err(Error::State("component input/post RMS kind differs".into()));
                 }
             };
             if geometry.width != kind.columns()
@@ -686,7 +684,7 @@ impl BoundFullModelSource {
     }
 }
 
-// Ordinary RMS had these gates independently of the component post-RMS binder.
+// Zero-centered RMS had these gates independently of the component post-RMS binder.
 fn require_forward_source(
     model: &OriginalWindowModelSource,
     kind: ModelComponentKind,

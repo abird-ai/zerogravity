@@ -58,7 +58,7 @@ async fn cut(
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source().source_identity(),
-        ResourceOwner::new("qwen2b-cuda-source", "ordinary-rms-uncertain-cut")?,
+        ResourceOwner::new("qwen2b-cuda-source", "input-rms-uncertain-cut")?,
         PROVIDER,
         device_cap,
     )?;
@@ -127,7 +127,7 @@ async fn pressure(
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source().source_identity(),
-        ResourceOwner::new("qwen2b-cuda-source", "ordinary-rms-cap-pressure")?,
+        ResourceOwner::new("qwen2b-cuda-source", "input-rms-cap-pressure")?,
         PROVIDER,
         device_cap,
     )?;

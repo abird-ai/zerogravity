@@ -211,7 +211,7 @@ impl OriginalWindowOperators {
         input: &[f32],
         cancelled: Option<&AtomicBool>,
     ) -> Result<Vec<f32>> {
-        self.validate_ordinary_parameter(parameter, input.len())?;
+        self.validate_zero_centered_parameter(parameter, input.len())?;
         check_cancel(cancelled)?;
         let raw = self.source().parameter(&parameter.name)?;
         raw.validate_source_parameter(parameter)?;
@@ -224,7 +224,7 @@ impl OriginalWindowOperators {
         };
         if !window.is_complete() || window.element_range() != (0..raw.elements()) {
             return Err(Error::State(
-                "window ordinary RMS incomplete original parameter".into(),
+                "window zero-centered RMS incomplete original parameter".into(),
             ));
         }
         let tensor = zerogravity_core::source::SourceTensorRef {
@@ -232,7 +232,7 @@ impl OriginalWindowOperators {
             shape: &raw.tensor().shape,
             packed_bytes: window.as_slice(),
         };
-        let output = zerogravity_cpu::numerics::torch_cpu::norm::ordinary_rms(
+        let output = zerogravity_cpu::numerics::torch_cpu::norm::zero_centered_rms(
             self.source_identity(),
             tensor,
             input,

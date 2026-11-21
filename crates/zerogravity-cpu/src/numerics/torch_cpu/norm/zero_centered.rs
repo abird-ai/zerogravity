@@ -1,4 +1,4 @@
-//! Closed pinned CPU ordinary RMS; no model/profile eligibility.
+//! Closed pinned CPU zero-centered RMS; no model/profile eligibility.
 //!
 //! Modeling762feb6c…412c3b: widen BF16 input, FP32 normalization and
 //! runtime(1+raw weight), then final BF16. Torch cf30153… CPU SumKernel
@@ -14,7 +14,7 @@ const EPSILON: f32 = 1e-6;
 
 /// Private source-bound stages, before any session publication.
 #[derive(Debug)]
-pub struct OrdinaryRms {
+pub struct ZeroCenteredRms {
     source: SourceIdentity,
     width: usize,
     input_f32: Vec<f32>,
@@ -30,7 +30,7 @@ pub struct OrdinaryRms {
     output_bf16: Vec<f32>,
 }
 
-impl OrdinaryRms {
+impl ZeroCenteredRms {
     pub fn source_identity(&self) -> SourceIdentity {
         self.source
     }
@@ -85,17 +85,19 @@ fn validate(
 ) -> Result<Vec<f32>> {
     if !source.is_bound() {
         return Err(Error::Malformed(
-            "pinned ordinary RMS source binding".into(),
+            "pinned zero-centered RMS source binding".into(),
         ));
     }
     if !matches!(width, 256 | 1024 | 2048 | 5120) {
-        return Err(Error::Unsupported("pinned ordinary RMS width".into()));
+        return Err(Error::Unsupported("pinned zero-centered RMS width".into()));
     }
     if input.len() > MAX_ELEMENTS {
-        return Err(Error::Limit("pinned ordinary RMS element bound".into()));
+        return Err(Error::Limit(
+            "pinned zero-centered RMS element bound".into(),
+        ));
     }
     if input.is_empty() || !input.len().is_multiple_of(width) || weight.shape != [width as u64] {
-        return Err(Error::Malformed("pinned ordinary RMS geometry".into()));
+        return Err(Error::Malformed("pinned zero-centered RMS geometry".into()));
     }
     if !matches!(
         weight.kind,
@@ -103,7 +105,7 @@ fn validate(
             | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
     ) {
         return Err(Error::Unsupported(
-            "pinned ordinary RMS requires raw BF16/F32 weight".into(),
+            "pinned zero-centered RMS requires raw BF16/F32 weight".into(),
         ));
     }
     weight.validate()?;
@@ -112,7 +114,7 @@ fn validate(
         .any(|value| !value.is_finite() || value.to_bits() & 0xffff != 0)
     {
         return Err(Error::Malformed(
-            "pinned ordinary RMS requires finite exact BF16 input".into(),
+            "pinned zero-centered RMS requires finite exact BF16 input".into(),
         ));
     }
     let values = match weight.kind {
@@ -126,10 +128,12 @@ fn validate(
             .chunks_exact(4)
             .map(|bytes| f32::from_le_bytes(bytes.try_into().expect("validated F32 weight")))
             .collect::<Vec<_>>(),
-        _ => unreachable!("validated original ordinary RMS weight kind"),
+        _ => unreachable!("validated original zero-centered RMS weight kind"),
     };
     if values.iter().any(|value| !value.is_finite()) {
-        return Err(Error::Malformed("nonfinite ordinary RMS raw weight".into()));
+        return Err(Error::Malformed(
+            "nonfinite zero-centered RMS raw weight".into(),
+        ));
     }
     Ok(values)
 }
@@ -178,23 +182,23 @@ pub(crate) fn sum_row(row: &[f32]) -> f32 {
 fn finite(values: &[f32]) -> Result<()> {
     if values.iter().any(|value| !value.is_finite()) {
         return Err(Error::Malformed(
-            "nonfinite pinned ordinary RMS stage".into(),
+            "nonfinite pinned zero-centered RMS stage".into(),
         ));
     }
     Ok(())
 }
 
-/// Pinned original ordinary RMS, fixed epsilon1e-6. Input is logical row-major
+/// Pinned original zero-centered RMS, fixed epsilon1e-6. Input is logical row-major
 /// exact BF16-widened values after original `.float()`; a strided raw tensor
 /// needs explicit bit transport. Raw rank1 BF16/F32 learned bytes are borrowed,
 /// widened privately and never replaced by adjusted learned weights. F32 weight
 /// support is a closed public-operator path, not a trained model/profile claim.
-pub fn ordinary_rms(
+pub fn zero_centered_rms(
     source: SourceIdentity,
     weight: SourceTensorRef<'_>,
     input: &[f32],
     width: usize,
-) -> Result<OrdinaryRms> {
+) -> Result<ZeroCenteredRms> {
     let weight_f32 = validate(source, weight, input, width)?;
     let squares_f32 = input.iter().map(|value| value * value).collect::<Vec<_>>();
     finite(&squares_f32)?;
@@ -242,7 +246,7 @@ pub fn ordinary_rms(
         .iter()
         .map(|&value| super::round_bf16(value))
         .collect::<Result<Vec<_>>>()?;
-    Ok(OrdinaryRms {
+    Ok(ZeroCenteredRms {
         source,
         width,
         input_f32: input.to_vec(),

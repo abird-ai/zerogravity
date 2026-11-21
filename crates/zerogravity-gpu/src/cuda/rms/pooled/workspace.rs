@@ -48,7 +48,7 @@ impl RmsWorkspaceViews {
         let rows = record.invocation().tokens().len();
         let width = actual
             .get(&1)
-            .ok_or_else(|| Error::State("ordinary RMS absent".into()))?
+            .ok_or_else(|| Error::State("zero-centered RMS absent".into()))?
             .geometry()
             .width;
         let row_bf16 = rows

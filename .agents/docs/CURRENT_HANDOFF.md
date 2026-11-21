@@ -88,10 +88,22 @@ high-level scheduler/qualification assertions and the normative batching design 
 explicit row-count language; qualification receipt markers are preserved as evidence
 coordinates rather than churned for style.
 
+The tenth cleanup resolves the deferred `ordinary RMS` arithmetic name. The typed operator
+is **zero-centered RMS**: the checkpoint stores an offset and runtime gamma is
+`1 + checkpoint_weight`. Core contracts/plan nodes are `ZeroCenteredRmsContract` and
+`TypedZeroCenteredRms`; CPU numerics are `ZeroCenteredRms` / `zero_centered_rms`; Qwen
+operator slices/reference helpers use `zero_centered_*`. Qwen residual RMS and BF16-text /
+gated direct-gamma RMS remain separate contract families. The pinned CPU golden bytes are
+unchanged; only their owning module/test path moved from `ordinary` to `zero_centered`.
+Historical milestone prose retains the old name where it records the terminology current at
+the time.
+
 Cumulative terminology validation remains green across strict core/Qwen/GPU/public-CUDA
 Clippy plus public CUDA/HIP, CUDA qualification, 27B HIP qualification and CUDA CLI
-compilation. Core invocation tests pass 10/10; the Qwen forward suite passes 5/5; the
-standard CUDA GPU lib-test and Qwen35 CUDA integration targets compile; and the frozen
+compilation. Core invocation tests pass 10/10; the Qwen forward suite passes 5/5; focused
+zero-centered RMS validation passes core typed-plan 3/3, pinned CPU goldens 2/2 and Qwen
+slice/backend 4/4 with the golden SHA unchanged; the standard CUDA GPU lib-test and Qwen35
+CUDA integration targets compile; and the frozen
 `qwen27b_hip_natural` example compiles against the new autoregressive API. A combined
 `cuda-native-qualification,cuda-cublas` GPU unit-test attempt gets past the stale invocation
 test accessors fixed here and stops only on the pre-existing `CudaDiagnostic.compiler`

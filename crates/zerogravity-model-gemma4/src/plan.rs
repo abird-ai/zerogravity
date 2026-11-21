@@ -179,7 +179,7 @@ mod tests {
             .is_err()
         );
         assert!(
-            RmsContract::TorchCpuBf16Avx2
+            ZeroCenteredRmsContract::TorchCpuBf16Avx2
                 .validate(
                     &SourceParameter {
                         source,

@@ -9,25 +9,27 @@ pub use crate::numerics::{
     ActivationPrecision, EmbeddingContract, NumericalProfile, ProjectionContract,
 };
 
-/// Qualified ordinary RMS only: raw(1+weight), FP32 stages, final BF16.
+/// Qualified zero-centered RMS only: raw(1+weight), FP32 stages, final BF16.
 /// Epsilon1e-6 and the four CPU reduction widths are part of this contract.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RmsContract {
+pub enum ZeroCenteredRmsContract {
     TorchCpuBf16Avx2,
 }
-impl RmsContract {
+impl ZeroCenteredRmsContract {
     pub fn validate(self, parameter: &SourceParameter, elements: usize) -> Result<usize> {
         if !parameter.source.is_bound() || parameter.name.is_empty() {
-            return Err(Error::State("ordinary RMS parameter binding".into()));
+            return Err(Error::State("zero-centered RMS parameter binding".into()));
         }
         let [raw_width] = parameter.shape.as_slice() else {
-            return Err(Error::Malformed("ordinary RMS raw parameter rank".into()));
+            return Err(Error::Malformed(
+                "zero-centered RMS raw parameter rank".into(),
+            ));
         };
         let width = usize::try_from(*raw_width)
-            .map_err(|_| Error::Limit("ordinary RMS parameter width".into()))?;
+            .map_err(|_| Error::Limit("zero-centered RMS parameter width".into()))?;
         if !matches!(width, 256 | 1024 | 2048 | 5120) {
             return Err(Error::Unsupported(
-                "ordinary RMS qualified CPU width".into(),
+                "zero-centered RMS qualified CPU width".into(),
             ));
         }
         let bytes_per_element = match parameter.kind {
@@ -35,7 +37,7 @@ impl RmsContract {
             StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32) => 4,
             _ => {
                 return Err(Error::Unsupported(
-                    "ordinary RMS raw parameter dtype".into(),
+                    "zero-centered RMS raw parameter dtype".into(),
                 ));
             }
         };
@@ -44,11 +46,13 @@ impl RmsContract {
             || !elements.is_multiple_of(width)
         {
             return Err(Error::Malformed(
-                "ordinary RMS parameter/input geometry".into(),
+                "zero-centered RMS parameter/input geometry".into(),
             ));
         }
         if elements > 1_048_576 {
-            return Err(Error::Limit("ordinary RMS qualified element bound".into()));
+            return Err(Error::Limit(
+                "zero-centered RMS qualified element bound".into(),
+            ));
         }
         Ok(width)
     }

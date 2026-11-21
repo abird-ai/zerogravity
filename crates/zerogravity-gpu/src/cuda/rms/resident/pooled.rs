@@ -40,7 +40,7 @@ impl RmsPrepared {
             binding.operator().kind(),
             zerogravity_core::accelerator::program::SourceOperatorKind::Rms(_)
         ) {
-            return Err(Error::State("pooled ordinary actual source site".into()));
+            return Err(Error::State("pooled input RMS actual source site".into()));
         }
         let embedding = scope
             .record()
@@ -77,7 +77,7 @@ impl RmsPrepared {
         .await?;
         let rows = text::EmbeddingRows::from_cold(scope, prepared.owner.clone())?;
         let instance = Arc::get_mut(&mut prepared)
-            .ok_or_else(|| Error::State("fresh pooled ordinary source instance".into()))?;
+            .ok_or_else(|| Error::State("fresh pooled input RMS source instance".into()))?;
         instance.text = Some(rows);
         let embedding = instance.embedding().id();
         for (lease, access) in &mut instance.accesses {
@@ -94,7 +94,7 @@ impl RmsPrepared {
     ) -> Result<()> {
         self.pooled
             .as_ref()
-            .ok_or_else(|| Error::State("ordinary RMS is dedicated".into()))?
+            .ok_or_else(|| Error::State("zero-centered RMS is dedicated".into()))?
             .require_scope(scope, node)
     }
 }
@@ -147,7 +147,7 @@ impl RmsPrepared {
                     + 64 * 1024
                     + super::super::definitions::RmsDefinitions::metadata_bound()?,
             )
-            .ok_or_else(|| Error::Limit("text ordinary retained metadata".into()))
+            .ok_or_else(|| Error::Limit("text input RMS retained metadata".into()))
     }
 }
 

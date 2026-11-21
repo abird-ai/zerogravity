@@ -7,7 +7,7 @@ use zerogravity_artifacts::source_weights::WindowWorkspace;
 pub(super) struct RmsDefinitions {
     rows: Rows,
     columns: Columns,
-    ordinary: Arc<[Spec]>,
+    single_input: Arc<[Spec]>,
     fused: Arc<[Spec]>,
     _metadata: WindowWorkspace,
 }
@@ -33,19 +33,19 @@ impl RmsDefinitions {
                 "B4 RMS definitions require original1024 columns".into(),
             ));
         }
-        let ordinary = Stage::ORDER
+        let single_input = Stage::ORDER
             .into_iter()
             .map(|s| specification_for(s, rows, columns))
             .collect::<Result<Vec<_>>>()?;
         let mut dual = Vec::with_capacity(Stage::ORDER.len());
-        for (stage, spec) in Stage::ORDER.into_iter().zip(&ordinary) {
+        for (stage, spec) in Stage::ORDER.into_iter().zip(&single_input) {
             dual.push(if stage == Stage::InputWiden {
                 fused::fused_specification(stage, rows, columns)?
             } else {
                 spec.clone()
             });
         }
-        Ok((ordinary, dual))
+        Ok((single_input, dual))
     }
     #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(crate) fn readiness_temporary_host_bytes(cohort: bool) -> Result<usize> {
@@ -61,9 +61,9 @@ impl RmsDefinitions {
     ) -> Result<Arc<Self>> {
         let bound = Self::metadata_bound()?;
         let metadata = source.reserve_workspace(bound)?;
-        let (ordinary, dual) = Self::build_specs(rows, columns)?;
+        let (single_input, dual) = Self::build_specs(rows, columns)?;
         let mut retained = 20 * std::mem::size_of::<Spec>() + std::mem::size_of::<Self>() + 4096;
-        for spec in ordinary.iter().chain(dual.iter().skip(2).take(1)) {
+        for spec in single_input.iter().chain(dual.iter().skip(2).take(1)) {
             retained = retained
                 .checked_add(spec.kernel.retained_metadata_bytes()?)
                 .ok_or_else(|| Error::Limit("RMS retained definitions".into()))?;
@@ -76,7 +76,7 @@ impl RmsDefinitions {
         Ok(Arc::new(Self {
             rows,
             columns,
-            ordinary: ordinary.into(),
+            single_input: single_input.into(),
             fused: dual.into(),
             _metadata: metadata,
         }))
@@ -90,12 +90,12 @@ impl RmsDefinitions {
         Ok(if dual {
             self.fused.clone()
         } else {
-            self.ordinary.clone()
+            self.single_input.clone()
         })
     }
     #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(crate) fn kernels(&self) -> impl Iterator<Item = &PinnedKernel> {
-        self.ordinary
+        self.single_input
             .iter()
             .map(|s| &s.kernel)
             .chain(self.fused.iter().skip(2).take(1).map(|s| &s.kernel))
@@ -117,11 +117,11 @@ mod tests {
             (Rows::CohortB4 { initial: false }, Columns::Qwen800M),
             (Rows::CohortB4 { initial: false }, Columns::Qwen2B),
         ] {
-            let (ordinary, dual) = RmsDefinitions::build_specs(rows, columns)?;
-            assert_eq!((ordinary.len(), dual.len()), (10, 10));
+            let (single_input, dual) = RmsDefinitions::build_specs(rows, columns)?;
+            assert_eq!((single_input.len(), dual.len()), (10, 10));
             let mut retained =
                 20 * std::mem::size_of::<Spec>() + std::mem::size_of::<RmsDefinitions>() + 4096;
-            for (index, (a, b)) in ordinary.iter().zip(&dual).enumerate() {
+            for (index, (a, b)) in single_input.iter().zip(&dual).enumerate() {
                 assert_eq!(a.grid, b.grid);
                 assert_eq!(a.kernel.id() == b.kernel.id(), index != 2);
                 retained += a.kernel.retained_metadata_bytes()?;
@@ -137,11 +137,11 @@ mod tests {
     #[test]
     fn compiler_context_derived_rms_reserves_fund_backend_without_repricing_payloads() -> Result<()>
     {
-        let ordinary = resident::pooled_metadata_bytes()?;
+        let single_input = resident::pooled_metadata_bytes()?;
         let fused = fused::pooled_metadata_bytes()?;
         let definitions = RmsDefinitions::metadata_bound()?;
         let old = 2 * 1024 * 1024 + 10 * PinnedKernel::KEY_METADATA_BYTES;
-        let savings = 6 * (old - ordinary + 48 * (old - fused) - definitions);
+        let savings = 6 * (old - single_input + 48 * (old - fused) - definitions);
         let host = crate::physical_service::CUDA_COMPILER_HOST_BYTES as usize;
         let old_b4 = 4_285_247_927usize;
         let extra = RmsDefinitions::readiness_temporary_host_bytes(true)?;
@@ -150,9 +150,9 @@ mod tests {
             + host
             + RmsDefinitions::readiness_temporary_host_bytes(false)?;
         println!(
-            "CUDA_READINESS_RMS_COST ordinary={ordinary} fused={fused} definitions={definitions} savings={savings} backend_host={host} anchored_b4_upper={new_b4} anchored_2b_upper={new_2b} readiness_metadata_peak={extra}"
+            "CUDA_READINESS_RMS_COST single_input={single_input} fused={fused} definitions={definitions} savings={savings} backend_host={host} anchored_b4_upper={new_b4} anchored_2b_upper={new_2b} readiness_metadata_peak={extra}"
         );
-        assert!(ordinary < old && fused < old);
+        assert!(single_input < old && fused < old);
         assert!(savings > host);
         assert!(new_b4 <= 4096 * 1024 * 1024 && new_2b <= 4096 * 1024 * 1024);
         Ok(())

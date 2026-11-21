@@ -1,7 +1,7 @@
 use super::*;
 use zerogravity_core::accelerator::program::{
     ActivationPrecision, EmbeddingContract, MatrixAxes, NumericalProfile, ParameterSlot,
-    ProjectionContract, RmsContract, SourceParameter, SourceTensor,
+    ProjectionContract, SourceParameter, SourceTensor, ZeroCenteredRmsContract,
 };
 
 pub(super) const PROFILE: NumericalProfile = NumericalProfile::TorchCpuAvx2Bf16MixedV1;
@@ -48,13 +48,13 @@ impl Shape {
                 "portable typed embedding contract".into(),
             ));
         };
-        let PlanOperation::TypedOrdinaryRms {
+        let PlanOperation::TypedZeroCenteredRms {
             parameter: gamma,
-            contract: RmsContract::TorchCpuBf16Avx2,
+            contract: ZeroCenteredRmsContract::TorchCpuBf16Avx2,
         } = &b.operation
         else {
             return Err(Error::Unsupported(
-                "portable typed ordinary RMS contract".into(),
+                "portable typed zero-centered RMS contract".into(),
             ));
         };
         let PlanOperation::TypedProject {
@@ -207,11 +207,11 @@ pub(super) fn same_node(a: &PlanNode, b: &PlanNode) -> bool {
             },
         ) => a == b && ta == tb && ca == cb,
         (
-            PlanOperation::TypedOrdinaryRms {
+            PlanOperation::TypedZeroCenteredRms {
                 parameter: a,
                 contract: ca,
             },
-            PlanOperation::TypedOrdinaryRms {
+            PlanOperation::TypedZeroCenteredRms {
                 parameter: b,
                 contract: cb,
             },

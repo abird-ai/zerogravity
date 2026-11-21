@@ -179,7 +179,7 @@ impl Layout {
         let mut states = BTreeMap::new();
         for node in plan.nodes() {
             match &node.operation {
-                PlanOperation::TypedOrdinaryRms { parameter, .. } => insert(parameter)?,
+                PlanOperation::TypedZeroCenteredRms { parameter, .. } => insert(parameter)?,
                 PlanOperation::TypedTorchGdn { contract, .. } => {
                     contract.validate(plan.source())?;
                     for p in [

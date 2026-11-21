@@ -341,8 +341,10 @@ fn unaware_physical_provider_refuses_before_embedding_or_projection_callback() {
 }
 
 #[test]
-fn typed_ordinary_rms_slice_uses_original_parameter_and_one_shared_backend() {
-    use crate::accelerator::program::{ActivationPrecision, PlanOperation, RmsContract};
+fn typed_zero_centered_rms_slice_uses_original_parameter_and_one_shared_backend() {
+    use crate::accelerator::program::{
+        ActivationPrecision, PlanOperation, ZeroCenteredRmsContract,
+    };
     use crate::source::binding::QwenParameterRole;
     for raw_bf16 in [false, true] {
         let fixture = Fixture::new();
@@ -359,15 +361,15 @@ fn typed_ordinary_rms_slice_uses_original_parameter_and_one_shared_backend() {
         let reserved = admission.arbiter.snapshot(&key).unwrap().reserved;
         let slice = model.embedding_input_norm_projection_slice().unwrap();
         assert_eq!(slice.plan().nodes().len(), 3);
-        let PlanOperation::TypedOrdinaryRms {
+        let PlanOperation::TypedZeroCenteredRms {
             parameter: recorded,
             contract,
         } = &slice.plan().nodes()[1].operation
         else {
-            panic!("missing raw source ordinary RMS node");
+            panic!("missing raw source zero-centered RMS node");
         };
         assert_eq!(recorded, &parameter);
-        assert_eq!(*contract, RmsContract::TorchCpuBf16Avx2);
+        assert_eq!(*contract, ZeroCenteredRmsContract::TorchCpuBf16Avx2);
         assert!(slice.plan().constants().is_empty());
         assert!(
             slice.plan().required_domains().is_empty()
@@ -429,9 +431,9 @@ fn typed_ordinary_rms_slice_uses_original_parameter_and_one_shared_backend() {
 }
 
 #[test]
-fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unaware_paths() {
+fn typed_host_zero_centered_rms_revalidates_real_source_and_refuses_foreign_or_unaware_paths() {
     use crate::accelerator::program::{
-        MathematicalBackend, ProjectionContract, RmsContract, TensorView,
+        MathematicalBackend, ProjectionContract, TensorView, ZeroCenteredRmsContract,
     };
     use crate::source::binding::QwenParameterRole;
     use zerogravity_core::encoding::StoredTensorEncoding;
@@ -456,9 +458,9 @@ fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unawar
     let parameter = first
         .parameter_descriptor(QwenParameterRole::InputNorm(0))
         .unwrap();
-    let contract = RmsContract::TorchCpuBf16Avx2;
+    let contract = ZeroCenteredRmsContract::TorchCpuBf16Avx2;
     let normalized = math
-        .forward_rms_profiled(parameter.clone(), &input, contract)
+        .zero_centered_rms_profiled(parameter.clone(), &input, contract)
         .unwrap();
     assert_eq!(normalized.into_vec().unwrap(), [2.0; 256]);
     for changed in [
@@ -484,7 +486,7 @@ fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unawar
         },
     ] {
         assert!(
-            math.forward_rms_profiled(changed, &input, contract)
+            math.zero_centered_rms_profiled(changed, &input, contract)
                 .is_err()
         );
     }
@@ -513,18 +515,18 @@ fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unawar
         256
     );
     assert!(matches!(
-        math.forward_rms_profiled(parameter.clone(), &view, contract),
+        math.zero_centered_rms_profiled(parameter.clone(), &view, contract),
         Err(Error::State(message)) if message.contains("contiguous")
     ));
     let packed = math.contiguous(&view).unwrap();
     let normalized = math
-        .forward_rms_profiled(parameter.clone(), &packed, contract)
+        .zero_centered_rms_profiled(parameter.clone(), &packed, contract)
         .unwrap();
     assert_eq!(normalized.into_vec().unwrap(), [2.0; 256]);
     let mut foreign = crate::host_math::HostMath::for_operator_slice(&second, None);
     assert!(
         foreign
-            .forward_rms_profiled(
+            .zero_centered_rms_profiled(
                 second
                     .parameter_descriptor(QwenParameterRole::InputNorm(0))
                     .unwrap(),
@@ -540,7 +542,7 @@ fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unawar
             _: crate::accelerator::MatVecRegion<'_>,
         ) -> Result<crate::accelerator::RegionExecution> {
             self.0.store(true, Ordering::Relaxed);
-            panic!("unaware provider must not receive ordinary RMS");
+            panic!("unaware provider must not receive zero-centered RMS");
         }
         fn try_rms_norm(
             &self,
@@ -554,7 +556,7 @@ fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unawar
     let mut unaware = crate::host_math::HostMath::for_operator_slice(&first, Some(&provider));
     assert!(
         unaware
-            .forward_rms_profiled(parameter, &input, contract)
+            .zero_centered_rms_profiled(parameter, &input, contract)
             .is_err()
     );
     assert!(!provider.0.load(Ordering::Relaxed));
@@ -563,8 +565,8 @@ fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unawar
 }
 
 #[test]
-fn typed_ordinary_rms_refuses_unqualified_source_epsilon_before_recording_or_execution() {
-    use crate::accelerator::program::{MathematicalBackend, RmsContract};
+fn typed_zero_centered_rms_refuses_unqualified_source_epsilon_before_recording_or_execution() {
+    use crate::accelerator::program::{MathematicalBackend, ZeroCenteredRmsContract};
     use crate::source::binding::QwenParameterRole;
     let fixture = Fixture::new();
     let mut loaded = source_with_options(&fixture, true, 256, true, |_| {});
@@ -592,12 +594,12 @@ fn typed_ordinary_rms_refuses_unqualified_source_epsilon_before_recording_or_exe
         )
         .unwrap();
     assert!(
-        math.forward_rms_profiled(
+        math.zero_centered_rms_profiled(
             model
                 .parameter_descriptor(QwenParameterRole::InputNorm(0))
                 .unwrap(),
             &embedding,
-            RmsContract::TorchCpuBf16Avx2,
+            ZeroCenteredRmsContract::TorchCpuBf16Avx2,
         )
         .is_err()
     );

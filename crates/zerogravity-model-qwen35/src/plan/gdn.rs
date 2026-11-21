@@ -25,7 +25,8 @@ impl QwenInputRms {
         self.invocation.validate()?;
         if self.invocation.layer().index() != 0 {
             return Err(Error::Unsupported(
-                "ordinary source input RMS is layer0; later layers require pending dual RMS".into(),
+                "zero-centered source input RMS is layer0; later layers require pending dual RMS"
+                    .into(),
             ));
         }
         let bytes = match self.parameter.kind {

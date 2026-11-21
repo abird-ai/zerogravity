@@ -98,7 +98,7 @@ fn require_source_bindings(source: &VerifiedTensorSource, record: &TextStepBindi
                     return Err(Error::State("source step actual matrix differs".into()));
                 }
             }
-            PlanOperation::TypedOrdinaryRms { parameter: p, .. } => parameter(p)?,
+            PlanOperation::TypedZeroCenteredRms { parameter: p, .. } => parameter(p)?,
             PlanOperation::TypedTorchGdn { contract, .. } => {
                 contract.validate(source.source_identity())?;
                 for p in [
@@ -651,12 +651,12 @@ impl Bf16TextSourceBody {
                     )
                 };
                 match operation {
-                    PlanOperation::TypedOrdinaryRms {
+                    PlanOperation::TypedZeroCenteredRms {
                         parameter: p,
                         contract,
                     } => {
                         let width = contract.validate(p, input[0].elements)?;
-                        math::ordinary_rms(
+                        math::zero_centered_rms(
                             client,
                             &scratch,
                             &input[0].handle,
@@ -866,11 +866,11 @@ fn same_node(a: &PlanNode, b: &PlanNode) -> bool {
             },
         ) => a == b && ca == cb,
         (
-            PlanOperation::TypedOrdinaryRms {
+            PlanOperation::TypedZeroCenteredRms {
                 parameter: a,
                 contract: ca,
             },
-            PlanOperation::TypedOrdinaryRms {
+            PlanOperation::TypedZeroCenteredRms {
                 parameter: b,
                 contract: cb,
             },

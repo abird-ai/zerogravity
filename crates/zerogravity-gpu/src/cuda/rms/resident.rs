@@ -144,7 +144,7 @@ pub(super) fn loaded_gamma_for(window: &ParameterWindow, columns: Columns) -> Re
     let columns = columns.count();
     if !window.is_complete() || window.parameter().elements() != columns {
         return Err(Error::Malformed(format!(
-            "complete original ordinary gamma{columns}"
+            "complete original zero-centered gamma{columns}"
         )));
     }
     let bytes = match window.parameter().tensor().kind {
@@ -156,7 +156,9 @@ pub(super) fn loaded_gamma_for(window: &ParameterWindow, columns: Columns) -> Re
             for raw in window.as_slice().chunks_exact(4) {
                 let bits = u32::from_le_bytes(raw.try_into().unwrap());
                 if !f32::from_bits(bits).is_finite() {
-                    return Err(Error::Malformed("nonfinite original ordinary gamma".into()));
+                    return Err(Error::Malformed(
+                        "nonfinite original zero-centered gamma".into(),
+                    ));
                 }
                 let rounded = bits.wrapping_add(0x7fff + ((bits >> 16) & 1));
                 output.extend_from_slice(&((rounded >> 16) as u16).to_le_bytes());
@@ -165,12 +167,14 @@ pub(super) fn loaded_gamma_for(window: &ParameterWindow, columns: Columns) -> Re
         }
         _ => {
             return Err(Error::Unsupported(
-                "original ordinary gamma BF16/F32 source".into(),
+                "original zero-centered gamma BF16/F32 source".into(),
             ));
         }
     };
     if bytes.len() != columns * 2 || !finite_bf16(&bytes) {
-        return Err(Error::Malformed("finite loaded ordinary BF16 gamma".into()));
+        return Err(Error::Malformed(
+            "finite loaded zero-centered BF16 gamma".into(),
+        ));
     }
     Ok(bytes)
 }
@@ -212,7 +216,9 @@ pub(super) fn pooled_metadata_bytes() -> Result<usize> {
     parts
         .into_iter()
         .try_fold(0usize, |n, p| n.checked_add(p))
-        .ok_or_else(|| Error::Limit("pooled ordinary RMS source/binding metadata extent".into()))
+        .ok_or_else(|| {
+            Error::Limit("pooled zero-centered RMS source/binding metadata extent".into())
+        })
 }
 fn pooled_source_host_bytes(rows: usize, columns: usize) -> Result<usize> {
     rows.checked_add(1)
@@ -378,7 +384,9 @@ impl RmsPrepared {
         require_not_cancelled(cancelled)?;
         let plan = bindings.plan();
         let (Some(embedding), Some(rms)) = (plan.nodes().first(), plan.nodes().get(1)) else {
-            return Err(Error::State("ordinary source producer nodes absent".into()));
+            return Err(Error::State(
+                "input RMS source producer nodes absent".into(),
+            ));
         };
         let (
             PlanOperation::SourceOperator {
@@ -392,13 +400,13 @@ impl RmsPrepared {
         ) = (&embedding.operation, &rms.operation)
         else {
             return Err(Error::State(
-                "ordinary source mathematical producers absent".into(),
+                "input RMS source mathematical producers absent".into(),
             ));
         };
         let binding = super::BoundModelRmsSource::bind(bindings.source().clone(), (**rd).clone())?;
         let [matrix] = ed.matrices() else {
             return Err(Error::State(
-                "ordinary source embedding member arity".into(),
+                "input RMS source embedding member arity".into(),
             ));
         };
         if ed.kind() != SourceOperatorKind::EmbeddingRows
@@ -413,7 +421,7 @@ impl RmsPrepared {
             || rows.count() != bindings.invocation().tokens().len()
         {
             return Err(Error::State(
-                "ordinary source actual embedding/RMS/SSA/call differs".into(),
+                "input RMS source actual embedding/RMS/SSA/call differs".into(),
             ));
         }
         let actual = bindings.source().matrix(&matrix.name, matrix.axes)?;
@@ -426,13 +434,13 @@ impl RmsPrepared {
             || matrix.axes != actual.axes()
         {
             return Err(Error::State(
-                "ordinary source embedding header differs".into(),
+                "input RMS source embedding header differs".into(),
             ));
         }
         let columns = match binding.geometry().width {
             1024 => Columns::Qwen800M,
             2048 => Columns::Qwen2B,
-            _ => return Err(Error::Unsupported("ordinary source RMS width".into())),
+            _ => return Err(Error::Unsupported("input RMS source width".into())),
         };
         let mut owner = source_owner_rows_storage_bound(
             bindings.source().clone(),
@@ -460,7 +468,7 @@ impl RmsPrepared {
         ) || binding.parameter() != &self.owner._parameter.parameter().source_parameter()
         {
             return Err(Error::State(
-                "B4 actual ordinary source gamma role/header".into(),
+                "B4 actual zero-centered source gamma role/header".into(),
             ));
         }
         super::cohort::CohortGamma::bind(
@@ -750,7 +758,7 @@ impl RmsPrepared {
     pub(super) fn enqueue_2b_through_mean(&self) -> Result<usize> {
         if self.owner.columns != Columns::Qwen2B || self.owner._leaf.is_none() {
             return Err(Error::State(
-                "2B RMS fault cannot retag ordinary source".into(),
+                "2B RMS fault cannot retag input RMS source".into(),
             ));
         }
         let stages = Stage::ORDER

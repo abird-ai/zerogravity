@@ -52,10 +52,12 @@ authority explicit.
   authority uses one backend-neutral `ForwardSourceSeal`, and CUDA mechanics use
   `cuda_forward` / `CudaForward*`. The historical `ordinary*` Qwen execution
   vocabulary is retired; do not reintroduce it.
-- **standard RMSNorm** is a separate arithmetic distinction from the forward
-  execution path. Historical `ordinary RMS` names are not mechanically
-  `forward RMS`; rename them only when their exact numerical distinction has a
-  clear replacement.
+- **zero-centered RMS** is the RMSNorm convention where the checkpoint stores
+  an offset and runtime gamma is `1 + checkpoint_weight`. Core typed execution
+  uses `ZeroCenteredRmsContract` / `TypedZeroCenteredRms`; CPU arithmetic uses
+  `ZeroCenteredRms` / `zero_centered_rms`. This is distinct from Qwen residual
+  RMS and gated/direct-gamma RMS. Historical `ordinary RMS` milestone prose may
+  remain as provenance, but active APIs and diagnostics use zero-centered RMS.
 - **autoregressive** is the canonical term for committed model output fed into
   the next decoding step. Runtime/input/state/publication/reuse ownership uses
   `Autoregressive*` and `autoregressive_*`; the historical `natural*` runtime
@@ -119,5 +121,6 @@ provenance; `C*` remains only in historical benchmark coordinates. Current
 scheduler/runtime prose uses singleton / N-row cohort, and current workload prose
 uses `active=N` / `concurrency=N`.
 
-The next isolated terminology debt is the separate standard-RMS naming problem;
-inspect its exact arithmetic distinction before renaming anything mechanically.
+The former `ordinary RMS` naming debt is resolved as **zero-centered RMS**.
+Future RMS variants must keep their arithmetic contract explicit rather than
+sharing a vague generic name merely because they normalize by root mean square.

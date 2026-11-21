@@ -810,7 +810,9 @@ fn require_fragment_recipe(
         || norm.inputs != [raw]
         || descriptor.parameters().len() != 1
     {
-        return Err(Error::State("ordinary RMS consumes actual raw rows".into()));
+        return Err(Error::State(
+            "zero-centered RMS consumes actual raw rows".into(),
+        ));
     }
     source.validate_parameter(P::InputNorm(0), &descriptor.parameters()[0])?;
     let mut recipe = Recipe {

@@ -9,7 +9,7 @@ use zerogravity_artifacts::{
 use zerogravity_core::{
     accelerator::program::{
         EmbeddingContract, MathematicalBackend, MatrixAxes, PlanBuilder, ProjectionContract,
-        RmsContract, SourceTensor,
+        SourceTensor, ZeroCenteredRmsContract,
     },
     resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner},
 };
@@ -153,10 +153,10 @@ fn record(source: &VerifiedTensorSource, extra: bool) -> Result<RecordedOperator
         PlanBuilder::inputs().token,
         EmbeddingContract::Bf16OutputInput,
     )?;
-    let n = b.forward_rms_profiled(
+    let n = b.zero_centered_rms_profiled(
         source.parameter("gamma")?.source_parameter(),
         &x,
-        RmsContract::TorchCpuBf16Avx2,
+        ZeroCenteredRmsContract::TorchCpuBf16Avx2,
     )?;
     let y = b.project_profiled(
         descriptor(source, "projection")?,
@@ -220,7 +220,7 @@ fn compare_cpu(
         .collect::<Vec<_>>();
     let gp = source.parameter("gamma")?;
     let g = source.read_parameter(&gp, 0..h)?;
-    let reference = zerogravity_cpu::numerics::torch_cpu::norm::ordinary_rms(
+    let reference = zerogravity_cpu::numerics::torch_cpu::norm::zero_centered_rms(
         source.source_identity(),
         zerogravity_core::source::SourceTensorRef {
             kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),

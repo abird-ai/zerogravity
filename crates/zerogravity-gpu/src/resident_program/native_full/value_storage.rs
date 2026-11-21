@@ -366,7 +366,7 @@ impl FullModelProgram {
         let mut existing = template
             .map(|cold| StorageBuilder::bind_call(recipe.clone(), cold.values()))
             .transpose()?;
-        let ordinary_binding = rms_scope.ordinary_binding()?;
+        let input_rms_binding = rms_scope.input_rms_binding()?;
         let rms = match template {
             Some(cold) => cold.rms.bind_prompt_call(rms_scope.clone(), tied)?,
             None => RmsPrepared::prepare_text_pooled(rms_scope.clone(), 0, cancel).await?,
@@ -405,7 +405,7 @@ impl FullModelProgram {
         } else {
             StorageBuilder::allocate(recipe.clone(), service.clone(), init.as_mut().unwrap())?
         };
-        storage.bind_ordinary(&rms, &rms_scope)?;
+        storage.bind_input_rms(&rms, &rms_scope)?;
         if let Some(init) = init {
             drop(init.complete_sync().await?);
         }
@@ -501,7 +501,7 @@ impl FullModelProgram {
             record,
             values,
             rms,
-            _ordinary_binding: ordinary_binding,
+            _input_rms_binding: input_rms_binding,
             fused,
             certificates,
             bound: OnceLock::new(),

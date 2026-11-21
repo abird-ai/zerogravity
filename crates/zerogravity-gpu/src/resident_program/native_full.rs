@@ -61,7 +61,7 @@ pub(crate) struct FullModelProgram {
     record: Arc<SourceBindings>,
     values: Arc<ModelValues>,
     rms: Arc<RmsPrepared>,
-    _ordinary_binding: BoundModelRmsSource,
+    _input_rms_binding: BoundModelRmsSource,
     fused: BTreeMap<usize, Arc<FusedRmsPrepared>>,
     attention_sites: Arc<BTreeMap<usize, usize>>,
     bound: OnceLock<BoundPhase>,
@@ -181,21 +181,21 @@ impl FullModelProgram {
         let plan = record.plan();
         let node_end = cut.as_ref().map_or(255, |c| c.nodes().len());
         let value_end = cut.as_ref().map_or(327, |c| c.values().len());
-        let ordinary = record
+        let input_rms = record
             .operator(1)?
-            .ok_or_else(|| Error::State("full model ordinary source operator absent".into()))?;
-        if !matches!(ordinary.kind(), SourceOperatorKind::Rms(_))
+            .ok_or_else(|| Error::State("full model input RMS source operator absent".into()))?;
+        if !matches!(input_rms.kind(), SourceOperatorKind::Rms(_))
             || plan.nodes()[1].inputs != [ValueId(0)]
             || plan.nodes()[1].outputs != [ValueId(1)]
         {
             return Err(Error::State(
-                "full model genuine ordinary input RMS producer".into(),
+                "full model genuine zero-centered input RMS producer".into(),
             ));
         }
-        let ordinary_binding = if let Some(scope) = &fixed_prompt {
+        let input_rms_binding = if let Some(scope) = &fixed_prompt {
             scope.rms(1)?.clone()
         } else {
-            BoundModelRmsSource::bind(source.clone(), ordinary.clone())?
+            BoundModelRmsSource::bind(source.clone(), input_rms.clone())?
         };
         let states = state_requirements(&record)?;
         let state_bytes = checked_sum(states.iter().map(|r| r.bytes))?;
@@ -209,7 +209,7 @@ impl FullModelProgram {
                 })
                 .collect::<Result<Vec<_>>>()?,
         )?;
-        // All public values + ordinary/dual RMS source/sums + both canonical
+        // All public values + input/dual RMS source/sums + both canonical
         // roots + adapter/status metadata; full W uses bounded window readback.
         let readback_bytes = checked_sum([
             public_bytes,
@@ -371,7 +371,7 @@ impl FullModelProgram {
                 record,
                 values,
                 rms,
-                _ordinary_binding: ordinary_binding,
+                _input_rms_binding: input_rms_binding,
                 fused,
                 certificates: Arc::new(certificates),
                 bound: OnceLock::new(),
@@ -562,7 +562,7 @@ impl FullModelProgram {
         &self,
     ) -> Result<BTreeMap<usize, crate::cuda::rms::cohort::CohortGamma>> {
         let mut gammas = BTreeMap::new();
-        gammas.insert(1, self.rms.cohort_gamma(&self._ordinary_binding)?);
+        gammas.insert(1, self.rms.cohort_gamma(&self._input_rms_binding)?);
         for (&node, rms) in &self.fused {
             gammas.insert(node, rms.cohort_gamma()?);
         }
@@ -886,7 +886,9 @@ impl FullModelProgram {
         match op.kind() {
             SourceOperatorKind::Rms(_) => {
                 if index != 1 {
-                    return Err(Error::State("full model ordinary RMS index differs".into()));
+                    return Err(Error::State(
+                        "full model zero-centered RMS index differs".into(),
+                    ));
                 }
                 self.rms.enqueue()?;
                 Ok(10)

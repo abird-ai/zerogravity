@@ -382,7 +382,7 @@ pub(crate) struct ReadbackLayout {
     pub(crate) sums: BTreeMap<usize, usize>,
     pub(crate) packet: usize,
     pub(crate) count: usize,
-    ordinary: std::ops::Range<usize>,
+    input_rms: std::ops::Range<usize>,
     duals: BTreeMap<usize, std::ops::Range<usize>>,
     status: usize,
 }
@@ -408,17 +408,17 @@ impl FullModelProgram {
             sums: BTreeMap::new(),
             packet: 0,
             count: 0,
-            ordinary: 0..0,
+            input_rms: 0..0,
             duals: BTreeMap::new(),
             status: 19,
         };
         if diagnostic {
             let first = layout.reads.len();
             layout.reads.extend(self.rms.readbacks()?);
-            layout.ordinary = first..layout.reads.len();
-            // Ordinary source gamma, embedding and normalized are actual retained actors.
-            if layout.ordinary.len() != 3 {
-                return Err(Error::State("short-HF ordinary exact3 reads".into()));
+            layout.input_rms = first..layout.reads.len();
+            // Zero-centered source gamma, embedding and normalized are actual retained actors.
+            if layout.input_rms.len() != 3 {
+                return Err(Error::State("short-HF input RMS exact3 reads".into()));
             }
             layout.values.insert(0, first + 1);
             layout.values.insert(1, first + 2);
@@ -484,8 +484,8 @@ impl FullModelProgram {
         {
             return Err(Error::State("short-HF actual body/status cohort".into()));
         }
-        if !layout.ordinary.is_empty() {
-            self.rms.validate_readback(&raw[layout.ordinary.clone()])?;
+        if !layout.input_rms.is_empty() {
+            self.rms.validate_readback(&raw[layout.input_rms.clone()])?;
             for (&node, range) in &layout.duals {
                 self.fused
                     .get(&node)
@@ -493,7 +493,7 @@ impl FullModelProgram {
                     .validate_readback(&raw[range.clone()])?;
             }
         }
-        if layout.ordinary.is_empty() {
+        if layout.input_rms.is_empty() {
             if layout.packet != 25 {
                 return Err(Error::State(
                     "short-HF production27 descriptor layout".into(),

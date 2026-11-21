@@ -63,7 +63,7 @@ fn all_bound_projection_roles_use_complete_actual_source_and_retained_results() 
 }
 
 #[test]
-fn ordinary_hidden_roles_preserve_raw_gamma_and_complete_source_membership() {
+fn zero_centered_hidden_roles_preserve_raw_gamma_and_complete_source_membership() {
     let fixture = Fixture::new();
     let loaded = source_with_options(&fixture, false, 256, true, |_| {});
     let (source, admission) = windows(&fixture, &loaded);
@@ -76,7 +76,7 @@ fn ordinary_hidden_roles_preserve_raw_gamma_and_complete_source_membership() {
         QwenParameterRole::FinalNorm,
     ] {
         let result = operators
-            .execute_ordinary_rms_slice(role, input(&operators, &bytes), None)
+            .execute_zero_centered_rms_slice(role, input(&operators, &bytes), None)
             .unwrap();
         let expected = if matches!(role, QwenParameterRole::InputNorm(_)) {
             2.0
@@ -94,7 +94,7 @@ fn ordinary_hidden_roles_preserve_raw_gamma_and_complete_source_membership() {
     ] {
         assert!(
             operators
-                .execute_ordinary_rms_slice(role, input(&operators, &bytes), None)
+                .execute_zero_centered_rms_slice(role, input(&operators, &bytes), None)
                 .is_err()
         );
         assert_eq!(reserved(&admission), before);
@@ -125,7 +125,7 @@ fn same_plan_projection_and_norm_nodes_do_not_create_state_or_external_producers
         )
         .unwrap();
     let normalized = operators
-        .append_ordinary_rms_slice(&mut builder, QwenParameterRole::FfnNorm(0), &embedding)
+        .append_zero_centered_rms_slice(&mut builder, QwenParameterRole::FfnNorm(0), &embedding)
         .unwrap();
     let up = operators
         .append_projection_slice(&mut builder, QwenMatrixRole::FfnUp(0), &normalized)
@@ -404,9 +404,11 @@ fn valid_two_hidden_qkv_producer_cannot_record_one_hidden_norm_or_partial_node()
     let qkv = operators
         .append_projection_slice(&mut builder, QwenMatrixRole::GdnQkv(0), &embedding)
         .unwrap();
-    assert!(matches!(operators.append_ordinary_rms_slice(&mut builder,
+    assert!(
+        matches!(operators.append_zero_centered_rms_slice(&mut builder,
         QwenParameterRole::InputNorm(0), &qkv),
-        Err(Error::Malformed(message)) if message.contains("exact hidden input")));
+        Err(Error::Malformed(message)) if message.contains("exact hidden input"))
+    );
     let recorded = builder.finish_operator_slice(qkv).unwrap();
     assert_eq!(recorded.plan().nodes().len(), 2);
     assert!(recorded.plan().proposed_domains().is_empty());

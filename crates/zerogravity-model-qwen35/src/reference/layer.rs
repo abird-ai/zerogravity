@@ -6,7 +6,7 @@
 //! Qwen session or StateRoot publication owner. Source framework BF16
 //! intermediate rounding and trained full-token parity are NOT qualified.
 //!
-//! Upstream source-order distinctions: zero-centered ordinary RMS gamma,
+//! Upstream source-order distinctions: zero-centered RMS gamma,
 //! per-head interleaved full-attention [query|gate], GDN 16-key to
 //! 48-value head repeat_interleave, negative exp(A_log) decay, and
 //! partial RoPE over the original rotary width.
@@ -309,7 +309,7 @@ impl<'borrow, 'source> LayerMath<'borrow, 'source> {
     /// source-typed GEMV kernels. This is NOT a trained BF16 reference.
     pub fn final_logits(&self, residual: &[f32]) -> Result<Vec<f32>> {
         self.hidden(residual)?;
-        let normalized = self.ordinary_norm(
+        let normalized = self.zero_centered_norm(
             residual,
             &self.cpu.vector("model.language_model.norm.weight")?,
         )?;
@@ -357,17 +357,17 @@ impl<'borrow, 'source> LayerMath<'borrow, 'source> {
         }
         Ok(())
     }
-    /// Ordinary source RMSNorm has gamma = (1 + original checkpoint weight),
+    /// Zero-centered source RMSNorm has gamma = (1 + original checkpoint weight),
     /// unlike the separate GDN gated RMSNorm, which stores gamma directly.
     /// Uses the existing Qwen CPU norm arithmetic, not another RMS kernel.
-    pub fn ordinary_norm(&self, input: &[f32], raw_gamma: &[f32]) -> Result<Vec<f32>> {
+    pub fn zero_centered_norm(&self, input: &[f32], raw_gamma: &[f32]) -> Result<Vec<f32>> {
         self.dtype.zero_centered_rms(input, raw_gamma, self.eps()?)
     }
 
     fn residual_norm(&self, i: usize, kind: LayerKind, x: &[f32]) -> Result<Vec<f32>> {
         self.hidden(x)?;
         let prefix = self.layer(i, kind)?;
-        self.ordinary_norm(
+        self.zero_centered_norm(
             x,
             &self
                 .cpu
@@ -392,7 +392,7 @@ impl<'borrow, 'source> LayerMath<'borrow, 'source> {
                 "Qwen FFN layer index outside source".into(),
             ));
         }
-        let norm = self.ordinary_norm(
+        let norm = self.zero_centered_norm(
             post_attention_residual,
             &self
                 .cpu
@@ -513,8 +513,10 @@ impl<'borrow, 'source> LayerMath<'borrow, 'source> {
         };
         let key = self.project(&format!("{p}.k_proj.weight"), &normalized)?;
         let value = self.project(&format!("{p}.v_proj.weight"), &normalized)?;
-        let norm_query = self.ordinary_head_norm(&query, &format!("{p}.q_norm.weight"), qheads)?;
-        let norm_key = self.ordinary_head_norm(&key, &format!("{p}.k_norm.weight"), kvheads)?;
+        let norm_query =
+            self.zero_centered_head_norm(&query, &format!("{p}.q_norm.weight"), qheads)?;
+        let norm_key =
+            self.zero_centered_head_norm(&key, &format!("{p}.k_norm.weight"), kvheads)?;
         if let Some(t) = trace.as_deref_mut() {
             t.observe(layer, "attention_q_norm", &norm_query)?;
             t.observe(layer, "attention_k_norm", &norm_key)?;
@@ -637,7 +639,7 @@ impl<'borrow, 'source> LayerMath<'borrow, 'source> {
             source: self.source_identity(),
         })
     }
-    fn ordinary_head_norm(&self, data: &[f32], name: &str, heads: usize) -> Result<Vec<f32>> {
+    fn zero_centered_head_norm(&self, data: &[f32], name: &str, heads: usize) -> Result<Vec<f32>> {
         self.dtype
             .zero_centered_head_rms(data, &self.cpu.vector(name)?, heads, self.eps()?)
     }

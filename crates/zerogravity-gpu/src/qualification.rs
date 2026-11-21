@@ -337,7 +337,7 @@ fn qualify_head_rms_low_dynamic_range(device: Device) -> zerogravity_core::Resul
     }
 
     let client = device.client();
-    let ordinary = Program::new(Geometry::qwen35_08())?;
+    let forward = Program::new(Geometry::qwen35_08())?;
     let gamma_bits = bits(WIDTH, 7, &GAMMA);
 
     for rows in [1usize, 2, 17, 64] {
@@ -366,13 +366,13 @@ fn qualify_head_rms_low_dynamic_range(device: Device) -> zerogravity_core::Resul
         for (label, definition, role, expected) in [
             (
                 "query",
-                ordinary.query_head_rms(rows, EPSILON)?,
+                forward.query_head_rms(rows, EPSILON)?,
                 BufferRole::QueryNormalized,
                 source_expected(&client, &query_bits, &gamma_bits, rows * QUERY_HEADS)?,
             ),
             (
                 "key",
-                ordinary.key_head_rms(rows, EPSILON)?,
+                forward.key_head_rms(rows, EPSILON)?,
                 BufferRole::KeyNormalized,
                 source_expected(&client, &key_bits, &gamma_bits, rows * KEY_HEADS)?,
             ),
@@ -400,18 +400,18 @@ fn qualify_head_rms_low_dynamic_range(device: Device) -> zerogravity_core::Resul
             prepared.enqueue_owned(&client, &status)?;
             let flags = parse_status(
                 &client.read_one(status).map_err(|error| {
-                    Error::State(format!("ordinary {label} head RMS status: {error}"))
+                    Error::State(format!("forward {label} head RMS status: {error}"))
                 })?,
                 label,
             )?;
             if flags != 0 {
                 return Err(Error::State(format!(
-                    "ordinary {label} head RMS status rows={rows}: {flags:#x}"
+                    "forward {label} head RMS status rows={rows}: {flags:#x}"
                 )));
             }
             let actual = parse_bf16(
                 &client.read_one(output).map_err(|error| {
-                    Error::State(format!("ordinary {label} head RMS output: {error}"))
+                    Error::State(format!("forward {label} head RMS output: {error}"))
                 })?,
                 label,
             )?;
@@ -422,13 +422,13 @@ fn qualify_head_rms_low_dynamic_range(device: Device) -> zerogravity_core::Resul
                     .position(|(a, b)| a != b)
                     .unwrap_or(usize::MAX);
                 return Err(Error::State(format!(
-                    "ordinary/source {label} head RMS mismatch rows={rows} index={index} ordinary={:#06x} source={:#06x}",
+                    "forward/source {label} head RMS mismatch rows={rows} index={index} forward={:#06x} source={:#06x}",
                     actual.get(index).copied().unwrap_or_default(),
                     expected.get(index).copied().unwrap_or_default()
                 )));
             }
         }
-        println!("ordinary-source-head-rms rows={rows} PASS");
+        println!("forward-source-head-rms rows={rows} PASS");
     }
     Ok(())
 }
@@ -440,8 +440,8 @@ fn qualify_head_rms_low_dynamic_range(device: Device) -> zerogravity_core::Resul
     target_os = "linux"
 ))]
 #[test]
-#[ignore = "actual NVIDIA ordinary/source Qwen query/key head RMS numerical parity"]
-fn ordinary_head_rms_low_dynamic_range_on_nvidia() -> zerogravity_core::Result<()> {
+#[ignore = "actual NVIDIA forward/source Qwen query/key head RMS numerical parity"]
+fn forward_head_rms_low_dynamic_range_on_nvidia() -> zerogravity_core::Result<()> {
     qualify_head_rms_low_dynamic_range(Device::cuda(0).map_err(|error| {
         zerogravity_core::Error::State(format!("CUDA device 0 unavailable: {error}"))
     })?)
@@ -742,7 +742,7 @@ fn qualify_ordinary_multiply_and_kv(device: Device) -> zerogravity_core::Result<
     }
 
     let client = device.client();
-    let ordinary = Program::new(Geometry::qwen35_08())?;
+    let forward = Program::new(Geometry::qwen35_08())?;
 
     for rows in [1usize, 2, 17, 64] {
         // Source-rounded multiply after separately rounded sigmoid.

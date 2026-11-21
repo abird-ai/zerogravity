@@ -78,9 +78,9 @@ fn bindings(record: &SourceBindings) -> Result<BTreeMap<usize, BoundModelRmsSour
             descriptor.kind(),
             SourceOperatorKind::Rms(_) | SourceOperatorKind::ResidualRms(_)
         ) {
-            let ordinary = matches!(descriptor.kind(), SourceOperatorKind::Rms(_));
-            if (ordinary && (index != 1 || node.inputs.len() != 1 || node.outputs.len() != 1))
-                || (!ordinary && (node.inputs.len() != 2 || node.outputs.len() != 2))
+            let single_input = matches!(descriptor.kind(), SourceOperatorKind::Rms(_));
+            if (single_input && (index != 1 || node.inputs.len() != 1 || node.outputs.len() != 1))
+                || (!single_input && (node.inputs.len() != 2 || node.outputs.len() != 2))
             {
                 return Err(Error::State("pooled RMS actual producer arity".into()));
             }
@@ -100,9 +100,7 @@ fn bindings(record: &SourceBindings) -> Result<BTreeMap<usize, BoundModelRmsSour
         }
     }
     if result.len() != 49 || !result.contains_key(&1) || !result.contains_key(&253) {
-        return Err(Error::State(
-            "pooled RMS actual ordinary+48 dual sites".into(),
-        ));
+        return Err(Error::State("pooled RMS actual input+48 dual sites".into()));
     }
     Ok(result)
 }
@@ -182,7 +180,7 @@ impl FullModelRmsScratch {
         let bindings = bindings(&record)?;
         let width = bindings
             .get(&1)
-            .ok_or_else(|| Error::State("ordinary RMS absent".into()))?
+            .ok_or_else(|| Error::State("zero-centered RMS absent".into()))?
             .geometry()
             .width;
         // Refuse unsupported arithmetic before allocating a private device class.
@@ -324,7 +322,7 @@ impl FullModelRmsScratch {
             run,
         })
     }
-    pub(crate) fn ordinary_binding(&self) -> Result<BoundModelRmsSource> {
+    pub(crate) fn input_rms_binding(&self) -> Result<BoundModelRmsSource> {
         Ok(self.binding(1)?.clone())
     }
     pub(crate) fn record(&self) -> &Arc<SourceBindings> {

@@ -143,11 +143,10 @@ impl FullModelProgram {
             self.status().clone(),
         )?;
         let rms = self.rms.bind_autoregressive(input.clone(), table)?;
-        let ordinary = input
-            .record()
-            .operator(1)?
-            .ok_or_else(|| Error::State("autoregressive ordinary RMS descriptor absent".into()))?;
-        let ordinary_binding = BoundModelRmsSource::bind(self.source.clone(), ordinary.clone())?;
+        let input_rms = input.record().operator(1)?.ok_or_else(|| {
+            Error::State("autoregressive zero-centered RMS descriptor absent".into())
+        })?;
+        let input_rms_binding = BoundModelRmsSource::bind(self.source.clone(), input_rms.clone())?;
         let mut fused = BTreeMap::new();
         for (&node, cold) in &self.fused {
             let n = &input.record().plan().nodes()[node];
@@ -186,7 +185,7 @@ impl FullModelProgram {
             record: input.record().clone(),
             values: values.clone(),
             rms,
-            _ordinary_binding: ordinary_binding,
+            _input_rms_binding: input_rms_binding,
             fused,
             certificates: self.certificates.clone(),
             bound: OnceLock::new(),

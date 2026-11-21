@@ -82,7 +82,7 @@ fn synthetic(
     (input, weight)
 }
 
-fn stages(result: &OrdinaryRms) -> [&[f32]; 11] {
+fn stages(result: &ZeroCenteredRms) -> [&[f32]; 11] {
     [
         result.input_f32(),
         result.squares_f32(),
@@ -128,7 +128,7 @@ fn pinned_actual_and_public_goldens_cover_all_stages_and_cascade_widths() {
         };
         let original_weight = weight.clone();
         let shape = [width as u64];
-        let result = ordinary_rms(
+        let result = zero_centered_rms(
             source,
             SourceTensorRef {
                 kind,
@@ -171,22 +171,24 @@ fn malformed_source_shape_dtype_and_values_refuse_without_source_mutation() {
         shape: &shape,
         packed_bytes: &weight,
     };
-    assert!(ordinary_rms(SourceIdentity::unbound(), raw, &input, width).is_err());
+    assert!(zero_centered_rms(SourceIdentity::unbound(), raw, &input, width).is_err());
     for width in [0, 1, 128, 512, 4096, usize::MAX] {
         assert!(matches!(
-            ordinary_rms(source, raw, &input, width),
+            zero_centered_rms(source, raw, &input, width),
             Err(Error::Unsupported(_))
         ));
     }
     for values in [&[][..], &input[..255]] {
-        assert!(ordinary_rms(source, raw, values, width).is_err());
+        assert!(zero_centered_rms(source, raw, values, width).is_err());
     }
     for shape in [&[][..], &[1, 256][..], &[255][..], &[u64::MAX][..]] {
-        assert!(ordinary_rms(source, SourceTensorRef { shape, ..raw }, &input, width).is_err());
+        assert!(
+            zero_centered_rms(source, SourceTensorRef { shape, ..raw }, &input, width).is_err()
+        );
     }
     for bytes in [&weight[..511], &[0u8; 513][..]] {
         assert!(
-            ordinary_rms(
+            zero_centered_rms(
                 source,
                 SourceTensorRef {
                     packed_bytes: bytes,
@@ -204,25 +206,25 @@ fn malformed_source_shape_dtype_and_values_refuse_without_source_mutation() {
         StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0),
     ] {
         assert!(matches!(
-            ordinary_rms(source, SourceTensorRef { kind, ..raw }, &input, width),
+            zero_centered_rms(source, SourceTensorRef { kind, ..raw }, &input, width),
             Err(Error::Unsupported(_))
         ));
     }
     for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 1.0001] {
         let mut values = input.clone();
         values[127] = invalid;
-        assert!(ordinary_rms(source, raw, &values, width).is_err());
+        assert!(zero_centered_rms(source, raw, &values, width).is_err());
     }
     let too_many = vec![0.0; MAX_ELEMENTS + width];
     assert!(matches!(
-        ordinary_rms(source, raw, &too_many, width),
+        zero_centered_rms(source, raw, &too_many, width),
         Err(Error::Limit(_))
     ));
     for word in [0x7fc0u16, 0x7f80, 0xff80] {
         let mut bytes = weight.clone();
         bytes[2..4].copy_from_slice(&word.to_le_bytes());
         assert!(
-            ordinary_rms(
+            zero_centered_rms(
                 source,
                 SourceTensorRef {
                     packed_bytes: &bytes,
@@ -242,9 +244,9 @@ fn malformed_source_shape_dtype_and_values_refuse_without_source_mutation() {
             packed_bytes: &bytes,
             ..raw
         };
-        assert!(ordinary_rms(source, f32_weight, &input, width).is_err());
+        assert!(zero_centered_rms(source, f32_weight, &input, width).is_err());
     }
     let large = vec![f32::from_bits(0x7f7f_0000); width];
-    assert!(ordinary_rms(source, raw, &large, width).is_err());
+    assert!(zero_centered_rms(source, raw, &large, width).is_err());
     assert!(weight.iter().all(|value| *value == 0));
 }

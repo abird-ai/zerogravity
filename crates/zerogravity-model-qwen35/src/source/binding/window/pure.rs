@@ -1,6 +1,6 @@
 //! Config/header-bound roles only; source bytes and CPU arithmetic stay unchanged.
 use super::*;
-use crate::accelerator::program::{RmsContract, TorchCpuGdnContract};
+use crate::accelerator::program::{TorchCpuGdnContract, ZeroCenteredRmsContract};
 use zerogravity_core::encoding::StoredTensorEncoding;
 
 const MAX_INPUT: usize = 17408;
@@ -46,35 +46,40 @@ impl OriginalWindowOperators {
             .ok_or_else(|| Error::Limit("pure original full matrix bytes".into()))?;
         Ok(())
     }
-    pub(crate) fn ordinary_hidden_role(&self, role: QwenParameterRole) -> Result<SourceParameter> {
+    pub(crate) fn zero_centered_hidden_role(
+        &self,
+        role: QwenParameterRole,
+    ) -> Result<SourceParameter> {
         if !matches!(
             role,
             QwenParameterRole::InputNorm(_)
                 | QwenParameterRole::FfnNorm(_)
                 | QwenParameterRole::FinalNorm
         ) {
-            return Err(Error::Unsupported("pure ordinary hidden norm role".into()));
+            return Err(Error::Unsupported(
+                "pure zero-centered hidden norm role".into(),
+            ));
         }
         let parameter = self.parameter_descriptor(role)?;
         let hidden = usize::try_from(self.geometry().hidden_size)
-            .map_err(|_| Error::Limit("ordinary hidden norm width".into()))?;
+            .map_err(|_| Error::Limit("zero-centered hidden norm width".into()))?;
         if parameter.source != self.source_identity()
-            || RmsContract::TorchCpuBf16Avx2.validate(&parameter, hidden)? != hidden
+            || ZeroCenteredRmsContract::TorchCpuBf16Avx2.validate(&parameter, hidden)? != hidden
         {
             return Err(Error::State(
-                "ordinary hidden norm full raw parameter".into(),
+                "zero-centered hidden norm full raw parameter".into(),
             ));
         }
         Ok(parameter)
     }
     #[cfg(feature = "cpu")]
-    pub(crate) fn validate_ordinary_parameter(
+    pub(crate) fn validate_zero_centered_parameter(
         &self,
         parameter: &SourceParameter,
         elements: usize,
     ) -> Result<()> {
         let hidden = usize::try_from(self.geometry().hidden_size)
-            .map_err(|_| Error::Limit("ordinary hidden norm width".into()))?;
+            .map_err(|_| Error::Limit("zero-centered hidden norm width".into()))?;
         if elements == hidden
             && self.binding.parameters.iter().any(|(role, actual)| {
                 matches!(
@@ -86,10 +91,11 @@ impl OriginalWindowOperators {
             })
         {
             if parameter.source != self.source_identity()
-                || RmsContract::TorchCpuBf16Avx2.validate(parameter, elements)? != hidden
+                || ZeroCenteredRmsContract::TorchCpuBf16Avx2.validate(parameter, elements)?
+                    != hidden
             {
                 return Err(Error::State(
-                    "ordinary hidden norm exact source/width".into(),
+                    "zero-centered hidden norm exact source/width".into(),
                 ));
             }
             return Ok(());
@@ -112,7 +118,7 @@ impl OriginalWindowOperators {
             }
         }
         Err(Error::State(
-            "window ordinary RMS original role/heads".into(),
+            "window zero-centered RMS original role/heads".into(),
         ))
     }
 }

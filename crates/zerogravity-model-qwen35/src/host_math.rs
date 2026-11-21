@@ -7,8 +7,8 @@ use super::{
 use crate::accelerator::program::{
     ActivationPrecision, AttentionGeometry, CoefficientValues, ConvDomain, EmbeddingContract,
     KvDomain, MathematicalBackend, NumericalProfile, ProjectionContract, QkValues, RecurrentDomain,
-    RmsContract, RopeGeometry, RopeValues, SourceParameter, SourceTensor, SourceVector, StateSlot,
-    TensorView,
+    RopeGeometry, RopeValues, SourceParameter, SourceTensor, SourceVector, StateSlot, TensorView,
+    ZeroCenteredRmsContract,
 };
 use crate::accelerator::{
     AttentionQkRegion, AttentionSoftmaxRegion, AttentionValueRegion, BinaryOperation, BinaryRegion,
@@ -611,15 +611,15 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         let output = output.retain_workspace(workspace)?;
         Ok(output)
     }
-    fn forward_rms_profiled(
+    fn zero_centered_rms_profiled(
         &mut self,
         parameter: SourceParameter,
         input: &HostValue,
-        contract: RmsContract,
+        contract: ZeroCenteredRmsContract,
     ) -> Result<HostValue> {
         if self.region_kernel.is_some() {
             return Err(Error::Unsupported(
-                "physical provider does not declare typed ordinary RMS contract".into(),
+                "physical provider does not declare typed zero-centered RMS contract".into(),
             ));
         }
         if self.source.program_numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
@@ -629,7 +629,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
             || input.profile != Some(self.source.program_numerical_profile())
         {
             return Err(Error::Unsupported(
-                "host ordinary RMS numerical profile/epsilon/source/precision".into(),
+                "host zero-centered RMS numerical profile/epsilon/source/precision".into(),
             ));
         }
         let width = contract.validate(&parameter, input.elements)?;
@@ -643,14 +643,14 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
                     .checked_mul(4)
                     .and_then(|r| n.checked_add(r))
             })
-            .ok_or_else(|| Error::Limit("ordinary RMS scratch elements".into()))?;
+            .ok_or_else(|| Error::Limit("zero-centered RMS scratch elements".into()))?;
         #[cfg(all(feature = "source-binding", target_os = "linux"))]
         let workspace = self.prepare_output(Some(input), input.elements, scratch)?;
         let values = match &self.source {
             HostSource::Loaded(source) => {
                 parameter.validate_source(*source)?;
                 let raw = zerogravity_core::source::TensorSource::tensor(*source, &parameter.name)?;
-                let output = zerogravity_cpu::numerics::torch_cpu::norm::ordinary_rms(
+                let output = zerogravity_cpu::numerics::torch_cpu::norm::zero_centered_rms(
                     self.source.source_identity(),
                     raw,
                     input.as_slice()?,

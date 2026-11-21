@@ -2,8 +2,8 @@
 use super::OperatorSliceSource;
 use crate::accelerator::SourceIdentity;
 use crate::accelerator::program::{
-    ActivationPrecision, MatrixAxes, NumericalProfile, PlanBuilder, PlanValue, RmsContract,
-    SourceParameter, SourceTensor,
+    ActivationPrecision, MatrixAxes, NumericalProfile, PlanBuilder, PlanValue, SourceParameter,
+    SourceTensor, ZeroCenteredRmsContract,
 };
 use crate::source::binding::{QwenMatrixRole, QwenParameterRole};
 use crate::{Error, LoadedQwenModel, Result};
@@ -96,7 +96,7 @@ pub(crate) fn attention_roles(
     ] {
         if parameter.name != format!("{namespace}.{suffix}.weight")
             || parameter.source != source.source_identity()
-            || RmsContract::TorchCpuBf16Avx2.validate(parameter, elements)? != width
+            || ZeroCenteredRmsContract::TorchCpuBf16Avx2.validate(parameter, elements)? != width
         {
             return Err(Error::State(
                 "attention original Q/K norm role/width".into(),

@@ -190,7 +190,7 @@ fn plan_append_has_no_input_invention_or_state_and_rejects_foreign_builder() {
             .plan()
             .nodes()
             .iter()
-            .filter(|node| matches!(node.operation, PlanOperation::TypedOrdinaryRms { .. }))
+            .filter(|node| matches!(node.operation, PlanOperation::TypedZeroCenteredRms { .. }))
             .count(),
         2
     );
@@ -363,14 +363,18 @@ fn exact_role_provider_and_foreign_issuer_refusals_have_no_partial_output() {
         .parameter_descriptor(QwenParameterRole::GdnNorm(0))
         .unwrap();
     assert_eq!(
-        RmsContract::TorchCpuBf16Avx2
+        ZeroCenteredRmsContract::TorchCpuBf16Avx2
             .validate(&gdn_gamma, 256)
             .unwrap(),
         256
     );
     assert!(
-        math.forward_rms_profiled(gdn_gamma, &imported, RmsContract::TorchCpuBf16Avx2)
-            .is_err()
+        math.zero_centered_rms_profiled(
+            gdn_gamma,
+            &imported,
+            ZeroCenteredRmsContract::TorchCpuBf16Avx2
+        )
+        .is_err()
     );
     assert!(
         operators
@@ -387,12 +391,12 @@ fn exact_role_provider_and_foreign_issuer_refusals_have_no_partial_output() {
             .is_err()
     );
     assert!(
-        math.forward_rms_profiled(
+        math.zero_centered_rms_profiled(
             operators
                 .parameter_descriptor(QwenParameterRole::QueryNorm(3))
                 .unwrap(),
             &imported,
-            RmsContract::TorchCpuBf16Avx2
+            ZeroCenteredRmsContract::TorchCpuBf16Avx2
         )
         .is_err()
     ); // Two query heads required.

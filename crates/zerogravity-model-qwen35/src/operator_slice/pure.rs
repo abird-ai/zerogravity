@@ -1,4 +1,4 @@
-//! One pure projection or ordinary norm on explicit private BF16 input.
+//! One pure projection or zero-centered norm on explicit private BF16 input.
 //! No producer, session, activation nonlinearities or model execution is asserted.
 use crate::accelerator::SourceIdentity;
 use crate::accelerator::program::{ActivationPrecision, NumericalProfile};
@@ -64,7 +64,7 @@ impl<'a> PureSliceInput<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PureSliceRole {
     Projection(QwenMatrixRole),
-    OrdinaryRms(QwenParameterRole),
+    ZeroCenteredRms(QwenParameterRole),
 }
 
 #[cfg(all(feature = "source-binding", target_os = "linux"))]
@@ -80,14 +80,14 @@ impl crate::source::binding::OriginalWindowOperators {
         self.projection_role(role)?;
         crate::forward::pure_projection_slice(self, builder, role, input)
     }
-    pub fn append_ordinary_rms_slice(
+    pub fn append_zero_centered_rms_slice(
         &self,
         builder: &mut PlanBuilder,
         role: QwenParameterRole,
         input: &PlanValue,
     ) -> Result<PlanValue> {
-        self.ordinary_hidden_role(role)?;
-        crate::forward::pure_ordinary_rms_slice(self, builder, role, input)
+        self.zero_centered_hidden_role(role)?;
+        crate::forward::pure_zero_centered_rms_slice(self, builder, role, input)
     }
     #[cfg(feature = "cpu")]
     pub fn execute_projection_slice(
@@ -111,23 +111,23 @@ impl crate::source::binding::OriginalWindowOperators {
         )
     }
     #[cfg(feature = "cpu")]
-    pub fn execute_ordinary_rms_slice(
+    pub fn execute_zero_centered_rms_slice(
         &self,
         role: QwenParameterRole,
         input: PureSliceInput<'_>,
         cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<PureSliceOutput> {
         use crate::operator_slice::OperatorSliceSource;
-        self.ordinary_hidden_role(role)?;
+        self.zero_centered_hidden_role(role)?;
         let hidden = usize::try_from(self.geometry().hidden_size)
-            .map_err(|_| Error::Limit("ordinary pure input width".into()))?;
+            .map_err(|_| Error::Limit("zero-centered pure input width".into()))?;
         let mut math = crate::host_math::HostMath::for_window_operator_slice(self, cancelled, None);
         let input = math.import_pure_input(input, hidden)?;
-        let output = crate::forward::pure_ordinary_rms_slice(self, &mut math, role, &input)?;
+        let output = crate::forward::pure_zero_centered_rms_slice(self, &mut math, role, &input)?;
         finish_pure_output(
             PureSliceOutput {
                 source: self.source().source_identity(),
-                role: PureSliceRole::OrdinaryRms(role),
+                role: PureSliceRole::ZeroCenteredRms(role),
                 input,
                 output,
             },
