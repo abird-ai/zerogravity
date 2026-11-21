@@ -73,9 +73,13 @@ impl PreparedProjection {
                 "cold original service/source/full geometry binding",
             ));
         }
-        if service.remaining_capacity()? < bytes {
-            return Err(Error::Limit(
-                "private BF16 operator capacity before launch".into(),
+        let available = service.remaining_capacity()?;
+        if bytes > available {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "private BF16 operator admission",
+                bytes as u64,
+                available as u64,
             ));
         }
         let ticket = service.queue().submit(
@@ -92,9 +96,13 @@ impl PreparedProjection {
         // Other fair work may have retained outputs while this ticket waited.
         // Refuse before the first initialization command or armed work guard.
         service.ensure_usable()?;
-        if service.remaining_capacity()? < bytes {
-            return Err(Error::Limit(
-                "private BF16 operator capacity before launch".into(),
+        let available = service.remaining_capacity()?;
+        if bytes > available {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "private BF16 operator admission after queue wait",
+                bytes as u64,
+                available as u64,
             ));
         }
         // Retain authentic staged bytes before ANY allocation/H2D. The armed

@@ -204,14 +204,26 @@ impl TypedBody {
                 a.checked_add(*b)
                     .ok_or_else(|| Error::Limit("typed slice allocations overflow".into()))
             })?;
-        if bytes > 40 * 1024 * 1024
-            || service.remaining_capacity()? < bytes
-            || layout
-                .iter()
-                .any(|(_, n)| *n as u64 > p.memory.max_page_size)
-        {
+        if bytes > 40 * 1024 * 1024 {
             return Err(Error::Limit(
-                "portable typed whole managed layout/capacity".into(),
+                "portable typed whole managed layout bound".into(),
+            ));
+        }
+        if layout
+            .iter()
+            .any(|(_, n)| *n as u64 > p.memory.max_page_size)
+        {
+            return Err(Error::Unsupported(
+                "portable typed binding exceeds device page capability".into(),
+            ));
+        }
+        let available = service.remaining_capacity()?;
+        if bytes > available {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "portable typed managed-layout admission",
+                bytes as u64,
+                available as u64,
             ));
         }
         let control = source.reserve_workspace(8 * 1024 * 1024)?;

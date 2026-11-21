@@ -622,9 +622,13 @@ impl RmsPrepared {
             })
             .map(|(_, bytes)| bytes)
             .sum::<usize>();
-        if service.remaining_capacity()? < physical_bytes {
-            return Err(Error::Limit(
-                "RMS producer capacity before allocation".into(),
+        let available = service.remaining_capacity()?;
+        if physical_bytes > available {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "RMS producer admission",
+                physical_bytes as u64,
+                available as u64,
             ));
         }
         let mut init = service.begin_initialization(correlation)?;

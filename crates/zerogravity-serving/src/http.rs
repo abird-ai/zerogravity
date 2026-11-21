@@ -742,7 +742,11 @@ fn parse_body(
     ))
 }
 fn error_json(e: &ServiceError) -> Value {
-    json!({"error":{"message":e.message,"type":"invalid_request_error","code":e.code}})
+    json!({"error":{
+        "message":e.message,
+        "type":if e.status >= 500 {"server_error"} else {"invalid_request_error"},
+        "code":e.code
+    }})
 }
 fn status_text(code: u16) -> &'static str {
     match code {
@@ -1446,6 +1450,19 @@ pub(crate) fn serve(
 mod tests {
     use super::*;
     use crate::test_support::{self, HostBytes};
+
+    #[test]
+    fn error_json_distinguishes_client_and_server_failures() {
+        let client = error_json(&ServiceError::new(400, "invalid_model", "bad model"));
+        assert_eq!(client["error"]["type"], "invalid_request_error");
+        let server = error_json(&ServiceError::new(
+            503,
+            "resource_exhausted",
+            "VRAM exhausted",
+        ));
+        assert_eq!(server["error"]["type"], "server_error");
+        assert_eq!(server["error"]["code"], "resource_exhausted");
+    }
 
     fn tcp_pair() -> (TcpStream, TcpStream) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();

@@ -28,7 +28,7 @@ pub use zerogravity_core::context_snapshot;
 pub use zerogravity_core::pipeline;
 pub use zerogravity_core::run_policy;
 pub use zerogravity_core::targets;
-pub use zerogravity_core::{Error, Result, accelerator, session_root};
+pub use zerogravity_core::{Error, ResourceLimit, Result, accelerator, session_root};
 pub use zerogravity_core::{device_events, device_queue, resource_arbiter, state};
 pub use zerogravity_core::{encoding, identity, numerics, placement, provider, semantic, task};
 #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]

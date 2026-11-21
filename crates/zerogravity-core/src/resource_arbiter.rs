@@ -11,7 +11,7 @@
 //! to one process-local budget authority. This is NOT cross-process OS VRAM
 //! admission, measured free-memory reporting, or a physical GPU worker.
 
-use crate::{Error, Result};
+use crate::{Error, ResourceLimit, Result};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -424,7 +424,20 @@ mod thread_control {
             assert_eq!(actual - base, expected_delta);
             arbiter.register(key.clone(), ROOT_BYTES + base).unwrap();
             let refused = admit_root_once(&root, &arbiter, &key, owner());
-            assert!(matches!(refused, Err(Error::Limit(_))), "{refused:?}");
+            let Err(Error::Resource(limit)) = refused else {
+                panic!("expected typed resource refusal: {refused:?}");
+            };
+            assert_eq!(limit.resource, "host memory");
+            assert_eq!(limit.operation, "physical resource admission");
+            assert_eq!(limit.requested, ROOT_BYTES + actual);
+            assert_eq!(limit.available, ROOT_BYTES + base);
+            let scope = limit.scope.unwrap();
+            assert!(
+                scope.contains(
+                    "device=host-with-a-deliberately-long-backend-name/root-spare-capacity"
+                )
+            );
+            assert!(scope.contains("owner=model/session"));
             assert!(root.lock().unwrap().is_none());
             assert_eq!(arbiter.snapshot(&key).unwrap().reserved, 0);
 
@@ -610,9 +623,24 @@ impl ResourceArbiter {
                     "physical device completion uncertain: fenced".into(),
                 ));
             }
-            if total > budget.limit.saturating_sub(budget.committed) {
-                return Err(Error::Limit(
-                    "physical device memory admission refused".into(),
+            let available = budget.limit.saturating_sub(budget.committed);
+            if total > available {
+                let resource = if key.backend == "host" {
+                    "host memory"
+                } else {
+                    "device memory / VRAM budget"
+                };
+                return Err(Error::Resource(
+                    ResourceLimit::new(resource, "physical resource admission", total, available)
+                        .with_scope(format!(
+                            "device={}/{} owner={}/{} reserved={} bytes capacity={} bytes",
+                            key.backend,
+                            key.device,
+                            owner.model,
+                            owner.session,
+                            budget.committed,
+                            budget.limit
+                        )),
                 ));
             }
         }

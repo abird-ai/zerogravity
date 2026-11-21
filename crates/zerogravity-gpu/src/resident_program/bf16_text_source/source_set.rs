@@ -256,10 +256,17 @@ impl SourceStepSet {
         native.require_live(service.client(), self.source.source_identity())?;
         if service.source_identity() != self.source.source_identity()
             || service.client().is_capturing()
-            || self.inventory.model_device_upper_bytes > service.capacity()
         {
-            return Err(Error::Limit(
-                "source complete resident model/native/root admission".into(),
+            return Err(Error::State(
+                "source-set service/source/capture state differs".into(),
+            ));
+        }
+        if self.inventory.model_device_upper_bytes > service.capacity() {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "source-set resident model/native/root admission",
+                self.inventory.model_device_upper_bytes as u64,
+                service.capacity() as u64,
             ));
         }
         // Retain compilation/source authority before the first device transfer.

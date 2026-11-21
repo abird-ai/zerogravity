@@ -60,8 +60,11 @@ fn require_layout(service: &ResidentService, layout: &[ResidentPlaneLayout]) -> 
         }
     }
     if bytes > service.cap {
-        return Err(Error::Limit(
-            "resident backing exceeds provider envelope".into(),
+        return Err(Error::resource(
+            "GPU provider memory / VRAM budget",
+            "resident backing admission",
+            bytes as u64,
+            service.cap as u64,
         ));
     }
     Ok(bytes)

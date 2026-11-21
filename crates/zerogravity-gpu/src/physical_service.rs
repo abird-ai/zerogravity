@@ -350,7 +350,14 @@ impl PhysicalServiceBudget {
             .provider_cap
             .checked_sub(bytes)
             .filter(|n| *n != 0)
-            .ok_or_else(|| Error::Limit("native context must leave model capacity".into()))?;
+            .ok_or_else(|| {
+                Error::resource(
+                    "GPU provider memory / VRAM budget",
+                    "native context partition",
+                    bytes,
+                    self.provider_cap,
+                )
+            })?;
         let lease = Arc::get_mut(&mut self.lease).ok_or_else(|| {
             Error::State("native context partition requires exclusive envelope".into())
         })?;
@@ -385,8 +392,11 @@ impl PhysicalServiceBudget {
     ) -> Result<Self> {
         if cap == 0 || cap > self.provider_cap || owner.model.is_empty() || owner.session.is_empty()
         {
-            return Err(Error::Limit(
-                "source view exceeds original physical envelope".into(),
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "source view admission",
+                cap,
+                self.provider_cap,
             ));
         }
         self.prepaid_bytes_for(

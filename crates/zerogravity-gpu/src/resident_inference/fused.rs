@@ -740,12 +740,17 @@ impl ResidentModel {
             workspace.batch = None;
         }
         let batch_budget = BatchProgram::preflight(&workspace.program, rows.len())?;
-        if workspace.batch.is_none()
-            && batch_budget.owned_bytes()? > self.service.remaining_capacity()?
-        {
-            return Err(Error::Limit(
-                "native resident batch workspace admission exhausted".into(),
-            ));
+        if workspace.batch.is_none() {
+            let required = batch_budget.owned_bytes()?;
+            let available = self.service.remaining_capacity()?;
+            if required > available {
+                return Err(Error::resource(
+                    "GPU provider memory / VRAM budget",
+                    "native resident batch workspace admission",
+                    required as u64,
+                    available as u64,
+                ));
+            }
         }
         if workspace.batch.is_none() {
             slot.begin_submission()?;

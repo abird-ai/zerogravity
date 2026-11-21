@@ -264,8 +264,14 @@ async fn gated_leaf(
         _parameter: parameter,
         inputs,
     });
-    if service.remaining_capacity()? < physical_bytes {
-        return Err(Error::Limit("gated leaf capacity before allocation".into()));
+    let available = service.remaining_capacity()?;
+    if physical_bytes > available {
+        return Err(Error::resource(
+            "GPU provider memory / VRAM budget",
+            "gated leaf admission",
+            physical_bytes as u64,
+            available as u64,
+        ));
     }
     let ticket = service.queue().submit(
         service.budget(),

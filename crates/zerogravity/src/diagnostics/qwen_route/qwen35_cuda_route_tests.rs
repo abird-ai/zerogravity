@@ -102,6 +102,7 @@ fn profile(host_bytes: usize, provider_bytes: usize) -> qualification::FiniteRou
 fn refusal_message(error: Error) -> String {
     match error {
         Error::Limit(m) => m,
+        Error::Resource(limit) => limit.to_string(),
         other => panic!("expected limit refusal: {other:?}"),
     }
 }
@@ -454,10 +455,7 @@ fn pre_client_card_admit_races_to_exactly_one_holder_then_retries() {
         (Ok(_), Ok(_)) => panic!("two pre-Client holds admitted one card"),
         (Err(_), Err(_)) => panic!("no pre-Client hold admitted the free card"),
     };
-    assert!(
-        matches!(&loser, Error::Limit(m) if m == "physical device memory admission refused"),
-        "{loser}"
-    );
+    assert!(matches!(&loser, Error::Resource(_)), "{loser}");
     let held = arbiter.snapshot(&key).unwrap();
     assert_eq!(held.reserved, 5120 * MIB);
     assert_eq!(held.reservations, 1);
@@ -606,7 +604,7 @@ fn physical_pre_client_card_seam_holds_the_whole_card_budget() -> Result<()> {
     // first route holds the whole finite card budget.
     assert!(matches!(
         &qualification::admit_pre_client_card(&arbiter, &key),
-        Err(Error::Limit(m)) if m == "physical device memory admission refused"
+        Err(Error::Resource(_))
     ));
     let held = arbiter.snapshot(&key)?;
     assert_eq!(held.reserved, 5120 * MIB);

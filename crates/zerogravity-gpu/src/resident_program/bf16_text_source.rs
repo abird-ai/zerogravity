@@ -247,12 +247,19 @@ impl Bf16TextSourceBody {
         require_step_source(&source, &recorded)?;
         native.require_live(service.client(), recorded.plan().source())?;
         let layout = layout::Layout::derive(&recorded)?;
-        if service.source_identity() != recorded.plan().source()
-            || service.client().is_capturing()
-            || layout.owned_bytes > service.remaining_capacity()?
+        if service.source_identity() != recorded.plan().source() || service.client().is_capturing()
         {
-            return Err(Error::Limit(
-                "source complete managed/native preflight".into(),
+            return Err(Error::State(
+                "source managed/native service or capture state differs".into(),
+            ));
+        }
+        let available = service.remaining_capacity()?;
+        if layout.owned_bytes > available {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "source managed/native admission",
+                layout.owned_bytes as u64,
+                available as u64,
             ));
         }
         let metadata = source.reserve_workspace(layout::METADATA_BYTES)?;
@@ -1332,9 +1339,13 @@ fn inventory_charges(
         native_host,
         2 * 1024 * 1024 * 1024, // separate persistent context host
     ])?;
-    if host_upper as u64 > source.workspace_limit_bytes()? {
-        return Err(Error::Limit(
-            "source complete original host domain preflight".into(),
+    let host_limit = source.workspace_limit_bytes()?;
+    if host_upper as u64 > host_limit {
+        return Err(Error::resource(
+            "host memory",
+            "source complete original host-domain preflight",
+            host_upper as u64,
+            host_limit,
         ));
     }
     Ok(TextSourceResourceInventory {

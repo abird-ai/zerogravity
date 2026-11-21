@@ -51,8 +51,11 @@ impl HipSourceBudget {
             .checked_add(context)
             .ok_or_else(|| Error::Limit("resident source physical upper overflow".into()))?;
         if total > self.total {
-            return Err(Error::Limit(
-                "resident source pre-client device/native/root admission".into(),
+            return Err(Error::resource(
+                "device memory / VRAM budget",
+                "resident source pre-client device/native/root admission",
+                total as u64,
+                self.total as u64,
             ));
         }
         Ok((context, total))

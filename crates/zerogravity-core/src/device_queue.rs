@@ -179,7 +179,7 @@ impl FairDeviceQueue {
                     self.take_front(&key)?;
                     return Ok(DispatchChoice::Admitted(AdmittedTask { task, reservation }));
                 }
-                Err(Error::Limit(_)) => {
+                Err(Error::Limit(_) | Error::Resource(_)) => {
                     // Try another group's smaller request without letting a
                     // memory-blocked task reorder its own request stream.
                     self.next_groups.push_back(key);

@@ -623,7 +623,9 @@ pub(super) fn probe_length_with_cap(
 
 pub(super) fn redact_head_error(error: Error) -> Error {
     match error {
-        Error::Limit(_) => Error::Limit("object length probe exceeded a bound".into()),
+        Error::Limit(_) | Error::Resource(_) => {
+            Error::Limit("object length probe exceeded a bound".into())
+        }
         Error::Malformed(_) => Error::Malformed("invalid object length probe metadata".into()),
         Error::State(_) | Error::Io(_) => {
             Error::State("object length probe failed or canceled".into())

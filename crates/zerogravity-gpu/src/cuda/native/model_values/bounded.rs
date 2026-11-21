@@ -348,9 +348,13 @@ impl StorageBuilder {
                 n.checked_add(bytes)
                     .ok_or_else(|| Error::Limit("bounded slot extent overflow".into()))
             })?;
-        if needed > service.remaining_capacity()? {
-            return Err(Error::Limit(
-                "bounded value admission before first allocation".into(),
+        let available = service.remaining_capacity()?;
+        if needed > available {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "bounded value admission",
+                needed as u64,
+                available as u64,
             ));
         }
         let mut slots = vec![None; recipe.slot_bytes.len()];

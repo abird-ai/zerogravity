@@ -35,9 +35,23 @@ impl ResidentLedger {
         Ok(ledger)
     }
     pub(super) fn attach_model(&mut self, model: u64, cap: usize) -> Result<()> {
-        if cap == 0 || self.models.contains_key(&model) || cap > self.available_model_capacity()? {
+        if cap == 0 {
             return Err(Error::Limit(
-                "physical model sub-admission exceeds original remainder".into(),
+                "physical model sub-admission must be positive".into(),
+            ));
+        }
+        if self.models.contains_key(&model) {
+            return Err(Error::State(
+                "physical model sub-admission already exists".into(),
+            ));
+        }
+        let available = self.available_model_capacity()?;
+        if cap > available {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "physical model sub-admission",
+                cap as u64,
+                available as u64,
             ));
         }
         self.models.insert(model, ModelUsage { cap, bytes: 0 });
@@ -77,15 +91,26 @@ impl ResidentLedger {
             .models
             .get(&model)
             .ok_or_else(|| Error::State("model namespace closed or foreign".into()))?;
-        if bytes == 0
-            || owned.bytes.checked_add(bytes).is_none_or(|n| n > owned.cap)
-            || self
-                .resident_bytes()
-                .checked_add(bytes)
-                .is_none_or(|n| n > self.cap)
-        {
+        if bytes == 0 {
             return Err(Error::Limit(
-                "aggregate/model managed+native admission exceeded".into(),
+                "resident allocation must have positive extent".into(),
+            ));
+        }
+        let model_available = owned
+            .cap
+            .checked_sub(owned.bytes)
+            .ok_or_else(|| Error::State("model resident bytes exceed quota".into()))?;
+        let physical_available = self
+            .cap
+            .checked_sub(self.resident_bytes())
+            .ok_or_else(|| Error::State("resident bytes exceed provider envelope".into()))?;
+        let available = model_available.min(physical_available);
+        if bytes > available {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "resident allocation",
+                bytes as u64,
+                available as u64,
             ));
         }
         Ok(())

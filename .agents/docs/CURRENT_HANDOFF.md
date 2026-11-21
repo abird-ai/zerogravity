@@ -9,6 +9,45 @@ and plans. It is deliberately **not** the retired monolithic SHA/archive/evidenc
 handoff model. Git history retains superseded checkpoints; current source, tests
 and live TODOs are authoritative.
 
+### Error architecture — 21 Nov 2026
+
+The cross-layer error contract is now intentionally small and typed:
+
+- `Malformed` = invalid/corrupt external input or artifact.
+- `Unsupported` = requested capability/semantic is not implemented.
+- `Limit` = deterministic configured/static bounds and arithmetic overflow. It must
+  not masquerade as a measured memory/VRAM shortage when requested/available bytes are
+  known.
+- `Resource(ResourceLimit)` = a real resource budget cannot fit the attempted work.
+  It carries resource, operation, exact requested bytes, exact available bytes and an
+  optional scope. Shared physical/resource admission includes device identity, owner,
+  already-reserved bytes and capacity in that scope.
+- `State` = invalid lifecycle/internal state; `Io` retains the underlying I/O cause.
+
+Do **not** parse error prose to choose scheduling behavior. Prelaunch typed
+`Resource` failures become capacity/backpressure where the scheduler explicitly owns
+that policy; post-submission failures remain fatal. Resource pressure in optional
+optimizations may fall back only at an already-defined typed capacity seam.
+
+`ServiceError::inference` is the single public classification boundary:
+`Resource -> 503/resource_exhausted`, deterministic `Limit -> 400/limit_exceeded`,
+`Malformed/Unsupported -> 400`, and `Io/State -> 500`. HTTP 5xx bodies are
+`server_error`, not `invalid_request_error`. Runtime/server reverse adapters use the
+shared conversion and no longer wrap `ServiceError::to_string()`, avoiding duplicated
+status/code prefixes. Real host/VRAM admission paths in the resource arbiter, resident
+allocator/state/checkpoint, CUDA ordinary/source-call admission, HIP source budgets,
+shared BF16 Qwen/Gemma paths and backing/model sub-admission now report concrete
+requested/available bytes. Static shape/file/queue bounds deliberately remain ordinary
+`Limit` errors. Preserve this distinction for new models/backends.
+
+Validation for this slice is green on the default workspace, CUDA-native GPU tests,
+Qwen CUDA serving, Qwen HIP serving, Gemma4 HIP and Gemma4 Vulkan shared-BF16 surfaces,
+the existing resident-ledger concurrency/pressure tests, source-call scheduler capacity
+tests, focused core/engine/HTTP classification tests and strict Clippy for the changed
+production crates. One combined Gemma HIP→Vulkan compile was externally SIGKILLed while
+entering Vulkan dependencies; the HIP check had already passed and one cached
+Vulkan-only retry passed, so no source failure follows.
+
 ## Resume here
 
 ### Repository/topology checkpoint

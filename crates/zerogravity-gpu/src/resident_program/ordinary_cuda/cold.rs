@@ -77,8 +77,14 @@ impl OrdinaryCudaCold {
                     crate::resident_leases::source_page::transport_host_bytes(&source)? as u64,
                 )
                 .ok_or_else(|| Error::Limit("CUDA source-page host preflight".into()))?;
-            if host > source.workspace_limit_bytes()? {
-                return Err(Error::Limit("CUDA source-page host budget".into()));
+            let host_limit = source.workspace_limit_bytes()?;
+            if host > host_limit {
+                return Err(Error::resource(
+                    "host memory",
+                    "CUDA streamed source-page host admission",
+                    host,
+                    host_limit,
+                ));
             }
         }
         if let Some(owner) = &source_owner {

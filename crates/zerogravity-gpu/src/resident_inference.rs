@@ -673,7 +673,12 @@ impl ResidentModel {
             .checked_add(cohort_value_reserve)
             .ok_or_else(|| Error::Limit("ordinary CUDA runtime reserve overflow".into()))?;
         let fit_cap = provider_cap.checked_sub(runtime_reserve).ok_or_else(|| {
-            Error::Limit("ordinary CUDA runtime reserve exceeds provider cap".into())
+            Error::resource(
+                "CUDA provider memory / VRAM budget",
+                "ordinary CUDA runtime reserve admission",
+                runtime_reserve as u64,
+                provider_cap as u64,
+            )
         })?;
         let admission = admission.fit(fit_cap)?;
         let total = admission
@@ -681,9 +686,12 @@ impl ResidentModel {
             .checked_add(runtime_reserve)
             .ok_or_else(|| Error::Limit("ordinary CUDA total admission overflow".into()))?;
         if total > provider_cap {
-            return Err(Error::Limit(format!(
-                "ordinary CUDA exact cold/root/runtime plan does not fit provider cap: {total} > {provider_cap}"
-            )));
+            return Err(Error::resource(
+                "CUDA provider memory / VRAM budget",
+                "ordinary CUDA cold/root/runtime admission",
+                total as u64,
+                provider_cap as u64,
+            ));
         }
         let source_identity = admission.source();
         if source.source_identity() != source_identity {
@@ -818,13 +826,16 @@ impl ResidentModel {
         let greedy_sizes = crate::resident_greedy::workspace_bytes(vocab as usize)?;
         let greedy_bytes = greedy_sizes.iter().sum::<usize>();
         // Require source/workspace and two private states before any GPU allocation.
-        if preflight
+        let graph_bytes = preflight
             .total_with_state()?
             .checked_add(greedy_bytes + 12)
-            .is_none_or(|n| n > provider_cap)
-        {
-            return Err(Error::Limit(
-                "complete resident graph does not fit provider cap".into(),
+            .ok_or_else(|| Error::Limit("complete resident graph admission overflow".into()))?;
+        if graph_bytes > provider_cap {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "complete resident graph admission",
+                graph_bytes as u64,
+                provider_cap as u64,
             ));
         }
         if !pinned_graph {
@@ -1127,8 +1138,14 @@ impl ResidentModel {
         }
         let _admission = self.allocation.lock().await;
         self.service.ensure_usable()?;
-        if self.state_bytes > self.service.remaining_capacity()? {
-            return Err(Error::Limit("resident state admission exhausted".into()));
+        let available = self.service.remaining_capacity()?;
+        if self.state_bytes > available {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "resident state admission",
+                self.state_bytes as u64,
+                available as u64,
+            ));
         }
         let mut output = Vec::new();
         if zero {
@@ -1196,8 +1213,14 @@ impl ResidentModel {
             return Ok(domains);
         }
         self.service.ensure_usable()?;
-        if self.state_bytes > self.service.remaining_capacity()? {
-            return Err(Error::Limit("resident state admission exhausted".into()));
+        let available = self.service.remaining_capacity()?;
+        if self.state_bytes > available {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "resident state admission",
+                self.state_bytes as u64,
+                available as u64,
+            ));
         }
         self.states
             .iter()

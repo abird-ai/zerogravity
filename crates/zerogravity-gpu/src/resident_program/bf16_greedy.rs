@@ -157,9 +157,14 @@ impl PreparedBf16Greedy {
             &[logits.handle(), status.handle()],
             &[LOGITS_BYTES, 4],
         )?;
-        if service.remaining_capacity()? < Self::managed_bytes() {
-            return Err(Error::Limit(
-                "BF16 greedy complete private buffer admission".into(),
+        let required = Self::managed_bytes();
+        let available = service.remaining_capacity()?;
+        if required > available {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "BF16 greedy private-buffer admission",
+                required as u64,
+                available as u64,
             ));
         }
         let owner = Arc::new(HostOwner {

@@ -201,8 +201,16 @@ impl FullModelRmsScratch {
             n.checked_add(*bytes)
                 .ok_or_else(|| Error::Limit("pooled RMS total bytes".into()))
         })?;
-        if workspace.is_none() && service.remaining_capacity()? < bytes {
-            return Err(Error::Limit("pooled RMS capacity before allocation".into()));
+        if workspace.is_none() {
+            let available = service.remaining_capacity()?;
+            if bytes > available {
+                return Err(Error::resource(
+                    "GPU provider memory / VRAM budget",
+                    "pooled RMS admission",
+                    bytes as u64,
+                    available as u64,
+                ));
+            }
         }
         let metadata = Arc::new(source.source().reserve_workspace(64 * 1024)?);
         if let Some(init) = &mut init {

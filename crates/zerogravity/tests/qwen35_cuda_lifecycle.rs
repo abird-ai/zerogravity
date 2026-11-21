@@ -93,6 +93,12 @@ fn ordinary_lifecycle_on_nvidia() -> Result<()> {
         .await;
         if mode == "refuse" {
             return match loaded {
+                Err(Error::Resource(detail)) => {
+                    println!(
+                        "ORDINARY_CUDA_ADMISSION_REFUSAL_PASS capacity={capacity} available={provider_bytes} preflight=true detail={detail}"
+                    );
+                    Ok(())
+                }
                 Err(Error::Limit(detail)) if detail.starts_with("ordinary CUDA workspace/") => {
                     // Admission precedes physical-owner creation; historical resident-only32K refusal remains historical.
                     println!(

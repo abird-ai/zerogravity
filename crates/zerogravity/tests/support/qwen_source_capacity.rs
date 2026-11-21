@@ -34,14 +34,7 @@ pub fn inspect(original: &OrdinaryQwenPlan, label: &str) -> Result<()> {
                             "SOURCE_CONTEXT_PREFLIGHT model={label} context={context} active={active} admitted=true inventory={inventory:?} reservation=false gpu=false"
                         );
                     }
-                    Err(Error::Limit(reason))
-                        if matches!(
-                            reason.as_str(),
-                            "source-call workspace/native/root device admission"
-                                | "source-call complete host preflight"
-                                | "resident source pre-client device/native/root admission"
-                        ) =>
-                    {
+                    Err(Error::Resource(reason)) => {
                         println!(
                             "SOURCE_CONTEXT_PREFLIGHT model={label} context={context} active={active} admitted=false refusal={reason:?} reservation=false gpu=false"
                         );

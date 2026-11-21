@@ -280,9 +280,13 @@ impl Layout {
             65536, // one actual call seal; immutable plan is shared
         ])?;
         let host_upper = recorded.inventory().host_with_lowerers(additional)?;
-        if host_upper as u64 > recorded.source().workspace_limit_bytes()? {
-            return Err(Error::Limit(
-                "BF16 text actual lowerer host cost exceeds original source domain".into(),
+        let host_limit = recorded.source().workspace_limit_bytes()?;
+        if host_upper as u64 > host_limit {
+            return Err(Error::resource(
+                "host memory",
+                "BF16 text lowerer host admission",
+                host_upper as u64,
+                host_limit,
             ));
         }
         let largest = slots

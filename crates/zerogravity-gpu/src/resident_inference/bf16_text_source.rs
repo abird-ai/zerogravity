@@ -318,9 +318,13 @@ impl Bf16TextSourceCandidate {
                 )?
             }
         };
-        if upper.complete_device_bytes > 12 * 1024 * 1024 * 1024 {
-            return Err(Error::Limit(
-                "BF16 text source complete cold upper exceeds fixed model remainder".into(),
+        const MODEL_DEVICE_QUOTA: usize = 12 * 1024 * 1024 * 1024;
+        if upper.complete_device_bytes > MODEL_DEVICE_QUOTA {
+            return Err(Error::resource(
+                "GPU model memory / VRAM budget",
+                "BF16 text source cold admission",
+                upper.complete_device_bytes as u64,
+                MODEL_DEVICE_QUOTA as u64,
             ));
         }
         let cold = match &owner {
@@ -348,8 +352,11 @@ impl Bf16TextSourceCandidate {
             &source, &records, &native, readout,
         )?;
         if inventory.complete_device_bytes > service.capacity() {
-            return Err(Error::Limit(
-                "BF16 text source complete paired-program/six-root/native quota".into(),
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "BF16 text source paired-program/six-root/native admission",
+                inventory.complete_device_bytes as u64,
+                service.capacity() as u64,
             ));
         }
         let initialization_host = source.reserve_workspace(32 * 1024 * 1024)?;

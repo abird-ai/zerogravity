@@ -216,7 +216,7 @@ impl<T: HttpTransport> HttpTransport for MetadataCalls<'_, T> {
         let result = self.inner.get(request, cancel);
         check_cancel(cancel)?;
         result.map_err(|error| match error {
-            Error::Limit(_) => bound(),
+            Error::Limit(_) | Error::Resource(_) => bound(),
             Error::Unsupported(_) => {
                 Error::Unsupported("candidate metadata request unsupported".into())
             }
@@ -228,7 +228,7 @@ impl<T: HttpTransport> HttpTransport for MetadataCalls<'_, T> {
         let result = self.inner.head(request, cancel);
         check_cancel(cancel)?;
         result.map_err(|error| match error {
-            Error::Limit(_) => bound(),
+            Error::Limit(_) | Error::Resource(_) => bound(),
             Error::Unsupported(_) => {
                 Error::Unsupported("candidate metadata request unsupported".into())
             }

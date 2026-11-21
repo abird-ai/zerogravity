@@ -466,6 +466,13 @@ hardware restart. S0 → S1–S3 → F0–F4 → Q0/Q1/Q2 are accepted within th
 scopes. Return to the Qwen model/context/C1..C64 mission without silently
 activating held routes; vLLM comparison is owner-deferred for now.
 
+- [x] Cross-cutting error architecture — real memory/resource exhaustion is now typed
+  with exact requested/available bytes and scope, scheduler capacity decisions no longer
+  depend on resource-error strings, and public SDK/HTTP classification is centralized as
+  `resource_exhausted`/503 versus deterministic `limit_exceeded`/400. Static bounds
+  remain lightweight `Limit`; lifecycle failures remain `State`. Preserve this
+  distinction across new models/backends — [current contract](../docs/CURRENT_HANDOFF.md).
+
 ## Active
 
 - [ ] P1 serving-and-speculation — @pvl — l5 CUDA `.8B`/`2B`, x2 ROCm `.8B`/`2B`/`27B`: source-real correctness/paged/prefix/native B2/B4/B8 accepted; multi-token prefill + natural refill/regroup now fast under matched opt1, short-wave paged overhead is ~1.7%, and current68-token refill is169.837/160.919 tok/s contiguous/paged (~5.5% wall-time gap). Public CUDA serving physically passes4K/8K/16K on both small models.32K is execution-indeterminate after external SIGKILLs; importantly, current2B32K public load succeeds, superseding the old mandatory-refusal assumption because shared source admission now supports streamed-weight fallback. Independent populated all42 closure remains open. Owner defers vLLM; X2 ROCm remains environment-gated. Next stay L5-only on current32K storage-inventory revalidation and external-termination localization, without new fixtures or batching/paged micro-tuning — [details](serving-and-speculation/TODO.md)

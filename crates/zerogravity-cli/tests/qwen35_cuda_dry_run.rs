@@ -108,7 +108,7 @@ fn physical_qwen35_cuda_dry_run_trace_is_read_only() {
                 .is_some_and(|a| !a.is_empty())
         );
         assert!(
-            String::from_utf8_lossy(&refused.stderr).contains("resource limit:"),
+            String::from_utf8_lossy(&refused.stderr).contains("limit exceeded:"),
             "{}",
             String::from_utf8_lossy(&refused.stderr)
         );

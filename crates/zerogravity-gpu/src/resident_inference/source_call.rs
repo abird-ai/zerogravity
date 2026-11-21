@@ -784,13 +784,12 @@ fn preparation_failure(error: Error, submitted: bool) -> Result<SourceCallPrepar
         Error::State(reason) if !submitted && reason == "ordinary CUDA request cancelled" => {
             Ok(SourceCallPreparation::CancelledBeforeLaunch)
         }
+        Error::Resource(_) if !submitted => Ok(SourceCallPreparation::Capacity),
         Error::Limit(reason)
             if !submitted
                 && matches!(
                     reason.as_str(),
-                    "physical device memory admission refused"
-                        | "resident pool busy"
-                        | "resident pool exhausted"
+                    "resident pool busy" | "resident pool exhausted"
                 ) =>
         {
             Ok(SourceCallPreparation::Capacity)
@@ -810,11 +809,19 @@ mod tests {
             ),
             Ok(SourceCallPreparation::CancelledBeforeLaunch)
         ));
-        for reason in [
-            "physical device memory admission refused",
-            "resident pool busy",
-            "resident pool exhausted",
-        ] {
+        let resource = Error::resource("device memory", "test admission", 2, 1);
+        assert!(matches!(
+            preparation_failure(resource, false),
+            Ok(SourceCallPreparation::Capacity)
+        ));
+        assert!(
+            preparation_failure(
+                Error::resource("device memory", "test admission", 2, 1),
+                true
+            )
+            .is_err()
+        );
+        for reason in ["resident pool busy", "resident pool exhausted"] {
             assert!(matches!(
                 preparation_failure(Error::Limit(reason.into()), false),
                 Ok(SourceCallPreparation::Capacity)

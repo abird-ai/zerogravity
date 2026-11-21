@@ -397,19 +397,31 @@ impl Bf16TextBody {
         native.require(service.client(), recorded.plan().source())?;
         let layout =
             layout::Layout::derive(&recorded, &math::scratch_layout(), host, &native, storage)?;
-        if service.source_identity() != recorded.plan().source()
-            || service.client().is_capturing()
-            || layout
-                .inventory
-                .device_with_six_roots_bytes
-                .checked_sub(native.device_bytes())
-                .ok_or_else(|| Error::State("BF16 text native inventory exceeds total".into()))?
-                > service.remaining_capacity()?
-            || layout.inventory.largest_binding_bytes as u64
-                > service.client().properties().memory.max_page_size
+        if service.source_identity() != recorded.plan().source() || service.client().is_capturing()
         {
-            return Err(Error::Limit(
-                "BF16 text complete original service/source/binding/resource preflight".into(),
+            return Err(Error::State(
+                "BF16 text service/source/capture state differs".into(),
+            ));
+        }
+        let required = layout
+            .inventory
+            .device_with_six_roots_bytes
+            .checked_sub(native.device_bytes())
+            .ok_or_else(|| Error::State("BF16 text native inventory exceeds total".into()))?;
+        let available = service.remaining_capacity()?;
+        if required > available {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "BF16 text managed/root admission",
+                required as u64,
+                available as u64,
+            ));
+        }
+        if layout.inventory.largest_binding_bytes as u64
+            > service.client().properties().memory.max_page_size
+        {
+            return Err(Error::Unsupported(
+                "BF16 text largest binding exceeds device page capability".into(),
             ));
         }
         let selection = storage::Selection::derive(&recorded, storage)?;

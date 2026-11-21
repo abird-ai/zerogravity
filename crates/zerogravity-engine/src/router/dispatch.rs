@@ -65,7 +65,24 @@ impl ServiceError {
         }
     }
     pub fn inference(error: zerogravity_core::Error) -> Self {
-        Self::new(500, "inference_error", error.to_string())
+        let (status, code) = match &error {
+            zerogravity_core::Error::Malformed(_) => (400, "invalid_artifact"),
+            zerogravity_core::Error::Unsupported(_) => (400, "unsupported"),
+            zerogravity_core::Error::Limit(_) => (400, "limit_exceeded"),
+            zerogravity_core::Error::Resource(_) => (503, "resource_exhausted"),
+            zerogravity_core::Error::Io(_) => (500, "io_error"),
+            zerogravity_core::Error::State(_) => (500, "inference_error"),
+        };
+        Self::new(status, code, error.to_string())
+    }
+
+    pub fn into_core(self) -> zerogravity_core::Error {
+        match (self.status, self.code) {
+            (_, "unsupported") => zerogravity_core::Error::Unsupported(self.message),
+            (400, _) => zerogravity_core::Error::Malformed(self.message),
+            (429 | 503, _) => zerogravity_core::Error::Limit(self.message),
+            _ => zerogravity_core::Error::State(self.message),
+        }
     }
 }
 impl std::fmt::Display for ServiceError {
@@ -1173,6 +1190,37 @@ mod scheduler_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn core_errors_keep_stable_public_classification_and_clean_messages() {
+        let resource = ServiceError::inference(zerogravity_core::Error::resource(
+            "device memory / VRAM budget",
+            "model admission",
+            12,
+            8,
+        ));
+        assert_eq!(
+            (resource.status, resource.code),
+            (503, "resource_exhausted")
+        );
+        assert!(
+            resource
+                .message
+                .contains("requested 12 bytes, available 8 bytes")
+        );
+
+        let limit = ServiceError::inference(zerogravity_core::Error::Limit("context bound".into()));
+        assert_eq!((limit.status, limit.code), (400, "limit_exceeded"));
+
+        let state = ServiceError::inference(zerogravity_core::Error::State("worker state".into()));
+        assert_eq!((state.status, state.code), (500, "inference_error"));
+
+        let core = ServiceError::new(503, "resource_exhausted", "VRAM exhausted").into_core();
+        assert!(matches!(
+            core,
+            zerogravity_core::Error::Limit(message) if message == "VRAM exhausted"
+        ));
+    }
 
     #[test]
     fn transport_context_bound_does_not_imply_source_or_output_capacity() {

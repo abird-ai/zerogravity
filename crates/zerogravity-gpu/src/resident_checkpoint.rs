@@ -41,9 +41,13 @@ impl ResidentSession {
         let packed = pack(&self.model.states, self.model.capacity, position, domains)?;
         let attempt = self.authority.begin_import(position as u64)?;
         let _admission = self.model.allocation.lock().await;
-        if self.model.state_bytes > self.model.service.remaining_capacity()? {
-            return Err(Error::Limit(
-                "resident checkpoint admission exhausted".into(),
+        let available = self.model.service.remaining_capacity()?;
+        if self.model.state_bytes > available {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "resident checkpoint admission",
+                self.model.state_bytes as u64,
+                available as u64,
             ));
         }
         let ticket = self.model.service.queue().submit(

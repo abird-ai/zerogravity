@@ -57,9 +57,13 @@ impl PreparedCohortGreedy {
                 return Err(Error::State("BF16 cohort every actual source Head".into()));
             }
         }
-        if service.remaining_capacity()? < managed {
-            return Err(Error::Limit(
-                "BF16 cohort complete reducer buffer admission".into(),
+        let available = service.remaining_capacity()?;
+        if managed > available {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "BF16 cohort reducer-buffer admission",
+                managed as u64,
+                available as u64,
             ));
         }
         let metadata = source.reserve_workspace(METADATA_BYTES)?;

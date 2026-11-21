@@ -310,8 +310,11 @@ impl Bf16TextCandidate {
         };
         let inventory = Bf16TextBody::resource_inventory(&recorded, &host, &native, storage)?;
         if inventory.device_with_six_roots_bytes > service.capacity() {
-            return Err(Error::Limit(
-                "BF16 text full six-root+native original remainder admission".into(),
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "BF16 text six-root/native admission",
+                inventory.device_with_six_roots_bytes as u64,
+                service.capacity() as u64,
             ));
         }
         Bf16TextBody::require_capability(service.client())?;

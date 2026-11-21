@@ -132,8 +132,14 @@ impl Admission {
             native_host,
             2 * 1024 * 1024 * 1024,
         ])?;
-        if host_upper_bytes as u64 > source.workspace_limit_bytes()? {
-            return Err(Error::Limit("source-call complete host preflight".into()));
+        let host_limit = source.workspace_limit_bytes()?;
+        if host_upper_bytes as u64 > host_limit {
+            return Err(Error::resource(
+                "host memory",
+                "source-call complete host preflight",
+                host_upper_bytes as u64,
+                host_limit,
+            ));
         }
         let model_device_upper_bytes = layout::sum([
             layout.preflight.owned_bytes()?,
@@ -191,16 +197,23 @@ impl Admission {
         native.require_live(service.client(), self.source.source_identity())?;
         let (native_host, native_device) = crate::hip::native::source_preparation_upper_bytes();
         if native.host_bytes() > native_host || native.device_bytes() > native_device {
-            return Err(Error::Limit(
-                "source-call actual native inventory exceeds admission".into(),
+            return Err(Error::State(
+                "source-call actual native inventory exceeds its admitted upper bound".into(),
             ));
         }
         if service.source_identity() != self.source.source_identity()
             || service.client().is_capturing()
-            || self.inventory.model_device_upper_bytes > service.capacity()
         {
-            return Err(Error::Limit(
-                "source-call original physical admission".into(),
+            return Err(Error::State(
+                "source-call service/source/capture state differs".into(),
+            ));
+        }
+        if self.inventory.model_device_upper_bytes > service.capacity() {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "source-call model/native/root admission",
+                self.inventory.model_device_upper_bytes as u64,
+                service.capacity() as u64,
             ));
         }
         init.retain_completion_owner(native.clone())?;
@@ -409,9 +422,14 @@ impl Cold {
 }
 
 fn weight_storage(weights: usize, fixed: usize, limit: usize) -> Result<Bf16ProjectionStorage> {
-    let available = limit
-        .checked_sub(fixed)
-        .ok_or_else(|| Error::Limit("source-call workspace/native/root device admission".into()))?;
+    let available = limit.checked_sub(fixed).ok_or_else(|| {
+        Error::resource(
+            "model device memory / VRAM budget",
+            "source-call fixed workspace/native/root admission",
+            fixed as u64,
+            limit as u64,
+        )
+    })?;
     if weights == 0 {
         return Err(Error::State(
             "source-call original weight extent absent".into(),

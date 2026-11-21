@@ -477,9 +477,5 @@ fn runtime_closed() -> ServiceError {
     ServiceError::new(503, "runtime_closed", "Fabric runtime is shut down")
 }
 fn service_error(error: ServiceError) -> Error {
-    match error.status {
-        400 => Error::Malformed(error.to_string()),
-        429 | 503 => Error::Limit(error.to_string()),
-        _ => Error::State(error.to_string()),
-    }
+    error.into_core()
 }

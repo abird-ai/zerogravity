@@ -146,7 +146,7 @@ impl DerivedStateCache {
             Ok(lease) => lease,
             // This is an optional optimization.  Capacity pressure retains the
             // canonical execution path instead of failing the request.
-            Err(Error::Limit(_)) => return Ok(None),
+            Err(Error::Limit(_) | Error::Resource(_)) => return Ok(None),
             Err(error) => return Err(error),
         };
         cache.entries.push(Entry {

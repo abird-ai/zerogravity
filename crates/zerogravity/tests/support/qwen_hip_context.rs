@@ -220,15 +220,15 @@ fn public_source_32k_capacity_refuses_before_native_creation() {
             },
         })
         .unwrap_err();
-    assert_eq!(error.code, "inference_error");
-    assert_eq!(
-        error.message,
-        if label == "27b" {
-            "resource limit: source-call workspace/native/root device admission"
-        } else {
-            "resource limit: source-call complete host preflight"
-        }
-    );
+    assert_eq!(error.code, "resource_exhausted");
+    assert!(error.message.contains("exhausted during"));
+    assert!(error.message.contains("requested"));
+    assert!(error.message.contains("available"));
+    assert!(error.message.contains(if label == "27b" {
+        "model device memory / VRAM budget"
+    } else {
+        "host memory"
+    }));
     assert!(runtime.models().list().unwrap().is_empty());
     assert_eq!(runtime.status().execution_adapters, 0);
     runtime.shutdown().unwrap();

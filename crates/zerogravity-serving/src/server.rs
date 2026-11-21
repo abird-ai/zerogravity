@@ -231,9 +231,5 @@ fn io_error(error: std::io::Error) -> Error {
     Error::State(error.to_string())
 }
 fn service_error(error: zerogravity_engine::router::ServiceError) -> Error {
-    match error.status {
-        400 => Error::Malformed(error.to_string()),
-        429 | 503 => Error::Limit(error.to_string()),
-        _ => Error::State(error.to_string()),
-    }
+    error.into_core()
 }

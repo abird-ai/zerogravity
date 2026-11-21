@@ -420,10 +420,12 @@ impl OrdinaryCudaAdmission {
         }
         let total = self.total_bytes()?;
         if total > provider_capacity {
-            return Err(Error::Limit(format!(
-                "ordinary CUDA workspace/{}-root plan does not fit: {total} > {provider_capacity}",
-                self.roots
-            )));
+            return Err(Error::resource(
+                "CUDA provider memory / VRAM budget",
+                format!("ordinary CUDA workspace/{}-root admission", self.roots),
+                total as u64,
+                provider_capacity as u64,
+            ));
         }
         Ok(self)
     }
@@ -520,15 +522,18 @@ pub(crate) async fn prepare_program(
     let cohort_value_bytes = admission.cohort_value_bytes(native_rows)?;
     let cold_bytes = admission.preflight().owned_bytes()?;
     let remaining = service.remaining_capacity()?;
-    if admission
+    let required = admission
         .total_bytes()?
         .checked_add(greedy_bytes)
         .and_then(|bytes| bytes.checked_add(cohort_value_bytes))
-        .is_none_or(|bytes| bytes > remaining)
-        || cold_bytes > remaining
-    {
-        return Err(Error::Limit(
-            "ordinary CUDA complete cold/root/greedy admission exceeds model capacity".into(),
+        .ok_or_else(|| Error::Limit("ordinary CUDA complete admission overflow".into()))?;
+    let required = required.max(cold_bytes);
+    if required > remaining {
+        return Err(Error::resource(
+            "CUDA provider memory / VRAM budget",
+            "ordinary CUDA cold/root/greedy preparation",
+            required as u64,
+            remaining as u64,
         ));
     }
 

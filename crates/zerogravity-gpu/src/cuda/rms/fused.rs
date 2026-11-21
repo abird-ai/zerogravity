@@ -679,9 +679,13 @@ impl FusedRmsPrepared {
             })
             .map(|(_, bytes)| bytes)
             .sum::<usize>();
-        if service.remaining_capacity()? < physical {
-            return Err(Error::Limit(
-                "post-attention RMS capacity before allocation".into(),
+        let available = service.remaining_capacity()?;
+        if physical > available {
+            return Err(Error::resource(
+                "GPU provider memory / VRAM budget",
+                "post-attention RMS admission",
+                physical as u64,
+                available as u64,
             ));
         }
         not_cancelled(cancelled)?;
