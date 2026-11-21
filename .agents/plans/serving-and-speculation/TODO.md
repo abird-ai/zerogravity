@@ -771,15 +771,15 @@ or a change to the active correctness/benchmark/27B order.
   run1 completed in185.18s with exact replay, independent sessions, exact producer
   frontiers and clean shutdown; run2 received `SIGKILL from outside` at~80.7s after
   >60s execution. So0.8B32K serving capability is now positively established once, but
-  physical-run reliability is still infrastructure-flaky. A later retained2B32K retry
-  built cleanly in44.24s and entered real execution, then was found terminal at~1904.7s
-  with exit101 rather than SIGKILL after the conversation turn was interrupted. Its job
-  spool had already been released, so the Rust failure text is lost and no cause/pass is
-  claimed. A reproduction was deliberately deferred because another owner had active
-  ordinary-CUDA edits plus~4.0GiB GPU residency.2B32K remains execution-open. No benchmark
-  result from the killed short2B B8 attempt is retained and its temporary parameterization
-  was removed. Continue progress without retry-looping the flaky cells;
-  do not return to residual paged micro-tuning.
+  the old external-run reliability issue no longer obscures2B32K. Fresh matched optimized
+  reruns stay alive normally and reproducibly hit the retained SDK's600s first-response
+  timeout at~616–617s total, with no SIGKILL. Simple source-placement experiments
+  (partial residency, state-path-first pack ordering, larger serial page through16MiB)
+  did not materially improve that boundary and were removed from production. Treat this
+  as a genuine long-context serving-performance problem: profile32K prefill/chunk hot
+  regions next rather than retry-looping or adding context fixtures. No benchmark result
+  from the earlier killed short2B B8 attempt is retained and its temporary
+  parameterization was removed; do not return to residual paged micro-tuning.
 - [x] A clean dynamic-prefill grouping candidate was measured and rejected from the
   current selector rather than discarded globally. For the already-compatible mixed
   native-B8 row pattern

@@ -411,12 +411,15 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   producer frontiers/clean shutdown, then the next identical run receives explicit
   `SIGKILL from outside` at~80.7s. Record0.8B32K as current capability-passing but
   infrastructure-flaky; do not upgrade this to independent all42 numerical closure.
-  A later retained2B32K retry built cleanly, entered real execution and eventually ended
-  with exit101 after~1904.7s rather than SIGKILL, but its spool was released during an
-  interrupted turn before the Rust failure text could be recovered. This is unlocalized
-  and not acceptance evidence. A bounded rerun was deferred while another owner had dirty
-  ordinary-CUDA source plus an active~4.0GiB GPU workload.2B32K remains execution-open.
-  Do not repin outputs, resurrect the old refusal rule, or spend model turns on retry loops.
+  Current retained2B32K reruns now close the infrastructure ambiguity: matched optimized
+  execution remains alive normally and reproducibly reaches the existing600s
+  first-response deadline, failing with the explicit populated-context timeout at
+  ~616–617s total rather than SIGKILL. This is a performance/progress result, not
+  numerical acceptance. Partial source residency, state-path-first pack placement and a
+  bounded16MiB serial source page were tried against the same cell and did not materially
+  move the deadline; the production experiments were removed. Next profile actual32K
+  prefill/chunk hot regions before changing placement again. Do not repin outputs or
+  resurrect the old refusal rule.
 - [ ] Localize ROCm2B C4 warmup and C16/32/64 warmup/timed divergence (task39),
   without repinning expected IDs or attributing an unlocalized failure to kernels.
 - [~] Close ordinary27B HIP HTTP504 and populated1K/2K references/serving (task11).
@@ -1244,7 +1247,8 @@ than old “remaining” milestones to select work. HTTP/context closure is stil
 - [ ] Extend populated contexts beyond accepted0.8B/2B HIP scopes to remaining
   CUDA/general27B routes; retain full-logit/state truth, cancellation and physical
   ownership at actual extents. The older32K refusal was a pre-streaming capacity result;
-  current public2B32K load is admitted, while32K execution remains indeterminate.
+  current public2B32K load is admitted; execution is now localized to a reproducible
+  >600s first-response performance boundary rather than an indeterminate external kill.
 - [ ] Extend/qualify serving concurrency through C1..C64 and general27B/CUDA;
   preserve missing-source/kernel/runtime refusals. Offered C64/active≤8 singleton
   execution is only a baseline, not native-batch acceptance.

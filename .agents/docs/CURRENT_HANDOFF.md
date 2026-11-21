@@ -1080,16 +1080,23 @@ serving, memory and composition plans.
   pids-limit events=0, CPU quota unlimited, and no visible oomd/journal kill record.
   Therefore separate model capability from infrastructure reliability:0.8B32K has one
   full current-path pass; repeated execution is still host/external-SIGKILL flaky.
-  A later retry of the retained **2B32K** qualifier after the reported SIGKILL repair
-  completed its optimized build in44.24s and entered real execution; when revalidated
-  after an interrupted model turn, the job had terminated with ordinary Cargo/Rust exit
-  **101 after~1904.7s, not SIGKILL**. Its stdout/stderr spool had already been released,
-  so the actual Rust failure text is unavailable and the run proves neither pass nor a
-  localized model failure. Do not infer timeout/OOM/numerical cause from exit101 alone.
-  A bounded reproduction was not started because another source owner then had four
-  ordinary-CUDA files dirty and an active~4.0GiB/12–49% GPU workload; preserve that work
-  and avoid contention.2B32K therefore remains execution-open. The retained qualifier
-  accepts32768; no duplicate fixture/token pin was added.
+  The retained **2B32K** qualifier is now localized beyond the old external-SIGKILL
+  ambiguity. With the matched opt1/codegen64/non-LTO profile, current execution builds
+  cleanly and remains alive normally until the SDK's existing600s first-response
+  deadline, then fails as `populated CUDA context response deadline: Timeout`
+  (representative total615.82s). Multiple follow-up runs likewise remained healthy from
+  the harness/process perspective and ended at~616–617s, not SIGKILL. This is a genuine
+  long-context progress/performance boundary, not evidence of VRAM refusal, OOM or
+  numerical mismatch. Simple placement hypotheses were measured and rejected from
+  production: keeping~2.9GiB of3.76GiB source weights resident, prioritizing packs used
+  by `state_nodes()`, and increasing the serial source page through16MiB did not
+  materially move the deadline. A32MiB page experiment hit the then-current verified
+  source-workspace ticket bound before inference; later concurrent two-ticket staging
+  work is preserved separately and was not used to claim a32MiB result here. All
+  partial-residency/sized-page production wiring from this experiment was removed.
+  Next localize the actual32K prefill hot regions/chunk scaling before changing source
+  placement again. The retained qualifier accepts32768; no duplicate fixture/token pin
+  was added.
 - **Retained-candidate policy:** reusable performance experiments are no longer deleted
   merely because one model/shape loses an A/B. Model-neutral candidates live dormant,
   with no production selector/callsite, so Qwen2B/27B, Gemma4 and future models can

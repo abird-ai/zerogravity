@@ -27,15 +27,19 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
   retained qualifier has one full current-path pass in185.18s with exact replay,
   independent sessions, exact producer frontiers and clean shutdown. The next identical
   direct trace run was externally SIGKILLed at~80.7s after >60s of execution. Thus
-  0.8B32K model capability is positively established once, while repeated-run reliability
-  remains infrastructure-flaky.2B32K public load succeeds but execution is still open
-  after its earlier~230s external SIGKILL. The dotlink service cgroup remains unlimited
-  for memory.high/max and CPU, with no OOM/OOM-kill/pids-limit event and idle GPU after
-  failure. Do not treat the external kill as a VRAM/admission failure.
+  0.8B32K model capability is positively established once.2B32K public load succeeds and
+  is now localized to a real long-context response deadline rather than infrastructure:
+  current matched optimized runs survive normally to the retained SDK's600s
+  first-response timeout (~616–617s total) without SIGKILL. Do not treat this as
+  VRAM/admission failure. Simple partial-resident source placement (~2.9GiB resident),
+  state-path-first pack ordering and a16MiB serial source page did not materially move
+  the timeout, so those experimental production changes were removed. Return to
+  long-context prefill compute/chunk profiling before revisiting source residency.
 - [~] Preserve complete recurrent/conv/KV state history, chunk continuation,
   cancellation/quarantine and readback owners at512/1K/2K/4K/8K/16K, then32K.
   Public4K/8K/16K execution proves the current chunk-continuation/serving path, and
-  0.8B32K now has one full retained public-SDK pass;2B32K execution remains open. The
+  0.8B32K now has one full retained public-SDK pass;2B32K is admitted but exceeds the
+  current600s first-response contract on repeated healthy runs. The
   independent populated all42 archive is absent on L5, so32K numerical closure remains
   open; use the retained32768 qualifier and current storage policy rather than
   adding another context fixture or restoring the obsolete refusal assumption.
