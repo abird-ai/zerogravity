@@ -113,8 +113,16 @@ The following extends existing owners; source-byte qualification is not inferenc
   `reconcile_prefix_frontier` returns the largest request-bounded frontier legal for
   every domain. The hot check is allocation-free O(domains), uses an overflow-safe
   bounded LCM and returns0 when no nonempty common aligned checkpoint exists. Exact
-  partial-tail COW still remains: both endpoints must stay owned through real copy/read
-  completion. Approximate truncated replay and moved-message reuse stay outside exact mode.
+  partial-tail COW is **already closed by the existing paged-state path**, not by this
+  frontier algebra: `share_prefix` retains an immutable physical tail page with a narrowed
+  valid extent; `fork_for_append` transactionally allocates a fresh page and emits a
+  source→target copy for exactly the valid tail; the append plan pins both handles, the
+  resident submission clones those Read/Write leases until physical completion, and only
+  Ready candidate pages can enter the atomic root/domain swap. Displaced domains drop only
+  after the new root commits. Existing physical materialization/boundary/source-fork
+  qualifiers prove fresh generations, immutable source bytes, exact partial-tail copy,
+  zero inactive tail and complete retirement. Do not add a second COW owner abstraction.
+  Approximate truncated replay and moved-message reuse stay outside exact mode.
 - [ ] For dense27B, compare layer-major/row-cohort source-window reuse against
   extra activation spill, retained states, IO amplification and fair decode
   progress. First correct execution may itself require streaming; no full-resident

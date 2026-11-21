@@ -381,9 +381,19 @@ Vulkan-only retry passed, so no source failure follows.
   frontier and zero-based checkpoint alignment; `reconcile_prefix_frontier` computes
   the greatest request-bounded frontier legal for every domain using an allocation-free
   O(domains), overflow-safe bounded LCM. It returns0 when no nonempty aligned common
-  checkpoint exists and grants no physical restore/copy authority. Exact partial-tail
-  COW remains separate and must retain both endpoints through real copy/read completion.
-  The existing shared `ResidentPool` root path was re-audited at the same checkpoint:
+  checkpoint exists and grants no physical restore/copy authority. **The separate exact
+  partial-tail COW ownership path is already complete.** Core `PagedBlockTable::share_prefix`
+  shares the immutable physical page while narrowing only its logical valid extent;
+  `fork_for_append` replaces a partial tail with a fresh target and a copy descriptor that
+  retains both handles. Resident paged append exposes the old page as submitted Read and
+  the fresh page as Write, and `ResidentSubmission` clones those exact leases for the
+  armed flight until physical retirement. Candidate pages cannot publish before Ready;
+  `publish_domain_swap` atomically installs the validated domains/root and displaced
+  owners drop only after commit. Retained physical COW/materialization/page-boundary and
+  source-real prefix-fork qualification already prove source immutability, fresh
+  generations, exact valid-tail copy/append, zero tail and full retirement. No duplicate
+  COW abstraction or new fixture is needed. The existing shared `ResidentPool` root path
+  was re-audited at the same checkpoint:
   fresh logical lease IDs/generations are issued over retained backing, readbacks/Ready
   owners retain the checkout, and reuse occurs only after ledger-proven idle backing;
   unknown retirement poisons/fences/quarantines rather than returning a set idle.
