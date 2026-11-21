@@ -1041,8 +1041,21 @@ serving, memory and composition plans.
   containing `/system.slice/dotlink.service` cgroup reports memory.max/high=unlimited,
   CPU quota=unlimited, pids.max=33410 with no pids-limit events, and
   oom=0/oom_kill=0; GPU stayed idle. Therefore do not attribute these SIGKILLs to
-  ZeroGravity32K execution or VRAM admission. The signal source remains external and
-  unproven. The retained qualifier accepts32768; no duplicate fixture/token pin was added.
+  ZeroGravity32K execution or VRAM admission. A later owner-requested retry after the
+  reported SIGKILL fix shows that the **new signal attribution is active** but the
+  external killer still exists: the matched optimized0.8B32K build completed in28.43s,
+  the retained public-SDK test entered real execution and survived past60s, then dotlink
+  reported `SIGKILL from outside`. The exact already-built test binary was then run
+  directly under `native-gpu.py` with Cargo removed and was again externally SIGKILLed
+  after~24s. A short2B B8 public-serving benchmark attempt likewise completed its
+  optimized build, entered the test, and was externally SIGKILLed before producing a
+  model result. Immediate residue remained clean: GPU37MiB/0%, no process/kernel
+  OOM/Xid, service cgroup peak~6.76GB, memory.max/high unlimited, oom/oom_kill=0,
+  pids-limit events=0 and CPU quota unlimited. No systemd-oomd/journal kill record was
+  visible from the sandbox. Therefore the reporting fix is present, but the underlying
+  host/external SIGKILL source is **not yet fixed for this workload**. Do not attribute
+  these runs to ZeroGravity and do not retry-loop them. The retained qualifier
+  accepts32768; no duplicate fixture/token pin was added.
 - **Retained-candidate policy:** reusable performance experiments are no longer deleted
   merely because one model/shape loses an A/B. Model-neutral candidates live dormant,
   with no production selector/callsite, so Qwen2B/27B, Gemma4 and future models can

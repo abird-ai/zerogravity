@@ -766,9 +766,13 @@ or a change to the active correctness/benchmark/27B order.
   total=1,925,110,221B. The external SIGKILL also reproduces twice during compile-only
   current-source `cargo test --no-run`, before test entry, with no dotlink-cgroup
   OOM/CPU/pids-limit event and idle GPU. Do not force a refusal, add another context
-  fixture, or retry-loop32K. Return to serving/model work that can make progress while
-  the external signal source is handled separately; do not return to residual paged
-  micro-tuning.
+  fixture, or retry-loop32K. An owner-requested retry after the reported fix confirms
+  only that dotlink's newer `SIGKILL from outside` attribution is active:0.8B32K reached
+  execution then was killed, direct execution of the already-built binary was killed
+  again, and a short2B B8 serving benchmark was also externally killed after test entry.
+  No benchmark result is retained and its temporary model-parameterization was removed.
+  Return to serving/model work that does not depend on unstable physical execution until
+  the external killer is actually gone; do not return to residual paged micro-tuning.
 - [x] A clean dynamic-prefill grouping candidate was measured and rejected from the
   current selector rather than discarded globally. For the already-compatible mixed
   native-B8 row pattern

@@ -30,6 +30,11 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
   attempts before any test binary executes. The dotlink service cgroup is unlimited for
   memory.high/max and CPU, has no OOM/OOM-kill/pids-limit event, and GPU stayed idle.
   Treat32K execution as infrastructure-indeterminate, not a model/VRAM failure.
+  An owner-requested retry after the reported fix still receives explicit
+  `SIGKILL from outside`: optimized0.8B32K reached real execution (>60s) before kill,
+  and the already-built test binary was killed again when run directly with Cargo
+  removed (~24s). This proves the newer attribution path is live but the external killer
+  persists for this workload.
 - [~] Preserve complete recurrent/conv/KV state history, chunk continuation,
   cancellation/quarantine and readback owners at512/1K/2K/4K/8K/16K, then32K.
   Public4K/8K/16K execution proves the current chunk-continuation/serving path, but the
