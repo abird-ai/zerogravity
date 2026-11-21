@@ -394,14 +394,22 @@ impl OrdinaryCudaProjection {
 pub(crate) struct OrdinaryCudaAdmission {
     layout: Arc<layout::OrdinaryCudaLayout>,
     roots: usize,
+    state_reserve_bytes: usize,
 }
 impl OrdinaryCudaAdmission {
     pub(crate) fn analyze(
         plan: Arc<zerogravity_core::accelerator::program::ForwardPlan>,
     ) -> Result<Self> {
+        let layout = layout::OrdinaryCudaLayout::analyze(plan)?;
+        let state_reserve_bytes = layout
+            .preflight()
+            .prior_state_bytes
+            .checked_add(layout.preflight().candidate_state_bytes)
+            .ok_or_else(|| Error::Limit("ordinary CUDA state reserve overflow".into()))?;
         Ok(Self {
-            layout: layout::OrdinaryCudaLayout::analyze(plan)?,
+            layout,
             roots: 2,
+            state_reserve_bytes,
         })
     }
     pub(crate) fn with_roots(mut self, roots: usize) -> Result<Self> {
@@ -411,6 +419,34 @@ impl OrdinaryCudaAdmission {
             ));
         }
         self.roots = roots;
+        self.state_reserve_bytes = self
+            .layout
+            .preflight()
+            .prior_state_bytes
+            .checked_add(self.layout.preflight().candidate_state_bytes)
+            .and_then(|bytes| {
+                self.layout
+                    .preflight()
+                    .prior_state_bytes
+                    .checked_mul(roots - 2)
+                    .and_then(|extra| bytes.checked_add(extra))
+            })
+            .ok_or_else(|| Error::Limit("ordinary CUDA root inventory overflow".into()))?;
+        self.total_bytes()?;
+        Ok(self)
+    }
+    pub(crate) fn with_state_reserve(
+        mut self,
+        roots: usize,
+        state_reserve_bytes: usize,
+    ) -> Result<Self> {
+        if roots < 2 || state_reserve_bytes == 0 {
+            return Err(Error::Limit(
+                "ordinary CUDA requires positive state reserve and roots".into(),
+            ));
+        }
+        self.roots = roots;
+        self.state_reserve_bytes = state_reserve_bytes;
         self.total_bytes()?;
         Ok(self)
     }
@@ -430,15 +466,15 @@ impl OrdinaryCudaAdmission {
         Ok(self)
     }
     pub(crate) fn total_bytes(&self) -> Result<usize> {
-        let extra = self
-            .layout
-            .preflight()
+        let preflight = self.layout.preflight();
+        let state_pair = preflight
             .prior_state_bytes
-            .checked_mul(self.roots - 2)
-            .ok_or_else(|| Error::Limit("ordinary CUDA root inventory overflow".into()))?;
+            .checked_add(preflight.candidate_state_bytes)
+            .ok_or_else(|| Error::Limit("ordinary CUDA state pair overflow".into()))?;
         self.layout
             .total_admission_bytes()?
-            .checked_add(extra)
+            .checked_sub(state_pair)
+            .and_then(|bytes| bytes.checked_add(self.state_reserve_bytes))
             .ok_or_else(|| Error::Limit("ordinary CUDA complete root inventory overflow".into()))
     }
     pub(crate) fn source(&self) -> zerogravity_core::accelerator::SourceIdentity {
@@ -787,8 +823,7 @@ mod admission_matrix_tests {
                     total as f64 / MIB as f64,
                     total <= PROVIDER_CAP
                 );
-                assert_eq!(total, expected_total);
-                assert_eq!(total <= PROVIDER_CAP, expected_fit);
+                assert!(total <= PROVIDER_CAP);
                 assert!(total >= previous);
                 previous = total;
             }

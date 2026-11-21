@@ -64,7 +64,7 @@ fn qwen_cuda_native_runtime(paged: bool) -> Runtime {
 fn qwen_cuda_context_runtime(model: &str, context: usize, output: usize) -> Runtime {
     use zerogravity::{
         cache::CacheOptions,
-        models::{ModelLoadRequest, QwenSourceProfile},
+        models::{ModelLoadRequest, QwenCudaStatePolicy, QwenSourceProfile},
         runtime::SchedulerLimits,
     };
     const MIB: usize = 1024 * 1024;
@@ -84,23 +84,37 @@ fn qwen_cuda_context_runtime(model: &str, context: usize, output: usize) -> Runt
         })
         .build()
         .unwrap();
-    runtime
-        .models()
-        .load(ModelLoadRequest::QwenCuda {
+    let profile = QwenSourceProfile {
+        active: 1,
+        context,
+        output,
+        max_pending: Some(1),
+        native_rows: 0,
+    };
+    let request = if std::env::var_os("ZG_QWEN_CUDA_PAGED").is_some() {
+        ModelLoadRequest::QwenCudaWithStatePolicy {
             aliases: vec!["source".into()],
             cache: CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
             snapshot: snapshot.into(),
-            profile: QwenSourceProfile {
-                active: 1,
-                context,
-                output,
-                max_pending: Some(1),
-                native_rows: 0,
-            },
+            profile,
             provider_bytes: 4608 * MIB,
             device_bytes: 5120 * MIB as u64,
-        })
-        .unwrap();
+            state_policy: QwenCudaStatePolicy::Paged {
+                page_tokens: 64,
+                max_append_tokens: 64,
+            },
+        }
+    } else {
+        ModelLoadRequest::QwenCuda {
+            aliases: vec!["source".into()],
+            cache: CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
+            snapshot: snapshot.into(),
+            profile,
+            provider_bytes: 4608 * MIB,
+            device_bytes: 5120 * MIB as u64,
+        }
+    };
+    runtime.models().load(request).unwrap();
     runtime
 }
 
@@ -155,7 +169,11 @@ fn qwen_cuda_populated_context_sdk_replays() {
         .parse()
         .unwrap();
     const OUTPUT: usize = 2;
-    let prompt_tokens = context - OUTPUT;
+    let prompt_tokens = std::env::var("ZG_QWEN_CUDA_PROMPT_TOKENS")
+        .ok()
+        .map(|value| value.parse::<usize>().unwrap())
+        .unwrap_or(context - OUTPUT);
+    assert!(prompt_tokens > 0 && prompt_tokens + OUTPUT <= context);
     let runtime = qwen_cuda_context_runtime(&model, context, OUTPUT);
     let resolved = runtime.models().resolve("source").unwrap();
     let tokenizer = resolved.prepared().tokenizer();

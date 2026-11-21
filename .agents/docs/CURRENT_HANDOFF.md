@@ -1100,11 +1100,23 @@ serving, memory and composition plans.
   layout admission, cold allocation and access ownership cuts32K ordinary-CUDA workspace
   from151,012,757B to12,584,241B (−138,428,516B). The low-level two-root2B32K inventory
   therefore fits fully resident at4,702,464,913B under the4608MiB provider envelope.
-  Public active1 source-call still deliberately uses four roots and remains Streamed;
-  do **not** reduce the `2*max_sessions+2` lifecycle pool merely to force residency—the
-  extra ownership covers public Pending/snapshot/displaced-root lifetimes. Continue
-  profiling the actual32K prefill/chunk hot regions from that cleaner baseline. The
-  retained qualifier accepts32768; no duplicate fixture/token pin was added.
+  Public active1 source-call still deliberately uses four logical root slots; do **not**
+  reduce the `2*max_sessions+2` lifecycle pool merely to force residency—the extra
+  ownership covers public Pending/snapshot/displaced-root lifetimes. The resolution is
+  instead the existing paged-state policy: immutable committed prefix pages are shared,
+  so admission now prices one full committed page set per active session plus only the
+  physically reachable COW/appended pages for the remaining logical root slots. This
+  preserves all four logical roots while avoiding four full contiguous32K KV slabs.
+  Host qualification proves the paged2B32K four-root plan keeps all3,762,552,832B source
+  weights resident. A matched public-SDK A/B at the **same2B/32K capacity and1024-token
+  prompt** moved from283.22s contiguous/streamed to28.56s paged/resident (~9.9x faster),
+  both exact with clean shutdown. The retained full32766-token paged qualifier then passed
+  end-to-end in224.80s test execution /260.34s wall, inside the existing600s first-response
+  contract, with exact replay, independent sessions, exact producer frontiers and clean
+  shutdown. Default `QwenCuda` remains Contiguous by policy; this acceptance is for the
+  explicit `QwenCudaWithStatePolicy::Paged { page_tokens:64, max_append_tokens:64 }` path.
+  The qualifier reuses the existing test with environment-selected prompt/state policy;
+  no duplicate fixture or token pin was added.
 - **Retained-candidate policy:** reusable performance experiments are no longer deleted
   merely because one model/shape loses an A/B. Model-neutral candidates live dormant,
   with no production selector/callsite, so Qwen2B/27B, Gemma4 and future models can

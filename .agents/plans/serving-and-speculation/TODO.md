@@ -772,14 +772,17 @@ or a change to the active correctness/benchmark/27B order.
   frontiers and clean shutdown; run2 received `SIGKILL from outside` at~80.7s after
   >60s execution. So0.8B32K serving capability is now positively established once, but
   the old external-run reliability issue no longer obscures2B32K. Fresh matched optimized
-  reruns stay alive normally and reproducibly hit the retained SDK's600s first-response
-  timeout at~616–617s total, with no SIGKILL. Simple source-placement experiments
-  (partial residency, state-path-first pack ordering, larger serial page through16MiB)
-  did not materially improve that boundary and were removed from production. Treat this
-  as a genuine long-context serving-performance problem: profile32K prefill/chunk hot
-  regions next rather than retry-looping or adding context fixtures. No benchmark result
-  from the earlier killed short2B B8 attempt is retained and its temporary
-  parameterization was removed; do not return to residual paged micro-tuning.
+  contiguous reruns stay alive normally and reproducibly hit the retained SDK's600s
+  first-response timeout at~616–617s total, with no SIGKILL. Simple source-placement
+  experiments (partial residency, state-path-first pack ordering, larger serial page
+  through16MiB) did not materially improve that boundary. The actual fix is explicit
+  paged-state admission with physically reachable COW-page pricing: it preserves the same
+  four logical lifecycle roots while keeping all2B32K weights resident. Same32K capacity,
+  1024-token public A/B is283.22s contiguous-streamed vs28.56s paged-resident (~9.9x),
+  and the retained full32766-token paged run passes in224.80s execution/260.34s wall with
+  exact replay/frontiers and clean shutdown. Default `QwenCuda` remains Contiguous; the
+  accepted closure is explicit paged policy. No benchmark result from the earlier killed
+  short2B B8 attempt is retained; do not return to residual paged micro-tuning.
 - [x] A clean dynamic-prefill grouping candidate was measured and rejected from the
   current selector rather than discarded globally. For the already-compatible mixed
   native-B8 row pattern

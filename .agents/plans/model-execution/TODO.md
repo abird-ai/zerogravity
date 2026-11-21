@@ -421,11 +421,15 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   now removed: ordinary CUDA attention no longer allocates its obsolete capacity-sized
   global scratch reservation because the selected tile-local kernel consumes none. At32K
   this removes138,428,516B, shrinking workspace151,012,757→12,584,241B and making the
-  low-level two-root2B model fully resident at4,702,464,913B. Public source-call active1
-  still has the intentional four-root lifecycle envelope and remains streamed; do not
-  trade Pending/snapshot/displaced-root safety for residency. Next profile actual32K
-  prefill/chunk hot regions from this baseline. Do not repin outputs or resurrect the old
-  refusal rule.
+  low-level two-root2B model fully resident at4,702,464,913B. Public source-call keeps
+  the intentional four logical root slots, but the explicit paged-state policy now prices
+  only physically reachable shared-prefix/COW state instead of four full contiguous KV
+  slabs. Host admission keeps all2B32K weights resident. Physical public-SDK A/B at the
+  same32K capacity/1024-token prompt is283.22s contiguous-streamed versus28.56s
+  paged-resident (~9.9x faster), and the full32766-token paged run passes in224.80s
+  execution/260.34s wall with exact replay/frontiers and clean shutdown. Keep default
+  `QwenCuda` Contiguous; the accepted closure is explicit `QwenCudaWithStatePolicy::Paged`
+  with page_tokens64/max_append64. Do not repin outputs or resurrect the old refusal rule.
 - [ ] Localize ROCm2B C4 warmup and C16/32/64 warmup/timed divergence (task39),
   without repinning expected IDs or attributing an unlocalized failure to kernels.
 - [~] Close ordinary27B HIP HTTP504 and populated1K/2K references/serving (task11).

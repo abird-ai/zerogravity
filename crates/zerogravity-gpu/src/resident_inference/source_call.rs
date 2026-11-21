@@ -318,6 +318,27 @@ impl ResidentModel {
             ));
         }
         let roots = max_sessions * 2 + 2;
+        let state_reserve_bytes = match state_policy {
+            CudaSourceStatePolicy::Contiguous => None,
+            CudaSourceStatePolicy::Paged {
+                page_tokens,
+                max_append_tokens,
+            } => {
+                let admission =
+                    crate::resident_program::ordinary_cuda::OrdinaryCudaAdmission::analyze(
+                        plan.clone(),
+                    )?;
+                let preflight = admission.preflight();
+                Some(super::state_pool::hybrid_state_reserve_bytes(
+                    &preflight.states,
+                    preflight.prior_state_bytes,
+                    roots,
+                    max_sessions,
+                    page_tokens,
+                    max_append_tokens,
+                )?)
+            }
+        };
         let control = source.reserve_workspace(CONTROL_BYTES)?;
         let prefill_projection_classes = Some(
             crate::resident_program::ordinary_cuda::PrefillProjectionClasses::from_plan(&plan)?,
@@ -330,6 +351,7 @@ impl ResidentModel {
             device_cap,
             roots,
             native_rows,
+            state_reserve_bytes,
             Some(source_owner.clone()),
             cancelled,
         )
@@ -800,6 +822,50 @@ fn preparation_failure(error: Error, submitted: bool) -> Result<SourceCallPrepar
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+    #[test]
+    fn paged_2b_32k_prices_reachable_state_and_keeps_weights_resident() {
+        const MIB: usize = 1024 * 1024;
+        const PROVIDER_CAP: usize = 4608 * MIB;
+        let plan = zerogravity_model_qwen35::plan::diagnostic_ordinary_plan(
+            zerogravity_model_qwen35::plan::QwenSourceProfile::Qwen2B,
+            32_768,
+        )
+        .unwrap();
+        let roots = 4;
+        let admission =
+            crate::resident_program::ordinary_cuda::OrdinaryCudaAdmission::analyze(plan.clone())
+                .unwrap();
+        let preflight = admission.preflight();
+        let paged_state = super::super::state_pool::hybrid_state_reserve_bytes(
+            &preflight.states,
+            preflight.prior_state_bytes,
+            roots,
+            1,
+            64,
+            64,
+        )
+        .unwrap();
+        assert!(paged_state < preflight.prior_state_bytes * roots);
+        let (_, inventory) = super::super::ordinary_cuda_source_admission(
+            plan,
+            PROVIDER_CAP,
+            roots,
+            0,
+            Some(paged_state),
+        )
+        .unwrap();
+        assert_eq!(
+            inventory.weight_storage,
+            super::super::OrdinaryCudaWeightStorage::Resident
+        );
+        assert_eq!(
+            inventory.resident_weight_bytes,
+            inventory.source_weight_bytes
+        );
+    }
+
     #[test]
     fn only_proven_prelaunch_refusals_become_scheduler_outcomes() {
         assert!(matches!(

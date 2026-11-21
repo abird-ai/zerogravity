@@ -36,10 +36,14 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
   the timeout, so those experimental production changes were removed. The obsolete
   ordinary CUDA attention reserve is now removed from the real admission/ownership graph:
   the selected tile-local kernel uses no global scratch, saving138,428,516B at32K. This
-  makes the low-level two-root2B32K inventory fully resident, but public active1
-  source-call intentionally retains four lifecycle roots and therefore still streams.
-  Preserve that lifecycle contract; return to long-context prefill compute/chunk profiling
-  rather than shrinking root ownership to manufacture a residency result.
+  makes the low-level two-root2B32K inventory fully resident. Public active1 still
+  retains four **logical** lifecycle roots, but the paged-state inventory now stops
+  preallocating unreachable duplicate KV pages: active current roots own complete page
+  sets while snapshots/displaced/Pending candidates share immutable prefixes and reserve
+  only bounded divergent COW/appended pages. This preserves lifecycle authority and makes
+  explicit paged2B32K fully weight-resident. Same-capacity1024-token public A/B improves
+  283.22→28.56s, and full32766-token paged serving passes in224.80s. Keep default
+  contiguous policy unchanged; use explicit paged policy where selected.
 - [~] Preserve complete recurrent/conv/KV state history, chunk continuation,
   cancellation/quarantine and readback owners at512/1K/2K/4K/8K/16K, then32K.
   Public4K/8K/16K execution proves the current chunk-continuation/serving path, and

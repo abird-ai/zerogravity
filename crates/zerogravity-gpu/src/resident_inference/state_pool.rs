@@ -161,10 +161,7 @@ impl HybridStateInventoryPlan {
             .checked_sub(vector_max_bytes)
             .and_then(|n| n.checked_sub(staging_max_bytes))
             .ok_or_else(|| Error::Limit("resident hybrid page budget".into()))?;
-        let max_pages = page_budget / page.bytes;
-        let page_max_bytes = max_pages
-            .checked_mul(page.bytes)
-            .ok_or_else(|| Error::Limit("resident hybrid page maximum".into()))?;
+        let envelope_pages = page_budget / page.bytes;
         let candidate_pages_per_domain = (page_tokens - 1)
             .checked_add(max_append_tokens)
             .ok_or_else(|| Error::Limit("resident hybrid append span".into()))?
@@ -174,6 +171,26 @@ impl HybridStateInventoryPlan {
         let candidate_pages_per_active_session = kv_domains
             .checked_mul(candidate_pages_per_domain)
             .ok_or_else(|| Error::Limit("resident hybrid candidate pages/session".into()))?;
+        // `staging_sets` is the maximum number of simultaneously active current
+        // roots. Snapshots, displaced roots and unpublished candidates share their
+        // immutable committed prefix pages; an additional logical root can consume
+        // only its divergent COW tail/appended pages. Preserve every logical root
+        // slot from the original `2*max_sessions+2` lifecycle envelope without
+        // preallocating a second full KV slab for each shared-prefix owner.
+        let committed_pages = pages_per_committed_root
+            .checked_mul(staging_sets)
+            .ok_or_else(|| Error::Limit("resident hybrid committed page bound".into()))?;
+        let divergent_slots = roots
+            .checked_sub(staging_sets)
+            .ok_or_else(|| Error::State("resident hybrid divergent slot underflow".into()))?;
+        let reachable_pages = candidate_pages_per_active_session
+            .checked_mul(divergent_slots)
+            .and_then(|n| n.checked_add(committed_pages))
+            .ok_or_else(|| Error::Limit("resident hybrid reachable page bound".into()))?;
+        let max_pages = envelope_pages.min(reachable_pages);
+        let page_max_bytes = max_pages
+            .checked_mul(page.bytes)
+            .ok_or_else(|| Error::Limit("resident hybrid page maximum".into()))?;
         let minimum_active_pages = pages_per_committed_root
             .checked_add(candidate_pages_per_active_session)
             .and_then(|n| n.checked_mul(staging_sets))
@@ -208,6 +225,40 @@ impl HybridStateInventoryPlan {
             slack_bytes,
         })
     }
+
+    pub(super) fn resident_bytes(&self) -> Result<usize> {
+        self.vector_max_bytes
+            .checked_add(self.staging_max_bytes)
+            .and_then(|n| n.checked_add(self.page_max_bytes))
+            .ok_or_else(|| Error::Limit("resident hybrid admitted byte sum".into()))
+    }
+}
+
+#[cfg(feature = "cuda-cublas")]
+pub(super) fn hybrid_state_reserve_bytes(
+    states: &[StateRequirement],
+    state_bytes: usize,
+    roots: usize,
+    staging_sets: usize,
+    page_tokens: usize,
+    max_append_tokens: usize,
+) -> Result<usize> {
+    // Alignment changes backing validity/metadata, not any state byte extent.
+    // Physical installation repeats this analysis with the actual allocator
+    // alignment before creating a backing.
+    let plan = HybridStateInventoryPlan::analyze(
+        states,
+        state_bytes,
+        roots,
+        staging_sets,
+        page_tokens,
+        max_append_tokens,
+        1,
+    )?;
+    ResidentPool::metadata_bytes(plan.vector_layout.len(), plan.roots)?;
+    ResidentPool::metadata_bytes(plan.staging_layout.len(), plan.staging_sets)?;
+    ResidentPagePool::metadata_bytes(plan.max_pages)?;
+    plan.resident_bytes()
 }
 
 #[allow(
@@ -882,6 +933,22 @@ mod tests {
             plan.root_budget_bytes
         );
         assert_eq!(plan.slack_bytes, 0);
+    }
+
+    #[test]
+    fn hybrid_inventory_does_not_preallocate_unreachable_cow_pages() {
+        let states = hybrid_requirements();
+        let state_bytes = states.iter().map(|state| state.bytes).sum::<usize>();
+        let plan =
+            HybridStateInventoryPlan::analyze(&states, state_bytes, 4, 1, 4, 1, 512).unwrap();
+        assert_eq!(plan.pages_per_committed_root, 8);
+        assert_eq!(plan.candidate_pages_per_active_session, 4);
+        assert_eq!(plan.max_pages, 20);
+        assert_eq!(
+            plan.resident_bytes().unwrap() + plan.slack_bytes,
+            plan.root_budget_bytes
+        );
+        assert!(plan.slack_bytes > 0);
     }
 
     #[test]

@@ -602,11 +602,16 @@ fn ordinary_cuda_source_admission(
     provider_cap: usize,
     roots: usize,
     native_rows: usize,
+    state_reserve_bytes: Option<usize>,
 ) -> Result<(
     ordinary_cuda::OrdinaryCudaAdmission,
     OrdinaryCudaSourceInventory,
 )> {
-    let admission = ordinary_cuda::OrdinaryCudaAdmission::analyze(plan)?.with_roots(roots)?;
+    let admission = ordinary_cuda::OrdinaryCudaAdmission::analyze(plan)?;
+    let admission = match state_reserve_bytes {
+        Some(bytes) => admission.with_state_reserve(roots, bytes)?,
+        None => admission.with_roots(roots)?,
+    };
     let source_weight_bytes = admission.preflight().source_bytes;
     let greedy_workspace = crate::resident_greedy::workspace_bytes(admission.vocabulary())?
         .into_iter()
@@ -695,7 +700,7 @@ impl ResidentModel {
             .checked_mul(2)
             .and_then(|n| n.checked_add(2))
             .ok_or_else(|| Error::Limit("source-call root count overflow".into()))?;
-        ordinary_cuda_source_admission(plan, provider_cap, roots, native_rows)
+        ordinary_cuda_source_admission(plan, provider_cap, roots, native_rows, None)
             .map(|(_, inventory)| inventory)
     }
 
@@ -759,6 +764,7 @@ impl ResidentModel {
             2,
             0,
             None,
+            None,
             cancelled,
         )
         .await
@@ -774,6 +780,7 @@ impl ResidentModel {
         device_cap: u64,
         roots: usize,
         native_rows: usize,
+        state_reserve_bytes: Option<usize>,
         source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
         cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<Arc<Self>> {
@@ -786,8 +793,13 @@ impl ResidentModel {
 
         // Pure source-plan/resource analysis. This MUST precede physical owner
         // creation, source attachment, cleanup, queue work, or allocation.
-        let (admission, _inventory) =
-            ordinary_cuda_source_admission(plan, provider_cap, roots, native_rows)?;
+        let (admission, _inventory) = ordinary_cuda_source_admission(
+            plan,
+            provider_cap,
+            roots,
+            native_rows,
+            state_reserve_bytes,
+        )?;
         let source_identity = admission.source();
         if source.source_identity() != source_identity {
             return Err(Error::State(
