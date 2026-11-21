@@ -1,8 +1,8 @@
-# ZeroGravity current comprehensive handoff — 20 Nov 2026
+# ZeroGravity current comprehensive handoff — 21 Nov 2026
 
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
-Full dated takeover snapshot: [`FULL_COMPREHENSIVE_HANDOFF_2026-11-20.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-20.md). The 20 Nov pack embeds this live handoff plus the complete 18 Nov pack; the 18 Nov pack in turn carries the 15 Nov/14 Nov/October design foundation.
+Full dated takeover snapshot: [`FULL_COMPREHENSIVE_HANDOFF_2026-11-21.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-21.md). The 21 Nov pack embeds this live handoff, current owning-plan snapshots, the exact post-20-Nov signed chronology, and the complete 20 Nov pack; the 20 Nov pack in turn carries the 18 Nov/15 Nov/14 Nov/October design foundation.
 
 This file is the complete takeover map and a pointer into maintained source, tests
 and plans. It is deliberately **not** the retired monolithic SHA/archive/evidence
@@ -744,7 +744,7 @@ A new agent should read in this order:
 2. `AGENTS.md`.
 3. `.agents/plans/README.md`.
 4. `.agents/docs/CURRENT_HANDOFF.md`.
-5. `.agents/docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-20.md`.
+5. `.agents/docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-21.md`.
 6. `.agents/plans/TODO.md`.
 7. `.agents/plans/model-execution/TODO.md`.
 8. `.agents/plans/numerics-and-context/CORRECTNESS_POLICY.md`.
@@ -1738,150 +1738,107 @@ is already green; repeat it only if host/runtime state changes.
 
 ## Copy/paste next-agent prompt
 
-> Use dotlink---l5 as the only source-authoring connector. Continue in
-> /home/pvl/spaces/abird/src/zerogravity on the single main worktree. Use
-> dotlink---x2 only for AMD large-VRAM execution/testing; synchronize exact L5
-> commits by Git bundle rather than pushing merely for transport.
+> Use `dotlink---l5` as the only source-authoring connector. Continue in
+> `/home/pvl/spaces/abird/src/zerogravity` on the single persistent `main`
+> worktree. Use `dotlink---x2` only for AMD large-VRAM execution/testing;
+> synchronize exact L5 commits by Git bundle rather than pushing merely for
+> transport. Do not create another persistent worktree or branch. Preserve all
+> unrelated dirty/staged work.
 >
-> Read first, in order: AGENTS.md, .agents/plans/README.md,
-> .agents/docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-20.md,
-> .agents/docs/CURRENT_HANDOFF.md, .agents/plans/TODO.md,
-> .agents/plans/model-execution/TODO.md,
-> .agents/plans/numerics-and-context/CORRECTNESS_POLICY.md,
-> .agents/plans/serving-and-speculation/TODO.md,
-> .agents/plans/serving-and-speculation/BATCHING_AND_PAGED_STATE.md,
-> .agents/plans/memory-and-streaming/TODO.md, then any owning docs/plans linked
-> from those files.
+> Keep each implementation turn to roughly 30 minutes. Aim for the next coherent
+> implementation checkpoint, update durable owning docs/plans, sign the commit,
+> then pause. Do not push unless explicitly requested.
 >
-> Revalidate before editing: Git status, HEAD, origin/main, signature, worktrees,
-> live Cargo/model/native-gpu/Bubblewrap processes, physical GPU baseline, source
-> cache identities, disk and _tmp. Preserve unrelated work. Do not create another
-> persistent worktree/branch. Commits must remain signed. Do not push unless the
-> user explicitly requests it.
+> Read first, in order:
+> 1. `AGENTS.md`
+> 2. `.agents/plans/README.md`
+> 3. `.agents/docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-21.md`
+> 4. `.agents/docs/CURRENT_HANDOFF.md`
+> 5. `.agents/plans/TODO.md`
+> 6. `.agents/plans/model-execution/TODO.md`
+> 7. `.agents/plans/numerics-and-context/CORRECTNESS_POLICY.md`
+> 8. `.agents/plans/serving-and-speculation/TODO.md`
+> 9. `.agents/plans/serving-and-speculation/BATCHING_AND_PAGED_STATE.md`
+> 10. `.agents/plans/memory-and-streaming/TODO.md`
+> 11. Any owning docs/plans linked from those files.
 >
-> Latest implementation/source checkpoint at handoff creation is
-> `3afb9902f674d9cfe2fc4488e628b61b61cae395`. The signed handoff-consolidation
-> commit may sit above it as docs-only; revalidate actual HEAD first. Pushed/tracked
-> `origin/main` is `f0f06402c78d4511dea1559c73d4295f88790f93`; the implementation
-> lineage after it is `1222f8a`, `60ba956`, `3afb990`. Do not push unless explicitly
-> requested.
+> Revalidate before editing: `git status --short --branch`, `git rev-parse HEAD`,
+> `git rev-parse origin/main`, remote GitHub `main` when network transport is
+> available, `git log -1 --show-signature`, worktrees, active
+> Cargo/rustc/model/native-gpu/Bubblewrap processes, physical GPU state,
+> source/cache identities, disk space and `_tmp` artifacts.
 >
-> Current production ordinary serving remains Native and public graph serving
-> remains disabled. Both approved original Qwen3.5-0.8B and2B pass source-real
-> paged B1 full-vocabulary/all42 boundary parity and cold lifecycle at
-> page_tokens=4/max_append_tokens=4. The paged logical/physical COW stack,
-> gather/scatter, canonical paged Domain/root authority, one-staging KvInPlace,
-> hybrid admission/pools, current-root candidate execution, snapshots/restore,
-> inherited Ready rules and explicit low-level paged source policy are accepted.
-> High-level paged serving is not selected.
+> Current signed local HEAD at handoff creation is
+> `6c68a361e843c73107a86aaedea5ca697a30258c`
+> — `refactor(cuda): use ledger identity for prepared leases`.
+> Pushed/tracked `origin/main` is
+> `f86538345fe4ce412df81864542c5ec183446460`
+> — `docs: record 32k trace pass and external kill`.
+> Local `main` is 12 commits ahead. Do not push unless explicitly requested.
 >
-> The native GPU harness is accepted at 6b920a0. It reuses an existing Bubblewrap
-> PID/user sandbox; uses Bubblewrap private netns when present; otherwise applies
-> fail-closed socket/io_uring seccomp; outside Bubblewrap it retains user+net
-> unshare. Do not reintroduce nested user namespace assumptions. Commands that
-> require TCP/UDP loopback must use --require-private-network and fail closed on
-> the current shared-net profile. Heartbeat output is optional harness plumbing,
-> not a correctness requirement.
+> For every Cargo invocation use `CARGO_BUILD_JOBS=8` and
+> `RUSTC_WRAPPER=/run/current-system/sw/bin/kache`. Run physical GPU work only
+> through `python3 -B scripts/native-gpu.py -- ...`. Commands genuinely requiring
+> TCP/UDP loopback must use the accepted private-network envelope and
+> `--require-private-network`; never weaken harness isolation.
 >
-> Use CARGO_BUILD_JOBS=8 and
-> RUSTC_WRAPPER=/run/current-system/sw/bin/kache for every Cargo invocation.
-> Run physical GPU work only through python3 -B scripts/native-gpu.py -- ...
-> Remove all _tmp artifacts.
+> Preserve the current production decisions:
+> - ordinary public CUDA graph serving remains Native; graph serving is disabled;
+> - exact StateRoot publication, cancellation/unknown-completion authority,
+>   ResourceArbiter ownership and physical lifetime semantics are non-negotiable;
+> - canonical `QwenCuda` now uses the generic smart startup layer in Enabled mode;
+>   user values override Auto per knob, Exclusive ignores supported user knob
+>   values, Disabled uses user/static defaults only;
+> - current Qwen smart knobs are `state_policy` and `native_rows`; exact startup
+>   candidate scoring is resident weights first, then wider qualified native
+>   cohort, then Contiguous as the lower-overhead tie;
+> - smart config is advisory and load-time only; authoritative CUDA admission
+>   re-observes live free VRAM from the original actor, preserves configured
+>   device headroom and reruns exact admission under any lower live cap;
+> - explicit paged 2B/32K with page64/append64 passes the full 32766-token public
+>   SDK cell in 224.80s execution / 260.34s wall; same-capacity 1024-token A/B is
+>   283.22s contiguous-streamed vs 28.56s paged-resident (~9.9x);
+> - canonical default 2B/32K/1024 Auto-selects paged and passes in ~26–28s;
+> - active8 SDK with native width unspecified Auto-selects B8 and physically
+>   publishes `{8}`; matched opt1 is 135.979 tok/s Contiguous and 133.004 tok/s
+>   user-Paged with exact tokens/clean shutdown;
+> - 0.8B/32K has a complete retained current-path pass; independent populated
+>   all42 numerical closure at larger contexts remains open because the approved
+>   reference archive is absent;
+> - exact partial-tail paged COW ownership is already closed; do not build another
+>   COW abstraction;
+> - canonical `DeviceBufferIdentity` is the physical allocation/range authority;
+>   ordinary CUDA prepared resident sets and source-page/native-embedding alias
+>   safety already use ledger identity. Handle ranges remain execution binding
+>   geometry, not ownership truth.
 >
-> True in-flight CUDA cancellation on original0.8B paged B1 is accepted: real
-> post-enqueue/pre-Ready launch witness, no Ready/publication on cancellation,
-> exact root/all42 rollback, submitted Vector/staging/page ownership through known
-> completion, exact retirement + replay + shutdown, and deliberate-drop
-> unknown-completion fencing/quarantine with no reuse. Two external-SIGKILL attempts
-> remain incomplete; the terminal known/unknown physical cells pass. Explicit
-> high-level paged selection is now accepted through public
-> `QwenCudaStatePolicy` + `QwenCudaWithStatePolicy`, while legacy `QwenCuda`
-> remains exactly Contiguous. Native paged B2/B4/B8 transport is implemented by
-> reusing the shared Hybrid candidate gather/body/scatter path; Contiguous B8 keeps
-> its private-KV fast path and paged uses the simpler existing per-lane append.
-> Focused checks are green. The compact original0.8B Contiguous-vs-Paged native
-> transport cell is terminal-green for B2/B4/B8 prefill+decode/all42, and the public
-> SDK cell is terminal-green with actual native B8 publication for both Contiguous
-> and Paged plus exact token IDs/clean shutdown. The two earlier external-SIGKILL
-> attempts remain incomplete only. Paged HTTP is also terminal-green under the
-> explicit child-Bubblewrap private-net envelope accepted by `4688cba`:8 concurrent
-> page-boundary requests, actual native B8 for Contiguous/Paged, exact token IDs and
-> clean shutdown. Direct shared-net L5 still fails closed; never bypass the harness.
-> The pinned vLLM layer bytes still exist but the exact image is no longer registered
-> as runnable in this connector's Podman storage; the exact HF source is intact. Do
-> not rebuild/re-register container layers merely for feedback. Complete-domain
-> prefix fork/COW is terminal-green on original0.8B page4, and the bounded semantic
-> cache is integrated into the generic worker through an explicit nonzero
-> `PrefixSharingScope`. Existing requests remain unscoped by default; the public SDK
-> must opt in via `request_text_scoped`. Qwen enables retention only for paged state.
-> Physical 0.8B page4/max_append64 worker proof on a65-token prompt records model
-> token deltas65 warm /1 same-scope hit /65 different-scope miss with identical
-> generated ID and clean shutdown. Cache snapshots are explicitly cleared before
-> resident retirement. HTTP trusted scope injection is now terminal-green:
-> `ServerBuilder::prefix_sharing_scope` fixes the authorization scope server-side,
-> the wire format has no scope control, and unaware `TextService` adapters fail
-> closed. Physical original0.8B HTTP prompt65 records65 warm /1 same-server-scope hit
-> /65 different-server-scope miss with exact output ID and clean shutdown in171.97s.
-> Bounded live-snapshot eviction/cache invalidation is also terminal-green: Qwen uses
-> `2*active` entry / `active*context` semantic-weight bounds; real active1/page4 work
-> proves FIFO oldest miss/newer hit, explicit scope purge2 entries/128 weight,
-> invalidated-scope miss, and independent512-weight pressure that evicts prefix256 while
-> retaining prefix320; final purge2/448, repeated purge0, clean shutdown in179.12s.
-> Server stop/scope change is not a cache purge. Trusted owners must stop/drain the
-> stale scope, then call `invalidate_prefix_scope`; already-admitted work is not
-> retroactively cancelled.
-> Externally imposed resident page-pool pressure is now terminal-green on original
-> 0.8B page4/max_append64: cached prefix64,5952 external pages held,6144/6144 pool full,
-> prelaunch Capacity with unchanged root and exact vector/staging unwind, then exact
-> full-logit recovery after release and all pages idle at shutdown in168.51s. Qwen
-> diagnostics expose only current cache/paged-pool occupancy and maxima, not cumulative
-> pressure counters. One earlier external SIGTERM attempt is incomplete only.
-> A fresh review found no regression in the accepted prefix/paging/scoped-serving
-> lineage, but confirmed that `PhysicalQueue` is still single-active and
-> `ResidentSubmission` completion is readback-coupled, so scheduler-level overlap
-> would currently be fake/unsafe. The first prerequisite is now physically green:
-> same-service primary+secondary CUDA logical streams with two one-shot actor-owned
-> events recorded before either wait, disjoint8MiB buffers exact, and the secondary
-> event observed still pending at first query (`P12_CUDA_SECONDARY_STREAM_EVENT_PASS`).
-> This is not yet a prefill/decode overlap claim. The resident event/lease in-flight
-> owner is now terminal-green: event completion still requires the original readback/
-> validator before Ready, cancellation retires after the CUDA event without initializing
-> writes, and unresolved drop fences/quarantines while retaining the completion owner
-> (`P12_CUDA_RESIDENT_INFLIGHT_EVENT_PASS`). The reusable multi-flight substrate is
-> now green too: `PhysicalQueue` supports bounded-N active slots, production registry
-> stays width1 until adoption, and one prepaid envelope supports overlapping known
-> flights without double charging. Real CUDA bounded2 dual resident flights on distinct
-> streams retire in reverse order with exact8MiB readbacks and reusable service
-> (`P12_CUDA_RESIDENT_DUAL_FLIGHT_PASS`). Existing device-event admission remains the
-> sole buffer-conflict authority.
+> Current reusable performance work must not be lost: dormant lane-regroup,
+> copy+tail-zero, 13 BF16 GEMM strategies, recurrent transpose and GDN occupancy
+> variants are retained without production consumers. Do not delete a clean
+> reusable primitive merely because its first consumer lost an A/B.
 >
-> The generic Qwen/source B8 prefill path now retains shared stateless lowering,
-> multi-token B4-group attention and multi-token B4/B8 GDN prefill. GDN cohorting
-> removed the dominant generic-source prefill serialization. Performance decisions
-> must use a matched optimized host profile, not default Cargo test timing. On the
-> existing warm original0.8B 8x48+3 SDK cell, non-LTO/opt1/codegen64 gives
-> contiguous183.932ms /130.483 output tok/s and paged242.488ms /98.974 tok/s with
-> exact native-B8 tokens. The retained eager-vLLM72.20 tok/s number is historical,
-> not a fresh matched current run.
+> Fresh matched vLLM is still deferred by environment, not policy: the pinned
+> `vllm-0.31.0-cu129` store exists, but this connector cannot enter the rootless
+> Podman user namespace because `/etc/subuid`/`subgid` are unavailable. Do not
+> rebuild/re-register/mutate the baseline merely for feedback. The retained
+> eager-vLLM 72.20 tok/s figure is historical only.
 >
-> Continuous refill/regroup is physically accepted. The worker already refills free
-> active slots and recomputes compatible native bands between waves. `3afb990` fixes
-> the real reduced-band defect by retaining exact B4+B8 GDN runtime layouts inside a
-> width8 arena while allocating physical scratch once at max width. A temporary public
-> SDK probe proved B8->B4->queued refill/prefill->B8 with survivor/queued width sets
-> `{4,8}` and was removed after use. Matched opt1 goodput over68 generated tokens was
-> 178.769 output tok/s contiguous and136.488 paged.
+> X2 ROCm physical work remains environment-gated; preserve other GPU owners and
+> never reset/reclaim/restart/kill their workloads. L5 owns source changes.
 >
-> Do not add another refill/evidence fixture by default. The highest-value next serving
-> work is a fresh matched vLLM run if a runnable current environment exists, otherwise
-> optimized-profile paged-vs-contiguous profiling/goodput. Preserve exact StateRoot,
-> cancellation, event/lease and physical resource authority; keep shared primitives
-> model-neutral. Avoid debug-profile decode micro-tuning.
+> Highest-value next work should come from the live TODOs, not stale prose.
+> Current likely lanes are: graph/transfer physical-identity adoption only where
+> a real consumer exists, authenticated transfer rings/broader streaming tiers,
+> independent larger-context numerical references when approved inputs become
+> available, and measured smart-config knobs only when existing evidence supports
+> a clean startup rule. Avoid speculative fixture matrices, debug-profile
+> micro-tuning and duplicate paging/COW mechanisms.
 >
-> Keep the implementation turn to roughly 30 minutes. Aim for the next coherent
-> checkpoint, update owning TODO/handoff state, sign the commit, sync X2 only if
-> needed for AMD physical work, then pause. Do not push unless explicitly asked.
-
+> Preserve the project working style: implementation and quick real-model
+> feedback first; reuse accepted evidence for unchanged primitives; keep
+> model-neutral primitives clean/composable; favor zero-cost Rust abstractions
+> where natural; optimize measured hot paths aggressively when the fast design
+> stays simple; otherwise prefer the simpler maintainable design.
 ---
 
 ## Historical design foundation — retained context, not current execution instructions
