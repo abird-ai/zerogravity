@@ -9,7 +9,7 @@ const MIB: usize = 1024 * 1024;
 fn add(sum: &mut usize, n: usize) -> Result<()> {
     *sum = sum
         .checked_add(n)
-        .ok_or_else(|| Error::Limit("full24 logical capacity overflow".into()))?;
+        .ok_or_else(|| Error::Limit("full model logical capacity overflow".into()))?;
     Ok(())
 }
 pub(crate) fn provider_bound(
@@ -18,12 +18,12 @@ pub(crate) fn provider_bound(
 ) -> Result<usize> {
     if source.staging_chunk_bytes() != MIB {
         return Err(Error::Unsupported(
-            "full24 requires the original closed1MiB authenticated source scan geometry".into(),
+            "full model requires the original closed1MiB authenticated source scan geometry".into(),
         ));
     }
     if records.len() != 5 {
         return Err(Error::Unsupported(
-            "closed five full24 text invocations".into(),
+            "closed five full model text invocations".into(),
         ));
     }
     let expected = [
@@ -42,7 +42,7 @@ pub(crate) fn provider_bound(
             || call.tokens().len() != rows
         {
             return Err(Error::State(
-                "full24 exact original five-phase request order".into(),
+                "full model exact original five-phase request order".into(),
             ));
         }
     }
@@ -64,14 +64,14 @@ pub(crate) fn provider_bound(
                         .rows
                         .checked_mul(matrix.columns)
                         .and_then(|n| n.checked_mul(2))
-                        .ok_or_else(|| Error::Limit("full24 checked source W bytes".into()))?,
+                        .ok_or_else(|| Error::Limit("full model checked source W bytes".into()))?,
                 )?;
             }
         }
     }
     if groups != 114 || weights != 1_503_789_056 {
         return Err(Error::State(
-            "full24 exact original finite W geometry".into(),
+            "full model exact original finite W geometry".into(),
         ));
     }
     let mut bound = weights;
@@ -87,7 +87,7 @@ pub(crate) fn provider_bound(
                 value
                     .capacity_elements()?
                     .checked_mul(2)
-                    .ok_or_else(|| Error::Limit("full24 public BF16 bytes".into()))?,
+                    .ok_or_else(|| Error::Limit("full model public BF16 bytes".into()))?,
             )?;
         }
         add(&mut bound, 49 * (10_240 + 16_396 * rows))?;
@@ -102,7 +102,7 @@ pub(crate) fn provider_bound(
             (InvocationPhase::Decode, 1 | 66, 1) => GdnPhase::CachedDecode,
             _ => {
                 return Err(Error::State(
-                    "full24 exact reference physical phase differs".into(),
+                    "full model exact reference physical phase differs".into(),
                 ));
             }
         };
@@ -153,16 +153,17 @@ pub(crate) fn provider_bound(
     let bound = bound
         .checked_add(64 * MIB - 1)
         .map(|n| n / (64 * MIB) * (64 * MIB))
-        .ok_or_else(|| Error::Limit("full24 rounded logical capacity".into()))?;
+        .ok_or_else(|| Error::Limit("full model rounded logical capacity".into()))?;
     if bound > 5 * 1024 * MIB {
         return Err(Error::Limit(
-            "full24 source-derived managed envelope exceeds unchanged5GiB outer device cap".into(),
+            "full model source-derived managed envelope exceeds unchanged5GiB outer device cap"
+                .into(),
         ));
     }
     Ok(bound)
 }
 
-/// Only the new complete forced-full24 qualifier scope. Host tickets bound
+/// Only the new complete forced-all-layers qualifier scope. Host tickets bound
 /// owned source/metadata/readback allocations; this is not host RSS capacity.
 pub fn qwen800m_model_host_bound() -> Result<usize> {
     let mut retained = 0usize;
@@ -205,7 +206,7 @@ pub fn qwen800m_model_host_bound() -> Result<usize> {
     let initial = crate::cuda::gdn::model_metadata_bound(GdnPhase::InitialOne)?;
     retained = retained
         .checked_sub(18 * cached)
-        .ok_or_else(|| Error::Limit("full24 initial source metadata replacement".into()))?;
+        .ok_or_else(|| Error::Limit("full model initial source metadata replacement".into()))?;
     add(&mut retained, 18 * initial)?;
     // Upload coverage metadata, shared raw/converted parameters and actual
     // per-phase transport/control/greedy owners. No fullhost learned W pack.
@@ -222,7 +223,7 @@ pub fn qwen800m_model_host_bound() -> Result<usize> {
     // Two chunks per arbitrary alignment; no repeated-read sharing assumed.
     let per_chunk = MIB
         .checked_add(std::mem::size_of::<(usize, std::ops::Range<usize>)>())
-        .ok_or_else(|| Error::Limit("full24 source staging offset accounting".into()))?;
+        .ok_or_else(|| Error::Limit("full model source staging offset accounting".into()))?;
     add(&mut retained, (245 + 69 + 72 + 12) * 2 * per_chunk)?;
     add(&mut retained, MIB + 64 * 1024 + 3 * 8576)?; // genuine computed rotary result
     // Sequential bounds: ONE zero-cache ticket (released after real H2D),
@@ -232,7 +233,7 @@ pub fn qwen800m_model_host_bound() -> Result<usize> {
         .checked_add(sequential)
         .and_then(|n| n.checked_add(64 * MIB - 1))
         .map(|n| n / (64 * MIB) * (64 * MIB))
-        .ok_or_else(|| Error::Limit("full24 checked host ticket envelope".into()))?;
+        .ok_or_else(|| Error::Limit("full model checked host ticket envelope".into()))?;
     Ok(full)
 }
 

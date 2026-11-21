@@ -25,7 +25,7 @@ impl AutoregressiveStatePool {
             || model.states.len() != 42
         {
             return Err(Error::Unsupported(
-                "autoregressive original full24 canonical state pool".into(),
+                "autoregressive original full model canonical state pool".into(),
             ));
         }
         let metadata = source.reserve_workspace(256 * 1024)?;

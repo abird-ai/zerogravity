@@ -184,7 +184,7 @@ impl ModelWeights {
         let weight = self
             .weights
             .get(key)
-            .ok_or_else(|| Error::State("full24 actual learned W group absent".into()))?;
+            .ok_or_else(|| Error::State("full model actual learned W group absent".into()))?;
         weight.require_source_operator(&self.source, operator)?;
         Ok(weight)
     }
@@ -217,7 +217,8 @@ impl ModelWeights {
         if copies != self.expected_source_windows()? || checkpoints != copies || verified != copies
         {
             return Err(Error::State(
-                "full24 complete114 learned groups/window H2D/checkpoint/readback coverage".into(),
+                "full model complete114 learned groups/window H2D/checkpoint/readback coverage"
+                    .into(),
             ));
         }
         Ok((verified, copies, checkpoints))

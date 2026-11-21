@@ -961,7 +961,7 @@ impl QwenPlanBuilder {
             || boundaries.capacity() > 24
         {
             return Err(Error::State(
-                "full24 record requires all state domains/24 boundaries/no frontier".into(),
+                "full model record requires all state domains/24 boundaries/no frontier".into(),
             ));
         }
         for slot in self.core.required_domains() {
@@ -1082,7 +1082,7 @@ fn verify_recipe(
             .core
             .nodes()
             .get(cursor)
-            .ok_or_else(|| Error::State("full24 recipe node absent".into()))?;
+            .ok_or_else(|| Error::State("full model recipe node absent".into()))?;
         let PlanOperation::SourceOperator { descriptor, state } = &node.operation else {
             return Err(Error::State("Qwen exact typed source recipe".into()));
         };
@@ -1118,7 +1118,7 @@ fn verify_recipe(
             (None, None) => {}
             _ => {
                 return Err(Error::State(
-                    "full24 one real effect at actual source layer".into(),
+                    "full model one real effect at actual source layer".into(),
                 ));
             }
         }
@@ -1151,8 +1151,8 @@ fn verify_recipe(
                 branch,
             )
         } else {
-            let previous =
-                residual.ok_or_else(|| Error::State("full24 pending carried residual".into()))?;
+            let previous = residual
+                .ok_or_else(|| Error::State("full model pending carried residual".into()))?;
             let dual = take(
                 Some(layer),
                 QwenOperation::ResidualRms(QwenRmsSite::Input),
@@ -1218,7 +1218,7 @@ fn verify_recipe(
         residual = Some(post[1]);
         if [branch, post[1]] != [boundary[0].id, boundary[1].id] {
             return Err(Error::State(
-                "all24 expected boundary must be actual branch/carried producer".into(),
+                "all-layer expected boundary must be actual branch/carried producer".into(),
             ));
         }
     }
@@ -1234,7 +1234,7 @@ fn verify_recipe(
     )?;
     if final_norm[0] != normalized || head[0] != logits || cursor != builder.core.nodes().len() {
         return Err(Error::State(
-            "full24 finalnorm/fullV and exact no-extra recipe".into(),
+            "full model finalnorm/full vocabulary and exact no-extra recipe".into(),
         ));
     }
     Ok(())

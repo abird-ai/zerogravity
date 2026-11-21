@@ -38,7 +38,7 @@ pub(crate) struct ModelCache {
 fn not_cancelled(cancelled: Option<&AtomicBool>) -> Result<()> {
     if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
         return Err(Error::State(
-            "full24 defined native cache initialization cancelled".into(),
+            "full model defined native cache initialization cancelled".into(),
         ));
     }
     Ok(())
@@ -146,7 +146,7 @@ impl ModelCache {
             || layer >= 24
         {
             return Err(Error::State(
-                "full24 native cache same source/attempt/layer".into(),
+                "full model native cache same source/attempt/layer".into(),
             ));
         }
         let host = source.reserve_workspace(BYTES * 3 + 64 * 1024)?;
@@ -165,7 +165,7 @@ impl ModelCache {
             || !Arc::ptr_eq(lease.service(), &service)
         {
             return Err(Error::State(
-                "full24 original native cache physical initialization".into(),
+                "full model original native cache physical initialization".into(),
             ));
         }
         // Genuine H2D has completed before releasing its full host admission.
@@ -230,7 +230,7 @@ impl ModelCache {
             || self.lease.bytes() != BYTES
         {
             return Err(Error::State(
-                "full24 native cache cannot cross original layer/request/history".into(),
+                "full model native cache cannot cross original layer/request/history".into(),
             ));
         }
         Ok(())

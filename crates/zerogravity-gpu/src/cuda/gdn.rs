@@ -342,10 +342,12 @@ pub(crate) fn model_metadata_bound(phase: GdnPhase) -> Result<usize> {
                         .source
                         .len()
                         .checked_mul(4)
-                        .ok_or_else(|| Error::Limit("full24 GDN code extent".into()))?,
+                        .ok_or_else(|| Error::Limit("full model GDN code extent".into()))?,
                 )
                 .and_then(|n| n.checked_add(4096 + PinnedKernel::KEY_METADATA_BYTES))
-                .ok_or_else(|| Error::Limit("full24 GDN original code/metadata admission".into()))
+                .ok_or_else(|| {
+                    Error::Limit("full model GDN original code/metadata admission".into())
+                })
             },
         )
 }

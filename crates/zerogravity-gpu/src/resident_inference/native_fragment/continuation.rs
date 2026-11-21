@@ -55,7 +55,7 @@ impl GdnAttemptSchedule {
         }
         Self::new_inner(base, attempt, invocations, completed_layers)
     }
-    /// Distinct full24 source scope; the existing prefix constructor is unchanged.
+    /// Distinct full model source scope; the existing prefix constructor is unchanged.
     /// Original SessionAuthority/RootAttempt ownership and physical Ready protocol
     /// are reused. Neither this schedule nor its completed phases publish a root.
     pub(super) fn new_model(
@@ -66,13 +66,13 @@ impl GdnAttemptSchedule {
     ) -> Result<Arc<Self>> {
         if calls.capacity() > 3 || base.source() != source.source_identity() {
             return Err(Error::Unsupported(
-                "closed full24 original source/request scope".into(),
+                "closed full model original source/request scope".into(),
             ));
         }
         for call in &calls {
             if call.source() != source.source_identity() {
                 return Err(Error::State(
-                    "full24 original request issuer differs".into(),
+                    "full model original request issuer differs".into(),
                 ));
             }
         }
@@ -230,7 +230,8 @@ impl CompletedPrefixPhase {
             || body.record().invocation() != schedule.invocation(phase_index)?
         {
             return Err(Error::State(
-                "full24 actual prepared body differs from original completed request phase".into(),
+                "full model actual prepared body differs from original completed request phase"
+                    .into(),
             ));
         }
         Self::after_prepared_completion(
@@ -515,7 +516,7 @@ impl AttemptPhaseBinding {
     ) -> Result<()> {
         if self.schedule.completed_layers != 24 {
             return Err(Error::Unsupported(
-                "original prefix permit cannot bind full24 state".into(),
+                "original prefix permit cannot bind full model state".into(),
             ));
         }
         self.require_binding(session, attempt, call, 0)
@@ -528,7 +529,7 @@ impl AttemptPhaseBinding {
     ) -> Result<()> {
         if self.schedule.completed_layers != 24 {
             return Err(Error::Unsupported(
-                "original prefix permit cannot enqueue full24 state".into(),
+                "original prefix permit cannot enqueue full model state".into(),
             ));
         }
         self.require_permit(permit, service, call, 0)

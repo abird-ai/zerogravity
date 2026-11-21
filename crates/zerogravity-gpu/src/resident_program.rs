@@ -1629,7 +1629,7 @@ impl ResidentProgram {
                 return native.handles(&self.values, &self.status);
             }
             ResidentProgramBody::NativeFull(native) => {
-                return native.handles().expect("sealed full24 phase accesses");
+                return native.handles().expect("sealed full model phase accesses");
             }
             ResidentProgramBody::FusedCohort(body) => {
                 return body

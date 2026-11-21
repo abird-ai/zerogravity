@@ -36,7 +36,7 @@ impl FullModelLibrary {
             || !input.weights.source().same_issuer(input.tied.source())
         {
             return Err(Error::State(
-                "full24 one actual source/phase factory cohort".into(),
+                "full model one actual source/phase factory cohort".into(),
             ));
         }
         let source = input.weights.source().clone();
@@ -105,7 +105,7 @@ impl FullModelLibrary {
             || actual.native_charge_bytes != 64 * 1024 * 1024
         {
             return Err(Error::State(
-                "full24 original native image/set/admission retention differs".into(),
+                "full model original native image/set/admission retention differs".into(),
             ));
         }
         Ok(FullModelNativeRetention {

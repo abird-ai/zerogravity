@@ -159,7 +159,7 @@ impl ModelWeight {
             .checked_sub(rows.start)
             .and_then(|n| n.checked_mul(matrix.columns()))
             .and_then(|n| n.checked_mul(2))
-            .ok_or_else(|| Error::Limit("full24 independent W readback extent".into()))?;
+            .ok_or_else(|| Error::Limit("full model independent W readback extent".into()))?;
         if bytes == 0
             || bytes > 1024 * 1024
             || window.as_slice().len() != bytes
@@ -181,7 +181,7 @@ impl ModelWeight {
                 .is_none_or(|n| n > shape.bytes())
         {
             return Err(Error::State(
-                "full24 independent exact source member/rows/readback coverage".into(),
+                "full model independent exact source member/rows/readback coverage".into(),
             ));
         }
         let read = self.lease().readback(destination, bytes)?;
@@ -229,7 +229,7 @@ impl ModelWeight {
                 flight.retain_completion_owner(admission.clone())?;
                 let raw=flight.complete_read_only_readback(&[read],|raw| {
                     if raw.len()!=1 || &raw[0][..]!=window.as_slice() {
-                        return Err(Error::State("full24 actual immutable learned W differs from fresh original source".into()));
+                        return Err(Error::State("full model actual immutable learned W differs from fresh original source".into()));
                     }
                     Ok(())
                 }).await?;
@@ -241,7 +241,7 @@ impl ModelWeight {
         }
         if destination != shape.bytes() {
             return Err(Error::State(
-                "full24 complete source W readback required".into(),
+                "full model complete source W readback required".into(),
             ));
         }
         Ok(count)

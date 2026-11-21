@@ -38,7 +38,7 @@ pub(crate) struct ModelKvTransport {
 fn not_cancelled(cancelled: Option<&AtomicBool>) -> Result<()> {
     if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
         return Err(Error::State(
-            "full24 original KV transport cancelled".into(),
+            "full model original KV transport cancelled".into(),
         ));
     }
     Ok(())
@@ -127,7 +127,7 @@ impl ModelKvTransport {
             || cache.role() != BufferRole::RecurrentState
         {
             return Err(Error::State(
-                "full24 original initialized paired KV arena/source".into(),
+                "full model original initialized paired KV arena/source".into(),
             ));
         }
         native_index(block, end - 1, 511, true)?;
@@ -142,7 +142,7 @@ impl ModelKvTransport {
                 || lease.id() == cache.id()
         }) {
             return Err(Error::State(
-                "full24 KV original canonical input/output extents".into(),
+                "full model KV original canonical input/output extents".into(),
             ));
         }
         let make = |incoming: bool| -> Result<Copy> {
@@ -240,7 +240,7 @@ impl ModelKvTransport {
     pub(crate) fn validate_status(bytes: &[u8]) -> Result<()> {
         if bytes != [0; 4] {
             return Err(Error::State(
-                "full24 exact finite BF16 canonical KV transport".into(),
+                "full model exact finite BF16 canonical KV transport".into(),
             ));
         }
         Ok(())

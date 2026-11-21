@@ -311,7 +311,7 @@ pub fn fragment_scope(
 fn not_cancelled(cancelled: Option<&AtomicBool>) -> Result<()> {
     if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
         return Err(Error::State(
-            "autoregressive full24 cancelled before publication".into(),
+            "autoregressive full model cancelled before publication".into(),
         ));
     }
     Ok(())

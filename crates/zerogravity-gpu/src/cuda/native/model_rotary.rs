@@ -30,7 +30,7 @@ impl ModelRotary {
         init.require_service(&service)?;
         if source.source_identity() != service.source_identity() || prefix.bytes().len() != 8576 {
             return Err(Error::State(
-                "full24 original computed rotary source/service/defined extent".into(),
+                "full model original computed rotary source/service/defined extent".into(),
             ));
         }
         // Retain genuine producer/admission BEFORE the original H2D copy.
@@ -125,7 +125,7 @@ impl ModelRotary {
             || end > self.lease.bytes()
         {
             return Err(Error::State(
-                "full24 computed rotary original source/service/generation differs".into(),
+                "full model computed rotary original source/service/generation differs".into(),
             ));
         }
         service.ensure_usable()

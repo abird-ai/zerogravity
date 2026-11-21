@@ -590,7 +590,7 @@ pub(super) enum Outcome {
 fn intended_error(error: &Error, fault: FixedPromptModelPrefixFault) -> bool {
     matches!((error, fault),
         (Error::State(message), FixedPromptModelPrefixFault::UnknownAfterConvolution)
-            if message == "deliberate full24 unknown after actual source Conv and canonical copy")
+            if message == "deliberate full model unknown after actual source Conv and canonical copy")
         || matches!((error, fault),
         (Error::State(message), FixedPromptModelPrefixFault::CancelBeforeRecurrent)
             if message == "closed original cubin qualification cancelled")
@@ -605,7 +605,7 @@ fn intended_error(error: &Error, fault: FixedPromptModelPrefixFault) -> bool {
         || matches!((error,fault),(Error::State(message),FixedPromptModelPrefixFault::UnknownAfterKvAppend)
             if message=="deliberate canonical47 unknown after actual KV append")
         || matches!((error,fault),(Error::State(message),FixedPromptModelPrefixFault::CancelBeforeKvAppend|FixedPromptModelPrefixFault::CancelBeforeKvTransport)
-            if message=="full24 original KV transport cancelled")
+            if message=="full model original KV transport cancelled")
         || matches!((error,fault),(Error::State(message),FixedPromptModelPrefixFault::UnknownAfterFa)
             if message=="deliberate canonical47 unknown after actual FA")
         || matches!((error,fault),(Error::State(message),FixedPromptModelPrefixFault::CancelBeforeFa)

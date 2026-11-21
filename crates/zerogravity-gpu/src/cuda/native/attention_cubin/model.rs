@@ -1,4 +1,4 @@
-//! Full-source attention operands sealed from the actual SAME full24 value map.
+//! Full-source attention operands sealed from the actual SAME full model value map.
 use super::super::{
     model_cache::ModelCache, model_kv_transport::ModelKvTransport, model_rotary::ModelRotary,
     model_values::ModelValues, model_weights::ModelWeights,
@@ -75,13 +75,13 @@ impl ModelAttentionParameters {
             };
             if !window.is_complete() || !super::super::finite_bf16(window.as_slice()) {
                 return Err(Error::Malformed(
-                    "full24 finite raw BF16 attention gamma".into(),
+                    "full model finite raw BF16 attention gamma".into(),
                 ));
             }
             windows.push(window);
         }
         let windows = windows.try_into().map_err(|_| {
-            Error::State("full24 fixed two original attention gamma windows".into())
+            Error::State("full model fixed two original attention gamma windows".into())
         })?;
         let payload = Arc::new(ParameterPayload {
             _source: source.clone(),
@@ -95,7 +95,7 @@ impl ModelAttentionParameters {
             .map(|window| init.upload_bytes(window.as_slice(), BufferRole::ImmutableWeights))
             .collect::<Result<Vec<_>>>()?
             .try_into()
-            .map_err(|_| Error::State("full24 two original attention gamma leases".into()))?;
+            .map_err(|_| Error::State("full model two original attention gamma leases".into()))?;
         let prepared = Arc::new(Self {
             source,
             operator: operator.clone(),
@@ -280,7 +280,9 @@ impl ModelAttentionBinding {
                 stages
                     .get(&stage)
                     .map(|index| &record.plan().nodes()[*index])
-                    .ok_or_else(|| Error::State("full24 original attention stage absent".into()))
+                    .ok_or_else(|| {
+                        Error::State("full model original attention stage absent".into())
+                    })
             };
         let qkv = get(AttentionStage::Qkv)?;
         let qk = get(AttentionStage::Qk)?;
@@ -355,7 +357,7 @@ impl ModelAttentionBinding {
                 .is_some()
             {
                 return Err(Error::State(
-                    "full24 derived attention control role duplicates producer".into(),
+                    "full model derived attention control role duplicates producer".into(),
                 ));
             }
         }
@@ -370,7 +372,7 @@ impl ModelAttentionBinding {
         }
         if leases.keys().any(|role| *role != AttentionRole::Workspace) {
             return Err(Error::State(
-                "full24 native attention silently unused producer role".into(),
+                "full model native attention silently unused producer role".into(),
             ));
         }
         // Original source provenance graph is retained by both native bindings
@@ -416,7 +418,7 @@ impl ModelAttentionBinding {
     ) -> Result<()> {
         if !Arc::ptr_eq(values, &self.values) || !Arc::ptr_eq(domains, &self.domains) {
             return Err(Error::State(
-                "full24 attention body differs from original sealed value/state map".into(),
+                "full model attention body differs from original sealed value/state map".into(),
             ));
         }
         Ok(())
@@ -445,7 +447,7 @@ impl ModelAttentionBinding {
         self.nodes
             .get(&node)
             .copied()
-            .ok_or_else(|| Error::State("full24 unbound attention node".into()))
+            .ok_or_else(|| Error::State("full model unbound attention node".into()))
     }
     pub(crate) fn require_enqueue(
         &self,
@@ -516,12 +518,11 @@ pub(crate) fn full_model_private_bound(
             ) {
                 continue;
             }
-            bound =
-                bound
-                    .checked_add(bytes.checked_mul(6).ok_or_else(|| {
-                        Error::Limit("full24 attention private role bytes".into())
-                    })?)
-                    .ok_or_else(|| Error::Limit("full24 attention private union".into()))?;
+            bound = bound
+                .checked_add(bytes.checked_mul(6).ok_or_else(|| {
+                    Error::Limit("full model attention private role bytes".into())
+                })?)
+                .ok_or_else(|| Error::Limit("full model attention private union".into()))?;
         }
     }
     Ok(bound)

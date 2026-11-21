@@ -114,7 +114,7 @@ pub fn run(
     let call = expected.call(0, 0)?;
     need(
         selected == (call.selected, call.max_bits),
-        "lifetime seed actual original fullV selection",
+        "lifetime seed actual original full vocabulary selection",
     )?;
     loaded.verify_after()?;
     // Consume the caller's real owner; no extra clone fabricates close refusal.

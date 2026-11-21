@@ -165,7 +165,7 @@ impl ResidentSession {
         let mut reads = body.readbacks()?;
         if reads.len() != MAIN_READS {
             return Err(Error::State(
-                "autoregressive original full24 numerical readback coverage".into(),
+                "autoregressive original full model numerical readback coverage".into(),
             ));
         }
         let extra_start = reads.len();
@@ -227,7 +227,7 @@ impl ResidentSession {
         )?;
         if submitted.logits.is_some() || submitted.proposals.len() != 42 {
             return Err(Error::State(
-                "autoregressive full24 must propose exactly all original state domains".into(),
+                "autoregressive full model must propose exactly all original state domains".into(),
             ));
         }
         // launch_attempt_fragment already enqueues/counts the exact same-map

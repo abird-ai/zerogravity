@@ -96,7 +96,7 @@ fn retained_native_and_source_accounting_cannot_shrink_or_change() {
 fn only_exact_original_cut_errors_are_diagnostic_successes() {
     use FixedPromptModelPrefixFault as F;
     let unknown = Error::State(
-        "deliberate full24 unknown after actual source Conv and canonical copy".into(),
+        "deliberate full model unknown after actual source Conv and canonical copy".into(),
     );
     let cancelled = Error::State("closed original cubin qualification cancelled".into());
     assert!(intended_error(&unknown, F::UnknownAfterConvolution));
@@ -197,7 +197,7 @@ fn qk_kv_partial_faults_refuse_both_old_cuts_and_keep_exact_errors() {
         (
             F::CancelBeforeKvAppend,
             6,
-            "full24 original KV transport cancelled",
+            "full model original KV transport cancelled",
         ),
         (
             F::UnknownAfterKvAppend,
@@ -207,7 +207,7 @@ fn qk_kv_partial_faults_refuse_both_old_cuts_and_keep_exact_errors() {
         (
             F::CancelBeforeKvTransport,
             8,
-            "full24 original KV transport cancelled",
+            "full model original KV transport cancelled",
         ),
     ] {
         for cut in cuts {

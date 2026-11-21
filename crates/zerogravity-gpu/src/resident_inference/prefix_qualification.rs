@@ -329,7 +329,7 @@ async fn pressure_advance(
         exact(
             &reference.forward(id)?,
             &b1.forward(&[id], false).await?.logits,
-            "prefix pressure CPU/B1 fullV",
+            "prefix pressure CPU/B1 full vocabulary",
         )?;
     }
     let before = bindings(sessions);

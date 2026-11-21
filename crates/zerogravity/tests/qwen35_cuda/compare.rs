@@ -250,7 +250,7 @@ fn completed_fixed(
         }
     }
     println!(
-        "QWEN35_CUDA_NUMERIC_CALL_PASS rows={prompt_rows} call={call} all24_boundaries=exact all_state_domains_post=exact consumed_priors=exact independent_dual_f32=24 fullV=exact autoregressive_id={selected} all327_independent=false"
+        "QWEN35_CUDA_NUMERIC_CALL_PASS rows={prompt_rows} call={call} all_layers_boundaries=exact all_state_domains_post=exact consumed_priors=exact independent_dual_f32=24 full_vocabulary=exact autoregressive_id={selected} all327_independent=false"
     );
     Ok(())
 }
@@ -265,7 +265,7 @@ fn greedy(logits: &[u8]) -> Result<(u32, u32)> {
     for (id, word) in logits.chunks_exact(2).enumerate() {
         let bits = (u16::from_le_bytes([word[0], word[1]]) as u32) << 16;
         let value = f32::from_bits(bits);
-        ensure(value.is_finite(), "original fullV finite logits")?;
+        ensure(value.is_finite(), "original full vocabulary finite logits")?;
         if best.is_none_or(|(_, old)| value > f32::from_bits(old)) {
             best = Some((id as u32, bits));
         }

@@ -193,7 +193,7 @@ pub(super) async fn qualify(
     }
     .await;
     let intended = matches!((&result,fault),(Err(Error::State(message)),AutoregressiveFault::UnknownAfterConvolution)
-        if message=="deliberate full24 unknown after actual source Conv and canonical copy")
+        if message=="deliberate full model unknown after actual source Conv and canonical copy")
         || matches!((&result,fault),(Err(Error::State(message)),AutoregressiveFault::CancelBeforeRecurrent)
         if message=="closed original cubin qualification cancelled");
     if !intended {

@@ -694,7 +694,7 @@ fn require_reference_record(source: &OriginalWindowModelSource, record: &QwenPla
     record.model_invocation().validate()?;
     if record.model_invocation().model_profile() != QwenModelVariant::Qwen800M {
         return Err(Error::Unsupported(
-            "native full24 source geometry remains .8B only".into(),
+            "native full model source geometry remains .8B only".into(),
         ));
     }
     // Private recorded type is minted only by the checked family recipe.
@@ -709,7 +709,7 @@ fn require_reference_record(source: &OriginalWindowModelSource, record: &QwenPla
         || record.boundaries().len() != 24
     {
         return Err(Error::Unsupported(
-            "closed actual original full24 unpublished source recipe".into(),
+            "closed actual original full model unpublished source recipe".into(),
         ));
     }
     for (index, node) in plan.nodes().iter().enumerate() {
@@ -718,7 +718,7 @@ fn require_reference_record(source: &OriginalWindowModelSource, record: &QwenPla
         for id in node.inputs.iter().chain(&node.outputs) {
             record
                 .value_provenance(*id)?
-                .ok_or_else(|| Error::State("full24 actual recipe provenance absent".into()))?
+                .ok_or_else(|| Error::State("full model actual recipe provenance absent".into()))?
                 .require_invocation(record.model_invocation().request())?;
         }
     }
@@ -1058,7 +1058,7 @@ fn require_fragment_config(source: &OriginalWindowModelSource) -> Result<()> {
 fn source_state_descriptor(node: &PlanNode) -> Result<&SourceOperator> {
     let PlanOperation::SourceOperator { descriptor, state } = &node.operation else {
         return Err(Error::State(
-            "full24 actual typed node descriptor absent".into(),
+            "full model actual typed node descriptor absent".into(),
         ));
     };
     let valid = match (descriptor.kind(), state) {
@@ -1071,7 +1071,7 @@ fn source_state_descriptor(node: &PlanNode) -> Result<&SourceOperator> {
     };
     if !valid {
         return Err(Error::State(
-            "full24 state read must be exact private appended FA KV; non-FA has no state read"
+            "full model state read must be exact private appended FA KV; non-FA has no state read"
                 .into(),
         ));
     }

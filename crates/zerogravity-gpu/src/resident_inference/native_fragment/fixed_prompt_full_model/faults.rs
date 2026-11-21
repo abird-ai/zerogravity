@@ -413,7 +413,7 @@ fn intended_error(error: &Error, fault: FixedPromptFullModelFault) -> bool {
     };
     match fault {
         FixedPromptFullModelFault::UnknownAfterFirstConvolution => {
-            message == "deliberate full24 unknown after actual source Conv and canonical copy"
+            message == "deliberate full model unknown after actual source Conv and canonical copy"
         }
         FixedPromptFullModelFault::CancelBeforeFirstRecurrent
         | FixedPromptFullModelFault::CancelBeforeHead => {

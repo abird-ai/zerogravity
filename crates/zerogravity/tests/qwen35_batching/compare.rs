@@ -215,7 +215,7 @@ pub(super) fn completed(
             "actual final unrounded F32 sum",
         )?;
         sums += 1;
-        ensure(sums == 24, "all24 independent unrounded sums")?;
+        ensure(sums == 24, "independent unrounded sums for all layers")?;
         let normalized = original.get(
             row,
             call,
@@ -287,7 +287,7 @@ pub(super) fn completed(
         )?;
     }
     println!(
-        "QWEN35_BATCHING_NUMERIC_PASS call={call} physical_rows={} actual_request_batch_size=4 all24=exact all_state_domain_priors=exact all_state_domain_candidates=exact dual_sums=24 fullV=exact all327_independent=false",
+        "QWEN35_BATCHING_NUMERIC_PASS call={call} physical_rows={} actual_request_batch_size=4 all_layers=exact all_state_domain_priors=exact all_state_domain_candidates=exact dual_sums=24 full_vocabulary=exact all327_independent=false",
         4 * rows
     );
     Ok(())

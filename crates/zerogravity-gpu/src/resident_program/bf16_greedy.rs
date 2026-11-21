@@ -54,7 +54,7 @@ fn require_head(record: &SourceBindings) -> Result<()> {
         || plan.precisions().get(id.0 as usize) != Some(&ActivationPrecision::Bf16WidenedF32)
     {
         return Err(Error::Unsupported(
-            "BF16 greedy requires unpublished full24 BF16 head".into(),
+            "BF16 greedy requires unpublished full model BF16 head".into(),
         ));
     }
     let origin = plan

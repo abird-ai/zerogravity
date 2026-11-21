@@ -1,4 +1,4 @@
-//! Five source-produced full24 phases, through the original session/workspace.
+//! Five source-produced full model phases, through the original session/workspace.
 //! Diagnostic completion only: no Ready publisher/frontier/serving capability.
 use super::continuation::{
     AttemptPhaseBinding, CompletedPrefixPhase, GdnAttemptSchedule, PlannedPrefixPrior,
@@ -117,13 +117,13 @@ fn node_pair(record: &SourceBindings, layer: usize) -> Result<[usize; 2]> {
         };
         if pair[slot].replace(index).is_some() {
             return Err(Error::State(
-                "full24 one indexed Conv/recurrent pair".into(),
+                "full model one indexed Conv/recurrent pair".into(),
             ));
         }
     }
     Ok([
-        pair[0].ok_or_else(|| Error::State("full24 indexed Conv absent".into()))?,
-        pair[1].ok_or_else(|| Error::State("full24 indexed recurrent absent".into()))?,
+        pair[0].ok_or_else(|| Error::State("full model indexed Conv absent".into()))?,
+        pair[1].ok_or_else(|| Error::State("full model indexed recurrent absent".into()))?,
     ])
 }
 
@@ -138,13 +138,13 @@ fn head_member(record: &SourceBindings) -> Result<&SourceTensor> {
     let at = record
         .plan()
         .source_value_provenance(record.selection().output())?
-        .ok_or_else(|| Error::State("full24 actual head producer absent".into()))?
+        .ok_or_else(|| Error::State("full model actual head producer absent".into()))?
         .node_index();
     let op = record
         .operator(at)?
-        .ok_or_else(|| Error::State("full24 actual head source absent".into()))?;
+        .ok_or_else(|| Error::State("full model actual head source absent".into()))?;
     let [matrix] = op.matrices() else {
-        return Err(Error::State("full24 exact head member arity".into()));
+        return Err(Error::State("full model exact head member arity".into()));
     };
     if !matches!(
         op.kind(),
@@ -153,7 +153,7 @@ fn head_member(record: &SourceBindings) -> Result<&SourceTensor> {
         }
     ) {
         return Err(Error::State(
-            "full24 selected head projection absent".into(),
+            "full model selected head projection absent".into(),
         ));
     }
     Ok(matrix)
@@ -170,22 +170,22 @@ fn qk_operator(
             let query = *node
                 .inputs
                 .first()
-                .ok_or_else(|| Error::State("full24 KV query SSA absent".into()))?;
+                .ok_or_else(|| Error::State("full model KV query SSA absent".into()))?;
             let producer = record
                 .plan()
                 .source_value_provenance(query)?
-                .ok_or_else(|| Error::State("full24 actual QK producer absent".into()))?
+                .ok_or_else(|| Error::State("full model actual QK producer absent".into()))?
                 .node_index();
             let op = record
                 .operator(producer)?
-                .ok_or_else(|| Error::State("full24 QK descriptor absent".into()))?;
+                .ok_or_else(|| Error::State("full model QK descriptor absent".into()))?;
             if !matches!(op.kind(), SourceOperatorKind::QkRmsRotaryGated(_)) {
-                return Err(Error::State("full24 exact QK producer".into()));
+                return Err(Error::State("full model exact QK producer".into()));
             }
             return Ok(op);
         }
     }
-    Err(Error::State("full24 attention domain absent".into()))
+    Err(Error::State("full model attention domain absent".into()))
 }
 
 /// Expected archives may be opened only by `validate`, invoked inside the
@@ -224,7 +224,7 @@ where
             "forced model qualifier returned autoregressive preparation".into(),
         )),
         Outcome::Fault(_) => Err(Error::State(
-            "full24 positive returned diagnostic fault".into(),
+            "full model positive returned diagnostic fault".into(),
         )),
     }
 }
@@ -272,7 +272,7 @@ where
         let prefix = rotary
             .ok_or_else(|| {
                 Error::Unsupported(
-                    "full24 requires genuinely completed original rotary producer".into(),
+                    "full model requires genuinely completed original rotary producer".into(),
                 )
             })?
             .into_fixed_prefix()?;
@@ -283,8 +283,8 @@ where
         device,
         source.source_identity(),
         ResourceOwner {
-            model: format!("original-hf-full24-{:?}", source.source_identity()),
-            session: "unpublished-forced-five-phase-full24".into(),
+            model: format!("original-hf-all-layers-{:?}", source.source_identity()),
+            session: "unpublished-forced-five-phase-all-layers".into(),
         },
         cap,
         inputs.projections.device_cap,
@@ -299,14 +299,14 @@ where
     let first_snapshot = arbiter.snapshot(&key)?;
     if first_snapshot.fenced || first_snapshot.reserved != cap as u64 {
         return Err(Error::State(
-            "full24 original solitary physical envelope".into(),
+            "full model original solitary physical envelope".into(),
         ));
     }
     if mode.is_pressure() {
         return faults::pressure(service).map(Outcome::Fault);
     }
     let prefix =
-        prefix.ok_or_else(|| Error::State("full24 positive rotary prefix absent".into()))?;
+        prefix.ok_or_else(|| Error::State("full model positive rotary prefix absent".into()))?;
     let ticket = service.queue().submit(
         service.budget(),
         service.owner().clone(),
@@ -322,18 +322,18 @@ where
     // Actual original cold cleanup after retired rotary, before learned/model
     // allocations. Logical producer0 never substitutes for allocator drainage.
     #[cfg(feature = "qualification")]
-    crate::gpu_telemetry::allocator_report(service.client(), "full24_before_cold_cleanup");
+    crate::gpu_telemetry::allocator_report(service.client(), "full_model_before_cold_cleanup");
     let cleanup_work = service.budget().begin(service.client())?;
     if let Err(error) = service.client().memory_cleanup() {
         drop(cleanup_work);
         service.fence_and_retain_owners(&[], Vec::new());
         return Err(Error::State(format!(
-            "full24 original cold allocator cleanup: {error}"
+            "full model original cold allocator cleanup: {error}"
         )));
     }
     cleanup_work.complete()?;
     #[cfg(feature = "qualification")]
-    crate::gpu_telemetry::allocator_report(service.client(), "full24_after_cold_cleanup");
+    crate::gpu_telemetry::allocator_report(service.client(), "full_model_after_cold_cleanup");
     let mut programs = Vec::with_capacity(5);
     for record in &records {
         programs.push(Some(
@@ -509,9 +509,9 @@ where
         } else {
             let pair = node_pair(&records[0], layer)?;
             let op = |index: usize| {
-                records[0]
-                    .operator(index)?
-                    .ok_or_else(|| Error::State("full24 original GDN parameter descriptor".into()))
+                records[0].operator(index)?.ok_or_else(|| {
+                    Error::State("full model original GDN parameter descriptor".into())
+                })
             };
             let parameter = ModelGdnParameters::prepare(
                 source.clone(),
@@ -690,7 +690,7 @@ where
     }
     if service.resident_bytes()? > cap {
         return Err(Error::Limit(
-            "full24 actual prepared graph exceeds closed source bound".into(),
+            "full model actual prepared graph exceeds closed source bound".into(),
         ));
     }
     // Aggregate ownership may retain future buffers, but NEVER use this Write
@@ -760,7 +760,9 @@ where
                 session,
                 previous[h]
                     .as_ref()
-                    .ok_or_else(|| Error::State("full24 previous actual completion absent".into()))?
+                    .ok_or_else(|| {
+                        Error::State("full model previous actual completion absent".into())
+                    })?
                     .clone(),
             )?;
         }
@@ -821,24 +823,24 @@ where
         )?;
         if submitted.logits.is_some() || submitted.proposals.len() != 42 {
             return Err(Error::State(
-                "full24 remains an unpublished complete private state transition".into(),
+                "full model remains an unpublished complete private state transition".into(),
             ));
         }
         let (ready,raw)=flight.complete_with_readback(&outputs,&frame.reads,|raw|{
             body.validate_readbacks(&raw[..1+18+6+3+327+48*4+2])?;
             owners._positions[index].validate_readback(&raw[raw.len()-1..])?;
             if local==0 && frame.prior.iter().any(|(_,range)|raw[range.clone()].iter().any(|b|b.iter().any(|v|*v!=0))){
-                return Err(Error::State("full24 original initial prior across all state domains differs from zero".into()));
+                return Err(Error::State("full model original initial prior across all state domains differs from zero".into()));
             }
             let prior_domains=frame.prior.iter().map(|(slot,range)|SourceDomainReadback{slot:*slot,buffers:&raw[range.clone()]}).collect::<Vec<_>>();
             let domains=frame.candidate.iter().map(|(slot,range)|SourceDomainReadback{slot:*slot,buffers:&raw[range.clone()]}).collect::<Vec<_>>();
             let end=call.tokens().base()+call.tokens().len();
             for (prior,candidate) in prior_domains.iter().zip(&domains){
-                if prior.slot!=candidate.slot{return Err(Error::State("full24 exact original domain order".into()));}
+                if prior.slot!=candidate.slot{return Err(Error::State("full model exact original domain order".into()));}
                 if matches!(prior.slot,StateSlot::Kv(_)) {
                     for (p,c) in prior.buffers.iter().zip(candidate.buffers){
                         if p.len()!=512*512*4 || c.len()!=p.len() || p[end*512*4..]!=c[end*512*4..] {
-                            return Err(Error::State("full24 canonical future KV padding not carried bitwise from actual prior".into()));
+                            return Err(Error::State("full model canonical future KV padding not carried bitwise from actual prior".into()));
                         }
                     }
                 }
@@ -865,7 +867,7 @@ where
         drop(submitted);
         if session.binding() != bases[h] {
             return Err(Error::State(
-                "full24 diagnostic completion published an original model root".into(),
+                "full model diagnostic completion published an original model root".into(),
             ));
         }
     }
@@ -896,14 +898,14 @@ where
     let final_resident_bytes = service.resident_bytes()?;
     if final_resident_bytes != 0 || service.pending_events()? != 0 {
         return Err(Error::State(
-            "full24 actual original owner/event ledger did not retire".into(),
+            "full model actual original owner/event ledger did not retire".into(),
         ));
     }
     drop(service);
     let physical = arbiter.snapshot(&key)?;
     if physical.fenced || physical.reserved != 0 {
         return Err(Error::State(
-            "full24 original physical envelope not retired".into(),
+            "full model original physical envelope not retired".into(),
         ));
     }
     Ok(Outcome::Compared(SourceModelReceipt {
@@ -934,20 +936,20 @@ async fn verify_tied_and_retire(
     let source = &owners._source;
     if !weight.source().same_issuer(source) {
         return Err(Error::State(
-            "full24 original tied owner differs before independent readback".into(),
+            "full model original tied owner differs before independent readback".into(),
         ));
     }
     let (copies, checkpoints) = weight.copy_counts()?;
     if copies != WINDOWS || checkpoints != WINDOWS {
         return Err(Error::State(
-            "full24 actual tied source H2D/checkpoint coverage".into(),
+            "full model actual tied source H2D/checkpoint coverage".into(),
         ));
     }
     let table = head_member(
         owners
             .bodies
             .first()
-            .ok_or_else(|| Error::State("full24 retained body absent".into()))?
+            .ok_or_else(|| Error::State("full model retained body absent".into()))?
             .record(),
     )?;
     let matrix = source.matrix(&table.name, table.axes)?;
@@ -956,7 +958,7 @@ async fn verify_tied_and_retire(
         || weight.lease().bytes() != WINDOWS * BYTES
     {
         return Err(Error::State(
-            "full24 original full table source geometry/extent".into(),
+            "full model original full table source geometry/extent".into(),
         ));
     }
     let admission = Arc::new(source.reserve_workspace(32 * BYTES)?);
@@ -984,7 +986,7 @@ async fn verify_tied_and_retire(
         });
         if window.as_slice().len() != BYTES || window.row_range() != (first..first + 512) {
             return Err(Error::State(
-                "full24 exact independent tied source window".into(),
+                "full model exact independent tied source window".into(),
             ));
         }
         let ticket = service.queue().submit(
@@ -1027,7 +1029,7 @@ async fn verify_tied_and_retire(
             .complete_read_only_readback(&reads, |raw| {
                 if raw.len() != reads.len() || &raw[0][..] != window.as_slice() {
                     return Err(Error::State(
-                        "full24 original complete tied W changed".into(),
+                        "full model original complete tied W changed".into(),
                     ));
                 }
                 if index == WINDOWS - 1 {
@@ -1036,13 +1038,13 @@ async fn verify_tied_and_retire(
                     {
                         if &actual[..] != *expected {
                             return Err(Error::State(
-                                "full24 original source GDN/QK parameter changed".into(),
+                                "full model original source GDN/QK parameter changed".into(),
                             ));
                         }
                     }
                     if &raw[raw.len() - 1][..] != owners._rotary.source_bytes() {
                         return Err(Error::State(
-                            "full24 genuine computed rotary prefix changed".into(),
+                            "full model genuine computed rotary prefix changed".into(),
                         ));
                     }
                 }

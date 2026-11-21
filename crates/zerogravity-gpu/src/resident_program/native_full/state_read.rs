@@ -1,4 +1,4 @@
-//! Exact state-read coordinate accepted by the original full24 dispatcher.
+//! Exact state-read coordinate accepted by the original full model dispatcher.
 use zerogravity_core::accelerator::program::{
     PlanNode, PlanOperation, SourceOperator, SourceOperatorKind, StateSlot,
 };
@@ -7,7 +7,7 @@ use zerogravity_core::{Error, Result};
 pub(super) fn descriptor(node: &PlanNode) -> Result<&SourceOperator> {
     let PlanOperation::SourceOperator { descriptor, state } = &node.operation else {
         return Err(Error::State(
-            "full24 actual typed node descriptor absent".into(),
+            "full model actual typed node descriptor absent".into(),
         ));
     };
     let valid = match (descriptor.kind(), state) {
@@ -20,7 +20,7 @@ pub(super) fn descriptor(node: &PlanNode) -> Result<&SourceOperator> {
     };
     if !valid {
         return Err(Error::State(
-            "full24 state read must be exact private appended FA KV; non-FA has no state read"
+            "full model state read must be exact private appended FA KV; non-FA has no state read"
                 .into(),
         ));
     }
@@ -200,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    fn unrelated_plan_operation_never_becomes_a_full24_descriptor() {
+    fn unrelated_plan_operation_never_becomes_an_full_model_descriptor() {
         let node = PlanNode::new(
             "unrelated".into(),
             PlanOperation::Observe {

@@ -55,6 +55,15 @@ coordinates `plain/all42/...`, `all42-prior/...` and key
 `all24_all42_post_validation` remain unchanged compatibility/provenance values and are not
 runtime vocabulary.
 
+The sixth cleanup retires model-size shorthand from active execution terminology: complete
+model execution is **full model** / `full_model`, complete layer coverage is **all layers** /
+`all_layers`, and complete vocabulary coverage is **full vocabulary** / `full_vocabulary`.
+Active production diagnostics, errors, tests and receipt labels no longer use `full24`,
+`all24` or `fullV`. The accepted Qwen35 key
+`common_final_fullv_greedy_validation` and the older
+`all24_all42_post_validation` key remain unchanged provenance/compatibility values. Real
+numeric dimensions such as `full248320` are not terminology and remain untouched.
+
 Cumulative terminology validation remains green across strict core/Qwen/GPU/public-CUDA
 Clippy plus public CUDA/HIP, CUDA qualification, 27B HIP qualification and CUDA CLI
 compilation. Core invocation tests pass 10/10; the Qwen forward suite passes 5/5; the

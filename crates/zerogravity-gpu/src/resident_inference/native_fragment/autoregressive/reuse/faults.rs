@@ -153,7 +153,7 @@ where
         let committed_calls = match fault {
             AutoregressiveReuseFault::CancelBeforeCommit=>{
                 let cancel=AtomicBool::new(true);
-                if !matches!(second.commit_autoregressive_call(prepared,Some(&cancel)),Err(Error::State(m)) if m=="autoregressive full24 cancelled before publication") || second.binding()!=roots[1] {
+                if !matches!(second.commit_autoregressive_call(prepared,Some(&cancel)),Err(Error::State(m)) if m=="autoregressive full model cancelled before publication") || second.binding()!=roots[1] {
                     return Err(Error::State("reuse beforecommit cancellation published candidate".into()));
                 }
                 2
@@ -194,7 +194,7 @@ where
             return Err(Error::State("reuse fresh retry did not publish actual canonical root".into()));
         }
         preserved.push(retry.feedback().cloned().ok_or_else(||Error::State("reuse actual retry packet missing".into()))?);
-        let competing_commit_refused=matches!(second.commit_autoregressive_call(competing,cancelled),Err(Error::State(m)) if m=="autoregressive full24 original current-root/call span differs or was revoked") && second.binding()==after;
+        let competing_commit_refused=matches!(second.commit_autoregressive_call(competing,cancelled),Err(Error::State(m)) if m=="autoregressive full model original current-root/call span differs or was revoked") && second.binding()==after;
         if !competing_commit_refused || first.binding()!=first_root {
             return Err(Error::State("reuse competing stale publication changed committed roots".into()));
         }
@@ -226,7 +226,7 @@ where
         return result;
     }
     let intended = matches!((&result,fault),(Err(Error::State(m)),AutoregressiveReuseFault::UnknownAfterConvolution)
-        if m=="deliberate full24 unknown after actual source Conv and canonical copy")
+        if m=="deliberate full model unknown after actual source Conv and canonical copy")
         || matches!((&result,fault),(Err(Error::State(m)),AutoregressiveReuseFault::CancelBeforeRecurrent)
         if m=="closed original cubin qualification cancelled");
     if !intended {
@@ -392,5 +392,5 @@ where
 }
 
 fn revoked(result: Result<()>) -> bool {
-    matches!(result,Err(Error::State(m)) if m=="autoregressive full24 original current-root/call span differs or was revoked")
+    matches!(result,Err(Error::State(m)) if m=="autoregressive full model original current-root/call span differs or was revoked")
 }

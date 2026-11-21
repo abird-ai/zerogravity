@@ -1,4 +1,4 @@
-//! One exact known full24 image set; no mutable limits or runtime issuer.
+//! One exact known full model image set; no mutable limits or runtime issuer.
 use super::cubin_manifests::{Projection, ProjectionImage, ProjectionImageSource};
 use super::projection_cubin::{
     CubinActivationImage, CubinQualificationInputs, native_error, not_cancelled,
@@ -45,7 +45,7 @@ fn require_metadata(
     let required = required_images();
     if required.len() != 13 || inputs.images.len() != 13 || inputs.images.capacity() > 16 {
         return Err(Error::Malformed(
-            "closed full24 thirteen source images".into(),
+            "closed full model thirteen source images".into(),
         ));
     }
     validate_activation_image(source, activation)?;
@@ -72,15 +72,17 @@ fn require_metadata(
             || image.admission.bytes() < image.bytes.capacity()
         {
             return Err(Error::Malformed(
-                "full24 exact original image category/metadata/admission".into(),
+                "full model exact original image category/metadata/admission".into(),
             ));
         }
         capacities = capacities
             .checked_add(image.bytes.capacity())
-            .ok_or_else(|| Error::Limit("full24 original image capacity overflow".into()))?;
+            .ok_or_else(|| Error::Limit("full model original image capacity overflow".into()))?;
     }
     if seen != required || capacities > 128 * 1024 * 1024 {
-        return Err(Error::Limit("full24 finite original image capacity".into()));
+        return Err(Error::Limit(
+            "full model finite original image capacity".into(),
+        ));
     }
     Ok(())
 }
@@ -105,7 +107,7 @@ pub(crate) fn prepare_full_model_images(
             != inputs.device_cap
     {
         return Err(Error::State(
-            "full24 actual original service/source/device admission".into(),
+            "full model actual original service/source/device admission".into(),
         ));
     }
     // Retain the immutable model, never the body that will own these images.
@@ -131,7 +133,7 @@ pub(crate) fn prepare_full_model_images(
 mod tests {
     use super::*;
     #[test]
-    fn exact_full24_inventory_is_distinct_from_existing_leaf_policies() {
+    fn exact_full_model_inventory_is_distinct_from_existing_leaf_policies() {
         let all = required_images();
         assert_eq!(all.len(), 13);
         let attention = super::super::attention_cubin::required_gate_images();

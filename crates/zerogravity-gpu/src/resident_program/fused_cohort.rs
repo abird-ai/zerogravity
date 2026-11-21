@@ -601,7 +601,7 @@ impl FullModelCohort {
         }
         if diagnostic && sums.len() != 24 {
             return Err(Error::State(
-                "B4 all24 independently observed dual RMS sums".into(),
+                "B4 independently observed dual RMS sums for all layers".into(),
             ));
         }
         if rms.len() != 49 || !rms.contains_key(&1) || !rms.contains_key(&253) {

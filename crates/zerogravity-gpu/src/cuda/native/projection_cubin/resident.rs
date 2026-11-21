@@ -576,7 +576,7 @@ impl AdmittedImages {
                 != required
         {
             return Err(Error::Malformed(
-                "exact full24 thirteen projection images plus activation".into(),
+                "exact full model thirteen projection images plus activation".into(),
             ));
         }
         self.prepare_images_inner(sources, init, cancelled, ImageScope::FullModel)

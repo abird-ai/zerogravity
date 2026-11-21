@@ -582,7 +582,7 @@ impl Export {
                 self.value(read, row, ValueId(id), "early", Some(0))?;
             }
             let nodes = sum_nodes(record)?;
-            ensure(nodes.len() == 24, "export all24 dual sums")?;
+            ensure(nodes.len() == 24, "export dual sums for all layers")?;
             for node in nodes {
                 self.push(json!({"role":"rms.sum","kind":"rms-unrounded-sum","phase":if input_tokens==47 {"prefill"} else {"decode"},"codec":"f32-dense-row-major-v1","request_index":row,"node":node,"dtype":"f32-le","shape":[input_tokens,self.profile.hidden_size()]}),read.sum(row,node)?)?;
             }

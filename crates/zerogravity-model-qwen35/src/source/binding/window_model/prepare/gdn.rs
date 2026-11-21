@@ -34,7 +34,7 @@ impl PreparedGdnParameters {
         recurrent.validate()?;
         let layer = conv
             .layer()
-            .ok_or_else(|| Error::State("full24 GDN source layer absent".into()))?;
+            .ok_or_else(|| Error::State("full model GDN source layer absent".into()))?;
         if layer.is_attention()
             || conv.kind() != QwenOperation::GdnConv
             || recurrent.kind() != QwenOperation::GdnRecurrent
@@ -46,7 +46,7 @@ impl PreparedGdnParameters {
             || recurrent.parameters().len() != 3
         {
             return Err(Error::State(
-                "full24 actual paired GDN source descriptors".into(),
+                "full model actual paired GDN source descriptors".into(),
             ));
         }
         let parameters = [

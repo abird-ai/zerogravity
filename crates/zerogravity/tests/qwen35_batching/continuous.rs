@@ -73,7 +73,7 @@ impl Expected {
         ids.extend(0..10);
         ensure(
             ids.len() <= 61,
-            "bounded original boundary/final/fullV population",
+            "bounded original boundary/final/full vocabulary population",
         )?;
         let values = ids
             .into_iter()
@@ -92,7 +92,7 @@ impl Expected {
             .into_iter()
             .map(|node| Ok((node, copy(read.rms_sum(node)?)?)))
             .collect::<Result<BTreeMap<_, _>>>()?;
-        ensure(sums.len() == 24, "all24 actual independent N1 dual sums")?;
+        ensure(sums.len() == 24, "independent N1 dual sums for all layers")?;
         let mut states = BTreeMap::new();
         ensure(
             record.plan().proposed_domains().len() == 42,
@@ -256,7 +256,7 @@ impl Expected {
         }
         ensure(
             read.selected[row] == self.selected,
-            "same-prior autoregressive ID/fullV numeric max/tie",
+            "same-prior autoregressive ID/full vocabulary numeric max/tie",
         )
     }
 }
@@ -286,7 +286,7 @@ async fn step(
         payload
             .checked_add(16 * MIB)
             .is_some_and(|v| v <= 320 * MIB),
-        "four full prior/candidate roots, all values/sums/fullV and bounded map/Vec/capture metadata",
+        "four full prior/candidate roots, all values/sums/full vocabulary and bounded map/Vec/capture metadata",
     )?;
     // Cold initialization is already known-complete; its transient payloads and
     // backend staging cannot overlap this fixture-only expected arena. Source
@@ -389,7 +389,7 @@ async fn step(
     }
     conservation(model, host)?;
     println!(
-        "QWEN35_BATCHING_SAME_PRIOR_PASS frontiers={:?} request_batch_size=4 all24=exact dual_sums=24 all_state_domain_prior_candidate=exact fullV=exact autoregressive=exact",
+        "QWEN35_BATCHING_SAME_PRIOR_PASS frontiers={:?} request_batch_size=4 all_layers=exact dual_sums=24 all_state_domain_prior_candidate=exact full_vocabulary=exact autoregressive=exact",
         roots.iter().map(|r| r.frontier()).collect::<Vec<_>>()
     );
     Ok(())

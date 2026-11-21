@@ -1,4 +1,4 @@
-//! Unpublished full24 body inside the ORIGINAL ResidentProgram node loop.
+//! Unpublished full model body inside the ORIGINAL ResidentProgram node loop.
 use super::bf16_greedy::PreparedBf16Greedy;
 use super::native::{
     CertificateSet, cancelled, certify_original, prepare_certificates, state_requirements,
@@ -174,7 +174,7 @@ impl FullModelProgram {
         let source = record.source().clone();
         if service.source_identity() != source.source_identity() {
             return Err(Error::State(
-                "full24 source/service before original upload".into(),
+                "full model source/service before original upload".into(),
             ));
         }
         let metadata = source.reserve_workspace(4 * 1024 * 1024)?;
@@ -183,13 +183,13 @@ impl FullModelProgram {
         let value_end = cut.as_ref().map_or(327, |c| c.values().len());
         let ordinary = record
             .operator(1)?
-            .ok_or_else(|| Error::State("full24 ordinary source operator absent".into()))?;
+            .ok_or_else(|| Error::State("full model ordinary source operator absent".into()))?;
         if !matches!(ordinary.kind(), SourceOperatorKind::Rms(_))
             || plan.nodes()[1].inputs != [ValueId(0)]
             || plan.nodes()[1].outputs != [ValueId(1)]
         {
             return Err(Error::State(
-                "full24 genuine ordinary input RMS producer".into(),
+                "full model genuine ordinary input RMS producer".into(),
             ));
         }
         let ordinary_binding = if let Some(scope) = &fixed_prompt {
@@ -205,7 +205,7 @@ impl FullModelProgram {
                 .map(|v| {
                     v.capacity_elements()?
                         .checked_mul(2)
-                        .ok_or_else(|| Error::Limit("full24 readback extent".into()))
+                        .ok_or_else(|| Error::Limit("full model readback extent".into()))
                 })
                 .collect::<Result<Vec<_>>>()?,
         )?;
@@ -220,7 +220,9 @@ impl FullModelProgram {
         ])?;
         let chunks = readback_bytes.div_ceil(32 * 1024 * 1024);
         if !(3..=8).contains(&chunks) {
-            return Err(Error::Limit("closed full24 per-phase D2H admission".into()));
+            return Err(Error::Limit(
+                "closed full model per-phase D2H admission".into(),
+            ));
         }
         let readback = (0..chunks)
             .map(|_| source.reserve_workspace(32 * 1024 * 1024))
@@ -248,7 +250,7 @@ impl FullModelProgram {
         for (index, shape) in plan.values()[..value_end].iter().enumerate() {
             if plan.precisions()[index] != ActivationPrecision::Bf16WidenedF32 {
                 return Err(Error::Unsupported(
-                    "full24 actual BF16 physical values".into(),
+                    "full model actual BF16 physical values".into(),
                 ));
             }
             if fused_outputs.contains(&(index as u32)) {
@@ -278,13 +280,13 @@ impl FullModelProgram {
                 continue;
             }
             let [left, right] = node.inputs.as_slice() else {
-                return Err(Error::State("full24 dualRMS input arity".into()));
+                return Err(Error::State("full model dualRMS input arity".into()));
             };
             let input = |id: ValueId| {
                 buffers[id.0 as usize]
                     .as_ref()
                     .ok_or_else(|| {
-                        Error::State("full24 actual earlier RMS producer absent".into())
+                        Error::State("full model actual earlier RMS producer absent".into())
                     })?
                     .original_lease()
                     .cloned()
@@ -322,7 +324,9 @@ impl FullModelProgram {
                     record.invocation().tokens().len() * 1024,
                 )?;
                 if buffers[id.0 as usize].is_some() {
-                    return Err(Error::State("full24 duplicate RMS output binding".into()));
+                    return Err(Error::State(
+                        "full model duplicate RMS output binding".into(),
+                    ));
                 }
                 buffers[id.0 as usize] = Some(DeviceBuffer::from_lease(
                     lease.clone(),
@@ -334,11 +338,11 @@ impl FullModelProgram {
             fused.insert(index, prepared);
         }
         if fused.len() != cut.as_ref().map_or(48, |c| c.duals()) {
-            return Err(Error::State("full24 exact48 dualRMS producers".into()));
+            return Err(Error::State("full model exact48 dualRMS producers".into()));
         }
         let buffers = buffers
             .into_iter()
-            .map(|v| v.ok_or_else(|| Error::State("full24 unbound original ValueID".into())))
+            .map(|v| v.ok_or_else(|| Error::State("full model unbound original ValueID".into())))
             .collect::<Result<Vec<_>>>()?;
         let values = if let Some(cut) = &cut {
             ModelValues::bind_fixed_prompt_prefix(cut, &buffers, service.clone(), status.clone())?
@@ -400,14 +404,14 @@ impl FullModelProgram {
         }
         if self.greedy.get().is_some() || self.bound.get().is_some() {
             return Err(Error::State(
-                "full24 output consumer prepared once before native modules".into(),
+                "full model output consumer prepared once before native modules".into(),
             ));
         }
         let prepared =
             PreparedBf16Greedy::prepare(self.source.clone(), self.values.clone(), init, cancel)?;
         self.greedy
             .set(prepared)
-            .map_err(|_| Error::State("full24 output consumer already bound".into()))
+            .map_err(|_| Error::State("full model output consumer already bound".into()))
     }
     /// Per-phase state ownership; shared library deliberately has no reverse
     /// edge into these phase/prior-Ready bindings.
@@ -430,12 +434,12 @@ impl FullModelProgram {
             || phase >= 5
         {
             return Err(Error::State(
-                "full24 exact once-bound indexed phase resources".into(),
+                "full model exact once-bound indexed phase resources".into(),
             ));
         }
         if !library.source.same_issuer(&self.source) {
             return Err(Error::State(
-                "full24 native library immutable source owner differs".into(),
+                "full model native library immutable source owner differs".into(),
             ));
         }
         library.projections.require_phase(phase, &self.values)?;
@@ -445,31 +449,31 @@ impl FullModelProgram {
         for state in &states {
             if state.invocation() != self.record.invocation() || !layers.insert(state.layer()) {
                 return Err(Error::State(
-                    "full24 bound actual indexed source-state cohort".into(),
+                    "full model bound actual indexed source-state cohort".into(),
                 ));
             }
         }
         if layers != (0..24).collect() {
             return Err(Error::State(
-                "full24 all original indexed layers required".into(),
+                "full model all original indexed layers required".into(),
             ));
         }
         for state in &states {
             if state.kv_domain().is_ok() {
                 attention
                     .get(&state.layer())
-                    .ok_or_else(|| Error::State("full24 attention layer-key mismatch".into()))?
+                    .ok_or_else(|| Error::State("full model attention layer-key mismatch".into()))?
                     .require_value_state(&self.values, state)?;
             } else {
                 gdn.get(&state.layer())
-                    .ok_or_else(|| Error::State("full24 GDN layer-key mismatch".into()))?
+                    .ok_or_else(|| Error::State("full model GDN layer-key mismatch".into()))?
                     .require_value_state(&self.values, state)?;
             }
         }
         let gdn_arithmetic = gdn
             .values()
             .next()
-            .ok_or_else(|| Error::State("full24 missing GDN arithmetic".into()))?
+            .ok_or_else(|| Error::State("full model missing GDN arithmetic".into()))?
             .arithmetic()
             .clone();
         self.gdn_family.require_same(gdn_arithmetic.family())?;
@@ -522,7 +526,9 @@ impl FullModelProgram {
         for (lease, access) in self
             .greedy
             .get()
-            .ok_or_else(|| Error::State("full24 genuine Head output consumer not prepared".into()))?
+            .ok_or_else(|| {
+                Error::State("full model genuine Head output consumer not prepared".into())
+            })?
             .accesses()
         {
             insert_access(&mut accesses, lease.clone(), *access);
@@ -540,7 +546,7 @@ impl FullModelProgram {
                 attention,
                 accesses: accesses.into_values().collect(),
             })
-            .map_err(|_| Error::State("full24 phase already bound".into()))
+            .map_err(|_| Error::State("full model phase already bound".into()))
     }
     pub(crate) fn values(&self) -> &Arc<ModelValues> {
         &self.values
@@ -575,13 +581,13 @@ impl FullModelProgram {
             .iter()
             .next_back()
             .map(|(_, v)| v.clone())
-            .ok_or_else(|| Error::State("full24 final normalizer absent".into()))
+            .ok_or_else(|| Error::State("full model final normalizer absent".into()))
     }
     pub(crate) fn accesses(&self) -> Result<&[(ResidentLease, DeviceAccess)]> {
         let accesses = &self
             .bound
             .get()
-            .ok_or_else(|| Error::State("full24 original phase not bound".into()))?
+            .ok_or_else(|| Error::State("full model original phase not bound".into()))?
             .accesses;
         self.values.require_storage_flight(accesses)?;
         Ok(accesses)
@@ -614,7 +620,7 @@ impl FullModelProgram {
         for state in &self
             .bound
             .get()
-            .ok_or_else(|| Error::State("full24 state preparation absent".into()))?
+            .ok_or_else(|| Error::State("full model state preparation absent".into()))?
             .states
         {
             state.require_enqueue(self.values.service(), permit)?;
@@ -628,11 +634,15 @@ impl FullModelProgram {
     ) -> Result<()> {
         cancelled(cancel)?;
         self.require_attempt(permit.ok_or_else(|| {
-            Error::State("full24 genuine original attempt permit required before ANY launch".into())
+            Error::State(
+                "full model genuine original attempt permit required before ANY launch".into(),
+            )
         })?)?;
         self.accesses()?;
         if self.launched.swap(true, Ordering::AcqRel) {
-            return Err(Error::State("full24 original phase executes once".into()));
+            return Err(Error::State(
+                "full model original phase executes once".into(),
+            ));
         }
         self.values.begin_storage()?;
         Ok(())
@@ -644,7 +654,7 @@ impl FullModelProgram {
             || Some(p.token) != request.tokens().ids().first().copied()
         {
             return Err(Error::State(
-                "full24 runtime differs from original source teacher/phase".into(),
+                "full model runtime differs from original source teacher/phase".into(),
             ));
         }
         Ok(())
@@ -659,27 +669,29 @@ impl FullModelProgram {
         if !self.launched.load(Ordering::Acquire) || self.next_node.load(Ordering::Acquire) != index
         {
             return Err(Error::State(
-                "full24 producer must follow ORIGINAL node traversal in order".into(),
+                "full model producer must follow ORIGINAL node traversal in order".into(),
             ));
         }
         let expected = self
             .execution_nodes()?
             .get(index)
-            .ok_or_else(|| Error::State("full24 original node index absent".into()))?;
+            .ok_or_else(|| Error::State("full model original node index absent".into()))?;
         if node.inputs != expected.inputs
             || node.outputs != expected.outputs
             || node.state != expected.state
             || index > 0 && descriptor(node)? != descriptor(expected)?
         {
             return Err(Error::State(
-                "full24 caller node differs from sealed original producer SSA".into(),
+                "full model caller node differs from sealed original producer SSA".into(),
             ));
         }
         self.values.begin_storage_node(index, node)?;
         let n = self.enqueue_inner(index, node, cancel, permit)?;
         self.next_node
             .compare_exchange(index, index + 1, Ordering::AcqRel, Ordering::Acquire)
-            .map_err(|_| Error::State("full24 concurrent/reordered producer submission".into()))?;
+            .map_err(|_| {
+                Error::State("full model concurrent/reordered producer submission".into())
+            })?;
         Ok(n)
     }
     fn enqueue_inner(
@@ -690,13 +702,13 @@ impl FullModelProgram {
         permit: Option<&PrefixPhaseEnqueue<'_>>,
     ) -> Result<usize> {
         cancelled(cancel)?;
-        let permit =
-            permit.ok_or_else(|| Error::State("full24 original borrowed permit absent".into()))?;
+        let permit = permit
+            .ok_or_else(|| Error::State("full model original borrowed permit absent".into()))?;
         if let Some(current) = self.bound.get().and_then(|bound| bound.text.as_ref()) {
             // begin_launch checked the complete immutable prior cohort before
             // node0. This borrowed permit prevents restore/publication; priors
             // stay retained Reads. Recheck current authority and physical fence
-            // at every original node, without rewalking all24 states.
+            // at every original node, without rewalking state across all layers.
             self.values.service().ensure_usable()?;
             current
                 .input
@@ -707,11 +719,13 @@ impl FullModelProgram {
         let bound = self
             .bound
             .get()
-            .ok_or_else(|| Error::State("full24 state/library preparation absent".into()))?;
+            .ok_or_else(|| Error::State("full model state/library preparation absent".into()))?;
         if matches!(&node.operation, PlanOperation::SourceOperator { descriptor, .. } if descriptor.kind() == SourceOperatorKind::EmbeddingRows)
         {
             if index != 0 {
-                return Err(Error::State("full24 source embedding index differs".into()));
+                return Err(Error::State(
+                    "full model source embedding index differs".into(),
+                ));
             }
             if let Some(current) = &bound.text {
                 self.values.require_storage_node(index)?;
@@ -736,7 +750,7 @@ impl FullModelProgram {
         let op = descriptor(node)?;
         if op.invocation() != self.record.invocation() {
             return Err(Error::State(
-                "full24 original node invocation differs".into(),
+                "full model original node invocation differs".into(),
             ));
         }
         if let Some(current) = &bound.text
@@ -872,7 +886,7 @@ impl FullModelProgram {
         match op.kind() {
             SourceOperatorKind::Rms(_) => {
                 if index != 1 {
-                    return Err(Error::State("full24 ordinary RMS index differs".into()));
+                    return Err(Error::State("full model ordinary RMS index differs".into()));
                 }
                 self.rms.enqueue()?;
                 Ok(10)
@@ -881,7 +895,7 @@ impl FullModelProgram {
                 let rms = self
                     .fused
                     .get(&index)
-                    .ok_or_else(|| Error::State("full24 bound dualRMS node absent".into()))?;
+                    .ok_or_else(|| Error::State("full model bound dualRMS node absent".into()))?;
                 rms.require_source_operator(op)?;
                 rms.enqueue(cancel)?;
                 Ok(10)
@@ -895,7 +909,7 @@ impl FullModelProgram {
                 let prepared = bound
                     .gdn
                     .get(&layer)
-                    .ok_or_else(|| Error::State("full24 GDN indexed binding absent".into()))?;
+                    .ok_or_else(|| Error::State("full model GDN indexed binding absent".into()))?;
                 let late_cancel = layer == 0
                     && matches!(op.kind(), SourceOperatorKind::GatedDelta { .. })
                     && (self.fault.load(Ordering::Acquire) == 2
@@ -930,7 +944,7 @@ impl FullModelProgram {
                     {
                         self.fault_cut.store(true, Ordering::Release);
                         return Err(Error::State(
-                            "deliberate full24 unknown after actual source Conv and canonical copy"
+                            "deliberate full model unknown after actual source Conv and canonical copy"
                                 .into(),
                         ));
                     }
@@ -1108,14 +1122,12 @@ impl FullModelProgram {
             | SourceOperatorKind::Multiply { .. }
                 if self.attention_sites.contains_key(&index) =>
             {
-                let layer = *self
-                    .attention_sites
-                    .get(&index)
-                    .ok_or_else(|| Error::State("full24 attention binding site absent".into()))?;
-                let binding = bound
-                    .attention
-                    .get(&layer)
-                    .ok_or_else(|| Error::State("full24 actual attention binding absent".into()))?;
+                let layer = *self.attention_sites.get(&index).ok_or_else(|| {
+                    Error::State("full model attention binding site absent".into())
+                })?;
+                let binding = bound.attention.get(&layer).ok_or_else(|| {
+                    Error::State("full model actual attention binding absent".into())
+                })?;
                 let submitted = bound.full_library()?.attention.enqueue(
                     bound.phase,
                     layer,
@@ -1191,7 +1203,7 @@ impl FullModelProgram {
             || self.launched.load(Ordering::Acquire)
         {
             return Err(Error::State(
-                "full24 fault before original launch only".into(),
+                "full model fault before original launch only".into(),
             ));
         }
         self.fault.store(mode, Ordering::Release);
@@ -1237,12 +1249,12 @@ impl FullModelProgram {
             || self.next_node.load(Ordering::Acquire) != self.record.plan().nodes().len()
             || self.output_submitted.load(Ordering::Acquire)
         {
-            return Err(Error::State("full24 output requires actual successful whole traversal/Head enqueue exactly once".into()));
+            return Err(Error::State("full model output requires actual successful whole traversal/Head enqueue exactly once".into()));
         }
         let n = self
             .greedy
             .get()
-            .ok_or_else(|| Error::State("full24 same-map output consumer absent".into()))?
+            .ok_or_else(|| Error::State("full model same-map output consumer absent".into()))?
             .enqueue(cancel)?;
         self.output_submitted.store(true, Ordering::Release);
         Ok(n)
@@ -1295,7 +1307,7 @@ impl FullModelProgram {
                 .sum::<usize>()
         {
             return Err(Error::Limit(
-                "full24 actual D2H cohort exceeds pre-admission".into(),
+                "full model actual D2H cohort exceeds pre-admission".into(),
             ));
         }
         Ok(())
@@ -1305,7 +1317,7 @@ impl FullModelProgram {
         let bound = self
             .bound
             .get()
-            .ok_or_else(|| Error::State("full24 readback before bound preparation".into()))?;
+            .ok_or_else(|| Error::State("full model readback before bound preparation".into()))?;
         let mut reads = vec![self.status().readback(0, 4)?];
         for prepared in bound.gdn.values() {
             reads.push(prepared.status_readback()?);
@@ -1327,7 +1339,7 @@ impl FullModelProgram {
         reads.extend(
             self.greedy
                 .get()
-                .ok_or_else(|| Error::State("full24 greedy readback before prepare".into()))?
+                .ok_or_else(|| Error::State("full model greedy readback before prepare".into()))?
                 .readbacks()?,
         );
         Ok(reads)
@@ -1346,13 +1358,13 @@ impl FullModelProgram {
         const STATUS: usize = 1 + 18 + 6;
         if raw.len() != STATUS + 3 + 327 + 48 * 4 + 2 || raw[0][..] != [0; 4] {
             return Err(Error::State(
-                "full24 original status/readback coverage".into(),
+                "full model original status/readback coverage".into(),
             ));
         }
         for status in &raw[1..19] {
             if status[..] != [0; 4] {
                 return Err(Error::State(
-                    "full24 canonical state transport status".into(),
+                    "full model canonical state transport status".into(),
                 ));
             }
         }
@@ -1368,7 +1380,7 @@ impl FullModelProgram {
         }
         self.greedy
             .get()
-            .ok_or_else(|| Error::State("full24 greedy validation before prepare".into()))?
+            .ok_or_else(|| Error::State("full model greedy validation before prepare".into()))?
             .validate_readback(&raw[raw.len() - 2..])?;
         Ok(())
     }
@@ -1443,7 +1455,7 @@ impl ResidentProgram {
     pub(crate) fn full_model_body(&self) -> Result<&Arc<FullModelProgram>> {
         match &self.body {
             ResidentProgramBody::NativeFull(body) => Ok(body),
-            _ => Err(Error::Unsupported("not original full24 body".into())),
+            _ => Err(Error::Unsupported("not original full model body".into())),
         }
     }
 }

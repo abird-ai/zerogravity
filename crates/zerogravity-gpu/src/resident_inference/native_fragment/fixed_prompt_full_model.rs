@@ -164,7 +164,7 @@ where
         device,
         source.source_identity(),
         ResourceOwner::new(
-            "source-canonical47-full24",
+            "source-canonical47-all-layers",
             "unpublished-original-initial47",
         )?,
         provider,

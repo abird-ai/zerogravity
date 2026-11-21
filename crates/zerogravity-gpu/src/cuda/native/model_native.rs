@@ -142,7 +142,7 @@ impl ModelNativePrograms {
         weights.require_initialized()?;
         if values.len() != 5 || values.capacity() > 8 {
             return Err(Error::Unsupported(
-                "full24 closed five genuine phases".into(),
+                "full model closed five genuine phases".into(),
             ));
         }
         let service = values[0].service();
@@ -154,7 +154,7 @@ impl ModelNativePrograms {
             || workspace.source_identity() != weights.source().source_identity()
         {
             return Err(Error::State(
-                "full24 original shared workspace/source/service".into(),
+                "full model original shared workspace/source/service".into(),
             ));
         }
         let metadata = weights.source().reserve_workspace(2 * 1024 * 1024)?;
@@ -170,7 +170,7 @@ impl ModelNativePrograms {
                 || !record.source().same_issuer(weights.source())
             {
                 return Err(Error::State(
-                    "full24 actual native request cohort source/service".into(),
+                    "full model actual native request cohort source/service".into(),
                 ));
             }
             phases.push((
@@ -187,12 +187,14 @@ impl ModelNativePrograms {
                 };
                 if descriptor.invocation() != record.invocation() || node.state.is_some() {
                     return Err(Error::State(
-                        "full24 native descriptor call/state differs".into(),
+                        "full model native descriptor call/state differs".into(),
                     ));
                 }
                 let ([input_id], [output_id]) = (node.inputs.as_slice(), node.outputs.as_slice())
                 else {
-                    return Err(Error::State("full24 native unary producer arity".into()));
+                    return Err(Error::State(
+                        "full model native unary producer arity".into(),
+                    ));
                 };
                 let (input, output) = (
                     bound.lease(*input_id)?.clone(),
@@ -203,7 +205,7 @@ impl ModelNativePrograms {
                     || output.id() == workspace.id()
                 {
                     return Err(Error::State(
-                        "full24 independent native producer/output/workspace".into(),
+                        "full model independent native producer/output/workspace".into(),
                     ));
                 }
                 if matches!(
@@ -215,7 +217,7 @@ impl ModelNativePrograms {
                     weight_keys.insert(key);
                     if [input.id(), output.id(), workspace.id()].contains(&weight.lease().id()) {
                         return Err(Error::State(
-                            "full24 source W aliases actual producer".into(),
+                            "full model source W aliases actual producer".into(),
                         ));
                     }
                     accesses.insert(
@@ -259,7 +261,7 @@ impl ModelNativePrograms {
             || weight_keys.len() != 102
         {
             return Err(Error::State(
-                "full24 exact five-phase126-native-node/102-W subset".into(),
+                "full model exact five-phase126-native-node/102-W subset".into(),
             ));
         }
         // Positive and fault submissions retain the SAME bound source graph.
@@ -324,16 +326,16 @@ impl ModelNativePrograms {
         self.accesses
             .get(phase)
             .map(Vec::as_slice)
-            .ok_or_else(|| Error::State("full24 current native access phase absent".into()))
+            .ok_or_else(|| Error::State("full model current native access phase absent".into()))
     }
     pub(crate) fn require_phase(&self, phase: usize, values: &Arc<ModelValues>) -> Result<()> {
         let prepared = self
             .values
             .get(phase)
-            .ok_or_else(|| Error::State("full24 native sealed phase absent".into()))?;
+            .ok_or_else(|| Error::State("full model native sealed phase absent".into()))?;
         if !Arc::ptr_eq(prepared, values) || !Arc::ptr_eq(prepared.service(), values.service()) {
             return Err(Error::State(
-                "full24 native library differs from SAME original phase value map".into(),
+                "full model native library differs from SAME original phase value map".into(),
             ));
         }
         Ok(())
@@ -350,10 +352,10 @@ impl ModelNativePrograms {
         let node = self
             .nodes
             .get(&(phase, node_index))
-            .ok_or_else(|| Error::State("full24 unbound native node/phase".into()))?;
+            .ok_or_else(|| Error::State("full model unbound native node/phase".into()))?;
         self.values
             .get(phase)
-            .ok_or_else(|| Error::State("full24 phase absent".into()))?
+            .ok_or_else(|| Error::State("full model phase absent".into()))?
             .service()
             .ensure_usable()?;
         let mut submitted = ModelNativeSubmitted::default();

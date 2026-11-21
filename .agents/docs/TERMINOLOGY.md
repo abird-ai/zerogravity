@@ -58,6 +58,14 @@ authority explicit.
 - **all state domains** is the canonical term for the complete model state-domain
   set. Do not encode the current Qwen domain count into semantic names; `all42`
   is retired outside frozen archive/schema/provenance coordinates.
+- **full model** is the canonical term for complete model execution/body/program
+  ownership. Use `full_model` in identifiers; historical `full24` is retired.
+- **all layers** is the canonical term for coverage across every model layer.
+  Use `all_layers` in machine-readable coverage labels; historical `all24` is
+  retired outside frozen provenance fields.
+- **full vocabulary** is the canonical term for complete vocabulary/logit
+  coverage. Use `full_vocabulary` in machine-readable labels; historical
+  `fullV` / `fullv` are retired outside frozen provenance fields.
 - Describe fixed qualification trajectories semantically, e.g.
   **prefill 47 + decode 48–50**, rather than `cached47`, `canonical47`, or
   `case5`.
@@ -80,7 +88,12 @@ The historical `all42` shorthand is retired from active code, tests and
 current documentation. Frozen reference archive coordinates/keys may retain it
 at their compatibility boundary.
 
-The next isolated terminology debt is remaining fixture shorthand such as
-`canonical47`, `full24`, `fullV` and similar qualification archaeology. Keep the
-separate standard-RMS naming problem out of that migration until its exact
-arithmetic distinction has a clear replacement.
+The historical `full24` / `all24` / `fullV` shorthand is retired from active
+code, tests and current documentation. `full24` maps to full-model execution,
+`all24` to all-layer coverage, and `fullV` to full-vocabulary coverage. Frozen
+acceptance/schema keys may retain the old spelling at their compatibility boundary.
+
+The next isolated terminology debt is fixed-trajectory/provider shorthand such
+as `canonical47`, `cached47`, `active8`, `temporal4` and similar qualification
+archaeology. Keep the separate standard-RMS naming problem out of that migration
+until its exact arithmetic distinction has a clear replacement.

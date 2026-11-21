@@ -158,7 +158,7 @@ where
             let flag = AtomicBool::new(true);
             match sessions[0].commit_autoregressive_call(prepared, Some(&flag)) {
                 Err(Error::State(message))
-                    if message == "autoregressive full24 cancelled before publication" => {}
+                    if message == "autoregressive full model cancelled before publication" => {}
                 _ => {
                     return Err(Error::State(
                         "autoregressive cancellation did not refuse original commit at intended boundary"

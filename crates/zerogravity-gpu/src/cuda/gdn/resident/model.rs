@@ -52,7 +52,7 @@ impl ModelGdnAdapter {
             || prepared.bound_lease(GdnBuffer::CacheArena)?.id() != cache.id()
         {
             return Err(Error::State(
-                "full24 original GDN source/root/native preparation".into(),
+                "full model original GDN source/root/native preparation".into(),
             ));
         }
         let leases = domains.leases();
@@ -69,7 +69,7 @@ impl ModelGdnAdapter {
                 || lease.id() == cache.id()
             {
                 return Err(Error::State(
-                    "full24 exact original canonical GDN transport leases".into(),
+                    "full model exact original canonical GDN transport leases".into(),
                 ));
             }
         }
@@ -145,7 +145,7 @@ impl ModelGdnAdapter {
             || prepared.slot != self.slot
         {
             return Err(Error::State(
-                "full24 original GDN math/cache adapter changed".into(),
+                "full model original GDN math/cache adapter changed".into(),
             ));
         }
         self.cache.service().ensure_usable()

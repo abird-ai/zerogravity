@@ -7,7 +7,9 @@ pub const IDS: [u32; 8] = [11, 353, 17, 42, 55, 78, 101, 135];
 
 pub fn selected(logits: &[f32]) -> Result<(u32, u32)> {
     if logits.len() != 248_320 || logits.iter().any(|x| !x.is_finite()) {
-        return Err(Error::State("wide graph CPU fullV selection".into()));
+        return Err(Error::State(
+            "wide graph CPU full vocabulary selection".into(),
+        ));
     }
     let mut best = 0;
     for (at, &value) in logits.iter().enumerate().skip(1) {
@@ -177,7 +179,9 @@ pub async fn completed_logits(
         .logits()
         .ok_or_else(|| Error::State("wide graph diagnostic planned logits absent".into()))?;
     if logits.elements != bytes / 4 {
-        return Err(Error::State("wide graph diagnostic fullV geometry".into()));
+        return Err(Error::State(
+            "wide graph diagnostic full vocabulary geometry".into(),
+        ));
     }
     let status = lease_for(&batch.leases, &batch.program.status())?.clone();
     let logits = lease_for(&batch.leases, &logits.handle)?.clone();
@@ -196,7 +200,7 @@ pub async fn completed_logits(
                     || words(&values[1])?.iter().any(|x| !x.is_finite())
                 {
                     return Err(Error::State(
-                        "wide graph diagnostic fullV status/finite".into(),
+                        "wide graph diagnostic full vocabulary status/finite".into(),
                     ));
                 }
                 Ok(())

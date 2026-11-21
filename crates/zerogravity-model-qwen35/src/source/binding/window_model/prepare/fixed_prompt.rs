@@ -179,7 +179,7 @@ fn require_coverage(
         || gdn.iter().copied().ne((0..24).filter(|i| i % 4 != 3))
     {
         return Err(Error::State(
-            "fixed prompt all24 source member/operator coverage".into(),
+            "fixed prompt source member/operator coverage across all layers".into(),
         ));
     }
     Ok(())

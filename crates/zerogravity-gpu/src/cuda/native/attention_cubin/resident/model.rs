@@ -27,7 +27,7 @@ impl ModelAttentionPrograms {
         not_cancelled(cancelled)?;
         if bindings.len() != 30 || bindings.capacity() > 32 {
             return Err(Error::State(
-                "full24 six attention layers times five actual phases".into(),
+                "full model six attention layers times five actual phases".into(),
             ));
         }
         let mut keyed = BTreeMap::new();
@@ -37,11 +37,11 @@ impl ModelAttentionPrograms {
             let phase = AttentionCase::ALL
                 .iter()
                 .position(|case| *case == binding.case())
-                .ok_or_else(|| Error::State("full24 original attention case absent".into()))?;
+                .ok_or_else(|| Error::State("full model original attention case absent".into()))?;
             let layer = binding.layer();
             if ![3, 7, 11, 15, 19, 23].contains(&layer) || keyed.contains_key(&(phase, layer)) {
                 return Err(Error::State(
-                    "full24 exact indexed attention layer/case union".into(),
+                    "full model exact indexed attention layer/case union".into(),
                 ));
             }
             init.retain_completion_owner(binding.clone())?;
@@ -74,7 +74,7 @@ impl ModelAttentionPrograms {
         self.accesses
             .get(phase)
             .cloned()
-            .ok_or_else(|| Error::State("full24 attention access phase absent".into()))
+            .ok_or_else(|| Error::State("full model attention access phase absent".into()))
     }
     pub(crate) fn require_phase(
         &self,
@@ -83,18 +83,19 @@ impl ModelAttentionPrograms {
     ) -> Result<()> {
         if bindings.len() != 6 {
             return Err(Error::State(
-                "full24 exactly six current-phase attention bindings".into(),
+                "full model exactly six current-phase attention bindings".into(),
             ));
         }
         for (&layer, binding) in bindings {
             let native = self.bindings.get(&(phase, layer)).ok_or_else(|| {
-                Error::State("full24 native attention phase/layer missing".into())
+                Error::State("full model native attention phase/layer missing".into())
             })?;
             if !Arc::ptr_eq(native, binding.native())
                 || AttentionCase::ALL.get(phase) != Some(&binding.case())
             {
                 return Err(Error::State(
-                    "full24 native attention record operands differ from SAME phase body".into(),
+                    "full model native attention record operands differ from SAME phase body"
+                        .into(),
                 ));
             }
         }
@@ -114,13 +115,13 @@ impl ModelAttentionPrograms {
         let native = self
             .bindings
             .get(&(phase, layer))
-            .ok_or_else(|| Error::State("full24 unbound attention phase/layer".into()))?;
+            .ok_or_else(|| Error::State("full model unbound attention phase/layer".into()))?;
         if !Arc::ptr_eq(native, binding.native())
             || binding.layer() != layer
             || AttentionCase::ALL.get(phase) != Some(&binding.case())
         {
             return Err(Error::State(
-                "full24 bound phase body differs from sealed native record operands".into(),
+                "full model bound phase body differs from sealed native record operands".into(),
             ));
         }
         binding.require_enqueue(permit.session(), permit, cancelled)?;

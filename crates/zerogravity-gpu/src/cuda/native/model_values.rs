@@ -60,7 +60,7 @@ impl ModelValues {
             || plan.logits().is_some()
         {
             return Err(Error::State(
-                "full24 original unpublished plan/value/source coverage".into(),
+                "full model original unpublished plan/value/source coverage".into(),
             ));
         }
         if !Arc::ptr_eq(status.service(), &service)
@@ -70,7 +70,7 @@ impl ModelValues {
             || status.bytes() != 4
         {
             return Err(Error::State(
-                "full24 original attempt control lease/source/service".into(),
+                "full model original attempt control lease/source/service".into(),
             ));
         }
         let mut originals = BTreeMap::<BufferLeaseId, ValueId>::new();
@@ -78,13 +78,13 @@ impl ModelValues {
         for (index, (buffer, shape)) in values.iter().zip(plan.values()).enumerate() {
             let ValueShape::Vector(elements) = *shape else {
                 return Err(Error::State(
-                    "full24 physical BF16 dense vector only".into(),
+                    "full model physical BF16 dense vector only".into(),
                 ));
             };
             let id = ValueId(index as u32);
             if plan.precisions().get(index) != Some(&ActivationPrecision::Bf16WidenedF32) {
                 return Err(Error::State(
-                    "full24 physical precision differs from plan".into(),
+                    "full model physical precision differs from plan".into(),
                 ));
             }
             let tag = plan
@@ -105,7 +105,7 @@ impl ModelValues {
                 || lease.service_generation() != service.generation()
                 || lease.bytes()
                     != elements.checked_mul(2).ok_or_else(|| {
-                        Error::Limit("full24 physical BF16 extent overflow".into())
+                        Error::Limit("full model physical BF16 extent overflow".into())
                     })?
                 || !matches!(
                     lease.role(),
@@ -115,7 +115,7 @@ impl ModelValues {
                 || originals.insert(lease.id(), id).is_some()
             {
                 return Err(Error::State(
-                    "full24 distinct original producer lease/service/extent".into(),
+                    "full model distinct original producer lease/service/extent".into(),
                 ));
             }
             sealed.push(lease.clone());
@@ -140,7 +140,7 @@ impl ModelValues {
     pub(crate) fn lease(&self, value: ValueId) -> Result<&ResidentLease> {
         self.values
             .get(value.0 as usize)
-            .ok_or_else(|| Error::State("full24 sealed original ValueId absent".into()))
+            .ok_or_else(|| Error::State("full model sealed original ValueId absent".into()))
     }
     pub(crate) fn accesses(&self) -> Vec<(ResidentLease, DeviceAccess)> {
         if self.storage.is_some() {

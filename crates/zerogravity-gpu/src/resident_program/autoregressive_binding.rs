@@ -54,7 +54,7 @@ pub(crate) fn same_recipe(a: &SourceBindings, b: &SourceBindings) -> Result<()> 
         || b.plan().values().len() != 327
     {
         return Err(Error::State(
-            "autoregressive exact full24 original recipe bounds".into(),
+            "autoregressive exact full model original recipe bounds".into(),
         ));
     }
     let (ap, bp) = (a.plan(), b.plan());

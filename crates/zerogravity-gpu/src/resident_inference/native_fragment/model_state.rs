@@ -1,4 +1,4 @@
-//! Original full24 attempt/domain borrow only; no root allocation/publication.
+//! Original full model attempt/domain borrow only; no root allocation/publication.
 use super::super::*;
 use super::continuation::{AttemptPhaseBinding, PrefixPhaseEnqueue};
 use crate::resident_program::source_bindings::SourceBindings;
@@ -35,10 +35,14 @@ fn canonical_vector(domain: &Domain, slot: StateSlot, elements: usize) -> Result
         .filter(|n| *n > 0)
         .ok_or_else(|| Error::Limit("source F32 vector state byte extent".into()))?;
     let StateBuffers::Vector(buffer) = &domain.buffers else {
-        return Err(Error::State("full24 canonical vector domain layout".into()));
+        return Err(Error::State(
+            "full model canonical vector domain layout".into(),
+        ));
     };
     if domain.slot != slot || domain.leases.len() != 1 || domain.generations.len() != 1 {
-        return Err(Error::State("full24 unique original vector domain".into()));
+        return Err(Error::State(
+            "full model unique original vector domain".into(),
+        ));
     }
     let lease = &domain.leases[0];
     buffer.require_layout(ResidentBufferLayout::new(
@@ -52,7 +56,7 @@ fn canonical_vector(domain: &Domain, slot: StateSlot, elements: usize) -> Result
         || !same_handle(&buffer.handle, &lease.handle())
     {
         return Err(Error::State(
-            "full24 vector exact canonical lease/generation".into(),
+            "full model vector exact canonical lease/generation".into(),
         ));
     }
     Ok(lease.clone())
@@ -64,12 +68,12 @@ fn canonical_kv(domain: &Domain, slot: StateSlot, elements: usize) -> Result<[Re
         .ok_or_else(|| Error::Limit("source F32 KV state plane byte extent".into()))?;
     let StateBuffers::Kv { keys, values } = &domain.buffers else {
         return Err(Error::State(
-            "full24 canonical paired KV domain layout".into(),
+            "full model canonical paired KV domain layout".into(),
         ));
     };
     if domain.slot != slot || domain.leases.len() != 2 || domain.generations.len() != 2 {
         return Err(Error::State(
-            "full24 unique original paired KV domain".into(),
+            "full model unique original paired KV domain".into(),
         ));
     }
     for ((buffer, lease), generation) in [keys, values]
@@ -88,7 +92,7 @@ fn canonical_kv(domain: &Domain, slot: StateSlot, elements: usize) -> Result<[Re
             || !same_handle(&buffer.handle, &lease.handle())
         {
             return Err(Error::State(
-                "full24 KV exact canonical lease/generation".into(),
+                "full model KV exact canonical lease/generation".into(),
             ));
         }
     }
@@ -98,9 +102,9 @@ fn domain(domains: &[Domain], slot: StateSlot) -> Result<&Domain> {
     let mut found = domains.iter().filter(|domain| domain.slot == slot);
     let value = found
         .next()
-        .ok_or_else(|| Error::State("full24 original domain absent".into()))?;
+        .ok_or_else(|| Error::State("full model original domain absent".into()))?;
     if found.next().is_some() {
-        return Err(Error::State("full24 original domain repeated".into()));
+        return Err(Error::State("full model original domain repeated".into()));
     }
     Ok(value)
 }
@@ -218,7 +222,7 @@ impl ResidentSession {
             })
         {
             return Err(Error::Unsupported(
-                "original full24 complete unpublished source/root recipe".into(),
+                "original full model complete unpublished source/root recipe".into(),
             ));
         }
         self.model.service.ensure_usable()?;
@@ -339,7 +343,7 @@ impl ResidentSession {
                 || !ids.insert(lease.id())
             {
                 return Err(Error::State(
-                    "full24 independent original prior/candidate domain owners".into(),
+                    "full model independent original prior/candidate domain owners".into(),
                 ));
             }
             if index % 2 == 0 {
@@ -451,7 +455,7 @@ impl BoundModelState {
         for prior in [&self.leases[0], &self.leases[2]] {
             if !prior.is_initialized() {
                 return Err(Error::State(
-                    "full24 canonical prior lacks actual physical completion".into(),
+                    "full model canonical prior lacks actual physical completion".into(),
                 ));
             }
         }
@@ -461,7 +465,7 @@ impl BoundModelState {
         let index = usize::from(recurrent);
         if self.effects.get(index) != Some(&effect) {
             return Err(Error::State(
-                "full24 node differs from actual bound indexed effect".into(),
+                "full model node differs from actual bound indexed effect".into(),
             ));
         }
         Ok(())
@@ -488,7 +492,7 @@ impl BoundModelState {
         self.effects
             .get(usize::from(recurrent))
             .copied()
-            .ok_or_else(|| Error::State("full24 bound effect kind absent".into()))
+            .ok_or_else(|| Error::State("full model bound effect kind absent".into()))
     }
 }
 

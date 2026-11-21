@@ -251,7 +251,7 @@ impl FixedPromptModelBinding {
     }
     /// Cold explicit blocker; no attention/head proof or current-root schedule exists yet.
     pub(crate) fn require_native_activation(&self) -> Result<()> {
-        Err(Error::Unsupported("fixed_prompt all24 native activation closed: exact layer/call projection and GDN coverage, genuine current-attempt/cache, attention47, head47 and budgets required".into()))
+        Err(Error::Unsupported("fixed-prompt all-layer native activation closed: exact layer/call projection and GDN coverage, genuine current-attempt/cache, attention47, head47 and budgets required".into()))
     }
 }
 pub(crate) struct FixedPromptProjectionBinding {

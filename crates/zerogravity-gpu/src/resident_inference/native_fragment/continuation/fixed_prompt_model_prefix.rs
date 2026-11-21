@@ -102,7 +102,7 @@ mod tests {
         })
     }
     #[test]
-    fn exact_first3_shape_is_separate_from_full24_and_wrong_extent() {
+    fn exact_first3_shape_is_separate_from_full_model_and_wrong_extent() {
         let call = call(SourceIdentity::for_new_allocation().unwrap());
         let actual = AttemptPhaseBinding::new(schedule(&call, 3, 47), 0, None).unwrap();
         actual

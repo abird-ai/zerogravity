@@ -549,13 +549,13 @@ async fn qualify(name: &str) -> Result<()> {
 }
 
 #[test]
-#[ignore = "release physical CUDA; approved original .8B source, CPU prefixes and all state domains/fullV references"]
+#[ignore = "release physical CUDA; approved original .8B source, CPU prefixes and all state domains/full vocabulary references"]
 fn original_qwen35_08b_native_unequal_frontiers() -> Result<()> {
     futures_lite::future::block_on(qualify("qwen35-0.8b"))
 }
 
 #[test]
-#[ignore = "release physical CUDA; approved original 2B source, CPU prefixes and all state domains/fullV references"]
+#[ignore = "release physical CUDA; approved original 2B source, CPU prefixes and all state domains/full vocabulary references"]
 fn original_qwen35_2b_native_unequal_frontiers() -> Result<()> {
     futures_lite::future::block_on(qualify("qwen35-2b"))
 }

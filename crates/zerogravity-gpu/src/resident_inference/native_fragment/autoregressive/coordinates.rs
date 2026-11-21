@@ -74,7 +74,7 @@ impl AutoregressiveSlot {
             || attempt.frontier() != (self.base() + self.rows()) as u64
         {
             return Err(Error::State(
-                "autoregressive full24 original current-root/call span differs or was revoked"
+                "autoregressive full model original current-root/call span differs or was revoked"
                     .into(),
             ));
         }

@@ -84,9 +84,9 @@ impl Probe {
         let mut guard = self
             .0
             .lock()
-            .map_err(|_| Error::State("full24 fault probe poisoned".into()))?;
+            .map_err(|_| Error::State("full model fault probe poisoned".into()))?;
         if guard.is_some() {
-            return Err(Error::State("full24 fault probe already armed".into()));
+            return Err(Error::State("full model fault probe already armed".into()));
         }
         *guard = Some(Witness {
             owners: Arc::downgrade(owners),
@@ -102,7 +102,7 @@ impl Probe {
         let guard = self
             .0
             .lock()
-            .map_err(|_| Error::State("full24 fault probe poisoned".into()))?;
+            .map_err(|_| Error::State("full model fault probe poisoned".into()))?;
         Ok(guard
             .as_ref()
             .and_then(|w| w.owners.upgrade())
@@ -112,18 +112,18 @@ impl Probe {
         let guard = self
             .0
             .lock()
-            .map_err(|_| Error::State("full24 fault probe poisoned".into()))?;
+            .map_err(|_| Error::State("full model fault probe poisoned".into()))?;
         let w = guard
             .as_ref()
-            .ok_or_else(|| Error::State("full24 failed before actual fault cut".into()))?;
+            .ok_or_else(|| Error::State("full model failed before actual fault cut".into()))?;
         let owners = w
             .owners
             .upgrade()
-            .ok_or_else(|| Error::State("full24 original submitted graph released".into()))?;
+            .ok_or_else(|| Error::State("full model original submitted graph released".into()))?;
         let service = w
             .service
             .upgrade()
-            .ok_or_else(|| Error::State("full24 unknown original service released".into()))?;
+            .ok_or_else(|| Error::State("full model unknown original service released".into()))?;
         let body = &owners.bodies[0];
         let actual = prepared_ids(&owners)?;
         let native = owners.library.inspect_native_retention()?;
@@ -166,7 +166,7 @@ impl Probe {
             || handles < w.current.len()
             || held == 0
         {
-            return Err(Error::State("full24 unknown did not retain exact submitted/prepared graph, future initialization boundary or physical fence".into()));
+            return Err(Error::State("full model unknown did not retain exact submitted/prepared graph, future initialization boundary or physical fence".into()));
         }
         Ok(SourceModelFaultOutcome {
             fault,
@@ -270,7 +270,7 @@ pub async fn qualify_source_model_fault(
         },
         |_| {
             Err(Error::State(
-                "full24 fault must never readback/compare".into(),
+                "full model fault must never readback/compare".into(),
             ))
         },
     )
@@ -281,12 +281,12 @@ pub async fn qualify_source_model_fault(
             "forced fault qualifier returned autoregressive preparation".into(),
         )),
         Ok(Outcome::Compared(_)) => Err(Error::State(
-            "full24 fault returned positive completion".into(),
+            "full model fault returned positive completion".into(),
         )),
         Err(error) => {
             let intended = matches!((&error, fault),
                 (Error::State(message), SourceModelFault::UnknownAfterConvolution)
-                    if message == "deliberate full24 unknown after actual source Conv and canonical copy")
+                    if message == "deliberate full model unknown after actual source Conv and canonical copy")
                 || matches!((&error, fault),
                 (Error::State(message), SourceModelFault::CancelBeforeRecurrent)
                     if message == "closed original cubin qualification cancelled");

@@ -1,5 +1,5 @@
 //! ROOT-only real CUDA differential: original copy +original finite certificate.
-//! Synthetic state words only; trained all state domains/fullV/worker gates are separate.
+//! Synthetic state words only; trained all state domains/full vocabulary/worker gates are separate.
 use super::*;
 use crate::resident_leases::{ResidentLease, ResidentService};
 use crate::resident_state_transport::{PreparedCertifiedScatter, geometry};

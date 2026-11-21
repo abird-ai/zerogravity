@@ -78,7 +78,7 @@ impl OriginalWindowModelSource {
         self.validate_matrix(QwenMatrixRole::Output, &embedding)
     }
 
-    /// Records arithmetic, all-state-domain private effects and fullV. No Session/RootReady,
+    /// Records arithmetic, all-state-domain private effects and full vocabulary. No Session/RootReady,
     /// execution eligibility or model publication follows from this record.
     pub fn record_small_model(&self, call: QwenModelInvocation) -> Result<QwenPlan> {
         self.require_small_model_source()?;

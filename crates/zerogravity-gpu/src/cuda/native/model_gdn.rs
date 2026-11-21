@@ -41,7 +41,7 @@ fn require_native_gdn_pair(
     ) = (conv.kind(), recurrent.kind())
     else {
         return Err(Error::State(
-            "full24 actual paired GDN source descriptors".into(),
+            "full model actual paired GDN source descriptors".into(),
         ));
     };
     if conv.invocation() != recurrent.invocation()
@@ -144,14 +144,14 @@ impl ModelGdnParameters {
         init.require_service(service)?;
         if service.source_identity() != source.source_identity() {
             return Err(Error::State(
-                "full24 original GDN source/service before upload".into(),
+                "full model original GDN source/service before upload".into(),
             ));
         }
         let (conv_domain, recurrent_domain) = require_native_gdn_pair(conv, recurrent)?;
         let site = conv_domain.0;
         if recurrent_domain.0 != site || conv.invocation().source() != source.source_identity() {
             return Err(Error::State(
-                "full24 actual paired GDN source descriptors".into(),
+                "full model actual paired GDN source descriptors".into(),
             ));
         }
         let metadata = source.reserve_workspace(64 * 1024)?;
@@ -183,7 +183,7 @@ impl ModelGdnParameters {
                 finite_bf16(&bytes[index])
             }) {
                 return Err(Error::Malformed(
-                    "full24 finite loaded original GDN parameter".into(),
+                    "full model finite loaded original GDN parameter".into(),
                 ));
             }
             windows.push(window);
@@ -207,7 +207,9 @@ impl ModelGdnParameters {
             .map(|raw| init.upload_bytes(raw, BufferRole::ImmutableWeights))
             .collect::<Result<Vec<_>>>()?
             .try_into()
-            .map_err(|_| Error::State("full24 fixed four source GDN parameter leases".into()))?;
+            .map_err(|_| {
+                Error::State("full model fixed four source GDN parameter leases".into())
+            })?;
         let parameters = Arc::new(Self { payload, leases });
         init.retain_completion_owner(parameters.clone())?;
         Ok(parameters)
@@ -228,7 +230,7 @@ impl ModelGdnParameters {
             || recurrent.parameters() != &self.payload.descriptors[1..]
         {
             return Err(Error::State(
-                "full24 exact shared GDN source-role parameters".into(),
+                "full model exact shared GDN source-role parameters".into(),
             ));
         }
         for ((lease, window), descriptor) in self
@@ -242,7 +244,7 @@ impl ModelGdnParameters {
                 || window.parameter().source_parameter() != *descriptor
             {
                 return Err(Error::State(
-                    "full24 original GDN parameter initialization/owner".into(),
+                    "full model original GDN parameter initialization/owner".into(),
                 ));
             }
         }
@@ -278,7 +280,7 @@ impl ModelGdnBinding {
             || domains.recurrent_domain()? != RecurrentDomain(self.layer())
         {
             return Err(Error::State(
-                "full24 exact source layer/request/domain binding".into(),
+                "full model exact source layer/request/domain binding".into(),
             ));
         }
         for (role, lease) in [
@@ -304,7 +306,7 @@ impl ModelGdnBinding {
                 || !Arc::ptr_eq(prepared.lease(role)?.service(), self.values.service())
             {
                 return Err(Error::State(
-                    "full24 exact original GDN producer/parameter lease seal".into(),
+                    "full model exact original GDN producer/parameter lease seal".into(),
                 ));
             }
         }
@@ -382,15 +384,15 @@ impl ModelGdnPrepared {
             .plan()
             .nodes()
             .get(nodes[0])
-            .ok_or_else(|| Error::State("full24 Conv node absent".into()))?;
+            .ok_or_else(|| Error::State("full model Conv node absent".into()))?;
         let recurrent = record
             .plan()
             .nodes()
             .get(nodes[1])
-            .ok_or_else(|| Error::State("full24 recurrent node absent".into()))?;
+            .ok_or_else(|| Error::State("full model recurrent node absent".into()))?;
         let (Some(cd), Some(rd)) = (&record.operator(nodes[0])?, &record.operator(nodes[1])?)
         else {
-            return Err(Error::State("full24 actual typed GDN nodes".into()));
+            return Err(Error::State("full model actual typed GDN nodes".into()));
         };
         parameters.require(cd, rd)?;
         let ([qkvz, ba], [activated, z], [ra, rz, rb], [gated]) = (
@@ -400,7 +402,7 @@ impl ModelGdnPrepared {
             recurrent.outputs.as_slice(),
         ) else {
             return Err(Error::State(
-                "full24 exact GDN producer/output arity".into(),
+                "full model exact GDN producer/output arity".into(),
             ));
         };
         if nodes[0] >= nodes[1]
@@ -411,18 +413,18 @@ impl ModelGdnPrepared {
             || rd.invocation() != record.invocation()
         {
             return Err(Error::State(
-                "full24 actual same-call Conv/Z/BA SSA cohort".into(),
+                "full model actual same-call Conv/Z/BA SSA cohort".into(),
             ));
         }
         domains.require_effect(
             conv.state
-                .ok_or_else(|| Error::State("full24 Conv effect absent".into()))?,
+                .ok_or_else(|| Error::State("full model Conv effect absent".into()))?,
             false,
         )?;
         domains.require_effect(
             recurrent
                 .state
-                .ok_or_else(|| Error::State("full24 recurrent effect absent".into()))?,
+                .ok_or_else(|| Error::State("full model recurrent effect absent".into()))?,
             true,
         )?;
         let operands: [ResidentLease; 5] = [*qkvz, *ba, *activated, *z, *gated]
@@ -430,7 +432,7 @@ impl ModelGdnPrepared {
             .map(|id| values.lease(id).cloned())
             .collect::<Result<Vec<_>>>()?
             .try_into()
-            .map_err(|_| Error::State("full24 exact five GDN values".into()))?;
+            .map_err(|_| Error::State("full model exact five GDN values".into()))?;
         let phase = if let Some(scope) = &fixed_prompt {
             scope.require_values(&values)?;
             domains.require_fixed_prompt_gdn_scope(scope)?;
@@ -515,7 +517,7 @@ impl ModelGdnPrepared {
     ) -> Result<()> {
         if !Arc::ptr_eq(values, &self.binding.values) || !Arc::ptr_eq(domains, &self.domains) {
             return Err(Error::State(
-                "full24 GDN body differs from original sealed value/state map".into(),
+                "full model GDN body differs from original sealed value/state map".into(),
             ));
         }
         Ok(())
@@ -556,10 +558,10 @@ impl ModelGdnPrepared {
         let mut pending = self
             .pending
             .lock()
-            .map_err(|_| Error::State("full24 GDN split guard poisoned".into()))?;
+            .map_err(|_| Error::State("full model GDN split guard poisoned".into()))?;
         if node == self.binding.nodes[0] {
             if pending.is_some() {
-                return Err(Error::State("full24 GDN Conv already enqueued".into()));
+                return Err(Error::State("full model GDN Conv already enqueued".into()));
             }
             let token = self.prepared.launch_model_convolution(
                 self.adapter.clone(),
@@ -574,11 +576,11 @@ impl ModelGdnPrepared {
             pending
                 .take()
                 .ok_or_else(|| {
-                    Error::State("full24 recurrence lacks actual same-flight Conv".into())
+                    Error::State("full model recurrence lacks actual same-flight Conv".into())
                 })?
                 .launch_recurrent(self.domains.effect(true)?, permit, cancelled)
         } else {
-            Err(Error::State("not a full24 bound GDN node".into()))
+            Err(Error::State("not a full model bound GDN node".into()))
         }
     }
 }
