@@ -147,18 +147,20 @@ may index arrays; arbitrary monotone lease IDs require a checked mapping.
 
 ## Transfers and boundary policy
 
-- CUDA ordinary source-page upload now preserves the authenticated/cache-owned
-  `TensorWindow`, then copies its payload once directly into CubeCL's existing reusable
-  pinned-host pool. This removes the portable window→Vec/Bytes→backend-pinned chain without
-  introducing another staging pool; the original page+consumer checkpoint remains the
-  physical lifetime boundary. Pinned staging is explicitly admitted, and native-heap
-  fallback retains an additional bounded bounce allowance.
-- Do **not** bypass the verified window cache merely to read SSD bytes directly into pinned
-  memory. A matched 2B/32K prompt48 trial regressed39.46s→41.77s when direct SSD fill skipped
-  cache reuse; the cache-preserving pinned path is39.36s on the same cell. Future direct or
-  async IO should therefore integrate at the cache-miss/materialization boundary, verify
-  complete integrity chunks, preserve held-file/hash/cancel semantics and expose actual
-  pinned/heap allocation kind.
+- CUDA ordinary source-page upload now retains the authenticated/cache-owned
+  `TensorWindow` itself through the existing page+consumer checkpoint and enqueues that
+  exact owner through the original actor's bounded owned-window H2D primitive. This removes
+  the portable window→Vec/Bytes→backend-pinned chain **and** the short-lived source-side
+  pinned layer introduced at `b839920`; no new pool/ring is required. The original staged
+  source bytes and their existing `TransferStaging` lease are the sole host payload owner.
+  HIP/non-CUDA serial representation is cfg-unchanged.
+- Do **not** bypass the verified cache or move pinned owners into CubeCL's generic drop queue
+  merely to remove copies. On the same 2B/32K prompt48 streamed cell, direct SSD→pinned
+  cache bypass was41.77s, cache-miss ownership promotion41.00s, and moving pinned `Bytes`
+  into the writer44.88s. The retained direct authenticated-owner actor path is38.46s versus
+  the39.36s `b839920` checkpoint. Future direct/async IO should integrate at the cache-miss/
+  materialization boundary, verify complete integrity chunks, preserve held-file/hash/cancel
+  semantics, and keep completion lifetime with the physical owner that actually needs it.
 - Begin with bounded same-stream host retirement. A2/3-slot ring can limit
   runahead without a per-page CPU wait; its size must follow real resource and
   overlap evidence. Adding slots alone does not prove overlap.

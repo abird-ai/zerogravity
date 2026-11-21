@@ -2,9 +2,13 @@
 //! No context, physical stream or raw device pointer leaves that actor.
 
 use crate::compute::CudaServer;
-use cubecl_common::{bytes::Bytes, device::ServiceId, device_handle::DeviceHandle};
-use cubecl_core::{client::Client, server::ServerError};
+use cubecl_common::{device::ServiceId, device_handle::DeviceHandle};
+use cubecl_core::{
+    client::Client,
+    server::{Handle, ServerError},
+};
 use cubecl_environment::stream::StreamId;
+use std::sync::Arc;
 
 mod compiler;
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
@@ -105,15 +109,35 @@ impl OwnedCudaQueue {
             })?
     }
 
-    /// Reserve host transfer storage on this exact actor/logical stream. The
-    /// backend reuses pinned host storage when available and otherwise returns
-    /// native heap storage under the same ownership contract.
-    pub fn reserve_host_staging(&self, bytes: usize) -> Result<Bytes, ServerError> {
+    /// Enqueue one bounded immutable host window into an exact view of a full
+    /// original allocation. This does not retain the host owner after enqueue.
+    ///
+    /// # Safety
+    /// The caller must retain the source, complete destination allocation and
+    /// every downstream consumer until actual completion/quarantine.
+    pub unsafe fn enqueue_owned_source_window<T>(
+        &self,
+        destination: Handle,
+        full_bytes: usize,
+        offset: usize,
+        source: Arc<T>,
+    ) -> Result<(), ServerError>
+    where
+        T: AsRef<[u8]> + Send + Sync + 'static,
+    {
         let stream = self.stream;
         self.actor
-            .submit_blocking(move |server| server.reserve_owned_host_staging(stream, bytes))
+            .submit_blocking(move |server| {
+                server.upload_owned_original_window(
+                    stream,
+                    destination,
+                    full_bytes,
+                    offset,
+                    source,
+                )
+            })
             .map_err(|error| {
-                ServerError::graph_state(format!("host staging original actor: {error:?}"))
+                ServerError::graph_state(format!("owned source window original actor: {error:?}"))
             })?
     }
 

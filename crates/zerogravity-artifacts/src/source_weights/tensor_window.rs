@@ -530,22 +530,6 @@ impl VerifiedTensorSource {
             }],
         )
     }
-    /// Bounded host storage used only for physical source/device transfer.
-    /// Ownership remains with the caller until its downstream completion point.
-    pub fn reserve_transfer_staging(&self, bytes: usize) -> Result<WindowWorkspace> {
-        if bytes == 0 || bytes > 32 * 1024 * 1024 {
-            return Err(Error::Limit(
-                "verified source transfer staging bound".into(),
-            ));
-        }
-        self.admit_workspace(
-            bytes,
-            &[AllocationRequest {
-                kind: AllocationClass::TransferStaging,
-                bytes: bytes as u64,
-            }],
-        )
-    }
     /// Conservative private output + scratch envelope, under this same owner.
     pub fn reserve_operator_buffers(
         &self,

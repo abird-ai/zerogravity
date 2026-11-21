@@ -2,8 +2,6 @@
 use super::*;
 #[cfg(feature = "hip")]
 use crate::transfer_retirement::{RetirementMark, TransferRetirementRing};
-#[cfg(feature = "cuda-cublas")]
-use cubecl::bytes::AllocationProperty;
 use std::ops::Range;
 #[cfg(all(
     feature = "hip",
@@ -46,11 +44,12 @@ pub(crate) const RETIRED_PAGE_TRANSFERS: usize = 2;
 /// the existing 64 KiB control reservation, proved at construction.
 ///
 /// The serial route has no ring/page retirement: one ordinary window is staged
-/// by its whole intersecting integrity chunks plus offset metadata. CUDA keeps
-/// that authenticated/cache-owned window and copies once into the backend's
-/// reusable pinned host pool; only a native-heap fallback admits a second
-/// backend-bounce allowance. The shared three-page family baseline still covers
-/// those bounded owners. A HIP-compiled binary can still select
+/// by its whole intersecting integrity chunks plus offset metadata. CUDA retains
+/// that exact authenticated owner through the existing consumer checkpoint and
+/// lets the original actor enqueue its bounded H2D directly; the portable route
+/// keeps the existing Bytes/backend staging path. The shared three-page family
+/// baseline remains a conservative bound across compiled routes. A HIP-compiled
+/// binary can still select
 /// this serial route when its prepared set holds no live scoped HIP
 /// source-page actor, so both compiled routes are priced and the larger
 /// source-derived bound is charged. The routes are never summed; the original
@@ -232,11 +231,21 @@ impl PageGeometry {
     }
 }
 
+#[cfg(feature = "cuda-cublas")]
+type SerialWindow = Arc<WindowBytes>;
+#[cfg(not(feature = "cuda-cublas"))]
+type SerialWindow = TensorWindow;
 struct PendingPage {
-    _window: Option<TensorWindow>,
+    _window: Option<SerialWindow>,
     _bytes: Option<Bytes>,
     _staging: Option<(WindowWorkspace, Option<WindowWorkspace>)>,
     serial: u64,
+}
+enum PageTransfer {
+    #[cfg(feature = "cuda-cublas")]
+    Owned(Arc<WindowBytes>),
+    #[cfg(not(feature = "cuda-cublas"))]
+    Bytes(Bytes),
 }
 #[derive(Default)]
 struct Progress {
@@ -268,9 +277,7 @@ impl RetirementMark for PageMark {
 }
 /// Retains the exact source-owned window bytes until the original actor proves
 /// the recorded write plus consumers completed.
-#[cfg(feature = "hip")]
 struct WindowBytes(TensorWindow);
-#[cfg(feature = "hip")]
 impl AsRef<[u8]> for WindowBytes {
     fn as_ref(&self) -> &[u8] {
         self.0.as_slice()
@@ -1659,22 +1666,12 @@ impl ResidentSourcePage {
                 ));
             }
             #[cfg(feature = "cuda-cublas")]
-            let (bytes, staging) = {
-                // Preserve the authenticated source window/cache owner, but
-                // copy its payload once directly into CubeCL's reusable pinned
-                // host pool. A native-heap fallback retains one extra bounded
-                // bounce allowance because the backend may still pin it.
-                let staging = self.source.reserve_transfer_staging(n)?;
-                let queue = self.service.pinned_cuda_queue()?;
-                let mut bytes = queue.reserve_host_staging(n).map_err(|error| {
-                    Error::State(format!("source page CUDA host staging: {error}"))
-                })?;
-                let bounce = (!matches!(bytes.property(), AllocationProperty::Pinned))
-                    .then(|| self.source.reserve_transfer_staging(n))
-                    .transpose()?;
-                bytes.copy_from_slice(window.as_slice());
-                (bytes, (staging, bounce))
-            };
+            let window = Arc::new(WindowBytes(window));
+            #[cfg(feature = "cuda-cublas")]
+            let (bytes, staging): (
+                Option<Bytes>,
+                Option<(WindowWorkspace, Option<WindowWorkspace>)>,
+            ) = (None, None);
             #[cfg(not(feature = "cuda-cublas"))]
             let (bytes, staging) = {
                 let staging = self.source.reserve_workspace(n)?;
@@ -1683,14 +1680,17 @@ impl ResidentSourcePage {
                 if copy.capacity() != n {
                     return Err(Error::Limit("source page copy capacity".into()));
                 }
-                (Bytes::from_bytes_vec(copy), (staging, Some(bounce)))
+                (
+                    Some(Bytes::from_bytes_vec(copy)),
+                    Some((staging, Some(bounce))),
+                )
             };
-            if bytes.capacity() > n {
+            if bytes.as_ref().is_some_and(|bytes| bytes.capacity() > n) {
                 return Err(Error::Limit("source page aligned staging capacity".into()));
             }
             Some((window, bytes, staging))
         };
-        let (serial, bytes) = {
+        let (serial, transfer) = {
             let mut p = self
                 .progress
                 .lock()
@@ -1709,11 +1709,16 @@ impl ResidentSourcePage {
             } else {
                 p.cache.clear();
             }
-            let (window, bytes, staging) = match upload {
-                Some((window, bytes, staging)) => (Some(window), Some(bytes), Some(staging)),
-                None => (None, None, None),
+            let (window, bytes, staging, transfer) = match upload {
+                Some((window, bytes, staging)) => {
+                    #[cfg(feature = "cuda-cublas")]
+                    let transfer = Some(PageTransfer::Owned(window.clone()));
+                    #[cfg(not(feature = "cuda-cublas"))]
+                    let transfer = bytes.clone().map(PageTransfer::Bytes);
+                    (Some(window), bytes, staging, transfer)
+                }
+                None => (None, None, None, None),
             };
-            let transfer = bytes.clone();
             p.pending = Some(PendingPage {
                 _window: window,
                 _bytes: bytes,
@@ -1730,8 +1735,29 @@ impl ResidentSourcePage {
             .handle()
             .offset_start(offset as u64)
             .offset_end((PAGE_BYTES - offset - n) as u64);
-        if let Some(bytes) = bytes {
-            self.service.client().write(&handle, bytes);
+        if let Some(transfer) = transfer {
+            match transfer {
+                #[cfg(feature = "cuda-cublas")]
+                PageTransfer::Owned(window) => {
+                    let queue = self.service.pinned_cuda_queue()?;
+                    // SAFETY: pending retains this exact authenticated source
+                    // owner and the complete page lease until sync_buffers
+                    // proves H2D plus every consumer completed.
+                    unsafe {
+                        queue.enqueue_owned_source_window(
+                            self.lease.handle(),
+                            PAGE_BYTES,
+                            offset,
+                            window,
+                        )
+                    }
+                    .map_err(|error| {
+                        Error::State(format!("source page CUDA owned H2D: {error}"))
+                    })?;
+                }
+                #[cfg(not(feature = "cuda-cublas"))]
+                PageTransfer::Bytes(bytes) => self.service.client().write(&handle, bytes),
+            }
             self.service.record_value_upload(n);
         }
         let view = SourcePageView {

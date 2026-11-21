@@ -75,23 +75,25 @@ Two independent source audits are reconciled there; implementation remains open.
 Source comparison: [families09–13](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md).
 The following extends existing owners; source-byte qualification is not inference.
 
-- [~] The first authenticated reusable host-staging tier is now active on the real
-  ordinary-CUDA source-page path. The verified `TensorWindow` and its existing bounded
-  cache remain the source/authentication owner; after that boundary the original CUDA
-  actor reserves from CubeCL's existing reusable pinned-host pool and the page payload is
-  copied there once, directly. This removes the transient payload `Vec` plus the normal
-  backend native→pinned copy without adding another pool or retirement ring. The source
-  owner retains an explicit `TransferStaging` admission until the existing page+consumer
-  `sync_buffers` checkpoint; if the backend pinned pool falls back to native heap, one
-  extra bounded bounce admission is retained because CubeCL may still pin that upload.
-  A more aggressive direct SSD→caller-pinned prototype was deliberately rejected: on the
-  same temporary 2B/32K Contiguous/Streamed public-SDK prompt48 cell it bypassed verified
-  window-cache reuse and regressed 39.46s→41.77s (~5.9%). The cache-preserving pinned
-  staging path passes the identical cell at39.36s with exact replay/frontiers, independent
-  sessions and clean shutdown, effectively baseline-neutral while removing the redundant
-  allocation/copy. The policy override was temporary and reverted; no new benchmark fixture
-  or evidence pin was added. Direct/async source IO remains future work only if it composes
-  with the authenticated cache/miss policy instead of bypassing it.
+- [~] The first ordinary-CUDA source-page transfer cleanup now uses the existing
+  **owned authenticated window** boundary directly. `TensorWindow` remains the exact
+  source/cache/authentication owner and already carries the real `TransferStaging` lease;
+  CUDA wraps only that owner in an `Arc`, installs it in the page's existing pending state
+  before enqueue, and the original actor reuses its generic bounded owned-window H2D
+  primitive. The existing page+consumer `sync_buffers` checkpoint is still the only serial
+  reuse boundary. No payload `Vec`, second `Bytes`, CUDA pinned staging allocation, new pool
+  or new retirement ring exists on this path; HIP/non-CUDA serial representation remains
+  unchanged by cfg. The earlier `b839920` source-side pinned experiment is superseded: the
+  CubeCL pinned `Bytes` controller has no cheap `duplicate`, so `bytes.clone()` deep-copied
+  to Native and the generic writer then staged to pinned again. A cache-promotion variant
+  (41.00s) and moving the pinned `Bytes` directly into the writer/drop-queue lifetime
+  (44.88s) were both rejected against the same 2B/32K Contiguous/Streamed prompt48 cell.
+  The final retained-owner actor upload passes that exact cell at **38.46s**, versus39.36s
+  at `b839920` (~2.3% faster), with exact replay/frontiers, independent sessions and clean
+  shutdown. The earlier direct SSD→pinned/cache-bypass prototype remains rejected at41.77s.
+  All policy overrides were temporary and reverted; no benchmark fixture/evidence pin was
+  added. Direct/async source IO remains future work only if it composes with the verified
+  cache/miss policy instead of bypassing it.
 - [~] Canonical physical buffer identity now exists in the model-neutral device
   ledger. `DeviceBufferIdentity` is an opaque process-local **ledger namespace +
   allocation owner + exact byte range**: direct allocations are owned by their original
