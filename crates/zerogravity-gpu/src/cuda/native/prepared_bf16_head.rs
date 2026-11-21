@@ -327,6 +327,11 @@ impl Bf16HeadCall {
             self.input.bytes(),
             self.output.bytes(),
         )?;
+        let physical = [
+            self.cold.lease.clone(),
+            self.input.clone(),
+            self.output.clone(),
+        ];
         if self.cold.matrix.source().source_identity() != service.source_identity()
             || self
                 .cold
@@ -341,18 +346,10 @@ impl Bf16HeadCall {
                 self.output.role(),
                 BufferRole::Activation | BufferRole::Output | BufferRole::Scratch
             )
-            || self.input.id() == self.output.id()
-            || self.input.id() == self.cold.lease.id()
-            || self.output.id() == self.cold.lease.id()
-            || !Arc::ptr_eq(self.input.service(), service)
-            || !Arc::ptr_eq(self.output.service(), service)
-            || self.input.service_generation() != service.generation()
-            || self.output.service_generation() != service.generation()
-            || self.input.source_identity() != service.source_identity()
-            || self.output.source_identity() != service.source_identity()
+            || !service.pairwise_disjoint(&physical)?
         {
             return Err(Error::State(
-                "head SAME source/service/generation/full WXY owners".into(),
+                "head SAME source/service/generation/disjoint physical WXY owners".into(),
             ));
         }
         Ok(())

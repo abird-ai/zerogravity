@@ -416,9 +416,18 @@ Vulkan-only retry passed, so no source failure follows.
   ownership truth from the still-required `BufferRange`/`OwnedRanges` kernel binding
   geometry. Strict CUDA Clippy/serving compile pass and the existing native-B8 public SDK
   Contiguous/Paged cell remains exact with clean shutdown after the migration; no new
-  fixture was added. Six backing-ledger tests include cross-ledger separation. Adoption
-  across graph views and transfer staging remains incremental; do not cache identity into
-  every lease merely for future diagnostics.
+  fixture was added. Six backing-ledger tests include cross-ledger separation. The next
+  real transfer consumer is now migrated too: prepared streamed BF16 vocabulary-head
+  binding validates the weight-staging/input/output lease triple with the same
+  `pairwise_disjoint` ledger identity before its existing two-slot authenticated
+  retirement ring can run. This closes the logical-ID-only alias hole without changing
+  the ring, host-window retention, same-stream overwrite ordering or kernel-handle
+  geometry. Production `cuda-cublas` and public `qwen35-cuda` checks pass. The retained
+  public-SDK 0.8B context1024/prompt48 replay cell also passes physically after recreating
+  the documented CUDA13.4 include view: exact two-token replay, distinct sessions, exact
+  producer frontiers and clean shutdown in14.42s. No new alias fixture was added.
+  Remaining identity adoption is incremental for additional real graph/transfer
+  consumers; do not cache identity into every lease merely for future diagnostics.
   **Scoped worker prefix reuse is
   now implemented and physically accepted.** `PrefixSharingScope` is a validated
   nonzero Copy ID. Existing `Request` stays unchanged; ordinary `request_text`
@@ -1679,11 +1688,11 @@ Connector behavior:
 
 Temporary CUDA include view, recreate only when required:
 - cudart:
-  `/nix/store/41094qrkxhkz9311pvpj2wj0hb9ygd8r-cuda13.4-cuda_cudart-13.4.92/include`
+  `/nix/store/nhr5mz136csd28mn8h5gdrbq6cbmbg0m-cuda13.4-cuda_cudart-13.4.92/include`
 - CCCL:
-  `/nix/store/gfmsqzs0x894ni7ddq4cp5wgpijddpvb-cuda13.4-cccl-13.3.4.3.1/include`
+  `/nix/store/ramrzw37i39f9fbnj6agp8kym2g056y7-cuda13.4-cccl-13.3.4.3.1/include`
 - NVRTC:
-  `/nix/store/jjpa3v76wd7275agp79nscyvb2fdbnq2-cuda13.4-cuda_nvrtc-13.4.92-lib/lib`
+  `/nix/store/njh4s557p8z871vpqwcy7i23k6swv23m-cuda13.4-cuda_nvrtc-13.4.92-lib/lib`
 - view: `tmp/_tmp_cuda_include_view`
 - helper: `scripts/cuda-nix-include-view.sh`
 - set CUDA_PATH to the view and LD_LIBRARY_PATH to NVRTC + driver lib.

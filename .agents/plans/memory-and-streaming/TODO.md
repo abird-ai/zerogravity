@@ -93,13 +93,19 @@ The following extends existing owners; source-byte qualification is not inferenc
   ordinary-CUDA body now has the first **prepared-set** consumer too: shared
   `ResidentService::pairwise_disjoint` validates the complete deduplicated resident lease
   set under one ledger lock before binding, while `BufferRange`/`OwnedRanges` remain only
-  for their legitimate kernel-handle geometry role. The helper allocates nothing and
-  caches no identity into leases. Existing B8 public-SDK Contiguous/Paged execution passes
-  exact tokens/clean shutdown after the migration, so no new alias fixture was added. Six
-  backing-ledger tests cover cross-ledger separation, direct-vs-backed identity, exact
-  offsets/ranges, overlap/disjoint aliases, continuous charge, cancellation and unknown
-  fencing. Remaining adoption is to query this identity only where graph views and
-  transfer staging actually need it, without mandatory hot-path bookkeeping.
+  for their legitimate kernel-handle geometry role. The prepared streamed BF16 vocabulary
+  head now reuses that same helper for its weight-staging/input/output lease triple, so
+  distinct logical lease IDs cannot hide overlapping physical backing before the existing
+  two-slot authenticated retirement ring starts. The ring, source-owner lifetime and
+  same-stream overwrite/retirement protocol are unchanged; no second transfer abstraction
+  was added. The helper allocates nothing and caches no identity into leases. Existing B8
+  public-SDK Contiguous/Paged execution remains exact/clean, and a retained 0.8B
+  context1024/prompt48 public-SDK replay cell passes the transfer-head migration with exact
+  tokens/frontiers, independent sessions and clean shutdown. No new alias fixture was
+  added. Six backing-ledger tests cover cross-ledger separation, direct-vs-backed identity,
+  exact offsets/ranges, overlap/disjoint aliases, continuous charge, cancellation and
+  unknown fencing. Remaining adoption is to query this identity only where additional
+  graph views or transfer consumers actually need it, without mandatory hot-path bookkeeping.
   Encoded/captured/queued readers still remain part of the broader retirement work.
 - [ ] Add measured lifetime-aware scratch reuse/phase lending only when no live
   root, graph, transfer or reader needs the range. Price borrowed capacity,
