@@ -1,4 +1,4 @@
-//! Shared resident source-call dispatch, retaining each backend's original body.
+//! Shared resident text-execution dispatch, retaining each backend's original body.
 use super::*;
 use crate::resident_leases::ResidentSubmission as Flight;
 impl ResidentProgram {
@@ -7,18 +7,18 @@ impl ResidentProgram {
             #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
             ResidentProgramBody::CudaForward(_) => true,
             #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
-            ResidentProgramBody::SourceCall(_) => true,
+            ResidentProgramBody::TextExecution(_) => true,
             _ => false,
         }
     }
-    pub(crate) fn source_call_waits_on_cancel(&self) -> bool {
+    pub(crate) fn text_execution_waits_on_cancel(&self) -> bool {
         #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
         if let ResidentProgramBody::CudaForward(body) = &self.body {
             return body.waits_on_cancel();
         }
 
         #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
-        if matches!(self.body, ResidentProgramBody::SourceCall(_)) {
+        if matches!(self.body, ResidentProgramBody::TextExecution(_)) {
             return true;
         }
         false
@@ -28,19 +28,19 @@ impl ResidentProgram {
             #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
             ResidentProgramBody::CudaForward(body) => body.validate_request(request).map(|_| ()),
             #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
-            ResidentProgramBody::SourceCall(body) => body.validate_request(request).map(|_| ()),
+            ResidentProgramBody::TextExecution(body) => body.validate_request(request).map(|_| ()),
             _ => Err(Error::State(
-                "source call reached another resident body".into(),
+                "text execution reached another resident body".into(),
             )),
         }
     }
-    pub(crate) fn validate_source_call_states(
+    pub(crate) fn validate_text_execution_states(
         &self,
         request: &ForwardPlan,
         states: &[StateBinding],
     ) -> Result<()> {
         #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
-        if let ResidentProgramBody::SourceCall(body) = &self.body {
+        if let ResidentProgramBody::TextExecution(body) = &self.body {
             return body
                 .states(body.validate_request(request)?, states)
                 .map(|_| ());
@@ -58,7 +58,7 @@ impl ResidentProgram {
         compact_greedy: bool,
         device_token: Option<cubecl::server::Handle>,
         cancelled: Option<&std::sync::atomic::AtomicBool>,
-        observer: Option<&mut dyn super::source_observation::SourceCallObserver>,
+        observer: Option<&mut dyn super::text_observation::TextObserver>,
     ) -> Result<ResidentSubmission> {
         let _ = cancelled;
         match &self.body {
@@ -66,7 +66,7 @@ impl ResidentProgram {
             ResidentProgramBody::CudaForward(body) => {
                 if observer.is_some() {
                     return Err(Error::Unsupported(
-                        "CUDA source-call observer is not implemented".into(),
+                        "CUDA text-execution observer is not implemented".into(),
                     ));
                 }
                 body.execute(
@@ -81,17 +81,17 @@ impl ResidentProgram {
                 .await
             }
             #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
-            ResidentProgramBody::SourceCall(body) => {
+            ResidentProgramBody::TextExecution(body) => {
                 if compact_greedy || device_token.is_some() {
                     return Err(Error::Unsupported(
-                        "HIP source call has no compact CUDA greedy readout".into(),
+                        "HIP text execution has no compact CUDA greedy readout".into(),
                     ));
                 }
                 body.execute(flight, request, states, output, observer)
                     .await
             }
             _ => Err(Error::State(
-                "source call reached another resident body".into(),
+                "text execution reached another resident body".into(),
             )),
         }
     }
@@ -144,24 +144,26 @@ impl ResidentProgram {
 ))]
 impl ResidentProgram {
     #[cfg(feature = "qwen-source-qualification")]
-    pub(crate) async fn source_call_diagnostic_trig(
+    pub(crate) async fn text_execution_diagnostic_trig(
         &self,
         angles: &[f32],
         owner: std::sync::Arc<dyn std::any::Any + Send + Sync>,
     ) -> Result<Vec<f32>> {
         match &self.body {
-            ResidentProgramBody::SourceCall(body) => body.diagnostic_trig(angles, owner).await,
+            ResidentProgramBody::TextExecution(body) => body.diagnostic_trig(angles, owner).await,
             _ => Err(Error::State(
                 "source trig reached another resident body".into(),
             )),
         }
     }
 
-    pub(crate) fn source_call_native_probe(&self) -> Result<crate::hip::native::FinalNativeProbe> {
+    pub(crate) fn text_execution_native_probe(
+        &self,
+    ) -> Result<crate::hip::native::FinalNativeProbe> {
         match &self.body {
-            ResidentProgramBody::SourceCall(body) => Ok(body.native_probe()),
+            ResidentProgramBody::TextExecution(body) => Ok(body.native_probe()),
             _ => Err(Error::State(
-                "source-call probe reached another resident body".into(),
+                "text-execution probe reached another resident body".into(),
             )),
         }
     }

@@ -12,16 +12,21 @@ fn teachers(source: SourceIdentity, base: usize, rows: usize) -> QwenInputRows {
         .unwrap()
     }
 }
-fn request(source: SourceIdentity, mode: SourceCallMode, base: usize, rows: usize) -> QwenGdnCall {
-    QwenGdnCall::from_span(
+fn request(
+    source: SourceIdentity,
+    mode: InvocationPhase,
+    base: usize,
+    rows: usize,
+) -> QwenGdnInvocation {
+    QwenGdnInvocation::from_span(
         QwenPrefixLayer::new(source, 0).unwrap(),
         mode,
         teachers(source, base, rows),
     )
     .unwrap()
 }
-fn embedding(call: &QwenSourceCall) -> QwenEmbedding {
-    QwenEmbedding::for_call(
+fn embedding(call: &QwenModelInvocation) -> QwenEmbedding {
+    QwenEmbedding::for_model_invocation(
         SourceTensor {
             source: call.source(),
             name: "model.language_model.embed_tokens.weight".into(),
@@ -34,7 +39,7 @@ fn embedding(call: &QwenSourceCall) -> QwenEmbedding {
     )
     .unwrap()
 }
-fn rms(call: &QwenSourceCall) -> QwenOperator {
+fn rms(call: &QwenModelInvocation) -> QwenOperator {
     QwenOperator::new(
         call.clone(),
         Some(call.layer(0).unwrap()),
@@ -65,7 +70,7 @@ fn adoption_preserves_existing_teacher_issuer_and_rechecks_original_vocabulary()
 }
 
 #[test]
-fn old_invocation_and_call_constructors_keep_exact_finite_guards() {
+fn legacy_invocation_constructors_keep_exact_finite_guards() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let layer = QwenPrefixLayer::new(source, 0).unwrap();
     for (phase, base, rows) in [
@@ -76,11 +81,11 @@ fn old_invocation_and_call_constructors_keep_exact_finite_guards() {
         (ReferencePhase::CachedOne, 66, 1),
     ] {
         let t = teachers(source, base, rows);
-        let old = QwenGdnCall::new(layer, phase, t.clone()).unwrap();
-        let semantic = QwenGdnCall::from_span(layer, phase.mode(), t).unwrap();
+        let old = QwenGdnInvocation::new(layer, phase, t.clone()).unwrap();
+        let semantic = QwenGdnInvocation::from_span(layer, phase.invocation_phase(), t).unwrap();
         assert_eq!(old, semantic);
         assert_eq!(old.reference_phase().unwrap(), phase);
-        let call = QwenSourceCall::new(old).unwrap();
+        let call = QwenModelInvocation::new(old).unwrap();
         assert_eq!(
             QwenEmbedding::for_model(
                 QwenModelVariant::Qwen800M,
@@ -93,16 +98,16 @@ fn old_invocation_and_call_constructors_keep_exact_finite_guards() {
     }
     for base in 47..=53 {
         let t = teachers(source, base, 1);
-        assert!(QwenGdnCall::new(layer, ReferencePhase::CachedOne, t).is_err());
+        assert!(QwenGdnInvocation::new(layer, ReferencePhase::CachedOne, t).is_err());
     }
     let t = teachers(source, 0, 47);
     for phase in [ReferencePhase::InitialOne, ReferencePhase::Initial64] {
-        assert!(QwenGdnCall::new(layer, phase, t.clone()).is_err());
+        assert!(QwenGdnInvocation::new(layer, phase, t.clone()).is_err());
     }
-    let semantic = request(source, SourceCallMode::Prefill, 0, 47);
-    assert!(QwenSourceCall::new(semantic.clone()).is_err());
-    assert!(QwenSourceCall::for_profile(QwenModelVariant::Qwen2B, semantic.clone()).is_err());
-    let call = QwenSourceCall::from_span(semantic.clone()).unwrap();
+    let semantic = request(source, InvocationPhase::Prefill, 0, 47);
+    assert!(QwenModelInvocation::new(semantic.clone()).is_err());
+    assert!(QwenModelInvocation::for_profile(QwenModelVariant::Qwen2B, semantic.clone()).is_err());
+    let call = QwenModelInvocation::from_span(semantic.clone()).unwrap();
     assert!(
         QwenEmbedding::new(
             embedding(&call).tensor().clone(),
@@ -125,16 +130,16 @@ fn old_invocation_and_call_constructors_keep_exact_finite_guards() {
 #[test]
 fn true47_and_cached47_through53_spans_have_no_legacy_native_phase() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let initial = request(source, SourceCallMode::Prefill, 0, 47);
+    let initial = request(source, InvocationPhase::Prefill, 0, 47);
     assert_eq!((initial.rows(), initial.teachers().base()), (47, 0));
     assert!(initial.reference_phase().is_err());
-    let call = QwenSourceCall::from_span(initial).unwrap();
+    let call = QwenModelInvocation::from_span(initial).unwrap();
     assert_eq!(call.model_profile(), QwenModelVariant::Qwen800M);
     for base in 47..=53 {
-        let next = request(source, SourceCallMode::Decode, base, 1);
+        let next = request(source, InvocationPhase::Decode, base, 1);
         assert_eq!(next.teachers().base() + next.rows(), base + 1);
         assert!(next.reference_phase().is_err());
-        assert!(QwenSourceCall::from_span(next).is_ok());
+        assert!(QwenModelInvocation::from_span(next).is_ok());
     }
     let head = QwenOperator::new(
         call.clone(),
@@ -147,25 +152,29 @@ fn true47_and_cached47_through53_spans_have_no_legacy_native_phase() {
     assert_eq!(head.selected_row(), Some(46));
     assert_eq!(head.input_elements(), vec![47 * 1024]);
     assert_eq!(head.output_elements(), vec![248_320]);
-    assert_eq!(head.call(), &call);
+    assert_eq!(head.model_invocation(), &call);
 }
 
 #[test]
-fn invalid_source_mode_capacity_and_span_never_become_an_invocation() {
+fn invalid_source_phase_capacity_and_span_never_become_an_invocation() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let other = SourceIdentity::for_new_allocation().unwrap();
     let layer = QwenPrefixLayer::new(source, 0).unwrap();
     assert!(
-        QwenGdnCall::from_span(
+        QwenGdnInvocation::from_span(
             QwenPrefixLayer::new(other, 0).unwrap(),
-            SourceCallMode::Prefill,
+            InvocationPhase::Prefill,
             teachers(source, 0, 47)
         )
         .is_err()
     );
-    assert!(QwenGdnCall::from_span(layer, SourceCallMode::Decode, teachers(source, 0, 1)).is_err());
     assert!(
-        QwenGdnCall::from_span(layer, SourceCallMode::Decode, teachers(source, 0, 47)).is_err()
+        QwenGdnInvocation::from_span(layer, InvocationPhase::Decode, teachers(source, 0, 1))
+            .is_err()
+    );
+    assert!(
+        QwenGdnInvocation::from_span(layer, InvocationPhase::Decode, teachers(source, 0, 47))
+            .is_err()
     );
     for (base, capacity, count) in [
         (500, 512, 47),
@@ -176,37 +185,37 @@ fn invalid_source_mode_capacity_and_span_never_become_an_invocation() {
         assert!(TeacherSpan::new(source, base, capacity, 248_320, &vec![11; count]).is_err());
     }
     let small = TeacherSpan::new(source, 0, 64, 248_320, &[11; 47]).unwrap();
-    let semantic = QwenGdnCall::from_span(
+    let semantic = QwenGdnInvocation::from_span(
         layer,
-        SourceCallMode::Prefill,
+        InvocationPhase::Prefill,
         QwenInputRows::from_span(small).unwrap(),
     )
     .unwrap();
-    assert!(QwenSourceCall::from_span(semantic).is_err());
+    assert!(QwenModelInvocation::from_span(semantic).is_err());
 }
 
 #[test]
 fn full_model_embedding_records_same_builder_span_and_actual_producer_origin() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     for (mode, base, rows) in [
-        (SourceCallMode::Prefill, 0, 47),
-        (SourceCallMode::Decode, 47, 1),
+        (InvocationPhase::Prefill, 0, 47),
+        (InvocationPhase::Decode, 47, 1),
     ] {
-        let call = QwenSourceCall::from_span(request(source, mode, base, rows)).unwrap();
+        let call = QwenModelInvocation::from_span(request(source, mode, base, rows)).unwrap();
         let mut builder = QwenPlanBuilder::new_model(call.clone()).unwrap();
         let raw = builder.source_embedding(&embedding(&call)).unwrap();
         assert_eq!(raw.elements(), rows * 1024);
         let tag = builder.value_provenance(&raw).unwrap().unwrap();
-        assert_eq!(tag.mode(), Some(mode));
-        assert_eq!(tag.phase(), None);
+        assert_eq!(tag.invocation_phase(), Some(mode));
+        assert_eq!(tag.reference_phase(), None);
         assert_eq!(tag.teachers(), call.request().teachers());
         let normal = builder.source_operator(&rms(&call), &[raw]).unwrap()[0];
         let tag = builder.value_provenance(&normal).unwrap().unwrap();
         let QwenValueOrigin::FullModel(origin) = tag.origin() else {
             panic!("full-model origin absent")
         };
-        assert_eq!(origin.call(), &call);
-        assert_eq!(tag.mode(), Some(mode));
+        assert_eq!(origin.model_invocation(), &call);
+        assert_eq!(tag.invocation_phase(), Some(mode));
         let head = QwenOperator::new(
             call.clone(),
             None,
@@ -236,14 +245,14 @@ fn full_model_embedding_records_same_builder_span_and_actual_producer_origin() {
 }
 
 #[test]
-fn foreign_teacher_issuer_or_mode_fails_before_graph_mutation() {
+fn foreign_teacher_issuer_or_phase_fails_before_graph_mutation() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     for (mode, base, rows) in [
-        (SourceCallMode::Prefill, 0, 47),
-        (SourceCallMode::Decode, 47, 1),
+        (InvocationPhase::Prefill, 0, 47),
+        (InvocationPhase::Decode, 47, 1),
     ] {
-        let call = QwenSourceCall::from_span(request(source, mode, base, rows)).unwrap();
-        let foreign = QwenSourceCall::from_span(request(source, mode, base, rows)).unwrap();
+        let call = QwenModelInvocation::from_span(request(source, mode, base, rows)).unwrap();
+        let foreign = QwenModelInvocation::from_span(request(source, mode, base, rows)).unwrap();
         let mut builder = QwenPlanBuilder::new_model(call.clone()).unwrap();
         let before = (
             builder.core.nodes().len(),
@@ -275,10 +284,10 @@ fn foreign_teacher_issuer_or_mode_fails_before_graph_mutation() {
             before
         );
         if rows == 1 {
-            let changed = QwenSourceCall::from_span(
-                QwenGdnCall::from_span(
+            let changed = QwenModelInvocation::from_span(
+                QwenGdnInvocation::from_span(
                     call.request().layer(),
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     call.request().teachers().clone(),
                 )
                 .unwrap(),
@@ -300,7 +309,8 @@ fn foreign_teacher_issuer_or_mode_fails_before_graph_mutation() {
 #[test]
 fn new_semantic_span_never_enables_unaware_backend_or_unbound_slice_provenance() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let call = QwenSourceCall::from_span(request(source, SourceCallMode::Prefill, 0, 47)).unwrap();
+    let call =
+        QwenModelInvocation::from_span(request(source, InvocationPhase::Prefill, 0, 47)).unwrap();
     assert!(matches!(
         UnawareBackend.source_operator(&rms(&call), &[vec![0.0; 47 * 1024]]),
         Err(Error::Unsupported(_))
@@ -314,6 +324,6 @@ fn new_semantic_span_never_enables_unaware_backend_or_unbound_slice_provenance()
             .unwrap();
     let raw = slice.source_embedding(&embedding(&call)).unwrap();
     let tag = slice.value_provenance(&raw).unwrap().unwrap();
-    assert_eq!(tag.mode(), None);
+    assert_eq!(tag.invocation_phase(), None);
     assert!(tag.require_invocation(call.request()).is_err());
 }

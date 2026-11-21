@@ -19,7 +19,7 @@ impl ModelGdnPrepared {
             .map_err(|_| Error::State("cold GDN split mutex poisoned".into()))?
             .is_some()
             || self.binding.layer() != domains.layer()
-            || domains.call() != values.record().call()
+            || domains.invocation() != values.record().invocation()
         {
             return Err(Error::State(
                 "natural unused GDN original source/call/root slot".into(),

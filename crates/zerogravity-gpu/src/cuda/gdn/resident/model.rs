@@ -41,7 +41,7 @@ impl ModelGdnAdapter {
             != zerogravity_core::accelerator::program::ConvDomain(binding.layer())
             || domains.recurrent_domain()?
                 != zerogravity_core::accelerator::program::RecurrentDomain(binding.layer())
-            || binding.call() != domains.call()
+            || binding.invocation() != domains.invocation()
             || binding.layer() != domains.layer()
             || !Arc::ptr_eq(service, &prepared.service)
             || service.source_identity() != binding.source().source_identity()

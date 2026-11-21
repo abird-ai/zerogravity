@@ -56,9 +56,9 @@ fn complete_original_layers_use_actual_prior_outputs() {
             Inputs {
                 source,
                 mode: if call["mode"] == "decode" {
-                    SourceCallMode::Decode
+                    InvocationPhase::Decode
                 } else {
-                    SourceCallMode::Prefill
+                    InvocationPhase::Prefill
                 },
                 rows,
                 key_heads: number(call, "key_heads"),

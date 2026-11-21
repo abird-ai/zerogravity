@@ -3,7 +3,7 @@ use super::TextKernelCapture;
 use crate::{
     cuda::kernel::PinnedKernel,
     resident_inference::native_fragment::{
-        PrefixPhaseEnqueue, model_state::BoundModelState, text::TextCallInput,
+        PrefixPhaseEnqueue, model_state::BoundModelState, text::TextInvocationInput,
     },
     resident_leases::ResidentLease,
 };
@@ -57,7 +57,7 @@ impl Geometry {
             end,
         })
     }
-    fn require(&self, capture: TextKernelCapture, input: &TextCallInput) -> Result<()> {
+    fn require(&self, capture: TextKernelCapture, input: &TextInvocationInput) -> Result<()> {
         let actual = Self::new(capture, input.prompt_tokens(), input.call_ordinal())?;
         if actual != *self
             || input.base() != self.base
@@ -181,7 +181,7 @@ struct Copy {
 }
 pub(super) struct Transport {
     definitions: Arc<Definitions>,
-    input: Arc<TextCallInput>,
+    input: Arc<TextInvocationInput>,
     state: Arc<BoundModelState>,
     cache: ResidentLease,
     status: ResidentLease,
@@ -193,7 +193,7 @@ pub(super) struct Transport {
 impl Transport {
     pub(super) fn bind(
         definitions: Arc<Definitions>,
-        input: Arc<TextCallInput>,
+        input: Arc<TextInvocationInput>,
         state: Arc<BoundModelState>,
         cache: ResidentLease,
         status: ResidentLease,
@@ -210,7 +210,7 @@ impl Transport {
         }
         let leases = state.leases();
         if state.kv_domain().is_err()
-            || state.call() != input.call()
+            || state.invocation() != input.invocation()
             || leases.len() != 4
             || cache.bytes() != CACHE_BYTES
             || status.bytes() != 4
@@ -305,7 +305,7 @@ impl Transport {
     }
     pub(super) fn retained(
         &self,
-        input: &Arc<TextCallInput>,
+        input: &Arc<TextInvocationInput>,
         state: &Arc<BoundModelState>,
     ) -> bool {
         Arc::ptr_eq(input, &self.input)
@@ -313,6 +313,6 @@ impl Transport {
             && self.cache.bytes() == CACHE_BYTES
             && self.status.bytes() == 4
             && self.cache.service_generation() == self.cache.service().generation()
-            && self.cache.source_identity() == input.call().source()
+            && self.cache.source_identity() == input.invocation().source()
     }
 }

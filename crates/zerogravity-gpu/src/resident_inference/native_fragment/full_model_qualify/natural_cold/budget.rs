@@ -80,7 +80,7 @@ pub(super) fn require_host_bound(
                 "natural captured embedding source row geometry".into(),
             ));
         }
-        for id in record.call().rows().ids() {
+        for id in record.invocation().tokens().ids() {
             add(
                 &matrix.name,
                 (*id as usize)

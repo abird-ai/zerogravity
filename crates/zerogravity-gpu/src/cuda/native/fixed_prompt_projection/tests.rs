@@ -2,23 +2,23 @@
 use super::*;
 use zerogravity_core::accelerator::SourceIdentity;
 use zerogravity_core::accelerator::program::{
-    MatrixAxes, NumericalContract, SourceCall, SourceOperator, SourceOperatorKind, SourceRows,
-    SourceTensor, TextCallGeometry,
+    MatrixAxes, NumericalContract, SourceOperator, SourceOperatorKind, SourceTensor,
+    TextCallGeometry, TextInvocation, TokenSpan,
 };
 use zerogravity_core::encoding::StoredTensorEncoding;
-fn call(source: SourceIdentity) -> SourceCall {
-    SourceCall::new(
-        SourceRows::new(
+fn call(source: SourceIdentity) -> TextInvocation {
+    TextInvocation::new(
+        TokenSpan::new(
             TextCallGeometry::new(source, 248320, 512).unwrap(),
             0,
             Arc::from([11; 47]),
         )
         .unwrap(),
-        SourceCallMode::Prefill,
+        InvocationPhase::Prefill,
     )
     .unwrap()
 }
-fn operator(call: &SourceCall, role: Role) -> SourceOperator {
+fn operator(call: &TextInvocation, role: Role) -> SourceOperator {
     let rows = match role {
         Role::Qkvz => [6144, 2048],
         Role::Ba => [16, 16],
@@ -176,7 +176,7 @@ fn equal_ids_new_common_call_cannot_reuse_prepared_weights() {
         let a = operator(&original, role);
         let b = operator(&foreign, role);
         assert_eq!(a.matrices(), b.matrices());
-        assert_ne!(a.call(), b.call());
+        assert_ne!(a.invocation(), b.invocation());
         assert!(require_same_operator(&a, &a.clone()).is_ok());
         assert!(require_same_operator(&a, &b).is_err());
     }

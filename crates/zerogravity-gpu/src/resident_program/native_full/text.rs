@@ -6,7 +6,7 @@ use crate::cuda::native::{
     text_native::TextPrograms,
 };
 use crate::cuda::rms::FullModelRmsScratch;
-use crate::resident_inference::native_fragment::text::{TextCallInput, TextCallState};
+use crate::resident_inference::native_fragment::text::{TextInvocationInput, TextInvocationState};
 use crate::resident_program::text_positions::text::TextPositions;
 use zerogravity_core::accelerator::program::{ValueStorageLimits, ValueStorageReusePolicy};
 
@@ -18,8 +18,8 @@ pub(crate) struct TextColdValues {
     greedy: Arc<PreparedBf16Greedy>,
 }
 pub(super) struct CurrentCall {
-    pub(super) input: Arc<TextCallInput>,
-    pub(super) state: Arc<TextCallState>,
+    pub(super) input: Arc<TextInvocationInput>,
+    pub(super) state: Arc<TextInvocationState>,
     pub(super) native: Arc<TextPrograms>,
     pub(super) positions: Arc<TextPositions>,
     pub(super) rms_scope: Arc<FullModelRmsScratch>,
@@ -128,8 +128,8 @@ impl FullModelProgram {
     }
     pub(crate) fn bind_prompt_call(
         &self,
-        input: Arc<TextCallInput>,
-        state: Arc<TextCallState>,
+        input: Arc<TextInvocationInput>,
+        state: Arc<TextInvocationState>,
         native: Arc<TextPrograms>,
         positions: Arc<TextPositions>,
         rms_scope: Arc<FullModelRmsScratch>,
@@ -341,8 +341,8 @@ impl FullModelProgram {
 impl TextColdValues {
     pub(crate) async fn bind_values(
         &self,
-        input: &Arc<TextCallInput>,
-        state: &Arc<TextCallState>,
+        input: &Arc<TextInvocationInput>,
+        state: &Arc<TextInvocationState>,
         tied: Option<&Arc<crate::resident_leases::TiedWeight>>,
         cancel: Option<&AtomicBool>,
     ) -> Result<(

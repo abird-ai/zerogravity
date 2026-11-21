@@ -21,7 +21,7 @@ use std::{
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::{ParameterWindow, WindowWorkspace};
 use zerogravity_core::accelerator::program::{
-    NumericalContract, SourceCallMode, SourceOperator, SourceOperatorKind,
+    InvocationPhase, NumericalContract, SourceOperator, SourceOperatorKind,
 };
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::{Error, Result};
@@ -48,7 +48,7 @@ impl ModelAttentionParameters {
         super::super::projection_cubin::not_cancelled(cancelled)?;
         init.require_service(service)?;
         Self::require_qk_operator(operator)?;
-        if operator.call().source() != source.source_identity()
+        if operator.invocation().source() != source.source_identity()
             || service.source_identity() != source.source_identity()
         {
             return Err(Error::State(
@@ -112,8 +112,8 @@ impl ModelAttentionParameters {
                 && g.attention.kv_heads == 2 && g.rotary_dimensions == 64
                 && g.theta == 10_000_000.0 && g.epsilon == 1e-6)
             || operator.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
-            || operator.call().rows().capacity() != 512
-            || operator.call().rows().vocabulary() != 248320
+            || operator.invocation().tokens().capacity() != 512
+            || operator.invocation().tokens().vocabulary() != 248320
             || operator.parameters().iter().any(|p| {
                 p.kind
                     != zerogravity_core::encoding::StoredTensorEncoding::Scalar(
@@ -134,7 +134,7 @@ impl ModelAttentionParameters {
     pub(crate) fn nodes(record: &SourceBindings, layer: usize) -> Result<[usize; 7]> {
         Ok(
             super::super::fixed_prompt_model_prefix::AttentionSite::bind_nodes(
-                record.call(),
+                record.invocation(),
                 record.plan().nodes(),
                 layer,
             )?
@@ -149,7 +149,7 @@ impl ModelAttentionParameters {
         Self::require_qk_operator(actual)?;
         if actual.kind() != self.operator.kind()
             || actual.parameters() != self.operator.parameters()
-            || actual.call().source() != self.source.source_identity()
+            || actual.invocation().source() != self.source.source_identity()
         {
             return Err(Error::State(
                 "attention original QK source/member order differs".into(),
@@ -227,23 +227,23 @@ impl ModelAttentionBinding {
         } = inputs;
         super::super::projection_cubin::not_cancelled(cancelled)?;
         let record = values.record();
-        let call = record.call();
+        let call = record.invocation();
         init.require_service(values.service())?;
         let source = weights.source().clone();
         cache.require_binding(&domains)?;
         positions.require_invocation(call)?;
         let layer = domains.kv_domain()?.0;
-        if domains.call() != call || !source.same_issuer(&parameters.source) {
+        if domains.invocation() != call || !source.same_issuer(&parameters.source) {
             return Err(Error::State(
                 "attention exact actual source/domain/call owners differ".into(),
             ));
         }
-        let case = match (call.mode(), call.rows().base(), call.rows().len()) {
-            (SourceCallMode::Prefill, 0, 1) => AttentionCase::InitialOne,
-            (SourceCallMode::Decode, 1, 1) => AttentionCase::CachedOneAt1,
-            (SourceCallMode::Prefill, 0, 64) => AttentionCase::Initial64,
-            (SourceCallMode::Prefill, 64, 2) => AttentionCase::ContinuedTwoAt64,
-            (SourceCallMode::Decode, 66, 1) => AttentionCase::CachedOneAt66,
+        let case = match (call.phase(), call.tokens().base(), call.tokens().len()) {
+            (InvocationPhase::Prefill, 0, 1) => AttentionCase::InitialOne,
+            (InvocationPhase::Decode, 1, 1) => AttentionCase::CachedOneAt1,
+            (InvocationPhase::Prefill, 0, 64) => AttentionCase::Initial64,
+            (InvocationPhase::Prefill, 64, 2) => AttentionCase::ContinuedTwoAt64,
+            (InvocationPhase::Decode, 66, 1) => AttentionCase::CachedOneAt66,
             _ => {
                 return Err(Error::Unsupported(
                     "exact original attention phase ABI".into(),
@@ -459,7 +459,7 @@ impl ModelAttentionBinding {
             .require_enqueue(session, Some(permit), cancelled)?;
         self.rotary.require_call(
             &self.source,
-            self.values.record().call(),
+            self.values.record().invocation(),
             self.values.service(),
         )
     }
@@ -542,20 +542,20 @@ mod source_operator_tests {
     use zerogravity_core::accelerator::{
         SourceIdentity,
         program::{
-            AttentionGeometry, SourceCall, SourceParameter, SourceQkRotaryGeometry, SourceRows,
-            TextCallGeometry,
+            AttentionGeometry, SourceParameter, SourceQkRotaryGeometry, TextCallGeometry,
+            TextInvocation, TokenSpan,
         },
     };
 
     fn qk(theta: f32, query_heads: usize) -> Result<SourceOperator> {
         let source = SourceIdentity::for_new_allocation()?;
-        let call = SourceCall::new(
-            SourceRows::new(
+        let call = TextInvocation::new(
+            TokenSpan::new(
                 TextCallGeometry::new(source, 248320, 512)?,
                 0,
                 Arc::from([1]),
             )?,
-            SourceCallMode::Prefill,
+            InvocationPhase::Prefill,
         )?;
         let parameters = ["q", "k"]
             .into_iter()

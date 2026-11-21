@@ -142,8 +142,8 @@ fn snapshot(
 pub(in crate::resident_inference::native_fragment::fixed_prompt_natural) struct ProbeRecord {
     cold: Weak<ColdModel>,
     body: Weak<FullModelProgram>,
-    input: Weak<FixedPromptCallInput>,
-    state: Weak<FixedPromptCallState>,
+    input: Weak<FixedPromptInvocationInput>,
+    state: Weak<FixedPromptInvocationState>,
     service: Weak<ResidentService>,
     source: zerogravity_artifacts::source_weights::SourceOwnerWitness,
     before: Snapshot,
@@ -153,8 +153,8 @@ impl ProbeRecord {
     pub(in crate::resident_inference::native_fragment::fixed_prompt_natural) fn capture(
         cold: &Arc<ColdModel>,
         body: &Arc<FullModelProgram>,
-        input: &Arc<FixedPromptCallInput>,
-        state: &Arc<FixedPromptCallState>,
+        input: &Arc<FixedPromptInvocationInput>,
+        state: &Arc<FixedPromptInvocationState>,
         reads: &[ResidentReadback],
     ) -> Result<Self> {
         let metadata = cold.source.reserve_workspace(256 * 1024)?;

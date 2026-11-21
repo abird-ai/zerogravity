@@ -105,7 +105,7 @@ pub(super) async fn qualify(
     // After it returns only the genuine armed flight may retain the graph.
     let result: Result<()> = async {
         not_cancelled(cancelled)?;
-        let prompt = records[0].call().rows().ids().to_vec();
+        let prompt = records[0].invocation().tokens().ids().to_vec();
         if prompt.len() != 1 {
             return Err(Error::State(
                 "natural unknown first source prompt geometry".into(),
@@ -252,7 +252,7 @@ fn inspect(w: Witness, fault: NaturalFault) -> Result<NaturalFaultOutcome> {
         || body.native_launches() != 2
         || !Arc::ptr_eq(state.input(), &input)
         || !w.source.same_issuer(input.source())
-        || body.record().call() != input.call()
+        || body.record().invocation() != input.invocation()
         || service.pending_events()? != 1
         || service.ensure_usable().is_ok()
         || !physical.fenced

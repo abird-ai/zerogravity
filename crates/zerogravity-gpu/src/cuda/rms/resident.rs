@@ -109,7 +109,7 @@ fn source_embedding(
         return Err(Error::State("RMS actual embedding member arity".into()));
     };
     if descriptor.kind() != SourceOperatorKind::EmbeddingRows
-        || descriptor.call() != bindings.call()
+        || descriptor.invocation() != bindings.invocation()
         || descriptor.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
     {
         return Err(Error::State(
@@ -361,7 +361,7 @@ impl RmsPrepared {
         correlation: u64,
         cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<Arc<Self>> {
-        let rows = Rows::new(bindings.call().rows().len())?;
+        let rows = Rows::new(bindings.invocation().tokens().len())?;
         Self::prepare_rows_bound(service, bindings, rows, correlation, cancelled).await
     }
 
@@ -403,14 +403,14 @@ impl RmsPrepared {
         };
         if ed.kind() != SourceOperatorKind::EmbeddingRows
             || !matches!(rd.kind(), SourceOperatorKind::Rms(_))
-            || ed.call() != bindings.call()
-            || rd.call() != bindings.call()
+            || ed.invocation() != bindings.invocation()
+            || rd.invocation() != bindings.invocation()
             || embedding.outputs != [ValueId(0)]
             || !embedding.inputs.is_empty()
             || rms.inputs != [ValueId(0)]
             || rms.outputs != [ValueId(1)]
             || service.source_identity() != bindings.source().source_identity()
-            || rows.count() != bindings.call().rows().len()
+            || rows.count() != bindings.invocation().tokens().len()
         {
             return Err(Error::State(
                 "ordinary source actual embedding/RMS/SSA/call differs".into(),
@@ -436,7 +436,7 @@ impl RmsPrepared {
         };
         let mut owner = source_owner_rows_storage_bound(
             bindings.source().clone(),
-            bindings.call().rows().ids(),
+            bindings.invocation().tokens().ids(),
             columns,
             rows,
             None,
@@ -561,12 +561,12 @@ impl RmsPrepared {
         cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<Arc<Self>> {
         let rows = match binding.kind() {
-            crate::cuda::native::fixed_prompt_model::FixedPromptCallKind::Prefill => {
+            crate::cuda::native::fixed_prompt_model::FixedPromptInvocationKind::Prefill => {
                 Rows::FixedPrompt
             }
-            crate::cuda::native::fixed_prompt_model::FixedPromptCallKind::Decode { .. } => {
-                Rows::One
-            }
+            crate::cuda::native::fixed_prompt_model::FixedPromptInvocationKind::Decode {
+                ..
+            } => Rows::One,
         };
         Self::prepare_rows_bound(
             service,

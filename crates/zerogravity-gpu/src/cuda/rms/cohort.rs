@@ -4,7 +4,7 @@ use crate::cuda::native::text_native::TextKernelCapture;
 use crate::{
     cuda::kernel::PreparedPinnedLaunch,
     physical_quarantine::CompletionOwner,
-    resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextCallInput},
+    resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextInvocationInput},
     resident_leases::{ResidentInitialization, ResidentLease, ResidentService},
     resident_program::{BufferRange, fused_cohort::values::CohortValues},
 };
@@ -62,7 +62,7 @@ impl CohortGamma {
                 }
             || !lease.is_initialized()
             || lease.role() != BufferRole::ImmutableWeights
-            || descriptor.call().source() != source.source_identity()
+            || descriptor.invocation().source() != source.source_identity()
             || lease.source_identity() != source.source_identity()
         {
             return Err(Error::State(
@@ -77,7 +77,7 @@ impl CohortGamma {
             _owner: owner,
         })
     }
-    fn require(&self, inputs: &[Arc<TextCallInput>], node: usize) -> Result<bool> {
+    fn require(&self, inputs: &[Arc<TextInvocationInput>], node: usize) -> Result<bool> {
         let mut fused = None;
         for input in inputs {
             let actual = input
@@ -90,7 +90,7 @@ impl CohortGamma {
                 return Err(Error::State("B4 typed source RMS absent".into()));
             };
             descriptor.validate()?;
-            if descriptor.call() != input.call()
+            if descriptor.invocation() != input.invocation()
                 || descriptor.kind() != self.semantics.kind()
                 || descriptor.numerical_contract() != self.semantics.numerical_contract()
                 || descriptor.parameters() != self.semantics.parameters()
@@ -154,7 +154,7 @@ pub(crate) struct CohortRmsStorage {
     _metadata: Arc<WindowWorkspace>,
 }
 fn geometry(
-    inputs: &[Arc<TextCallInput>],
+    inputs: &[Arc<TextInvocationInput>],
     service: &Arc<ResidentService>,
 ) -> Result<(bool, usize, Columns)> {
     service.ensure_usable()?;
@@ -163,7 +163,7 @@ fn geometry(
         if input.rows() != shape.logical_rows
             || input.prompt_tokens() != 47
             || input.scope().native_capture() != shape.capture
-            || input.call().source() != service.source_identity()
+            || input.invocation().source() != service.source_identity()
             || !input.source().same_issuer(inputs[0].source())
         {
             return Err(Error::State("B4 every real RMS logical span/source".into()));
@@ -179,7 +179,7 @@ impl CohortRmsStorage {
             .collect()
     }
     pub(crate) fn allocate(
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         service: Arc<ResidentService>,
         init: &mut ResidentInitialization<'_>,
     ) -> Result<Arc<Self>> {
@@ -211,7 +211,7 @@ impl CohortRmsStorage {
     }
 }
 pub(crate) struct CohortRmsNode {
-    inputs: Box<[Arc<TextCallInput>]>,
+    inputs: Box<[Arc<TextInvocationInput>]>,
     storage: Arc<CohortRmsStorage>,
     values: Arc<CohortValues>,
     _gamma: CohortGamma,
@@ -250,7 +250,7 @@ impl CohortRmsNode {
     /// Binder supplies the exact actual B SSA producers, with independent
     /// original row provenance. Scratch is reused only under the body cursor.
     pub(crate) fn bind(
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         storage: Arc<CohortRmsStorage>,
         node: usize,
         gamma: CohortGamma,

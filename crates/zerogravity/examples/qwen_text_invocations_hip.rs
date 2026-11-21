@@ -1,9 +1,9 @@
 //! Explicit original-call qualification over the ordinary resident executor.
 #[path = "../tests/support/drive.rs"]
 mod drive;
-#[path = "../tests/support/qwen_source_call_lifetimes.rs"]
+#[path = "../tests/support/qwen_resident_text_lifetimes.rs"]
 mod lifecycle;
-#[path = "../tests/support/qwen_source_calls_reference.rs"]
+#[path = "../tests/support/qwen_text_invocations_reference.rs"]
 mod reference;
 #[allow(dead_code)]
 #[path = "../tests/support/qwen_source.rs"]
@@ -21,10 +21,10 @@ use source::{Loaded, need};
 use std::{path::PathBuf, sync::Arc};
 use zerogravity::{
     Result,
-    accelerator::program::SourceCallMode,
+    accelerator::program::InvocationPhase,
     gpu::{
-        Device, ResidentModel, ResidentOutput, SourceCallModel, SourceCallPreparation,
-        SourceCallPublication,
+        Device, ResidentModel, ResidentOutput, ResidentTextModel, ResidentTextPreparation,
+        ResidentTextPublication,
     },
     qwen35::{plan::QwenForwardPlan, source::binding::OriginalWindowModelSource},
 };
@@ -38,7 +38,7 @@ fn selected(logits: &[f32]) -> Result<(u32, u32)> {
     Ok((id, maximum.to_bits()))
 }
 async fn trajectories(
-    model: &Arc<SourceCallModel>,
+    model: &Arc<ResidentTextModel>,
     plan: &QwenForwardPlan,
     expected: &Expected,
     map: &ObservationMap,
@@ -87,9 +87,9 @@ async fn trajectories(
                 )?;
                 let invocation = plan.bind_invocation(
                     if call.phase == "decode" {
-                        SourceCallMode::Decode
+                        InvocationPhase::Decode
                     } else {
-                        SourceCallMode::Prefill
+                        InvocationPhase::Prefill
                     },
                     call.position,
                     ids.into(),
@@ -102,7 +102,7 @@ async fn trajectories(
                     session
                         .prepare_observed(
                             invocation.bound_invocation(),
-                            invocation.mode(),
+                            invocation.phase(),
                             ResidentOutput::Logits,
                             None,
                             observer,
@@ -112,13 +112,13 @@ async fn trajectories(
                     session
                         .prepare(
                             invocation.bound_invocation(),
-                            invocation.mode(),
+                            invocation.phase(),
                             ResidentOutput::Logits,
                             None,
                         )
                         .await?
                 };
-                let SourceCallPreparation::Ready(pending) = pending else {
+                let ResidentTextPreparation::Ready(pending) = pending else {
                     return Err(zerogravity::Error::State(
                         "uncancelled reference call refused".into(),
                     ));
@@ -135,7 +135,7 @@ async fn trajectories(
                     actual == (call.selected, call.max_bits),
                     "actual original full-vocabulary selection",
                 )?;
-                let SourceCallPublication::Committed(output) = session.commit(pending)? else {
+                let ResidentTextPublication::Committed(output) = session.commit(pending)? else {
                     return Err(zerogravity::Error::State(
                         "uncancelled reference call discarded".into(),
                     ));
@@ -156,7 +156,7 @@ async fn trajectories(
                     zeros += observer.initial_zero_words;
                     tails += observer.kv_tail_words;
                     println!(
-                        "SOURCE_CALL_PARITY_CALL repeat={repeat} case={case} call={index} base={} rows={} words={} initial_zero_words={} unused_kv_zero_words={} position_metadata_words={} mismatches=0 selected={} dispatches={}",
+                        "TEXT_INVOCATION_PARITY_CALL repeat={repeat} case={case} invocation={index} base={} rows={} words={} initial_zero_words={} unused_kv_zero_words={} position_metadata_words={} mismatches=0 selected={} dispatches={}",
                         call.position,
                         call.rows,
                         observer.words,
@@ -174,7 +174,7 @@ async fn trajectories(
                     words += logits + state;
                     tails += tail;
                     println!(
-                        "SOURCE_CALL_STATE_PARITY_CALL repeat={repeat} case={case} call={index} base={} rows={} logit_words={logits} state_words={state} runtime_checked_kv_tail_words={tail} mismatches=0 selected={} observer=false",
+                        "TEXT_INVOCATION_STATE_PARITY_CALL repeat={repeat} case={case} invocation={index} base={} rows={} logit_words={logits} state_words={state} runtime_checked_kv_tail_words={tail} mismatches=0 selected={} observer=false",
                         call.position, call.rows, actual.0
                     );
                 }
@@ -185,9 +185,9 @@ async fn trajectories(
     need(calls == 66, "all original trained-model calls observed")?;
     expected.unchanged()?;
     let scope = if observed {
-        "SOURCE_CALL_PARITY_NUMERICS"
+        "TEXT_INVOCATION_PARITY_NUMERICS"
     } else {
-        "SOURCE_CALL_STATE_PARITY_NUMERICS"
+        "TEXT_INVOCATION_STATE_PARITY_NUMERICS"
     };
     println!(
         "{scope} calls={calls} words={words} initial_zero_words={zeros} unused_kv_zero_words={tails} mismatches=0 sdk=false fault_lifecycle=false"
@@ -198,7 +198,7 @@ fn run() -> Result<()> {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     need(
         args.len() == 4,
-        "usage: qwen_source_calls_hip preflight|cache-preflight|cold|parity|state-parity 08|2b|27b SOURCE REFERENCE",
+        "usage: qwen_text_invocations_hip preflight|cache-preflight|cold|parity|state-parity 08|2b|27b SOURCE REFERENCE",
     )?;
     let mode = args[0].as_str();
     need(
@@ -228,7 +228,7 @@ fn run() -> Result<()> {
         "same original authenticated source owner",
     )?;
     println!(
-        "SOURCE_CALL_AUTH config={} index={} bytes={} chunk={} text={} other={}",
+        "TEXT_INVOCATION_AUTH config={} index={} bytes={} chunk={} text={} other={}",
         original.owner().config_sha256(),
         original.owner().verified_index_sha256(),
         original.source().source_bytes(),
@@ -241,9 +241,9 @@ fn run() -> Result<()> {
     for call in expected.calls() {
         let invocation = plan.bind_invocation(
             if call.phase == "decode" {
-                SourceCallMode::Decode
+                InvocationPhase::Decode
             } else {
-                SourceCallMode::Prefill
+                InvocationPhase::Prefill
             },
             call.position,
             call.input_ids.clone().into(),
@@ -253,7 +253,7 @@ fn run() -> Result<()> {
             Arc::ptr_eq(invocation.plan(), plan.plan()),
             "same original call-free plan",
         )?;
-        invocation.materialize_source_plan()?;
+        invocation.materialize_plan()?;
         Observer::new(&expected, &map, call)?;
     }
     let budget = source_budget::explicit()?.unwrap_or_default();
@@ -271,7 +271,7 @@ fn run() -> Result<()> {
         "preflight prices the complete original device envelope",
     )?;
     println!(
-        "SOURCE_CALL_PREFLIGHT model={} calls={} inventory={inventory:?} gpu_execution=false",
+        "TEXT_INVOCATION_PREFLIGHT model={} invocations={} inventory={inventory:?} gpu_execution=false",
         args[1],
         expected.calls().len()
     );
@@ -287,7 +287,7 @@ fn run() -> Result<()> {
                 == "0x1002"
             && std::fs::read_to_string("/sys/bus/pci/devices/0000:c6:00.0/device")?.trim()
                 == "0x1586",
-        "explicit approved x2 gfx1151 source-call diagnostic",
+        "explicit approved x2 gfx1151 text-invocation diagnostic",
     )?;
     drop(original);
     let label = args[1].as_str();
@@ -313,7 +313,7 @@ fn run() -> Result<()> {
             "original cold native set and clean service",
         )?;
         println!(
-            "SOURCE_CALL_COLD modules={} resident_bytes={} model_inference=false",
+            "TEXT_INVOCATION_COLD modules={} resident_bytes={} model_inference=false",
             active.modules, active.resident_bytes
         );
         let physical = zerogravity::resource_arbiter::ResourceArbiter::process_shared()
@@ -329,7 +329,7 @@ fn run() -> Result<()> {
             "original resident ledger covers declared weights and workspace",
         )?;
         println!(
-            "SOURCE_CALL_BUDGET total_bytes={} context_bytes={} model_capacity_bytes={} source_weight_bytes={} resident_weight_bytes={} resident_ledger_bytes={} physical_reserved={} physical_limit={}",
+            "TEXT_INVOCATION_BUDGET total_bytes={} context_bytes={} model_capacity_bytes={} source_weight_bytes={} resident_weight_bytes={} resident_ledger_bytes={} physical_reserved={} physical_limit={}",
             budget.total_device_bytes(),
             budget.context_device_bytes(),
             budget.model_device_bytes(),
@@ -364,7 +364,7 @@ fn run() -> Result<()> {
             }
             expected.unchanged()?;
             println!(
-                "SOURCE_CALL_LIFECYCLE_SOURCE model={} mode={mode} source_retained={fault} cache_retained={fault} host_reserved={} host_fenced={}",
+                "TEXT_INVOCATION_LIFECYCLE_SOURCE model={} mode={mode} source_retained={fault} cache_retained={fault} host_reserved={} host_fenced={}",
                 label, host.reserved, host.fenced
             );
             return Ok(());
@@ -390,7 +390,7 @@ fn run() -> Result<()> {
             "original persistent context only, unfenced",
         )?;
         println!(
-            "SOURCE_CALL_TERMINAL mode={mode} native_retained=false resident_bytes=0 device_baseline={} fenced=false fault_lifecycle=false sdk=false",
+            "TEXT_INVOCATION_TERMINAL mode={mode} native_retained=false resident_bytes=0 device_baseline={} fenced=false fault_lifecycle=false sdk=false",
             device.reserved
         );
         loaded.verify_after()?;
@@ -400,7 +400,7 @@ fn run() -> Result<()> {
 }
 fn main() {
     if let Err(error) = run() {
-        eprintln!("SOURCE_CALL_DIAGNOSTIC_REFUSED: {error}");
+        eprintln!("TEXT_INVOCATION_DIAGNOSTIC_REFUSED: {error}");
         std::process::exit(1);
     }
 }

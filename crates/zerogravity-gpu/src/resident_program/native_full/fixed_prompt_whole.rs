@@ -54,7 +54,7 @@ impl FullModelProgram {
         }
         let mut layers = BTreeSet::new();
         for state in &states {
-            if state.call() != self.record.call()
+            if state.invocation() != self.record.invocation()
                 || !layers.insert(state.layer())
                 || states
                     .first()

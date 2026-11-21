@@ -45,7 +45,7 @@ impl RmsWorkspaceViews {
         service: &Arc<ResidentService>,
     ) -> Result<()> {
         let actual = bindings(record)?;
-        let rows = record.call().rows().len();
+        let rows = record.invocation().tokens().len();
         let width = actual
             .get(&1)
             .ok_or_else(|| Error::State("ordinary RMS absent".into()))?
@@ -108,7 +108,7 @@ impl RmsWorkspaceViews {
                 || lease.role() != role
                 || !Arc::ptr_eq(lease.service(), service)
                 || lease.service_generation() != service.generation()
-                || lease.source_identity() != record.call().rows().source()
+                || lease.source_identity() != record.invocation().tokens().source()
                 || !self._owner.leases().iter().any(|original| {
                     original.id() == lease.id()
                         && original.allocation_generation() == lease.allocation_generation()

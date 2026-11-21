@@ -2,10 +2,10 @@
 use super::*;
 use crate::cuda::gdn::{GdnFamilyIdentity, ModelGdnTransportStorage};
 use crate::cuda::native::{
-    fixed_prompt_model::{FixedPromptCallKind, FixedPromptModelBinding},
+    fixed_prompt_model::{FixedPromptInvocationKind, FixedPromptModelBinding},
     model_cache::SharedModelCache,
 };
-use crate::resident_inference::native_fragment::fixed_prompt_natural::FixedPromptCallInput;
+use crate::resident_inference::native_fragment::fixed_prompt_natural::FixedPromptInvocationInput;
 
 pub(crate) struct ColdFixedPromptGdn {
     scope: Arc<FixedPromptModelBinding>,
@@ -19,8 +19,8 @@ pub(crate) struct ColdFixedPromptGdn {
 
 fn phase(scope: &FixedPromptModelBinding) -> GdnPhase {
     match scope.kind() {
-        FixedPromptCallKind::Prefill => GdnPhase::FixedPrompt,
-        FixedPromptCallKind::Decode { .. } => GdnPhase::CachedDecode,
+        FixedPromptInvocationKind::Prefill => GdnPhase::FixedPrompt,
+        FixedPromptInvocationKind::Decode { .. } => GdnPhase::CachedDecode,
     }
 }
 
@@ -34,7 +34,7 @@ fn require_arithmetic(
     actual
         .family()
         .require_same(&GdnFamilyIdentity::original800m())?;
-    if scope.kind() == FixedPromptCallKind::Prefill {
+    if scope.kind() == FixedPromptInvocationKind::Prefill {
         scope.require_gdn_arithmetic(
             layer,
             actual,
@@ -83,8 +83,8 @@ fn binding(
             "canonical exact source GDN SSA arities".into(),
         ));
     };
-    if cd.call() != record.call()
-        || rd.call() != record.call()
+    if cd.invocation() != record.invocation()
+        || rd.invocation() != record.invocation()
         || !matches!(cd.kind(), SourceOperatorKind::CausalConvSplit { domain, .. } if domain.0 == parameters.payload.site)
         || !matches!(rd.kind(), SourceOperatorKind::GatedDelta { domain, .. } if domain.0 == parameters.payload.site)
         || nodes != site.nodes()
@@ -193,7 +193,7 @@ impl ColdFixedPromptGdn {
 
     pub(crate) fn bind_call(
         &self,
-        input: &Arc<FixedPromptCallInput>,
+        input: &Arc<FixedPromptInvocationInput>,
         values: Arc<ModelValues>,
         domains: Arc<BoundModelState>,
     ) -> Result<Arc<ModelGdnPrepared>> {
@@ -204,7 +204,7 @@ impl ColdFixedPromptGdn {
         let layer = domains.layer();
         if phase(scope) != self.phase
             || self.binding.layer() != domains.layer()
-            || self.binding.call().source() != input.call().source()
+            || self.binding.invocation().source() != input.invocation().source()
             || !self.scope.source().same_issuer(scope.source())
         {
             return Err(Error::State(

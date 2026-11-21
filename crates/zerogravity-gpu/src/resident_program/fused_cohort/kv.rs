@@ -7,7 +7,7 @@ use super::super::*;
 use super::attention::CohortAttentionControls;
 use crate::cuda::kernel::PinnedKernel;
 use crate::resident_inference::native_fragment::{
-    PrefixPhaseEnqueue, model_state::BoundModelState, text::TextCallInput,
+    PrefixPhaseEnqueue, model_state::BoundModelState, text::TextInvocationInput,
 };
 use crate::resident_leases::{ResidentInitialization, ResidentLease, ResidentService};
 use crate::resident_state_transport::typed::{
@@ -108,7 +108,7 @@ fn control_view(lease: &ResidentLease, offset: usize, bytes: usize) -> Result<Ha
 /// per-row control views. Identical addresses to the per-row kernels; the
 /// grouped launch re-binds them per call.
 struct Row {
-    input: Arc<TextCallInput>,
+    input: Arc<TextInvocationInput>,
     state: Arc<BoundModelState>,
     prior_k: Handle,
     prior_v: Handle,
@@ -141,7 +141,7 @@ impl CohortKvTransport {
     // additional immutable argument over the original admission sequence.
     pub(super) fn prepare(
         service: Arc<ResidentService>,
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         states: &[Arc<BoundModelState>],
         cache: ResidentLease,
         status: ResidentLease,
@@ -183,12 +183,12 @@ impl CohortKvTransport {
             state.require_text(input.scope())?;
             if state.kv_domain()?.0 != layer
                 || state.layer() != layer
-                || state.call() != input.call()
+                || state.invocation() != input.invocation()
                 || input.prompt_tokens() != 47
                 || !matches!((input.rows(), input.base()), (47, 0) | (1, 47..=53))
                 || input.rows() != inputs[0].rows()
                 || !input.source().same_issuer(source)
-                || input.call().source() != service.source_identity()
+                || input.invocation().source() != service.source_identity()
             {
                 return Err(Error::State(
                     "cohort KV exact original layer/current span/source".into(),

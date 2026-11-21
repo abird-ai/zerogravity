@@ -30,7 +30,7 @@ pub(super) struct TextSourceStep<'a, 'o> {
 }
 pub(super) fn check_cancel(flag: Option<&AtomicBool>) -> Result<()> {
     if flag.is_some_and(|f| f.load(Ordering::Acquire)) {
-        return Err(Error::State("BF16 text source call cancelled".into()));
+        return Err(Error::State("BF16 text text invocation cancelled".into()));
     }
     Ok(())
 }

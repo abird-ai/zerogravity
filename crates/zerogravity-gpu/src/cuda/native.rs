@@ -601,8 +601,8 @@ pub use crate::resident_inference::{
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use crate::resident_inference::{
-    FixedPromptCallReceipt, FixedPromptCloseReceipt, FixedPromptEmptySnapshot,
-    FixedPromptFeedbackRequest, FixedPromptLifecycleProfile, FixedPromptLoaded,
+    FixedPromptCloseReceipt, FixedPromptEmptySnapshot, FixedPromptFeedbackRequest,
+    FixedPromptInvocationReceipt, FixedPromptLifecycleProfile, FixedPromptLoaded,
     FixedPromptLoadedObservation, FixedPromptLoadedSnapshot, FixedPromptNaturalFault,
     FixedPromptNaturalFaultOutcome, FixedPromptNaturalReadback, FixedPromptPending,
     FixedPromptSession, fixed_prompt_natural_host_bound, prepare_fixed_prompt_natural,
@@ -616,9 +616,9 @@ pub(crate) mod text_model;
 
 #[cfg(target_os = "linux")]
 pub use crate::resident_inference::{
-    TextCallReceipt, TextCloseReceipt, TextCohortFault, TextCohortFaultOutcome,
-    TextCohortFaultRetention, TextCohortPreparation, TextCohortReadback, TextCohortReceipt,
-    TextCohortRowReceipt, TextEmptySnapshot, TextFault, TextFaultOutcome, TextFeedbackRequest,
+    TextCloseReceipt, TextCohortFault, TextCohortFaultOutcome, TextCohortFaultRetention,
+    TextCohortPreparation, TextCohortReadback, TextCohortReceipt, TextCohortRowReceipt,
+    TextEmptySnapshot, TextFault, TextFaultOutcome, TextFeedbackRequest, TextInvocationReceipt,
     TextLoaded, TextLoadedObservation, TextLoadedSnapshot, TextPending, TextPendingCohort,
     TextQualificationInputs, TextReadback, TextResourceInventory, TextSession, prepare_text,
     prepare_text_b4,

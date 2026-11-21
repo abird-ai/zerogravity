@@ -7,16 +7,16 @@ impl ColdModel {
         rows: usize,
     ) -> Result<Option<Arc<crate::resident_leases::backing_pool::ResidentWorkspaceRun>>> {
         let mode = if rows == 1 {
-            SourceCallMode::Decode
+            InvocationPhase::Decode
         } else {
-            SourceCallMode::Prefill
+            InvocationPhase::Prefill
         };
         let index = self.capture.cold_scope_index(mode, rows)?;
         let cold = self
             .values
             .get(index)
             .ok_or_else(|| Error::State("short-HF cold workspace absent".into()))?;
-        if cold.body.record().call().rows().len() != rows {
+        if cold.body.record().invocation().tokens().len() != rows {
             return Err(Error::State(
                 "short-HF cold workspace source geometry differs".into(),
             ));

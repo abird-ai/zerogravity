@@ -32,16 +32,16 @@ mod tests {
     use super::*;
     use zerogravity_core::accelerator::SourceIdentity;
     use zerogravity_core::accelerator::program::{
-        AttentionGeometry, KvDomain, NumericalContract, SourceAttentionMask, SourceCall,
-        SourceCallMode, SourceRows, TensorView, TextCallGeometry,
+        AttentionGeometry, InvocationPhase, KvDomain, NumericalContract, SourceAttentionMask,
+        TensorView, TextCallGeometry, TextInvocation, TokenSpan,
     };
     use zerogravity_core::accelerator::program::{
         ConvDomain, RecurrentDomain, StateEffect, StateVersion, ValueId,
     };
-    fn call(mode: SourceCallMode, base: usize, rows: usize) -> SourceCall {
+    fn call(mode: InvocationPhase, base: usize, rows: usize) -> TextInvocation {
         let source = SourceIdentity::for_new_allocation().unwrap();
-        SourceCall::new(
-            SourceRows::new(
+        TextInvocation::new(
+            TokenSpan::new(
                 TextCallGeometry::new(source, 248320, 512).unwrap(),
                 base,
                 vec![353; rows].into(),
@@ -64,7 +64,7 @@ mod tests {
             mask: SourceAttentionMask::Causal,
         }
     }
-    fn operator(call: &SourceCall, kind: SourceOperatorKind) -> SourceOperator {
+    fn operator(call: &TextInvocation, kind: SourceOperatorKind) -> SourceOperator {
         SourceOperator::new(
             call.clone(),
             kind,
@@ -102,11 +102,11 @@ mod tests {
     #[test]
     fn every_original_attention_layer_and_phase_accepts_only_its_appended_read() {
         for (mode, base, rows) in [
-            (SourceCallMode::Prefill, 0, 1),
-            (SourceCallMode::Decode, 1, 1),
-            (SourceCallMode::Prefill, 0, 64),
-            (SourceCallMode::Prefill, 64, 2),
-            (SourceCallMode::Decode, 66, 1),
+            (InvocationPhase::Prefill, 0, 1),
+            (InvocationPhase::Decode, 1, 1),
+            (InvocationPhase::Prefill, 0, 64),
+            (InvocationPhase::Prefill, 64, 2),
+            (InvocationPhase::Decode, 66, 1),
         ] {
             let call = call(mode, base, rows);
             for layer in [3, 7, 11, 15, 19, 23] {
@@ -122,14 +122,14 @@ mod tests {
                 };
                 assert!(std::ptr::eq(returned, retained.as_ref()));
                 assert_eq!(returned, &original);
-                assert_eq!(returned.call(), &call);
+                assert_eq!(returned.invocation(), &call);
             }
         }
     }
 
     #[test]
     fn fa_rejects_missing_foreign_and_wrong_version_reads_on_every_actual_layer() {
-        let call = call(SourceCallMode::Prefill, 0, 1);
+        let call = call(InvocationPhase::Prefill, 0, 1);
         for layer in [3, 7, 11, 15, 19, 23] {
             let actual = node(operator(&call, fa(layer)), Some(version(layer, 1)));
             let foreign_layer = if layer == 3 { 7 } else { 3 };
@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn fa_cannot_write_even_when_its_read_is_the_exact_appended_kv_version() {
-        let call = call(SourceCallMode::Prefill, 0, 64);
+        let call = call(InvocationPhase::Prefill, 0, 64);
         for layer in [3, 7, 11, 15, 19, 23] {
             let mut actual = node(operator(&call, fa(layer)), Some(version(layer, 1)));
             actual.state = Some(StateEffect {
@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn non_fa_reads_refuse_but_real_append_write_effect_remains_separate() {
-        let call = call(SourceCallMode::Prefill, 64, 2);
+        let call = call(InvocationPhase::Prefill, 64, 2);
         for layer in [3, 7, 11, 15, 19, 23] {
             for kind in [
                 SourceOperatorKind::KvAppend {
@@ -177,7 +177,7 @@ mod tests {
                     key_width: 512,
                     packed_value: TensorView {
                         offset: 4608,
-                        rows: call.rows().len(),
+                        rows: call.tokens().len(),
                         width: 512,
                         row_stride: 5120,
                     },

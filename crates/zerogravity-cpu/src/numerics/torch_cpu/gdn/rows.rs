@@ -1,14 +1,14 @@
 //! Source-call GDN frontend over the shared Conv4, chunk and cached primitives.
 //! Call phase is explicit. Returned cache/state/output stay private to the caller.
 use super::*;
-use crate::accelerator::program::SourceCallMode;
+use crate::accelerator::program::InvocationPhase;
 
 #[cfg(test)]
 mod tests;
 
 pub struct Inputs<'a> {
     pub source: SourceIdentity,
-    pub mode: SourceCallMode,
+    pub mode: InvocationPhase,
     pub rows: usize,
     pub key_heads: usize,
     pub value_heads: usize,
@@ -56,8 +56,8 @@ pub fn forward(
         || !vh.is_multiple_of(kh)
         || !vh.is_multiple_of(16)
         || previous_conv.is_some() != previous_state.is_some()
-        || mode == SourceCallMode::Decode && (rows != 1 || previous_state.is_none())
-        || mode == SourceCallMode::Prefill && rows == 1 && previous_state.is_some()
+        || mode == InvocationPhase::Decode && (rows != 1 || previous_state.is_none())
+        || mode == InvocationPhase::Prefill && rows == 1 && previous_state.is_some()
     {
         return Err(Error::Malformed(
             "source GDN call geometry/phase/prior".into(),
@@ -129,7 +129,7 @@ pub fn forward(
         .flat_map(|row| row[kh * 256..].iter().copied())
         .collect::<Vec<_>>();
     let (recurrent_state, core) = match mode {
-        SourceCallMode::Prefill => {
+        InvocationPhase::Prefill => {
             let output = chunk::core(chunk::ChunkInputs {
                 source,
                 rows,
@@ -143,7 +143,7 @@ pub fn forward(
             })?;
             (output.state, output.output_bf16)
         }
-        SourceCallMode::Decode => {
+        InvocationPhase::Decode => {
             let decay =
                 transcendentals::exp_f32_contiguous16_profiled(source, &log_decay, exp_profile)?;
             let output = recurrent::cached_step_128(recurrent::CachedGdn128Inputs {

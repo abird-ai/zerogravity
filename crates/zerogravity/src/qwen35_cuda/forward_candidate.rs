@@ -7,7 +7,7 @@
 use super::forward_source;
 use crate::{
     Error, Result,
-    accelerator::program::SourceCallMode,
+    accelerator::program::InvocationPhase,
     gpu::{InferenceReadback, ResidentModel, ResidentSession},
     qwen35::plan::{QwenForwardGeometry, QwenForwardPlan},
     resource_arbiter::ResourceOwner,
@@ -134,7 +134,7 @@ impl Session {
 
     pub async fn forward(
         &mut self,
-        mode: SourceCallMode,
+        mode: InvocationPhase,
         ids: &[u32],
         emit_logits: bool,
     ) -> Result<InferenceReadback> {
@@ -143,7 +143,7 @@ impl Session {
 
     pub async fn forward_cancellable(
         &mut self,
-        mode: SourceCallMode,
+        mode: InvocationPhase,
         ids: &[u32],
         emit_logits: bool,
         cancelled: &AtomicBool,
@@ -154,7 +154,7 @@ impl Session {
 
     async fn forward_inner(
         &mut self,
-        mode: SourceCallMode,
+        mode: InvocationPhase,
         ids: &[u32],
         emit_logits: bool,
         cancelled: Option<&AtomicBool>,
@@ -182,7 +182,7 @@ impl Session {
             Arc::from(ids),
             emit_logits,
         )?;
-        let request = invocation.materialize_source_plan()?;
+        let request = invocation.materialize_plan()?;
         match (emit_logits, cancelled) {
             (true, Some(cancelled)) => {
                 self.resident

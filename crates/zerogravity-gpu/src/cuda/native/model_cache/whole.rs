@@ -39,7 +39,7 @@ impl ModelCache {
             && self.source.same_issuer(cut.scope().source())
             && self.lease.is_initialized()
             && self.lease.bytes() == BYTES
-            && self.lease.source_identity() == binding.call().source()
+            && self.lease.source_identity() == binding.invocation().source()
             && self.lease.role() == zerogravity_core::device_events::BufferRole::RecurrentState
             && binding.leases().iter().all(|(lease, _)| {
                 self.lease.id() != lease.id()

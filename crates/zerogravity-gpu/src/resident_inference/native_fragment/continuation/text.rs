@@ -1,11 +1,11 @@
 //! Source-issued whole call on the original current RootAttempt.
 use super::*;
 use crate::cuda::native::text_model::TextModelBinding;
-use zerogravity_core::accelerator::program::SourceCall;
+use zerogravity_core::accelerator::program::TextInvocation;
 
-fn coordinates(base: RootBinding, attempt: &RootAttempt, call: &SourceCall) -> Result<()> {
-    let start = call.rows().base();
-    let rows = call.rows().len();
+fn coordinates(base: RootBinding, attempt: &RootAttempt, call: &TextInvocation) -> Result<()> {
+    let start = call.tokens().base();
+    let rows = call.tokens().len();
     if attempt.base() != base
         || call.source() != base.source()
         || base.frontier() != start as u64
@@ -22,8 +22,8 @@ impl GdnAttemptSchedule {
         scope: &Arc<TextModelBinding>,
         attempt: RootAttempt,
     ) -> Result<Arc<Self>> {
-        if scope.source().source_identity() != scope.record().call().source()
-            || scope.call() != scope.record().call()
+        if scope.source().source_identity() != scope.record().invocation().source()
+            || scope.invocation() != scope.record().invocation()
             || scope.record().selection().completed_layers() != 24
             || scope.gdn_sites().len() + scope.attention_sites().len() != 24
         {
@@ -31,17 +31,17 @@ impl GdnAttemptSchedule {
                 "text exact source/whole-graph schedule".into(),
             ));
         }
-        coordinates(attempt.base(), &attempt, scope.call())?;
+        coordinates(attempt.base(), &attempt, scope.invocation())?;
         Ok(Arc::new(Self {
             base: attempt.base(),
             attempt,
-            invocations: vec![scope.call().clone()],
+            invocations: vec![scope.invocation().clone()],
             completed_layers: 24,
         }))
     }
 }
 impl AttemptPhaseBinding {
-    fn require_prompt_shape(&self, call: &SourceCall) -> Result<()> {
+    fn require_prompt_shape(&self, call: &TextInvocation) -> Result<()> {
         if self.phase_index != 0
             || self.prior.is_some()
             || self.schedule.completed_layers != 24
@@ -58,7 +58,7 @@ impl AttemptPhaseBinding {
         &self,
         session: &ResidentSession,
         attempt: &RootAttempt,
-        call: &SourceCall,
+        call: &TextInvocation,
     ) -> Result<()> {
         self.require_prompt_shape(call)?;
         self.require_binding(session, attempt, call, 0)
@@ -67,7 +67,7 @@ impl AttemptPhaseBinding {
         &self,
         permit: &PrefixPhaseEnqueue<'_>,
         service: &Arc<ResidentService>,
-        call: &SourceCall,
+        call: &TextInvocation,
     ) -> Result<()> {
         self.require_prompt_shape(call)?;
         self.require_permit(permit, service, call, 0)
@@ -84,7 +84,7 @@ impl AttemptPhaseBinding {
     pub(in crate::resident_inference) fn require_retained_text(
         &self,
         base: RootBinding,
-        call: &SourceCall,
+        call: &TextInvocation,
     ) -> Result<()> {
         self.require_prompt_shape(call)?;
         if self.schedule.base != base {
@@ -98,16 +98,16 @@ impl AttemptPhaseBinding {
 mod tests {
     use super::*;
     use zerogravity_core::accelerator::SourceIdentity;
-    use zerogravity_core::accelerator::program::{SourceCallMode, SourceRows, TextCallGeometry};
+    use zerogravity_core::accelerator::program::{InvocationPhase, TextCallGeometry, TokenSpan};
     use zerogravity_core::session_root::SessionAuthority;
     fn call(
         source: SourceIdentity,
-        mode: SourceCallMode,
+        mode: InvocationPhase,
         base: usize,
         ids: &[u32],
-    ) -> Result<SourceCall> {
-        SourceCall::new(
-            SourceRows::new(
+    ) -> Result<TextInvocation> {
+        TextInvocation::new(
+            TokenSpan::new(
                 TextCallGeometry::new(source, 248320, 512)?,
                 base,
                 Arc::from(ids),
@@ -120,7 +120,7 @@ mod tests {
         let source = SourceIdentity::for_new_allocation()?;
         for rows in [47, 57, 62, 67, 72] {
             let mut authority = SessionAuthority::new(source)?;
-            let prompt = call(source, SourceCallMode::Prefill, 0, &vec![11; rows])?;
+            let prompt = call(source, InvocationPhase::Prefill, 0, &vec![11; rows])?;
             let attempt = authority.begin_advance(rows as u64)?;
             coordinates(authority.binding(), &attempt, &prompt)?;
             assert_eq!(authority.binding().frontier(), 0);
@@ -128,7 +128,7 @@ mod tests {
             for base in rows..rows + 7 {
                 let before = authority.binding();
                 let attempt = authority.begin_advance(1)?;
-                let feedback = call(source, SourceCallMode::Decode, base, &[11])?;
+                let feedback = call(source, InvocationPhase::Decode, base, &[11])?;
                 coordinates(before, &attempt, &feedback)?;
                 assert_eq!(authority.binding(), before);
                 authority.prepare_publish(attempt)?.commit();
@@ -142,7 +142,7 @@ mod tests {
         let source = SourceIdentity::for_new_allocation()?;
         let mut a = SessionAuthority::new(source)?;
         let b = SessionAuthority::new(source)?;
-        let c = call(source, SourceCallMode::Prefill, 0, &[11; 72])?;
+        let c = call(source, InvocationPhase::Prefill, 0, &[11; 72])?;
         assert!(coordinates(a.binding(), &b.begin_advance(72)?, &c).is_err());
         assert!(coordinates(a.binding(), &a.begin_advance(71)?, &c).is_err());
         let attempt = a.begin_advance(72)?;

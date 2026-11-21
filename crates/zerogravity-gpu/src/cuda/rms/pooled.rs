@@ -57,7 +57,7 @@ fn not_cancelled(cancelled: Option<&AtomicBool>) -> Result<()> {
     Ok(())
 }
 fn bindings(record: &SourceBindings) -> Result<BTreeMap<usize, BoundModelRmsSource>> {
-    let call = record.call();
+    let call = record.invocation();
     if record.plan().source() != call.source()
         || record.plan().nodes().len() != 255
         || record.plan().values().len() != 327
@@ -71,7 +71,7 @@ fn bindings(record: &SourceBindings) -> Result<BTreeMap<usize, BoundModelRmsSour
         let Some(descriptor) = record.operator(index)? else {
             continue;
         };
-        if descriptor.call() != call {
+        if descriptor.invocation() != call {
             return Err(Error::State("pooled RMS foreign call".into()));
         }
         if matches!(
@@ -89,7 +89,7 @@ fn bindings(record: &SourceBindings) -> Result<BTreeMap<usize, BoundModelRmsSour
                     .plan()
                     .source_value_provenance(*id)?
                     .ok_or_else(|| Error::State("pooled RMS producer absent".into()))?;
-                if provenance.call() != call {
+                if provenance.invocation() != call {
                     return Err(Error::State("pooled RMS producer issuer differs".into()));
                 }
             }
@@ -178,7 +178,7 @@ impl FullModelRmsScratch {
             views.require(&record, &service)?;
         }
         let source = record.clone();
-        let rows = record.call().rows().len();
+        let rows = record.invocation().tokens().len();
         let bindings = bindings(&record)?;
         let width = bindings
             .get(&1)
@@ -266,9 +266,12 @@ impl FullModelRmsScratch {
         self.storage.service.ensure_usable()?;
         let bindings = bindings(&record)?;
         let source = record.clone();
-        Self::row_spec(source.call().rows().len(), self.storage.columns.count())?;
+        Self::row_spec(
+            source.invocation().tokens().len(),
+            self.storage.columns.count(),
+        )?;
         if !source.source().same_issuer(self.storage.source.source())
-            || source.call().rows().len() != self.storage.rows
+            || source.invocation().tokens().len() != self.storage.rows
             || bindings
                 .get(&1)
                 .is_none_or(|b| b.geometry().width != self.storage.columns.count())
@@ -569,7 +572,7 @@ impl PooledRmsActor {
             || !Arc::ptr_eq(&self.scope.storage, &scope.storage)
             || old.kind() != new.kind()
             || old.parameters() != new.parameters()
-            || old.call().rows().len() != new.call().rows().len()
+            || old.invocation().tokens().len() != new.invocation().tokens().len()
         {
             return Err(Error::State(
                 "pooled RMS fresh actual record/site/shared physical storage differs".into(),
@@ -666,7 +669,7 @@ impl RmsScratchWitness {
             .ok_or_else(|| Error::State("lost pooled RMS source/record scope".into()))?;
         if !Arc::ptr_eq(&scope.storage, &storage)
             || storage.generation != storage.service.generation()
-            || storage.service.source_identity() != scope.record.call().source()
+            || storage.service.source_identity() != scope.record.invocation().source()
             || !scope.source.source().same_issuer(storage.source.source())
         {
             return Err(Error::State(

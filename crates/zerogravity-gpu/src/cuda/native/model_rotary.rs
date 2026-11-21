@@ -3,7 +3,7 @@ use super::source_rotary::SourceRotaryPrefix;
 use crate::resident_leases::{ResidentInitialization, ResidentLease, ResidentService};
 use std::sync::Arc;
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
-use zerogravity_core::accelerator::program::SourceCall;
+use zerogravity_core::accelerator::program::TextInvocation;
 use zerogravity_core::device_events::BufferRole;
 use zerogravity_core::{Error, Result};
 
@@ -94,7 +94,7 @@ impl ModelRotary {
     pub(crate) fn require_call(
         &self,
         source: &VerifiedTensorSource,
-        call: &SourceCall,
+        call: &TextInvocation,
         service: &Arc<ResidentService>,
     ) -> Result<()> {
         self.prefix.require_source(source)?;
@@ -105,15 +105,15 @@ impl ModelRotary {
         }
         if call.source() != source.source_identity() {
             return Err(Error::State(
-                "computed rotary actual source call differs".into(),
+                "computed rotary actual text invocation differs".into(),
             ));
         }
         self.prefix
-            .require_span(call.rows().base(), call.rows().len())?;
+            .require_span(call.tokens().base(), call.tokens().len())?;
         let end = call
-            .rows()
+            .tokens()
             .base()
-            .checked_add(call.rows().len())
+            .checked_add(call.tokens().len())
             .and_then(|rows| rows.checked_mul(128))
             .ok_or_else(|| Error::Limit("rotary call source span".into()))?;
         if !source.same_issuer(&self.source)

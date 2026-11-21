@@ -20,7 +20,7 @@ pub(super) struct NaturalRows {
 enum SourceRowInput {
     Reference(Arc<NaturalCallInput>),
     FixedPrompt(
-        Arc<crate::resident_inference::native_fragment::fixed_prompt_natural::FixedPromptCallInput>,
+        Arc<crate::resident_inference::native_fragment::fixed_prompt_natural::FixedPromptInvocationInput>,
     ),
 }
 impl SourceRowInput {
@@ -42,10 +42,10 @@ impl SourceRowInput {
             Self::FixedPrompt(input) => input.ids(),
         }
     }
-    fn call(&self) -> &zerogravity_core::accelerator::program::SourceCall {
+    fn invocation(&self) -> &zerogravity_core::accelerator::program::TextInvocation {
         match self {
-            Self::Reference(input) => input.call(),
-            Self::FixedPrompt(input) => input.call(),
+            Self::Reference(input) => input.invocation(),
+            Self::FixedPrompt(input) => input.invocation(),
         }
     }
     fn require_session(&self, session: &ResidentSession) -> Result<()> {
@@ -60,10 +60,10 @@ impl SourceRowInput {
             Self::FixedPrompt(input) => matches!(
                 (input.kind(), input.ids().len()),
                 (
-                    crate::cuda::native::fixed_prompt_model::FixedPromptCallKind::Prefill,
+                    crate::cuda::native::fixed_prompt_model::FixedPromptInvocationKind::Prefill,
                     47
                 ) | (
-                    crate::cuda::native::fixed_prompt_model::FixedPromptCallKind::Decode { .. },
+                    crate::cuda::native::fixed_prompt_model::FixedPromptInvocationKind::Decode { .. },
                     1
                 )
             ),
@@ -81,7 +81,7 @@ impl RmsPrepared {
     pub(crate) fn bind_fixed_prompt_call(
         self: &Arc<Self>,
         input: Arc<
-            crate::resident_inference::native_fragment::fixed_prompt_natural::FixedPromptCallInput,
+            crate::resident_inference::native_fragment::fixed_prompt_natural::FixedPromptInvocationInput,
         >,
         table: Arc<TiedWeight>,
     ) -> Result<Arc<Self>> {
@@ -94,10 +94,10 @@ impl RmsPrepared {
     ) -> Result<Arc<Self>> {
         if self.pooled.is_some()
             || self.natural.is_some()
-            || input.call().rows().len() != self.owner.rows.count()
+            || input.invocation().tokens().len() != self.owner.rows.count()
             || !self.owner.source.same_issuer(input.source())
             || !table.source().same_issuer(input.source())
-            || input.ids() != input.call().rows().ids()
+            || input.ids() != input.invocation().tokens().ids()
             || input.ids().len() != self.owner.rows.count()
             || !input.closed_rows()
             || input.ids().iter().any(|id| *id >= 248_320)

@@ -2,10 +2,10 @@ use super::*;
 fn rows(source: SourceIdentity) -> TeacherSpan {
     TeacherSpan::new(source, 0, 128, 16, &[1, 2]).unwrap()
 }
-fn call(span: TeacherSpan) -> SourceCall {
-    SourceCall::new(
-        SourceRows::from_teacher_span(span, 16).unwrap(),
-        SourceCallMode::Prefill,
+fn invocation(span: TeacherSpan) -> TextInvocation {
+    TextInvocation::new(
+        TokenSpan::from_teacher_span(span, 16).unwrap(),
+        InvocationPhase::Prefill,
     )
     .unwrap()
 }
@@ -18,7 +18,7 @@ fn norm(source: SourceIdentity) -> SourceParameter {
         bytes: 128,
     }
 }
-fn input(call: SourceCall) -> SourceOperator {
+fn input(call: TextInvocation) -> SourceOperator {
     SourceOperator::new(
         call.clone(),
         SourceOperatorKind::RetainedRows {
@@ -33,7 +33,7 @@ fn input(call: SourceCall) -> SourceOperator {
     )
     .unwrap()
 }
-fn projection(call: SourceCall) -> SourceOperator {
+fn projection(call: TextInvocation) -> SourceOperator {
     SourceOperator::new(
         call.clone(),
         SourceOperatorKind::Projection { selected_row: None },
@@ -56,16 +56,16 @@ fn one(builder: &mut PlanBuilder, op: &SourceOperator, inputs: &[PlanValue]) -> 
 #[test]
 fn f32_source_chain_keeps_issuer_stage_precision_and_state_free_boundary() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let call = call(rows(source));
+    let call = invocation(rows(source));
     let import = input(call.clone());
     let project = projection(call.clone());
     let mut builder =
         PlanBuilder::new_operator_slice(source, NumericalProfile::GgufReferenceV1).unwrap();
     let retained = one(&mut builder, &import, &[]).unwrap();
     let foreign = projection(
-        super::super::SourceCall::new(
-            SourceRows::from_teacher_span(rows(source), 16).unwrap(),
-            SourceCallMode::Prefill,
+        super::super::TextInvocation::new(
+            TokenSpan::from_teacher_span(rows(source), 16).unwrap(),
+            InvocationPhase::Prefill,
         )
         .unwrap(),
     );
@@ -133,7 +133,7 @@ fn f32_source_chain_keeps_issuer_stage_precision_and_state_free_boundary() {
 #[test]
 fn codecs_gamma_and_f32_numerical_schedules_cannot_substitute() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let call = call(rows(source));
+    let call = invocation(rows(source));
     let good = projection(call.clone());
     let mut matrix = good.matrices()[0].clone();
     matrix.kind = StoredTensorEncoding::Quantized(crate::encoding::QuantScheme::Q8_0);

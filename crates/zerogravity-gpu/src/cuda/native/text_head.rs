@@ -187,7 +187,7 @@ impl StreamedHead {
         scope.require_values(&values)?;
         let operation =
             cold.prepared.bind(
-                scope.call().rows().len(),
+                scope.invocation().tokens().len(),
                 scope.record().selection().selected_row().ok_or_else(|| {
                     Error::State("streamed head actual selected row absent".into())
                 })?,
@@ -270,7 +270,7 @@ impl StreamedHead {
                     || Error::State("streamed head actual selected row absent".into()),
                 )?),
             })
-            || descriptor.call() != self.scope.record().call()
+            || descriptor.invocation() != self.scope.record().invocation()
             || state.is_some()
             || node.state.is_some()
             || node.inputs != [ValueId(324)]

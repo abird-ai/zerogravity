@@ -77,7 +77,7 @@ where
         .into_observation_workspace();
     let mut witness = None;
     let result: Result<NaturalReuseFaultOutcome> = async {
-        let prompt=records[0].call().rows().ids().to_vec();
+        let prompt=records[0].invocation().tokens().ids().to_vec();
         if prompt.len()!=1 {return Err(Error::State("reuse fault requires original initialone prompt".into()));}
         let initial_record = records[0].clone();
         let PreparedReusableNatural{model,storage}=prepare_reusable_natural_cold(device,SourceModelScopes::new(source.clone(),records)?,inputs,rotary,cancelled).await?;

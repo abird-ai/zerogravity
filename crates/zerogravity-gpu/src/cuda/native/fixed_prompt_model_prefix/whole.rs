@@ -1,7 +1,7 @@
 //! Whole initial47 metadata over the SAME original immutable full record.
 use super::*;
-use zerogravity_core::accelerator::program::SourceCall;
 use zerogravity_core::accelerator::program::StateEffect;
+use zerogravity_core::accelerator::program::TextInvocation;
 
 #[derive(Clone)]
 pub(crate) struct AttentionSite {
@@ -26,9 +26,17 @@ impl AttentionSite {
         self.effect
     }
     fn bind(scope: &FixedPromptModelBinding, index: usize) -> Result<Self> {
-        Self::bind_nodes(scope.record().call(), scope.record().plan().nodes(), index)
+        Self::bind_nodes(
+            scope.record().invocation(),
+            scope.record().plan().nodes(),
+            index,
+        )
     }
-    pub(crate) fn bind_nodes(call: &SourceCall, nodes: &[PlanNode], index: usize) -> Result<Self> {
+    pub(crate) fn bind_nodes(
+        call: &TextInvocation,
+        nodes: &[PlanNode],
+        index: usize,
+    ) -> Result<Self> {
         let mut found=nodes.iter().enumerate().filter(|(_,node)| {
             matches!(&node.operation,PlanOperation::SourceOperator {descriptor,..}
                 if matches!(descriptor.kind(),SourceOperatorKind::KvAppend {domain,..} if domain==KvDomain(index)))
@@ -71,7 +79,7 @@ impl AttentionSite {
                 5 => matches!(descriptor.kind(), SourceOperatorKind::Multiply { .. }),
                 _ => false,
             };
-            if !valid || descriptor.call() != call {
+            if !valid || descriptor.invocation() != call {
                 return Err(Error::State(
                     "whole actual attention operator/call differs".into(),
                 ));
@@ -158,7 +166,7 @@ impl FixedPromptPrefixCut {
             .ok_or_else(|| Error::State("whole actual attention layer absent".into()))
     }
     pub(crate) fn bind_whole(scope: Arc<FixedPromptModelBinding>) -> Result<Arc<Self>> {
-        if scope.kind() != FixedPromptCallKind::Prefill {
+        if scope.kind() != FixedPromptInvocationKind::Prefill {
             return Err(Error::Unsupported("whole initial47 only".into()));
         }
         let record = scope.record();
@@ -180,7 +188,7 @@ impl FixedPromptPrefixCut {
                 let Some(descriptor) = record.operator(i)? else {
                     return Err(Error::State("whole typed original node".into()));
                 };
-                if descriptor.call() != record.call() {
+                if descriptor.invocation() != record.invocation() {
                     return Err(Error::State("whole original source/call/layer".into()));
                 }
                 if matches!(descriptor.kind(), SourceOperatorKind::ResidualRms(_)) {

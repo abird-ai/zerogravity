@@ -1,12 +1,12 @@
 //! Fresh canonical call/operator seal over identical source gamma and RMS storage.
 use super::*;
-use crate::cuda::native::fixed_prompt_model::FixedPromptCallKind;
-use crate::resident_inference::native_fragment::fixed_prompt_natural::FixedPromptCallInput;
+use crate::cuda::native::fixed_prompt_model::FixedPromptInvocationKind;
+use crate::resident_inference::native_fragment::fixed_prompt_natural::FixedPromptInvocationInput;
 
 impl FusedRmsPrepared {
     pub(crate) fn bind_fixed_prompt_call(
         self: &Arc<Self>,
-        input: &Arc<FixedPromptCallInput>,
+        input: &Arc<FixedPromptInvocationInput>,
         node: usize,
         branch: &ResidentLease,
         residual: &ResidentLease,
@@ -26,26 +26,28 @@ impl FusedRmsPrepared {
             })?;
         let (a, b) = (old.operator(), binding.operator());
         binding.require_source(&self.owner.source)?;
-        let old_kind = FixedPromptCallKind::of(a.call())?;
-        let new_kind = FixedPromptCallKind::of(b.call())?;
+        let old_kind = FixedPromptInvocationKind::of(a.invocation())?;
+        let new_kind = FixedPromptInvocationKind::of(b.invocation())?;
         let same_geometry = matches!(
             (old_kind, new_kind),
-            (FixedPromptCallKind::Prefill, FixedPromptCallKind::Prefill)
-                | (
-                    FixedPromptCallKind::Decode { .. },
-                    FixedPromptCallKind::Decode { .. }
-                )
+            (
+                FixedPromptInvocationKind::Prefill,
+                FixedPromptInvocationKind::Prefill
+            ) | (
+                FixedPromptInvocationKind::Decode { .. },
+                FixedPromptInvocationKind::Decode { .. }
+            )
         );
         if !same_geometry
-            || b.call() != input.call()
+            || b.invocation() != input.invocation()
             || a.kind() != b.kind()
             || a.matrices() != b.matrices()
             || a.parameters() != b.parameters()
-            || a.call().source() != b.call().source()
+            || a.invocation().source() != b.invocation().source()
             || a.numerical_contract() != b.numerical_contract()
-            || a.call().rows().capacity() != b.call().rows().capacity()
-            || a.call().rows().vocabulary() != b.call().rows().vocabulary()
-            || a.call().rows().len() != b.call().rows().len()
+            || a.invocation().tokens().capacity() != b.invocation().tokens().capacity()
+            || a.invocation().tokens().vocabulary() != b.invocation().tokens().vocabulary()
+            || a.invocation().tokens().len() != b.invocation().tokens().len()
         {
             return Err(Error::State(
                 "canonical RMS source/site/storage geometry differs".into(),

@@ -1,10 +1,10 @@
-//! Read-only completed source-call frames. No operand, root or execution authority.
+//! Read-only completed text-invocation frames. No operand, root or execution authority.
 use zerogravity_core::{
     Result,
     accelerator::program::{StateSlot, ValueId},
 };
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SourceCallFrameKind {
+pub enum TextFrameKind {
     Value(ValueId),
     State {
         slot: StateSlot,
@@ -13,14 +13,14 @@ pub enum SourceCallFrameKind {
     },
 }
 #[derive(Clone, Copy, Debug)]
-pub struct SourceCallFrame {
+pub struct TextFrame {
     pub base: usize,
     pub rows: usize,
-    pub kind: SourceCallFrameKind,
+    pub kind: TextFrameKind,
     pub offset_words: usize,
     pub total_words: usize,
 }
-pub trait SourceCallObserver: Send {
-    fn wants(&self, kind: SourceCallFrameKind) -> bool;
-    fn completed(&mut self, frame: SourceCallFrame, actual: &[u8]) -> Result<()>;
+pub trait TextObserver: Send {
+    fn wants(&self, kind: TextFrameKind) -> bool;
+    fn completed(&mut self, frame: TextFrame, actual: &[u8]) -> Result<()>;
 }

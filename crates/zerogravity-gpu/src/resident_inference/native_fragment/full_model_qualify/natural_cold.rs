@@ -44,7 +44,8 @@ impl ColdModelSlots {
             ));
         }
         for (index, slot) in templates.iter().enumerate() {
-            if crate::resident_program::natural_binding::slot(slot.record().call())? != index {
+            if crate::resident_program::natural_binding::slot(slot.record().invocation())? != index
+            {
                 return Err(Error::State("natural original cold slot order".into()));
             }
         }

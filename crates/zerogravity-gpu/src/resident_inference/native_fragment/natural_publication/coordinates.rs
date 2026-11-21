@@ -1,5 +1,5 @@
 //! Closed original natural request coordinates; no source or Root issuer.
-use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode};
+use zerogravity_core::accelerator::program::{InvocationPhase, TextInvocation};
 use zerogravity_core::session_root::{RootAttempt, RootBinding};
 use zerogravity_core::{Error, Result};
 
@@ -28,12 +28,12 @@ impl NaturalSlot {
             Self::FeedbackAt66 => 4,
         }
     }
-    pub const fn mode(self) -> SourceCallMode {
+    pub const fn mode(self) -> InvocationPhase {
         match self {
-            Self::InitialOne => SourceCallMode::Prefill,
-            Self::FeedbackAtOne | Self::FeedbackAt66 => SourceCallMode::Decode,
-            Self::Prefix64 => SourceCallMode::Prefill,
-            Self::FinalTwo => SourceCallMode::Prefill,
+            Self::InitialOne => InvocationPhase::Prefill,
+            Self::FeedbackAtOne | Self::FeedbackAt66 => InvocationPhase::Decode,
+            Self::Prefix64 => InvocationPhase::Prefill,
+            Self::FinalTwo => InvocationPhase::Prefill,
         }
     }
     pub const fn base(self) -> usize {
@@ -61,16 +61,16 @@ impl NaturalSlot {
         self,
         current: RootBinding,
         attempt: &RootAttempt,
-        call: &SourceCall,
+        call: &TextInvocation,
     ) -> Result<()> {
         if current != attempt.base()
             || current.source() != call.source()
             || current.frontier() != self.base() as u64
-            || call.mode() != self.mode()
-            || call.rows().base() != self.base()
-            || call.rows().len() != self.rows()
-            || call.rows().capacity() != 512
-            || call.rows().vocabulary() != 248320
+            || call.phase() != self.mode()
+            || call.tokens().base() != self.base()
+            || call.tokens().len() != self.rows()
+            || call.tokens().capacity() != 512
+            || call.tokens().vocabulary() != 248320
             || attempt.frontier() != (self.base() + self.rows()) as u64
         {
             return Err(Error::State(
@@ -85,11 +85,11 @@ impl NaturalSlot {
 mod tests {
     use super::*;
     use zerogravity_core::accelerator::SourceIdentity;
-    use zerogravity_core::accelerator::program::{SourceRows, TextCallGeometry};
+    use zerogravity_core::accelerator::program::{TextCallGeometry, TokenSpan};
     use zerogravity_core::session_root::SessionAuthority;
-    fn call(slot: NaturalSlot, source: SourceIdentity) -> SourceCall {
-        SourceCall::new(
-            SourceRows::new(
+    fn call(slot: NaturalSlot, source: SourceIdentity) -> TextInvocation {
+        TextInvocation::new(
+            TokenSpan::new(
                 TextCallGeometry::new(source, 248320, 512).unwrap(),
                 slot.base(),
                 std::sync::Arc::from(vec![11; slot.rows()]),
@@ -100,7 +100,7 @@ mod tests {
         .unwrap()
     }
     #[test]
-    fn exact_original_roots_progress_by_one_transaction_and_source_call() {
+    fn exact_original_roots_progress_by_one_transaction_and_text_invocation() {
         let source = SourceIdentity::for_new_allocation().unwrap();
         for slots in [
             [NaturalSlot::InitialOne, NaturalSlot::FeedbackAtOne].as_slice(),

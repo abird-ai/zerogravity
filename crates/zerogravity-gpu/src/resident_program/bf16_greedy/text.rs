@@ -12,7 +12,7 @@ impl PreparedBf16Greedy {
         if Arc::ptr_eq(cold.record(), scope.record())
             || !cold.source().same_issuer(scope.source())
             || cold.native_capture() != scope.native_capture()
-            || cold.call().rows().len() != scope.call().rows().len()
+            || cold.invocation().tokens().len() != scope.invocation().tokens().len()
             || !Arc::ptr_eq(values.service(), &self.service)
         {
             return Err(Error::State(
@@ -52,7 +52,7 @@ impl PreparedBf16Greedy {
                 "short-HF actual fresh immutable output packet".into(),
             ));
         }
-        let call = values.record().call().clone();
+        let call = values.record().invocation().clone();
         let owner = Arc::new(HostOwner {
             values,
             source: self.owner.source.clone(),

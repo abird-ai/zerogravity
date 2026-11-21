@@ -1,7 +1,7 @@
 //! Source-issued IDs select the SAME immutable tied BF16 table, without math.
 use super::super::*;
 use super::values::CohortValues;
-use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextCallInput};
+use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextInvocationInput};
 use crate::resident_leases::{ResidentInitialization, ResidentLease, TiedWeight};
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_artifacts::source_weights::WindowWorkspace;
@@ -20,7 +20,7 @@ impl Ids {
     }
 }
 pub(super) struct CohortEmbedding {
-    inputs: Box<[Arc<TextCallInput>]>,
+    inputs: Box<[Arc<TextInvocationInput>]>,
     values: Arc<CohortValues>,
     tied: Arc<TiedWeight>,
     ids: Ids,
@@ -33,7 +33,7 @@ pub(super) struct CohortEmbedding {
 }
 impl CohortEmbedding {
     pub(super) fn prepare(
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         values: Arc<CohortValues>,
         tied: Arc<TiedWeight>,
         status: ResidentLease,

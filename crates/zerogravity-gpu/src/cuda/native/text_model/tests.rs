@@ -5,7 +5,7 @@ use zerogravity_core::accelerator::program::KvDomain;
 use zerogravity_model_qwen35::plan::PromptSpan;
 use zerogravity_model_qwen35::plan::PromptWorkload;
 use zerogravity_model_qwen35::plan::QwenModelVariant;
-use zerogravity_model_qwen35::plan::{PromptCall, QwenOperation, QwenOperator};
+use zerogravity_model_qwen35::plan::{PromptInvocation, QwenOperation, QwenOperator};
 
 #[test]
 fn actual_last_prompt_row_and_both_source_widths_are_not_legacy_case_retags() -> Result<()> {
@@ -15,7 +15,7 @@ fn actual_last_prompt_row_and_both_source_widths_are_not_legacy_case_retags() ->
         for count in [47, 57, 62, 67, 72] {
             let workload = PromptWorkload::new(count, 512)?;
             let span = PromptSpan::prefill(source, workload, &vec![11; count])?;
-            let call = PromptCall::new(profile, span)?;
+            let call = PromptInvocation::new(profile, span)?;
             let head = TextHeadView::new(
                 call.span().len(),
                 profile.hidden_size(),
@@ -33,8 +33,10 @@ fn actual_last_prompt_row_and_both_source_widths_are_not_legacy_case_retags() ->
             );
             assert!(call.request().reference_phase().is_err());
             for base in workload.prompt_tokens()..=workload.prompt_tokens() + 6 {
-                let call =
-                    PromptCall::new(profile, PromptSpan::cached(source, workload, base, 353)?)?;
+                let call = PromptInvocation::new(
+                    profile,
+                    PromptSpan::cached(source, workload, base, 353)?,
+                )?;
                 let head = TextHeadView::new(
                     call.span().len(),
                     profile.hidden_size(),
@@ -56,14 +58,14 @@ fn actual_last_prompt_row_and_both_source_widths_are_not_legacy_case_retags() ->
 fn fa_uses_the_original_appended_private_read_and_never_a_fake_write() -> Result<()> {
     use zerogravity_core::accelerator::program::{ConvDomain, StateEffect, StateVersion};
     let source = SourceIdentity::for_new_allocation()?;
-    let call = PromptCall::new(
+    let call = PromptInvocation::new(
         QwenModelVariant::Qwen2B,
         PromptSpan::prefill(source, PromptWorkload::new(67, 512).unwrap(), &[11; 67])?,
     )?;
     for layer in [3, 7, 11, 15, 19, 23] {
         let descriptor = QwenOperator::new(
-            call.as_source_call().clone(),
-            Some(call.as_source_call().layer(layer)?),
+            call.as_text_invocation().clone(),
+            Some(call.as_text_invocation().layer(layer)?),
             QwenOperation::FlashAttention,
             Vec::new(),
             Vec::new(),

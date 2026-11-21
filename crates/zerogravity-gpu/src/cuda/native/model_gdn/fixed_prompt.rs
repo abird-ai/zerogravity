@@ -12,7 +12,7 @@ impl ModelGdnPrepared {
         let layer = self.binding.layer();
         let site = scope.gdn_site(layer)?;
         if !self.binding.source().same_issuer(scope.source())
-            || self.binding.call() != scope.record().call()
+            || self.binding.invocation() != scope.record().invocation()
             || site.layer() != layer
             || self.binding.nodes != site.nodes()
             || self.domains.layer() != self.binding.layer()

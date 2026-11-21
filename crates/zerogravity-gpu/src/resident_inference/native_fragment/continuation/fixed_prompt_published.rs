@@ -1,13 +1,17 @@
 //! One real current-root canonical call; no new authority or aggregate attempt.
 use super::*;
-use crate::cuda::native::fixed_prompt_model::{FixedPromptCallKind, FixedPromptModelBinding};
-use zerogravity_core::accelerator::program::SourceCall;
+use crate::cuda::native::fixed_prompt_model::{FixedPromptInvocationKind, FixedPromptModelBinding};
+use zerogravity_core::accelerator::program::TextInvocation;
 
-fn require_coordinates(base: RootBinding, attempt: &RootAttempt, call: &SourceCall) -> Result<()> {
-    let kind = FixedPromptCallKind::of(call)?;
+fn require_coordinates(
+    base: RootBinding,
+    attempt: &RootAttempt,
+    call: &TextInvocation,
+) -> Result<()> {
+    let kind = FixedPromptInvocationKind::of(call)?;
     let (start, rows) = match kind {
-        FixedPromptCallKind::Prefill => (0, 47),
-        FixedPromptCallKind::Decode { base } => (base, 1),
+        FixedPromptInvocationKind::Prefill => (0, 47),
+        FixedPromptInvocationKind::Decode { base } => (base, 1),
     };
     if attempt.base() != base
         || call.source() != base.source()
@@ -26,7 +30,7 @@ impl GdnAttemptSchedule {
         scope: &Arc<FixedPromptModelBinding>,
         attempt: RootAttempt,
     ) -> Result<Arc<Self>> {
-        let call = scope.record().call();
+        let call = scope.record().invocation();
         if scope.source().source_identity() != call.source() {
             return Err(Error::State(
                 "canonical published original source issuer".into(),
@@ -43,7 +47,7 @@ impl GdnAttemptSchedule {
 }
 
 impl AttemptPhaseBinding {
-    fn require_fixed_prompt_published_shape(&self, call: &SourceCall) -> Result<()> {
+    fn require_fixed_prompt_published_shape(&self, call: &TextInvocation) -> Result<()> {
         if self.phase_index != 0
             || self.prior.is_some()
             || self.schedule.completed_layers != 24
@@ -61,7 +65,7 @@ impl AttemptPhaseBinding {
         &self,
         session: &ResidentSession,
         attempt: &RootAttempt,
-        call: &SourceCall,
+        call: &TextInvocation,
     ) -> Result<()> {
         self.require_fixed_prompt_published_shape(call)?;
         self.require_binding(session, attempt, call, 0)
@@ -71,7 +75,7 @@ impl AttemptPhaseBinding {
         &self,
         permit: &PrefixPhaseEnqueue<'_>,
         service: &Arc<ResidentService>,
-        call: &SourceCall,
+        call: &TextInvocation,
     ) -> Result<()> {
         self.require_fixed_prompt_published_shape(call)?;
         self.require_permit(permit, service, call, 0)
@@ -93,7 +97,7 @@ impl AttemptPhaseBinding {
     pub(in crate::resident_inference) fn require_retained_fixed_prompt_published(
         &self,
         base: RootBinding,
-        call: &SourceCall,
+        call: &TextInvocation,
     ) -> Result<()> {
         self.require_fixed_prompt_published_shape(call)?;
         if self.schedule.base != base {
@@ -109,17 +113,17 @@ impl AttemptPhaseBinding {
 mod tests {
     use super::*;
     use zerogravity_core::accelerator::SourceIdentity;
-    use zerogravity_core::accelerator::program::{SourceCallMode, SourceRows, TextCallGeometry};
+    use zerogravity_core::accelerator::program::{InvocationPhase, TextCallGeometry, TokenSpan};
     use zerogravity_core::session_root::SessionAuthority;
 
-    fn decode(source: SourceIdentity, base: usize) -> SourceCall {
-        let rows = SourceRows::new(
+    fn decode(source: SourceIdentity, base: usize) -> TextInvocation {
+        let rows = TokenSpan::new(
             TextCallGeometry::new(source, 248320, 512).unwrap(),
             base,
             Arc::from([11]),
         )
         .unwrap();
-        SourceCall::new(rows, SourceCallMode::Decode).unwrap()
+        TextInvocation::new(rows, InvocationPhase::Decode).unwrap()
     }
 
     #[test]

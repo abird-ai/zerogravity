@@ -169,7 +169,7 @@ impl ProjectionWeights {
         operator: &zerogravity_core::accelerator::program::SourceOperator,
     ) -> Result<Role> {
         self.require_initialized()?;
-        if operator.call().source() != self.payload.bound.source_identity() {
+        if operator.invocation().source() != self.payload.bound.source_identity() {
             return Err(Error::State(
                 "original2B W exact learned source/role/member order".into(),
             ));
@@ -238,7 +238,7 @@ pub(super) fn role_for_operator(
     }
     for (index, expected) in descriptors.iter().enumerate() {
         if expected.matrices() == operator.matrices() {
-            require_reference_call(expected.call(), operator.call())?;
+            require_reference_call(expected.invocation(), operator.invocation())?;
             return Ok(if index == 0 { Role::Qkvz } else { Role::Ba });
         }
     }
@@ -248,14 +248,14 @@ pub(super) fn role_for_operator(
 }
 
 pub(super) fn require_reference_call(
-    expected: &zerogravity_core::accelerator::program::SourceCall,
-    actual: &zerogravity_core::accelerator::program::SourceCall,
+    expected: &zerogravity_core::accelerator::program::TextInvocation,
+    actual: &zerogravity_core::accelerator::program::TextInvocation,
 ) -> Result<()> {
     crate::cuda::gdn::GdnPhase::for_reference_call(expected)?;
     crate::cuda::gdn::GdnPhase::for_reference_call(actual)?;
     if expected.source() != actual.source()
-        || expected.rows().capacity() != actual.rows().capacity()
-        || actual.rows().vocabulary() != 248_320
+        || expected.tokens().capacity() != actual.tokens().capacity()
+        || actual.tokens().vocabulary() != 248_320
     {
         return Err(Error::State(
             "packed W finite reference source/capacity/vocabulary differs".into(),

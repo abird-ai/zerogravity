@@ -11,7 +11,7 @@ use std::{
 };
 use zerogravity::{
     Error, Result,
-    accelerator::{SourceIdentity, program::SourceCallMode},
+    accelerator::{SourceIdentity, program::InvocationPhase},
     gpu::{Device, qualification::resident as diagnostics},
     qwen35_cuda,
     resource_arbiter::{ResourceArbiter, ResourceOwner},
@@ -125,7 +125,7 @@ fn forward_lifecycle_on_nvidia() -> Result<()> {
             model
                 .plan()
                 .bind_invocation(mode, base, Arc::from(ids), true)?
-                .materialize_source_plan()
+                .materialize()
         };
         let initial = session.binding();
         let bytes = service.resident_bytes()?;
@@ -133,7 +133,7 @@ fn forward_lifecycle_on_nvidia() -> Result<()> {
         require(
             session
                 .prepare_cuda_forward_cancellable(
-                    request(SourceCallMode::Prefill, 0, prompt.as_slice())?,
+                    request(InvocationPhase::Prefill, 0, prompt.as_slice())?,
                     &cancelled,
                 )
                 .await
@@ -149,7 +149,7 @@ fn forward_lifecycle_on_nvidia() -> Result<()> {
         service.ensure_usable()?;
         cancelled.store(false, Ordering::Release);
         let output = session
-            .forward_cuda(request(SourceCallMode::Prefill, 0, prompt.as_slice())?)
+            .forward_cuda(request(InvocationPhase::Prefill, 0, prompt.as_slice())?)
             .await?;
         require(
             output.logits.len() == 248_320 && output.logits.iter().all(|x| x.is_finite()),
@@ -172,7 +172,7 @@ fn forward_lifecycle_on_nvidia() -> Result<()> {
         )?;
         if mode == "normal" {
             let prepared = session
-                .prepare_cuda_forward(request(SourceCallMode::Decode, 47, &[token])?)
+                .prepare_cuda_forward(request(InvocationPhase::Decode, 47, &[token])?)
                 .await?;
             require(session.binding() == before, "prepare published a root")?;
             session.restore(&prior)?;
@@ -184,7 +184,7 @@ fn forward_lifecycle_on_nvidia() -> Result<()> {
             let observed = session.snapshot().read_domains().await?;
             diagnostics::compare_domains(&expected, &observed)?;
             let _ = session
-                .forward_cuda(request(SourceCallMode::Decode, 47, &[token])?)
+                .forward_cuda(request(InvocationPhase::Decode, 47, &[token])?)
                 .await?;
             require(
                 session.binding().frontier() == 48 && service.pending_events()? == 0,
@@ -218,7 +218,7 @@ fn forward_lifecycle_on_nvidia() -> Result<()> {
             resident.qualification_arm_abort(1);
         }
         let mut future = Box::pin(session.prepare_cuda_forward_cancellable(
-            request(SourceCallMode::Decode, 47, &[token])?,
+            request(InvocationPhase::Decode, 47, &[token])?,
             &cancelled,
         ));
         let handles = poll_fn(|cx| {
@@ -258,7 +258,7 @@ fn forward_lifecycle_on_nvidia() -> Result<()> {
             diagnostics::compare_domains(&expected, &session.snapshot().read_domains().await?)?;
             cancelled.store(false, Ordering::Release);
             let _ = session
-                .forward_cuda(request(SourceCallMode::Decode, 47, &[token])?)
+                .forward_cuda(request(InvocationPhase::Decode, 47, &[token])?)
                 .await?;
             require(
                 session.binding().frontier() == 48 && service.pending_events()? == 0,

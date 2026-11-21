@@ -25,8 +25,8 @@ impl TextCohortReadback<'_> {
             .get(row)
             .ok_or_else(|| Error::State("B4 actual sum row".into()))?;
         let bytes = record
-            .call()
-            .rows()
+            .invocation()
+            .tokens()
             .len()
             .checked_mul(hidden_width(record)?)
             .and_then(|n| n.checked_mul(4))
@@ -259,9 +259,9 @@ impl TextLoaded {
         // body remains call-local; workspace.program keeps its original N1 body.
         let geometry = cold.workspace.geometry(&inputs)?;
         let (mode, rows) = if initial {
-            (SourceCallMode::Prefill, 47)
+            (InvocationPhase::Prefill, 47)
         } else {
-            (SourceCallMode::Decode, 1)
+            (InvocationPhase::Decode, 1)
         };
         let gamma_scope = self.cold.capture.cold_scope_index(mode, rows)?;
         let gammas = self
@@ -485,7 +485,7 @@ impl TextLoaded {
                 },
             };
             session.original.validate_prepared(&inference)?;
-            let receipt = TextCallReceipt {
+            let receipt = TextInvocationReceipt {
                 root: session.binding(),
                 selected_id: id,
                 max_bits: bits,

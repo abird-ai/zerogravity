@@ -67,7 +67,7 @@ impl StorageRecipe {
         let mut geometries = Vec::with_capacity(scopes.len());
         let mut recipes = Vec::with_capacity(scopes.len());
         for scope in scopes {
-            let rows = scope.call().rows().len();
+            let rows = scope.invocation().tokens().len();
             let width = scope.hidden_size();
             let recipe = Self::new(scope.clone(), StorageMode::ReuseMlp, limits)?;
             let values = recipe.inventory();

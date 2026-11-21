@@ -1,5 +1,5 @@
 //! Actual source rows: SAME resident tied table or bounded verified source H2D.
-// Former actor: ShortSourceRows.
+// Former actor: ShortTokenSpan.
 use super::*;
 use crate::cuda::rms::FullModelRmsScratch;
 use crate::resident_inference::native_fragment::PrefixPhaseEnqueue;
@@ -43,15 +43,15 @@ impl EmbeddingRows {
         if !source.same_issuer(&owner.source)
             || scope.rows()? != owner.rows
             || scope.columns() != owner.columns
-            || scope.record().call().rows().ids() != owner._teacher_ids
+            || scope.record().invocation().tokens().ids() != owner._teacher_ids
         {
             return Err(Error::State(
-                "text cold source rows differ from actual source call".into(),
+                "text cold source rows differ from actual text invocation".into(),
             ));
         }
         let metadata = source.reserve_workspace(64 * 1024)?;
         Ok(Arc::new(Self {
-            ids: Arc::from(scope.record().call().rows().ids()),
+            ids: Arc::from(scope.record().invocation().tokens().ids()),
             scope,
             payload: Payload::Host(Arc::new(HostPayload::Cold(owner))),
             submitted: AtomicBool::new(false),
@@ -60,7 +60,7 @@ impl EmbeddingRows {
     }
     fn fresh(scope: Arc<FullModelRmsScratch>, tied: Option<&Arc<TiedWeight>>) -> Result<Arc<Self>> {
         let source = scope.source().source();
-        let ids = scope.record().call().rows().ids();
+        let ids = scope.record().invocation().tokens().ids();
         let columns = scope.columns().count();
         let bytes = ids.len() * columns * 2;
         let metadata = source.reserve_workspace(64 * 1024)?;
@@ -154,7 +154,7 @@ fn require_resident(scope: &FullModelRmsScratch, tied: &Arc<TiedWeight>) -> Resu
         .require_matrix(original, scope.service(), &matrix)?;
     // Original completed upload seals both tied source roles; current IDs still
     // come only from this fresh immutable recorded invocation.
-    let ids = scope.record().call().rows().ids();
+    let ids = scope.record().invocation().tokens().ids();
     if !matches!(ids.len(), 1 | 47 | 48 | 49 | 50 | 57 | 62 | 67 | 72)
         || ids.len() != scope.rows()?.count()
         || ids.iter().any(|&id| id >= VOCABULARY as u32)
@@ -222,14 +222,14 @@ impl RmsPrepared {
             .as_ref()
             .ok_or_else(|| Error::State("text actual source row actor absent".into()))?;
         rows.scope.require_active_run()?;
-        permit.require_invocation(&self.service, rows.scope.record().call(), 0, 24)?;
+        permit.require_invocation(&self.service, rows.scope.record().invocation(), 0, 24)?;
         self.pooled
             .as_ref()
             .ok_or_else(|| Error::State("text source RMS actor absent".into()))?
             .require_scope(&rows.scope, 1)?;
         let destination = self.embedding();
         if destination.bytes() != rows.ids.len() * self.owner.columns.count() * 2
-            || rows.ids.as_ref() != rows.scope.record().call().rows().ids()
+            || rows.ids.as_ref() != rows.scope.record().invocation().tokens().ids()
             || rows.submitted.swap(true, Ordering::AcqRel)
         {
             return Err(Error::State(

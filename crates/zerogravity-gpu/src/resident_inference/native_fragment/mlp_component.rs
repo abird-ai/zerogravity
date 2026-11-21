@@ -93,7 +93,11 @@ impl<'a> MlpComponentReadback<'a> {
         Ok(value)
     }
     fn readback_columns(&self) -> Result<usize> {
-        mlp_readback_columns(self.kind, self.arithmetic, self.record.call().rows().len())
+        mlp_readback_columns(
+            self.kind,
+            self.arithmetic,
+            self.record.invocation().tokens().len(),
+        )
     }
     pub fn arithmetic(&self) -> PostAttentionArithmetic {
         self.arithmetic
@@ -132,7 +136,7 @@ impl<'a> MlpComponentReadback<'a> {
             .raw
             .get(16)
             .ok_or_else(|| Error::State("completed unrounded dual sum absent".into()))?;
-        if bytes.len() != self.record.call().rows().len() * self.readback_columns()? * 4 {
+        if bytes.len() != self.record.invocation().tokens().len() * self.readback_columns()? * 4 {
             return Err(Error::State("unrounded dual sum dense F32 extent".into()));
         }
         Ok(&bytes[..])
@@ -309,10 +313,10 @@ where
     }
     not_cancelled(cancelled)?;
     let candidate = model.allocate_state(false).await?;
-    let invocation = record.call();
+    let invocation = record.invocation();
     let attempt = session
         .authority
-        .begin_advance(invocation.rows().len() as u64)?;
+        .begin_advance(invocation.tokens().len() as u64)?;
     let schedule = GdnAttemptSchedule::new_initial_component(&recipe, attempt.clone())?;
     let phase_binding = AttemptPhaseBinding::new(schedule.clone(), 0, None)?;
     let ticket = service.queue().submit(
@@ -371,9 +375,9 @@ where
             .flat_map(|d| d.leases.iter().cloned().map(|l| (l, DeviceAccess::Write))),
     );
     let parameters = RuntimeParameters {
-        token: invocation.rows().ids()[0],
+        token: invocation.tokens().ids()[0],
         position: 0,
-        valid_tokens: invocation.rows().len(),
+        valid_tokens: invocation.tokens().len(),
     };
     workspace
         .program
@@ -585,7 +589,7 @@ where
     let (dispatches, native_launches, rows) = (
         submitted.dispatches,
         submitted.fused_dispatches,
-        invocation.rows().len(),
+        invocation.tokens().len(),
     );
     drop(submitted);
     drop(rereads);

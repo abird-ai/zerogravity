@@ -7,14 +7,14 @@ use zerogravity_core::accelerator::program::NumericalProfile;
 use zerogravity_core::accelerator::program::RecurrentDomain;
 use zerogravity_core::accelerator::program::StateEffect;
 use zerogravity_core::accelerator::program::{
-    PlanOperation, SourceCall, SourceCallMode, SourceOperatorKind,
+    InvocationPhase, PlanOperation, SourceOperatorKind, TextInvocation,
 };
 
 /// Sealed original root + original prior/private candidate leases. Only the
 /// existing ResidentSession can construct this binding; not an execution permit.
 pub(crate) struct BoundGdnDomains {
     base: RootBinding,
-    invocation: SourceCall,
+    invocation: TextInvocation,
     phase: GdnPhase,
     conv_effect: StateEffect,
     recurrent_effect: StateEffect,
@@ -73,7 +73,7 @@ fn vector_lease(domains: &[Domain], slot: StateSlot, elements: usize) -> Result<
 pub(super) struct GdnPhasePlan<'a> {
     pub candidate: &'a [Domain],
     pub plan: &'a ForwardPlan,
-    pub invocation: &'a SourceCall,
+    pub invocation: &'a TextInvocation,
     pub phase: GdnPhase,
     pub nodes: [usize; 2],
 }
@@ -85,14 +85,14 @@ impl ResidentSession {
         attempt: &RootAttempt,
         candidate: &[Domain],
         plan: &ForwardPlan,
-        invocation: &SourceCall,
+        invocation: &TextInvocation,
         phase: GdnPhase,
         node_indices: [usize; 2],
     ) -> Result<Arc<BoundGdnDomains>> {
         let base = self.binding();
         validate_phase(base, attempt, phase)?;
         if !matches!(phase, GdnPhase::InitialOne | GdnPhase::Initial64)
-            || u64::try_from(invocation.rows().base()).ok() != Some(base.frontier())
+            || u64::try_from(invocation.tokens().base()).ok() != Some(base.frontier())
         {
             return Err(Error::Unsupported(
                 "original initial prefix binder only".into(),
@@ -129,7 +129,7 @@ impl ResidentSession {
         let SourceOperatorKind::CausalConvSplit { domain, .. } = descriptor.kind() else {
             return Err(Error::State("GDN phase actual conv domain absent".into()));
         };
-        if descriptor.call() != request.invocation {
+        if descriptor.invocation() != request.invocation {
             return Err(Error::State("GDN phase actual conv issuer differs".into()));
         }
         binding.require_binding(self, attempt, request.invocation, domain.0)?;
@@ -154,15 +154,15 @@ impl ResidentSession {
         let base = self.binding();
         let exact_phase = match (
             phase,
-            invocation.mode(),
-            invocation.rows().base(),
-            invocation.rows().len(),
+            invocation.phase(),
+            invocation.tokens().base(),
+            invocation.tokens().len(),
         ) {
-            (GdnPhase::InitialOne, SourceCallMode::Prefill, 0, 1)
-            | (GdnPhase::Initial64, SourceCallMode::Prefill, 0, 64)
-            | (GdnPhase::ContinuedTwo, SourceCallMode::Prefill, 64, 2)
-            | (GdnPhase::CachedDecode, SourceCallMode::Decode, 1 | 66, 1) => true,
-            (GdnPhase::FixedPrompt, SourceCallMode::Prefill, 0, 47) => {
+            (GdnPhase::InitialOne, InvocationPhase::Prefill, 0, 1)
+            | (GdnPhase::Initial64, InvocationPhase::Prefill, 0, 64)
+            | (GdnPhase::ContinuedTwo, InvocationPhase::Prefill, 64, 2)
+            | (GdnPhase::CachedDecode, InvocationPhase::Decode, 1 | 66, 1) => true,
+            (GdnPhase::FixedPrompt, InvocationPhase::Prefill, 0, 47) => {
                 attempt_phase
                     .as_ref()
                     .ok_or_else(|| {
@@ -176,15 +176,15 @@ impl ResidentSession {
             _ => false,
         };
         if !exact_phase
-            || invocation.rows().source() != base.source()
-            || invocation.rows().capacity() != self.model.capacity
-            || u64::try_from(invocation.rows().vocabulary()).ok() != Some(self.model.vocab)
+            || invocation.tokens().source() != base.source()
+            || invocation.tokens().capacity() != self.model.capacity
+            || u64::try_from(invocation.tokens().vocabulary()).ok() != Some(self.model.vocab)
             || plan.source() != base.source()
             || base.source() != self.model.service.source_identity()
             || plan.numerical_profile() != NumericalProfile::CudaSm86Bf16ReferenceV1
             || plan.is_operator_slice()
             || plan.frontier_delta() != 0
-            || plan.source_call() != Some(invocation)
+            || plan.text_invocation() != Some(invocation)
         {
             return Err(Error::Unsupported(
                 "GDN actual source/call/root phase differs".into(),
@@ -203,7 +203,7 @@ impl ResidentSession {
                 else {
                     return Err(Error::State("GDN actual state operator absent".into()));
                 };
-                if descriptor.call() != invocation {
+                if descriptor.invocation() != invocation {
                     return Err(Error::State("GDN actual state call issuer differs".into()));
                 }
                 Ok(descriptor.as_ref())
@@ -278,7 +278,7 @@ impl ResidentSession {
                 let tag = plan.source_value_provenance(id)?.ok_or_else(|| {
                     Error::State("GDN value lost original teacher provenance".into())
                 })?;
-                if tag.call() != invocation {
+                if tag.invocation() != invocation {
                     return Err(Error::State(
                         "GDN value phase differs from original root invocation".into(),
                     ));
@@ -369,7 +369,7 @@ impl BoundGdnDomains {
         }
         Ok(())
     }
-    pub(crate) fn invocation(&self) -> &SourceCall {
+    pub(crate) fn invocation(&self) -> &TextInvocation {
         &self.invocation
     }
     pub(crate) fn base(&self) -> RootBinding {

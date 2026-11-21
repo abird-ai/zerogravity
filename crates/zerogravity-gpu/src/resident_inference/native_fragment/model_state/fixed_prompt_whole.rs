@@ -47,8 +47,8 @@ impl BoundModelState {
     pub(crate) fn require_fixed_prompt_whole(&self, cut: &Arc<FixedPromptPrefixCut>) -> Result<()> {
         cut.require_whole()?;
         if !Arc::ptr_eq(self.whole_cut()?, cut)
-            || self.call != *cut.scope().record().call()
-            || self.base.source() != self.call.source()
+            || self.invocation != *cut.scope().record().invocation()
+            || self.base.source() != self.invocation.source()
             || self.base.frontier() != 0
         {
             return Err(Error::State(

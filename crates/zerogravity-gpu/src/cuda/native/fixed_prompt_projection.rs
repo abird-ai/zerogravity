@@ -14,7 +14,7 @@ use cubecl::cuda::{
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, atomic::AtomicBool};
 use zerogravity_artifacts::source_weights::{TensorWindow, VerifiedTensorSource, WindowWorkspace};
-use zerogravity_core::accelerator::program::SourceCallMode;
+use zerogravity_core::accelerator::program::InvocationPhase;
 use zerogravity_core::accelerator::program::{
     NumericalContract, SourceOperator, SourceOperatorKind,
 };
@@ -52,10 +52,10 @@ enum Role {
 impl Role {
     fn of(operator: &SourceOperator) -> Result<Self> {
         operator.validate()?;
-        if operator.call().mode() != SourceCallMode::Prefill
-            || operator.call().rows().base() != 0
-            || operator.call().rows().capacity() != 512
-            || operator.call().rows().len() != 47
+        if operator.invocation().phase() != InvocationPhase::Prefill
+            || operator.invocation().tokens().base() != 0
+            || operator.invocation().tokens().capacity() != 512
+            || operator.invocation().tokens().len() != 47
         {
             return Err(Error::Unsupported(
                 "fixed prompt native projection call extent".into(),
@@ -123,7 +123,7 @@ fn descriptors(record: &SourceBindings) -> Result<[SourceOperator; 2]> {
             return Err(Error::State("actual47 projection node absent".into()));
         };
         if Role::of(descriptor)? != role
-            || descriptor.call() != record.call()
+            || descriptor.invocation() != record.invocation()
             || node.inputs.as_slice() != [zerogravity_core::accelerator::program::ValueId(1)]
             || node.outputs.as_slice()
                 != [zerogravity_core::accelerator::program::ValueId(
@@ -141,7 +141,7 @@ fn descriptors(record: &SourceBindings) -> Result<[SourceOperator; 2]> {
 }
 fn require_source(bound: &VerifiedTensorSource, operator: &SourceOperator) -> Result<Role> {
     let role = Role::of(operator)?;
-    if operator.call().source() != bound.source_identity() {
+    if operator.invocation().source() != bound.source_identity() {
         return Err(Error::State(
             "projection actual source/call issuer differs".into(),
         ));
@@ -184,7 +184,7 @@ fn required_images(records: &[Arc<SourceBindings>]) -> Result<BTreeSet<Projectio
     for record in records {
         for operator in descriptors(record)? {
             required.extend(
-                manifests::launches(record.call().rows().len(), Role::of(&operator)?)?
+                manifests::launches(record.invocation().tokens().len(), Role::of(&operator)?)?
                     .into_iter()
                     .map(|launch| launch.image),
             );
@@ -238,7 +238,7 @@ impl ProjectionPrograms {
         for record in records {
             for operator in descriptors(record)? {
                 let role = weights.require_operator_source(&operator)?;
-                let key = (record.call().rows().len(), role);
+                let key = (record.invocation().tokens().len(), role);
                 if launches.contains_key(&key) {
                     continue;
                 }
@@ -274,7 +274,7 @@ impl ProjectionPrograms {
     ) -> Result<Vec<(ResidentLease, DeviceAccess)>> {
         let role = self.weights.require_operator(operator)?;
         let service = self.weights.service();
-        let rows = operator.call().rows().len();
+        let rows = operator.invocation().tokens().len();
         let weight = self.weights.lease(role);
         let leases = [
             (weight, role.bytes(), BufferRole::ImmutableWeights),
@@ -328,7 +328,7 @@ impl ProjectionPrograms {
         self.accesses(operator, input, output, workspace)?;
         let role = self.weights.require_operator(operator)?;
         let mut count = 0;
-        for launch in &self.launches[&(operator.call().rows().len(), role)] {
+        for launch in &self.launches[&(operator.invocation().tokens().len(), role)] {
             not_cancelled(cancelled)?;
             let handles = launch
                 .roles

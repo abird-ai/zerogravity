@@ -41,15 +41,18 @@ fn actual_source_sites_and_head_values_survive_only_same_math_rebinding() -> Res
                     let current = fixture::call(source, profile, workload, base, id);
                     let bound = template.bind_prompt_call(&current)?;
                     assert!(template.plan().shares_semantics(bound.plan()));
-                    assert_ne!(template.plan().source_call(), bound.plan().source_call());
+                    assert_ne!(
+                        template.plan().text_invocation(),
+                        bound.plan().text_invocation()
+                    );
                     let actual = analyze_plan(bound.plan(), &selected)?;
                     assert_eq!(analysis.head, actual.head);
                     for (&domain, site) in &actual.gdn {
                         assert!(matches!(operator(bound.plan(), site.nodes[0])?.kind(),
                             SourceOperatorKind::CausalConvSplit { domain: d, .. } if d.0 == domain));
                         assert_eq!(
-                            Some(operator(bound.plan(), site.nodes[0])?.call()),
-                            bound.plan().source_call()
+                            Some(operator(bound.plan(), site.nodes[0])?.invocation()),
+                            bound.plan().text_invocation()
                         );
                     }
                     for site in actual.attention.values() {

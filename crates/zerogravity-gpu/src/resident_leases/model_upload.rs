@@ -39,7 +39,7 @@ fn require_layout(operator: &SourceOperator, shape: SourceWeightLayout) -> Resul
             .iter()
             .zip(members.members())
             .any(|(matrix, &rows)| {
-                matrix.source != operator.call().source()
+                matrix.source != operator.invocation().source()
                     || matrix.kind
                         != StoredTensorEncoding::Scalar(
                             zerogravity_core::encoding::ScalarDType::Bf16,
@@ -124,7 +124,7 @@ impl ModelUploadOwner {
             || self.lease.bytes() != layout.bytes()
             || self.lease.role() != BufferRole::ImmutableWeights
             || self.lease.source_identity() != self.source.source_identity()
-            || self.descriptor.call().source() != self.source.source_identity()
+            || self.descriptor.invocation().source() != self.source.source_identity()
             || self.matrices.len() != self.descriptor.matrices().len()
         {
             return Err(Error::State(
@@ -179,7 +179,7 @@ impl ModelWeight {
         self.require_initialized()?;
         actual.validate()?;
         if !source.same_issuer(&self.owner.source)
-            || actual.call().source() != source.source_identity()
+            || actual.invocation().source() != source.source_identity()
             || actual.kind() != self.owner.descriptor.kind()
             || actual.numerical_contract() != self.owner.descriptor.numerical_contract()
             || actual.matrices() != self.owner.descriptor.matrices()
@@ -218,7 +218,7 @@ impl ResidentInitialization<'_> {
         self.service.ensure_usable()?;
         require_layout(&descriptor, shape)?;
         if source.source_identity() != self.service.source_identity()
-            || descriptor.call().source() != source.source_identity()
+            || descriptor.invocation().source() != source.source_identity()
             || self.model_source_uploads.iter().any(|entry| {
                 entry.descriptor.matrices().first().map(|m| m.name.as_str())
                     == descriptor.matrices().first().map(|m| m.name.as_str())
@@ -389,18 +389,18 @@ mod layout_tests {
     use super::*;
     use zerogravity_core::accelerator::SourceIdentity;
     use zerogravity_core::accelerator::program::{
-        MatrixAxes, SourceCall, SourceCallMode, SourceRows, SourceTensor, TextCallGeometry,
+        InvocationPhase, MatrixAxes, SourceTensor, TextCallGeometry, TextInvocation, TokenSpan,
     };
     fn projection(members: &[(usize, usize)]) -> SourceOperator {
         let source = SourceIdentity::for_new_allocation().unwrap();
-        let call = SourceCall::new(
-            SourceRows::new(
+        let call = TextInvocation::new(
+            TokenSpan::new(
                 TextCallGeometry::new(source, 248320, 512).unwrap(),
                 0,
                 vec![353].into(),
             )
             .unwrap(),
-            SourceCallMode::Prefill,
+            InvocationPhase::Prefill,
         )
         .unwrap();
         let matrices = members

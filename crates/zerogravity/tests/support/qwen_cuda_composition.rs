@@ -1,6 +1,6 @@
 //! Compact large-source composition check; CPU model agreement is not CUDA vendor parity.
 use super::*;
-use crate::source_calls_reference::Expected;
+use crate::text_invocations_reference::Expected;
 
 fn state_digest(domains: &[(StateSlot, Vec<f32>)]) -> Result<String> {
     let mut hash = Sha256::new();
@@ -88,7 +88,7 @@ fn large_source_prefill_and_decode() -> Result<()> {
                 let prior = session.snapshot();
                 let before = state_digest(&prior.read_domains().await?)?;
                 let now = Instant::now();
-                let output = session.forward(if step == 0 { SourceCallMode::Prefill } else { SourceCallMode::Decode }, &ids, true).await?;
+                let output = session.forward(if step == 0 { InvocationPhase::Prefill } else { InvocationPhase::Decode }, &ids, true).await?;
                 ensure(output.logits.len() == model.model_profile().vocabulary_size()
                     && output.logits.iter().all(|x| x.is_finite()), "complete finite logits")?;
                 let token = output.logits.iter().enumerate().fold((0, f32::NEG_INFINITY),

@@ -334,7 +334,7 @@ impl Observer<'_> {
         let r = &self.reference.doc.records[i];
         need(
             r.token == self.token && stamp(&self.reference.raw)? == self.reference.stamp,
-            "same source call/reference inode",
+            "same text invocation/reference inode",
         )?;
         self.raw.resize(r.bytes, 0);
         self.reference.raw.read_exact_at(&mut self.raw, r.offset)?;

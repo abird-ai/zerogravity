@@ -15,7 +15,7 @@ use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 /// Cold/configured-call working set, not a live reservation. Retained results
 /// and extra snapshot readers require their own original host admission.
 #[derive(Clone, Debug)]
-pub struct SourceCallInventory {
+pub struct ResidentTextInventory {
     pub total_device_budget_bytes: usize,
     pub model_device_budget_bytes: usize,
     pub physical_admission_bytes: u64,
@@ -35,7 +35,7 @@ pub(crate) struct Admission {
     pub(super) source: VerifiedTensorSource,
     pub(super) layout: Arc<layout::Layout>,
     pub(super) operands: BTreeMap<String, Arc<PreparedBf16Projection>>,
-    pub(super) inventory: SourceCallInventory,
+    pub(super) inventory: ResidentTextInventory,
     metadata: WindowWorkspace,
 }
 impl Admission {
@@ -59,7 +59,7 @@ impl Admission {
     ) -> Result<Self> {
         if !(1..=64).contains(&max_sessions) || source.source_identity() != plan.source() {
             return Err(Error::State(
-                "source-call original source/session population".into(),
+                "text-execution original source/session population".into(),
             ));
         }
         let metadata = source.reserve_workspace(8 * 1024 * 1024)?;
@@ -93,7 +93,7 @@ impl Admission {
                 || m.tensor().kind != d.kind
             {
                 return Err(Error::State(
-                    "source-call authenticated matrix differs".into(),
+                    "text-execution authenticated matrix differs".into(),
                 ));
             }
             operands.insert(
@@ -119,7 +119,7 @@ impl Admission {
         )?;
         let host_upper_bytes = layout::sum([
             usize::try_from(source.metadata_reserved_bytes())
-                .map_err(|_| Error::Limit("source-call source metadata extent".into()))?,
+                .map_err(|_| Error::Limit("text-execution source metadata extent".into()))?,
             source.staging_chunk_bytes() * 3,
             32 * 1024 * 1024,
             (max_sessions + 1) * 32 * 1024 * 1024,
@@ -136,7 +136,7 @@ impl Admission {
         if host_upper_bytes as u64 > host_limit {
             return Err(Error::resource(
                 "host memory",
-                "source-call complete host preflight",
+                "text-execution complete host preflight",
                 host_upper_bytes as u64,
                 host_limit,
             ));
@@ -148,7 +148,7 @@ impl Admission {
         ])?;
         let (context_device_bytes, physical_device_upper_bytes) =
             budget.inventory(model_device_upper_bytes)?;
-        let inventory = SourceCallInventory {
+        let inventory = ResidentTextInventory {
             total_device_budget_bytes: budget.total_device_bytes(),
             model_device_budget_bytes: budget.model_device_bytes(),
             physical_admission_bytes: budget.physical_admission_bytes(),
@@ -171,7 +171,7 @@ impl Admission {
             metadata,
         })
     }
-    pub(crate) fn inventory(&self) -> &SourceCallInventory {
+    pub(crate) fn inventory(&self) -> &ResidentTextInventory {
         &self.inventory
     }
     pub(crate) fn catalogue(
@@ -198,20 +198,20 @@ impl Admission {
         let (native_host, native_device) = crate::hip::native::source_preparation_upper_bytes();
         if native.host_bytes() > native_host || native.device_bytes() > native_device {
             return Err(Error::State(
-                "source-call actual native inventory exceeds its admitted upper bound".into(),
+                "text-execution actual native inventory exceeds its admitted upper bound".into(),
             ));
         }
         if service.source_identity() != self.source.source_identity()
             || service.client().is_capturing()
         {
             return Err(Error::State(
-                "source-call service/source/capture state differs".into(),
+                "text-execution service/source/capture state differs".into(),
             ));
         }
         if self.inventory.model_device_upper_bytes > service.capacity() {
             return Err(Error::resource(
                 "GPU provider memory / VRAM budget",
-                "source-call model/native/root admission",
+                "text-execution model/native/root admission",
                 self.inventory.model_device_upper_bytes as u64,
                 service.capacity() as u64,
             ));
@@ -303,7 +303,7 @@ impl Admission {
                 (Bf16ProjectionStorage::Streamed, None) => {}
                 _ => {
                     return Err(Error::State(
-                        "source-call selected weight owner differs".into(),
+                        "text-execution selected weight owner differs".into(),
                     ));
                 }
             }
@@ -311,7 +311,7 @@ impl Admission {
         let owned = layout::sum(accesses.iter().map(|(l, _)| l.bytes()))?;
         if owned != self.layout.preflight.owned_bytes()? {
             return Err(Error::State(
-                "source-call managed bytes differ from cold admission".into(),
+                "text-execution managed bytes differ from cold admission".into(),
             ));
         }
         let values = self
@@ -406,7 +406,9 @@ pub(super) fn view(
             .checked_add(bytes)
             .is_none_or(|end| end > lease.bytes())
     {
-        return Err(Error::State("source-call exact original lease view".into()));
+        return Err(Error::State(
+            "text-execution exact original lease view".into(),
+        ));
     }
     Ok(lease
         .handle()
@@ -425,14 +427,14 @@ fn weight_storage(weights: usize, fixed: usize, limit: usize) -> Result<Bf16Proj
     let available = limit.checked_sub(fixed).ok_or_else(|| {
         Error::resource(
             "model device memory / VRAM budget",
-            "source-call fixed workspace/native/root admission",
+            "text-execution fixed workspace/native/root admission",
             fixed as u64,
             limit as u64,
         )
     })?;
     if weights == 0 {
         return Err(Error::State(
-            "source-call original weight extent absent".into(),
+            "text-execution original weight extent absent".into(),
         ));
     }
     Ok(if weights <= available {

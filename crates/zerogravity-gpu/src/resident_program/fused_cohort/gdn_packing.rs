@@ -2,7 +2,7 @@
 //! No model arithmetic, single-row geometry grant or captured tensor input.
 use super::super::*;
 use super::values::CohortValues;
-use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextCallInput};
+use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextInvocationInput};
 use crate::resident_leases::{ResidentLease, ResidentService};
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
@@ -80,7 +80,7 @@ impl Copy {
 
 pub(super) struct CohortGdnPacking {
     values: Arc<CohortValues>,
-    inputs: Box<[Arc<TextCallInput>]>,
+    inputs: Box<[Arc<TextInvocationInput>]>,
     nodes: [usize; 2],
     a: ResidentLease,
     b: ResidentLease,
@@ -96,7 +96,7 @@ impl CohortGdnPacking {
     /// workspace. This binder performs no hidden upload or allocation.
     pub(super) fn bind(
         values: Arc<CohortValues>,
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         layer: usize,
         a: ResidentLease,
         b: ResidentLease,
@@ -254,7 +254,7 @@ impl CohortGdnPacking {
     pub(super) fn require_storage(
         &self,
         values: &Arc<CohortValues>,
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         a: &ResidentLease,
         b: &ResidentLease,
         pitched: Option<&ResidentLease>,

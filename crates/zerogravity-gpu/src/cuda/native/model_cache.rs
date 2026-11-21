@@ -7,7 +7,7 @@ use std::sync::{
 };
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
-use zerogravity_core::accelerator::program::SourceCallMode;
+use zerogravity_core::accelerator::program::InvocationPhase;
 use zerogravity_core::device_events::BufferRole;
 use zerogravity_core::session_root::{RootAttempt, RootBinding};
 use zerogravity_core::{Error, Result};
@@ -55,15 +55,15 @@ impl ModelCache {
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
         not_cancelled(cancelled)?;
-        let first = initial.call();
+        let first = initial.invocation();
         let history = match (
-            first.mode(),
-            first.rows().base(),
-            first.rows().len(),
+            first.phase(),
+            first.tokens().base(),
+            first.tokens().len(),
             attempt.frontier(),
         ) {
-            (SourceCallMode::Prefill, 0, 1, 2) => History::Reference { frontier: 2 },
-            (SourceCallMode::Prefill, 0, 64, 67) => History::Reference { frontier: 67 },
+            (InvocationPhase::Prefill, 0, 1, 2) => History::Reference { frontier: 2 },
+            (InvocationPhase::Prefill, 0, 64, 67) => History::Reference { frontier: 67 },
             _ => {
                 return Err(Error::Unsupported(
                     "closed original full-model native-cache request histories".into(),
@@ -81,7 +81,8 @@ impl ModelCache {
     ) -> Result<Arc<Self>> {
         not_cancelled(cancelled)?;
         initial.require_fixed_prompt_model_prefix(&scope)?;
-        if scope.kind() != crate::cuda::native::fixed_prompt_model::FixedPromptCallKind::Prefill
+        if scope.kind()
+            != crate::cuda::native::fixed_prompt_model::FixedPromptInvocationKind::Prefill
             || attempt.base().frontier() != 0
             || attempt.frontier() != 47
         {
@@ -135,7 +136,7 @@ impl ModelCache {
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
         not_cancelled(cancelled)?;
-        let first = initial.call();
+        let first = initial.invocation();
         let layer = initial.layer();
         if first.source() != source.source_identity()
             || service.source_identity() != source.source_identity()
@@ -185,38 +186,38 @@ impl ModelCache {
         &self.lease
     }
     pub(crate) fn require_binding(&self, binding: &BoundModelState) -> Result<()> {
-        let call = binding.call();
-        let base = call.rows().base();
+        let call = binding.invocation();
+        let base = call.tokens().base();
         let allowed = match self.history {
             History::Reference { frontier: 2 } => matches!(
-                (call.mode(), base, call.rows().len()),
-                (SourceCallMode::Prefill, 0, 1) | (SourceCallMode::Decode, 1, 1)
+                (call.phase(), base, call.tokens().len()),
+                (InvocationPhase::Prefill, 0, 1) | (InvocationPhase::Decode, 1, 1)
             ),
             History::Reference { frontier: 67 } => matches!(
-                (call.mode(), base, call.rows().len()),
-                (SourceCallMode::Prefill, 0, 64)
-                    | (SourceCallMode::Prefill, 64, 2)
-                    | (SourceCallMode::Decode, 66, 1)
+                (call.phase(), base, call.tokens().len()),
+                (InvocationPhase::Prefill, 0, 64)
+                    | (InvocationPhase::Prefill, 64, 2)
+                    | (InvocationPhase::Decode, 66, 1)
             ),
             History::Reference { .. } => false,
             History::FixedPromptWhole => {
                 let cut = self.initial.whole_cut()?;
                 binding.require_fixed_prompt_whole(cut)?;
-                call.mode() == SourceCallMode::Prefill && base == 0 && call.rows().len() == 47
+                call.phase() == InvocationPhase::Prefill && base == 0 && call.tokens().len() == 47
             }
             History::FixedPromptPrefix => {
                 let scope = self.fixed_prompt.as_ref().ok_or_else(|| {
                     Error::State("fixed_prompt defined cache scope absent".into())
                 })?;
                 binding.require_fixed_prompt_model_prefix(scope)?;
-                call.mode() == SourceCallMode::Prefill && base == 0 && call.rows().len() == 47
+                call.phase() == InvocationPhase::Prefill && base == 0 && call.tokens().len() == 47
             }
             History::FixedPromptAttentionKv => {
                 let scope = self.fixed_prompt.as_ref().ok_or_else(|| {
                     Error::State("fixed_prompt Kv3 cache source scope absent".into())
                 })?;
                 binding.require_fixed_prompt_attention_kv(scope)?;
-                call.mode() == SourceCallMode::Prefill && base == 0 && call.rows().len() == 47
+                call.phase() == InvocationPhase::Prefill && base == 0 && call.tokens().len() == 47
             }
         };
         self.lease.service().ensure_usable()?;
@@ -224,7 +225,7 @@ impl ModelCache {
             || !binding.same_request(&self.initial)
             || binding.base() != self.base
             || binding.layer() != self.layer
-            || binding.call().source() != self.source.source_identity()
+            || binding.invocation().source() != self.source.source_identity()
             || !self.lease.is_initialized()
             || self.lease.bytes() != BYTES
         {

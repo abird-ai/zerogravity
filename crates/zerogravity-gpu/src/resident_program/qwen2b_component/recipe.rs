@@ -20,18 +20,18 @@ impl ComponentKind {
             Self::FixedPrompt(_) => 1024,
         }
     }
-    pub(crate) fn require_call(self, call: &SourceCall) -> Result<()> {
+    pub(crate) fn require_call(self, call: &TextInvocation) -> Result<()> {
         let valid = match self {
-            Self::Qwen2B => matches!(call.rows().len(), 1 | 64),
+            Self::Qwen2B => matches!(call.tokens().len(), 1 | 64),
             Self::FixedPrompt(arithmetic) => {
                 arithmetic.require_owned()?;
-                call.rows().len() == 47
+                call.tokens().len() == 47
             }
         };
         if !valid
-            || call.mode() != SourceCallMode::Prefill
-            || call.rows().base() != 0
-            || call.rows().capacity() != 512
+            || call.phase() != InvocationPhase::Prefill
+            || call.tokens().base() != 0
+            || call.tokens().capacity() != 512
         {
             return Err(Error::Unsupported(
                 "component native capture initial call/extent differs".into(),
@@ -137,9 +137,9 @@ impl ComponentRecipe {
             (ComponentOutput::Mlp, ComponentKind::Qwen2B) => ComponentCut::Qwen2BMlp,
             (ComponentOutput::Mlp, ComponentKind::FixedPrompt(_)) => ComponentCut::Mlp,
         };
-        kind.require_call(bindings.call())?;
+        kind.require_call(bindings.invocation())?;
         if let Some(arithmetic) = qwen2b_arithmetic {
-            arithmetic.require_owned(match bindings.call().rows().len() {
+            arithmetic.require_owned(match bindings.invocation().tokens().len() {
                 1 => crate::cuda::gdn::GdnPhase::InitialOne,
                 64 => crate::cuda::gdn::GdnPhase::Initial64,
                 _ => {
@@ -171,7 +171,7 @@ impl ComponentRecipe {
         }
         let source = bindings.source();
         let plan = bindings.plan();
-        let call = bindings.call();
+        let call = bindings.invocation();
         let metadata = source.reserve_workspace(64 * 1024)?;
         if plan.nodes().len() != 255
             || plan.values().len() != 327
@@ -182,7 +182,7 @@ impl ComponentRecipe {
             || plan.is_operator_slice()
             || plan.source() != call.source()
             || source.source_identity() != call.source()
-            || plan.source_call() != Some(call)
+            || plan.text_invocation() != Some(call)
         {
             return Err(Error::Unsupported(
                 "component actual full graph/source/call shape differs".into(),
@@ -200,7 +200,7 @@ impl ComponentRecipe {
                 ));
             };
             descriptor.validate()?;
-            if descriptor.call() != call
+            if descriptor.invocation() != call
                 || descriptor.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
             {
                 return Err(Error::State(
@@ -229,7 +229,7 @@ impl ComponentRecipe {
                 let tag = plan
                     .source_value_provenance(id)?
                     .ok_or_else(|| Error::State("component actual SSA producer absent".into()))?;
-                if tag.call() != call
+                if tag.invocation() != call
                     || tag.node_index() != index
                     || tag.output_index() != output_index
                     || tag.inputs() != node.inputs
@@ -272,7 +272,7 @@ impl ComponentRecipe {
             });
         }
         for (index, width) in widths.into_iter().enumerate() {
-            if plan.values()[index] != ValueShape::Vector(call.rows().len() * width)
+            if plan.values()[index] != ValueShape::Vector(call.tokens().len() * width)
                 || plan.precisions()[index] != ActivationPrecision::Bf16WidenedF32
             {
                 return Err(Error::State(

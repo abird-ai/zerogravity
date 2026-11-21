@@ -89,14 +89,14 @@ fn completed_fixed(
         ]
     };
     ensure(
-        record.call().rows().ids() == expected_input,
+        record.invocation().tokens().ids() == expected_input,
         "actual computed feedback matches original; no caller-forced sampled ID",
     )?;
     let rows = if call == 0 { prompt_rows } else { 1 };
     let base = if call == 0 { 0 } else { prompt_rows + call - 1 };
     let end = base + rows;
     ensure(
-        record.call().rows().len() == rows,
+        record.invocation().tokens().len() == rows,
         "genuine unsplit phase rows",
     )?;
     let mut previous: Option<(Vec<u8>, Vec<u8>)> = None;
@@ -292,7 +292,7 @@ pub(super) fn residual_rms_node(
         node.inputs.as_slice() == inputs
             && matches!(&node.operation, PlanOperation::SourceOperator { descriptor, state: None }
                 if matches!(descriptor.kind(), SourceOperatorKind::ResidualRms(_))
-                    && descriptor.call() == record.call())
+                    && descriptor.invocation() == record.invocation())
     });
     let (index, node) = found
         .next()
@@ -312,7 +312,7 @@ pub(super) fn residual_rms_node(
     ensure(
         producer.node_index() == index
             && producer.output_index() == 0
-            && producer.call() == record.call()
+            && producer.invocation() == record.invocation()
             && producer.inputs() == inputs,
         "same actual residual RMS SSA inputs",
     )?;

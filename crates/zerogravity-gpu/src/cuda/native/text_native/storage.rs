@@ -11,7 +11,7 @@ use super::{
 };
 use crate::{
     cuda::rms::{FullModelRmsScratch, FusedRmsPrepared},
-    resident_inference::native_fragment::text::{TextCallInput, TextCallState},
+    resident_inference::native_fragment::text::{TextInvocationInput, TextInvocationState},
     resident_leases::{ResidentInitialization, ResidentLease},
     resident_program::text_positions::text::TextPositions,
 };
@@ -196,8 +196,8 @@ impl TextNativeStorage {
     }
     pub(crate) fn bind(
         self: &Arc<Self>,
-        input: Arc<TextCallInput>,
-        state: Arc<TextCallState>,
+        input: Arc<TextInvocationInput>,
+        state: Arc<TextInvocationState>,
         values: Arc<ModelValues>,
         rms_scope: Arc<FullModelRmsScratch>,
         final_rms: Arc<FusedRmsPrepared>,
@@ -215,7 +215,7 @@ impl TextNativeStorage {
     }
     pub(super) fn require_call(
         &self,
-        input: &TextCallInput,
+        input: &TextInvocationInput,
         values: &Arc<ModelValues>,
     ) -> Result<()> {
         if self.retired.load(Ordering::Acquire)
@@ -224,7 +224,7 @@ impl TextNativeStorage {
             || !self
                 .geometries
                 .iter()
-                .any(|g| g.scope.call().rows().len() == input.rows())
+                .any(|g| g.scope.invocation().tokens().len() == input.rows())
             || !Arc::ptr_eq(self.workspace.service(), values.service())
             || self.workspace.service_generation() != values.service().generation()
         {
@@ -247,7 +247,7 @@ impl TextNativeStorage {
     }
     pub(crate) fn cohort_qk_parameters(
         &self,
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         layer: usize,
     ) -> Result<[ResidentLease; 2]> {
         self.attention.cohort_parameters(inputs, layer)

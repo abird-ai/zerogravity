@@ -67,14 +67,14 @@ impl ComponentCursor {
         service: &Arc<ResidentService>,
         permit: &PrefixPhaseEnqueue<'_>,
     ) -> Result<()> {
-        if service.source_identity() != self.recipe.bindings().call().source() {
+        if service.source_identity() != self.recipe.bindings().invocation().source() {
             return Err(Error::State(
                 "source2B original service/plan issuer changed".into(),
             ));
         }
         // Original borrowed Session rechecks current root/epoch/generation.
         // One updated GDN domain pair is a component scope, no fullmodel permit.
-        permit.require_invocation(service, self.recipe.bindings().call(), 0, 1)?;
+        permit.require_invocation(service, self.recipe.bindings().invocation(), 0, 1)?;
         self.order.begin()
     }
     pub(super) fn take(&self, index: usize, node: &PlanNode) -> Result<()> {
@@ -123,10 +123,10 @@ impl ComponentCursor {
             5 => false,
             _ => return Err(Error::State("not source2B stateful node".into())),
         };
-        permit.require_invocation(service, self.recipe.bindings().call(), 0, 1)?;
+        permit.require_invocation(service, self.recipe.bindings().invocation(), 0, 1)?;
         domains.require_enqueue(service, Some(permit))?;
         let effect = self.recipe.effects()?[usize::from(!convolution)];
-        if domains.invocation() != self.recipe.bindings().call()
+        if domains.invocation() != self.recipe.bindings().invocation()
             || domains.effect(convolution) != effect
         {
             return Err(Error::State(

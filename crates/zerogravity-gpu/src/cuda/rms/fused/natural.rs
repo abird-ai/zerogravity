@@ -21,14 +21,14 @@ impl FusedRmsPrepared {
         binding.require_source(&self.owner.source)?;
         if a.numerical_contract() != b.numerical_contract()
             || a.matrices() != b.matrices()
-            || a.call().source() != b.call().source()
+            || a.invocation().source() != b.invocation().source()
             || a.kind() != b.kind()
             || a.parameters() != b.parameters()
-            || a.call().rows().capacity() != b.call().rows().capacity()
-            || a.call().rows().vocabulary() != b.call().rows().vocabulary()
-            || a.call().rows().len() != b.call().rows().len()
-            || a.call().mode() != b.call().mode()
-            || a.call().rows().base() != b.call().rows().base()
+            || a.invocation().tokens().capacity() != b.invocation().tokens().capacity()
+            || a.invocation().tokens().vocabulary() != b.invocation().tokens().vocabulary()
+            || a.invocation().tokens().len() != b.invocation().tokens().len()
+            || a.invocation().phase() != b.invocation().phase()
+            || a.invocation().tokens().base() != b.invocation().tokens().base()
         {
             return Err(Error::State(
                 "natural RMS source/site/geometry differs from cold storage".into(),

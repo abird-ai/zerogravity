@@ -113,7 +113,7 @@ impl ModelComponentKind {
             Self::FixedPrompt(_) => 1024,
         }
     }
-    pub(super) fn require_request(self, request: &crate::plan::QwenGdnCall) -> Result<()> {
+    pub(super) fn require_request(self, request: &crate::plan::QwenGdnInvocation) -> Result<()> {
         request.validate()?;
         if request.layer().index() != 0
             || request.teachers().prompt_span().is_some()
@@ -134,7 +134,7 @@ impl ModelComponentKind {
                 Ok(())
             }
             Self::FixedPrompt(arithmetic)
-                if request.mode() == SourceCallMode::Prefill
+                if request.phase() == InvocationPhase::Prefill
                     && request.rows() == 47
                     && request.reference_phase().is_err()
                     && request.teachers().ids() == FIXED_PROMPT_IDS =>
@@ -232,12 +232,12 @@ fn require_qwen2b_arithmetic(
 
 fn require_weight_request(
     profile: QwenModelVariant,
-    request: &crate::plan::QwenGdnCall,
+    request: &crate::plan::QwenGdnInvocation,
 ) -> Result<ReferencePhase> {
     request.validate()?;
     if profile != QwenModelVariant::Qwen2B
         || request.layer().index() != 0
-        || request.mode() != SourceCallMode::Prefill
+        || request.phase() != InvocationPhase::Prefill
         || request.teachers().base() != 0
         || request.teachers().capacity() != 512
     {
@@ -264,13 +264,13 @@ fn require_component_projection(operator: &QwenOperator) -> Result<ModelProjecti
             "exact source layer0 learned component producer".into(),
         ));
     }
-    match operator.call().model_profile() {
+    match operator.model_invocation().model_profile() {
         QwenModelVariant::Qwen2B => {
-            operator.call().request().reference_phase()?;
+            operator.model_invocation().request().reference_phase()?;
         }
         QwenModelVariant::Qwen800M => {
             ModelComponentKind::FixedPrompt(ComponentImplementation::OwnedFixedPromptSolve4)
-                .require_request(operator.call().request())?
+                .require_request(operator.model_invocation().request())?
         }
     }
     match operator.kind() {
@@ -328,7 +328,7 @@ impl BoundFullModelSource {
         };
         cut.require_kind(kind)?;
         if cut == ModelComponentCut::Qwen2BMlp {
-            require_weight_request(source.model_profile(), record.call().request())?;
+            require_weight_request(source.model_profile(), record.model_invocation().request())?;
         }
         match (cut, record_admission.as_ref()) {
             (ModelComponentCut::Qwen2BMlp, Some(ticket))
@@ -351,13 +351,13 @@ impl BoundFullModelSource {
                 "new2B MLP requires explicit owned arithmetic".into(),
             ));
         }
-        kind.require_request(record.call().request())?;
+        kind.require_request(record.model_invocation().request())?;
         if let Some(arithmetic) = qwen2b_arithmetic {
-            require_qwen2b_arithmetic(kind, cut, record.call().rows(), arithmetic)?;
+            require_qwen2b_arithmetic(kind, cut, record.model_invocation().rows(), arithmetic)?;
         }
         let metadata = source.source().source().reserve_workspace(METADATA_BYTES)?;
         require_forward_source(source.source(), kind)?;
-        let call = record.call();
+        let call = record.model_invocation();
         let plan = record.plan();
         if source.model_profile() != kind.profile()
             || call.model_profile() != kind.profile()
@@ -372,7 +372,7 @@ impl BoundFullModelSource {
             || plan.logits().is_some()
             || plan.is_operator_slice()
             || plan.source() != call.source()
-            || plan.source_call() != Some(&call.request().source_call()?)
+            || plan.text_invocation() != Some(&call.request().text_invocation()?)
         {
             return Err(Error::Unsupported(
                 "authentic initial2B six-node source prefix only".into(),
@@ -392,7 +392,7 @@ impl BoundFullModelSource {
         };
         if descriptor.kind()
             != zerogravity_core::accelerator::program::SourceOperatorKind::EmbeddingRows
-            || descriptor.call() != &call.request().source_call()?
+            || descriptor.invocation() != &call.request().text_invocation()?
             || descriptor.matrices().len() != 1
             || !nodes[0].inputs.is_empty()
             || nodes[0].outputs != [ValueId(0)]
@@ -475,7 +475,7 @@ impl BoundFullModelSource {
             if matches!(index + 1, 2 | 3) {
                 require_component_projection(&descriptor)?;
             }
-            if descriptor.call() != call
+            if descriptor.model_invocation() != call
                 || descriptor.kind() != kind
                 || descriptor.layer().map(|x| x.index()) != Some(0)
                 || node.inputs != inputs
@@ -532,7 +532,7 @@ impl BoundFullModelSource {
                         "source2B original output origin absent".into(),
                     ));
                 };
-                if origin.call() != call
+                if origin.model_invocation() != call
                     || origin.kind() != kind
                     || origin.node_index() != index + 1
                     || origin.output_index() != out
@@ -599,7 +599,7 @@ impl BoundFullModelSource {
             .operator(cut.node_end())?
             .ok_or_else(|| Error::State("component next source producer absent".into()))?;
         let stop = if cut.includes_mlp() {
-            following.call() == call
+            following.model_invocation() == call
                 && following.layer().map(|v| v.index()) == Some(1)
                 && following.kind() == QwenOperation::ResidualRms(QwenRmsSite::Input)
                 && matches!(

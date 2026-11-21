@@ -156,8 +156,8 @@ impl StorageRecipe {
             let ([gate], [activated]) = (node.outputs.as_slice(), a.outputs.as_slice()) else {
                 return Err(Error::State("bounded MLP producer arity".into()));
             };
-            if activation.call() != record.call()
-                || down.call() != record.call()
+            if activation.invocation() != record.invocation()
+                || down.invocation() != record.invocation()
                 || !matches!(
                     down.kind(),
                     SourceOperatorKind::Projection { selected_row: None }
@@ -272,7 +272,7 @@ impl StorageBuilder {
     ) -> Result<Self> {
         init.require_service(&service)?;
         let recipe = geometry.recipe.clone();
-        if service.source_identity() != recipe.scope.call().source()
+        if service.source_identity() != recipe.scope.invocation().source()
             || geometry.slots().len() != recipe.slot_bytes.len()
         {
             return Err(Error::State(
@@ -318,7 +318,7 @@ impl StorageBuilder {
     ) -> Result<Self> {
         init.require_service(&service)?;
         service.pinned_cuda_queue()?;
-        if service.source_identity() != recipe.scope.call().source()
+        if service.source_identity() != recipe.scope.invocation().source()
             || usize::try_from(service.client().properties().memory.alignment).ok()
                 != Some(recipe.alignment)
             || recipe.total_bytes > service.capacity()

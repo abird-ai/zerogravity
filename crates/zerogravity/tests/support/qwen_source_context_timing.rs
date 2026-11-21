@@ -8,10 +8,10 @@ use std::{
 #[path = "qwen_source_context_timing/kernels.rs"]
 mod kernels;
 use zerogravity::{
-    accelerator::program::{PlanOperation, SourceCallMode, SourceOperatorKind},
+    accelerator::program::{InvocationPhase, PlanOperation, SourceOperatorKind},
     gpu::{
-        ResidentOutput, SourceCallFrame, SourceCallFrameKind, SourceCallModel, SourceCallObserver,
-        SourceCallPreparation, SourceCallPublication,
+        ResidentOutput, ResidentTextModel, ResidentTextPreparation, ResidentTextPublication,
+        TextFrame, TextFrameKind, TextObserver,
     },
     qwen35::plan::QwenForwardPlan,
 };
@@ -23,20 +23,20 @@ struct Timing<'a> {
     intervals: BTreeMap<String, (usize, u128)>,
     kernels: Option<kernels::Trace<'a>>,
 }
-impl SourceCallObserver for Timing<'_> {
-    fn wants(&self, kind: SourceCallFrameKind) -> bool {
-        matches!(kind, SourceCallFrameKind::Value(_))
+impl TextObserver for Timing<'_> {
+    fn wants(&self, kind: TextFrameKind) -> bool {
+        matches!(kind, TextFrameKind::Value(_))
             || self.original.as_ref().is_some_and(|o| o.wants(kind))
     }
-    fn completed(&mut self, frame: SourceCallFrame, actual: &[u8]) -> Result<()> {
+    fn completed(&mut self, frame: TextFrame, actual: &[u8]) -> Result<()> {
         let elapsed = self.last.elapsed().as_nanos();
         let label = match frame.kind {
-            SourceCallFrameKind::Value(id) => self
+            TextFrameKind::Value(id) => self
                 .labels
                 .get(&id.0)
                 .ok_or_else(|| zerogravity::Error::State("timing original producer absent".into()))?
                 .as_str(),
-            SourceCallFrameKind::State { .. } => "state_readback",
+            TextFrameKind::State { .. } => "state_readback",
         };
         let slot = self.intervals.entry(label.into()).or_default();
         slot.0 += 1;
@@ -58,7 +58,7 @@ impl SourceCallObserver for Timing<'_> {
 }
 
 pub async fn run(
-    model: &Arc<SourceCallModel>,
+    model: &Arc<ResidentTextModel>,
     plan: &QwenForwardPlan,
     expected: &Expected,
     case: usize,
@@ -119,12 +119,12 @@ pub async fn run(
     {
         let readout = call.checkpoint;
         let mode = if call.phase == "decode" {
-            SourceCallMode::Decode
+            InvocationPhase::Decode
         } else {
-            SourceCallMode::Prefill
+            InvocationPhase::Prefill
         };
         let ids =
-            if mode == SourceCallMode::Decode {
+            if mode == InvocationPhase::Decode {
                 vec![feedback.ok_or_else(|| {
                     zerogravity::Error::State("timing actual feedback absent".into())
                 })?]
@@ -165,7 +165,7 @@ pub async fn run(
                 .prepare(invocation.bound_invocation(), mode, output, None)
                 .await?
         };
-        let SourceCallPreparation::Ready(ready) = ready else {
+        let ResidentTextPreparation::Ready(ready) = ready else {
             return Err(zerogravity::Error::State(
                 "uncancelled timing call refused".into(),
             ));
@@ -196,7 +196,7 @@ pub async fn run(
             )?;
             None
         };
-        let SourceCallPublication::Committed(result) = session.commit(ready)? else {
+        let ResidentTextPublication::Committed(result) = session.commit(ready)? else {
             return Err(zerogravity::Error::State(
                 "uncancelled timing call discarded".into(),
             ));

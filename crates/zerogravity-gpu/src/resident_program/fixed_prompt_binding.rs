@@ -1,7 +1,7 @@
 //! Same immutable source/SSA geometry; current input/attempt authority is separate.
 use super::source_bindings::SourceBindings;
 use super::*;
-use crate::cuda::native::fixed_prompt_model::FixedPromptCallKind;
+use crate::cuda::native::fixed_prompt_model::FixedPromptInvocationKind;
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 
 pub(crate) fn same_recipe(
@@ -11,19 +11,21 @@ pub(crate) fn same_recipe(
 ) -> Result<()> {
     native_full::FullModelProgram::require_record(cold)?;
     native_full::FullModelProgram::require_record(actual)?;
-    let a = FixedPromptCallKind::of(cold.call())?;
-    let b = FixedPromptCallKind::of(actual.call())?;
+    let a = FixedPromptInvocationKind::of(cold.invocation())?;
+    let b = FixedPromptInvocationKind::of(actual.invocation())?;
     let geometry = matches!(
         (a, b),
-        (FixedPromptCallKind::Prefill, FixedPromptCallKind::Prefill)
-            | (
-                FixedPromptCallKind::Decode { .. },
-                FixedPromptCallKind::Decode { .. }
-            )
+        (
+            FixedPromptInvocationKind::Prefill,
+            FixedPromptInvocationKind::Prefill
+        ) | (
+            FixedPromptInvocationKind::Decode { .. },
+            FixedPromptInvocationKind::Decode { .. }
+        )
     );
     let (ap, bp) = (cold.plan(), actual.plan());
     if !geometry
-        || cold.call().source() != actual.call().source()
+        || cold.invocation().source() != actual.invocation().source()
         || !source.same_issuer(cold.source())
         || !source.same_issuer(actual.source())
         || ap.numerical_profile() != bp.numerical_profile()

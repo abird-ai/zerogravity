@@ -7,7 +7,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{Arc, Mutex},
 };
-use zerogravity::gpu::SourceCallFrameKind;
+use zerogravity::gpu::TextFrameKind;
 
 #[derive(Default)]
 struct Counts {
@@ -67,8 +67,8 @@ impl<'a> Trace<'a> {
             windows: 0,
         }
     }
-    pub(super) fn completed(&mut self, kind: SourceCallFrameKind) -> Result<()> {
-        let SourceCallFrameKind::Value(id) = kind else {
+    pub(super) fn completed(&mut self, kind: TextFrameKind) -> Result<()> {
+        let TextFrameKind::Value(id) = kind else {
             return Ok(());
         };
         // Producer callbacks run outside launch observation, after its output readback.

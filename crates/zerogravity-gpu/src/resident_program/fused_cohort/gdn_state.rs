@@ -6,7 +6,7 @@
 use super::super::*;
 use crate::cuda::kernel::PinnedKernel;
 use crate::resident_inference::native_fragment::{
-    PrefixPhaseEnqueue, model_state::BoundModelState, text::TextCallInput,
+    PrefixPhaseEnqueue, model_state::BoundModelState, text::TextInvocationInput,
 };
 use crate::resident_leases::{ResidentInitialization, ResidentLease, ResidentService};
 use crate::resident_state_transport::typed::{
@@ -30,7 +30,7 @@ const CACHE_BYTES: usize = 17 * SLOT_BYTES;
 /// One actual row's per-kind transport planes: (source, destination) in the
 /// original per-row kernel order. Identical addresses to the per-row kernels.
 struct Row {
-    input: Arc<TextCallInput>,
+    input: Arc<TextInvocationInput>,
     state: Arc<BoundModelState>,
     planes: [(Handle, Handle); 4],
 }
@@ -92,7 +92,7 @@ impl CohortGdnState {
     // additional immutable argument over the original admission sequence.
     pub(super) fn prepare(
         service: Arc<ResidentService>,
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         states: &[Arc<BoundModelState>],
         cache: ResidentLease,
         status: ResidentLease,
@@ -144,12 +144,12 @@ impl CohortGdnState {
             if state.conv_domain()?.0 != layer
                 || state.recurrent_domain()?.0 != layer
                 || state.layer() != layer
-                || state.call() != input.call()
+                || state.invocation() != input.invocation()
                 || input.prompt_tokens() != 47
                 || !matches!((input.rows(), input.base()), (47, 0) | (1, 47..=53))
                 || input.rows() != inputs[0].rows()
                 || !input.source().same_issuer(source)
-                || input.call().source() != service.source_identity()
+                || input.invocation().source() != service.source_identity()
             {
                 return Err(Error::State(
                     "cohort GDN actual row layer/span/source".into(),
@@ -223,7 +223,7 @@ impl CohortGdnState {
     /// the real native math between these integer transport partitions.
     pub(super) fn require_storage(
         &self,
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         cache: &ResidentLease,
         status: &ResidentLease,
         prefill_h: Option<&(ResidentLease, ResidentLease)>,

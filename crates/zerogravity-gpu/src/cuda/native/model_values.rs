@@ -55,7 +55,7 @@ impl ModelValues {
         if plan.values().len() < count
             || values.len() != count
             || plan.source() != service.source_identity()
-            || plan.source() != record.call().source()
+            || plan.source() != record.invocation().source()
             || plan.frontier_delta() != 0
             || plan.logits().is_some()
         {
@@ -90,7 +90,7 @@ impl ModelValues {
             let tag = plan
                 .source_value_provenance(id)?
                 .ok_or_else(|| Error::State("actual source value provenance absent".into()))?;
-            if tag.call() != record.call() {
+            if tag.invocation() != record.invocation() {
                 return Err(Error::State(
                     "actual source value call issuer differs".into(),
                 ));

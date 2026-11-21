@@ -4,22 +4,22 @@ use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
 };
 
-fn call(
+fn prompt_invocation(
     source: SourceIdentity,
     profile: QwenModelVariant,
     workload: PromptWorkload,
     base: Option<usize>,
     id: u32,
-) -> PromptCall {
+) -> PromptInvocation {
     let span = match base {
         None => PromptSpan::prefill(source, workload, &vec![id; workload.prompt_tokens()]),
         Some(base) => PromptSpan::cached(source, workload, base, id),
     }
     .unwrap();
-    PromptCall::new(profile, span).unwrap()
+    PromptInvocation::new(profile, span).unwrap()
 }
 fn descriptor(
-    call: &QwenSourceCall,
+    call: &QwenModelInvocation,
     layer: Option<QwenLayer>,
     kind: QwenOperation,
 ) -> QwenOperator {
@@ -116,12 +116,12 @@ fn descriptor(
     .collect();
     QwenOperator::new(call.clone(), layer, kind, matrices, parameters).unwrap()
 }
-fn record(call: &PromptCall) -> QwenPlan {
-    let call = call.as_source_call();
+fn record(call: &PromptInvocation) -> QwenPlan {
+    let call = call.model_invocation();
     let mut builder = QwenPlanBuilder::new_model(call.clone()).unwrap();
     let mut branch = builder
         .source_embedding(
-            &QwenEmbedding::for_call(
+            &QwenEmbedding::for_model_invocation(
                 SourceTensor {
                     source: call.source(),
                     name: "model.language_model.embed_tokens.weight".into(),
@@ -231,10 +231,10 @@ fn every_shape_shares_semantics_but_rebinds_all_nodes_and_producers() {
         for prompt_tokens in [47, 57, 62, 67, 72] {
             let workload = PromptWorkload::from_prompt_tokens(prompt_tokens).unwrap();
             for base in std::iter::once(None).chain(workload.cached_bases().map(Some)) {
-                let first = call(source, profile, workload, base, 11);
-                let second = call(source, profile, workload, base, 353);
+                let first = prompt_invocation(source, profile, workload, base, 11);
+                let second = prompt_invocation(source, profile, workload, base, 353);
                 let prepared = record(&first);
-                let bound = prepared.bind_prompt_call(&second).unwrap();
+                let bound = prepared.bind_prompt_invocation(&second).unwrap();
                 let local_bytes = bound.binding_metadata_bytes().unwrap();
                 assert!(local_bytes <= QwenPlan::BINDING_METADATA_BYTES);
                 assert_eq!(
@@ -243,8 +243,8 @@ fn every_shape_shares_semantics_but_rebinds_all_nodes_and_producers() {
                 );
                 assert!(bound.require_binding_metadata(local_bytes - 1).is_err());
                 assert!(prepared.shares_prepared_semantics(&bound));
-                assert_ne!(prepared.call(), bound.call());
-                assert_eq!(bound.call(), second.as_source_call());
+                assert_ne!(prepared.model_invocation(), bound.model_invocation());
+                assert_eq!(bound.model_invocation(), second.model_invocation());
                 assert_eq!(
                     (bound.plan().nodes().len(), bound.plan().values().len()),
                     (255, 327)
@@ -260,8 +260,8 @@ fn every_shape_shares_semantics_but_rebinds_all_nodes_and_producers() {
                 assert_eq!(bound.plan().frontier_delta(), 0);
                 assert!(bound.plan().logits().is_none());
                 assert_eq!(
-                    bound.plan().source_call(),
-                    Some(&second.request().source_call().unwrap())
+                    bound.plan().text_invocation(),
+                    Some(&second.request().text_invocation().unwrap())
                 );
                 assert!(!std::ptr::eq(prepared.plan(), bound.plan()));
                 assert!(std::ptr::eq(
@@ -280,8 +280,11 @@ fn every_shape_shares_semantics_but_rebinds_all_nodes_and_producers() {
                             PlanOperation::SourceOperator { descriptor: b, .. },
                         ) => {
                             assert!(a.shares_semantics(b));
-                            assert_eq!(a.call(), &first.request().source_call().unwrap());
-                            assert_eq!(b.call(), &second.request().source_call().unwrap());
+                            assert_eq!(a.invocation(), &first.request().text_invocation().unwrap());
+                            assert_eq!(
+                                b.invocation(),
+                                &second.request().text_invocation().unwrap()
+                            );
                             b.validate().unwrap();
                         }
                         _ => panic!("foreign prepared operation"),
@@ -292,11 +295,11 @@ fn every_shape_shares_semantics_but_rebinds_all_nodes_and_producers() {
                     tag.require_invocation(second.request()).unwrap();
                     assert!(tag.require_invocation(first.request()).is_err());
                     if let QwenValueOrigin::FullModel(origin) = tag.origin() {
-                        assert_eq!(origin.call(), second.as_source_call());
+                        assert_eq!(origin.model_invocation(), second.model_invocation());
                     }
                 }
                 // Equal token bytes minted separately still have independent issuers.
-                let same_ids = call(source, profile, workload, base, 353);
+                let same_ids = prompt_invocation(source, profile, workload, base, 353);
                 assert!(
                     bound
                         .value_provenance(ValueId(326))
@@ -314,7 +317,7 @@ fn every_shape_shares_semantics_but_rebinds_all_nodes_and_producers() {
 #[test]
 fn prepared_binding_refuses_source_profile_phase_frontier_and_workload_changes() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let prepared = record(&call(
+    let prepared = record(&prompt_invocation(
         source,
         QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
@@ -322,28 +325,28 @@ fn prepared_binding_refuses_source_profile_phase_frontier_and_workload_changes()
         11,
     ));
     for actual in [
-        call(
+        prompt_invocation(
             SourceIdentity::for_new_allocation().unwrap(),
             QwenModelVariant::Qwen800M,
             PromptWorkload::from_prompt_tokens(47).unwrap(),
             None,
             11,
         ),
-        call(
+        prompt_invocation(
             source,
             QwenModelVariant::Qwen2B,
             PromptWorkload::from_prompt_tokens(47).unwrap(),
             None,
             11,
         ),
-        call(
+        prompt_invocation(
             source,
             QwenModelVariant::Qwen800M,
             PromptWorkload::from_prompt_tokens(57).unwrap(),
             None,
             11,
         ),
-        call(
+        prompt_invocation(
             source,
             QwenModelVariant::Qwen800M,
             PromptWorkload::from_prompt_tokens(47).unwrap(),
@@ -351,9 +354,9 @@ fn prepared_binding_refuses_source_profile_phase_frontier_and_workload_changes()
             11,
         ),
     ] {
-        assert!(prepared.bind_prompt_call(&actual).is_err());
+        assert!(prepared.bind_prompt_invocation(&actual).is_err());
     }
-    let cached = record(&call(
+    let cached = record(&prompt_invocation(
         source,
         QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
@@ -362,7 +365,7 @@ fn prepared_binding_refuses_source_profile_phase_frontier_and_workload_changes()
     ));
     assert!(
         cached
-            .bind_prompt_call(&call(
+            .bind_prompt_invocation(&prompt_invocation(
                 source,
                 QwenModelVariant::Qwen800M,
                 PromptWorkload::from_prompt_tokens(47).unwrap(),
@@ -371,7 +374,7 @@ fn prepared_binding_refuses_source_profile_phase_frontier_and_workload_changes()
             ))
             .is_err()
     );
-    let cached = record(&call(
+    let cached = record(&prompt_invocation(
         source,
         QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(57).unwrap(),
@@ -380,7 +383,7 @@ fn prepared_binding_refuses_source_profile_phase_frontier_and_workload_changes()
     ));
     assert!(
         cached
-            .bind_prompt_call(&call(
+            .bind_prompt_invocation(&prompt_invocation(
                 source,
                 QwenModelVariant::Qwen800M,
                 PromptWorkload::from_prompt_tokens(62).unwrap(),
@@ -398,7 +401,7 @@ fn shared_semantics_retain_the_original_host_charge_after_cache_owner_drops() {
     let key = PhysicalDeviceKey::new("host", "prepared-record-test").unwrap();
     let bytes = 4 * 1024 * 1024;
     arbiter.register(key.clone(), bytes).unwrap();
-    let actual = call(
+    let actual = prompt_invocation(
         source,
         QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
@@ -420,7 +423,7 @@ fn shared_semantics_retain_the_original_host_charge_after_cache_owner_drops() {
     let metadata = lease.into_host_workspace(source, source_owner).unwrap();
     let prepared = record(&actual).retain_prepared_metadata(metadata).unwrap();
     let bound = prepared
-        .bind_prompt_call(&call(
+        .bind_prompt_invocation(&prompt_invocation(
             source,
             QwenModelVariant::Qwen800M,
             PromptWorkload::from_prompt_tokens(47).unwrap(),
@@ -441,7 +444,7 @@ fn shared_semantics_retain_the_original_host_charge_after_cache_owner_drops() {
 #[test]
 fn cold_operator_adapter_checks_actual_common_semantics_and_original_row_issuer() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let first = call(
+    let first = prompt_invocation(
         source,
         QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
@@ -460,25 +463,25 @@ fn cold_operator_adapter_checks_actual_common_semantics_and_original_row_issuer(
         };
         assert_eq!(&family.mathematical_operator().unwrap(), &**descriptor);
         family.require_mathematical_operator(descriptor).unwrap();
-        assert_eq!(family.call(), first.as_source_call());
+        assert_eq!(family.model_invocation(), first.model_invocation());
     }
-    let second = call(
+    let second = prompt_invocation(
         source,
         QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
         None,
         353,
     );
-    let rebound = prepared.bind_prompt_call(&second).unwrap();
+    let rebound = prepared.bind_prompt_invocation(&second).unwrap();
     let descriptor = rebound.operator(1).unwrap().unwrap();
-    assert_eq!(descriptor.call(), second.as_source_call());
-    assert_ne!(descriptor.call(), first.as_source_call());
+    assert_eq!(descriptor.model_invocation(), second.model_invocation());
+    assert_ne!(descriptor.model_invocation(), first.model_invocation());
 }
 
 #[test]
 fn prepared_operator_comparison_rejects_foreign_issuer_geometry_and_member_order() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let first = call(
+    let first = prompt_invocation(
         source,
         QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
@@ -488,7 +491,7 @@ fn prepared_operator_comparison_rejects_foreign_issuer_geometry_and_member_order
     let actual = record(&first);
     let rms = actual.operator(1).unwrap().unwrap();
     let expected = rms.mathematical_operator().unwrap();
-    let foreign = call(
+    let foreign = prompt_invocation(
         source,
         QwenModelVariant::Qwen800M,
         PromptWorkload::from_prompt_tokens(47).unwrap(),
@@ -496,7 +499,11 @@ fn prepared_operator_comparison_rejects_foreign_issuer_geometry_and_member_order
         11,
     );
     let substituted = SourceOperator::new(
-        foreign.as_source_call().request().source_call().unwrap(),
+        foreign
+            .model_invocation()
+            .request()
+            .text_invocation()
+            .unwrap(),
         expected.kind(),
         expected.numerical_contract(),
         expected.matrices().to_vec(),
@@ -509,7 +516,7 @@ fn prepared_operator_comparison_rejects_foreign_issuer_geometry_and_member_order
     };
     geometry.epsilon *= 2.0;
     let substituted = SourceOperator::new(
-        expected.call().clone(),
+        expected.invocation().clone(),
         SourceOperatorKind::Rms(geometry),
         expected.numerical_contract(),
         vec![],
@@ -522,7 +529,7 @@ fn prepared_operator_comparison_rejects_foreign_issuer_geometry_and_member_order
     let mut members = expected.matrices().to_vec();
     members.reverse();
     let substituted = SourceOperator::new(
-        expected.call().clone(),
+        expected.invocation().clone(),
         expected.kind(),
         expected.numerical_contract(),
         members,

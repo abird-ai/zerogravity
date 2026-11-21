@@ -2,7 +2,7 @@
 use super::*;
 use crate::cuda::native::fixed_prompt_model::FixedPromptModelBinding;
 use crate::resident_inference::native_fragment::fixed_prompt_natural::{
-    FixedPromptCallInput, FixedPromptCallState,
+    FixedPromptInvocationInput, FixedPromptInvocationState,
 };
 use crate::resident_leases::TiedWeight;
 
@@ -53,8 +53,8 @@ impl CanonicalColdValues {
     /// consumed the fresh state's shared submission claim before this binding.
     pub(crate) fn bind_values(
         &self,
-        input: &Arc<FixedPromptCallInput>,
-        state: &Arc<FixedPromptCallState>,
+        input: &Arc<FixedPromptInvocationInput>,
+        state: &Arc<FixedPromptInvocationState>,
         table: Arc<TiedWeight>,
     ) -> Result<Arc<FullModelProgram>> {
         state.require_submission_claimed()?;
@@ -132,8 +132,8 @@ impl CanonicalColdValues {
 }
 
 pub(super) struct CurrentCall {
-    pub(super) input: Arc<FixedPromptCallInput>,
-    pub(super) state: Arc<FixedPromptCallState>,
+    pub(super) input: Arc<FixedPromptInvocationInput>,
+    pub(super) state: Arc<FixedPromptInvocationState>,
     pub(super) native:
         Arc<crate::cuda::native::fixed_prompt_model_native::natural::FixedPromptNativeCall>,
     pub(super) positions:
@@ -142,8 +142,8 @@ pub(super) struct CurrentCall {
 impl FullModelProgram {
     pub(crate) fn bind_fixed_prompt_call(
         &self,
-        input: Arc<FixedPromptCallInput>,
-        state: Arc<FixedPromptCallState>,
+        input: Arc<FixedPromptInvocationInput>,
+        state: Arc<FixedPromptInvocationState>,
         native: Arc<crate::cuda::native::fixed_prompt_model_native::natural::FixedPromptNativeCall>,
         positions: Arc<
             crate::resident_program::text_positions::fixed_prompt_natural::FixedPromptPositions,

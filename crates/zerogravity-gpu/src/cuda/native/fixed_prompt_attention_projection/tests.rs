@@ -2,22 +2,22 @@
 use super::*;
 use crate::resident_program::qwen2b_component::FIXED_PROMPT_IDS;
 use zerogravity_core::accelerator::SourceIdentity;
-use zerogravity_core::accelerator::program::SourceCallMode;
+use zerogravity_core::accelerator::program::InvocationPhase;
 use zerogravity_core::accelerator::program::TeacherSpan;
-use zerogravity_model_qwen35::plan::QwenGdnCall;
+use zerogravity_model_qwen35::plan::QwenGdnInvocation;
 use zerogravity_model_qwen35::plan::QwenInputRows;
 use zerogravity_model_qwen35::plan::QwenPrefixLayer;
 
-fn request(mode: SourceCallMode, base: usize, ids: &[u32]) -> SourceCall {
+fn request(mode: InvocationPhase, base: usize, ids: &[u32]) -> TextInvocation {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let teachers = if ids.len() == 1 {
         QwenInputRows::new(source, base, 512, ids).unwrap()
     } else {
         QwenInputRows::from_span(TeacherSpan::new(source, base, 512, 248320, ids).unwrap()).unwrap()
     };
-    QwenGdnCall::from_span(QwenPrefixLayer::new(source, 0).unwrap(), mode, teachers)
+    QwenGdnInvocation::from_span(QwenPrefixLayer::new(source, 0).unwrap(), mode, teachers)
         .unwrap()
-        .source_call()
+        .text_invocation()
         .unwrap()
 }
 fn word(bytes: &[u8], offset: usize) -> u32 {
@@ -26,7 +26,7 @@ fn word(bytes: &[u8], offset: usize) -> u32 {
 
 #[test]
 fn only_genuine_initial47_node32_source_coordinates_select_the_packets() {
-    let exact = request(SourceCallMode::Prefill, 0, &FIXED_PROMPT_IDS);
+    let exact = request(InvocationPhase::Prefill, 0, &FIXED_PROMPT_IDS);
     require_site(&exact, 3, 32, &[ValueId(39)], &[ValueId(41)]).unwrap();
     for (layer, node, input, output) in [
         (2, 32, 39, 41),
@@ -42,9 +42,9 @@ fn only_genuine_initial47_node32_source_coordinates_select_the_packets() {
     // Exact prompt IDs are rejected by the model before physical packet selection.
     assert!(zerogravity_model_qwen35::source::binding::OriginalWindowModelSource::validate_fixed_prompt_request(&changed, 1).is_err());
     for wrong in [
-        request(SourceCallMode::Prefill, 0, &[11; 64]),
-        request(SourceCallMode::Prefill, 1, &FIXED_PROMPT_IDS),
-        request(SourceCallMode::Decode, 47, &[11]),
+        request(InvocationPhase::Prefill, 0, &[11; 64]),
+        request(InvocationPhase::Prefill, 1, &FIXED_PROMPT_IDS),
+        request(InvocationPhase::Decode, 47, &[11]),
     ] {
         assert!(require_site(&wrong, 3, 32, &[ValueId(39)], &[ValueId(41)]).is_err());
     }

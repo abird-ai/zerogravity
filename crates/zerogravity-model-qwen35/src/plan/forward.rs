@@ -61,18 +61,18 @@ impl QwenForwardPlan {
     /// Bind request data without cloning/rebinding the plan or minting a root.
     pub fn bind_invocation(
         &self,
-        mode: SourceCallMode,
+        phase: InvocationPhase,
         base: usize,
         ids: Arc<[u32]>,
         emit_logits: bool,
     ) -> Result<QwenForwardInvocation> {
         require_source_phase(
             self.source_seal().numerical_contract(),
-            mode,
+            phase,
             base,
             ids.len(),
         )?;
-        let invocation = SourceInvocation::new(
+        let invocation = InvocationInput::new(
             TextCallGeometry::new(
                 self.owner.plan.source(),
                 self.profile.vocabulary_size(),
@@ -82,28 +82,28 @@ impl QwenForwardPlan {
             ids,
             emit_logits,
         )?;
-        let bound = self.owner.plan.bind_source_invocation(invocation)?;
+        let bound = self.owner.plan.bind_invocation(invocation)?;
         // Phase is explicit; never infer cached decode from row count or base.
-        bound.invocation().source_call(mode)?;
+        bound.input().text_invocation(phase)?;
         Ok(QwenForwardInvocation {
             bound,
             owner: self.owner.clone(),
             profile: self.profile,
-            mode,
+            phase,
         })
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct QwenForwardInvocation {
-    bound: BoundSourceInvocation,
+    bound: BoundInvocation,
     owner: Arc<QwenForwardPlanOwner>,
     profile: QwenForwardGeometry,
-    mode: SourceCallMode,
+    phase: InvocationPhase,
 }
 impl QwenForwardInvocation {
     /// Borrow the original core binding; providers materialize it under admission.
-    pub fn bound_invocation(&self) -> &BoundSourceInvocation {
+    pub fn bound_invocation(&self) -> &BoundInvocation {
         &self.bound
     }
     pub fn plan(&self) -> &Arc<ForwardPlan> {
@@ -118,29 +118,29 @@ impl QwenForwardInvocation {
     pub fn model_profile(&self) -> QwenForwardGeometry {
         self.profile
     }
-    pub fn mode(&self) -> SourceCallMode {
-        self.mode
+    pub fn phase(&self) -> InvocationPhase {
+        self.phase
     }
-    pub fn source_call(&self) -> Result<SourceCall> {
-        self.bound.invocation().source_call(self.mode)
+    pub fn text_invocation(&self) -> Result<TextInvocation> {
+        self.bound.input().text_invocation(self.phase)
     }
-    pub fn materialize_source_plan(&self) -> Result<ForwardPlan> {
-        self.bound.materialize_source_plan(self.mode)
+    pub fn materialize_plan(&self) -> Result<ForwardPlan> {
+        self.bound.materialize(self.phase)
     }
     pub fn base(&self) -> usize {
-        self.bound.invocation().base()
+        self.bound.input().base()
     }
     pub fn ids(&self) -> &[u32] {
-        self.bound.invocation().ids()
+        self.bound.input().ids()
     }
-    pub fn rows(&self) -> usize {
-        self.bound.invocation().rows()
+    pub fn token_count(&self) -> usize {
+        self.bound.input().token_count()
     }
     pub fn frontier(&self) -> usize {
-        self.bound.invocation().frontier()
+        self.bound.input().frontier()
     }
     pub fn emit_logits(&self) -> bool {
-        self.bound.invocation().emit_logits()
+        self.bound.input().emit_logits()
     }
     pub fn active_nodes(&self) -> &[PlanNode] {
         self.bound.active_nodes()
@@ -149,7 +149,7 @@ impl QwenForwardInvocation {
 
 fn require_source_phase(
     numerical: NumericalContract,
-    mode: SourceCallMode,
+    phase: InvocationPhase,
     base: usize,
     rows: usize,
 ) -> Result<()> {
@@ -158,7 +158,7 @@ fn require_source_phase(
     if numerical == NumericalContract::TorchCpuAvx2Bf16MixedV1
         && base > 0
         && rows == 1
-        && mode != SourceCallMode::Decode
+        && phase != InvocationPhase::Decode
     {
         return Err(Error::Unsupported(
             "original CPU-source cached row requires explicit decode".into(),
@@ -264,7 +264,7 @@ fn record_forward_plan(
         || plan.proposed_domains().len() != profile.state_domains()
         || plan.logits() != Some(logits.id)
         || plan.frontier_delta() != 0
-        || plan.source_call().is_some()
+        || plan.text_invocation().is_some()
         || plan
             .nodes()
             .iter()

@@ -263,7 +263,7 @@ pub(super) fn hybrid_state_reserve_bytes(
 
 #[allow(
     dead_code,
-    reason = "hybrid storage is installed by the next ordinary source-call selection slice"
+    reason = "hybrid storage is installed by the forward resident-text selection"
 )]
 pub(super) enum PooledStateStorage {
     Contiguous(Arc<ResidentPool>),
@@ -285,7 +285,7 @@ pub(super) struct PooledStates {
 
 #[allow(
     dead_code,
-    reason = "hybrid storage is installed by the next ordinary source-call selection slice"
+    reason = "hybrid storage is installed by the forward resident-text selection"
 )]
 pub(super) struct HybridPooledStates {
     pub plan: HybridStateInventoryPlan,
@@ -459,7 +459,7 @@ fn merge_access(
 
 #[allow(
     dead_code,
-    reason = "hybrid storage is installed by the next ordinary source-call selection slice"
+    reason = "hybrid storage is installed by the forward resident-text selection"
 )]
 impl HybridPooledStates {
     pub(super) fn prepare(
@@ -820,7 +820,7 @@ impl ResidentModel {
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
     #[allow(
         dead_code,
-        reason = "hybrid source-call selection lands after physical pool acceptance"
+        reason = "hybrid resident-text selection lands after physical pool acceptance"
     )]
     pub(crate) fn install_window_hybrid_state_pools(
         &self,

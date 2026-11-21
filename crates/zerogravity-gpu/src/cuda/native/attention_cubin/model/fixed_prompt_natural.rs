@@ -1,11 +1,11 @@
 //! Exact current-call source gamma binding; no legacy span conversion.
 use super::*;
-use crate::resident_inference::native_fragment::fixed_prompt_natural::FixedPromptCallInput;
+use crate::resident_inference::native_fragment::fixed_prompt_natural::FixedPromptInvocationInput;
 use zerogravity_core::accelerator::program::PlanOperation;
 impl ModelAttentionParameters {
     pub(crate) fn require_fixed_prompt_call(
         &self,
-        input: &FixedPromptCallInput,
+        input: &FixedPromptInvocationInput,
         values: &Arc<ModelValues>,
         node: usize,
     ) -> Result<[ResidentLease; 2]> {
@@ -26,7 +26,7 @@ impl ModelAttentionParameters {
             return Err(Error::State("current QK descriptor absent".into()));
         }
         if !matches!(descriptor.kind(), SourceOperatorKind::QkRmsRotaryGated(_))
-            || descriptor.call() != input.call()
+            || descriptor.invocation() != input.invocation()
             || !self.source.same_issuer(input.source())
             || descriptor.parameters().len() != 2
             || !descriptor.matrices().is_empty()

@@ -2,18 +2,18 @@
 use super::*;
 use crate::resident_leases::ResidentLease;
 use crate::resident_program::source_bindings::SourceBindings;
-use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode};
+use zerogravity_core::accelerator::program::{InvocationPhase, TextInvocation};
 
-pub(crate) fn slot(call: &SourceCall) -> Result<usize> {
-    if call.rows().capacity() != 512 || call.rows().vocabulary() != 248320 {
+pub(crate) fn slot(call: &TextInvocation) -> Result<usize> {
+    if call.tokens().capacity() != 512 || call.tokens().vocabulary() != 248320 {
         return Err(Error::Unsupported(
-            "natural actual source call capacity/vocabulary".into(),
+            "natural actual text invocation capacity/vocabulary".into(),
         ));
     }
-    slot_geometry(call.mode(), call.rows().base(), call.rows().len())
+    slot_geometry(call.phase(), call.tokens().base(), call.tokens().len())
 }
-fn slot_geometry(phase: SourceCallMode, base: usize, rows: usize) -> Result<usize> {
-    use SourceCallMode::*;
+fn slot_geometry(phase: InvocationPhase, base: usize, rows: usize) -> Result<usize> {
+    use InvocationPhase::*;
     match (phase, base, rows) {
         (Prefill, 0, 1) => Ok(0),
         (Decode, 1, 1) => Ok(1),
@@ -58,8 +58,8 @@ pub(crate) fn same_recipe(a: &SourceBindings, b: &SourceBindings) -> Result<()> 
         ));
     }
     let (ap, bp) = (a.plan(), b.plan());
-    if slot(a.call())? != slot(b.call())?
-        || a.call().source() != b.call().source()
+    if slot(a.invocation())? != slot(b.invocation())?
+        || a.invocation().source() != b.invocation().source()
         || !a.source().same_issuer(b.source())
         || ap.numerical_profile() != bp.numerical_profile()
         || ap.values() != bp.values()
@@ -93,8 +93,8 @@ pub(crate) fn same_recipe(a: &SourceBindings, b: &SourceBindings) -> Result<()> 
                     state: rs,
                 },
             ) => {
-                if left.call() != a.call()
-                    || right.call() != b.call()
+                if left.invocation() != a.invocation()
+                    || right.invocation() != b.invocation()
                     || left.kind() != right.kind()
                     || left.numerical_contract() != right.numerical_contract()
                     || left.matrices() != right.matrices()
@@ -257,7 +257,7 @@ mod tests {
     }
     #[test]
     fn fixed_storage_slots_do_not_derive_authority_from_row_count() {
-        use SourceCallMode::*;
+        use InvocationPhase::*;
         for (index, (phase, base, rows)) in [
             (Prefill, 0, 1),
             (Decode, 1, 1),

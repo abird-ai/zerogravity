@@ -13,7 +13,7 @@ pub(crate) use workspace::DecodeCohortWorkspace;
 pub(crate) struct DecodeCohortInputs {
     loaded: Weak<TextLoaded>,
     roots: ResidentBatchRows,
-    rows: Box<[Arc<TextCallInput>]>,
+    rows: Box<[Arc<TextInvocationInput>]>,
     _metadata: WindowWorkspace,
 }
 impl DecodeCohortInputs {
@@ -81,7 +81,7 @@ impl DecodeCohortInputs {
             .ok_or_else(|| Error::Limit("text cohort actual per-request BF16 row extent".into()))?;
         let roots = ResidentBatchRows::bf16(&roots, row_elements)?;
         let metadata = first.loaded.source().reserve_workspace(64 * 1024)?;
-        let mut rows: Vec<Arc<TextCallInput>> = Vec::with_capacity(sessions.len());
+        let mut rows: Vec<Arc<TextInvocationInput>> = Vec::with_capacity(sessions.len());
         for (index, ((session, flag), (record, implementation))) in
             sessions.iter().zip(cancelled).zip(calls).enumerate()
         {
@@ -154,32 +154,32 @@ impl DecodeCohortInputs {
     pub(crate) fn roots(&self) -> &ResidentBatchRows {
         &self.roots
     }
-    pub(crate) fn rows(&self) -> &[Arc<TextCallInput>] {
+    pub(crate) fn rows(&self) -> &[Arc<TextInvocationInput>] {
         &self.rows
     }
 }
 
 // The source constructor still records each real N1 request independently.
 // Ignore only its current issuer/IDs/base; never infer a temporal B-row span.
-fn require_same_cohort_recipe(a: &TextCallInput, b: &TextCallInput) -> Result<()> {
+fn require_same_cohort_recipe(a: &TextInvocationInput, b: &TextInvocationInput) -> Result<()> {
     use zerogravity_core::accelerator::program::PlanOperation;
     let (ar, br) = (a.record(), b.record());
     let (ap, bp) = (ar.plan(), br.plan());
     let mode = if a.rows() == 47 && a.base() == 0 {
-        SourceCallMode::Prefill
+        InvocationPhase::Prefill
     } else if a.rows() == 1 {
-        SourceCallMode::Decode
+        InvocationPhase::Decode
     } else {
         return Err(Error::Unsupported(
             "text cohort fixed prompt or cached row".into(),
         ));
     };
     if a.rows() != b.rows()
-        || a.call().mode() != mode
-        || b.call().mode() != mode
-        || (mode == SourceCallMode::Prefill && (b.base() != 0 || a.ids() != b.ids()))
+        || a.invocation().phase() != mode
+        || b.invocation().phase() != mode
+        || (mode == InvocationPhase::Prefill && (b.base() != 0 || a.ids() != b.ids()))
         || !a.source().same_issuer(b.source())
-        || a.call().source() != b.call().source()
+        || a.invocation().source() != b.invocation().source()
         || a.scope().gdn_implementation() != b.scope().gdn_implementation()
         || a.scope().native_capture() != b.scope().native_capture()
         || ap.numerical_profile() != bp.numerical_profile()

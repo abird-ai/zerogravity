@@ -23,7 +23,8 @@ impl ModelGdnParameters {
     ) -> Result<Arc<Self>> {
         super::super::projection_cubin::not_cancelled(cancelled)?;
         let (conv, recurrent) = operators(scope, layer)?;
-        let geometry = TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?;
+        let geometry =
+            TextGdnGeometry::for_invocation(scope.invocation(), scope.gdn_implementation())?;
         geometry.require_implementation()?;
         if scope.source().source_identity() != service.source_identity() {
             return Err(Error::State(
@@ -135,9 +136,9 @@ impl ColdTextGdn {
     ) -> Result<Arc<ModelGdnPrepared>> {
         scope.require_values(&values)?;
         let layer = self.code.layer();
-        if domains.call() != scope.record().call()
+        if domains.invocation() != scope.record().invocation()
             || domains.layer() != layer
-            || TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?
+            || TextGdnGeometry::for_invocation(scope.invocation(), scope.gdn_implementation())?
                 != self.code.geometry()
             || !scope.source().same_issuer(self.code.scope().source())
         {
@@ -207,7 +208,7 @@ impl ModelGdnPrepared {
     pub(crate) fn require_text_binding(&self, scope: &Arc<TextModelBinding>) -> Result<()> {
         if self.text.as_ref().is_none_or(|s| !Arc::ptr_eq(s, scope))
             || self.fixed_prompt.is_some()
-            || self.binding.call() != scope.record().call()
+            || self.binding.invocation() != scope.record().invocation()
             || !self.binding.source().same_issuer(scope.source())
             || self.binding.nodes != scope.gdn_site(self.binding.layer())?.nodes
         {
@@ -222,7 +223,7 @@ impl ModelGdnPrepared {
         self.binding
             .require_prepared(&self.prepared, &self.domains)?;
         self.prepared.arithmetic().require_instance(
-            TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?.phase,
+            TextGdnGeometry::for_invocation(scope.invocation(), scope.gdn_implementation())?.phase,
             GdnCacheSlot::One,
             true,
         )?;
@@ -269,7 +270,8 @@ impl ColdTextGdn {
 
 impl ColdTextGdn {
     pub(crate) fn allocation_layout(scope: &TextModelBinding) -> Result<Vec<usize>> {
-        let geometry = TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?;
+        let geometry =
+            TextGdnGeometry::for_invocation(scope.invocation(), scope.gdn_implementation())?;
         geometry.require_implementation()?;
         let count = scope
             .gdn_sites()
@@ -286,7 +288,8 @@ impl ColdTextGdn {
         Ok(result)
     }
     pub(crate) fn host_bytes(scope: &TextModelBinding) -> Result<usize> {
-        let geometry = TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?;
+        let geometry =
+            TextGdnGeometry::for_invocation(scope.invocation(), scope.gdn_implementation())?;
         geometry
             .metadata_bound()?
             .checked_add(64 * 1024)

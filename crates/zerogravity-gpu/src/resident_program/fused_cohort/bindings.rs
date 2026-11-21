@@ -2,14 +2,14 @@
 use super::super::*;
 use crate::resident_inference::native_fragment::{
     PrefixPhaseEnqueue,
-    text::{TextCallInput, TextCallState},
+    text::{TextInvocationInput, TextInvocationState},
 };
 use crate::resident_leases::ResidentService;
 use crate::resident_program::source_bindings::SourceBindings;
 
 pub(super) struct CohortRowBinding {
-    input: Arc<TextCallInput>,
-    state: Arc<TextCallState>,
+    input: Arc<TextInvocationInput>,
+    state: Arc<TextInvocationState>,
     runtime: RuntimeParameters,
     bindings: Vec<StateBinding>,
 }
@@ -22,7 +22,7 @@ pub(super) struct CohortBindings {
 impl CohortBindings {
     pub(super) fn bind(
         service: &Arc<ResidentService>,
-        states: &[Arc<TextCallState>],
+        states: &[Arc<TextInvocationState>],
         permits: &[PrefixPhaseEnqueue<'_>],
         owned: &OwnedRanges,
     ) -> Result<Self> {
@@ -191,7 +191,7 @@ impl CohortBindings {
         Ok(())
     }
 
-    pub(super) fn inputs(&self) -> Vec<Arc<TextCallInput>> {
+    pub(super) fn inputs(&self) -> Vec<Arc<TextInvocationInput>> {
         self.rows.iter().map(|row| row.input.clone()).collect()
     }
     pub(super) fn states_at(
@@ -302,7 +302,7 @@ impl CohortBindings {
 // neither route shares a currently bound record or a row's provenance.
 fn require_same_semantics(a: &SourceBindings, b: &SourceBindings) -> Result<()> {
     let (ap, bp) = (a.plan(), b.plan());
-    if a.call().source() != b.call().source()
+    if a.invocation().source() != b.invocation().source()
         || !a.source().same_issuer(b.source())
         || ap.numerical_profile() != bp.numerical_profile()
         || ap.values() != bp.values()
@@ -340,8 +340,8 @@ fn require_same_semantics(a: &SourceBindings, b: &SourceBindings) -> Result<()> 
                     state: sy,
                 },
             ) => {
-                if x.call() != a.call()
-                    || y.call() != b.call()
+                if x.invocation() != a.invocation()
+                    || y.invocation() != b.invocation()
                     || x.kind() != y.kind()
                     || x.numerical_contract() != y.numerical_contract()
                     || x.matrices() != y.matrices()

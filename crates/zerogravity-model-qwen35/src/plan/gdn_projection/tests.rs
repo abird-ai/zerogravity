@@ -2,20 +2,20 @@ use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use zerogravity_core::source::SourceTensorRef;
 
-fn invocation(source: SourceIdentity, layer: usize, phase: ReferencePhase) -> QwenGdnCall {
+fn invocation(source: SourceIdentity, layer: usize, phase: ReferencePhase) -> QwenGdnInvocation {
     let base = match phase {
         ReferencePhase::InitialOne | ReferencePhase::Initial64 => 0,
         ReferencePhase::CachedOne => 66,
         ReferencePhase::ContinuedTwo => 64,
     };
-    QwenGdnCall::new(
+    QwenGdnInvocation::new(
         QwenPrefixLayer::new(source, layer).unwrap(),
         phase,
         QwenInputRows::new(source, base, 512, &vec![11; phase.rows()]).unwrap(),
     )
     .unwrap()
 }
-fn members(call: &QwenGdnCall, kind: GdnProjection) -> Vec<SourceTensor> {
+fn members(call: &QwenGdnInvocation, kind: GdnProjection) -> Vec<SourceTensor> {
     kind.members()
         .iter()
         .map(|&(suffix, rows)| SourceTensor {
@@ -31,10 +31,10 @@ fn members(call: &QwenGdnCall, kind: GdnProjection) -> Vec<SourceTensor> {
         })
         .collect()
 }
-fn projection(call: &QwenGdnCall, kind: GdnProjection) -> QwenGdnProjection {
+fn projection(call: &QwenGdnInvocation, kind: GdnProjection) -> QwenGdnProjection {
     QwenGdnProjection::new(call.clone(), kind, members(call, kind)).unwrap()
 }
-fn embedding(call: &QwenGdnCall) -> QwenEmbedding {
+fn embedding(call: &QwenGdnInvocation) -> QwenEmbedding {
     QwenEmbedding::new(
         SourceTensor {
             source: call.layer.source(),
@@ -134,7 +134,7 @@ fn genuine_phase_cannot_turn_continued_two_into_decode_or_cross_source() {
         (ReferencePhase::ContinuedTwo, 0, 2),
     ] {
         assert!(
-            QwenGdnCall::new(
+            QwenGdnInvocation::new(
                 key,
                 phase,
                 QwenInputRows::new(source, base, 512, &vec![11; rows]).unwrap()
@@ -144,7 +144,7 @@ fn genuine_phase_cannot_turn_continued_two_into_decode_or_cross_source() {
     }
     let foreign = SourceIdentity::for_new_allocation().unwrap();
     assert!(
-        QwenGdnCall::new(
+        QwenGdnInvocation::new(
             key,
             ReferencePhase::InitialOne,
             QwenInputRows::new(foreign, 0, 512, &[11]).unwrap()
@@ -266,7 +266,7 @@ fn same_plan_embedding_dual_rms_projection_activation_preserve_real_teacher_tag(
                 assert_eq!(value.precision(), ActivationPrecision::Bf16WidenedF32);
                 let p = b.value_provenance(&value).unwrap().unwrap();
                 assert_eq!(p.teachers(), call.teachers());
-                assert_eq!(p.phase(), Some(phase));
+                assert_eq!(p.reference_phase(), Some(phase));
             }
             let slice = b.finish_operator_slice(down).unwrap();
             let plan = slice.plan();
@@ -408,17 +408,17 @@ fn source_and_old_profile_never_fall_into_cuda_contract_or_mint_provenance() {
 }
 
 #[test]
-fn learned_weight_reference_layout_preserves_phases_and_refuses_open_calls() {
+fn learned_weight_reference_layout_preserves_phases_and_refuses_open_invocations() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let expected = QwenGdnCall::new(
+    let expected = QwenGdnInvocation::new(
         QwenPrefixLayer::new(source, 0).unwrap(),
         ReferencePhase::InitialOne,
         QwenInputRows::new(source, 0, 512, &[11]).unwrap(),
     )
     .unwrap();
     let actual = |source, mode, base, rows, capacity, vocabulary, id| {
-        SourceCall::new(
-            SourceRows::new(
+        TextInvocation::new(
+            TokenSpan::new(
                 TextCallGeometry::new(source, vocabulary, capacity).unwrap(),
                 base,
                 Arc::from(vec![id; rows]),
@@ -429,11 +429,16 @@ fn learned_weight_reference_layout_preserves_phases_and_refuses_open_calls() {
         .unwrap()
     };
     for (mode, base, rows, phase) in [
-        (SourceCallMode::Prefill, 0, 1, ReferencePhase::InitialOne),
-        (SourceCallMode::Prefill, 0, 64, ReferencePhase::Initial64),
-        (SourceCallMode::Prefill, 64, 2, ReferencePhase::ContinuedTwo),
-        (SourceCallMode::Decode, 1, 1, ReferencePhase::CachedOne),
-        (SourceCallMode::Decode, 66, 1, ReferencePhase::CachedOne),
+        (InvocationPhase::Prefill, 0, 1, ReferencePhase::InitialOne),
+        (InvocationPhase::Prefill, 0, 64, ReferencePhase::Initial64),
+        (
+            InvocationPhase::Prefill,
+            64,
+            2,
+            ReferencePhase::ContinuedTwo,
+        ),
+        (InvocationPhase::Decode, 1, 1, ReferencePhase::CachedOne),
+        (InvocationPhase::Decode, 66, 1, ReferencePhase::CachedOne),
     ] {
         let a = actual(source, mode, base, rows, 512, 248320, 11);
         let b = actual(source, mode, base, rows, 512, 248320, 353);
@@ -441,22 +446,22 @@ fn learned_weight_reference_layout_preserves_phases_and_refuses_open_calls() {
             a, b,
             "immutable W is shared across genuine independent row issuers"
         );
-        assert_eq!(expected.require_reference_source_call(&a).unwrap(), phase);
-        assert_eq!(expected.require_reference_source_call(&b).unwrap(), phase);
+        assert_eq!(expected.require_reference_invocation(&a).unwrap(), phase);
+        assert_eq!(expected.require_reference_invocation(&b).unwrap(), phase);
     }
     for (mode, base, rows, capacity, vocabulary) in [
-        (SourceCallMode::Prefill, 2, 1, 512, 248320),
-        (SourceCallMode::Prefill, 1, 1, 512, 248320),
-        (SourceCallMode::Decode, 64, 1, 512, 248320),
-        (SourceCallMode::Prefill, 0, 2, 512, 248320),
-        (SourceCallMode::Prefill, 64, 1, 512, 248320),
-        (SourceCallMode::Prefill, 0, 47, 512, 248320),
-        (SourceCallMode::Prefill, 0, 64, 513, 248320),
-        (SourceCallMode::Prefill, 0, 1, 512, 248321),
+        (InvocationPhase::Prefill, 2, 1, 512, 248320),
+        (InvocationPhase::Prefill, 1, 1, 512, 248320),
+        (InvocationPhase::Decode, 64, 1, 512, 248320),
+        (InvocationPhase::Prefill, 0, 2, 512, 248320),
+        (InvocationPhase::Prefill, 64, 1, 512, 248320),
+        (InvocationPhase::Prefill, 0, 47, 512, 248320),
+        (InvocationPhase::Prefill, 0, 64, 513, 248320),
+        (InvocationPhase::Prefill, 0, 1, 512, 248321),
     ] {
         assert!(
             expected
-                .require_reference_source_call(&actual(
+                .require_reference_invocation(&actual(
                     source, mode, base, rows, capacity, vocabulary, 11
                 ))
                 .is_err()
@@ -464,9 +469,9 @@ fn learned_weight_reference_layout_preserves_phases_and_refuses_open_calls() {
     }
     assert!(
         expected
-            .require_reference_source_call(&actual(
+            .require_reference_invocation(&actual(
                 SourceIdentity::for_new_allocation().unwrap(),
-                SourceCallMode::Prefill,
+                InvocationPhase::Prefill,
                 0,
                 1,
                 512,
@@ -475,14 +480,14 @@ fn learned_weight_reference_layout_preserves_phases_and_refuses_open_calls() {
             ))
             .is_err()
     );
-    let open = QwenGdnCall::from_span(
+    let open = QwenGdnInvocation::from_span(
         expected.layer(),
-        SourceCallMode::Prefill,
+        InvocationPhase::Prefill,
         QwenInputRows::new(source, 0, 512, &[11, 12]).unwrap(),
     )
     .unwrap();
     assert!(
-        open.require_reference_source_call(&expected.source_call().unwrap())
+        open.require_reference_invocation(&expected.text_invocation().unwrap())
             .is_err()
     );
 }

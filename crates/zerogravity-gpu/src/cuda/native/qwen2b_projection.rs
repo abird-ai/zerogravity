@@ -43,7 +43,7 @@ enum Role {
 impl Role {
     fn of(operator: &SourceOperator) -> Result<Self> {
         operator.validate()?;
-        crate::cuda::gdn::GdnPhase::for_reference_call(operator.call())?;
+        crate::cuda::gdn::GdnPhase::for_reference_call(operator.invocation())?;
         if operator.kind() != (SourceOperatorKind::Projection { selected_row: None })
             || operator.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
             || !operator.parameters().is_empty()
@@ -119,7 +119,7 @@ pub(crate) fn descriptors(record: &SourceBindings) -> Result<[SourceOperator; 2]
             return Err(Error::State("actual2B projection node absent".into()));
         };
         if Role::of(descriptor)? != role
-            || descriptor.call() != record.call()
+            || descriptor.invocation() != record.invocation()
             || node.inputs.as_slice() != [zerogravity_core::accelerator::program::ValueId(1)]
             || node.outputs.len() != 1
             || node.state.is_some()
@@ -134,7 +134,7 @@ pub(crate) fn descriptors(record: &SourceBindings) -> Result<[SourceOperator; 2]
 }
 fn require_source(bound: &VerifiedTensorSource, operator: &SourceOperator) -> Result<Role> {
     let role = Role::of(operator)?;
-    if operator.call().source() != bound.source_identity() {
+    if operator.invocation().source() != bound.source_identity() {
         return Err(Error::State(
             "projection actual source/call issuer differs".into(),
         ));
@@ -171,7 +171,7 @@ pub(crate) fn required_images(
     for record in records {
         for operator in descriptors(record)? {
             required.extend(
-                manifests::launches(record.call().rows().len(), Role::of(&operator)?)?
+                manifests::launches(record.invocation().tokens().len(), Role::of(&operator)?)?
                     .into_iter()
                     .map(|launch| launch.image),
             );
@@ -271,7 +271,7 @@ impl ProjectionPrograms {
         for record in records {
             for operator in descriptors(record)? {
                 let role = weights.require_operator_source(&operator)?;
-                let key = (record.call().rows().len(), role);
+                let key = (record.invocation().tokens().len(), role);
                 if launches.contains_key(&key) {
                     continue;
                 }
@@ -307,7 +307,7 @@ impl ProjectionPrograms {
     ) -> Result<Vec<(ResidentLease, DeviceAccess)>> {
         let role = self.weights.require_operator(operator)?;
         let service = self.weights.service();
-        let rows = operator.call().rows().len();
+        let rows = operator.invocation().tokens().len();
         let weight = self.weights.lease(role);
         let leases = [
             (weight, role.bytes(), BufferRole::ImmutableWeights),
@@ -361,7 +361,7 @@ impl ProjectionPrograms {
         self.accesses(operator, input, output, workspace)?;
         let role = self.weights.require_operator(operator)?;
         let mut count = 0;
-        for launch in &self.launches[&(operator.call().rows().len(), role)] {
+        for launch in &self.launches[&(operator.invocation().tokens().len(), role)] {
             not_cancelled(cancelled)?;
             let handles = launch
                 .roles

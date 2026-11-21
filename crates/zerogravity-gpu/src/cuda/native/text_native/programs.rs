@@ -13,7 +13,7 @@ use crate::{
         ResidentSession,
         native_fragment::{
             PrefixPhaseEnqueue,
-            text::{TextCallInput, TextCallState},
+            text::{TextInvocationInput, TextInvocationState},
         },
     },
     resident_leases::{ResidentLease, ResidentReadback},
@@ -42,8 +42,8 @@ struct Node {
 }
 pub(crate) struct TextPrograms {
     storage: Arc<TextNativeStorage>,
-    input: Arc<TextCallInput>,
-    state: Arc<TextCallState>,
+    input: Arc<TextInvocationInput>,
+    state: Arc<TextInvocationState>,
     values: Arc<ModelValues>,
     positions: Arc<TextPositions>,
     attention: Arc<super::attention::Current>,
@@ -70,8 +70,8 @@ impl TextPrograms {
 
     pub(super) fn bind(
         storage: Arc<TextNativeStorage>,
-        input: Arc<TextCallInput>,
-        state: Arc<TextCallState>,
+        input: Arc<TextInvocationInput>,
+        state: Arc<TextInvocationState>,
         values: Arc<ModelValues>,
         rms_scope: Arc<FullModelRmsScratch>,
         final_rms: Arc<FusedRmsPrepared>,
@@ -113,7 +113,7 @@ impl TextPrograms {
             }
             let key = Key::current(
                 storage.capture(),
-                input.call(),
+                input.invocation(),
                 input.prompt_tokens(),
                 index,
             )?;
@@ -183,7 +183,7 @@ impl TextPrograms {
     }
     pub(crate) fn require_values(
         &self,
-        input: &Arc<TextCallInput>,
+        input: &Arc<TextInvocationInput>,
         values: &Arc<ModelValues>,
     ) -> Result<()> {
         input.scope().require_values(values)?;
@@ -352,14 +352,14 @@ impl TextPrograms {
         for bound in self.nodes.values() {
             for lease in bound.roles.values() {
                 if !Arc::ptr_eq(lease.service(), self.values.service())
-                    || lease.source_identity() != self.input.call().source()
+                    || lease.source_identity() != self.input.invocation().source()
                     || lease.service_generation() != self.values.service().generation()
                 {
                     return Ok(false);
                 }
             }
             if let Some(p) = &bound.projection
-                && (p.weight().lease().source_identity() != self.input.call().source()
+                && (p.weight().lease().source_identity() != self.input.invocation().source()
                     || p.input().id() == p.output().id())
             {
                 return Ok(false);

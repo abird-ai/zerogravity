@@ -213,7 +213,7 @@ impl PreparedBf16Projection {
     ) -> Result<usize> {
         self.enqueue_rows(flight, page, b, 1, flag).await
     }
-    /// One source call's token-major rows, retaining the same weight window and
+    /// One text invocation's token-major rows, retaining the same weight window and
     /// original flight. Projection rows do not publish independent model steps.
     pub(crate) async fn enqueue_rows(
         &self,

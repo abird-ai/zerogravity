@@ -4,7 +4,7 @@ use crate::cuda::gdn::{GdnBuffer as B, GdnPhase};
 use crate::resident_program::native_full::FullModelProgram;
 use crate::resident_program::source_bindings::SourceBindings;
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
-use zerogravity_core::accelerator::program::{SourceCallMode, SourceOperatorKind};
+use zerogravity_core::accelerator::program::{InvocationPhase, SourceOperatorKind};
 const MIB: usize = 1024 * 1024;
 fn add(sum: &mut usize, n: usize) -> Result<()> {
     *sum = sum
@@ -22,22 +22,24 @@ pub(crate) fn provider_bound(
         ));
     }
     if records.len() != 5 {
-        return Err(Error::Unsupported("closed five full24 source calls".into()));
+        return Err(Error::Unsupported(
+            "closed five full24 text invocations".into(),
+        ));
     }
     let expected = [
-        (SourceCallMode::Prefill, 0, 1),
-        (SourceCallMode::Decode, 1, 1),
-        (SourceCallMode::Prefill, 0, 64),
-        (SourceCallMode::Prefill, 64, 2),
-        (SourceCallMode::Decode, 66, 1),
+        (InvocationPhase::Prefill, 0, 1),
+        (InvocationPhase::Decode, 1, 1),
+        (InvocationPhase::Prefill, 0, 64),
+        (InvocationPhase::Prefill, 64, 2),
+        (InvocationPhase::Decode, 66, 1),
     ];
     for (record, (phase, base, rows)) in records.iter().zip(expected) {
         FullModelProgram::require_record(record)?;
-        let call = record.call();
+        let call = record.invocation();
         if !record.source().same_issuer(source)
-            || call.mode() != phase
-            || call.rows().base() != base
-            || call.rows().len() != rows
+            || call.phase() != phase
+            || call.tokens().base() != base
+            || call.tokens().len() != rows
         {
             return Err(Error::State(
                 "full24 exact original five-phase request order".into(),
@@ -78,7 +80,7 @@ pub(crate) fn provider_bound(
     // Exactly one native arena per source layer and request history.
     add(&mut bound, 2 * 24 * 5_570_560)?;
     for record in records {
-        let rows = record.call().rows().len();
+        let rows = record.invocation().tokens().len();
         for value in record.plan().values() {
             add(
                 &mut bound,
@@ -89,11 +91,15 @@ pub(crate) fn provider_bound(
             )?;
         }
         add(&mut bound, 49 * (10_240 + 16_396 * rows))?;
-        let phase = match (record.call().mode(), record.call().rows().base(), rows) {
-            (SourceCallMode::Prefill, 0, 1) => GdnPhase::InitialOne,
-            (SourceCallMode::Prefill, 0, 64) => GdnPhase::Initial64,
-            (SourceCallMode::Prefill, 64, 2) => GdnPhase::ContinuedTwo,
-            (SourceCallMode::Decode, 1 | 66, 1) => GdnPhase::CachedDecode,
+        let phase = match (
+            record.invocation().phase(),
+            record.invocation().tokens().base(),
+            rows,
+        ) {
+            (InvocationPhase::Prefill, 0, 1) => GdnPhase::InitialOne,
+            (InvocationPhase::Prefill, 0, 64) => GdnPhase::Initial64,
+            (InvocationPhase::Prefill, 64, 2) => GdnPhase::ContinuedTwo,
+            (InvocationPhase::Decode, 1 | 66, 1) => GdnPhase::CachedDecode,
             _ => {
                 return Err(Error::State(
                     "full24 exact reference physical phase differs".into(),

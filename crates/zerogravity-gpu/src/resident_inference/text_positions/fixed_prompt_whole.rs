@@ -1,6 +1,6 @@
 //! Same exact position integer producer with a whole24 original attempt seal.
 use super::*;
-use crate::cuda::native::fixed_prompt_model::FixedPromptCallKind;
+use crate::cuda::native::fixed_prompt_model::FixedPromptInvocationKind;
 use crate::cuda::native::fixed_prompt_model_prefix::FixedPromptPrefixCut;
 impl ResidentSession {
     pub(in crate::resident_inference) fn bind_fixed_prompt_whole_text_positions(
@@ -13,8 +13,8 @@ impl ResidentSession {
         not_cancelled(cancelled)?;
         let scope = cut.scope();
         let source = scope.source().clone();
-        let call = scope.record().call();
-        if !cut.is_whole() || scope.kind() != FixedPromptCallKind::Prefill {
+        let call = scope.record().invocation();
+        if !cut.is_whole() || scope.kind() != FixedPromptInvocationKind::Prefill {
             return Err(Error::Unsupported(
                 "closed canonical47 QK/KV position cut".into(),
             ));
@@ -24,9 +24,9 @@ impl ResidentSession {
         if base != attempt.base()
             || base.frontier() != 0
             || attempt.frontier() != 47
-            || call.rows().base() != 0
-            || call.rows().len() != 47
-            || call.rows().capacity() != 512
+            || call.tokens().base() != 0
+            || call.tokens().len() != 47
+            || call.tokens().capacity() != 512
             || self.model.capacity != 512
             || source.source_identity() != base.source()
             || self.model.service.source_identity() != base.source()

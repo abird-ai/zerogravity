@@ -31,7 +31,7 @@ impl BoundRmsSource {
                 gamma: SourceGamma::OnePlus,
             })
             || operator.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
-            || operator.call().source() != source.source_identity()
+            || operator.invocation().source() != source.source_identity()
             || operator.parameters().len() != 1
         {
             return Err(Error::Unsupported(
@@ -51,7 +51,7 @@ impl BoundRmsSource {
     }
     pub(crate) fn require_source(&self, source: &VerifiedTensorSource) -> Result<()> {
         if !self.source.same_issuer(source)
-            || self.operator.call().source() != source.source_identity()
+            || self.operator.invocation().source() != source.source_identity()
         {
             return Err(Error::State(
                 "RMS actual immutable source issuer differs".into(),

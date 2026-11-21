@@ -5,12 +5,12 @@ impl ModelKvTransport {
         self: &Arc<Self>,
         binding: Arc<BoundModelState>,
     ) -> Result<Arc<Self>> {
-        let (a, b) = (self.binding.call(), binding.call());
+        let (a, b) = (self.binding.invocation(), binding.invocation());
         if self.binding.layer() != binding.layer()
             || a.source() != b.source()
-            || a.mode() != b.mode()
-            || a.rows().base() != b.rows().base()
-            || a.rows().len() != b.rows().len()
+            || a.phase() != b.phase()
+            || a.tokens().base() != b.tokens().base()
+            || a.tokens().len() != b.tokens().len()
         {
             return Err(Error::State("natural KV original geometry differs".into()));
         }

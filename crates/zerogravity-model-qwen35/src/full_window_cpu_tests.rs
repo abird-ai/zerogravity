@@ -305,7 +305,7 @@ fn layer9_trace_cold_refuses_unrelated_source_without_payload_or_root_change() {
     let root = session.binding();
     let before = reserved(&host);
     assert!(matches!(
-        session.step_layer9_traced_with(11, None, |_| panic!("wrong source callback")),
+        session.step_layer9_traced_with(11, None, |_| panic!("wrong text invocationback")),
         Err(Error::Unsupported(_))
     ));
     assert_eq!(session.binding(), root);

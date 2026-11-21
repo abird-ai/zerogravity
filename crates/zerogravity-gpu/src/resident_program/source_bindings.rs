@@ -3,8 +3,8 @@ use super::{StateLayout, StateRequirement};
 use std::sync::Arc;
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::accelerator::program::{
-    ActivationPrecision, ForwardPlan, PlanOperation, SourceCall, SourceOperator,
-    SourceOperatorKind, SourceStateAccess, StateSlot, ValueId,
+    ActivationPrecision, ForwardPlan, PlanOperation, SourceOperator, SourceOperatorKind,
+    SourceStateAccess, StateSlot, TextInvocation, ValueId,
 };
 use zerogravity_core::{Error, Result};
 
@@ -80,8 +80,8 @@ impl SourceSelection {
         if self.completed_layers > plan.nodes().len()
             || self.boundaries.len() > self.completed_layers
             || self.selected_row.is_some_and(|row| {
-                plan.source_call()
-                    .is_none_or(|call| row >= call.rows().len())
+                plan.text_invocation()
+                    .is_none_or(|call| row >= call.tokens().len())
             })
         {
             return Err(Error::State(
@@ -137,13 +137,13 @@ impl SourceBindings {
             ));
         }
         let call = plan
-            .source_call()
+            .text_invocation()
             .ok_or_else(|| Error::State("source binding actual call absent".into()))?;
         if plan.numerical_profile()
             != zerogravity_core::accelerator::program::NumericalProfile::CudaSm86Bf16ReferenceV1
             || plan.source() != source.source_identity()
             || call.source() != source.source_identity()
-            || call.rows().capacity() != plan.prefix_capacity()
+            || call.tokens().capacity() != plan.prefix_capacity()
             || plan.frontier_delta() != 0
             || plan.logits().is_some()
             || plan.values().len() != plan.precisions().len()
@@ -165,7 +165,7 @@ impl SourceBindings {
                 ));
             };
             descriptor.validate()?;
-            if descriptor.call() != call
+            if descriptor.invocation() != call
                 || descriptor.numerical_contract() != zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1
             {
                 return Err(Error::State(
@@ -238,7 +238,7 @@ impl SourceBindings {
     }
     /// New actual row issuer over the same immutable math. The model/app checks
     /// finite request eligibility first; native/root authority remains separate.
-    pub fn rebind(&self, call: SourceCall, metadata: WindowWorkspace) -> Result<Self> {
+    pub fn rebind(&self, call: TextInvocation, metadata: WindowWorkspace) -> Result<Self> {
         if !self.source.same_issuer(metadata.source())
             || metadata.bytes() < self.rebind_metadata_bytes()?
         {
@@ -247,7 +247,7 @@ impl SourceBindings {
             ));
         }
         // Core checks exact source, mode, base, row count, capacity and vocabulary.
-        let plan = self.plan.rebind_source_call(call)?;
+        let plan = self.plan.rebind_text_invocation(call)?;
         let selection = self.selection.clone();
         let states = self.states.clone();
         selection.require_plan(&plan)?;
@@ -302,8 +302,10 @@ impl SourceBindings {
     pub(crate) fn shared_plan(&self) -> Arc<ForwardPlan> {
         self.plan.clone()
     }
-    pub fn call(&self) -> &SourceCall {
-        self.plan.source_call().expect("checked actual call")
+    pub fn invocation(&self) -> &TextInvocation {
+        self.plan
+            .text_invocation()
+            .expect("checked text invocation")
     }
     pub fn selection(&self) -> &SourceSelection {
         &self.selection
@@ -320,7 +322,7 @@ impl SourceBindings {
         match &node.operation {
             PlanOperation::SourceOperator { descriptor, .. } => Ok(Some(descriptor)),
             PlanOperation::SourceOperatorTemplate { .. } => Err(Error::Unsupported(
-                "bound source-call path cannot expose a call-free template".into(),
+                "bound text-invocation path cannot expose a call-free template".into(),
             )),
             _ => Ok(None),
         }
@@ -343,7 +345,7 @@ fn require_value(plan: &ForwardPlan, id: ValueId) -> Result<()> {
         .nodes()
         .get(tag.node_index())
         .ok_or_else(|| Error::State("source value producer outside graph".into()))?;
-    if Some(tag.call()) != plan.source_call()
+    if Some(tag.invocation()) != plan.text_invocation()
         || node.outputs.get(tag.output_index()) != Some(&id)
         || tag.inputs() != node.inputs
     {
@@ -485,7 +487,7 @@ fn require_layout(actual: StateLayout, expected: StateLayout) -> Result<()> {
 mod tests {
     use super::*;
     use zerogravity_core::accelerator::program::{
-        ConvDomain, KvDomain, RecurrentDomain, SourceRows,
+        ConvDomain, KvDomain, RecurrentDomain, TokenSpan,
     };
     #[test]
     fn state_bytes_are_exact_f32_planes_and_slot_kinds() {
@@ -591,14 +593,14 @@ mod tests {
         use zerogravity_core::accelerator::{SourceIdentity, program::*};
         use zerogravity_core::encoding::StoredTensorEncoding;
         let source = SourceIdentity::for_new_allocation().unwrap();
-        let call = SourceCall::new(
-            SourceRows::new(
+        let call = TextInvocation::new(
+            TokenSpan::new(
                 TextCallGeometry::new(source, 8, 16).unwrap(),
                 0,
                 Arc::from([3]),
             )
             .unwrap(),
-            SourceCallMode::Prefill,
+            InvocationPhase::Prefill,
         )
         .unwrap();
         let mut builder = PlanBuilder::new_source_program(call.clone(), required.clone()).unwrap();
@@ -671,20 +673,20 @@ mod tests {
                 .require_plan(&plan)
                 .is_err()
         );
-        let call = plan.source_call().unwrap();
-        let foreign = SourceCall::new(
-            SourceRows::new(
+        let call = plan.text_invocation().unwrap();
+        let foreign = TextInvocation::new(
+            TokenSpan::new(
                 zerogravity_core::accelerator::program::TextCallGeometry::new(call.source(), 8, 16)
                     .unwrap(),
                 0,
                 Arc::from([3]),
             )
             .unwrap(),
-            zerogravity_core::accelerator::program::SourceCallMode::Prefill,
+            zerogravity_core::accelerator::program::InvocationPhase::Prefill,
         )
         .unwrap();
         assert_ne!(&foreign, call); // Equal token IDs do not reproduce the issuer.
-        let rebound = plan.rebind_source_call(foreign).unwrap();
+        let rebound = plan.rebind_text_invocation(foreign).unwrap();
         assert!(plan.shares_semantics(&rebound));
         assert!(require_value(&rebound, ValueId(0)).is_ok());
     }

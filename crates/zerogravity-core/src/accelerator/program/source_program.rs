@@ -9,22 +9,22 @@ impl PlanValue {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SourceCallMode {
+pub enum InvocationPhase {
     Prefill,
     Decode,
 }
 
-/// Immutable row issuer. Equal IDs in a separately constructed call are distinct.
+/// Immutable token issuer. Equal IDs in a separately constructed span are distinct.
 #[derive(Clone, Debug)]
-pub struct SourceRows(Arc<SourceRowsData>);
+pub struct TokenSpan(Arc<TokenSpanData>);
 #[derive(Debug)]
-struct SourceRowsData {
+struct TokenSpanData {
     geometry: TextCallGeometry,
     base: usize,
     ids: Arc<[u32]>,
     teacher: Option<TeacherSpan>,
 }
-impl PartialEq for SourceRows {
+impl PartialEq for TokenSpan {
     fn eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
             || match (&self.0.teacher, &other.0.teacher) {
@@ -33,9 +33,9 @@ impl PartialEq for SourceRows {
             }
     }
 }
-impl Eq for SourceRows {}
-impl SourceRows {
-    /// Metadata only; the source owner must authenticate actual bytes and call.
+impl Eq for TokenSpan {}
+impl TokenSpan {
+    /// Metadata only; the source owner must authenticate actual bytes and invocation.
     pub fn new(geometry: TextCallGeometry, base: usize, ids: Arc<[u32]>) -> Result<Self> {
         if ids.is_empty()
             || base
@@ -43,9 +43,9 @@ impl SourceRows {
                 .is_none_or(|end| end > geometry.capacity())
             || ids.iter().any(|id| *id as usize >= geometry.vocabulary())
         {
-            return Err(Error::Malformed("source rows original extent/IDs".into()));
+            return Err(Error::Malformed("token span extent/IDs".into()));
         }
-        Ok(Self(Arc::new(SourceRowsData {
+        Ok(Self(Arc::new(TokenSpanData {
             geometry,
             base,
             ids,
@@ -58,7 +58,7 @@ impl SourceRows {
         if span.ids().iter().any(|id| *id as usize >= vocabulary) {
             return Err(Error::State("source teacher vocabulary differs".into()));
         }
-        Ok(Self(Arc::new(SourceRowsData {
+        Ok(Self(Arc::new(TokenSpanData {
             geometry,
             base: span.base(),
             ids: Arc::from(span.ids()),
@@ -91,37 +91,39 @@ impl SourceRows {
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SourceCall {
-    rows: SourceRows,
-    mode: SourceCallMode,
+pub struct TextInvocation {
+    tokens: TokenSpan,
+    phase: InvocationPhase,
 }
-impl SourceCall {
-    pub fn new(rows: SourceRows, mode: SourceCallMode) -> Result<Self> {
-        if mode == SourceCallMode::Decode && (rows.base() == 0 || rows.len() != 1) {
-            return Err(Error::Malformed("source decode actual cached row".into()));
+impl TextInvocation {
+    pub fn new(tokens: TokenSpan, phase: InvocationPhase) -> Result<Self> {
+        if phase == InvocationPhase::Decode && (tokens.base() == 0 || tokens.len() != 1) {
+            return Err(Error::Malformed(
+                "decode invocation requires one cached token".into(),
+            ));
         }
-        Ok(Self { rows, mode })
+        Ok(Self { tokens, phase })
     }
-    pub fn rows(&self) -> &SourceRows {
-        &self.rows
+    pub fn tokens(&self) -> &TokenSpan {
+        &self.tokens
     }
-    pub fn mode(&self) -> SourceCallMode {
-        self.mode
+    pub fn phase(&self) -> InvocationPhase {
+        self.phase
     }
     pub fn source(&self) -> SourceIdentity {
-        self.rows.source()
+        self.tokens.source()
     }
     fn same_layout(&self, other: &Self) -> bool {
         self.source() == other.source()
-            && self.mode == other.mode
-            && self.rows.base() == other.rows.base()
-            && self.rows.len() == other.rows.len()
-            && self.rows.capacity() == other.rows.capacity()
-            && self.rows.vocabulary() == other.rows.vocabulary()
+            && self.phase == other.phase
+            && self.tokens.base() == other.tokens.base()
+            && self.tokens.len() == other.tokens.len()
+            && self.tokens.capacity() == other.tokens.capacity()
+            && self.tokens.vocabulary() == other.tokens.vocabulary()
     }
 }
 
-/// Static bounds for one call-free plan. Model owners authenticate eligibility;
+/// Static bounds for one invocation-free plan. Model owners authenticate eligibility;
 /// this core value owns no source bytes, state root or execution capability.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SourcePlanGeometry {
@@ -165,13 +167,13 @@ impl SourcePlanGeometry {
 /// Invocation data joined after static plan construction. It is not a root,
 /// Ready/completion witness, source permit or publication authority.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SourceInvocation {
+pub struct InvocationInput {
     geometry: TextCallGeometry,
     base: usize,
     ids: Arc<[u32]>,
     emit_logits: bool,
 }
-impl SourceInvocation {
+impl InvocationInput {
     pub fn new(
         geometry: TextCallGeometry,
         base: usize,
@@ -207,7 +209,7 @@ impl SourceInvocation {
     pub fn ids(&self) -> &[u32] {
         &self.ids
     }
-    pub fn rows(&self) -> usize {
+    pub fn token_count(&self) -> usize {
         self.ids.len()
     }
     pub fn frontier(&self) -> usize {
@@ -219,10 +221,10 @@ impl SourceInvocation {
 
     /// Bind the caller-declared execution phase without inferring it from row
     /// count or position. A one-row continuation can be prefill or decode.
-    pub fn source_call(&self, mode: SourceCallMode) -> Result<SourceCall> {
-        SourceCall::new(
-            SourceRows::new(self.geometry, self.base, self.ids.clone())?,
-            mode,
+    pub fn text_invocation(&self, phase: InvocationPhase) -> Result<TextInvocation> {
+        TextInvocation::new(
+            TokenSpan::new(self.geometry, self.base, self.ids.clone())?,
+            phase,
         )
     }
 }
@@ -230,20 +232,20 @@ impl SourceInvocation {
 /// One shared static plan plus request-local invocation data. This wrapper has
 /// no session/root/completion/publication methods.
 #[derive(Clone, Debug)]
-pub struct BoundSourceInvocation {
+pub struct BoundInvocation {
     plan: Arc<ForwardPlan>,
-    invocation: SourceInvocation,
+    input: InvocationInput,
 }
-impl BoundSourceInvocation {
+impl BoundInvocation {
     pub fn plan(&self) -> &Arc<ForwardPlan> {
         &self.plan
     }
-    pub fn invocation(&self) -> &SourceInvocation {
-        &self.invocation
+    pub fn input(&self) -> &InvocationInput {
+        &self.input
     }
     /// Exact static schedule selected by the invocation's output policy.
     pub fn active_nodes(&self) -> &[PlanNode] {
-        if self.invocation.emit_logits() {
+        if self.input.emit_logits() {
             self.plan.nodes()
         } else {
             self.plan.state_nodes()
@@ -253,16 +255,16 @@ impl BoundSourceInvocation {
     /// Materialize request-local mathematical descriptors from the immutable
     /// template. This preserves shared topology/semantics and grants no launch,
     /// completion, queue or StateRoot authority.
-    pub fn materialize_source_plan(&self, mode: SourceCallMode) -> Result<ForwardPlan> {
+    pub fn materialize(&self, phase: InvocationPhase) -> Result<ForwardPlan> {
         let geometry = self
             .plan
             .source_template
-            .ok_or_else(|| Error::State("not a call-free source plan".into()))?;
-        let call = self.invocation.source_call(mode)?;
-        if call.source() != geometry.source()
-            || call.rows().capacity() != geometry.context_capacity()
-            || call.rows().vocabulary() != geometry.vocabulary()
-            || call.rows().len() > geometry.max_rows()
+            .ok_or_else(|| Error::State("not an invocation-free source plan".into()))?;
+        let invocation = self.input.text_invocation(phase)?;
+        if invocation.source() != geometry.source()
+            || invocation.tokens().capacity() != geometry.context_capacity()
+            || invocation.tokens().vocabulary() != geometry.vocabulary()
+            || invocation.tokens().len() > geometry.max_rows()
         {
             return Err(Error::State(
                 "source materialization differs from static plan bounds".into(),
@@ -270,7 +272,7 @@ impl BoundSourceInvocation {
         }
 
         let mut bound = (*self.plan).clone();
-        if bound.source_call.is_some()
+        if bound.text_invocation.is_some()
             || bound.binding_metadata.is_some()
             || bound.source_provenance.len() != bound.values().len()
             || bound.source_provenance.iter().any(Option::is_some)
@@ -300,7 +302,7 @@ impl BoundSourceInvocation {
                     "source materialization template geometry differs".into(),
                 ));
             }
-            let descriptor = template.bind_runtime_call(&call)?;
+            let descriptor = template.bind_runtime_invocation(&invocation)?;
             let input_elements = descriptor.input_elements()?;
             let output_elements = descriptor.output_elements()?;
             if input_elements.len() != node.inputs.len()
@@ -348,7 +350,7 @@ impl BoundSourceInvocation {
                     ));
                 }
                 *slot = Some(SourceValueProvenance {
-                    call: call.clone(),
+                    invocation: invocation.clone(),
                     node_index,
                     output_index,
                     inputs: inputs.clone(),
@@ -365,7 +367,7 @@ impl BoundSourceInvocation {
                 "source materialization producer coverage incomplete".into(),
             ));
         }
-        bound.source_call = Some(call);
+        bound.text_invocation = Some(invocation);
         Ok(bound)
     }
 }
@@ -492,7 +494,7 @@ pub enum SourceStateAccess {
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct SourceOperator {
-    call: SourceCall,
+    invocation: TextInvocation,
     semantics: Arc<SourceOperatorSemantics>,
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -535,18 +537,18 @@ impl SourceOperatorTemplate {
                 && !matches!(kind, SourceOperatorKind::Projection { selected_row: None })
         {
             return Err(Error::Unsupported(
-                "call-free source operator template geometry/contract".into(),
+                "invocation-free source operator template geometry/contract".into(),
             ));
         }
         // Reuse the established operator validator with a cold, disposable
-        // shape witness. No call or IDs are retained by this template.
-        let rows = SourceRows::new(
+        // shape witness. No invocation or token IDs are retained by this template.
+        let rows = TokenSpan::new(
             TextCallGeometry::new(source, vocabulary, max_rows)?,
             0,
             vec![0; max_rows].into(),
         )?;
         let checked = SourceOperator::new(
-            SourceCall::new(rows, SourceCallMode::Prefill)?,
+            TextInvocation::new(rows, InvocationPhase::Prefill)?,
             kind,
             numerical,
             matrices,
@@ -612,13 +614,13 @@ impl SourceOperatorTemplate {
         Ok(output)
     }
     fn shape_witness(&self) -> Result<SourceOperator> {
-        let rows = SourceRows::new(
+        let rows = TokenSpan::new(
             TextCallGeometry::new(self.source, self.vocabulary, self.max_rows)?,
             0,
             vec![0; self.max_rows].into(),
         )?;
         SourceOperator::new(
-            SourceCall::new(rows, SourceCallMode::Prefill)?,
+            TextInvocation::new(rows, InvocationPhase::Prefill)?,
             self.kind(),
             self.numerical_contract(),
             self.matrices().to_vec(),
@@ -628,13 +630,13 @@ impl SourceOperatorTemplate {
 
     /// Bind runtime row geometry to this immutable source operator template.
     /// This grants mathematical geometry only, never execution or publication authority.
-    pub fn bind_runtime_call(&self, call: &SourceCall) -> Result<SourceOperator> {
-        if call.source() != self.source
-            || call.rows().vocabulary() != self.vocabulary
-            || call.rows().len() > self.max_rows
+    pub fn bind_runtime_invocation(&self, invocation: &TextInvocation) -> Result<SourceOperator> {
+        if invocation.source() != self.source
+            || invocation.tokens().vocabulary() != self.vocabulary
+            || invocation.tokens().len() > self.max_rows
         {
             return Err(Error::State(
-                "source template actual call/source/rows differ".into(),
+                "source template invocation/token geometry differs".into(),
             ));
         }
         let kind = match (self.row_selection, self.kind()) {
@@ -643,7 +645,8 @@ impl SourceOperatorTemplate {
                 SourceOperatorKind::Projection { selected_row: None },
             ) => SourceOperatorKind::Projection {
                 selected_row: Some(
-                    call.rows()
+                    invocation
+                        .tokens()
                         .len()
                         .checked_sub(1)
                         .ok_or_else(|| Error::State("source last-active row absent".into()))?,
@@ -672,7 +675,7 @@ impl SourceOperatorTemplate {
                     mut packed_value,
                 },
             ) => {
-                packed_value.rows = call.rows().len();
+                packed_value.rows = invocation.tokens().len();
                 SourceOperatorKind::KvAppend {
                     domain,
                     key_width,
@@ -682,7 +685,7 @@ impl SourceOperatorTemplate {
             (SourceRowSelection::AllActive, kind) => kind,
         };
         SourceOperator::new(
-            call.clone(),
+            invocation.clone(),
             kind,
             self.numerical_contract(),
             self.matrices().to_vec(),
@@ -693,14 +696,14 @@ impl SourceOperatorTemplate {
 
 impl SourceOperator {
     pub fn new(
-        call: SourceCall,
+        invocation: TextInvocation,
         kind: SourceOperatorKind,
         numerical: NumericalContract,
         matrices: Vec<SourceTensor>,
         parameters: Vec<SourceParameter>,
     ) -> Result<Self> {
         let value = Self {
-            call,
+            invocation,
             semantics: Arc::new(SourceOperatorSemantics {
                 kind,
                 numerical,
@@ -711,8 +714,8 @@ impl SourceOperator {
         value.validate()?;
         Ok(value)
     }
-    pub fn call(&self) -> &SourceCall {
-        &self.call
+    pub fn invocation(&self) -> &TextInvocation {
+        &self.invocation
     }
     pub fn kind(&self) -> SourceOperatorKind {
         self.semantics.kind
@@ -815,14 +818,14 @@ impl SourceOperator {
             ));
         }
         for matrix in self.matrices() {
-            if matrix.source != self.call.source() {
+            if matrix.source != self.invocation.source() {
                 return Err(Error::State("source operator matrix owner differs".into()));
             }
             typed::validate_bf16_matrix(matrix)?;
             matrix.packed_bytes()?;
         }
         for parameter in self.parameters() {
-            if parameter.source != self.call.source() || parameter.name.is_empty() {
+            if parameter.source != self.invocation.source() || parameter.name.is_empty() {
                 return Err(Error::State(
                     "source operator parameter owner/name differs".into(),
                 ));
@@ -837,14 +840,14 @@ impl SourceOperator {
                     .matrices()
                     .first()
                     .ok_or_else(|| Error::Malformed("source embedding absent".into()))?;
-                if matrix.rows != self.call.rows.vocabulary() {
+                if matrix.rows != self.invocation.tokens.vocabulary() {
                     return Err(Error::State("source embedding actual vocabulary".into()));
                 }
                 (1, 0)
             }
             Projection { selected_row } => {
                 self.projection_extent()?;
-                if selected_row.is_some_and(|row| row >= self.call.rows.len()) {
+                if selected_row.is_some_and(|row| row >= self.invocation.tokens.len()) {
                     return Err(Error::Malformed(
                         "source projection selected actual row".into(),
                     ));
@@ -866,8 +869,8 @@ impl SourceOperator {
                 (0, 1)
             }
             CausalConvSplit { geometry, .. } => {
-                Self::product(geometry.z_channels, self.call.rows.len())?;
-                Self::product(geometry.coefficient_channels, self.call.rows.len())?;
+                Self::product(geometry.z_channels, self.invocation.tokens.len())?;
+                Self::product(geometry.coefficient_channels, self.invocation.tokens.len())?;
                 self.parameter(
                     0,
                     &[StoredTensorEncoding::Scalar(
@@ -944,13 +947,15 @@ impl SourceOperator {
                 packed_value,
                 ..
             } => {
-                if packed_value.rows != self.call.rows.len() || packed_value.width != key_width {
+                if packed_value.rows != self.invocation.tokens.len()
+                    || packed_value.width != key_width
+                {
                     return Err(Error::Malformed(
                         "source KV original packed value rows/width".into(),
                     ));
                 }
                 packed_value.validate(Self::product(
-                    self.call.rows.len(),
+                    self.invocation.tokens.len(),
                     packed_value.row_stride,
                 )?)?;
                 (0, 0)
@@ -965,7 +970,7 @@ impl SourceOperator {
                 (0, 0)
             }
             Sigmoid { width } | Multiply { width } | SiluAndMul { width } => {
-                Self::product(self.call.rows.len(), width)?;
+                Self::product(self.invocation.tokens.len(), width)?;
                 (0, 0)
             }
             StateCarry { .. } => (0, 0),
@@ -981,7 +986,7 @@ impl SourceOperator {
     }
     pub fn input_elements(&self) -> Result<Vec<usize>> {
         use SourceOperatorKind::*;
-        let n = self.call.rows.len();
+        let n = self.invocation.tokens.len();
         let p = Self::product;
         let values = match self.kind() {
             EmbeddingRows | StateCarry { .. } | RetainedRows { .. } => vec![],
@@ -1027,7 +1032,7 @@ impl SourceOperator {
     }
     pub fn output_elements(&self) -> Result<Vec<usize>> {
         use SourceOperatorKind::*;
-        let n = self.call.rows.len();
+        let n = self.invocation.tokens.len();
         let p = Self::product;
         let values = match self.kind() {
             RetainedRows { width, .. } => vec![p(n, width)?],
@@ -1063,14 +1068,14 @@ impl SourceOperator {
 /// Immutable producer minted by the single builder, independent of family roles.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SourceValueProvenance {
-    call: SourceCall,
+    invocation: TextInvocation,
     node_index: usize,
     output_index: usize,
     inputs: Arc<[ValueId]>,
 }
 impl SourceValueProvenance {
-    pub fn call(&self) -> &SourceCall {
-        &self.call
+    pub fn invocation(&self) -> &TextInvocation {
+        &self.invocation
     }
     pub fn node_index(&self) -> usize {
         self.node_index
@@ -1130,15 +1135,18 @@ impl PlanBuilder {
         record_template(self, name, descriptor, inputs)
     }
     /// Complete source arithmetic without a frontier/logits publication capability.
-    pub fn new_source_program(call: SourceCall, required: Vec<StateSlot>) -> Result<Self> {
+    pub fn new_source_program(
+        invocation: TextInvocation,
+        required: Vec<StateSlot>,
+    ) -> Result<Self> {
         Self::new_source_program_with_contract(
-            call,
+            invocation,
             required,
             NumericalContract::CudaSm86Bf16ReferenceV1,
         )
     }
     pub fn new_source_program_with_contract(
-        call: SourceCall,
+        invocation: TextInvocation,
         required: Vec<StateSlot>,
         numerical: NumericalContract,
     ) -> Result<Self> {
@@ -1148,8 +1156,8 @@ impl PlanBuilder {
             ));
         }
         let mut builder = Self::new_inner(
-            call.source(),
-            call.rows.capacity(),
+            invocation.source(),
+            invocation.tokens().capacity(),
             required,
             false,
             numerical.program_profile(),
@@ -1158,7 +1166,7 @@ impl PlanBuilder {
         if numerical == NumericalContract::TorchCpuAvx2Bf16MixedV1 {
             builder.standalone_exp = Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1);
         }
-        builder.source_call = Some(call);
+        builder.text_invocation = Some(invocation);
         Ok(builder)
     }
     pub fn record_source_operator(
@@ -1169,8 +1177,8 @@ impl PlanBuilder {
     ) -> Result<Vec<PlanValue>> {
         record_named(self, name, descriptor, inputs)
     }
-    pub fn source_call(&self) -> Option<&SourceCall> {
-        self.source_call.as_ref()
+    pub fn text_invocation(&self) -> Option<&TextInvocation> {
+        self.text_invocation.as_ref()
     }
     pub fn source(&self) -> SourceIdentity {
         self.source
@@ -1229,7 +1237,7 @@ impl PlanBuilder {
     }
     pub fn finish_source_template(self, logits: PlanValue) -> Result<ForwardPlan> {
         if self.source_template.is_none()
-            || self.source_call.is_some()
+            || self.text_invocation.is_some()
             || self.advanced.is_some()
             || self.operator_slice
             || self.required.len() != self.domains.len()
@@ -1242,30 +1250,31 @@ impl PlanBuilder {
             || self.precisions.get(logits.id.0 as usize) != Some(&logits.precision)
         {
             return Err(Error::State(
-                "incomplete call-free source arithmetic proposal".into(),
+                "incomplete invocation-free source arithmetic proposal".into(),
             ));
         }
-        let state_node_count =
-            self.nodes.len().checked_sub(1).ok_or_else(|| {
-                Error::State("call-free source plan final output node absent".into())
-            })?;
+        let state_node_count = self.nodes.len().checked_sub(1).ok_or_else(|| {
+            Error::State("invocation-free source plan final output node absent".into())
+        })?;
         let Some(last) = self.nodes.last() else {
             unreachable!("checked nonempty plan")
         };
         let PlanOperation::SourceOperatorTemplate { descriptor, .. } = &last.operation else {
-            return Err(Error::State("call-free final output operation".into()));
+            return Err(Error::State(
+                "invocation-free final output operation".into(),
+            ));
         };
         if last.outputs.as_slice() != [logits.id]
             || last.state.is_some()
             || descriptor.row_selection() != SourceRowSelection::LastActive
         {
             return Err(Error::State(
-                "call-free plan requires one final last-active output".into(),
+                "invocation-free plan requires one final last-active output".into(),
             ));
         }
         Ok(ForwardPlan {
             binding_metadata: None,
-            source_call: None,
+            text_invocation: None,
             source_provenance: self.source_provenance,
             nodes: self.nodes,
             semantics: Arc::new(ForwardPlanSemantics {
@@ -1289,7 +1298,7 @@ impl PlanBuilder {
         })
     }
     pub fn finish_source_program(self) -> Result<ForwardPlan> {
-        if self.source_call.is_none()
+        if self.text_invocation.is_none()
             || self.advanced.is_some()
             || self.operator_slice
             || self.required.len() != self.domains.len()
@@ -1305,7 +1314,7 @@ impl PlanBuilder {
         let state_node_count = self.nodes.len();
         Ok(ForwardPlan {
             binding_metadata: None,
-            source_call: self.source_call,
+            text_invocation: self.text_invocation,
             source_provenance: self.source_provenance,
             nodes: self.nodes,
             semantics: Arc::new(ForwardPlanSemantics {
@@ -1333,34 +1342,31 @@ impl ForwardPlan {
     pub fn source_plan_geometry(&self) -> Option<SourcePlanGeometry> {
         self.source_template
     }
-    pub fn bind_source_invocation(
-        self: &Arc<Self>,
-        invocation: SourceInvocation,
-    ) -> Result<BoundSourceInvocation> {
+    pub fn bind_invocation(self: &Arc<Self>, input: InvocationInput) -> Result<BoundInvocation> {
         let geometry = self
             .source_template
-            .ok_or_else(|| Error::State("not a call-free source plan".into()))?;
-        if self.source_call.is_some()
+            .ok_or_else(|| Error::State("not an invocation-free source plan".into()))?;
+        if self.text_invocation.is_some()
             || self.is_operator_slice()
             || self.frontier_delta() != 0
             || self.logits().is_none()
-            || invocation.source() != geometry.source()
-            || invocation.geometry().vocabulary() != geometry.vocabulary()
-            || invocation.geometry().capacity() != geometry.context_capacity()
-            || invocation.rows() > geometry.max_rows()
-            || invocation.frontier() > geometry.context_capacity()
+            || input.source() != geometry.source()
+            || input.geometry().vocabulary() != geometry.vocabulary()
+            || input.geometry().capacity() != geometry.context_capacity()
+            || input.token_count() > geometry.max_rows()
+            || input.frontier() > geometry.context_capacity()
         {
             return Err(Error::State(
                 "source invocation differs from static plan bounds".into(),
             ));
         }
-        Ok(BoundSourceInvocation {
+        Ok(BoundInvocation {
             plan: self.clone(),
-            invocation,
+            input,
         })
     }
-    pub fn source_call(&self) -> Option<&SourceCall> {
-        self.source_call.as_ref()
+    pub fn text_invocation(&self) -> Option<&TextInvocation> {
+        self.text_invocation.as_ref()
     }
     pub fn source_value_provenance(&self, id: ValueId) -> Result<Option<&SourceValueProvenance>> {
         if self.values.get(id.0 as usize).is_none() {
@@ -1372,14 +1378,14 @@ impl ForwardPlan {
             .ok_or_else(|| Error::State("source program producer coverage".into()))
     }
     /// Same mathematical layout only. The model owner authenticates its finite
-    /// workload/source and actual per-row root before this metadata operation.
-    pub fn rebind_source_call(&self, call: SourceCall) -> Result<Self> {
+    /// workload/source and actual per-token root before this metadata operation.
+    pub fn rebind_text_invocation(&self, invocation: TextInvocation) -> Result<Self> {
         let prior = self
-            .source_call
+            .text_invocation
             .as_ref()
             .ok_or_else(|| Error::State("not source arithmetic record".into()))?;
-        if !prior.same_layout(&call) {
-            return Err(Error::State("source call layout differs".into()));
+        if !prior.same_layout(&invocation) {
+            return Err(Error::State("text invocation layout differs".into()));
         }
         let mut bound = self.clone();
         bound.binding_metadata = None;
@@ -1389,21 +1395,21 @@ impl ForwardPlan {
                     "source rebind contains foreign operation".into(),
                 ));
             };
-            if descriptor.call != *prior {
+            if descriptor.invocation != *prior {
                 return Err(Error::State("source rebind node issuer differs".into()));
             }
-            descriptor.call = call.clone();
+            descriptor.invocation = invocation.clone();
         }
         for tag in &mut bound.source_provenance {
             let tag = tag
                 .as_mut()
                 .ok_or_else(|| Error::State("source rebind producer absent".into()))?;
-            if tag.call != *prior {
+            if tag.invocation != *prior {
                 return Err(Error::State("source rebind producer issuer differs".into()));
             }
-            tag.call = call.clone();
+            tag.invocation = invocation.clone();
         }
-        bound.source_call = Some(call);
+        bound.text_invocation = Some(invocation);
         Ok(bound)
     }
     pub fn shares_semantics(&self, other: &Self) -> bool {
@@ -1488,7 +1494,7 @@ pub(super) fn template_precision(
     let geometry = builder
         .source_template
         .ok_or_else(|| Error::State("source template builder geometry absent".into()))?;
-    if builder.source_call.is_some()
+    if builder.text_invocation.is_some()
         || !matches_numerical(builder, descriptor.numerical_contract())
         || builder.source != descriptor.source()
         || descriptor.source() != geometry.source()
@@ -1522,16 +1528,16 @@ pub(super) fn precision(
         return quantized::precision(builder, descriptor, inputs);
     }
     if !matches_numerical(builder, descriptor.numerical_contract())
-        || !(builder.operator_slice || builder.source_call.is_some())
-        || builder.source != descriptor.call.source()
+        || !(builder.operator_slice || builder.text_invocation.is_some())
+        || builder.source != descriptor.invocation.source()
         || builder
-            .source_call
+            .text_invocation
             .as_ref()
-            .is_some_and(|call| *call != descriptor.call)
+            .is_some_and(|invocation| *invocation != descriptor.invocation)
         || inputs.len() != descriptor.input_elements()?.len()
     {
         return Err(Error::Unsupported(
-            "source operator numerical/call/source/arity contract".into(),
+            "source operator numerical/invocation/source/arity contract".into(),
         ));
     }
     for (input, elements) in inputs.iter().zip(descriptor.input_elements()?) {
@@ -1541,10 +1547,10 @@ pub(super) fn precision(
             || input.elements != elements
             || builder
                 .source_value_provenance(input)?
-                .is_none_or(|tag| tag.call != descriptor.call)
+                .is_none_or(|tag| tag.invocation != descriptor.invocation)
         {
             return Err(Error::State(
-                "source operator same-call dense BF16 producer".into(),
+                "source operator same-invocation dense BF16 producer".into(),
             ));
         }
     }
@@ -1563,7 +1569,7 @@ pub(super) fn provenance(
         return Err(Error::State("source producer output index".into()));
     }
     Ok(Some(SourceValueProvenance {
-        call: descriptor.call.clone(),
+        invocation: descriptor.invocation.clone(),
         node_index: builder.nodes.len(),
         output_index,
         inputs: inputs.iter().map(|value| value.id).collect(),

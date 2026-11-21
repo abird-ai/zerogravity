@@ -221,7 +221,9 @@ pub(crate) struct PendingBf16Text {
 }
 fn cancelled(flag: Option<&std::sync::atomic::AtomicBool>) -> Result<()> {
     if flag.is_some_and(|f| f.load(Ordering::Acquire)) {
-        return Err(Error::State("BF16 text BF16 source call cancelled".into()));
+        return Err(Error::State(
+            "BF16 text BF16 text invocation cancelled".into(),
+        ));
     }
     Ok(())
 }
@@ -604,7 +606,7 @@ impl Bf16TextBody {
                 && self.next.load(Ordering::Acquire) != self.recorded.plan().nodes().len()
             {
                 return Err(Error::State(
-                    "BF16 text previous source call incomplete".into(),
+                    "BF16 text previous text invocation incomplete".into(),
                 ));
             }
             *current = Some(ActualCall {

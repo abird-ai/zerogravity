@@ -7,25 +7,25 @@ use zerogravity_core::accelerator::program::{
 use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_model_qwen35::plan::QwenPlanBuilder;
 use zerogravity_model_qwen35::plan::{
-    GdnProjection, QwenEmbedding, QwenGdnCall, QwenGdnProjection, QwenInputRows, QwenPrefixLayer,
-    QwenSiluAndMul, ReferencePhase,
+    GdnProjection, QwenEmbedding, QwenGdnInvocation, QwenGdnProjection, QwenInputRows,
+    QwenPrefixLayer, QwenSiluAndMul, ReferencePhase,
 };
 
-fn invocation(layer: usize, phase: ReferencePhase) -> QwenGdnCall {
+fn invocation(layer: usize, phase: ReferencePhase) -> QwenGdnInvocation {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let base = match phase {
         ReferencePhase::InitialOne | ReferencePhase::Initial64 => 0,
         ReferencePhase::CachedOne => 66,
         ReferencePhase::ContinuedTwo => 64,
     };
-    QwenGdnCall::new(
+    QwenGdnInvocation::new(
         QwenPrefixLayer::new(source, layer).unwrap(),
         phase,
         QwenInputRows::new(source, base, 512, &vec![11; phase.rows()]).unwrap(),
     )
     .unwrap()
 }
-fn descriptor(call: &QwenGdnCall, kind: GdnProjection) -> QwenGdnProjection {
+fn descriptor(call: &QwenGdnInvocation, kind: GdnProjection) -> QwenGdnProjection {
     use GdnProjection::{Ba, Down, GateUp, GdnOut, Qkvz};
     let parts: &[(&str, usize)] = match kind {
         Qkvz => &[
@@ -59,7 +59,7 @@ fn descriptor(call: &QwenGdnCall, kind: GdnProjection) -> QwenGdnProjection {
 
 fn neutral(d: &QwenGdnProjection) -> SourceOperator {
     SourceOperator::new(
-        d.invocation().source_call().unwrap(),
+        d.invocation().text_invocation().unwrap(),
         SourceOperatorKind::Projection { selected_row: None },
         zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1,
         d.members().to_vec(),
@@ -170,7 +170,8 @@ fn existing_manifest_physical_extents_match_every_closed_source_join() {
                 assert_eq!(input, d.input_elements() * 2);
                 assert_eq!(output, d.output_elements() * 2);
             }
-            let NativeOperation::Activation(a) = activation_operation(call.rows()).unwrap() else {
+            let NativeOperation::Activation(a) = activation_operation(call.tokens()).unwrap()
+            else {
                 panic!("ACT became projection")
             };
             let d = QwenSiluAndMul::new(call).unwrap();
@@ -216,7 +217,8 @@ fn source_layer_weights_stay_distinct_while_actual_kernel_records_share_one_set(
                     _ => panic!("projection became ACT"),
                 }
             }
-            let NativeOperation::Activation(a) = activation_operation(call.rows()).unwrap() else {
+            let NativeOperation::Activation(a) = activation_operation(call.tokens()).unwrap()
+            else {
                 unreachable!()
             };
             activations.insert(a);
@@ -294,7 +296,7 @@ fn actual_workspace_and_ordered_clear_requirements_survive_operation_mapping() {
 #[test]
 fn equal_teacher_bytes_from_another_issuer_cannot_bind_existing_request() {
     let a = invocation(0, ReferencePhase::Initial64);
-    let clone_other_layer = QwenGdnCall::new(
+    let clone_other_layer = QwenGdnInvocation::new(
         QwenPrefixLayer::new(a.layer().source(), 2).unwrap(),
         a.reference_phase().unwrap(),
         a.teachers().clone(),
@@ -302,33 +304,39 @@ fn equal_teacher_bytes_from_another_issuer_cannot_bind_existing_request() {
     .unwrap();
     assert!(
         same_request(
-            &clone_other_layer.source_call().unwrap(),
-            &a.source_call().unwrap()
+            &clone_other_layer.text_invocation().unwrap(),
+            &a.text_invocation().unwrap()
         )
         .is_ok()
     );
-    let reminted = QwenGdnCall::new(
+    let reminted = QwenGdnInvocation::new(
         a.layer(),
         a.reference_phase().unwrap(),
         QwenInputRows::new(a.layer().source(), 0, 512, a.teachers().ids()).unwrap(),
     )
     .unwrap();
-    assert!(same_request(&reminted.source_call().unwrap(), &a.source_call().unwrap()).is_err());
+    assert!(
+        same_request(
+            &reminted.text_invocation().unwrap(),
+            &a.text_invocation().unwrap()
+        )
+        .is_err()
+    );
     assert!(
         same_request(
             &invocation(0, ReferencePhase::Initial64)
-                .source_call()
+                .text_invocation()
                 .unwrap(),
-            &a.source_call().unwrap()
+            &a.text_invocation().unwrap()
         )
         .is_err()
     );
     assert!(
         same_request(
             &invocation(0, ReferencePhase::ContinuedTwo)
-                .source_call()
+                .text_invocation()
                 .unwrap(),
-            &a.source_call().unwrap()
+            &a.text_invocation().unwrap()
         )
         .is_err()
     );
@@ -367,17 +375,25 @@ fn immutable_plan_value_join_refuses_generic_tag_loss_wrong_id_and_precision() {
     let input_id = plan.nodes()[0].outputs[0];
     let output_id = plan.nodes()[1].outputs[0];
     let packed_id = plan.nodes()[2].outputs[0];
-    assert!(require_value(plan, input_id, &call.source_call().unwrap(), 1024).is_ok());
-    assert!(require_value(plan, output_id, &call.source_call().unwrap(), 7168).is_ok());
-    assert!(require_value(plan, packed_id, &call.source_call().unwrap(), 7168).is_err());
-    assert!(require_value(plan, ValueId(u32::MAX), &call.source_call().unwrap(), 1024).is_err());
-    assert!(require_value(plan, input_id, &call.source_call().unwrap(), 7168).is_err());
+    assert!(require_value(plan, input_id, &call.text_invocation().unwrap(), 1024).is_ok());
+    assert!(require_value(plan, output_id, &call.text_invocation().unwrap(), 7168).is_ok());
+    assert!(require_value(plan, packed_id, &call.text_invocation().unwrap(), 7168).is_err());
+    assert!(
+        require_value(
+            plan,
+            ValueId(u32::MAX),
+            &call.text_invocation().unwrap(),
+            1024
+        )
+        .is_err()
+    );
+    assert!(require_value(plan, input_id, &call.text_invocation().unwrap(), 7168).is_err());
     assert!(
         require_value(
             plan,
             input_id,
             &invocation(0, ReferencePhase::InitialOne)
-                .source_call()
+                .text_invocation()
                 .unwrap(),
             1024
         )
@@ -403,7 +419,7 @@ fn immutable_plan_value_join_refuses_generic_tag_loss_wrong_id_and_precision() {
         require_value(
             legacy.plan(),
             legacy.output(),
-            &call.source_call().unwrap(),
+            &call.text_invocation().unwrap(),
             1024
         )
         .is_err()
@@ -416,7 +432,7 @@ fn native_operation_cannot_silently_consume_multi_input_stateful_or_aliased_node
     let mut node = PlanNode::new(
         "ACT".into(),
         PlanOperation::SourceOperator {
-            descriptor: Box::new(SourceOperator::new(call.source_call().unwrap(),
+            descriptor: Box::new(SourceOperator::new(call.text_invocation().unwrap(),
                 SourceOperatorKind::SiluAndMul { width: 3584 },
                 zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1,
                 vec![], vec![]).unwrap()), state: None,
@@ -558,7 +574,7 @@ fn native_selection_keeps_explicit_segment_order_rows_and_selected_row_limits() 
     let mut reversed = valid.matrices().to_vec();
     reversed.reverse();
     let wrong_order = SourceOperator::new(
-        valid.call().clone(),
+        valid.invocation().clone(),
         valid.kind(),
         valid.numerical_contract(),
         reversed,
@@ -567,7 +583,7 @@ fn native_selection_keeps_explicit_segment_order_rows_and_selected_row_limits() 
     .unwrap();
     assert!(projection_operation(&wrong_order).is_err());
     let selected = SourceOperator::new(
-        valid.call().clone(),
+        valid.invocation().clone(),
         SourceOperatorKind::Projection {
             selected_row: Some(0),
         },
@@ -577,7 +593,7 @@ fn native_selection_keeps_explicit_segment_order_rows_and_selected_row_limits() 
     )
     .unwrap();
     assert!(projection_operation(&selected).is_err());
-    let rows = zerogravity_core::accelerator::program::SourceRows::new(
+    let rows = zerogravity_core::accelerator::program::TokenSpan::new(
         zerogravity_core::accelerator::program::TextCallGeometry::new(
             call.layer().source(),
             248320,
@@ -589,9 +605,9 @@ fn native_selection_keeps_explicit_segment_order_rows_and_selected_row_limits() 
     )
     .unwrap();
     let three = SourceOperator::new(
-        SourceCall::new(
+        TextInvocation::new(
             rows,
-            zerogravity_core::accelerator::program::SourceCallMode::Prefill,
+            zerogravity_core::accelerator::program::InvocationPhase::Prefill,
         )
         .unwrap(),
         valid.kind(),
@@ -610,7 +626,7 @@ fn native_selection_keeps_explicit_segment_order_rows_and_selected_row_limits() 
         })
         .collect();
     let wrong_width = SourceOperator::new(
-        valid.call().clone(),
+        valid.invocation().clone(),
         valid.kind(),
         valid.numerical_contract(),
         changed,

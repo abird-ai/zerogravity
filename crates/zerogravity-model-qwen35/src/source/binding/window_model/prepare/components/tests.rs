@@ -4,13 +4,13 @@ mod fixed_prompt_tests {
     // Metadata rejection tests; actual source/lease/physical gates remain separate.
     use super::ComponentImplementation as A;
     use super::*;
-    use crate::plan::{QwenGdnCall, QwenInputRows, QwenPrefixLayer};
+    use crate::plan::{QwenGdnInvocation, QwenInputRows, QwenPrefixLayer};
     use zerogravity_core::accelerator::{SourceIdentity, program::TeacherSpan};
-    fn request(ids: &[u32], base: usize, capacity: usize, layer: usize) -> QwenGdnCall {
+    fn request(ids: &[u32], base: usize, capacity: usize, layer: usize) -> QwenGdnInvocation {
         let source = SourceIdentity::for_new_allocation().unwrap();
-        QwenGdnCall::from_span(
+        QwenGdnInvocation::from_span(
             QwenPrefixLayer::new(source, layer).unwrap(),
-            SourceCallMode::Prefill,
+            InvocationPhase::Prefill,
             QwenInputRows::from_span(
                 TeacherSpan::new(source, base, capacity, 248320, ids).unwrap(),
             )
@@ -56,9 +56,9 @@ mod fixed_prompt_tests {
         assert_eq!(new.columns(), 1024);
         assert!(new.require_request(&old).is_err());
         let a = request(&FIXED_PROMPT_IDS, 0, 512, 0);
-        let b = QwenGdnCall::from_span(
+        let b = QwenGdnInvocation::from_span(
             a.layer(),
-            a.mode(),
+            a.phase(),
             QwenInputRows::from_span(
                 TeacherSpan::new(a.layer().source(), 0, 512, 248320, &FIXED_PROMPT_IDS).unwrap(),
             )
@@ -72,12 +72,12 @@ mod fixed_prompt_tests {
 
     #[test]
     fn text_issuer_cannot_reuse_initial47_component_kind() {
-        use crate::plan::{PromptCall, PromptSpan, PromptWorkload};
+        use crate::plan::{PromptInvocation, PromptSpan, PromptWorkload};
         let source = SourceIdentity::for_new_allocation().unwrap();
         let kind = ModelComponentKind::FixedPrompt(A::OwnedFixedPromptSolve4);
         kind.require_request(&request(&FIXED_PROMPT_IDS, 0, 512, 0))
             .unwrap();
-        let short = PromptCall::new(
+        let short = PromptInvocation::new(
             QwenModelVariant::Qwen800M,
             PromptSpan::prefill(
                 source,
@@ -94,7 +94,7 @@ mod fixed_prompt_tests {
             Err(Error::Unsupported(_))
         ));
         for base in 47..=53 {
-            let short = PromptCall::new(
+            let short = PromptInvocation::new(
                 QwenModelVariant::Qwen800M,
                 PromptSpan::cached(
                     source,
@@ -117,7 +117,7 @@ mod explicit2b_post_attention_tests {
     use super::ComponentImplementation as FixedPromptGdnArithmetic;
     use super::ComponentImplementation as Qwen2BGdnArithmetic;
     use super::*;
-    use crate::plan::{QwenGdnCall, QwenInputRows, QwenPrefixLayer};
+    use crate::plan::{QwenGdnInvocation, QwenInputRows, QwenPrefixLayer};
     use zerogravity_core::accelerator::{SourceIdentity, program::TeacherSpan};
 
     fn request(
@@ -125,8 +125,8 @@ mod explicit2b_post_attention_tests {
         base: usize,
         capacity: usize,
         layer: usize,
-        mode: SourceCallMode,
-    ) -> QwenGdnCall {
+        mode: InvocationPhase,
+    ) -> QwenGdnInvocation {
         let source = SourceIdentity::for_new_allocation().unwrap();
         let ids = vec![11; rows];
         let teachers = if rows == 1 {
@@ -137,7 +137,7 @@ mod explicit2b_post_attention_tests {
             )
             .unwrap()
         };
-        QwenGdnCall::from_span(QwenPrefixLayer::new(source, layer).unwrap(), mode, teachers)
+        QwenGdnInvocation::from_span(QwenPrefixLayer::new(source, layer).unwrap(), mode, teachers)
             .unwrap()
     }
     #[test]
@@ -189,25 +189,25 @@ mod explicit2b_post_attention_tests {
     fn exact_request_still_requires_initial_layer0_base0_capacity512() {
         for rows in [1, 64] {
             ModelComponentKind::Qwen2B
-                .require_request(&request(rows, 0, 512, 0, SourceCallMode::Prefill))
+                .require_request(&request(rows, 0, 512, 0, InvocationPhase::Prefill))
                 .unwrap();
         }
         for wrong in [
-            request(47, 0, 512, 0, SourceCallMode::Prefill),
-            request(1, 1, 512, 0, SourceCallMode::Prefill),
-            request(64, 0, 1024, 0, SourceCallMode::Prefill),
-            request(64, 0, 512, 1, SourceCallMode::Prefill),
-            request(1, 64, 512, 0, SourceCallMode::Decode),
+            request(47, 0, 512, 0, InvocationPhase::Prefill),
+            request(1, 1, 512, 0, InvocationPhase::Prefill),
+            request(64, 0, 1024, 0, InvocationPhase::Prefill),
+            request(64, 0, 512, 1, InvocationPhase::Prefill),
+            request(1, 64, 512, 0, InvocationPhase::Decode),
         ] {
             assert!(ModelComponentKind::Qwen2B.require_request(&wrong).is_err());
         }
     }
     #[test]
     fn same_ids_do_not_replace_the_original_teacher_issuer() {
-        let original = request(64, 0, 512, 0, SourceCallMode::Prefill);
-        let replacement = QwenGdnCall::from_span(
+        let original = request(64, 0, 512, 0, InvocationPhase::Prefill);
+        let replacement = QwenGdnInvocation::from_span(
             original.layer(),
-            original.mode(),
+            original.phase(),
             QwenInputRows::from_span(
                 TeacherSpan::new(
                     original.layer().source(),
@@ -341,7 +341,7 @@ mod weight_source_policy {
     use super::*;
     use crate::plan::QwenInputRows;
     use crate::plan::QwenPrefixLayer;
-    use crate::plan::{QwenGdnCall, QwenModelVariant};
+    use crate::plan::{QwenGdnInvocation, QwenModelVariant};
     use zerogravity_core::accelerator::SourceIdentity;
     use zerogravity_core::accelerator::program::TeacherSpan;
     fn request(
@@ -349,8 +349,8 @@ mod weight_source_policy {
         base: usize,
         capacity: usize,
         layer: usize,
-        mode: SourceCallMode,
-    ) -> QwenGdnCall {
+        mode: InvocationPhase,
+    ) -> QwenGdnInvocation {
         let source = SourceIdentity::for_new_allocation().unwrap();
         let ids = vec![11; rows];
         let teachers = if rows == 1 {
@@ -361,7 +361,7 @@ mod weight_source_policy {
             )
             .unwrap()
         };
-        QwenGdnCall::from_span(QwenPrefixLayer::new(source, layer).unwrap(), mode, teachers)
+        QwenGdnInvocation::from_span(QwenPrefixLayer::new(source, layer).unwrap(), mode, teachers)
             .unwrap()
     }
     #[test]
@@ -370,7 +370,7 @@ mod weight_source_policy {
             (1, ReferencePhase::InitialOne),
             (64, ReferencePhase::Initial64),
         ] {
-            let req = request(rows, 0, 512, 0, SourceCallMode::Prefill);
+            let req = request(rows, 0, 512, 0, InvocationPhase::Prefill);
             assert_eq!(
                 require_weight_request(QwenModelVariant::Qwen2B, &req).unwrap(),
                 phase
@@ -378,21 +378,21 @@ mod weight_source_policy {
             assert!(require_weight_request(QwenModelVariant::Qwen800M, &req).is_err());
         }
         for req in [
-            request(47, 0, 512, 0, SourceCallMode::Prefill),
-            request(64, 0, 512, 1, SourceCallMode::Prefill),
-            request(1, 1, 512, 0, SourceCallMode::Prefill),
-            request(64, 0, 1024, 0, SourceCallMode::Prefill),
-            request(1, 64, 512, 0, SourceCallMode::Decode),
+            request(47, 0, 512, 0, InvocationPhase::Prefill),
+            request(64, 0, 512, 1, InvocationPhase::Prefill),
+            request(1, 1, 512, 0, InvocationPhase::Prefill),
+            request(64, 0, 1024, 0, InvocationPhase::Prefill),
+            request(1, 64, 512, 0, InvocationPhase::Decode),
         ] {
             assert!(require_weight_request(QwenModelVariant::Qwen2B, &req).is_err());
         }
     }
     #[test]
     fn matching_teacher_words_do_not_replace_actual_invocation_issuer() {
-        let req = request(64, 0, 512, 0, SourceCallMode::Prefill);
-        let replacement = QwenGdnCall::from_span(
+        let req = request(64, 0, 512, 0, InvocationPhase::Prefill);
+        let replacement = QwenGdnInvocation::from_span(
             req.layer(),
-            req.mode(),
+            req.phase(),
             QwenInputRows::from_span(
                 TeacherSpan::new(req.layer().source(), 0, 512, 248320, req.teachers().ids())
                     .unwrap(),
@@ -416,17 +416,17 @@ mod projection_source_policy {
         }
         Ok(())
     }
-    use crate::plan::QwenGdnCall;
+    use crate::plan::QwenGdnInvocation;
     use crate::plan::QwenInputRows;
+    use crate::plan::QwenModelInvocation;
     use crate::plan::QwenPrefixLayer;
-    use crate::plan::QwenSourceCall;
     use crate::plan::{QwenModelVariant, QwenOperation, QwenOperator, QwenProjection};
     use zerogravity_core::accelerator::SourceIdentity;
     use zerogravity_core::accelerator::program::MatrixAxes;
     use zerogravity_core::accelerator::program::SourceTensor;
     use zerogravity_core::accelerator::program::TeacherSpan;
     use zerogravity_core::encoding::StoredTensorEncoding;
-    fn call(ids: &[u32], base: usize) -> QwenSourceCall {
+    fn call(ids: &[u32], base: usize) -> QwenModelInvocation {
         let source = SourceIdentity::for_new_allocation().unwrap();
         let teachers = if ids.len() == 1 {
             QwenInputRows::new(source, base, 512, ids).unwrap()
@@ -434,17 +434,21 @@ mod projection_source_policy {
             QwenInputRows::from_span(TeacherSpan::new(source, base, 512, 248_320, ids).unwrap())
                 .unwrap()
         };
-        QwenSourceCall::from_span(
-            QwenGdnCall::from_span(
+        QwenModelInvocation::from_span(
+            QwenGdnInvocation::from_span(
                 QwenPrefixLayer::new(source, 0).unwrap(),
-                SourceCallMode::Prefill,
+                InvocationPhase::Prefill,
                 teachers,
             )
             .unwrap(),
         )
         .unwrap()
     }
-    fn operator(call: &QwenSourceCall, projection: QwenProjection, layer: usize) -> QwenOperator {
+    fn operator(
+        call: &QwenModelInvocation,
+        projection: QwenProjection,
+        layer: usize,
+    ) -> QwenOperator {
         let members = match projection {
             QwenProjection::Qkvz => [("in_proj_qkv", 6144), ("in_proj_z", 2048)],
             QwenProjection::Ba => [("in_proj_b", 16), ("in_proj_a", 16)],
@@ -504,10 +508,10 @@ mod projection_source_policy {
     fn fixed_prompt_equal_ids_new_teacher_issuer_cannot_reuse_prepared_weights() {
         let original = call(&PROMPT, 0);
         let source = original.source();
-        let foreign = QwenSourceCall::from_span(
-            QwenGdnCall::from_span(
+        let foreign = QwenModelInvocation::from_span(
+            QwenGdnInvocation::from_span(
                 QwenPrefixLayer::new(source, 0).unwrap(),
-                SourceCallMode::Prefill,
+                InvocationPhase::Prefill,
                 QwenInputRows::from_span(
                     TeacherSpan::new(source, 0, 512, 248_320, &PROMPT).unwrap(),
                 )
@@ -520,7 +524,7 @@ mod projection_source_policy {
             let a = operator(&original, projection, 0);
             let b = operator(&foreign, projection, 0);
             assert_eq!(a.matrices(), b.matrices());
-            assert_ne!(a.call(), b.call());
+            assert_ne!(a.model_invocation(), b.model_invocation());
             assert!(require_same_operator(&a, &a.clone()).is_ok());
             assert!(require_same_operator(&a, &b).is_err());
         }
@@ -528,11 +532,11 @@ mod projection_source_policy {
 
     #[test]
     fn text_issuer_cannot_reuse_original47_projection_roles() {
-        use crate::plan::PromptCall;
+        use crate::plan::PromptInvocation;
         use crate::plan::PromptSpan;
         use crate::plan::PromptWorkload;
         let source = SourceIdentity::for_new_allocation().unwrap();
-        let short = PromptCall::new(
+        let short = PromptInvocation::new(
             QwenModelVariant::Qwen800M,
             PromptSpan::prefill(
                 source,
@@ -549,12 +553,12 @@ mod projection_source_policy {
                 require_component_projection(&operator(&call(&PROMPT, 0), projection, 0)).is_ok()
             );
             assert!(matches!(
-                require_component_projection(&operator(short.as_source_call(), projection, 0)),
+                require_component_projection(&operator(short.model_invocation(), projection, 0)),
                 Err(Error::Unsupported(_))
             ));
         }
         for base in 47..=53 {
-            let short = PromptCall::new(
+            let short = PromptInvocation::new(
                 QwenModelVariant::Qwen800M,
                 PromptSpan::cached(
                     source,
@@ -567,7 +571,7 @@ mod projection_source_policy {
             .unwrap();
             assert!(matches!(
                 require_component_projection(&operator(
-                    short.as_source_call(),
+                    short.model_invocation(),
                     QwenProjection::Qkvz,
                     0
                 )),

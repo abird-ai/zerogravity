@@ -17,8 +17,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, atomic::AtomicBool};
 use zerogravity_artifacts::source_weights::{TensorWindow, VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::accelerator::program::{
-    ActivationPrecision, ForwardPlan, NumericalProfile, PlanNode, PlanOperation, SourceCall,
-    SourceOperator, SourceOperatorKind, SourceTensor, ValueId, ValueShape,
+    ActivationPrecision, ForwardPlan, NumericalProfile, PlanNode, PlanOperation, SourceOperator,
+    SourceOperatorKind, SourceTensor, TextInvocation, ValueId, ValueShape,
 };
 use zerogravity_core::device_events::{BufferLeaseId, BufferRole, DeviceAccess};
 use zerogravity_core::resource_arbiter::ResourceArbiter;
@@ -62,13 +62,13 @@ fn projection_images_inner(
                 require_value(
                     plan,
                     input,
-                    descriptor.call(),
+                    descriptor.invocation(),
                     descriptor.input_elements()?[0],
                 )?;
                 require_value(
                     plan,
                     output,
-                    descriptor.call(),
+                    descriptor.invocation(),
                     descriptor.output_elements()?[0],
                 )?;
                 match operation {
@@ -104,13 +104,13 @@ fn projection_images_inner(
                 require_value(
                     plan,
                     input,
-                    descriptor.call(),
+                    descriptor.invocation(),
                     descriptor.input_elements()?[0],
                 )?;
                 require_value(
                     plan,
                     output,
-                    descriptor.call(),
+                    descriptor.invocation(),
                     descriptor.output_elements()?[0],
                 )?;
                 selected += 1;
@@ -300,7 +300,7 @@ pub(super) fn projection_operation(descriptor: &SourceOperator) -> Result<Native
             "native projection requires complete dense rows".into(),
         ));
     }
-    let rows = descriptor.call().rows().len();
+    let rows = descriptor.invocation().tokens().len();
     let columns = descriptor.matrices().first().map(|m| m.columns);
     let segments = descriptor
         .matrices()
@@ -412,7 +412,7 @@ struct PreparedWeight {
 }
 impl WeightPayload {
     fn validate(&self, context: &NativePlanContext) -> Result<()> {
-        same_source_call(self.descriptor.call(), context.bindings.call())?;
+        same_text_invocation(self.descriptor.invocation(), context.bindings.invocation())?;
         if !self.source.same_issuer(context.bindings.source()) {
             return Err(Error::State("native W original model owner differs".into()));
         }
@@ -473,8 +473,8 @@ pub(crate) struct NativePlanPrograms {
 }
 
 #[cfg(test)]
-fn same_request(actual: &SourceCall, expected: &SourceCall) -> Result<()> {
-    same_source_call(actual, expected)
+fn same_request(actual: &TextInvocation, expected: &TextInvocation) -> Result<()> {
+    same_text_invocation(actual, expected)
 }
 fn node_arity(node: &PlanNode) -> Result<(ValueId, ValueId)> {
     let ([input], [output]) = (node.inputs.as_slice(), node.outputs.as_slice()) else {
@@ -503,10 +503,10 @@ fn bind_value_identity(
     originals.insert(original, value);
     Ok(())
 }
-fn same_source_call(a: &SourceCall, b: &SourceCall) -> Result<()> {
+fn same_text_invocation(a: &TextInvocation, b: &TextInvocation) -> Result<()> {
     if a != b {
         return Err(Error::State(
-            "native actual source-call issuer differs".into(),
+            "native actual text-invocation issuer differs".into(),
         ));
     }
     Ok(())
@@ -514,7 +514,7 @@ fn same_source_call(a: &SourceCall, b: &SourceCall) -> Result<()> {
 fn require_value(
     plan: &ForwardPlan,
     id: ValueId,
-    invocation: &SourceCall,
+    invocation: &TextInvocation,
     elements: usize,
 ) -> Result<()> {
     if plan.values().get(id.0 as usize) != Some(&ValueShape::Vector(elements))
@@ -525,7 +525,7 @@ fn require_value(
     let provenance = plan
         .source_value_provenance(id)?
         .ok_or_else(|| Error::State("native plan producer provenance absent".into()))?;
-    same_source_call(provenance.call(), invocation)
+    same_text_invocation(provenance.invocation(), invocation)
 }
 fn original_value(
     values: &[DeviceBuffer],
@@ -677,7 +677,7 @@ fn prepare_bindings(
     if plan.source() != context.bindings.source().source_identity()
         || plan.source() != context.service.source_identity()
         || !std::ptr::eq(plan, context.bindings.plan())
-        || plan.source_call() != Some(context.bindings.call())
+        || plan.text_invocation() != Some(context.bindings.invocation())
         || plan.numerical_profile() != NumericalProfile::CudaSm86Bf16ReferenceV1
         || values.len() != plan.values().len()
     {
@@ -712,7 +712,7 @@ fn prepare_bindings(
                 SourceOperatorKind::Projection { selected_row: None }
             ) =>
             {
-                same_source_call(descriptor.call(), context.bindings.call())?;
+                same_text_invocation(descriptor.invocation(), context.bindings.invocation())?;
                 for member in descriptor.matrices() {
                     validate_member(context.bindings.source(), member)?;
                 }
@@ -728,7 +728,7 @@ fn prepare_bindings(
                 }
                 (
                     projection_operation(descriptor)?,
-                    descriptor.call(),
+                    descriptor.invocation(),
                     descriptor.input_elements()?[0],
                     descriptor.output_elements()?[0],
                     Some(key),
@@ -742,10 +742,10 @@ fn prepare_bindings(
                 SourceOperatorKind::SiluAndMul { width: 3584 }
             ) =>
             {
-                same_source_call(descriptor.call(), context.bindings.call())?;
+                same_text_invocation(descriptor.invocation(), context.bindings.invocation())?;
                 (
-                    activation_operation(descriptor.call().rows().len())?,
-                    descriptor.call(),
+                    activation_operation(descriptor.invocation().tokens().len())?,
+                    descriptor.invocation(),
                     descriptor.input_elements()?[0],
                     descriptor.output_elements()?[0],
                     None,

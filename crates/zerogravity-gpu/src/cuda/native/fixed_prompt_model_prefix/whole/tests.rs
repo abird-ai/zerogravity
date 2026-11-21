@@ -2,28 +2,34 @@
 use super::*;
 use crate::resident_program::qwen2b_component::FIXED_PROMPT_IDS;
 use zerogravity_core::accelerator::SourceIdentity;
+use zerogravity_core::accelerator::program::InvocationPhase;
 use zerogravity_core::accelerator::program::MatrixAxes;
-use zerogravity_core::accelerator::program::SourceCallMode;
 use zerogravity_core::accelerator::program::SourceParameter;
 use zerogravity_core::accelerator::program::SourceTensor;
 use zerogravity_core::accelerator::program::StateVersion;
 use zerogravity_core::accelerator::program::TeacherSpan;
 use zerogravity_core::encoding::StoredTensorEncoding;
-use zerogravity_model_qwen35::plan::QwenGdnCall;
+use zerogravity_model_qwen35::plan::QwenGdnInvocation;
 use zerogravity_model_qwen35::plan::QwenInputRows;
 use zerogravity_model_qwen35::plan::QwenOperator;
 use zerogravity_model_qwen35::plan::QwenPrefixLayer;
-use zerogravity_model_qwen35::plan::{QwenOperation, QwenProjection, QwenSourceCall};
-fn fixture(index: usize) -> (QwenSourceCall, Vec<PlanNode>, BTreeMap<usize, QwenOperator>) {
+use zerogravity_model_qwen35::plan::{QwenModelInvocation, QwenOperation, QwenProjection};
+fn fixture(
+    index: usize,
+) -> (
+    QwenModelInvocation,
+    Vec<PlanNode>,
+    BTreeMap<usize, QwenOperator>,
+) {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let teachers = QwenInputRows::from_span(
         TeacherSpan::new(source, 0, 512, 248320, &FIXED_PROMPT_IDS).unwrap(),
     )
     .unwrap();
-    let call = QwenSourceCall::from_span(
-        QwenGdnCall::from_span(
+    let call = QwenModelInvocation::from_span(
+        QwenGdnInvocation::from_span(
             QwenPrefixLayer::new(source, 0).unwrap(),
-            SourceCallMode::Prefill,
+            InvocationPhase::Prefill,
             teachers,
         )
         .unwrap(),
@@ -152,8 +158,9 @@ fn fixture(index: usize) -> (QwenSourceCall, Vec<PlanNode>, BTreeMap<usize, Qwen
 fn every_whole_attention_site_preserves_exact_local_ssa_and_kv_read_ordinal() {
     for layer in [3, 7, 11, 15, 19, 23] {
         let (call, nodes, _metadata) = fixture(layer);
-        let site = AttentionSite::bind_nodes(&call.request().source_call().unwrap(), &nodes, layer)
-            .unwrap();
+        let site =
+            AttentionSite::bind_nodes(&call.request().text_invocation().unwrap(), &nodes, layer)
+                .unwrap();
         assert_eq!(site.layer(), layer);
         assert_eq!(site.nodes(), [0, 1, 2, 3, 4, 5, 6]);
         assert_eq!(site.values(), [1, 2, 3, 4, 5, 6, 7, 8].map(ValueId));
@@ -186,7 +193,8 @@ fn whole_attention_refuses_input_source_layer_effect_endpoint_and_repetition_edi
             }
         }
         assert!(
-            AttentionSite::bind_nodes(&call.request().source_call().unwrap(), &wrong, 3).is_err(),
+            AttentionSite::bind_nodes(&call.request().text_invocation().unwrap(), &wrong, 3)
+                .is_err(),
             "mutation{mutation}"
         );
     }

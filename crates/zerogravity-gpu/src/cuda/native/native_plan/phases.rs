@@ -1,7 +1,7 @@
 //! One existing native library/W owner across closed request phase plans.
 //! Arithmetic/launch/retirement remain the parent's unchanged implementations.
 use super::*;
-use zerogravity_core::accelerator::program::SourceCallMode;
+use zerogravity_core::accelerator::program::InvocationPhase;
 
 pub(crate) struct NativePlanPhase<'a> {
     pub context: NativePlanContext,
@@ -9,16 +9,16 @@ pub(crate) struct NativePlanPhase<'a> {
     pub values: &'a [DeviceBuffer],
 }
 
-fn require_phase_list(invocations: &[&SourceCall]) -> Result<()> {
-    let expected: &[(SourceCallMode, usize, usize)] = match invocations {
+fn require_phase_list(invocations: &[&TextInvocation]) -> Result<()> {
+    let expected: &[(InvocationPhase, usize, usize)] = match invocations {
         [_, _] => &[
-            (SourceCallMode::Prefill, 0, 1),
-            (SourceCallMode::Decode, 1, 1),
+            (InvocationPhase::Prefill, 0, 1),
+            (InvocationPhase::Decode, 1, 1),
         ],
         [_, _, _] => &[
-            (SourceCallMode::Prefill, 0, 64),
-            (SourceCallMode::Prefill, 64, 2),
-            (SourceCallMode::Decode, 66, 1),
+            (InvocationPhase::Prefill, 0, 64),
+            (InvocationPhase::Prefill, 64, 2),
+            (InvocationPhase::Decode, 66, 1),
         ],
         _ => {
             return Err(Error::Unsupported(
@@ -29,11 +29,11 @@ fn require_phase_list(invocations: &[&SourceCall]) -> Result<()> {
     let source = invocations[0].source();
     for (invocation, &(mode, base, rows)) in invocations.iter().zip(expected) {
         if invocation.source() != source
-            || invocation.mode() != mode
-            || invocation.rows().base() != base
-            || invocation.rows().len() != rows
-            || invocation.rows().capacity() != 512
-            || invocation.rows().vocabulary() != 248320
+            || invocation.phase() != mode
+            || invocation.tokens().base() != base
+            || invocation.tokens().len() != rows
+            || invocation.tokens().capacity() != 512
+            || invocation.tokens().vocabulary() != 248320
         {
             return Err(Error::State(
                 "native request source/phase/span differs".into(),
@@ -46,7 +46,7 @@ fn require_phase_list(invocations: &[&SourceCall]) -> Result<()> {
 /// Immutable learned W has source/layer/role identity, not teacher identity.
 /// Each actual X/Y node separately retains its exact request provenance.
 fn same_learned_weight(a: &SourceOperator, b: &SourceOperator) -> bool {
-    a.call().rows().source() == b.call().rows().source()
+    a.invocation().tokens().source() == b.invocation().tokens().source()
         && a.numerical_contract() == b.numerical_contract()
         && a.kind() == b.kind()
         && a.matrices() == b.matrices()
@@ -68,7 +68,7 @@ impl NativePlanPrograms {
         require_phase_list(
             &phases
                 .iter()
-                .map(|p| p.context.bindings.call())
+                .map(|p| p.context.bindings.invocation())
                 .collect::<Vec<_>>(),
         )?;
         let first = &phases[0].context;
@@ -199,10 +199,15 @@ impl NativePlanPrograms {
 mod tests {
     use super::*;
     use zerogravity_core::accelerator::SourceIdentity;
-    use zerogravity_core::accelerator::program::{SourceRows, TextCallGeometry};
-    fn call(source: SourceIdentity, mode: SourceCallMode, base: usize, rows: usize) -> SourceCall {
-        SourceCall::new(
-            SourceRows::new(
+    use zerogravity_core::accelerator::program::{TextCallGeometry, TokenSpan};
+    fn call(
+        source: SourceIdentity,
+        mode: InvocationPhase,
+        base: usize,
+        rows: usize,
+    ) -> TextInvocation {
+        TextInvocation::new(
+            TokenSpan::new(
                 TextCallGeometry::new(source, 248320, 512).unwrap(),
                 base,
                 vec![11; rows].into(),
@@ -212,17 +217,17 @@ mod tests {
         )
         .unwrap()
     }
-    fn require_calls(calls: &[&SourceCall]) -> Result<()> {
+    fn require_calls(calls: &[&TextInvocation]) -> Result<()> {
         require_phase_list(calls)
     }
     #[test]
     fn exact_ordered_phase_list_accepts_real_span_shapes_and_refuses_wrong_join() {
         let source = SourceIdentity::for_new_allocation().unwrap();
-        let one = call(source, SourceCallMode::Prefill, 0, 1);
-        let cached = call(source, SourceCallMode::Decode, 1, 1);
-        let sixty_four = call(source, SourceCallMode::Prefill, 0, 64);
-        let continued = call(source, SourceCallMode::Prefill, 64, 2);
-        let cached66 = call(source, SourceCallMode::Decode, 66, 1);
+        let one = call(source, InvocationPhase::Prefill, 0, 1);
+        let cached = call(source, InvocationPhase::Decode, 1, 1);
+        let sixty_four = call(source, InvocationPhase::Prefill, 0, 64);
+        let continued = call(source, InvocationPhase::Prefill, 64, 2);
+        let cached66 = call(source, InvocationPhase::Decode, 66, 1);
         assert!(require_calls(&[&one, &cached]).is_ok());
         assert!(require_calls(&[&sixty_four, &continued, &cached66]).is_ok());
         assert!(require_calls(&[&one, &cached66]).is_err());
@@ -230,7 +235,7 @@ mod tests {
         assert!(require_calls(&[&sixty_four, &cached66]).is_err());
         let foreign = call(
             SourceIdentity::for_new_allocation().unwrap(),
-            SourceCallMode::Decode,
+            InvocationPhase::Decode,
             1,
             1,
         );
@@ -241,9 +246,9 @@ mod tests {
         use zerogravity_core::accelerator::program::MatrixAxes;
         use zerogravity_core::encoding::StoredTensorEncoding;
         let source = SourceIdentity::for_new_allocation().unwrap();
-        let first = call(source, SourceCallMode::Prefill, 0, 64);
-        let next = call(source, SourceCallMode::Prefill, 64, 2);
-        let out = |invocation: SourceCall, layer: usize| {
+        let first = call(source, InvocationPhase::Prefill, 0, 64);
+        let next = call(source, InvocationPhase::Prefill, 64, 2);
+        let out = |invocation: TextInvocation, layer: usize| {
             let source = invocation.source();
             SourceOperator::new(
                 invocation,
@@ -265,16 +270,16 @@ mod tests {
         };
         let a = out(first, 0);
         let b = out(next.clone(), 0);
-        assert_ne!(a.call(), b.call());
+        assert_ne!(a.invocation(), b.invocation());
         assert!(same_learned_weight(&a, &b));
         assert!(
-            same_request(a.call(), b.call()).is_err(),
+            same_request(a.invocation(), b.invocation()).is_err(),
             "producer request identity stays exact"
         );
         assert!(!same_learned_weight(&a, &out(next, 1)));
         let other_source = call(
             SourceIdentity::for_new_allocation().unwrap(),
-            SourceCallMode::Prefill,
+            InvocationPhase::Prefill,
             0,
             64,
         );

@@ -2,40 +2,43 @@
 //! No allocation, runtime issuer, frontier advance or RootReady capability.
 use super::*;
 
-/// Original request issuer; selecting one output row never replaces this call.
+/// Original request issuer; selecting one output row never replaces this invocation.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct QwenSourceCall {
-    request: QwenGdnCall,
+pub struct QwenModelInvocation {
+    request: QwenGdnInvocation,
     model_profile: QwenModelVariant,
 }
-impl QwenSourceCall {
-    pub fn new(request: QwenGdnCall) -> Result<Self> {
+impl QwenModelInvocation {
+    pub fn new(request: QwenGdnInvocation) -> Result<Self> {
         Self::for_profile(QwenModelVariant::Qwen800M, request)
     }
     /// Geometry metadata only; the original source owner must bind the profile.
-    pub fn for_profile(model_profile: QwenModelVariant, request: QwenGdnCall) -> Result<Self> {
+    pub fn for_profile(
+        model_profile: QwenModelVariant,
+        request: QwenGdnInvocation,
+    ) -> Result<Self> {
         request.reference_phase()?;
         Self::from_request(model_profile, request)
     }
     /// Semantic .8B span recipe only; no finite native/runtime coverage.
-    pub fn from_span(request: QwenGdnCall) -> Result<Self> {
+    pub fn from_span(request: QwenGdnInvocation) -> Result<Self> {
         if request.teachers().prompt_span().is_some() {
             return Err(Error::Unsupported(
-                "bounded prompt issuer requires its source-profile call".into(),
+                "bounded prompt issuer requires its source-profile invocation".into(),
             ));
         }
         Self::from_request(QwenModelVariant::Qwen800M, request)
     }
     pub(super) fn from_request(
         model_profile: QwenModelVariant,
-        request: QwenGdnCall,
+        request: QwenGdnInvocation,
     ) -> Result<Self> {
         request.validate()?;
         if let Some(span) = request.teachers().prompt_span() {
             model_profile.validate_prompt_workload(span.workload())?;
         } else if request.teachers().capacity() != 512 {
             return Err(Error::Unsupported(
-                "legacy reference call requires its exact context".into(),
+                "legacy reference invocation requires its exact context".into(),
             ));
         }
         if request.layer().index() != 0 {
@@ -49,7 +52,7 @@ impl QwenSourceCall {
     pub fn model_profile(&self) -> QwenModelVariant {
         self.model_profile
     }
-    pub fn request(&self) -> &QwenGdnCall {
+    pub fn request(&self) -> &QwenGdnInvocation {
         &self.request
     }
     pub fn source(&self) -> SourceIdentity {
@@ -194,7 +197,7 @@ pub enum QwenOperation {
 /// source activation, cache bytes, cosSin payload or arbitrary native manifest.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QwenOperator {
-    call: QwenSourceCall,
+    invocation: QwenModelInvocation,
     semantics: Arc<QwenOperatorSemantics>,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -218,14 +221,14 @@ impl std::ops::DerefMut for QwenOperator {
 }
 impl QwenOperator {
     pub fn new(
-        call: QwenSourceCall,
+        invocation: QwenModelInvocation,
         layer: Option<QwenLayer>,
         kind: QwenOperation,
         matrices: Vec<SourceTensor>,
         parameters: Vec<SourceParameter>,
     ) -> Result<Self> {
         let value = Self {
-            call,
+            invocation,
             semantics: Arc::new(QwenOperatorSemantics {
                 layer,
                 kind,
@@ -236,8 +239,8 @@ impl QwenOperator {
         value.validate()?;
         Ok(value)
     }
-    pub fn call(&self) -> &QwenSourceCall {
-        &self.call
+    pub fn model_invocation(&self) -> &QwenModelInvocation {
+        &self.invocation
     }
     pub fn layer(&self) -> Option<QwenLayer> {
         self.layer
@@ -252,7 +255,7 @@ impl QwenOperator {
         &self.parameters
     }
     pub fn validate(&self) -> Result<()> {
-        self.call.validate()?;
+        self.invocation.validate()?;
         let final_site = matches!(
             self.kind,
             QwenOperation::ResidualRms(QwenRmsSite::Final)
@@ -260,8 +263,8 @@ impl QwenOperator {
         );
         if self.layer.is_none() != final_site
             || self.layer.is_some_and(|layer| {
-                layer.source != self.call.source()
-                    || layer.index as usize >= self.call.model_profile.layer_count()
+                layer.source != self.invocation.source()
+                    || layer.index as usize >= self.invocation.model_profile.layer_count()
             })
         {
             return Err(Error::State("full-model exact source/layer/site".into()));
@@ -309,7 +312,7 @@ impl QwenOperator {
             _ => {}
         }
         let expected = match self.kind {
-            QwenOperation::Projection(p) => p.members_for_profile(self.call.model_profile),
+            QwenOperation::Projection(p) => p.members_for_profile(self.invocation.model_profile),
             _ => &[],
         };
         if self.matrices.len() != expected.len() {
@@ -326,12 +329,12 @@ impl QwenOperator {
             } else {
                 self.layer.unwrap().name(suffix)
             };
-            if matrix.source != self.call.source()
+            if matrix.source != self.invocation.source()
                 || matrix.name != name
                 || matrix.axes != MatrixAxes::OutputInput
                 || matrix.kind
                     != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
-                || matrix.columns != self.call.model_profile.projection_input(p)
+                || matrix.columns != self.invocation.model_profile.projection_input(p)
                 || matrix.rows != rows
             {
                 return Err(Error::State(
@@ -344,8 +347,8 @@ impl QwenOperator {
             QwenOperation::InputRms => vec![(
                 self.layer.unwrap().name("input_layernorm.weight"),
                 StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
-                vec![self.call.model_profile.hidden_size() as u64],
-                self.call.model_profile.hidden_size() * 2,
+                vec![self.invocation.model_profile.hidden_size() as u64],
+                self.invocation.model_profile.hidden_size() * 2,
             )],
             QwenOperation::ResidualRms(site) => vec![(
                 match site {
@@ -356,8 +359,8 @@ impl QwenOperator {
                     QwenRmsSite::Final => "model.language_model.norm.weight".into(),
                 },
                 StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
-                vec![self.call.model_profile.hidden_size() as u64],
-                self.call.model_profile.hidden_size() * 2,
+                vec![self.invocation.model_profile.hidden_size() as u64],
+                self.invocation.model_profile.hidden_size() * 2,
             )],
             QwenOperation::GdnConv => vec![(
                 self.layer.unwrap().name("linear_attn.conv1d.weight"),
@@ -407,7 +410,7 @@ impl QwenOperator {
             ));
         }
         for (parameter, (name, kind, shape, bytes)) in self.parameters.iter().zip(expected) {
-            if parameter.source != self.call.source()
+            if parameter.source != self.invocation.source()
                 || parameter.name != name
                 || parameter.kind != kind
                 || parameter.shape != shape
@@ -421,8 +424,8 @@ impl QwenOperator {
         Ok(())
     }
     pub fn input_elements(&self) -> Vec<usize> {
-        let n = self.call.rows();
-        let profile = self.call.model_profile;
+        let n = self.invocation.rows();
+        let profile = self.invocation.model_profile;
         match self.kind {
             QwenOperation::InputRms => vec![n * profile.hidden_size()],
             QwenOperation::ResidualRms(_) => {
@@ -442,8 +445,8 @@ impl QwenOperator {
         }
     }
     pub fn output_elements(&self) -> Vec<usize> {
-        let n = self.call.rows();
-        let profile = self.call.model_profile;
+        let n = self.invocation.rows();
+        let profile = self.invocation.model_profile;
         match self.kind {
             QwenOperation::InputRms => vec![n * profile.hidden_size()],
             QwenOperation::ResidualRms(_) => {
@@ -467,14 +470,14 @@ impl QwenOperator {
     /// Data-only view of the actual full-phase normalizer; no new teacher.
     pub fn selected_row(&self) -> Option<usize> {
         (self.kind == QwenOperation::Projection(QwenProjection::Head))
-            .then_some(self.call.rows() - 1)
+            .then_some(self.invocation.rows() - 1)
     }
 }
 
 /// Core-minted result identity. Generic views/ops cannot manufacture this tag.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QwenProducer {
-    call: QwenSourceCall,
+    invocation: QwenModelInvocation,
     layer: Option<QwenLayer>,
     kind: QwenOperation,
     node_index: usize,
@@ -482,11 +485,11 @@ pub struct QwenProducer {
     inputs: Arc<[ValueId]>,
 }
 impl QwenProducer {
-    pub(super) fn bind_call(&mut self, call: QwenSourceCall) {
-        self.call = call;
+    pub(super) fn bind_model_invocation(&mut self, invocation: QwenModelInvocation) {
+        self.invocation = invocation;
     }
-    pub fn call(&self) -> &QwenSourceCall {
-        &self.call
+    pub fn model_invocation(&self) -> &QwenModelInvocation {
+        &self.invocation
     }
     pub fn layer(&self) -> Option<QwenLayer> {
         self.layer
@@ -511,14 +514,14 @@ pub(super) fn precision(
     inputs: &[PlanValue],
 ) -> Result<ActivationPrecision> {
     d.validate()?;
-    if builder.model_call.as_ref() != Some(&d.call)
+    if builder.model_invocation.as_ref() != Some(&d.invocation)
         || builder.operator_slice
         || builder.profile != NumericalProfile::CudaSm86Bf16ReferenceV1
-        || builder.source != d.call.source()
+        || builder.source != d.invocation.source()
         || inputs.len() != d.input_elements().len()
     {
         return Err(Error::Unsupported(
-            "closed full-model source/profile/call/arity".into(),
+            "closed full-model source/profile/invocation/arity".into(),
         ));
     }
     for (input, elements) in inputs.iter().zip(d.input_elements()) {
@@ -529,7 +532,7 @@ pub(super) fn precision(
             return Err(Error::State("full-model original dense BF16 input".into()));
         }
     }
-    let tag = gdn_projection::require_invocation(builder, d.call.request(), inputs)?;
+    let tag = gdn_projection::require_invocation(builder, d.invocation.request(), inputs)?;
     // Stateful/cohort checks use immutable per-value tags, never a graph walk.
     let origin = |i: usize| -> Result<&QwenProducer> {
         match builder
@@ -537,17 +540,17 @@ pub(super) fn precision(
             .map(QwenValueProvenance::origin)
         {
             Some(QwenValueOrigin::FullModel(origin))
-                if origin.call == d.call && origin.layer == d.layer =>
+                if origin.invocation == d.invocation && origin.layer == d.layer =>
             {
                 Ok(origin)
             }
             _ => Err(Error::State(
-                "full-model exact same-call/layer producer".into(),
+                "full-model exact same-invocation/layer producer".into(),
             )),
         }
     };
     match d.kind {
-        QwenOperation::InputRms if tag.origin() != &QwenValueOrigin::SourceRows => {
+        QwenOperation::InputRms if tag.origin() != &QwenValueOrigin::TokenSpan => {
             return Err(Error::State(
                 "full-model input RMS requires source rows".into(),
             ));
@@ -624,9 +627,9 @@ pub(super) fn provenance(
     if output_index >= d.output_elements().len() {
         return Err(Error::State("full-model output provenance index".into()));
     }
-    let tag = gdn_projection::require_invocation(builder, d.call.request(), inputs)?;
+    let tag = gdn_projection::require_invocation(builder, d.invocation.request(), inputs)?;
     Ok(tag.with_origin(QwenValueOrigin::FullModel(QwenProducer {
-        call: d.call.clone(),
+        invocation: d.invocation.clone(),
         layer: d.layer,
         kind: d.kind,
         node_index: builder.core.nodes().len(),
@@ -667,7 +670,7 @@ pub(super) fn record(
 pub struct QwenPlan {
     plan: ForwardPlan,
     provenance: Vec<Option<QwenValueProvenance>>,
-    call: QwenSourceCall,
+    invocation: QwenModelInvocation,
     boundaries: Arc<[[ValueId; 2]]>,
     normalized: ValueId,
     logits: ValueId,
@@ -694,15 +697,15 @@ impl QwenPlan {
     pub const BINDING_METADATA_BYTES: usize = 512 * 1024;
 
     /// Rebind only the existing sealed bounded prompt recipe, never a native/root permit.
-    /// Every node and producer receives this call's authentic input issuer.
-    pub fn bind_prompt_call(&self, call: &PromptCall) -> Result<Self> {
-        self.require_prompt_shape(call)?;
+    /// Every node and producer receives this invocation's authentic input issuer.
+    pub fn bind_prompt_invocation(&self, invocation: &PromptInvocation) -> Result<Self> {
+        self.require_prompt_shape(invocation)?;
         let mut bound = Self {
             plan: self
                 .plan
-                .rebind_source_call(call.request().source_call()?)?,
+                .rebind_text_invocation(invocation.request().text_invocation()?)?,
             provenance: self.provenance.clone(),
-            call: call.as_source_call().clone(),
+            invocation: invocation.model_invocation().clone(),
             boundaries: self.boundaries.clone(),
             normalized: self.normalized,
             logits: self.logits,
@@ -710,7 +713,7 @@ impl QwenPlan {
         for tag in &mut bound.provenance {
             tag.as_mut()
                 .ok_or_else(|| Error::State("prepared Qwen producer coverage".into()))?
-                .bind_prompt_call(&bound.call)?;
+                .bind_model_invocation(&bound.invocation)?;
         }
         bound.require_binding_metadata(Self::BINDING_METADATA_BYTES)?;
         Ok(bound)
@@ -747,21 +750,21 @@ impl QwenPlan {
     pub fn shares_prepared_semantics(&self, other: &Self) -> bool {
         self.plan.shares_semantics(&other.plan) && Arc::ptr_eq(&self.boundaries, &other.boundaries)
     }
-    fn require_prompt_shape(&self, call: &PromptCall) -> Result<()> {
-        call.validate()?;
+    fn require_prompt_shape(&self, invocation: &PromptInvocation) -> Result<()> {
+        invocation.validate()?;
         let prepared = self
-            .call
+            .invocation
             .request()
             .teachers()
             .prompt_span()
             .ok_or_else(|| {
                 Error::Unsupported("prepared binding requires a bounded prompt recipe".into())
             })?;
-        let actual = call.span();
-        if self.call.source() != call.as_source_call().source()
-            || self.call.model_profile() != call.model_profile()
+        let actual = invocation.span();
+        if self.invocation.source() != invocation.model_invocation().source()
+            || self.invocation.model_profile() != invocation.model_profile()
             || prepared.workload() != actual.workload()
-            || prepared.mode() != actual.mode()
+            || prepared.phase() != actual.phase()
             || prepared.base() != actual.base()
             || prepared.len() != actual.len()
             || prepared.capacity() != actual.capacity()
@@ -792,23 +795,24 @@ impl QwenPlan {
                 "Qwen operator contains foreign mathematical node".into(),
             ));
         };
-        let call = self.call.request().source_call()?;
-        if descriptor.call() != &call {
+        let invocation = self.invocation.request().text_invocation()?;
+        if descriptor.invocation() != &invocation {
             return Err(Error::State(
-                "Qwen operator original call issuer differs".into(),
+                "Qwen operator original invocation issuer differs".into(),
             ));
         }
         let (layer, kind) = if let Some(id) = node.outputs.first() {
             let tag = self
                 .value_provenance(*id)?
                 .ok_or_else(|| Error::State("Qwen operator producer metadata absent".into()))?;
-            tag.require_invocation(self.call.request())?;
+            tag.require_invocation(self.invocation.request())?;
             match tag.origin() {
-                QwenValueOrigin::SourceRows if node_index == 0 => {
+                QwenValueOrigin::TokenSpan if node_index == 0 => {
                     let [matrix] = descriptor.matrices() else {
                         return Err(Error::State("Qwen original embedding member arity".into()));
                     };
-                    let expected = QwenEmbedding::for_call(matrix.clone(), &self.call)?;
+                    let expected =
+                        QwenEmbedding::for_model_invocation(matrix.clone(), &self.invocation)?;
                     if !matches!(descriptor.kind(), SourceOperatorKind::EmbeddingRows)
                         || !node.inputs.is_empty()
                         || node.outputs.len() != 1
@@ -825,7 +829,7 @@ impl QwenPlan {
                     if origin.node_index == node_index
                         && origin.output_index == 0
                         && origin.inputs.as_ref() == node.inputs.as_slice()
-                        && origin.call == self.call =>
+                        && origin.invocation == self.invocation =>
                 {
                     (origin.layer, origin.kind)
                 }
@@ -836,7 +840,7 @@ impl QwenPlan {
                 }
             }
         } else if let SourceOperatorKind::KvAppend { domain, .. } = descriptor.kind() {
-            let layer = self.call.layer(domain.0)?;
+            let layer = self.invocation.layer(domain.0)?;
             let Some(effect) = node.state else {
                 return Err(Error::State(
                     "Qwen KV append lacks actual state effect".into(),
@@ -864,7 +868,7 @@ impl QwenPlan {
             ));
         };
         let family = QwenOperator::new(
-            self.call.clone(),
+            self.invocation.clone(),
             layer,
             kind,
             descriptor.matrices().to_vec(),
@@ -881,8 +885,8 @@ impl QwenPlan {
         self.plan.source_value_provenance(id)?;
         Ok(self.provenance.get(id.0 as usize).and_then(Option::as_ref))
     }
-    pub fn call(&self) -> &QwenSourceCall {
-        &self.call
+    pub fn model_invocation(&self) -> &QwenModelInvocation {
+        &self.invocation
     }
     pub fn boundaries(&self) -> &[[ValueId; 2]] {
         &self.boundaries
@@ -891,7 +895,7 @@ impl QwenPlan {
         self.normalized
     }
     pub fn selected_row(&self) -> usize {
-        self.call.rows() - 1
+        self.invocation.rows() - 1
     }
     pub fn logits(&self) -> ValueId {
         self.logits
@@ -902,22 +906,22 @@ fn all_domains() -> Result<Vec<StateSlot>> {
     hybrid_state_domains((0..24).map(|index| index % 4 == 3))
 }
 impl QwenPlanBuilder {
-    pub fn new_small_model(call: QwenSourceCall) -> Result<Self> {
-        if call.model_profile() != QwenModelVariant::Qwen800M {
+    pub fn new_small_model(invocation: QwenModelInvocation) -> Result<Self> {
+        if invocation.model_profile() != QwenModelVariant::Qwen800M {
             return Err(Error::Unsupported(
                 "original .8B builder constructor profile".into(),
             ));
         }
-        Self::new_model(call)
+        Self::new_model(invocation)
     }
-    pub fn new_model(call: QwenSourceCall) -> Result<Self> {
-        call.validate()?;
+    pub fn new_model(invocation: QwenModelInvocation) -> Result<Self> {
+        invocation.validate()?;
         let mut builder = Self::from_core(CorePlanBuilder::new_source_program(
-            call.request().source_call()?,
+            invocation.request().text_invocation()?,
             all_domains()?,
         )?);
-        builder.fragment_call = Some(call.request.clone());
-        builder.model_call = Some(call);
+        builder.fragment_invocation = Some(invocation.request.clone());
+        builder.model_invocation = Some(invocation);
         Ok(builder)
     }
     /// Whole arithmetic record remains unpublished: no logits authority/frontier.
@@ -928,9 +932,9 @@ impl QwenPlanBuilder {
         logits: PlanValue,
     ) -> Result<QwenPlan> {
         if self
-            .model_call
+            .model_invocation
             .as_ref()
-            .is_some_and(|call| call.model_profile() != QwenModelVariant::Qwen800M)
+            .is_some_and(|invocation| invocation.model_profile() != QwenModelVariant::Qwen800M)
         {
             return Err(Error::Unsupported(
                 "original .8B finish constructor profile".into(),
@@ -944,8 +948,8 @@ impl QwenPlanBuilder {
         normalized: PlanValue,
         logits: PlanValue,
     ) -> Result<QwenPlan> {
-        let call = self
-            .model_call
+        let invocation = self
+            .model_invocation
             .clone()
             .ok_or_else(|| Error::State("not full-model builder".into()))?;
         if self.core.has_advanced()
@@ -977,7 +981,7 @@ impl QwenPlanBuilder {
                 .map(QwenValueProvenance::origin)
             {
                 Some(QwenValueOrigin::FullModel(origin))
-                    if origin.call == call
+                    if origin.invocation == invocation
                         && origin.layer == layer
                         && origin.kind == kind
                         && origin.output_index == out =>
@@ -993,7 +997,7 @@ impl QwenPlanBuilder {
                     "dual source boundaries must be distinct".into(),
                 ));
             }
-            let layer = Some(call.layer(index)?);
+            let layer = Some(invocation.layer(index)?);
             require(
                 branch,
                 layer,
@@ -1019,9 +1023,9 @@ impl QwenPlanBuilder {
             QwenOperation::Projection(QwenProjection::Head),
             0,
         )?;
-        verify_recipe(&self, &call, &boundaries, normalized.id, logits.id)?;
+        verify_recipe(&self, &invocation, &boundaries, normalized.id, logits.id)?;
         Ok(QwenPlan {
-            call,
+            invocation,
             boundaries: boundaries.into_iter().map(|v| [v[0].id, v[1].id]).collect(),
             normalized: normalized.id,
             logits: logits.id,
@@ -1035,7 +1039,7 @@ impl QwenPlanBuilder {
 /// named boundary to the actual earlier node's ValueIds before any lowerer.
 fn verify_recipe(
     builder: &QwenPlanBuilder,
-    call: &QwenSourceCall,
+    invocation: &QwenModelInvocation,
     boundaries: &[[PlanValue; 2]],
     normalized: ValueId,
     logits: ValueId,
@@ -1055,7 +1059,7 @@ fn verify_recipe(
         ));
     };
     if !matches!(descriptor.kind(), SourceOperatorKind::EmbeddingRows)
-        || descriptor.call() != &call.request().source_call()?
+        || descriptor.invocation() != &invocation.request().text_invocation()?
         || descriptor.matrices().len() != 1
         || !embedding.inputs.is_empty()
         || embedding.outputs.len() != 1
@@ -1065,7 +1069,8 @@ fn verify_recipe(
             "Qwen actual original source/teacher producer".into(),
         ));
     }
-    let expected = QwenEmbedding::for_call(descriptor.matrices()[0].clone(), call)?;
+    let expected =
+        QwenEmbedding::for_model_invocation(descriptor.matrices()[0].clone(), invocation)?;
     expected.validate()?;
     let raw = embedding.outputs[0];
     let mut cursor = 1usize;
@@ -1082,7 +1087,7 @@ fn verify_recipe(
             return Err(Error::State("Qwen exact typed source recipe".into()));
         };
         let expected = QwenOperator::new(
-            call.clone(),
+            invocation.clone(),
             layer,
             kind,
             descriptor.matrices().to_vec(),
@@ -1139,7 +1144,7 @@ fn verify_recipe(
     let mut branch = raw;
     let mut residual = None;
     for (index, boundary) in boundaries.iter().enumerate() {
-        let layer = call.layer(index)?;
+        let layer = invocation.layer(index)?;
         let (normal, carried) = if index == 0 {
             (
                 take(Some(layer), QwenOperation::InputRms, &[branch])?[0],

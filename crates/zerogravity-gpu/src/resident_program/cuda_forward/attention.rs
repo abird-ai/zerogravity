@@ -332,7 +332,7 @@ impl CudaForwardAttention {
         };
         operator.validate()?;
         if operator.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
-            || operator.call().rows().capacity() != self.capacity
+            || operator.invocation().tokens().capacity() != self.capacity
             || !matches!(
                 operator.kind(),
                 SourceOperatorKind::FlashAttention {
@@ -379,8 +379,8 @@ impl CudaForwardAttention {
                 "CUDA forward attention original service/status differs".into(),
             ));
         }
-        let rows = operator.call().rows().len();
-        let base = operator.call().rows().base();
+        let rows = operator.invocation().tokens().len();
+        let base = operator.invocation().tokens().base();
         let end = base
             .checked_add(rows)
             .filter(|end| *end <= self.capacity)
@@ -457,8 +457,8 @@ impl CudaForwardAttention {
         self.require_operator(operator)?;
         self.service.ensure_usable()?;
         if states.len() != 4
-            || operator.call().rows().len() != 1
-            || operator.call().rows().base() != bases[0]
+            || operator.invocation().tokens().len() != 1
+            || operator.invocation().tokens().base() != bases[0]
             || bases.iter().any(|&base| base >= self.capacity)
             || client.service_id() != self.service.client().service_id()
             || query.service != client.service_id()
@@ -553,8 +553,8 @@ impl CudaForwardAttention {
         self.service.ensure_usable()?;
         if rows == 0
             || states.len() != 4
-            || operator.call().rows().len() != rows
-            || operator.call().rows().base() != bases[0]
+            || operator.invocation().tokens().len() != rows
+            || operator.invocation().tokens().base() != bases[0]
             || bases
                 .iter()
                 .any(|&base| base.checked_add(rows).is_none_or(|end| end > self.capacity))

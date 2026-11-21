@@ -380,13 +380,19 @@ where
             &source,
             bases[0],
             attempts[0].clone(),
-            records[..2].iter().map(|r| r.call().clone()).collect(),
+            records[..2]
+                .iter()
+                .map(|r| r.invocation().clone())
+                .collect(),
         )?,
         GdnAttemptSchedule::new_model(
             &source,
             bases[1],
             attempts[1].clone(),
-            records[2..].iter().map(|r| r.call().clone()).collect(),
+            records[2..]
+                .iter()
+                .map(|r| r.invocation().clone())
+                .collect(),
         )?,
     ];
     let mut candidates = Vec::with_capacity(5);
@@ -768,12 +774,12 @@ where
             &owners.candidates[index - 1]
         };
         let candidate = &owners.candidates[index];
-        let call = records[index].call();
-        let bindings = bind_domains(prior, candidate, call.rows().base())?;
+        let call = records[index].invocation();
+        let bindings = bind_domains(prior, candidate, call.tokens().base())?;
         let runtime = RuntimeParameters {
-            token: call.rows().ids()[0],
-            position: call.rows().base(),
-            valid_tokens: call.rows().len(),
+            token: call.tokens().ids()[0],
+            position: call.tokens().base(),
+            valid_tokens: call.tokens().len(),
         };
         let permit = PrefixPhaseEnqueue::new(session, &schedules[h], local, previous[h].as_ref())?;
         let accesses = body.accesses()?.to_vec();
@@ -823,7 +829,7 @@ where
             }
             let prior_domains=frame.prior.iter().map(|(slot,range)|SourceDomainReadback{slot:*slot,buffers:&raw[range.clone()]}).collect::<Vec<_>>();
             let domains=frame.candidate.iter().map(|(slot,range)|SourceDomainReadback{slot:*slot,buffers:&raw[range.clone()]}).collect::<Vec<_>>();
-            let end=call.rows().base()+call.rows().len();
+            let end=call.tokens().base()+call.tokens().len();
             for (prior,candidate) in prior_domains.iter().zip(&domains){
                 if prior.slot!=candidate.slot{return Err(Error::State("full24 exact original domain order".into()));}
                 if matches!(prior.slot,StateSlot::Kv(_)) {

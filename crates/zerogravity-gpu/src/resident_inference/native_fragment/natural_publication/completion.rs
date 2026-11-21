@@ -294,7 +294,7 @@ impl ResidentSession {
             })
             .await?;
         // The immutable session borrow covered every enqueue and completion.
-        permit.require_invocation(service, input.call(), 0, 24)?;
+        permit.require_invocation(service, input.invocation(), 0, 24)?;
         input.require_session(self)?;
         slot.finish()?;
         let selected = selected.ok_or_else(|| {

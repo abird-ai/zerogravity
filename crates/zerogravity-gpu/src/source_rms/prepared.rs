@@ -1,4 +1,4 @@
-//! Original RMS kernel constructors, shared by source-call preparation.
+//! Original RMS kernel constructors, shared by text-invocation preparation.
 use super::*;
 use cubecl::prelude::BufferCompilationArg;
 use cubecl_server::kernel::CubeKernel;

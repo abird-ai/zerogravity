@@ -6,8 +6,8 @@ use zerogravity_core::source::{SourceTensorRef, TensorSource};
 use zerogravity_core::{Error, Result};
 use zerogravity_model_qwen35::plan::QwenPlanBuilder;
 use zerogravity_model_qwen35::plan::{
-    GdnProjection, QwenEmbedding, QwenGdnCall, QwenGdnProjection, QwenInputRows, QwenPrefixLayer,
-    QwenSiluAndMul, ReferencePhase,
+    GdnProjection, QwenEmbedding, QwenGdnInvocation, QwenGdnProjection, QwenInputRows,
+    QwenPrefixLayer, QwenSiluAndMul, ReferencePhase,
 };
 
 struct ForbiddenSource;
@@ -24,7 +24,7 @@ fn both_native_typed_operators_refuse_cold_before_source_access() -> Result<()> 
     for activate in [false, true] {
         let source = SourceIdentity::for_new_allocation()?;
         let teachers = QwenInputRows::new(source, 0, 512, &[11])?;
-        let call = QwenGdnCall::new(
+        let call = QwenGdnInvocation::new(
             QwenPrefixLayer::new(source, 0)?,
             ReferencePhase::InitialOne,
             teachers.clone(),

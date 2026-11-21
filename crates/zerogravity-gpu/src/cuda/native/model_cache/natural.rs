@@ -62,7 +62,7 @@ impl SharedModelCache {
             || state.layer() != self.layer
             || self.lease.bytes() != BYTES
             || !self.lease.is_initialized()
-            || self.lease.source_identity() != scope.record().call().source()
+            || self.lease.source_identity() != scope.record().invocation().source()
             || self.lease.role() != BufferRole::RecurrentState
             || state.leases().iter().any(|(lease, _)| {
                 lease.id() == self.lease.id()

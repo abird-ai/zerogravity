@@ -20,7 +20,7 @@ use std::sync::{
 };
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
-use zerogravity_core::accelerator::program::SourceCall;
+use zerogravity_core::accelerator::program::TextInvocation;
 use zerogravity_core::accelerator::program::{
     ActivationPrecision, NumericalContract, SourceGamma, SourceOperator, SourceOperatorKind,
     SourceRmsGeometry,
@@ -35,7 +35,7 @@ pub(crate) struct NativeProgram {
     certificates: CertificateSet,
     source: VerifiedTensorSource,
     bindings: Arc<SourceBindings>,
-    invocation: SourceCall,
+    invocation: TextInvocation,
     completed_layers: usize,
     rms: Arc<RmsPrepared>,
     status: ResidentLease,
@@ -88,12 +88,12 @@ fn fragment_rms() -> SourceRmsGeometry {
         gamma: SourceGamma::OnePlus,
     }
 }
-fn source_descriptor<'a>(node: &'a PlanNode, call: &SourceCall) -> Result<&'a SourceOperator> {
+fn source_descriptor<'a>(node: &'a PlanNode, call: &TextInvocation) -> Result<&'a SourceOperator> {
     match &node.operation {
         PlanOperation::SourceOperator {
             descriptor,
             state: None,
-        } if descriptor.call() == call
+        } if descriptor.invocation() == call
             && descriptor.numerical_contract() == NumericalContract::CudaSm86Bf16ReferenceV1 =>
         {
             Ok(descriptor)
@@ -104,7 +104,7 @@ fn source_descriptor<'a>(node: &'a PlanNode, call: &SourceCall) -> Result<&'a So
     }
 }
 fn require_recipe(bindings: &SourceBindings) -> Result<Recipe> {
-    crate::cuda::native::native_gdn::phase(bindings.call())?;
+    crate::cuda::native::native_gdn::phase(bindings.invocation())?;
     let metadata = bindings.source().reserve_workspace(64 * 1024)?;
     let plan = bindings.plan();
     let completed = bindings.selection().completed_layers();
@@ -124,7 +124,7 @@ fn require_recipe(bindings: &SourceBindings) -> Result<Recipe> {
         _metadata: metadata,
     };
     for (index, node) in plan.nodes().iter().enumerate() {
-        let descriptor = source_descriptor(node, bindings.call())?;
+        let descriptor = source_descriptor(node, bindings.invocation())?;
         match descriptor.kind() {
             SourceOperatorKind::EmbeddingRows
                 if index == 0 && node.inputs.is_empty() && node.outputs.len() == 1 => {}
@@ -180,7 +180,7 @@ fn require_recipe(bindings: &SourceBindings) -> Result<Recipe> {
 pub(crate) fn capacity_bound(bindings: &SourceBindings) -> Result<usize> {
     require_recipe(bindings)?;
     let state_bytes = checked_sum(bindings.state_requirements().iter().map(|r| r.bytes))?;
-    let rows = bindings.call().rows().len();
+    let rows = bindings.invocation().tokens().len();
     let layers = bindings.selection().completed_layers().max(1);
     let fused = if bindings.selection().completed_layers() == 0 {
         0
@@ -219,7 +219,8 @@ pub(crate) fn capacity_bound(bindings: &SourceBindings) -> Result<usize> {
 }
 impl NativeProgram {
     pub(super) fn require_plan(&self, plan: &ForwardPlan) -> Result<()> {
-        if !std::ptr::eq(plan, self.bindings.plan()) || plan.source_call() != Some(&self.invocation)
+        if !std::ptr::eq(plan, self.bindings.plan())
+            || plan.text_invocation() != Some(&self.invocation)
         {
             return Err(Error::State(
                 "native actual shared graph/call owner differs".into(),
@@ -236,7 +237,7 @@ impl NativeProgram {
         cancelled(cancel)?;
         let recipe = require_recipe(&bindings)?;
         let plan = bindings.plan();
-        let invocation = bindings.call().clone();
+        let invocation = bindings.invocation().clone();
         let source = bindings.source().clone();
         let metadata = source.reserve_workspace(4 * 1024 * 1024)?;
         let states = state_requirements(&bindings)?;
@@ -262,9 +263,9 @@ impl NativeProgram {
             + layers * (packed_weights + 49_504)
             + 4 * (1 + layers)
             + 2048
-            + invocation.rows().len() * 4096
+            + invocation.tokens().len() * 4096
             + public_bytes
-            + recipe.fused.len() * (2048 + invocation.rows().len() * 8192);
+            + recipe.fused.len() * (2048 + invocation.tokens().len() * 8192);
         let readback_chunks = max_readback.div_ceil(32 * 1024 * 1024);
         if !(3..=8).contains(&readback_chunks) {
             return Err(Error::Limit(
@@ -328,7 +329,7 @@ impl NativeProgram {
                 return Err(Error::State("bound RMS actual gamma arity".into()));
             };
             if descriptor.kind() != SourceOperatorKind::ResidualRms(fragment_rms())
-                || descriptor.call() != &invocation
+                || descriptor.invocation() != &invocation
                 || node.state.is_some()
                 || node.inputs.len() != 2
             {
@@ -342,7 +343,7 @@ impl NativeProgram {
                 })?;
                 if tag.node_index() != index
                     || tag.output_index() != ordinal
-                    || tag.call() != &invocation
+                    || tag.invocation() != &invocation
                     || tag.inputs() != node.inputs
                 {
                     return Err(Error::State(
@@ -366,7 +367,7 @@ impl NativeProgram {
             let prepared = FusedRmsPrepared::prepare_bound(
                 service.clone(),
                 source_binding,
-                invocation.rows().len(),
+                invocation.tokens().len(),
                 input(node.inputs[0])?,
                 input(node.inputs[1])?,
                 0,
@@ -380,7 +381,7 @@ impl NativeProgram {
             {
                 let layout = ResidentBufferLayout::new(
                     ResidentPhysicalType::Bf16,
-                    invocation.rows().len() * 1024,
+                    invocation.tokens().len() * 1024,
                 )?;
                 if values[id.0 as usize].is_some() {
                     return Err(Error::State("fused typed output already bound".into()));
@@ -607,8 +608,8 @@ impl NativeProgram {
     }
     pub(crate) fn validate_runtime(&self, p: RuntimeParameters) -> Result<()> {
         if p.position != 0
-            || p.valid_tokens != self.invocation.rows().len()
-            || self.invocation.rows().ids().first().copied() != Some(p.token)
+            || p.valid_tokens != self.invocation.tokens().len()
+            || self.invocation.tokens().ids().first().copied() != Some(p.token)
         {
             return Err(Error::State(
                 "native runtime differs from recorded genuine initial teacher span".into(),
@@ -837,7 +838,7 @@ impl NativeProgram {
     pub(crate) fn completed_layers(&self) -> usize {
         self.completed_layers
     }
-    pub(crate) fn invocation_for_layer(&self, index: usize) -> Result<SourceCall> {
+    pub(crate) fn invocation_for_layer(&self, index: usize) -> Result<TextInvocation> {
         if !self.gdn_nodes.iter().any(|nodes| matches!(
             &self.bindings.plan().nodes()[nodes[0]].operation,
             PlanOperation::SourceOperator { descriptor,.. }

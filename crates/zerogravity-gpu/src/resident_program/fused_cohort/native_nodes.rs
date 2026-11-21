@@ -2,7 +2,7 @@
 use super::super::*;
 use super::{attention::CohortAttention, head_input::CohortHeadInput, values::CohortValues};
 use crate::cuda::native::cohort_native::{CohortNativeLibrary, CohortNativeSite, Role};
-use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextCallInput};
+use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextInvocationInput};
 use crate::resident_leases::{ResidentLease, TiedWeight};
 use std::sync::atomic::AtomicBool;
 use zerogravity_core::accelerator::program::SourceOperatorKind;
@@ -21,7 +21,7 @@ type CohortNodeCensus = Vec<(usize, Vec<(ResidentLease, DeviceAccess)>)>;
 
 impl CohortNativeNodes {
     pub(super) fn bind(
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         values: Arc<CohortValues>,
         library: Arc<CohortNativeLibrary>,
         head: Arc<CohortHeadInput>,
@@ -77,7 +77,7 @@ impl CohortNativeNodes {
                     .operator(index)?
                     .ok_or_else(|| Error::State("B4 every real native source node".into()))?;
                 actual_descriptor.validate()?;
-                if actual_descriptor.call() != input.call()
+                if actual_descriptor.invocation() != input.invocation()
                     || actual_descriptor.kind() != kind
                     || actual.inputs != node.inputs
                     || actual.outputs != node.outputs

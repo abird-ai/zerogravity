@@ -41,15 +41,16 @@ impl BoundModelState {
             return Err(Error::State("short-HF state scope absent".into()));
         };
         if !Arc::ptr_eq(actual, scope)
-            || self.call != *scope.record().call()
-            || self.base.source() != self.call.source()
-            || self.base.frontier() != scope.call().rows().base() as u64
+            || self.invocation != *scope.record().invocation()
+            || self.base.source() != self.invocation.source()
+            || self.base.frontier() != scope.invocation().tokens().base() as u64
         {
             return Err(Error::State(
                 "short-HF exact actual source/call/layer/prior root".into(),
             ));
         }
-        self.phase.require_retained_text(self.base, &self.call)?;
+        self.phase
+            .require_retained_text(self.base, &self.invocation)?;
         if self.kv_domain().is_ok() {
             scope.attention_site(self.layer)?;
             if self.effects.len() != 1

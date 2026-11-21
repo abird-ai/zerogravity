@@ -1,6 +1,6 @@
 //! Original Kv3 priors/candidates for the exact35-node unpublished source cut.
 use super::*;
-use crate::cuda::native::fixed_prompt_model::{FixedPromptCallKind, FixedPromptModelBinding};
+use crate::cuda::native::fixed_prompt_model::{FixedPromptInvocationKind, FixedPromptModelBinding};
 use crate::cuda::native::fixed_prompt_model_prefix::FixedPromptPrefixCut;
 use zerogravity_core::accelerator::program::SourceOperatorKind;
 use zerogravity_core::accelerator::program::ValueId;
@@ -19,9 +19,9 @@ impl ResidentSession {
             ));
         }
         let scope = cut.scope();
-        if scope.kind() != FixedPromptCallKind::Prefill {
+        if scope.kind() != FixedPromptInvocationKind::Prefill {
             return Err(Error::Unsupported(
-                "canonical47 initial Kv3 source call".into(),
+                "canonical47 initial Kv3 text invocation".into(),
             ));
         }
         let bound =
@@ -35,7 +35,7 @@ impl BoundModelState {
         &self,
         scope: &FixedPromptModelBinding,
     ) -> Result<()> {
-        let call = scope.record().call();
+        let call = scope.record().invocation();
         let node = scope
             .record()
             .plan()
@@ -43,8 +43,8 @@ impl BoundModelState {
             .get(34)
             .ok_or_else(|| Error::State("canonical47 actual Kv3 node absent".into()))?;
         if !matches!(&self.scope, ModelStateScope::FixedPromptPrefix)
-            || scope.kind() != FixedPromptCallKind::Prefill
-            || self.call != *call
+            || scope.kind() != FixedPromptInvocationKind::Prefill
+            || self.invocation != *call
             || self.layer != 3
             || self.kv_domain()? != KvDomain(3)
             || self.base.source() != scope.source().source_identity()
@@ -57,7 +57,7 @@ impl BoundModelState {
                 &node.operation,
                 PlanOperation::SourceOperator { state: None, .. }
             ) || !scope.record().operator(34)?.is_some_and(|descriptor| {
-                descriptor.call() == call
+                descriptor.invocation() == call
                     && matches!(descriptor.kind(), SourceOperatorKind::KvAppend { domain, .. }
                         if domain == KvDomain(3))
             }))

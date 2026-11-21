@@ -1,8 +1,8 @@
 //! Exactly one initial47 original attempt,24layers; old3-layer scope untouched.
 use super::*;
-use crate::cuda::native::fixed_prompt_model::FixedPromptCallKind;
+use crate::cuda::native::fixed_prompt_model::FixedPromptInvocationKind;
 use crate::cuda::native::fixed_prompt_model_prefix::FixedPromptPrefixCut;
-use zerogravity_core::accelerator::program::SourceCall;
+use zerogravity_core::accelerator::program::TextInvocation;
 impl GdnAttemptSchedule {
     pub(in crate::resident_inference) fn new_fixed_prompt_whole(
         cut: &Arc<FixedPromptPrefixCut>,
@@ -10,8 +10,8 @@ impl GdnAttemptSchedule {
     ) -> Result<Arc<Self>> {
         cut.require_whole()?;
         let source = cut.scope();
-        if source.kind() != FixedPromptCallKind::Prefill
-            || attempt.base().source() != source.record().call().source()
+        if source.kind() != FixedPromptInvocationKind::Prefill
+            || attempt.base().source() != source.record().invocation().source()
             || attempt.base().source() != source.source().source_identity()
             || attempt.base().frontier() != 0
             || attempt.frontier() != 47
@@ -23,14 +23,14 @@ impl GdnAttemptSchedule {
         Ok(Arc::new(Self {
             base: attempt.base(),
             attempt,
-            invocations: vec![source.record().call().clone()],
+            invocations: vec![source.record().invocation().clone()],
             completed_layers: 24,
         }))
     }
 }
 impl AttemptPhaseBinding {
-    fn require_fixed_prompt_whole_shape(&self, call: &SourceCall) -> Result<()> {
-        if FixedPromptCallKind::of(call)? != FixedPromptCallKind::Prefill
+    fn require_fixed_prompt_whole_shape(&self, call: &TextInvocation) -> Result<()> {
+        if FixedPromptInvocationKind::of(call)? != FixedPromptInvocationKind::Prefill
             || self.phase_index != 0
             || self.prior.is_some()
             || self.schedule.completed_layers != 24
@@ -49,7 +49,7 @@ impl AttemptPhaseBinding {
         &self,
         session: &ResidentSession,
         attempt: &RootAttempt,
-        call: &SourceCall,
+        call: &TextInvocation,
     ) -> Result<()> {
         self.require_fixed_prompt_whole_shape(call)?;
         self.require_binding(session, attempt, call, 0)
@@ -58,7 +58,7 @@ impl AttemptPhaseBinding {
         &self,
         permit: &PrefixPhaseEnqueue<'_>,
         service: &Arc<ResidentService>,
-        call: &SourceCall,
+        call: &TextInvocation,
     ) -> Result<()> {
         self.require_fixed_prompt_whole_shape(call)?;
         self.require_permit(permit, service, call, 0)

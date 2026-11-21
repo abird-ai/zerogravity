@@ -55,13 +55,13 @@ pub(super) struct ColdModel {
 impl ColdModel {
     pub(super) async fn bind_program(
         &self,
-        input: Arc<TextCallInput>,
-        state: Arc<TextCallState>,
+        input: Arc<TextInvocationInput>,
+        state: Arc<TextInvocationState>,
         cancel: Option<&AtomicBool>,
     ) -> Result<ResidentProgram> {
         let which = self
             .capture
-            .cold_scope_index(input.call().mode(), input.rows())?;
+            .cold_scope_index(input.invocation().phase(), input.rows())?;
         let cold = self
             .values
             .get(which)
@@ -191,7 +191,7 @@ pub struct TextEmptySnapshot {
     _metadata: WindowWorkspace,
 }
 #[derive(Clone, Debug)]
-pub struct TextCallReceipt {
+pub struct TextInvocationReceipt {
     pub root: RootBinding,
     pub selected_id: u32,
     pub max_bits: u32,
@@ -471,7 +471,7 @@ impl TextSession {
     }
     async fn prepare_inner(
         &self,
-        input: Arc<TextCallInput>,
+        input: Arc<TextInvocationInput>,
         validate: Option<TextValidation<'_>>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<TextPending> {
@@ -559,7 +559,7 @@ impl TextSession {
         &mut self,
         mut pending: TextPending,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<TextCallReceipt> {
+    ) -> Result<TextInvocationReceipt> {
         let mut wall = performance::Phases::new("commit", self.binding().frontier(), 0);
         if !pending
             .model
@@ -707,11 +707,11 @@ fn cold_source_scopes(
     let bindings = TextModelBindings::new(source.clone(), capture)?;
     let mut scopes = Vec::with_capacity(calls.len());
     for (index, (record, implementation)) in calls.iter().enumerate() {
-        let call = record.call();
+        let call = record.invocation();
         capture.cold_scope_role(index)?.require_call(call)?;
         if !source.same_issuer(record.source())
-            || call.rows().capacity() != 512
-            || call.rows().vocabulary() != 248320
+            || call.tokens().capacity() != 512
+            || call.tokens().vocabulary() != 248320
         {
             return Err(Error::State(
                 "text actual source/cold call geometry differs".into(),

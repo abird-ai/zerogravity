@@ -17,8 +17,8 @@ use zerogravity_artifacts::source_weights::{
     ParameterWindow, VerifiedTensorSource, WindowWorkspace,
 };
 use zerogravity_core::accelerator::program::{
-    ConvDomain, GdnContract, NumericalContract, RecurrentDomain, SourceCall, SourceConvGeometry,
-    SourceGdnGeometry, SourceOperator, SourceOperatorKind, SourceParameter,
+    ConvDomain, GdnContract, NumericalContract, RecurrentDomain, SourceConvGeometry,
+    SourceGdnGeometry, SourceOperator, SourceOperatorKind, SourceParameter, TextInvocation,
 };
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::{Error, Result};
@@ -44,7 +44,7 @@ fn require_native_gdn_pair(
             "full24 actual paired GDN source descriptors".into(),
         ));
     };
-    if conv.call() != recurrent.call()
+    if conv.invocation() != recurrent.invocation()
         || conv.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
         || recurrent.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
         || cg
@@ -149,7 +149,7 @@ impl ModelGdnParameters {
         }
         let (conv_domain, recurrent_domain) = require_native_gdn_pair(conv, recurrent)?;
         let site = conv_domain.0;
-        if recurrent_domain.0 != site || conv.call().source() != source.source_identity() {
+        if recurrent_domain.0 != site || conv.invocation().source() != source.source_identity() {
             return Err(Error::State(
                 "full24 actual paired GDN source descriptors".into(),
             ));
@@ -223,7 +223,7 @@ impl ModelGdnParameters {
         let (conv_domain, recurrent_domain) = require_native_gdn_pair(conv, recurrent)?;
         if conv_domain.0 != self.payload.site
             || recurrent_domain.0 != self.payload.site
-            || conv.call().source() != self.payload.source.source_identity()
+            || conv.invocation().source() != self.payload.source.source_identity()
             || conv.parameters() != &self.payload.descriptors[..1]
             || recurrent.parameters() != &self.payload.descriptors[1..]
         {
@@ -263,8 +263,8 @@ impl ModelGdnBinding {
     pub(crate) fn layer(&self) -> usize {
         self.parameters.payload.site
     }
-    pub(crate) fn call(&self) -> &SourceCall {
-        self.values.record().call()
+    pub(crate) fn invocation(&self) -> &TextInvocation {
+        self.values.record().invocation()
     }
     pub(crate) fn require_prepared(
         &self,
@@ -272,7 +272,7 @@ impl ModelGdnBinding {
         domains: &BoundModelState,
     ) -> Result<()> {
         self.arithmetic.require_same(prepared.arithmetic())?;
-        if domains.call() != self.call()
+        if domains.invocation() != self.invocation()
             || domains.layer() != self.layer()
             || domains.conv_domain()? != ConvDomain(self.layer())
             || domains.recurrent_domain()? != RecurrentDomain(self.layer())
@@ -407,8 +407,8 @@ impl ModelGdnPrepared {
             || activated != ra
             || z != rz
             || ba != rb
-            || cd.call() != record.call()
-            || rd.call() != record.call()
+            || cd.invocation() != record.invocation()
+            || rd.invocation() != record.invocation()
         {
             return Err(Error::State(
                 "full24 actual same-call Conv/Z/BA SSA cohort".into(),
@@ -439,10 +439,10 @@ impl ModelGdnPrepared {
             )?;
             GdnPhase::FixedPrompt
         } else {
-            GdnPhase::for_reference_call(record.call())?
+            GdnPhase::for_reference_call(record.invocation())?
         };
         let slot = if matches!(phase, GdnPhase::InitialOne | GdnPhase::FixedPrompt)
-            || phase == GdnPhase::CachedDecode && record.call().rows().base() == 1
+            || phase == GdnPhase::CachedDecode && record.invocation().tokens().base() == 1
         {
             GdnCacheSlot::One
         } else {

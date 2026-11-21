@@ -35,7 +35,7 @@ use crate::cuda::native::{
     text_native::TextNativeStorage,
 };
 use crate::cuda::rms::cohort::{CohortGamma, CohortRmsNode, CohortRmsStorage};
-use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextCallState};
+use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextInvocationState};
 use crate::resident_leases::backing_pool::ResidentWorkspaceGeometry;
 use crate::resident_leases::{ResidentInitialization, ResidentLease, ResidentService, TiedWeight};
 use crate::resident_state_transport::typed;
@@ -48,7 +48,7 @@ use zerogravity_core::device_events::{BufferLeaseId, BufferRole, DeviceAccess};
 
 // Exact actual source member and completed upload, independent of family roles.
 fn require_tied_member(
-    input: &crate::resident_inference::native_fragment::text::TextCallInput,
+    input: &crate::resident_inference::native_fragment::text::TextInvocationInput,
     descriptor: &zerogravity_core::accelerator::program::SourceOperator,
     tied: &TiedWeight,
     service: &Arc<ResidentService>,
@@ -63,7 +63,7 @@ fn require_tied_member(
     let source = input.source();
     let matrix = source.matrix(&member.name, member.axes)?;
     if !source.same_issuer(tied.source())
-        || descriptor.call() != input.call()
+        || descriptor.invocation() != input.invocation()
         || descriptor.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
         || member.source != source.source_identity()
         || member.kind
@@ -334,7 +334,7 @@ impl CohortLibrary {
         let span = if initial { 47 } else { 1 };
         let scope = scopes
             .iter()
-            .find(|scope| scope.call().rows().len() == span)
+            .find(|scope| scope.invocation().tokens().len() == span)
             .ok_or_else(|| Error::State("B4 cold finite scope absent".into()))?;
         let plan = scope.record().plan();
         if plan.values().len() != 327 {
@@ -507,7 +507,7 @@ impl FullModelCohort {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn prepare(
         service: Arc<ResidentService>,
-        states: &[Arc<TextCallState>],
+        states: &[Arc<TextInvocationState>],
         permits: &[PrefixPhaseEnqueue<'_>],
         geometry: Arc<ResidentWorkspaceGeometry>,
         status: ResidentLease,

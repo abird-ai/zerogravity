@@ -19,7 +19,7 @@ fn same_node(index: usize, old: &PlanNode, new: &PlanNode) -> Result<()> {
                     state: sb,
                 },
             ) => {
-                a.call().source() == b.call().source()
+                a.invocation().source() == b.invocation().source()
                     && a.kind() == b.kind()
                     && a.numerical_contract() == b.numerical_contract()
                     && a.matrices() == b.matrices()
@@ -57,7 +57,7 @@ impl StorageRecipe {
         let b = scope.record();
         let (ap, bp) = (a.plan(), b.plan());
         if !scope.source().same_issuer(old.scope.source())
-            || scope.call().rows().len() != old.scope.call().rows().len()
+            || scope.invocation().tokens().len() != old.scope.invocation().tokens().len()
             || mode != old.mode
             || limits.max_nodes != 255
             || limits.max_values != 327
@@ -103,17 +103,17 @@ mod tests {
     use zerogravity_core::accelerator::program::StateSlot;
     use zerogravity_core::accelerator::program::StateVersion;
     use zerogravity_core::accelerator::program::{
-        AttentionGeometry, NumericalContract, SourceAttentionMask, SourceCall, SourceCallMode,
-        SourceOperator, SourceOperatorKind, SourceRows, TextCallGeometry,
+        AttentionGeometry, InvocationPhase, NumericalContract, SourceAttentionMask, SourceOperator,
+        SourceOperatorKind, TextCallGeometry, TextInvocation, TokenSpan,
     };
     fn node(source: SourceIdentity, base: usize) -> Result<PlanNode> {
-        let call = SourceCall::new(
-            SourceRows::new(
+        let call = TextInvocation::new(
+            TokenSpan::new(
                 TextCallGeometry::new(source, 248320, 512)?,
                 base,
                 Arc::from([11]),
             )?,
-            SourceCallMode::Decode,
+            InvocationPhase::Decode,
         )?;
         Ok(PlanNode::new(
             "fresh FA".into(),
@@ -158,7 +158,7 @@ mod tests {
             else {
                 unreachable!()
             };
-            assert_ne!(a.call(), b.call());
+            assert_ne!(a.invocation(), b.invocation());
         }
         let foreign = node(SourceIdentity::for_new_allocation()?, 47)?;
         assert!(same_node(33, &cold, &foreign).is_err());

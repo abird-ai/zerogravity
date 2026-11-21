@@ -60,7 +60,7 @@ impl Session {
         &mut self,
         pending: native::FixedPromptPending,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<native::FixedPromptCallReceipt> {
+    ) -> Result<native::FixedPromptInvocationReceipt> {
         self.engine.commit(pending, cancelled)
     }
     pub async fn infer_prompt_with<F>(
@@ -68,7 +68,7 @@ impl Session {
         ids: &[u32],
         cancelled: Option<&AtomicBool>,
         validate: F,
-    ) -> Result<native::FixedPromptCallReceipt>
+    ) -> Result<native::FixedPromptInvocationReceipt>
     where
         F: for<'a> FnMut(native::FixedPromptNaturalReadback<'a>) -> Result<()>,
     {
@@ -79,7 +79,7 @@ impl Session {
         &mut self,
         cancelled: Option<&AtomicBool>,
         validate: F,
-    ) -> Result<native::FixedPromptCallReceipt>
+    ) -> Result<native::FixedPromptInvocationReceipt>
     where
         F: for<'a> FnMut(native::FixedPromptNaturalReadback<'a>) -> Result<()>,
     {
@@ -90,13 +90,13 @@ impl Session {
         &mut self,
         ids: &[u32],
         cancelled: Option<&AtomicBool>,
-    ) -> Result<native::FixedPromptCallReceipt> {
+    ) -> Result<native::FixedPromptInvocationReceipt> {
         self.infer_prompt_with(ids, cancelled, |_| Ok(())).await
     }
     pub async fn infer_next(
         &mut self,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<native::FixedPromptCallReceipt> {
+    ) -> Result<native::FixedPromptInvocationReceipt> {
         self.infer_next_with(cancelled, |_| Ok(())).await
     }
     pub async fn probe_cached(

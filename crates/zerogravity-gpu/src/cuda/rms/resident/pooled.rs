@@ -57,7 +57,7 @@ impl RmsPrepared {
         parameter.validate_source_parameter(binding.parameter())?;
         let mut owner = source_owner_rows_storage_bound(
             scope.record().source().clone(),
-            scope.record().call().rows().ids(),
+            scope.record().invocation().tokens().ids(),
             scope.columns(),
             scope.rows()?,
             Some(scope.definitions()),

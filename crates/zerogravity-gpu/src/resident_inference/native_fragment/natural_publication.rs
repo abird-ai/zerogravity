@@ -14,7 +14,7 @@ use std::sync::{
 };
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
-use zerogravity_core::accelerator::program::SourceCall;
+use zerogravity_core::accelerator::program::TextInvocation;
 use zerogravity_core::device_events::BufferRole;
 use zerogravity_core::session_root::{RootAttempt, RootBinding};
 use zerogravity_core::{Error, Result};
@@ -193,11 +193,11 @@ impl NaturalCallInput {
     pub(crate) fn record(&self) -> &Arc<SourceBindings> {
         &self.record
     }
-    pub(crate) fn call(&self) -> &SourceCall {
-        self.record.call()
+    pub(crate) fn invocation(&self) -> &TextInvocation {
+        self.record.invocation()
     }
     pub(crate) fn ids(&self) -> &[u32] {
-        self.call().rows().ids()
+        self.invocation().tokens().ids()
     }
     pub(crate) fn attempt(&self) -> &RootAttempt {
         &self.attempt
@@ -211,12 +211,13 @@ impl NaturalCallInput {
     pub(crate) fn require_session(&self, session: &ResidentSession) -> Result<()> {
         same_model(&self.model, session)?;
         self.slot
-            .require_current(session.binding(), &self.attempt, self.call())?;
+            .require_current(session.binding(), &self.attempt, self.invocation())?;
         if !Arc::ptr_eq(&self.service, &session.model.service)
             || self.source.source_identity() != session.binding().source()
             || !self.source.same_issuer(self.record.source())
-            || self.call().rows().capacity() != session.model.capacity
-            || u64::try_from(self.call().rows().vocabulary()).ok() != Some(session.model.vocab)
+            || self.invocation().tokens().capacity() != session.model.capacity
+            || u64::try_from(self.invocation().tokens().vocabulary()).ok()
+                != Some(session.model.vocab)
             || session.model.capacity != 512
             || session.model.vocab != 248320
         {
@@ -225,7 +226,7 @@ impl NaturalCallInput {
             ));
         }
         self.phase
-            .require_full_model_binding(session, &self.attempt, self.call())?;
+            .require_full_model_binding(session, &self.attempt, self.invocation())?;
         match &self.origin {
             InputOrigin::Prompt if !self.slot.feedback() => {}
             InputOrigin::Feedback(feedback) if self.slot.feedback() => {
@@ -275,7 +276,7 @@ impl ResidentSession {
             ));
         }
         let feedback = request.require(self, record.source())?;
-        if record.call().rows().ids() != [feedback.selected_id] {
+        if record.invocation().tokens().ids() != [feedback.selected_id] {
             return Err(Error::State(
                 "natural prepared call differs from original committed ID".into(),
             ));
@@ -297,15 +298,15 @@ impl ResidentSession {
         not_cancelled(cancelled)?;
         self.model.service.ensure_usable()?;
         let source = record.source().clone();
-        let call = record.call();
+        let call = record.invocation();
         if source.source_identity() != self.binding().source()
             || source.source_identity() != self.model.service.source_identity()
             || self.model.capacity != 512
             || self.model.vocab != 248320
-            || call.rows().capacity() != 512
-            || call.rows().vocabulary() != 248320
-            || call.rows().ids().len() != slot.rows()
-            || call.rows().ids().iter().any(|id| *id >= 248320)
+            || call.tokens().capacity() != 512
+            || call.tokens().vocabulary() != 248320
+            || call.tokens().ids().len() != slot.rows()
+            || call.tokens().ids().iter().any(|id| *id >= 248320)
             || self.binding().frontier() != slot.base() as u64
         {
             return Err(Error::Unsupported(
@@ -317,7 +318,7 @@ impl ResidentSession {
         let attempt = self.authority.begin_advance(slot.rows() as u64)?;
         slot.require_current(self.binding(), &attempt, call)?;
         let schedule =
-            GdnAttemptSchedule::new_published_call(&source, attempt.clone(), call.clone())?;
+            GdnAttemptSchedule::new_published_invocation(&source, attempt.clone(), call.clone())?;
         let phase = AttemptPhaseBinding::new(schedule.clone(), 0, None)?;
         let input = Arc::new(NaturalCallInput {
             source,

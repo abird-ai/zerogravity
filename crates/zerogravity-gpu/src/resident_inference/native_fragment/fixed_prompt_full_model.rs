@@ -457,7 +457,7 @@ where
             .flat_map(|d| d.leases.iter().cloned().map(|l| (l, DeviceAccess::Write))),
     );
     let runtime = RuntimeParameters {
-        token: record.call().rows().ids()[0],
+        token: record.invocation().tokens().ids()[0],
         position: 0,
         valid_tokens: 47,
     };

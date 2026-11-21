@@ -4,18 +4,18 @@
 use super::*;
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
 
-pub enum SourceCallCohortPreparation {
+pub enum ResidentTextCohortPreparation {
     Capacity,
-    Ready(SourceCallCohortPending),
+    Ready(ResidentTextCohortPending),
 }
 
 #[must_use = "dropping a completed source cohort discards every private root"]
-pub struct SourceCallCohortPending {
+pub struct ResidentTextCohortPending {
     inner: PreparedResidentCohort,
     scopes: Vec<Arc<ReaderScope>>,
 }
 
-impl SourceCallCohortPending {
+impl ResidentTextCohortPending {
     pub fn dispatches(&self) -> usize {
         self.inner.dispatches()
     }
@@ -24,8 +24,8 @@ impl SourceCallCohortPending {
     }
     pub fn commit(
         self,
-        sessions: &mut [&mut SourceCallSession],
-    ) -> Result<Vec<SourceCallReadback<InferenceReadback>>> {
+        sessions: &mut [&mut ResidentTextSession],
+    ) -> Result<Vec<ResidentTextReadback<InferenceReadback>>> {
         if sessions.len() != self.scopes.len()
             || sessions
                 .iter()
@@ -44,7 +44,7 @@ impl SourceCallCohortPending {
         Ok(readbacks
             .into_iter()
             .zip(self.scopes)
-            .map(|(data, scope)| SourceCallReadback {
+            .map(|(data, scope)| ResidentTextReadback {
                 data,
                 _scope: scope,
             })
@@ -52,13 +52,13 @@ impl SourceCallCohortPending {
     }
 }
 
-impl SourceCallModel {
+impl ResidentTextModel {
     /// Compatible native cached-decode calls. Stateful CUDA kernels may internally
     /// split a wider cohort while preserving each session's private frontier/root.
     pub async fn prepare_greedy_decode_cohort_admitted(
         self: &Arc<Self>,
-        rows: &[(&SourceCallSession, &BoundSourceInvocation, &ResidentToken)],
-    ) -> Result<SourceCallCohortPreparation> {
+        rows: &[(&ResidentTextSession, &BoundInvocation, &ResidentToken)],
+    ) -> Result<ResidentTextCohortPreparation> {
         if !matches!(self.cohort_width, 4 | 8)
             || !matches!(rows.len(), 2 | 4 | 8)
             || rows.len() > self.cohort_width
@@ -74,10 +74,10 @@ impl SourceCallModel {
         let mut sessions = Vec::with_capacity(rows.len());
         for (session, invocation, token) in rows {
             if !Arc::ptr_eq(&session.model, self)
-                || !invocation.invocation().emit_logits()
-                || invocation.invocation().rows() != 1
-                || invocation.invocation().base() as u64 != session.binding().frontier()
-                || invocation.invocation().ids() != [token.id]
+                || !invocation.input().emit_logits()
+                || invocation.input().token_count() != 1
+                || invocation.input().base() as u64 != session.binding().frontier()
+                || invocation.input().ids() != [token.id]
                 || token.producer != Some(session.binding())
                 || token.lease.bytes() != 12
                 || !Arc::ptr_eq(token.lease.service(), &self.inner.service)
@@ -87,7 +87,7 @@ impl SourceCallModel {
                 ));
             }
             scopes.push(self.reader_scope(CALL_HOST_BYTES)?);
-            requests.push(invocation.materialize_source_plan(SourceCallMode::Decode)?);
+            requests.push(invocation.materialize(InvocationPhase::Decode)?);
             sessions.push(&session.inner);
         }
         let Some(inner) = self
@@ -95,10 +95,10 @@ impl SourceCallModel {
             .prepare_forward_source_decode_cohort(&sessions, &requests, &scopes)
             .await?
         else {
-            return Ok(SourceCallCohortPreparation::Capacity);
+            return Ok(ResidentTextCohortPreparation::Capacity);
         };
-        Ok(SourceCallCohortPreparation::Ready(
-            SourceCallCohortPending { inner, scopes },
+        Ok(ResidentTextCohortPreparation::Ready(
+            ResidentTextCohortPending { inner, scopes },
         ))
     }
 
@@ -107,8 +107,8 @@ impl SourceCallModel {
     /// readout. Compatibility is derived from the source plan, not model names.
     pub async fn prepare_prefill_cohort_admitted(
         self: &Arc<Self>,
-        rows: &[(&SourceCallSession, &BoundSourceInvocation)],
-    ) -> Result<SourceCallCohortPreparation> {
+        rows: &[(&ResidentTextSession, &BoundInvocation)],
+    ) -> Result<ResidentTextCohortPreparation> {
         if !matches!(self.cohort_width, 4 | 8)
             || !matches!(rows.len(), 2 | 4 | 8)
             || rows.len() > self.cohort_width
@@ -119,13 +119,13 @@ impl SourceCallModel {
                     .into(),
             ));
         }
-        let prompt_rows = rows[0].1.invocation().rows();
-        let emit_logits = rows[0].1.invocation().emit_logits();
+        let prompt_rows = rows[0].1.input().token_count();
+        let emit_logits = rows[0].1.input().emit_logits();
         if !(1..=64).contains(&prompt_rows)
             || rows.iter().any(|(_, invocation)| {
-                invocation.invocation().emit_logits() != emit_logits
-                    || !(1..=64).contains(&invocation.invocation().rows())
-                    || !self.prefill_rows_compatible(prompt_rows, invocation.invocation().rows())
+                invocation.input().emit_logits() != emit_logits
+                    || !(1..=64).contains(&invocation.input().token_count())
+                    || !self.prefill_rows_compatible(prompt_rows, invocation.input().token_count())
             })
         {
             return Err(Error::Unsupported(
@@ -142,7 +142,7 @@ impl SourceCallModel {
                 ));
             }
             scopes.push(self.reader_scope(CALL_HOST_BYTES)?);
-            requests.push(invocation.materialize_source_plan(SourceCallMode::Prefill)?);
+            requests.push(invocation.materialize(InvocationPhase::Prefill)?);
             sessions.push(&session.inner);
         }
         let Some(inner) = self
@@ -150,10 +150,10 @@ impl SourceCallModel {
             .prepare_forward_source_prefill_cohort(&sessions, &requests, &scopes, emit_logits)
             .await?
         else {
-            return Ok(SourceCallCohortPreparation::Capacity);
+            return Ok(ResidentTextCohortPreparation::Capacity);
         };
-        Ok(SourceCallCohortPreparation::Ready(
-            SourceCallCohortPending { inner, scopes },
+        Ok(ResidentTextCohortPreparation::Ready(
+            ResidentTextCohortPending { inner, scopes },
         ))
     }
 }
@@ -227,12 +227,12 @@ impl ResidentModel {
         let calls = requests
             .iter()
             .map(|request| {
-                request.source_call().ok_or_else(|| {
+                request.text_invocation().ok_or_else(|| {
                     Error::State("source prefill cohort materialized call absent".into())
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        let prompt_rows = calls[0].rows().len();
+        let prompt_rows = calls[0].tokens().len();
         let frontier = roots.frontier().ok_or_else(|| {
             Error::Unsupported(
                 "ordinary source prefill cohort requires aligned compatible chunk roots".into(),
@@ -240,13 +240,13 @@ impl ResidentModel {
         })?;
         if !(1..=64).contains(&prompt_rows)
             || calls.iter().zip(&bases).any(|(call, base)| {
-                call.mode() != SourceCallMode::Prefill
-                    || call.rows().base() as u64 != frontier
-                    || !(1..=64).contains(&call.rows().len())
+                call.phase() != InvocationPhase::Prefill
+                    || call.tokens().base() as u64 != frontier
+                    || !(1..=64).contains(&call.tokens().len())
                     || base.frontier() != frontier
                     || call.source() != base.source()
-                    || call.rows().capacity() != self.capacity
-                    || call.rows().vocabulary() as u64 != self.vocab
+                    || call.tokens().capacity() != self.capacity
+                    || call.tokens().vocabulary() as u64 != self.vocab
             })
         {
             return Err(Error::Unsupported(
@@ -256,7 +256,7 @@ impl ResidentModel {
         let mut attempts = Vec::with_capacity(width);
         for (session, call) in sessions.iter().zip(&calls) {
             self.validate_domains(&session.domains, true)?;
-            let prompt_advance = u64::try_from(call.rows().len())
+            let prompt_advance = u64::try_from(call.tokens().len())
                 .map_err(|_| Error::Limit("ordinary source prefill cohort prompt rows".into()))?;
             attempts.push(session.authority.begin_advance(prompt_advance)?);
         }
@@ -290,7 +290,7 @@ impl ResidentModel {
 
         let row_counts = calls
             .iter()
-            .map(|call| call.rows().len())
+            .map(|call| call.tokens().len())
             .collect::<Vec<_>>();
         let Some((candidates, bindings)) = self
             .forward_source_cohort_candidates(sessions, &row_counts)
@@ -334,7 +334,7 @@ impl ResidentModel {
             workspace.program.validate_forward_source_request(request)?;
             workspace
                 .program
-                .validate_source_call_states(request, binding)?;
+                .validate_text_execution_states(request, binding)?;
         }
         let values = workspace
             .forward_cohort_values
@@ -623,17 +623,17 @@ impl ResidentModel {
             .iter()
             .map(|request| {
                 request
-                    .source_call()
+                    .text_invocation()
                     .ok_or_else(|| Error::State("source cohort materialized call absent".into()))
             })
             .collect::<Result<Vec<_>>>()?;
         if calls.iter().zip(&bases).any(|(call, base)| {
-            call.mode() != SourceCallMode::Decode
-                || call.rows().len() != 1
-                || call.rows().base() as u64 != base.frontier()
+            call.phase() != InvocationPhase::Decode
+                || call.tokens().len() != 1
+                || call.tokens().base() as u64 != base.frontier()
                 || call.source() != base.source()
-                || call.rows().capacity() != self.capacity
-                || call.rows().vocabulary() as u64 != self.vocab
+                || call.tokens().capacity() != self.capacity
+                || call.tokens().vocabulary() as u64 != self.vocab
         }) {
             return Err(Error::Unsupported(
                 "ordinary source cohort requires cached-decode rows bound to private roots".into(),
@@ -699,7 +699,7 @@ impl ResidentModel {
             workspace.program.validate_forward_source_request(request)?;
             workspace
                 .program
-                .validate_source_call_states(request, binding)?;
+                .validate_text_execution_states(request, binding)?;
         }
         let values = workspace
             .forward_cohort_values

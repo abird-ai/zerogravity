@@ -83,7 +83,7 @@ fn snapshot(owners: &PreparedOwners, service: &ResidentService) -> Result<Snapsh
     if leases.values().any(|lease| {
         !std::ptr::eq(lease.service().as_ref(), service)
             || lease.service_generation() != service.generation()
-            || lease.source_identity() != owners.cut.scope().record().call().source()
+            || lease.source_identity() != owners.cut.scope().record().invocation().source()
     }) {
         return Err(Error::State(
             "whole metadata original graph service/source generation".into(),

@@ -8,7 +8,7 @@ impl FullModelProgram {
             .get()
             .ok_or_else(|| Error::State("natural same-map BF16 output consumer absent".into()))?;
         let packet = greedy.packet_lease()?;
-        if packet.source_identity() != self.record.call().source()
+        if packet.source_identity() != self.record.invocation().source()
             || !Arc::ptr_eq(packet.service(), self.values.service())
             || packet.role() != BufferRole::Output
             || packet.bytes() != 12

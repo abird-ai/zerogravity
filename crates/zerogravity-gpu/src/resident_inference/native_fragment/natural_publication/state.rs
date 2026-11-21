@@ -88,7 +88,7 @@ impl NaturalCallState {
         }
         session.model.validate_domains(&self.candidate, false)?;
         for (layer, state) in self.states.iter().enumerate() {
-            if state.call() != self.input.call()
+            if state.invocation() != self.input.invocation()
                 || state.layer() != layer
                 || state.base() != self.input.attempt().base()
             {

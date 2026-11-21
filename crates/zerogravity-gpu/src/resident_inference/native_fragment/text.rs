@@ -1,4 +1,4 @@
-//! Actual source calls and original current-root/committed-packet ownership.
+//! Actual text invocations and original current-root/committed-packet ownership.
 use super::continuation::{AttemptPhaseBinding, GdnAttemptSchedule, PrefixPhaseEnqueue};
 use super::*;
 use crate::cuda::gdn::TextGdnImplementation;
@@ -7,7 +7,7 @@ use crate::cuda::native::text_native::TextKernelCapture;
 use crate::resident_program::source_bindings::SourceBindings;
 use std::sync::Weak;
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
-use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode};
+use zerogravity_core::accelerator::program::{InvocationPhase, TextInvocation};
 
 // Previous allowance: QwenPlan::BINDING_METADATA_BYTES.
 const CALL_METADATA_BYTES: usize = 512 * 1024;
@@ -105,17 +105,17 @@ impl TextFeedbackRequest<'_> {
 }
 
 fn require_feedback_coordinates(
-    call: &SourceCall,
+    call: &TextInvocation,
     root: RootBinding,
     prompt_tokens: usize,
     selected_id: u32,
 ) -> Result<()> {
-    if call.mode() != SourceCallMode::Decode
+    if call.phase() != InvocationPhase::Decode
         || call.source() != root.source()
-        || call.rows().base() as u64 != root.frontier()
-        || call.rows().len() != 1
-        || call.rows().ids() != [selected_id]
-        || call.rows().base() < prompt_tokens
+        || call.tokens().base() as u64 != root.frontier()
+        || call.tokens().len() != 1
+        || call.tokens().ids() != [selected_id]
+        || call.tokens().base() < prompt_tokens
     {
         return Err(Error::State(
             "text bound call differs from actual committed feedback".into(),
@@ -170,7 +170,7 @@ fn head_member(
 }
 
 // No strong Model reference: native/current-flight owners cannot form a Body cycle.
-pub(crate) struct TextCallInput {
+pub(crate) struct TextInvocationInput {
     model: Weak<ResidentModel>,
     source: VerifiedTensorSource,
     service: Arc<ResidentService>,
@@ -182,7 +182,7 @@ pub(crate) struct TextCallInput {
     prompt_tokens: usize,
     _metadata: WindowWorkspace,
 }
-impl TextCallInput {
+impl TextInvocationInput {
     pub(crate) fn source(&self) -> &VerifiedTensorSource {
         &self.source
     }
@@ -192,8 +192,8 @@ impl TextCallInput {
     pub(crate) fn record(&self) -> &Arc<SourceBindings> {
         self.scope.record()
     }
-    pub(crate) fn call(&self) -> &SourceCall {
-        self.scope.call()
+    pub(crate) fn invocation(&self) -> &TextInvocation {
+        self.scope.invocation()
     }
     /// Original immutable committed packet; checked again before cohort permits.
     pub(crate) fn feedback_lease(&self) -> Result<Option<&ResidentLease>> {
@@ -211,7 +211,7 @@ impl TextCallInput {
         }
     }
     pub(crate) fn ids(&self) -> &[u32] {
-        self.call().rows().ids()
+        self.invocation().tokens().ids()
     }
     pub(crate) fn attempt(&self) -> &RootAttempt {
         &self.attempt
@@ -220,16 +220,16 @@ impl TextCallInput {
         &self.phase
     }
     pub(crate) fn base(&self) -> usize {
-        self.call().rows().base()
+        self.invocation().tokens().base()
     }
     pub(crate) fn rows(&self) -> usize {
-        self.call().rows().len()
+        self.invocation().tokens().len()
     }
     pub(crate) fn prompt_tokens(&self) -> usize {
         self.prompt_tokens
     }
     pub(crate) fn call_ordinal(&self) -> usize {
-        if self.call().mode() == SourceCallMode::Prefill {
+        if self.invocation().phase() == InvocationPhase::Prefill {
             0
         } else {
             self.base() - self.prompt_tokens + 1
@@ -243,24 +243,25 @@ impl TextCallInput {
         if !Arc::ptr_eq(&model, &session.model)
             || !Arc::ptr_eq(&self.service, &session.model.service)
             || !self.source.same_issuer(self.scope.source())
-            || self.service.source_identity() != self.call().source()
+            || self.service.source_identity() != self.invocation().source()
             || self.source.source_identity() != session.binding().source()
-            || session.model.capacity != self.call().rows().capacity()
-            || Some(session.model.vocab) != u64::try_from(self.call().rows().vocabulary()).ok()
+            || session.model.capacity != self.invocation().tokens().capacity()
+            || Some(session.model.vocab)
+                != u64::try_from(self.invocation().tokens().vocabulary()).ok()
         {
             return Err(Error::State(
                 "text SAME source/model/service/current call".into(),
             ));
         }
         self.phase
-            .require_text_binding(session, &self.attempt, self.call())?;
-        match (&self.origin, self.call().mode()) {
-            (Origin::Prompt, SourceCallMode::Prefill) => {
+            .require_text_binding(session, &self.attempt, self.invocation())?;
+        match (&self.origin, self.invocation().phase()) {
+            (Origin::Prompt, InvocationPhase::Prefill) => {
                 if self.base() != 0 || self.prompt_tokens != self.rows() {
                     return Err(Error::State("text actual prompt coordinates differ".into()));
                 }
             }
-            (Origin::Feedback(packet), SourceCallMode::Decode) => {
+            (Origin::Feedback(packet), InvocationPhase::Decode) => {
                 if packet.prompt_tokens != self.prompt_tokens
                     || self.base() < self.prompt_tokens
                     || self.ids() != [packet.require_current(session, &self.source)?]
@@ -279,7 +280,8 @@ impl TextCallInput {
         permit: &PrefixPhaseEnqueue<'_>,
         service: &Arc<ResidentService>,
     ) -> Result<()> {
-        self.phase.require_text_permit(permit, service, self.call())
+        self.phase
+            .require_text_permit(permit, service, self.invocation())
     }
     pub(crate) fn permit<'a>(
         &'a self,
@@ -297,10 +299,10 @@ impl ResidentSession {
         implementation: TextGdnImplementation,
         capture: TextKernelCapture,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<TextCallInput>> {
+    ) -> Result<Arc<TextInvocationInput>> {
         if self.binding().frontier() != 0
-            || record.call().mode() != SourceCallMode::Prefill
-            || record.call().rows().base() != 0
+            || record.invocation().phase() != InvocationPhase::Prefill
+            || record.invocation().tokens().base() != 0
         {
             return Err(Error::State(
                 "text prompt requires the original empty root".into(),
@@ -323,10 +325,15 @@ impl ResidentSession {
         capture: TextKernelCapture,
         packet: Arc<CommittedTextPacket>,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<TextCallInput>> {
+    ) -> Result<Arc<TextInvocationInput>> {
         not_cancelled(cancelled)?;
         let id = packet.require_current(self, prepared.source())?;
-        require_feedback_coordinates(record.call(), self.binding(), packet.prompt_tokens, id)?;
+        require_feedback_coordinates(
+            record.invocation(),
+            self.binding(),
+            packet.prompt_tokens,
+            id,
+        )?;
         self.bind_text_input(
             prepared,
             record,
@@ -344,17 +351,18 @@ impl ResidentSession {
         capture: TextKernelCapture,
         origin: Origin,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<TextCallInput>> {
+    ) -> Result<Arc<TextInvocationInput>> {
         not_cancelled(cancelled)?;
         let prompt_tokens = match &origin {
-            Origin::Prompt => record.call().rows().len(),
+            Origin::Prompt => record.invocation().tokens().len(),
             Origin::Feedback(packet) => packet.prompt_tokens,
         };
         let source = prepared.source().clone();
         if !source.same_issuer(record.source())
             || source.source_identity() != self.binding().source()
-            || self.model.capacity != record.call().rows().capacity()
-            || Some(self.model.vocab) != u64::try_from(record.call().rows().vocabulary()).ok()
+            || self.model.capacity != record.invocation().tokens().capacity()
+            || Some(self.model.vocab)
+                != u64::try_from(record.invocation().tokens().vocabulary()).ok()
         {
             return Err(Error::State("text original source/session differs".into()));
         }
@@ -362,10 +370,10 @@ impl ResidentSession {
         let scope = prepared.bind(record, implementation, capture)?;
         let attempt = self
             .authority
-            .begin_advance(scope.call().rows().len() as u64)?;
+            .begin_advance(scope.invocation().tokens().len() as u64)?;
         let schedule = GdnAttemptSchedule::new_text(&scope, attempt.clone())?;
         let phase = AttemptPhaseBinding::new(schedule.clone(), 0, None)?;
-        let input = Arc::new(TextCallInput {
+        let input = Arc::new(TextInvocationInput {
             model: Arc::downgrade(&self.model),
             source,
             service: self.model.service.clone(),
@@ -383,15 +391,15 @@ impl ResidentSession {
 }
 
 mod state;
-pub(crate) use state::TextCallState;
+pub(crate) use state::TextInvocationState;
 mod readback;
 pub use readback::TextReadback;
 
 mod loaded;
 pub use loaded::{
-    TextCallReceipt, TextCloseReceipt, TextCohortFault, TextCohortFaultOutcome,
-    TextCohortFaultRetention, TextCohortPreparation, TextCohortReadback, TextCohortReceipt,
-    TextCohortRowReceipt, TextEmptySnapshot, TextFault, TextFaultOutcome, TextLoaded,
+    TextCloseReceipt, TextCohortFault, TextCohortFaultOutcome, TextCohortFaultRetention,
+    TextCohortPreparation, TextCohortReadback, TextCohortReceipt, TextCohortRowReceipt,
+    TextEmptySnapshot, TextFault, TextFaultOutcome, TextInvocationReceipt, TextLoaded,
     TextLoadedObservation, TextLoadedSnapshot, TextPending, TextPendingCohort,
     TextQualificationInputs, TextResourceInventory, TextSession, prepare_text, prepare_text_b4,
 };

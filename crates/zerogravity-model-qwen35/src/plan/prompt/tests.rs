@@ -3,8 +3,8 @@ use super::*;
 use crate::plan::tests_support::UnawareBackend;
 
 const PROMPT_TOKEN_COUNTS: [usize; 5] = [47, 57, 62, 67, 72];
-fn embedding(call: &PromptCall) -> QwenEmbedding {
-    QwenEmbedding::for_call(
+fn embedding(call: &PromptInvocation) -> QwenEmbedding {
+    QwenEmbedding::for_model_invocation(
         SourceTensor {
             source: call.span().source(),
             name: "model.language_model.embed_tokens.weight".into(),
@@ -13,15 +13,15 @@ fn embedding(call: &PromptCall) -> QwenEmbedding {
             rows: 248_320,
             columns: call.model_profile().hidden_size(),
         },
-        call.as_source_call(),
+        call.model_invocation(),
     )
     .unwrap()
 }
-fn rms(call: &PromptCall) -> QwenOperator {
+fn rms(call: &PromptInvocation) -> QwenOperator {
     let h = call.model_profile().hidden_size();
     QwenOperator::new(
-        call.as_source_call().clone(),
-        Some(call.as_source_call().layer(0).unwrap()),
+        call.model_invocation().clone(),
+        Some(call.model_invocation().layer(0).unwrap()),
         QwenOperation::InputRms,
         Vec::new(),
         vec![SourceParameter {
@@ -34,7 +34,7 @@ fn rms(call: &PromptCall) -> QwenOperator {
     )
     .unwrap()
 }
-fn projection(call: &PromptCall, kind: QwenProjection) -> QwenOperator {
+fn projection(call: &PromptInvocation, kind: QwenProjection) -> QwenOperator {
     let profile = call.model_profile();
     let members = match kind {
         QwenProjection::Qkvz => vec![
@@ -63,7 +63,7 @@ fn projection(call: &PromptCall, kind: QwenProjection) -> QwenOperator {
         None
     } else {
         Some(
-            call.as_source_call()
+            call.model_invocation()
                 .layer(
                     if matches!(
                         kind,
@@ -92,7 +92,7 @@ fn projection(call: &PromptCall, kind: QwenProjection) -> QwenOperator {
         })
         .collect();
     QwenOperator::new(
-        call.as_source_call().clone(),
+        call.model_invocation().clone(),
         layer,
         QwenOperation::Projection(kind),
         matrices,
@@ -115,14 +115,14 @@ fn dynamic_prefills_and_cached_spans_preserve_issuer() {
         assert_ne!(span, PromptSpan::prefill(source, workload, &ids).unwrap());
         assert_eq!((span.base(), span.len(), span.capacity()), (0, rows, 512));
         for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
-            let call = PromptCall::new(profile, span.clone()).unwrap();
+            let call = PromptInvocation::new(profile, span.clone()).unwrap();
             assert_eq!(call.request().teachers().prompt_span(), Some(&span));
             assert_eq!(call.request().teachers().ids(), &ids);
-            assert_eq!(call.as_source_call().rows(), rows);
+            assert_eq!(call.model_invocation().rows(), rows);
             assert!(call.request().reference_phase().is_err());
             for base in workload.cached_bases() {
                 let cached = PromptSpan::cached(source, workload, base, 353).unwrap();
-                let call = PromptCall::new(profile, cached.clone()).unwrap();
+                let call = PromptInvocation::new(profile, cached.clone()).unwrap();
                 assert_eq!(call.span(), &cached);
                 assert_eq!((call.span().base(), call.span().len()), (base, 1));
                 assert!(call.request().reference_phase().is_err());
@@ -171,19 +171,21 @@ fn short_cached66_cannot_be_retagged_as_reference_phase_or_standalone_embedding(
         11,
     )
     .unwrap();
-    let call = PromptCall::new(QwenModelVariant::Qwen800M, span).unwrap();
+    let call = PromptInvocation::new(QwenModelVariant::Qwen800M, span).unwrap();
     let request = call.request();
     let layer = QwenPrefixLayer::new(source, 0).unwrap();
     assert!(request.reference_phase().is_err());
     assert!(
-        QwenGdnCall::new(layer, ReferencePhase::CachedOne, request.teachers().clone()).is_err()
+        QwenGdnInvocation::new(layer, ReferencePhase::CachedOne, request.teachers().clone())
+            .is_err()
     );
     assert!(
-        QwenGdnCall::from_span(layer, SourceCallMode::Decode, request.teachers().clone()).is_err()
+        QwenGdnInvocation::from_span(layer, InvocationPhase::Decode, request.teachers().clone())
+            .is_err()
     );
-    assert!(QwenSourceCall::new(request.clone()).is_err());
-    assert!(QwenSourceCall::from_span(request.clone()).is_err());
-    assert!(QwenSourceCall::for_profile(QwenModelVariant::Qwen2B, request.clone()).is_err());
+    assert!(QwenModelInvocation::new(request.clone()).is_err());
+    assert!(QwenModelInvocation::from_span(request.clone()).is_err());
+    assert!(QwenModelInvocation::for_profile(QwenModelVariant::Qwen2B, request.clone()).is_err());
     let raw = embedding(&call);
     assert!(QwenEmbedding::new(raw.tensor().clone(), request.teachers().clone()).is_err());
     assert!(QwenPlanBuilder::new_gdn_attempt_phase(request.clone()).is_err());
@@ -191,7 +193,7 @@ fn short_cached66_cannot_be_retagged_as_reference_phase_or_standalone_embedding(
         QwenPlanBuilder::new_operator_slice(source, NumericalProfile::CudaSm86Bf16ReferenceV1)
             .unwrap();
     assert!(slice.source_embedding(&raw).is_err());
-    let old = QwenGdnCall::new(
+    let old = QwenGdnInvocation::new(
         layer,
         ReferencePhase::CachedOne,
         QwenInputRows::new(source, 66, 512, &[11]).unwrap(),
@@ -210,7 +212,7 @@ fn full_operator_shapes_use_true_rows_source_roles_and_family_widths() {
                 PromptSpan::prefill(source, workload, &vec![11; workload.prompt_tokens()]).unwrap(),
                 PromptSpan::cached(source, workload, *workload.cached_bases().end(), 353).unwrap(),
             ] {
-                let call = PromptCall::new(profile, span).unwrap();
+                let call = PromptInvocation::new(profile, span).unwrap();
                 let rows = call.span().len();
                 assert_eq!(embedding(&call).rows(), rows);
                 for kind in [
@@ -236,7 +238,7 @@ fn full_operator_shapes_use_true_rows_source_roles_and_family_widths() {
                             rows * profile.projection_output(kind)
                         }]
                     );
-                    assert_eq!(op.call(), call.as_source_call());
+                    assert_eq!(op.model_invocation(), call.model_invocation());
                     if kind == QwenProjection::Head {
                         assert_eq!(op.selected_row(), Some(rows - 1));
                     }
@@ -246,7 +248,7 @@ fn full_operator_shapes_use_true_rows_source_roles_and_family_widths() {
                 reversed.swap(0, 1);
                 assert!(
                     QwenOperator::new(
-                        call.as_source_call().clone(),
+                        call.model_invocation().clone(),
                         gate.layer(),
                         gate.kind(),
                         reversed,
@@ -278,25 +280,25 @@ fn full_builder_keeps_actual_short_teacher_provenance_and_no_reference_phase() {
             )
             .unwrap(),
         ] {
-            let call = PromptCall::new(profile, span.clone()).unwrap();
-            let mut builder = QwenPlanBuilder::new_model(call.as_source_call().clone()).unwrap();
+            let call = PromptInvocation::new(profile, span.clone()).unwrap();
+            let mut builder = QwenPlanBuilder::new_model(call.model_invocation().clone()).unwrap();
             let raw = builder.source_embedding(&embedding(&call)).unwrap();
             assert_eq!(raw.elements(), span.len() * profile.hidden_size());
             let normal = builder.source_operator(&rms(&call), &[raw]).unwrap()[0];
             let tag = builder.value_provenance(&normal).unwrap().unwrap();
             assert_eq!(tag.teachers().prompt_span(), Some(&span));
-            assert_eq!(tag.mode(), Some(span.mode()));
-            assert_eq!(tag.phase(), None);
+            assert_eq!(tag.invocation_phase(), Some(span.phase()));
+            assert_eq!(tag.reference_phase(), None);
             tag.require_invocation(call.request()).unwrap();
             let other_span = PromptSpan::new(
                 source,
                 span.workload(),
-                span.mode(),
+                span.phase(),
                 span.base(),
                 span.ids(),
             )
             .unwrap();
-            let foreign = PromptCall::new(profile, other_span).unwrap();
+            let foreign = PromptInvocation::new(profile, other_span).unwrap();
             assert!(tag.require_invocation(foreign.request()).is_err());
             let nodes = builder.core.nodes().len();
             assert!(builder.source_operator(&rms(&foreign), &[raw]).is_err());
@@ -308,7 +310,7 @@ fn full_builder_keeps_actual_short_teacher_provenance_and_no_reference_phase() {
 #[test]
 fn short_metadata_does_not_enable_an_unaware_backend() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let call = PromptCall::new(
+    let call = PromptInvocation::new(
         QwenModelVariant::Qwen2B,
         PromptSpan::prefill(
             source,

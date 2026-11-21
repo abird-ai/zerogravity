@@ -1,6 +1,6 @@
 //! Original source plan + resident owners on the existing engine worker.
 use crate::{
-    gpu::{SourceCallModel, SourceCallSession},
+    gpu::{ResidentTextModel, ResidentTextSession},
     identity::SourceIdentity,
     qwen35::plan::QwenForwardPlan,
     resource_arbiter::{AllocationClass, GlobalResourceLease},
@@ -76,16 +76,16 @@ struct Source {
     _control: GlobalResourceLease,
 }
 struct Model {
-    resident: Mutex<Option<Arc<SourceCallModel>>>,
+    resident: Mutex<Option<Arc<ResidentTextModel>>>,
     #[cfg(feature = "qwen35-cuda")]
-    prefix_cache: Mutex<Option<PrefixCache<u32, crate::gpu::SourceCallSnapshot>>>,
+    prefix_cache: Mutex<Option<PrefixCache<u32, crate::gpu::ResidentTextSnapshot>>>,
     source: Arc<Source>,
     tokenizer: Arc<dyn TextTokenizer>,
     max_token_bytes: usize,
     _metadata: Arc<zerogravity_engine::router::pending::ServingCharge>,
 }
 impl Model {
-    fn resident(&self) -> Result<Arc<SourceCallModel>, ServiceError> {
+    fn resident(&self) -> Result<Arc<ResidentTextModel>, ServiceError> {
         self.resident
             .lock()
             .map_err(|_| poison())?

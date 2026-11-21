@@ -61,7 +61,7 @@ pub(crate) fn prepare_projections(
     };
     arithmetic.require_owned()?;
     init.require_service(service)?;
-    if recipe.bindings().call().source() != service.source_identity()
+    if recipe.bindings().invocation().source() != service.source_identity()
         || zerogravity_core::resource_arbiter::ResourceArbiter::process_shared()
             .snapshot(&service.physical_key())?
             .limit

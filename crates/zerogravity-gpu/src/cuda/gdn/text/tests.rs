@@ -3,7 +3,7 @@ use super::*;
 use zerogravity_core::accelerator::SourceIdentity;
 use zerogravity_model_qwen35::plan::PromptSpan;
 use zerogravity_model_qwen35::plan::PromptWorkload;
-use zerogravity_model_qwen35::plan::{PromptCall, QwenModelVariant};
+use zerogravity_model_qwen35::plan::{PromptInvocation, QwenModelVariant};
 
 fn i32s(bytes: &[u8]) -> Vec<i32> {
     bytes
@@ -17,12 +17,12 @@ fn one_prefill_has_true_chunk_indices_scratch_and_final_offsets() -> Result<()> 
     for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
         for rows in [47, 57, 62, 67, 72] {
             let workload = PromptWorkload::new(rows, 512)?;
-            let call = PromptCall::new(
+            let call = PromptInvocation::new(
                 profile,
                 PromptSpan::prefill(source, workload, &vec![11; rows])?,
             )?;
-            let geometry = TextGdnGeometry::for_call(
-                &call.as_source_call().request().source_call()?,
+            let geometry = TextGdnGeometry::for_invocation(
+                &call.as_text_invocation().request().text_invocation()?,
                 fixture_implementation(
                     if profile == QwenModelVariant::Qwen800M {
                         0
@@ -96,12 +96,12 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
     for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
         for rows in [47, 57, 62, 67, 72] {
             let workload = PromptWorkload::new(rows, 512)?;
-            let call = PromptCall::new(
+            let call = PromptInvocation::new(
                 profile,
                 PromptSpan::prefill(source, workload, &vec![11; rows])?,
             )?;
-            let g = TextGdnGeometry::for_call(
-                &call.as_source_call().request().source_call()?,
+            let g = TextGdnGeometry::for_invocation(
+                &call.as_text_invocation().request().text_invocation()?,
                 fixture_implementation(
                     if profile == QwenModelVariant::Qwen800M {
                         0
@@ -215,7 +215,7 @@ fn explicit_prefill_47_through_50_configs_prepare_exact_grids() -> Result<()> {
     use GdnRecomputeKernel::{Bk64Bv64W8S3, Bk64Bv64W8S4};
     use GdnStateKernel::Bv64W4S2;
     use zerogravity_core::accelerator::program::{
-        SourceCall, SourceCallMode, SourceRows, TextCallGeometry,
+        InvocationPhase, TextCallGeometry, TextInvocation, TokenSpan,
     };
 
     let cases = [
@@ -244,12 +244,12 @@ fn explicit_prefill_47_through_50_configs_prepare_exact_grids() -> Result<()> {
     let call_geometry = TextCallGeometry::new(source, 256_000, 512)?;
     let expected_bindings = [9, 10, 4, 6, 4, 9, 10, 8, 5];
     for (rows, config, output_blocks) in cases {
-        let call = SourceCall::new(
-            SourceRows::new(call_geometry, 0, Arc::from(vec![11; rows]))?,
-            SourceCallMode::Prefill,
+        let call = TextInvocation::new(
+            TokenSpan::new(call_geometry, 0, Arc::from(vec![11; rows]))?,
+            InvocationPhase::Prefill,
         )?;
         let implementation = TextGdnImplementation::prefill(rows, config)?;
-        let geometry = TextGdnGeometry::for_call(&call, implementation)?;
+        let geometry = TextGdnGeometry::for_invocation(&call, implementation)?;
         geometry.require_implementation()?;
         let chunks = rows.div_ceil(64) as u32;
         let expected_grids = [

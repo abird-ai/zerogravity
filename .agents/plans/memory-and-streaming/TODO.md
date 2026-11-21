@@ -117,7 +117,7 @@ The following extends existing owners; source-byte qualification is not inferenc
   distinct logical lease IDs cannot hide overlapping physical backing before the existing
   two-slot authenticated retirement ring starts. The ring, source-owner lifetime and
   same-stream overwrite/retirement protocol are unchanged; no second transfer abstraction
-  was added. The production HIP source-call path now uses the same authority too:
+  was added. The production HIP resident-text path now uses the same authority too:
   cold workspace owners are pairwise ledger-checked once, while per-request root binding
   uses a one-lock incremental disjointness check against that already-validated workspace
   plus earlier new roots. This preserves the old O(root*workspace + root²) validation shape
@@ -308,7 +308,7 @@ The following extends existing owners; source-byte qualification is not inferenc
 - [ ] **Complete-domain prefix reuse/COW:** the first physical fork substrate is
   accepted. `ResidentSession::fork_shared_prefix` seeds only a fresh destination,
   validates same source/service/capacity/all domains and publishes cloned immutable
-  owners under the destination's own replacement root; source-call usage additionally
+  owners under the destination's own replacement root; resident-text usage additionally
   requires the same resident model. Original0.8B paged page4 prefix3 -> fork ->
   append1 matches independent replay for full logits/all42, keeps the cached snapshot
   immutable and retires cleanly in179.13s. No replay/readback/copy occurs at fork.

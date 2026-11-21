@@ -177,7 +177,7 @@ impl Probe {
                 .iter()
                 .map(|v| (v.lease_id(), v.offset(), v.bytes()))
                 .collect(),
-            rows: prepared.owner.cohort.bindings.call().rows().len(),
+            rows: prepared.owner.cohort.bindings.invocation().tokens().len(),
         }
     }
     fn inspect(self, mode: Qwen2BMlpWeightMode) -> Result<Qwen2BMlpWeightOutcome> {
@@ -381,7 +381,7 @@ impl ComponentRecipe {
             ));
         }
         let cohort = Cohort::bind(self)?;
-        Ok(cohort.bindings().call().rows().len())
+        Ok(cohort.bindings().invocation().tokens().len())
     }
 }
 /// Existing source/record/ticket may preexist. True flag precedes ALL new qualifier work.
@@ -459,7 +459,7 @@ async fn run(
     let record_admission = inputs.record_admission;
     let source = inputs.source;
     let cohort = Cohort::bind(&inputs.recipe)?;
-    let rows = cohort.bindings().call().rows().len();
+    let rows = cohort.bindings().invocation().tokens().len();
     if mode == Qwen2BMlpWeightMode::LegacyUploadRefusal {
         return Err(Error::Unsupported(
             "legacy family upload refusal belongs to model/application qualification".into(),

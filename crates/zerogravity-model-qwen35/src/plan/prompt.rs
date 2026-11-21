@@ -86,10 +86,10 @@ impl PromptWorkload {
 pub struct PromptSpan(Arc<PromptSpanData>);
 #[derive(Debug)]
 struct PromptSpanData {
-    rows: SourceRows,
+    rows: TokenSpan,
     source: SourceIdentity,
     workload: PromptWorkload,
-    mode: SourceCallMode,
+    phase: InvocationPhase,
     base: usize,
     ids: Arc<[u32]>,
 }
@@ -101,7 +101,7 @@ impl PartialEq for PromptSpan {
 impl Eq for PromptSpan {}
 impl PromptSpan {
     pub fn prefill(source: SourceIdentity, workload: PromptWorkload, ids: &[u32]) -> Result<Self> {
-        Self::new(source, workload, SourceCallMode::Prefill, 0, ids)
+        Self::new(source, workload, InvocationPhase::Prefill, 0, ids)
     }
     pub fn cached(
         source: SourceIdentity,
@@ -109,18 +109,18 @@ impl PromptSpan {
         base: usize,
         id: u32,
     ) -> Result<Self> {
-        Self::new(source, workload, SourceCallMode::Decode, base, &[id])
+        Self::new(source, workload, InvocationPhase::Decode, base, &[id])
     }
     fn new(
         source: SourceIdentity,
         workload: PromptWorkload,
-        mode: SourceCallMode,
+        phase: InvocationPhase,
         base: usize,
         ids: &[u32],
     ) -> Result<Self> {
-        Self::require_parts(source, workload, mode, base, ids)?;
+        Self::require_parts(source, workload, phase, base, ids)?;
         Ok(Self(Arc::new(PromptSpanData {
-            rows: SourceRows::new(
+            rows: TokenSpan::new(
                 TextCallGeometry::new(
                     source,
                     QwenModelVariant::Qwen800M.vocabulary_size(),
@@ -131,7 +131,7 @@ impl PromptSpan {
             )?,
             source,
             workload,
-            mode,
+            phase,
             base,
             ids: Arc::from(ids),
         })))
@@ -139,13 +139,15 @@ impl PromptSpan {
     fn require_parts(
         source: SourceIdentity,
         workload: PromptWorkload,
-        mode: SourceCallMode,
+        phase: InvocationPhase,
         base: usize,
         ids: &[u32],
     ) -> Result<()> {
-        let shape = match mode {
-            SourceCallMode::Prefill => base == 0 && ids.len() == workload.prompt_tokens(),
-            SourceCallMode::Decode => workload.validate_cached_base(base).is_ok() && ids.len() == 1,
+        let shape = match phase {
+            InvocationPhase::Prefill => base == 0 && ids.len() == workload.prompt_tokens(),
+            InvocationPhase::Decode => {
+                workload.validate_cached_base(base).is_ok() && ids.len() == 1
+            }
         };
         if !source.is_bound()
             || !shape
@@ -166,12 +168,12 @@ impl PromptSpan {
         Self::require_parts(
             self.source(),
             self.workload(),
-            self.mode(),
+            self.phase(),
             self.base(),
             self.ids(),
         )
     }
-    pub(super) fn source_rows(&self) -> SourceRows {
+    pub(super) fn source_rows(&self) -> TokenSpan {
         self.0.rows.clone()
     }
     pub fn source(&self) -> SourceIdentity {
@@ -180,8 +182,8 @@ impl PromptSpan {
     pub fn workload(&self) -> PromptWorkload {
         self.0.workload
     }
-    pub fn mode(&self) -> SourceCallMode {
-        self.0.mode
+    pub fn phase(&self) -> InvocationPhase {
+        self.0.phase
     }
     pub fn base(&self) -> usize {
         self.0.base
@@ -206,16 +208,19 @@ impl PromptSpan {
 /// Geometry metadata only; an authenticated model owner binds the profile.
 /// Uses the existing whole-model operators/traversal, never a native permit.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PromptCall {
+pub struct PromptInvocation {
     span: PromptSpan,
-    call: QwenSourceCall,
+    model_invocation: QwenModelInvocation,
 }
-impl PromptCall {
+impl PromptInvocation {
     pub fn new(profile: QwenModelVariant, span: PromptSpan) -> Result<Self> {
         profile.validate_prompt_workload(span.workload())?;
-        let request = QwenGdnCall::from_prompt_span(span.clone())?;
-        let call = QwenSourceCall::from_request(profile, request)?;
-        let value = Self { span, call };
+        let request = QwenGdnInvocation::from_prompt_span(span.clone())?;
+        let model_invocation = QwenModelInvocation::from_request(profile, request)?;
+        let value = Self {
+            span,
+            model_invocation,
+        };
         value.validate()?;
         Ok(value)
     }
@@ -223,25 +228,25 @@ impl PromptCall {
         &self.span
     }
     pub fn model_profile(&self) -> QwenModelVariant {
-        self.call.model_profile()
+        self.model_invocation.model_profile()
     }
-    pub fn request(&self) -> &QwenGdnCall {
-        self.call.request()
+    pub fn request(&self) -> &QwenGdnInvocation {
+        self.model_invocation.request()
     }
-    pub fn as_source_call(&self) -> &QwenSourceCall {
-        &self.call
+    pub fn model_invocation(&self) -> &QwenModelInvocation {
+        &self.model_invocation
     }
     pub fn validate(&self) -> Result<()> {
         self.span.validate()?;
-        self.call.validate()?;
+        self.model_invocation.validate()?;
         self.model_profile()
             .validate_prompt_workload(self.span.workload())?;
         if self.request().teachers().prompt_span() != Some(&self.span)
-            || self.request().mode() != self.span.mode()
-            || self.call.source() != self.span.source()
+            || self.request().phase() != self.span.phase()
+            || self.model_invocation.source() != self.span.source()
         {
             return Err(Error::State(
-                "bounded prompt exact call/teacher issuer changed".into(),
+                "bounded prompt invocation/teacher issuer changed".into(),
             ));
         }
         Ok(())

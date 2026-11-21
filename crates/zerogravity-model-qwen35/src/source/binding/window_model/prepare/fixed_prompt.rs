@@ -21,7 +21,7 @@ impl OriginalWindowModelSource {
         &self,
         base: usize,
         ids: &[u32],
-    ) -> Result<crate::plan::QwenSourceCall> {
+    ) -> Result<crate::plan::QwenModelInvocation> {
         self.require_small_model_source()?;
         let teachers = if ids.len() == 1 {
             QwenInputRows::new(self.source_identity(), base, 512, ids)?
@@ -35,17 +35,17 @@ impl OriginalWindowModelSource {
             )?)?
         };
         let mode = if base == 0 {
-            SourceCallMode::Prefill
+            InvocationPhase::Prefill
         } else {
-            SourceCallMode::Decode
+            InvocationPhase::Decode
         };
-        let request = QwenGdnCall::from_span(
+        let request = QwenGdnInvocation::from_span(
             QwenPrefixLayer::new(self.source_identity(), 0)?,
             mode,
             teachers,
         )?;
-        CallKind::of(&request)?;
-        crate::plan::QwenSourceCall::from_span(request)
+        InvocationKind::of(&request)?;
+        crate::plan::QwenModelInvocation::from_span(request)
     }
     pub fn prepare_fixed_prompt_call(&self, base: usize, ids: &[u32]) -> Result<PreparedPlan> {
         let call = self.bind_fixed_prompt_call(base, ids)?;
@@ -56,12 +56,12 @@ impl OriginalWindowModelSource {
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CallKind {
+enum InvocationKind {
     Prefill,
     Decode { base: usize },
 }
-impl CallKind {
-    fn of(request: &QwenGdnCall) -> Result<Self> {
+impl InvocationKind {
+    fn of(request: &QwenGdnInvocation) -> Result<Self> {
         request.validate()?;
         if request.layer().index() != 0
             || request.teachers().prompt_span().is_some()
@@ -72,11 +72,11 @@ impl CallKind {
                 "fixed prompt original source span only".into(),
             ));
         }
-        match (request.mode(), request.teachers().base(), request.rows()) {
-            (SourceCallMode::Prefill, 0, 47) if request.teachers().ids() == PROMPT_IDS => {
+        match (request.phase(), request.teachers().base(), request.rows()) {
+            (InvocationPhase::Prefill, 0, 47) if request.teachers().ids() == PROMPT_IDS => {
                 Ok(Self::Prefill)
             }
-            (SourceCallMode::Decode, base @ 47..=53, 1) => Ok(Self::Decode { base }),
+            (InvocationPhase::Decode, base @ 47..=53, 1) => Ok(Self::Decode { base }),
             _ => Err(Error::Unsupported(
                 "fixed prompt prefill47/decode47..53 source span".into(),
             )),
@@ -87,7 +87,7 @@ pub(super) fn prepare(
     source: &OriginalWindowModelSource,
     record: QwenPlan,
 ) -> Result<PreparedPlan> {
-    if record.call().model_profile() != QwenModelVariant::Qwen800M
+    if record.model_invocation().model_profile() != QwenModelVariant::Qwen800M
         || source.source().source_bytes() != 1_746_942_600
         || source.source().staging_chunk_bytes() != 1024 * 1024
         || source.owner().config().rms_norm_eps() != 1e-6
@@ -97,7 +97,7 @@ pub(super) fn prepare(
         ));
     }
     require_reference_record(source, &record)?;
-    CallKind::of(record.call().request())?;
+    InvocationKind::of(record.model_invocation().request())?;
     let metadata = source.source().reserve_workspace(METADATA_BYTES)?;
     require_embedding(source, record.plan())?;
     require_coverage(&record, |operator| source.validate_operator(operator))?;
@@ -118,7 +118,7 @@ fn require_coverage(
         let Some(descriptor) = record.operator(index)? else {
             continue;
         };
-        if descriptor.call() != record.call() {
+        if descriptor.model_invocation() != record.model_invocation() {
             return Err(Error::State(
                 "fixed prompt foreign source/teacher issuer".into(),
             ));
@@ -153,7 +153,7 @@ fn require_coverage(
                 };
                 let _ = qkvz;
                 if recurrent.kind() != QwenOperation::GdnRecurrent
-                    || recurrent.call() != record.call()
+                    || recurrent.model_invocation() != record.model_invocation()
                     || recurrent.layer() != descriptor.layer()
                     || activated != ra
                     || z != rz
@@ -187,34 +187,34 @@ fn require_coverage(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plan::{PromptCall, PromptSpan, PromptWorkload};
+    use crate::plan::{PromptInvocation, PromptSpan, PromptWorkload};
     use zerogravity_core::accelerator::SourceIdentity;
     use zerogravity_core::accelerator::program::TeacherSpan;
     fn request(
         source: SourceIdentity,
-        mode: SourceCallMode,
+        mode: InvocationPhase,
         base: usize,
         capacity: usize,
         ids: &[u32],
         layer: usize,
-    ) -> Result<QwenGdnCall> {
+    ) -> Result<QwenGdnInvocation> {
         let teachers = if ids.len() == 1 {
             QwenInputRows::new(source, base, capacity, ids)?
         } else {
             QwenInputRows::from_span(TeacherSpan::new(source, base, capacity, 248320, ids)?)?
         };
-        QwenGdnCall::from_span(QwenPrefixLayer::new(source, layer)?, mode, teachers)
+        QwenGdnInvocation::from_span(QwenPrefixLayer::new(source, layer)?, mode, teachers)
     }
     #[test]
     fn original_fixed_prompt_and_cached_positions_keep_the_actual_issuer() -> Result<()> {
         let source = SourceIdentity::for_new_allocation()?;
-        let prefill = request(source, SourceCallMode::Prefill, 0, 512, &PROMPT_IDS, 0)?;
-        let actual = prefill.source_call()?;
-        assert_eq!(CallKind::of(&prefill)?, CallKind::Prefill);
-        assert_eq!(prefill.source_call()?, actual);
+        let prefill = request(source, InvocationPhase::Prefill, 0, 512, &PROMPT_IDS, 0)?;
+        let actual = prefill.text_invocation()?;
+        assert_eq!(InvocationKind::of(&prefill)?, InvocationKind::Prefill);
+        assert_eq!(prefill.text_invocation()?, actual);
         for base in 47..=53 {
-            let call = request(source, SourceCallMode::Decode, base, 512, &[353], 0)?;
-            assert_eq!(CallKind::of(&call)?, CallKind::Decode { base });
+            let call = request(source, InvocationPhase::Decode, base, 512, &[353], 0)?;
+            assert_eq!(InvocationKind::of(&call)?, InvocationKind::Decode { base });
         }
         Ok(())
     }
@@ -222,26 +222,26 @@ mod tests {
     fn refuses_retagged_prompt_reference_wrong_ids_mode_base_capacity_and_layer() -> Result<()> {
         let source = SourceIdentity::for_new_allocation()?;
         assert!(QwenInputRows::new(source, 0, 512, &PROMPT_IDS).is_err());
-        assert!(request(source, SourceCallMode::Decode, 0, 512, &[353], 0).is_err());
+        assert!(request(source, InvocationPhase::Decode, 0, 512, &[353], 0).is_err());
         let mut wrong = PROMPT_IDS;
         wrong[19] = 17;
         for call in [
-            request(source, SourceCallMode::Prefill, 0, 512, &wrong, 0)?,
-            request(source, SourceCallMode::Prefill, 1, 512, &PROMPT_IDS, 0)?,
-            request(source, SourceCallMode::Prefill, 0, 511, &PROMPT_IDS, 0)?,
-            request(source, SourceCallMode::Prefill, 0, 512, &PROMPT_IDS, 1)?,
-            request(source, SourceCallMode::Prefill, 47, 512, &[353], 0)?,
-            request(source, SourceCallMode::Decode, 46, 512, &[353], 0)?,
-            request(source, SourceCallMode::Decode, 54, 512, &[353], 0)?,
-            request(source, SourceCallMode::Prefill, 0, 512, &[353; 64], 0)?,
+            request(source, InvocationPhase::Prefill, 0, 512, &wrong, 0)?,
+            request(source, InvocationPhase::Prefill, 1, 512, &PROMPT_IDS, 0)?,
+            request(source, InvocationPhase::Prefill, 0, 511, &PROMPT_IDS, 0)?,
+            request(source, InvocationPhase::Prefill, 0, 512, &PROMPT_IDS, 1)?,
+            request(source, InvocationPhase::Prefill, 47, 512, &[353], 0)?,
+            request(source, InvocationPhase::Decode, 46, 512, &[353], 0)?,
+            request(source, InvocationPhase::Decode, 54, 512, &[353], 0)?,
+            request(source, InvocationPhase::Prefill, 0, 512, &[353; 64], 0)?,
         ] {
-            assert!(CallKind::of(&call).is_err());
+            assert!(InvocationKind::of(&call).is_err());
         }
-        let tagged = PromptCall::new(
+        let tagged = PromptInvocation::new(
             QwenModelVariant::Qwen800M,
             PromptSpan::prefill(source, PromptWorkload::new(47, 512)?, &PROMPT_IDS)?,
         )?;
-        assert!(CallKind::of(tagged.request()).is_err());
+        assert!(InvocationKind::of(tagged.request()).is_err());
         Ok(())
     }
 }

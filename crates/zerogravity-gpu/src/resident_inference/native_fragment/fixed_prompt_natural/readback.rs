@@ -89,7 +89,7 @@ impl FixedPromptNaturalReadback<'_> {
             .raw
             .get(self.layout.duals + ordinal * 4 + 1)
             .ok_or_else(|| Error::State("canonical natural unrounded sum absent".into()))?;
-        let rows = self.record.call().rows().len();
+        let rows = self.record.invocation().tokens().len();
         if !matches!(rows, 1 | 47) || bytes.len() != rows * 1024 * 4 {
             return Err(Error::State(
                 "canonical natural source rows and F32 sum extent".into(),

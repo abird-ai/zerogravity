@@ -84,7 +84,7 @@ fn reference(path: &Path, label: &str) -> Reference {
             "Qwen/Qwen3.5-2B",
         ),
         "27b" => (
-            std::env::var("ZG_QWEN_SOURCE_CALLS_MANIFEST_SHA256")
+            std::env::var("ZG_QWEN_TEXT_INVOCATIONS_MANIFEST_SHA256")
                 .expect("separately audited original27B manifest digest"),
             "Qwen/Qwen3.8-27B",
         ),

@@ -12,7 +12,7 @@ use std::sync::{
 };
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
-use zerogravity_core::accelerator::program::SourceCallMode;
+use zerogravity_core::accelerator::program::InvocationPhase;
 use zerogravity_core::accelerator::program::StateEffect;
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::{Error, Result};
@@ -63,17 +63,17 @@ impl ModelKvTransport {
     ) -> Result<Arc<Self>> {
         not_cancelled(cancelled)?;
         arena.require_binding(&binding)?;
-        let call = binding.call();
-        let base = call.rows().base();
+        let call = binding.invocation();
+        let base = call.tokens().base();
         let end = base
-            .checked_add(call.rows().len())
+            .checked_add(call.tokens().len())
             .filter(|end| *end <= 67)
             .ok_or_else(|| Error::Unsupported("closed source rotary/KV prefix0..67".into()))?;
-        let block = match (call.mode(), base, call.rows().len()) {
-            (SourceCallMode::Prefill, 0, 1) | (SourceCallMode::Decode, 1, 1) => 4,
-            (SourceCallMode::Prefill, 0, 64)
-            | (SourceCallMode::Prefill, 64, 2)
-            | (SourceCallMode::Decode, 66, 1) => 1,
+        let block = match (call.phase(), base, call.tokens().len()) {
+            (InvocationPhase::Prefill, 0, 1) | (InvocationPhase::Decode, 1, 1) => 4,
+            (InvocationPhase::Prefill, 0, 64)
+            | (InvocationPhase::Prefill, 64, 2)
+            | (InvocationPhase::Decode, 66, 1) => 1,
             _ => {
                 return Err(Error::Unsupported(
                     "exact original five-phase cache page ABI".into(),
@@ -116,7 +116,7 @@ impl ModelKvTransport {
     ) -> Result<Arc<Self>> {
         not_cancelled(cancelled)?;
         let cache = arena.lease().clone();
-        let call = binding.call();
+        let call = binding.invocation();
         let service = cache.service();
         init.require_service(service)?;
         if binding.kv_domain().is_err()

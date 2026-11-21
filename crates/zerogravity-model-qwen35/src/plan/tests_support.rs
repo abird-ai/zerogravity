@@ -49,7 +49,9 @@ impl UnawareBackend {
         MathematicalBackend::source_operator(self, &descriptor.mathematical_operator()?, inputs)
     }
     pub(super) fn source_embedding(&mut self, descriptor: &QwenEmbedding) -> Result<Vec<f32>> {
-        let call = descriptor.teachers().source_call(SourceCallMode::Prefill)?;
+        let call = descriptor
+            .teachers()
+            .text_invocation(InvocationPhase::Prefill)?;
         let operator = SourceOperator::new(
             call,
             SourceOperatorKind::EmbeddingRows,

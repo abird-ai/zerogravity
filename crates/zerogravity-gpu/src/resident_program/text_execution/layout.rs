@@ -49,12 +49,12 @@ pub(super) fn aligned(bytes: usize) -> Result<usize> {
         .checked_add(ALIGNMENT - 1)
         .map(|n| n & !(ALIGNMENT - 1))
         .filter(|n| *n > 0)
-        .ok_or_else(|| Error::Limit("source-call aligned extent".into()))
+        .ok_or_else(|| Error::Limit("text-execution aligned extent".into()))
 }
 pub(super) fn sum(values: impl IntoIterator<Item = usize>) -> Result<usize> {
     values.into_iter().try_fold(0usize, |a, b| {
         a.checked_add(b)
-            .ok_or_else(|| Error::Limit("source-call owner byte sum".into()))
+            .ok_or_else(|| Error::Limit("text-execution owner byte sum".into()))
     })
 }
 fn f32_vector(slot: StateSlot, elements: usize) -> Result<StateRequirement> {
@@ -74,7 +74,7 @@ fn insert<T: PartialEq + Clone>(
     if let Some(old) = map.get(name) {
         if old != value {
             return Err(Error::State(
-                "source-call immutable descriptor changed".into(),
+                "text-execution immutable descriptor changed".into(),
             ));
         }
     } else {
@@ -85,7 +85,7 @@ fn insert<T: PartialEq + Clone>(
 
 impl Layout {
     pub(super) fn derive(plan: Arc<ForwardPlan>) -> Result<Self> {
-        if plan.source_call().is_some()
+        if plan.text_invocation().is_some()
             || plan.frontier_delta() != 0
             || plan.is_operator_slice()
             || plan.numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
@@ -102,7 +102,7 @@ impl Layout {
             || plan.logits().is_none()
         {
             return Err(Error::Unsupported(
-                "source-call static CPU arithmetic/state template".into(),
+                "text-execution static CPU arithmetic/state template".into(),
             ));
         }
         let physical = plan
@@ -152,7 +152,7 @@ impl Layout {
             let PlanOperation::SourceOperatorTemplate { descriptor: d, .. } = &node.operation
             else {
                 return Err(Error::Unsupported(
-                    "source-call contains a non-template operation".into(),
+                    "text-execution contains a non-template operation".into(),
                 ));
             };
             if d.source() != plan.source()
@@ -161,7 +161,7 @@ impl Layout {
                 || vocabulary != 0 && vocabulary != d.vocabulary()
             {
                 return Err(Error::State(
-                    "source-call template source/contract/geometry".into(),
+                    "text-execution template source/contract/geometry".into(),
                 ));
             }
             vocabulary = d.vocabulary();
@@ -171,7 +171,7 @@ impl Layout {
                     || !m.columns.is_multiple_of(64)
                 {
                     return Err(Error::Unsupported(
-                        "source-call original BF16 full-K matrix".into(),
+                        "text-execution original BF16 full-K matrix".into(),
                     ));
                 }
                 insert(&mut matrices, &m.name, m)?;
@@ -184,7 +184,7 @@ impl Layout {
                     StoredTensorEncoding::Scalar(ScalarDType::Bf16 | ScalarDType::F32)
                 ) {
                     return Err(Error::Unsupported(
-                        "source-call exact learned parameter codec".into(),
+                        "text-execution exact learned parameter codec".into(),
                     ));
                 }
                 insert(&mut parameters, &p.name, p)?;
@@ -203,7 +203,7 @@ impl Layout {
                         || g.gamma != SourceGamma::OnePlus
                     {
                         return Err(Error::Unsupported(
-                            "source-call source RMS geometry/gamma".into(),
+                            "text-execution source RMS geometry/gamma".into(),
                         ));
                     }
                     rms = rms.max(g.width);
@@ -224,7 +224,7 @@ impl Layout {
                         || g.coefficient_channels != 2 * g.z_channels / 128
                     {
                         return Err(Error::Unsupported(
-                            "source-call complete Conv4 geometry".into(),
+                            "text-execution complete Conv4 geometry".into(),
                         ));
                     }
                     channels = channels.max(g.qkv_channels);
@@ -244,7 +244,7 @@ impl Layout {
                         || g.epsilon.to_bits() != 1e-6f32.to_bits()
                     {
                         return Err(Error::Unsupported(
-                            "source-call original chunk/cached GDN geometry".into(),
+                            "text-execution original chunk/cached GDN geometry".into(),
                         ));
                     }
                     heads = heads.max(g.value_heads);
@@ -266,7 +266,7 @@ impl Layout {
                         || g.epsilon.to_bits() != 1e-6f32.to_bits()
                     {
                         return Err(Error::Unsupported(
-                            "source-call source RMS/rotary profile".into(),
+                            "text-execution source RMS/rotary profile".into(),
                         ));
                     }
                     qheads = qheads.max(g.attention.query_heads);
@@ -284,7 +284,9 @@ impl Layout {
                         || !key_width.is_multiple_of(256)
                         || packed_value.width != key_width
                     {
-                        return Err(Error::Unsupported("source-call original KV extent".into()));
+                        return Err(Error::Unsupported(
+                            "text-execution original KV extent".into(),
+                        ));
                     }
                     let layout = StateLayout::Kv {
                         slab: key_width,
@@ -313,7 +315,7 @@ impl Layout {
                         || mask != SourceAttentionMask::Causal
                     {
                         return Err(Error::Unsupported(
-                            "source-call complete attention profile".into(),
+                            "text-execution complete attention profile".into(),
                         ));
                     }
                     qheads = qheads.max(g.query_heads);
@@ -324,7 +326,9 @@ impl Layout {
                 | SourceOperatorKind::Multiply { width }
                 | SourceOperatorKind::SiluAndMul { width } => {
                     if width == 0 || width > 32768 || !width.is_multiple_of(32) {
-                        return Err(Error::Unsupported("source-call activation geometry".into()));
+                        return Err(Error::Unsupported(
+                            "text-execution activation geometry".into(),
+                        ));
                     }
                     if matches!(d.kind(), SourceOperatorKind::Sigmoid { .. }) {
                         sigmoid_width = sigmoid_width.max(width);
@@ -333,7 +337,7 @@ impl Layout {
                 }
                 _ => {
                     return Err(Error::Unsupported(
-                        "source-call kernel implementation absent".into(),
+                        "text-execution kernel implementation absent".into(),
                     ));
                 }
             };
@@ -341,7 +345,7 @@ impl Layout {
                 s.plane_layout()?;
                 let effect = node
                     .state
-                    .ok_or_else(|| Error::State("source-call state effect absent".into()))?;
+                    .ok_or_else(|| Error::State("text-execution state effect absent".into()))?;
                 if effect.read.slot != s.slot
                     || effect.write.slot != s.slot
                     || effect.read.ordinal != 0
@@ -350,7 +354,7 @@ impl Layout {
                     || states.insert(s.slot, s).is_some()
                 {
                     return Err(Error::State(
-                        "source-call original state effect chain".into(),
+                        "text-execution original state effect chain".into(),
                     ));
                 }
             }
@@ -358,12 +362,14 @@ impl Layout {
         let mut ordered = Vec::new();
         for (slot, version) in plan.required_domains().iter().zip(plan.proposed_domains()) {
             if version.slot != *slot || version.ordinal != 1 {
-                return Err(Error::State("source-call proposed domain version".into()));
+                return Err(Error::State(
+                    "text-execution proposed domain version".into(),
+                ));
             }
             ordered.push(
-                states
-                    .remove(slot)
-                    .ok_or_else(|| Error::State("source-call missing state definition".into()))?,
+                states.remove(slot).ok_or_else(|| {
+                    Error::State("text-execution missing state definition".into())
+                })?,
             );
         }
         if !states.is_empty()
@@ -374,13 +380,13 @@ impl Layout {
             || matrices.is_empty()
         {
             return Err(Error::Unsupported(
-                "source-call incomplete source math population".into(),
+                "text-execution incomplete source math population".into(),
             ));
         }
         let last = plan
             .nodes()
             .last()
-            .ok_or_else(|| Error::State("source-call head absent".into()))?;
+            .ok_or_else(|| Error::State("text-execution head absent".into()))?;
         let PlanOperation::SourceOperatorTemplate {
             descriptor: head, ..
         } = &last.operation
@@ -392,7 +398,7 @@ impl Layout {
             || last.outputs.as_slice() != [plan.logits().unwrap()]
         {
             return Err(Error::Unsupported(
-                "source-call last-row complete-vocabulary readout".into(),
+                "text-execution last-row complete-vocabulary readout".into(),
             ));
         }
         let v = MAX_ROWS * heads * 128;
@@ -433,7 +439,7 @@ impl Layout {
             crate::source_attention::rows::Geometry::new(qheads, kvheads, plan.prefix_capacity())?;
         scratch.extend(attention.scratch_words());
         if scratch.len() != ATTENTION.end {
-            return Err(Error::State("source-call scratch schema".into()));
+            return Err(Error::State("text-execution scratch schema".into()));
         }
         let scratch = scratch
             .into_iter()
@@ -443,7 +449,7 @@ impl Layout {
             .values()
             .map(|m| {
                 usize::try_from(m.packed_bytes()?)
-                    .map_err(|_| Error::Limit("source-call matrix bytes".into()))
+                    .map_err(|_| Error::Limit("text-execution matrix bytes".into()))
             })
             .collect::<Result<Vec<_>>>()?)?;
         let parameter_bytes = sum(parameters
@@ -455,10 +461,10 @@ impl Layout {
                     .try_fold(1usize, |a, b| {
                         a.checked_mul(usize::try_from(*b).ok()?).filter(|n| *n > 0)
                     })
-                    .ok_or_else(|| Error::Limit("source-call parameter shape".into()))?;
+                    .ok_or_else(|| Error::Limit("text-execution parameter shape".into()))?;
                 aligned(
                     n.checked_mul(4)
-                        .ok_or_else(|| Error::Limit("source-call parameter bytes".into()))?,
+                        .ok_or_else(|| Error::Limit("text-execution parameter bytes".into()))?,
                 )
             })
             .collect::<Result<Vec<_>>>()?)?;

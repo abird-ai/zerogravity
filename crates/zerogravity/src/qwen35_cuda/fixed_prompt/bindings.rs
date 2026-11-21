@@ -50,7 +50,7 @@ impl Templates {
         let metadata = self.source.source().reserve_workspace(bytes)?;
         let call = self.source.bind_fixed_prompt_call(base, ids)?;
         Ok(Arc::new(
-            template.rebind(call.request().source_call()?, metadata)?,
+            template.rebind(call.request().text_invocation()?, metadata)?,
         ))
     }
 }

@@ -49,11 +49,12 @@ pub use text_bindings::{
 pub use text_step::TextStepBindings;
 mod source_program;
 pub use source_program::{
-    BoundSourceInvocation, GdnContract, NumericalContract, SourceAttentionMask, SourceCall,
-    SourceCallMode, SourceConvGeometry, SourceGamma, SourceGdnGeometry, SourceGroupedQkGeometry,
-    SourceInvocation, SourceOperator, SourceOperatorKind, SourceOperatorSemantics,
+    BoundInvocation, GdnContract, InvocationInput, InvocationPhase, NumericalContract,
+    SourceAttentionMask, SourceConvGeometry, SourceGamma, SourceGdnGeometry,
+    SourceGroupedQkGeometry, SourceOperator, SourceOperatorKind, SourceOperatorSemantics,
     SourceOperatorTemplate, SourcePlanGeometry, SourceQkRotaryGeometry, SourceRetainedOrigin,
-    SourceRmsGeometry, SourceRowSelection, SourceRows, SourceStateAccess, SourceValueProvenance,
+    SourceRmsGeometry, SourceRowSelection, SourceStateAccess, SourceValueProvenance,
+    TextInvocation, TokenSpan,
 };
 mod value_storage;
 pub use value_storage::{
@@ -811,7 +812,7 @@ impl std::ops::DerefMut for PlanNode {
 }
 #[derive(Clone, Debug)]
 pub struct ForwardPlan {
-    source_call: Option<SourceCall>,
+    text_invocation: Option<TextInvocation>,
     source_provenance: Vec<Option<SourceValueProvenance>>,
     nodes: Vec<PlanNode>,
     semantics: Arc<ForwardPlanSemantics>,
@@ -928,7 +929,7 @@ impl ForwardPlan {
 }
 
 pub struct PlanBuilder {
-    source_call: Option<SourceCall>,
+    text_invocation: Option<TextInvocation>,
     source_template: Option<SourcePlanGeometry>,
     source_provenance: Vec<Option<SourceValueProvenance>>,
     owner: u64,
@@ -1048,7 +1049,7 @@ impl PlanBuilder {
             .map_err(|_| Error::Limit("forward plan builder identity exhausted".into()))?;
         Ok(Self {
             owner,
-            source_call: None,
+            text_invocation: None,
             source_template: None,
             source_provenance: Vec::new(),
             profile,
@@ -1450,7 +1451,7 @@ impl PlanBuilder {
             output: output.id,
             plan: Arc::new(ForwardPlan {
                 binding_metadata: None,
-                source_call: self.source_call,
+                text_invocation: self.text_invocation,
                 source_provenance: self.source_provenance,
                 nodes: self.nodes,
                 semantics: Arc::new(ForwardPlanSemantics {
@@ -1476,7 +1477,7 @@ impl PlanBuilder {
     }
     pub fn finish(self, logits: Option<PlanValue>) -> Result<ForwardPlan> {
         if self.operator_slice
-            || self.source_call.is_some()
+            || self.text_invocation.is_some()
             || self.advanced.is_none()
             || self.domains.len() != self.required.len()
             || self
@@ -1497,7 +1498,7 @@ impl PlanBuilder {
         }
         Ok(ForwardPlan {
             binding_metadata: None,
-            source_call: self.source_call,
+            text_invocation: self.text_invocation,
             source_provenance: self.source_provenance,
             nodes: self.nodes,
             semantics: Arc::new(ForwardPlanSemantics {
@@ -2175,7 +2176,7 @@ impl MathematicalBackend for PlanBuilder {
         Ok(())
     }
     fn advance_frontier(&mut self) -> Result<()> {
-        if self.source_call.is_some() {
+        if self.text_invocation.is_some() {
             return Err(Error::Unsupported(
                 "qualification fragment cannot advance a model frontier".into(),
             ));

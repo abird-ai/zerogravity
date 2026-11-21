@@ -14,11 +14,11 @@ use zerogravity::resource_arbiter::{
 };
 use zerogravity::{Error, Result};
 #[allow(dead_code)]
-#[path = "qwen_source_calls_reference/checkpoint.rs"]
+#[path = "qwen_text_invocations_reference/checkpoint.rs"]
 mod checkpoint;
-#[path = "qwen_source_calls_reference/geometry.rs"]
+#[path = "qwen_text_invocations_reference/geometry.rs"]
 mod geometry;
-#[path = "qwen_source_calls_reference/observer.rs"]
+#[path = "qwen_text_invocations_reference/observer.rs"]
 mod observation;
 #[path = "qwen_source_reference_scope.rs"]
 mod scope;
@@ -111,7 +111,7 @@ pub struct Expected {
 }
 pub(super) fn stamp(f: &File) -> Result<[u64; 7]> {
     let m = f.metadata()?;
-    need(m.is_file(), "source-call reference regular file")?;
+    need(m.is_file(), "text-invocation reference regular file")?;
     Ok([
         m.dev(),
         m.ino(),
@@ -145,14 +145,14 @@ impl Expected {
             ),
             "27b" => {
                 let digest =
-                    std::env::var("ZG_QWEN_SOURCE_CALLS_MANIFEST_SHA256").map_err(|_| {
+                    std::env::var("ZG_QWEN_TEXT_INVOCATIONS_MANIFEST_SHA256").map_err(|_| {
                         Error::Malformed(
                             "separately audited original27B manifest digest required".into(),
                         )
                     })?;
                 return Self::open_pinned(directory, "Qwen/Qwen3.8-27B", &digest, None, false);
             }
-            _ => return Err(Error::Unsupported("source-call reference model".into())),
+            _ => return Err(Error::Unsupported("text-invocation reference model".into())),
         };
         Self::open_pinned(
             directory,
@@ -203,7 +203,7 @@ impl Expected {
         arbiter.register_matching(key.clone(), 16 * 1024 * 1024 * 1024)?;
         let host = arbiter.admit(
             &key,
-            ResourceOwner::new("source-call-diagnostic", "independent-reference")?,
+            ResourceOwner::new("text-invocation-diagnostic", "independent-reference")?,
             &[AllocationRequest {
                 kind: AllocationClass::Scratch,
                 bytes: 64 * 1024 * 1024,
@@ -219,7 +219,7 @@ impl Expected {
             bytes.len() <= 16 * 1024 * 1024
                 && stamp(&manifest)? == manifest_stamp
                 && format!("{:x}", Sha256::digest(&bytes)) == manifest_sha,
-            "source-call manifest identity/stable inode",
+            "text-invocation manifest identity/stable inode",
         )?;
         let doc: Document =
             serde_json::from_slice(&bytes).map_err(|e| Error::Malformed(e.to_string()))?;
@@ -239,12 +239,12 @@ impl Expected {
                 && doc.numerical_profile == "TorchCpuAvx2Bf16MixedV1"
                 && doc.original_full_forward
                 && doc.all_original_source_and_mapped_bytes_unchanged,
-            "source-call original scope",
+            "text-invocation original scope",
         )?;
         let raw_bytes = doc.raw_bytes;
         let raw = open(&directory.join("raw.bin"))?;
         let before = stamp(&raw)?;
-        need(before[2] == raw_bytes, "source-call raw extent")?;
+        need(before[2] == raw_bytes, "text-invocation raw extent")?;
         let mut h = Sha256::new();
         let mut buffer = vec![0; 1024 * 1024];
         let mut at = 0;
@@ -256,7 +256,7 @@ impl Expected {
         }
         need(
             format!("{:x}", h.finalize()) == doc.raw_sha256 && stamp(&raw)? == before,
-            "source-call raw full digest/stable inode",
+            "text-invocation raw full digest/stable inode",
         )?;
         let mut calls = BTreeMap::new();
         let mut frontiers = BTreeMap::new();
@@ -280,14 +280,14 @@ impl Expected {
                         }))
                     && matches!(c.phase.as_str(), "prefill" | "decode")
                     && (c.phase != "decode" || c.rows == 1 && c.position > 0),
-                "source-call schedule and actual frontiers",
+                "text-invocation schedule and actual frontiers",
             )?;
-            need(calls.insert(c.key(), c).is_none(), "unique source call")?;
+            need(calls.insert(c.key(), c).is_none(), "unique text invocation")?;
             *frontier = (c.call + 1, c.position + c.rows);
         }
         need(
             frontiers.len() == 2 * cases,
-            "source-call independent repeat/case groups",
+            "text-invocation independent repeat/case groups",
         )?;
         let mut index = BTreeMap::new();
         let mut end = 0;
@@ -314,17 +314,17 @@ impl Expected {
                     && r.position == c.position
                     && r.rows == c.rows
                     && r.phase == c.phase,
-                "source-call exact record extent/identity",
+                "text-invocation exact record extent/identity",
             )?;
             need(
                 index
                     .insert((r.repeat, r.case, r.call, r.label.clone(), r.layer), i)
                     .is_none(),
-                "unique source-call record",
+                "unique text-invocation record",
             )?;
             end += r.bytes as u64;
         }
-        need(end == raw_bytes, "source-call entire archive coverage")?;
+        need(end == raw_bytes, "text-invocation entire archive coverage")?;
         let result = Self {
             doc,
             index,
@@ -404,21 +404,23 @@ impl Expected {
                     .iter()
                     .zip(&members)
                     .all(|(a, b)| a.name == b.0 && a.bytes == b.1 && a.sha256 == b.2),
-            "source-call same approved source members",
+            "text-invocation same approved source members",
         )?;
         self.require_geometry(config)
     }
     pub fn unchanged(&self) -> Result<()> {
         need(
             stamp(&self.raw)? == self.stamp,
-            "source-call reference held inode unchanged",
+            "text-invocation reference held inode unchanged",
         )
     }
     fn find(&self, c: &Call, label: &str, layer: Option<usize>) -> Result<usize> {
         self.index
             .get(&(c.repeat, c.case, c.call, label.into(), layer))
             .copied()
-            .ok_or_else(|| Error::State(format!("missing source-call record {label}/{layer:?}")))
+            .ok_or_else(|| {
+                Error::State(format!("missing text-invocation record {label}/{layer:?}"))
+            })
     }
     fn load(&self, i: usize) -> Result<Vec<u8>> {
         self.unchanged()?;
@@ -427,7 +429,7 @@ impl Expected {
         self.raw.read_exact_at(&mut b, r.offset)?;
         need(
             format!("{:x}", Sha256::digest(&b)) == r.sha256,
-            "source-call individual record digest",
+            "text-invocation individual record digest",
         )?;
         self.unchanged()?;
         Ok(b)

@@ -314,7 +314,7 @@ pub(super) fn gdn_runtime_config() -> Result<GdnRuntimeConfig> {
 }
 
 fn require_plan_shape(plan: &ForwardPlan) -> Result<()> {
-    if plan.source_call().is_some()
+    if plan.text_invocation().is_some()
         || plan.frontier_delta() != 0
         || plan.nodes().is_empty()
         || plan.nodes().len() > MAX_NODES
@@ -328,7 +328,7 @@ fn require_plan_shape(plan: &ForwardPlan) -> Result<()> {
         || plan.proposed_domains().len() != plan.required_domains().len()
     {
         return Err(Error::Unsupported(
-            "CUDA forward bounded call-free source plan".into(),
+            "CUDA forward bounded invocation-free source plan".into(),
         ));
     }
     for (index, node) in plan.nodes().iter().enumerate() {

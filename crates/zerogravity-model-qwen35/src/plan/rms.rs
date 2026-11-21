@@ -54,7 +54,7 @@ pub struct ResidualRmsValues<V> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QwenInputRows {
     issuer: TeacherRows,
-    rows: SourceRows,
+    rows: TokenSpan,
 }
 #[derive(Clone, Debug)]
 enum TeacherRows {
@@ -91,9 +91,9 @@ impl QwenInputRows {
             TeacherRows::Prompt(span) => (span.source(), span.base(), span.capacity(), span.ids()),
         };
         let rows = match &issuer {
-            TeacherRows::Many(span) => SourceRows::from_teacher_span(span.clone(), VOCABULARY)?,
+            TeacherRows::Many(span) => TokenSpan::from_teacher_span(span.clone(), VOCABULARY)?,
             TeacherRows::Prompt(span) => span.source_rows(),
-            TeacherRows::One(_) => SourceRows::new(
+            TeacherRows::One(_) => TokenSpan::new(
                 TextCallGeometry::new(source, VOCABULARY, capacity)?,
                 base,
                 Arc::from(ids),
@@ -101,8 +101,8 @@ impl QwenInputRows {
         };
         Ok(Self { issuer, rows })
     }
-    pub fn source_call(&self, mode: SourceCallMode) -> Result<SourceCall> {
-        SourceCall::new(self.rows.clone(), mode)
+    pub fn text_invocation(&self, phase: InvocationPhase) -> Result<TextInvocation> {
+        TextInvocation::new(self.rows.clone(), phase)
     }
     /// Separate semantic issuer; never a legacy/native phase capability.
     pub fn prompt_span(&self) -> Option<&PromptSpan> {
@@ -227,18 +227,21 @@ impl QwenEmbedding {
         value.validate()?;
         Ok(value)
     }
-    /// Full-model semantic metadata; builder must join this exact call issuer.
-    pub fn for_call(tensor: SourceTensor, call: &QwenSourceCall) -> Result<Self> {
-        call.validate()?;
+    /// Full-model semantic metadata; builder must join this exact invocation issuer.
+    pub fn for_model_invocation(
+        tensor: SourceTensor,
+        invocation: &QwenModelInvocation,
+    ) -> Result<Self> {
+        invocation.validate()?;
         let value = Self {
             tensor: Arc::new(tensor),
-            teachers: call.request().teachers().clone(),
-            model_profile: call.model_profile(),
+            teachers: invocation.request().teachers().clone(),
+            model_profile: invocation.model_profile(),
         };
         value.validate()?;
-        if value.tensor.source != call.source() {
+        if value.tensor.source != invocation.source() {
             return Err(Error::State(
-                "source-row embedding differs from call source".into(),
+                "source-row embedding differs from invocation source".into(),
             ));
         }
         Ok(value)
@@ -289,7 +292,9 @@ impl QwenEmbedding {
 }
 
 fn check_builder(builder: &QwenPlanBuilder) -> Result<()> {
-    if !(builder.operator_slice || builder.fragment_call.is_some()) || builder.profile != PROFILE {
+    if !(builder.operator_slice || builder.fragment_invocation.is_some())
+        || builder.profile != PROFILE
+    {
         return Err(Error::Unsupported(
             "reserved reference CUDA contract requires operator slice".into(),
         ));
@@ -302,12 +307,12 @@ pub(super) fn embedding_precision(
 ) -> Result<ActivationPrecision> {
     check_builder(builder)?;
     descriptor.validate()?;
-    if descriptor.teachers.prompt_span().is_some() && builder.model_call.is_none() {
+    if descriptor.teachers.prompt_span().is_some() && builder.model_invocation.is_none() {
         return Err(Error::Unsupported(
-            "bounded prompt embedding requires its exact full-model call".into(),
+            "bounded prompt embedding requires its exact model invocation".into(),
         ));
     }
-    if builder.model_call.as_ref().is_some_and(|call| {
+    if builder.model_invocation.as_ref().is_some_and(|call| {
         call.request().teachers() != descriptor.teachers()
             || call.source() != descriptor.teachers().source()
     }) {
@@ -316,7 +321,7 @@ pub(super) fn embedding_precision(
         ));
     }
     if builder
-        .fragment_call
+        .fragment_invocation
         .as_ref()
         .is_some_and(|call| call.teachers() != descriptor.teachers())
     {
@@ -325,10 +330,11 @@ pub(super) fn embedding_precision(
         ));
     }
     if builder
-        .model_call
+        .model_invocation
         .as_ref()
         .is_some_and(|call| call.model_profile() != descriptor.model_profile)
-        || descriptor.model_profile == QwenModelVariant::Qwen2B && builder.model_call.is_none()
+        || descriptor.model_profile == QwenModelVariant::Qwen2B
+            && builder.model_invocation.is_none()
     {
         return Err(Error::Unsupported(
             "source embedding/full-model geometry profile".into(),

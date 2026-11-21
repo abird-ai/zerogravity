@@ -78,7 +78,7 @@ fn validate(bound: &Arc<RetainedSource>, fixtures: &[Qwen2BProjectionFixture]) -
         (P::ContinuedTwo, 64, 2),
         (P::CachedDecode, 66, 1),
     ]) {
-        let call = fixture.record.call();
+        let call = fixture.record.invocation();
         let payload_capacity = fixture.normalized.capacity();
         if !fixture.admission.source().same_issuer(bound.source())
             || fixture.admission.bytes() < 4 * MIB + payload_capacity
@@ -91,8 +91,8 @@ fn validate(bound: &Arc<RetainedSource>, fixtures: &[Qwen2BProjectionFixture]) -
         if !fixture.record.source().same_issuer(bound.source())
             || call.source() != bound.source_identity()
             || crate::cuda::gdn::GdnPhase::for_reference_call(call)? != phase
-            || call.rows().base() != base
-            || call.rows().len() != rows
+            || call.tokens().base() != base
+            || call.tokens().len() != rows
         {
             return Err(Error::State(
                 "exact original2B leaf source/phase/span schedule".into(),
@@ -244,10 +244,13 @@ where
         let input = init.upload_bytes(&fixture.normalized, BufferRole::Activation)?;
         let outputs = [
             init.allocate_empty(
-                fixture.record.call().rows().len() * 16384,
+                fixture.record.invocation().tokens().len() * 16384,
                 BufferRole::Output,
             )?,
-            init.allocate_empty(fixture.record.call().rows().len() * 64, BufferRole::Output)?,
+            init.allocate_empty(
+                fixture.record.invocation().tokens().len() * 64,
+                BufferRole::Output,
+            )?,
         ];
         let mut accesses = weights.accesses();
         accesses.extend([
@@ -255,7 +258,7 @@ where
             (outputs[0].clone(), DeviceAccess::Write),
             (outputs[1].clone(), DeviceAccess::Write),
         ]);
-        if fixture.record.call().rows().len() == 64 {
+        if fixture.record.invocation().tokens().len() == 64 {
             accesses.push((workspace.clone(), DeviceAccess::Write));
         }
         let reads = [&input, &outputs[0], &outputs[1]]
@@ -357,8 +360,8 @@ where
                 let fixture = &owner.fixtures[index];
                 if raw.len() != 3
                     || &raw[0][..] != fixture.normalized.as_slice()
-                    || raw[1].len() != fixture.record.call().rows().len() * 16384
-                    || raw[2].len() != fixture.record.call().rows().len() * 64
+                    || raw[1].len() != fixture.record.invocation().tokens().len() * 16384
+                    || raw[2].len() != fixture.record.invocation().tokens().len() * 64
                     || !super::super::finite_bf16(&raw[1])
                     || !super::super::finite_bf16(&raw[2])
                 {

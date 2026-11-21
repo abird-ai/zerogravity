@@ -191,7 +191,7 @@ impl WorkspaceLayout {
                     recipe.alignment,
                 )?);
             }
-            let rows = scope.call().rows().len();
+            let rows = scope.invocation().tokens().len();
             let private = FullModelRmsScratch::allocation_layout(rows, width)?;
             if private.len() != 9 {
                 return Err(Error::State("shared geometry exact nine RMS roles".into()));

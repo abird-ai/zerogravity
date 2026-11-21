@@ -2,20 +2,20 @@
 use super::*;
 use crate::plan::tests_support::UnawareBackend;
 
-fn request(source: SourceIdentity, phase: ReferencePhase) -> QwenGdnCall {
+fn request(source: SourceIdentity, phase: ReferencePhase) -> QwenGdnInvocation {
     let base = match phase {
         ReferencePhase::CachedOne => 1,
         ReferencePhase::ContinuedTwo => 64,
         _ => 0,
     };
-    QwenGdnCall::new(
+    QwenGdnInvocation::new(
         QwenPrefixLayer::new(source, 0).unwrap(),
         phase,
         QwenInputRows::new(source, base, 512, &vec![11; phase.rows()]).unwrap(),
     )
     .unwrap()
 }
-fn operator(call: &QwenSourceCall, projection: QwenProjection) -> QwenOperator {
+fn operator(call: &QwenModelInvocation, projection: QwenProjection) -> QwenOperator {
     let layer = (projection != QwenProjection::Head).then(|| call.layer(0).unwrap());
     let matrices = projection
         .members_for_profile(call.model_profile())
@@ -39,7 +39,7 @@ fn operator(call: &QwenSourceCall, projection: QwenProjection) -> QwenOperator {
     )
     .unwrap()
 }
-fn embedding(call: &QwenSourceCall) -> QwenEmbedding {
+fn embedding(call: &QwenModelInvocation) -> QwenEmbedding {
     QwenEmbedding::for_model(
         call.model_profile(),
         SourceTensor {
@@ -54,7 +54,7 @@ fn embedding(call: &QwenSourceCall) -> QwenEmbedding {
     )
     .unwrap()
 }
-fn rms(call: &QwenSourceCall) -> QwenOperator {
+fn rms(call: &QwenModelInvocation) -> QwenOperator {
     let h = call.model_profile().hidden_size();
     QwenOperator::new(
         call.clone(),
@@ -75,7 +75,7 @@ fn rms(call: &QwenSourceCall) -> QwenOperator {
 #[test]
 fn old_constructor_and_projection_geometry_remain_qwen800m() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let call = QwenSourceCall::new(request(source, ReferencePhase::InitialOne)).unwrap();
+    let call = QwenModelInvocation::new(request(source, ReferencePhase::InitialOne)).unwrap();
     assert_eq!(call.model_profile(), QwenModelVariant::Qwen800M);
     for p in [
         QwenProjection::Qkvz,
@@ -103,7 +103,8 @@ fn qwen2b_exact_source_members_and_truephase_head_dimensions() {
         ReferencePhase::CachedOne,
     ] {
         let call =
-            QwenSourceCall::for_profile(QwenModelVariant::Qwen2B, request(source, phase)).unwrap();
+            QwenModelInvocation::for_profile(QwenModelVariant::Qwen2B, request(source, phase))
+                .unwrap();
         for (p, k, m) in [
             (QwenProjection::Qkvz, 2048, 8192),
             (QwenProjection::Ba, 2048, 32),
@@ -122,7 +123,7 @@ fn qwen2b_exact_source_members_and_truephase_head_dimensions() {
                     phase.rows() * m
                 }]
             );
-            assert_eq!(d.call().request(), call.request());
+            assert_eq!(d.model_invocation().request(), call.request());
             if p == QwenProjection::Head {
                 assert_eq!(d.selected_row(), Some(phase.rows() - 1));
             }
@@ -182,8 +183,8 @@ fn qwen2b_exact_source_members_and_truephase_head_dimensions() {
 fn qwen2b_embedding_requires_matching_full_model_builder() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let request = request(source, ReferencePhase::InitialOne);
-    let old = QwenSourceCall::new(request.clone()).unwrap();
-    let two = QwenSourceCall::for_profile(QwenModelVariant::Qwen2B, request).unwrap();
+    let old = QwenModelInvocation::new(request.clone()).unwrap();
+    let two = QwenModelInvocation::for_profile(QwenModelVariant::Qwen2B, request).unwrap();
     let mut old_builder = QwenPlanBuilder::new_small_model(old.clone()).unwrap();
     assert!(old_builder.source_embedding(&embedding(&two)).is_err());
     assert!(QwenPlanBuilder::new_small_model(two.clone()).is_err());
@@ -208,7 +209,7 @@ fn qwen2b_embedding_requires_matching_full_model_builder() {
 #[test]
 fn full_model_value_origin_preserves_profile_and_same_teacher_issuer() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let call = QwenSourceCall::for_profile(
+    let call = QwenModelInvocation::for_profile(
         QwenModelVariant::Qwen2B,
         request(source, ReferencePhase::InitialOne),
     )
@@ -220,12 +221,15 @@ fn full_model_value_origin_preserves_profile_and_same_teacher_issuer() {
     let QwenValueOrigin::FullModel(origin) = tag.origin() else {
         panic!("missing actual full-model origin")
     };
-    assert_eq!(origin.call().model_profile(), QwenModelVariant::Qwen2B);
     assert_eq!(
-        origin.call().request().teachers(),
+        origin.model_invocation().model_profile(),
+        QwenModelVariant::Qwen2B
+    );
+    assert_eq!(
+        origin.model_invocation().request().teachers(),
         call.request().teachers()
     );
-    let foreign = QwenSourceCall::for_profile(
+    let foreign = QwenModelInvocation::for_profile(
         QwenModelVariant::Qwen2B,
         request(source, ReferencePhase::InitialOne),
     )
@@ -260,7 +264,7 @@ fn full_model_value_origin_preserves_profile_and_same_teacher_issuer() {
 #[test]
 fn qwen2b_parameter_shape_and_layer_kind_do_not_accept_legacy_width() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let call = QwenSourceCall::for_profile(
+    let call = QwenModelInvocation::for_profile(
         QwenModelVariant::Qwen2B,
         request(source, ReferencePhase::InitialOne),
     )
@@ -300,7 +304,7 @@ fn qwen2b_parameter_shape_and_layer_kind_do_not_accept_legacy_width() {
 #[test]
 fn qwen2b_metadata_never_uses_legacy_backend_fallback() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let call = QwenSourceCall::for_profile(
+    let call = QwenModelInvocation::for_profile(
         QwenModelVariant::Qwen2B,
         request(source, ReferencePhase::InitialOne),
     )

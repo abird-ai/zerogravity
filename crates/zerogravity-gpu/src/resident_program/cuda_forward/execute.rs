@@ -29,8 +29,8 @@ use std::{
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{
-        ForwardPlan, PlanNode, PlanOperation, SourceCall, SourceCallMode, SourceOperator,
-        SourceOperatorKind, SourceStateAccess, StateSlot, ValueId,
+        ForwardPlan, InvocationPhase, PlanNode, PlanOperation, SourceOperator, SourceOperatorKind,
+        SourceStateAccess, StateSlot, TextInvocation, ValueId,
     },
     device_events::{BufferRole, DeviceAccess},
 };
@@ -186,7 +186,7 @@ impl CudaForwardBody {
 
         let client = self.cold().service().client();
         if let Some(token) = device_token
-            && (call.rows().len() != 1
+            && (call.tokens().len() != 1
                 || token.service != client.service_id()
                 || token.size_in_used() != 4)
         {
@@ -196,9 +196,9 @@ impl CudaForwardBody {
         }
         self.clear_and_bind_call(client, call, device_token.is_some())?;
         let step = Step::new(
-            call.rows().len(),
-            call.rows().base(),
-            call.rows().capacity(),
+            call.tokens().len(),
+            call.tokens().base(),
+            call.tokens().capacity(),
         )?;
         let mut dispatches = 0usize;
         let mut fused_dispatches = 0usize;
@@ -219,7 +219,7 @@ impl CudaForwardBody {
                     "CUDA forward request contains non-source operation".into(),
                 ));
             };
-            if descriptor.call() != call {
+            if descriptor.invocation() != call {
                 return Err(Error::State(
                     "CUDA forward source node call differs from request".into(),
                 ));
@@ -344,7 +344,7 @@ impl CudaForwardBody {
     pub(in crate::resident_program) fn validate_request<'a>(
         &self,
         request: &'a ForwardPlan,
-    ) -> Result<&'a SourceCall> {
+    ) -> Result<&'a TextInvocation> {
         let cold = self.cold().plan();
         if !request.shares_semantics(cold)
             || request.nodes().len() != cold.nodes().len()
@@ -369,15 +369,15 @@ impl CudaForwardBody {
             }
         }
         let call = request
-            .source_call()
-            .ok_or_else(|| Error::State("CUDA forward request source call absent".into()))?;
+            .text_invocation()
+            .ok_or_else(|| Error::State("CUDA forward request text invocation absent".into()))?;
         if call.source() != cold.source()
-            || call.rows().capacity() != cold.prefix_capacity()
-            || call.rows().vocabulary() != self.cold().layout().geometry().vocabulary
-            || !(1..=layout::MAX_ROWS).contains(&call.rows().len())
-            || call.rows().frontier() > cold.prefix_capacity()
-            || (call.mode() == SourceCallMode::Decode
-                && (call.rows().base() == 0 || call.rows().len() != 1))
+            || call.tokens().capacity() != cold.prefix_capacity()
+            || call.tokens().vocabulary() != self.cold().layout().geometry().vocabulary
+            || !(1..=layout::MAX_ROWS).contains(&call.tokens().len())
+            || call.tokens().frontier() > cold.prefix_capacity()
+            || (call.phase() == InvocationPhase::Decode
+                && (call.tokens().base() == 0 || call.tokens().len() != 1))
         {
             return Err(Error::State(
                 "CUDA forward request call/source/frontier differs".into(),
@@ -388,7 +388,7 @@ impl CudaForwardBody {
 
     pub(super) fn validate_states<'a>(
         &self,
-        call: &SourceCall,
+        call: &TextInvocation,
         states: &'a [StateBinding],
     ) -> Result<BTreeMap<StateSlot, &'a StateBinding>> {
         if states.len() != self.cold().layout().states().len() {
@@ -404,7 +404,7 @@ impl CudaForwardBody {
         let mut seen = BTreeSet::new();
         let mut map = BTreeMap::new();
         for (requirement, binding) in self.cold().layout().states().iter().zip(states) {
-            if binding.slot != requirement.slot || binding.prior_tokens != call.rows().base() {
+            if binding.slot != requirement.slot || binding.prior_tokens != call.tokens().base() {
                 return Err(Error::State(
                     "CUDA forward state slot/frontier differs".into(),
                 ));
@@ -479,7 +479,7 @@ impl CudaForwardBody {
     pub(super) fn clear_and_bind_call(
         &self,
         client: &cubecl::client::Client,
-        call: &SourceCall,
+        call: &TextInvocation,
         device_token: bool,
     ) -> Result<()> {
         client.write(
@@ -493,7 +493,7 @@ impl CudaForwardBody {
             return Ok(());
         }
         let ids = call
-            .rows()
+            .tokens()
             .ids()
             .iter()
             .flat_map(|id| id.to_le_bytes())
@@ -615,7 +615,7 @@ impl CudaForwardBody {
                     let target = self.value_lease_in(values, *output)?;
                     let width = self.cold().layout().geometry().hidden_width;
                     let lane_base = if let Some(values) = values {
-                        let rows = descriptor.call().rows().len();
+                        let rows = descriptor.invocation().tokens().len();
                         if outputs[0] % rows != 0 {
                             return Err(Error::State(
                                 "streamed cohort embedding row geometry".into(),
@@ -633,7 +633,7 @@ impl CudaForwardBody {
                             .and_then(|elements| elements.checked_mul(2))
                             .ok_or_else(|| Error::Limit("streamed embedding lane offset".into()))?
                     };
-                    for (row, &token) in descriptor.call().rows().ids().iter().enumerate() {
+                    for (row, &token) in descriptor.invocation().tokens().ids().iter().enumerate() {
                         let token = token as usize;
                         let destination = exact_view(
                             target,
@@ -671,8 +671,8 @@ impl CudaForwardBody {
                         ));
                     }
                     let token_bytes = descriptor
-                        .call()
-                        .rows()
+                        .invocation()
+                        .tokens()
                         .ids()
                         .iter()
                         .flat_map(|id| id.to_ne_bytes())
@@ -1295,7 +1295,7 @@ impl CudaForwardBody {
             CONV_ELEMENTS,
         )?)?;
 
-        let runtime = self.gdn_plan(step, descriptor.call().mode())?;
+        let runtime = self.gdn_plan(step, descriptor.invocation().phase())?;
         self.write_gdn_controls(&runtime)?;
         let cache = self.cold().gdn_internal(GdnRuntimeBuffer::CacheArena)?;
         let view = runtime.convolution_state();
@@ -1309,7 +1309,8 @@ impl CudaForwardBody {
         )?
         .launch(self.cold().service())?;
 
-        let row_extent = self.gdn_row_extent(request, descriptor.call().mode(), step.rows)?;
+        let row_extent =
+            self.gdn_row_extent(request, descriptor.invocation().phase(), step.rows)?;
         let mut handles = self.gdn_internal_handles()?;
         handles.insert(
             GdnRuntimeBuffer::PackedQkvz,
@@ -1449,7 +1450,7 @@ impl CudaForwardBody {
         prior.require_layout(recurrent_layout)?;
         candidate.require_layout(recurrent_layout)?;
 
-        let runtime = self.gdn_plan(step, descriptor.call().mode())?;
+        let runtime = self.gdn_plan(step, descriptor.invocation().phase())?;
         self.write_gdn_controls(&runtime)?;
         let cache = self.cold().gdn_internal(GdnRuntimeBuffer::CacheArena)?;
         let native = plane_handle(
@@ -1466,7 +1467,8 @@ impl CudaForwardBody {
         )?
         .launch(self.cold().service())?;
 
-        let row_extent = self.gdn_row_extent(request, descriptor.call().mode(), step.rows)?;
+        let row_extent =
+            self.gdn_row_extent(request, descriptor.invocation().phase(), step.rows)?;
         let mut handles = self.gdn_internal_handles()?;
         handles.insert(
             GdnRuntimeBuffer::ConvOutput,
@@ -1539,18 +1541,18 @@ impl CudaForwardBody {
         Ok((dispatches, 0))
     }
 
-    pub(super) fn gdn_plan(&self, step: Step, mode: SourceCallMode) -> Result<GdnRuntimePlan> {
+    pub(super) fn gdn_plan(&self, step: Step, mode: InvocationPhase) -> Result<GdnRuntimePlan> {
         let slot = GdnRuntimeCacheSlot::new(1)?;
-        if self.cold().plan().source_call().is_some() {
+        if self.cold().plan().text_invocation().is_some() {
             return Err(Error::State(
-                "CUDA forward cold plan unexpectedly owns a source call".into(),
+                "CUDA forward cold plan unexpectedly owns a text invocation".into(),
             ));
         }
         let plan = match mode {
-            SourceCallMode::Decode => {
+            InvocationPhase::Decode => {
                 GdnRuntimePlan::cached_decode(layout::gdn_runtime_config()?, slot, step.base)?
             }
-            SourceCallMode::Prefill => GdnRuntimePlan::prefill_chunk(
+            InvocationPhase::Prefill => GdnRuntimePlan::prefill_chunk(
                 layout::gdn_runtime_config()?,
                 slot,
                 step.base,
@@ -1678,18 +1680,18 @@ impl CudaForwardBody {
     fn gdn_row_extent(
         &self,
         request: &ForwardPlan,
-        mode: SourceCallMode,
+        mode: InvocationPhase,
         active_rows: usize,
     ) -> Result<RowExtent> {
         match mode {
-            SourceCallMode::Prefill => {
+            InvocationPhase::Prefill => {
                 let bound_rows = request
                     .source_plan_geometry()
                     .ok_or_else(|| Error::State("CUDA forward GDN source geometry absent".into()))?
                     .max_rows();
                 RowExtent::bounded(active_rows, bound_rows)
             }
-            SourceCallMode::Decode => RowExtent::exact(active_rows),
+            InvocationPhase::Decode => RowExtent::exact(active_rows),
         }
     }
 

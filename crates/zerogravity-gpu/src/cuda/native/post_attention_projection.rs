@@ -59,10 +59,10 @@ fn require_bound_recipe(recipe: &ComponentRecipe) -> Result<()> {
     }
 }
 fn require_source_recipe(recipe: &ComponentRecipe) -> Result<()> {
-    recipe.kind().require_call(recipe.bindings().call())?;
+    recipe.kind().require_call(recipe.bindings().invocation())?;
     let op = recipe.operator(6)?;
     let node = &recipe.nodes()[6];
-    if op.call() != &recipe.bindings().call().clone()
+    if op.invocation() != &recipe.bindings().invocation().clone()
         || op.kind()
             != (zerogravity_core::accelerator::program::SourceOperatorKind::Projection {
                 selected_row: None,
@@ -87,30 +87,30 @@ fn require_source_recipe(recipe: &ComponentRecipe) -> Result<()> {
 }
 pub(crate) fn require_coverage(recipe: &ComponentRecipe) -> Result<()> {
     require_recipe(recipe)?;
-    manifests::launch(recipe.kind(), recipe.bindings().call().rows().len())?;
+    manifests::launch(recipe.kind(), recipe.bindings().invocation().tokens().len())?;
     manifests::require_memory_semantics()
 }
 pub(crate) fn required_image(recipe: &ComponentRecipe) -> Result<ProjectionImage> {
     require_coverage(recipe)?;
-    Ok(manifests::launch(recipe.kind(), recipe.bindings().call().rows().len())?.0)
+    Ok(manifests::launch(recipe.kind(), recipe.bindings().invocation().tokens().len())?.0)
 }
 pub(crate) fn require_mlp_coverage(recipe: &ComponentRecipe) -> Result<()> {
     require_mlp_recipe(recipe)?;
-    manifests::launch(recipe.kind(), recipe.bindings().call().rows().len())?;
+    manifests::launch(recipe.kind(), recipe.bindings().invocation().tokens().len())?;
     manifests::require_memory_semantics()
 }
 pub(crate) fn required_mlp_image(recipe: &ComponentRecipe) -> Result<ProjectionImage> {
     require_mlp_coverage(recipe)?;
-    Ok(manifests::launch(recipe.kind(), recipe.bindings().call().rows().len())?.0)
+    Ok(manifests::launch(recipe.kind(), recipe.bindings().invocation().tokens().len())?.0)
 }
 pub(crate) fn require_qwen2b_mlp_coverage(recipe: &ComponentRecipe) -> Result<()> {
     require_qwen2b_mlp_recipe(recipe)?;
-    manifests::launch(recipe.kind(), recipe.bindings().call().rows().len())?;
+    manifests::launch(recipe.kind(), recipe.bindings().invocation().tokens().len())?;
     manifests::require_memory_semantics()
 }
 pub(crate) fn required_qwen2b_mlp_image(recipe: &ComponentRecipe) -> Result<ProjectionImage> {
     require_qwen2b_mlp_coverage(recipe)?;
-    Ok(manifests::launch(recipe.kind(), recipe.bindings().call().rows().len())?.0)
+    Ok(manifests::launch(recipe.kind(), recipe.bindings().invocation().tokens().len())?.0)
 }
 pub(crate) struct OutPrograms {
     values: Arc<ComponentValues>,
@@ -169,7 +169,7 @@ impl OutPrograms {
         init.retain_completion_owner(images.completion_owner())?;
         let (image, manifest) = manifests::launch(
             values.recipe().kind(),
-            values.recipe().bindings().call().rows().len(),
+            values.recipe().bindings().invocation().tokens().len(),
         )?;
         // SAFETY: only reachable after the independent finite memory gate closes.
         let kernel = unsafe { images.set().prepare(images.image(image)?, manifest) }
@@ -185,7 +185,7 @@ impl OutPrograms {
         self.weights.require_source(&self.values, true)?;
         let input = self.values.lease(ValueId(6))?;
         let output = self.values.lease(ValueId(7))?;
-        let rows = self.values.recipe().bindings().call().rows().len();
+        let rows = self.values.recipe().bindings().invocation().tokens().len();
         if input.id() == output.id()
             || input.id() == self.weights.lease.id()
             || output.id() == self.weights.lease.id()
@@ -243,7 +243,8 @@ impl OutPrograms {
     pub(crate) fn retained_values(&self, values: &Arc<ComponentValues>) -> bool {
         Arc::ptr_eq(&self.values, values)
             && Arc::ptr_eq(self.weights.lease.service(), values.service())
-            && self.weights.lease.source_identity() == values.recipe().bindings().call().source()
+            && self.weights.lease.source_identity()
+                == values.recipe().bindings().invocation().source()
     }
     pub(crate) fn immutable_weights(&self) -> Vec<(ResidentLease, &[u8])> {
         vec![self.weights.immutable()]

@@ -1,7 +1,7 @@
 //! Four actual final source rows; no independent batch/model/root authority.
 use super::super::*;
 use super::values::CohortValues;
-use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextCallInput};
+use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextInvocationInput};
 use crate::resident_leases::{ResidentInitialization, ResidentLease};
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
@@ -14,7 +14,7 @@ fn require_last_row(rows: usize, selected: Option<usize>) -> Result<usize> {
     Ok(rows - 1)
 }
 pub(super) struct CohortHeadInput {
-    inputs: Box<[Arc<TextCallInput>]>,
+    inputs: Box<[Arc<TextInvocationInput>]>,
     values: Arc<CohortValues>,
     source: ResidentLease,
     selected: ResidentLease,
@@ -26,7 +26,7 @@ pub(super) struct CohortHeadInput {
 }
 impl CohortHeadInput {
     pub(super) fn prepare(
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         values: Arc<CohortValues>,
         status: ResidentLease,
         init: &mut ResidentInitialization<'_>,

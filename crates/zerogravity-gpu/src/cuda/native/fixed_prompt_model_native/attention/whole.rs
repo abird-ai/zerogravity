@@ -35,10 +35,10 @@ impl Binding {
             ));
         }
         cache.require_binding(&domains)?;
-        positions.require_invocation(values.record().call())?;
+        positions.require_invocation(values.record().invocation())?;
         rotary.require_call(
             cut.scope().source(),
-            values.record().call(),
+            values.record().invocation(),
             values.service(),
         )?;
         if !positions.prepared_lease().is_initialized() {
@@ -117,7 +117,7 @@ impl Binding {
         for (role, lease) in &roles {
             if !Arc::ptr_eq(lease.service(), values.service())
                 || lease.service_generation() != values.service().generation()
-                || lease.source_identity() != values.record().call().source()
+                || lease.source_identity() != values.record().invocation().source()
                 || !unique.insert(lease.id())
             {
                 return Err(Error::State(

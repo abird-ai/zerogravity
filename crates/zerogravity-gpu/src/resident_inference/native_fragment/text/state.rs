@@ -26,16 +26,16 @@ where
     .await
 }
 
-pub(crate) struct TextCallState {
-    input: Arc<TextCallInput>,
+pub(crate) struct TextInvocationState {
+    input: Arc<TextInvocationInput>,
     states: Vec<Arc<BoundModelState>>,
     candidate: Vec<Domain>,
     submitted: AtomicBool,
     _metadata: WindowWorkspace,
 }
 
-impl TextCallState {
-    pub(crate) fn input(&self) -> &Arc<TextCallInput> {
+impl TextInvocationState {
+    pub(crate) fn input(&self) -> &Arc<TextInvocationInput> {
         &self.input
     }
     pub(crate) fn states(&self) -> &[Arc<BoundModelState>] {
@@ -58,7 +58,7 @@ impl TextCallState {
         session.model.validate_domains(&self.candidate, false)?;
         for (layer, state) in self.states.iter().enumerate() {
             state.require_text(self.input.scope())?;
-            if state.call() != self.input.call()
+            if state.invocation() != self.input.invocation()
                 || state.layer() != layer
                 || state.base() != self.input.attempt().base()
             {
@@ -104,10 +104,10 @@ impl TextCallState {
 impl ResidentSession {
     pub(crate) async fn bind_fresh_text_state(
         &self,
-        input: Arc<TextCallInput>,
+        input: Arc<TextInvocationInput>,
         pool: &Arc<ResidentPool>,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<TextCallState>> {
+    ) -> Result<Arc<TextInvocationState>> {
         not_cancelled(cancelled)?;
         input.require_session(self)?;
         let metadata = input.source().reserve_workspace(256 * 1024)?;
@@ -147,7 +147,7 @@ impl ResidentSession {
                 input.phase().clone(),
             )?);
         }
-        let result = Arc::new(TextCallState {
+        let result = Arc::new(TextInvocationState {
             input,
             states,
             candidate,

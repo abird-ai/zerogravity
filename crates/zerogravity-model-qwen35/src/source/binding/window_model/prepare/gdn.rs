@@ -38,9 +38,9 @@ impl PreparedGdnParameters {
         if layer.is_attention()
             || conv.kind() != QwenOperation::GdnConv
             || recurrent.kind() != QwenOperation::GdnRecurrent
-            || conv.call() != recurrent.call()
+            || conv.model_invocation() != recurrent.model_invocation()
             || recurrent.layer() != Some(layer)
-            || conv.call().source() != source.source_identity()
+            || conv.model_invocation().source() != source.source_identity()
             || nodes[0] >= nodes[1]
             || conv.parameters().len() != 1
             || recurrent.parameters().len() != 3
@@ -132,7 +132,7 @@ pub(super) fn for_fragment(
     pairs: &[[usize; 2]],
 ) -> Result<Box<[PreparedGdnParameters]>> {
     let mut result = Vec::with_capacity(pairs.len());
-    let call = crate::plan::QwenSourceCall::new(record.invocation().clone())?;
+    let call = crate::plan::QwenModelInvocation::new(record.invocation().clone())?;
     for &nodes in pairs {
         let conv = record
             .plan()

@@ -1,14 +1,17 @@
 //! Source-owned metadata recipe for the first SAME-engine stateful fragment.
 use super::*;
 use crate::plan::{
-    GdnProjection, QwenEmbedding, QwenFragmentPlan, QwenGdnCall, QwenGdnConv, QwenGdnProjection,
-    QwenGdnRecurrent, QwenInputRms, QwenPlanBuilder, QwenPrefixLayer, QwenPrefixRmsSite,
-    QwenResidualRmsContract, QwenSiluAndMul,
+    GdnProjection, QwenEmbedding, QwenFragmentPlan, QwenGdnConv, QwenGdnInvocation,
+    QwenGdnProjection, QwenGdnRecurrent, QwenInputRms, QwenPlanBuilder, QwenPrefixLayer,
+    QwenPrefixRmsSite, QwenResidualRmsContract, QwenSiluAndMul,
 };
 use zerogravity_core::accelerator::program::PlanValue;
 impl OriginalWindowModelSource {
     /// Only records the source schedule; no driver, state root or model permit.
-    pub fn record_initial_gdn_fragment(&self, invocation: QwenGdnCall) -> Result<QwenFragmentPlan> {
+    pub fn record_initial_gdn_fragment(
+        &self,
+        invocation: QwenGdnInvocation,
+    ) -> Result<QwenFragmentPlan> {
         invocation.validate()?;
         if invocation.layer().source() != self.source_identity() || invocation.layer().index() != 0
         {
@@ -39,7 +42,7 @@ impl OriginalWindowModelSource {
     /// The final MLP branch and carried residual are deliberately not added.
     pub fn record_initial_gdn_mlp_fragment(
         &self,
-        invocation: QwenGdnCall,
+        invocation: QwenGdnInvocation,
         completed_layers: usize,
     ) -> Result<QwenFragmentPlan> {
         self.record_gdn_mlp_fragment_inner(invocation, completed_layers, false)
@@ -47,7 +50,7 @@ impl OriginalWindowModelSource {
     /// Same source schedule, no cached/root execution permission.
     pub fn record_gdn_attempt_phase(
         &self,
-        invocation: QwenGdnCall,
+        invocation: QwenGdnInvocation,
         completed_layers: usize,
     ) -> Result<QwenFragmentPlan> {
         self.record_gdn_mlp_fragment_inner(invocation, completed_layers, true)
@@ -55,7 +58,7 @@ impl OriginalWindowModelSource {
     // Previous name: record_vllm_gdn_mlp_fragment_inner.
     fn record_gdn_mlp_fragment_inner(
         &self,
-        invocation: QwenGdnCall,
+        invocation: QwenGdnInvocation,
         completed_layers: usize,
         attempt_phase: bool,
     ) -> Result<QwenFragmentPlan> {
@@ -89,7 +92,7 @@ impl OriginalWindowModelSource {
                 }
                 let layer = QwenPrefixLayer::new(self.source_identity(), index)?;
                 // Clone the SAME teacher issuer; no new span/token authority.
-                let call = QwenGdnCall::new(
+                let call = QwenGdnInvocation::new(
                     layer,
                     invocation.reference_phase()?,
                     invocation.teachers().clone(),
@@ -165,7 +168,7 @@ impl OriginalWindowModelSource {
     fn record_native_projection(
         &self,
         builder: &mut QwenPlanBuilder,
-        call: &QwenGdnCall,
+        call: &QwenGdnInvocation,
         kind: GdnProjection,
         input: &PlanValue,
     ) -> Result<PlanValue> {
@@ -192,7 +195,7 @@ impl OriginalWindowModelSource {
     fn record_native_gdn_layer(
         &self,
         builder: &mut QwenPlanBuilder,
-        call: &QwenGdnCall,
+        call: &QwenGdnInvocation,
         normal: &PlanValue,
     ) -> Result<PlanValue> {
         let i = call.layer().index();

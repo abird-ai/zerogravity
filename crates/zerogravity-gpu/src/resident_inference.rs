@@ -694,12 +694,12 @@ impl ResidentModel {
             || !matches!(cohort_width, 0 | 4 | 8)
             || (cohort_width != 0 && max_sessions < cohort_width)
         {
-            return Err(Error::Limit("source-call session capacity".into()));
+            return Err(Error::Limit("resident-text session capacity".into()));
         }
         let roots = max_sessions
             .checked_mul(2)
             .and_then(|n| n.checked_add(2))
-            .ok_or_else(|| Error::Limit("source-call root count overflow".into()))?;
+            .ok_or_else(|| Error::Limit("resident-text root count overflow".into()))?;
         cuda_forward_source_admission(plan, provider_cap, roots, cohort_width, None)
             .map(|(_, inventory)| inventory)
     }
@@ -2211,14 +2211,14 @@ impl ResidentModel {
             ));
         }
         let call = request
-            .source_call()
+            .text_invocation()
             .ok_or_else(|| Error::State("CUDA forward materialized call absent".into()))?;
         if base.source() != self.service.source_identity()
             || call.source() != base.source()
-            || call.rows().base() as u64 != base.frontier()
-            || call.rows().capacity() != self.capacity
-            || call.rows().vocabulary() as u64 != self.vocab
-            || call.rows().frontier() > self.capacity
+            || call.tokens().base() as u64 != base.frontier()
+            || call.tokens().capacity() != self.capacity
+            || call.tokens().vocabulary() as u64 != self.vocab
+            || call.tokens().frontier() > self.capacity
         {
             return Err(Error::State(
                 "CUDA forward session root/call geometry differs".into(),
@@ -2226,9 +2226,9 @@ impl ResidentModel {
         }
         if let Some(token) = &device_token
             && (!matches!(readout, Readout::Greedy)
-                || call.rows().len() != 1
+                || call.tokens().len() != 1
                 || token.producer != Some(base)
-                || token.id != call.rows().ids()[0]
+                || token.id != call.tokens().ids()[0]
                 || token.lease.bytes() != 12
                 || !Arc::ptr_eq(token.lease.service(), &self.service))
         {
@@ -2263,11 +2263,11 @@ impl ResidentModel {
         workspace.program.validate_forward_source_request(request)?;
         workspace
             .program
-            .validate_source_call_states(request, bindings)?;
+            .validate_text_execution_states(request, bindings)?;
         // Completion owners are retained by the armed physical flight and follow
         // it into quarantine on uncertainty. Only backend page semantics may
         // require waiting through cancellation.
-        let wait_on_cancel = workspace.program.source_call_waits_on_cancel();
+        let wait_on_cancel = workspace.program.text_execution_waits_on_cancel();
         let mut accesses = match output {
             ResidentOutput::StateOnly => workspace.state_accesses.clone(),
             ResidentOutput::Logits => workspace.logit_accesses.clone(),
@@ -2886,7 +2886,7 @@ impl ResidentSession {
             (None, None)
         };
         #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
-        let (_bf16_text_source_call_admission, bf16_text_source_call) =
+        let (_bf16_text_text_invocation_admission, bf16_text_text_invocation) =
             if let Some(options) = &bf16_text_source {
                 bf16_text_source::check_cancel(options.cancelled)?;
                 if tokens.len() != 1 || base.frontier() as usize >= options.bodies.len() {
@@ -2896,7 +2896,7 @@ impl ResidentSession {
                 }
                 let body = &options.bodies[base.frontier() as usize];
                 if body.recorded().plan().source() != base.source() {
-                    return Err(Error::State("source call owner differs".into()));
+                    return Err(Error::State("resident-text model owner differs".into()));
                 }
                 (
                     Some(body.source().reserve_workspace(16 * 1024 * 1024)?),
@@ -2954,7 +2954,7 @@ impl ResidentSession {
                         bf16_text_source: bf16_text_source.as_ref().map(|options| {
                             bf16_text_source::TextSourceStep {
                                 body: &options.bodies[base.frontier() as usize],
-                                call: bf16_text_source_call.as_ref().unwrap(),
+                                call: bf16_text_text_invocation.as_ref().unwrap(),
                                 observer: options.observer,
                                 feedback: options.feedback,
                                 cancelled: options.cancelled,
@@ -3085,15 +3085,15 @@ impl ResidentSession {
             ));
         }
         let call = request
-            .source_call()
+            .text_invocation()
             .ok_or_else(|| Error::State("CUDA forward request call absent".into()))?
             .clone();
         let base = self.binding();
         if call.source() != base.source()
-            || call.rows().base() as u64 != base.frontier()
-            || call.rows().capacity() != self.model.capacity
-            || call.rows().vocabulary() as u64 != self.model.vocab
-            || call.rows().frontier() > self.model.capacity
+            || call.tokens().base() as u64 != base.frontier()
+            || call.tokens().capacity() != self.model.capacity
+            || call.tokens().vocabulary() as u64 != self.model.vocab
+            || call.tokens().frontier() > self.model.capacity
         {
             return Err(Error::State(
                 "CUDA forward request differs from current session root".into(),
@@ -3114,13 +3114,13 @@ impl ResidentSession {
         }
 
         forward_not_cancelled(cancelled)?;
-        let count = u64::try_from(call.rows().len())
+        let count = u64::try_from(call.tokens().len())
             .map_err(|_| Error::Limit("CUDA forward request row count".into()))?;
         let attempt = self.authority.begin_advance(count)?;
         forward_not_cancelled(cancelled)?;
         let candidate = self
             .model
-            .forward_candidate_state(&self.domains, call.rows().len(), call.rows().base())
+            .forward_candidate_state(&self.domains, call.tokens().len(), call.tokens().base())
             .await?;
         forward_not_cancelled(cancelled)?;
         let retained_call = options.completion_owner.is_some();
@@ -3533,8 +3533,8 @@ pub use native_fragment::{
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
-    FixedPromptCallReceipt, FixedPromptCloseReceipt, FixedPromptEmptySnapshot,
-    FixedPromptFeedbackRequest, FixedPromptLifecycleProfile, FixedPromptLoaded,
+    FixedPromptCloseReceipt, FixedPromptEmptySnapshot, FixedPromptFeedbackRequest,
+    FixedPromptInvocationReceipt, FixedPromptLifecycleProfile, FixedPromptLoaded,
     FixedPromptLoadedObservation, FixedPromptLoadedSnapshot, FixedPromptNaturalFault,
     FixedPromptNaturalFaultOutcome, FixedPromptNaturalReadback, FixedPromptPending,
     FixedPromptSession, fixed_prompt_natural_host_bound, prepare_fixed_prompt_natural,
@@ -3548,9 +3548,9 @@ pub(crate) use rms_scratch::RmsScratchRegistration;
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
-    TextCallReceipt, TextCloseReceipt, TextCohortFault, TextCohortFaultOutcome,
-    TextCohortFaultRetention, TextCohortPreparation, TextCohortReadback, TextCohortReceipt,
-    TextCohortRowReceipt, TextEmptySnapshot, TextFault, TextFaultOutcome, TextFeedbackRequest,
+    TextCloseReceipt, TextCohortFault, TextCohortFaultOutcome, TextCohortFaultRetention,
+    TextCohortPreparation, TextCohortReadback, TextCohortReceipt, TextCohortRowReceipt,
+    TextEmptySnapshot, TextFault, TextFaultOutcome, TextFeedbackRequest, TextInvocationReceipt,
     TextLoaded, TextLoadedObservation, TextLoadedSnapshot, TextPending, TextPendingCohort,
     TextQualificationInputs, TextReadback, TextResourceInventory, TextSession, prepare_text,
     prepare_text_b4,
@@ -3613,7 +3613,7 @@ struct ForwardSourceOptions<'a, 'b> {
     readout: Readout,
     device_token: Option<ResidentToken>,
     cancelled: Option<&'a std::sync::atomic::AtomicBool>,
-    observer: Option<&'b mut dyn crate::resident_program::source_observation::SourceCallObserver>,
+    observer: Option<&'b mut dyn crate::resident_program::text_observation::TextObserver>,
     completion_owner: Option<crate::physical_quarantine::CompletionOwner>,
     submitted: Option<&'a std::sync::atomic::AtomicBool>,
 }
@@ -3713,24 +3713,24 @@ mod forward_shutdown_owner_tests {
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
-mod source_call;
+mod resident_text;
 #[cfg(all(
     feature = "cuda-cublas",
     feature = "hardware-abort-probe",
     target_os = "linux"
 ))]
-pub use source_call::SourceCallPagedPoolSnapshot;
+pub use resident_text::ResidentTextPagedPoolSnapshot;
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-pub use source_call::{
-    CudaSourceStatePolicy, SourceCallCohortPending, SourceCallCohortPreparation,
+pub use resident_text::{
+    CudaSourceStatePolicy, ResidentTextCohortPending, ResidentTextCohortPreparation,
 };
 #[cfg(all(
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
-pub use source_call::{
-    SourceCallModel, SourceCallPending, SourceCallPreparation, SourceCallPublication,
-    SourceCallReadback, SourceCallSession, SourceCallSnapshot,
+pub use resident_text::{
+    ResidentTextModel, ResidentTextPending, ResidentTextPreparation, ResidentTextPublication,
+    ResidentTextReadback, ResidentTextSession, ResidentTextSnapshot,
 };
 
 #[cfg(all(
@@ -3740,7 +3740,7 @@ pub use source_call::{
     feature = "qwen-source-qualification",
     target_os = "linux"
 ))]
-pub use source_call::{SourceCallFinalReader, SourceCallReaderObservation};
+pub use resident_text::{ResidentTextFinalReader, ResidentTextReaderObservation};
 
 #[cfg(all(
     feature = "hip-source",
@@ -3750,4 +3750,4 @@ pub use source_call::{SourceCallFinalReader, SourceCallReaderObservation};
 pub(crate) mod source_native_probe;
 
 #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
-pub use source_call::SourceCallInventory;
+pub use resident_text::ResidentTextInventory;

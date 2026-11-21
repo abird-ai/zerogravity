@@ -10,7 +10,7 @@ use crate::resident_program::source_bindings::SourceBindings;
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_artifacts::source_weights::{SourceOwnerWitness, VerifiedTensorSource};
-use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode, ValueId};
+use zerogravity_core::accelerator::program::{InvocationPhase, TextInvocation, ValueId};
 
 pub(in crate::resident_inference) mod continuation;
 mod faults;
@@ -43,7 +43,7 @@ pub struct GdnFragmentReceipt {
 }
 /// Borrowed actual physical bytes, made only inside original completion checks.
 pub struct GdnFragmentReadback<'a> {
-    invocation: &'a SourceCall,
+    invocation: &'a TextInvocation,
     raw: &'a [Bytes],
     value_count: usize,
     gdn_count: usize,
@@ -52,7 +52,7 @@ pub struct GdnFragmentReadback<'a> {
     candidate: &'a [(StateSlot, std::ops::Range<usize>)],
 }
 impl GdnFragmentReadback<'_> {
-    pub fn invocation(&self) -> &SourceCall {
+    pub fn invocation(&self) -> &TextInvocation {
         self.invocation
     }
     pub fn value(&self, id: ValueId) -> Result<&[u8]> {
@@ -231,10 +231,10 @@ where
     // This existing API remains initial-only even when request-phase metadata
     // can be recorded for a separate unpublished transaction consumer.
     let source = record.source().clone();
-    let invocation = record.call().clone();
-    if invocation.mode() != SourceCallMode::Prefill
-        || invocation.rows().base() != 0
-        || !matches!(invocation.rows().len(), 1 | 64)
+    let invocation = record.invocation().clone();
+    if invocation.phase() != InvocationPhase::Prefill
+        || invocation.tokens().base() != 0
+        || !matches!(invocation.tokens().len(), 1 | 64)
     {
         return Err(Error::Unsupported(
             "existing native qualifier is initial-only".into(),
@@ -316,7 +316,7 @@ where
     let candidate = model.allocate_state(false).await?;
     let attempt = session
         .authority
-        .begin_advance(invocation.rows().len() as u64)?;
+        .begin_advance(invocation.tokens().len() as u64)?;
     let ticket = service.queue().submit(
         service.budget(),
         service.owner().clone(),
@@ -338,7 +338,7 @@ where
             &candidate,
             workspace.program.plan(),
             &layer_call,
-            if invocation.rows().len() == 1 {
+            if invocation.tokens().len() == 1 {
                 crate::cuda::gdn::GdnPhase::InitialOne
             } else {
                 crate::cuda::gdn::GdnPhase::Initial64
@@ -422,9 +422,9 @@ where
     workspace.program.validate_runtime(
         service.client(),
         RuntimeParameters {
-            token: invocation.rows().ids()[0],
+            token: invocation.tokens().ids()[0],
             position: 0,
-            valid_tokens: invocation.rows().len(),
+            valid_tokens: invocation.tokens().len(),
         },
         &bindings,
     )?;
@@ -477,9 +477,9 @@ where
     let submitted = workspace.program.launch_fragment(
         service.client(),
         RuntimeParameters {
-            token: invocation.rows().ids()[0],
+            token: invocation.tokens().ids()[0],
             position: 0,
-            valid_tokens: invocation.rows().len(),
+            valid_tokens: invocation.tokens().len(),
         },
         &bindings,
         cancelled,
@@ -633,7 +633,7 @@ where
         ));
     }
     Ok(Outcome::Compared(GdnFragmentReceipt {
-        rows: invocation.rows().len(),
+        rows: invocation.tokens().len(),
         dispatches,
         native_launches,
         readback_bytes,
@@ -738,8 +738,8 @@ pub use qwen2b_mlp_component::{
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use fixed_prompt_natural::{
-    FixedPromptCallReceipt, FixedPromptCloseReceipt, FixedPromptEmptySnapshot,
-    FixedPromptFeedbackRequest, FixedPromptLifecycleProfile, FixedPromptLoaded,
+    FixedPromptCloseReceipt, FixedPromptEmptySnapshot, FixedPromptFeedbackRequest,
+    FixedPromptInvocationReceipt, FixedPromptLifecycleProfile, FixedPromptLoaded,
     FixedPromptLoadedObservation, FixedPromptLoadedSnapshot, FixedPromptNaturalFault,
     FixedPromptNaturalFaultOutcome, FixedPromptNaturalReadback, FixedPromptPending,
     FixedPromptSession, fixed_prompt_natural_host_bound, prepare_fixed_prompt_natural,
@@ -748,9 +748,9 @@ pub use fixed_prompt_natural::{
 
 #[cfg(target_os = "linux")]
 pub use text::{
-    TextCallReceipt, TextCloseReceipt, TextCohortFault, TextCohortFaultOutcome,
-    TextCohortFaultRetention, TextCohortPreparation, TextCohortReadback, TextCohortReceipt,
-    TextCohortRowReceipt, TextEmptySnapshot, TextFault, TextFaultOutcome, TextFeedbackRequest,
+    TextCloseReceipt, TextCohortFault, TextCohortFaultOutcome, TextCohortFaultRetention,
+    TextCohortPreparation, TextCohortReadback, TextCohortReceipt, TextCohortRowReceipt,
+    TextEmptySnapshot, TextFault, TextFaultOutcome, TextFeedbackRequest, TextInvocationReceipt,
     TextLoaded, TextLoadedObservation, TextLoadedSnapshot, TextPending, TextPendingCohort,
     TextQualificationInputs, TextReadback, TextResourceInventory, TextSession, prepare_text,
     prepare_text_b4,

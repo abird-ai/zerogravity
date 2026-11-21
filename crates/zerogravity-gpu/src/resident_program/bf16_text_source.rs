@@ -1113,7 +1113,7 @@ impl ResidentProgram {
             return Err(Error::State("source actual call identity".into()));
         }
         if cancelled.is_some_and(|f| f.load(Ordering::Acquire)) {
-            return Err(Error::State("source call cancelled".into()));
+            return Err(Error::State("text invocation cancelled".into()));
         }
         flight.require_accesses(body.accesses.iter().map(|(l, a)| (l, *a)))?;
         flight.retain_completion_owner(body.clone())?;

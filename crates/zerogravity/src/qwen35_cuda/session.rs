@@ -72,7 +72,7 @@ impl Session {
         &mut self,
         pending: native::TextPending,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<native::TextCallReceipt> {
+    ) -> Result<native::TextInvocationReceipt> {
         self.engine.commit(pending, cancelled)
     }
     pub async fn infer_prompt_with<F>(
@@ -80,7 +80,7 @@ impl Session {
         ids: &[u32],
         cancelled: Option<&AtomicBool>,
         validate: F,
-    ) -> Result<native::TextCallReceipt>
+    ) -> Result<native::TextInvocationReceipt>
     where
         F: for<'a> FnMut(native::TextReadback<'a>) -> Result<()>,
     {
@@ -91,7 +91,7 @@ impl Session {
         &mut self,
         cancelled: Option<&AtomicBool>,
         validate: F,
-    ) -> Result<native::TextCallReceipt>
+    ) -> Result<native::TextInvocationReceipt>
     where
         F: for<'a> FnMut(native::TextReadback<'a>) -> Result<()>,
     {
@@ -102,13 +102,13 @@ impl Session {
         &mut self,
         ids: &[u32],
         cancelled: Option<&AtomicBool>,
-    ) -> Result<native::TextCallReceipt> {
+    ) -> Result<native::TextInvocationReceipt> {
         self.infer_prompt_with(ids, cancelled, |_| Ok(())).await
     }
     pub async fn infer_next(
         &mut self,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<native::TextCallReceipt> {
+    ) -> Result<native::TextInvocationReceipt> {
         self.infer_next_with(cancelled, |_| Ok(())).await
     }
     pub async fn probe_cached(

@@ -28,7 +28,7 @@ impl ModelHeadPrograms {
             .plan()
             .source_value_provenance(normalized_id)?
             .ok_or_else(|| Error::State("natural final norm provenance absent".into()))?;
-        if normalized.call() != record.call() || normalized.output_index() != 0 {
+        if normalized.invocation() != record.invocation() || normalized.output_index() != 0 {
             return Err(Error::State(
                 "natural final norm actual model origin".into(),
             ));

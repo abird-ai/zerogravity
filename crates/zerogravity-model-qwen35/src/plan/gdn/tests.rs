@@ -1,7 +1,7 @@
 use super::*;
-fn call(rows: usize) -> QwenGdnCall {
+fn gdn_invocation(rows: usize) -> QwenGdnInvocation {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    QwenGdnCall::new(
+    QwenGdnInvocation::new(
         QwenPrefixLayer::new(source, 0).unwrap(),
         if rows == 1 {
             ReferencePhase::InitialOne
@@ -13,7 +13,7 @@ fn call(rows: usize) -> QwenGdnCall {
     .unwrap()
 }
 fn parameter(
-    call: &QwenGdnCall,
+    call: &QwenGdnInvocation,
     suffix: &str,
     kind: StoredTensorEncoding,
     shape: &[u64],
@@ -32,7 +32,7 @@ fn parameter(
             },
     }
 }
-fn embedding(call: &QwenGdnCall) -> QwenEmbedding {
+fn embedding(call: &QwenGdnInvocation) -> QwenEmbedding {
     QwenEmbedding::new(
         SourceTensor {
             source: call.layer().source(),
@@ -46,7 +46,7 @@ fn embedding(call: &QwenGdnCall) -> QwenEmbedding {
     )
     .unwrap()
 }
-fn projection(call: &QwenGdnCall, kind: GdnProjection) -> QwenGdnProjection {
+fn projection(call: &QwenGdnInvocation, kind: GdnProjection) -> QwenGdnProjection {
     let members: &[(&str, usize)] = match kind {
         GdnProjection::Qkvz => &[("qkv", 6144), ("z", 2048)],
         GdnProjection::Ba => &[("b", 16), ("a", 16)],
@@ -69,7 +69,7 @@ fn projection(call: &QwenGdnCall, kind: GdnProjection) -> QwenGdnProjection {
     )
     .unwrap()
 }
-fn recurrent(call: &QwenGdnCall) -> QwenGdnRecurrent {
+fn recurrent(call: &QwenGdnInvocation) -> QwenGdnRecurrent {
     QwenGdnRecurrent::new(
         call.clone(),
         [
@@ -95,7 +95,7 @@ fn recurrent(call: &QwenGdnCall) -> QwenGdnRecurrent {
     )
     .unwrap()
 }
-fn prefix(call: &QwenGdnCall) -> (QwenPlanBuilder, PlanValue, PlanValue) {
+fn prefix(call: &QwenGdnInvocation) -> (QwenPlanBuilder, PlanValue, PlanValue) {
     let mut b = QwenPlanBuilder::new_gdn_fragment(call.clone()).unwrap();
     let raw = b.source_embedding(&embedding(call)).unwrap();
     let rms = QwenInputRms::new(
@@ -112,7 +112,7 @@ fn prefix(call: &QwenGdnCall) -> (QwenPlanBuilder, PlanValue, PlanValue) {
     assert_ne!(raw.id, normalized.id);
     assert_eq!(
         b.value_provenance(&raw).unwrap().unwrap().origin(),
-        &QwenValueOrigin::SourceRows
+        &QwenValueOrigin::TokenSpan
     );
     assert_eq!(
         b.value_provenance(&normalized).unwrap().unwrap().origin(),
@@ -131,7 +131,7 @@ fn prefix(call: &QwenGdnCall) -> (QwenPlanBuilder, PlanValue, PlanValue) {
 #[test]
 fn original_initial_fragment_has_two_real_effects_forty_carries_and_no_publication() {
     for rows in [1, 64] {
-        let c = call(rows);
+        let c = gdn_invocation(rows);
         let (mut b, qkvz, ba) = prefix(&c);
         let d = QwenGdnConv::new(
             c.clone(),
@@ -167,7 +167,7 @@ fn original_initial_fragment_has_two_real_effects_forty_carries_and_no_publicati
         assert_eq!(p.proposed_domains().len(), 42);
         assert_eq!(p.frontier_delta(), 0);
         assert!(p.logits().is_none());
-        assert_eq!(p.source_call(), Some(&c.source_call().unwrap()));
+        assert_eq!(p.text_invocation(), Some(&c.text_invocation().unwrap()));
         assert_eq!(
             p.nodes()
                 .iter()
@@ -195,7 +195,7 @@ fn original_initial_fragment_has_two_real_effects_forty_carries_and_no_publicati
             .unwrap()
             .require_invocation(&c)
             .unwrap();
-        let reminted = QwenGdnCall::new(
+        let reminted = QwenGdnInvocation::new(
             c.layer(),
             c.reference_phase().unwrap(),
             QwenInputRows::new(
@@ -208,14 +208,14 @@ fn original_initial_fragment_has_two_real_effects_forty_carries_and_no_publicati
         )
         .unwrap();
         let foreign = plan
-            .rebind_source_call(reminted.source_call().unwrap())
+            .rebind_text_invocation(reminted.text_invocation().unwrap())
             .unwrap();
         assert!(metadata.view(&foreign).is_err());
     }
 }
 #[test]
 fn role_cohort_alias_faults_leave_no_partial_effects() {
-    let c = call(1);
+    let c = gdn_invocation(1);
     let (mut b, qkvz, ba) = prefix(&c);
     let d = QwenGdnConv::new(
         c.clone(),
@@ -293,7 +293,7 @@ fn role_cohort_alias_faults_leave_no_partial_effects() {
 }
 #[test]
 fn exact_original_parameters_and_initial_scope_cannot_retag_dtype_layer_or_phase() {
-    let c = call(1);
+    let c = gdn_invocation(1);
     let raw = parameter(
         &c,
         "linear_attn.conv1d.weight",
@@ -316,7 +316,7 @@ fn exact_original_parameters_and_initial_scope_cannot_retag_dtype_layer_or_phase
     let mut params = recurrent(&c).parameters().clone();
     params.swap(0, 2);
     assert!(QwenGdnRecurrent::new(c.clone(), params).is_err());
-    let cached = QwenGdnCall::new(
+    let cached = QwenGdnInvocation::new(
         c.layer(),
         ReferencePhase::CachedOne,
         QwenInputRows::new(c.layer().source(), 1, 512, &[353]).unwrap(),
@@ -330,7 +330,7 @@ fn exact_original_parameters_and_initial_scope_cannot_retag_dtype_layer_or_phase
 
 #[test]
 fn dual_rms_joins_same_teachers_and_phase_with_distinct_actual_producer_roles() {
-    let c = call(1);
+    let c = gdn_invocation(1);
     let mut b = QwenPlanBuilder::new_operator_slice(
         c.layer().source(),
         NumericalProfile::CudaSm86Bf16ReferenceV1,
@@ -373,9 +373,9 @@ fn dual_rms_joins_same_teachers_and_phase_with_distinct_actual_producer_roles() 
 }
 #[test]
 fn equal_teacher_ids_cannot_remint_the_actual_conv_producer_issuer() {
-    let c = call(1);
+    let c = gdn_invocation(1);
     let (mut b, qkvz, ba) = prefix(&c);
-    let reminted = QwenGdnCall::new(
+    let reminted = QwenGdnInvocation::new(
         c.layer(),
         c.reference_phase().unwrap(),
         QwenInputRows::new(c.layer().source(), 0, 512, c.teachers().ids()).unwrap(),
@@ -443,7 +443,7 @@ fn equal_teacher_ids_cannot_remint_the_actual_conv_producer_issuer() {
 }
 
 fn complete_parameter(
-    c: &QwenGdnCall,
+    c: &QwenGdnInvocation,
     suffix: &str,
     kind: StoredTensorEncoding,
     shape: &[u64],
@@ -454,7 +454,7 @@ fn complete_parameter(
         .replace("layers.0", &format!("layers.{}", c.layer().index()));
     p
 }
-fn complete_projection(c: &QwenGdnCall, kind: GdnProjection) -> QwenGdnProjection {
+fn complete_projection(c: &QwenGdnInvocation, kind: GdnProjection) -> QwenGdnProjection {
     let parts: &[(&str, usize)] = match kind {
         GdnProjection::Qkvz => &[
             ("linear_attn.in_proj_qkv.weight", 6144),
@@ -486,14 +486,14 @@ fn complete_projection(c: &QwenGdnCall, kind: GdnProjection) -> QwenGdnProjectio
     .unwrap()
 }
 fn complete_metadata(rows: usize, layers: usize) -> (QwenPlanBuilder, PlanValue, PlanValue) {
-    let initial = call(rows);
+    let initial = gdn_invocation(rows);
     let mut b = QwenPlanBuilder::new_gdn_fragment(initial.clone()).unwrap();
     let raw = b.source_embedding(&embedding(&initial)).unwrap();
     let mut branch = raw;
     let mut residual = raw;
     for i in 0..layers {
         let layer = QwenPrefixLayer::new(initial.layer().source(), i).unwrap();
-        let c = QwenGdnCall::new(
+        let c = QwenGdnInvocation::new(
             layer,
             initial.reference_phase().unwrap(),
             initial.teachers().clone(),
@@ -691,7 +691,7 @@ fn prefix_layer_change_does_not_remint_teacher_or_conv_producer_authority() {
     let (b, branch, residual) = complete_metadata(1, 1);
     let plan = b.finish_gdn_mlp_fragment(branch, residual, 1).unwrap();
     let root = plan.invocation();
-    let remint = QwenGdnCall::new(
+    let remint = QwenGdnInvocation::new(
         QwenPrefixLayer::new(root.layer().source(), 1).unwrap(),
         root.reference_phase().unwrap(),
         QwenInputRows::new(root.layer().source(), 0, 512, root.teachers().ids()).unwrap(),
@@ -715,7 +715,7 @@ fn transaction_phase_records_preserve_all42_zero_frontier_and_old_initial_refusa
         (ReferencePhase::ContinuedTwo, 64, 2),
         (ReferencePhase::CachedOne, 66, 1),
     ] {
-        let c = QwenGdnCall::new(
+        let c = QwenGdnInvocation::new(
             QwenPrefixLayer::new(source, 0).unwrap(),
             phase,
             QwenInputRows::new(source, base, 512, &vec![353; rows]).unwrap(),
@@ -784,7 +784,7 @@ fn transaction_phase_records_preserve_all42_zero_frontier_and_old_initial_refusa
 #[test]
 fn cached_record_rejects_same_shape_other_phase_or_reminted_teacher_issuer() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let c = QwenGdnCall::new(
+    let c = QwenGdnInvocation::new(
         QwenPrefixLayer::new(source, 0).unwrap(),
         ReferencePhase::CachedOne,
         QwenInputRows::new(source, 1, 512, &[353]).unwrap(),
@@ -792,7 +792,7 @@ fn cached_record_rejects_same_shape_other_phase_or_reminted_teacher_issuer() {
     .unwrap();
     let mut builder = QwenPlanBuilder::new_gdn_attempt_phase(c.clone()).unwrap();
     let raw = builder.source_embedding(&embedding(&c)).unwrap();
-    let reminted = QwenGdnCall::new(
+    let reminted = QwenGdnInvocation::new(
         c.layer(),
         c.reference_phase().unwrap(),
         QwenInputRows::new(source, 1, 512, &[353]).unwrap(),
@@ -814,7 +814,7 @@ fn cached_record_rejects_same_shape_other_phase_or_reminted_teacher_issuer() {
         (builder.core.nodes().len(), builder.core.values().len()),
         before
     );
-    let initial = QwenGdnCall::new(
+    let initial = QwenGdnInvocation::new(
         c.layer(),
         ReferencePhase::InitialOne,
         QwenInputRows::new(source, 0, 512, &[353]).unwrap(),

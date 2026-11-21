@@ -10,25 +10,29 @@ use std::{collections::BTreeMap, sync::Arc};
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 use zerogravity_core::accelerator::program::ValueId;
-use zerogravity_core::accelerator::program::{PlanOperation, SourceCallMode};
-use zerogravity_core::accelerator::program::{SourceCall, SourceOperator, SourceOperatorKind};
+use zerogravity_core::accelerator::program::{InvocationPhase, PlanOperation};
+use zerogravity_core::accelerator::program::{SourceOperator, SourceOperatorKind, TextInvocation};
 use zerogravity_core::{Error, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FixedPromptCallKind {
+pub(crate) enum FixedPromptInvocationKind {
     Prefill,
     Decode { base: usize },
 }
-impl FixedPromptCallKind {
-    pub(crate) fn of(request: &SourceCall) -> Result<Self> {
-        if request.rows().capacity() != 512 || request.rows().vocabulary() != 248320 {
+impl FixedPromptInvocationKind {
+    pub(crate) fn of(request: &TextInvocation) -> Result<Self> {
+        if request.tokens().capacity() != 512 || request.tokens().vocabulary() != 248320 {
             return Err(Error::Unsupported(
                 "fixed prompt physical capacity512 only".into(),
             ));
         }
-        match (request.mode(), request.rows().base(), request.rows().len()) {
-            (SourceCallMode::Prefill, 0, 47) => Ok(Self::Prefill),
-            (SourceCallMode::Decode, base @ 47..=53, 1) => Ok(Self::Decode { base }),
+        match (
+            request.phase(),
+            request.tokens().base(),
+            request.tokens().len(),
+        ) {
+            (InvocationPhase::Prefill, 0, 47) => Ok(Self::Prefill),
+            (InvocationPhase::Decode, base @ 47..=53, 1) => Ok(Self::Decode { base }),
             _ => Err(Error::Unsupported(
                 "fixed prompt physical Prefill47/Decode47..53".into(),
             )),
@@ -57,7 +61,7 @@ pub(crate) struct FixedPromptGdnSite {
 pub(crate) struct FixedPromptModelBinding {
     source: VerifiedTensorSource,
     record: Arc<SourceBindings>,
-    kind: FixedPromptCallKind,
+    kind: FixedPromptInvocationKind,
     rms: BTreeMap<usize, BoundModelRmsSource>,
     gdn: BTreeMap<usize, FixedPromptGdnSite>,
     projections: Vec<usize>,
@@ -68,7 +72,7 @@ impl FixedPromptModelBinding {
     pub(crate) fn bind(record: Arc<SourceBindings>) -> Result<Arc<Self>> {
         FullModelProgram::require_record(&record)?;
         let source = record.source().clone();
-        let kind = FixedPromptCallKind::of(record.call())?;
+        let kind = FixedPromptInvocationKind::of(record.invocation())?;
         let metadata = source.reserve_workspace(512 * 1024)?;
         let mut rms = BTreeMap::new();
         let mut gdn = BTreeMap::new();
@@ -81,7 +85,7 @@ impl FixedPromptModelBinding {
             let Some(descriptor) = record.operator(index)? else {
                 continue;
             };
-            if descriptor.call() != record.call() {
+            if descriptor.invocation() != record.invocation() {
                 return Err(Error::State("fixed prompt foreign actual call".into()));
             }
             match descriptor.kind() {
@@ -112,7 +116,7 @@ impl FixedPromptModelBinding {
                         ));
                     };
                     if !matches!(recurrent.kind(),SourceOperatorKind::GatedDelta {domain, ..} if domain.0==layer)
-                        || recurrent.call() != record.call()
+                        || recurrent.invocation() != record.invocation()
                         || activated != ra
                         || z != rz
                         || ba != rb
@@ -167,7 +171,7 @@ impl FixedPromptModelBinding {
     pub(crate) fn record(&self) -> &Arc<SourceBindings> {
         &self.record
     }
-    pub(crate) fn kind(&self) -> FixedPromptCallKind {
+    pub(crate) fn kind(&self) -> FixedPromptInvocationKind {
         self.kind
     }
     pub(crate) fn rms(&self, node: usize) -> Result<&BoundModelRmsSource> {
@@ -275,18 +279,19 @@ impl FixedPromptProjectionBinding {
         if self.node != 32
             || node.inputs != [ValueId(39)]
             || node.outputs != [ValueId(41)]
-            || FixedPromptCallKind::of(descriptor.call())? != FixedPromptCallKind::Prefill
+            || FixedPromptInvocationKind::of(descriptor.invocation())?
+                != FixedPromptInvocationKind::Prefill
         {
             return Err(Error::Unsupported(
                 "fixed prompt physical QKV32/SSA only".into(),
             ));
         }
-        if self.scope.kind != FixedPromptCallKind::Prefill
+        if self.scope.kind != FixedPromptInvocationKind::Prefill
             || !matches!(
                 descriptor.kind(),
                 SourceOperatorKind::Projection { selected_row: None }
             )
-            || descriptor.call() != self.scope.record.call()
+            || descriptor.invocation() != self.scope.record.invocation()
             || descriptor.matrices().len() != 3
             || !descriptor.parameters().is_empty()
             || descriptor.input_elements()?.as_slice() != [47 * 1024]
@@ -306,7 +311,7 @@ impl FixedPromptProjectionBinding {
                 "fixed_prompt QKV actual dual producer absent".into(),
             ));
         };
-        if producer.call() != descriptor.call()
+        if producer.invocation() != descriptor.invocation()
             || !matches!(producer.kind(), SourceOperatorKind::ResidualRms(_))
             || normal.inputs.as_slice() != [ValueId(38), ValueId(35)]
             || normal.outputs.as_slice() != [ValueId(39), ValueId(40)]

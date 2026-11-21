@@ -4,14 +4,14 @@ use super::*;
 use crate::resident_leases::final_owner_probe;
 use std::sync::Weak;
 
-pub struct SourceCallFinalReader {
+pub struct ResidentTextFinalReader {
     reader: final_owner_probe::ReaderProbe,
-    model: Weak<SourceCallModel>,
+    model: Weak<ResidentTextModel>,
     native: SourceTextNativeProbe,
     before: SourceTextNativeState,
 }
 #[derive(Debug)]
-pub struct SourceCallReaderObservation {
+pub struct ResidentTextReaderObservation {
     pub lease: String,
     pub bytes: usize,
     pub aliases: usize,
@@ -22,9 +22,9 @@ pub struct SourceCallReaderObservation {
     pub before: SourceTextNativeState,
     pub after: SourceTextNativeState,
 }
-impl SourceCallFinalReader {
+impl ResidentTextFinalReader {
     fn arm(
-        model: &Arc<SourceCallModel>,
+        model: &Arc<ResidentTextModel>,
         domains: &[Domain],
         ready: &[ResidentLease],
         inner_owners: usize,
@@ -32,7 +32,7 @@ impl SourceCallFinalReader {
     ) -> Result<Self> {
         if Arc::strong_count(model) != 1 || Arc::strong_count(&model.inner) != inner_owners {
             return Err(Error::State(
-                "source-call reader requires sole final wrapper".into(),
+                "text-invocation reader requires sole final wrapper".into(),
             ));
         }
         model.inner.service.ensure_usable()?;
@@ -40,20 +40,20 @@ impl SourceCallFinalReader {
             .iter()
             .flat_map(|d| &d.leases)
             .find(|l| l.role() == BufferRole::RecurrentState)
-            .ok_or_else(|| Error::State("source-call final recurrent reader absent".into()))?;
+            .ok_or_else(|| Error::State("text-invocation final recurrent reader absent".into()))?;
         if !Arc::ptr_eq(lease.service(), &model.inner.service)
             || lease.source_identity() != model.source.source_identity()
             || !lease.is_initialized()
         {
             return Err(Error::State(
-                "source-call final reader original binding".into(),
+                "text-invocation final reader original binding".into(),
             ));
         }
         let workspace = model
             .inner
             .workspace
             .try_lock()
-            .ok_or_else(|| Error::State("source-call final workspace busy".into()))?;
+            .ok_or_else(|| Error::State("text-invocation final workspace busy".into()))?;
         if workspace
             .leases
             .iter()
@@ -62,7 +62,7 @@ impl SourceCallFinalReader {
             .any(|(other, _)| other.id() == lease.id())
         {
             return Err(Error::State(
-                "source-call final reader aliases workspace".into(),
+                "text-invocation final reader aliases workspace".into(),
             ));
         }
         let aliases = domains
@@ -80,7 +80,7 @@ impl SourceCallFinalReader {
             })
             .count();
         let native = SourceTextNativeProbe::from_original(
-            workspace.program.source_call_native_probe()?,
+            workspace.program.text_execution_native_probe()?,
             &model.inner.service,
         );
         let before = native.observe()?;
@@ -92,9 +92,9 @@ impl SourceCallFinalReader {
             before,
         })
     }
-    pub fn observe(self) -> Result<SourceCallReaderObservation> {
+    pub fn observe(self) -> Result<ResidentTextReaderObservation> {
         let order = final_owner_probe::result()?;
-        Ok(SourceCallReaderObservation {
+        Ok(ResidentTextReaderObservation {
             lease: self.reader.lease,
             bytes: self.reader.bytes,
             aliases: self.reader.aliases_inside_wrapper,
@@ -107,24 +107,24 @@ impl SourceCallFinalReader {
         })
     }
 }
-impl SourceCallSession {
-    pub fn diagnostic_final_reader(&self, fault: bool) -> Result<SourceCallFinalReader> {
-        SourceCallFinalReader::arm(&self.model, &self.inner.domains, &[], 2, fault)
+impl ResidentTextSession {
+    pub fn diagnostic_final_reader(&self, fault: bool) -> Result<ResidentTextFinalReader> {
+        ResidentTextFinalReader::arm(&self.model, &self.inner.domains, &[], 2, fault)
     }
 }
-impl SourceCallSnapshot {
-    pub fn diagnostic_final_reader(&self, fault: bool) -> Result<SourceCallFinalReader> {
+impl ResidentTextSnapshot {
+    pub fn diagnostic_final_reader(&self, fault: bool) -> Result<ResidentTextFinalReader> {
         if Arc::strong_count(&self.0) != 1 {
             return Err(Error::State(
-                "source-call final snapshot has other readers".into(),
+                "text-invocation final snapshot has other readers".into(),
             ));
         }
-        SourceCallFinalReader::arm(&self.0.scope.model, &self.0.inner.domains, &[], 1, fault)
+        ResidentTextFinalReader::arm(&self.0.scope.model, &self.0.inner.domains, &[], 1, fault)
     }
 }
-impl SourceCallPending {
-    pub fn diagnostic_final_reader(&self, fault: bool) -> Result<SourceCallFinalReader> {
-        SourceCallFinalReader::arm(
+impl ResidentTextPending {
+    pub fn diagnostic_final_reader(&self, fault: bool) -> Result<ResidentTextFinalReader> {
+        ResidentTextFinalReader::arm(
             &self.scope.model,
             &self.inner.domains,
             self.inner.ready.outputs(),
@@ -133,12 +133,12 @@ impl SourceCallPending {
         )
     }
 }
-impl SourceCallModel {
+impl ResidentTextModel {
     /// Execute the original prepared primitive; returned storage retains this model.
     pub async fn diagnostic_trig(
         self: &Arc<Self>,
         angles: &[f32],
-    ) -> Result<SourceCallReadback<Vec<f32>>> {
+    ) -> Result<ResidentTextReadback<Vec<f32>>> {
         self.inner.service.ensure_usable()?;
         let workspace =
             self.inner.workspace.try_lock().ok_or_else(|| {
@@ -152,9 +152,9 @@ impl SourceCallModel {
         let scope = self.reader_scope(bytes)?;
         let data = workspace
             .program
-            .source_call_diagnostic_trig(angles, scope.clone())
+            .text_execution_diagnostic_trig(angles, scope.clone())
             .await?;
-        Ok(SourceCallReadback {
+        Ok(ResidentTextReadback {
             data,
             _scope: scope,
         })

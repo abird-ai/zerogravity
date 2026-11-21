@@ -43,8 +43,8 @@ pub(super) struct ColdModel {
 impl ColdModel {
     pub(super) fn bind_program(
         &self,
-        input: Arc<FixedPromptCallInput>,
-        state: Arc<FixedPromptCallState>,
+        input: Arc<FixedPromptInvocationInput>,
+        state: Arc<FixedPromptInvocationState>,
     ) -> Result<ResidentProgram> {
         let which = usize::from(input.rows() == 1);
         let cold = &self.values[which];
@@ -132,7 +132,7 @@ pub struct FixedPromptEmptySnapshot {
     _capacity_metadata: Option<Arc<WindowWorkspace>>,
 }
 #[derive(Clone, Debug)]
-pub struct FixedPromptCallReceipt {
+pub struct FixedPromptInvocationReceipt {
     pub root: RootBinding,
     pub selected_id: u32,
     pub max_bits: u32,
@@ -344,7 +344,7 @@ impl FixedPromptSession {
     }
     async fn prepare_inner(
         &self,
-        input: Arc<FixedPromptCallInput>,
+        input: Arc<FixedPromptInvocationInput>,
         validate: Option<NaturalValidation<'_>>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<FixedPromptPending> {
@@ -423,7 +423,7 @@ impl FixedPromptSession {
         &mut self,
         mut pending: FixedPromptPending,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<FixedPromptCallReceipt> {
+    ) -> Result<FixedPromptInvocationReceipt> {
         if !pending
             .model
             .upgrade()
@@ -548,8 +548,8 @@ pub async fn prepare_fixed_prompt_natural_with_profile(
         FixedPromptModelBinding::bind(records[0].clone())?,
         FixedPromptModelBinding::bind(records[1].clone())?,
     ];
-    if scopes[0].kind() != FixedPromptCallKind::Prefill
-        || scopes[1].kind() != (FixedPromptCallKind::Decode { base: 47 })
+    if scopes[0].kind() != FixedPromptInvocationKind::Prefill
+        || scopes[1].kind() != (FixedPromptInvocationKind::Decode { base: 47 })
         || scopes
             .iter()
             .any(|scope| !source.same_issuer(scope.source()))

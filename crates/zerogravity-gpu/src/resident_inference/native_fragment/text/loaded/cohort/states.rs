@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 pub(crate) struct DecodeCohortStates {
     inputs: Arc<DecodeCohortInputs>,
-    rows: Box<[Arc<TextCallState>]>,
+    rows: Box<[Arc<TextInvocationState>]>,
     // Preparing, submitted, unknown and completed Pending all retain this slot.
     reservation: DecodeCohortReservation,
 }
@@ -115,7 +115,7 @@ impl DecodeCohortStates {
         }
         Ok(())
     }
-    pub(crate) fn rows(&self) -> &[Arc<TextCallState>] {
+    pub(crate) fn rows(&self) -> &[Arc<TextInvocationState>] {
         &self.rows
     }
     pub(crate) fn into_reservation(self) -> DecodeCohortReservation {

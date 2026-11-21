@@ -5,7 +5,7 @@ use cubecl::cuda::{CubinIo, CubinKernelManifest};
 use std::collections::{BTreeMap, BTreeSet};
 use zerogravity_core::Error;
 use zerogravity_core::Result;
-use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode, SourceOperatorKind};
+use zerogravity_core::accelerator::program::{InvocationPhase, SourceOperatorKind, TextInvocation};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Role {
@@ -75,23 +75,24 @@ pub(crate) struct Catalogue {
 impl Key {
     pub(crate) fn current(
         capture: TextKernelCapture,
-        actual: &SourceCall,
+        actual: &TextInvocation,
         prompt_tokens: usize,
         node: usize,
     ) -> Result<Self> {
-        let call = if actual.rows().base() == 0 {
-            if actual.mode() != SourceCallMode::Prefill || actual.rows().len() != prompt_tokens {
+        let call = if actual.tokens().base() == 0 {
+            if actual.phase() != InvocationPhase::Prefill || actual.tokens().len() != prompt_tokens
+            {
                 return Err(Error::State(
                     "native actual prefill prompt extent differs".into(),
                 ));
             }
             0
         } else {
-            if actual.mode() != SourceCallMode::Decode || actual.rows().len() != 1 {
+            if actual.phase() != InvocationPhase::Decode || actual.tokens().len() != 1 {
                 return Err(Error::State("native actual cached input differs".into()));
             }
             actual
-                .rows()
+                .tokens()
                 .base()
                 .checked_sub(prompt_tokens)
                 .and_then(|n| n.checked_add(1))
@@ -138,7 +139,10 @@ impl Catalogue {
             }
         }
         let mut expected = BTreeSet::new();
-        for scope in scopes.iter().filter(|g| g.scope.call().rows().base() == 0) {
+        for scope in scopes
+            .iter()
+            .filter(|g| g.scope.invocation().tokens().base() == 0)
+        {
             for call in 0..capture.captured_call_count() {
                 for node in 0..scope.scope.record().plan().nodes().len() {
                     let Some(descriptor) = &scope.scope.record().operator(node)? else {
@@ -146,7 +150,7 @@ impl Catalogue {
                     };
                     if is_native(descriptor.kind()) {
                         expected.insert(Key {
-                            prompt_tokens: scope.scope.call().rows().len(),
+                            prompt_tokens: scope.scope.invocation().tokens().len(),
                             call,
                             node,
                         });

@@ -8,10 +8,10 @@
 
 use super::{Model as ReferenceModel, forward_candidate};
 mod evidence;
-use crate::gpu::cuda::native::{TextCallReceipt, TextReadback};
+use crate::gpu::cuda::native::{TextInvocationReceipt, TextReadback};
 use crate::{
     Error, Result,
-    accelerator::program::{ConvDomain, KvDomain, RecurrentDomain, SourceCallMode, StateSlot},
+    accelerator::program::{ConvDomain, InvocationPhase, KvDomain, RecurrentDomain, StateSlot},
     gpu::{ResidentPhysicalType, StateLayout},
     qwen35::{plan::QwenModelVariant, source::binding::OriginalWindowModelSource},
     resource_arbiter::ResourceOwner,
@@ -358,13 +358,13 @@ pub async fn compare_forward_prefill47_decode48_to50(
     let mut natural_feedback = None;
     for (index, &expected_frontier) in FRONTIERS.iter().enumerate() {
         require_not_cancelled(cancelled)?;
-        let (mode, ids): (SourceCallMode, &[u32]) = if index == 0 {
-            (SourceCallMode::Prefill, qualification_prompt.as_slice())
+        let (mode, ids): (InvocationPhase, &[u32]) = if index == 0 {
+            (InvocationPhase::Prefill, qualification_prompt.as_slice())
         } else {
             let id = natural_feedback.as_ref().ok_or_else(|| {
                 Error::State("forward prefill47 + decode48–50 natural feedback absent".into())
             })?;
-            (SourceCallMode::Decode, std::slice::from_ref(id))
+            (InvocationPhase::Decode, std::slice::from_ref(id))
         };
         let readback = if let Some(cancelled) = cancelled {
             session
@@ -496,7 +496,7 @@ fn require_not_cancelled(cancelled: Option<&AtomicBool>) -> Result<()> {
 
 fn capture_reference_step(readback: TextReadback<'_>) -> Result<ReferenceParityStep> {
     let record = readback.record();
-    let frontier = record.call().rows().frontier();
+    let frontier = record.invocation().tokens().frontier();
     let output = readback.value(record.selection().output())?;
     let logits = decode_bf16(output, VOCABULARY, "reference logits")?;
     let (selected_id, max_bits) = readback.greedy();
@@ -521,7 +521,7 @@ fn capture_reference_step(readback: TextReadback<'_>) -> Result<ReferenceParityS
             StateLayout::Kv { slab, capacity } => {
                 let second = second
                     .ok_or_else(|| Error::State("reference KV state second plane absent".into()))?;
-                if capacity != record.call().rows().capacity() || frontier > capacity {
+                if capacity != record.invocation().tokens().capacity() || frontier > capacity {
                     return Err(Error::State(
                         "reference KV state capacity/frontier differs".into(),
                     ));
@@ -562,7 +562,7 @@ fn capture_reference_step(readback: TextReadback<'_>) -> Result<ReferenceParityS
 
 fn finalize_reference_step(
     step: ReferenceParityStep,
-    receipt: &TextCallReceipt,
+    receipt: &TextInvocationReceipt,
     expected_frontier: usize,
 ) -> Result<ReferenceParityStep> {
     if step.frontier != expected_frontier

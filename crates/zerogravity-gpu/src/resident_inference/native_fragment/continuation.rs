@@ -2,31 +2,31 @@
 //! No root binding, event, Ready or source identity is issued here.
 use super::*;
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
-use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode};
+use zerogravity_core::accelerator::program::{InvocationPhase, TextInvocation};
 
 mod component;
 mod fixed_prompt_model_prefix;
 mod fixed_prompt_published;
 mod fixed_prompt_whole;
-mod published_call;
+mod published_invocation;
 mod text;
 
 /// Immutable request spans only; the original session authority stays at base.
 pub(super) struct GdnAttemptSchedule {
     base: RootBinding,
     attempt: RootAttempt,
-    invocations: Vec<SourceCall>,
+    invocations: Vec<TextInvocation>,
     completed_layers: usize,
 }
 impl GdnAttemptSchedule {
-    /// Source calls come from model-authenticated prepared plans. This schedule
+    /// Text invocations come from model-authenticated prepared plans. This schedule
     /// checks physical coordinates; it grants no model/source eligibility.
     /// Distinct per-call publication path: ONE original current RootAttempt,
     /// never the existing unpublished aggregate forced-teacher schedule.
-    pub(super) fn new_published_call(
+    pub(super) fn new_published_invocation(
         source: &VerifiedTensorSource,
         attempt: RootAttempt,
-        call: SourceCall,
+        call: TextInvocation,
     ) -> Result<Arc<Self>> {
         let base = attempt.base();
         if base.source() != source.source_identity() {
@@ -34,7 +34,7 @@ impl GdnAttemptSchedule {
                 "natural published call source issuer differs".into(),
             ));
         }
-        published_call::require_published_call(base, &attempt, &call)?;
+        published_invocation::require_published_invocation(base, &attempt, &call)?;
         Ok(Arc::new(Self {
             base,
             attempt,
@@ -45,7 +45,7 @@ impl GdnAttemptSchedule {
     pub(super) fn new(
         base: RootBinding,
         attempt: RootAttempt,
-        invocations: Vec<SourceCall>,
+        invocations: Vec<TextInvocation>,
         completed_layers: usize,
     ) -> Result<Arc<Self>> {
         if !matches!(completed_layers, 1 | 3) {
@@ -62,7 +62,7 @@ impl GdnAttemptSchedule {
         source: &VerifiedTensorSource,
         base: RootBinding,
         attempt: RootAttempt,
-        calls: Vec<SourceCall>,
+        calls: Vec<TextInvocation>,
     ) -> Result<Arc<Self>> {
         if calls.capacity() > 3 || base.source() != source.source_identity() {
             return Err(Error::Unsupported(
@@ -82,7 +82,7 @@ impl GdnAttemptSchedule {
     fn new_inner(
         base: RootBinding,
         attempt: RootAttempt,
-        invocations: Vec<SourceCall>,
+        invocations: Vec<TextInvocation>,
         completed_layers: usize,
     ) -> Result<Arc<Self>> {
         if base.frontier() != 0 || attempt.base() != base || invocations.capacity() > 3 {
@@ -90,15 +90,15 @@ impl GdnAttemptSchedule {
                 "original initial-prefix attempt/scope/request capacity".into(),
             ));
         }
-        let expected: &[(SourceCallMode, usize, usize)] = match invocations.as_slice() {
+        let expected: &[(InvocationPhase, usize, usize)] = match invocations.as_slice() {
             [_, _] => &[
-                (SourceCallMode::Prefill, 0, 1),
-                (SourceCallMode::Decode, 1, 1),
+                (InvocationPhase::Prefill, 0, 1),
+                (InvocationPhase::Decode, 1, 1),
             ],
             [_, _, _] => &[
-                (SourceCallMode::Prefill, 0, 64),
-                (SourceCallMode::Prefill, 64, 2),
-                (SourceCallMode::Decode, 66, 1),
+                (InvocationPhase::Prefill, 0, 64),
+                (InvocationPhase::Prefill, 64, 2),
+                (InvocationPhase::Decode, 66, 1),
             ],
             _ => {
                 return Err(Error::Unsupported(
@@ -108,11 +108,11 @@ impl GdnAttemptSchedule {
         };
         for (invocation, &(mode, start, rows)) in invocations.iter().zip(expected) {
             if invocation.source() != base.source()
-                || invocation.mode() != mode
-                || invocation.rows().len() != rows
-                || invocation.rows().base() != start
-                || invocation.rows().capacity() != 512
-                || invocation.rows().vocabulary() != 248320
+                || invocation.phase() != mode
+                || invocation.tokens().len() != rows
+                || invocation.tokens().base() != start
+                || invocation.tokens().capacity() != 512
+                || invocation.tokens().vocabulary() != 248320
             {
                 return Err(Error::State(
                     "exact original teacher/source/phase request schedule".into(),
@@ -121,9 +121,9 @@ impl GdnAttemptSchedule {
         }
         let last = invocations.last().unwrap();
         let end = last
-            .rows()
+            .tokens()
             .base()
-            .checked_add(last.rows().len())
+            .checked_add(last.tokens().len())
             .ok_or_else(|| Error::Limit("prefix transaction span overflow".into()))?;
         if attempt.frontier() != end as u64 {
             return Err(Error::State(
@@ -137,7 +137,7 @@ impl GdnAttemptSchedule {
             completed_layers,
         }))
     }
-    pub(super) fn invocation(&self, index: usize) -> Result<&SourceCall> {
+    pub(super) fn invocation(&self, index: usize) -> Result<&TextInvocation> {
         self.invocations
             .get(index)
             .ok_or_else(|| Error::State("prefix phase index out of request".into()))
@@ -227,7 +227,7 @@ impl CompletedPrefixPhase {
     ) -> Result<Arc<Self>> {
         schedule.require_session(session)?;
         if schedule.completed_layers != 24
-            || body.record().call() != schedule.invocation(phase_index)?
+            || body.record().invocation() != schedule.invocation(phase_index)?
         {
             return Err(Error::State(
                 "full24 actual prepared body differs from original completed request phase".into(),
@@ -309,7 +309,7 @@ impl CompletedPrefixPhase {
         session: &ResidentSession,
         schedule: &Arc<GdnAttemptSchedule>,
         index: usize,
-        invocation: &SourceCall,
+        invocation: &TextInvocation,
         completed_layers: usize,
     ) -> Result<&'a [Domain]> {
         schedule.require_session(session)?;
@@ -491,7 +491,7 @@ impl AttemptPhaseBinding {
         &self,
         session: &ResidentSession,
         attempt: &RootAttempt,
-        invocation: &SourceCall,
+        invocation: &TextInvocation,
         layer: usize,
     ) -> Result<()> {
         self.schedule.require_session(session)?;
@@ -511,7 +511,7 @@ impl AttemptPhaseBinding {
         &self,
         session: &ResidentSession,
         attempt: &RootAttempt,
-        call: &SourceCall,
+        call: &TextInvocation,
     ) -> Result<()> {
         if self.schedule.completed_layers != 24 {
             return Err(Error::Unsupported(
@@ -524,7 +524,7 @@ impl AttemptPhaseBinding {
         &self,
         permit: &PrefixPhaseEnqueue<'_>,
         service: &Arc<ResidentService>,
-        call: &SourceCall,
+        call: &TextInvocation,
     ) -> Result<()> {
         if self.schedule.completed_layers != 24 {
             return Err(Error::Unsupported(
@@ -570,7 +570,7 @@ impl AttemptPhaseBinding {
         &self,
         permit: &PrefixPhaseEnqueue<'_>,
         service: &Arc<ResidentService>,
-        invocation: &SourceCall,
+        invocation: &TextInvocation,
         layer: usize,
     ) -> Result<()> {
         if !Arc::ptr_eq(&self.schedule, permit.schedule) || self.phase_index != permit.phase_index {
@@ -622,7 +622,7 @@ impl<'a> PrefixPhaseEnqueue<'a> {
     pub(crate) fn require_invocation(
         &self,
         service: &Arc<ResidentService>,
-        invocation: &SourceCall,
+        invocation: &TextInvocation,
         layer: usize,
         completed_layers: usize,
     ) -> Result<()> {

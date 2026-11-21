@@ -1,6 +1,6 @@
 //! Original published prior/candidate domains; no full-model publication authority.
 use super::*;
-use crate::cuda::native::fixed_prompt_model::{FixedPromptCallKind, FixedPromptModelBinding};
+use crate::cuda::native::fixed_prompt_model::{FixedPromptInvocationKind, FixedPromptModelBinding};
 
 impl ResidentSession {
     pub(in crate::resident_inference) fn bind_fixed_prompt_published_state(
@@ -51,12 +51,12 @@ impl BoundModelState {
             ));
         };
         let start = match scope.kind() {
-            FixedPromptCallKind::Prefill => 0,
-            FixedPromptCallKind::Decode { base } => base,
+            FixedPromptInvocationKind::Prefill => 0,
+            FixedPromptInvocationKind::Decode { base } => base,
         };
         if !Arc::ptr_eq(actual, scope)
-            || self.call != *scope.record().call()
-            || self.base.source() != self.call.source()
+            || self.invocation != *scope.record().invocation()
+            || self.base.source() != self.invocation.source()
             || self.base.frontier() != start as u64
         {
             return Err(Error::State(
@@ -64,7 +64,7 @@ impl BoundModelState {
             ));
         }
         self.phase
-            .require_retained_fixed_prompt_published(self.base, &self.call)?;
+            .require_retained_fixed_prompt_published(self.base, &self.invocation)?;
         if self.kv_domain().is_ok() {
             if self.effects.len() != 1
                 || self.effects[0].read.slot != StateSlot::Kv(KvDomain(self.layer))

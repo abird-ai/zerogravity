@@ -11,7 +11,7 @@ use cubecl_runtime::kernel::BufferIOAttr;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use zerogravity_artifacts::source_weights::ParameterWindow;
-use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode};
+use zerogravity_core::accelerator::program::{InvocationPhase, TextInvocation};
 use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::{Error, Result};
 
@@ -93,12 +93,12 @@ pub(crate) enum GdnPhase {
     },
 }
 impl GdnPhase {
-    pub(crate) fn for_reference_call(call: &SourceCall) -> Result<Self> {
-        match (call.mode(), call.rows().base(), call.rows().len()) {
-            (SourceCallMode::Prefill, 0, 1) => Ok(Self::InitialOne),
-            (SourceCallMode::Prefill, 0, 64) => Ok(Self::Initial64),
-            (SourceCallMode::Prefill, 64, 2) => Ok(Self::ContinuedTwo),
-            (SourceCallMode::Decode, 1 | 66, 1) => Ok(Self::CachedDecode),
+    pub(crate) fn for_reference_call(call: &TextInvocation) -> Result<Self> {
+        match (call.phase(), call.tokens().base(), call.tokens().len()) {
+            (InvocationPhase::Prefill, 0, 1) => Ok(Self::InitialOne),
+            (InvocationPhase::Prefill, 0, 64) => Ok(Self::Initial64),
+            (InvocationPhase::Prefill, 64, 2) => Ok(Self::ContinuedTwo),
+            (InvocationPhase::Decode, 1 | 66, 1) => Ok(Self::CachedDecode),
             _ => Err(Error::Unsupported(
                 "original five GDN reference-call geometries".into(),
             )),

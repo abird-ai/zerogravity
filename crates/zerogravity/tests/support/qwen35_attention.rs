@@ -50,8 +50,8 @@ fn capture(cached: bool) -> Result<()> {
                 }).ok_or_else(|| fail("reference attention absent"))?;
                 let SourceOperatorKind::FlashAttention { domain, geometry, scale, .. } = descriptor.kind() else { unreachable!() };
                 ensure(node.inputs.len() == 1 && node.outputs.len() == 1, "attention SSA arity")?;
-                let rows = descriptor.call().rows().len();
-                let base = descriptor.call().rows().base();
+                let rows = descriptor.invocation().tokens().len();
+                let base = descriptor.invocation().tokens().base();
                 let capacity = base + rows;
                 let query = readback.value(node.inputs[0])?;
                 let expected = readback.value(node.outputs[0])?;

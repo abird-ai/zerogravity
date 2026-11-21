@@ -330,7 +330,7 @@ impl TextResourceInventory {
         let mut chunks = 0;
         let mut gdn_initial = 0;
         for (scope, actual) in scopes.iter().zip(&storage.geometries) {
-            let rows = scope.call().rows().len();
+            let rows = scope.invocation().tokens().len();
             if actual.rows != rows
                 || actual.values.logical_values != 327
                 || actual.values.actor_slots != 98
@@ -348,14 +348,14 @@ impl TextResourceInventory {
                 ));
             }
             device.extend(TextGdnWorkspace::allocation_layout(
-                scope.call(),
+                scope.invocation(),
                 scope.gdn_implementation(),
             )?)?;
             device.extend(ColdTextGdn::allocation_layout(scope)?)?;
             device.extend(PreparedBf16Greedy::text_allocation_layout())?;
             device.extend([4])?; // actual cold Body status
             let (workspace_host, initial) =
-                TextGdnWorkspace::host_layout(scope.call(), scope.gdn_implementation())?;
+                TextGdnWorkspace::host_layout(scope.invocation(), scope.gdn_implementation())?;
             gdn_initial = add(gdn_initial, initial)?;
             retained = sum([
                 retained,

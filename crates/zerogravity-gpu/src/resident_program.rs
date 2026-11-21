@@ -618,7 +618,7 @@ struct LegacyProgram {
 }
 enum ResidentProgramBody {
     #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
-    SourceCall(Arc<source_call::Cold>),
+    TextExecution(Arc<text_execution::Cold>),
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
     CudaForward(Arc<cuda_forward::body::CudaForwardBody>),
     #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
@@ -679,7 +679,7 @@ pub(crate) mod bf16_text_source;
 ))]
 mod forward_source;
 #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
-pub(crate) mod source_call;
+pub(crate) mod text_execution;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ResidentSubmission {
@@ -745,8 +745,8 @@ impl ResidentProgram {
         match &self.body {
             ResidentProgramBody::Legacy(body) => Ok(body),
             #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
-            ResidentProgramBody::SourceCall(_) => Err(Error::Unsupported(
-                "source-call body cannot enter legacy execution".into(),
+            ResidentProgramBody::TextExecution(_) => Err(Error::Unsupported(
+                "text-invocation body cannot enter legacy execution".into(),
             )),
             #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
             ResidentProgramBody::CudaForward(_) => Err(Error::Unsupported(
@@ -777,8 +777,8 @@ impl ResidentProgram {
         match &mut self.body {
             ResidentProgramBody::Legacy(body) => Ok(body),
             #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
-            ResidentProgramBody::SourceCall(_) => Err(Error::Unsupported(
-                "source-call body cannot enter legacy execution".into(),
+            ResidentProgramBody::TextExecution(_) => Err(Error::Unsupported(
+                "text-invocation body cannot enter legacy execution".into(),
             )),
             #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
             ResidentProgramBody::CudaForward(_) => Err(Error::Unsupported(
@@ -2421,9 +2421,9 @@ impl ResidentProgram {
                     .ok_or_else(|| Error::State("native carry state effect absent".into()))?;
                 let actual_call = self
                     .plan
-                    .source_call()
-                    .ok_or_else(|| Error::State("native carry source call absent".into()))?;
-                if descriptor.call() != actual_call
+                    .text_invocation()
+                    .ok_or_else(|| Error::State("native carry text invocation absent".into()))?;
+                if descriptor.invocation() != actual_call
                     || descriptor.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
                     || !node.inputs.is_empty()
                     || !node.outputs.is_empty()
@@ -3859,4 +3859,4 @@ mod silu;
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
-pub(crate) mod source_observation;
+pub(crate) mod text_observation;

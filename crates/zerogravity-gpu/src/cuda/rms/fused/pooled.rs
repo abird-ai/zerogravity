@@ -87,8 +87,8 @@ impl FusedRmsPrepared {
         ) || a.kind() != b.kind()
             || a.matrices() != b.matrices()
             || a.parameters() != b.parameters()
-            || a.call().source() != b.call().source()
-            || a.call().rows().len() != b.call().rows().len()
+            || a.invocation().source() != b.invocation().source()
+            || a.invocation().tokens().len() != b.invocation().tokens().len()
             || scope.rows()? != self.owner.rows
             || scope.columns() != self.owner.columns
         {

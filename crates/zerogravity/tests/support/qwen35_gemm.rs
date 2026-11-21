@@ -115,7 +115,7 @@ fn capture_projections(cached: bool, attention: bool) -> Result<()> {
                     ensure(!members.is_empty(), "projection source members")?;
                     let columns = members.iter().map(|m| m.rows).sum::<usize>();
                     let inner = members[0].columns;
-                    let rows = descriptor.call().rows().len();
+                    let rows = descriptor.invocation().tokens().len();
                     let input = readback.value(node.inputs[0])?;
                     let output = readback.value(node.outputs[0])?;
                     ensure(

@@ -87,7 +87,7 @@ impl TextPositionsPrepared {
     }
     pub(crate) fn require_invocation(
         &self,
-        invocation: &zerogravity_core::accelerator::program::SourceCall,
+        invocation: &zerogravity_core::accelerator::program::TextInvocation,
     ) -> Result<()> {
         if self.payload.binding.invocation() != invocation {
             return Err(Error::State(

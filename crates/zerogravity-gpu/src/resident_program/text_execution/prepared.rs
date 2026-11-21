@@ -365,7 +365,7 @@ pub(super) fn kernels(
             | SourceOperatorKind::Multiply { .. } => {}
             _ => {
                 return Err(Error::Unsupported(
-                    "source-call cold kernel implementation absent".into(),
+                    "text-execution cold kernel implementation absent".into(),
                 ));
             }
         }
@@ -373,7 +373,7 @@ pub(super) fn kernels(
     let mut ids = std::collections::HashSet::new();
     out.retain(|k| ids.insert(k.id()));
     if out.is_empty() || out.len() > 1024 {
-        return Err(Error::Limit("source-call unique kernel count".into()));
+        return Err(Error::Limit("text-execution unique kernel count".into()));
     }
     Ok(out)
 }

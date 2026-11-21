@@ -250,10 +250,10 @@ pub use hip::native::{HipSourceSetIdentity, SharedHipColdPlan, SharedHipNative};
     feature = "hardware-abort-probe",
     target_os = "linux"
 ))]
-pub use resident_inference::SourceCallPagedPoolSnapshot;
+pub use resident_inference::ResidentTextPagedPoolSnapshot;
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
 pub use resident_inference::{
-    CudaSourceStatePolicy, SourceCallCohortPending, SourceCallCohortPreparation,
+    CudaSourceStatePolicy, ResidentTextCohortPending, ResidentTextCohortPreparation,
 };
 #[cfg(all(
     feature = "hip-source",
@@ -262,14 +262,14 @@ pub use resident_inference::{
     feature = "qwen-source-qualification",
     target_os = "linux"
 ))]
-pub use resident_inference::{SourceCallFinalReader, SourceCallReaderObservation};
+pub use resident_inference::{ResidentTextFinalReader, ResidentTextReaderObservation};
 #[cfg(all(
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
 pub use resident_inference::{
-    SourceCallModel, SourceCallPending, SourceCallPreparation, SourceCallPublication,
-    SourceCallReadback, SourceCallSession, SourceCallSnapshot,
+    ResidentTextModel, ResidentTextPending, ResidentTextPreparation, ResidentTextPublication,
+    ResidentTextReadback, ResidentTextSession, ResidentTextSnapshot,
 };
 #[cfg(all(
     target_os = "linux",
@@ -281,9 +281,7 @@ pub use resident_program::ResidentOutput;
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
-pub use resident_program::source_observation::{
-    SourceCallFrame, SourceCallFrameKind, SourceCallObserver,
-};
+pub use resident_program::text_observation::{TextFrame, TextFrameKind, TextObserver};
 
 #[cfg(all(
     feature = "hip-source",
@@ -295,6 +293,6 @@ pub use resident_inference::source_native_probe::{SourceTextNativeProbe, SourceT
 #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
 pub use hip::native::HipSourceBudget;
 #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
-pub use resident_inference::SourceCallInventory;
+pub use resident_inference::ResidentTextInventory;
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
 pub use resident_inference::{CudaForwardSourceInventory, CudaForwardWeightStorage};

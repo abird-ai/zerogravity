@@ -1,13 +1,13 @@
-//! Cold metadata refusal; source callbacks and device initialization are forbidden.
+//! Cold metadata refusal; text invocationbacks and device initialization are forbidden.
 use super::ResidentProgram;
 use zerogravity_core::accelerator::{
     SourceIdentity,
     program::{
         BulkF32Contract, BulkF32Layout, BulkF32Matrix, BulkF32Operand, BulkF32Side,
-        MathematicalBackend, MatrixAxes, NumericalContract, NumericalProfile, PlanBuilder,
-        SourceCall, SourceCallMode, SourceGamma, SourceGroupedQkGeometry, SourceOperator,
-        SourceOperatorKind, SourceParameter, SourceRetainedOrigin, SourceRmsGeometry, SourceRows,
-        SourceTensor, TeacherSpan,
+        InvocationPhase, MathematicalBackend, MatrixAxes, NumericalContract, NumericalProfile,
+        PlanBuilder, SourceGamma, SourceGroupedQkGeometry, SourceOperator, SourceOperatorKind,
+        SourceParameter, SourceRetainedOrigin, SourceRmsGeometry, SourceTensor, TeacherSpan,
+        TextInvocation, TokenSpan,
     },
 };
 use zerogravity_core::encoding::StoredTensorEncoding;
@@ -57,10 +57,10 @@ fn bulk_operator_slice_refuses_before_source_access() -> Result<()> {
     Ok(())
 }
 
-fn source_call(source: SourceIdentity) -> Result<SourceCall> {
-    SourceCall::new(
-        SourceRows::from_teacher_span(TeacherSpan::new(source, 0, 128, 16, &[1; 64])?, 16)?,
-        SourceCallMode::Prefill,
+fn text_invocation(source: SourceIdentity) -> Result<TextInvocation> {
+    TextInvocation::new(
+        TokenSpan::from_teacher_span(TeacherSpan::new(source, 0, 128, 16, &[1; 64])?, 16)?,
+        InvocationPhase::Prefill,
     )
 }
 fn source_one(
@@ -71,9 +71,9 @@ fn source_one(
     Ok(builder.source_operator(&op, inputs)?.remove(0))
 }
 #[test]
-fn quantized_projection_cut_refuses_before_source_callbacks() -> Result<()> {
+fn quantized_projection_cut_refuses_before_text_invocationbacks() -> Result<()> {
     let source = SourceIdentity::for_new_allocation()?;
-    let call = source_call(source)?;
+    let call = text_invocation(source)?;
     let mut b = PlanBuilder::new_operator_slice(source, NumericalProfile::GgufReferenceV1)?;
     let input = source_one(
         &mut b,
@@ -117,9 +117,9 @@ fn quantized_projection_cut_refuses_before_source_callbacks() -> Result<()> {
     Ok(())
 }
 #[test]
-fn embedding_direct_rms_cut_refuses_before_source_callbacks() -> Result<()> {
+fn embedding_direct_rms_cut_refuses_before_text_invocationbacks() -> Result<()> {
     let source = SourceIdentity::for_new_allocation()?;
-    let call = source_call(source)?;
+    let call = text_invocation(source)?;
     let mut b = PlanBuilder::new_operator_slice(source, NumericalProfile::GgufReferenceV1)?;
     let input = source_one(
         &mut b,
@@ -168,9 +168,9 @@ fn embedding_direct_rms_cut_refuses_before_source_callbacks() -> Result<()> {
     Ok(())
 }
 #[test]
-fn quantized_conv_qk_chain_refuses_before_source_callbacks() -> Result<()> {
+fn quantized_conv_qk_chain_refuses_before_text_invocationbacks() -> Result<()> {
     let source = SourceIdentity::for_new_allocation()?;
-    let call = source_call(source)?;
+    let call = text_invocation(source)?;
     let mut b = PlanBuilder::new_operator_slice(source, NumericalProfile::GgufReferenceV1)?;
     let input = source_one(
         &mut b,

@@ -261,7 +261,13 @@ impl Templates {
     ) -> Result<(Arc<SourceBindings>, TextGdnImplementation)> {
         span.validate()?;
         let call = self.source.bind_prompt_span(span)?;
-        let binding = template.rebind(call.call().request().source_call()?, metadata)?;
+        let binding = template.rebind(
+            call.prompt()
+                .model_invocation()
+                .request()
+                .text_invocation()?,
+            metadata,
+        )?;
         Ok((Arc::new(binding), implementation))
     }
 }

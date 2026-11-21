@@ -1,11 +1,11 @@
 use super::*;
 #[cfg(feature = "qwen35-cuda")]
-use crate::gpu::{SourceCallCohortPending, SourceCallCohortPreparation};
+use crate::gpu::{ResidentTextCohortPending, ResidentTextCohortPreparation};
 use crate::{
-    accelerator::program::SourceCallMode,
+    accelerator::program::InvocationPhase,
     gpu::{
-        InferenceReadback, ResidentOutput, ResidentToken, SourceCallPreparation,
-        SourceCallPublication,
+        InferenceReadback, ResidentOutput, ResidentTextPreparation, ResidentTextPublication,
+        ResidentToken,
     },
     numerics::{ActivationPrecision, greedy_finite},
     session_root::RootBinding,
@@ -31,7 +31,7 @@ use zerogravity_engine::{
 };
 pub(super) struct SourceText;
 #[cfg(feature = "qwen35-cuda")]
-type CohortReady = SourceCallCohortPending;
+type CohortReady = ResidentTextCohortPending;
 #[cfg(not(feature = "qwen35-cuda"))]
 type CohortReady = std::convert::Infallible;
 struct Feedback {
@@ -54,18 +54,18 @@ fn native_phase_compatible(
     }
 }
 pub(super) struct State {
-    session: SourceCallSession,
+    session: ResidentTextSession,
     // Computed from this original committed readback; never presentation IDs.
     feedback: Option<Feedback>,
 }
 fn cancelled() -> ServiceError {
     ServiceError::new(499, "cancelled", "request cancelled")
 }
-fn phase(base: usize, rows: usize) -> SourceCallMode {
+fn phase(base: usize, rows: usize) -> InvocationPhase {
     if base != 0 && rows == 1 {
-        SourceCallMode::Decode
+        InvocationPhase::Decode
     } else {
-        SourceCallMode::Prefill
+        InvocationPhase::Prefill
     }
 }
 fn select(logits: &[f32], vocabulary: u64) -> crate::Result<u32> {
@@ -352,7 +352,7 @@ impl Executor for SourceText {
                             crate::Error::Limit("source cohort prefill cursor".into())
                         })?;
                         row.model.source.plan.bind_invocation(
-                            SourceCallMode::Prefill,
+                            InvocationPhase::Prefill,
                             Self::frontier(&row.state),
                             Arc::from(&row.prompt[row.cursor..end]),
                             !work.state_only,
@@ -368,8 +368,8 @@ impl Executor for SourceText {
                 match block_on(model.prepare_prefill_cohort_admitted(&inputs))
                     .map_err(ServiceError::inference)?
                 {
-                    SourceCallCohortPreparation::Capacity => return Ok(Preparation::Capacity),
-                    SourceCallCohortPreparation::Ready(ready) => ready,
+                    ResidentTextCohortPreparation::Capacity => return Ok(Preparation::Capacity),
+                    ResidentTextCohortPreparation::Ready(ready) => ready,
                 }
             }
             Phase::Decode => {
@@ -378,7 +378,7 @@ impl Executor for SourceText {
                     .map(|row| {
                         let feedback = row.state.feedback.as_ref().expect("validated feedback");
                         row.model.source.plan.bind_invocation(
-                            SourceCallMode::Decode,
+                            InvocationPhase::Decode,
                             Self::frontier(&row.state),
                             Arc::from([feedback.id]),
                             true,
@@ -404,8 +404,8 @@ impl Executor for SourceText {
                 match block_on(model.prepare_greedy_decode_cohort_admitted(&inputs))
                     .map_err(ServiceError::inference)?
                 {
-                    SourceCallCohortPreparation::Capacity => return Ok(Preparation::Capacity),
-                    SourceCallCohortPreparation::Ready(ready) => ready,
+                    ResidentTextCohortPreparation::Capacity => return Ok(Preparation::Capacity),
+                    ResidentTextCohortPreparation::Ready(ready) => ready,
                 }
             }
         };
@@ -524,7 +524,7 @@ impl Executor for SourceText {
         let base = Self::frontier(&row.state);
         let mode = phase(base, consumed);
         let device_greedy = readout && row.state.session.supports_device_greedy();
-        let device_input = if mode == SourceCallMode::Decode {
+        let device_input = if mode == InvocationPhase::Decode {
             row.state
                 .feedback
                 .as_ref()
@@ -581,15 +581,15 @@ impl Executor for SourceText {
         })
         .map_err(ServiceError::inference)?
         {
-            SourceCallPreparation::Ready(pending) => pending,
-            SourceCallPreparation::Capacity => {
+            ResidentTextPreparation::Ready(pending) => pending,
+            ResidentTextPreparation::Capacity => {
                 return Err(ServiceError::new(
                     503,
                     "source_capacity",
                     "original prelaunch capacity refused",
                 ));
             }
-            SourceCallPreparation::CancelledBeforeLaunch => return Err(cancelled()),
+            ResidentTextPreparation::CancelledBeforeLaunch => return Err(cancelled()),
         };
         let mut completed = completion(pending.readback(), consumed, readout);
         // Validate actual completed logits before publishing. Failed selection
@@ -619,8 +619,8 @@ impl Executor for SourceText {
         };
         let published = match row.state.session.commit(pending) {
             Err(error) => Err(ServiceError::inference(error)),
-            Ok(SourceCallPublication::Discarded(_readback)) => Err(cancelled()),
-            Ok(SourceCallPublication::Committed(readback)) => {
+            Ok(ResidentTextPublication::Discarded(_readback)) => Err(cancelled()),
+            Ok(ResidentTextPublication::Committed(readback)) => {
                 completed.committed_roots = 1;
                 let root = row.state.session.binding();
                 row.state.feedback = selected.map(|id| Feedback {
@@ -739,10 +739,10 @@ mod tests {
     use super::*;
     #[test]
     fn initialized_single_prompt_tail_is_decode_not_cached_chunk() {
-        assert_eq!(phase(0, 1), SourceCallMode::Prefill);
-        assert_eq!(phase(64, 1), SourceCallMode::Decode);
-        assert_eq!(phase(64, 17), SourceCallMode::Prefill);
-        assert_eq!(phase(47, 64), SourceCallMode::Prefill);
+        assert_eq!(phase(0, 1), InvocationPhase::Prefill);
+        assert_eq!(phase(64, 1), InvocationPhase::Decode);
+        assert_eq!(phase(64, 17), InvocationPhase::Prefill);
+        assert_eq!(phase(47, 64), InvocationPhase::Prefill);
     }
     #[cfg(feature = "qwen35-cuda")]
     #[test]

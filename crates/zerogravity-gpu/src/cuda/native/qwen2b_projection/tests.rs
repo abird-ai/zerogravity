@@ -117,14 +117,14 @@ fn matching_width_does_not_replace_actual_native_operator_kind() {
     use zerogravity_core::accelerator::program::*;
     for columns in [1024, 2048] {
         let source = SourceIdentity::for_new_allocation().unwrap();
-        let call = SourceCall::new(
-            SourceRows::new(
+        let call = TextInvocation::new(
+            TokenSpan::new(
                 TextCallGeometry::new(source, 248320, 512).unwrap(),
                 0,
                 Arc::from([11]),
             )
             .unwrap(),
-            SourceCallMode::Prefill,
+            InvocationPhase::Prefill,
         )
         .unwrap();
         let op = SourceOperator::new(
@@ -182,18 +182,18 @@ fn exact_reduce_formal_gap_and_unread_host_scalar_fields_remain_separate() {
 #[test]
 fn shared_weights_preserve_reference_call_eligibility_for_fresh_issuers() -> Result<()> {
     use zerogravity_core::accelerator::program::{
-        MatrixAxes, SourceCall, SourceCallMode, SourceOperator, SourceRows, SourceTensor,
-        TextCallGeometry,
+        InvocationPhase, MatrixAxes, SourceOperator, SourceTensor, TextCallGeometry,
+        TextInvocation, TokenSpan,
     };
     use zerogravity_core::encoding::StoredTensorEncoding;
     let source = SourceIdentity::for_new_allocation()?;
-    let call = SourceCall::new(
-        SourceRows::new(
+    let call = TextInvocation::new(
+        TokenSpan::new(
             TextCallGeometry::new(source, 248320, 512)?,
             0,
             Arc::from([11]),
         )?,
-        SourceCallMode::Prefill,
+        InvocationPhase::Prefill,
     )?;
     let member = |suffix: &str, rows| SourceTensor {
         source,
@@ -221,8 +221,8 @@ fn shared_weights_preserve_reference_call_eligibility_for_fresh_issuers() -> Res
     ];
     let actual = |expected: &SourceOperator, mode, base, rows, capacity, vocabulary, issuer| {
         let ids: Arc<[u32]> = vec![353; rows].into();
-        let call = SourceCall::new(
-            SourceRows::new(
+        let call = TextInvocation::new(
+            TokenSpan::new(
                 TextCallGeometry::new(issuer, vocabulary, capacity)?,
                 base,
                 ids,
@@ -239,27 +239,27 @@ fn shared_weights_preserve_reference_call_eligibility_for_fresh_issuers() -> Res
         )
     };
     for (mode, base, rows) in [
-        (SourceCallMode::Prefill, 0, 1),
-        (SourceCallMode::Prefill, 0, 64),
-        (SourceCallMode::Prefill, 64, 2),
-        (SourceCallMode::Decode, 1, 1),
-        (SourceCallMode::Decode, 66, 1),
+        (InvocationPhase::Prefill, 0, 1),
+        (InvocationPhase::Prefill, 0, 64),
+        (InvocationPhase::Prefill, 64, 2),
+        (InvocationPhase::Decode, 1, 1),
+        (InvocationPhase::Decode, 66, 1),
     ] {
         for (expected, role) in descriptors.iter().zip([Role::Qkvz, Role::Ba]) {
             let op = actual(expected, mode, base, rows, 512, 248320, source)?;
             assert_eq!(weights::role_for_operator(&descriptors, &op)?, role);
-            assert_ne!(op.call(), expected.call());
+            assert_ne!(op.invocation(), expected.invocation());
         }
     }
     for (mode, base, rows, capacity, vocabulary) in [
-        (SourceCallMode::Prefill, 2, 1, 512, 248320),
-        (SourceCallMode::Prefill, 1, 1, 512, 248320),
-        (SourceCallMode::Prefill, 1, 64, 512, 248320),
-        (SourceCallMode::Prefill, 63, 2, 512, 248320),
-        (SourceCallMode::Decode, 2, 1, 512, 248320),
-        (SourceCallMode::Decode, 64, 1, 512, 248320),
-        (SourceCallMode::Prefill, 0, 1, 513, 248320),
-        (SourceCallMode::Prefill, 0, 1, 512, 248321),
+        (InvocationPhase::Prefill, 2, 1, 512, 248320),
+        (InvocationPhase::Prefill, 1, 1, 512, 248320),
+        (InvocationPhase::Prefill, 1, 64, 512, 248320),
+        (InvocationPhase::Prefill, 63, 2, 512, 248320),
+        (InvocationPhase::Decode, 2, 1, 512, 248320),
+        (InvocationPhase::Decode, 64, 1, 512, 248320),
+        (InvocationPhase::Prefill, 0, 1, 513, 248320),
+        (InvocationPhase::Prefill, 0, 1, 512, 248321),
     ] {
         for expected in &descriptors {
             let op = actual(expected, mode, base, rows, capacity, vocabulary, source)?;
@@ -267,15 +267,15 @@ fn shared_weights_preserve_reference_call_eligibility_for_fresh_issuers() -> Res
         }
     }
     let foreign = SourceIdentity::for_new_allocation()?;
-    let foreign_call = SourceCall::new(
-        SourceRows::new(
+    let foreign_call = TextInvocation::new(
+        TokenSpan::new(
             TextCallGeometry::new(foreign, 248320, 512)?,
             0,
             Arc::from([353]),
         )?,
-        SourceCallMode::Prefill,
+        InvocationPhase::Prefill,
     )?;
-    assert!(weights::require_reference_call(descriptors[0].call(), &foreign_call).is_err());
+    assert!(weights::require_reference_call(descriptors[0].invocation(), &foreign_call).is_err());
     let template = descriptors[0].clone();
     let mut foreign_members = template.matrices().to_vec();
     for member in &mut foreign_members {

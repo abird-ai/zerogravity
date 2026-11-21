@@ -13,7 +13,7 @@ use zerogravity_core::accelerator::program::PlanOperation;
 use zerogravity_core::accelerator::program::SourceParameter;
 use zerogravity_core::accelerator::program::ValueId;
 use zerogravity_core::accelerator::program::{
-    GdnContract, SourceCall, SourceCallMode, SourceOperator, SourceOperatorKind,
+    GdnContract, InvocationPhase, SourceOperator, SourceOperatorKind, TextInvocation,
 };
 
 struct ParameterPayload {
@@ -29,7 +29,7 @@ struct ParameterPayload {
 pub(crate) struct NativeGdnBinding {
     payload: Arc<ParameterPayload>,
     source: Arc<SourceBindings>,
-    invocation: SourceCall,
+    invocation: TextInvocation,
     nodes: [usize; 2],
     value_ids: [ValueId; 5],
     values: [ResidentLease; 5],
@@ -44,7 +44,7 @@ impl NativeGdnBinding {
     pub(crate) fn operators(&self) -> &[SourceOperator; 2] {
         &self.operators
     }
-    pub(crate) fn invocation(&self) -> &SourceCall {
+    pub(crate) fn invocation(&self) -> &TextInvocation {
         &self.invocation
     }
     pub(crate) fn require_prepared(
@@ -126,8 +126,8 @@ impl NativeGdnBinding {
         };
         if cd.as_ref() != &self.operators[0]
             || rd.as_ref() != &self.operators[1]
-            || cd.call() != &self.invocation
-            || rd.call() != &self.invocation
+            || cd.invocation() != &self.invocation
+            || rd.invocation() != &self.invocation
             || cd.parameters() != &self.descriptors[..1]
             || rd.parameters() != &self.descriptors[1..]
             || conv.inputs != self.value_ids[..2]
@@ -153,17 +153,17 @@ pub(crate) struct NativeGdnPrepared {
     adapter: Arc<GdnStateAdapter>,
     pending: Mutex<Option<GdnConvEnqueued>>,
 }
-pub(crate) fn phase(call: &SourceCall) -> Result<GdnPhase> {
-    if call.rows().capacity() != 512 || call.rows().vocabulary() != 248320 {
+pub(crate) fn phase(call: &TextInvocation) -> Result<GdnPhase> {
+    if call.tokens().capacity() != 512 || call.tokens().vocabulary() != 248320 {
         return Err(Error::Unsupported(
-            "native GDN finite source call geometry".into(),
+            "native GDN finite text invocation geometry".into(),
         ));
     }
-    match (call.mode(), call.rows().base(), call.rows().len()) {
-        (SourceCallMode::Prefill, 0, 1) => Ok(GdnPhase::InitialOne),
-        (SourceCallMode::Prefill, 0, 64) => Ok(GdnPhase::Initial64),
-        (SourceCallMode::Prefill, 64, 2) => Ok(GdnPhase::ContinuedTwo),
-        (SourceCallMode::Decode, 1 | 66, 1) => Ok(GdnPhase::CachedDecode),
+    match (call.phase(), call.tokens().base(), call.tokens().len()) {
+        (InvocationPhase::Prefill, 0, 1) => Ok(GdnPhase::InitialOne),
+        (InvocationPhase::Prefill, 0, 64) => Ok(GdnPhase::Initial64),
+        (InvocationPhase::Prefill, 64, 2) => Ok(GdnPhase::ContinuedTwo),
+        (InvocationPhase::Decode, 1 | 66, 1) => Ok(GdnPhase::CachedDecode),
         _ => Err(Error::Unsupported("native GDN finite source phase".into())),
     }
 }
@@ -218,8 +218,8 @@ pub(crate) fn operands(
         || rg.value_width != 128
         || rg.epsilon != 1e-6
         || rg.contract != GdnContract::ReferenceCudaSm86L2SiluBf16V1
-        || cd.call() != bindings.call()
-        || rd.call() != bindings.call()
+        || cd.invocation() != bindings.invocation()
+        || rd.invocation() != bindings.invocation()
         || nodes[0] >= nodes[1]
     {
         return Err(Error::Unsupported(
@@ -256,7 +256,7 @@ pub(crate) fn operands(
             return Err(Error::State("GDN actual normalized input arity".into()));
         };
         if descriptor.kind() != (SourceOperatorKind::Projection { selected_row: None })
-            || descriptor.call() != bindings.call()
+            || descriptor.invocation() != bindings.invocation()
             || node.outputs != [id]
             || tag.output_index() != 0
         {
@@ -288,7 +288,7 @@ pub(crate) fn operands(
     if !matches!(
         descriptor.kind(),
         SourceOperatorKind::Rms(_) | SourceOperatorKind::ResidualRms(_)
-    ) || descriptor.call() != bindings.call()
+    ) || descriptor.invocation() != bindings.invocation()
         || tag.output_index() != 0
         || node.outputs.first() != Some(&normalized)
     {
@@ -302,7 +302,7 @@ pub(crate) fn operands(
             .source_value_provenance(id)?
             .ok_or_else(|| Error::State("GDN actual value provenance absent".into()))?;
         let producer = get(tag.node_index())?;
-        if tag.call() != bindings.call()
+        if tag.invocation() != bindings.invocation()
             || producer.outputs.get(tag.output_index()) != Some(&id)
             || tag.inputs() != producer.inputs
         {
@@ -326,7 +326,7 @@ impl NativeGdnPrepared {
         let (operators, ids) = operands(&context.bindings, nodes)?;
         let conv = &operators[0];
         let recurrent = &operators[1];
-        let invocation = conv.call().clone();
+        let invocation = conv.invocation().clone();
         let phase = phase(&invocation)?;
         if context.domains.invocation() != &invocation
             || context.domains.phase() != phase
@@ -399,7 +399,7 @@ impl NativeGdnPrepared {
             windows.push(window);
         }
         let slot = if matches!(phase, GdnPhase::InitialOne)
-            || (phase == GdnPhase::CachedDecode && invocation.rows().base() == 1)
+            || (phase == GdnPhase::CachedDecode && invocation.tokens().base() == 1)
         {
             GdnCacheSlot::One
         } else {
@@ -420,7 +420,7 @@ impl NativeGdnPrepared {
                 .ok_or_else(|| Error::State("typed GDN value map absent".into()))?;
             value.require_layout(ResidentBufferLayout::new(
                 ResidentPhysicalType::Bf16,
-                invocation.rows().len() * width,
+                invocation.tokens().len() * width,
             )?)?;
             let lease = value.original_lease()?;
             if !Arc::ptr_eq(lease.service(), &context.service) {

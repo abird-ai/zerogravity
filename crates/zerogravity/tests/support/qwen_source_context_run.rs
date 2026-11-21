@@ -2,13 +2,13 @@
 use super::*;
 use reference::{ObservationMap, Observer};
 use zerogravity::{
-    accelerator::program::SourceCallMode,
-    gpu::{ResidentOutput, SourceCallModel, SourceCallPreparation, SourceCallPublication},
+    accelerator::program::InvocationPhase,
+    gpu::{ResidentOutput, ResidentTextModel, ResidentTextPreparation, ResidentTextPublication},
     qwen35::plan::QwenForwardPlan,
 };
 
 pub async fn trajectories(
-    model: &Arc<SourceCallModel>,
+    model: &Arc<ResidentTextModel>,
     plan: &QwenForwardPlan,
     expected: &Expected,
     case: usize,
@@ -44,13 +44,13 @@ pub async fn trajectories(
             )?;
             let (mode, ids) = if call.phase == "decode" {
                 (
-                    SourceCallMode::Decode,
+                    InvocationPhase::Decode,
                     vec![feedback[repeat].ok_or_else(|| {
                         zerogravity::Error::State("actual context feedback absent".into())
                     })?],
                 )
             } else {
-                (SourceCallMode::Prefill, call.input_ids.clone())
+                (InvocationPhase::Prefill, call.input_ids.clone())
             };
             need(
                 ids == call.input_ids,
@@ -81,7 +81,7 @@ pub async fn trajectories(
                     )
                     .await?
             };
-            let SourceCallPreparation::Ready(pending) = pending else {
+            let ResidentTextPreparation::Ready(pending) = pending else {
                 return Err(zerogravity::Error::State(
                     "populated uncancelled call refused".into(),
                 ));
@@ -97,7 +97,7 @@ pub async fn trajectories(
                 (selected, maximum.to_bits()) == (call.selected, call.max_bits),
                 "actual full-vocabulary context selection",
             )?;
-            let SourceCallPublication::Committed(output) = session.commit(pending)? else {
+            let ResidentTextPublication::Committed(output) = session.commit(pending)? else {
                 return Err(zerogravity::Error::State(
                     "populated uncancelled call discarded".into(),
                 ));

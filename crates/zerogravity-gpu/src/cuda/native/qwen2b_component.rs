@@ -46,10 +46,10 @@ fn phase(values: &ComponentValues) -> Result<GdnPhase> {
         values
             .recipe()
             .kind()
-            .require_call(values.recipe().bindings().call())?;
+            .require_call(values.recipe().bindings().invocation())?;
         return Ok(GdnPhase::FixedPrompt);
     }
-    match values.recipe().bindings().call().rows().len() {
+    match values.recipe().bindings().invocation().tokens().len() {
         1 => Ok(GdnPhase::InitialOne),
         64 => Ok(GdnPhase::Initial64),
         _ => Err(Error::Unsupported(
@@ -74,7 +74,14 @@ impl ComponentGdnBinding {
         phase(self.values())
     }
     pub(crate) fn slot(&self) -> GdnCacheSlot {
-        if self.values().recipe().bindings().call().rows().len() == 1
+        if self
+            .values()
+            .recipe()
+            .bindings()
+            .invocation()
+            .tokens()
+            .len()
+            == 1
             || matches!(self.values().recipe().kind(), ComponentKind::FixedPrompt(_))
         {
             GdnCacheSlot::One
@@ -85,9 +92,9 @@ impl ComponentGdnBinding {
     pub(crate) fn require_source(&self, service: &Arc<ResidentService>) -> Result<()> {
         let values = self.values();
         let recipe = values.recipe();
-        recipe.kind().require_call(recipe.bindings().call())?;
+        recipe.kind().require_call(recipe.bindings().invocation())?;
         if !Arc::ptr_eq(values.service(), service)
-            || recipe.bindings().call() != self.domains.invocation()
+            || recipe.bindings().invocation() != self.domains.invocation()
             || self.domains.conv_domain()? != zerogravity_core::accelerator::program::ConvDomain(0)
             || self.domains.recurrent_domain()?
                 != zerogravity_core::accelerator::program::RecurrentDomain(0)
@@ -210,7 +217,7 @@ impl ComponentGdnPrepared {
         ];
         let conv = values.recipe().operator(4)?;
         let recurrent = values.recipe().operator(5)?;
-        if domains.invocation() != values.recipe().bindings().call()
+        if domains.invocation() != values.recipe().bindings().invocation()
             || domains.conv_domain()? != zerogravity_core::accelerator::program::ConvDomain(0)
             || domains.recurrent_domain()?
                 != zerogravity_core::accelerator::program::RecurrentDomain(0)
@@ -450,7 +457,7 @@ pub(crate) fn prepare_projections(
     use super::qwen2b_projection::{PendingProjectionWeights, ProjectionPrograms, required_images};
     not_cancelled(cancelled)?;
     init.require_service(service)?;
-    if recipe.bindings().call().source() != service.source_identity()
+    if recipe.bindings().invocation().source() != service.source_identity()
         || inputs.images.capacity() > 8
         || zerogravity_core::resource_arbiter::ResourceArbiter::process_shared()
             .snapshot(&service.physical_key())?

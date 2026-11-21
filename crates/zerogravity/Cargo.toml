@@ -152,8 +152,8 @@ path = "examples/qwen_source_hip.rs"
 required-features = ["qwen27b-hip-qualification", "zerogravity-gpu/hardware-abort-probe"]
 
 [[example]]
-name = "qwen_source_calls_hip"
-path = "examples/qwen_source_calls_hip.rs"
+name = "qwen_text_invocations_hip"
+path = "examples/qwen_text_invocations_hip.rs"
 required-features = ["qwen27b-hip-qualification", "zerogravity-gpu/hardware-abort-probe"]
 
 [[example]]

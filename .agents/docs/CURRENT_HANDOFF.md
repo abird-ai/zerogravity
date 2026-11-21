@@ -23,13 +23,22 @@ the normal Qwen source-backed path is `QwenForwardPlan` /
 mechanics live under `cuda_forward` / `CudaForward*`, and active qualification
 uses semantic `prefill47 + decode48–50` names plus `FORWARD_*` env/receipt
 labels. No compatibility aliases retain the superseded execution vocabulary.
-Historical chronology/schemas/provenance remain intact. The next isolated
-terminology family is `SourceCall*`.
+Historical chronology/schemas/provenance remain intact. The third cleanup is now
+complete too: the old `SourceCall*` family is replaced by the core semantic pipeline
+`InvocationInput -> BoundInvocation -> TextInvocation { TokenSpan, InvocationPhase }`;
+Qwen layers model semantics as `PromptInvocation`, `QwenGdnInvocation` and
+`QwenModelInvocation`; live execution ownership is `ResidentText*`; the backend body is
+`text_execution`; and observation is `TextFrame` / `TextObserver`. Active developer
+interfaces use `TEXT_INVOCATION_*`, `RESIDENT_TEXT_*` and
+`ZG_QWEN_TEXT_INVOCATIONS_MANIFEST_SHA256`. The legacy reference schema
+`zg.original-hf-source-call-reference.v1` and captured status
+`CAPTURED_ORIGINAL_SOURCE_CALL_REFERENCE_ONLY` remain unchanged compatibility values.
 
-Terminology validation is behavior-free and green across strict Qwen model/GPU/public
-CUDA Clippy plus public HIP and CUDA qualification compilation. The existing Qwen forward
-plan suite passes 5/5 and the exact source/workspace retention test passes 1/1. The renamed
-`cuda::text_forward` static suite is 16/17 because one pre-existing assertion expects five
+Terminology validation is behavior-free and green across strict core/Qwen/GPU/public CUDA
+Clippy plus public HIP, CUDA qualification, 27B HIP qualification and CUDA CLI compilation.
+Core invocation tests pass 10/10; the Qwen forward suite passes 5/5; full Qwen/GPU lib-test
+and CUDA qualification integration targets compile. The renamed `cuda::text_forward`
+static suite remains 16/17 because one pre-existing assertion expects five
 `!isfinite(mean)` / inverse-zero guards while the byte-identical kernel already contained
 six at `b88d3b3`; this is baseline fixture drift, not a rename regression. No physical GPU
 run was added for this naming-only slice.
@@ -60,14 +69,14 @@ optimizations may fall back only at an already-defined typed capacity seam.
 `server_error`, not `invalid_request_error`. Runtime/server reverse adapters use the
 shared conversion and no longer wrap `ServiceError::to_string()`, avoiding duplicated
 status/code prefixes. Real host/VRAM admission paths in the resource arbiter, resident
-allocator/state/checkpoint, CUDA ordinary/source-call admission, HIP source budgets,
+allocator/state/checkpoint, CUDA-forward/resident-text admission, HIP source budgets,
 shared BF16 Qwen/Gemma paths and backing/model sub-admission now report concrete
 requested/available bytes. Static shape/file/queue bounds deliberately remain ordinary
 `Limit` errors. Preserve this distinction for new models/backends.
 
 Validation for this slice is green on the default workspace, CUDA-native GPU tests,
 Qwen CUDA serving, Qwen HIP serving, Gemma4 HIP and Gemma4 Vulkan shared-BF16 surfaces,
-the existing resident-ledger concurrency/pressure tests, source-call scheduler capacity
+the existing resident-ledger concurrency/pressure tests, resident-text scheduler capacity
 tests, focused core/engine/HTTP classification tests and strict Clippy for the changed
 production crates. One combined Gemma HIP→Vulkan compile was externally SIGKILLed while
 entering Vulkan dependencies; the HIP check had already passed and one cached
@@ -94,9 +103,10 @@ Vulkan-only retry passed, so no source failure follows.
   physical pool substrate and `93468b1` remains snapshot/restore/inherited-Ready
   authority. Current main additionally carries the 19 Nov true in-flight
   cancellation implementation/qualification described below.
-  `1413f72` adds `CudaSourceStatePolicy::{Contiguous,Paged}` at the original
-  source-call loader seam. Existing `load_ordinary_cuda_source` remains an exact
-  Contiguous wrapper; the explicit policy-bearing loader installs hybrid
+  `1413f72` added `CudaSourceStatePolicy::{Contiguous,Paged}` at the original
+  resident-text loader seam; at that historical checkpoint the old loader spelling
+  retained an exact Contiguous wrapper. Current source names the CUDA entrypoint
+  `load_cuda_forward_source`; the explicit policy-bearing loader installs hybrid
   Vector/staging/page pools only for `Paged { page_tokens,
   max_append_tokens }`. At `1413f72` Paged was B1-only; current main now permits
   native rows 4/8 through the same hybrid state owner. Zero policy extents still
@@ -386,7 +396,7 @@ Vulkan-only retry passed, so no source failure follows.
   accepted:** `ResidentSession::fork_shared_prefix` only seeds a fresh destination,
   validates the same service/source/capacity/full domain set, publishes through the
   destination's own `begin_validated_replacement`, and clones immutable domain
-  ownership without replay/readback/copy. `SourceCallSession` additionally requires
+  ownership without replay/readback/copy. `ResidentTextSession` additionally requires
   the exact same resident model. Original0.8B paged page4 physically passes a
   3-token partial-page prefix fork then1-token COW continuation versus independent
   replay: logits/all42 exact, cached snapshot immutable, independent root/session,
@@ -451,12 +461,12 @@ Vulkan-only retry passed, so no source failure follows.
   public-SDK 0.8B context1024/prompt48 replay cell also passes physically after recreating
   the documented CUDA13.4 include view: exact two-token replay, distinct sessions, exact
   producer frontiers and clean shutdown in14.42s. The next production source consumer is
-  now canonical too: HIP source-call cold workspace leases use
+  now canonical too: HIP resident-text cold workspace leases use
   `pairwise_disjoint`, and request root validation uses
   `pairwise_disjoint_extension` to compare only new roots against the already-disjoint
   workspace and earlier roots under one ledger lock. This avoids a workspace² hot-path
   recheck while preserving exact handle ranges solely for execution-view geometry. HIP
-  GPU/public composition checks compile, existing source-call admission tests pass2/2,
+  GPU/public composition checks compile, existing resident-text admission tests pass2/2,
   and the retained CUDA context1024/prompt48 public-SDK cell passes again in15.23s after
   the shared helper refactor. X2 HIP physical execution remains behind the recorded ROCm
   ABI environment gate. No new alias fixture was added. Remaining identity adoption is
@@ -489,7 +499,7 @@ Vulkan-only retry passed, so no source failure follows.
   committed state-only prompt step. Qwen owns one model-local paged-only cache
   (`active` entry cap, `active*context` semantic-token weight); contiguous state pays
   no snapshot-retention cost. Because the cache instance is owned by one exact loaded
-  Model and `SourceCallSnapshot` additionally requires that exact resident model,
+  Model and `ResidentTextSnapshot` additionally requires that exact resident model,
   loader/numerical/tokenizer/position/state-schema cannot cross instances; sharing
   scope is the only request-varying authorization class. The first physical 0.8B
   page4/max_append64 worker cell uses a65-token prompt: warm scopeA consumes65 model
@@ -884,7 +894,7 @@ engines/servers.
 - Source/weight owners survive until the real final consumer retires.
 - Cancellation cannot publish partial candidate state.
 - Independent sessions/roots remain independent through physical batching.
-- Physical batch width is separate from each source call's authenticated numerical
+- Physical batch width is separate from each text invocation's authenticated numerical
   reduction contract.
 - Finite captured cases are qualification evidence, never production selectors.
 - Metadata/registry slugs never grant execution support.
@@ -1178,7 +1188,7 @@ serving, memory and composition plans.
   layout admission, cold allocation and access ownership cuts32K ordinary-CUDA workspace
   from151,012,757B to12,584,241B (−138,428,516B). The low-level two-root2B32K inventory
   therefore fits fully resident at4,702,464,913B under the4608MiB provider envelope.
-  Public active1 source-call still deliberately uses four logical root slots; do **not**
+  Public active1 resident-text execution still deliberately uses four logical root slots; do **not**
   reduce the `2*max_sessions+2` lifecycle pool merely to force residency—the extra
   ownership covers public Pending/snapshot/displaced-root lifetimes. The resolution is
   instead the existing paged-state policy: immutable committed prefix pages are shared,
@@ -1203,7 +1213,7 @@ serving, memory and composition plans.
   source (`auto`/`user`/`default`) and rationale. Qwen CUDA is the first adapter and now
   resolves **two independent knobs jointly**: `state_policy` and `native_rows`. Candidate
   startup configs are tiny (at most `{Contiguous,Paged64/64} × {8,4,0}` filtered by active
-  capacity/user constraints) and use the exact source-call preflight against current CUDA
+  capacity/user constraints) and use the exact resident-text preflight against current CUDA
   ordinal0 free VRAM. Selection priority is deliberately simple: preserve resident weights
   first, then widest qualified native cohort, then Contiguous as the lower-overhead tie.
   This prevents smart batching from accidentally reintroducing weight streaming. Canonical

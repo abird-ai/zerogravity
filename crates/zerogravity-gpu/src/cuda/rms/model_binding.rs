@@ -34,7 +34,7 @@ impl BoundModelRmsSource {
             || geometry.epsilon != 1e-6
             || geometry.gamma != SourceGamma::OnePlus
             || operator.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
-            || operator.call().source() != source.source_identity()
+            || operator.invocation().source() != source.source_identity()
             || operator.parameters().len() != 1
             || !operator.matrices().is_empty()
         {
@@ -59,7 +59,7 @@ impl BoundModelRmsSource {
         bindings: Arc<crate::resident_program::source_bindings::SourceBindings>,
         operator: SourceOperator,
     ) -> Result<Self> {
-        if operator.call()!=bindings.call()
+        if operator.invocation()!=bindings.invocation()
             || !bindings.plan().nodes().iter().any(|node| {
                 matches!(&node.operation,zerogravity_core::accelerator::program::PlanOperation::SourceOperator{descriptor,..}
                     if descriptor.as_ref()==&operator)
@@ -89,7 +89,7 @@ impl BoundModelRmsSource {
     }
     pub(crate) fn require_source(&self, source: &VerifiedTensorSource) -> Result<()> {
         if !self.source().same_issuer(source)
-            || source.source_identity() != self.operator().call().source()
+            || source.source_identity() != self.operator().invocation().source()
         {
             return Err(Error::State(
                 "RMS actual immutable source issuer differs".into(),

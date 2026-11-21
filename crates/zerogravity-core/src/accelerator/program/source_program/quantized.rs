@@ -7,12 +7,12 @@ pub(super) fn validate(op: &SourceOperator) -> Result<()> {
     let bad = || Error::Unsupported("source F32 kind/codec/layout/numerical contract".into());
     if op.matrices().len() > 1
         || op.parameters().len() > 1
-        || op.call().mode() != SourceCallMode::Prefill
+        || op.invocation().phase() != InvocationPhase::Prefill
     {
         return Err(bad());
     }
     for m in op.matrices() {
-        if m.source != op.call().source()
+        if m.source != op.invocation().source()
             || m.name.is_empty()
             || m.axes != MatrixAxes::InputOutput
             || m.columns == 0
@@ -23,7 +23,7 @@ pub(super) fn validate(op: &SourceOperator) -> Result<()> {
         m.packed_bytes()?;
     }
     for p in op.parameters() {
-        if p.source != op.call().source() || p.name.is_empty() {
+        if p.source != op.invocation().source() || p.name.is_empty() {
             return Err(bad());
         }
     }
@@ -31,7 +31,7 @@ pub(super) fn validate(op: &SourceOperator) -> Result<()> {
         (GgmlF32V1, EmbeddingRows) => {
             let m = op.matrices().first().ok_or_else(bad)?;
             if m.kind != StoredTensorEncoding::Quantized(crate::encoding::QuantScheme::Q6K)
-                || m.rows != op.call().rows().vocabulary()
+                || m.rows != op.invocation().tokens().vocabulary()
             {
                 return Err(bad());
             }
@@ -77,7 +77,7 @@ pub(super) fn validate(op: &SourceOperator) -> Result<()> {
                 origin: SourceRetainedOrigin::Gated,
             },
         ) => {
-            if width != 2048 || op.call().rows().len() != 64 {
+            if width != 2048 || op.invocation().tokens().len() != 64 {
                 return Err(bad());
             }
             (0, 0)
@@ -94,7 +94,7 @@ pub(super) fn validate(op: &SourceOperator) -> Result<()> {
             } else if m.kind != StoredTensorEncoding::Quantized(crate::encoding::QuantScheme::Q8_0)
                 || m.columns != 2048
                 || m.rows != 2048
-                || op.call().rows().len() != 64
+                || op.invocation().tokens().len() != 64
             {
                 return Err(bad());
             }
@@ -143,7 +143,7 @@ pub(super) fn precision(
     use SourceOperatorKind::*;
     if !builder.operator_slice
         || builder.profile != NumericalProfile::GgufReferenceV1
-        || builder.source != op.call().source()
+        || builder.source != op.invocation().source()
         || inputs.len() != op.input_elements()?.len()
     {
         return Err(Error::Unsupported(
@@ -158,7 +158,7 @@ pub(super) fn precision(
         if input.precision != ActivationPrecision::F32
             || input.shape != ValueShape::Vector(elements)
             || !input.is_contiguous()
-            || tag.call() != op.call()
+            || tag.invocation() != op.invocation()
         {
             return Err(Error::State(
                 "source F32 dense original producer/call".into(),

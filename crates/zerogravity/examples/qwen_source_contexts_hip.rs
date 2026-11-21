@@ -7,7 +7,7 @@ mod context_run;
 mod context_timing;
 #[path = "../tests/support/drive.rs"]
 mod drive;
-#[path = "../tests/support/qwen_source_calls_reference.rs"]
+#[path = "../tests/support/qwen_text_invocations_reference.rs"]
 mod reference;
 #[allow(dead_code)]
 #[path = "../tests/support/qwen_source.rs"]

@@ -2,16 +2,16 @@
 use super::*;
 use crate::resident_inference::native_fragment::model_state::BoundModelState;
 
-pub(crate) struct FixedPromptCallState {
-    input: Arc<FixedPromptCallInput>,
+pub(crate) struct FixedPromptInvocationState {
+    input: Arc<FixedPromptInvocationInput>,
     states: Vec<Arc<BoundModelState>>,
     candidate: Vec<Domain>,
     submitted: AtomicBool,
     _metadata: WindowWorkspace,
 }
 
-impl FixedPromptCallState {
-    pub(crate) fn input(&self) -> &Arc<FixedPromptCallInput> {
+impl FixedPromptInvocationState {
+    pub(crate) fn input(&self) -> &Arc<FixedPromptInvocationInput> {
         &self.input
     }
     pub(crate) fn states(&self) -> &[Arc<BoundModelState>] {
@@ -34,7 +34,7 @@ impl FixedPromptCallState {
         session.model.validate_domains(&self.candidate, false)?;
         for (layer, state) in self.states.iter().enumerate() {
             state.require_fixed_prompt_published(self.input.scope())?;
-            if state.call() != self.input.call()
+            if state.invocation() != self.input.invocation()
                 || state.layer() != layer
                 || state.base() != self.input.attempt().base()
             {
@@ -66,9 +66,9 @@ impl FixedPromptCallState {
 impl ResidentSession {
     pub(crate) async fn bind_fresh_fixed_prompt_state(
         &self,
-        input: Arc<FixedPromptCallInput>,
+        input: Arc<FixedPromptInvocationInput>,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<FixedPromptCallState>> {
+    ) -> Result<Arc<FixedPromptInvocationState>> {
         not_cancelled(cancelled)?;
         input.require_session(self)?;
         let metadata = input.source().reserve_workspace(256 * 1024)?;
@@ -107,7 +107,7 @@ impl ResidentSession {
                 input.phase().clone(),
             )?);
         }
-        let result = Arc::new(FixedPromptCallState {
+        let result = Arc::new(FixedPromptInvocationState {
             input,
             states,
             candidate,

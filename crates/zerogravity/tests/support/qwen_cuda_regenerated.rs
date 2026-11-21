@@ -13,7 +13,7 @@ use std::{
 };
 use zerogravity::{
     Result,
-    accelerator::program::{ConvDomain, KvDomain, RecurrentDomain, SourceCallMode, StateSlot},
+    accelerator::program::{ConvDomain, InvocationPhase, KvDomain, RecurrentDomain, StateSlot},
     gpu::Device,
     qwen35_cuda::{self, forward_candidate::Model},
     resource_arbiter::{
@@ -225,7 +225,7 @@ fn compare_regenerated(streamed: bool) -> Result<()> {
         .ok_or_else(|| fail("reference calls"))?;
     ensure(
         records.len() == 48 && states.len() == 48 * 42,
-        "complete source call/state matrix",
+        "complete text invocation/state matrix",
     )?;
     let mut logits_file = File::open(reference.join("full-vocabulary.raw"))?;
     let mut state_file = File::open(reference.join("expanded.native.bin"))?;
@@ -260,7 +260,7 @@ fn compare_regenerated(streamed: bool) -> Result<()> {
                     let step=number(r,"ordinal")?;
                     let ids=r["model_input_ids"].as_array().ok_or_else(||fail("original model IDs"))?.iter().map(|v|v.as_u64().and_then(|n|u32::try_from(n).ok()).ok_or_else(||fail("token ID"))).collect::<Result<Vec<_>>>()?;
                     if let Some(id)=feedback {ensure(ids==[id],"genuine native feedback agrees with reference history")?;}
-                    let mode=if call==0 {SourceCallMode::Prefill}else{SourceCallMode::Decode};
+                    let mode=if call==0 {InvocationPhase::Prefill}else{InvocationPhase::Decode};
                     let now=Instant::now();
                     let output=session.forward(mode,&ids,true).await?;
                     let frontier=session.binding().frontier() as usize;
@@ -406,9 +406,9 @@ fn regenerated_vllm_c1_benchmark() -> Result<()> {
                 let mut token_ms = Vec::with_capacity(3);
                 for step in 0..3 {
                     let mode = if step == 0 {
-                        SourceCallMode::Prefill
+                        InvocationPhase::Prefill
                     } else {
-                        SourceCallMode::Decode
+                        InvocationPhase::Decode
                     };
                     let output = session.forward(mode, &ids, true).await?;
                     ensure(output.logits.len() == 248320, "full output vocabulary")?;
@@ -500,7 +500,7 @@ fn benchmark_populations(
                             let mut token_ms = Vec::with_capacity(3);
                             let result = async {
                                 for step in 0..3 {
-                                    let mode = if step == 0 { SourceCallMode::Prefill } else { SourceCallMode::Decode };
+                                    let mode = if step == 0 { InvocationPhase::Prefill } else { InvocationPhase::Decode };
                                     let output = session.forward(mode, &ids, true).await?;
                                     ensure(output.logits.len() == 248320, "full vocabulary")?;
                                     let selected = output.logits.iter().enumerate().fold(0, |best, (i, v)|

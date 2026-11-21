@@ -25,7 +25,7 @@ impl ModelAttentionParameters {
             ));
         }
         if !matches!(descriptor.kind(), SourceOperatorKind::QkRmsRotaryGated(_))
-            || descriptor.call() != values.record().call()
+            || descriptor.invocation() != values.record().invocation()
             || !self.source.same_issuer(cut.scope().source())
             || descriptor.parameters().len() != 2
             || !descriptor.matrices().is_empty()

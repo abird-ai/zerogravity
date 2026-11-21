@@ -1,12 +1,12 @@
 //! Source-member/span metadata; finite native coverage is a separate binding.
 use super::*;
 
-fn reference_phase_for(mode: SourceCallMode, base: usize, rows: usize) -> Option<ReferencePhase> {
-    match (mode, base, rows) {
-        (SourceCallMode::Prefill, 0, 1) => Some(ReferencePhase::InitialOne),
-        (SourceCallMode::Prefill, 0, 64) => Some(ReferencePhase::Initial64),
-        (SourceCallMode::Prefill, 64, 2) => Some(ReferencePhase::ContinuedTwo),
-        (SourceCallMode::Decode, 1 | 66, 1) => Some(ReferencePhase::CachedOne),
+fn reference_phase_for(phase: InvocationPhase, base: usize, rows: usize) -> Option<ReferencePhase> {
+    match (phase, base, rows) {
+        (InvocationPhase::Prefill, 0, 1) => Some(ReferencePhase::InitialOne),
+        (InvocationPhase::Prefill, 0, 64) => Some(ReferencePhase::Initial64),
+        (InvocationPhase::Prefill, 64, 2) => Some(ReferencePhase::ContinuedTwo),
+        (InvocationPhase::Decode, 1 | 66, 1) => Some(ReferencePhase::CachedOne),
         _ => None,
     }
 }
@@ -19,10 +19,10 @@ pub enum ReferencePhase {
     ContinuedTwo,
 }
 impl ReferencePhase {
-    pub fn mode(self) -> SourceCallMode {
+    pub fn invocation_phase(self) -> InvocationPhase {
         match self {
-            Self::CachedOne => SourceCallMode::Decode,
-            _ => SourceCallMode::Prefill,
+            Self::CachedOne => InvocationPhase::Decode,
+            _ => InvocationPhase::Prefill,
         }
     }
     pub fn rows(self) -> usize {
@@ -53,17 +53,17 @@ impl ReferencePhase {
 /// Share this descriptor's teacher issuer through the SAME plan producer chain.
 /// The physical lowerer must also validate its model/config/current invocation.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct QwenGdnCall {
+pub struct QwenGdnInvocation {
     layer: QwenPrefixLayer,
-    mode: SourceCallMode,
+    phase: InvocationPhase,
     teachers: QwenInputRows,
 }
-impl QwenGdnCall {
+impl QwenGdnInvocation {
     pub(super) fn from_prompt_span(span: PromptSpan) -> Result<Self> {
         span.validate()?;
         let value = Self {
             layer: QwenPrefixLayer::new(span.source(), 0)?,
-            mode: span.mode(),
+            phase: span.phase(),
             teachers: QwenInputRows::from_prompt_span(span)?,
         };
         value.validate()?;
@@ -80,12 +80,12 @@ impl QwenGdnCall {
             ));
         }
         phase.validate(&teachers)?;
-        Self::from_span(layer, phase.mode(), teachers)
+        Self::from_span(layer, phase.invocation_phase(), teachers)
     }
     /// Semantic metadata only. Existing backends still require finite coverage.
     pub fn from_span(
         layer: QwenPrefixLayer,
-        mode: SourceCallMode,
+        phase: InvocationPhase,
         teachers: QwenInputRows,
     ) -> Result<Self> {
         if teachers.prompt_span().is_some() {
@@ -95,34 +95,38 @@ impl QwenGdnCall {
         }
         let value = Self {
             layer,
-            mode,
+            phase,
             teachers,
         };
         value.validate()?;
         Ok(value)
     }
-    pub fn source_call(&self) -> Result<SourceCall> {
-        self.teachers.source_call(self.mode)
+    pub fn text_invocation(&self) -> Result<TextInvocation> {
+        self.teachers.text_invocation(self.phase)
     }
     /// Finite reference layout only; actual producer/root issuers stay separate.
-    pub fn require_reference_source_call(&self, actual: &SourceCall) -> Result<ReferencePhase> {
+    pub fn require_reference_invocation(&self, actual: &TextInvocation) -> Result<ReferencePhase> {
         self.reference_phase()?;
         if actual.source() != self.layer.source()
-            || actual.rows().capacity() != self.teachers.capacity()
-            || actual.rows().vocabulary() != 248_320
+            || actual.tokens().capacity() != self.teachers.capacity()
+            || actual.tokens().vocabulary() != 248_320
         {
             return Err(Error::State(
-                "reference source call source/capacity/vocabulary differs".into(),
+                "reference invocation source/capacity/vocabulary differs".into(),
             ));
         }
-        reference_phase_for(actual.mode(), actual.rows().base(), actual.rows().len())
-            .ok_or_else(|| Error::Unsupported("source call has no finite reference phase".into()))
+        reference_phase_for(
+            actual.phase(),
+            actual.tokens().base(),
+            actual.tokens().len(),
+        )
+        .ok_or_else(|| Error::Unsupported("text invocation has no finite reference phase".into()))
     }
     pub fn layer(&self) -> QwenPrefixLayer {
         self.layer
     }
-    pub fn mode(&self) -> SourceCallMode {
-        self.mode
+    pub fn phase(&self) -> InvocationPhase {
+        self.phase
     }
     /// Exact old finite metadata only; never infer coverage for another span.
     pub fn reference_phase(&self) -> Result<ReferencePhase> {
@@ -132,7 +136,7 @@ impl QwenGdnCall {
                 "bounded prompt span has no legacy reference CUDA native phase".into(),
             ));
         }
-        reference_phase_for(self.mode, self.teachers.base(), self.rows()).ok_or_else(|| {
+        reference_phase_for(self.phase, self.teachers.base(), self.rows()).ok_or_else(|| {
             Error::Unsupported("span has no legacy reference CUDA native phase".into())
         })
     }
@@ -151,7 +155,7 @@ impl QwenGdnCall {
         let t = &self.teachers;
         if let Some(span) = t.prompt_span() {
             span.validate()?;
-            if self.layer.index() != 0 || self.mode != span.mode() {
+            if self.layer.index() != 0 || self.phase != span.phase() {
                 return Err(Error::State(
                     "bounded prompt invocation scope changed".into(),
                 ));
@@ -165,7 +169,7 @@ impl QwenGdnCall {
                 .checked_add(t.len())
                 .is_none_or(|end| end > t.capacity())
             || t.ids().iter().any(|&id| id >= 248_320)
-            || self.mode == SourceCallMode::Decode && (t.len() != 1 || t.base() == 0)
+            || self.phase == InvocationPhase::Decode && (t.len() != 1 || t.base() == 0)
         {
             return Err(Error::Malformed(
                 "reference CUDA semantic source/span/mode".into(),
@@ -228,13 +232,13 @@ impl GdnProjection {
 /// Actual original matrices in original row order; no packed-source tensor name.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QwenGdnProjection {
-    invocation: QwenGdnCall,
+    invocation: QwenGdnInvocation,
     kind: GdnProjection,
     members: Vec<SourceTensor>,
 }
 impl QwenGdnProjection {
     pub fn new(
-        invocation: QwenGdnCall,
+        invocation: QwenGdnInvocation,
         kind: GdnProjection,
         members: Vec<SourceTensor>,
     ) -> Result<Self> {
@@ -246,7 +250,7 @@ impl QwenGdnProjection {
         value.validate()?;
         Ok(value)
     }
-    pub fn invocation(&self) -> &QwenGdnCall {
+    pub fn invocation(&self) -> &QwenGdnInvocation {
         &self.invocation
     }
     pub fn kind(&self) -> GdnProjection {
@@ -314,14 +318,14 @@ impl QwenGdnProjection {
 /// No Rust/CPU replacement equation or generic Silu fallback is defined here.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QwenSiluAndMul {
-    invocation: QwenGdnCall,
+    invocation: QwenGdnInvocation,
 }
 impl QwenSiluAndMul {
-    pub fn new(invocation: QwenGdnCall) -> Result<Self> {
+    pub fn new(invocation: QwenGdnInvocation) -> Result<Self> {
         invocation.validate()?;
         Ok(Self { invocation })
     }
-    pub fn invocation(&self) -> &QwenGdnCall {
+    pub fn invocation(&self) -> &QwenGdnInvocation {
         &self.invocation
     }
     pub fn contract(&self) -> QwenSiluContract {
@@ -342,7 +346,7 @@ impl QwenSiluAndMul {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum QwenValueOrigin {
     FullModel(QwenProducer),
-    SourceRows,
+    TokenSpan,
     InputNormalized {
         layer: QwenPrefixLayer,
     },
@@ -382,18 +386,18 @@ pub enum QwenValueOrigin {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QwenValueProvenance {
     teachers: QwenInputRows,
-    phase: Option<ReferencePhase>,
-    mode: Option<SourceCallMode>,
+    reference_phase: Option<ReferencePhase>,
+    invocation_phase: Option<InvocationPhase>,
     origin: QwenValueOrigin,
 }
 impl QwenValueProvenance {
-    pub(super) fn bind_prompt_call(&mut self, call: &QwenSourceCall) -> Result<()> {
-        self.teachers = call.request().teachers().clone();
-        self.phase = call.request().reference_phase().ok();
-        self.mode = Some(call.request().mode());
+    pub(super) fn bind_model_invocation(&mut self, invocation: &QwenModelInvocation) -> Result<()> {
+        self.teachers = invocation.request().teachers().clone();
+        self.reference_phase = invocation.request().reference_phase().ok();
+        self.invocation_phase = Some(invocation.request().phase());
         match &mut self.origin {
-            QwenValueOrigin::SourceRows => {}
-            QwenValueOrigin::FullModel(origin) => origin.bind_call(call.clone()),
+            QwenValueOrigin::TokenSpan => {}
+            QwenValueOrigin::FullModel(origin) => origin.bind_model_invocation(invocation.clone()),
             _ => {
                 return Err(Error::State(
                     "prepared full-model producer origin differs".into(),
@@ -408,21 +412,23 @@ impl QwenValueProvenance {
     }
 
     pub(super) fn embedding(builder: &QwenPlanBuilder, teachers: QwenInputRows) -> Result<Self> {
-        if let Some(call) = &builder.model_call {
-            if call.request().teachers() != &teachers || call.source() != teachers.source() {
+        if let Some(invocation) = &builder.model_invocation {
+            if invocation.request().teachers() != &teachers
+                || invocation.source() != teachers.source()
+            {
                 return Err(Error::State(
                     "full-model embedding differs from builder span issuer".into(),
                 ));
             }
-            let phase = call.request().reference_phase().ok();
+            let reference_phase = invocation.request().reference_phase().ok();
             return Ok(Self {
                 teachers,
-                phase,
-                mode: Some(call.request().mode()),
-                origin: QwenValueOrigin::SourceRows,
+                reference_phase,
+                invocation_phase: Some(invocation.request().phase()),
+                origin: QwenValueOrigin::TokenSpan,
             });
         }
-        let phase = match (teachers.base(), teachers.len()) {
+        let reference_phase = match (teachers.base(), teachers.len()) {
             (0, 1) => Some(ReferencePhase::InitialOne),
             (1 | 66, 1) => Some(ReferencePhase::CachedOne),
             (0, 64) => Some(ReferencePhase::Initial64),
@@ -431,9 +437,9 @@ impl QwenValueProvenance {
         };
         Ok(Self {
             teachers,
-            phase,
-            mode: phase.map(ReferencePhase::mode),
-            origin: QwenValueOrigin::SourceRows,
+            reference_phase,
+            invocation_phase: reference_phase.map(ReferencePhase::invocation_phase),
+            origin: QwenValueOrigin::TokenSpan,
         })
     }
     pub fn origin(&self) -> &QwenValueOrigin {
@@ -442,15 +448,15 @@ impl QwenValueProvenance {
     pub fn teachers(&self) -> &QwenInputRows {
         &self.teachers
     }
-    pub fn phase(&self) -> Option<ReferencePhase> {
-        self.phase
+    pub fn reference_phase(&self) -> Option<ReferencePhase> {
+        self.reference_phase
     }
-    pub fn mode(&self) -> Option<SourceCallMode> {
-        self.mode
+    pub fn invocation_phase(&self) -> Option<InvocationPhase> {
+        self.invocation_phase
     }
-    pub fn require_invocation(&self, invocation: &QwenGdnCall) -> Result<()> {
+    pub fn require_invocation(&self, invocation: &QwenGdnInvocation) -> Result<()> {
         invocation.validate()?;
-        if self.teachers != invocation.teachers || self.mode != Some(invocation.mode) {
+        if self.teachers != invocation.teachers || self.invocation_phase != Some(invocation.phase) {
             return Err(Error::State(
                 "reference CUDA actual producer invocation differs from descriptor".into(),
             ));
@@ -481,8 +487,8 @@ pub(super) fn same_input_provenance(
             Error::State("reference CUDA producer teacher provenance absent".into())
         })?;
         if actual.teachers != expected.teachers
-            || actual.phase != expected.phase
-            || actual.mode != expected.mode
+            || actual.reference_phase != expected.reference_phase
+            || actual.invocation_phase != expected.invocation_phase
         {
             return Err(Error::State(
                 "reference CUDA producer teacher issuer/span/phase differs".into(),
@@ -493,7 +499,7 @@ pub(super) fn same_input_provenance(
 }
 pub(super) fn require_invocation(
     builder: &QwenPlanBuilder,
-    invocation: &QwenGdnCall,
+    invocation: &QwenGdnInvocation,
     inputs: &[PlanValue],
 ) -> Result<QwenValueProvenance> {
     invocation.validate()?;
@@ -503,12 +509,12 @@ pub(super) fn require_invocation(
 }
 fn input_precision(
     builder: &QwenPlanBuilder,
-    invocation: &QwenGdnCall,
+    invocation: &QwenGdnInvocation,
     input: &[PlanValue],
     elements: usize,
 ) -> Result<ActivationPrecision> {
     invocation.validate()?;
-    if !(builder.operator_slice || builder.fragment_call.is_some())
+    if !(builder.operator_slice || builder.fragment_invocation.is_some())
         || builder.profile != NumericalProfile::CudaSm86Bf16ReferenceV1
         || builder.source != invocation.layer.source()
         || input.len() != 1

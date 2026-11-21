@@ -30,7 +30,7 @@ impl QwenOperator {
     pub fn mathematical_operator(&self) -> Result<SourceOperator> {
         self.validate()?;
         SourceOperator::new(
-            self.call().request().source_call()?,
+            self.model_invocation().request().text_invocation()?,
             self.mathematical_kind(),
             NUMERICAL,
             self.matrices().to_vec(),
@@ -39,7 +39,7 @@ impl QwenOperator {
     }
     /// Compare immutable validated data without allocating on native submission.
     pub fn require_mathematical_operator(&self, actual: &SourceOperator) -> Result<()> {
-        if actual.call() != &self.call().request().source_call()?
+        if actual.invocation() != &self.model_invocation().request().text_invocation()?
             || actual.kind() != self.mathematical_kind()
             || actual.numerical_contract() != NUMERICAL
             || actual.matrices() != self.matrices()
@@ -55,11 +55,12 @@ impl QwenOperator {
         let layer = self.layer().map_or(0, QwenLayer::index);
         match self.kind() {
             QwenOperation::InputRms => {
-                SourceOperatorKind::Rms(rms(self.call().model_profile().hidden_size()))
+                SourceOperatorKind::Rms(rms(self.model_invocation().model_profile().hidden_size()))
             }
-            QwenOperation::ResidualRms(_) => {
-                SourceOperatorKind::ResidualRms(rms(self.call().model_profile().hidden_size()))
-            }
+            QwenOperation::ResidualRms(_) => SourceOperatorKind::ResidualRms(rms(self
+                .model_invocation()
+                .model_profile()
+                .hidden_size())),
             QwenOperation::Projection(_) => SourceOperatorKind::Projection {
                 selected_row: self.selected_row(),
             },
@@ -88,7 +89,7 @@ impl QwenOperator {
                 key_width: 512,
                 packed_value: TensorView {
                     offset: 4608,
-                    rows: self.call().rows(),
+                    rows: self.model_invocation().rows(),
                     width: 512,
                     row_stride: 5120,
                 },
@@ -106,25 +107,25 @@ impl QwenOperator {
             QwenOperation::Sigmoid => SourceOperatorKind::Sigmoid { width: 2048 },
             QwenOperation::Multiply => SourceOperatorKind::Multiply { width: 2048 },
             QwenOperation::SiluAndMul => SourceOperatorKind::SiluAndMul {
-                width: self.call().model_profile().intermediate_size(),
+                width: self.model_invocation().model_profile().intermediate_size(),
             },
         }
     }
 }
 impl QwenPlanBuilder {
     pub(super) fn embedding_operator(&self, descriptor: &QwenEmbedding) -> Result<SourceOperator> {
-        let call = if let Some(call) = &self.model_call {
-            call.request().source_call()?
-        } else if let Some(call) = &self.fragment_call {
-            call.source_call()?
+        let call = if let Some(call) = &self.model_invocation {
+            call.request().text_invocation()?
+        } else if let Some(call) = &self.fragment_invocation {
+            call.text_invocation()?
         } else {
             let rows = descriptor.teachers();
             let mode = if rows.len() == 1 && matches!(rows.base(), 1 | 66) {
-                SourceCallMode::Decode
+                InvocationPhase::Decode
             } else {
-                SourceCallMode::Prefill
+                InvocationPhase::Prefill
             };
-            rows.source_call(mode)?
+            rows.text_invocation(mode)?
         };
         SourceOperator::new(
             call,
@@ -139,7 +140,7 @@ impl QwenPlanBuilder {
         descriptor: &QwenGdnProjection,
     ) -> Result<SourceOperator> {
         SourceOperator::new(
-            descriptor.invocation().source_call()?,
+            descriptor.invocation().text_invocation()?,
             SourceOperatorKind::Projection { selected_row: None },
             NUMERICAL,
             descriptor.members().to_vec(),
@@ -151,7 +152,7 @@ impl QwenPlanBuilder {
         descriptor: &QwenSiluAndMul,
     ) -> Result<SourceOperator> {
         SourceOperator::new(
-            descriptor.invocation().source_call()?,
+            descriptor.invocation().text_invocation()?,
             SourceOperatorKind::SiluAndMul { width: 3584 },
             NUMERICAL,
             Vec::new(),
@@ -160,7 +161,7 @@ impl QwenPlanBuilder {
     }
     pub(super) fn input_rms_operator(&self, descriptor: &QwenInputRms) -> Result<SourceOperator> {
         SourceOperator::new(
-            descriptor.invocation().source_call()?,
+            descriptor.invocation().text_invocation()?,
             SourceOperatorKind::Rms(rms(1024)),
             NUMERICAL,
             Vec::new(),
@@ -169,7 +170,7 @@ impl QwenPlanBuilder {
     }
     pub(super) fn conv_operator(&self, descriptor: &QwenGdnConv) -> Result<SourceOperator> {
         SourceOperator::new(
-            descriptor.invocation().source_call()?,
+            descriptor.invocation().text_invocation()?,
             SourceOperatorKind::CausalConvSplit {
                 domain: ConvDomain(descriptor.invocation().layer().index()),
                 geometry: conv(),
@@ -184,7 +185,7 @@ impl QwenPlanBuilder {
         descriptor: &QwenGdnRecurrent,
     ) -> Result<SourceOperator> {
         SourceOperator::new(
-            descriptor.invocation().source_call()?,
+            descriptor.invocation().text_invocation()?,
             SourceOperatorKind::GatedDelta {
                 domain: RecurrentDomain(descriptor.invocation().layer().index()),
                 geometry: gdn(),
@@ -203,8 +204,8 @@ impl QwenPlanBuilder {
         let call = self
             .core
             .source_value_provenance(&inputs[0])?
-            .ok_or_else(|| Error::State("Qwen residual actual source call absent".into()))?
-            .call()
+            .ok_or_else(|| Error::State("Qwen residual actual source invocation absent".into()))?
+            .invocation()
             .clone();
         SourceOperator::new(
             call,
@@ -218,7 +219,7 @@ impl QwenPlanBuilder {
 
 impl QwenGdnConv {
     pub fn require_mathematical_operator(&self, actual: &SourceOperator) -> Result<()> {
-        if actual.call() != &self.invocation().source_call()?
+        if actual.invocation() != &self.invocation().text_invocation()?
             || actual.kind()
                 != (SourceOperatorKind::CausalConvSplit {
                     domain: ConvDomain(self.invocation().layer().index()),
@@ -237,7 +238,7 @@ impl QwenGdnConv {
 }
 impl QwenGdnRecurrent {
     pub fn require_mathematical_operator(&self, actual: &SourceOperator) -> Result<()> {
-        if actual.call() != &self.invocation().source_call()?
+        if actual.invocation() != &self.invocation().text_invocation()?
             || actual.kind()
                 != (SourceOperatorKind::GatedDelta {
                     domain: RecurrentDomain(self.invocation().layer().index()),

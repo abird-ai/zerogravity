@@ -35,7 +35,7 @@ impl PreparedBf16Greedy {
                 "canonical greedy requires fresh actual immutable packet".into(),
             ));
         }
-        let call = values.record().call().clone();
+        let call = values.record().invocation().clone();
         let owner = Arc::new(HostOwner {
             values,
             source: self.owner.source.clone(),

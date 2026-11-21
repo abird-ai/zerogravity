@@ -18,10 +18,10 @@ pub(super) fn require_recipe(recipe: &ComponentRecipe) -> Result<()> {
         ));
     };
     arithmetic.require_owned()?;
-    recipe.kind().require_call(recipe.bindings().call())?;
+    recipe.kind().require_call(recipe.bindings().invocation())?;
     if recipe.cut() != ComponentCut::Mlp
         || recipe.nodes().len() != 11
-        || recipe.bindings().call().rows().len() != 47
+        || recipe.bindings().invocation().tokens().len() != 47
     {
         return Err(Error::Unsupported(
             "fixed_prompt eleven-node MLP cut required".into(),
@@ -29,7 +29,7 @@ pub(super) fn require_recipe(recipe: &ComponentRecipe) -> Result<()> {
     }
     for (index, arity) in [(8, 2), (10, 1)] {
         let op = recipe.operator(index)?;
-        if op.call()!=recipe.bindings().call() || op.kind()!=(zerogravity_core::accelerator::program::SourceOperatorKind::Projection{selected_row:None}) || op.numerical_contract()!=zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1 || !op.parameters().is_empty() || op.matrices().len()!=arity{return Err(Error::State("MLP actual source operator/member arity differs".into()));}
+        if op.invocation()!=recipe.bindings().invocation() || op.kind()!=(zerogravity_core::accelerator::program::SourceOperatorKind::Projection{selected_row:None}) || op.numerical_contract()!=zerogravity_core::accelerator::program::NumericalContract::CudaSm86Bf16ReferenceV1 || !op.parameters().is_empty() || op.matrices().len()!=arity{return Err(Error::State("MLP actual source operator/member arity differs".into()));}
         for member in op.matrices() {
             super::super::post_attention_projection::require_matrix_source(
                 recipe.source(),
@@ -49,7 +49,7 @@ impl FixedPromptMlpWeights {
     ) -> Result<Arc<Self>> {
         not_cancelled(cancelled)?;
         require_recipe(&recipe)?;
-        if service.source_identity() != recipe.bindings().call().source() {
+        if service.source_identity() != recipe.bindings().invocation().source() {
             return Err(Error::State(
                 "fixed_prompt MLP W original service/source".into(),
             ));

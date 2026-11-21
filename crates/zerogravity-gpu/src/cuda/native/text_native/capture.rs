@@ -1,6 +1,6 @@
 //! Explicit captured native ABI identity; no source/model/native execution permit.
 use crate::resident_program::source_bindings::SourceBindings;
-use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode, SourceOperatorKind};
+use zerogravity_core::accelerator::program::{InvocationPhase, SourceOperatorKind, TextInvocation};
 use zerogravity_core::{Error, Result};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::cuda::native) enum NativeCatalogue {
@@ -23,12 +23,12 @@ pub(crate) enum TextColdScopeRole {
     Cached,
 }
 impl TextColdScopeRole {
-    pub(crate) fn require_call(self, call: &SourceCall) -> Result<()> {
+    pub(crate) fn require_call(self, call: &TextInvocation) -> Result<()> {
         let (mode, rows, base) = match self {
-            Self::Prefill(rows) => (SourceCallMode::Prefill, rows, 0),
-            Self::Cached => (SourceCallMode::Decode, 1, 47),
+            Self::Prefill(rows) => (InvocationPhase::Prefill, rows, 0),
+            Self::Cached => (InvocationPhase::Decode, 1, 47),
         };
-        if call.mode() != mode || call.rows().len() != rows || call.rows().base() != base {
+        if call.phase() != mode || call.tokens().len() != rows || call.tokens().base() != base {
             return Err(Error::State("text captured cold scope role differs".into()));
         }
         Ok(())
@@ -123,17 +123,17 @@ impl TextKernelCapture {
             Err(Error::State("text captured cold scope index".into()))
         }
     }
-    pub(crate) fn cold_scope_index(self, mode: SourceCallMode, rows: usize) -> Result<usize> {
+    pub(crate) fn cold_scope_index(self, mode: InvocationPhase, rows: usize) -> Result<usize> {
         match mode {
-            SourceCallMode::Prefill => self
+            InvocationPhase::Prefill => self
                 .captured_prefill_rows()
                 .iter()
                 .position(|&actual| actual == rows)
                 .ok_or_else(|| Error::Unsupported("text captured prefill geometry absent".into())),
-            SourceCallMode::Decode if rows == 1 && !self.is_fresh_prefill() => {
+            InvocationPhase::Decode if rows == 1 && !self.is_fresh_prefill() => {
                 Ok(self.captured_prefill_rows().len())
             }
-            SourceCallMode::Decode => Err(Error::Unsupported(
+            InvocationPhase::Decode => Err(Error::Unsupported(
                 "text captured cached geometry absent".into(),
             )),
         }
@@ -145,7 +145,8 @@ impl TextKernelCapture {
         let mut first = None;
         let mut count = 0usize;
         for scope in scopes {
-            self.cold_scope_role(count)?.require_call(scope.call())?;
+            self.cold_scope_role(count)?
+                .require_call(scope.invocation())?;
             self.require_bindings(scope.record())?;
             let source = first.get_or_insert_with(|| scope.source());
             if scope.native_capture() != self || !scope.source().same_issuer(source) {
@@ -185,21 +186,22 @@ impl TextKernelCapture {
         Ok(())
     }
     pub(crate) fn require_bindings(self, bindings: &SourceBindings) -> Result<()> {
-        let call = bindings.call();
+        let call = bindings.invocation();
         let plan = bindings.plan();
-        let call_ok = match call.mode() {
-            SourceCallMode::Prefill => {
-                call.rows().base() == 0 && self.captured_prefill_rows().contains(&call.rows().len())
+        let call_ok = match call.phase() {
+            InvocationPhase::Prefill => {
+                call.tokens().base() == 0
+                    && self.captured_prefill_rows().contains(&call.tokens().len())
             }
-            SourceCallMode::Decode => {
+            InvocationPhase::Decode => {
                 !self.is_fresh_prefill()
-                    && call.rows().len() == 1
-                    && matches!(call.rows().base(), 47..=78)
+                    && call.tokens().len() == 1
+                    && matches!(call.tokens().base(), 47..=78)
             }
         };
         if !call_ok
-            || call.rows().capacity() != 512
-            || call.rows().vocabulary() != 248320
+            || call.tokens().capacity() != 512
+            || call.tokens().vocabulary() != 248320
             || plan.nodes().len() != 255
             || plan.values().len() != 327
             || plan.required_domains().len() != 42
@@ -246,7 +248,7 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
     use std::sync::Arc;
     use zerogravity_core::accelerator::SourceIdentity;
-    use zerogravity_core::accelerator::program::{SourceRows, TextCallGeometry};
+    use zerogravity_core::accelerator::program::{TextCallGeometry, TokenSpan};
 
     #[test]
     fn cold_roles_cover_the_actual_literal_capture_without_admitting_new_prompts() -> Result<()> {
@@ -270,13 +272,13 @@ mod tests {
                 capture.prepared_call_count()?
             );
             for &rows in actual.keys() {
-                let index = capture.cold_scope_index(SourceCallMode::Prefill, rows)?;
+                let index = capture.cold_scope_index(InvocationPhase::Prefill, rows)?;
                 assert_eq!(
                     capture.cold_scope_role(index)?,
                     TextColdScopeRole::Prefill(rows)
                 );
             }
-            let cached = capture.cold_scope_index(SourceCallMode::Decode, 1)?;
+            let cached = capture.cold_scope_index(InvocationPhase::Decode, 1)?;
             assert_eq!(capture.cold_scope_role(cached)?, TextColdScopeRole::Cached);
             assert_eq!(cached.checked_add(1), Some(capture.cold_scope_count()?));
             assert!(
@@ -287,13 +289,13 @@ mod tests {
             for rows in [1, 48, 49, 50] {
                 assert!(
                     capture
-                        .cold_scope_index(SourceCallMode::Prefill, rows)
+                        .cold_scope_index(InvocationPhase::Prefill, rows)
                         .is_err()
                 );
             }
             assert!(
                 capture
-                    .cold_scope_index(SourceCallMode::Decode, 47)
+                    .cold_scope_index(InvocationPhase::Decode, 47)
                     .is_err()
             );
         }
@@ -314,7 +316,7 @@ mod tests {
         );
         assert_eq!(fresh.prepared_call_count()?, 4);
         assert_eq!(fresh.cold_scope_count()?, 4);
-        assert!(fresh.cold_scope_index(SourceCallMode::Decode, 1).is_err());
+        assert!(fresh.cold_scope_index(InvocationPhase::Decode, 1).is_err());
         assert!(TextKernelCapture::bind_fresh_prefill(CAPTURE_2048).is_err());
         Ok(())
     }
@@ -324,13 +326,13 @@ mod tests {
         let source = SourceIdentity::for_new_allocation()?;
         let geometry = TextCallGeometry::new(source, 248320, 512)?;
         let call = |mode, base, rows| {
-            SourceCall::new(
-                SourceRows::new(geometry, base, Arc::from(vec![11; rows]))?,
+            TextInvocation::new(
+                TokenSpan::new(geometry, base, Arc::from(vec![11; rows]))?,
                 mode,
             )
         };
-        let fresh = call(SourceCallMode::Prefill, 0, 47)?;
-        let cached = call(SourceCallMode::Decode, 47, 1)?;
+        let fresh = call(InvocationPhase::Prefill, 0, 47)?;
+        let cached = call(InvocationPhase::Decode, 47, 1)?;
         TextColdScopeRole::Prefill(47).require_call(&fresh)?;
         TextColdScopeRole::Cached.require_call(&cached)?;
         assert!(TextColdScopeRole::Cached.require_call(&fresh).is_err());
@@ -341,12 +343,12 @@ mod tests {
         );
         assert!(
             TextColdScopeRole::Cached
-                .require_call(&call(SourceCallMode::Decode, 48, 1)?)
+                .require_call(&call(InvocationPhase::Decode, 48, 1)?)
                 .is_err()
         );
         assert!(
             TextColdScopeRole::Cached
-                .require_call(&call(SourceCallMode::Prefill, 0, 1)?)
+                .require_call(&call(InvocationPhase::Prefill, 0, 1)?)
                 .is_err()
         );
         Ok(())

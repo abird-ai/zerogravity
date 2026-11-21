@@ -25,10 +25,10 @@ impl SourceModelScopes {
         // The original bound computes the same physical source/state/ABI extent.
         provider_bound(source, records)?;
         for (index, record) in records.iter().enumerate() {
-            if crate::resident_program::natural_binding::slot(record.call())? != index
+            if crate::resident_program::natural_binding::slot(record.invocation())? != index
                 || !source.same_issuer(record.source())
-                || record.call().rows().capacity() != 512
-                || record.call().rows().vocabulary() != 248320
+                || record.invocation().tokens().capacity() != 512
+                || record.invocation().tokens().vocabulary() != 248320
             {
                 return Err(Error::State(
                     "source five-scope actual order/issuer/extent differs".into(),

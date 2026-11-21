@@ -1,5 +1,5 @@
 //! Original fair queue/flight/completion and original Session.commit.
-use super::loaded::{ColdModel, FixedPromptCallReceipt};
+use super::loaded::{ColdModel, FixedPromptInvocationReceipt};
 use super::*;
 use crate::resident_inference::{RuntimeParameters, bind_domains};
 use crate::resident_leases::ResidentReadback;
@@ -10,9 +10,9 @@ use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
 
 pub(super) struct PreparedCall {
     pub(super) inference: PreparedInference,
-    pub(super) input: Arc<FixedPromptCallInput>,
+    pub(super) input: Arc<FixedPromptInvocationInput>,
     pub(super) packet: [u8; 12],
-    pub(super) receipt: FixedPromptCallReceipt,
+    pub(super) receipt: FixedPromptInvocationReceipt,
 }
 fn domains(
     reads: &mut Vec<ResidentReadback>,
@@ -32,8 +32,8 @@ impl ResidentSession {
     pub(super) async fn prepare_canonical_call(
         &self,
         cold: Arc<ColdModel>,
-        input: Arc<FixedPromptCallInput>,
-        state: Arc<FixedPromptCallState>,
+        input: Arc<FixedPromptInvocationInput>,
+        state: Arc<FixedPromptInvocationState>,
         mut probe: Option<(usize, &mut Option<super::loaded::ProbeRecord>)>,
         mut validate: Option<NaturalValidation<'_>>,
         cancelled: Option<&AtomicBool>,
@@ -216,7 +216,7 @@ impl ResidentSession {
                 Ok(())
             })
             .await?;
-        permit.require_invocation(service, input.call(), 0, 24)?;
+        permit.require_invocation(service, input.invocation(), 0, 24)?;
         input.require_session(self)?;
         slot.finish()?;
         let (id, max_bits) = selected.ok_or_else(|| {
@@ -246,7 +246,7 @@ impl ResidentSession {
             readback,
         };
         self.validate_prepared(&inference)?;
-        let receipt = FixedPromptCallReceipt {
+        let receipt = FixedPromptInvocationReceipt {
             root: self.binding(),
             selected_id: id,
             max_bits,
@@ -270,7 +270,7 @@ impl ResidentSession {
         &mut self,
         prepared: PreparedCall,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<(FixedPromptCallReceipt, Arc<CommittedPacket>)> {
+    ) -> Result<(FixedPromptInvocationReceipt, Arc<CommittedPacket>)> {
         not_cancelled(cancelled)?;
         let PreparedCall {
             inference,

@@ -1,14 +1,14 @@
 use super::*;
 use zerogravity_core::accelerator::SourceIdentity;
-use zerogravity_core::accelerator::program::{SourceRows, TextCallGeometry};
+use zerogravity_core::accelerator::program::{TextCallGeometry, TokenSpan};
 fn invocation(
     source: SourceIdentity,
-    mode: SourceCallMode,
+    mode: InvocationPhase,
     base: usize,
     ids: &[u32],
-) -> SourceCall {
-    SourceCall::new(
-        SourceRows::new(
+) -> TextInvocation {
+    TextInvocation::new(
+        TokenSpan::new(
             TextCallGeometry::new(source, 248320, 512).unwrap(),
             base,
             Arc::from(ids),
@@ -18,18 +18,18 @@ fn invocation(
     )
     .unwrap()
 }
-fn short(source: SourceIdentity) -> Vec<SourceCall> {
+fn short(source: SourceIdentity) -> Vec<TextInvocation> {
     vec![
-        invocation(source, SourceCallMode::Prefill, 0, &[11]),
-        invocation(source, SourceCallMode::Decode, 1, &[353]),
+        invocation(source, InvocationPhase::Prefill, 0, &[11]),
+        invocation(source, InvocationPhase::Decode, 1, &[353]),
     ]
 }
-fn long(source: SourceIdentity) -> Vec<SourceCall> {
+fn long(source: SourceIdentity) -> Vec<TextInvocation> {
     vec![
         // IDs here exercise only original span metadata, not numerical fixtures.
-        invocation(source, SourceCallMode::Prefill, 0, &[11; 64]),
-        invocation(source, SourceCallMode::Prefill, 64, &[353, 353]),
-        invocation(source, SourceCallMode::Decode, 66, &[353]),
+        invocation(source, InvocationPhase::Prefill, 0, &[11; 64]),
+        invocation(source, InvocationPhase::Prefill, 64, &[353, 353]),
+        invocation(source, InvocationPhase::Decode, 66, &[353]),
     ]
 }
 #[test]
@@ -87,7 +87,7 @@ fn wrong_attempt_source_order_extent_or_completed_layers_is_refused() {
         GdnAttemptSchedule::new(base, authority.begin_advance(2).unwrap(), reversed, 3).is_err()
     );
     let mut wrong_cached_base = short(source);
-    wrong_cached_base[1] = invocation(source, SourceCallMode::Decode, 66, &[353]);
+    wrong_cached_base[1] = invocation(source, InvocationPhase::Decode, 66, &[353]);
     assert!(
         GdnAttemptSchedule::new(
             base,
@@ -150,14 +150,14 @@ fn wrong_mode_capacity_vocabulary_and_row_population_refuse() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let authority = SessionAuthority::new(source).unwrap();
     for (mode, capacity, vocabulary, ids) in [
-        (SourceCallMode::Decode, 512, 248320, vec![11]),
-        (SourceCallMode::Prefill, 511, 248320, vec![11]),
-        (SourceCallMode::Prefill, 512, 248319, vec![11]),
-        (SourceCallMode::Prefill, 512, 248320, vec![11, 12]),
+        (InvocationPhase::Decode, 512, 248320, vec![11]),
+        (InvocationPhase::Prefill, 511, 248320, vec![11]),
+        (InvocationPhase::Prefill, 512, 248319, vec![11]),
+        (InvocationPhase::Prefill, 512, 248320, vec![11, 12]),
     ] {
         let mut calls = short(source);
-        let replacement = SourceCall::new(
-            SourceRows::new(
+        let replacement = TextInvocation::new(
+            TokenSpan::new(
                 TextCallGeometry::new(source, vocabulary, capacity).unwrap(),
                 0,
                 Arc::from(ids),
@@ -165,7 +165,7 @@ fn wrong_mode_capacity_vocabulary_and_row_population_refuse() {
             .unwrap(),
             mode,
         );
-        if mode == SourceCallMode::Decode {
+        if mode == InvocationPhase::Decode {
             assert!(replacement.is_err());
             continue;
         }

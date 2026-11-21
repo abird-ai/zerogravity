@@ -1,7 +1,7 @@
 //! Synthetic original full-header sources; no trained27B parity claim.
 use super::*;
 use crate::accelerator::program::{
-    EmbeddingContract, MathematicalBackend, PlanOperation, RmsContract, SourceCallMode, TensorView,
+    EmbeddingContract, InvocationPhase, MathematicalBackend, PlanOperation, RmsContract, TensorView,
 };
 use crate::operator_slice::OperatorSliceSource;
 use crate::source::binding::{OriginalWindowOperators, QwenParameterRole};
@@ -485,7 +485,7 @@ fn forward_plan_and_invocation_retain_exact_source_and_workspace_without_a_cycle
     assert!(plan.source_seal().source().same_issuer(&source));
     assert_eq!(plan.plan().source(), source.source_identity());
     let invocation = plan
-        .bind_invocation(SourceCallMode::Prefill, 0, Arc::from([11, 353]), true)
+        .bind_invocation(InvocationPhase::Prefill, 0, Arc::from([11, 353]), true)
         .unwrap();
     assert!(invocation.source().same_issuer(&source));
     assert!(Arc::ptr_eq(invocation.plan(), plan.plan()));

@@ -1,9 +1,8 @@
 //! The canonical semantic program is the existing ForwardPlan, not another IR.
 //! Prepared executables may replace closed regions, never source/state laws.
 pub use crate::accelerator::program::{
-    BoundSourceInvocation, ForwardPlan, MathematicalBackend, PlanNode, PlanOperation,
-    SourceInvocation, SourceOperatorTemplate, StateEffect, StateSlot, StateVersion, ValueId,
-    ValueShape,
+    BoundInvocation, ForwardPlan, InvocationInput, MathematicalBackend, PlanNode, PlanOperation,
+    SourceOperatorTemplate, StateEffect, StateSlot, StateVersion, ValueId, ValueShape,
 };
 pub use crate::pipeline::ValueKind;
 

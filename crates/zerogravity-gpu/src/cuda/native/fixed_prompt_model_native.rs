@@ -84,7 +84,7 @@ fn layer_of(record: &SourceBindings, index: usize) -> Result<usize> {
             .plan()
             .source_value_provenance(boundary[0])?
             .ok_or_else(|| Error::State("fixed prompt actual boundary producer absent".into()))?;
-        if producer.call() != record.call()
+        if producer.invocation() != record.invocation()
             || record.plan().nodes()[producer.node_index()]
                 .outputs
                 .get(producer.output_index())
@@ -110,8 +110,8 @@ fn is_gdn_output(record: &SourceBindings, input: ValueId) -> Result<bool> {
     let previous = record
         .operator(producer.node_index())?
         .ok_or_else(|| Error::State("fixed prompt actual output descriptor absent".into()))?;
-    if producer.call() != record.call()
-        || previous.call() != record.call()
+    if producer.invocation() != record.invocation()
+        || previous.invocation() != record.invocation()
         || record.plan().nodes()[producer.node_index()]
             .outputs
             .get(producer.output_index())
@@ -486,7 +486,7 @@ impl FixedPromptModelNativePrograms {
                             | (42, Operation::Down)
                     ));
             if !finite_site
-                || descriptor.call() != cut.scope().record().call()
+                || descriptor.invocation() != cut.scope().record().invocation()
                 || !per_layer.entry(layer).or_default().insert(operation)
             {
                 return Err(Error::State(

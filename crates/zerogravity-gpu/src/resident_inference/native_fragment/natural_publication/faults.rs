@@ -99,7 +99,7 @@ where
         .await;
     }
     let _controls = source.reserve_workspace(1024 * 1024)?;
-    let prompt = records[0].call().rows().ids().to_vec();
+    let prompt = records[0].invocation().tokens().ids().to_vec();
     if prompt.len() != 1 {
         return Err(Error::State(
             "natural fault first source prompt geometry".into(),

@@ -119,12 +119,12 @@ impl TextNativeInventory {
         let source_windows = mul(mul(attention_layers, 4)?, MIB + 24)?;
         let transport_metadata = scopes
             .iter()
-            .filter(|scope| scope.call().rows().base() == 0)
+            .filter(|scope| scope.invocation().tokens().base() == 0)
             .try_fold(0usize, |total, scope| {
                 (0..capture.captured_call_count()).try_fold(total, |n, ordinal| {
                     n.checked_add(super::transport::Definitions::metadata_bound(
                         capture,
-                        scope.call().rows().len(),
+                        scope.invocation().tokens().len(),
                         ordinal,
                     )?)
                     .ok_or_else(|| Error::Limit("text captured cold transport owner sum".into()))

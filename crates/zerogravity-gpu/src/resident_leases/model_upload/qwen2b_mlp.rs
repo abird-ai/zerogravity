@@ -53,7 +53,7 @@ impl Qwen2BMlpWeightCohort {
             PlanOperation::SourceOperator {
                 descriptor,
                 state: None,
-            } if descriptor.call() == self.bindings.call() => Ok(descriptor),
+            } if descriptor.invocation() == self.bindings.invocation() => Ok(descriptor),
             _ => Err(Error::State(
                 "component actual learned source/call differs".into(),
             )),
@@ -62,7 +62,7 @@ impl Qwen2BMlpWeightCohort {
     fn require_service(&self, service: &Arc<ResidentService>) -> Result<()> {
         self.arithmetic
             .require_owned(crate::cuda::gdn::GdnPhase::for_reference_call(
-                self.bindings.call(),
+                self.bindings.invocation(),
             )?)?;
         if service.source_identity() != self.source.source_identity()
             || !self.source.same_issuer(self.bindings.source())
@@ -164,7 +164,7 @@ impl Qwen2BMlpWeights {
         if !source.same_issuer(&self.cohort.source)
             || !Arc::ptr_eq(bindings, self.cohort.bindings())
             || !Arc::ptr_eq(service, &self.service)
-            || bindings.call().source() != source.source_identity()
+            || bindings.invocation().source() != source.source_identity()
             || service.source_identity() != source.source_identity()
             || service.generation() != self.generation
             || self.gate_up.lease().id() == self.down.lease().id()

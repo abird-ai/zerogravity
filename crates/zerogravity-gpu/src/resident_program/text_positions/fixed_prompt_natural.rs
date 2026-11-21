@@ -1,6 +1,6 @@
 //! Current-call integer positions on one admitted storage lease.
 use super::*;
-use crate::resident_inference::native_fragment::fixed_prompt_natural::FixedPromptCallInput;
+use crate::resident_inference::native_fragment::fixed_prompt_natural::FixedPromptInvocationInput;
 use crate::resident_leases::ResidentService;
 use zerogravity_core::device_events::DeviceAccess;
 
@@ -9,7 +9,7 @@ pub(crate) struct FixedPromptPositionsStorage {
 }
 pub(crate) struct FixedPromptPositions {
     storage: Arc<FixedPromptPositionsStorage>,
-    input: Arc<FixedPromptCallInput>,
+    input: Arc<FixedPromptInvocationInput>,
     bytes: [u8; POSITION_BYTES],
     submitted: AtomicBool,
     _host: WindowWorkspace,
@@ -24,9 +24,9 @@ impl FixedPromptPositionsStorage {
     }
     pub(crate) fn bind(
         self: &Arc<Self>,
-        input: Arc<FixedPromptCallInput>,
+        input: Arc<FixedPromptInvocationInput>,
     ) -> Result<Arc<FixedPromptPositions>> {
-        if self.lease.source_identity() != input.call().source()
+        if self.lease.source_identity() != input.invocation().source()
             || self.lease.bytes() != POSITION_BYTES
             || self.lease.service_generation() != self.lease.service().generation()
         {
@@ -113,7 +113,7 @@ impl FixedPromptPositions {
     }
     pub(crate) fn retained(
         &self,
-        input: &Arc<FixedPromptCallInput>,
+        input: &Arc<FixedPromptInvocationInput>,
         service: &Arc<ResidentService>,
     ) -> bool {
         Arc::ptr_eq(input, &self.input)

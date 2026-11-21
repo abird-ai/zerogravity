@@ -94,7 +94,7 @@ pub(crate) fn validate_inputs(
 ) -> Result<()> {
     require_recipe(recipe)?;
     manifests::require_memory_semantics()?;
-    let rows = recipe.bindings().call().rows().len();
+    let rows = recipe.bindings().invocation().tokens().len();
     let mut required = super::qwen2b_projection::required_images(&[recipe.bindings().clone()])?;
     required.insert(super::post_attention_projection::required_qwen2b_mlp_image(
         recipe,
@@ -196,7 +196,7 @@ impl Qwen2BMlpPrograms {
         )?;
         init.retain_completion_owner(admitted.completion_owner())?;
         let images = admitted.prepare_qwen2b_mlp_images(
-            values.recipe().bindings().call().rows().len(),
+            values.recipe().bindings().invocation().tokens().len(),
             sources,
             init,
             cancelled,
@@ -218,7 +218,7 @@ impl Qwen2BMlpPrograms {
             cancelled,
         )?;
         init.retain_completion_owner(out.clone())?;
-        let rows = values.recipe().bindings().call().rows().len();
+        let rows = values.recipe().bindings().invocation().tokens().len();
         let mut launches = BTreeMap::new();
         for index in [8, 10] {
             let mut prepared = Vec::new();
@@ -271,7 +271,7 @@ impl Qwen2BMlpPrograms {
         self.weights
             .require_bindings(self.values.recipe().bindings(), self.values.service())?;
         require_down1_arm(
-            self.values.recipe().bindings().call().rows().len(),
+            self.values.recipe().bindings().invocation().tokens().len(),
             self.native_launches(),
             self.values.lease(ValueId(12))?.is_initialized(),
         )?;
@@ -289,8 +289,10 @@ impl Qwen2BMlpPrograms {
         self.native_launches.load(Ordering::Acquire)
     }
     pub(crate) fn down1_output_unpromoted(&self) -> Result<bool> {
-        Ok(self.values.recipe().bindings().call().rows().len() == 1
-            && !self.values.lease(ValueId(12))?.is_initialized())
+        Ok(
+            self.values.recipe().bindings().invocation().tokens().len() == 1
+                && !self.values.lease(ValueId(12))?.is_initialized(),
+        )
     }
     pub(crate) fn down1_enqueues(&self) -> usize {
         self.down1_enqueues.load(Ordering::Acquire)
@@ -363,7 +365,7 @@ impl Qwen2BMlpPrograms {
                 ));
             }
         }
-        let rows = self.values.recipe().bindings().call().rows().len();
+        let rows = self.values.recipe().bindings().invocation().tokens().len();
         let (x, y) = match index {
             8 => (rows * 4096, rows * 24_576),
             9 => (rows * 24_576, rows * 12_288),
@@ -416,7 +418,7 @@ impl Qwen2BMlpPrograms {
             .launches
             .get(&index)
             .ok_or_else(|| Error::State("qwen2b prepared native node absent".into()))?;
-        let down1 = index == 10 && self.values.recipe().bindings().call().rows().len() == 1;
+        let down1 = index == 10 && self.values.recipe().bindings().invocation().tokens().len() == 1;
         let late_cancel = AtomicBool::new(false);
         for (ordinal, launch) in launches.iter().enumerate() {
             not_cancelled(if late_cancel.load(Ordering::Acquire) {

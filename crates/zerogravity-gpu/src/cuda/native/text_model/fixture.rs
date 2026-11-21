@@ -4,8 +4,8 @@ use zerogravity_core::accelerator::program::*;
 use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_model_qwen35::plan::QwenPlanBuilder;
 use zerogravity_model_qwen35::plan::{
-    PromptCall, PromptSpan, PromptWorkload, QwenEmbedding, QwenLayer, QwenModelVariant,
-    QwenOperation, QwenOperator, QwenPlan, QwenProjection, QwenRmsSite, QwenSourceCall,
+    PromptInvocation, PromptSpan, PromptWorkload, QwenEmbedding, QwenLayer, QwenModelInvocation,
+    QwenModelVariant, QwenOperation, QwenOperator, QwenPlan, QwenProjection, QwenRmsSite,
 };
 fn members(p: QwenProjection, profile: QwenModelVariant) -> Vec<(&'static str, usize)> {
     match p {
@@ -38,16 +38,16 @@ pub(super) fn call(
     workload: PromptWorkload,
     base: Option<usize>,
     id: u32,
-) -> PromptCall {
+) -> PromptInvocation {
     let span = match base {
         None => PromptSpan::prefill(source, workload, &vec![id; workload.prompt_tokens()]),
         Some(base) => PromptSpan::cached(source, workload, base, id),
     }
     .unwrap();
-    PromptCall::new(profile, span).unwrap()
+    PromptInvocation::new(profile, span).unwrap()
 }
 fn descriptor(
-    call: &QwenSourceCall,
+    call: &QwenModelInvocation,
     layer: Option<QwenLayer>,
     kind: QwenOperation,
 ) -> QwenOperator {
@@ -149,12 +149,12 @@ fn descriptor(
     .collect();
     QwenOperator::new(call.clone(), layer, kind, matrices, parameters).unwrap()
 }
-pub(super) fn record(call: &PromptCall) -> QwenPlan {
-    let call = call.as_source_call();
+pub(super) fn record(call: &PromptInvocation) -> QwenPlan {
+    let call = call.as_text_invocation();
     let mut builder = QwenPlanBuilder::new_model(call.clone()).unwrap();
     let mut branch = builder
         .source_embedding(
-            &QwenEmbedding::for_call(
+            &QwenEmbedding::for_model_invocation(
                 SourceTensor {
                     source: call.source(),
                     name: "model.language_model.embed_tokens.weight".into(),

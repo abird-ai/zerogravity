@@ -3,11 +3,11 @@ use super::*;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QwenInputRms {
-    invocation: QwenGdnCall,
+    invocation: QwenGdnInvocation,
     parameter: SourceParameter,
 }
 impl QwenInputRms {
-    pub fn new(invocation: QwenGdnCall, parameter: SourceParameter) -> Result<Self> {
+    pub fn new(invocation: QwenGdnInvocation, parameter: SourceParameter) -> Result<Self> {
         let value = Self {
             invocation,
             parameter,
@@ -15,7 +15,7 @@ impl QwenInputRms {
         value.validate()?;
         Ok(value)
     }
-    pub fn invocation(&self) -> &QwenGdnCall {
+    pub fn invocation(&self) -> &QwenGdnInvocation {
         &self.invocation
     }
     pub fn parameter(&self) -> &SourceParameter {
@@ -50,11 +50,11 @@ impl QwenInputRms {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QwenGdnConv {
-    invocation: QwenGdnCall,
+    invocation: QwenGdnInvocation,
     parameter: SourceParameter,
 }
 impl QwenGdnConv {
-    pub fn new(invocation: QwenGdnCall, parameter: SourceParameter) -> Result<Self> {
+    pub fn new(invocation: QwenGdnInvocation, parameter: SourceParameter) -> Result<Self> {
         let value = Self {
             invocation,
             parameter,
@@ -62,7 +62,7 @@ impl QwenGdnConv {
         value.validate()?;
         Ok(value)
     }
-    pub fn invocation(&self) -> &QwenGdnCall {
+    pub fn invocation(&self) -> &QwenGdnInvocation {
         &self.invocation
     }
     pub fn parameter(&self) -> &SourceParameter {
@@ -88,11 +88,11 @@ pub struct GdnConvValues<V> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QwenGdnRecurrent {
-    invocation: QwenGdnCall,
+    invocation: QwenGdnInvocation,
     parameters: [SourceParameter; 3],
 }
 impl QwenGdnRecurrent {
-    pub fn new(invocation: QwenGdnCall, parameters: [SourceParameter; 3]) -> Result<Self> {
+    pub fn new(invocation: QwenGdnInvocation, parameters: [SourceParameter; 3]) -> Result<Self> {
         let value = Self {
             invocation,
             parameters,
@@ -100,7 +100,7 @@ impl QwenGdnRecurrent {
         value.validate()?;
         Ok(value)
     }
-    pub fn invocation(&self) -> &QwenGdnCall {
+    pub fn invocation(&self) -> &QwenGdnInvocation {
         &self.invocation
     }
     /// Original A_log F32, dt_bias BF16 and raw norm.weight F32, in that order.
@@ -135,7 +135,7 @@ impl QwenGdnRecurrent {
     }
 }
 fn parameter(
-    invocation: &QwenGdnCall,
+    invocation: &QwenGdnInvocation,
     p: &SourceParameter,
     suffix: &str,
     kind: StoredTensorEncoding,
@@ -162,14 +162,14 @@ fn parameter(
 }
 fn require_dense(
     builder: &QwenPlanBuilder,
-    invocation: &QwenGdnCall,
+    invocation: &QwenGdnInvocation,
     inputs: &[PlanValue],
     widths: &[usize],
 ) -> Result<()> {
     invocation.validate()?;
     if builder.profile != NumericalProfile::CudaSm86Bf16ReferenceV1
         || builder.source != invocation.layer().source()
-        || !(builder.operator_slice || builder.fragment_call.is_some())
+        || !(builder.operator_slice || builder.fragment_invocation.is_some())
         || inputs.len() != widths.len()
     {
         return Err(Error::Unsupported(
@@ -200,7 +200,7 @@ pub(super) fn input_rms_precision(
     if builder
         .value_provenance(&inputs[0])?
         .map(QwenValueProvenance::origin)
-        != Some(&QwenValueOrigin::SourceRows)
+        != Some(&QwenValueOrigin::TokenSpan)
     {
         return Err(Error::State(
             "input RMS must consume original raw source rows".into(),
@@ -208,8 +208,8 @@ pub(super) fn input_rms_precision(
     }
     Ok(ActivationPrecision::Bf16WidenedF32)
 }
-fn fragment_invocation(builder: &QwenPlanBuilder, invocation: &QwenGdnCall) -> Result<bool> {
-    let Some(base) = builder.fragment_call.as_ref() else {
+fn fragment_invocation(builder: &QwenPlanBuilder, invocation: &QwenGdnInvocation) -> Result<bool> {
+    let Some(base) = builder.fragment_invocation.as_ref() else {
         return Ok(false);
     };
     Ok(base.teachers() == invocation.teachers()
@@ -394,7 +394,7 @@ pub struct QwenFragmentPlan {
 /// Existing family producer data; no second graph or execution permission.
 #[derive(Clone, Debug)]
 pub struct QwenFragmentMetadata {
-    invocation: QwenGdnCall,
+    invocation: QwenGdnInvocation,
     provenance: Vec<Option<QwenValueProvenance>>,
     output: ValueId,
     residual_output: Option<ValueId>,
@@ -406,7 +406,7 @@ pub struct QwenFragmentView<'a> {
     metadata: &'a QwenFragmentMetadata,
 }
 impl QwenFragmentPlan {
-    pub fn invocation(&self) -> &QwenGdnCall {
+    pub fn invocation(&self) -> &QwenGdnInvocation {
         self.metadata.invocation()
     }
     pub fn value_provenance(&self, id: ValueId) -> Result<Option<&QwenValueProvenance>> {
@@ -437,7 +437,7 @@ impl QwenFragmentPlan {
     }
 }
 impl QwenFragmentMetadata {
-    pub fn invocation(&self) -> &QwenGdnCall {
+    pub fn invocation(&self) -> &QwenGdnInvocation {
         &self.invocation
     }
     pub fn output(&self) -> ValueId {
@@ -459,10 +459,10 @@ impl QwenFragmentMetadata {
     /// Metadata association only. Consumers still authenticate actual recipe/source/SSA.
     pub fn view<'a>(&'a self, plan: &'a ForwardPlan) -> Result<QwenFragmentView<'a>> {
         self.invocation.validate()?;
-        let call = self.invocation.source_call()?;
+        let call = self.invocation.text_invocation()?;
         if plan.source() != self.invocation.layer().source()
             || plan.numerical_profile() != NumericalProfile::CudaSm86Bf16ReferenceV1
-            || plan.source_call() != Some(&call)
+            || plan.text_invocation() != Some(&call)
             || plan.is_operator_slice()
             || plan.values().len() != self.provenance.len()
             || plan.values().get(self.output.0 as usize).is_none()
@@ -485,7 +485,7 @@ impl QwenFragmentMetadata {
                         .map_err(|_| Error::Limit("fragment producer index".into()))?,
                 ))?
                 .ok_or_else(|| Error::State("fragment mathematical producer absent".into()))?;
-            if common.call() != &call {
+            if common.invocation() != &call {
                 return Err(Error::State(
                     "fragment mathematical producer call differs".into(),
                 ));
@@ -501,7 +501,7 @@ impl<'a> QwenFragmentView<'a> {
     pub fn plan(self) -> &'a ForwardPlan {
         self.plan
     }
-    pub fn invocation(self) -> &'a QwenGdnCall {
+    pub fn invocation(self) -> &'a QwenGdnInvocation {
         self.metadata.invocation()
     }
     pub fn output(self) -> ValueId {
@@ -528,7 +528,7 @@ fn all_domains() -> Result<Vec<StateSlot>> {
 
 impl QwenPlanBuilder {
     /// Metadata recipe only. Real lowerer must bind the SAME original all42 root.
-    pub fn new_gdn_fragment(invocation: QwenGdnCall) -> Result<Self> {
+    pub fn new_gdn_fragment(invocation: QwenGdnInvocation) -> Result<Self> {
         invocation.validate()?;
         if invocation.layer().index() != 0
             || !matches!(
@@ -545,7 +545,7 @@ impl QwenPlanBuilder {
     }
     /// Metadata only for a private phase of ONE original unpublished attempt.
     /// Existing initial and full-model execution admission remain separate.
-    pub fn new_gdn_attempt_phase(invocation: QwenGdnCall) -> Result<Self> {
+    pub fn new_gdn_attempt_phase(invocation: QwenGdnInvocation) -> Result<Self> {
         invocation.validate()?;
         invocation.reference_phase()?;
         if invocation.layer().index() != 0 || invocation.teachers().capacity() != 512 {
@@ -555,17 +555,17 @@ impl QwenPlanBuilder {
         }
         Self::new_fragment_inner(invocation)
     }
-    fn new_fragment_inner(invocation: QwenGdnCall) -> Result<Self> {
+    fn new_fragment_inner(invocation: QwenGdnInvocation) -> Result<Self> {
         let mut builder = Self::from_core(CorePlanBuilder::new_source_program(
-            invocation.source_call()?,
+            invocation.text_invocation()?,
             all_domains()?,
         )?);
-        builder.fragment_call = Some(invocation);
+        builder.fragment_invocation = Some(invocation);
         Ok(builder)
     }
     pub fn finish_gdn_fragment(self, output: PlanValue) -> Result<QwenFragmentPlan> {
         let invocation = self
-            .fragment_call
+            .fragment_invocation
             .clone()
             .ok_or_else(|| Error::State("not an original-root GDN fragment".into()))?;
         self.value_provenance(&output)?
@@ -601,7 +601,7 @@ impl QwenPlanBuilder {
         completed_layers: usize,
     ) -> Result<QwenFragmentPlan> {
         let invocation = self
-            .fragment_call
+            .fragment_invocation
             .as_ref()
             .ok_or_else(|| Error::State("not an original-root GDN fragment".into()))?;
         if !matches!(completed_layers, 1 | 3)
@@ -659,10 +659,10 @@ impl QwenPlanBuilder {
         completed_layers: usize,
     ) -> Result<QwenFragmentPlan> {
         let call = self
-            .fragment_call
+            .fragment_invocation
             .as_ref()
             .ok_or_else(|| Error::State("Qwen fragment original call absent".into()))?
-            .source_call()?;
+            .text_invocation()?;
         let untouched = self
             .core
             .required_domains()
@@ -691,7 +691,7 @@ impl QwenPlanBuilder {
                 residual_output,
                 completed_layers,
                 invocation: self
-                    .fragment_call
+                    .fragment_invocation
                     .ok_or_else(|| Error::State("Qwen fragment call absent".into()))?,
                 provenance: self.provenance,
             },

@@ -7,8 +7,8 @@ use crate::resident_program::source_bindings::{SourceBindings, SourceSelection};
 use std::{collections::BTreeMap, sync::Arc};
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::accelerator::program::{
-    ForwardPlan, PlanNode, PlanOperation, SourceCall, SourceCallMode, SourceOperator,
-    SourceOperatorKind, StateSlot, ValueId,
+    ForwardPlan, InvocationPhase, PlanNode, PlanOperation, SourceOperator, SourceOperatorKind,
+    StateSlot, TextInvocation, ValueId,
 };
 use zerogravity_core::{Error, Result};
 
@@ -151,7 +151,7 @@ fn analyze_plan(plan: &ForwardPlan, selection: &SourceSelection) -> Result<TextA
         ));
     }
     let head = TextHeadView::new(
-        head_operator.call().rows().len(),
+        head_operator.invocation().tokens().len(),
         matrix.columns,
         matrix.rows,
         selected_row,
@@ -182,7 +182,7 @@ fn analyze_plan(plan: &ForwardPlan, selection: &SourceSelection) -> Result<TextA
                 };
                 if !matches!(recurrent.kind(), SourceOperatorKind::GatedDelta { domain: rd, .. }
                     if rd.0 == domain.0)
-                    || recurrent.call() != descriptor.call()
+                    || recurrent.invocation() != descriptor.invocation()
                     || activated != ra
                     || z != rz
                     || ba != rb
@@ -226,7 +226,9 @@ fn analyze_plan(plan: &ForwardPlan, selection: &SourceSelection) -> Result<TextA
                         ops[6].kind(),
                         SourceOperatorKind::Projection { selected_row: None }
                     )
-                    || ops.iter().any(|op| op.call() != descriptor.call())
+                    || ops
+                        .iter()
+                        .any(|op| op.invocation() != descriptor.invocation())
                 {
                     return Err(Error::State(
                         "source attention actual mathematical order/domain".into(),
@@ -352,7 +354,7 @@ impl PreparedTextModel {
         native_capture: TextKernelCapture,
         metadata: zerogravity_core::resource_arbiter::HostWorkspace,
     ) -> Result<Self> {
-        if metadata.source_identity() != record.call().source()
+        if metadata.source_identity() != record.invocation().source()
             || Self::metadata_bytes(&analysis)? > metadata.bytes()
         {
             return Err(Error::Limit("source prepared site metadata bound".into()));
@@ -410,8 +412,9 @@ impl TextModelBindings {
     ) -> Result<Arc<TextModelBinding>> {
         if native_capture != self.capture
             || !self.source.same_issuer(record.source())
-            || gdn_implementation.input_tokens() != record.call().rows().len()
-            || gdn_implementation.is_decode() != (record.call().mode() == SourceCallMode::Decode)
+            || gdn_implementation.input_tokens() != record.invocation().tokens().len()
+            || gdn_implementation.is_decode()
+                != (record.invocation().phase() == InvocationPhase::Decode)
         {
             return Err(Error::State(
                 "source actual source/call/GDN implementation differs".into(),
@@ -463,8 +466,8 @@ impl TextModelBinding {
     pub(crate) fn source(&self) -> &VerifiedTensorSource {
         self.record.source()
     }
-    pub(crate) fn call(&self) -> &SourceCall {
-        self.record.call()
+    pub(crate) fn invocation(&self) -> &TextInvocation {
+        self.record.invocation()
     }
     pub(crate) fn record(&self) -> &Arc<SourceBindings> {
         &self.record

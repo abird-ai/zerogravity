@@ -2,18 +2,18 @@
 use super::*;
 use crate::resident_program::qwen2b_component::FIXED_PROMPT_IDS;
 use zerogravity_core::accelerator::SourceIdentity;
+use zerogravity_core::accelerator::program::InvocationPhase;
 use zerogravity_core::accelerator::program::MatrixAxes;
-use zerogravity_core::accelerator::program::SourceCallMode;
 use zerogravity_core::accelerator::program::SourceParameter;
 use zerogravity_core::accelerator::program::SourceTensor;
 use zerogravity_core::accelerator::program::TeacherSpan;
 use zerogravity_core::encoding::StoredTensorEncoding;
-use zerogravity_model_qwen35::plan::QwenGdnCall;
+use zerogravity_model_qwen35::plan::QwenGdnInvocation;
 use zerogravity_model_qwen35::plan::QwenInputRows;
+use zerogravity_model_qwen35::plan::QwenModelInvocation;
 use zerogravity_model_qwen35::plan::QwenOperator;
 use zerogravity_model_qwen35::plan::QwenPrefixLayer;
 use zerogravity_model_qwen35::plan::QwenRmsSite;
-use zerogravity_model_qwen35::plan::QwenSourceCall;
 use zerogravity_model_qwen35::plan::{QwenOperation, QwenProjection};
 
 fn extension() -> (Vec<PlanNode>, BTreeMap<usize, QwenOperator>) {
@@ -22,10 +22,10 @@ fn extension() -> (Vec<PlanNode>, BTreeMap<usize, QwenOperator>) {
         TeacherSpan::new(source, 0, 512, 248320, &FIXED_PROMPT_IDS).unwrap(),
     )
     .unwrap();
-    let call = QwenSourceCall::from_span(
-        QwenGdnCall::from_span(
+    let call = QwenModelInvocation::from_span(
+        QwenGdnInvocation::from_span(
             QwenPrefixLayer::new(source, 0).unwrap(),
-            SourceCallMode::Prefill,
+            InvocationPhase::Prefill,
             teachers,
         )
         .unwrap(),
@@ -150,7 +150,7 @@ fn new_cut_cannot_relabel_old_value_weight_window_or_record_cohorts() {
 fn kv_extension() -> (Vec<PlanNode>, BTreeMap<usize, QwenOperator>) {
     use zerogravity_core::accelerator::program::{StateEffect, StateVersion};
     let (mut nodes, mut metadata) = extension();
-    let call = metadata[&33].call().clone();
+    let call = metadata[&33].invocation().clone();
     let layer = call.layer(3).unwrap();
     let effect = StateEffect {
         read: StateVersion {
@@ -230,7 +230,7 @@ fn kv_extension_preserves_call_ssa_effect_and_exact_endpoint() {
 
 fn fa_extension() -> (Vec<PlanNode>, BTreeMap<usize, QwenOperator>) {
     let (mut nodes, mut metadata) = kv_extension();
-    let call = metadata[&35].call().clone();
+    let call = metadata[&35].invocation().clone();
     let sigmoid = QwenOperator::new(
         call.clone(),
         Some(call.layer(3).unwrap()),
@@ -292,7 +292,7 @@ fn fa_reads_the_actual_appended_kv_version_and_stops_before_sigmoid() {
 
 fn layer3_extension() -> (Vec<PlanNode>, BTreeMap<usize, QwenOperator>) {
     let (mut nodes, mut metadata) = fa_extension();
-    let call = metadata[&35].call().clone();
+    let call = metadata[&35].invocation().clone();
     let source = call.source();
     let layer = call.layer(3).unwrap();
     let matrix = |suffix: &str, rows, columns| SourceTensor {

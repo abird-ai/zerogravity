@@ -32,9 +32,9 @@ use std::collections::BTreeMap;
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{
-        ForwardPlan, PlanNode, PlanOperation, SourceCall, SourceCallMode, SourceOperator,
-        SourceOperatorKind, SourceOperatorTemplate, SourceRowSelection, SourceRows, StateSlot,
-        StateVersion, TextCallGeometry, ValueId,
+        ForwardPlan, InvocationPhase, PlanNode, PlanOperation, SourceOperator, SourceOperatorKind,
+        SourceOperatorTemplate, SourceRowSelection, StateSlot, StateVersion, TextCallGeometry,
+        TextInvocation, TokenSpan, ValueId,
     },
     device_events::DeviceAccess,
 };
@@ -105,7 +105,7 @@ impl CudaForwardProjection {
         ))
     }
 
-    /// Share one projection over independent source calls while retaining each
+    /// Share one projection over independent text invocations while retaining each
     /// call's exact reduction contract. `row_counts` is mathematical source
     /// geometry; the summed row count is only physical GEMM batching geometry.
     #[allow(clippy::too_many_arguments)]
@@ -127,7 +127,7 @@ impl CudaForwardProjection {
                 "CUDA forward independent projection cohort extent differs".into(),
             ));
         }
-        // Reduction grouping belongs to each original source call. Never derive
+        // Reduction grouping belongs to each original text invocation. Never derive
         // it from the widened physical operation: row count can select a
         // different arithmetic family even when the GEMM rows are independent.
         if let Some(weights) = self.weights.lease() {
@@ -305,7 +305,7 @@ impl CudaForwardBody {
 
     fn gdn_prefill_plan(
         &self,
-        calls: &[&SourceCall],
+        calls: &[&TextInvocation],
         values: &super::CudaForwardCohortValues,
     ) -> Result<GdnRuntimePlan> {
         let first = calls
@@ -313,13 +313,13 @@ impl CudaForwardBody {
             .copied()
             .ok_or_else(|| Error::State("CUDA forward empty GDN prefill cohort".into()))?;
         let lanes = calls.len();
-        let rows = first.rows().len();
+        let rows = first.tokens().len();
         if !matches!(lanes, 4 | 8)
             || rows == 0
             || calls.iter().any(|call| {
-                call.mode() != SourceCallMode::Prefill
-                    || call.rows().len() != rows
-                    || call.rows().base() != first.rows().base()
+                call.phase() != InvocationPhase::Prefill
+                    || call.tokens().len() != rows
+                    || call.tokens().base() != first.tokens().base()
             })
         {
             return Err(Error::Unsupported(
@@ -328,10 +328,10 @@ impl CudaForwardBody {
         }
         GdnRuntimePlan::prefill_cohort(
             super::layout::gdn_runtime_config()?,
-            first.rows().base(),
+            first.tokens().base(),
             rows,
             lanes,
-            first.rows().base() != 0,
+            first.tokens().base() != 0,
             values.gdn_prefill_layout(lanes)?,
         )
     }
@@ -390,7 +390,7 @@ impl CudaForwardBody {
         node_index: usize,
         node: &PlanNode,
         template: &SourceOperatorTemplate,
-        calls: &[&SourceCall],
+        calls: &[&TextInvocation],
         state_maps: &[BTreeMap<StateSlot, &StateBinding>],
         spans: &CohortRowSpans,
         values: &super::CudaForwardCohortValues,
@@ -402,12 +402,12 @@ impl CudaForwardBody {
             || !self.cold().layout().groups().direct()
             || calls
                 .iter()
-                .any(|call| call.rows().len() != calls[0].rows().len())
+                .any(|call| call.tokens().len() != calls[0].tokens().len())
         {
             return Ok(None);
         }
-        let rows = calls[0].rows().len();
-        let descriptor = template.bind_runtime_call(calls[0])?;
+        let rows = calls[0].tokens().len();
+        let descriptor = template.bind_runtime_invocation(calls[0])?;
         let ([packed_qkvz, packed_ba], [conv_output, z]) =
             (node.inputs.as_slice(), node.outputs.as_slice())
         else {
@@ -532,7 +532,7 @@ impl CudaForwardBody {
         node_index: usize,
         node: &PlanNode,
         template: &SourceOperatorTemplate,
-        calls: &[&SourceCall],
+        calls: &[&TextInvocation],
         state_maps: &[BTreeMap<StateSlot, &StateBinding>],
         spans: &CohortRowSpans,
         values: &super::CudaForwardCohortValues,
@@ -544,12 +544,12 @@ impl CudaForwardBody {
             || !self.cold().layout().groups().direct()
             || calls
                 .iter()
-                .any(|call| call.rows().len() != calls[0].rows().len())
+                .any(|call| call.tokens().len() != calls[0].tokens().len())
         {
             return Ok(None);
         }
-        let rows = calls[0].rows().len();
-        let descriptor = template.bind_runtime_call(calls[0])?;
+        let rows = calls[0].tokens().len();
+        let descriptor = template.bind_runtime_invocation(calls[0])?;
         let ([conv_output, z, packed_ba], [output]) =
             (node.inputs.as_slice(), node.outputs.as_slice())
         else {
@@ -625,7 +625,7 @@ impl CudaForwardBody {
             prior.require_layout(recurrent_layout)?;
             candidate.require_layout(recurrent_layout)?;
             let native = self.gdn_prefill_cache_state(values, lane, true)?;
-            if calls[0].rows().base() != 0 {
+            if calls[0].tokens().base() != 0 {
                 StateTransport::prepare(
                     self.cold().service(),
                     StateCopy::RecurrentIn,
@@ -1024,14 +1024,14 @@ impl CudaForwardBody {
     }
 
     /// Concatenate row-independent forward RMS work only when every original
-    /// source call has the same Torch reduction class. This shares physical
+    /// text invocation has the same Torch reduction class. This shares physical
     /// launch geometry, not numerical/session/root authority.
     fn enqueue_prefill_stateless_rms(
         &self,
         node_index: usize,
         node: &PlanNode,
         template: &SourceOperatorTemplate,
-        calls: &[&SourceCall],
+        calls: &[&TextInvocation],
         spans: &CohortRowSpans,
         values: &super::CudaForwardCohortValues,
     ) -> Result<Option<(usize, usize)>> {
@@ -1061,7 +1061,7 @@ impl CudaForwardBody {
 
         let mut reduction = None;
         for (lane, call) in calls.iter().enumerate() {
-            let descriptor = template.bind_runtime_call(call)?;
+            let descriptor = template.bind_runtime_invocation(call)?;
             let rows = spans.lane_rows(lane)?;
             let expected = rows
                 .checked_mul(hidden)
@@ -1164,7 +1164,7 @@ impl CudaForwardBody {
 
     fn prefill_stateless_extent(
         template: &SourceOperatorTemplate,
-        calls: &[&SourceCall],
+        calls: &[&TextInvocation],
         spans: &CohortRowSpans,
     ) -> Result<Option<(StatelessRowExtent, usize)>> {
         if template.row_selection() != SourceRowSelection::AllActive
@@ -1181,7 +1181,7 @@ impl CudaForwardBody {
             ));
         }
         for call in calls {
-            template.bind_runtime_call(call)?;
+            template.bind_runtime_invocation(call)?;
         }
         let bound_rows = template
             .max_rows()
@@ -1199,7 +1199,7 @@ impl CudaForwardBody {
         node_index: usize,
         node: &PlanNode,
         template: &SourceOperatorTemplate,
-        calls: &[&SourceCall],
+        calls: &[&TextInvocation],
         spans: &CohortRowSpans,
         values: &super::CudaForwardCohortValues,
         gate_alias: &mut [BTreeMap<u32, u32>],
@@ -1278,7 +1278,7 @@ impl CudaForwardBody {
                             &values.lane_row_handle(*key, key_width, spans, lane)?,
                             self.cold().inverse_frequency(),
                             self.cold().status(),
-                            call.rows().base(),
+                            call.tokens().base(),
                             spans.lane_rows(lane)?,
                         )?)
                         .ok_or_else(|| {
@@ -1432,16 +1432,16 @@ impl CudaForwardBody {
         let first = calls[0];
         let row_counts = calls
             .iter()
-            .map(|call| call.rows().len())
+            .map(|call| call.tokens().len())
             .collect::<Vec<_>>();
         let spans = CohortRowSpans::new(&row_counts)?;
-        if first.mode() != SourceCallMode::Prefill
+        if first.phase() != InvocationPhase::Prefill
             || calls.iter().any(|call| {
-                call.mode() != SourceCallMode::Prefill
-                    || call.rows().base() != first.rows().base()
-                    || !(1..=64).contains(&call.rows().len())
-                    || call.rows().capacity() != first.rows().capacity()
-                    || call.rows().vocabulary() != first.rows().vocabulary()
+                call.phase() != InvocationPhase::Prefill
+                    || call.tokens().base() != first.tokens().base()
+                    || !(1..=64).contains(&call.tokens().len())
+                    || call.tokens().capacity() != first.tokens().capacity()
+                    || call.tokens().vocabulary() != first.tokens().vocabulary()
                     || call.source() != first.source()
             })
         {
@@ -1489,9 +1489,9 @@ impl CudaForwardBody {
             .iter()
             .map(|call| {
                 Step::new(
-                    call.rows().len(),
-                    call.rows().base(),
-                    call.rows().capacity(),
+                    call.tokens().len(),
+                    call.tokens().base(),
+                    call.tokens().capacity(),
                 )
             })
             .collect::<Result<Vec<_>>>()?;
@@ -1527,7 +1527,7 @@ impl CudaForwardBody {
                 if template.row_selection() == SourceRowSelection::AllActive {
                     let descriptors = calls
                         .iter()
-                        .map(|call| template.bind_runtime_call(call))
+                        .map(|call| template.bind_runtime_invocation(call))
                         .collect::<Result<Vec<_>>>()?;
                     let launched = projection
                         .enqueue_prefill_cohort_rows(
@@ -1553,7 +1553,7 @@ impl CudaForwardBody {
                 let hidden = self.cold().layout().geometry().hidden_width;
                 let mut last_rows = Vec::with_capacity(lanes);
                 for lane in 0..lanes {
-                    let descriptor = template.bind_runtime_call(calls[lane])?;
+                    let descriptor = template.bind_runtime_invocation(calls[lane])?;
                     let inputs = descriptor.input_elements()?;
                     let lane_rows = row_counts[lane];
                     if inputs.as_slice() != [lane_rows * hidden] {
@@ -1671,7 +1671,7 @@ impl CudaForwardBody {
                 let query_width = self.cold().layout().geometry().query_width()?;
                 for first_lane in (0..lanes).step_by(4) {
                     let rows = row_counts[first_lane];
-                    let descriptor = template.bind_runtime_call(calls[first_lane])?;
+                    let descriptor = template.bind_runtime_invocation(calls[first_lane])?;
                     let inputs = descriptor.input_elements()?;
                     let outputs = descriptor.output_elements()?;
                     if inputs.as_slice() != [rows * query_width]
@@ -1681,7 +1681,8 @@ impl CudaForwardBody {
                             "CUDA forward prefill cohort attention row geometry".into(),
                         ));
                     }
-                    let bases = std::array::from_fn(|lane| calls[first_lane + lane].rows().base());
+                    let bases =
+                        std::array::from_fn(|lane| calls[first_lane + lane].tokens().base());
                     let kv = (first_lane..first_lane + 4)
                         .map(|lane| {
                             let state = state_maps[lane]
@@ -1724,7 +1725,7 @@ impl CudaForwardBody {
             }
 
             for lane in 0..lanes {
-                let descriptor = template.bind_runtime_call(calls[lane])?;
+                let descriptor = template.bind_runtime_invocation(calls[lane])?;
                 let (launched, fused) = self
                     .enqueue_node_with_values(
                         flight,
@@ -1803,13 +1804,13 @@ impl CudaForwardBody {
             .map(|request| self.validate_request(request))
             .collect::<Result<Vec<_>>>()?;
         let first = calls[0];
-        if first.mode() != SourceCallMode::Decode
-            || first.rows().len() != 1
+        if first.phase() != InvocationPhase::Decode
+            || first.tokens().len() != 1
             || calls.iter().any(|call| {
-                call.mode() != SourceCallMode::Decode
-                    || call.rows().len() != 1
-                    || call.rows().capacity() != first.rows().capacity()
-                    || call.rows().vocabulary() != first.rows().vocabulary()
+                call.phase() != InvocationPhase::Decode
+                    || call.tokens().len() != 1
+                    || call.tokens().capacity() != first.tokens().capacity()
+                    || call.tokens().vocabulary() != first.tokens().vocabulary()
                     || call.source() != first.source()
             })
         {
@@ -1819,23 +1820,23 @@ impl CudaForwardBody {
         }
         let geometry = TextCallGeometry::new(
             first.source(),
-            first.rows().vocabulary(),
-            first.rows().capacity(),
+            first.tokens().vocabulary(),
+            first.tokens().capacity(),
         )?;
         let ids = calls
             .iter()
-            .map(|call| call.rows().ids()[0])
+            .map(|call| call.tokens().ids()[0])
             .collect::<Vec<_>>();
         let positions = calls
             .iter()
-            .map(|call| call.rows().base())
+            .map(|call| call.tokens().base())
             .collect::<Vec<_>>();
         // This synthetic call owns only dense row shape/token packing for
         // position-independent operators. Position-sensitive operators bind
         // `positions` explicitly below; no causal/root authority comes from it.
-        let batch_call = SourceCall::new(
-            SourceRows::new(geometry, 0, ids.into())?,
-            SourceCallMode::Prefill,
+        let batch_call = TextInvocation::new(
+            TokenSpan::new(geometry, 0, ids.into())?,
+            InvocationPhase::Prefill,
         )?;
         let state_maps = calls
             .iter()
@@ -1863,7 +1864,7 @@ impl CudaForwardBody {
 
         let client = self.cold().service().client();
         self.clear_and_bind_call(client, &batch_call, false)?;
-        let batch_step = Step::new(requests.len(), 0, first.rows().capacity())?;
+        let batch_step = Step::new(requests.len(), 0, first.tokens().capacity())?;
         let cold = self.cold().plan();
         let mut dispatches = 0usize;
         let mut fused_dispatches = 0usize;
@@ -1959,7 +1960,7 @@ impl CudaForwardBody {
                         })
                         .collect::<Result<Vec<_>>>()?;
                     for row_base in (0..requests.len()).step_by(4) {
-                        let descriptor = template.bind_runtime_call(calls[row_base])?;
+                        let descriptor = template.bind_runtime_invocation(calls[row_base])?;
                         let (launched, fused) = self.enqueue_gdn_convolution_cohort(
                             cold,
                             node_index,
@@ -1991,7 +1992,7 @@ impl CudaForwardBody {
                         })
                         .collect::<Result<Vec<_>>>()?;
                     if requests.len() == 8 {
-                        let descriptor = template.bind_runtime_call(calls[0])?;
+                        let descriptor = template.bind_runtime_invocation(calls[0])?;
                         let (launched, fused) = self.enqueue_gdn_recurrent_cohort(
                             cold,
                             node_index,
@@ -2006,7 +2007,7 @@ impl CudaForwardBody {
                         fused_dispatches += fused;
                     } else {
                         for row_base in (0..requests.len()).step_by(4) {
-                            let descriptor = template.bind_runtime_call(calls[row_base])?;
+                            let descriptor = template.bind_runtime_invocation(calls[row_base])?;
                             let (launched, fused) = self.enqueue_gdn_recurrent_cohort(
                                 cold,
                                 node_index,
@@ -2037,7 +2038,7 @@ impl CudaForwardBody {
                     };
                     let descriptors = calls
                         .iter()
-                        .map(|call| template.bind_runtime_call(call))
+                        .map(|call| template.bind_runtime_invocation(call))
                         .collect::<Result<Vec<_>>>()?;
                     let inputs = descriptors[0].input_elements()?;
                     for descriptor in &descriptors[1..] {
@@ -2064,7 +2065,7 @@ impl CudaForwardBody {
                     let state_layout = ResidentBufferLayout::new(
                         ResidentPhysicalType::Bf16,
                         first
-                            .rows()
+                            .tokens()
                             .capacity()
                             .checked_mul(kv_width)
                             .ok_or_else(|| {
@@ -2115,7 +2116,7 @@ impl CudaForwardBody {
                         Bf16PrivateKvGeometry::<8> {
                             bases,
                             tokens: 1,
-                            capacity: first.rows().capacity(),
+                            capacity: first.tokens().capacity(),
                             slab: kv_width,
                             value_offset,
                             packed_row_stride,
@@ -2151,7 +2152,7 @@ impl CudaForwardBody {
                         })
                         .collect::<Result<Vec<_>>>()?;
                     for row_base in (0..requests.len()).step_by(4) {
-                        let descriptor = template.bind_runtime_call(calls[row_base])?;
+                        let descriptor = template.bind_runtime_invocation(calls[row_base])?;
                         let bases = std::array::from_fn(|lane| positions[row_base + lane]);
                         let inputs = descriptor.input_elements()?;
                         let outputs = descriptor.output_elements()?;
@@ -2172,8 +2173,8 @@ impl CudaForwardBody {
                     continue;
                 }
                 for row in 0..requests.len() {
-                    let descriptor = template.bind_runtime_call(calls[row])?;
-                    let single_step = Step::new(1, positions[row], first.rows().capacity())?;
+                    let descriptor = template.bind_runtime_invocation(calls[row])?;
+                    let single_step = Step::new(1, positions[row], first.tokens().capacity())?;
                     let (launched, fused) = self
                         .enqueue_node(
                             flight,
@@ -2202,7 +2203,7 @@ impl CudaForwardBody {
                     };
                     let descriptors = calls
                         .iter()
-                        .map(|call| template.bind_runtime_call(call))
+                        .map(|call| template.bind_runtime_invocation(call))
                         .collect::<Result<Vec<_>>>()?;
                     let row_counts = [1usize; 8];
                     let row_counts = &row_counts[..calls.len()];
@@ -2265,7 +2266,7 @@ impl CudaForwardBody {
                     fused_dispatches += launched;
                     continue;
                 }
-                let descriptor = template.bind_runtime_call(&batch_call)?;
+                let descriptor = template.bind_runtime_invocation(&batch_call)?;
                 let row_positions =
                     matches!(template.kind(), SourceOperatorKind::QkRmsRotaryGated(_))
                         .then_some(positions.as_slice());

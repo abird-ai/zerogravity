@@ -1,14 +1,14 @@
 //! Genuine one-call Prefill47 attempt, exactly three GDN layers, no publication.
 use super::*;
-use crate::cuda::native::fixed_prompt_model::{FixedPromptCallKind, FixedPromptModelBinding};
-use zerogravity_core::accelerator::program::SourceCall;
+use crate::cuda::native::fixed_prompt_model::{FixedPromptInvocationKind, FixedPromptModelBinding};
+use zerogravity_core::accelerator::program::TextInvocation;
 impl GdnAttemptSchedule {
     pub(in crate::resident_inference) fn new_fixed_prompt_model_prefix(
         source: &FixedPromptModelBinding,
         attempt: RootAttempt,
     ) -> Result<Arc<Self>> {
-        if source.kind() != FixedPromptCallKind::Prefill
-            || source.record().call().source() != attempt.base().source()
+        if source.kind() != FixedPromptInvocationKind::Prefill
+            || source.record().invocation().source() != attempt.base().source()
             || attempt.base().source() != source.source().source_identity()
             || attempt.base().frontier() != 0
             || attempt.frontier() != 47
@@ -20,14 +20,14 @@ impl GdnAttemptSchedule {
         Ok(Arc::new(Self {
             base: attempt.base(),
             attempt,
-            invocations: vec![source.record().call().clone()],
+            invocations: vec![source.record().invocation().clone()],
             completed_layers: 3,
         }))
     }
 }
 impl AttemptPhaseBinding {
-    fn require_fixed_prompt_model_prefix_shape(&self, call: &SourceCall) -> Result<()> {
-        if FixedPromptCallKind::of(call)? != FixedPromptCallKind::Prefill
+    fn require_fixed_prompt_model_prefix_shape(&self, call: &TextInvocation) -> Result<()> {
+        if FixedPromptInvocationKind::of(call)? != FixedPromptInvocationKind::Prefill
             || self.phase_index != 0
             || self.prior.is_some()
             || self.schedule.completed_layers != 3
@@ -46,7 +46,7 @@ impl AttemptPhaseBinding {
         &self,
         session: &ResidentSession,
         attempt: &RootAttempt,
-        call: &SourceCall,
+        call: &TextInvocation,
     ) -> Result<()> {
         self.require_fixed_prompt_model_prefix_shape(call)?;
         self.require_binding(session, attempt, call, 0)
@@ -55,7 +55,7 @@ impl AttemptPhaseBinding {
         &self,
         permit: &PrefixPhaseEnqueue<'_>,
         service: &Arc<ResidentService>,
-        call: &SourceCall,
+        call: &TextInvocation,
     ) -> Result<()> {
         self.require_fixed_prompt_model_prefix_shape(call)?;
         self.require_permit(permit, service, call, 0)
@@ -82,17 +82,17 @@ impl AttemptPhaseBinding {
 mod tests {
     use super::*;
     use zerogravity_core::accelerator::SourceIdentity;
-    use zerogravity_core::accelerator::program::SourceCallMode;
+    use zerogravity_core::accelerator::program::InvocationPhase;
     use zerogravity_core::accelerator::program::TeacherSpan;
-    fn call(source: SourceIdentity) -> SourceCall {
-        let rows = zerogravity_core::accelerator::program::SourceRows::from_teacher_span(
+    fn call(source: SourceIdentity) -> TextInvocation {
+        let rows = zerogravity_core::accelerator::program::TokenSpan::from_teacher_span(
             TeacherSpan::new(source, 0, 512, 248320, &[11; 47]).unwrap(),
             248320,
         )
         .unwrap();
-        SourceCall::new(rows, SourceCallMode::Prefill).unwrap()
+        TextInvocation::new(rows, InvocationPhase::Prefill).unwrap()
     }
-    fn schedule(call: &SourceCall, layers: usize, tokens: u64) -> Arc<GdnAttemptSchedule> {
+    fn schedule(call: &TextInvocation, layers: usize, tokens: u64) -> Arc<GdnAttemptSchedule> {
         let authority = SessionAuthority::new(call.source()).unwrap();
         Arc::new(GdnAttemptSchedule {
             base: authority.binding(),
@@ -116,7 +116,7 @@ mod tests {
                     .is_err()
             );
         }
-        assert_eq!(call.rows().len(), 47);
+        assert_eq!(call.tokens().len(), 47);
     }
     #[test]
     fn equal_teacher_words_from_new_issuer_cannot_replace_scheduled_call() {

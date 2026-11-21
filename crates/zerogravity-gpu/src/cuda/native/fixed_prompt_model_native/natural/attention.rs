@@ -48,8 +48,8 @@ struct Site {
 }
 pub(crate) struct AttentionCall {
     storage: Arc<AttentionStorage>,
-    input: Arc<FixedPromptCallInput>,
-    state: Arc<FixedPromptCallState>,
+    input: Arc<FixedPromptInvocationInput>,
+    state: Arc<FixedPromptInvocationState>,
     values: Arc<ModelValues>,
     positions: Arc<FixedPromptPositions>,
     sites: BTreeMap<usize, Site>,
@@ -226,8 +226,8 @@ impl AttentionStorage {
     }
     pub(crate) fn bind(
         self: &Arc<Self>,
-        input: Arc<FixedPromptCallInput>,
-        state: Arc<FixedPromptCallState>,
+        input: Arc<FixedPromptInvocationInput>,
+        state: Arc<FixedPromptInvocationState>,
         values: Arc<ModelValues>,
         positions: Arc<FixedPromptPositions>,
         weights: &ModelWeights,
@@ -245,7 +245,7 @@ impl AttentionStorage {
         self.images.require_service(values.service())?;
         self.buffers
             .rotary
-            .require_call(input.source(), input.call(), values.service())?;
+            .require_call(input.source(), input.invocation(), values.service())?;
         let metadata = input.source().reserve_workspace(512 * 1024)?;
         let mut sites = BTreeMap::new();
         let mut index = BTreeMap::new();
@@ -343,7 +343,7 @@ impl AttentionStorage {
                             Error::State("canonical required attention role absent".into())
                         })?;
                         if l.bytes() as u64 != b.bytes
-                            || l.source_identity() != input.call().source()
+                            || l.source_identity() != input.invocation().source()
                             || !Arc::ptr_eq(l.service(), values.service())
                             || l.service_generation() != values.service().generation()
                         {

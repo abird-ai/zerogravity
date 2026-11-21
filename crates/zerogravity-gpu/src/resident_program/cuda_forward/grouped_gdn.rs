@@ -134,7 +134,7 @@ impl CudaForwardBody {
         let layout = ResidentBufferLayout::new(ResidentPhysicalType::F32, groups.channels() * 3)?;
         prior.require_layout(layout)?;
         candidate.require_layout(layout)?;
-        let runtime = self.gdn_plan(step, descriptor.call().mode())?;
+        let runtime = self.gdn_plan(step, descriptor.invocation().phase())?;
         self.write_gdn_controls(&runtime)?;
         let client = self.cold().service().client();
         let cache = self.cold().gdn_internal(B::CacheArena)?;
@@ -285,7 +285,7 @@ impl CudaForwardBody {
             ResidentBufferLayout::new(ResidentPhysicalType::F32, groups.value * 128 * 128)?;
         prior.require_layout(layout)?;
         candidate.require_layout(layout)?;
-        let runtime = self.gdn_plan(step, descriptor.call().mode())?;
+        let runtime = self.gdn_plan(step, descriptor.invocation().phase())?;
         self.write_gdn_controls(&runtime)?;
         let client = self.cold().service().client();
         let cache = self.cold().gdn_internal(B::CacheArena)?;

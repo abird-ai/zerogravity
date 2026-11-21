@@ -2,9 +2,9 @@
 //! Prior binders: short_hf_model, canonical47_model, resident_program::native.
 use super::*;
 use crate::plan::{
-    GdnProjection, PromptCall, QwenFragmentPlan, QwenFragmentView, QwenGdnCall, QwenGdnConv,
-    QwenGdnRecurrent, QwenModelVariant, QwenOperation, QwenOperator, QwenPlan, QwenProjection,
-    QwenRmsSite,
+    GdnProjection, PromptInvocation, QwenFragmentPlan, QwenFragmentView, QwenGdnConv,
+    QwenGdnInvocation, QwenGdnRecurrent, QwenModelVariant, QwenOperation, QwenOperator, QwenPlan,
+    QwenProjection, QwenRmsSite,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
@@ -77,13 +77,13 @@ pub use components::{
     ComponentImplementation, ComponentKernelCapture, ComponentOutput, PreparedComponent,
 };
 
-impl BoundPromptCall {
+impl BoundPromptInvocation {
     /// Exact supported text workload and source, before device/service preparation.
     pub fn prepare_program(self, record: QwenPlan) -> Result<PreparedPlan> {
-        self.call().validate()?;
+        self.prompt().model_invocation().validate()?;
         let source = self.source().source();
-        if self.source().model_profile() != self.call().model_profile()
-            || source.source_identity() != record.call().source()
+        if self.source().model_profile() != self.prompt().model_invocation().model_profile()
+            || source.source_identity() != record.model_invocation().source()
             || source.source().staging_chunk_bytes() != 1024 * 1024
             || source.owner().config().rms_norm_eps() != 1e-6
         {
@@ -93,7 +93,7 @@ impl BoundPromptCall {
         }
         let metadata = source.source().reserve_workspace(METADATA_BYTES)?;
         let analysis =
-            analyze_text_record(self.call(), &record, |op| source.validate_operator(op))?;
+            analyze_text_record(self.prompt(), &record, |op| source.validate_operator(op))?;
         let indices = analysis
             .rms
             .capacity()
@@ -124,7 +124,7 @@ impl OriginalWindowModelSource {
     }
     /// Preserve the existing .8B source and finite reference-call gate.
     pub fn prepare_reference_program(&self, record: QwenPlan) -> Result<PreparedPlan> {
-        record.call().request().reference_phase()?;
+        record.model_invocation().request().reference_phase()?;
         require_reference_record(self, &record)?;
         let metadata = self.source().reserve_workspace(METADATA_BYTES)?;
         require_embedding(self, record.plan())?;
@@ -285,7 +285,7 @@ fn require_selected_value(plan: &ForwardPlan, id: ValueId) -> Result<()> {
         .nodes()
         .get(tag.node_index())
         .ok_or_else(|| Error::State("Qwen selected producer outside plan".into()))?;
-    if Some(tag.call()) != plan.source_call()
+    if Some(tag.invocation()) != plan.text_invocation()
         || node.outputs.get(tag.output_index()) != Some(&id)
         || tag.inputs() != node.inputs
     {
@@ -314,7 +314,7 @@ fn require_embedding(source: &OriginalWindowModelSource, plan: &ForwardPlan) -> 
         || descriptor.matrices().len() != 1
         || !node.inputs.is_empty()
         || node.outputs.len() != 1
-        || Some(descriptor.call()) != plan.source_call()
+        || Some(descriptor.invocation()) != plan.text_invocation()
         || descriptor.matrices()[0] != source.tied_output_descriptor()?
     {
         return Err(Error::State(
@@ -379,14 +379,14 @@ pub(crate) struct HeadView {
     pub(crate) output_bytes: usize,
 }
 impl HeadView {
-    fn for_call(call: &PromptCall) -> Result<Self> {
-        call.validate()?;
-        let row = call
+    fn for_prompt(prompt: &PromptInvocation) -> Result<Self> {
+        prompt.validate()?;
+        let row = prompt
             .model_profile()
             .hidden_size()
             .checked_mul(2)
             .ok_or_else(|| Error::Limit("Qwen text program head row bytes".into()))?;
-        let rows = call.span().len();
+        let rows = prompt.span().len();
         let full = rows
             .checked_mul(row)
             .ok_or_else(|| Error::Limit("Qwen text program full head input".into()))?;
@@ -451,11 +451,11 @@ fn typed(record: &QwenPlan, index: usize) -> Result<QwenOperator> {
         .operator(index)?
         .ok_or_else(|| Error::State("Qwen text program actual typed source node absent".into()))
 }
-fn require_text_record(call: &PromptCall, record: &QwenPlan) -> Result<()> {
-    call.validate()?;
+fn require_text_record(prompt: &PromptInvocation, record: &QwenPlan) -> Result<()> {
+    prompt.validate()?;
     let plan = record.plan();
-    if record.call() != call.as_source_call()
-        || plan.source() != call.span().source()
+    if record.model_invocation() != prompt.model_invocation()
+        || plan.source() != prompt.span().source()
         || plan.nodes().len() != 255
         || plan.state_nodes().len() != 255
         || plan.values().len() != 327
@@ -465,7 +465,7 @@ fn require_text_record(call: &PromptCall, record: &QwenPlan) -> Result<()> {
         || record.boundaries().len() != 24
         || record.normalized() != ValueId(324)
         || record.logits() != ValueId(326)
-        || record.selected_row() != call.span().len() - 1
+        || record.selected_row() != prompt.span().len() - 1
     {
         return Err(Error::State(
             "Qwen text program SAME source-issued255/327 unpublished whole record".into(),
@@ -473,10 +473,10 @@ fn require_text_record(call: &PromptCall, record: &QwenPlan) -> Result<()> {
     }
     for (index, node) in plan.nodes().iter().enumerate() {
         if let Some(descriptor) = record.operator(index)?
-            && descriptor.call() != record.call()
+            && descriptor.model_invocation() != record.model_invocation()
         {
             return Err(Error::State(
-                "Qwen text program foreign operator call issuer".into(),
+                "Qwen text program foreign model invocation issuer".into(),
             ));
         }
         for id in node.inputs.iter().chain(&node.outputs) {
@@ -485,17 +485,17 @@ fn require_text_record(call: &PromptCall, record: &QwenPlan) -> Result<()> {
                 .ok_or_else(|| {
                     Error::State("Qwen text program absent source value provenance".into())
                 })?
-                .require_invocation(call.request())?;
+                .require_invocation(prompt.request())?;
         }
     }
     Ok(())
 }
 fn analyze_text_record(
-    call: &PromptCall,
+    prompt: &PromptInvocation,
     record: &QwenPlan,
     mut validate_member: impl FnMut(&QwenOperator) -> Result<()>,
 ) -> Result<WholeAnalysis> {
-    require_text_record(call, record)?;
+    require_text_record(prompt, record)?;
     for (index, node) in record.plan().nodes().iter().enumerate() {
         if let Some(descriptor) = &record.operator(index)? {
             descriptor.validate()?;
@@ -663,7 +663,7 @@ fn analyze_text_record(
             "Qwen text program complete320 roles/49 RMS/18 GDN/6attention/114 groups".into(),
         ));
     }
-    let head = HeadView::for_call(call)?;
+    let head = HeadView::for_prompt(prompt)?;
     let final_node = &record.plan().nodes()[253];
     let head_node = &record.plan().nodes()[254];
     if typed(record, 253)?.kind() != QwenOperation::ResidualRms(QwenRmsSite::Final)
@@ -689,8 +689,8 @@ fn analyze_text_record(
 fn require_reference_record(source: &OriginalWindowModelSource, record: &QwenPlan) -> Result<()> {
     positions::require_reference_positions(source)?;
     source.require_small_model_source()?;
-    record.call().validate()?;
-    if record.call().model_profile() != QwenModelVariant::Qwen800M {
+    record.model_invocation().validate()?;
+    if record.model_invocation().model_profile() != QwenModelVariant::Qwen800M {
         return Err(Error::Unsupported(
             "native full24 source geometry remains .8B only".into(),
         ));
@@ -717,7 +717,7 @@ fn require_reference_record(source: &OriginalWindowModelSource, record: &QwenPla
             record
                 .value_provenance(*id)?
                 .ok_or_else(|| Error::State("full24 actual recipe provenance absent".into()))?
-                .require_invocation(record.call().request())?;
+                .require_invocation(record.model_invocation().request())?;
         }
     }
     Ok(())
@@ -742,12 +742,15 @@ fn fragment_rms() -> SourceRmsGeometry {
         gamma: SourceGamma::OnePlus,
     }
 }
-fn source_descriptor<'a>(node: &'a PlanNode, call: &QwenGdnCall) -> Result<&'a SourceOperator> {
+fn source_descriptor<'a>(
+    node: &'a PlanNode,
+    call: &QwenGdnInvocation,
+) -> Result<&'a SourceOperator> {
     match &node.operation {
         PlanOperation::SourceOperator {
             descriptor,
             state: None,
-        } if descriptor.call() == &call.source_call()?
+        } if descriptor.invocation() == &call.text_invocation()?
             && descriptor.numerical_contract() == NumericalContract::CudaSm86Bf16ReferenceV1 =>
         {
             Ok(descriptor)
@@ -766,7 +769,7 @@ fn require_fragment_recipe(
     let metadata = source.source().reserve_workspace(64 * 1024)?;
     let plan = record.plan();
     let base = record.invocation();
-    if plan.source_call() != Some(&base.source_call()?) {
+    if plan.text_invocation() != Some(&base.text_invocation()?) {
         return Err(Error::State(
             "native fragment common call issuer differs".into(),
         ));
@@ -819,7 +822,7 @@ fn require_fragment_recipe(
     let mut branch = raw;
     let mut residual = raw;
     let projection = |index: usize,
-                      call: &QwenGdnCall,
+                      call: &QwenGdnInvocation,
                       kind: GdnProjection,
                       input: zerogravity_core::accelerator::program::ValueId,
                       roles: &[M]|
@@ -868,7 +871,7 @@ fn require_fragment_recipe(
     };
     for i in 0..layers {
         let layer = QwenPrefixLayer::new(plan.source(), i)?;
-        let call = QwenGdnCall::new(layer, base.reference_phase()?, base.teachers().clone())?;
+        let call = QwenGdnInvocation::new(layer, base.reference_phase()?, base.teachers().clone())?;
         let (normal, carried) = if i == 0 {
             (first_normal, raw)
         } else {

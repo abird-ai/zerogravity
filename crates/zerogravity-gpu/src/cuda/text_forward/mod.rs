@@ -15,7 +15,7 @@ use std::sync::Arc;
 use zerogravity_core::{Error, Result};
 
 const THREADS: u32 = 256;
-/// Maximum rows in one authenticated causal source call/chunk. This is a
+/// Maximum rows in one authenticated causal text invocation/chunk. This is a
 /// semantic call bound, not a limit on row-independent physical work.
 pub const MAX_CAUSAL_ROWS: usize = 64;
 pub const MAX_CONTEXT_CAPACITY: usize = 32_768;
@@ -176,7 +176,7 @@ impl RowExtent {
 }
 
 /// Active rows in a row-independent physical launch plus its stable pointer
-/// bound. Unlike [`RowExtent`], this carries no source-call, cache-frontier or
+/// bound. Unlike [`RowExtent`], this carries no text-invocation, cache-frontier or
 /// session semantics, so callers may concatenate independently authenticated
 /// rows before invoking a stateless primitive.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -219,7 +219,7 @@ impl From<RowExtent> for StatelessRowExtent {
 }
 
 /// Exact Torch-compatible reduction grouping for forward vector RMS. This is
-/// numerical geometry only: it owns no source call, model/session/root or
+/// numerical geometry only: it owns no text invocation, model/session/root or
 /// physical launch authority. Independent calls may share one stateless launch
 /// only when their reduction classes compare equal.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1770,7 +1770,7 @@ impl Program {
     }
 
     /// Physical BF16 elements in one packed Q/G/K/V row. Geometry only; no
-    /// source-call or model-family policy is attached to this value.
+    /// text-invocation or model-family policy is attached to this value.
     pub(crate) fn attention_row_stride(&self) -> Result<usize> {
         checked_mul(
             2,

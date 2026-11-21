@@ -8,7 +8,7 @@ use super::{
     projection_cubin::{native_error, not_cancelled, resident::PreparedImages},
     text_native::{NativeCatalogue, TextKernelCapture, TextNativeStorage},
 };
-use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextCallInput};
+use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextInvocationInput};
 use crate::resident_leases::{ResidentInitialization, ResidentLease, ResidentService};
 use crate::resident_program::BufferRange;
 use cubecl::{
@@ -64,18 +64,18 @@ pub(crate) struct CohortInputGeometry {
     pub(crate) physical_rows: usize,
     pub(crate) native_call: usize,
 }
-pub(crate) fn input_geometry(inputs: &[Arc<TextCallInput>]) -> Result<CohortInputGeometry> {
+pub(crate) fn input_geometry(inputs: &[Arc<TextInvocationInput>]) -> Result<CohortInputGeometry> {
     if inputs.len() != 4 {
         return Err(Error::Unsupported("B4 actual request population".into()));
     }
     for input in inputs {
-        if input.scope().call() != input.call() {
+        if input.scope().invocation() != input.invocation() {
             return Err(Error::State("B4 actual call/record issuer differs".into()));
         }
     }
     let calls: [_; 4] = std::array::from_fn(|row| {
         (
-            inputs[row].call(),
+            inputs[row].invocation(),
             inputs[row].prompt_tokens(),
             inputs[row].scope().native_capture(),
         )
@@ -83,7 +83,7 @@ pub(crate) fn input_geometry(inputs: &[Arc<TextCallInput>]) -> Result<CohortInpu
     packets::geometry(&calls)
 }
 
-pub(crate) fn require_input_shape(inputs: &[Arc<TextCallInput>]) -> Result<usize> {
+pub(crate) fn require_input_shape(inputs: &[Arc<TextInvocationInput>]) -> Result<usize> {
     packets::call(inputs)
 }
 
@@ -269,7 +269,7 @@ impl CohortNativeLibrary {
     /// semantic leases from the sealed source weights/B values/state controls.
     pub(crate) fn bind(
         self: &Arc<Self>,
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         node: usize,
         roles: &BTreeMap<Role, ResidentLease>,
         status: ResidentLease,
@@ -299,7 +299,9 @@ impl CohortNativeLibrary {
             let Some(descriptor) = &input.record().operator(node)? else {
                 return Err(Error::State("B4 native actual typed source node".into()));
             };
-            if descriptor.call() != input.call() || kind.is_some_and(|k| k != descriptor.kind()) {
+            if descriptor.invocation() != input.invocation()
+                || kind.is_some_and(|k| k != descriptor.kind())
+            {
                 return Err(Error::State(
                     "B4 every original source descriptor/invocation".into(),
                 ));
@@ -431,7 +433,7 @@ struct BoundPacket {
 }
 pub(crate) struct CohortNativeSite {
     library: Arc<CohortNativeLibrary>,
-    inputs: Box<[Arc<TextCallInput>]>,
+    inputs: Box<[Arc<TextInvocationInput>]>,
     node: usize,
     status: ResidentLease,
     packets: Box<[BoundPacket]>,

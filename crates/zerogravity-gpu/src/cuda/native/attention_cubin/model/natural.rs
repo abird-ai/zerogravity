@@ -10,14 +10,14 @@ impl ModelAttentionBinding {
     ) -> Result<Arc<Self>> {
         same_recipe(self.values.record(), values.record())?;
         if self.layer != domains.layer()
-            || domains.call() != values.record().call()
+            || domains.invocation() != values.record().invocation()
             || !Arc::ptr_eq(values.service(), self.values.service())
         {
             return Err(Error::State(
                 "natural attention original value/state slot".into(),
             ));
         }
-        positions.require_invocation(values.record().call())?;
+        positions.require_invocation(values.record().invocation())?;
         crate::resident_program::natural_binding::same_lease(
             self.positions.prepared_lease(),
             positions.prepared_lease(),
@@ -30,7 +30,7 @@ impl ModelAttentionBinding {
             )?;
         }
         self.rotary
-            .require_call(&self.source, values.record().call(), values.service())?;
+            .require_call(&self.source, values.record().invocation(), values.service())?;
         let kv = self.kv.bind_natural(domains.clone())?;
         Ok(Arc::new(Self {
             values,

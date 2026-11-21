@@ -18,8 +18,8 @@ impl DecodeCohortWorkspace {
         scopes: &[Arc<TextModelBinding>],
     ) -> Result<(Vec<ResidentPlaneLayout>, [Vec<ResidentViewLayout>; 2])> {
         capture.require_cold_scopes(scopes.iter().map(Arc::as_ref))?;
-        let initial = capture.cold_scope_index(SourceCallMode::Prefill, 47)?;
-        let cached = capture.cold_scope_index(SourceCallMode::Decode, 1)?;
+        let initial = capture.cold_scope_index(InvocationPhase::Prefill, 47)?;
+        let cached = capture.cold_scope_index(InvocationPhase::Decode, 1)?;
         let phases = crate::cuda::native::cohort_native::CohortPhases::for_capture(capture);
         let cached_only = !phases.contains(true);
         let mut planes = Vec::with_capacity(327);

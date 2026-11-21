@@ -13,7 +13,7 @@ pub use config::{
 use zerogravity_core::accelerator::program::SourceConvGeometry;
 #[cfg(feature = "cuda-native-qualification")]
 use zerogravity_core::accelerator::program::{
-    PlanOperation, SourceCall, SourceCallMode, SourceOperatorKind,
+    InvocationPhase, PlanOperation, SourceOperatorKind, TextInvocation,
 };
 
 #[cfg(feature = "cuda-native-qualification")]
@@ -25,20 +25,20 @@ pub(crate) struct TextGdnGeometry {
 }
 #[cfg(feature = "cuda-native-qualification")]
 impl TextGdnGeometry {
-    pub(crate) fn for_call(
-        call: &SourceCall,
+    pub(crate) fn for_invocation(
+        call: &TextInvocation,
         implementation: TextGdnImplementation,
     ) -> Result<Self> {
-        if call.rows().len() != implementation.input_tokens()
-            || (call.mode() == SourceCallMode::Decode) != implementation.is_decode()
+        if call.tokens().len() != implementation.input_tokens()
+            || (call.phase() == InvocationPhase::Decode) != implementation.is_decode()
         {
             return Err(Error::State(
-                "actual GDN source call versus explicit implementation".into(),
+                "actual GDN text invocation versus explicit implementation".into(),
             ));
         }
-        let phase = match call.mode() {
-            SourceCallMode::Prefill => GdnPhase::TextPrefill(call.rows().len()),
-            SourceCallMode::Decode => GdnPhase::CachedDecode,
+        let phase = match call.phase() {
+            InvocationPhase::Prefill => GdnPhase::TextPrefill(call.tokens().len()),
+            InvocationPhase::Decode => GdnPhase::CachedDecode,
         };
         implementation.require_phase(phase)?;
         Ok(Self {
@@ -283,7 +283,8 @@ impl TextGdnCode {
         workspace: Arc<TextGdnWorkspace>,
     ) -> Result<Arc<Self>> {
         scope.require_values(&values)?;
-        let geometry = TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?;
+        let geometry =
+            TextGdnGeometry::for_invocation(scope.invocation(), scope.gdn_implementation())?;
         // Validate the complete actual implementation before private allocation.
         geometry.require_implementation()?;
         workspace.require_scope(&scope, &values)?;
@@ -308,9 +309,9 @@ impl TextGdnCode {
                 "text GDN convolution source geometry absent".into(),
             ));
         };
-        if descriptor.call() != scope.call() {
+        if descriptor.invocation() != scope.invocation() {
             return Err(Error::State(
-                "text GDN convolution source call differs".into(),
+                "text GDN convolution text invocation differs".into(),
             ));
         }
         parameters.require_text(&scope, layer)?;

@@ -112,7 +112,7 @@ impl OutWeights {
         values.service().ensure_usable()?;
         if !Arc::ptr_eq(recipe, &self.source.recipe)
             || !Arc::ptr_eq(self.lease.service(), values.service())
-            || self.lease.source_identity() != recipe.bindings().call().source()
+            || self.lease.source_identity() != recipe.bindings().invocation().source()
             || self.lease.service_generation() != values.service().generation()
             || self.lease.role() != BufferRole::ImmutableWeights
             || initialized && !self.lease.is_initialized()

@@ -5,7 +5,7 @@ use crate::cuda::native::{
     cohort_native::Role, model_rotary::ModelRotary, text_native::TextNativeStorage,
 };
 use crate::resident_inference::native_fragment::{
-    PrefixPhaseEnqueue, model_state::BoundModelState, text::TextCallInput,
+    PrefixPhaseEnqueue, model_state::BoundModelState, text::TextInvocationInput,
 };
 use crate::resident_leases::{ResidentInitialization, ResidentLease, ResidentService};
 use zerogravity_artifacts::source_weights::WindowWorkspace;
@@ -21,7 +21,7 @@ pub(super) struct AttentionOwners {
     pub(super) transport: Arc<super::CohortTransportLibrary>,
 }
 pub(super) struct CohortAttention {
-    inputs: Box<[Arc<TextCallInput>]>,
+    inputs: Box<[Arc<TextInvocationInput>]>,
     values: Arc<CohortValues>,
     _native: Arc<TextNativeStorage>,
     rotary: Arc<ModelRotary>,
@@ -34,12 +34,12 @@ fn bytes32(values: impl IntoIterator<Item = i32>) -> Vec<u8> {
     values.into_iter().flat_map(i32::to_le_bytes).collect()
 }
 pub(super) struct CohortAttentionControls {
-    inputs: Box<[Arc<TextCallInput>]>,
+    inputs: Box<[Arc<TextInvocationInput>]>,
     roles: BTreeMap<Role, ResidentLease>,
 }
 impl CohortAttentionControls {
     pub(super) fn prepare(
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         init: &mut ResidentInitialization<'_>,
     ) -> Result<Arc<Self>> {
         crate::cuda::native::cohort_native::require_input_shape(inputs)?;
@@ -114,7 +114,7 @@ impl CohortAttentionControls {
     }
     pub(super) fn kv_sources(
         &self,
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         service: &Arc<ResidentService>,
     ) -> Result<[ResidentLease; 3]> {
         self.require_inputs(inputs)?;
@@ -137,7 +137,7 @@ impl CohortAttentionControls {
         // transport enqueue; these are its already retained readonly owners.
         Ok(sources)
     }
-    fn require_inputs(&self, inputs: &[Arc<TextCallInput>]) -> Result<()> {
+    fn require_inputs(&self, inputs: &[Arc<TextInvocationInput>]) -> Result<()> {
         if inputs.len() != self.inputs.len()
             || inputs
                 .iter()
@@ -153,7 +153,7 @@ impl CohortAttentionControls {
 }
 impl CohortAttention {
     pub(super) fn prepare(
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         states: &[Arc<BoundModelState>],
         values: Arc<CohortValues>,
         layer: usize,
@@ -190,7 +190,7 @@ impl CohortAttention {
                     "B4 every original attention producer/span".into(),
                 ));
             }
-            rotary.require_call(input.source(), input.call(), values.service())?;
+            rotary.require_call(input.source(), input.invocation(), values.service())?;
         }
         let parameters = native.cohort_qk_parameters(inputs, layer)?;
         let metadata = Arc::new(inputs[0].source().reserve_workspace(512 * 1024)?);
@@ -338,7 +338,7 @@ impl CohortAttention {
         for (input, permit) in self.inputs.iter().zip(permits) {
             input.require_permit(permit, self.values.service())?;
             self.rotary
-                .require_call(input.source(), input.call(), self.values.service())?;
+                .require_call(input.source(), input.invocation(), self.values.service())?;
         }
         Ok(())
     }

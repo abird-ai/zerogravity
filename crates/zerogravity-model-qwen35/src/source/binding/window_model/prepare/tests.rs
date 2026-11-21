@@ -8,8 +8,9 @@ mod fixture {
     use super::*;
     use crate::plan::QwenPlanBuilder;
     use crate::plan::{
-        PromptCall, PromptSpan, PromptWorkload, QwenEmbedding, QwenLayer, QwenModelVariant,
-        QwenOperation, QwenOperator, QwenPlan, QwenProjection, QwenRmsSite, QwenSourceCall,
+        PromptInvocation, PromptSpan, PromptWorkload, QwenEmbedding, QwenLayer,
+        QwenModelInvocation, QwenModelVariant, QwenOperation, QwenOperator, QwenPlan,
+        QwenProjection, QwenRmsSite,
     };
     use zerogravity_core::encoding::StoredTensorEncoding;
     fn members(p: QwenProjection, profile: QwenModelVariant) -> Vec<(&'static str, usize)> {
@@ -45,16 +46,16 @@ mod fixture {
         workload: PromptWorkload,
         base: Option<usize>,
         id: u32,
-    ) -> PromptCall {
+    ) -> PromptInvocation {
         let span = match base {
             None => PromptSpan::prefill(source, workload, &vec![id; workload.prompt_tokens()]),
             Some(base) => PromptSpan::cached(source, workload, base, id),
         }
         .unwrap();
-        PromptCall::new(profile, span).unwrap()
+        PromptInvocation::new(profile, span).unwrap()
     }
     fn descriptor(
-        call: &QwenSourceCall,
+        call: &QwenModelInvocation,
         layer: Option<QwenLayer>,
         kind: QwenOperation,
     ) -> QwenOperator {
@@ -158,12 +159,12 @@ mod fixture {
         .collect();
         QwenOperator::new(call.clone(), layer, kind, matrices, parameters).unwrap()
     }
-    pub(super) fn record(call: &PromptCall) -> QwenPlan {
-        let call = call.as_source_call();
+    pub(super) fn record(call: &PromptInvocation) -> QwenPlan {
+        let call = call.model_invocation();
         let mut builder = QwenPlanBuilder::new_model(call.clone()).unwrap();
         let mut branch = builder
             .source_embedding(
-                &QwenEmbedding::for_call(
+                &QwenEmbedding::for_model_invocation(
                     SourceTensor {
                         source: call.source(),
                         name: "model.language_model.embed_tokens.weight".into(),
@@ -275,8 +276,8 @@ fn head_selects_actual_last_row_for_each_variant_and_phase() -> Result<()> {
         for count in [47, 57, 62, 67, 72] {
             let workload = PromptWorkload::from_prompt_tokens(count)?;
             let span = PromptSpan::prefill(source, workload, &vec![11; count])?;
-            let call = PromptCall::new(profile, span)?;
-            let head = HeadView::for_call(&call)?;
+            let call = PromptInvocation::new(profile, span)?;
+            let head = HeadView::for_prompt(&call)?;
             assert_eq!(
                 head,
                 HeadView {
@@ -288,9 +289,11 @@ fn head_selects_actual_last_row_for_each_variant_and_phase() -> Result<()> {
             );
             assert!(call.request().reference_phase().is_err());
             for base in workload.cached_bases() {
-                let call =
-                    PromptCall::new(profile, PromptSpan::cached(source, workload, base, 353)?)?;
-                let head = HeadView::for_call(&call)?;
+                let call = PromptInvocation::new(
+                    profile,
+                    PromptSpan::cached(source, workload, base, 353)?,
+                )?;
+                let head = HeadView::for_prompt(&call)?;
                 assert_eq!(
                     (head.full_bytes, head.offset, head.selected_bytes),
                     (row, 0, row)
@@ -306,7 +309,7 @@ fn head_selects_actual_last_row_for_each_variant_and_phase() -> Result<()> {
 fn fa_uses_the_original_appended_private_read_and_never_a_fake_write() -> Result<()> {
     use zerogravity_core::accelerator::program::{ConvDomain, StateEffect, StateVersion};
     let source = SourceIdentity::for_new_allocation()?;
-    let call = PromptCall::new(
+    let call = PromptInvocation::new(
         QwenModelVariant::Qwen2B,
         PromptSpan::prefill(
             source,
@@ -316,8 +319,8 @@ fn fa_uses_the_original_appended_private_read_and_never_a_fake_write() -> Result
     )?;
     for layer in [3, 7, 11, 15, 19, 23] {
         let descriptor = QwenOperator::new(
-            call.as_source_call().clone(),
-            Some(call.as_source_call().layer(layer)?),
+            call.model_invocation().clone(),
+            Some(call.model_invocation().layer(layer)?),
             QwenOperation::FlashAttention,
             Vec::new(),
             Vec::new(),
@@ -367,7 +370,7 @@ fn fa_uses_the_original_appended_private_read_and_never_a_fake_write() -> Result
 }
 
 #[test]
-fn complete_metadata_for_both_variants_and_every_supported_call() -> Result<()> {
+fn complete_metadata_for_both_variants_and_every_supported_invocation() -> Result<()> {
     let source = SourceIdentity::for_new_allocation()?;
     for profile in [QwenModelVariant::Qwen800M, QwenModelVariant::Qwen2B] {
         for prompt_tokens in [47, 57, 62, 67, 72] {
@@ -378,7 +381,7 @@ fn complete_metadata_for_both_variants_and_every_supported_call() -> Result<()> 
                 let mut members = 0;
                 let analysis = analyze_text_record(&call, &record, |operator| {
                     members += 1;
-                    assert_eq!(operator.call(), call.as_source_call());
+                    assert_eq!(operator.model_invocation(), call.model_invocation());
                     Ok(())
                 })?;
                 require_analysis_values(&record, &analysis)?;
@@ -511,11 +514,11 @@ fn into_plan_moves_graph_and_preserves_unpublished_math_and_issuer() -> Result<(
     );
     let record = fixture::record(&call);
     let nodes = record.plan().nodes().as_ptr();
-    let source_call = record.plan().source_call().cloned();
+    let text_invocation = record.plan().text_invocation().cloned();
     let output = record.logits();
     let plan = record.into_plan();
     assert_eq!(plan.nodes().as_ptr(), nodes);
-    assert_eq!(plan.source_call(), source_call.as_ref());
+    assert_eq!(plan.text_invocation(), text_invocation.as_ref());
     assert_eq!(plan.frontier_delta(), 0);
     assert!(plan.logits().is_none());
     require_selected_value(&plan, output)?;

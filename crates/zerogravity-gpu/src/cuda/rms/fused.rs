@@ -245,7 +245,7 @@ fn source_owner(
     let pooled = definitions.is_some();
     #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     if pooled
-        && !matches!(&binding,RmsSource::Model(b) if b.operator().call().rows().len() == rows.count())
+        && !matches!(&binding,RmsSource::Model(b) if b.operator().invocation().tokens().len() == rows.count())
     {
         return Err(Error::State(
             "pooled source budget requires actual text binding".into(),
@@ -301,7 +301,7 @@ fn source_owner(
         }
         RmsSource::Model(binding) => {
             binding.require_source(binding.source())?;
-            if binding.operator().call().rows().len() != rows.count() {
+            if binding.operator().invocation().tokens().len() != rows.count() {
                 return Err(Error::State("full-model RMS actual request rows".into()));
             }
             let name = binding.gamma_name().to_owned();
@@ -450,7 +450,7 @@ impl FusedRmsPrepared {
         correlation: u64,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
-        let rows = Rows::new(binding.operator().call().rows().len())?;
+        let rows = Rows::new(binding.operator().invocation().tokens().len())?;
         Self::prepare_model_rows(
             service,
             binding,
@@ -476,7 +476,7 @@ impl FusedRmsPrepared {
         if !matches!(
             binding.operator().kind(),
             zerogravity_core::accelerator::program::SourceOperatorKind::ResidualRms(_)
-        ) || binding.operator().call().rows().len() != rows.count()
+        ) || binding.operator().invocation().tokens().len() != rows.count()
         {
             return Err(Error::State(
                 "dual RMS actual operator/row storage differs".into(),
@@ -509,19 +509,19 @@ impl FusedRmsPrepared {
         if !matches!(
             binding.operator().kind(),
             zerogravity_core::accelerator::program::SourceOperatorKind::ResidualRms(_)
-        ) || binding.operator().call() != scope.record().call()
+        ) || binding.operator().invocation() != scope.record().invocation()
         {
             return Err(Error::State(
                 "fixed_prompt actual dual RMS full-record source site".into(),
             ));
         }
         let rows = match scope.kind() {
-            crate::cuda::native::fixed_prompt_model::FixedPromptCallKind::Prefill => {
+            crate::cuda::native::fixed_prompt_model::FixedPromptInvocationKind::Prefill => {
                 Rows::FixedPrompt
             }
-            crate::cuda::native::fixed_prompt_model::FixedPromptCallKind::Decode { .. } => {
-                Rows::One
-            }
+            crate::cuda::native::fixed_prompt_model::FixedPromptInvocationKind::Decode {
+                ..
+            } => Rows::One,
         };
         let prepared = Self::prepare_rows(
             service,
@@ -795,8 +795,8 @@ impl FusedRmsPrepared {
                 "RMS actual mathematical call/descriptor differs".into(),
             ));
         }
-        if actual.call().rows().len() != self.owner.rows.count()
-            || self.service.source_identity() != actual.call().source()
+        if actual.invocation().tokens().len() != self.owner.rows.count()
+            || self.service.source_identity() != actual.invocation().source()
         {
             return Err(Error::State(
                 "full-model RMS original source/site/call producer differs".into(),
@@ -818,8 +818,8 @@ impl FusedRmsPrepared {
             })?;
         binding.require_source(&self.owner.source)?;
         if binding.operator() != operator
-            || operator.call().rows().len() != self.owner.rows.count()
-            || self.service.source_identity() != operator.call().source()
+            || operator.invocation().tokens().len() != self.owner.rows.count()
+            || self.service.source_identity() != operator.invocation().source()
         {
             return Err(Error::State(
                 "full-model RMS original source/site/call producer differs".into(),

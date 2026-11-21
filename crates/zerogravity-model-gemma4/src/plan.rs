@@ -196,7 +196,7 @@ mod tests {
         );
     }
     #[test]
-    fn source_call_keeps_cached_one_and_original_attempt_without_publication() {
+    fn text_invocation_keeps_cached_one_and_original_attempt_without_publication() {
         let source = SourceIdentity::for_new_allocation().unwrap();
         let mut authority = SessionAuthority::new(source).unwrap();
         let geometry = TextCallGeometry::new(source, BF16_TEXT_VOCABULARY, 64).unwrap();

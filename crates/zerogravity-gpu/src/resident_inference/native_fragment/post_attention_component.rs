@@ -125,7 +125,9 @@ impl PostAttentionComponentReadback<'_> {
             .raw
             .get(13)
             .ok_or_else(|| Error::State("completed unrounded dual sum absent".into()))?;
-        if bytes.len() != self.record.call().rows().len() * self.arithmetic.kind().columns() * 4 {
+        if bytes.len()
+            != self.record.invocation().tokens().len() * self.arithmetic.kind().columns() * 4
+        {
             return Err(Error::State("unrounded dual sum dense F32 extent".into()));
         }
         Ok(&bytes[..])
@@ -310,10 +312,10 @@ where
     }
     not_cancelled(cancelled)?;
     let candidate = model.allocate_state(false).await?;
-    let invocation = record.call();
+    let invocation = record.invocation();
     let attempt = session
         .authority
-        .begin_advance(invocation.rows().len() as u64)?;
+        .begin_advance(invocation.tokens().len() as u64)?;
     let schedule = GdnAttemptSchedule::new_initial_component(&recipe, attempt.clone())?;
     let phase_binding = AttemptPhaseBinding::new(schedule.clone(), 0, None)?;
     let ticket = service.queue().submit(
@@ -336,7 +338,7 @@ where
             candidate: &candidate,
             plan: workspace.program.plan(),
             invocation,
-            phase: match (arithmetic.kind(), invocation.rows().len()) {
+            phase: match (arithmetic.kind(), invocation.tokens().len()) {
                 (ComponentKind::Qwen2B, 1) => crate::cuda::gdn::GdnPhase::InitialOne,
                 (ComponentKind::Qwen2B, 64) => crate::cuda::gdn::GdnPhase::Initial64,
                 _ => crate::cuda::gdn::GdnPhase::FixedPrompt,
@@ -376,9 +378,9 @@ where
             .flat_map(|d| d.leases.iter().cloned().map(|l| (l, DeviceAccess::Write))),
     );
     let parameters = RuntimeParameters {
-        token: invocation.rows().ids()[0],
+        token: invocation.tokens().ids()[0],
         position: 0,
-        valid_tokens: invocation.rows().len(),
+        valid_tokens: invocation.tokens().len(),
     };
     workspace
         .program
@@ -552,7 +554,7 @@ where
     let (dispatches, native_launches, rows) = (
         submitted.dispatches,
         submitted.fused_dispatches,
-        invocation.rows().len(),
+        invocation.tokens().len(),
     );
     drop(submitted);
     drop(rereads);

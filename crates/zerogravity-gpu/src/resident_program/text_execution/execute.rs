@@ -11,7 +11,7 @@ use crate::resident_program::{
 };
 use cubecl::{bytes::Bytes, server::Handle};
 use zerogravity_core::{
-    accelerator::program::{PlanNode, SourceCall, SourceOperator, SourceOperatorKind, ValueId},
+    accelerator::program::{PlanNode, SourceOperator, SourceOperatorKind, TextInvocation, ValueId},
     device_events::{BufferRole, DeviceAccess},
 };
 
@@ -21,10 +21,10 @@ impl Cold {
             .layout
             .bindings
             .get(id.0 as usize)
-            .ok_or_else(|| Error::State("source-call value binding absent".into()))?;
+            .ok_or_else(|| Error::State("text-execution value binding absent".into()))?;
         self.slots
             .get(b.slot)
-            .ok_or_else(|| Error::State("source-call value slot absent".into()))
+            .ok_or_else(|| Error::State("text-execution value slot absent".into()))
     }
     fn value(&self, id: ValueId, elements: usize) -> Result<Handle> {
         let shape = self
@@ -32,21 +32,21 @@ impl Cold {
             .plan
             .values()
             .get(id.0 as usize)
-            .ok_or_else(|| Error::State("source-call logical value absent".into()))?;
+            .ok_or_else(|| Error::State("text-execution logical value absent".into()))?;
         if elements == 0 || elements > shape.capacity_elements()? {
             return Err(Error::State(
-                "source-call actual value exceeds capacity".into(),
+                "text-execution actual value exceeds capacity".into(),
             ));
         }
         view(self.value_lease(id)?, 0, elements * 4)
     }
     pub(in crate::resident_program) fn states<'a>(
         &self,
-        call: &SourceCall,
+        call: &TextInvocation,
         states: &'a [StateBinding],
     ) -> Result<BTreeMap<StateSlot, &'a StateBinding>> {
         if states.len() != self.layout.preflight.states.len() {
-            return Err(Error::State("source-call root domain count".into()));
+            return Err(Error::State("text-execution root domain count".into()));
         }
         let mut map = BTreeMap::new();
         let base_len = self.accesses.len();
@@ -58,17 +58,17 @@ impl Cold {
         for (b, expected) in states.iter().zip(&self.layout.preflight.states) {
             if b.slot != expected.slot
                 || map.insert(b.slot, b).is_some()
-                || b.prior_tokens != call.rows().base()
+                || b.prior_tokens != call.tokens().base()
             {
                 return Err(Error::State(
-                    "source-call original domain/frontier differs".into(),
+                    "text-execution original domain/frontier differs".into(),
                 ));
             }
             let (planes, shape) = expected.plane_layout()?;
             for (buffers, prior) in [(&b.prior, true), (&b.candidate, false)] {
                 let actual = buffers.buffers();
                 if actual.len() != planes {
-                    return Err(Error::State("source-call root plane count".into()));
+                    return Err(Error::State("text-execution root plane count".into()));
                 }
                 for buffer in actual {
                     buffer.require_layout(shape)?;
@@ -80,7 +80,7 @@ impl Cold {
                         || prior && !lease.is_initialized()
                     {
                         return Err(Error::State(
-                            "source-call original root lease differs".into(),
+                            "text-execution original root lease differs".into(),
                         ));
                     }
                     let range = BufferRange::new(&buffer.handle)?;
@@ -92,7 +92,7 @@ impl Cold {
         let (workspace, roots) = physical.split_at(base_len);
         if !self.service.pairwise_disjoint_extension(workspace, roots)? {
             return Err(Error::State(
-                "source-call independent root/workspace owners overlap".into(),
+                "text-execution independent root/workspace owners overlap".into(),
             ));
         }
         Ok(map)
@@ -103,7 +103,7 @@ impl Cold {
         request: &ForwardPlan,
         states: &[StateBinding],
         output: ResidentOutput,
-        mut observer: Option<&mut dyn super::super::source_observation::SourceCallObserver>,
+        mut observer: Option<&mut dyn super::super::text_observation::TextObserver>,
     ) -> Result<ResidentSubmission> {
         let call = self.validate_request(request)?;
         let state = self.states(call, states)?;
@@ -139,13 +139,13 @@ impl Cold {
             };
             dispatches = dispatches
                 .checked_add(self.node(flight, node, descriptor, &state).await?)
-                .ok_or_else(|| Error::Limit("source-call dispatch count".into()))?;
+                .ok_or_else(|| Error::Limit("text-execution dispatch count".into()))?;
             if let Some(observer) = &mut observer {
                 for (id, words) in node.outputs.iter().zip(descriptor.output_elements()?) {
                     self.observe(
                         flight,
                         call,
-                        super::super::source_observation::SourceCallFrameKind::Value(*id),
+                        super::super::text_observation::TextFrameKind::Value(*id),
                         self.value_lease(*id)?,
                         words,
                         &mut **observer,
@@ -162,7 +162,7 @@ impl Cold {
         let logits = if output == ResidentOutput::Logits {
             let id = request
                 .logits()
-                .ok_or_else(|| Error::State("source-call logits absent".into()))?;
+                .ok_or_else(|| Error::State("text-execution logits absent".into()))?;
             Some(DeviceBuffer::from_lease(
                 self.value_lease(id)?.clone(),
                 ResidentBufferLayout::new(ResidentPhysicalType::F32, self.layout.vocabulary)?,
@@ -180,7 +180,7 @@ impl Cold {
                     *v,
                     state
                         .get(&v.slot)
-                        .ok_or_else(|| Error::State("source-call proposed root absent".into()))?
+                        .ok_or_else(|| Error::State("text-execution proposed root absent".into()))?
                         .candidate
                         .clone(),
                 ))
@@ -205,12 +205,12 @@ impl Cold {
         d: &SourceOperator,
         states: &BTreeMap<StateSlot, &StateBinding>,
     ) -> Result<usize> {
-        let rows = d.call().rows().len();
-        let base = d.call().rows().base();
+        let rows = d.invocation().tokens().len();
+        let base = d.invocation().tokens().base();
         let input_lengths = d.input_elements()?;
         let output_lengths = d.output_elements()?;
         if node.inputs.len() != input_lengths.len() || node.outputs.len() != output_lengths.len() {
-            return Err(Error::State("source-call node operand count".into()));
+            return Err(Error::State("text-execution node operand count".into()));
         }
         let inputs = node
             .inputs
@@ -232,7 +232,7 @@ impl Cold {
                 let tensor = &d.matrices()[0];
                 let p = &self.operands[&tensor.name];
                 let width = tensor.columns;
-                for (row, &id) in d.call().rows().ids().iter().enumerate() {
+                for (row, &id) in d.invocation().tokens().ids().iter().enumerate() {
                     let target = subview(&outputs[0], row * width * 4, width * 4)?;
                     let range = id as usize..id as usize + 1;
                     let launch = |weights: &Handle| unsafe {
@@ -249,7 +249,7 @@ impl Cold {
                     match p.storage() {
                         Bf16ProjectionStorage::Resident => {
                             let resident = p.resident().ok_or_else(|| {
-                                Error::State("source-call embedding not Ready".into())
+                                Error::State("text-execution embedding not Ready".into())
                             })?;
                             resident.with_rows(
                                 flight,
@@ -270,7 +270,7 @@ impl Cold {
                                         || actual.bytes() != width * 2
                                     {
                                         return Err(Error::State(
-                                            "source-call original embedding row view".into(),
+                                            "text-execution original embedding row view".into(),
                                         ));
                                     }
                                     launch(actual.handle());
@@ -409,7 +409,7 @@ impl Cold {
                     d.parameters(),
                     geometry,
                     rows,
-                    d.call().mode(),
+                    d.invocation().phase(),
                 )
             }
             QkRmsRotaryGated(g) => {
@@ -524,7 +524,7 @@ impl Cold {
                 let b = states[&StateSlot::Kv(domain)];
                 let prior = b.prior.handles();
                 let next = b.candidate.handles();
-                let cap = d.call().rows().capacity();
+                let cap = d.invocation().tokens().capacity();
                 unsafe {
                     kernels::append_kv::launch_unchecked(
                         client,
@@ -559,7 +559,7 @@ impl Cold {
                 let geometry = crate::source_attention::rows::Geometry::new(
                     g.query_heads,
                     g.kv_heads,
-                    d.call().rows().capacity(),
+                    d.invocation().tokens().capacity(),
                 )?;
                 let scratch = geometry
                     .scratch_words()
@@ -613,7 +613,7 @@ impl Cold {
                 Ok(1)
             }
             _ => Err(Error::Unsupported(
-                "source-call unimplemented kernel".into(),
+                "text-execution unimplemented kernel".into(),
             )),
         }
     }

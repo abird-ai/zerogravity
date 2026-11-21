@@ -15,7 +15,7 @@ use std::sync::{
 };
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::accelerator::program::{
-    ActivationPrecision, NumericalProfile, SourceCall, SourceOperatorKind, ValueId, ValueShape,
+    ActivationPrecision, NumericalProfile, SourceOperatorKind, TextInvocation, ValueId, ValueShape,
 };
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::{Error, Result};
@@ -39,10 +39,10 @@ fn not_cancelled(cancelled: Option<&AtomicBool>) -> Result<()> {
 /// Only core's real full Head result can bind this output consumer.
 fn require_head(record: &SourceBindings) -> Result<()> {
     let plan = record.plan();
-    let call = record.call();
+    let call = record.invocation();
     let id = record.selection().output();
     if plan.source() != call.source()
-        || plan.source_call() != Some(call)
+        || plan.text_invocation() != Some(call)
         || plan.numerical_profile() != NumericalProfile::CudaSm86Bf16ReferenceV1
         || plan.is_operator_slice()
         || plan.frontier_delta() != 0
@@ -72,9 +72,9 @@ fn require_head(record: &SourceBindings) -> Result<()> {
         .selection()
         .selected_row()
         .ok_or_else(|| Error::State("BF16 greedy selected head row absent".into()))?;
-    if origin.call() != call
+    if origin.invocation() != call
         || origin.output_index() != 0
-        || descriptor.call() != call
+        || descriptor.invocation() != call
         || descriptor.kind()
             != (SourceOperatorKind::Projection {
                 selected_row: Some(selected),
@@ -111,7 +111,7 @@ pub(crate) struct PreparedBf16Greedy {
     status: ResidentLease,
     accesses: Vec<(ResidentLease, DeviceAccess)>,
     outputs: Vec<ResidentLease>,
-    call: SourceCall,
+    call: TextInvocation,
     logits_value: ValueId,
     owner: Arc<HostOwner>,
 }
@@ -133,12 +133,12 @@ impl PreparedBf16Greedy {
         let service = values.service().clone();
         init.require_service(&service)?;
         let logits_value = record.selection().output();
-        let call = record.call().clone();
+        let call = record.invocation().clone();
         // ModelValues seals physical BF16 layout and original lease ownership
         // once at the real workspace allocator. No separate operand override.
         let logits = values.lease(logits_value)?.clone();
         let status = values.status().clone();
-        if source.source_identity() != record.call().source()
+        if source.source_identity() != record.invocation().source()
             || source.source_identity() != service.source_identity()
             || !Arc::ptr_eq(logits.service(), &service)
             || logits.bytes() != LOGITS_BYTES
@@ -208,7 +208,7 @@ impl PreparedBf16Greedy {
         if self.owner.source.source_identity() != self.call.source()
             || self.service.source_identity() != self.call.source()
             || !Arc::ptr_eq(self.owner.values.service(), &self.service)
-            || self.owner.values.record().call() != &self.call
+            || self.owner.values.record().invocation() != &self.call
             || self.owner.values.record().selection().output() != self.logits_value
         {
             return Err(Error::State(

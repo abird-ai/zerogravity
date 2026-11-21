@@ -10,9 +10,9 @@ impl ModelGdnAdapter {
         binding.require_prepared(prepared, &domains)?;
         let service = self.cache.service();
         if domains.layer() != self.domains.layer()
-            || GdnPhase::for_reference_call(binding.call())?
-                != GdnPhase::for_reference_call(self.binding.call())?
-            || binding.call().rows().base() != self.binding.call().rows().base()
+            || GdnPhase::for_reference_call(binding.invocation())?
+                != GdnPhase::for_reference_call(self.binding.invocation())?
+            || binding.invocation().tokens().base() != self.binding.invocation().tokens().base()
             || self.cache.id() != prepared.bound_lease(GdnBuffer::CacheArena)?.id()
         {
             return Err(Error::State(

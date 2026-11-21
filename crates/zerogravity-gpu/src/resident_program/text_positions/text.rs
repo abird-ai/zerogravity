@@ -1,6 +1,6 @@
 //! Actual short-HF graph-position stride513, retained on the original call flight.
 use super::*;
-use crate::resident_inference::native_fragment::text::TextCallInput;
+use crate::resident_inference::native_fragment::text::TextInvocationInput;
 use crate::resident_leases::ResidentService;
 use zerogravity_core::device_events::DeviceAccess;
 
@@ -12,7 +12,7 @@ pub(crate) struct TextPositionsStorage {
 }
 pub(crate) struct TextPositions {
     storage: Arc<TextPositionsStorage>,
-    input: Arc<TextCallInput>,
+    input: Arc<TextInvocationInput>,
     bytes: Box<[u8; TEXT_POSITION_BYTES]>,
     submitted: AtomicBool,
     _host: WindowWorkspace,
@@ -44,8 +44,11 @@ impl TextPositionsStorage {
         init.retain_completion_owner(result.clone())?;
         Ok(result)
     }
-    pub(crate) fn bind(self: &Arc<Self>, input: Arc<TextCallInput>) -> Result<Arc<TextPositions>> {
-        if self.lease.source_identity() != input.call().source()
+    pub(crate) fn bind(
+        self: &Arc<Self>,
+        input: Arc<TextInvocationInput>,
+    ) -> Result<Arc<TextPositions>> {
+        if self.lease.source_identity() != input.invocation().source()
             || self.lease.bytes() != TEXT_POSITION_BYTES
             || self.lease.service_generation() != self.lease.service().generation()
         {
@@ -128,7 +131,7 @@ impl TextPositions {
     }
     pub(crate) fn retained(
         &self,
-        input: &Arc<TextCallInput>,
+        input: &Arc<TextInvocationInput>,
         service: &Arc<ResidentService>,
     ) -> bool {
         Arc::ptr_eq(input, &self.input)

@@ -6,7 +6,7 @@ use crate::resident_program::source_bindings::SourceBindings;
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
-use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode};
+use zerogravity_core::accelerator::program::{InvocationPhase, TextInvocation};
 
 pub(crate) const POSITION_PITCH: usize = 65;
 pub(crate) const POSITION_WORDS: usize = 3 * POSITION_PITCH;
@@ -26,18 +26,18 @@ struct PositionSpan {
     rows: usize,
 }
 impl PositionSpan {
-    fn new(invocation: &SourceCall) -> Result<Self> {
+    fn new(invocation: &TextInvocation) -> Result<Self> {
         let value = Self {
-            base: invocation.rows().base(),
-            rows: invocation.rows().len(),
+            base: invocation.tokens().base(),
+            rows: invocation.tokens().len(),
         };
-        if invocation.rows().capacity() != 512
-            || invocation.rows().vocabulary() != 248320
+        if invocation.tokens().capacity() != 512
+            || invocation.tokens().vocabulary() != 248320
             || !matches!(
-                (invocation.mode(), value.base, value.rows),
-                (SourceCallMode::Prefill, 0, 1 | 64)
-                    | (SourceCallMode::Prefill, 64, 2)
-                    | (SourceCallMode::Decode, 1 | 66, 1)
+                (invocation.phase(), value.base, value.rows),
+                (InvocationPhase::Prefill, 0, 1 | 64)
+                    | (InvocationPhase::Prefill, 64, 2)
+                    | (InvocationPhase::Decode, 1 | 66, 1)
             )
         {
             return Err(Error::State(
@@ -93,7 +93,7 @@ impl PositionSpan {
 fn require_published_span(
     current: RootBinding,
     attempt: &RootAttempt,
-    invocation: &SourceCall,
+    invocation: &TextInvocation,
 ) -> Result<PositionSpan> {
     let span = PositionSpan::new(invocation)?;
     if current != attempt.base()
@@ -113,7 +113,7 @@ pub(crate) struct BoundTextPositions {
     source: VerifiedTensorSource,
     _record: Arc<SourceBindings>,
     service: Arc<ResidentService>,
-    invocation: SourceCall,
+    invocation: TextInvocation,
     base: RootBinding,
     attempt: RootAttempt,
     phase: Option<Arc<AttemptPhaseBinding>>,
@@ -134,13 +134,13 @@ impl ResidentSession {
     ) -> Result<Arc<BoundTextPositions>> {
         not_cancelled(cancelled)?;
         let source = record.source().clone();
-        let invocation = record.call().clone();
+        let invocation = record.invocation().clone();
         let metadata = source.reserve_workspace(METADATA_BYTES)?;
         let base = self.binding();
         if source.source_identity() != base.source()
             || source.source_identity() != self.model.service.source_identity()
             || invocation.source() != base.source()
-            || invocation.rows().capacity() != self.model.capacity
+            || invocation.tokens().capacity() != self.model.capacity
         {
             return Err(Error::State(
                 "same original position model/service/session/source".into(),
@@ -179,7 +179,7 @@ impl BoundTextPositions {
     pub(crate) fn bytes(&self) -> Result<[u8; POSITION_BYTES]> {
         match &self.fixed_prompt {
             Some(scope) => {
-                if scope.record().call() != &self.invocation {
+                if scope.record().invocation() != &self.invocation {
                     return Err(Error::State(
                         "canonical47 positions changed original call issuer".into(),
                     ));
@@ -189,7 +189,7 @@ impl BoundTextPositions {
             None => self.span.bytes(),
         }
     }
-    pub(crate) fn invocation(&self) -> &SourceCall {
+    pub(crate) fn invocation(&self) -> &TextInvocation {
         &self.invocation
     }
     /// Fresh borrowed original session + prior completion permit, before QK/RoPE.
@@ -218,7 +218,7 @@ impl BoundTextPositions {
             let permit = permit.ok_or_else(|| {
                 Error::State("canonical47 original position permit absent".into())
             })?;
-            if scope.record().call() != &self.invocation
+            if scope.record().invocation() != &self.invocation
                 || !scope.source().same_issuer(&self.source)
             {
                 return Err(Error::State(
@@ -229,23 +229,23 @@ impl BoundTextPositions {
                 binding.require_fixed_prompt_whole_binding(
                     session,
                     &self.attempt,
-                    scope.record().call(),
+                    scope.record().invocation(),
                 )?;
                 return binding.require_fixed_prompt_whole_permit(
                     permit,
                     &self.service,
-                    scope.record().call(),
+                    scope.record().invocation(),
                 );
             }
             binding.require_fixed_prompt_model_prefix_binding(
                 session,
                 &self.attempt,
-                scope.record().call(),
+                scope.record().invocation(),
             )?;
             return binding.require_fixed_prompt_model_prefix_permit(
                 permit,
                 &self.service,
-                scope.record().call(),
+                scope.record().invocation(),
             );
         }
         match (&self.phase, permit) {

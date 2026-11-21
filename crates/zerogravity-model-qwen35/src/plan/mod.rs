@@ -21,17 +21,17 @@ pub use forward::{
     QwenForwardGeometry, QwenForwardInvocation, QwenForwardPlan,
 };
 mod prompt;
-pub use prompt::{PromptCall, PromptSpan, PromptWorkload};
+pub use prompt::{PromptInvocation, PromptSpan, PromptWorkload};
 mod prefix;
 pub use prefix::{QwenPrefixLayer, QwenPrefixRmsBinding, QwenPrefixRmsSite};
 mod model;
 pub use model::{
-    QwenLayer, QwenOperation, QwenOperator, QwenPlan, QwenProducer, QwenProjection, QwenRmsSite,
-    QwenSourceCall,
+    QwenLayer, QwenModelInvocation, QwenOperation, QwenOperator, QwenPlan, QwenProducer,
+    QwenProjection, QwenRmsSite,
 };
 mod gdn_projection;
 pub use gdn_projection::{
-    GdnProjection, QwenGdnCall, QwenGdnProjection, QwenProjectionContract, QwenSiluAndMul,
+    GdnProjection, QwenGdnInvocation, QwenGdnProjection, QwenProjectionContract, QwenSiluAndMul,
     QwenSiluContract, QwenValueOrigin, QwenValueProvenance, ReferencePhase,
 };
 mod gdn;
@@ -46,9 +46,9 @@ mod lower;
 /// Family validation adapter; all nodes, SSA ownership and effects belong to core.
 pub struct QwenPlanBuilder {
     core: CorePlanBuilder,
-    model_call: Option<QwenSourceCall>,
+    model_invocation: Option<QwenModelInvocation>,
     kv_cohorts: BTreeMap<usize, usize>,
-    fragment_call: Option<QwenGdnCall>,
+    fragment_invocation: Option<QwenGdnInvocation>,
     provenance: Vec<Option<QwenValueProvenance>>,
     source: SourceIdentity,
     profile: NumericalProfile,
@@ -72,9 +72,9 @@ impl QwenPlanBuilder {
             profile: core.numerical_profile(),
             operator_slice: core.is_operator_slice(),
             core,
-            model_call: None,
+            model_invocation: None,
             kv_cohorts: BTreeMap::new(),
-            fragment_call: None,
+            fragment_invocation: None,
             provenance: Vec::new(),
         }
     }

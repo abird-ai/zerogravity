@@ -115,7 +115,7 @@ where
 fn sequence_capacity(
     source: &VerifiedTensorSource,
     records: &[Arc<SourceBindings>],
-) -> Result<(usize, usize, Vec<SourceCall>)> {
+) -> Result<(usize, usize, Vec<TextInvocation>)> {
     let layers = records
         .first()
         .map_or(0, |record| record.selection().completed_layers());
@@ -133,18 +133,18 @@ fn sequence_capacity(
                 "request changes completed source layers".into(),
             ));
         }
-        invocations.push(record.call().clone());
+        invocations.push(record.invocation().clone());
     }
-    let expected: &[(SourceCallMode, usize, usize)] = if records.len() == 2 {
+    let expected: &[(InvocationPhase, usize, usize)] = if records.len() == 2 {
         &[
-            (SourceCallMode::Prefill, 0, 1),
-            (SourceCallMode::Decode, 1, 1),
+            (InvocationPhase::Prefill, 0, 1),
+            (InvocationPhase::Decode, 1, 1),
         ]
     } else {
         &[
-            (SourceCallMode::Prefill, 0, 64),
-            (SourceCallMode::Prefill, 64, 2),
-            (SourceCallMode::Decode, 66, 1),
+            (InvocationPhase::Prefill, 0, 64),
+            (InvocationPhase::Prefill, 64, 2),
+            (InvocationPhase::Decode, 66, 1),
         ]
     };
     for ((record, invocation), &(mode, base, rows)) in
@@ -152,11 +152,11 @@ fn sequence_capacity(
     {
         if !record.source().same_issuer(source)
             || invocation.source() != source.source_identity()
-            || invocation.mode() != mode
-            || invocation.rows().base() != base
-            || invocation.rows().len() != rows
-            || invocation.rows().capacity() != 512
-            || invocation.rows().vocabulary() != 248320
+            || invocation.phase() != mode
+            || invocation.tokens().base() != base
+            || invocation.tokens().len() != rows
+            || invocation.tokens().capacity() != 512
+            || invocation.tokens().vocabulary() != 248320
         {
             return Err(Error::State(
                 "exact source-owned two request schedules".into(),
@@ -194,17 +194,17 @@ fn device_bound(layers: usize, phases: usize) -> Result<usize> {
     }
     Ok(bound.div_ceil(32 * 1024 * 1024) * (32 * 1024 * 1024))
 }
-fn native_phase(invocation: &SourceCall) -> Result<crate::cuda::gdn::GdnPhase> {
+fn native_phase(invocation: &TextInvocation) -> Result<crate::cuda::gdn::GdnPhase> {
     use crate::cuda::gdn::GdnPhase as P;
     match (
-        invocation.mode(),
-        invocation.rows().base(),
-        invocation.rows().len(),
+        invocation.phase(),
+        invocation.tokens().base(),
+        invocation.tokens().len(),
     ) {
-        (SourceCallMode::Prefill, 0, 1) => Ok(P::InitialOne),
-        (SourceCallMode::Prefill, 0, 64) => Ok(P::Initial64),
-        (SourceCallMode::Prefill, 64, 2) => Ok(P::ContinuedTwo),
-        (SourceCallMode::Decode, 1 | 66, 1) => Ok(P::CachedDecode),
+        (InvocationPhase::Prefill, 0, 1) => Ok(P::InitialOne),
+        (InvocationPhase::Prefill, 0, 64) => Ok(P::Initial64),
+        (InvocationPhase::Prefill, 64, 2) => Ok(P::ContinuedTwo),
+        (InvocationPhase::Decode, 1 | 66, 1) => Ok(P::CachedDecode),
         _ => Err(Error::Unsupported(
             "closed original GDN source phase".into(),
         )),
@@ -316,7 +316,7 @@ where
     let base = session.binding();
     let original_snapshot = mode.is_restore().then(|| session.snapshot());
     let last = invocations.last().unwrap();
-    let attempted_tokens = (last.rows().base() + last.rows().len()) as u64;
+    let attempted_tokens = (last.tokens().base() + last.tokens().len()) as u64;
     let attempt = session.authority.begin_advance(attempted_tokens)?;
     let schedule = GdnAttemptSchedule::new(base, attempt.clone(), invocations, layers)?;
     let mut candidates = Vec::with_capacity(phases);
@@ -502,9 +502,9 @@ where
         let candidate = &owners.candidates[index];
         let bindings = bind_domains(prior, candidate, 0)?;
         let parameters = RuntimeParameters {
-            token: invocation.rows().ids()[0],
+            token: invocation.tokens().ids()[0],
             position: 0,
-            valid_tokens: invocation.rows().len(),
+            valid_tokens: invocation.tokens().len(),
         };
         workspace
             .program
@@ -634,7 +634,7 @@ where
             previous.take(),
         )?);
         receipts.push(GdnFragmentReceipt {
-            rows: invocation.rows().len(),
+            rows: invocation.tokens().len(),
             dispatches: submitted.dispatches,
             native_launches: submitted.fused_dispatches,
             readback_bytes: frame.bytes,

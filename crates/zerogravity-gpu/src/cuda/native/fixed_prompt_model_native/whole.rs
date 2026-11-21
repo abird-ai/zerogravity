@@ -127,7 +127,7 @@ impl FixedPromptModelNativePrograms {
                     operation != Operation::AttentionQkv
                 };
             if !finite_site
-                || descriptor.call() != cut.scope().record().call()
+                || descriptor.invocation() != cut.scope().record().invocation()
                 || !per_layer.entry(layer).or_default().insert(operation)
             {
                 return Err(Error::State(

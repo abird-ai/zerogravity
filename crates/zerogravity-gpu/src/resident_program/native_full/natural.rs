@@ -93,7 +93,7 @@ impl FullModelProgram {
             .bound
             .get()
             .ok_or_else(|| Error::State("natural original cold phase unbound".into()))?;
-        let phase = super::super::natural_binding::slot(input.call())?;
+        let phase = super::super::natural_binding::slot(input.invocation())?;
         if old.phase != phase || state.states().len() != 24 {
             return Err(Error::State(
                 "natural original physical phase/state count".into(),

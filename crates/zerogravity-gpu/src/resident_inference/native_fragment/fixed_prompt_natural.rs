@@ -1,15 +1,15 @@
 //! Fresh immutable inputs for original47+7 calls; completion/commit owns feedback.
 use super::continuation::{AttemptPhaseBinding, GdnAttemptSchedule, PrefixPhaseEnqueue};
 use super::*;
-use crate::cuda::native::fixed_prompt_model::{FixedPromptCallKind, FixedPromptModelBinding};
+use crate::cuda::native::fixed_prompt_model::{FixedPromptInvocationKind, FixedPromptModelBinding};
 use crate::resident_program::source_bindings::SourceBindings;
 use std::sync::Weak;
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
-use zerogravity_core::accelerator::program::SourceCall;
-use zerogravity_core::accelerator::program::SourceCallMode;
+use zerogravity_core::accelerator::program::InvocationPhase;
+use zerogravity_core::accelerator::program::TextInvocation;
 
 mod state;
-pub(crate) use state::FixedPromptCallState;
+pub(crate) use state::FixedPromptInvocationState;
 mod readback;
 pub use readback::FixedPromptNaturalReadback;
 
@@ -117,7 +117,7 @@ pub(super) fn tied_member(
 }
 
 // Weak<Model> prevents workspace→Body→input→Model→workspace cycles.
-pub(crate) struct FixedPromptCallInput {
+pub(crate) struct FixedPromptInvocationInput {
     model: Weak<ResidentModel>,
     source: VerifiedTensorSource,
     service: Arc<ResidentService>,
@@ -129,7 +129,7 @@ pub(crate) struct FixedPromptCallInput {
     _metadata: WindowWorkspace,
 }
 
-impl FixedPromptCallInput {
+impl FixedPromptInvocationInput {
     pub(crate) fn source(&self) -> &VerifiedTensorSource {
         &self.source
     }
@@ -139,23 +139,23 @@ impl FixedPromptCallInput {
     pub(crate) fn record(&self) -> &Arc<SourceBindings> {
         self.scope.record()
     }
-    pub(crate) fn call(&self) -> &SourceCall {
-        self.record().call()
+    pub(crate) fn invocation(&self) -> &TextInvocation {
+        self.record().invocation()
     }
     pub(crate) fn ids(&self) -> &[u32] {
-        self.call().rows().ids()
+        self.invocation().tokens().ids()
     }
     pub(crate) fn attempt(&self) -> &RootAttempt {
         &self.attempt
     }
-    pub(crate) fn kind(&self) -> FixedPromptCallKind {
+    pub(crate) fn kind(&self) -> FixedPromptInvocationKind {
         self.scope.kind()
     }
     pub(crate) fn base(&self) -> usize {
-        self.call().rows().base()
+        self.invocation().tokens().base()
     }
     pub(crate) fn rows(&self) -> usize {
-        self.call().rows().len()
+        self.invocation().tokens().len()
     }
     pub(in crate::resident_inference) fn phase(&self) -> &Arc<AttemptPhaseBinding> {
         &self.phase
@@ -169,21 +169,24 @@ impl FixedPromptCallInput {
         if !Arc::ptr_eq(&model, &session.model)
             || !Arc::ptr_eq(&self.service, &session.model.service)
             || !self.source.same_issuer(self.scope.source())
-            || self.service.source_identity() != self.call().source()
+            || self.service.source_identity() != self.invocation().source()
             || self.source.source_identity() != session.binding().source()
             || session.model.capacity != 512
             || session.model.vocab != 248320
-            || self.kind() != FixedPromptCallKind::of(self.call())?
+            || self.kind() != FixedPromptInvocationKind::of(self.invocation())?
         {
             return Err(Error::State(
                 "canonical immutable source/model/service/call differs".into(),
             ));
         }
-        self.phase
-            .require_fixed_prompt_published_binding(session, &self.attempt, self.call())?;
+        self.phase.require_fixed_prompt_published_binding(
+            session,
+            &self.attempt,
+            self.invocation(),
+        )?;
         match (&self.origin, self.kind()) {
-            (Origin::Prompt, FixedPromptCallKind::Prefill) => {}
-            (Origin::Feedback(packet), FixedPromptCallKind::Decode { .. }) => {
+            (Origin::Prompt, FixedPromptInvocationKind::Prefill) => {}
+            (Origin::Feedback(packet), FixedPromptInvocationKind::Decode { .. }) => {
                 if self.ids() != [packet.require_current(session, &self.source)?] {
                     return Err(Error::State(
                         "canonical input is not actual completed BF16 feedback".into(),
@@ -205,7 +208,7 @@ impl FixedPromptCallInput {
         service: &Arc<ResidentService>,
     ) -> Result<()> {
         self.phase
-            .require_fixed_prompt_published_permit(permit, service, self.call())
+            .require_fixed_prompt_published_permit(permit, service, self.invocation())
     }
 
     pub(crate) fn permit<'a>(
@@ -223,11 +226,11 @@ impl ResidentSession {
         source: VerifiedTensorSource,
         record: Arc<SourceBindings>,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<FixedPromptCallInput>> {
+    ) -> Result<Arc<FixedPromptInvocationInput>> {
         self.bind_fixed_prompt_input(
             source,
             record,
-            SourceCallMode::Prefill,
+            InvocationPhase::Prefill,
             Origin::Prompt,
             cancelled,
         )
@@ -239,10 +242,10 @@ impl ResidentSession {
         record: Arc<SourceBindings>,
         packet: Arc<CommittedPacket>,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<FixedPromptCallInput>> {
+    ) -> Result<Arc<FixedPromptInvocationInput>> {
         not_cancelled(cancelled)?;
         let id = packet.require_current(self, &source)?;
-        if record.call().rows().ids() != [id] {
+        if record.invocation().tokens().ids() != [id] {
             return Err(Error::State(
                 "fixed prompt call is not actual committed feedback".into(),
             ));
@@ -250,7 +253,7 @@ impl ResidentSession {
         self.bind_fixed_prompt_input(
             source,
             record,
-            SourceCallMode::Decode,
+            InvocationPhase::Decode,
             Origin::Feedback(packet),
             cancelled,
         )
@@ -260,30 +263,30 @@ impl ResidentSession {
         &self,
         source: VerifiedTensorSource,
         record: Arc<SourceBindings>,
-        mode: SourceCallMode,
+        mode: InvocationPhase,
         origin: Origin,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<FixedPromptCallInput>> {
+    ) -> Result<Arc<FixedPromptInvocationInput>> {
         not_cancelled(cancelled)?;
-        let call = record.call();
+        let call = record.invocation();
         if !source.same_issuer(record.source())
             || source.source_identity() != self.binding().source()
             || self.model.capacity != 512
             || self.model.vocab != 248320
-            || call.mode() != mode
-            || call.rows().base() as u64 != self.binding().frontier()
+            || call.phase() != mode
+            || call.tokens().base() as u64 != self.binding().frontier()
         {
             return Err(Error::State(
                 "fixed prompt actual source/call/current root differs".into(),
             ));
         }
-        FixedPromptCallKind::of(call)?;
+        FixedPromptInvocationKind::of(call)?;
         let metadata = source.reserve_workspace(4 * 1024 * 1024)?;
-        let attempt = self.authority.begin_advance(call.rows().len() as u64)?;
+        let attempt = self.authority.begin_advance(call.tokens().len() as u64)?;
         let scope = FixedPromptModelBinding::bind(record)?;
         let schedule = GdnAttemptSchedule::new_fixed_prompt_published(&scope, attempt.clone())?;
         let phase = AttemptPhaseBinding::new(schedule.clone(), 0, None)?;
-        let input = Arc::new(FixedPromptCallInput {
+        let input = Arc::new(FixedPromptInvocationInput {
             model: Arc::downgrade(&self.model),
             source,
             service: self.model.service.clone(),
@@ -305,7 +308,7 @@ pub(super) type NaturalValidation<'a> =
 mod completion;
 mod loaded;
 pub use loaded::{
-    FixedPromptCallReceipt, FixedPromptCloseReceipt, FixedPromptEmptySnapshot,
+    FixedPromptCloseReceipt, FixedPromptEmptySnapshot, FixedPromptInvocationReceipt,
     FixedPromptLifecycleProfile, FixedPromptLoaded, FixedPromptLoadedObservation,
     FixedPromptLoadedSnapshot, FixedPromptNaturalFault, FixedPromptNaturalFaultOutcome,
     FixedPromptPending, FixedPromptSession, fixed_prompt_natural_host_bound,

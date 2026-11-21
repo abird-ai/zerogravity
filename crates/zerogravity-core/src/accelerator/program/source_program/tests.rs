@@ -1,18 +1,18 @@
 use super::*;
 const NUMERICAL: NumericalContract = NumericalContract::CudaSm86Bf16ReferenceV1;
-fn call(source: SourceIdentity, ids: &[u32]) -> SourceCall {
-    SourceCall::new(
-        SourceRows::new(
+fn invocation(source: SourceIdentity, ids: &[u32]) -> TextInvocation {
+    TextInvocation::new(
+        TokenSpan::new(
             TextCallGeometry::new(source, 17, 8).unwrap(),
             0,
             Arc::from(ids),
         )
         .unwrap(),
-        SourceCallMode::Prefill,
+        InvocationPhase::Prefill,
     )
     .unwrap()
 }
-fn embedding(call: &SourceCall) -> SourceOperator {
+fn embedding(call: &TextInvocation) -> SourceOperator {
     SourceOperator::new(
         call.clone(),
         SourceOperatorKind::EmbeddingRows,
@@ -29,7 +29,7 @@ fn embedding(call: &SourceCall) -> SourceOperator {
     )
     .unwrap()
 }
-fn projection(call: &SourceCall, selected_row: Option<usize>) -> SourceOperator {
+fn projection(call: &TextInvocation, selected_row: Option<usize>) -> SourceOperator {
     SourceOperator::new(
         call.clone(),
         SourceOperatorKind::Projection { selected_row },
@@ -51,19 +51,19 @@ fn projection(call: &SourceCall, selected_row: Option<usize>) -> SourceOperator 
     .unwrap()
 }
 #[test]
-fn row_issuer_requires_original_extent_and_reuses_the_same_adopted_teacher() {
+fn token_span_requires_original_extent_and_reuses_the_same_adopted_teacher() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let a = call(source, &[1, 2]);
+    let a = invocation(source, &[1, 2]);
     assert_eq!(a, a.clone());
-    assert_ne!(a, call(source, &[1, 2]));
+    assert_ne!(a, invocation(source, &[1, 2]));
     let span = TeacherSpan::new(source, 0, 8, 17, &[1, 2]).unwrap();
     assert_eq!(
-        SourceRows::from_teacher_span(span.clone(), 17).unwrap(),
-        SourceRows::from_teacher_span(span.clone(), 17).unwrap()
+        TokenSpan::from_teacher_span(span.clone(), 17).unwrap(),
+        TokenSpan::from_teacher_span(span.clone(), 17).unwrap()
     );
     assert_ne!(
-        SourceRows::from_teacher_span(span.clone(), 17).unwrap(),
-        SourceRows::from_teacher_span(span, 18).unwrap()
+        TokenSpan::from_teacher_span(span.clone(), 17).unwrap(),
+        TokenSpan::from_teacher_span(span, 18).unwrap()
     );
     let geometry = TextCallGeometry::new(source, 17, 8).unwrap();
     for (base, ids) in [
@@ -72,14 +72,14 @@ fn row_issuer_requires_original_extent_and_reuses_the_same_adopted_teacher() {
         (usize::MAX, vec![1]),
         (0, vec![17]),
     ] {
-        assert!(SourceRows::new(geometry, base, Arc::from(ids)).is_err());
+        assert!(TokenSpan::new(geometry, base, Arc::from(ids)).is_err());
     }
-    assert!(SourceCall::new(a.rows().clone(), SourceCallMode::Decode).is_err());
+    assert!(TextInvocation::new(a.tokens().clone(), InvocationPhase::Decode).is_err());
 }
 #[test]
 fn ordered_projection_segments_and_selected_rows_are_explicit_checked_math() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let call = call(source, &[1, 2]);
+    let call = invocation(source, &[1, 2]);
     let all = projection(&call, None);
     assert_eq!(all.input_elements().unwrap(), [32]);
     assert_eq!(all.output_elements().unwrap(), [16]);
@@ -114,9 +114,9 @@ fn ordered_projection_segments_and_selected_rows_are_explicit_checked_math() {
     }
 }
 #[test]
-fn core_owns_call_ssa_precision_and_atomic_state_effects() {
+fn core_owns_invocation_ssa_precision_and_atomic_state_effects() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let call = call(source, &[1, 2]);
+    let call = invocation(source, &[1, 2]);
     let domain = StateSlot::Kv(KvDomain(7));
     let mut builder = PlanBuilder::new_source_program(call.clone(), vec![domain]).unwrap();
     let raw = builder.source_operator(&embedding(&call), &[]).unwrap()[0];
@@ -132,7 +132,7 @@ fn core_owns_call_ssa_precision_and_atomic_state_effects() {
             .source_operator(&projection(&call, None), &[foreign])
             .is_err()
     );
-    let other_call = super::tests::call(source, &[1, 2]);
+    let other_call = super::tests::invocation(source, &[1, 2]);
     assert!(
         builder
             .source_operator(&projection(&other_call, None), &[raw])
@@ -152,7 +152,7 @@ fn core_owns_call_ssa_precision_and_atomic_state_effects() {
     assert_eq!(output.elements(), 8);
     assert_eq!(output.precision(), ActivationPrecision::Bf16WidenedF32);
     let tag = builder.source_value_provenance(&output).unwrap().unwrap();
-    assert_eq!(tag.call(), &call);
+    assert_eq!(tag.invocation(), &call);
     assert_eq!(tag.inputs(), [raw.id]);
     assert_eq!((tag.node_index(), tag.output_index()), (1, 0));
     let carry = SourceOperator::new(
@@ -179,7 +179,7 @@ fn core_owns_call_ssa_precision_and_atomic_state_effects() {
     assert_eq!(plan.frontier_delta(), 0);
 }
 #[test]
-fn call_free_plan_binds_dynamic_rows_without_node_or_id_capture() {
+fn invocation_free_plan_binds_dynamic_tokens_without_node_or_id_capture() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let geometry = SourcePlanGeometry::new(source, 17, 512, 64).unwrap();
     let slot = StateSlot::Kv(KvDomain(3));
@@ -239,7 +239,7 @@ fn call_free_plan_binds_dynamic_rows_without_node_or_id_capture() {
         .unwrap()[0];
     assert_eq!(logits.elements(), 17);
     let plan = Arc::new(builder.finish_source_template(logits).unwrap());
-    assert!(plan.source_call().is_none());
+    assert!(plan.text_invocation().is_none());
     assert_eq!(plan.source_plan_geometry(), Some(geometry));
     assert_eq!(plan.required_domains(), [slot]);
     assert_eq!(plan.frontier_delta(), 0);
@@ -250,27 +250,30 @@ fn call_free_plan_binds_dynamic_rows_without_node_or_id_capture() {
     );
 
     let bind = |base, ids: &[u32], emit_logits| {
-        SourceInvocation::new(
+        InvocationInput::new(
             TextCallGeometry::new(source, 17, 512).unwrap(),
             base,
             Arc::from(ids),
             emit_logits,
         )
-        .and_then(|invocation| plan.bind_source_invocation(invocation))
+        .and_then(|invocation| plan.bind_invocation(invocation))
     };
     let a = bind(0, &[1, 2], true).unwrap();
     let b = bind(29, &[3], false).unwrap();
     assert!(Arc::ptr_eq(a.plan(), b.plan()));
-    assert_eq!((a.invocation().rows(), a.invocation().frontier()), (2, 2));
-    assert_eq!((b.invocation().base(), b.invocation().frontier()), (29, 30));
-    assert!(!b.invocation().emit_logits());
+    assert_eq!((a.input().token_count(), a.input().frontier()), (2, 2));
+    assert_eq!((b.input().base(), b.input().frontier()), (29, 30));
+    assert!(!b.input().emit_logits());
     assert!(std::ptr::eq(a.active_nodes(), plan.nodes()));
     assert!(std::ptr::eq(b.active_nodes(), plan.state_nodes()));
     assert_eq!(a.active_nodes().len(), b.active_nodes().len() + 1);
 
-    let materialized = a.materialize_source_plan(SourceCallMode::Prefill).unwrap();
+    let materialized = a.materialize(InvocationPhase::Prefill).unwrap();
     assert!(materialized.shares_semantics(&plan));
-    assert_eq!(materialized.source_call().unwrap().rows().ids(), [1, 2]);
+    assert_eq!(
+        materialized.text_invocation().unwrap().tokens().ids(),
+        [1, 2]
+    );
     assert!(
         materialized
             .nodes()
@@ -290,27 +293,28 @@ fn call_free_plan_binds_dynamic_rows_without_node_or_id_capture() {
     );
 
     let one = bind(29, &[3], true).unwrap();
-    let prefill = one
-        .materialize_source_plan(SourceCallMode::Prefill)
-        .unwrap();
-    let decode = one.materialize_source_plan(SourceCallMode::Decode).unwrap();
+    let prefill = one.materialize(InvocationPhase::Prefill).unwrap();
+    let decode = one.materialize(InvocationPhase::Decode).unwrap();
     assert_eq!(
-        prefill.source_call().unwrap().mode(),
-        SourceCallMode::Prefill
+        prefill.text_invocation().unwrap().phase(),
+        InvocationPhase::Prefill
     );
-    assert_eq!(decode.source_call().unwrap().mode(), SourceCallMode::Decode);
+    assert_eq!(
+        decode.text_invocation().unwrap().phase(),
+        InvocationPhase::Decode
+    );
 
     assert!(bind(500, &[1; 13], true).is_err());
     assert!(bind(0, &[1; 65], true).is_err());
     assert!(bind(0, &[17], true).is_err());
-    let foreign = SourceInvocation::new(
+    let foreign = InvocationInput::new(
         TextCallGeometry::new(SourceIdentity::for_new_allocation().unwrap(), 17, 512).unwrap(),
         0,
         Arc::from([1]),
         true,
     )
     .unwrap();
-    assert!(plan.bind_source_invocation(foreign).is_err());
+    assert!(plan.bind_invocation(foreign).is_err());
 }
 
 #[test]
@@ -338,7 +342,7 @@ fn prepared_rebind_shares_topology_semantics_and_accounts_local_allocations() {
             .into_host_workspace(source, owner.clone())
             .unwrap()
     };
-    let first = call(source, &[1, 2]);
+    let first = invocation(source, &[1, 2]);
     let slot = StateSlot::Kv(KvDomain(3));
     let mut builder = PlanBuilder::new_source_program(first.clone(), vec![slot]).unwrap();
     let raw = builder.source_operator(&embedding(&first), &[]).unwrap()[0];
@@ -365,9 +369,9 @@ fn prepared_rebind_shares_topology_semantics_and_accounts_local_allocations() {
         .unwrap()
         .retain_binding_metadata(charge(4096))
         .unwrap();
-    let second = call(source, &[3, 4]);
+    let second = invocation(source, &[3, 4]);
     let bound = prepared
-        .rebind_source_call(second.clone())
+        .rebind_text_invocation(second.clone())
         .unwrap()
         .retain_binding_metadata(charge(4096))
         .unwrap();
@@ -404,20 +408,31 @@ fn prepared_rebind_shares_topology_semantics_and_accounts_local_allocations() {
             panic!("foreign source operation")
         };
         assert!(a.shares_semantics(b));
-        assert_eq!(a.call(), &first);
-        assert_eq!(b.call(), &second);
+        assert_eq!(a.invocation(), &first);
+        assert_eq!(b.invocation(), &second);
     }
     assert!(bound.source_binding_metadata_bytes().unwrap() >= std::mem::size_of_val(bound.nodes()));
     for id in [ValueId(0), ValueId(1)] {
         assert_eq!(
-            bound.source_value_provenance(id).unwrap().unwrap().call(),
+            bound
+                .source_value_provenance(id)
+                .unwrap()
+                .unwrap()
+                .invocation(),
             &second
         );
     }
-    assert!(prepared.rebind_source_call(call(source, &[3])).is_err());
     assert!(
         prepared
-            .rebind_source_call(call(SourceIdentity::for_new_allocation().unwrap(), &[3, 4]))
+            .rebind_text_invocation(invocation(source, &[3]))
+            .is_err()
+    );
+    assert!(
+        prepared
+            .rebind_text_invocation(invocation(
+                SourceIdentity::for_new_allocation().unwrap(),
+                &[3, 4]
+            ))
             .is_err()
     );
     drop(reserved);
@@ -436,7 +451,7 @@ fn cpu_source_templates_preserve_arithmetic_issuer_and_reject_cuda_mixing() {
     let geometry = SourcePlanGeometry::new(source, 17, 514, 64).unwrap();
     let slot = StateSlot::Recurrent(RecurrentDomain(0));
     let numerical = NumericalContract::TorchCpuAvx2Bf16MixedV1;
-    let original = embedding(&call(source, &[1]));
+    let original = embedding(&invocation(source, &[1]));
     let template = SourceOperatorTemplate::new(
         geometry,
         SourceRowSelection::AllActive,
@@ -483,20 +498,18 @@ fn cpu_source_templates_preserve_arithmetic_issuer_and_reject_cuda_mixing() {
         plan.standalone_exp_profile(),
         Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1)
     );
-    let invocation = SourceInvocation::new(
+    let invocation = InvocationInput::new(
         TextCallGeometry::new(source, 17, 514).unwrap(),
         0,
         vec![1; 47].into(),
         true,
     )
     .unwrap();
-    let bound = plan.bind_source_invocation(invocation).unwrap();
+    let bound = plan.bind_invocation(invocation).unwrap();
     assert!(Arc::ptr_eq(&plan, bound.plan()));
-    let materialized = bound
-        .materialize_source_plan(SourceCallMode::Prefill)
-        .unwrap();
+    let materialized = bound.materialize(InvocationPhase::Prefill).unwrap();
     assert_eq!(materialized.numerical_profile(), plan.numerical_profile());
-    assert_eq!(materialized.source_call().unwrap().rows().len(), 47);
+    assert_eq!(materialized.text_invocation().unwrap().tokens().len(), 47);
     for node in materialized.nodes() {
         let PlanOperation::SourceOperator { descriptor, .. } = &node.operation else {
             panic!("original template lowering")
@@ -534,7 +547,7 @@ fn cpu_source_templates_preserve_arithmetic_issuer_and_reject_cuda_mixing() {
 fn gdn_source_preserves_bf16_and_f32_storage_for_each_arithmetic_contract() {
     use crate::encoding::ScalarDType::{Bf16, F16, F32};
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let call = call(source, &[1, 2]);
+    let call = invocation(source, &[1, 2]);
     let parameter = |name: &str, dtype, elements: usize| SourceParameter {
         source,
         name: name.into(),

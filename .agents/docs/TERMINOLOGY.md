@@ -26,6 +26,16 @@ authority explicit.
   it structurally by model variant, phase and shape, e.g.
   `reference/qwen800m/prefill/47`, rather than opaque names such as
   `qwen08_47`.
+- **Text invocation** — one phase-qualified token span. The semantic pipeline is
+  `InvocationInput -> BoundInvocation -> TextInvocation { TokenSpan,
+  InvocationPhase }`. Use `tokens()` and `phase()`, not `rows()` / `mode()` on
+  this type.
+- **Model invocation** — model-family semantic metadata layered above the core
+  text invocation. Qwen uses `PromptInvocation`, `QwenGdnInvocation` and
+  `QwenModelInvocation` rather than `*Call` names.
+- **Resident text** — live model/session/pending/readback/snapshot ownership for
+  source-backed text execution. Use `ResidentText*`; the backend program body is
+  `text_execution`, and observation uses `TextFrame` / `TextObserver`.
 
 ## Reserved words
 
@@ -53,6 +63,12 @@ Historical commit messages, externally stable schema strings and provenance
 identifiers are not rewritten merely for style. Active APIs, modules, tests,
 diagnostics and current documentation should use the canonical vocabulary.
 
-The next isolated terminology family is `SourceCall*`: rename it around the
-actual invocation/source-execution concept rather than mixing that change into
-backend or model-forward naming.
+The historical `SourceCall*` family is retired. Do not reintroduce `source
+call` as a semantic or runtime-owner term. Externally stable historical schema
+or status values may retain the old spelling behind their existing compatibility
+boundary; active APIs, env vars, diagnostics and tests use invocation/resident-text
+terminology.
+
+The next isolated terminology debt is historical `natural*` / `all42` / other
+qualification shorthand. Keep the separate standard-RMS naming problem out of
+that migration until its exact arithmetic distinction has a clear replacement.

@@ -39,8 +39,8 @@ mod oracle;
 #[path = "support/qwen_cuda_regenerated.rs"]
 mod regenerated;
 #[allow(dead_code, unused_imports)]
-#[path = "support/qwen_source_calls_reference.rs"]
-mod source_calls_reference;
+#[path = "support/qwen_text_invocations_reference.rs"]
+mod text_invocations_reference;
 fn fail(message: impl Into<String>) -> Error {
     Error::State(message.into())
 }

@@ -133,12 +133,12 @@ fn plan(
 fn invocation(
     plan: &RecordedForwardPlan,
     profile: QwenModelVariant,
-    mode: SourceCallMode,
+    mode: InvocationPhase,
     base: usize,
     ids: Arc<[u32]>,
     emit_logits: bool,
-) -> Result<BoundSourceInvocation> {
-    let bound = plan.plan.bind_source_invocation(SourceInvocation::new(
+) -> Result<BoundInvocation> {
+    let bound = plan.plan.bind_invocation(InvocationInput::new(
         TextCallGeometry::new(
             plan.plan.source(),
             profile.vocabulary_size(),
@@ -148,7 +148,7 @@ fn invocation(
         ids,
         emit_logits,
     )?)?;
-    bound.invocation().source_call(mode)?;
+    bound.input().text_invocation(mode)?;
     Ok(bound)
 }
 
@@ -180,7 +180,7 @@ fn one_static_plan_serves_runtime_lengths_ids_and_emit_policy_for_both_profiles(
                     .all(|version| version.ordinal == 1 && expected.contains(&version.slot))
             );
             assert_eq!(plan.boundaries.len(), 24);
-            assert_eq!(plan.plan.source_call(), None);
+            assert_eq!(plan.plan.text_invocation(), None);
             assert_eq!(plan.plan.logits(), Some(plan.logits));
             assert!(plan.plan.nodes().iter().all(|node| matches!(
                 node.operation,
@@ -196,7 +196,7 @@ fn one_static_plan_serves_runtime_lengths_ids_and_emit_policy_for_both_profiles(
             let first = invocation(
                 &plan,
                 profile,
-                SourceCallMode::Prefill,
+                InvocationPhase::Prefill,
                 0,
                 Arc::from([11, 353]),
                 true,
@@ -205,7 +205,7 @@ fn one_static_plan_serves_runtime_lengths_ids_and_emit_policy_for_both_profiles(
             let cached = invocation(
                 &plan,
                 profile,
-                SourceCallMode::Decode,
+                InvocationPhase::Decode,
                 capacity - 1,
                 Arc::from([7]),
                 false,
@@ -215,26 +215,27 @@ fn one_static_plan_serves_runtime_lengths_ids_and_emit_policy_for_both_profiles(
             assert!(Arc::ptr_eq(first.plan(), &plan.plan));
             assert_eq!(
                 (
-                    first.invocation().base(),
-                    first.invocation().rows(),
-                    first.invocation().frontier()
+                    first.input().base(),
+                    first.input().token_count(),
+                    first.input().frontier()
                 ),
                 (0, 2, 2)
             );
-            assert_eq!(first.invocation().ids(), [11, 353]);
-            assert!(first.invocation().emit_logits());
-            assert_eq!(cached.invocation().frontier(), capacity);
-            assert!(!cached.invocation().emit_logits());
+            assert_eq!(first.input().ids(), [11, 353]);
+            assert!(first.input().emit_logits());
+            assert_eq!(cached.input().frontier(), capacity);
+            assert!(!cached.input().emit_logits());
             assert!(std::ptr::eq(first.active_nodes(), plan.plan.nodes()));
             assert!(std::ptr::eq(cached.active_nodes(), plan.plan.state_nodes()));
             assert_eq!(first.active_nodes().len(), cached.active_nodes().len() + 1);
 
-            let materialized = first
-                .materialize_source_plan(SourceCallMode::Prefill)
-                .unwrap();
+            let materialized = first.materialize(InvocationPhase::Prefill).unwrap();
             assert!(materialized.shares_semantics(&plan.plan));
-            assert!(materialized.source_call().is_some());
-            assert_eq!(materialized.source_call().unwrap().rows().ids(), [11, 353]);
+            assert!(materialized.text_invocation().is_some());
+            assert_eq!(
+                materialized.text_invocation().unwrap().tokens().ids(),
+                [11, 353]
+            );
             assert!(
                 materialized
                     .nodes()
@@ -283,7 +284,7 @@ fn forward_plan_refuses_bad_context_chunk_frontier_ids_and_source_descriptors() 
         invocation(
             &plan,
             profile,
-            SourceCallMode::Prefill,
+            InvocationPhase::Prefill,
             0,
             Arc::from([]),
             true
@@ -294,7 +295,7 @@ fn forward_plan_refuses_bad_context_chunk_frontier_ids_and_source_descriptors() 
         invocation(
             &plan,
             profile,
-            SourceCallMode::Prefill,
+            InvocationPhase::Prefill,
             0,
             Arc::from(vec![11; 65]),
             true
@@ -305,7 +306,7 @@ fn forward_plan_refuses_bad_context_chunk_frontier_ids_and_source_descriptors() 
         invocation(
             &plan,
             profile,
-            SourceCallMode::Prefill,
+            InvocationPhase::Prefill,
             500,
             Arc::from(vec![11; 13]),
             true
@@ -316,7 +317,7 @@ fn forward_plan_refuses_bad_context_chunk_frontier_ids_and_source_descriptors() 
         invocation(
             &plan,
             profile,
-            SourceCallMode::Prefill,
+            InvocationPhase::Prefill,
             0,
             Arc::from([248_320]),
             true
@@ -327,7 +328,7 @@ fn forward_plan_refuses_bad_context_chunk_frontier_ids_and_source_descriptors() 
         invocation(
             &plan,
             profile,
-            SourceCallMode::Decode,
+            InvocationPhase::Decode,
             0,
             Arc::from([11]),
             true
@@ -338,7 +339,7 @@ fn forward_plan_refuses_bad_context_chunk_frontier_ids_and_source_descriptors() 
     let one_prefill = invocation(
         &plan,
         profile,
-        SourceCallMode::Prefill,
+        InvocationPhase::Prefill,
         7,
         Arc::from([11]),
         true,
@@ -347,7 +348,7 @@ fn forward_plan_refuses_bad_context_chunk_frontier_ids_and_source_descriptors() 
     let one_decode = invocation(
         &plan,
         profile,
-        SourceCallMode::Decode,
+        InvocationPhase::Decode,
         7,
         Arc::from([11]),
         true,
@@ -355,21 +356,21 @@ fn forward_plan_refuses_bad_context_chunk_frontier_ids_and_source_descriptors() 
     .unwrap();
     assert_eq!(
         one_prefill
-            .materialize_source_plan(SourceCallMode::Prefill)
+            .materialize(InvocationPhase::Prefill)
             .unwrap()
-            .source_call()
+            .text_invocation()
             .unwrap()
-            .mode(),
-        SourceCallMode::Prefill
+            .phase(),
+        InvocationPhase::Prefill
     );
     assert_eq!(
         one_decode
-            .materialize_source_plan(SourceCallMode::Decode)
+            .materialize(InvocationPhase::Decode)
             .unwrap()
-            .source_call()
+            .text_invocation()
             .unwrap()
-            .mode(),
-        SourceCallMode::Decode
+            .phase(),
+        InvocationPhase::Decode
     );
 
     let foreign = SourceIdentity::for_new_allocation().unwrap();
@@ -430,21 +431,21 @@ fn cpu_source_plan_reuses_family_traversal_with_distinct_gdn_arithmetic() {
         }
         assert_eq!(recurrent, 18);
         for (base, rows, mode) in [
-            (0, 47, SourceCallMode::Prefill),
-            (47, 64, SourceCallMode::Prefill),
-            (512, 1, SourceCallMode::Decode),
+            (0, 47, InvocationPhase::Prefill),
+            (47, 64, InvocationPhase::Prefill),
+            (512, 1, InvocationPhase::Decode),
         ] {
-            let invocation = SourceInvocation::new(
+            let invocation = InvocationInput::new(
                 TextCallGeometry::new(source, profile.vocabulary_size(), 514).unwrap(),
                 base,
                 vec![11; rows].into(),
                 true,
             )
             .unwrap();
-            let bound = recorded.plan.bind_source_invocation(invocation).unwrap();
+            let bound = recorded.plan.bind_invocation(invocation).unwrap();
             assert!(Arc::ptr_eq(bound.plan(), &recorded.plan));
-            let plan = bound.materialize_source_plan(mode).unwrap();
-            assert_eq!(plan.source_call().unwrap().rows().len(), rows);
+            let plan = bound.materialize(mode).unwrap();
+            assert_eq!(plan.text_invocation().unwrap().tokens().len(), rows);
             assert_eq!(plan.proposed_domains().len(), 42);
         }
     }
@@ -453,15 +454,15 @@ fn cpu_source_plan_reuses_family_traversal_with_distinct_gdn_arithmetic() {
 #[test]
 fn cpu_source_cached_one_cannot_be_relabelled_as_chunk_prefill() {
     let cpu = NumericalContract::TorchCpuAvx2Bf16MixedV1;
-    assert!(require_source_phase(cpu, SourceCallMode::Prefill, 47, 1).is_err());
-    assert!(require_source_phase(cpu, SourceCallMode::Decode, 47, 1).is_ok());
-    assert!(require_source_phase(cpu, SourceCallMode::Prefill, 0, 1).is_ok());
-    assert!(require_source_phase(cpu, SourceCallMode::Prefill, 47, 17).is_ok());
+    assert!(require_source_phase(cpu, InvocationPhase::Prefill, 47, 1).is_err());
+    assert!(require_source_phase(cpu, InvocationPhase::Decode, 47, 1).is_ok());
+    assert!(require_source_phase(cpu, InvocationPhase::Prefill, 0, 1).is_ok());
+    assert!(require_source_phase(cpu, InvocationPhase::Prefill, 47, 17).is_ok());
     // The distinct CUDA source contract retains its explicit chunk semantics.
     assert!(
         require_source_phase(
             NumericalContract::CudaSm86Bf16ReferenceV1,
-            SourceCallMode::Prefill,
+            InvocationPhase::Prefill,
             47,
             1
         )
@@ -509,7 +510,7 @@ fn source_geometry_extends_the_same_plan_without_extending_captured_cuda() {
         assert_eq!(plan.required_domains().len(), 112);
         assert_eq!(plan.proposed_domains().len(), 112);
         assert_eq!(plan.frontier_delta(), 0);
-        assert!(plan.source_call().is_none());
+        assert!(plan.text_invocation().is_none());
         let mut recurrent = 0;
         let mut attention = 0;
         let mut untied_head = 0;
@@ -559,8 +560,8 @@ fn source_geometry_extends_the_same_plan_without_extending_captured_cuda() {
         assert_eq!((recurrent, attention, untied_head), (48, 16, 1));
         for (base, rows) in [(0, 47), (47, 64), (495, 17), (512, 1)] {
             let invocation = plan
-                .bind_source_invocation(
-                    SourceInvocation::new(
+                .bind_invocation(
+                    InvocationInput::new(
                         TextCallGeometry::new(source, profile.vocabulary_size(), 1024).unwrap(),
                         base,
                         vec![11; rows].into(),
@@ -570,17 +571,17 @@ fn source_geometry_extends_the_same_plan_without_extending_captured_cuda() {
                 )
                 .unwrap();
             let mode = if rows == 1 {
-                SourceCallMode::Decode
+                InvocationPhase::Decode
             } else {
-                SourceCallMode::Prefill
+                InvocationPhase::Prefill
             };
-            let materialized = invocation.materialize_source_plan(mode).unwrap();
+            let materialized = invocation.materialize(mode).unwrap();
             assert_eq!(materialized.required_domains().len(), 112);
             assert_eq!(materialized.frontier_delta(), 0);
-            let call = materialized.source_call().unwrap();
-            assert_eq!(call.rows().base(), base);
-            assert_eq!(call.rows().len(), rows);
-            assert_eq!(call.rows().frontier(), base + rows);
+            let call = materialized.text_invocation().unwrap();
+            assert_eq!(call.tokens().base(), base);
+            assert_eq!(call.tokens().len(), rows);
+            assert_eq!(call.tokens().frontier(), base + rows);
         }
     }
 }

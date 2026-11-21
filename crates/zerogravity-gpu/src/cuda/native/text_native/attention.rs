@@ -14,7 +14,7 @@ use crate::{
         native_fragment::{
             PrefixPhaseEnqueue,
             model_state::BoundModelState,
-            text::{TextCallInput, TextCallState},
+            text::{TextInvocationInput, TextInvocationState},
         },
     },
     resident_leases::{ResidentInitialization, ResidentLease, ResidentReadback, ResidentService},
@@ -93,8 +93,8 @@ struct CurrentSite {
 }
 pub(super) struct Current {
     storage: Arc<Storage>,
-    input: Arc<TextCallInput>,
-    state: Arc<TextCallState>,
+    input: Arc<TextInvocationInput>,
+    state: Arc<TextInvocationState>,
     values: Arc<ModelValues>,
     positions: Arc<TextPositions>,
     sites: BTreeMap<usize, CurrentSite>,
@@ -158,7 +158,7 @@ pub(super) fn rotary_binding_bytes<'a>(sites: impl IntoIterator<Item = &'a Site>
 impl Storage {
     pub(super) fn cohort_parameters(
         &self,
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         layer: usize,
     ) -> Result<[ResidentLease; 2]> {
         if inputs.len() != 4 {
@@ -176,7 +176,7 @@ impl Storage {
             let Some(descriptor) = &input.record().operator(node)? else {
                 return Err(Error::State("B4 source QK descriptor absent".into()));
             };
-            if descriptor.call() != input.call() || descriptor.parameters().len() != 2 {
+            if descriptor.invocation() != input.invocation() || descriptor.parameters().len() != 2 {
                 return Err(Error::State(
                     "B4 QK every real row parameter descriptor".into(),
                 ));
@@ -296,7 +296,7 @@ impl Storage {
         }
         for g in p.geometries {
             p.rotary
-                .require_call(&p.source, g.scope.call(), &p.service)?;
+                .require_call(&p.source, g.scope.invocation(), &p.service)?;
         }
         let mut controls = BTreeMap::new();
         let mut private_extents = BTreeSet::new();
@@ -304,9 +304,9 @@ impl Storage {
         for geometry in p
             .geometries
             .iter()
-            .filter(|g| g.scope.call().rows().base() == 0)
+            .filter(|g| g.scope.invocation().tokens().base() == 0)
         {
-            let prompt = geometry.scope.call().rows().len();
+            let prompt = geometry.scope.invocation().tokens().len();
             for call in 0..capture.captured_call_count() {
                 let base = if call == 0 { 0 } else { prompt + call - 1 };
                 let rows = if call == 0 { prompt } else { 1 };
@@ -409,8 +409,8 @@ impl Storage {
     }
     pub(super) fn bind(
         self: &Arc<Self>,
-        input: Arc<TextCallInput>,
-        state: Arc<TextCallState>,
+        input: Arc<TextInvocationInput>,
+        state: Arc<TextInvocationState>,
         values: Arc<ModelValues>,
         positions: Arc<TextPositions>,
     ) -> Result<Arc<Current>> {
@@ -425,7 +425,7 @@ impl Storage {
             ));
         }
         self.rotary
-            .require_call(&self.source, input.call(), values.service())?;
+            .require_call(&self.source, input.invocation(), values.service())?;
         let metadata = self
             .source
             // Fresh current handles/owners only; definitions stay in Controls.
@@ -455,8 +455,10 @@ impl Storage {
                 return Err(Error::State("text exact QK source parameter arity".into()));
             }
             require_qk(descriptor)?;
-            if descriptor.call() != input.call() {
-                return Err(Error::State("text QK actual source call differs".into()));
+            if descriptor.invocation() != input.invocation() {
+                return Err(Error::State(
+                    "text QK actual text invocation differs".into(),
+                ));
             }
             for (i, parameter) in descriptor.parameters().iter().enumerate() {
                 self.source
@@ -602,7 +604,7 @@ impl Current {
         // never by caller-provided bytes, raw addresses or public-value aliasing.
         let key = Key::current(
             self.storage.capture,
-            self.input.call(),
+            self.input.invocation(),
             self.input.prompt_tokens(),
             node,
         )?;
@@ -698,8 +700,8 @@ impl Current {
     }
     pub(super) fn retained(
         &self,
-        input: &Arc<TextCallInput>,
-        state: &Arc<TextCallState>,
+        input: &Arc<TextInvocationInput>,
+        state: &Arc<TextInvocationState>,
         values: &Arc<ModelValues>,
     ) -> Result<bool> {
         Ok(Arc::ptr_eq(input, &self.input)

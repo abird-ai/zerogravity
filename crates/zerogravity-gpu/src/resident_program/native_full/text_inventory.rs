@@ -31,7 +31,7 @@ impl FullModelProgram {
             capture,
             &scopes
                 .iter()
-                .map(|s| s.call().rows().len())
+                .map(|s| s.invocation().tokens().len())
                 .collect::<Vec<_>>(),
         )?;
         let first = scopes

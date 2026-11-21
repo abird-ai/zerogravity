@@ -1,7 +1,7 @@
 //! SAME source KV transport with root-free storage and fresh current handles.
 use super::*;
 use crate::cuda::native::model_cache::SharedModelCache;
-use crate::resident_inference::native_fragment::fixed_prompt_natural::FixedPromptCallInput;
+use crate::resident_inference::native_fragment::fixed_prompt_natural::FixedPromptInvocationInput;
 
 pub(crate) struct FixedPromptKvStorage {
     arena: Arc<SharedModelCache>,
@@ -9,7 +9,7 @@ pub(crate) struct FixedPromptKvStorage {
 }
 pub(crate) struct FixedPromptKvTransport {
     storage: Arc<FixedPromptKvStorage>,
-    input: Arc<FixedPromptCallInput>,
+    input: Arc<FixedPromptInvocationInput>,
     binding: Arc<BoundModelState>,
     incoming: Option<Copy>,
     outgoing: Copy,
@@ -28,7 +28,7 @@ impl FixedPromptKvStorage {
     }
     pub(crate) fn bind(
         self: &Arc<Self>,
-        input: Arc<FixedPromptCallInput>,
+        input: Arc<FixedPromptInvocationInput>,
         binding: Arc<BoundModelState>,
     ) -> Result<Arc<FixedPromptKvTransport>> {
         let (base, end) = (input.base(), input.base() + input.rows());
@@ -50,7 +50,7 @@ impl FixedPromptKvStorage {
         for (lease, _) in &leases {
             if !Arc::ptr_eq(service, lease.service())
                 || lease.bytes() != CANONICAL_BYTES
-                || lease.source_identity() != input.call().source()
+                || lease.source_identity() != input.invocation().source()
                 || lease.service_generation() != service.generation()
                 || [self.arena.lease().id(), self.status.id()].contains(&lease.id())
                 || !ids.insert(lease.id())
@@ -165,7 +165,7 @@ impl FixedPromptKvTransport {
     }
     pub(crate) fn retained(
         &self,
-        input: &Arc<FixedPromptCallInput>,
+        input: &Arc<FixedPromptInvocationInput>,
         binding: &Arc<BoundModelState>,
     ) -> Result<bool> {
         binding.require_fixed_prompt_published(input.scope())?;

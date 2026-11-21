@@ -4,7 +4,7 @@ use super::{
     *,
 };
 use cubecl::{prelude::*, server::Handle};
-use zerogravity_core::accelerator::program::{SourceCallMode, SourceGdnGeometry, SourceParameter};
+use zerogravity_core::accelerator::program::{InvocationPhase, SourceGdnGeometry, SourceParameter};
 
 pub(super) fn arg(h: &Handle, n: usize) -> BufferArg {
     unsafe { BufferArg::from_raw_parts(h.clone(), n) }
@@ -22,7 +22,7 @@ impl Cold {
             0,
             words
                 .checked_mul(4)
-                .ok_or_else(|| Error::Limit("source-call scratch words".into()))?,
+                .ok_or_else(|| Error::Limit("text-execution scratch words".into()))?,
         )
     }
     pub(super) fn table(&self, index: usize, bytes: usize) -> Result<Handle> {
@@ -34,18 +34,18 @@ impl Cold {
     pub(super) fn parameter(&self, p: &SourceParameter) -> Result<Handle> {
         if self.layout.parameters.get(&p.name) != Some(p) {
             return Err(Error::State(
-                "source-call learned parameter descriptor changed".into(),
+                "text-execution learned parameter descriptor changed".into(),
             ));
         }
         let n = p
             .shape
             .iter()
             .try_fold(1usize, |a, b| a.checked_mul(usize::try_from(*b).ok()?))
-            .ok_or_else(|| Error::Limit("source-call parameter words".into()))?;
+            .ok_or_else(|| Error::Limit("text-execution parameter words".into()))?;
         view(
             self.parameters
                 .get(&p.name)
-                .ok_or_else(|| Error::State("source-call missing parameter owner".into()))?,
+                .ok_or_else(|| Error::State("text-execution missing parameter owner".into()))?,
             0,
             n * 4,
         )
@@ -138,7 +138,7 @@ impl Cold {
         parameters: &[SourceParameter],
         geometry: SourceGdnGeometry,
         rows: usize,
-        mode: SourceCallMode,
+        mode: InvocationPhase,
     ) -> Result<usize> {
         let kh = geometry.key_heads;
         let vh = geometry.value_heads;
@@ -185,7 +185,7 @@ impl Cold {
         }
         let mut count = 2 + self.sigmoid(&beta_input, &beta, coeff)?;
         match mode {
-            SourceCallMode::Prefill => {
+            InvocationPhase::Prefill => {
                 let q = self.s(layout::QUERY, n)?;
                 let k = self.s(layout::KEY, n)?;
                 let v = self.s(layout::VALUE, n)?;
@@ -232,9 +232,9 @@ impl Cold {
                     &status,
                 )?;
             }
-            SourceCallMode::Decode => {
+            InvocationPhase::Decode => {
                 if rows != 1 {
-                    return Err(Error::State("source-call cached GDN row count".into()));
+                    return Err(Error::State("text-execution cached GDN row count".into()));
                 }
                 let decay = self.s(layout::DECAY, vh)?;
                 let q = self.s(layout::QUERY, width)?;
@@ -375,7 +375,7 @@ fn rms_tiles(
     let bytes = width
         .checked_mul(groups)
         .and_then(|n| n.checked_mul(4))
-        .ok_or_else(|| Error::Limit("source-call RMS complete byte extent".into()))?;
+        .ok_or_else(|| Error::Limit("text-execution RMS complete byte extent".into()))?;
     let tiles = (0..groups).step_by(bound).map(move |first| {
         let count = (groups - first).min(bound);
         (first * width * 4, count * width * 4, count)
@@ -388,11 +388,11 @@ pub(super) fn subview(handle: &Handle, offset: usize, bytes: usize) -> Result<Ha
         .size()
         .checked_sub(handle.offset_start.unwrap_or(0))
         .and_then(|n| n.checked_sub(handle.offset_end.unwrap_or(0)))
-        .ok_or_else(|| Error::State("source-call parent view".into()))?;
+        .ok_or_else(|| Error::State("text-execution parent view".into()))?;
     let end = offset
         .checked_add(bytes)
         .filter(|n| bytes > 0 && *n as u64 <= total)
-        .ok_or_else(|| Error::State("source-call nested view extent".into()))?;
+        .ok_or_else(|| Error::State("text-execution nested view extent".into()))?;
     Ok(handle
         .clone()
         .offset_start(offset as u64)

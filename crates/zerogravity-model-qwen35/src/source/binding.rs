@@ -120,7 +120,7 @@ pub(crate) use window::traversal::{SourceLayerState, SourceObserver, SourceOutpu
 pub use window::{OriginalWindowOperators, WindowOperatorPlan};
 #[cfg(all(feature = "source-binding", target_os = "linux"))]
 pub use window_model::{
-    BoundFullModelSource, BoundPromptCall, ComponentImplementation, ComponentKernelCapture,
+    BoundFullModelSource, BoundPromptInvocation, ComponentImplementation, ComponentKernelCapture,
     ComponentOutput, ForwardSourceSeal, OriginalWindowModelSource, PreparedComponent,
     PreparedFinalRmsSource, PreparedGdnParameters, PreparedPlan, PreparedQualificationSource,
     PreparedRmsSource, ReferenceKernelCapture,

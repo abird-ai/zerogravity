@@ -1,14 +1,14 @@
 //! Structural refusals only; no source math/native/profile qualification.
 use super::*;
 
-fn call(source: SourceIdentity, phase: ReferencePhase) -> QwenSourceCall {
+fn invocation(source: SourceIdentity, phase: ReferencePhase) -> QwenModelInvocation {
     let base = match phase {
         ReferencePhase::CachedOne => 1,
         ReferencePhase::ContinuedTwo => 64,
         _ => 0,
     };
-    QwenSourceCall::new(
-        QwenGdnCall::new(
+    QwenModelInvocation::new(
+        QwenGdnInvocation::new(
             QwenPrefixLayer::new(source, 0).unwrap(),
             phase,
             QwenInputRows::new(source, base, 512, &vec![11; phase.rows()]).unwrap(),
@@ -17,7 +17,11 @@ fn call(source: SourceIdentity, phase: ReferencePhase) -> QwenSourceCall {
     )
     .unwrap()
 }
-fn descriptor(call: &QwenSourceCall, index: Option<usize>, kind: QwenOperation) -> QwenOperator {
+fn descriptor(
+    call: &QwenModelInvocation,
+    index: Option<usize>,
+    kind: QwenOperation,
+) -> QwenOperator {
     let layer = index.map(|i| call.layer(i).unwrap());
     let mut matrices = Vec::new();
     if let QwenOperation::Projection(projection) = kind {
@@ -95,7 +99,7 @@ fn descriptor(call: &QwenSourceCall, index: Option<usize>, kind: QwenOperation) 
     };
     QwenOperator::new(call.clone(), layer, kind, matrices, parameters).unwrap()
 }
-fn embedding(builder: &mut QwenPlanBuilder, call: &QwenSourceCall) -> PlanValue {
+fn embedding(builder: &mut QwenPlanBuilder, call: &QwenModelInvocation) -> PlanValue {
     builder
         .source_embedding(
             &QwenEmbedding::new(
@@ -122,7 +126,7 @@ fn one(builder: &mut QwenPlanBuilder, d: &QwenOperator, input: PlanValue) -> Pla
 #[test]
 fn original_indices_after_attention_are_never_gdn_ordinals_or_prefix_capabilities() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let call = call(source, ReferencePhase::InitialOne);
+    let call = invocation(source, ReferencePhase::InitialOne);
     let domains = all_domains().unwrap();
     assert_eq!(domains.len(), 42);
     for i in 0..24 {
@@ -203,8 +207,8 @@ fn original_indices_after_attention_are_never_gdn_ordinals_or_prefix_capabilitie
 #[test]
 fn full_request_issuer_and_foreign_plan_values_refuse_without_recording() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let a = call(source, ReferencePhase::InitialOne);
-    let b = call(source, ReferencePhase::InitialOne);
+    let a = invocation(source, ReferencePhase::InitialOne);
+    let b = invocation(source, ReferencePhase::InitialOne);
     assert_ne!(
         a, b,
         "same token bits do not replace teacher allocation issuer"
@@ -239,9 +243,9 @@ fn full_request_issuer_and_foreign_plan_values_refuse_without_recording() {
 }
 
 #[test]
-fn same_call_different_qk_cohort_cannot_supply_private_appended_kv() {
+fn same_invocation_different_qk_cohort_cannot_supply_private_appended_kv() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let call = call(source, ReferencePhase::Initial64);
+    let call = invocation(source, ReferencePhase::Initial64);
     let mut builder = QwenPlanBuilder::new_small_model(call.clone()).unwrap();
     let raw = embedding(&mut builder, &call);
     let projection = descriptor(
@@ -276,7 +280,7 @@ fn same_call_different_qk_cohort_cannot_supply_private_appended_kv() {
 #[test]
 fn packed_original_member_order_kind_axes_and_layer_cannot_be_substituted() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let call = call(source, ReferencePhase::InitialOne);
+    let call = invocation(source, ReferencePhase::InitialOne);
     let d = descriptor(
         &call,
         Some(7),
@@ -321,12 +325,18 @@ fn selected_head_is_a_view_of_full_phase_not_a_new_one_row_invocation() {
         ReferencePhase::ContinuedTwo,
         ReferencePhase::CachedOne,
     ] {
-        let call = call(source, phase);
+        let call = invocation(source, phase);
         let head = descriptor(&call, None, QwenOperation::Projection(QwenProjection::Head));
         assert_eq!(head.selected_row(), Some(phase.rows() - 1));
         assert_eq!(head.input_elements(), vec![phase.rows() * 1024]);
         assert_eq!(head.output_elements(), vec![248320]);
-        assert_eq!(head.call().request().reference_phase().unwrap(), phase);
-        assert_eq!(head.call().request().teachers(), call.request().teachers());
+        assert_eq!(
+            head.model_invocation().request().reference_phase().unwrap(),
+            phase
+        );
+        assert_eq!(
+            head.model_invocation().request().teachers(),
+            call.request().teachers()
+        );
     }
 }

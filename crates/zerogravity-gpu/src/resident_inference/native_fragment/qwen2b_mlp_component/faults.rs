@@ -195,7 +195,7 @@ impl Probe {
                 | Qwen2BMlpComponentFault::CancelBeforeDownReducer
         );
         if down_cut
-            && (body.recipe().bindings().call().rows().len() != 1
+            && (body.recipe().bindings().invocation().tokens().len() != 1
                 || body.qwen2b_native_launches()? != 6
                 || body.qwen2b_down1_enqueues()? != 1
                 || !body.qwen2b_down1_output_unpromoted()?)
@@ -231,7 +231,7 @@ impl Probe {
             arithmetic,
             fault,
             status: "DELIBERATE_COMPUTE_FLIGHT_REFUSAL_RETAINED",
-            rows: body.recipe().bindings().call().rows().len(),
+            rows: body.recipe().bindings().invocation().tokens().len(),
             native_launches: body.qwen2b_native_launches()?,
             submitted_buffers: w.submitted.len(),
             retained_graph_buffers: retained.len(),
@@ -249,12 +249,12 @@ impl Probe {
             quarantined_owners: owners,
             source_record_ticket_body_plan_native_retained: true,
             out_dual_mlp_graph_retained: true,
-            down1_output_unpromoted: if body.recipe().bindings().call().rows().len() == 1 {
+            down1_output_unpromoted: if body.recipe().bindings().invocation().tokens().len() == 1 {
                 body.qwen2b_down1_output_unpromoted()?
             } else {
                 false
             },
-            down1_enqueues: if body.recipe().bindings().call().rows().len() == 1 {
+            down1_enqueues: if body.recipe().bindings().invocation().tokens().len() == 1 {
                 body.qwen2b_down1_enqueues()?
             } else {
                 0

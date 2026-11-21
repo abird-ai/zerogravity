@@ -1,4 +1,4 @@
-//! Original source-call lifecycle orchestration; never a runtime dependency.
+//! Original resident-text lifecycle orchestration; never a runtime dependency.
 use super::{
     reference::{Call, Expected},
     source::need,
@@ -16,11 +16,11 @@ use zerogravity::resource_arbiter::{
     AllocationClass, AllocationRequest, ResourceArbiter, ResourceOwner,
 };
 use zerogravity::{
-    Error, Result, accelerator::program::SourceCallMode, qwen35::plan::QwenForwardPlan,
+    Error, Result, accelerator::program::InvocationPhase, qwen35::plan::QwenForwardPlan,
 };
 use zerogravity_gpu::{
-    ResidentOutput, SourceCallModel, SourceCallPending, SourceCallPreparation,
-    SourceCallPublication, SourceCallSession,
+    ResidentOutput, ResidentTextModel, ResidentTextPending, ResidentTextPreparation,
+    ResidentTextPublication, ResidentTextSession,
 };
 
 pub fn supported(mode: &str) -> bool {
@@ -38,20 +38,20 @@ pub fn supported(mode: &str) -> bool {
             | "unknown"
     )
 }
-fn phase(c: &Call) -> SourceCallMode {
+fn phase(c: &Call) -> InvocationPhase {
     if c.rows == 1 && c.position != 0 {
-        SourceCallMode::Decode
+        InvocationPhase::Decode
     } else {
-        SourceCallMode::Prefill
+        InvocationPhase::Prefill
     }
 }
-fn ready(p: SourceCallPreparation) -> Result<SourceCallPending> {
+fn ready(p: ResidentTextPreparation) -> Result<ResidentTextPending> {
     match p {
-        SourceCallPreparation::Ready(p) => Ok(p),
+        ResidentTextPreparation::Ready(p) => Ok(p),
         _ => Err(Error::State("expected actual source Ready".into())),
     }
 }
-fn final_reader(probe: zerogravity_gpu::SourceCallFinalReader) -> Result<()> {
+fn final_reader(probe: zerogravity_gpu::ResidentTextFinalReader) -> Result<()> {
     let observed = probe.observe()?;
     need(
         !observed.model_retained
@@ -68,24 +68,24 @@ fn selected(logits: &[f32]) -> Result<(u32, u32)> {
     Ok((i, value.to_bits()))
 }
 async fn prepare(
-    session: &SourceCallSession,
+    session: &ResidentTextSession,
     plan: &QwenForwardPlan,
     call: &Call,
     token: Option<u32>,
     cancelled: Option<Arc<AtomicBool>>,
-) -> Result<SourceCallPreparation> {
+) -> Result<ResidentTextPreparation> {
     let ids = token.map_or_else(|| call.input_ids.clone(), |t| vec![t]);
     let invocation = plan.bind_invocation(phase(call), call.position, ids.into(), true)?;
     session
         .prepare(
             invocation.bound_invocation(),
-            invocation.mode(),
+            invocation.phase(),
             ResidentOutput::Logits,
             cancelled,
         )
         .await
 }
-async fn check(session: &SourceCallSession, expected: &Expected, call: &Call) -> Result<usize> {
+async fn check(session: &ResidentTextSession, expected: &Expected, call: &Call) -> Result<usize> {
     need(
         session.binding().frontier() == (call.position + call.rows) as u64,
         "published original frontier",
@@ -105,8 +105,8 @@ struct Noop;
 impl Wake for Noop {
     fn wake(self: Arc<Self>) {}
 }
-fn until_submitted<F: Future<Output = Result<SourceCallPreparation>>>(
-    model: &SourceCallModel,
+fn until_submitted<F: Future<Output = Result<ResidentTextPreparation>>>(
+    model: &ResidentTextModel,
     future: std::pin::Pin<&mut F>,
 ) -> Result<()> {
     let mut future = future;
@@ -117,7 +117,7 @@ fn until_submitted<F: Future<Output = Result<SourceCallPreparation>>>(
         if let Poll::Ready(result) = future.as_mut().poll(&mut context) {
             let _ = result?;
             return Err(Error::State(
-                "source-call completed before armed original launch boundary".into(),
+                "resident-text completed before armed original launch boundary".into(),
             ));
         }
         if model.diagnostic_launch_handles() > 0 {
@@ -133,11 +133,11 @@ fn until_submitted<F: Future<Output = Result<SourceCallPreparation>>>(
 
 pub async fn run(
     mode: &str,
-    model: Arc<SourceCallModel>,
+    model: Arc<ResidentTextModel>,
     plan: QwenForwardPlan,
     expected: &Expected,
 ) -> Result<()> {
-    need(supported(mode), "source-call lifecycle mode")?;
+    need(supported(mode), "resident-text lifecycle mode")?;
     let calls: Vec<_> = expected
         .calls()
         .iter()
@@ -164,7 +164,7 @@ pub async fn run(
         need(
             matches!(
                 prepare(&session, &plan, first, None, Some(cancelled.clone())).await?,
-                SourceCallPreparation::CancelledBeforeLaunch
+                ResidentTextPreparation::CancelledBeforeLaunch
             ),
             "proven prelaunch cancellation",
         )?;
@@ -173,7 +173,7 @@ pub async fn run(
         let budget = host.snapshot(&key)?;
         let pressure = host.admit(
             &key,
-            ResourceOwner::new("source-call-qualification", "capacity-pressure")?,
+            ResourceOwner::new("resident-text-qualification", "capacity-pressure")?,
             &[AllocationRequest {
                 kind: AllocationClass::Scratch,
                 bytes: budget.remaining,
@@ -182,7 +182,7 @@ pub async fn run(
         let capacity = prepare(&session, &plan, first, None, None).await;
         drop(pressure);
         need(
-            matches!(capacity?, SourceCallPreparation::Capacity),
+            matches!(capacity?, ResidentTextPreparation::Capacity),
             "proven prelaunch host capacity refusal",
         )?;
         need(
@@ -247,11 +247,11 @@ pub async fn run(
         )?;
         let discarded = session.commit(pending)?;
         match discarded {
-            SourceCallPublication::Discarded(read) => need(
+            ResidentTextPublication::Discarded(read) => need(
                 read.dispatches == completed,
                 "known discard preserves completed accounting",
             )?,
-            SourceCallPublication::Committed(_) => {
+            ResidentTextPublication::Committed(_) => {
                 return Err(Error::State("cancelled call published".into()));
             }
         }
@@ -377,7 +377,7 @@ pub async fn run(
             drop(pending);
             final_reader(probe)?;
         } else {
-            let SourceCallPublication::Committed(output) = session.commit(pending)? else {
+            let ResidentTextPublication::Committed(output) = session.commit(pending)? else {
                 return Err(Error::State("live source proposal discarded".into()));
             };
             check(&session, expected, first).await?;
@@ -466,7 +466,7 @@ pub async fn run(
             ResourceArbiter::process_shared()
                 .admit(
                     &resource,
-                    ResourceOwner::new("source-call-qualification", "fenced-peer")?,
+                    ResourceOwner::new("resident-text-qualification", "fenced-peer")?,
                     &[AllocationRequest {
                         kind: AllocationClass::Scratch,
                         bytes: 4096,
@@ -486,7 +486,7 @@ pub async fn run(
         )?;
     }
     println!(
-        "SOURCE_CALL_LIFECYCLE_PASS mode={mode} observer=false native_retained={} fenced={} resident_bytes={} device_reserved_bytes={} sdk=false",
+        "RESIDENT_TEXT_LIFECYCLE_PASS mode={mode} observer=false native_retained={} fenced={} resident_bytes={} device_reserved_bytes={} sdk=false",
         after.retained, global.fenced, after.resident_bytes, global.reserved
     );
     Ok(())

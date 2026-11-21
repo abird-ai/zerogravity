@@ -51,7 +51,7 @@ fn tables() -> Vec<Vec<u8>> {
 }
 
 pub(crate) use cold::Admission;
-pub use cold::SourceCallInventory;
+pub use cold::ResidentTextInventory;
 pub(crate) struct Prepared {
     pub program: super::ResidentProgram,
     pub accesses: Vec<(
@@ -59,7 +59,7 @@ pub(crate) struct Prepared {
         zerogravity_core::device_events::DeviceAccess,
     )>,
     pub service: Arc<crate::resident_leases::ResidentService>,
-    pub inventory: SourceCallInventory,
+    pub inventory: ResidentTextInventory,
 }
 
 pub(crate) async fn prepare(
@@ -71,7 +71,7 @@ pub(crate) async fn prepare(
     use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
     let check = || {
         if cancelled.is_some_and(|f| f.load(std::sync::atomic::Ordering::Acquire)) {
-            Err(Error::State("source-call preparation cancelled".into()))
+            Err(Error::State("text-execution preparation cancelled".into()))
         } else {
             Ok(())
         }
@@ -116,7 +116,7 @@ pub(crate) async fn prepare(
     let cold = pending.bind()?;
     if ready.outputs().len() != cold.accesses.len() {
         return Err(Error::State(
-            "source-call initialization owner coverage".into(),
+            "text-execution initialization owner coverage".into(),
         ));
     }
     let program = cold.bind()?;

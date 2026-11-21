@@ -7,7 +7,7 @@ use zerogravity_core::accelerator::program::KvDomain;
 use zerogravity_core::accelerator::program::PlanOperation;
 use zerogravity_core::accelerator::program::RecurrentDomain;
 use zerogravity_core::accelerator::program::StateEffect;
-use zerogravity_core::accelerator::program::{SourceCall, SourceOperatorKind};
+use zerogravity_core::accelerator::program::{SourceOperatorKind, TextInvocation};
 
 #[derive(Clone)]
 enum ModelStateScope {
@@ -19,7 +19,7 @@ enum ModelStateScope {
 }
 pub(crate) struct BoundModelState {
     base: RootBinding,
-    call: SourceCall,
+    invocation: TextInvocation,
     layer: usize,
     effects: Vec<StateEffect>,
     // GDN: Conv prior/candidate, H prior/candidate. KV: K prior/candidate,
@@ -127,7 +127,8 @@ impl ResidentSession {
         candidate: &[Domain],
         phase: Arc<AttemptPhaseBinding>,
     ) -> Result<Arc<BoundModelState>> {
-        if scope.kind() != crate::cuda::native::fixed_prompt_model::FixedPromptCallKind::Prefill
+        if scope.kind()
+            != crate::cuda::native::fixed_prompt_model::FixedPromptInvocationKind::Prefill
             || layer >= 3
         {
             return Err(Error::Unsupported(
@@ -168,7 +169,7 @@ impl ResidentSession {
         phase: Arc<AttemptPhaseBinding>,
         scope: ModelStateScope,
     ) -> Result<Arc<BoundModelState>> {
-        let call = record.call();
+        let call = record.invocation();
         match &scope {
             ModelStateScope::Legacy => phase.require_full_model_binding(self, attempt, call)?,
             ModelStateScope::Text(scope) => {
@@ -198,10 +199,10 @@ impl ResidentSession {
         }
         let base = self.binding();
         let plan = record.plan();
-        if self.model.capacity != call.rows().capacity()
+        if self.model.capacity != call.tokens().capacity()
             || plan.source() != base.source()
             || call.source() != base.source()
-            || plan.source_call() != Some(call)
+            || plan.text_invocation() != Some(call)
             || plan.frontier_delta() != 0
             || plan.logits().is_some()
             || self.model.states.len() != record.state_requirements().len()
@@ -276,7 +277,7 @@ impl ResidentSession {
             let effect = node
                 .state
                 .ok_or_else(|| Error::State("source state effect absent".into()))?;
-            if descriptor.call() != call
+            if descriptor.invocation() != call
                 || !plan.required_domains().contains(&slot)
                 || effect.read.slot != slot
                 || effect.write.slot != slot
@@ -291,7 +292,7 @@ impl ResidentSession {
                 let tag = plan.source_value_provenance(id)?.ok_or_else(|| {
                     Error::State("source state producer provenance absent".into())
                 })?;
-                if tag.call() != call {
+                if tag.invocation() != call {
                     return Err(Error::State(
                         "source state producer call issuer differs".into(),
                     ));
@@ -347,7 +348,7 @@ impl ResidentSession {
         }
         Ok(Arc::new(BoundModelState {
             base,
-            call: call.clone(),
+            invocation: call.clone(),
             layer,
             effects,
             leases,
@@ -357,8 +358,8 @@ impl ResidentSession {
     }
 }
 impl BoundModelState {
-    pub(crate) fn call(&self) -> &SourceCall {
-        &self.call
+    pub(crate) fn invocation(&self) -> &TextInvocation {
+        &self.invocation
     }
     pub(crate) fn layer(&self) -> usize {
         self.layer
@@ -427,21 +428,24 @@ impl BoundModelState {
         permit: &PrefixPhaseEnqueue<'_>,
     ) -> Result<()> {
         match &self.scope {
-            ModelStateScope::Legacy => self
-                .phase
-                .require_full_model_permit(permit, service, &self.call)?,
-            ModelStateScope::Text(_) => self
-                .phase
-                .require_text_permit(permit, service, &self.call)?,
+            ModelStateScope::Legacy => {
+                self.phase
+                    .require_full_model_permit(permit, service, &self.invocation)?
+            }
+            ModelStateScope::Text(_) => {
+                self.phase
+                    .require_text_permit(permit, service, &self.invocation)?
+            }
             ModelStateScope::FixedPromptPrefix => self
                 .phase
-                .require_fixed_prompt_model_prefix_permit(permit, service, &self.call)?,
+                .require_fixed_prompt_model_prefix_permit(permit, service, &self.invocation)?,
             ModelStateScope::FixedPromptPublished(_) => self
                 .phase
-                .require_fixed_prompt_published_permit(permit, service, &self.call)?,
-            ModelStateScope::FixedPromptWhole(_) => self
-                .phase
-                .require_fixed_prompt_whole_permit(permit, service, &self.call)?,
+                .require_fixed_prompt_published_permit(permit, service, &self.invocation)?,
+            ModelStateScope::FixedPromptWhole(_) => {
+                self.phase
+                    .require_fixed_prompt_whole_permit(permit, service, &self.invocation)?
+            }
         }
         self.phase.require_launch_ready(service)?;
         for prior in [&self.leases[0], &self.leases[2]] {
@@ -467,7 +471,7 @@ impl BoundModelState {
         scope: &crate::cuda::native::fixed_prompt_model::FixedPromptModelBinding,
     ) -> Result<()> {
         if !matches!(&self.scope, ModelStateScope::FixedPromptPrefix)
-            || self.call != *scope.record().call()
+            || self.invocation != *scope.record().invocation()
             || self.layer >= 3
             || self.kv_domain().is_ok()
             || self.base.source() != scope.source().source_identity()

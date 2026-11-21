@@ -3,16 +3,16 @@
 use super::*;
 use crate::resident_program::qwen2b_component::ComponentRecipe;
 
-fn coordinates(base: RootBinding, attempt: &RootAttempt, call: &SourceCall) -> Result<()> {
+fn coordinates(base: RootBinding, attempt: &RootAttempt, call: &TextInvocation) -> Result<()> {
     if call.source() != base.source()
         || attempt.base() != base
         || base.frontier() != 0
-        || call.rows().base() != 0
-        || call.rows().capacity() != 512
-        || call.rows().vocabulary() != 248320
-        || call.mode() != zerogravity_core::accelerator::program::SourceCallMode::Prefill
-        || !matches!(call.rows().len(), 1 | 47 | 64)
-        || attempt.frontier() != call.rows().len() as u64
+        || call.tokens().base() != 0
+        || call.tokens().capacity() != 512
+        || call.tokens().vocabulary() != 248320
+        || call.phase() != zerogravity_core::accelerator::program::InvocationPhase::Prefill
+        || !matches!(call.tokens().len(), 1 | 47 | 64)
+        || attempt.frontier() != call.tokens().len() as u64
     {
         return Err(Error::State(
             "component actual source/current initial attempt differs".into(),
@@ -25,7 +25,7 @@ impl GdnAttemptSchedule {
         recipe: &Arc<ComponentRecipe>,
         attempt: RootAttempt,
     ) -> Result<Arc<Self>> {
-        let call = recipe.bindings().call();
+        let call = recipe.bindings().invocation();
         recipe.kind().require_call(call)?;
         if recipe.source().source_identity() != call.source() {
             return Err(Error::State(
@@ -44,7 +44,7 @@ impl GdnAttemptSchedule {
 impl AttemptPhaseBinding {
     pub(in crate::resident_inference) fn require_initial_component_call(
         &self,
-        call: &SourceCall,
+        call: &TextInvocation,
     ) -> Result<()> {
         if self.phase_index != 0
             || self.prior.is_some()
@@ -63,16 +63,16 @@ impl AttemptPhaseBinding {
 mod tests {
     use super::*;
     use zerogravity_core::accelerator::SourceIdentity;
-    use zerogravity_core::accelerator::program::{SourceCallMode, SourceRows, TextCallGeometry};
+    use zerogravity_core::accelerator::program::{InvocationPhase, TextCallGeometry, TokenSpan};
     use zerogravity_core::session_root::SessionAuthority;
-    fn call(source: SourceIdentity, rows: usize) -> SourceCall {
-        let rows = SourceRows::new(
+    fn call(source: SourceIdentity, rows: usize) -> TextInvocation {
+        let rows = TokenSpan::new(
             TextCallGeometry::new(source, 248320, 512).unwrap(),
             0,
             Arc::from(vec![11; rows]),
         )
         .unwrap();
-        SourceCall::new(rows, SourceCallMode::Prefill).unwrap()
+        TextInvocation::new(rows, InvocationPhase::Prefill).unwrap()
     }
     #[test]
     fn pure_coordinates_do_not_publish_and_foreign_attempts_refuse() -> Result<()> {
@@ -106,7 +106,7 @@ mod tests {
         let authority = SessionAuthority::new(source)?;
         let actual = call(source, 47);
         let reminted = call(source, 47);
-        assert_eq!(actual.rows().ids(), reminted.rows().ids());
+        assert_eq!(actual.tokens().ids(), reminted.rows().ids());
         assert_ne!(actual, reminted);
         for layers in [1, 24] {
             let schedule = Arc::new(GdnAttemptSchedule {

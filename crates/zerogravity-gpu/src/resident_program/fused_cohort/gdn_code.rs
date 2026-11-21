@@ -11,7 +11,7 @@ use super::{
 use crate::cuda::kernel::{PinnedKernel, PreparedPinnedLaunch};
 use crate::cuda::native::model_gdn::ModelGdnParameters;
 use crate::cuda::native::text_native::TextKernelCapture;
-use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextCallInput};
+use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextInvocationInput};
 use crate::resident_leases::{ResidentInitialization, ResidentLease, ResidentService};
 use cubecl_runtime::kernel::BufferIOAttr;
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
@@ -380,7 +380,7 @@ struct Stage {
     launch: PreparedPinnedLaunch,
 }
 pub(super) struct CohortGdnCode {
-    inputs: Box<[Arc<TextCallInput>]>,
+    inputs: Box<[Arc<TextInvocationInput>]>,
     values: Arc<CohortValues>,
     storage: Arc<CohortGdnStorage>,
     packing: Arc<CohortGdnPacking>,
@@ -397,7 +397,7 @@ pub(super) struct CohortGdnCode {
 }
 impl CohortGdnCode {
     pub(super) fn bind(
-        inputs: &[Arc<TextCallInput>],
+        inputs: &[Arc<TextInvocationInput>],
         values: Arc<CohortValues>,
         layer: usize,
         storage: Arc<CohortGdnStorage>,

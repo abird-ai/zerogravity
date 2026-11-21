@@ -1,5 +1,5 @@
 //! Finite cut over the original full record; no alternate plan or state issuer.
-use super::fixed_prompt_model::{FixedPromptCallKind, FixedPromptModelBinding};
+use super::fixed_prompt_model::{FixedPromptInvocationKind, FixedPromptModelBinding};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
@@ -89,7 +89,7 @@ impl FixedPromptPrefixCut {
         if kind == FixedPromptPrefixKind::WholePrefill {
             return Self::bind_whole(scope);
         }
-        if scope.kind() != FixedPromptCallKind::Prefill {
+        if scope.kind() != FixedPromptInvocationKind::Prefill {
             return Err(Error::Unsupported(
                 "fixed_prompt first3 cut is initial Prefill47 only".into(),
             ));
@@ -176,7 +176,7 @@ impl FixedPromptPrefixCut {
                 }
             } else if !record
                 .operator(i)?
-                .is_some_and(|descriptor| descriptor.call() == record.call())
+                .is_some_and(|descriptor| descriptor.invocation() == record.invocation())
             {
                 return Err(Error::State(
                     "fixed prompt actual prefix call differs".into(),
@@ -350,8 +350,8 @@ fn require_qkv_extension(nodes: &[PlanNode]) -> Result<()> {
             SourceOperatorKind::Projection { selected_row: None }
         )
         || !matches!(c.kind(), SourceOperatorKind::QkRmsRotaryGated(_))
-        || a.call() != b.call()
-        || b.call() != c.call()
+        || a.invocation() != b.invocation()
+        || b.invocation() != c.invocation()
         || dual.inputs != [ValueId(38), ValueId(35)]
         || dual.outputs != [ValueId(39), ValueId(40)]
         || qkv.inputs != [ValueId(39)]
@@ -388,8 +388,8 @@ fn require_kv_extension(nodes: &[PlanNode]) -> Result<()> {
     if !matches!(a.kind(), SourceOperatorKind::QkRmsRotaryGated(_))
         || !matches!(b.kind(),SourceOperatorKind::KvAppend {domain,..} if domain==KvDomain(3))
         || !matches!(c.kind(),SourceOperatorKind::FlashAttention {domain,..} if domain==KvDomain(3))
-        || a.call() != b.call()
-        || b.call() != c.call()
+        || a.invocation() != b.invocation()
+        || b.invocation() != c.invocation()
         || qk.inputs != [ValueId(41)]
         || qk.outputs != [ValueId(42), ValueId(43), ValueId(44)]
         || qk.state.is_some()
@@ -416,7 +416,7 @@ fn require_fa_extension(nodes: &[PlanNode]) -> Result<()> {
     };
     let a = checked_operator(nodes, 35)?;
     let b = checked_operator(nodes, 36)?;
-    if a.call() != b.call()
+    if a.invocation() != b.invocation()
         || !matches!(b.kind(), SourceOperatorKind::Sigmoid { .. })
         || fa.outputs != [ValueId(45)]
         || fa.state.is_some()
@@ -436,7 +436,7 @@ fn require_fa_extension(nodes: &[PlanNode]) -> Result<()> {
 }
 fn require_layer3_extension(nodes: &[PlanNode]) -> Result<()> {
     require_fa_extension(nodes)?;
-    let call = checked_operator(nodes, 35)?.call();
+    let call = checked_operator(nodes, 35)?.invocation();
     for (index, inputs, outputs) in [
         (36, vec![44], vec![46]),
         (37, vec![45, 46], vec![47]),
@@ -485,7 +485,7 @@ fn require_layer3_extension(nodes: &[PlanNode]) -> Result<()> {
                 .output_elements()?
                 .into_iter()
                 .ne(output_widths.iter().map(|width| 47 * width))
-            || descriptor.call() != call
+            || descriptor.invocation() != call
             || node.state.is_some()
             || !matches!(
                 &node.operation,

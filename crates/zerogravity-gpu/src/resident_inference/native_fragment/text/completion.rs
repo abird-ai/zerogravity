@@ -1,5 +1,5 @@
 //! Original fair queue/flight/completion and original Session.commit.
-use super::loaded::{ColdModel, TextCallReceipt};
+use super::loaded::{ColdModel, TextInvocationReceipt};
 use super::*;
 use crate::resident_inference::{RuntimeParameters, bind_domains};
 use crate::resident_leases::ResidentReadback;
@@ -10,9 +10,9 @@ use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
 
 pub(super) struct PreparedCall {
     pub(super) inference: PreparedInference,
-    pub(super) input: Arc<TextCallInput>,
+    pub(super) input: Arc<TextInvocationInput>,
     pub(super) packet: [u8; 12],
-    pub(super) receipt: TextCallReceipt,
+    pub(super) receipt: TextInvocationReceipt,
 }
 impl PreparedCall {
     pub(super) fn require_completed_for(&self, session: &ResidentSession) -> Result<ResidentToken> {
@@ -44,7 +44,7 @@ impl PreparedCall {
 // The cloned token keeps the same completed packet lease; no tensor is copied.
 pub(super) fn committed_feedback(
     session: &ResidentSession,
-    input: Arc<TextCallInput>,
+    input: Arc<TextInvocationInput>,
     packet: [u8; 12],
     mut token: ResidentToken,
 ) -> Arc<CommittedTextPacket> {
@@ -80,8 +80,8 @@ impl ResidentSession {
     pub(super) async fn prepare_text_call(
         &self,
         cold: Arc<ColdModel>,
-        input: Arc<TextCallInput>,
-        state: Arc<TextCallState>,
+        input: Arc<TextInvocationInput>,
+        state: Arc<TextInvocationState>,
         mut probe: Option<(usize, &mut Option<super::loaded::ProbeRecord>)>,
         mut validate: Option<TextValidation<'_>>,
         cancelled: Option<&AtomicBool>,
@@ -308,7 +308,7 @@ impl ResidentSession {
                 .await?;
             wall.mark("device_profile_resolve");
         }
-        permit.require_invocation(service, input.call(), 0, 24)?;
+        permit.require_invocation(service, input.invocation(), 0, 24)?;
         input.require_session(self)?;
         slot.finish()?;
         let (id, max_bits) = selected.ok_or_else(|| {
@@ -338,7 +338,7 @@ impl ResidentSession {
             readback,
         };
         self.validate_prepared(&inference)?;
-        let receipt = TextCallReceipt {
+        let receipt = TextInvocationReceipt {
             root: self.binding(),
             selected_id: id,
             max_bits,
@@ -366,7 +366,7 @@ impl ResidentSession {
         &mut self,
         prepared: PreparedCall,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<(TextCallReceipt, Arc<CommittedTextPacket>)> {
+    ) -> Result<(TextInvocationReceipt, Arc<CommittedTextPacket>)> {
         not_cancelled(cancelled)?;
         let token = prepared.require_completed_for(self)?;
         let PreparedCall {

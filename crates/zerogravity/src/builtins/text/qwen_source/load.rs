@@ -786,13 +786,13 @@ mod tests {
         );
         let call = plan
             .bind_invocation(
-                crate::accelerator::program::SourceCallMode::Prefill,
+                crate::accelerator::program::InvocationPhase::Prefill,
                 0,
                 tokens.into(),
                 true,
             )
             .unwrap();
-        let materialized = call.materialize_source_plan().unwrap();
+        let materialized = call.materialize().unwrap();
         assert_eq!(materialized.source(), plan.plan().source());
         drop((materialized, call));
         let weak_source = Arc::downgrade(&parts.source);
@@ -829,10 +829,10 @@ mod tests {
 mod cuda_paged_tests {
     use super::*;
     use crate::{
-        accelerator::program::SourceCallMode,
+        accelerator::program::InvocationPhase,
         gpu::{
-            CudaSourceStatePolicy, ResidentOutput, SourceCallCohortPreparation, SourceCallModel,
-            SourceCallPreparation, SourceCallPublication,
+            CudaSourceStatePolicy, ResidentOutput, ResidentTextCohortPreparation,
+            ResidentTextModel, ResidentTextPreparation, ResidentTextPublication,
         },
     };
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -978,7 +978,7 @@ mod cuda_paged_tests {
     }
 
     async fn trajectory(
-        model: &Arc<SourceCallModel>,
+        model: &Arc<ResidentTextModel>,
         plan: &crate::qwen35::plan::QwenForwardPlan,
         tokens: &[u32],
         page_tokens: usize,
@@ -989,21 +989,21 @@ mod cuda_paged_tests {
         let mut checkpoints = Vec::with_capacity(chunks.len());
         for rows in chunks {
             let ids = Arc::<[u32]>::from(tokens[offset..offset + rows].to_vec());
-            let invocation = plan.bind_invocation(SourceCallMode::Prefill, offset, ids, true)?;
+            let invocation = plan.bind_invocation(InvocationPhase::Prefill, offset, ids, true)?;
             let pending = session
                 .prepare(
                     invocation.bound_invocation(),
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     ResidentOutput::Logits,
                     None,
                 )
                 .await?;
-            let SourceCallPreparation::Ready(pending) = pending else {
+            let ResidentTextPreparation::Ready(pending) = pending else {
                 return Err(crate::Error::State(
                     "paged source differential candidate refused".into(),
                 ));
             };
-            let SourceCallPublication::Committed(read) = session.commit(pending)? else {
+            let ResidentTextPublication::Committed(read) = session.commit(pending)? else {
                 return Err(crate::Error::State(
                     "paged source differential candidate discarded".into(),
                 ));
@@ -1026,7 +1026,7 @@ mod cuda_paged_tests {
     }
 
     async fn native_trajectory(
-        model: &Arc<SourceCallModel>,
+        model: &Arc<ResidentTextModel>,
         plan: &crate::qwen35::plan::QwenForwardPlan,
         tokens: &[u32],
         width: usize,
@@ -1038,7 +1038,7 @@ mod cuda_paged_tests {
         let prefill = (0..width)
             .map(|row| {
                 plan.bind_invocation(
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     0,
                     Arc::<[u32]>::from(vec![tokens[row]]),
                     true,
@@ -1050,7 +1050,7 @@ mod cuda_paged_tests {
             .zip(&prefill)
             .map(|(session, invocation)| (session, invocation.bound_invocation()))
             .collect::<Vec<_>>();
-        let SourceCallCohortPreparation::Ready(pending) =
+        let ResidentTextCohortPreparation::Ready(pending) =
             model.prepare_prefill_cohort_admitted(&inputs).await?
         else {
             return Err(crate::Error::State(
@@ -1078,7 +1078,7 @@ mod cuda_paged_tests {
             .enumerate()
             .map(|(row, token)| {
                 plan.bind_invocation(
-                    SourceCallMode::Decode,
+                    InvocationPhase::Decode,
                     1,
                     Arc::<[u32]>::from(vec![token.id]),
                     true,
@@ -1094,7 +1094,7 @@ mod cuda_paged_tests {
                 (session, invocation.bound_invocation(), token)
             })
             .collect::<Vec<_>>();
-        let SourceCallCohortPreparation::Ready(pending) =
+        let ResidentTextCohortPreparation::Ready(pending) =
             model.prepare_greedy_decode_cohort_admitted(&inputs).await?
         else {
             return Err(crate::Error::State(
@@ -1219,14 +1219,14 @@ mod cuda_paged_tests {
             let prefix_call = parts
                 .source
                 .plan
-                .bind_invocation(SourceCallMode::Prefill, 0, prefix_ids, false)
+                .bind_invocation(InvocationPhase::Prefill, 0, prefix_ids, false)
                 .unwrap();
 
             let mut producer = model.session().await.unwrap();
-            let SourceCallPreparation::Ready(pending) = producer
+            let ResidentTextPreparation::Ready(pending) = producer
                 .prepare(
                     prefix_call.bound_invocation(),
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     ResidentOutput::StateOnly,
                     None,
                 )
@@ -1235,7 +1235,7 @@ mod cuda_paged_tests {
             else {
                 panic!("producer prefix admission");
             };
-            let SourceCallPublication::Committed(read) = producer.commit(pending).unwrap() else {
+            let ResidentTextPublication::Committed(read) = producer.commit(pending).unwrap() else {
                 panic!("producer prefix publication");
             };
             drop(read);
@@ -1265,10 +1265,10 @@ mod cuda_paged_tests {
             );
 
             let mut replay = model.session().await.unwrap();
-            let SourceCallPreparation::Ready(pending) = replay
+            let ResidentTextPreparation::Ready(pending) = replay
                 .prepare(
                     prefix_call.bound_invocation(),
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     ResidentOutput::StateOnly,
                     None,
                 )
@@ -1277,7 +1277,7 @@ mod cuda_paged_tests {
             else {
                 panic!("replay prefix admission");
             };
-            let SourceCallPublication::Committed(read) = replay.commit(pending).unwrap() else {
+            let ResidentTextPublication::Committed(read) = replay.commit(pending).unwrap() else {
                 panic!("replay prefix publication");
             };
             drop(read);
@@ -1292,16 +1292,16 @@ mod cuda_paged_tests {
                 .source
                 .plan
                 .bind_invocation(
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     prefix,
                     Arc::<[u32]>::from(vec![tokens[prefix]]),
                     true,
                 )
                 .unwrap();
-            let SourceCallPreparation::Ready(fork_pending) = fork
+            let ResidentTextPreparation::Ready(fork_pending) = fork
                 .prepare(
                     continuation.bound_invocation(),
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     ResidentOutput::Logits,
                     None,
                 )
@@ -1310,14 +1310,14 @@ mod cuda_paged_tests {
             else {
                 panic!("fork continuation admission");
             };
-            let SourceCallPublication::Committed(fork_read) = fork.commit(fork_pending).unwrap()
+            let ResidentTextPublication::Committed(fork_read) = fork.commit(fork_pending).unwrap()
             else {
                 panic!("fork continuation publication");
             };
-            let SourceCallPreparation::Ready(replay_pending) = replay
+            let ResidentTextPreparation::Ready(replay_pending) = replay
                 .prepare(
                     continuation.bound_invocation(),
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     ResidentOutput::Logits,
                     None,
                 )
@@ -1326,7 +1326,7 @@ mod cuda_paged_tests {
             else {
                 panic!("replay continuation admission");
             };
-            let SourceCallPublication::Committed(replay_read) =
+            let ResidentTextPublication::Committed(replay_read) =
                 replay.commit(replay_pending).unwrap()
             else {
                 panic!("replay continuation publication");
@@ -1755,7 +1755,7 @@ mod cuda_paged_tests {
             let first = parts
                 .source
                 .plan
-                .bind_invocation(SourceCallMode::Prefill, 0, first_ids, true)
+                .bind_invocation(InvocationPhase::Prefill, 0, first_ids, true)
                 .unwrap();
 
             let pre_cancel = Arc::new(AtomicBool::new(true));
@@ -1763,13 +1763,13 @@ mod cuda_paged_tests {
                 session
                     .prepare(
                         first.bound_invocation(),
-                        SourceCallMode::Prefill,
+                        InvocationPhase::Prefill,
                         ResidentOutput::Logits,
                         Some(pre_cancel),
                     )
                     .await
                     .unwrap(),
-                SourceCallPreparation::CancelledBeforeLaunch
+                ResidentTextPreparation::CancelledBeforeLaunch
             ));
             assert_eq!(session.binding(), root0);
             exact_domains(
@@ -1781,13 +1781,13 @@ mod cuda_paged_tests {
             let abandoned = session
                 .prepare(
                     first.bound_invocation(),
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     ResidentOutput::Logits,
                     None,
                 )
                 .await
                 .unwrap();
-            let SourceCallPreparation::Ready(abandoned) = abandoned else {
+            let ResidentTextPreparation::Ready(abandoned) = abandoned else {
                 panic!("paged abandoned candidate was not Ready");
             };
             assert_eq!(session.binding(), root0);
@@ -1803,19 +1803,19 @@ mod cuda_paged_tests {
             let pending = session
                 .prepare(
                     first.bound_invocation(),
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     ResidentOutput::Logits,
                     Some(cancel_after_ready.clone()),
                 )
                 .await
                 .unwrap();
-            let SourceCallPreparation::Ready(pending) = pending else {
+            let ResidentTextPreparation::Ready(pending) = pending else {
                 panic!("paged cancel-after-Ready candidate was not Ready");
             };
             cancel_after_ready.store(true, Ordering::Release);
             assert!(matches!(
                 session.commit(pending).unwrap(),
-                SourceCallPublication::Discarded(_)
+                ResidentTextPublication::Discarded(_)
             ));
             assert_eq!(session.binding(), root0);
             exact_domains(
@@ -1827,18 +1827,18 @@ mod cuda_paged_tests {
             let pending = session
                 .prepare(
                     first.bound_invocation(),
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     ResidentOutput::Logits,
                     None,
                 )
                 .await
                 .unwrap();
-            let SourceCallPreparation::Ready(pending) = pending else {
+            let ResidentTextPreparation::Ready(pending) = pending else {
                 panic!("paged first committed candidate was not Ready");
             };
             assert!(matches!(
                 session.commit(pending).unwrap(),
-                SourceCallPublication::Committed(_)
+                ResidentTextPublication::Committed(_)
             ));
             assert_eq!(session.binding().frontier(), (page_tokens - 1) as u64);
             let before_boundary = session.snapshot().unwrap();
@@ -1848,7 +1848,7 @@ mod cuda_paged_tests {
                 .source
                 .plan
                 .bind_invocation(
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     page_tokens - 1,
                     Arc::<[u32]>::from(vec![tokens[page_tokens - 1]]),
                     true,
@@ -1857,18 +1857,18 @@ mod cuda_paged_tests {
             let pending = session
                 .prepare(
                     boundary.bound_invocation(),
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     ResidentOutput::Logits,
                     None,
                 )
                 .await
                 .unwrap();
-            let SourceCallPreparation::Ready(pending) = pending else {
+            let ResidentTextPreparation::Ready(pending) = pending else {
                 panic!("paged boundary candidate was not Ready");
             };
             assert!(matches!(
                 session.commit(pending).unwrap(),
-                SourceCallPublication::Committed(_)
+                ResidentTextPublication::Committed(_)
             ));
             assert_eq!(session.binding().frontier(), page_tokens as u64);
             let at_boundary = session.snapshot().unwrap();
@@ -1878,7 +1878,7 @@ mod cuda_paged_tests {
                 .source
                 .plan
                 .bind_invocation(
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     page_tokens,
                     Arc::<[u32]>::from(vec![tokens[page_tokens]]),
                     true,
@@ -1887,18 +1887,18 @@ mod cuda_paged_tests {
             let pending = session
                 .prepare(
                     beyond.bound_invocation(),
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     ResidentOutput::Logits,
                     None,
                 )
                 .await
                 .unwrap();
-            let SourceCallPreparation::Ready(pending) = pending else {
+            let ResidentTextPreparation::Ready(pending) = pending else {
                 panic!("paged post-boundary candidate was not Ready");
             };
             assert!(matches!(
                 session.commit(pending).unwrap(),
-                SourceCallPublication::Committed(_)
+                ResidentTextPublication::Committed(_)
             ));
             assert_eq!(session.binding().frontier(), (page_tokens + 1) as u64);
 
@@ -1975,7 +1975,7 @@ mod cuda_paged_tests {
                 .source
                 .plan
                 .bind_invocation(
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     0,
                     Arc::<[u32]>::from(tokens[..prefix].to_vec()),
                     false,
@@ -1985,7 +1985,7 @@ mod cuda_paged_tests {
                 .source
                 .plan
                 .bind_invocation(
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     prefix,
                     Arc::<[u32]>::from(vec![tokens[prefix]]),
                     true,
@@ -1993,10 +1993,10 @@ mod cuda_paged_tests {
                 .unwrap();
 
             let mut producer = model.session().await.unwrap();
-            let SourceCallPreparation::Ready(pending) = producer
+            let ResidentTextPreparation::Ready(pending) = producer
                 .prepare(
                     prefix_call.bound_invocation(),
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     ResidentOutput::StateOnly,
                     None,
                 )
@@ -2005,7 +2005,7 @@ mod cuda_paged_tests {
             else {
                 panic!("prefix producer admission");
             };
-            let SourceCallPublication::Committed(read) = producer.commit(pending).unwrap() else {
+            let ResidentTextPublication::Committed(read) = producer.commit(pending).unwrap() else {
                 panic!("prefix producer publication");
             };
             drop(read);
@@ -2016,10 +2016,10 @@ mod cuda_paged_tests {
             let baseline_logits = {
                 let mut baseline = model.session().await.unwrap();
                 baseline.fork_shared_prefix(&cached).unwrap();
-                let SourceCallPreparation::Ready(pending) = baseline
+                let ResidentTextPreparation::Ready(pending) = baseline
                     .prepare(
                         tail_call.bound_invocation(),
-                        SourceCallMode::Prefill,
+                        InvocationPhase::Prefill,
                         ResidentOutput::Logits,
                         None,
                     )
@@ -2028,7 +2028,7 @@ mod cuda_paged_tests {
                 else {
                     panic!("baseline tail admission");
                 };
-                let SourceCallPublication::Committed(read) = baseline.commit(pending).unwrap()
+                let ResidentTextPublication::Committed(read) = baseline.commit(pending).unwrap()
                 else {
                     panic!("baseline tail publication");
                 };
@@ -2064,13 +2064,13 @@ mod cuda_paged_tests {
                 pressured
                     .prepare(
                         tail_call.bound_invocation(),
-                        SourceCallMode::Prefill,
+                        InvocationPhase::Prefill,
                         ResidentOutput::Logits,
                         None,
                     )
                     .await
                     .unwrap(),
-                SourceCallPreparation::Capacity
+                ResidentTextPreparation::Capacity
             ));
             assert_eq!(pressured.binding(), root, "page pressure mutated root");
             let refused = model.diagnostic_paged_pool_snapshot().unwrap();
@@ -2098,10 +2098,10 @@ mod cuda_paged_tests {
                 "external page pressure did not retire"
             );
 
-            let SourceCallPreparation::Ready(pending) = pressured
+            let ResidentTextPreparation::Ready(pending) = pressured
                 .prepare(
                     tail_call.bound_invocation(),
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     ResidentOutput::Logits,
                     None,
                 )
@@ -2110,7 +2110,8 @@ mod cuda_paged_tests {
             else {
                 panic!("tail did not recover after pressure release");
             };
-            let SourceCallPublication::Committed(read) = pressured.commit(pending).unwrap() else {
+            let ResidentTextPublication::Committed(read) = pressured.commit(pending).unwrap()
+            else {
                 panic!("tail publication after pressure release");
             };
             exact_words(
@@ -2173,13 +2174,13 @@ mod cuda_paged_tests {
             let first = parts
                 .source
                 .plan
-                .bind_invocation(SourceCallMode::Prefill, 0, first_ids, true)
+                .bind_invocation(InvocationPhase::Prefill, 0, first_ids, true)
                 .unwrap();
             let cancelled = Arc::new(AtomicBool::new(false));
             model.diagnostic_pause_next_launch().unwrap();
             let mut future = Box::pin(session.prepare(
                 first.bound_invocation(),
-                SourceCallMode::Prefill,
+                InvocationPhase::Prefill,
                 ResidentOutput::Logits,
                 Some(cancelled.clone()),
             ));
@@ -2259,16 +2260,16 @@ mod cuda_paged_tests {
             let replay = session
                 .prepare(
                     first.bound_invocation(),
-                    SourceCallMode::Prefill,
+                    InvocationPhase::Prefill,
                     ResidentOutput::Logits,
                     None,
                 )
                 .await
                 .unwrap();
-            let SourceCallPreparation::Ready(replay) = replay else {
+            let ResidentTextPreparation::Ready(replay) = replay else {
                 panic!("valid work after in-flight cancellation was not Ready");
             };
-            let SourceCallPublication::Committed(read) = session.commit(replay).unwrap() else {
+            let ResidentTextPublication::Committed(read) = session.commit(replay).unwrap() else {
                 panic!("valid work after in-flight cancellation was not committed");
             };
             assert_eq!(session.binding().frontier(), (page_tokens - 1) as u64);
@@ -2322,12 +2323,12 @@ mod cuda_paged_tests {
             let first = parts
                 .source
                 .plan
-                .bind_invocation(SourceCallMode::Prefill, 0, first_ids, true)
+                .bind_invocation(InvocationPhase::Prefill, 0, first_ids, true)
                 .unwrap();
             model.diagnostic_pause_next_launch().unwrap();
             let mut future = Box::pin(session.prepare(
                 first.bound_invocation(),
-                SourceCallMode::Prefill,
+                InvocationPhase::Prefill,
                 ResidentOutput::Logits,
                 None,
             ));

@@ -116,7 +116,7 @@ impl ComponentProgram {
         let physical_rows = match recipe.kind() {
             ComponentKind::FixedPrompt(_) => crate::cuda::rms::Rows::FixedPrompt,
             ComponentKind::Qwen2B => {
-                crate::cuda::rms::Rows::new(recipe.bindings().call().rows().len())?
+                crate::cuda::rms::Rows::new(recipe.bindings().invocation().tokens().len())?
             }
         };
         let rms = RmsPrepared::prepare_rows_bound(
@@ -175,7 +175,7 @@ impl ComponentProgram {
             for lease in [prepared.normalized(), prepared.residual()] {
                 let layout = ResidentBufferLayout::new(
                     ResidentPhysicalType::Bf16,
-                    recipe.bindings().call().rows().len() * recipe.kind().columns(),
+                    recipe.bindings().invocation().tokens().len() * recipe.kind().columns(),
                 )?;
                 values.push(DeviceBuffer::from_lease(
                     lease.clone(),
@@ -509,7 +509,7 @@ impl ComponentProgram {
     pub(crate) fn require_attempt(&self, permit: &PrefixPhaseEnqueue<'_>) -> Result<()> {
         permit.require_invocation(
             self.producer.values.service(),
-            self.recipe.bindings().call(),
+            self.recipe.bindings().invocation(),
             0,
             1,
         )
@@ -533,8 +533,16 @@ impl ComponentProgram {
     }
     pub(crate) fn validate_runtime(&self, p: RuntimeParameters) -> Result<()> {
         if p.position != 0
-            || p.valid_tokens != self.recipe.bindings().call().rows().len()
-            || self.recipe.bindings().call().rows().ids().first().copied() != Some(p.token)
+            || p.valid_tokens != self.recipe.bindings().invocation().tokens().len()
+            || self
+                .recipe
+                .bindings()
+                .invocation()
+                .tokens()
+                .ids()
+                .first()
+                .copied()
+                != Some(p.token)
         {
             return Err(Error::State(
                 "source2B exact original initial teacher span".into(),
@@ -927,7 +935,7 @@ impl ComponentProgram {
     }
     pub(crate) fn qwen2b_down1_enqueues(&self) -> Result<usize> {
         if self.recipe.cut() != ComponentCut::Qwen2BMlp
-            || self.recipe.bindings().call().rows().len() != 1
+            || self.recipe.bindings().invocation().tokens().len() != 1
         {
             return Err(Error::Unsupported(
                 "one-row2B Down record metadata only".into(),
@@ -950,7 +958,7 @@ impl ComponentProgram {
         if value > 8
             || value > 6
                 && (self.recipe.cut() != ComponentCut::Qwen2BMlp
-                    || self.recipe.bindings().call().rows().len() != 1)
+                    || self.recipe.bindings().invocation().tokens().len() != 1)
             || value > 4 && !self.recipe.cut().includes_mlp()
             || value > 2 && !self.recipe.cut().includes_post_attention()
             || self

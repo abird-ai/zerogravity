@@ -148,7 +148,7 @@ impl FixedPromptHeadPrograms {
             SourceOperatorKind::Projection {
                 selected_row: Some(46)
             }
-        ) || hd.call() != record.call()
+        ) || hd.invocation() != record.invocation()
             || head.inputs != [ValueId(324)]
             || head.outputs != [ValueId(326)]
             || !matches!(
@@ -157,7 +157,7 @@ impl FixedPromptHeadPrograms {
             )
             || head.state.is_some()
             || !matches!(nd.kind(), SourceOperatorKind::ResidualRms(_))
-            || nd.call() != record.call()
+            || nd.invocation() != record.invocation()
             || norm.outputs != [ValueId(324), ValueId(325)]
             || !matches!(
                 &norm.operation,
@@ -304,7 +304,7 @@ impl FixedPromptHeadPrograms {
                 .all(|lease| {
                     Arc::ptr_eq(lease.service(), values.service())
                         && lease.service_generation() == values.service().generation()
-                        && lease.source_identity() == values.record().call().source()
+                        && lease.source_identity() == values.record().invocation().source()
                 }))
     }
     pub(crate) fn enqueues(&self) -> usize {

@@ -1,9 +1,9 @@
 //! Source-owned geometry seal. No native/model/session/publication permit.
 use super::*;
-use crate::plan::{QwenGdnCall, QwenModelVariant, QwenPlan, QwenSourceCall};
+use crate::plan::{QwenGdnInvocation, QwenModelInvocation, QwenModelVariant, QwenPlan};
 
 mod prompt;
-pub use prompt::BoundPromptCall;
+pub use prompt::BoundPromptInvocation;
 
 pub(super) const CONFIG2B: &str =
     "ed1c1723241f23f7f4e23430759cbd7dcfb4103cbdfe052bfe7626b57c2615b4";
@@ -30,7 +30,7 @@ impl BoundFullModelSource {
         &self.0.model
     }
     /// Metadata recording only. Actual lowerers must bind this original owner.
-    pub fn record(&self, request: QwenGdnCall) -> Result<QwenPlan> {
+    pub fn record(&self, request: QwenGdnInvocation) -> Result<QwenPlan> {
         if request.layer().source() != self.0.model.source_identity() {
             return Err(Error::State(
                 "full-model sealed source/request issuer".into(),
@@ -38,7 +38,7 @@ impl BoundFullModelSource {
         }
         self.0
             .model
-            .record_full_model_inner(QwenSourceCall::for_profile(self.0.profile, request)?)
+            .record_full_model_inner(QwenModelInvocation::for_profile(self.0.profile, request)?)
     }
 }
 

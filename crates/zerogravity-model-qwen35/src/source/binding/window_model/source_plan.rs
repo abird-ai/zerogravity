@@ -1,23 +1,23 @@
 //! Original source recipe, through the existing family layer traversal.
 use super::*;
 use crate::plan::{
-    QwenEmbedding, QwenLayer, QwenModelVariant, QwenOperation, QwenOperator, QwenPlan,
-    QwenPlanBuilder, QwenProjection, QwenRmsSite, QwenSourceCall,
+    QwenEmbedding, QwenLayer, QwenModelInvocation, QwenModelVariant, QwenOperation, QwenOperator,
+    QwenPlan, QwenPlanBuilder, QwenProjection, QwenRmsSite,
 };
-use zerogravity_core::accelerator::program::{PlanValue, SourceCall};
+use zerogravity_core::accelerator::program::{PlanValue, TextInvocation};
 
 impl OriginalWindowModelSource {
     /// Authenticate an original finite reference call without recording a graph.
-    pub fn bind_reference_call(&self, call: &QwenSourceCall) -> Result<SourceCall> {
+    pub fn bind_reference_call(&self, call: &QwenModelInvocation) -> Result<TextInvocation> {
         self.require_small_model_source()?;
         call.validate()?;
         call.request().reference_phase()?;
-        let actual = call.request().source_call()?;
+        let actual = call.request().text_invocation()?;
         if call.model_profile() != QwenModelVariant::Qwen800M
             || call.source() != self.source_identity()
             || call.request().layer().index() != 0
-            || actual.rows().capacity() != 512
-            || actual.rows().vocabulary() != 248320
+            || actual.tokens().capacity() != 512
+            || actual.tokens().vocabulary() != 248320
         {
             return Err(Error::State(
                 "reference call source/profile/layer/extent differs".into(),
@@ -80,7 +80,7 @@ impl OriginalWindowModelSource {
 
     /// Records arithmetic, all42 private effects and fullV. No Session/RootReady,
     /// execution eligibility or model publication follows from this record.
-    pub fn record_small_model(&self, call: QwenSourceCall) -> Result<QwenPlan> {
+    pub fn record_small_model(&self, call: QwenModelInvocation) -> Result<QwenPlan> {
         self.require_small_model_source()?;
         if call.model_profile() != QwenModelVariant::Qwen800M {
             return Err(Error::Unsupported(
@@ -90,7 +90,7 @@ impl OriginalWindowModelSource {
         self.record_full_model_inner(call)
     }
     // Both sealed source profiles use this SAME family traversal/SSA recipe.
-    pub(super) fn record_full_model_inner(&self, call: QwenSourceCall) -> Result<QwenPlan> {
+    pub(super) fn record_full_model_inner(&self, call: QwenModelInvocation) -> Result<QwenPlan> {
         if call.source() != self.source_identity() {
             return Err(Error::State("full-model request/source issuer".into()));
         }
@@ -123,7 +123,7 @@ impl OriginalWindowModelSource {
     fn full_projection(
         &self,
         builder: &mut QwenPlanBuilder,
-        call: &QwenSourceCall,
+        call: &QwenModelInvocation,
         layer: Option<QwenLayer>,
         kind: QwenProjection,
         input: PlanValue,
@@ -139,7 +139,7 @@ impl OriginalWindowModelSource {
     fn full_one(
         &self,
         builder: &mut QwenPlanBuilder,
-        call: &QwenSourceCall,
+        call: &QwenModelInvocation,
         layer: Option<QwenLayer>,
         kind: QwenOperation,
         inputs: &[PlanValue],
@@ -153,7 +153,7 @@ impl OriginalWindowModelSource {
     fn full_two(
         &self,
         builder: &mut QwenPlanBuilder,
-        call: &QwenSourceCall,
+        call: &QwenModelInvocation,
         layer: Option<QwenLayer>,
         kind: QwenOperation,
         inputs: &[PlanValue],
@@ -165,7 +165,7 @@ impl OriginalWindowModelSource {
     fn full_apply(
         &self,
         builder: &mut QwenPlanBuilder,
-        call: &QwenSourceCall,
+        call: &QwenModelInvocation,
         layer: Option<QwenLayer>,
         kind: QwenOperation,
         inputs: &[PlanValue],
@@ -192,7 +192,7 @@ impl OriginalWindowModelSource {
 
 struct FullSourceRecorder<'a> {
     source: &'a OriginalWindowModelSource,
-    call: &'a QwenSourceCall,
+    call: &'a QwenModelInvocation,
     builder: QwenPlanBuilder,
     boundaries: Vec<[PlanValue; 2]>,
     normalized: Option<PlanValue>,
@@ -232,10 +232,11 @@ impl crate::hybrid_decoder::HybridDecoder for FullSourceRecorder<'_> {
     type AttentionInputs = PlanValue;
     type FfnInputs = PlanValue;
     fn embedding(&mut self) -> Result<PlanValue> {
-        self.builder.source_embedding(&QwenEmbedding::for_call(
-            self.source.matrix_descriptor(QwenMatrixRole::Embedding)?,
-            self.call,
-        )?)
+        self.builder
+            .source_embedding(&QwenEmbedding::for_model_invocation(
+                self.source.matrix_descriptor(QwenMatrixRole::Embedding)?,
+                self.call,
+            )?)
     }
     fn input_norm(
         &mut self,
@@ -433,7 +434,7 @@ pub(super) fn validate_source_operator(
     mut parameter: impl FnMut(QwenParameterRole, &QwenParameterDescriptor) -> Result<()>,
 ) -> Result<()> {
     operator.validate()?;
-    if operator.call().source() != source {
+    if operator.model_invocation().source() != source {
         return Err(Error::State("Qwen operator source issuer differs".into()));
     }
     let (matrices, parameters) = source_roles(operator.layer(), operator.kind());

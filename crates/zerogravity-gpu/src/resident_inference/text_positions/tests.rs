@@ -2,11 +2,11 @@
 use super::*;
 use zerogravity_core::accelerator::SourceIdentity;
 use zerogravity_core::accelerator::program::{
-    SourceCall, SourceCallMode, SourceRows, TextCallGeometry,
+    InvocationPhase, TextCallGeometry, TextInvocation, TokenSpan,
 };
-fn call(source: SourceIdentity, mode: SourceCallMode, base: usize, rows: usize) -> SourceCall {
-    SourceCall::new(
-        SourceRows::new(
+fn call(source: SourceIdentity, mode: InvocationPhase, base: usize, rows: usize) -> TextInvocation {
+    TextInvocation::new(
+        TokenSpan::new(
             TextCallGeometry::new(source, 248320, 512).unwrap(),
             base,
             Arc::from(vec![11; rows]),
@@ -20,11 +20,11 @@ fn call(source: SourceIdentity, mode: SourceCallMode, base: usize, rows: usize) 
 fn exact_five_source_position_spans_are_i64_three_rows_with_defined_private_padding() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     for (mode, base, rows) in [
-        (SourceCallMode::Prefill, 0, 1),
-        (SourceCallMode::Decode, 1, 1),
-        (SourceCallMode::Prefill, 0, 64),
-        (SourceCallMode::Prefill, 64, 2),
-        (SourceCallMode::Decode, 66, 1),
+        (InvocationPhase::Prefill, 0, 1),
+        (InvocationPhase::Decode, 1, 1),
+        (InvocationPhase::Prefill, 0, 64),
+        (InvocationPhase::Prefill, 64, 2),
+        (InvocationPhase::Decode, 66, 1),
     ] {
         let invocation = call(source, mode, base, rows);
         let span = PositionSpan::new(&invocation).unwrap();
@@ -55,12 +55,12 @@ fn invalid_spans_capacity_vocabulary_mode_refuse_without_storage_or_gpu() {
     }
     let source = SourceIdentity::for_new_allocation().unwrap();
     for (mode, capacity, vocabulary) in [
-        (SourceCallMode::Prefill, 256, 248320),
-        (SourceCallMode::Prefill, 512, 248319),
-        (SourceCallMode::Decode, 512, 248320),
+        (InvocationPhase::Prefill, 256, 248320),
+        (InvocationPhase::Prefill, 512, 248319),
+        (InvocationPhase::Decode, 512, 248320),
     ] {
-        let wrong = SourceCall::new(
-            SourceRows::new(
+        let wrong = TextInvocation::new(
+            TokenSpan::new(
                 TextCallGeometry::new(source, vocabulary, capacity).unwrap(),
                 0,
                 Arc::from([11]),
@@ -68,7 +68,7 @@ fn invalid_spans_capacity_vocabulary_mode_refuse_without_storage_or_gpu() {
             .unwrap(),
             mode,
         );
-        if mode == SourceCallMode::Decode {
+        if mode == InvocationPhase::Decode {
             assert!(wrong.is_err());
         } else {
             assert!(PositionSpan::new(&wrong.unwrap()).is_err());
@@ -80,7 +80,7 @@ fn current_original_root_attempt_span_is_required_and_restore_revokes_it() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     let mut authority = SessionAuthority::new(source).unwrap();
     let original = authority.binding();
-    let invocation = call(source, SourceCallMode::Prefill, 0, 64);
+    let invocation = call(source, InvocationPhase::Prefill, 0, 64);
     let attempt = authority.begin_advance(64).unwrap();
     assert!(require_published_span(original, &attempt, &invocation).is_ok());
     assert!(
@@ -94,7 +94,12 @@ fn current_original_root_attempt_span_is_required_and_restore_revokes_it() {
         require_published_span(
             original,
             &attempt,
-            &call(other_source, invocation.mode(), 0, invocation.rows().len())
+            &call(
+                other_source,
+                invocation.phase(),
+                0,
+                invocation.tokens().len()
+            )
         )
         .is_err()
     );
@@ -107,11 +112,11 @@ fn current_original_root_attempt_span_is_required_and_restore_revokes_it() {
 #[test]
 fn request_teacher_identity_is_preserved_and_not_recreated_by_shape() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let first = call(source, SourceCallMode::Prefill, 0, 1);
+    let first = call(source, InvocationPhase::Prefill, 0, 1);
     let same = first.clone();
-    let reminted = call(source, SourceCallMode::Prefill, 0, 1);
-    assert_eq!(first.rows(), same.rows());
-    assert_ne!(first.rows(), reminted.rows());
+    let reminted = call(source, InvocationPhase::Prefill, 0, 1);
+    assert_eq!(first.tokens(), same.rows());
+    assert_ne!(first.tokens(), reminted.rows());
     assert_eq!(
         PositionSpan::new(&first).unwrap(),
         PositionSpan::new(&reminted).unwrap()

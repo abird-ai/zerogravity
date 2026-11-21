@@ -79,7 +79,7 @@ pub(super) fn is_mlp_temporary(record: &SourceBindings, id: ValueId) -> Result<b
             ..
         } = &next.operation
         && matches!(activation.kind(), SourceOperatorKind::SiluAndMul { .. })
-        && activation.call() == record.call()
+        && activation.invocation() == record.invocation()
         && next.inputs == [id]
     {
         return Ok(true);
@@ -120,7 +120,7 @@ pub(super) fn actual_diagnostic_bytes(scope: &TextModelBinding) -> Result<usize>
         public,
         states,
         scope.hidden_size(),
-        scope.call().rows().len(),
+        scope.invocation().tokens().len(),
     )
 }
 pub(super) fn readback_chunks(maximum: usize) -> Result<usize> {
@@ -165,7 +165,10 @@ impl TextReadbackAdmission {
             || scope.native_capture() != self.capture
             || self
                 .capture
-                .cold_scope_index(scope.call().mode(), scope.call().rows().len())
+                .cold_scope_index(
+                    scope.invocation().phase(),
+                    scope.invocation().tokens().len(),
+                )
                 .is_err()
             || actual_diagnostic_bytes(scope)? > self.maximum
             || self.tickets.len() != readback_chunks(self.maximum)?
@@ -196,7 +199,7 @@ impl FullModelProgram {
             capture,
             &scopes
                 .iter()
-                .map(|s| s.call().rows().len())
+                .map(|s| s.invocation().tokens().len())
                 .collect::<Vec<_>>(),
         )?;
         service.ensure_usable()?;
@@ -316,7 +319,7 @@ impl FullModelProgram {
         let service = rms_scope.service().clone();
         if !Arc::ptr_eq(&record, rms_scope.record())
             || service.source_identity() != source.source_identity()
-            || record.call() != scope.call()
+            || record.invocation() != scope.invocation()
         {
             return Err(Error::State(
                 "short-HF SAME source/current record/private RMS storage".into(),

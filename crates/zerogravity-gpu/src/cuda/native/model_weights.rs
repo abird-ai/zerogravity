@@ -102,7 +102,7 @@ impl PendingModelWeights {
                 SourceOperatorKind::Projection { selected_row: None }
             ) && Some(index) != head_node
             {
-                if descriptor.call() != record.call() {
+                if descriptor.invocation() != record.invocation() {
                     return Err(Error::State("learned actual request issuer differs".into()));
                 }
                 if descriptors

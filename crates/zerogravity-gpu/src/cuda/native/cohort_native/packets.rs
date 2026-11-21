@@ -2,13 +2,13 @@
 use super::super::cubin_manifests::ProjectionImage;
 use super::super::text_native::TextKernelCapture;
 use super::CohortInputGeometry;
-use crate::resident_inference::native_fragment::text::TextCallInput;
+use crate::resident_inference::native_fragment::text::TextInvocationInput;
 use cubecl::cuda::CubinKernelManifest;
 use std::sync::Arc;
 use zerogravity_core::Error;
 use zerogravity_core::Result;
-use zerogravity_core::accelerator::program::SourceCall;
-use zerogravity_core::accelerator::program::SourceCallMode;
+use zerogravity_core::accelerator::program::InvocationPhase;
+use zerogravity_core::accelerator::program::TextInvocation;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Role {
@@ -50,14 +50,14 @@ pub(super) struct Packet {
 /// One shared captured shape for stage storage and original native record choice.
 /// Context and feedback are runtime row data, never a common logical frontier.
 pub(super) fn geometry(
-    calls: &[(&SourceCall, usize, TextKernelCapture)],
+    calls: &[(&TextInvocation, usize, TextKernelCapture)],
 ) -> Result<CohortInputGeometry> {
     if calls.len() != 4 {
         return Err(Error::Unsupported("B4 actual request population".into()));
     }
     let (first, _, capture) = calls[0];
-    let initial = first.mode() == SourceCallMode::Prefill;
-    let logical_rows = first.rows().len();
+    let initial = first.phase() == InvocationPhase::Prefill;
+    let logical_rows = first.tokens().len();
     if !super::CohortPhases::for_capture(capture).contains(initial) {
         return Err(Error::Unsupported(
             "cached-only native capture requires genuine N1 prefill before cached B4".into(),
@@ -65,13 +65,13 @@ pub(super) fn geometry(
     }
     let mut max_base = 0;
     for &(call, prompt_tokens, actual_capture) in calls {
-        let rows = call.rows();
+        let rows = call.tokens();
         if actual_capture != capture
             || prompt_tokens != 47
-            || rows.source() != first.rows().source()
+            || rows.source() != first.tokens().source()
             || rows.capacity() != 512
             || rows.vocabulary() != 248320
-            || call.mode() != first.mode()
+            || call.phase() != first.phase()
             || rows.len() != logical_rows
             || !matches!((rows.len(), rows.base()), (47, 0) | (1, 47..=53))
         {
@@ -91,7 +91,7 @@ pub(super) fn geometry(
     })
 }
 
-pub(super) fn call(inputs: &[Arc<TextCallInput>]) -> Result<usize> {
+pub(super) fn call(inputs: &[Arc<TextInvocationInput>]) -> Result<usize> {
     Ok(super::input_geometry(inputs)?.native_call)
 }
 
@@ -99,7 +99,7 @@ pub(super) fn call(inputs: &[Arc<TextCallInput>]) -> Result<usize> {
 mod tests {
     use super::*;
     use zerogravity_core::accelerator::SourceIdentity;
-    use zerogravity_core::accelerator::program::{SourceRows, TextCallGeometry};
+    use zerogravity_core::accelerator::program::{TextCallGeometry, TokenSpan};
 
     fn capture(wide: bool) -> TextKernelCapture {
         TextKernelCapture::bind(if wide {
@@ -113,10 +113,10 @@ mod tests {
         source: SourceIdentity,
         base: usize,
         ids: &[u32],
-        mode: SourceCallMode,
-    ) -> SourceCall {
-        SourceCall::new(
-            SourceRows::new(
+        mode: InvocationPhase,
+    ) -> TextInvocation {
+        TextInvocation::new(
+            TokenSpan::new(
                 TextCallGeometry::new(source, 248320, 512).unwrap(),
                 base,
                 Arc::from(ids),
@@ -126,13 +126,16 @@ mod tests {
         )
         .unwrap()
     }
-    fn cached(source: SourceIdentity, base: usize, id: u32) -> SourceCall {
-        issued(source, base, &[id], SourceCallMode::Decode)
+    fn cached(source: SourceIdentity, base: usize, id: u32) -> TextInvocation {
+        issued(source, base, &[id], InvocationPhase::Decode)
     }
-    fn inspect_capture(calls: &[SourceCall; 4], capture: TextKernelCapture) -> CohortInputGeometry {
+    fn inspect_capture(
+        calls: &[TextInvocation; 4],
+        capture: TextKernelCapture,
+    ) -> CohortInputGeometry {
         geometry(&calls.each_ref().map(|c| (c, 47, capture))).unwrap()
     }
-    fn inspect(calls: &[SourceCall; 4]) -> CohortInputGeometry {
+    fn inspect(calls: &[TextInvocation; 4]) -> CohortInputGeometry {
         inspect_capture(calls, capture(false))
     }
 
@@ -190,9 +193,9 @@ mod tests {
         );
         for (actual, original) in calls.iter().zip(&originals) {
             assert_eq!(actual, original);
-            assert_eq!(actual.rows(), original.rows());
-            assert_eq!(actual.rows().ids(), original.rows().ids());
-            assert_eq!(actual.rows().source(), original.rows().source());
+            assert_eq!(actual.tokens(), original.rows());
+            assert_eq!(actual.tokens().ids(), original.rows().ids());
+            assert_eq!(actual.tokens().source(), original.rows().source());
         }
         let permuted = [
             calls[3].clone(),
@@ -206,7 +209,7 @@ mod tests {
     #[test]
     fn every_cached_frontier_combination_has_four_row_local_rms_inputs() {
         let source = SourceIdentity::for_new_allocation().unwrap();
-        let cached_calls: [SourceCall; 7] =
+        let cached_calls: [TextInvocation; 7] =
             std::array::from_fn(|index| cached(source, 47 + index, 11 + index as u32));
         for a in 0..7 {
             for b in 0..7 {
@@ -232,7 +235,7 @@ mod tests {
                 }
             }
         }
-        let prefill = issued(source, 0, &[11; 47], SourceCallMode::Prefill);
+        let prefill = issued(source, 0, &[11; 47], InvocationPhase::Prefill);
         assert_eq!(
             geometry(&[(&prefill, 47, capture(false)); 4]).unwrap(),
             CohortInputGeometry {
@@ -248,7 +251,7 @@ mod tests {
     #[test]
     fn two_b_cached_phase_keeps_own_capture_and_never_grants_initial_b4() {
         let source = SourceIdentity::for_new_allocation().unwrap();
-        let calls: [SourceCall; 4] =
+        let calls: [TextInvocation; 4] =
             std::array::from_fn(|row| cached(source, 47 + row, 11 + row as u32));
         let originals = calls.clone();
         let shape = inspect_capture(&calls, capture(true));
@@ -263,7 +266,7 @@ mod tests {
             (false, 1, 4, 4)
         );
         assert_eq!(calls, originals);
-        let initial = issued(source, 0, &[11; 47], SourceCallMode::Prefill);
+        let initial = issued(source, 0, &[11; 47], InvocationPhase::Prefill);
         assert!(geometry(&[(&initial, 47, capture(true)); 4]).is_err());
         assert!(
             geometry(&[
@@ -294,7 +297,7 @@ mod tests {
         let good = cached(source, 47, 11);
         let foreign = cached(SourceIdentity::for_new_allocation().unwrap(), 50, 42);
         let workload = cached(source, 57, 11);
-        let prefill = issued(source, 0, &[11; 47], SourceCallMode::Prefill);
+        let prefill = issued(source, 0, &[11; 47], InvocationPhase::Prefill);
         for incompatible in [&foreign, &workload, &prefill] {
             assert!(
                 geometry(&[&good, &good, &good, incompatible].map(|c| (c, 47, capture(false))))

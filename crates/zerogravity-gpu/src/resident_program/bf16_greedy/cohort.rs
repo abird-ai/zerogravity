@@ -50,7 +50,7 @@ impl PreparedCohortGreedy {
         init.require_service(&service)?;
         for record in records {
             require_head(record)?;
-            if record.call().source() != source.source_identity()
+            if record.invocation().source() != source.source_identity()
                 || !source.same_issuer(record.source())
                 || record.selection().output() != records[0].selection().output()
             {
@@ -153,7 +153,7 @@ impl PreparedCohortGreedy {
             ));
         }
         for record in &self.records {
-            if record.call().source() != self.source.source_identity() {
+            if record.invocation().source() != self.source.source_identity() {
                 return Err(Error::State("BF16 cohort row source changed".into()));
             }
         }

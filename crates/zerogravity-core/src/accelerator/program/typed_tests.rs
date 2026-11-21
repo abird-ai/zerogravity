@@ -625,14 +625,14 @@ fn unaware_backend_causal_conv_refuses_before_any_callback() {
 #[test]
 fn source_operator_requires_explicit_backend_implementation() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    let call = SourceCall::new(
-        SourceRows::new(
+    let call = TextInvocation::new(
+        TokenSpan::new(
             TextCallGeometry::new(source, 17, 8).unwrap(),
             0,
             std::sync::Arc::from([1, 2]),
         )
         .unwrap(),
-        SourceCallMode::Prefill,
+        InvocationPhase::Prefill,
     )
     .unwrap();
     let descriptor = SourceOperator::new(

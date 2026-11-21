@@ -154,7 +154,7 @@ mod full_model_source;
 mod source_geometry;
 mod source_plan;
 pub use forward_source::ForwardSourceSeal;
-pub use full_model_source::{BoundFullModelSource, BoundPromptCall};
+pub use full_model_source::{BoundFullModelSource, BoundPromptInvocation};
 mod prepare;
 pub use prepare::{
     ComponentImplementation, ComponentKernelCapture, ComponentOutput, PreparedComponent,

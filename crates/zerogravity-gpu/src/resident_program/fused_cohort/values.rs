@@ -35,7 +35,7 @@ impl CohortValues {
             || records.iter().any(|record| {
                 record.plan().values() != plan.values()
                     || record.plan().precisions() != plan.precisions()
-                    || record.call().source() != service.source_identity()
+                    || record.invocation().source() != service.source_identity()
             })
             || plan
                 .precisions()
@@ -46,7 +46,7 @@ impl CohortValues {
                 "cohort actual327 logical BF16 source values".into(),
             ));
         }
-        let metadata = records[0].call().source();
+        let metadata = records[0].invocation().source();
         if metadata != service.source_identity() {
             return Err(Error::State("cohort source/service identity".into()));
         }
@@ -102,7 +102,7 @@ impl CohortValues {
     }
     pub(crate) fn require_inputs(
         &self,
-        inputs: &[Arc<crate::resident_inference::native_fragment::text::TextCallInput>],
+        inputs: &[Arc<crate::resident_inference::native_fragment::text::TextInvocationInput>],
     ) -> Result<()> {
         if inputs.len() != self.records.len()
             || inputs.iter().zip(&self.records).any(|(input, record)| {

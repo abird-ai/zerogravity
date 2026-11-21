@@ -53,7 +53,7 @@ impl ComponentValues {
                 .nodes()
                 .get(tag.node_index())
                 .ok_or_else(|| Error::State("component SSA producer outside plan".into()))?;
-            if tag.call() != recipe.bindings().call()
+            if tag.invocation() != recipe.bindings().invocation()
                 || producer.outputs.get(tag.output_index()) != Some(&ValueId(index as u32))
                 || tag.inputs() != producer.inputs
             {

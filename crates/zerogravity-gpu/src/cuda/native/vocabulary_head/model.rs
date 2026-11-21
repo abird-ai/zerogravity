@@ -6,7 +6,7 @@ use super::*;
 use crate::resident_leases::{ResidentInitialization, TiedWeight};
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_core::accelerator::program::PlanOperation;
-use zerogravity_core::accelerator::program::{SourceCallMode, SourceOperatorKind};
+use zerogravity_core::accelerator::program::{InvocationPhase, SourceOperatorKind};
 
 #[derive(Clone)]
 struct BoundHead {
@@ -47,7 +47,7 @@ impl ModelHeadPrograms {
         let mut bindings = Vec::with_capacity(5);
         for (values, fused) in phases {
             let record = values.record();
-            let call = record.call();
+            let call = record.invocation();
             crate::cuda::gdn::GdnPhase::for_reference_call(call)?;
             if !record.source().same_issuer(&source) {
                 return Err(Error::State(
@@ -58,12 +58,12 @@ impl ModelHeadPrograms {
                 .selection()
                 .normalized()
                 .ok_or_else(|| Error::State("full24 actual normalized selection absent".into()))?;
-            let case = match (call.mode(), call.rows().base(), call.rows().len()) {
-                (SourceCallMode::Prefill, 0, 1) => VocabularyHeadCase::Initial11,
-                (SourceCallMode::Decode, 1, 1) => VocabularyHeadCase::Decode353After11,
-                (SourceCallMode::Prefill, 0, 64) => VocabularyHeadCase::InitialFirst64,
-                (SourceCallMode::Prefill, 64, 2) => VocabularyHeadCase::Continued65And66,
-                (SourceCallMode::Decode, 66, 1) => VocabularyHeadCase::Decode353After66,
+            let case = match (call.phase(), call.tokens().base(), call.tokens().len()) {
+                (InvocationPhase::Prefill, 0, 1) => VocabularyHeadCase::Initial11,
+                (InvocationPhase::Decode, 1, 1) => VocabularyHeadCase::Decode353After11,
+                (InvocationPhase::Prefill, 0, 64) => VocabularyHeadCase::InitialFirst64,
+                (InvocationPhase::Prefill, 64, 2) => VocabularyHeadCase::Continued65And66,
+                (InvocationPhase::Decode, 66, 1) => VocabularyHeadCase::Decode353After66,
                 _ => {
                     return Err(Error::Unsupported(
                         "full24 head keeps actual full-phase request geometry".into(),
@@ -91,7 +91,7 @@ impl ModelHeadPrograms {
                 .matrix()
                 .require_matrix(&source, values.service(), &matrix)?;
             if !matches!(descriptor.kind(), SourceOperatorKind::Projection { selected_row: Some(row) } if row==case.selected_row())
-                || descriptor.call() != call
+                || descriptor.invocation() != call
                 || !matches!(
                     &head.operation,
                     PlanOperation::SourceOperator { state: None, .. }
@@ -112,7 +112,7 @@ impl ModelHeadPrograms {
                 .plan()
                 .source_value_provenance(normalized_id)?
                 .ok_or_else(|| Error::State("full24 final normalizer provenance absent".into()))?;
-            if normalized.call() != call || normalized.output_index() != 0 {
+            if normalized.invocation() != call || normalized.output_index() != 0 {
                 return Err(Error::State("full24 actual final RMS origin absent".into()));
             }
             let normalizer = record

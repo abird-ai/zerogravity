@@ -133,7 +133,7 @@ impl CudaForwardProjection {
 
     fn operation(&self, descriptor: &SourceOperator) -> Result<(Bf16GemmShape, usize)> {
         descriptor.validate()?;
-        let rows = descriptor.call().rows().len();
+        let rows = descriptor.invocation().tokens().len();
         let SourceOperatorKind::Projection { selected_row } = descriptor.kind() else {
             return Err(Error::State(
                 "CUDA forward projection runtime descriptor kind differs".into(),
@@ -147,8 +147,8 @@ impl CudaForwardProjection {
             ),
         };
         if descriptor.numerical_contract() != self.template.numerical_contract()
-            || descriptor.call().source() != self.template.source()
-            || descriptor.call().rows().vocabulary() != self.template.vocabulary()
+            || descriptor.invocation().source() != self.template.source()
+            || descriptor.invocation().tokens().vocabulary() != self.template.vocabulary()
             || rows > self.template.max_rows()
             || descriptor.matrices() != self.template.matrices()
             || descriptor.parameters() != self.template.parameters()

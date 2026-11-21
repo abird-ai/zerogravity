@@ -32,7 +32,7 @@ fn operation(
 ) -> Result<Option<NativeOperation>> {
     let selected = match operator.kind() {
         SourceOperatorKind::SiluAndMul { width: 3584 } => {
-            Some(activation_operation(operator.call().rows().len())?)
+            Some(activation_operation(operator.invocation().tokens().len())?)
         }
         SourceOperatorKind::Projection { selected_row: None } => {
             let shapes = operator
@@ -60,7 +60,9 @@ fn operation(
                 let previous = record.operator(producer.node_index())?.ok_or_else(|| {
                     Error::State("native output actual producer descriptor absent".into())
                 })?;
-                if producer.call() != operator.call() || previous.call() != operator.call() {
+                if producer.invocation() != operator.invocation()
+                    || previous.invocation() != operator.invocation()
+                {
                     return Err(Error::State(
                         "native output actual producer issuer differs".into(),
                     ));
@@ -93,7 +95,7 @@ fn operation(
         _ => None,
     };
     if selected.is_some()
-        && (operator.call() != record.call()
+        && (operator.invocation() != record.invocation()
             || operator.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1)
     {
         return Err(Error::State(
@@ -164,7 +166,7 @@ impl ModelNativePrograms {
             let mut accesses = BTreeMap::new();
             let record = bound.record();
             if !Arc::ptr_eq(bound.service(), service)
-                || record.call().source() != weights.source().source_identity()
+                || record.invocation().source() != weights.source().source_identity()
                 || !record.source().same_issuer(weights.source())
             {
                 return Err(Error::State(
@@ -172,9 +174,9 @@ impl ModelNativePrograms {
                 ));
             }
             phases.push((
-                record.call().mode(),
-                record.call().rows().base(),
-                record.call().rows().len(),
+                record.invocation().phase(),
+                record.invocation().tokens().base(),
+                record.invocation().tokens().len(),
             ));
             for (node_index, node) in record.plan().nodes().iter().enumerate() {
                 let Some(descriptor) = record.operator(node_index)? else {
@@ -183,7 +185,7 @@ impl ModelNativePrograms {
                 let Some(operation) = operation(record, node_index, descriptor)? else {
                     continue;
                 };
-                if descriptor.call() != record.call() || node.state.is_some() {
+                if descriptor.invocation() != record.invocation() || node.state.is_some() {
                     return Err(Error::State(
                         "full24 native descriptor call/state differs".into(),
                     ));
@@ -244,7 +246,7 @@ impl ModelNativePrograms {
             accesses.insert(workspace.id(), (workspace.clone(), DeviceAccess::Write));
             phase_accesses.push(accesses.into_values().collect());
         }
-        use zerogravity_core::accelerator::program::SourceCallMode::{Decode, Prefill};
+        use zerogravity_core::accelerator::program::InvocationPhase::{Decode, Prefill};
         if phases
             != [
                 (Prefill, 0, 1),

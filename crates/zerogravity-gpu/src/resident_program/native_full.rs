@@ -117,7 +117,7 @@ impl FullModelProgram {
     /// Pure source/recipe preflight. No allocator/client/module is consulted.
     pub(crate) fn require_record(record: &SourceBindings) -> Result<()> {
         let plan = record.plan();
-        if plan.source_call() != Some(record.call())
+        if plan.text_invocation() != Some(record.invocation())
             || plan.source() != record.source().source_identity()
             || plan.frontier_delta() != 0
             || plan.logits().is_some()
@@ -144,7 +144,7 @@ impl FullModelProgram {
     ) -> Result<(Arc<Self>, Vec<DeviceBuffer>, ResidentPreflight)> {
         cancelled(cancel)?;
         // Preserve the existing legacy entry and its finite geometry permit.
-        crate::cuda::native::native_gdn::phase(record.call())?;
+        crate::cuda::native::native_gdn::phase(record.invocation())?;
         Self::prepare_values_impl(service, record, None, None, cancel).await
     }
     pub(crate) async fn prepare_fixed_prompt_prefix_values(
@@ -214,8 +214,8 @@ impl FullModelProgram {
         let readback_bytes = checked_sum([
             public_bytes,
             2 * state_bytes,
-            48 * (2048 + record.call().rows().len() * 8192),
-            2048 + record.call().rows().len() * 4096,
+            48 * (2048 + record.invocation().tokens().len() * 8192),
+            2048 + record.invocation().tokens().len() * 4096,
             1024 * 1024,
         ])?;
         let chunks = readback_bytes.div_ceil(32 * 1024 * 1024);
@@ -319,7 +319,7 @@ impl FullModelProgram {
             {
                 let layout = ResidentBufferLayout::new(
                     ResidentPhysicalType::Bf16,
-                    record.call().rows().len() * 1024,
+                    record.invocation().tokens().len() * 1024,
                 )?;
                 if buffers[id.0 as usize].is_some() {
                     return Err(Error::State("full24 duplicate RMS output binding".into()));
@@ -443,7 +443,7 @@ impl FullModelProgram {
         library.attention.require_phase(phase, &attention)?;
         let mut layers = BTreeSet::new();
         for state in &states {
-            if state.call() != self.record.call() || !layers.insert(state.layer()) {
+            if state.invocation() != self.record.invocation() || !layers.insert(state.layer()) {
                 return Err(Error::State(
                     "full24 bound actual indexed source-state cohort".into(),
                 ));
@@ -599,7 +599,7 @@ impl FullModelProgram {
             .ok_or_else(|| Error::State("original model phase absent".into()))?;
         permit.require_invocation(
             self.values.service(),
-            self.record.call(),
+            self.record.invocation(),
             0,
             if bound
                 .fixed_prompt_prefix
@@ -638,10 +638,10 @@ impl FullModelProgram {
         Ok(())
     }
     pub(crate) fn validate_runtime(&self, p: RuntimeParameters) -> Result<()> {
-        let request = self.record.call();
-        if p.position != request.rows().base()
-            || p.valid_tokens != self.record.call().rows().len()
-            || Some(p.token) != request.rows().ids().first().copied()
+        let request = self.record.invocation();
+        if p.position != request.tokens().base()
+            || p.valid_tokens != self.record.invocation().tokens().len()
+            || Some(p.token) != request.tokens().ids().first().copied()
         {
             return Err(Error::State(
                 "full24 runtime differs from original source teacher/phase".into(),
@@ -734,7 +734,7 @@ impl FullModelProgram {
             return Ok(copies);
         }
         let op = descriptor(node)?;
-        if op.call() != self.record.call() {
+        if op.invocation() != self.record.invocation() {
             return Err(Error::State(
                 "full24 original node invocation differs".into(),
             ));

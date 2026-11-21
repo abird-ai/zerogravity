@@ -13,7 +13,7 @@ use crate::resident_inference::{
     ResidentSession,
     native_fragment::{
         PrefixPhaseEnqueue,
-        fixed_prompt_natural::{FixedPromptCallInput, FixedPromptCallState},
+        fixed_prompt_natural::{FixedPromptInvocationInput, FixedPromptInvocationState},
     },
 };
 use crate::resident_leases::TiedWeight;
@@ -39,8 +39,8 @@ pub(crate) struct FixedPromptNativeStorage {
 }
 pub(crate) struct FixedPromptNativeCall {
     storage: Arc<FixedPromptNativeStorage>,
-    input: Arc<FixedPromptCallInput>,
-    state: Arc<FixedPromptCallState>,
+    input: Arc<FixedPromptInvocationInput>,
+    state: Arc<FixedPromptInvocationState>,
     values: Arc<ModelValues>,
     nodes: BTreeMap<usize, Node>,
     attention: Arc<AttentionCall>,
@@ -78,10 +78,10 @@ impl FixedPromptNativeStorage {
             scope.require_values(values)?;
             init.require_service(values.service())?;
         }
-        if scopes[0].kind() != super::super::fixed_prompt_model::FixedPromptCallKind::Prefill
+        if scopes[0].kind() != super::super::fixed_prompt_model::FixedPromptInvocationKind::Prefill
             || !matches!(
                 scopes[1].kind(),
-                super::super::fixed_prompt_model::FixedPromptCallKind::Decode { base: 47 }
+                super::super::fixed_prompt_model::FixedPromptInvocationKind::Decode { base: 47 }
             )
             || !scopes[0].source().same_issuer(scopes[1].source())
             || workspace.bytes() != WORKSPACE_BYTES
@@ -164,8 +164,8 @@ impl FixedPromptNativeStorage {
     }
     pub(crate) fn bind(
         self: &Arc<Self>,
-        input: Arc<FixedPromptCallInput>,
-        state: Arc<FixedPromptCallState>,
+        input: Arc<FixedPromptInvocationInput>,
+        state: Arc<FixedPromptInvocationState>,
         values: Arc<ModelValues>,
         positions: Arc<
             crate::resident_program::text_positions::fixed_prompt_natural::FixedPromptPositions,
@@ -280,7 +280,7 @@ impl FixedPromptNativeCall {
     }
     pub(crate) fn require_values(
         &self,
-        input: &Arc<FixedPromptCallInput>,
+        input: &Arc<FixedPromptInvocationInput>,
         values: &Arc<ModelValues>,
     ) -> Result<()> {
         if !Arc::ptr_eq(input, &self.input)
@@ -418,7 +418,7 @@ impl FixedPromptNativeCall {
                 .source()
                 .same_issuer(self.input.source())
             && self.values.lease(ValueId(324))?.id() == self.final_normalizer.normalized().id()
-            && self.tied.lease().source_identity() == self.input.call().source())
+            && self.tied.lease().source_identity() == self.input.invocation().source())
     }
 }
 

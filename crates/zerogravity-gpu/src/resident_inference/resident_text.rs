@@ -1,19 +1,17 @@
 //! Source-priced lifetimes around the original resident execution/publication.
 use super::*;
 #[cfg(all(feature = "hip-source", feature = "hip"))]
-use crate::resident_program::source_call as program;
+use crate::resident_program::text_execution as program;
 #[cfg(all(feature = "hip-source", feature = "hip"))]
-pub use program::SourceCallInventory;
+pub use program::ResidentTextInventory;
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_artifacts::source_weights::WindowWorkspace;
-use zerogravity_core::accelerator::program::{
-    BoundSourceInvocation, NumericalContract, SourceCallMode,
-};
+use zerogravity_core::accelerator::program::{BoundInvocation, InvocationPhase, NumericalContract};
 
 #[cfg(feature = "cuda-cublas")]
 mod cohort;
 #[cfg(feature = "cuda-cublas")]
-pub use cohort::{SourceCallCohortPending, SourceCallCohortPreparation};
+pub use cohort::{ResidentTextCohortPending, ResidentTextCohortPreparation};
 
 #[cfg(all(
     feature = "hardware-abort-probe",
@@ -28,7 +26,7 @@ mod probe;
     feature = "hip-source",
     feature = "hip"
 ))]
-pub use probe::{SourceCallFinalReader, SourceCallReaderObservation};
+pub use probe::{ResidentTextFinalReader, ResidentTextReaderObservation};
 
 const CONTROL_BYTES: usize = 64 * 1024;
 const CALL_HOST_BYTES: usize = 32 * 1024 * 1024;
@@ -45,7 +43,7 @@ pub enum CudaSourceStatePolicy {
 
 #[cfg(feature = "cuda-cublas")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SourceCallPagedPoolSnapshot {
+pub struct ResidentTextPagedPoolSnapshot {
     pub vector_allocated_sets: usize,
     pub vector_idle_sets: usize,
     pub staging_allocated_sets: usize,
@@ -57,12 +55,12 @@ pub struct SourceCallPagedPoolSnapshot {
 }
 
 #[cfg(all(feature = "hardware-abort-probe", feature = "cuda-cublas"))]
-pub struct SourceCallPagedPressure {
+pub struct ResidentTextPagedPressure {
     _pages: Vec<ResidentLease>,
 }
 
 /// No exposed inner model/session: detached readers must retain these owners.
-pub struct SourceCallModel {
+pub struct ResidentTextModel {
     inner: Arc<ResidentModel>,
     source: VerifiedTensorSource,
     sessions: Arc<async_lock::Semaphore>,
@@ -77,48 +75,48 @@ pub struct SourceCallModel {
         Option<crate::resident_program::cuda_forward::PrefillProjectionClasses>,
     _source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
 }
-pub struct SourceCallSession {
+pub struct ResidentTextSession {
     inner: ResidentSession,
     _permit: async_lock::SemaphoreGuardArc,
-    model: Arc<SourceCallModel>,
+    model: Arc<ResidentTextModel>,
     _control: Arc<WindowWorkspace>,
 }
 struct ReaderScope {
-    model: Arc<SourceCallModel>,
+    model: Arc<ResidentTextModel>,
     _host: WindowWorkspace,
 }
 /// Immutable access only: moving a raw Vec out cannot release its credit early.
-pub struct SourceCallReadback<T> {
+pub struct ResidentTextReadback<T> {
     data: T,
     _scope: Arc<ReaderScope>,
 }
-impl<T> std::ops::Deref for SourceCallReadback<T> {
+impl<T> std::ops::Deref for ResidentTextReadback<T> {
     type Target = T;
     fn deref(&self) -> &T {
         &self.data
     }
 }
 #[must_use = "dropping a completed proposal discards its private root"]
-pub struct SourceCallPending {
+pub struct ResidentTextPending {
     inner: Box<PreparedInference>,
     cancelled: Option<Arc<AtomicBool>>,
     scope: Arc<ReaderScope>,
 }
-impl SourceCallPending {
+impl ResidentTextPending {
     pub fn readback(&self) -> &InferenceReadback {
         &self.inner.readback
     }
 }
-pub enum SourceCallPreparation {
+pub enum ResidentTextPreparation {
     /// Proven no submission; the original host/root admission refused.
     Capacity,
     CancelledBeforeLaunch,
-    Ready(SourceCallPending),
+    Ready(ResidentTextPending),
 }
-pub enum SourceCallPublication {
-    Committed(SourceCallReadback<InferenceReadback>),
+pub enum ResidentTextPublication {
+    Committed(ResidentTextReadback<InferenceReadback>),
     /// Actual completed readback/metrics; no root was published.
-    Discarded(SourceCallReadback<InferenceReadback>),
+    Discarded(ResidentTextReadback<InferenceReadback>),
 }
 struct SnapshotOwner {
     inner: ResidentSnapshot,
@@ -126,12 +124,12 @@ struct SnapshotOwner {
 }
 /// Clones share the actual metadata allocation and its one reservation.
 #[derive(Clone)]
-pub struct SourceCallSnapshot(Arc<SnapshotOwner>);
-impl SourceCallSnapshot {
+pub struct ResidentTextSnapshot(Arc<SnapshotOwner>);
+impl ResidentTextSnapshot {
     pub fn binding(&self) -> RootBinding {
         self.0.inner.binding
     }
-    pub async fn read_domains(&self) -> Result<SourceCallReadback<Vec<(StateSlot, Vec<f32>)>>> {
+    pub async fn read_domains(&self) -> Result<ResidentTextReadback<Vec<(StateSlot, Vec<f32>)>>> {
         let model = &self.0.scope.model;
         let bytes = model
             .inner
@@ -145,7 +143,7 @@ impl SourceCallSnapshot {
             .inner
             .read_domains_retaining(Some(scope.clone()))
             .await?;
-        Ok(SourceCallReadback {
+        Ok(ResidentTextReadback {
             data,
             _scope: scope,
         })
@@ -158,7 +156,7 @@ impl ResidentModel {
         source: VerifiedTensorSource,
         plan: Arc<ForwardPlan>,
         max_sessions: usize,
-    ) -> Result<SourceCallInventory> {
+    ) -> Result<ResidentTextInventory> {
         Ok(program::Admission::new(source, plan, max_sessions)?
             .inventory()
             .clone())
@@ -168,7 +166,7 @@ impl ResidentModel {
         plan: Arc<ForwardPlan>,
         max_sessions: usize,
         budget: crate::hip::native::HipSourceBudget,
-    ) -> Result<SourceCallInventory> {
+    ) -> Result<ResidentTextInventory> {
         Ok(
             program::Admission::with_budget(source, plan, max_sessions, budget)?
                 .inventory()
@@ -182,7 +180,7 @@ impl ResidentModel {
         plan: Arc<ForwardPlan>,
         max_sessions: usize,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<SourceCallModel>> {
+    ) -> Result<Arc<ResidentTextModel>> {
         Self::load_cpu_forward_source_with_budget(
             device,
             source,
@@ -203,7 +201,7 @@ impl ResidentModel {
         max_sessions: usize,
         budget: crate::hip::native::HipSourceBudget,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<SourceCallModel>> {
+    ) -> Result<Arc<ResidentTextModel>> {
         forward_not_cancelled(cancelled)?;
         let control = source.reserve_workspace(CONTROL_BYTES)?;
         let capacity = plan.prefix_capacity();
@@ -215,7 +213,7 @@ impl ResidentModel {
             .program
             .plan()
             .logits()
-            .ok_or_else(|| Error::State("source-call readout absent".into()))?
+            .ok_or_else(|| Error::State("resident-text readout absent".into()))?
             .0 as usize]
             .capacity_elements()?;
         let model = Arc::new(Self {
@@ -242,7 +240,7 @@ impl ResidentModel {
         });
         model.install_window_root_pool(source.clone(), prepared.inventory.root_count)?;
         forward_not_cancelled(cancelled)?;
-        Ok(Arc::new(SourceCallModel {
+        Ok(Arc::new(ResidentTextModel {
             inner: model,
             source,
             sessions: Arc::new(async_lock::Semaphore::new(max_sessions)),
@@ -260,14 +258,14 @@ impl ResidentModel {
 }
 #[cfg(feature = "cuda-cublas")]
 impl ResidentModel {
-    fn source_call_root_count(max_sessions: usize) -> Result<usize> {
+    fn resident_text_root_count(max_sessions: usize) -> Result<usize> {
         max_sessions
             .checked_mul(2)
             .and_then(|n| n.checked_add(2))
-            .ok_or_else(|| Error::Limit("source-call root count overflow".into()))
+            .ok_or_else(|| Error::Limit("resident-text root count overflow".into()))
     }
 
-    fn source_call_state_reserve(
+    fn resident_text_state_reserve(
         plan: &Arc<ForwardPlan>,
         roots: usize,
         max_sessions: usize,
@@ -281,7 +279,7 @@ impl ResidentModel {
             } => {
                 if page_tokens == 0 || max_append_tokens == 0 {
                     return Err(Error::Unsupported(
-                        "paged source-call state requires positive page/append policy".into(),
+                        "paged resident-text state requires positive page/append policy".into(),
                     ));
                 }
                 let admission =
@@ -302,7 +300,7 @@ impl ResidentModel {
         }
     }
 
-    /// Pure source-call admission for one explicit state representation.
+    /// Pure resident-text admission for one explicit state representation.
     /// No device/context/source owner is created. Smart startup selectors use
     /// this once at model load to compare only qualified physical policies.
     pub fn cuda_forward_source_preflight_for_state_policy(
@@ -316,11 +314,11 @@ impl ResidentModel {
             || !matches!(cohort_width, 0 | 4 | 8)
             || (cohort_width != 0 && max_sessions < cohort_width)
         {
-            return Err(Error::Limit("source-call session capacity".into()));
+            return Err(Error::Limit("resident-text session capacity".into()));
         }
-        let roots = Self::source_call_root_count(max_sessions)?;
+        let roots = Self::resident_text_root_count(max_sessions)?;
         let state_reserve_bytes =
-            Self::source_call_state_reserve(&plan, roots, max_sessions, state_policy)?;
+            Self::resident_text_state_reserve(&plan, roots, max_sessions, state_policy)?;
         super::cuda_forward_source_admission(
             plan,
             provider_cap,
@@ -342,7 +340,7 @@ impl ResidentModel {
         provider_cap: usize,
         device_cap: u64,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<SourceCallModel>> {
+    ) -> Result<Arc<ResidentTextModel>> {
         Self::load_cuda_forward_source_with_state_policy(
             device,
             source,
@@ -370,17 +368,17 @@ impl ResidentModel {
         device_cap: u64,
         state_policy: CudaSourceStatePolicy,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<SourceCallModel>> {
+    ) -> Result<Arc<ResidentTextModel>> {
         forward_not_cancelled(cancelled)?;
         if !(1..=64).contains(&max_sessions)
             || !matches!(cohort_width, 0 | 4 | 8)
             || (cohort_width != 0 && max_sessions < cohort_width)
         {
-            return Err(Error::Limit("source-call session capacity".into()));
+            return Err(Error::Limit("resident-text session capacity".into()));
         }
-        let roots = Self::source_call_root_count(max_sessions)?;
+        let roots = Self::resident_text_root_count(max_sessions)?;
         let state_reserve_bytes =
-            Self::source_call_state_reserve(&plan, roots, max_sessions, state_policy)?;
+            Self::resident_text_state_reserve(&plan, roots, max_sessions, state_policy)?;
         let control = source.reserve_workspace(CONTROL_BYTES)?;
         let prefill_projection_classes = Some(
             crate::resident_program::cuda_forward::PrefillProjectionClasses::from_plan(&plan)?,
@@ -417,7 +415,7 @@ impl ResidentModel {
             }
         }
         forward_not_cancelled(cancelled)?;
-        Ok(Arc::new(SourceCallModel {
+        Ok(Arc::new(ResidentTextModel {
             inner: model,
             source,
             sessions: Arc::new(async_lock::Semaphore::new(max_sessions)),
@@ -430,7 +428,7 @@ impl ResidentModel {
         }))
     }
 }
-impl SourceCallModel {
+impl ResidentTextModel {
     #[cfg(feature = "cuda-cublas")]
     pub fn supports_shared_prefix(&self) -> bool {
         matches!(self.state_policy, CudaSourceStatePolicy::Paged { .. })
@@ -451,11 +449,11 @@ impl SourceCallModel {
             _host: self.source.reserve_backend_workspace(bytes)?,
         }))
     }
-    pub async fn session(self: &Arc<Self>) -> Result<SourceCallSession> {
+    pub async fn session(self: &Arc<Self>) -> Result<ResidentTextSession> {
         let permit = self
             .sessions
             .try_acquire_arc()
-            .ok_or_else(|| Error::Limit("source-call session capacity".into()))?;
+            .ok_or_else(|| Error::Limit("resident-text session capacity".into()))?;
         let control = Arc::new(self.source.reserve_workspace(CONTROL_BYTES)?);
         let inner = self
             .inner
@@ -464,7 +462,7 @@ impl SourceCallModel {
                 init.retain_completion_owner(control.clone())
             })
             .await?;
-        Ok(SourceCallSession {
+        Ok(ResidentTextSession {
             inner,
             _permit: permit,
             model: self.clone(),
@@ -478,7 +476,7 @@ impl SourceCallModel {
     pub async fn shutdown(self: Arc<Self>) -> Result<()> {
         if Arc::strong_count(&self) != 1 || Arc::strong_count(&self.inner) != 1 {
             return Err(Error::State(
-                "source-call shutdown has original session/snapshot/result owners".into(),
+                "resident-text shutdown has original session/snapshot/result owners".into(),
             ));
         }
         self.inner.service.ensure_usable()?;
@@ -498,10 +496,10 @@ impl SourceCallModel {
             service
                 .client()
                 .memory_cleanup()
-                .map_err(|error| Error::State(format!("source-call CUDA cleanup: {error}")))?;
+                .map_err(|error| Error::State(format!("resident-text CUDA cleanup: {error}")))?;
             if service.resident_bytes()? != 0 || service.model_events()? != 0 {
                 return Err(Error::State(
-                    "source-call CUDA shutdown left bytes or events".into(),
+                    "resident-text CUDA shutdown left bytes or events".into(),
                 ));
             }
         }
@@ -511,18 +509,18 @@ impl SourceCallModel {
     #[cfg(feature = "hardware-abort-probe")]
     pub fn diagnostic_pause_next_launch(&self) -> Result<()> {
         let _idle = self.inner.workspace.try_lock().ok_or_else(|| {
-            Error::State("source-call launch probe requires idle workspace".into())
+            Error::State("resident-text launch probe requires idle workspace".into())
         })?;
         self.inner.service.ensure_usable()?;
         if self.inner.qualification_launch_seen() != 0 {
             return Err(Error::State(
-                "source-call launch probe already reached".into(),
+                "resident-text launch probe already reached".into(),
             ));
         }
         self.inner
             .abort_after_launch
             .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
-            .map_err(|_| Error::State("source-call launch probe already armed".into()))?;
+            .map_err(|_| Error::State("resident-text launch probe already armed".into()))?;
         Ok(())
     }
 
@@ -557,19 +555,19 @@ impl SourceCallModel {
     }
 
     #[cfg(feature = "cuda-cublas")]
-    pub fn paged_pool_snapshot(&self) -> Result<Option<SourceCallPagedPoolSnapshot>> {
+    pub fn paged_pool_snapshot(&self) -> Result<Option<ResidentTextPagedPoolSnapshot>> {
         let states = self
             .inner
             .state_pool
             .get()
-            .ok_or_else(|| Error::State("source-call state pool absent".into()))?;
+            .ok_or_else(|| Error::State("resident-text state pool absent".into()))?;
         let super::state_pool::PooledStateStorage::Hybrid(pools) = &states.storage else {
             return Ok(None);
         };
         let vector = pools.vector_pool.snapshot()?;
         let staging = pools.staging_pool.snapshot()?;
         let pages = pools.page_pool.snapshot()?;
-        Ok(Some(SourceCallPagedPoolSnapshot {
+        Ok(Some(ResidentTextPagedPoolSnapshot {
             vector_allocated_sets: vector.allocated_sets,
             vector_idle_sets: vector.idle_sets,
             staging_allocated_sets: staging.allocated_sets,
@@ -582,26 +580,26 @@ impl SourceCallModel {
     }
 
     #[cfg(all(feature = "hardware-abort-probe", feature = "cuda-cublas"))]
-    pub fn diagnostic_paged_pool_snapshot(&self) -> Result<SourceCallPagedPoolSnapshot> {
+    pub fn diagnostic_paged_pool_snapshot(&self) -> Result<ResidentTextPagedPoolSnapshot> {
         self.paged_pool_snapshot()?
-            .ok_or_else(|| Error::State("source-call state pool is not paged".into()))
+            .ok_or_else(|| Error::State("resident-text state pool is not paged".into()))
     }
 
     #[cfg(all(feature = "hardware-abort-probe", feature = "cuda-cublas"))]
-    pub fn diagnostic_hold_paged_pages(&self, count: usize) -> Result<SourceCallPagedPressure> {
+    pub fn diagnostic_hold_paged_pages(&self, count: usize) -> Result<ResidentTextPagedPressure> {
         let states = self
             .inner
             .state_pool
             .get()
-            .ok_or_else(|| Error::State("source-call state pool absent".into()))?;
+            .ok_or_else(|| Error::State("resident-text state pool absent".into()))?;
         let super::state_pool::PooledStateStorage::Hybrid(pools) = &states.storage else {
-            return Err(Error::State("source-call state pool is not paged".into()));
+            return Err(Error::State("resident-text state pool is not paged".into()));
         };
         let mut pages = Vec::with_capacity(count);
         for _ in 0..count {
             pages.push(pools.page_pool.checkout()?);
         }
-        Ok(SourceCallPagedPressure { _pages: pages })
+        Ok(ResidentTextPagedPressure { _pages: pages })
     }
 
     #[cfg(all(
@@ -615,13 +613,13 @@ impl SourceCallModel {
         let workspace = self.inner.workspace.lock().await;
         Ok(
             super::source_native_probe::SourceTextNativeProbe::from_original(
-                workspace.program.source_call_native_probe()?,
+                workspace.program.text_execution_native_probe()?,
                 &self.inner.service,
             ),
         )
     }
 }
-impl SourceCallSession {
+impl ResidentTextSession {
     pub fn supports_device_greedy(&self) -> bool {
         #[cfg(feature = "cuda-cublas")]
         {
@@ -638,14 +636,14 @@ impl SourceCallSession {
     pub fn binding(&self) -> RootBinding {
         self.inner.binding()
     }
-    pub fn snapshot(&self) -> Result<SourceCallSnapshot> {
+    pub fn snapshot(&self) -> Result<ResidentTextSnapshot> {
         let scope = self.model.reader_scope(CONTROL_BYTES)?;
-        Ok(SourceCallSnapshot(Arc::new(SnapshotOwner {
+        Ok(ResidentTextSnapshot(Arc::new(SnapshotOwner {
             inner: self.inner.snapshot(),
             scope,
         })))
     }
-    pub fn restore(&mut self, snapshot: &SourceCallSnapshot) -> Result<()> {
+    pub fn restore(&mut self, snapshot: &ResidentTextSnapshot) -> Result<()> {
         if !Arc::ptr_eq(&self.model, &snapshot.0.scope.model) {
             return Err(Error::State(
                 "source snapshot original model differs".into(),
@@ -653,7 +651,7 @@ impl SourceCallSession {
         }
         self.inner.restore(&snapshot.0.inner)
     }
-    pub fn fork_shared_prefix(&mut self, snapshot: &SourceCallSnapshot) -> Result<()> {
+    pub fn fork_shared_prefix(&mut self, snapshot: &ResidentTextSnapshot) -> Result<()> {
         if !Arc::ptr_eq(&self.model, &snapshot.0.scope.model) {
             return Err(Error::State(
                 "source shared prefix original model differs".into(),
@@ -670,11 +668,11 @@ impl SourceCallSession {
     }
     pub async fn prepare(
         &self,
-        invocation: &BoundSourceInvocation,
-        mode: SourceCallMode,
+        invocation: &BoundInvocation,
+        mode: InvocationPhase,
         output: ResidentOutput,
         cancelled: Option<Arc<AtomicBool>>,
-    ) -> Result<SourceCallPreparation> {
+    ) -> Result<ResidentTextPreparation> {
         let readout = match output {
             ResidentOutput::StateOnly => Readout::None,
             ResidentOutput::Logits => Readout::Logits,
@@ -684,13 +682,13 @@ impl SourceCallSession {
     }
     pub async fn prepare_greedy(
         &self,
-        invocation: &BoundSourceInvocation,
-        mode: SourceCallMode,
+        invocation: &BoundInvocation,
+        mode: InvocationPhase,
         cancelled: Option<Arc<AtomicBool>>,
-    ) -> Result<SourceCallPreparation> {
+    ) -> Result<ResidentTextPreparation> {
         if !self.supports_device_greedy() {
             return Err(Error::Unsupported(
-                "source-call device greedy requires CUDA forward".into(),
+                "resident-text device greedy requires CUDA forward".into(),
             ));
         }
         self.prepare_inner(
@@ -706,21 +704,21 @@ impl SourceCallSession {
     }
     pub async fn prepare_greedy_device_token(
         &self,
-        invocation: &BoundSourceInvocation,
-        mode: SourceCallMode,
+        invocation: &BoundInvocation,
+        mode: InvocationPhase,
         token: &ResidentToken,
         cancelled: Option<Arc<AtomicBool>>,
-    ) -> Result<SourceCallPreparation> {
+    ) -> Result<ResidentTextPreparation> {
         if !self.supports_device_greedy()
-            || mode != SourceCallMode::Decode
+            || mode != InvocationPhase::Decode
             || token.producer != Some(self.binding())
             || token.lease.bytes() != 12
             || !Arc::ptr_eq(token.lease.service(), &self.model.inner.service)
-            || invocation.invocation().rows() != 1
-            || invocation.invocation().ids() != [token.id]
+            || invocation.input().token_count() != 1
+            || invocation.input().ids() != [token.id]
         {
             return Err(Error::State(
-                "source-call device token differs from committed decode root/input".into(),
+                "resident-text device token differs from committed decode root/input".into(),
             ));
         }
         self.prepare_inner(
@@ -736,12 +734,12 @@ impl SourceCallSession {
     }
     pub async fn prepare_observed(
         &self,
-        invocation: &BoundSourceInvocation,
-        mode: SourceCallMode,
+        invocation: &BoundInvocation,
+        mode: InvocationPhase,
         output: ResidentOutput,
         cancelled: Option<Arc<AtomicBool>>,
-        observer: &mut dyn crate::resident_program::source_observation::SourceCallObserver,
-    ) -> Result<SourceCallPreparation> {
+        observer: &mut dyn crate::resident_program::text_observation::TextObserver,
+    ) -> Result<ResidentTextPreparation> {
         let readout = match output {
             ResidentOutput::StateOnly => Readout::None,
             ResidentOutput::Logits => Readout::Logits,
@@ -760,22 +758,22 @@ impl SourceCallSession {
     #[allow(clippy::too_many_arguments)] // Keep publication/readout/token ownership explicit at this boundary.
     async fn prepare_inner(
         &self,
-        invocation: &BoundSourceInvocation,
-        mode: SourceCallMode,
+        invocation: &BoundInvocation,
+        mode: InvocationPhase,
         output: ResidentOutput,
         readout: Readout,
         cancelled: Option<Arc<AtomicBool>>,
         device_token: Option<&ResidentToken>,
-        observer: Option<&mut dyn crate::resident_program::source_observation::SourceCallObserver>,
-    ) -> Result<SourceCallPreparation> {
+        observer: Option<&mut dyn crate::resident_program::text_observation::TextObserver>,
+    ) -> Result<ResidentTextPreparation> {
         if cancelled
             .as_ref()
             .is_some_and(|f| f.load(Ordering::Acquire))
         {
-            return Ok(SourceCallPreparation::CancelledBeforeLaunch);
+            return Ok(ResidentTextPreparation::CancelledBeforeLaunch);
         }
         // Credit precedes materialization, access/control containers and readback.
-        if invocation.invocation().emit_logits() != (output == ResidentOutput::Logits) {
+        if invocation.input().emit_logits() != (output == ResidentOutput::Logits) {
             return Err(Error::State(
                 "source invocation/readout policy differs".into(),
             ));
@@ -784,7 +782,7 @@ impl SourceCallSession {
             Ok(scope) => scope,
             Err(error) => return preparation_failure(error, false),
         };
-        let request = invocation.materialize_source_plan(mode)?;
+        let request = invocation.materialize(mode)?;
         let submitted = AtomicBool::new(false);
         let prepared = self
             .inner
@@ -806,13 +804,13 @@ impl SourceCallSession {
             Ok(inner) => inner,
             Err(error) => return preparation_failure(error, submitted.load(Ordering::Acquire)),
         };
-        Ok(SourceCallPreparation::Ready(SourceCallPending {
+        Ok(ResidentTextPreparation::Ready(ResidentTextPending {
             inner: Box::new(inner),
             cancelled,
             scope,
         }))
     }
-    pub fn commit(&mut self, pending: SourceCallPending) -> Result<SourceCallPublication> {
+    pub fn commit(&mut self, pending: ResidentTextPending) -> Result<ResidentTextPublication> {
         if !Arc::ptr_eq(&self.model, &pending.scope.model) {
             return Err(Error::State(
                 "source proposal original model differs".into(),
@@ -829,26 +827,26 @@ impl SourceCallSession {
         } else {
             self.inner.commit(*pending.inner)?
         };
-        let output = SourceCallReadback {
+        let output = ResidentTextReadback {
             data,
             _scope: pending.scope,
         };
         Ok(if discarded {
-            SourceCallPublication::Discarded(output)
+            ResidentTextPublication::Discarded(output)
         } else {
-            SourceCallPublication::Committed(output)
+            ResidentTextPublication::Committed(output)
         })
     }
 }
 
 // Only these original pre-effect refusals permit scheduling outcomes. Unknown
 // errors (including cancellation-looking errors after submission) stay fatal.
-fn preparation_failure(error: Error, submitted: bool) -> Result<SourceCallPreparation> {
+fn preparation_failure(error: Error, submitted: bool) -> Result<ResidentTextPreparation> {
     match error {
         Error::State(reason) if !submitted && reason == "CUDA forward request cancelled" => {
-            Ok(SourceCallPreparation::CancelledBeforeLaunch)
+            Ok(ResidentTextPreparation::CancelledBeforeLaunch)
         }
-        Error::Resource(_) if !submitted => Ok(SourceCallPreparation::Capacity),
+        Error::Resource(_) if !submitted => Ok(ResidentTextPreparation::Capacity),
         Error::Limit(reason)
             if !submitted
                 && matches!(
@@ -856,7 +854,7 @@ fn preparation_failure(error: Error, submitted: bool) -> Result<SourceCallPrepar
                     "resident pool busy" | "resident pool exhausted"
                 ) =>
         {
-            Ok(SourceCallPreparation::Capacity)
+            Ok(ResidentTextPreparation::Capacity)
         }
         error => Err(error),
     }
@@ -912,12 +910,12 @@ mod tests {
     fn only_proven_prelaunch_refusals_become_scheduler_outcomes() {
         assert!(matches!(
             preparation_failure(Error::State("CUDA forward request cancelled".into()), false),
-            Ok(SourceCallPreparation::CancelledBeforeLaunch)
+            Ok(ResidentTextPreparation::CancelledBeforeLaunch)
         ));
         let resource = Error::resource("device memory", "test admission", 2, 1);
         assert!(matches!(
             preparation_failure(resource, false),
-            Ok(SourceCallPreparation::Capacity)
+            Ok(ResidentTextPreparation::Capacity)
         ));
         assert!(
             preparation_failure(
@@ -929,7 +927,7 @@ mod tests {
         for reason in ["resident pool busy", "resident pool exhausted"] {
             assert!(matches!(
                 preparation_failure(Error::Limit(reason.into()), false),
-                Ok(SourceCallPreparation::Capacity)
+                Ok(ResidentTextPreparation::Capacity)
             ));
             assert!(preparation_failure(Error::Limit(reason.into()), true).is_err());
         }

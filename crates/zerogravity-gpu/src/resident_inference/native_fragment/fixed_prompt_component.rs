@@ -243,10 +243,10 @@ where
     }
     not_cancelled(cancelled)?;
     let candidate = model.allocate_state(false).await?;
-    let invocation = record.call();
+    let invocation = record.invocation();
     let attempt = session
         .authority
-        .begin_advance(invocation.rows().len() as u64)?;
+        .begin_advance(invocation.tokens().len() as u64)?;
     let schedule = GdnAttemptSchedule::new_initial_component(&recipe, attempt.clone())?;
     let phase_binding = AttemptPhaseBinding::new(schedule.clone(), 0, None)?;
     let ticket = service.queue().submit(
@@ -304,9 +304,9 @@ where
             .flat_map(|d| d.leases.iter().cloned().map(|l| (l, DeviceAccess::Write))),
     );
     let parameters = RuntimeParameters {
-        token: invocation.rows().ids()[0],
+        token: invocation.tokens().ids()[0],
         position: 0,
-        valid_tokens: invocation.rows().len(),
+        valid_tokens: invocation.tokens().len(),
     };
     workspace
         .program
@@ -465,7 +465,7 @@ where
     let (dispatches, native_launches, rows) = (
         submitted.dispatches,
         submitted.fused_dispatches,
-        invocation.rows().len(),
+        invocation.tokens().len(),
     );
     drop(submitted);
     drop(rereads);

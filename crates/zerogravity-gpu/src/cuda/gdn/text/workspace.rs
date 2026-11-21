@@ -4,7 +4,7 @@ use super::*;
 use crate::resident_leases::ResidentInitialization;
 use std::collections::{BTreeMap, BTreeSet};
 use zerogravity_artifacts::source_weights::WindowWorkspace;
-use zerogravity_core::accelerator::program::SourceCall;
+use zerogravity_core::accelerator::program::TextInvocation;
 use zerogravity_core::device_events::BufferRole;
 
 pub(crate) fn is_external(role: GdnBuffer) -> bool {
@@ -69,7 +69,8 @@ impl TextGdnWorkspace {
     ) -> Result<Arc<Self>> {
         scope.require_values(&values)?;
         init.require_service(values.service())?;
-        let geometry = TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?;
+        let geometry =
+            TextGdnGeometry::for_invocation(scope.invocation(), scope.gdn_implementation())?;
         geometry.require_implementation()?; // Invalid implementations refuse before H2D/allocation.
         let source = scope.source();
         let metadata = Arc::new(
@@ -137,7 +138,8 @@ impl TextGdnWorkspace {
             || Arc::ptr_eq(&values, &self.values)
             || !scope.source().same_issuer(self.scope.source())
             || !Arc::ptr_eq(values.service(), self.values.service())
-            || TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())? != self.geometry
+            || TextGdnGeometry::for_invocation(scope.invocation(), scope.gdn_implementation())?
+                != self.geometry
         {
             return Err(Error::State(
                 "text GDN fresh record/same actual physical geometry".into(),
@@ -169,7 +171,8 @@ impl TextGdnWorkspace {
         scope.require_values(values)?;
         if !Arc::ptr_eq(scope, &self.scope)
             || !Arc::ptr_eq(values, &self.values)
-            || TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())? != self.geometry
+            || TextGdnGeometry::for_invocation(scope.invocation(), scope.gdn_implementation())?
+                != self.geometry
         {
             return Err(Error::State(
                 "text private GDN same physical geometry/source scope".into(),
@@ -178,7 +181,7 @@ impl TextGdnWorkspace {
         for (&role, lease) in &self.leases {
             if lease.bytes() != role.bytes(self.geometry.phase)
                 || !Arc::ptr_eq(lease.service(), values.service())
-                || lease.source_identity() != scope.record().call().source()
+                || lease.source_identity() != scope.record().invocation().source()
                 || lease.service_generation() != values.service().generation()
             {
                 return Err(Error::State(
@@ -257,18 +260,20 @@ impl TextGdnWorkspace {
 
 impl TextGdnWorkspace {
     pub(crate) fn allocation_layout(
-        call: &SourceCall,
+        call: &TextInvocation,
         implementation: TextGdnImplementation,
     ) -> Result<Vec<usize>> {
-        Ok(layout(TextGdnGeometry::for_call(call, implementation)?)?
-            .into_values()
-            .collect())
+        Ok(
+            layout(TextGdnGeometry::for_invocation(call, implementation)?)?
+                .into_values()
+                .collect(),
+        )
     }
     pub(crate) fn host_layout(
-        call: &SourceCall,
+        call: &TextInvocation,
         implementation: TextGdnImplementation,
     ) -> Result<(usize, usize)> {
-        let geometry = TextGdnGeometry::for_call(call, implementation)?;
+        let geometry = TextGdnGeometry::for_invocation(call, implementation)?;
         geometry.require_implementation()?;
         let retained = geometry
             .metadata_bound()?

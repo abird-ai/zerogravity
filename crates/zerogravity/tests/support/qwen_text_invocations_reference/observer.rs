@@ -1,7 +1,7 @@
 use super::*;
 use std::collections::BTreeSet;
 use zerogravity::accelerator::program::{PlanOperation, SourceOperatorKind, StateSlot};
-use zerogravity::gpu::{SourceCallFrame, SourceCallFrameKind, SourceCallObserver};
+use zerogravity::gpu::{TextFrame, TextFrameKind, TextObserver};
 use zerogravity::qwen35::plan::QwenForwardPlan;
 
 pub struct ObservationMap {
@@ -168,7 +168,7 @@ impl<'a> Observer<'a> {
         need(
             self.mismatches == 0,
             &format!(
-                "source-call exact mismatch count={} first={:?}",
+                "text-invocation exact mismatch count={} first={:?}",
                 self.mismatches, self.first
             ),
         )
@@ -191,14 +191,14 @@ impl<'a> Observer<'a> {
         }
     }
 }
-impl SourceCallObserver for Observer<'_> {
-    fn wants(&self, kind: SourceCallFrameKind) -> bool {
+impl TextObserver for Observer<'_> {
+    fn wants(&self, kind: TextFrameKind) -> bool {
         match kind {
-            SourceCallFrameKind::Value(id) => self.map.values.contains_key(&id.0),
-            SourceCallFrameKind::State { .. } => true,
+            TextFrameKind::Value(id) => self.map.values.contains_key(&id.0),
+            TextFrameKind::State { .. } => true,
         }
     }
-    fn completed(&mut self, frame: SourceCallFrame, actual: &[u8]) -> Result<()> {
+    fn completed(&mut self, frame: TextFrame, actual: &[u8]) -> Result<()> {
         need(
             frame.base == self.call.position
                 && frame.rows == self.call.rows
@@ -208,14 +208,14 @@ impl SourceCallObserver for Observer<'_> {
         )?;
         let (label, layer, kv) =
             match frame.kind {
-                SourceCallFrameKind::Value(id) => {
+                TextFrameKind::Value(id) => {
                     let (label, layer) =
                         self.map.values.get(&id.0).ok_or_else(|| {
                             Error::State("unexpected value observer frame".into())
                         })?;
                     (label.clone(), *layer, false)
                 }
-                SourceCallFrameKind::State { slot, plane, prior } => {
+                TextFrameKind::State { slot, plane, prior } => {
                     if prior && self.call.position == 0 {
                         let key = (slot, plane);
                         let total =

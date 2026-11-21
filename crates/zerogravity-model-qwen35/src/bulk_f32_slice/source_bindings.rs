@@ -267,12 +267,12 @@ impl GdnOutputBinding {
     }
 }
 
-fn call(span: &TeacherSpan) -> Result<SourceCall> {
+fn call(span: &TeacherSpan) -> Result<TextInvocation> {
     let vocabulary = usize::try_from(span.vocabulary())
         .map_err(|_| Error::Limit("original teacher vocabulary".into()))?;
-    SourceCall::new(
-        SourceRows::from_teacher_span(span.clone(), vocabulary)?,
-        SourceCallMode::Prefill,
+    TextInvocation::new(
+        TokenSpan::from_teacher_span(span.clone(), vocabulary)?,
+        InvocationPhase::Prefill,
     )
 }
 impl PrefixBinding {

@@ -11,8 +11,8 @@ use crate::gpu::cuda::native::{
 };
 use crate::gpu::{Device, SourceBindings};
 use crate::qwen35::plan::{
-    QwenFragmentPlan, QwenGdnCall, QwenInputRows, QwenPlan, QwenPrefixLayer, QwenSourceCall,
-    ReferencePhase,
+    QwenFragmentPlan, QwenGdnInvocation, QwenInputRows, QwenModelInvocation, QwenPlan,
+    QwenPrefixLayer, ReferencePhase,
 };
 use crate::qwen35::source::binding::OriginalWindowModelSource;
 use crate::{Error, Result};
@@ -351,7 +351,7 @@ impl PreparedScopes {
             Some(request) if slot.feedback() && request.base() == slot.base() => {
                 vec![request.selected_id()]
             }
-            None if !slot.feedback() => template.call().rows().ids().to_vec(),
+            None if !slot.feedback() => template.invocation().tokens().ids().to_vec(),
             _ => {
                 return Err(Error::State(
                     "model natural prompt/actual feedback scope differs".into(),
@@ -365,7 +365,7 @@ impl PreparedScopes {
             NaturalSlot::FinalTwo => ReferencePhase::ContinuedTwo,
         };
         let source = self.source.source().source_identity();
-        let call = QwenSourceCall::new(QwenGdnCall::new(
+        let call = QwenModelInvocation::new(QwenGdnInvocation::new(
             QwenPrefixLayer::new(source, 0)?,
             phase,
             QwenInputRows::new(source, slot.base(), 512, &ids)?,

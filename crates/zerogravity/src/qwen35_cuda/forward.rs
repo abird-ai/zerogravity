@@ -55,7 +55,7 @@ fn audit(plan: &QwenForwardPlan, invocation: &QwenForwardInvocation) -> Result<L
     };
     let program = Program::new(geometry)?;
     let step = Step::new(
-        invocation.rows(),
+        invocation.token_count(),
         invocation.base(),
         plan.context_capacity_tokens(),
     )?;
@@ -74,7 +74,7 @@ fn audit(plan: &QwenForwardPlan, invocation: &QwenForwardInvocation) -> Result<L
                 "Qwen forward source template identity/contract differs".into(),
             ));
         }
-        for operation in plan_primitives(descriptor.kind(), geometry, invocation.rows())? {
+        for operation in plan_primitives(descriptor.kind(), geometry, invocation.token_count())? {
             contracts.push(program.contract(operation, step)?);
         }
     }
