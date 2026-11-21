@@ -23,18 +23,15 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
   F32/F32/BF16 two-root semantics; never change precision/source/root semantics merely
   to make a cell fit. Public CUDA serving passes4K/8K/16K for both0.8B and2B with exact
   replay/frontiers and clean retirement;1K/2K separately retain all42/finite-state
-  qualification.32K is admitted far enough to enter current execution, but is not
-  accepted:0.8B32K had two external SIGKILLs shortly after test entry;2B32K public load
-  succeeded and execution remained alive~230s before external SIGKILL. The same external
-  SIGKILL now reproduces on two current-source **compile-only** `cargo test --no-run`
-  attempts before any test binary executes. The dotlink service cgroup is unlimited for
-  memory.high/max and CPU, has no OOM/OOM-kill/pids-limit event, and GPU stayed idle.
-  Treat32K execution as infrastructure-indeterminate, not a model/VRAM failure.
-  An owner-requested retry after the reported fix still receives explicit
-  `SIGKILL from outside`: optimized0.8B32K reached real execution (>60s) before kill,
-  and the already-built test binary was killed again when run directly with Cargo
-  removed (~24s). This proves the newer attribution path is live but the external killer
-  persists for this workload.
+  qualification.32K now has split status. The exact direct optimized0.8B32K
+  retained qualifier has one full current-path pass in185.18s with exact replay,
+  independent sessions, exact producer frontiers and clean shutdown. The next identical
+  direct trace run was externally SIGKILLed at~80.7s after >60s of execution. Thus
+  0.8B32K model capability is positively established once, while repeated-run reliability
+  remains infrastructure-flaky.2B32K public load succeeds but execution is still open
+  after its earlier~230s external SIGKILL. The dotlink service cgroup remains unlimited
+  for memory.high/max and CPU, with no OOM/OOM-kill/pids-limit event and idle GPU after
+  failure. Do not treat the external kill as a VRAM/admission failure.
 - [~] Preserve complete recurrent/conv/KV state history, chunk continuation,
   cancellation/quarantine and readback owners at512/1K/2K/4K/8K/16K, then32K.
   Public4K/8K/16K execution proves the current chunk-continuation/serving path, but the

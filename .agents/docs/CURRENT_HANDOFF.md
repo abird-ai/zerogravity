@@ -1033,29 +1033,25 @@ serving, memory and composition plans.
   resident weights=0, roots=4x422,854,656B, runtime reserve=11,736B,
   model admission=1,925,098,485B and total=1,925,110,221B. Both are far below the
   configured provider cap; the old2B refusal was purely a pre-streaming calculation.
-  32K execution itself remains unaccepted:0.8B32K was externally SIGKILLed twice after
-  test entry (~20s) with clean process/GPU/kernel residue, while2B32K loaded successfully
-  and stayed in the real qualifier for~230s before an external SIGKILL, again with no
-  runtime error. The termination is now additionally reproduced by **compile-only**
-  current-source `cargo test --no-run` twice before any test binary executed. The
-  containing `/system.slice/dotlink.service` cgroup reports memory.max/high=unlimited,
-  CPU quota=unlimited, pids.max=33410 with no pids-limit events, and
-  oom=0/oom_kill=0; GPU stayed idle. Therefore do not attribute these SIGKILLs to
-  ZeroGravity32K execution or VRAM admission. A later owner-requested retry after the
-  reported SIGKILL fix shows that the **new signal attribution is active** but the
-  external killer still exists: the matched optimized0.8B32K build completed in28.43s,
-  the retained public-SDK test entered real execution and survived past60s, then dotlink
-  reported `SIGKILL from outside`. The exact already-built test binary was then run
-  directly under `native-gpu.py` with Cargo removed and was again externally SIGKILLed
-  after~24s. A short2B B8 public-serving benchmark attempt likewise completed its
-  optimized build, entered the test, and was externally SIGKILLed before producing a
-  model result. Immediate residue remained clean: GPU37MiB/0%, no process/kernel
-  OOM/Xid, service cgroup peak~6.76GB, memory.max/high unlimited, oom/oom_kill=0,
-  pids-limit events=0 and CPU quota unlimited. No systemd-oomd/journal kill record was
-  visible from the sandbox. Therefore the reporting fix is present, but the underlying
-  host/external SIGKILL source is **not yet fixed for this workload**. Do not attribute
-  these runs to ZeroGravity and do not retry-loop them. The retained qualifier
-  accepts32768; no duplicate fixture/token pin was added.
+  32K admission is closed; execution is now **partially closed**. Historical0.8B32K
+  attempts were externally SIGKILLed, and2B32K loaded successfully but remained
+  execution-open after a~230s external SIGKILL. The external termination also reproduced
+  on compile-only current-source builds, proving it was not unique to inference. After
+  the owner requested two additional trace runs, the exact already-built optimized
+  0.8B32K public-SDK binary was executed directly under `native-gpu.py`, with Cargo
+  absent from the process tree. **Trace run1 passed end-to-end in185.18s**:
+  `P12_CUDA_POPULATED_CONTEXT_PASS model=08 context=32768 prompt_tokens=32766
+  output_tokens=2 replay=exact independent_sessions=true producer_frontiers=exact
+  final_shutdown=true independent_all42_reference=false`. This is current positive
+  capability evidence for0.8B32K serving/chunk continuation. The **identical trace run2**
+  then received explicit `SIGKILL from outside` at~80.7s after crossing the60s execution
+  mark. Post-run state remained clean: GPU37MiB/0%, no process/kernel OOM/Xid,
+  service-cgroup peak6,862,434,304B, memory.max/high unlimited, oom/oom_kill=0,
+  pids-limit events=0, CPU quota unlimited, and no visible oomd/journal kill record.
+  Therefore separate model capability from infrastructure reliability:0.8B32K has one
+  full current-path pass; repeated execution is still host/external-SIGKILL flaky.
+  2B32K remains execution-open. The retained qualifier accepts32768; no duplicate
+  fixture/token pin was added.
 - **Retained-candidate policy:** reusable performance experiments are no longer deleted
   merely because one model/shape loses an A/B. Model-neutral candidates live dormant,
   with no production selector/callsite, so Qwen2B/27B, Gemma4 and future models can

@@ -405,13 +405,14 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   A direct2B32K qualifier stayed alive~230s before external SIGKILL. Two later current
   compile-only `cargo test --no-run` attempts were also externally SIGKILLed before
   test entry, while the containing dotlink cgroup showed no memory/CPU/pids limit or OOM
-  event and GPU stayed idle. A later owner-requested retry after the claimed fix still
-  yielded explicit `SIGKILL from outside`:0.8B32K built cleanly, entered real execution
-  past60s, then died; direct execution of that already-built binary with Cargo removed
-  died again after~24s. A short2B B8 public-serving benchmark also built and then died
-  after test entry before a result. The new attribution semantics are present, but the
-  external signal source remains unproven; do not repin outputs, resurrect the old
-  refusal rule, or spend model turns on retry loops.
+  event and GPU stayed idle. Two owner-requested direct trace runs now sharpen the
+  boundary: the exact optimized0.8B32K retained public-SDK binary, run with Cargo removed,
+  **passes once end-to-end in185.18s** with exact replay/independent sessions/exact
+  producer frontiers/clean shutdown, then the next identical run receives explicit
+  `SIGKILL from outside` at~80.7s. Record0.8B32K as current capability-passing but
+  infrastructure-flaky; do not upgrade this to independent all42 numerical closure.
+  2B32K remains execution-open. Do not repin outputs, resurrect the old refusal rule, or
+  spend model turns on retry loops.
 - [ ] Localize ROCm2B C4 warmup and C16/32/64 warmup/timed divergence (task39),
   without repinning expected IDs or attributing an unlocalized failure to kernels.
 - [~] Close ordinary27B HIP HTTP504 and populated1K/2K references/serving (task11).
