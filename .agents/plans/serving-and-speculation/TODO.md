@@ -761,9 +761,14 @@ or a change to the active correctness/benchmark/27B order.
   public model load succeeded and the real qualifier ran~230s before external SIGKILL.
   Clean residue/GPU/kernel checks followed each termination. The old2B32K refusal came
   from the pre-streaming resident-weight calculation; shared source admission has had
-  streamed-weight fallback since `d16f096`. Do not force a refusal or add another
-  context fixture. Next re-derive current32K storage inventory and isolate the external
-  termination on the retained path; do not return to residual paged micro-tuning.
+  streamed-weight fallback since `d16f096`. Current32K storage is now closed from
+  the loader's exact shared preflight:0.8B Resident total=3,427,684,813B;2B Streamed
+  total=1,925,110,221B. The external SIGKILL also reproduces twice during compile-only
+  current-source `cargo test --no-run`, before test entry, with no dotlink-cgroup
+  OOM/CPU/pids-limit event and idle GPU. Do not force a refusal, add another context
+  fixture, or retry-loop32K. Return to serving/model work that can make progress while
+  the external signal source is handled separately; do not return to residual paged
+  micro-tuning.
 - [x] A clean dynamic-prefill grouping candidate was measured and rejected from the
   current selector rather than discarded globally. For the already-compatible mixed
   native-B8 row pattern

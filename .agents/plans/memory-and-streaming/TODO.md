@@ -10,22 +10,26 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
 
 ### Qwen long-context fit boundary — 27 Oct
 
-- [~] The28Oct fully-resident-weight admission calculation is historical, not the
-  current total-storage contract. It found `.8B` through32K under4608MiB and2B32K
-  8,980,561B over the allowance. Shared source execution subsequently gained explicit
-  streamed-weight fallback in `d16f096` (8Nov): when fixed workspace/roots fit but
-  weights exceed the residual model-device budget, the authenticated weights remain
-  source-streamed instead of forcing resident placement. On21Nov the public2B32K
-  `QwenCuda` load succeeded, so do not assert the old pre-allocation refusal. Re-derive
-  the exact current inventory/storage choice before declaring a new fit boundary.
+- [x] The current CUDA admission/storage choice is now re-derived from the **same
+  helper the loader uses**, exposed host-only as
+  `ResidentModel::ordinary_cuda_source_preflight`; no parallel estimator remains.
+  Under active1/native_rows0/provider4608MiB at32K:0.8B is Resident with
+  source_weight=1,503,789,056B and total admission=3,427,684,813B;2B is Streamed with
+  source_weight=3,762,552,832B, resident_weight=0 and total admission=1,925,110,221B.
+  Both use4 roots of422,854,656B and11,736B runtime reserve. This supersedes the28Oct
+  fully-resident2B32K refusal arithmetic and makes the current storage decision
+  inspectable for future models without device allocation.
 - [~] Physically qualify each admitted context independently. Preserve current
   F32/F32/BF16 two-root semantics; never change precision/source/root semantics merely
   to make a cell fit. Public CUDA serving passes4K/8K/16K for both0.8B and2B with exact
   replay/frontiers and clean retirement;1K/2K separately retain all42/finite-state
   qualification.32K is admitted far enough to enter current execution, but is not
   accepted:0.8B32K had two external SIGKILLs shortly after test entry;2B32K public load
-  succeeded and execution remained alive~230s before external SIGKILL. All runs returned
-  to37MiB/0% GPU with no process residue or available kernel OOM/Xid signal.
+  succeeded and execution remained alive~230s before external SIGKILL. The same external
+  SIGKILL now reproduces on two current-source **compile-only** `cargo test --no-run`
+  attempts before any test binary executes. The dotlink service cgroup is unlimited for
+  memory.high/max and CPU, has no OOM/OOM-kill/pids-limit event, and GPU stayed idle.
+  Treat32K execution as infrastructure-indeterminate, not a model/VRAM failure.
 - [~] Preserve complete recurrent/conv/KV state history, chunk continuation,
   cancellation/quarantine and readback owners at512/1K/2K/4K/8K/16K, then32K.
   Public4K/8K/16K execution proves the current chunk-continuation/serving path, but the

@@ -143,6 +143,36 @@ struct BatchWorkspace {
     leases: Vec<(ResidentLease, DeviceAccess)>,
     rows: usize,
 }
+
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OrdinaryCudaWeightStorage {
+    Resident,
+    Streamed,
+}
+
+/// Exact host-only result of the same cold-fit calculation used by ordinary
+/// CUDA model loading. No device/client/resource owner is created.
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OrdinaryCudaSourceInventory {
+    pub provider_capacity_bytes: usize,
+    pub fit_capacity_bytes: usize,
+    pub context_capacity_tokens: usize,
+    pub root_count: usize,
+    pub native_rows: usize,
+    pub weight_storage: OrdinaryCudaWeightStorage,
+    pub source_weight_bytes: usize,
+    pub resident_weight_bytes: usize,
+    pub value_bytes: usize,
+    pub workspace_bytes: usize,
+    pub parameter_bytes: usize,
+    pub root_bytes: usize,
+    pub runtime_reserve_bytes: usize,
+    pub model_admission_bytes: usize,
+    pub total_admission_bytes: usize,
+}
+
 /// Shared immutable source and serialized physical workspace, independent roots.
 pub struct ResidentModel {
     service: Arc<ResidentService>,
@@ -566,7 +596,109 @@ impl zerogravity_core::provider::PreparedExecutable for ResidentModel {
     }
 }
 
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+fn ordinary_cuda_source_admission(
+    plan: Arc<ForwardPlan>,
+    provider_cap: usize,
+    roots: usize,
+    native_rows: usize,
+) -> Result<(
+    ordinary_cuda::OrdinaryCudaAdmission,
+    OrdinaryCudaSourceInventory,
+)> {
+    let admission = ordinary_cuda::OrdinaryCudaAdmission::analyze(plan)?.with_roots(roots)?;
+    let source_weight_bytes = admission.preflight().source_bytes;
+    let greedy_workspace = crate::resident_greedy::workspace_bytes(admission.vocabulary())?
+        .into_iter()
+        .try_fold(0usize, |sum, bytes| {
+            sum.checked_add(bytes)
+                .ok_or_else(|| Error::Limit("ordinary CUDA greedy workspace overflow".into()))
+        })?;
+    let cohort_value_reserve = admission.cohort_value_bytes(native_rows)?;
+    let greedy_reserve = greedy_workspace
+        .checked_add(
+            roots
+                .checked_mul(12)
+                .ok_or_else(|| Error::Limit("ordinary CUDA greedy packet reserve".into()))?,
+        )
+        .ok_or_else(|| Error::Limit("ordinary CUDA greedy reserve overflow".into()))?;
+    let runtime_reserve = greedy_reserve
+        .checked_add(cohort_value_reserve)
+        .ok_or_else(|| Error::Limit("ordinary CUDA runtime reserve overflow".into()))?;
+    let fit_cap = provider_cap.checked_sub(runtime_reserve).ok_or_else(|| {
+        Error::resource(
+            "CUDA provider memory / VRAM budget",
+            "ordinary CUDA runtime reserve admission",
+            runtime_reserve as u64,
+            provider_cap as u64,
+        )
+    })?;
+    let admission = admission.fit(fit_cap)?;
+    let model_admission_bytes = admission.total_bytes()?;
+    let total = model_admission_bytes
+        .checked_add(runtime_reserve)
+        .ok_or_else(|| Error::Limit("ordinary CUDA total admission overflow".into()))?;
+    if total > provider_cap {
+        return Err(Error::resource(
+            "CUDA provider memory / VRAM budget",
+            "ordinary CUDA cold/root/runtime admission",
+            total as u64,
+            provider_cap as u64,
+        ));
+    }
+    let preflight = admission.preflight();
+    let resident_weight_bytes = preflight.source_bytes;
+    if resident_weight_bytes != 0 && resident_weight_bytes != source_weight_bytes {
+        return Err(Error::State(
+            "ordinary CUDA fitted source residency is neither full nor streamed".into(),
+        ));
+    }
+    let inventory = OrdinaryCudaSourceInventory {
+        provider_capacity_bytes: provider_cap,
+        fit_capacity_bytes: fit_cap,
+        context_capacity_tokens: admission.capacity(),
+        root_count: roots,
+        native_rows,
+        weight_storage: if resident_weight_bytes == 0 {
+            OrdinaryCudaWeightStorage::Streamed
+        } else {
+            OrdinaryCudaWeightStorage::Resident
+        },
+        source_weight_bytes,
+        resident_weight_bytes,
+        value_bytes: preflight.value_bytes,
+        workspace_bytes: preflight.workspace_bytes,
+        parameter_bytes: preflight.parameter_bytes,
+        root_bytes: preflight.prior_state_bytes,
+        runtime_reserve_bytes: runtime_reserve,
+        model_admission_bytes,
+        total_admission_bytes: total,
+    };
+    Ok((admission, inventory))
+}
+
 impl ResidentModel {
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+    pub fn ordinary_cuda_source_preflight(
+        plan: Arc<ForwardPlan>,
+        max_sessions: usize,
+        native_rows: usize,
+        provider_cap: usize,
+    ) -> Result<OrdinaryCudaSourceInventory> {
+        if !(1..=64).contains(&max_sessions)
+            || !matches!(native_rows, 0 | 4 | 8)
+            || (native_rows != 0 && max_sessions < native_rows)
+        {
+            return Err(Error::Limit("source-call session capacity".into()));
+        }
+        let roots = max_sessions
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(2))
+            .ok_or_else(|| Error::Limit("source-call root count overflow".into()))?;
+        ordinary_cuda_source_admission(plan, provider_cap, roots, native_rows)
+            .map(|(_, inventory)| inventory)
+    }
+
     pub async fn load(
         device: Device,
         model: Arc<dyn TensorSource>,
@@ -654,45 +786,8 @@ impl ResidentModel {
 
         // Pure source-plan/resource analysis. This MUST precede physical owner
         // creation, source attachment, cleanup, queue work, or allocation.
-        let admission = ordinary_cuda::OrdinaryCudaAdmission::analyze(plan)?.with_roots(roots)?;
-        let greedy_workspace = crate::resident_greedy::workspace_bytes(admission.vocabulary())?
-            .into_iter()
-            .try_fold(0usize, |sum, bytes| {
-                sum.checked_add(bytes)
-                    .ok_or_else(|| Error::Limit("ordinary CUDA greedy workspace overflow".into()))
-            })?;
-        let cohort_value_reserve = admission.cohort_value_bytes(native_rows)?;
-        let greedy_reserve = greedy_workspace
-            .checked_add(
-                roots
-                    .checked_mul(12)
-                    .ok_or_else(|| Error::Limit("ordinary CUDA greedy packet reserve".into()))?,
-            )
-            .ok_or_else(|| Error::Limit("ordinary CUDA greedy reserve overflow".into()))?;
-        let runtime_reserve = greedy_reserve
-            .checked_add(cohort_value_reserve)
-            .ok_or_else(|| Error::Limit("ordinary CUDA runtime reserve overflow".into()))?;
-        let fit_cap = provider_cap.checked_sub(runtime_reserve).ok_or_else(|| {
-            Error::resource(
-                "CUDA provider memory / VRAM budget",
-                "ordinary CUDA runtime reserve admission",
-                runtime_reserve as u64,
-                provider_cap as u64,
-            )
-        })?;
-        let admission = admission.fit(fit_cap)?;
-        let total = admission
-            .total_bytes()?
-            .checked_add(runtime_reserve)
-            .ok_or_else(|| Error::Limit("ordinary CUDA total admission overflow".into()))?;
-        if total > provider_cap {
-            return Err(Error::resource(
-                "CUDA provider memory / VRAM budget",
-                "ordinary CUDA cold/root/runtime admission",
-                total as u64,
-                provider_cap as u64,
-            ));
-        }
+        let (admission, _inventory) =
+            ordinary_cuda_source_admission(plan, provider_cap, roots, native_rows)?;
         let source_identity = admission.source();
         if source.source_identity() != source_identity {
             return Err(Error::State(

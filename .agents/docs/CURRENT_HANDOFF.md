@@ -1023,13 +1023,26 @@ serving, memory and composition plans.
   the28Oct fully-resident-weight calculation (~8.98MiB over4608MiB), but current shared
   source admission has supported streamed-weight fallback since `d16f096` on8Nov.
   A21Nov public2B32K `QwenCuda` load returned `Ok(())`, so current code must not be
-  forced back to that historical refusal.32K execution itself is still unaccepted:
-  0.8B32K was externally SIGKILLed twice after test entry (~20s) with clean
-  process/GPU/kernel residue, while2B32K loaded successfully and stayed in the real
-  qualifier for~230s before an external SIGKILL, again with clean residue and no runtime
-  error. The retained qualifier now accepts32768; no new fixture/token pin was added.
-  Re-derive the exact current resident-vs-streamed admission inventory before making a
-  new fit-boundary claim, then localize the external32K termination without retry loops.
+  forced back to that historical refusal. The exact current load admission is now
+  inspectable through the retained host-only `ResidentModel::ordinary_cuda_source_preflight`
+  primitive, which shares the loader's actual fit helper rather than duplicating an
+  estimator. With active1/native_rows0/provider4608MiB at32K,0.8B remains fully resident:
+  provider=4,831,838,208B, fit=4,831,826,472B, source weights=1,503,789,056B resident,
+  roots=4x422,854,656B, runtime reserve=11,736B, model admission=3,427,673,077B,
+  total=3,427,684,813B.2B deliberately streams its3,762,552,832B source weights:
+  resident weights=0, roots=4x422,854,656B, runtime reserve=11,736B,
+  model admission=1,925,098,485B and total=1,925,110,221B. Both are far below the
+  configured provider cap; the old2B refusal was purely a pre-streaming calculation.
+  32K execution itself remains unaccepted:0.8B32K was externally SIGKILLed twice after
+  test entry (~20s) with clean process/GPU/kernel residue, while2B32K loaded successfully
+  and stayed in the real qualifier for~230s before an external SIGKILL, again with no
+  runtime error. The termination is now additionally reproduced by **compile-only**
+  current-source `cargo test --no-run` twice before any test binary executed. The
+  containing `/system.slice/dotlink.service` cgroup reports memory.max/high=unlimited,
+  CPU quota=unlimited, pids.max=33410 with no pids-limit events, and
+  oom=0/oom_kill=0; GPU stayed idle. Therefore do not attribute these SIGKILLs to
+  ZeroGravity32K execution or VRAM admission. The signal source remains external and
+  unproven. The retained qualifier accepts32768; no duplicate fixture/token pin was added.
 - **Retained-candidate policy:** reusable performance experiments are no longer deleted
   merely because one model/shape loses an A/B. Model-neutral candidates live dormant,
   with no production selector/callsite, so Qwen2B/27B, Gemma4 and future models can

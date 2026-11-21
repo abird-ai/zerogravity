@@ -621,10 +621,44 @@ pub(crate) async fn prepare_program(
 #[cfg(test)]
 mod admission_matrix_tests {
     use super::OrdinaryCudaAdmission;
+    use crate::{OrdinaryCudaWeightStorage, ResidentModel};
     use zerogravity_model_qwen35::plan::{QwenSourceProfile, diagnostic_ordinary_plan};
 
     const MIB: usize = 1024 * 1024;
     const PROVIDER_CAP: usize = 4608 * MIB;
+
+    #[test]
+    fn public_32k_preflight_reports_current_storage_fit() {
+        for (profile, storage) in [
+            (
+                QwenSourceProfile::Qwen08,
+                OrdinaryCudaWeightStorage::Resident,
+            ),
+            (
+                QwenSourceProfile::Qwen2B,
+                OrdinaryCudaWeightStorage::Streamed,
+            ),
+        ] {
+            let plan = diagnostic_ordinary_plan(profile, 32_768).unwrap();
+            let inventory =
+                ResidentModel::ordinary_cuda_source_preflight(plan, 1, 0, PROVIDER_CAP).unwrap();
+            eprintln!("ordinary-32k-current-fit profile={profile:?} inventory={inventory:?}");
+            assert_eq!(inventory.context_capacity_tokens, 32_768);
+            assert_eq!(inventory.root_count, 4);
+            assert_eq!(inventory.native_rows, 0);
+            assert_eq!(inventory.weight_storage, storage);
+            assert!(inventory.source_weight_bytes > 0);
+            assert_eq!(
+                inventory.resident_weight_bytes,
+                match storage {
+                    OrdinaryCudaWeightStorage::Resident => inventory.source_weight_bytes,
+                    OrdinaryCudaWeightStorage::Streamed => 0,
+                }
+            );
+            assert!(inventory.model_admission_bytes <= inventory.fit_capacity_bytes);
+            assert!(inventory.total_admission_bytes <= PROVIDER_CAP);
+        }
+    }
 
     #[test]
     fn b4_activation_reserve_is_bounded_and_priced_before_residency() {

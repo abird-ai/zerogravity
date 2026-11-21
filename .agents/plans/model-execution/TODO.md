@@ -398,10 +398,15 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   assertion that2B32K must refuse exposed a stale assumption: public `QwenCuda` load
   actually succeeds. Current admission has supported streamed-weight fallback since
   `d16f096` (8Nov), whereas the old8.98MiB-over calculation predates that policy.
-  The false refusal assertion was removed. A direct2B32K qualifier then stayed alive
-  ~230s before an external SIGKILL, with no model/runtime error and clean GPU/process
-  retirement. Re-derive current resident-vs-streamed inventory and localize the external
-  32K termination; do not repin outputs or resurrect the old refusal rule.
+  The false refusal assertion was removed. Current admission is now directly
+  inspectable through a retained host-only API backed by the loader's exact fit helper:
+  active1/native0/provider4608MiB gives0.8B32K Resident total=3,427,684,813B and2B32K
+  Streamed total=1,925,110,221B (3,762,552,832B source weights streamed, resident=0).
+  A direct2B32K qualifier stayed alive~230s before external SIGKILL. Two later current
+  compile-only `cargo test --no-run` attempts were also externally SIGKILLed before
+  test entry, while the containing dotlink cgroup showed no memory/CPU/pids limit or OOM
+  event and GPU stayed idle. The external signal source remains unproven; do not repin
+  outputs, resurrect the old refusal rule, or spend model turns on retry loops.
 - [ ] Localize ROCm2B C4 warmup and C16/32/64 warmup/timed divergence (task39),
   without repinning expected IDs or attributing an unlocalized failure to kernels.
 - [~] Close ordinary27B HIP HTTP504 and populated1K/2K references/serving (task11).
