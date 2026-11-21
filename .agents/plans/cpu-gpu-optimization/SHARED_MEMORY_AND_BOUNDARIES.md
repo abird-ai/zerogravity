@@ -147,12 +147,18 @@ may index arrays; arbitrary monotone lease IDs require a checked mapping.
 
 ## Transfers and boundary policy
 
-- Unify CUDA's existing retained TensorWindow upload with the portable route;
-  the latter currently copies window→Vec/Bytes and can incur another backend
-  staging copy. Preserve held-file/chunk authentication and original geometry.
-- Then support verified reads directly into admitted reusable pinned slots
-  where supported. Verify complete integrity chunks; a small tile may need
-  additional charged scratch. Expose actual pinned/heap allocation kind.
+- CUDA ordinary source-page upload now preserves the authenticated/cache-owned
+  `TensorWindow`, then copies its payload once directly into CubeCL's existing reusable
+  pinned-host pool. This removes the portable window→Vec/Bytes→backend-pinned chain without
+  introducing another staging pool; the original page+consumer checkpoint remains the
+  physical lifetime boundary. Pinned staging is explicitly admitted, and native-heap
+  fallback retains an additional bounded bounce allowance.
+- Do **not** bypass the verified window cache merely to read SSD bytes directly into pinned
+  memory. A matched 2B/32K prompt48 trial regressed39.46s→41.77s when direct SSD fill skipped
+  cache reuse; the cache-preserving pinned path is39.36s on the same cell. Future direct or
+  async IO should therefore integrate at the cache-miss/materialization boundary, verify
+  complete integrity chunks, preserve held-file/hash/cancel semantics and expose actual
+  pinned/heap allocation kind.
 - Begin with bounded same-stream host retirement. A2/3-slot ring can limit
   runahead without a per-page CPU wait; its size must follow real resource and
   overlap evidence. Adding slots alone does not prove overlap.

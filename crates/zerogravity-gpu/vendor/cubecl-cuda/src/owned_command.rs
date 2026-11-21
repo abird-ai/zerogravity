@@ -2,7 +2,7 @@
 //! No context, physical stream or raw device pointer leaves that actor.
 
 use crate::compute::CudaServer;
-use cubecl_common::{device::ServiceId, device_handle::DeviceHandle};
+use cubecl_common::{bytes::Bytes, device::ServiceId, device_handle::DeviceHandle};
 use cubecl_core::{client::Client, server::ServerError};
 use cubecl_environment::stream::StreamId;
 
@@ -102,6 +102,18 @@ impl OwnedCudaQueue {
             .submit_blocking(|server| server.owned_memory_info())
             .map_err(|error| {
                 ServerError::graph_state(format!("CUDA memory info original actor: {error:?}"))
+            })?
+    }
+
+    /// Reserve host transfer storage on this exact actor/logical stream. The
+    /// backend reuses pinned host storage when available and otherwise returns
+    /// native heap storage under the same ownership contract.
+    pub fn reserve_host_staging(&self, bytes: usize) -> Result<Bytes, ServerError> {
+        let stream = self.stream;
+        self.actor
+            .submit_blocking(move |server| server.reserve_owned_host_staging(stream, bytes))
+            .map_err(|error| {
+                ServerError::graph_state(format!("host staging original actor: {error:?}"))
             })?
     }
 

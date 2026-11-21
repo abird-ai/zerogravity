@@ -637,6 +637,20 @@ impl CudaServer {
         self.command(stream_id, [].into_iter())
     }
 
+    pub(crate) fn reserve_owned_host_staging(
+        &mut self,
+        stream_id: StreamId,
+        bytes: usize,
+    ) -> Result<Bytes, ServerError> {
+        if bytes == 0 || bytes > 32 * 1024 * 1024 {
+            return Err(ServerError::graph_state(
+                "bounded original host staging extent",
+            ));
+        }
+        let mut command = self.command_no_inputs(stream_id)?;
+        Ok(command.reserve_cpu(bytes, None))
+    }
+
     fn unsafe_set_current(&self) -> Result<(), ServerError> {
         // TODO: Should check if on the same thread before calling it, since now we don't switch
         // thread except for device memory transfer.

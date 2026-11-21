@@ -437,6 +437,20 @@ Vulkan-only retry passed, so no source failure follows.
   ABI environment gate. No new alias fixture was added. Remaining identity adoption is
   incremental for additional real graph/transfer consumers; do not cache identity into
   every lease merely for future diagnostics.
+  **The first production reusable host-staging tier is now accepted.** Ordinary CUDA
+  source-page misses still materialize through the exact verified `TensorWindow`/window
+  cache, but then copy once directly into host storage reserved from the original CUDA
+  actor's existing CubeCL pinned pool. The source owner retains an explicit
+  `TransferStaging` admission through the unchanged page+consumer `sync_buffers` checkpoint;
+  a native-heap backend fallback additionally retains one bounded bounce allowance. This
+  removes the transient payload Vec and the normal second native→pinned backend copy without
+  adding a new pool/ring or changing source/hash/cancel/consumer retirement semantics. A
+  direct SSD→pinned prototype was tested and rejected because bypassing the verified cache
+  regressed the same temporary 2B/32K Contiguous/Streamed prompt48 public-SDK cell from
+  39.46s to41.77s (~5.9%). The cache-preserving pinned implementation passes that identical
+  cell in39.36s with exact replay/frontiers, independent sessions and clean shutdown. The
+  temporary policy override was reverted and no new fixture/evidence pin was added. Future
+  direct/async IO must compose at the authenticated cache-miss/materialization boundary.
   **Scoped worker prefix reuse is
   now implemented and physically accepted.** `PrefixSharingScope` is a validated
   nonzero Copy ID. Existing `Request` stays unchanged; ordinary `request_text`

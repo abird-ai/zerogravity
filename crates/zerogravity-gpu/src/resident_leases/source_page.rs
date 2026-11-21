@@ -2,6 +2,8 @@
 use super::*;
 #[cfg(feature = "hip")]
 use crate::transfer_retirement::{RetirementMark, TransferRetirementRing};
+#[cfg(feature = "cuda-cublas")]
+use cubecl::bytes::AllocationProperty;
 use std::ops::Range;
 #[cfg(all(
     feature = "hip",
@@ -44,9 +46,11 @@ pub(crate) const RETIRED_PAGE_TRANSFERS: usize = 2;
 /// the existing 64 KiB control reservation, proved at construction.
 ///
 /// The serial route has no ring/page retirement: one ordinary window is staged
-/// by its whole intersecting integrity chunks plus offset metadata, and the
-/// shared three-page family baseline still covers the window payload, its
-/// `Bytes` copy and the backend bounce. A HIP-compiled binary can still select
+/// by its whole intersecting integrity chunks plus offset metadata. CUDA keeps
+/// that authenticated/cache-owned window and copies once into the backend's
+/// reusable pinned host pool; only a native-heap fallback admits a second
+/// backend-bounce allowance. The shared three-page family baseline still covers
+/// those bounded owners. A HIP-compiled binary can still select
 /// this serial route when its prepared set holds no live scoped HIP
 /// source-page actor, so both compiled routes are priced and the larger
 /// source-derived bound is charged. The routes are never summed; the original
@@ -231,7 +235,7 @@ impl PageGeometry {
 struct PendingPage {
     _window: Option<TensorWindow>,
     _bytes: Option<Bytes>,
-    _staging: Option<[WindowWorkspace; 2]>,
+    _staging: Option<(WindowWorkspace, Option<WindowWorkspace>)>,
     serial: u64,
 }
 #[derive(Default)]
@@ -1654,19 +1658,33 @@ impl ResidentSourcePage {
                     "source page authentic original window differs".into(),
                 ));
             }
-            // The source contract deliberately caps each workspace ticket at
-            // 32 MiB. The serial path retains two page-sized host owners:
-            // the Bytes payload and backend/bounce headroom. Keep them as two
-            // independently bounded tickets instead of one 2*n reservation.
-            let staging = [
-                self.source.reserve_workspace(n)?,
-                self.source.reserve_workspace(n)?,
-            ];
-            let copy = window.as_slice().to_vec();
-            if copy.capacity() != n {
-                return Err(Error::Limit("source page copy capacity".into()));
-            }
-            let bytes = Bytes::from_bytes_vec(copy);
+            #[cfg(feature = "cuda-cublas")]
+            let (bytes, staging) = {
+                // Preserve the authenticated source window/cache owner, but
+                // copy its payload once directly into CubeCL's reusable pinned
+                // host pool. A native-heap fallback retains one extra bounded
+                // bounce allowance because the backend may still pin it.
+                let staging = self.source.reserve_transfer_staging(n)?;
+                let queue = self.service.pinned_cuda_queue()?;
+                let mut bytes = queue.reserve_host_staging(n).map_err(|error| {
+                    Error::State(format!("source page CUDA host staging: {error}"))
+                })?;
+                let bounce = (!matches!(bytes.property(), AllocationProperty::Pinned))
+                    .then(|| self.source.reserve_transfer_staging(n))
+                    .transpose()?;
+                bytes.copy_from_slice(window.as_slice());
+                (bytes, (staging, bounce))
+            };
+            #[cfg(not(feature = "cuda-cublas"))]
+            let (bytes, staging) = {
+                let staging = self.source.reserve_workspace(n)?;
+                let bounce = self.source.reserve_workspace(n)?;
+                let copy = window.as_slice().to_vec();
+                if copy.capacity() != n {
+                    return Err(Error::Limit("source page copy capacity".into()));
+                }
+                (Bytes::from_bytes_vec(copy), (staging, Some(bounce)))
+            };
             if bytes.capacity() > n {
                 return Err(Error::Limit("source page aligned staging capacity".into()));
             }
