@@ -748,8 +748,14 @@ or a change to the active correctness/benchmark/27B order.
   A device-scatter append-copy+tail-zero fusion was measured at421.159ms/161.459 paged,
   only ~0.3% faster than accepted source, and was removed rather than retaining another
   kernel path. The temporary refill probe was removed too. Fresh vLLM remains
-  unavailable and is now explicitly owner-deferred. Do not spend the next turn on the
-  residual paged gap; advance the admitted populated CUDA context ladder on L5 instead.
+  unavailable and is now explicitly owner-deferred. The admitted CUDA context ladder has
+  now advanced through **4K and8K on both0.8B and2B public SDK serving**: context-2 prompt
+  +2 output, exact replay on a new session, exact GPU producer frontiers and clean
+  shutdown. The retained qualifier is current-path capability evidence and does not
+  substitute for the missing independent all42 populated archive. One first0.8B8K run
+  was externally SIGKILLed after test entry; residue/kernel checks were clean and one
+  cached retry passed. Next context target is16K; do not return to the residual paged gap
+  or add duplicate context fixtures.
 - [x] A clean dynamic-prefill grouping candidate was measured and rejected from the
   current selector rather than discarded globally. For the already-compatible mixed
   native-B8 row pattern

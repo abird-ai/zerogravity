@@ -59,6 +59,51 @@ fn qwen_cuda_native_runtime(paged: bool) -> Runtime {
     runtime.models().load(load).unwrap();
     runtime
 }
+
+#[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+fn qwen_cuda_context_runtime(model: &str, context: usize, output: usize) -> Runtime {
+    use zerogravity::{
+        cache::CacheOptions,
+        models::{ModelLoadRequest, QwenSourceProfile},
+        runtime::SchedulerLimits,
+    };
+    const MIB: usize = 1024 * 1024;
+    let snapshot = match model {
+        "08" => "d7c7bf56e176bd70a8190acb9873cc719e65b6b306181039f2896d6f9387b36c",
+        "2b" => "88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52",
+        _ => panic!("explicit approved small CUDA source required"),
+    };
+    assert!(matches!(context, 1024 | 2048 | 4096 | 8192 | 16384));
+    assert!((1..=3).contains(&output) && output < context);
+
+    let runtime = Runtime::builder()
+        .limits(SchedulerLimits {
+            max_active: 1,
+            max_queued: Some(1),
+            ..Default::default()
+        })
+        .build()
+        .unwrap();
+    runtime
+        .models()
+        .load(ModelLoadRequest::QwenCuda {
+            aliases: vec!["source".into()],
+            cache: CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
+            snapshot: snapshot.into(),
+            profile: QwenSourceProfile {
+                active: 1,
+                context,
+                output,
+                max_pending: Some(1),
+                native_rows: 0,
+            },
+            provider_bytes: 4608 * MIB,
+            device_bytes: 5120 * MIB as u64,
+        })
+        .unwrap();
+    runtime
+}
+
 #[test]
 fn external_sdk_compiles_without_cli_or_concrete_model_features() {
     let runtime = Runtime::builder().build().unwrap();
@@ -94,6 +139,89 @@ fn external_sdk_compiles_without_cli_or_concrete_model_features() {
             .artifacts()
             .inspect(std::path::Path::new("/not-opened"))
             .is_err()
+    );
+}
+
+#[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+#[test]
+#[ignore = "approved small CUDA snapshots; retained populated-context public SDK qualification"]
+fn qwen_cuda_populated_context_sdk_replays() {
+    use std::time::{Duration, Instant};
+    use zerogravity::runtime::text::{Request, ResponseEvent, TokenMetricsRequest};
+
+    let model = std::env::var("ZG_QWEN_CUDA_CONTEXT_MODEL").unwrap();
+    let context: usize = std::env::var("ZG_QWEN_CUDA_CONTEXT")
+        .unwrap()
+        .parse()
+        .unwrap();
+    const OUTPUT: usize = 2;
+    let prompt_tokens = context - OUTPUT;
+    let runtime = qwen_cuda_context_runtime(&model, context, OUTPUT);
+    let resolved = runtime.models().resolve("source").unwrap();
+    let tokenizer = resolved.prepared().tokenizer();
+    let prompt = " a".repeat(prompt_tokens);
+    assert_eq!(
+        tokenizer.prompt_tokens(&prompt, false).unwrap().len(),
+        prompt_tokens
+    );
+
+    let run = || {
+        let events = runtime
+            .request_text(Request {
+                model: "source".into(),
+                input: prompt.clone(),
+                chat: false,
+                max_tokens: OUTPUT,
+                stream: true,
+                token_metrics: Some(TokenMetricsRequest {
+                    started: Instant::now(),
+                    wire_request_id: None,
+                }),
+            })
+            .unwrap();
+        let mut ids = Vec::with_capacity(OUTPUT);
+        let mut roots = Vec::with_capacity(OUTPUT);
+        loop {
+            match events
+                .events
+                .recv_timeout(Duration::from_secs(600))
+                .expect("populated CUDA context response deadline")
+            {
+                ResponseEvent::TokenText { token, .. } => {
+                    let gpu = token.gpu.expect("populated CUDA token GPU metadata");
+                    assert_eq!(gpu.producer_frontier, (prompt_tokens + ids.len()) as u64);
+                    assert!(gpu.native_cohort.is_none());
+                    roots.push(gpu.producer_root.expect("populated CUDA producer root"));
+                    ids.push(token.id);
+                }
+                ResponseEvent::Done {
+                    prompt_tokens: actual_prompt,
+                    completion_tokens,
+                    ..
+                } => {
+                    assert_eq!((actual_prompt, completion_tokens), (prompt_tokens, OUTPUT));
+                    break;
+                }
+                ResponseEvent::Error(error) => panic!("populated CUDA context: {error}"),
+                ResponseEvent::Text(_) => panic!("streaming token observations required"),
+            }
+        }
+        assert_eq!(ids.len(), OUTPUT);
+        assert_eq!(roots.len(), OUTPUT);
+        assert_eq!(roots[0].session_id, roots[1].session_id);
+        assert_ne!(roots[0].root, roots[1].root);
+        (ids, roots[0].session_id)
+    };
+
+    let first = run();
+    let replay = run();
+    assert_eq!(first.0, replay.0);
+    assert_ne!(first.1, replay.1);
+    drop(resolved);
+    runtime.shutdown().unwrap();
+    assert!(runtime.status().closed);
+    println!(
+        "P12_CUDA_POPULATED_CONTEXT_PASS model={model} context={context} prompt_tokens={prompt_tokens} output_tokens={OUTPUT} replay=exact independent_sessions=true producer_frontiers=exact final_shutdown=true independent_all42_reference=false"
     );
 }
 

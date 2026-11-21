@@ -382,11 +382,16 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   no27B CUDA-contract oracle exists on l5, and the retained22,126,120,608B original
   archive needed for the physical rerun is no longer present on this host.
 - [x] Extend small CUDA to genuine populated contexts. Qualification-only resident
-  trajectories now populate both0.8B and2B through exact1K/2K frontiers using the
-  existing64-row chunk contract: all four cells finish with finite terminal logits,
-  all42 state domains present/finite and clean model retirement. This closes the
-  prior short-trajectory/65-token-tail gap; existing SDK/HTTP lifecycle evidence is
-  unchanged and no new numerical tolerance/pinning was introduced.
+  trajectories cover both0.8B and2B through exact1K/2K frontiers using the existing64-row
+  chunk contract with finite terminal logits/all42 finite state/clean retirement. The
+  current **public SDK path now also physically passes4K and8K for both models** using
+  one retained parameterized qualifier: context-2 prompt tokens +2 generated tokens,
+  GPU-rooted per-token observations, exact producer frontiers, exact replay on a distinct
+  session and clean shutdown. 0.8B8K had one external SIGKILL after test entry and no
+  residue/kernel signal; one cached retry passed, so the kill is not used as a model
+  result. The4K/8K SDK cells are serving/continuation evidence only; the independent
+  populated all42 archive is absent on L5, so do not upgrade them to same-contract
+  numerical closure. Next admitted public-context cell is16K.
 - [ ] Localize ROCm2B C4 warmup and C16/32/64 warmup/timed divergence (task39),
   without repinning expected IDs or attributing an unlocalized failure to kernels.
 - [~] Close ordinary27B HIP HTTP504 and populated1K/2K references/serving (task11).
