@@ -58,10 +58,19 @@ Two independent source audits are reconciled there; implementation remains open.
 Source comparison: [families09–13](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md).
 The following extends existing owners; source-byte qualification is not inference.
 
-- [ ] Bind physical backing identity across aliases, prepared packs, graph views,
-  source windows and transfer staging. Charge one actual allocation once and
-  separate real copies/metadata; equal hashes/chunk coordinates do not prove
-  shared storage. Include encoded/captured/queued readers in retirement.
+- [~] Canonical physical buffer identity now exists in the model-neutral device
+  ledger. `DeviceBufferIdentity` is an opaque process-local allocation owner + exact
+  byte range: direct allocations are owned by their original lease allocation, while
+  pooled/aliased views name the retained `DeviceBackingId`. Equality/`same_allocation`/
+  `overlaps` therefore describe real storage rather than hashes, chunk coordinates or
+  backend handles. `DeviceEventLedger::buffer_identity` is the sole public constructor,
+  and production overlapping-alias admission now uses the same identity semantics.
+  Six backing-ledger tests cover direct-vs-backed identity, exact offsets/ranges,
+  overlap/disjoint aliases, continuous charge, cancellation and unknown fencing.
+  Remaining adoption is to carry/query this identity only where prepared packs, graph
+  views, source windows and transfer staging actually need it, without adding per-lease
+  storage or mandatory hot-path bookkeeping. Encoded/captured/queued readers still
+  remain part of the broader retirement work.
 - [ ] Add measured lifetime-aware scratch reuse/phase lending only when no live
   root, graph, transfer or reader needs the range. Price borrowed capacity,
   old/new COW copies and following decode residency; do not import a hidden arena.

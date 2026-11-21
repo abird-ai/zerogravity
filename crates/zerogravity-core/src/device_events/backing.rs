@@ -13,7 +13,7 @@ pub(super) struct BackingAllocation {
 #[derive(Clone, Copy)]
 pub(super) struct BackingRange {
     pub(super) id: DeviceBackingId,
-    offset: usize,
+    pub(super) offset: usize,
 }
 
 impl DeviceEventLedger {
@@ -121,6 +121,7 @@ impl DeviceEventLedger {
             let lease = &self.leases[&id];
             let Some(range) = lease.backing else { continue };
             let backing = &self.backings[&range.id];
+            let identity = physical_identity(id, lease);
             if backing.fenced {
                 return Err(Error::State("device backing completion uncertain".into()));
             }
@@ -129,7 +130,7 @@ impl DeviceEventLedger {
                     continue;
                 }
                 let other = &self.leases[alias];
-                if !overlaps(lease, other) {
+                if !identity.overlaps(physical_identity(*alias, other)) {
                     continue;
                 }
                 if selected.get(alias).is_some_and(|&other_access| {
@@ -150,17 +151,6 @@ impl DeviceEventLedger {
             }
         }
         Ok(())
-    }
-}
-
-fn overlaps(a: &Lease, b: &Lease) -> bool {
-    match (a.backing, b.backing) {
-        (Some(a_range), Some(b_range)) => {
-            a_range.id == b_range.id
-                && a_range.offset < b_range.offset + b.bytes
-                && b_range.offset < a_range.offset + a.bytes
-        }
-        _ => false,
     }
 }
 

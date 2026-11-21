@@ -1,6 +1,39 @@
 use super::*;
 
 #[test]
+fn physical_identity_tracks_real_allocation_and_exact_range() {
+    let mut ledger = DeviceEventLedger::new(1, 512).unwrap();
+    let direct_a = ledger.admit(64, BufferRole::Scratch).unwrap();
+    let direct_b = ledger.admit(64, BufferRole::Scratch).unwrap();
+    let backing = ledger.admit_backing(256, BufferRole::Scratch).unwrap();
+    let head = ledger
+        .admit_backing_view(backing, 0, 128, BufferRole::Scratch)
+        .unwrap();
+    let overlap = ledger
+        .admit_backing_view(backing, 64, 128, BufferRole::Scratch)
+        .unwrap();
+    let tail = ledger
+        .admit_backing_view(backing, 128, 128, BufferRole::Scratch)
+        .unwrap();
+
+    let direct_a = ledger.buffer_identity(direct_a).unwrap();
+    let direct_b = ledger.buffer_identity(direct_b).unwrap();
+    let head = ledger.buffer_identity(head).unwrap();
+    let overlap = ledger.buffer_identity(overlap).unwrap();
+    let tail = ledger.buffer_identity(tail).unwrap();
+
+    assert_eq!((direct_a.offset(), direct_a.bytes()), (0, 64));
+    assert!(!direct_a.same_allocation(direct_b));
+    assert!(!direct_a.same_allocation(head));
+    assert_eq!((overlap.offset(), overlap.bytes()), (64, 128));
+    assert!(head.same_allocation(overlap));
+    assert!(head.same_allocation(tail));
+    assert!(head.overlaps(overlap));
+    assert!(!head.overlaps(tail));
+    assert!(overlap.overlaps(tail));
+}
+
+#[test]
 fn idle_live_and_fresh_logical_uses_have_one_continuous_backing_charge() {
     let mut ledger = DeviceEventLedger::new(7, 128).unwrap();
     let backing = ledger

@@ -386,6 +386,15 @@ Vulkan-only retry passed, so no source failure follows.
   fresh logical lease IDs/generations are issued over retained backing, readbacks/Ready
   owners retain the checkout, and reuse occurs only after ledger-proven idle backing;
   unknown retirement poisons/fences/quarantines rather than returning a set idle.
+  **Physical alias identity now has one shared core representation too.**
+  `device_events::DeviceBufferIdentity` identifies an opaque real allocation plus exact
+  byte range; direct buffers use their lease allocation while pooled/views use the
+  retained backing allocation. The ledger is the sole constructor/query authority and
+  its production alias-conflict path now calls the same `overlaps` primitive, so there
+  is no parallel hash/handle/range definition. This adds no resident-lease field or
+  hot-path allocation. Core strict Clippy plus six backing-ledger tests pass. Adoption
+  across prepared packs, graph/source views and transfer staging remains incremental;
+  do not cache this identity into every lease merely for future diagnostics.
   **Scoped worker prefix reuse is
   now implemented and physically accepted.** `PrefixSharingScope` is a validated
   nonzero Copy ID. Existing `Request` stays unchanged; ordinary `request_text`

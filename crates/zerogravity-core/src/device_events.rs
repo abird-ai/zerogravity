@@ -21,6 +21,48 @@ pub struct BufferLeaseId(u64);
 mod backing;
 pub use backing::DeviceBackingId;
 use backing::{BackingAllocation, BackingRange};
+
+/// Stable process-local physical storage identity for one exact buffer range.
+///
+/// Direct allocations are owned by their original lease allocation; pooled/
+/// aliased views are owned by their retained backing allocation. This is control
+/// metadata only: it is not a backend pointer, source identity or authorization.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DeviceBufferIdentity {
+    allocation: DeviceBufferAllocation,
+    offset: usize,
+    bytes: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum DeviceBufferAllocation {
+    Direct(BufferLeaseId),
+    Backing(DeviceBackingId),
+}
+
+impl DeviceBufferIdentity {
+    pub const fn offset(self) -> usize {
+        self.offset
+    }
+
+    pub const fn bytes(self) -> usize {
+        self.bytes
+    }
+
+    pub fn same_allocation(self, other: Self) -> bool {
+        match (self.allocation, other.allocation) {
+            (DeviceBufferAllocation::Direct(a), DeviceBufferAllocation::Direct(b)) => a == b,
+            (DeviceBufferAllocation::Backing(a), DeviceBufferAllocation::Backing(b)) => a == b,
+            _ => false,
+        }
+    }
+
+    pub fn overlaps(self, other: Self) -> bool {
+        self.same_allocation(other)
+            && self.offset < other.offset.saturating_add(other.bytes)
+            && other.offset < self.offset.saturating_add(self.bytes)
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeviceEventId {
     epoch: u64,
@@ -60,6 +102,21 @@ struct Lease {
     writer: bool,
     fenced: bool,
     backing: Option<BackingRange>,
+}
+
+fn physical_identity(id: BufferLeaseId, lease: &Lease) -> DeviceBufferIdentity {
+    match lease.backing {
+        Some(range) => DeviceBufferIdentity {
+            allocation: DeviceBufferAllocation::Backing(range.id),
+            offset: range.offset,
+            bytes: lease.bytes,
+        },
+        None => DeviceBufferIdentity {
+            allocation: DeviceBufferAllocation::Direct(id),
+            offset: 0,
+            bytes: lease.bytes,
+        },
+    }
 }
 struct Event {
     expected_root: u64,
@@ -104,6 +161,15 @@ impl DeviceEventLedger {
     }
     pub fn pending_events(&self) -> usize {
         self.events.len()
+    }
+
+    /// Canonical physical storage identity for one currently live logical lease.
+    pub fn buffer_identity(&self, id: BufferLeaseId) -> Result<DeviceBufferIdentity> {
+        let lease = self
+            .leases
+            .get(&id)
+            .ok_or_else(|| Error::State("unknown device buffer lease".into()))?;
+        Ok(physical_identity(id, lease))
     }
 
     pub fn admit(&mut self, bytes: usize, role: BufferRole) -> Result<BufferLeaseId> {
