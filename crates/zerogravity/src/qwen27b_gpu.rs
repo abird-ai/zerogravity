@@ -99,7 +99,7 @@ impl Qwen27bGpuLoaded {
     }
     /// Only this validated facade crosses the low-level retained-source contract.
     /// One owned process attempt; exact two-position source scope.
-    /// Teacher11/353 and natural selected-ID diagnostics share these owners;
+    /// Teacher11/353 and autoregressive selected-ID diagnostics share these owners;
     /// neither loading nor a successful diagnostic grants serving permission.
     pub async fn load_hip_qualification(
         self: &Arc<Self>,
@@ -109,9 +109,9 @@ impl Qwen27bGpuLoaded {
         self.load_native(NativeTarget::Single(device), false, cancelled)
             .await
     }
-    /// Distinct natural qualification catalogue; original teacher path stays117.
+    /// Distinct autoregressive qualification catalogue; original teacher path stays117.
     /// No numerical/serving grant follows from preparing this candidate.
-    pub async fn load_hip_natural_qualification(
+    pub async fn load_hip_autoregressive_qualification(
         self: &Arc<Self>,
         device: zerogravity_gpu::Device,
         cancelled: Option<&AtomicBool>,
@@ -163,13 +163,13 @@ impl Qwen27bGpuLoaded {
     async fn load_native(
         self: &Arc<Self>,
         target: NativeTarget,
-        natural: bool,
+        autoregressive: bool,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<zerogravity_gpu::Bf16TextSourceCandidate>> {
         #[cfg(feature = "shared-hip-qualification")]
-        if natural && matches!(&target, NativeTarget::Shared(_)) {
+        if autoregressive && matches!(&target, NativeTarget::Shared(_)) {
             return Err(Error::Unsupported(
-                "shared Qwen natural readout is not an admitted route".into(),
+                "shared Qwen autoregressive readout is not an admitted route".into(),
             ));
         }
         check_cancel(cancelled)?;
@@ -204,8 +204,8 @@ impl Qwen27bGpuLoaded {
         // every prepared module, initialization, flight and unknown/quarantine owner.
         unsafe {
             match target {
-                NativeTarget::Single(device) if natural => {
-                    zerogravity_gpu::Bf16TextSourceCandidate::load_hip_natural_qualification(
+                NativeTarget::Single(device) if autoregressive => {
+                    zerogravity_gpu::Bf16TextSourceCandidate::load_hip_autoregressive_qualification(
                         device,
                         self.source.source().clone(),
                         steps,

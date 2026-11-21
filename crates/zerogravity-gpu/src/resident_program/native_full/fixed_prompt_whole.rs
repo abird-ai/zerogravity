@@ -29,7 +29,7 @@ impl FullModelProgram {
             || self.next_node.load(Ordering::Acquire) != 0
             || self.output_submitted.load(Ordering::Acquire)
             || self.greedy.get().is_some()
-            || self.natural.is_some()
+            || self.autoregressive.is_some()
             || self.fused.len() != cut.duals()
             || states.len() != 24
             || gdn.len() != 18

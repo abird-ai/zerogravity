@@ -18,7 +18,7 @@ pub(super) fn require_published_invocation(
     );
     let end = start
         .checked_add(rows)
-        .ok_or_else(|| Error::Limit("natural text invocation span overflow".into()))?;
+        .ok_or_else(|| Error::Limit("autoregressive text invocation span overflow".into()))?;
     if !exact
         || call.tokens().capacity() != 512
         || call.tokens().vocabulary() != 248320
@@ -28,7 +28,7 @@ pub(super) fn require_published_invocation(
         || attempt.frontier() != end as u64
     {
         return Err(Error::State(
-            "natural one-call schedule differs from original published root/request".into(),
+            "autoregressive one-call schedule differs from original published root/request".into(),
         ));
     }
     Ok(())

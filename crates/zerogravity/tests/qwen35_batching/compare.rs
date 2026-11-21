@@ -99,7 +99,7 @@ pub(super) fn completed(
                 && record.selection().boundaries().len() == 24
                 && record.call().rows().len() == rows
                 && record.call().rows().ids() == original.input(row, call)?,
-            "actual independent source-issued record/phase/natural feedback",
+            "actual independent source-issued record/phase/autoregressive feedback",
         )?;
         let mut previous: Option<(Vec<u8>, Vec<u8>)> = None;
         let mut sums = 0;
@@ -283,7 +283,7 @@ pub(super) fn completed(
         let greedy = oracle::greedy(&logits)?;
         ensure(
             greedy.0 == original.selected(row, call)? && read.selected[row] == greedy,
-            "natural original greedy ID/numeric tie/max bits",
+            "autoregressive original greedy ID/numeric tie/max bits",
         )?;
     }
     println!(

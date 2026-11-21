@@ -14,7 +14,7 @@ use zerogravity_core::accelerator::program::{InvocationPhase, TextInvocation, Va
 
 pub(in crate::resident_inference) mod continuation;
 mod faults;
-pub(crate) mod fixed_prompt_natural;
+pub(crate) mod fixed_prompt_autoregressive;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod source_readback;
 pub(crate) mod text;
@@ -654,24 +654,27 @@ pub use full_model_qualify::{
     qualify_source_model_fault,
 };
 
-pub use full_model_qualify::natural_cold::{
-    ColdModelSlots, PreparedNaturalCold, prepare_natural_cold,
+pub(crate) use full_model_qualify::autoregressive_cold::{
+    AutoregressiveColdSnapshot, AutoregressiveRetirementProbe,
 };
-pub(crate) use full_model_qualify::natural_cold::{NaturalColdSnapshot, NaturalRetirementProbe};
+pub use full_model_qualify::autoregressive_cold::{
+    ColdModelSlots, PreparedAutoregressiveCold, prepare_autoregressive_cold,
+};
 
-// Original completion-bound natural publication; existing routes stay closed.
-pub(crate) mod natural_publication;
-pub(crate) mod natural_reuse;
-pub use natural_publication::{
-    CommittedBf16Feedback, NaturalCommitted, NaturalFault, NaturalFaultExecution,
-    NaturalFaultOutcome, NaturalFeedbackRequest, NaturalObserver, NaturalReceipt,
-    NaturalReuseFault, NaturalReuseFaultExecution, NaturalReuseFaultOutcome, NaturalReuseReceipt,
-    NaturalReuseRound, NaturalSlot, NaturalStatePool, NaturalStep, qualify_natural_fault,
-    qualify_natural_reuse_fault,
+// Original completion-bound autoregressive publication; existing routes stay closed.
+pub(crate) mod autoregressive;
+pub(crate) mod autoregressive_reuse;
+pub use autoregressive::{
+    AutoregressiveCommit, AutoregressiveFault, AutoregressiveFaultExecution,
+    AutoregressiveFaultOutcome, AutoregressiveFeedback, AutoregressiveObserver,
+    AutoregressiveReceipt, AutoregressiveReuseFault, AutoregressiveReuseFaultExecution,
+    AutoregressiveReuseFaultOutcome, AutoregressiveReuseReceipt, AutoregressiveReuseRound,
+    AutoregressiveSlot, AutoregressiveStatePool, AutoregressiveStep, CommittedBf16Feedback,
+    qualify_autoregressive_fault, qualify_autoregressive_reuse_fault,
 };
-pub use natural_reuse::{
-    PreparedReusableNatural, ReusableNaturalStorage, prepare_reusable_natural_cold,
-    qualify_natural_reuse_pressure,
+pub use autoregressive_reuse::{
+    AutoregressiveReuseStorage, PreparedAutoregressiveReuse, prepare_autoregressive_reuse,
+    qualify_autoregressive_reuse_pressure,
 };
 
 mod qwen2b_component;
@@ -737,13 +740,13 @@ pub use qwen2b_mlp_component::{
 };
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-pub use fixed_prompt_natural::{
-    FixedPromptCloseReceipt, FixedPromptEmptySnapshot, FixedPromptFeedbackRequest,
-    FixedPromptInvocationReceipt, FixedPromptLifecycleProfile, FixedPromptLoaded,
-    FixedPromptLoadedObservation, FixedPromptLoadedSnapshot, FixedPromptNaturalFault,
-    FixedPromptNaturalFaultOutcome, FixedPromptNaturalReadback, FixedPromptPending,
-    FixedPromptSession, fixed_prompt_natural_host_bound, prepare_fixed_prompt_natural,
-    prepare_fixed_prompt_natural_with_profile,
+pub use fixed_prompt_autoregressive::{
+    FixedPromptAutoregressiveFault, FixedPromptAutoregressiveFaultOutcome,
+    FixedPromptAutoregressiveReadback, FixedPromptCloseReceipt, FixedPromptEmptySnapshot,
+    FixedPromptFeedbackRequest, FixedPromptInvocationReceipt, FixedPromptLifecycleProfile,
+    FixedPromptLoaded, FixedPromptLoadedObservation, FixedPromptLoadedSnapshot, FixedPromptPending,
+    FixedPromptSession, fixed_prompt_autoregressive_host_bound,
+    prepare_fixed_prompt_autoregressive, prepare_fixed_prompt_autoregressive_with_profile,
 };
 
 #[cfg(target_os = "linux")]

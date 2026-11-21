@@ -31,7 +31,7 @@ impl GdnAttemptSchedule {
         let base = attempt.base();
         if base.source() != source.source_identity() {
             return Err(Error::State(
-                "natural published call source issuer differs".into(),
+                "autoregressive published call source issuer differs".into(),
             ));
         }
         published_invocation::require_published_invocation(base, &attempt, &call)?;

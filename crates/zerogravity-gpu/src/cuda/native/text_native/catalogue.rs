@@ -3,7 +3,7 @@ use super::super::cubin_manifests::ProjectionImage;
 use super::{NativeCatalogue, TextKernelCapture};
 use zerogravity_core::Result;
 
-/// Actual union across five prompt spans and seven natural continuations.
+/// Actual union across five prompt spans and seven autoregressive continuations.
 /// Activation is separately admitted by FixedPromptMlpQualificationInputs.
 pub fn text_required_images(capture: TextKernelCapture) -> Result<Vec<ProjectionImage>> {
     let mut images = match capture.catalogue() {

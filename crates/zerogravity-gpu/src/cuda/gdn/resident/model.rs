@@ -226,10 +226,10 @@ impl ModelGdnConvEnqueued {
 }
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-mod natural;
+mod autoregressive;
 
-mod fixed_prompt_natural;
-pub(crate) use fixed_prompt_natural::ModelGdnTransportStorage;
+mod fixed_prompt_autoregressive;
+pub(crate) use fixed_prompt_autoregressive::ModelGdnTransportStorage;
 
 impl ModelGdnAdapter {
     pub(crate) fn storage_accesses_partition(

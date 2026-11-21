@@ -1032,4 +1032,4 @@ mod tests {
     }
 }
 
-pub(crate) mod natural;
+pub(crate) mod autoregressive;

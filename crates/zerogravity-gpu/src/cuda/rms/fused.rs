@@ -997,11 +997,11 @@ impl FusedRmsPrepared {
 mod tests;
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-#[path = "fused/fixed_prompt_natural.rs"]
-mod fixed_prompt_natural;
+#[path = "fused/autoregressive.rs"]
+mod autoregressive;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-#[path = "fused/natural.rs"]
-mod natural;
+#[path = "fused/fixed_prompt_autoregressive.rs"]
+mod fixed_prompt_autoregressive;
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 #[path = "fused/pooled.rs"]

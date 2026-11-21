@@ -286,7 +286,7 @@ where
     let pending_tied = init
         .upload_tied_bf16(
             source.clone(),
-            super::fixed_prompt_natural::tied_member(&record)?,
+            super::fixed_prompt_autoregressive::tied_member(&record)?,
             cancelled,
         )
         .await?;
@@ -769,7 +769,7 @@ async fn verify_tied_windows(
             "whole original tied upload coverage/source owner".into(),
         ));
     }
-    let descriptor = super::fixed_prompt_natural::tied_member(owners.cut.scope().record())?;
+    let descriptor = super::fixed_prompt_autoregressive::tied_member(owners.cut.scope().record())?;
     let matrix = source.matrix(&descriptor.name, descriptor.axes)?;
     tied.matrix().require_matrix(source, service, &matrix)?;
     if matrix.rows() != 248320 || matrix.columns() != 1024 {

@@ -406,4 +406,4 @@ impl ModelNativePrograms {
 }
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-mod natural;
+mod autoregressive;

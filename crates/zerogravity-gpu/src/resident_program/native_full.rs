@@ -45,7 +45,7 @@ struct BoundPhase {
     phase: usize,
     library: Option<Arc<FullModelLibrary>>,
     fixed_prompt_prefix: Option<fixed_prompt_prefix::PrefixPhase>,
-    canonical_call: Option<fixed_prompt_natural::CurrentCall>,
+    canonical_call: Option<fixed_prompt_autoregressive::CurrentCall>,
     text: Option<text::CurrentCall>,
     states: Vec<Arc<BoundModelState>>,
     gdn: BTreeMap<usize, Arc<ModelGdnPrepared>>,
@@ -78,12 +78,12 @@ pub(crate) struct FullModelProgram {
     device_copies: AtomicUsize,
     _readback: Arc<Vec<WindowWorkspace>>,
     _metadata: Arc<WindowWorkspace>,
-    natural: Option<
-        Arc<crate::resident_inference::native_fragment::natural_publication::NaturalCallState>,
+    autoregressive: Option<
+        Arc<crate::resident_inference::native_fragment::autoregressive::AutoregressiveState>,
     >,
 }
 
-pub(crate) mod fixed_prompt_natural;
+pub(crate) mod fixed_prompt_autoregressive;
 mod fixed_prompt_prefix;
 mod fixed_prompt_whole;
 mod state_read;
@@ -384,7 +384,7 @@ impl FullModelProgram {
                 device_copies: AtomicUsize::new(0),
                 _readback: Arc::new(readback),
                 _metadata: Arc::new(metadata),
-                natural: None,
+                autoregressive: None,
             }),
             buffers,
             preflight,
@@ -1449,7 +1449,7 @@ impl ResidentProgram {
 }
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-mod natural;
+mod autoregressive;
 
 mod publication;
 

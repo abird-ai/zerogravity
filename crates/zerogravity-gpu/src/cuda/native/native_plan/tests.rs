@@ -170,8 +170,7 @@ fn existing_manifest_physical_extents_match_every_closed_source_join() {
                 assert_eq!(input, d.input_elements() * 2);
                 assert_eq!(output, d.output_elements() * 2);
             }
-            let NativeOperation::Activation(a) = activation_operation(call.tokens()).unwrap()
-            else {
+            let NativeOperation::Activation(a) = activation_operation(call.rows()).unwrap() else {
                 panic!("ACT became projection")
             };
             let d = QwenSiluAndMul::new(call).unwrap();
@@ -217,8 +216,7 @@ fn source_layer_weights_stay_distinct_while_actual_kernel_records_share_one_set(
                     _ => panic!("projection became ACT"),
                 }
             }
-            let NativeOperation::Activation(a) = activation_operation(call.tokens()).unwrap()
-            else {
+            let NativeOperation::Activation(a) = activation_operation(call.rows()).unwrap() else {
                 unreachable!()
             };
             activations.insert(a);

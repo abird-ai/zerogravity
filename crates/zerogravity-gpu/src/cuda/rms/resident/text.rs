@@ -171,7 +171,7 @@ impl RmsPrepared {
         scope: Arc<FullModelRmsScratch>,
         tied: Option<&Arc<TiedWeight>>,
     ) -> Result<Arc<Self>> {
-        if self.natural.is_some()
+        if self.autoregressive.is_some()
             || scope.rows()? != self.owner.rows
             || scope.columns() != self.owner.columns
             || !scope.source().source().same_issuer(&self.owner.source)
@@ -206,7 +206,7 @@ impl RmsPrepared {
             outputs: self.outputs.clone(),
             owner: self.owner.clone(),
             pooled: Some(pooled),
-            natural: None,
+            autoregressive: None,
             text: Some(rows),
         }))
     }

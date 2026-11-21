@@ -5,7 +5,7 @@ use crate::qwen35::{source::binding::OriginalWindowModelSource, tokenize::QwenTo
 use crate::resource_arbiter::{GlobalResourceLease, lease_inventory_bytes};
 use crate::{Error, Result};
 pub use native::FixedPromptLifecycleProfile;
-use native::{FixedPromptLoaded, prepare_fixed_prompt_natural_with_profile};
+use native::{FixedPromptLoaded, prepare_fixed_prompt_autoregressive_with_profile};
 use std::path::{Path, PathBuf};
 use std::sync::{
     Arc,
@@ -164,7 +164,7 @@ pub async fn load_with_profile(
         native: bundle.model(source.source(), cancelled)?,
         rotary: Some(rotary),
     };
-    let resident = prepare_fixed_prompt_natural_with_profile(
+    let resident = prepare_fixed_prompt_autoregressive_with_profile(
         device,
         source.source().clone(),
         templates.physical_scopes(),

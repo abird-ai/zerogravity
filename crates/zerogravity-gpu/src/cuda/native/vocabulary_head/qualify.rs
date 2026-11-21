@@ -362,7 +362,7 @@ pub(super) async fn inner(
             fused.enqueue(cancelled)?;
         }
         let launches = programs.enqueue(&weight, &job.input, &job.output, cancelled)?;
-        // SAME natural post-enqueue cancellation boundary in positive/fault
+        // SAME autoregressive post-enqueue cancellation boundary in positive/fault
         // execution. Any cancellation here drops the original armed flight.
         let late_flag =
             AtomicBool::new(mode == Mode::Fault(VocabularyHeadFault::LateCancelAfterHead));

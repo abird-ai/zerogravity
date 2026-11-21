@@ -464,7 +464,7 @@ pub(in crate::resident_program::bf16_text_source) fn enumerate(
     for record in records {
         layout::Layout::derive(record)?;
     }
-    enumerate_records(client, source, records, readout.natural(), None)
+    enumerate_records(client, source, records, readout.autoregressive(), None)
 }
 pub(in crate::resident_program::bf16_text_source) fn enumerate_records(
     client: &Client,

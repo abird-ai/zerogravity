@@ -136,7 +136,7 @@ async fn matrix(
                     && receipt.root.root() == before.root() + 1
                     && receipt.root.frontier() == (rows + call) as u64
                     && receipt.consumed_tokens == if call == 0 { rows } else { 1 },
-                "one completed original current-root commit per natural output",
+                "one completed original current-root commit per autoregressive output",
             )?;
             let [issued, retired, queries, waits, pending] = receipt.transfer_retirement;
             let windows = if model.resident().resources().resident_head_bytes != 0 {
@@ -153,7 +153,7 @@ async fn matrix(
                     && pending == 0
                     && queries >= retired
                     && waits <= retired,
-                "actual terminal retirement precedes successful natural publication",
+                "actual terminal retirement precedes successful autoregressive publication",
             )?;
             pool_conservation(model)?;
             println!(
@@ -556,7 +556,7 @@ fn forward_prefill47_decode48_to50_compare_reference_evidence() -> Result<()> {
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
     println!(
-        "QWEN35_FORWARD_CUDA_PREFILL47_DECODE48_50_PARITY_PASS steps={} exact=true natural_feedback=true two_process=true evidence_sha256={digest}",
+        "QWEN35_FORWARD_CUDA_PREFILL47_DECODE48_50_PARITY_PASS steps={} exact=true autoregressive_feedback=true two_process=true evidence_sha256={digest}",
         receipt.parity.steps.len()
     );
     Ok(())

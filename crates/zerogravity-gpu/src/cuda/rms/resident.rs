@@ -340,7 +340,7 @@ pub(crate) struct RmsPrepared {
     #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pooled: Option<Arc<super::pooled::PooledRmsActor>>,
     #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-    natural: Option<Arc<natural::NaturalRows>>,
+    autoregressive: Option<Arc<autoregressive::AutoregressiveRows>>,
     #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     text: Option<Arc<text::EmbeddingRows>>,
 }
@@ -716,7 +716,7 @@ impl RmsPrepared {
             #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             pooled,
             #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-            natural: None,
+            autoregressive: None,
             #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             text: None,
         }))
@@ -833,8 +833,8 @@ impl RmsPrepared {
         #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         if let Some(rows) = &self.text {
             rows.validate(&actual[1])?;
-        } else if self.natural.is_some() {
-            self.validate_natural_embedding(&actual[1])?;
+        } else if self.autoregressive.is_some() {
+            self.validate_autoregressive_embedding(&actual[1])?;
         } else if &actual[1][..] != self.owner.embedding.as_slice() {
             return Err(Error::State(
                 "RMS producer original inputs/output readback".into(),
@@ -851,8 +851,8 @@ impl RmsPrepared {
 }
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-#[path = "resident/natural.rs"]
-mod natural;
+#[path = "resident/autoregressive.rs"]
+mod autoregressive;
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 #[path = "resident/pooled.rs"]

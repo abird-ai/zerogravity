@@ -657,7 +657,7 @@ async fn qualify_projection_inner(
     Ok(Outcome::Compared(compared))
 }
 
-pub(super) fn validate_fixed_prompt_natural_image_set(
+pub(super) fn validate_fixed_prompt_autoregressive_image_set(
     source: &VerifiedTensorSource,
     required: &BTreeSet<ProjectionImage>,
     images: &[CubinImage],

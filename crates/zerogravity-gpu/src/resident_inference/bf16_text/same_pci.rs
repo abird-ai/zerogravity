@@ -34,7 +34,7 @@ pub struct TextVulkanNativeRetention {
 
 /// Same-process/same-PCI learned-Vulkan + finite-HIP peer disposition.
 ///
-/// Capability fields stay false: successful source preparation is not natural
+/// Capability fields stay false: successful source preparation is not autoregressive
 /// Gemma serving or performance qualification.
 #[derive(Clone, Debug)]
 pub struct LearnedSamePciPeerReceipt {
@@ -89,7 +89,7 @@ pub struct LearnedSamePciPeerReceipt {
     pub original_native_retained: bool,
     pub original_handle_retained: bool,
     pub trained_native_serving_or_performance_qualified: bool,
-    pub trained_native_natural_serving_or_performance_qualified: bool,
+    pub trained_native_autoregressive_serving_or_performance_qualified: bool,
 }
 
 impl Bf16TextCandidate {
@@ -437,6 +437,6 @@ async fn learned_same_pci_peer(
         original_handle_retained: vulkan_after_native_handles >= vulkan_before_handles
             && hip_retention.handles >= hip_before_handles,
         trained_native_serving_or_performance_qualified: false,
-        trained_native_natural_serving_or_performance_qualified: false,
+        trained_native_autoregressive_serving_or_performance_qualified: false,
     })
 }

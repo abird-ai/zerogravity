@@ -142,7 +142,7 @@ impl FullModelProgram {
             || !Arc::ptr_eq(state.input(), &input)
             || !Arc::ptr_eq(&self.record, input.record())
             || self.greedy.get().is_none()
-            || self.natural.is_some()
+            || self.autoregressive.is_some()
             || self.fused.len() != 48
             || gdn.len() != 18
             || state.states().len() != 24

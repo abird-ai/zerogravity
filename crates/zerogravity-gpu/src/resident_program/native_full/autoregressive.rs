@@ -1,0 +1,342 @@
+//! Fresh one-use call binding; all native/storage/math resources are original.
+use super::super::autoregressive_binding::{same_lease, same_recipe};
+use super::*;
+use crate::resident_inference::native_fragment::autoregressive::{
+    AutoregressiveInput, AutoregressiveState,
+};
+use crate::resident_leases::TiedWeight;
+use cubecl::bytes::Bytes;
+
+#[derive(Clone, Copy)]
+enum AutoregressiveStorageBinding {
+    ClosedFive,
+    Reusable,
+}
+
+struct AutoregressiveBinding<'a> {
+    storage: AutoregressiveStorageBinding,
+    cancel: Option<&'a AtomicBool>,
+}
+
+impl FullModelProgram {
+    pub(crate) fn bind_autoregressive(
+        self: &Arc<Self>,
+        input: Arc<AutoregressiveInput>,
+        state: Arc<AutoregressiveState>,
+        buffers: &[DeviceBuffer],
+        positions: Arc<crate::resident_program::text_positions::TextPositionsPrepared>,
+        table: Arc<TiedWeight>,
+        cancel: Option<&AtomicBool>,
+    ) -> Result<Arc<Self>> {
+        self.bind_autoregressive_storage(
+            input,
+            state,
+            buffers,
+            positions,
+            table,
+            AutoregressiveBinding {
+                storage: AutoregressiveStorageBinding::ClosedFive,
+                cancel,
+            },
+        )
+    }
+    pub(crate) fn bind_reusable(
+        self: &Arc<Self>,
+        input: Arc<AutoregressiveInput>,
+        state: Arc<AutoregressiveState>,
+        buffers: &[DeviceBuffer],
+        positions: Arc<crate::resident_program::text_positions::TextPositionsPrepared>,
+        table: Arc<TiedWeight>,
+        cancel: Option<&AtomicBool>,
+    ) -> Result<Arc<Self>> {
+        state.require_reusable_submission_claimed()?;
+        self.bind_autoregressive_storage(
+            input,
+            state,
+            buffers,
+            positions,
+            table,
+            AutoregressiveBinding {
+                storage: AutoregressiveStorageBinding::Reusable,
+                cancel,
+            },
+        )
+    }
+    fn bind_autoregressive_storage(
+        self: &Arc<Self>,
+        input: Arc<AutoregressiveInput>,
+        state: Arc<AutoregressiveState>,
+        buffers: &[DeviceBuffer],
+        positions: Arc<crate::resident_program::text_positions::TextPositionsPrepared>,
+        table: Arc<TiedWeight>,
+        binding: AutoregressiveBinding<'_>,
+    ) -> Result<Arc<Self>> {
+        let AutoregressiveBinding { storage, cancel } = binding;
+        cancelled(cancel)?;
+        if let Some(scope) = &self.fixed_prompt {
+            scope.require_native_activation()?;
+        }
+        if self.launched.load(Ordering::Acquire)
+            || self.next_node.load(Ordering::Acquire) != 0
+            || self.output_submitted.load(Ordering::Acquire)
+            || self.autoregressive.is_some()
+            || !Arc::ptr_eq(&input, state.input())
+            || !self.source.same_issuer(input.source())
+        {
+            return Err(Error::State(
+                "autoregressive binding requires UNUSED original cold body and exact input/state"
+                    .into(),
+            ));
+        }
+        Self::require_record(input.record())?;
+        same_recipe(&self.record, input.record())?;
+        let old = self
+            .bound
+            .get()
+            .ok_or_else(|| Error::State("autoregressive original cold phase unbound".into()))?;
+        let phase = super::super::autoregressive_binding::slot(input.invocation())?;
+        if old.phase != phase || state.states().len() != 24 {
+            return Err(Error::State(
+                "autoregressive original physical phase/state count".into(),
+            ));
+        }
+        // New canonical wrappers may carry the new original RootAttempt, but
+        // the old route keeps its EXACT original prior/candidate physical leases.
+        // Reuse binds genuine fresh canonical owners through the original adapter.
+        for (a, b) in old.states.iter().zip(state.states()) {
+            if a.layer() != b.layer() {
+                return Err(Error::State(
+                    "autoregressive original indexed state layer changed".into(),
+                ));
+            }
+            let (a, b) = (a.leases(), b.leases());
+            if a.len() != b.len() {
+                return Err(Error::State(
+                    "autoregressive state physical cohort size".into(),
+                ));
+            }
+            for ((a, aa), (b, ba)) in a.iter().zip(&b) {
+                if aa != ba {
+                    return Err(Error::State(
+                        "autoregressive state access role changed".into(),
+                    ));
+                }
+                if matches!(storage, AutoregressiveStorageBinding::ClosedFive) {
+                    same_lease(a, b)?;
+                } else if !Arc::ptr_eq(a.service(), b.service())
+                    || a.source_identity() != b.source_identity()
+                    || a.service_generation() != b.service_generation()
+                    || a.bytes() != b.bytes()
+                    || a.role() != b.role()
+                {
+                    return Err(Error::State(
+                        "reusable actual canonical source/service/role differs".into(),
+                    ));
+                }
+            }
+        }
+        let metadata = self.source.reserve_workspace(4 * 1024 * 1024)?;
+        let values = ModelValues::bind(
+            input.record().clone(),
+            buffers,
+            self.values.service().clone(),
+            self.status().clone(),
+        )?;
+        let rms = self.rms.bind_autoregressive(input.clone(), table)?;
+        let ordinary = input
+            .record()
+            .operator(1)?
+            .ok_or_else(|| Error::State("autoregressive ordinary RMS descriptor absent".into()))?;
+        let ordinary_binding = BoundModelRmsSource::bind(self.source.clone(), ordinary.clone())?;
+        let mut fused = BTreeMap::new();
+        for (&node, cold) in &self.fused {
+            let n = &input.record().plan().nodes()[node];
+            let op = input
+                .record()
+                .operator(node)?
+                .ok_or_else(|| Error::State("autoregressive dual RMS descriptor absent".into()))?;
+            let [a, b] = n.inputs.as_slice() else {
+                return Err(Error::State("autoregressive dual RMS arity".into()));
+            };
+            fused.insert(
+                node,
+                cold.bind_autoregressive(
+                    BoundModelRmsSource::bind(self.source.clone(), op.clone())?,
+                    values.lease(*a)?,
+                    values.lease(*b)?,
+                )?,
+            );
+        }
+        let original_greedy = self
+            .greedy
+            .get()
+            .ok_or_else(|| Error::State("autoregressive original reducer storage absent".into()))?;
+        let greedy = match storage {
+            AutoregressiveStorageBinding::ClosedFive => {
+                original_greedy.bind_autoregressive(values.clone())?
+            }
+            AutoregressiveStorageBinding::Reusable => {
+                original_greedy.bind_reusable(values.clone())?
+            }
+        };
+        let result = Arc::new(Self {
+            attention_sites: self.attention_sites.clone(),
+            gdn_family: self.gdn_family,
+            source: self.source.clone(),
+            record: input.record().clone(),
+            values: values.clone(),
+            rms,
+            _ordinary_binding: ordinary_binding,
+            fused,
+            certificates: self.certificates.clone(),
+            bound: OnceLock::new(),
+            greedy: OnceLock::new(),
+            launched: AtomicBool::new(false),
+            next_node: AtomicUsize::new(0),
+            output_submitted: AtomicBool::new(false),
+            fault: AtomicUsize::new(0),
+            fault_cut: AtomicBool::new(false),
+            convolution_dispatches: AtomicUsize::new(0),
+            internal_cancel: AtomicBool::new(false),
+            native_launches: AtomicUsize::new(0),
+            workspace_clears: AtomicUsize::new(0),
+            device_copies: AtomicUsize::new(0),
+            _readback: self._readback.clone(),
+            _metadata: Arc::new(metadata),
+            autoregressive: Some(state.clone()),
+            fixed_prompt: None,
+        });
+        result.greedy.set(greedy).map_err(|_| {
+            Error::State("autoregressive output consumer fresh once binding".into())
+        })?;
+        let mut gdn = BTreeMap::new();
+        let mut attention = BTreeMap::new();
+        for domains in state.states() {
+            let layer = domains.layer();
+            if domains.kv_domain().is_ok() {
+                attention.insert(
+                    layer,
+                    old.attention
+                        .get(&layer)
+                        .ok_or_else(|| Error::State("autoregressive cold attention absent".into()))?
+                        .bind_autoregressive(values.clone(), domains.clone(), positions.clone())?,
+                );
+            } else {
+                gdn.insert(
+                    layer,
+                    old.gdn
+                        .get(&layer)
+                        .ok_or_else(|| Error::State("autoregressive cold GDN absent".into()))?
+                        .bind_autoregressive(values.clone(), domains.clone())?,
+                );
+            }
+        }
+        let old_library = old.full_library()?;
+        let library = Arc::new(FullModelLibrary {
+            source: self.source.clone(),
+            projections: old_library
+                .projections
+                .bind_autoregressive(phase, values.clone())?,
+            attention: old_library.attention.clone(),
+            head: old_library.head.bind_autoregressive(
+                phase,
+                values,
+                result.final_normalizer()?,
+            )?,
+            images: old_library.images.clone(),
+        });
+        result.bind_phase(phase, library, state.states().to_vec(), gdn, attention)?;
+        old.gdn_arithmetic.require_same(
+            &result
+                .bound
+                .get()
+                .ok_or_else(|| Error::State("autoregressive GDN arithmetic unbound".into()))?
+                .gdn_arithmetic,
+        )?;
+        Ok(result)
+    }
+}
+impl ResidentProgram {
+    pub(crate) fn autoregressive_cold_slot(
+        &self,
+    ) -> Result<super::super::autoregressive_binding::ColdProgramSlot> {
+        let body = self.full_model_body()?.clone();
+        if body.launched.load(Ordering::Acquire) {
+            return Err(Error::State(
+                "autoregressive template was already executed".into(),
+            ));
+        }
+        Ok(super::super::autoregressive_binding::ColdProgramSlot::new(
+            body,
+            self.values.clone(),
+            self.preflight.clone(),
+        ))
+    }
+    pub(crate) fn from_autoregressive_body(
+        source: VerifiedTensorSource,
+        body: Arc<FullModelProgram>,
+        values: Vec<DeviceBuffer>,
+        preflight: ResidentPreflight,
+    ) -> Result<Self> {
+        if values.len() != 327 {
+            return Err(Error::State(
+                "autoregressive original physical value coverage".into(),
+            ));
+        }
+        Ok(Self {
+            _source_owner: ResidentProgramSource::Windows(source.clone()),
+            plan: body.record().shared_plan(),
+            preflight,
+            values,
+            status: body.status().handle(),
+            owned_ranges: OwnedRanges::new(body.values().service().client().service_id()),
+            body: ResidentProgramBody::NativeFull(body),
+        })
+    }
+}
+impl FullModelProgram {
+    pub(crate) fn publication_extra_reads(&self) -> Result<Vec<ResidentReadback>> {
+        if self.autoregressive.is_none() {
+            return Err(Error::State(
+                "autoregressive extra reads on forced body".into(),
+            ));
+        }
+        let bound = self
+            .bound
+            .get()
+            .ok_or_else(|| Error::State("autoregressive actual position binding absent".into()))?;
+        let mut read = None;
+        for binding in bound.attention.values() {
+            let next = binding.publication_position_readback()?;
+            if read.as_ref().is_some_and(|old: &ResidentReadback| {
+                old.lease_id() != next.lease_id()
+                    || old.offset() != next.offset()
+                    || old.bytes() != next.bytes()
+            }) {
+                return Err(Error::State(
+                    "autoregressive all six attention consumers require SAME original positions"
+                        .into(),
+                ));
+            }
+            read = Some(next);
+        }
+        Ok(vec![read.ok_or_else(|| {
+            Error::State("autoregressive actual source positions absent".into())
+        })?])
+    }
+    pub(crate) fn validate_publication_extra(&self, raw: &[Bytes]) -> Result<()> {
+        let bound = self
+            .bound
+            .get()
+            .ok_or_else(|| Error::State("autoregressive actual position binding absent".into()))?;
+        if self.autoregressive.is_none() || bound.attention.len() != 6 {
+            return Err(Error::State(
+                "autoregressive actual positions cohort absent".into(),
+            ));
+        }
+        for binding in bound.attention.values() {
+            binding.validate_publication_positions(raw)?;
+        }
+        Ok(())
+    }
+}

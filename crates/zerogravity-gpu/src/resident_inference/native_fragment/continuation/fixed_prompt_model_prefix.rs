@@ -123,7 +123,7 @@ mod tests {
         let source = SourceIdentity::for_new_allocation().unwrap();
         let a = call(source);
         let b = call(source);
-        assert_eq!(a.rows().ids(), b.rows().ids());
+        assert_eq!(a.tokens().ids(), b.tokens().ids());
         assert_ne!(a, b);
         let binding = AttemptPhaseBinding::new(schedule(&a, 3, 47), 0, None).unwrap();
         assert!(binding.require_fixed_prompt_model_prefix_shape(&b).is_err());

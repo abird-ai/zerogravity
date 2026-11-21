@@ -528,13 +528,13 @@ pub(crate) fn full_model_private_bound(
 }
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-mod natural;
+mod autoregressive;
 
 mod fixed_prompt;
 
 mod whole;
 
-mod fixed_prompt_natural;
+mod fixed_prompt_autoregressive;
 
 #[cfg(test)]
 mod source_operator_tests {

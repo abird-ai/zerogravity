@@ -1,0 +1,230 @@
+//! Closed original autoregressive request coordinates; no source or Root issuer.
+use zerogravity_core::accelerator::program::{InvocationPhase, TextInvocation};
+use zerogravity_core::session_root::{RootAttempt, RootBinding};
+use zerogravity_core::{Error, Result};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AutoregressiveSlot {
+    InitialOne,
+    FeedbackAtOne,
+    Prefix64,
+    FinalTwo,
+    FeedbackAt66,
+}
+impl AutoregressiveSlot {
+    pub const ALL: [Self; 5] = [
+        Self::InitialOne,
+        Self::FeedbackAtOne,
+        Self::Prefix64,
+        Self::FinalTwo,
+        Self::FeedbackAt66,
+    ];
+    pub const fn index(self) -> usize {
+        match self {
+            Self::InitialOne => 0,
+            Self::FeedbackAtOne => 1,
+            Self::Prefix64 => 2,
+            Self::FinalTwo => 3,
+            Self::FeedbackAt66 => 4,
+        }
+    }
+    pub const fn mode(self) -> InvocationPhase {
+        match self {
+            Self::InitialOne => InvocationPhase::Prefill,
+            Self::FeedbackAtOne | Self::FeedbackAt66 => InvocationPhase::Decode,
+            Self::Prefix64 => InvocationPhase::Prefill,
+            Self::FinalTwo => InvocationPhase::Prefill,
+        }
+    }
+    pub const fn base(self) -> usize {
+        match self {
+            Self::InitialOne | Self::Prefix64 => 0,
+            Self::FeedbackAtOne => 1,
+            Self::FinalTwo => 64,
+            Self::FeedbackAt66 => 66,
+        }
+    }
+    pub const fn rows(self) -> usize {
+        match self {
+            Self::Prefix64 => 64,
+            Self::FinalTwo => 2,
+            _ => 1,
+        }
+    }
+    pub const fn feedback(self) -> bool {
+        matches!(self, Self::FeedbackAtOne | Self::FeedbackAt66)
+    }
+    pub const fn emits(self) -> bool {
+        !matches!(self, Self::Prefix64)
+    }
+    pub(crate) fn require_current(
+        self,
+        current: RootBinding,
+        attempt: &RootAttempt,
+        call: &TextInvocation,
+    ) -> Result<()> {
+        if current != attempt.base()
+            || current.source() != call.source()
+            || current.frontier() != self.base() as u64
+            || call.phase() != self.mode()
+            || call.tokens().base() != self.base()
+            || call.tokens().len() != self.rows()
+            || call.tokens().capacity() != 512
+            || call.tokens().vocabulary() != 248320
+            || attempt.frontier() != (self.base() + self.rows()) as u64
+        {
+            return Err(Error::State(
+                "autoregressive full24 original current-root/call span differs or was revoked"
+                    .into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zerogravity_core::accelerator::SourceIdentity;
+    use zerogravity_core::accelerator::program::{TextCallGeometry, TokenSpan};
+    use zerogravity_core::session_root::SessionAuthority;
+    fn call(slot: AutoregressiveSlot, source: SourceIdentity) -> TextInvocation {
+        TextInvocation::new(
+            TokenSpan::new(
+                TextCallGeometry::new(source, 248320, 512).unwrap(),
+                slot.base(),
+                std::sync::Arc::from(vec![11; slot.rows()]),
+            )
+            .unwrap(),
+            slot.mode(),
+        )
+        .unwrap()
+    }
+    #[test]
+    fn exact_original_roots_progress_by_one_transaction_and_text_invocation() {
+        let source = SourceIdentity::for_new_allocation().unwrap();
+        for slots in [
+            [
+                AutoregressiveSlot::InitialOne,
+                AutoregressiveSlot::FeedbackAtOne,
+            ]
+            .as_slice(),
+            [
+                AutoregressiveSlot::Prefix64,
+                AutoregressiveSlot::FinalTwo,
+                AutoregressiveSlot::FeedbackAt66,
+            ]
+            .as_slice(),
+        ] {
+            let mut authority = SessionAuthority::new(source).unwrap();
+            for (ordinal, &slot) in slots.iter().enumerate() {
+                let attempt = authority.begin_advance(slot.rows() as u64).unwrap();
+                slot.require_current(authority.binding(), &attempt, &call(slot, source))
+                    .unwrap();
+                let before = authority.binding();
+                let after = authority.prepare_publish(attempt).unwrap().commit();
+                assert_eq!(after.root(), before.root() + 1);
+                assert_eq!(after.frontier(), (slot.base() + slot.rows()) as u64);
+                assert_eq!(after.root(), ordinal as u64 + 1);
+            }
+        }
+    }
+    #[test]
+    fn cancelled_or_uncommitted_attempt_never_advances_and_competing_commit_revokes_it() {
+        let source = SourceIdentity::for_new_allocation().unwrap();
+        let mut authority = SessionAuthority::new(source).unwrap();
+        let before = authority.binding();
+        drop(authority.begin_advance(1).unwrap());
+        assert_eq!(authority.binding(), before);
+        let stale = authority.begin_advance(1).unwrap();
+        let winner = authority.begin_advance(1).unwrap();
+        authority.prepare_publish(winner).unwrap().commit();
+        assert!(
+            AutoregressiveSlot::InitialOne
+                .require_current(
+                    authority.binding(),
+                    &stale,
+                    &call(AutoregressiveSlot::InitialOne, source)
+                )
+                .is_err()
+        );
+        assert!(authority.prepare_publish(stale).is_err());
+    }
+    #[test]
+    fn restore_revokes_old_attempt_even_when_frontier_returns_to_same_coordinate() {
+        let source = SourceIdentity::for_new_allocation().unwrap();
+        let mut authority = SessionAuthority::new(source).unwrap();
+        let initial = authority.binding();
+        let old = authority.begin_advance(1).unwrap();
+        let advance = authority.begin_advance(1).unwrap();
+        authority.prepare_publish(advance).unwrap().commit();
+        let restore = authority.begin_restore(initial).unwrap();
+        authority.prepare_publish(restore).unwrap().commit();
+        assert_eq!(authority.binding().frontier(), 0);
+        assert_ne!(authority.binding(), initial);
+        assert!(
+            AutoregressiveSlot::InitialOne
+                .require_current(
+                    authority.binding(),
+                    &old,
+                    &call(AutoregressiveSlot::InitialOne, source)
+                )
+                .is_err()
+        );
+        let fresh = authority.begin_advance(1).unwrap();
+        AutoregressiveSlot::InitialOne
+            .require_current(
+                authority.binding(),
+                &fresh,
+                &call(AutoregressiveSlot::InitialOne, source),
+            )
+            .unwrap();
+    }
+    #[test]
+    fn source_session_span_and_emission_boundaries_are_not_interchangeable() {
+        let source = SourceIdentity::for_new_allocation().unwrap();
+        let a = SessionAuthority::new(source).unwrap();
+        let b = SessionAuthority::new(source).unwrap();
+        let attempt = a.begin_advance(1).unwrap();
+        assert!(
+            AutoregressiveSlot::InitialOne
+                .require_current(
+                    b.binding(),
+                    &attempt,
+                    &call(AutoregressiveSlot::InitialOne, source)
+                )
+                .is_err()
+        );
+        let foreign = SourceIdentity::for_new_allocation().unwrap();
+        assert!(
+            AutoregressiveSlot::InitialOne
+                .require_current(
+                    a.binding(),
+                    &attempt,
+                    &call(AutoregressiveSlot::InitialOne, foreign)
+                )
+                .is_err()
+        );
+        assert!(
+            AutoregressiveSlot::Prefix64
+                .require_current(
+                    a.binding(),
+                    &attempt,
+                    &call(AutoregressiveSlot::InitialOne, source)
+                )
+                .is_err()
+        );
+        assert_eq!(
+            AutoregressiveSlot::ALL.map(AutoregressiveSlot::emits),
+            [true, true, false, true, true]
+        );
+        assert_eq!(
+            AutoregressiveSlot::ALL.map(AutoregressiveSlot::feedback),
+            [false, true, false, false, true]
+        );
+        assert_eq!(
+            AutoregressiveSlot::ALL.map(AutoregressiveSlot::index),
+            [0, 1, 2, 3, 4]
+        );
+    }
+}

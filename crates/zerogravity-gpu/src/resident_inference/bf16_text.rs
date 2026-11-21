@@ -624,7 +624,9 @@ impl Bf16TextSession {
     ) -> Result<Bf16TextPending> {
         check_cancel(cancelled)?;
         let feedback = self.feedback.as_ref().ok_or_else(|| {
-            Error::State("BF16 text natural continuation needs committed private feedback".into())
+            Error::State(
+                "BF16 text autoregressive continuation needs committed private feedback".into(),
+            )
         })?;
         if self.stopped
             || self.calls >= self.limit
@@ -759,7 +761,9 @@ impl Bf16TextSession {
     ) -> Result<Bf16TextResult> {
         check_cancel(cancelled)?;
         let feedback = self.feedback.as_ref().ok_or_else(|| {
-            Error::State("BF16 text natural continuation needs committed private feedback".into())
+            Error::State(
+                "BF16 text autoregressive continuation needs committed private feedback".into(),
+            )
         })?;
         if self.stopped
             || self.calls >= self.limit

@@ -68,7 +68,7 @@ async fn trajectory(
         let call = expected.call(repeat, position)?;
         need(
             actual == (call.selected, call.max_bits),
-            "actual fullV selection equals original natural feedback",
+            "actual fullV selection equals original autoregressive feedback",
         )?;
         let dispatches = pending.dispatches();
         let output = session.commit(pending)?;

@@ -584,15 +584,15 @@ impl ModelGdnPrepared {
 }
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-mod natural;
+mod autoregressive;
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod fixed_prompt;
 
 mod whole;
 
-mod fixed_prompt_natural;
-pub(crate) use fixed_prompt_natural::ColdFixedPromptGdn;
+mod fixed_prompt_autoregressive;
+pub(crate) use fixed_prompt_autoregressive::ColdFixedPromptGdn;
 
 mod text;
 pub(crate) use text::ColdTextGdn;

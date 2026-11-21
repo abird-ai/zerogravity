@@ -150,7 +150,7 @@ fn descriptor(
     QwenOperator::new(call.clone(), layer, kind, matrices, parameters).unwrap()
 }
 pub(super) fn record(call: &PromptInvocation) -> QwenPlan {
-    let call = call.as_text_invocation();
+    let call = call.model_invocation();
     let mut builder = QwenPlanBuilder::new_model(call.clone()).unwrap();
     let mut branch = builder
         .source_embedding(

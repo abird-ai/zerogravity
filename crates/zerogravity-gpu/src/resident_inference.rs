@@ -3466,17 +3466,19 @@ pub(crate) mod text_positions;
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
-    NaturalFault, NaturalFaultExecution, NaturalFaultOutcome, NaturalReceipt, NaturalReuseFault,
-    NaturalReuseFaultExecution, NaturalReuseFaultOutcome, NaturalReuseReceipt, NaturalReuseRound,
-    qualify_natural_fault, qualify_natural_reuse_fault,
+    AutoregressiveFault, AutoregressiveFaultExecution, AutoregressiveFaultOutcome,
+    AutoregressiveReceipt, AutoregressiveReuseFault, AutoregressiveReuseFaultExecution,
+    AutoregressiveReuseFaultOutcome, AutoregressiveReuseReceipt, AutoregressiveReuseRound,
+    qualify_autoregressive_fault, qualify_autoregressive_reuse_fault,
 };
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
-    ColdModelSlots, CommittedBf16Feedback, NaturalCommitted, NaturalFeedbackRequest,
-    NaturalObserver, NaturalSlot, NaturalStatePool, NaturalStep, PreparedNaturalCold,
-    PreparedReusableNatural, ReusableNaturalStorage, prepare_natural_cold,
-    prepare_reusable_natural_cold, qualify_natural_reuse_pressure,
+    AutoregressiveCommit, AutoregressiveFeedback, AutoregressiveObserver,
+    AutoregressiveReuseStorage, AutoregressiveSlot, AutoregressiveStatePool, AutoregressiveStep,
+    ColdModelSlots, CommittedBf16Feedback, PreparedAutoregressiveCold, PreparedAutoregressiveReuse,
+    prepare_autoregressive_cold, prepare_autoregressive_reuse,
+    qualify_autoregressive_reuse_pressure,
 };
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
@@ -3533,12 +3535,12 @@ pub use native_fragment::{
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
-    FixedPromptCloseReceipt, FixedPromptEmptySnapshot, FixedPromptFeedbackRequest,
-    FixedPromptInvocationReceipt, FixedPromptLifecycleProfile, FixedPromptLoaded,
-    FixedPromptLoadedObservation, FixedPromptLoadedSnapshot, FixedPromptNaturalFault,
-    FixedPromptNaturalFaultOutcome, FixedPromptNaturalReadback, FixedPromptPending,
-    FixedPromptSession, fixed_prompt_natural_host_bound, prepare_fixed_prompt_natural,
-    prepare_fixed_prompt_natural_with_profile,
+    FixedPromptAutoregressiveFault, FixedPromptAutoregressiveFaultOutcome,
+    FixedPromptAutoregressiveReadback, FixedPromptCloseReceipt, FixedPromptEmptySnapshot,
+    FixedPromptFeedbackRequest, FixedPromptInvocationReceipt, FixedPromptLifecycleProfile,
+    FixedPromptLoaded, FixedPromptLoadedObservation, FixedPromptLoadedSnapshot, FixedPromptPending,
+    FixedPromptSession, fixed_prompt_autoregressive_host_bound,
+    prepare_fixed_prompt_autoregressive, prepare_fixed_prompt_autoregressive_with_profile,
 };
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]

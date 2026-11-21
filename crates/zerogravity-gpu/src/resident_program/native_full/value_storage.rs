@@ -518,7 +518,7 @@ impl FullModelProgram {
             device_copies: AtomicUsize::new(0),
             _readback: readback,
             _metadata: metadata,
-            natural: None,
+            autoregressive: None,
         });
         body.require_rms_scratch(&rms_scope)?;
         Ok((body, buffers, preflight))

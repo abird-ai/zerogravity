@@ -1,12 +1,12 @@
 //! Finite source diagnostic on original ResidentModel/SessionAuthority owners.
 // Previous names: qwen_source, QwenSource*, Qwen27bSourceGpu*.
 use super::*;
-mod natural;
+mod autoregressive;
 use crate::resident_program::bf16_text_source::{
     Bf16TextSourceBody, TextSourceFrame, TextSourceFrameKind, TextSourceObserver,
     TextSourceReadout, TextSourceResourceInventory,
 };
-pub use natural::{Bf16TextSourceGreedyPending, Bf16TextSourceGreedyResult};
+pub use autoregressive::{Bf16TextSourceGreedyPending, Bf16TextSourceGreedyResult};
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::accelerator::program::{Bf16TextCall, TextStepBindings};
@@ -49,7 +49,7 @@ pub struct Bf16TextSourceCandidate {
 pub struct Bf16TextSourceSession {
     inner: ResidentSession,
     feedback: Option<ResidentToken>,
-    natural: natural::Progress,
+    autoregressive: autoregressive::Progress,
     // All actual root/feedback readers precede native/source retirement.
     loaded: Arc<Bf16TextSourceCandidate>,
     #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
@@ -106,7 +106,7 @@ pub struct Bf16TextSourceSnapshot {
     // Actual root readers retire while the original source/native owner is live.
     inner: ResidentSnapshot,
     feedback: Option<ResidentToken>,
-    natural: natural::Progress,
+    autoregressive: autoregressive::Progress,
     loaded: Arc<Bf16TextSourceCandidate>,
     _permit: async_lock::SemaphoreGuardArc,
 }
@@ -210,7 +210,7 @@ impl Bf16TextSourceCandidate {
         crate::hip::native::SINGLE_SOURCE_QUALIFICATION_HOST_BYTES
     }
     /// One cold original HIP process, teacher ID11 INITIAL1 then ID353 cached1.
-    /// No native/natural/serving qualification follows from successful loading.
+    /// No native/autoregressive/serving qualification follows from successful loading.
     ///
     /// # Safety
     /// `source_owner` must retain the actual managed SnapshotLease and lifecycle
@@ -238,12 +238,12 @@ impl Bf16TextSourceCandidate {
             .await
         }
     }
-    /// Separately prepared two-position natural candidate, not a trained permit.
+    /// Separately prepared two-position autoregressive candidate, not a trained permit.
     ///
     /// # Safety
     /// Same authentic managed source/lifecycle owner obligation as
     /// `load_hip_qualification`; retain it through all native/unknown readers.
-    pub async unsafe fn load_hip_natural_qualification(
+    pub async unsafe fn load_hip_autoregressive_qualification(
         device: Device,
         source: VerifiedTensorSource,
         records: [Arc<TextStepBindings>; 2],
@@ -257,7 +257,7 @@ impl Bf16TextSourceCandidate {
                 source,
                 records,
                 source_owner,
-                TextSourceReadout::NaturalGreedy,
+                TextSourceReadout::AutoregressiveGreedy,
                 cancelled,
             )
             .await
@@ -295,9 +295,10 @@ impl Bf16TextSourceCandidate {
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
         #[cfg(feature = "gemma-bf16-qualification")]
-        if readout.natural() && matches!(&owner, crate::hip::native::HipColdOwner::Shared(_)) {
+        if readout.autoregressive() && matches!(&owner, crate::hip::native::HipColdOwner::Shared(_))
+        {
             return Err(Error::Unsupported(
-                "shared BF16 text source natural readout is not an admitted route".into(),
+                "shared BF16 text source autoregressive readout is not an admitted route".into(),
             ));
         }
         let device = owner.device();
@@ -388,7 +389,7 @@ impl Bf16TextSourceCandidate {
             native,
         )?;
         let mut sampler = Vec::new();
-        if readout.natural() {
+        if readout.autoregressive() {
             for bytes in crate::resident_greedy::workspace_bytes(
                 crate::resident_program::bf16_text_source::vocabulary(&records[0])?,
             )? {
@@ -399,7 +400,7 @@ impl Bf16TextSourceCandidate {
         let ready = init.complete_sync().await?;
         let (program, first) = first.bind()?;
         let (_, cached) = cached.bind()?;
-        let greedy = if readout.natural() {
+        let greedy = if readout.autoregressive() {
             Some([sampler[0].handle(), sampler[1].handle()])
         } else {
             None
@@ -472,8 +473,8 @@ impl Bf16TextSourceCandidate {
     pub fn inventory(&self) -> &TextSourceResourceInventory {
         &self.inventory
     }
-    pub fn prepared_natural_available(&self) -> bool {
-        self.readout.natural()
+    pub fn prepared_autoregressive_available(&self) -> bool {
+        self.readout.autoregressive()
     }
     pub fn trained_model_qualified(&self) -> bool {
         false
@@ -488,7 +489,7 @@ impl Bf16TextSourceCandidate {
             loaded: self.clone(),
             inner,
             feedback: None,
-            natural: natural::Progress::default(),
+            autoregressive: autoregressive::Progress::default(),
             #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
             probe_issued: AtomicBool::new(false),
             #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
@@ -522,7 +523,7 @@ impl Bf16TextSourceSession {
         }
         if self.probe_issued.load(Ordering::Acquire)
             || self.feedback.is_some()
-            || self.natural.calls != 0
+            || self.autoregressive.calls != 0
             || self.inner.binding().frontier() != 0
         {
             return Err(Error::State(
@@ -543,7 +544,7 @@ impl Bf16TextSourceSession {
             loaded: self.loaded.clone(),
             inner: self.inner.snapshot(),
             feedback: self.feedback.clone(),
-            natural: self.natural,
+            autoregressive: self.autoregressive,
             _permit: permit,
         })
     }
@@ -568,7 +569,7 @@ impl Bf16TextSourceSession {
         if let Some(token) = &mut self.feedback {
             token.producer = Some(restored);
         }
-        self.natural = snapshot.natural;
+        self.autoregressive = snapshot.autoregressive;
         Ok(())
     }
     pub async fn reset(&mut self) -> Result<()> {
@@ -576,7 +577,7 @@ impl Bf16TextSourceSession {
         let _call = loaded.call_lock.lock().await;
         self.inner.reset().await?;
         self.feedback = None;
-        self.natural = natural::Progress::default();
+        self.autoregressive = autoregressive::Progress::default();
         Ok(())
     }
     /// Fixed explicit qualification domain; tokens are source IDs, not counts.
@@ -588,9 +589,9 @@ impl Bf16TextSourceSession {
         #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
         self.probe_issued.store(true, Ordering::Release);
         check_cancel(cancelled)?;
-        if self.feedback.is_some() || self.natural.calls != 0 {
+        if self.feedback.is_some() || self.autoregressive.calls != 0 {
             return Err(Error::State(
-                "teacher input cannot replace committed natural feedback".into(),
+                "teacher input cannot replace committed autoregressive feedback".into(),
             ));
         }
         let permit = self.loaded.proposals.acquire_arc().await;

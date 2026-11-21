@@ -22,7 +22,7 @@ fn one_prefill_has_true_chunk_indices_scratch_and_final_offsets() -> Result<()> 
                 PromptSpan::prefill(source, workload, &vec![11; rows])?,
             )?;
             let geometry = TextGdnGeometry::for_invocation(
-                &call.as_text_invocation().request().text_invocation()?,
+                &call.model_invocation().request().text_invocation()?,
                 fixture_implementation(
                     if profile == QwenModelVariant::Qwen800M {
                         0
@@ -101,7 +101,7 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
                 PromptSpan::prefill(source, workload, &vec![11; rows])?,
             )?;
             let g = TextGdnGeometry::for_invocation(
-                &call.as_text_invocation().request().text_invocation()?,
+                &call.model_invocation().request().text_invocation()?,
                 fixture_implementation(
                     if profile == QwenModelVariant::Qwen800M {
                         0

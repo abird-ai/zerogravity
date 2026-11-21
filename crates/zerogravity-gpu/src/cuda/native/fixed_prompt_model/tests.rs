@@ -58,8 +58,8 @@ fn physical_row_metadata_does_not_replace_actual_teacher_issuer() -> Result<()> 
     let a = make()?;
     let b = make()?;
     assert_eq!(a.source(), b.source());
-    assert_eq!(a.rows().ids(), b.rows().ids());
-    assert_ne!(a.rows(), b.rows());
+    assert_eq!(a.tokens().ids(), b.tokens().ids());
+    assert_ne!(a.tokens(), b.tokens());
     assert_ne!(a, b);
     assert_eq!(
         FixedPromptInvocationKind::of(&a)?,

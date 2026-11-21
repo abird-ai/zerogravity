@@ -25,7 +25,7 @@ impl SourceModelScopes {
         // The original bound computes the same physical source/state/ABI extent.
         provider_bound(source, records)?;
         for (index, record) in records.iter().enumerate() {
-            if crate::resident_program::natural_binding::slot(record.invocation())? != index
+            if crate::resident_program::autoregressive_binding::slot(record.invocation())? != index
                 || !source.same_issuer(record.source())
                 || record.invocation().tokens().capacity() != 512
                 || record.invocation().tokens().vocabulary() != 248320

@@ -31,12 +31,12 @@ pub use scopes::SourceModelScopes;
 mod faults;
 use faults::{Mode, Outcome};
 pub use faults::{SourceModelFault, SourceModelFaultOutcome, qualify_source_model_fault};
-pub(crate) mod natural_cold;
+pub(crate) mod autoregressive_cold;
 struct Execution<'a> {
     rotary: Option<RotaryOutcome>,
     cancelled: Option<&'a AtomicBool>,
     mode: Mode,
-    natural: bool,
+    autoregressive: bool,
     reusable: bool,
 }
 pub struct SourceModelInputs {
@@ -212,7 +212,7 @@ where
             rotary,
             cancelled,
             mode: Mode::Compare,
-            natural: false,
+            autoregressive: false,
             reusable: false,
         },
         validate,
@@ -220,8 +220,8 @@ where
     .await?
     {
         Outcome::Compared(value) => Ok(value),
-        Outcome::Natural(_) => Err(Error::State(
-            "forced model qualifier returned natural preparation".into(),
+        Outcome::Autoregressive(_) => Err(Error::State(
+            "forced model qualifier returned autoregressive preparation".into(),
         )),
         Outcome::Fault(_) => Err(Error::State(
             "full24 positive returned diagnostic fault".into(),
@@ -243,12 +243,12 @@ where
         rotary,
         cancelled,
         mode,
-        natural,
+        autoregressive,
         reusable,
     } = execution;
     not_cancelled(cancelled)?;
     SourceModelScopes::require(&source, &records)?;
-    let natural_metadata = if natural {
+    let autoregressive_metadata = if autoregressive {
         Some(source.reserve_workspace(1024 * 1024)?)
     } else {
         None
@@ -256,9 +256,9 @@ where
     let metadata = source.reserve_workspace(4 * 1024 * 1024)?;
     let records = records.into_iter().collect::<Vec<_>>();
     let cap = if reusable {
-        if !natural {
+        if !autoregressive {
             return Err(Error::State(
-                "reusable preparation requires genuine natural cold mode".into(),
+                "reusable preparation requires genuine autoregressive cold mode".into(),
             ));
         }
         crate::cuda::native::full_model_budget::reusable_provider_bound(&source, &records)?
@@ -714,7 +714,7 @@ where
         tied,
     });
     slot.finish()?;
-    if natural {
+    if autoregressive {
         let mut templates = Vec::with_capacity(5);
         for (index, prepared) in programs.iter().enumerate() {
             let program = if index == 0 {
@@ -722,28 +722,31 @@ where
             } else {
                 prepared.as_ref().unwrap()
             };
-            templates.push(program.natural_cold_slot()?);
+            templates.push(program.autoregressive_cold_slot()?);
         }
-        let state_pool = super::natural_publication::NaturalStatePool::from_prepared(
+        let state_pool = super::autoregressive::AutoregressiveStatePool::from_prepared(
             &source,
             &model,
             owners.candidates.clone(),
         )?;
-        let slots = natural_cold::ColdModelSlots::new(
+        let slots = autoregressive_cold::ColdModelSlots::new(
             &model,
             &sessions,
             templates,
             owners,
-            natural_metadata
-                .ok_or_else(|| Error::State("natural cold metadata was not admitted".into()))?,
+            autoregressive_metadata.ok_or_else(|| {
+                Error::State("autoregressive cold metadata was not admitted".into())
+            })?,
         )?;
         drop(workspace);
-        return Ok(Outcome::Natural(natural_cold::PreparedNaturalCold {
-            model,
-            sessions,
-            slots,
-            state_pool,
-        }));
+        return Ok(Outcome::Autoregressive(
+            autoregressive_cold::PreparedAutoregressiveCold {
+                model,
+                sessions,
+                slots,
+                state_pool,
+            },
+        ));
     }
     let mut previous: [Option<Arc<CompletedPrefixPhase>>; 2] = [None, None];
     let mut current = 0usize;

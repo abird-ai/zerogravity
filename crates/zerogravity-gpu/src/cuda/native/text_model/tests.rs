@@ -64,8 +64,8 @@ fn fa_uses_the_original_appended_private_read_and_never_a_fake_write() -> Result
     )?;
     for layer in [3, 7, 11, 15, 19, 23] {
         let descriptor = QwenOperator::new(
-            call.as_text_invocation().clone(),
-            Some(call.as_text_invocation().layer(layer)?),
+            call.model_invocation().clone(),
+            Some(call.model_invocation().layer(layer)?),
             QwenOperation::FlashAttention,
             Vec::new(),
             Vec::new(),

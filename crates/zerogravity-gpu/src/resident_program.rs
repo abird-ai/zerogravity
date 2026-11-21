@@ -647,6 +647,8 @@ pub(crate) struct ResidentProgram {
     body: ResidentProgramBody,
 }
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
+pub(crate) mod autoregressive_binding;
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod fixed_prompt_binding;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod fused_cohort;
@@ -654,8 +656,6 @@ pub(crate) mod fused_cohort;
 pub(crate) mod native;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod native_full;
-#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-pub(crate) mod natural_binding;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod qwen2b_component;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]

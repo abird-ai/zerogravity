@@ -11,7 +11,7 @@ fn capture_first_layer_projections() -> Result<()> {
 }
 
 #[test]
-#[ignore = "fresh isolated release process; capture natural-feedback cached GEMM operands"]
+#[ignore = "fresh isolated release process; capture autoregressive-feedback cached GEMM operands"]
 fn capture_cached_layer_projections() -> Result<()> {
     capture_layer_projections(true)
 }

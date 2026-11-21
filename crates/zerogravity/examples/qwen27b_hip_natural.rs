@@ -238,7 +238,7 @@ fn completed(
         packet_matches(selected.0, selected.1, selection) && session.binding() == before,
         "GPU packet ID/maxbits equal independent original natural fullV BEFORE publication",
     )?;
-    let output = session.commit_natural(pending)?;
+    let output = session.commit_autoregressive(pending)?;
     need(
         packet_matches(output.selected_id, output.max_bits, selection)
             && output.root == session.binding()
@@ -286,7 +286,7 @@ fn exercise(
     reference: &Arc<expected::Reference>,
 ) -> Proof<Value> {
     need(
-        candidate.prepared_natural_available() && !candidate.trained_model_qualified(),
+        candidate.prepared_autoregressive_available() && !candidate.trained_model_qualified(),
         "natural candidate has no trained/serving grant",
     )?;
     let mut a = block_on(candidate.session())?;
@@ -374,7 +374,7 @@ fn exercise(
     };
     let (second, second_selection) = completed(&mut a, None, &mut main, 0, 1, None)?;
     need(
-        a.natural_stopped() && block_on(a.prepare_next(None, None)).is_err(),
+        a.autoregressive_stopped() && block_on(a.prepare_next(None, None)).is_err(),
         "finite natural scope exhausted exactly",
     )?;
     let (peer, peer_selection) = completed(&mut b, Some(11), &mut main, 1, 0, None)?;
@@ -385,7 +385,7 @@ fn exercise(
     ])?;
     block_on(a.restore(&snapshot))?;
     need(
-        a.binding().frontier() == 1 && !a.natural_stopped(),
+        a.binding().frontier() == 1 && !a.autoregressive_stopped(),
         "own snapshot restores current natural feedback",
     )?;
     let replay = {
@@ -402,7 +402,7 @@ fn exercise(
     need(
         a.binding().frontier() == 0
             && b.binding().frontier() == 2
-            && !a.natural_stopped()
+            && !a.autoregressive_stopped()
             && block_on(a.prepare_next(None, None)).is_err(),
         "reset clears private feedback without changing peer",
     )?;
@@ -413,14 +413,14 @@ fn exercise(
         ordinary_seed_selection == main.selection(0, 0)?,
         "ordinary seed16B packet equals independent original ID/maxbits",
     )?;
-    let seed_out = a.commit_natural(seed)?;
+    let seed_out = a.commit_autoregressive(seed)?;
     let next = block_on(a.prepare_next(None, None))?;
     let ordinary_selection = next.selected()?;
     need(
         ordinary_selection == main.selection(0, 1)?,
         "ordinary continuation16B packet equals independent original ID/maxbits",
     )?;
-    let next_out = a.commit_natural(next)?;
+    let next_out = a.commit_autoregressive(next)?;
     need(
         ordinary_seed_selection.0 != 11 && ordinary_selection.0 != 11,
         "seed input 11 is distinct from both selected output tuples",
@@ -637,8 +637,9 @@ fn run() -> Proof<()> {
     let store = CacheStore::open_existing(CacheOptions::new(None, 96 * GIB))?;
     let snapshot = Arc::new(store.open_snapshot(SNAPSHOT)?);
     let loaded = Qwen27bGpuLoaded::open(snapshot.clone(), context.clone(), None)?;
-    let candidate =
-        block_on(loaded.load_hip_natural_qualification(Device::Hip(Default::default()), None))?;
+    let candidate = block_on(
+        loaded.load_hip_autoregressive_qualification(Device::Hip(Default::default()), None),
+    )?;
     let source_inventory = format!("{:?}", candidate.inventory());
     let witness = candidate.retention_witness();
     let result = if final_case {

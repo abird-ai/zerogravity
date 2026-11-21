@@ -31,7 +31,7 @@ impl Session {
         validate: F,
     ) -> Result<native::FixedPromptPending>
     where
-        F: for<'a> FnMut(native::FixedPromptNaturalReadback<'a>) -> Result<()>,
+        F: for<'a> FnMut(native::FixedPromptAutoregressiveReadback<'a>) -> Result<()>,
     {
         not_cancelled(cancelled)?;
         OriginalWindowModelSource::validate_fixed_prompt_request(ids, 1)?;
@@ -45,7 +45,7 @@ impl Session {
         validate: F,
     ) -> Result<native::FixedPromptPending>
     where
-        F: for<'a> FnMut(native::FixedPromptNaturalReadback<'a>) -> Result<()>,
+        F: for<'a> FnMut(native::FixedPromptAutoregressiveReadback<'a>) -> Result<()>,
     {
         not_cancelled(cancelled)?;
         let request = self.engine.feedback_request()?;
@@ -70,7 +70,7 @@ impl Session {
         validate: F,
     ) -> Result<native::FixedPromptInvocationReceipt>
     where
-        F: for<'a> FnMut(native::FixedPromptNaturalReadback<'a>) -> Result<()>,
+        F: for<'a> FnMut(native::FixedPromptAutoregressiveReadback<'a>) -> Result<()>,
     {
         let pending = self.prepare_prompt_with(ids, cancelled, validate).await?;
         self.commit(pending, cancelled)
@@ -81,7 +81,7 @@ impl Session {
         validate: F,
     ) -> Result<native::FixedPromptInvocationReceipt>
     where
-        F: for<'a> FnMut(native::FixedPromptNaturalReadback<'a>) -> Result<()>,
+        F: for<'a> FnMut(native::FixedPromptAutoregressiveReadback<'a>) -> Result<()>,
     {
         let pending = self.prepare_next_with(cancelled, validate).await?;
         self.commit(pending, cancelled)
@@ -101,9 +101,9 @@ impl Session {
     }
     pub async fn probe_cached(
         self,
-        fault: native::FixedPromptNaturalFault,
+        fault: native::FixedPromptAutoregressiveFault,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<native::FixedPromptNaturalFaultOutcome> {
+    ) -> Result<native::FixedPromptAutoregressiveFaultOutcome> {
         let request = self.engine.feedback_request()?;
         let record = self
             .templates

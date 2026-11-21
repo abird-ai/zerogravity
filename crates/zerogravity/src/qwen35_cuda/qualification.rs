@@ -5,9 +5,10 @@ use crate::gpu::cuda::gdn::{
 };
 use crate::gpu::cuda::native::RotaryOutcome;
 use crate::gpu::cuda::native::{
-    CommittedBf16Feedback, NaturalFeedbackRequest, NaturalReceipt, NaturalReuseReceipt,
-    NaturalReuseRound, NaturalSlot, SourceModelInputs, SourceModelReadback, SourceModelScopes,
-    prepare_natural_cold, prepare_reusable_natural_cold,
+    AutoregressiveFeedback, AutoregressiveReceipt, AutoregressiveReuseReceipt,
+    AutoregressiveReuseRound, AutoregressiveSlot, CommittedBf16Feedback, SourceModelInputs,
+    SourceModelReadback, SourceModelScopes, prepare_autoregressive_cold,
+    prepare_autoregressive_reuse,
 };
 use crate::gpu::{Device, SourceBindings};
 use crate::qwen35::plan::{
@@ -24,13 +25,13 @@ use std::{
     },
 };
 use zerogravity_artifacts::cache::TransferAdmission;
+mod autoregressive;
 mod leaves;
-mod natural;
 pub use leaves::*;
 mod reuse;
 mod source;
-pub use natural::qualify_natural_model;
-pub use reuse::qualify_natural_reuse;
+pub use autoregressive::qualify_autoregressive_model;
+pub use reuse::qualify_autoregressive_reuse;
 pub use source::{
     prepare_leaf_source, prepare_rms_leaf_source, prepare_rotary_source,
     prepare_tied_weight_source, qualify_qwen2b_mlp_weights,
@@ -310,7 +311,7 @@ pub fn fragment_scope(
 fn not_cancelled(cancelled: Option<&AtomicBool>) -> Result<()> {
     if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
         return Err(Error::State(
-            "natural full24 cancelled before publication".into(),
+            "autoregressive full24 cancelled before publication".into(),
         ));
     }
     Ok(())
@@ -343,8 +344,8 @@ impl PreparedScopes {
     }
     fn bind(
         &self,
-        slot: NaturalSlot,
-        feedback: Option<&NaturalFeedbackRequest<'_>>,
+        slot: AutoregressiveSlot,
+        feedback: Option<&AutoregressiveFeedback<'_>>,
     ) -> Result<Arc<SourceBindings>> {
         let template = &self.templates[slot.index()];
         let ids = match feedback {
@@ -354,15 +355,17 @@ impl PreparedScopes {
             None if !slot.feedback() => template.invocation().tokens().ids().to_vec(),
             _ => {
                 return Err(Error::State(
-                    "model natural prompt/actual feedback scope differs".into(),
+                    "model autoregressive prompt/actual feedback scope differs".into(),
                 ));
             }
         };
         let phase = match slot {
-            NaturalSlot::InitialOne => ReferencePhase::InitialOne,
-            NaturalSlot::FeedbackAtOne | NaturalSlot::FeedbackAt66 => ReferencePhase::CachedOne,
-            NaturalSlot::Prefix64 => ReferencePhase::Initial64,
-            NaturalSlot::FinalTwo => ReferencePhase::ContinuedTwo,
+            AutoregressiveSlot::InitialOne => ReferencePhase::InitialOne,
+            AutoregressiveSlot::FeedbackAtOne | AutoregressiveSlot::FeedbackAt66 => {
+                ReferencePhase::CachedOne
+            }
+            AutoregressiveSlot::Prefix64 => ReferencePhase::Initial64,
+            AutoregressiveSlot::FinalTwo => ReferencePhase::ContinuedTwo,
         };
         let source = self.source.source().source_identity();
         let call = QwenModelInvocation::new(QwenGdnInvocation::new(

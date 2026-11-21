@@ -193,9 +193,9 @@ mod tests {
         );
         for (actual, original) in calls.iter().zip(&originals) {
             assert_eq!(actual, original);
-            assert_eq!(actual.tokens(), original.rows());
-            assert_eq!(actual.tokens().ids(), original.rows().ids());
-            assert_eq!(actual.tokens().source(), original.rows().source());
+            assert_eq!(actual.tokens(), original.tokens());
+            assert_eq!(actual.tokens().ids(), original.tokens().ids());
+            assert_eq!(actual.tokens().source(), original.tokens().source());
         }
         let permuted = [
             calls[3].clone(),

@@ -157,7 +157,7 @@ impl ColdTextGdn {
             .try_into()
             .map_err(|_| Error::State("text five actual GDN producers".into()))?;
         for (old, new) in self.code.operands().iter().zip(&operands) {
-            crate::resident_program::natural_binding::same_lease(old, new)?;
+            crate::resident_program::autoregressive_binding::same_lease(old, new)?;
         }
         let nodes = scope.record().plan().nodes();
         for (i, recurrent) in [(0, false), (1, true)] {

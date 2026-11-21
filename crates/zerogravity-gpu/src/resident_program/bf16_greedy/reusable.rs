@@ -1,6 +1,6 @@
 //! Fresh immutable output packet; only reducer temporaries are shared.
 use super::*;
-use crate::resident_program::natural_binding::{same_lease, same_recipe};
+use crate::resident_program::autoregressive_binding::{same_lease, same_recipe};
 
 impl PreparedBf16Greedy {
     pub(crate) fn bind_reusable(self: &Arc<Self>, values: Arc<ModelValues>) -> Result<Arc<Self>> {

@@ -29,11 +29,11 @@ pub use layout::TextSourceResourceInventory;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TextSourceReadout {
     TeacherLogits,
-    NaturalGreedy,
+    AutoregressiveGreedy,
 }
 impl TextSourceReadout {
-    pub(crate) fn natural(self) -> bool {
-        self == Self::NaturalGreedy
+    pub(crate) fn autoregressive(self) -> bool {
+        self == Self::AutoregressiveGreedy
     }
 }
 pub(crate) fn vocabulary(record: &TextStepBindings) -> Result<usize> {
@@ -1275,7 +1275,7 @@ fn inventory_charges(
         .root_bytes
         .checked_mul(6)
         .ok_or_else(|| Error::Limit("source six-root sum".into()))?;
-    let (greedy_workspace_bytes, feedback_peak_bytes) = if readout.natural() {
+    let (greedy_workspace_bytes, feedback_peak_bytes) = if readout.autoregressive() {
         let sampler = crate::resident_greedy::workspace_bytes(vocabulary(&records[0])?)?;
         let workspace = layout::sum(
             sampler

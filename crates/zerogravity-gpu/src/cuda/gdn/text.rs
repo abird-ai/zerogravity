@@ -497,7 +497,7 @@ impl TextGdnCode {
         .into_iter()
         .zip(self.operands.iter().chain(p.iter()))
         {
-            crate::resident_program::natural_binding::same_lease(actual, expected)?;
+            crate::resident_program::autoregressive_binding::same_lease(actual, expected)?;
         }
         if !Arc::ptr_eq(i.cache.service(), service)
             || i.cache.source_identity() != service.source_identity()

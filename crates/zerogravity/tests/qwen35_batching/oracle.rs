@@ -486,7 +486,7 @@ impl Original {
                 )?;
                 ensure(
                     greedy(&logits)?.0 == self.selected(row, call)?,
-                    "original independent natural greedy result",
+                    "original independent autoregressive greedy result",
                 )?;
                 exact(
                     &self.get(

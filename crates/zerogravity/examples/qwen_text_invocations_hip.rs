@@ -76,14 +76,14 @@ async fn trajectories(
                 )?;
                 let ids = if call.phase == "decode" {
                     vec![feedback[repeat].ok_or_else(|| {
-                        zerogravity::Error::State("actual natural feedback absent".into())
+                        zerogravity::Error::State("actual autoregressive feedback absent".into())
                     })?]
                 } else {
                     call.input_ids.clone()
                 };
                 need(
                     ids == call.input_ids,
-                    "actual natural feedback matches original input",
+                    "actual autoregressive feedback matches original input",
                 )?;
                 let invocation = plan.bind_invocation(
                     if call.phase == "decode" {

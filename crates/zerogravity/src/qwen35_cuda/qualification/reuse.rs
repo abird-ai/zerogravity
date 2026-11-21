@@ -4,7 +4,7 @@ use zerogravity_core::device_events::BufferLeaseId;
 /// Same accepted1→1 and64→2→1 coordinates on two independent Session pairs.
 /// Expected archives remain callback-only after actual original completion.
 /// No claim for other lengths, repeated decode beyond2/67 or concurrent GPU math.
-pub async fn qualify_natural_reuse<F>(
+pub async fn qualify_autoregressive_reuse<F>(
     device: Device,
     source: Arc<OriginalWindowModelSource>,
     records: [QwenPlan; 5],
@@ -12,7 +12,7 @@ pub async fn qualify_natural_reuse<F>(
     rotary: Option<RotaryOutcome>,
     cancelled: Option<&AtomicBool>,
     mut validate: F,
-) -> Result<NaturalReuseReceipt>
+) -> Result<AutoregressiveReuseReceipt>
 where
     F: FnMut(SourceModelReadback<'_>) -> Result<()>,
 {
@@ -20,8 +20,7 @@ where
     let _controls = source.source().reserve_workspace(2 * 1024 * 1024)?;
     let hot = PreparedScopes::new(source.clone(), records)?;
     let prepared =
-        prepare_reusable_natural_cold(device, hot.cold_scopes()?, inputs, rotary, cancelled)
-            .await?;
+        prepare_autoregressive_reuse(device, hot.cold_scopes()?, inputs, rotary, cancelled).await?;
     let model = prepared.model;
     let storage = prepared.storage;
     let observer = storage.observer()?;
@@ -55,7 +54,7 @@ where
                 .any(|b| a.binding().session() == b.binding().session())
         }) {
             return Err(Error::State(
-                "reusable natural requires four independent original Sessions".into(),
+                "reusable autoregressive requires four independent original Sessions".into(),
             ));
         }
         let mut feedback: [Option<Arc<CommittedBf16Feedback>>; 2] = [None, None];
@@ -63,7 +62,7 @@ where
         let mut short = Vec::with_capacity(2);
         let mut long = Vec::with_capacity(2);
         let mut roots = Vec::with_capacity(5);
-        for slot in NaturalSlot::ALL {
+        for slot in AutoregressiveSlot::ALL {
             let h = usize::from(slot.index() >= 2);
             let s = start + h;
             storage.require_open(&sessions[s])?;
@@ -71,7 +70,7 @@ where
             let mut prepared = if slot.feedback() {
                 let packet = feedback[h]
                     .as_ref()
-                    .ok_or_else(|| Error::State("natural actual feedback missing".into()))?;
+                    .ok_or_else(|| Error::State("autoregressive actual feedback missing".into()))?;
                 let request = packet.request(&sessions[s])?;
                 let record = hot.bind(slot, Some(&request))?;
                 storage
@@ -102,7 +101,7 @@ where
             {
                 if !candidate_ids.insert(id) {
                     return Err(Error::State(
-                        "reusable natural candidate was reused across calls".into(),
+                        "reusable autoregressive candidate was reused across calls".into(),
                     ));
                 }
             }
@@ -159,7 +158,7 @@ where
                     "reusable emitted phase lacks actual packet".into(),
                 ));
             }
-            if slot == NaturalSlot::Prefix64 {
+            if slot == AutoregressiveSlot::Prefix64 {
                 prefix64_emissions += usize::from(committed.readback().device_token.is_some());
                 if committed.feedback().is_some() || prefix64_emissions != 0 {
                     return Err(Error::State("reusable prefix64 emission".into()));
@@ -182,7 +181,7 @@ where
                 "reusable complete original request pair".into(),
             ));
         }
-        rounds.push(NaturalReuseRound {
+        rounds.push(AutoregressiveReuseRound {
             roots: [sessions[start].binding(), sessions[start + 1].binding()],
             phase_roots: roots,
             short_tokens: [short[0], short[1]],
@@ -207,7 +206,7 @@ where
     drop(storage);
     drop(model);
     let (final_resident_bytes, final_physical_reserved_bytes) = observer.finish()?;
-    Ok(NaturalReuseReceipt {
+    Ok(AutoregressiveReuseReceipt {
         rounds,
         calls,
         reused_geometries,

@@ -106,7 +106,7 @@ mod tests {
         let authority = SessionAuthority::new(source)?;
         let actual = call(source, 47);
         let reminted = call(source, 47);
-        assert_eq!(actual.tokens().ids(), reminted.rows().ids());
+        assert_eq!(actual.tokens().ids(), reminted.tokens().ids());
         assert_ne!(actual, reminted);
         for layers in [1, 24] {
             let schedule = Arc::new(GdnAttemptSchedule {

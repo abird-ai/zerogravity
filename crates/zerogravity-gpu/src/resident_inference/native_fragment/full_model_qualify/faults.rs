@@ -239,7 +239,7 @@ impl Mode {
     }
 }
 pub(super) enum Outcome {
-    Natural(super::natural_cold::PreparedNaturalCold),
+    Autoregressive(super::autoregressive_cold::PreparedAutoregressiveCold),
     Compared(SourceModelReceipt),
     Fault(SourceModelFaultOutcome),
 }
@@ -261,7 +261,7 @@ pub async fn qualify_source_model_fault(
         Execution {
             rotary,
             cancelled,
-            natural: false,
+            autoregressive: false,
             reusable: false,
             mode: Mode::Fault {
                 fault,
@@ -277,8 +277,8 @@ pub async fn qualify_source_model_fault(
     .await;
     match result {
         Ok(Outcome::Fault(value)) => Ok(value),
-        Ok(Outcome::Natural(_)) => Err(Error::State(
-            "forced fault qualifier returned natural preparation".into(),
+        Ok(Outcome::Autoregressive(_)) => Err(Error::State(
+            "forced fault qualifier returned autoregressive preparation".into(),
         )),
         Ok(Outcome::Compared(_)) => Err(Error::State(
             "full24 fault returned positive completion".into(),

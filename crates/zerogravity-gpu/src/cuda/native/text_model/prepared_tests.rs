@@ -39,7 +39,7 @@ fn actual_source_sites_and_head_values_survive_only_same_math_rebinding() -> Res
                 assert!(PreparedTextModel::metadata_bytes(&analysis)? <= 512 * 1024);
                 for id in [353, 353, 78] {
                     let current = fixture::call(source, profile, workload, base, id);
-                    let bound = template.bind_prompt_call(&current)?;
+                    let bound = template.bind_prompt_invocation(&current)?;
                     assert!(template.plan().shares_semantics(bound.plan()));
                     assert_ne!(
                         template.plan().text_invocation(),

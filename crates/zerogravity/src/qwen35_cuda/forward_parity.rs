@@ -355,14 +355,16 @@ pub async fn compare_forward_prefill47_decode48_to50(
     let mut report = Prefill47Decode48To50ParityReport {
         steps: Vec::with_capacity(4),
     };
-    let mut natural_feedback = None;
+    let mut autoregressive_feedback = None;
     for (index, &expected_frontier) in FRONTIERS.iter().enumerate() {
         require_not_cancelled(cancelled)?;
         let (mode, ids): (InvocationPhase, &[u32]) = if index == 0 {
             (InvocationPhase::Prefill, qualification_prompt.as_slice())
         } else {
-            let id = natural_feedback.as_ref().ok_or_else(|| {
-                Error::State("forward prefill47 + decode48–50 natural feedback absent".into())
+            let id = autoregressive_feedback.as_ref().ok_or_else(|| {
+                Error::State(
+                    "forward prefill47 + decode48–50 autoregressive feedback absent".into(),
+                )
             })?;
             (InvocationPhase::Decode, std::slice::from_ref(id))
         };
@@ -387,7 +389,7 @@ pub async fn compare_forward_prefill47_decode48_to50(
             &readback.logits,
             &domains,
         )?;
-        natural_feedback = Some(step.forward_selected_id);
+        autoregressive_feedback = Some(step.forward_selected_id);
         let exact = step_is_exact(&step);
         report.steps.push(step);
         if !exact {

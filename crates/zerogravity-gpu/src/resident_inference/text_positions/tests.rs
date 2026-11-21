@@ -115,8 +115,8 @@ fn request_teacher_identity_is_preserved_and_not_recreated_by_shape() {
     let first = call(source, InvocationPhase::Prefill, 0, 1);
     let same = first.clone();
     let reminted = call(source, InvocationPhase::Prefill, 0, 1);
-    assert_eq!(first.tokens(), same.rows());
-    assert_ne!(first.tokens(), reminted.rows());
+    assert_eq!(first.tokens(), same.tokens());
+    assert_ne!(first.tokens(), reminted.tokens());
     assert_eq!(
         PositionSpan::new(&first).unwrap(),
         PositionSpan::new(&reminted).unwrap()

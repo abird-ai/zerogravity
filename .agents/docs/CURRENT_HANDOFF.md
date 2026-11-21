@@ -34,14 +34,32 @@ interfaces use `TEXT_INVOCATION_*`, `RESIDENT_TEXT_*` and
 `zg.original-hf-source-call-reference.v1` and captured status
 `CAPTURED_ORIGINAL_SOURCE_CALL_REFERENCE_ONLY` remain unchanged compatibility values.
 
-Terminology validation is behavior-free and green across strict core/Qwen/GPU/public CUDA
-Clippy plus public HIP, CUDA qualification, 27B HIP qualification and CUDA CLI compilation.
-Core invocation tests pass 10/10; the Qwen forward suite passes 5/5; full Qwen/GPU lib-test
-and CUDA qualification integration targets compile. The renamed `cuda::text_forward`
-static suite remains 16/17 because one pre-existing assertion expects five
+The fourth terminology cleanup is now complete: active committed-feedback execution uses
+`autoregressive` throughout. The broad runtime family is rooted at
+`native_fragment::autoregressive`; inputs/state/publication use `AutoregressiveInput`,
+`AutoregressiveState`, `AutoregressiveCommit`, `AutoregressiveFeedback` and
+`AutoregressiveSlot`; cold/reuse/fault/observer/receipt ownership follows the same prefix;
+fixed-prompt paths use `FixedPromptAutoregressive*`; and public methods/modules use
+`autoregressive_*`. The broader old `natural_publication` module was intentionally shortened
+to `autoregressive` because it owns the whole feedback lifecycle, not only publication.
+Frozen external Qwen27B/Gemma reference schemas, artifact filenames, receipt fields and the
+historical `qwen27b_hip_natural` diagnostic entrypoint remain compatibility/provenance
+vocabulary; its code now calls the new runtime API without rewriting the frozen evidence
+format. Active Qwen35 CUDA/batching and Qwen text diagnostics now use autoregressive
+feedback/history/IDs as well.
+
+Cumulative terminology validation remains green across strict core/Qwen/GPU/public-CUDA
+Clippy plus public CUDA/HIP, CUDA qualification, 27B HIP qualification and CUDA CLI
+compilation. Core invocation tests pass 10/10; the Qwen forward suite passes 5/5; the
+standard CUDA GPU lib-test and Qwen35 CUDA integration targets compile; and the frozen
+`qwen27b_hip_natural` example compiles against the new autoregressive API. A combined
+`cuda-native-qualification,cuda-cublas` GPU unit-test attempt gets past the stale invocation
+test accessors fixed here and stops only on the pre-existing `CudaDiagnostic.compiler`
+test-matrix drift in unrelated attention/GEMM/RMS tests. The renamed `cuda::text_forward`
+static suite also retains its pre-existing 16/17 fixture drift: one assertion expects five
 `!isfinite(mean)` / inverse-zero guards while the byte-identical kernel already contained
-six at `b88d3b3`; this is baseline fixture drift, not a rename regression. No physical GPU
-run was added for this naming-only slice.
+six at `b88d3b3`. Neither is an autoregressive/terminology regression. No physical GPU run
+was added for this behavior-free naming slice.
 
 ### Error architecture — 21 Nov 2026
 

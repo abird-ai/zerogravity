@@ -967,7 +967,7 @@ impl GdnPrepared {
             } else {
                 code.workspace().lease(*role)?
             };
-            crate::resident_program::natural_binding::same_lease(actual, &expected)?;
+            crate::resident_program::autoregressive_binding::same_lease(actual, &expected)?;
         }
         // Retain the exact implementation/geometry and cold sources/specs;
         // fresh operands are checked above.

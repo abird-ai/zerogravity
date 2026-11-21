@@ -76,7 +76,7 @@ pub fn generate(
     let input = context.prepare_text(&snapshot, prompt, Some(flag))?;
     if input.ids().len() + max_output - 1 > MAX_CONTEXT {
         return Err(Error::Limit(
-            "Gemma prompt+natural outputs exceeds64consumed rows".into(),
+            "Gemma prompt+autoregressive outputs exceeds64consumed rows".into(),
         ));
     }
     #[cfg(feature = "gemma4-hip-qualification")]

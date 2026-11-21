@@ -51,8 +51,10 @@ authority explicit.
   execution path. Historical `ordinary RMS` names are not mechanically
   `forward RMS`; rename them only when their exact numerical distinction has a
   clear replacement.
-- **autoregressive** is preferred over historical `natural` for committed
-  model output fed into the next decoding step.
+- **autoregressive** is the canonical term for committed model output fed into
+  the next decoding step. Runtime/input/state/publication/reuse ownership uses
+  `Autoregressive*` and `autoregressive_*`; the historical `natural*` runtime
+  vocabulary is retired.
 - **all state domains** is preferred over `all42`; the number is a model
   property, not the concept.
 - Describe fixed qualification trajectories semantically, e.g.
@@ -69,6 +71,10 @@ or status values may retain the old spelling behind their existing compatibility
 boundary; active APIs, env vars, diagnostics and tests use invocation/resident-text
 terminology.
 
-The next isolated terminology debt is historical `natural*` / `all42` / other
-qualification shorthand. Keep the separate standard-RMS naming problem out of
-that migration until its exact arithmetic distinction has a clear replacement.
+Frozen external reference packages may retain `natural` in versioned schemas,
+artifact filenames, receipt fields and historical diagnostic entrypoint names;
+those are compatibility/provenance boundaries, not runtime vocabulary.
+
+The next isolated terminology debt is `all42` / other qualification shorthand.
+Keep the separate standard-RMS naming problem out of that migration until its
+exact arithmetic distinction has a clear replacement.

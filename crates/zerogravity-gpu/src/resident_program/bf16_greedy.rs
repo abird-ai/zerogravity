@@ -345,13 +345,13 @@ fn parse_packet(packet: &[u8], status: &[u8]) -> Result<(u32, u32)> {
 }
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-mod natural;
+mod autoregressive;
 
 mod reusable;
 
 mod publication;
 
-mod fixed_prompt_natural;
+mod fixed_prompt_autoregressive;
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod text;

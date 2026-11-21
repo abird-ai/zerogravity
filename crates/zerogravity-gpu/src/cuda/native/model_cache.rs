@@ -239,5 +239,5 @@ impl ModelCache {
 
 mod whole;
 
-mod natural;
-pub(crate) use natural::SharedModelCache;
+mod autoregressive;
+pub(crate) use autoregressive::SharedModelCache;

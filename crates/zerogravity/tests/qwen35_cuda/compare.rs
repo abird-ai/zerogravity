@@ -60,10 +60,10 @@ fn completed_fixed(
     let result = fixed.json("plain/result.json", MIB)?;
     let expected_ids = result["cases"][0]["completion_ids"]
         .as_array()
-        .ok_or_else(|| fail("original natural IDs"))?;
+        .ok_or_else(|| fail("original autoregressive IDs"))?;
     ensure(
         expected_ids.len() == 8 && call < 8,
-        "complete eight-call natural trajectory",
+        "complete eight-call autoregressive trajectory",
     )?;
     let record = read.record();
     ensure(
@@ -228,11 +228,11 @@ fn completed_fixed(
     )?;
     let selected = expected_ids[call]
         .as_u64()
-        .ok_or_else(|| fail("natural sampled ID"))? as u32;
+        .ok_or_else(|| fail("autoregressive sampled ID"))? as u32;
     let max = greedy(logits)?;
     ensure(
         max.0 == selected && read.greedy() == max,
-        "natural greedy ID/max/tie policy",
+        "autoregressive greedy ID/max/tie policy",
     )?;
     let positions = read.positions()?;
     ensure(
@@ -250,7 +250,7 @@ fn completed_fixed(
         }
     }
     println!(
-        "QWEN35_CUDA_NUMERIC_CALL_PASS rows={prompt_rows} call={call} all24_boundaries=exact all42_post=exact consumed_priors=exact independent_dual_f32=24 fullV=exact natural_id={selected} all327_independent=false"
+        "QWEN35_CUDA_NUMERIC_CALL_PASS rows={prompt_rows} call={call} all24_boundaries=exact all42_post=exact consumed_priors=exact independent_dual_f32=24 fullV=exact autoregressive_id={selected} all327_independent=false"
     );
     Ok(())
 }

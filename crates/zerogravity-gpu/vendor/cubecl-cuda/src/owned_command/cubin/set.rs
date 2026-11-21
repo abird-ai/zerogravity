@@ -295,7 +295,7 @@ impl OwnedCudaQueue {
     /// One finite47+seven cached original-call set.
     /// # Safety
     /// Same source/image charge retained by the original armed initialization.
-    pub unsafe fn admit_fixed_prompt_natural_cubin_set(
+    pub unsafe fn admit_fixed_prompt_autoregressive_cubin_set(
         self: &Arc<Self>,
         owner: Arc<dyn Any + Send + Sync>,
     ) -> Result<Arc<OwnedCudaModuleSet>, ServerError> {

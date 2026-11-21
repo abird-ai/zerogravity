@@ -133,7 +133,7 @@ enum ImageScope {
     FixedPromptFa,
     FixedPromptLayer3,
     FixedPromptFull,
-    FixedPromptNatural,
+    FixedPromptAutoregressive,
     Attention,
     AttentionGate,
     FullModel,
@@ -449,13 +449,14 @@ impl AdmittedImages {
         }
         self.prepare_images_inner(sources, init, cancelled, ImageScope::FixedPromptFull)
     }
-    pub(in crate::cuda::native) fn prepare_fixed_prompt_natural_images(
+    pub(in crate::cuda::native) fn prepare_fixed_prompt_autoregressive_images(
         self,
         sources: Arc<Bf16BlasSources>,
         init: &mut ResidentInitialization<'_>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<PreparedImages>> {
-        let exact = super::super::fixed_prompt_model_native::natural::images::required_images();
+        let exact =
+            super::super::fixed_prompt_model_native::autoregressive::images::required_images();
         if self.activation.is_none()
             || self.payloads.len() != 14
             || self
@@ -466,10 +467,15 @@ impl AdmittedImages {
                 != exact
         {
             return Err(Error::Malformed(
-                "canonical natural exact fourteen+activation images".into(),
+                "canonical autoregressive exact fourteen+activation images".into(),
             ));
         }
-        self.prepare_images_inner(sources, init, cancelled, ImageScope::FixedPromptNatural)
+        self.prepare_images_inner(
+            sources,
+            init,
+            cancelled,
+            ImageScope::FixedPromptAutoregressive,
+        )
     }
     pub(in crate::cuda::native) fn prepare_attention_images(
         self,
@@ -652,8 +658,8 @@ impl AdmittedImages {
                 ImageScope::FixedPromptLayer3 => {
                     queue.admit_fixed_prompt_layer3_cubin_set(owner.clone())
                 }
-                ImageScope::FixedPromptNatural => {
-                    queue.admit_fixed_prompt_natural_cubin_set(owner.clone())
+                ImageScope::FixedPromptAutoregressive => {
+                    queue.admit_fixed_prompt_autoregressive_cubin_set(owner.clone())
                 }
                 ImageScope::FixedPromptFull => {
                     queue.admit_fixed_prompt_full_cubin_set(owner.clone())

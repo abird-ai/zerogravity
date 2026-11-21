@@ -96,11 +96,11 @@ impl FusedRmsPrepared {
                 "text dual source/site/gamma/storage geometry differs".into(),
             ));
         }
-        crate::resident_program::natural_binding::same_lease(
+        crate::resident_program::autoregressive_binding::same_lease(
             self.lease(Buffer::Attention),
             branch,
         )?;
-        crate::resident_program::natural_binding::same_lease(
+        crate::resident_program::autoregressive_binding::same_lease(
             self.lease(Buffer::PriorResidual),
             residual,
         )?;

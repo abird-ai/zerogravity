@@ -1,6 +1,6 @@
 //! Same actual full248320 BF16 reducer; fresh packet/current record/status.
 use super::*;
-use crate::resident_program::natural_binding::same_lease;
+use crate::resident_program::autoregressive_binding::same_lease;
 impl PreparedBf16Greedy {
     pub(crate) fn bind_prompt_call(
         self: &Arc<Self>,

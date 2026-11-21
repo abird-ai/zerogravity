@@ -180,4 +180,4 @@ pub(crate) use resident::ModelAttentionPrograms;
 
 pub(crate) mod fixed_prompt_packets;
 
-pub(crate) mod fixed_prompt_natural;
+pub(crate) mod fixed_prompt_autoregressive;

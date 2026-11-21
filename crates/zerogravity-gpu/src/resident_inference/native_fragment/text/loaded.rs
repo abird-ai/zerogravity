@@ -90,7 +90,7 @@ impl ColdModel {
             );
         }
         body.bind_prompt_call(input.clone(), state, native, positions, rms_scope, gdn)?;
-        ResidentProgram::from_natural_body(input.source().clone(), body, buffers, preflight)
+        ResidentProgram::from_autoregressive_body(input.source().clone(), body, buffers, preflight)
     }
 }
 /// Bounded N1 coverage derived from the source-issued cold scopes actually prepared.
@@ -832,7 +832,7 @@ async fn prepare_text_profile(
     let values =
         FullModelProgram::prepare_text_shared_cold(&scopes, service.clone(), readback, cancelled)
             .await?;
-    let program = ResidentProgram::from_natural_body(
+    let program = ResidentProgram::from_autoregressive_body(
         source.clone(),
         values[0].body.clone(),
         values[0].buffers.clone(),

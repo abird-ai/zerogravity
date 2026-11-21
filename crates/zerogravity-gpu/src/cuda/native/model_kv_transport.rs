@@ -285,8 +285,8 @@ mod tests {
 }
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-mod natural;
+mod autoregressive;
 
 mod whole;
 
-pub(crate) mod fixed_prompt_natural;
+pub(crate) mod fixed_prompt_autoregressive;

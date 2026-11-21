@@ -3,10 +3,9 @@ use super::*;
 
 impl FullModelProgram {
     pub(crate) fn publication_packet(&self) -> Result<&ResidentLease> {
-        let greedy = self
-            .greedy
-            .get()
-            .ok_or_else(|| Error::State("natural same-map BF16 output consumer absent".into()))?;
+        let greedy = self.greedy.get().ok_or_else(|| {
+            Error::State("autoregressive same-map BF16 output consumer absent".into())
+        })?;
         let packet = greedy.packet_lease()?;
         if packet.source_identity() != self.record.invocation().source()
             || !Arc::ptr_eq(packet.service(), self.values.service())
@@ -14,7 +13,7 @@ impl FullModelProgram {
             || packet.bytes() != 12
         {
             return Err(Error::State(
-                "natural original BF16 packet binding differs".into(),
+                "autoregressive original BF16 packet binding differs".into(),
             ));
         }
         Ok(packet)
@@ -28,7 +27,7 @@ impl FullModelProgram {
             || !self.output_submitted.load(Ordering::Acquire)
         {
             return Err(Error::State(
-                "natural output requires completed Head traversal and actual sampler submission"
+                "autoregressive output requires completed Head traversal and actual sampler submission"
                     .into(),
             ));
         }
@@ -42,7 +41,7 @@ impl FullModelProgram {
         self.validate_readbacks(raw)?;
         self.greedy
             .get()
-            .ok_or_else(|| Error::State("natural BF16 sampler absent".into()))?
+            .ok_or_else(|| Error::State("autoregressive BF16 sampler absent".into()))?
             .validate_readback(&raw[raw.len() - 2..])
     }
 }

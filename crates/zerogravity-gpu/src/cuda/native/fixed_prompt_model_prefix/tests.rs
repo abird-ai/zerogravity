@@ -150,7 +150,7 @@ fn new_cut_cannot_relabel_old_value_weight_window_or_record_cohorts() {
 fn kv_extension() -> (Vec<PlanNode>, BTreeMap<usize, QwenOperator>) {
     use zerogravity_core::accelerator::program::{StateEffect, StateVersion};
     let (mut nodes, mut metadata) = extension();
-    let call = metadata[&33].invocation().clone();
+    let call = metadata[&33].model_invocation().clone();
     let layer = call.layer(3).unwrap();
     let effect = StateEffect {
         read: StateVersion {
@@ -230,7 +230,7 @@ fn kv_extension_preserves_call_ssa_effect_and_exact_endpoint() {
 
 fn fa_extension() -> (Vec<PlanNode>, BTreeMap<usize, QwenOperator>) {
     let (mut nodes, mut metadata) = kv_extension();
-    let call = metadata[&35].invocation().clone();
+    let call = metadata[&35].model_invocation().clone();
     let sigmoid = QwenOperator::new(
         call.clone(),
         Some(call.layer(3).unwrap()),
@@ -292,7 +292,7 @@ fn fa_reads_the_actual_appended_kv_version_and_stops_before_sigmoid() {
 
 fn layer3_extension() -> (Vec<PlanNode>, BTreeMap<usize, QwenOperator>) {
     let (mut nodes, mut metadata) = fa_extension();
-    let call = metadata[&35].invocation().clone();
+    let call = metadata[&35].model_invocation().clone();
     let source = call.source();
     let layer = call.layer(3).unwrap();
     let matrix = |suffix: &str, rows, columns| SourceTensor {

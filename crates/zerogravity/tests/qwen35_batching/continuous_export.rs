@@ -63,20 +63,21 @@ impl History {
     ) -> Result<()> {
         ensure(
             self.count < 8 && id < 248320 && matches!(request_batch_size, 1 | 4),
-            "bounded actual natural commit",
+            "bounded actual autoregressive commit",
         )?;
         ensure(
             root.frontier() == 47 + self.count as u64,
-            "natural history actual frontier",
+            "autoregressive history actual frontier",
         )?;
         if self.count > 0 {
-            let prior = self.roots[self.count - 1].ok_or_else(|| fail("natural history root"))?;
+            let prior =
+                self.roots[self.count - 1].ok_or_else(|| fail("autoregressive history root"))?;
             ensure(
                 root.source() == prior.source()
                     && root.session() == prior.session()
                     && root.session_epoch() == prior.session_epoch()
                     && root.root() == prior.root() + 1,
-                "natural history genuine current-root lineage",
+                "autoregressive history genuine current-root lineage",
             )?;
         }
         self.ids[self.count] = id;
@@ -109,7 +110,7 @@ impl History {
                     && root.frontier() == 46 + self.count as u64
                     && self.roots[self.count - 1] == Some(root)
                     && input == [self.ids[self.count - 1]],
-                "export authentic current-root natural feedback",
+                "export authentic current-root autoregressive feedback",
             )?;
         }
         let commits = (0..self.count).map(|i| {
@@ -131,7 +132,7 @@ impl History {
             "genuine consumed sequence with current feedback",
         )?;
         Ok(
-            json!({"prompt_ids":prompt,"natural_history":commits,"full_ids":full_ids,
+            json!({"prompt_ids":prompt,"autoregressive_history":commits,"full_ids":full_ids,
             "feedback":if self.count==0 {Value::Null} else {json!({"id":self.ids[self.count-1],"score_bits":self.scores[self.count-1],"committed":true})},
             "phase":if input_tokens==47 {"prefill"} else {"decode"},"prompt_tokens":prompt.len(),"cached_tokens":root.frontier(),"input_tokens":input_tokens,
             "root":root_metadata(root),"base":root.frontier(),"end":root.frontier()+input_tokens as u64}),
@@ -867,7 +868,7 @@ mod tests {
         assert_eq!(m["prompt_tokens"], 47);
         assert_eq!(m["cached_tokens"], 48);
         assert_eq!(m["input_tokens"], 1);
-        assert_eq!(m["natural_history"][1]["request_batch_size"], 4);
+        assert_eq!(m["autoregressive_history"][1]["request_batch_size"], 4);
         assert!(h.metadata(r, &prompt, &[23], 1).is_err());
     }
     #[test]

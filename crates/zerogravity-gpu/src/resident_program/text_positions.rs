@@ -99,10 +99,10 @@ impl TextPositionsPrepared {
 }
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-mod natural;
+mod autoregressive;
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-pub(crate) mod fixed_prompt_natural;
+pub(crate) mod fixed_prompt_autoregressive;
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod text;
