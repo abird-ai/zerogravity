@@ -757,8 +757,10 @@ or a change to the active correctness/benchmark/27B order.
   attention kernel for equal-row quartets with per-lane leftovers. It added no allocation
   or new kernel and stayed singleton-exact/native-B8, but the matched measured wave moved
   from299.985ms on current source to324.231ms and313.585ms on two candidate runs
-  (~8.1%/~4.5% slower). All candidate/probe code was removed. Do not optimize merely for
-  fewer attention launches; dynamic grouping needs a materially different measured path.
+  (~8.1%/~4.5% slower). The Qwen-specific wiring/probe was removed, while the reusable
+  fixed-width regroup implementation is retained dormant for cross-model A/B. Do not
+  select it for this .8B cell merely to reduce attention launches; measure it separately
+  on Qwen2B/27B, Gemma4 or other eligible shapes.
 - [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
   pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
   contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed

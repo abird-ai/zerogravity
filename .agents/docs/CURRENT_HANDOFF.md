@@ -585,8 +585,9 @@ and live TODOs are authoritative.
   a separate zero launch. The first post-change run was externally SIGKILLed after test
   entry with no residue/OOM/Xid; one cached retry completed at395.849ms/171.783
   contiguous and421.159ms/161.459 paged. That is only ~0.3% paged throughput gain versus
-  accepted source, so the extra kernel path was rejected and fully removed. Source stays
-  `e72030c`; do not reintroduce that fusion without new evidence. The connector still
+  accepted source, so the extra kernel path was rejected from production selection. The
+  implementation is now retained as the model-neutral dormant CUDA candidate
+  `cuda::performance_candidates::launch_copy_zero_tail`; source behavior stays `e72030c`. The connector still
   has no vLLM executable/module and Podman still reports the pinned image `image not
   known`; do not claim a fresh vLLM comparison. Owner now explicitly defers vLLM.
   Do not add refill fixtures, direct paged-attention complexity or debug-profile
@@ -961,12 +962,21 @@ serving, memory and composition plans.
   [49,48,49,48,49,48,49,48] wave with3 outputs; every row remained singleton-exact and
   reported native width8. Under the matched opt1/codegen64/non-LTO profile, unchanged
   source measured299.985ms after warmup; the candidate measured324.231ms and313.585ms
-  on two runs, about8.1% and4.5% slower. The entire implementation and probe were
-  restored away. Do not reintroduce private row-count clustering/B4-attention
-  decomposition without materially different evidence. Next L5 implementation/
+  on two runs, about8.1% and4.5% slower. It remains rejected for this Qwen .8B selector,
+  but its reusable allocation-free lane clustering/logical↔physical mapping/equal-group
+  implementation is retained in `performance_candidates::LaneRegroupPlan`; only the
+  temporary Qwen-specific wiring/probe was removed. Re-evaluate the retained candidate
+  on other model/shape cells rather than reconstructing it. Next L5 implementation/
   qualification target is the genuine populated-context ladder:4K first, then8K and
   longer admitted cells, reusing the existing64-row chunk contract rather than adding
   another synthetic batching fixture.
+- **Retained-candidate policy:** reusable performance experiments are no longer deleted
+  merely because one model/shape loses an A/B. Model-neutral candidates live dormant,
+  with no production selector/callsite, so Qwen2B/27B, Gemma4 and future models can
+  measure them independently. Current retained implementations are
+  `performance_candidates::LaneRegroupPlan` and
+  `cuda::performance_candidates::launch_copy_zero_tail`. Production behavior is
+  unchanged; a negative result remains authoritative only for its measured cell.
 - ROCm2B C4 warmup plus C16/C32/C64 warmup/timed mismatches remain unlocalized.
   Preserve failed cells and expected IDs; do not repin expectations.
 - These remaining campaigns are explicitly authorized X2 execution/test work;

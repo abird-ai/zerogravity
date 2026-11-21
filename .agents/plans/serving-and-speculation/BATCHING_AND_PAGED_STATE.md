@@ -937,8 +937,9 @@ tok/s contiguous versus180.520ms/132.949 paged, only ~1.7% overhead. The same
 422.572ms/160.919 paged for68 generated tokens (~5.5% wall-time overhead). A generic
 device-scatter copy+zero-tail candidate removed fresh-page zero launches but produced only
 ~0.3% paged throughput gain (421.159ms/161.459) on one cached physical retry, so it was
-rejected and removed rather than expanding the runtime transport surface for noise-level
-benefit. vLLM comparison is explicitly owner-deferred for now. Do not spend the next
+rejected from the Qwen .8B production path. The real model-neutral copy+zero-tail kernel
+is retained dormant under `cuda::performance_candidates` for cross-model A/B without
+expanding the production selector/runtime path. vLLM comparison is explicitly owner-deferred for now. Do not spend the next
 slice on this small residual or pay the complexity cost of direct paged attention/physical
 overlap; advance populated CUDA context correctness on L5. Do not add another refill
 evidence layer.
@@ -952,9 +953,11 @@ session/readback order before publication, and reused the existing B4 attention 
 for every equal-row quartet; no new kernel/allocation/root authority was introduced.
 The public-SDK interleaved B8[49,48,49,48,49,48,49,48] cell stayed singleton-exact and
 native-B8, but its matched measured wave regressed from299.985ms to324.231/313.585ms
-(~8.1%/~4.5%). The candidate was removed. Preserve ragged shared projection/GDN support
-and do not equate fewer attention launches with a serving win; revisit dynamic grouping
-only with a materially different architecture/measurement.
+(~8.1%/~4.5%). The Qwen-specific integration was removed from production, but the
+allocation-free lane-regroup/equal-group implementation is retained dormant in
+`performance_candidates` for other-model measurements. Preserve ragged shared
+projection/GDN support and do not equate fewer attention launches with a serving win;
+retest the retained primitive independently on different models/shapes.
 Ordinary physical model cells can use the seccomp fallback; loopback-dependent
 serving/full-gate work must require a private network namespace.
 

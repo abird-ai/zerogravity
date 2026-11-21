@@ -339,7 +339,8 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   was externally SIGKILLed after test entry; residue/kernel checks were clean and one
   cached retry passed at395.849ms/171.783 contiguous and421.159ms/161.459 paged. The
   paged gain versus accepted source was only ~0.3%, so the extra kernel path failed the
-  maintenance/performance bar and was fully removed. Source remains `e72030c`. Fresh
+  production-selection bar. Source remains `e72030c`; the actual copy+zero-tail CUDA
+  launch is retained dormant in `cuda::performance_candidates` for other-model A/B. Fresh
   vLLM is still unavailable; next prefer that matched baseline, otherwise profile the
   longer-decode paged residual before adding direct page-table attention or overlap.
 
@@ -401,10 +402,11 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   It added no GPU allocation or kernel. The exact public-SDK interleaved
   [49,48,49,48,49,48,49,48] +3-output cell remained singleton-exact and native width8,
   but matched opt1/codegen64/non-LTO measured299.985ms on unchanged source versus
-  324.231ms and313.585ms with the candidate (~8.1% and~4.5% slower). The experiment and
-  temporary probe were fully removed. Dynamic grouping remains open, but do **not**
-  reintroduce row-count lane clustering/B4-attention decomposition without a materially
-  different architecture or evidence. Move next to the admitted populated-context
+  324.231ms and313.585ms with the candidate (~8.1% and~4.5% slower). The Qwen-specific
+  wiring/probe was removed, but the allocation-free lane regroup/equal-group primitive is
+  retained in `performance_candidates::LaneRegroupPlan` for Qwen2B/27B, Gemma4 and other
+  shapes. Dynamic grouping remains open; do not select this candidate for the measured
+  .8B cell, but do not treat that loss as a global-model rejection. Move next to the admitted populated-context
   ladder on L5:4K first, then8K/longer-fit cells, reusing the existing64-row contract.
 - [ ] Optimize measured CUDA2B/HIP hot paths and run controlled comparisons after
   relevant correctness. Existing short eager/direct-API rates are not general

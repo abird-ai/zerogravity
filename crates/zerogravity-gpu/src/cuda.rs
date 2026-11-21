@@ -21,6 +21,12 @@ pub mod native;
 #[cfg(feature = "cuda-native")]
 #[allow(dead_code)] // Internal candidate API; no production selector yet.
 pub mod ordinary_text;
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[expect(
+    dead_code,
+    reason = "retained cross-model CUDA A/B candidates; no production selector"
+)]
+pub(crate) mod performance_candidates;
 #[cfg(feature = "cuda-native-qualification")]
 pub mod rms;
 #[cfg(feature = "cuda-native")]

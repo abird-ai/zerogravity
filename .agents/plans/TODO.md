@@ -29,7 +29,9 @@ contiguous and422.572ms/160.919 paged for68 generated tokens (~5.5% wall-time ga
 A device-scatter copy+tail-zero fusion was tested and rejected: the cached physical retry
 measured395.849ms/171.783 contiguous and421.159ms/161.459 paged, only ~0.3% paged
 throughput gain versus the accepted source run while adding another kernel path. The
-experiment and temporary probe were removed. vLLM comparison is owner-deferred for now;
+production experiment wiring and temporary probe were removed; the reusable copy+tail-zero
+candidate implementation is retained dormant for cross-model A/B. vLLM comparison is
+owner-deferred for now;
 do not spend the next slice on the longer-decode paged residual or direct paged-attention/
 overlap complexity. Public graph serving remains Native. The older status narrative below is historical context unless
 corroborated by current source/live plan sections.
@@ -472,7 +474,8 @@ activating held routes; vLLM comparison is owner-deferred for now.
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)
 - [~] P1 pipeline-composition — @pvl — recursive primitives/pipelines/profiles; shared execution adapters active, reuse current adapters in Fabric; Qwen expansion deferred — [details](pipeline-composition/TODO.md)
 - [~] P1 cli-device-routing — @pvl — unified run/config/source/device selection; preserve behavior through Fabric SDK/CLI migration — [details](cli-device-routing/TODO.md)
-- [~] P2 model-execution — @pvl — current Qwen ordinary CUDA owns source-real B2/B4/B8 contiguous+paged transport, complete-domain prefix reuse, event-backed/multi-flight primitives, retained stateless + multi-token attention/GDN prefill, reduced-band B4/B8 GDN layout selection and bounded paired-page KV gather with fused inactive-tail fill. Latest matched opt1 short-wave is135.236 tok/s contiguous/132.949 paged (~1.7% wall-time gap); current68-token refill is169.837/160.919 tok/s. A device-scatter tail-zero fusion measured only ~0.3% paged gain and was removed. Public graph serving deliberately remains Native. Large same-contract CUDA numerical acceptance still depends on approved references; populated small HIP and resident27B work remain separate. X2 is shared: preserve other owners and verify only ZeroGravity's incremental resource delta retires — [details](model-execution/TODO.md)
+- [~] P2 model-execution — @pvl — current Qwen ordinary CUDA owns source-real B2/B4/B8 contiguous+paged transport, complete-domain prefix reuse, event-backed/multi-flight primitives, retained stateless + multi-token attention/GDN prefill, reduced-band B4/B8 GDN layout selection and bounded paired-page KV gather with fused inactive-tail fill. Latest matched opt1 short-wave is135.236 tok/s contiguous/132.949 paged (~1.7% wall-time gap); current68-token refill is169.837/160.919 tok/s. A device-scatter tail-zero fusion measured only ~0.3% paged gain and is rejected for the
+current Qwen .8B path, but its implementation is retained dormant for other-model A/B. Public graph serving deliberately remains Native. Large same-contract CUDA numerical acceptance still depends on approved references; populated small HIP and resident27B work remain separate. X2 is shared: preserve other owners and verify only ZeroGravity's incremental resource delta retires — [details](model-execution/TODO.md)
 - [~] P2 model-acquisition — @pvl — [details](model-acquisition/TODO.md)
 
 ## Icebox

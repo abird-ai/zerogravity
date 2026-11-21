@@ -33,6 +33,11 @@ mod gdn_recurrent;
 #[cfg(feature = "qualification")]
 mod gpu_telemetry;
 mod host_descriptor;
+#[expect(
+    dead_code,
+    reason = "retained cross-model A/B candidates; no production selector"
+)]
+mod performance_candidates;
 #[cfg(feature = "hardware-abort-probe")]
 mod physical_abort_probe;
 mod physical_quarantine;
