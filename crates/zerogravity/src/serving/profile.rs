@@ -238,7 +238,7 @@ fn validate_source_profile(options: &TextProfile) -> Result<(), ServiceError> {
                 return Err(ServiceError::new(
                     400,
                     "unsupported_fixed-prompt_profile",
-                    "fixed-prompt requires CUDA/1worker/context512/maxoutput1..8/interleaved/device5120 and finite2 or exact4GiB active8 owner profile",
+                    "fixed-prompt requires CUDA, one worker, context512, max output1..8, interleaved execution, device5120MiB, and either the two-session profile or exact 4GiB eight-session benchmark profile",
                 ));
             }
             if !cfg!(all(

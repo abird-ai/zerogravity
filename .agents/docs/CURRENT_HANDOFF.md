@@ -70,6 +70,15 @@ frontiers; and `canonical47`, `cached47`, `true47` and `case5` no longer appear 
 runtime/test terminology. The frozen batching oracle profile `canonical47-repeated-v1`
 remains unchanged as a compatibility/provenance value.
 
+The eighth cleanup retires provider/workload shorthand. The qualified max-eight fixed-prompt
+lifecycle is the **eight-session benchmark profile** and keeps the explicit Rust variant
+`FixedPromptLifecycleProfile::EightSessionBenchmark`; the smaller profile is `TwoSession`;
+its tests/helpers use `eight_session_*` and
+its resource contract is stated directly rather than as `active8`. Production temporal
+prefill is described as **4-token equal-frontier prefill chunks** rather than `temporal4`.
+The generic scheduler's real `prefill_quantum: 32` value remains unchanged; only the opaque
+`quantum32` nickname was removed.
+
 Cumulative terminology validation remains green across strict core/Qwen/GPU/public-CUDA
 Clippy plus public CUDA/HIP, CUDA qualification, 27B HIP qualification and CUDA CLI
 compilation. Core invocation tests pass 10/10; the Qwen forward suite passes 5/5; the
@@ -80,8 +89,13 @@ test accessors fixed here and stops only on the pre-existing `CudaDiagnostic.com
 test-matrix drift in unrelated attention/GEMM/RMS tests. The renamed `cuda::text_forward`
 static suite also retains its pre-existing 16/17 fixture drift: one assertion expects five
 `!isfinite(mean)` / inverse-zero guards while the byte-identical kernel already contained
-six at `b88d3b3`. Neither is an autoregressive/terminology regression. No physical GPU run
-was added for this behavior-free naming slice.
+six at `b88d3b3`. A focused `qwen35-cuda-qualification` public lib-test attempt for the new
+eight-session profile tests is additionally blocked before test execution by unrelated
+pre-existing test-only drift: `gpu/cohort.rs` references a stale `native` variable and
+`qwen_source/execute.rs` still calls the retired `fused_phase_compatible` helper. Production,
+qualification and integration compilation remain green; do not repair those test-matrix
+issues absent direct relevance. No physical GPU run was added for this behavior-free naming
+slice.
 
 ### Error architecture — 21 Nov 2026
 
@@ -238,7 +252,7 @@ Vulkan-only retry passed, so no source failure follows.
   fully passes original0.8B and2B B2/B4/B8 with CPU/B1/all42,
   rollback/publication, greedy bits/producer and final reserved0. Production
   HTTP passes B4/B8 on both original sources and retained2B B2; B2/B4/B8 all
-  select temporal4 while decode remains unchanged.
+  use 4-token equal-frontier prefill chunks while decode remains unchanged.
   B2 production HTTP still proves prompt10 executes as native chunks4+4+2 with
   three publications, two state-only + one greedy, exact CPU text/usage, zero
   failures/refusals and final41MiB. Parent `9dab004` added the reusable temporal
@@ -314,7 +328,7 @@ Vulkan-only retry passed, so no source failure follows.
   each pass exact4+4+2 native B8 execution and accounting; the earlier vanished
   0.8B B8 attempt remains incomplete rather than being relabeled. The retained
   2B B2 HTTP cell also passes exact4+4+2. Production `NativeText` now selects
-  temporal4 for **B2, B4 and B8**, with equal-frontier prefill and explicit
+  4-token equal-frontier prefill chunks for **B2, B4 and B8**, with explicit
   native prefill cohort eligibility for all three widths. These physical proofs
   use the debug Rust profile; canonical thin-LTO/codegen-units=1 B2 is
   still open after another heartbeat-supervised release attempt disappeared
@@ -666,7 +680,7 @@ Vulkan-only retry passed, so no source failure follows.
   so this is directional history rather than a fresh matched comparison.
   **Correction after interrupted-phase revalidation:** the previous residency diagnosis
   was wrong. Exact admission arithmetic for original0.8B/context512 shows the fully
-  resident two-root plan at1,652,990,965B and the fully resident18-root active8 plan at
+  resident two-root plan at1,652,990,965B and the fully resident18-root `active=8` plan at
   2,076,877,813B. B8 cohort reserve is51,210,272B, greedy reserve11,904B, leaving a
   fit cap4,780,616,032B under the4,831,838,208B provider envelope; the fitted layout
   remains `resident_weights=true`. Streaming/root pressure therefore does **not** explain
@@ -718,7 +732,7 @@ Vulkan-only retry passed, so no source failure follows.
   **Continuous refill/regroup is now physically exercised and one banding bug is fixed.**
   The production worker already refills freed active slots from the admitted FIFO before
   each wave and recomputes compatible native bands. A temporary public-SDK probe used
-  four1-token rows + four8-token survivors + four queued8-token rows on an active8/native8
+  four1-token rows + four8-token survivors + four queued8-token rows on an `active=8` / `cohort_width=8`
   model. It first exposed a real width-reduction defect: the width8 cohort arena retained
   only the B8 GDN compiled-ABI layout, so a legal B4 band bound `PackedBa` against a
   32768-byte B8 ABI while the B4 activation was correctly16384B. The fix retains both
@@ -770,7 +784,7 @@ Vulkan-only retry passed, so no source failure follows.
   still reports the pinned image `image not known`; do not claim a fresh vLLM comparison.
   **Current continuous-refill goodput is now remeasured on unchanged `e72030c`
   source.** The same public-SDK4 one-token +4 eight-token survivor +4 queued eight-token
-  shape (active8/native8,68 generated tokens) passes under the matched
+  shape (`active=8` / `cohort_width=8`,68 generated tokens) passes under the matched
   opt1/codegen64/non-LTO profile at400.383ms/169.837 output tok/s contiguous and
   422.572ms/160.919 paged, about5.5% paged wall-time overhead. This materially improves
   the older paged498.212ms/136.488 result while avoiding a new retained fixture; the
@@ -1264,7 +1278,7 @@ serving, memory and composition plans.
   sequential execution without disabling Auto for other knobs.
   Physical default-Qwen acceptance on2B/32K/1024 logged Auto selecting paged because
   contiguous streamed weights while paged stayed resident, then passed in26.51s with exact
-  replay/frontiers and clean shutdown. The existing active8 native SDK cell now leaves
+  replay/frontiers and clean shutdown. The existing `active=8` native SDK cell now leaves
   `native_rows=0` unspecified: Auto selected **8** for both halves while the state knob was
   Auto→Contiguous on one half and user→Paged4/64 on the other. Actual publication remained
   `{8}` with exact tokens/clean shutdown; matched opt1 measured176.498ms/135.979 tok/s
@@ -1911,7 +1925,7 @@ is already green; repeat it only if host/runtime state changes.
 >   SDK cell in 224.80s execution / 260.34s wall; same-capacity 1024-token A/B is
 >   283.22s contiguous-streamed vs 28.56s paged-resident (~9.9x);
 > - canonical default 2B/32K/1024 Auto-selects paged and passes in ~26–28s;
-> - active8 SDK with native width unspecified Auto-selects B8 and physically
+> - `active=8` SDK with native width unspecified Auto-selects B8 and physically
 >   publishes `{8}`; matched opt1 is 135.979 tok/s Contiguous and 133.004 tok/s
 >   user-Paged with exact tokens/clean shutdown;
 > - 0.8B/32K has a complete retained current-path pass; independent populated

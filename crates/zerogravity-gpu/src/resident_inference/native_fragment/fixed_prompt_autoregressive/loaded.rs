@@ -221,8 +221,8 @@ impl FixedPromptLoaded {
             CountReservation::new(self.active.clone(), self.profile.session_limit())?
         };
         let original = match self.profile {
-            FixedPromptLifecycleProfile::FiniteTwo => self.model.session().await?,
-            FixedPromptLifecycleProfile::BenchmarkEight => {
+            FixedPromptLifecycleProfile::TwoSession => self.model.session().await?,
+            FixedPromptLifecycleProfile::EightSessionBenchmark => {
                 self.model.session_retaining(self.cold.clone()).await?
             }
         };
@@ -507,7 +507,7 @@ pub async fn prepare_fixed_prompt_autoregressive(
         source,
         records,
         inputs,
-        FixedPromptLifecycleProfile::FiniteTwo,
+        FixedPromptLifecycleProfile::TwoSession,
         cancelled,
     )
     .await
@@ -803,7 +803,7 @@ mod lifecycle_tests {
     }
     #[test]
     fn eight_session_reservations_do_not_widen_pending_or_snapshot_capacity() {
-        let profile = FixedPromptLifecycleProfile::BenchmarkEight;
+        let profile = FixedPromptLifecycleProfile::EightSessionBenchmark;
         let count = Arc::new(AtomicUsize::new(0));
         let mut owners = Vec::new();
         for n in 1..=8 {

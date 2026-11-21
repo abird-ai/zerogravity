@@ -100,7 +100,16 @@ shorthand is retired from active code and current documentation. The frozen
 `canonical47-repeated-v1` oracle profile remains unchanged at its compatibility
 boundary.
 
-The next isolated terminology debt is provider/workload shorthand such as
-`active8`, `temporal4` and similar qualification archaeology. Keep the separate
-standard-RMS naming problem out of that migration until its exact arithmetic
+The historical provider/workload shorthand `active8`, `temporal4` and
+`quantum32` is retired from active terminology. The fixed-prompt lifecycle uses
+**eight-session benchmark profile** / `EightSessionBenchmark`; the smaller lifecycle
+profile is `TwoSession`. Production temporal
+prefill is described as **4-token equal-frontier prefill chunks**; and generic
+scheduler configuration uses the explicit **32-token prefill quantum** when that
+value matters.
+
+The next isolated terminology debt is residual row-width/concurrency shorthand
+(`B2`/`B4`/`B8`, `native8`, `C1`/`C4`/`C8`, etc.) where it is active engineering
+vocabulary rather than an ABI, artifact, or historical benchmark coordinate.
+Keep the separate standard-RMS naming problem isolated until its exact arithmetic
 distinction has a clear replacement.

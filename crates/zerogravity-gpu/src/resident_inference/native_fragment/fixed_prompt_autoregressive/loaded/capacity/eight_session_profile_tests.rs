@@ -1,8 +1,8 @@
 use super::*;
 #[test]
 fn closed_profiles_have_exact_real_provider_scopes() {
-    let old = FixedPromptLifecycleProfile::FiniteTwo;
-    let new = FixedPromptLifecycleProfile::BenchmarkEight;
+    let old = FixedPromptLifecycleProfile::TwoSession;
+    let new = FixedPromptLifecycleProfile::EightSessionBenchmark;
     assert_eq!(
         (old.session_limit(), old.provider_bytes(), old.host_bytes()),
         (2, 2304 * MIB, 3072 * MIB)
@@ -27,11 +27,11 @@ fn closed_profiles_have_exact_real_provider_scopes() {
 #[test]
 fn fourteen_real_roots_fit_the_same_alignment_inventory() {
     assert_eq!(ROOT_BYTES, 32_784_384);
-    let (device, host) = eight_bounds().unwrap();
+    let (device, host) = eight_session_bounds().unwrap();
     assert_eq!(device, 2_373_980_984);
     assert_eq!(host, 3_466_318_232);
-    assert!(device < FixedPromptLifecycleProfile::BenchmarkEight.provider_bytes());
-    assert!(host < FixedPromptLifecycleProfile::BenchmarkEight.host_bytes());
+    assert!(device < FixedPromptLifecycleProfile::EightSessionBenchmark.provider_bytes());
+    assert!(host < FixedPromptLifecycleProfile::EightSessionBenchmark.host_bytes());
     // The old source envelope and its refusal boundaries are unchanged.
     assert_eq!(
         require_gates(PROVIDER, HOST).unwrap(),

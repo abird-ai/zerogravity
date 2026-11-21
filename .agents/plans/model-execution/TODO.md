@@ -13,6 +13,9 @@ complete model execution `full model`, complete layer coverage `all layers`, and
 vocabulary coverage `full vocabulary`; none encode current Qwen dimensions. Historical
 milestone text below retains the names that were current when those checkpoints were written. Fixed 47-token qualification uses `prefill47`
 in identifiers and **prefill 47** in prose; decode continuation is named by explicit bases/frontiers.
+Fixed-prompt benchmark lifecycle uses the explicit **eight-session benchmark profile** /
+`EightSessionBenchmark` (with `TwoSession` for the smaller lifecycle); production temporal
+prefill uses **4-token equal-frontier prefill chunks**.
 
 [Fabric transition](../fabric-vnext-transition/TODO.md) is accepted through source
 `8c43844`, docs `1c99929`. Genuine multi-row and populated1K–16K0.8B/2B HIP now pass native/SDK/HTTP

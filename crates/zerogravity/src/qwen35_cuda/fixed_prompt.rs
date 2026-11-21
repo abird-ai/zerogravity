@@ -12,9 +12,9 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use zerogravity_artifacts::cache::TransferAdmission;
-#[cfg(test)]
-mod active8_tests;
 mod bindings;
+#[cfg(test)]
+mod eight_session_profile_tests;
 mod manifest;
 pub(crate) mod paths;
 mod registry;
@@ -79,11 +79,11 @@ fn require_host_profile(
     host: &TransferAdmission,
     profile: FixedPromptLifecycleProfile,
 ) -> Result<()> {
-    if profile == FixedPromptLifecycleProfile::BenchmarkEight
+    if profile == FixedPromptLifecycleProfile::EightSessionBenchmark
         && host.arbiter.snapshot(&host.resource)?.limit != profile.host_bytes() as u64
     {
         return Err(Error::Limit(
-            "canonical eight-session actual4GiB host ledger required".into(),
+            "eight-session benchmark requires exact 4 GiB host ledger".into(),
         ));
     }
     Ok(())
@@ -102,7 +102,7 @@ pub async fn load(
         hf_directory,
         artifact_directory,
         host,
-        FixedPromptLifecycleProfile::FiniteTwo,
+        FixedPromptLifecycleProfile::TwoSession,
         cancelled,
     )
     .await

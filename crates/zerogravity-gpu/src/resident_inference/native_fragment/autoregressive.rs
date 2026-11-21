@@ -1,5 +1,5 @@
 //! Same original SessionAuthority publication and completed-packet feedback.
-//! Closed qualification coordinates; the production quantum32 route stays closed.
+//! Closed qualification coordinates; the production 32-token prefill-quantum route stays closed.
 use crate::resident_inference::native_fragment::continuation::{
     AttemptPhaseBinding, GdnAttemptSchedule, PrefixPhaseEnqueue,
 };

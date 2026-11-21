@@ -156,7 +156,7 @@ HTTP passes both original0.8B and2B B4 with prompt10 -> exact chunks4+4+2, three
 two state-only + one greedy, three root publications, mixed JSON/SSE CPU
 text/usage exact and clean retirement; B8 passes the same exact production
 contract on both sources, and retained2B B2 HTTP also passes. Production
-therefore selects temporal4 for B2+B4+B8 with equal-frontier prefill. One earlier
+therefore uses 4-token equal-frontier prefill chunks for B2+B4+B8. One earlier
 supervised0.8B B8 HTTP attempt disappeared after test start without a semantic
 result and remains incomplete.
 
@@ -883,7 +883,7 @@ reverse_retirement=true readback=exact outputs_initialized=true service_reusable
 Do not add another synthetic multi-flight matrix by default. Real serving feedback has
 now isolated a different first-order bottleneck: the generic ordinary-CUDA B8 prefill
 path is already fully resident but still executes stateful operators lane-by-lane.
-Exact active8/context512 fit remains resident (18-root total2,076,877,813B; B8 cohort
+Exact `active=8`/context512 fit remains resident (18-root total2,076,877,813B; B8 cohort
 reserve51,210,272B; provider4,831,838,208B). Decode owns dedicated cached GDN cohort
 lowering and single-token B4/B8 attention, while prefill has no general multi-token
 counterpart. The shared stateless-prefill lowering for QK-RMS/gate/multiply/SiLU is

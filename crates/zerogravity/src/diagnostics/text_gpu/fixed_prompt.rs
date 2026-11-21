@@ -22,13 +22,13 @@ pub(super) fn validate_profile(
     }
     match (profile.provider_mib, host_mib, profile.active) {
         (source::PROVIDER_MIB, source::HOST_MIB..=16384, 1..=2) => {
-            Ok(source::FixedPromptLifecycleProfile::FiniteTwo)
+            Ok(source::FixedPromptLifecycleProfile::TwoSession)
         }
-        (4096, 4096, 1..=8) => Ok(source::FixedPromptLifecycleProfile::BenchmarkEight),
+        (4096, 4096, 1..=8) => Ok(source::FixedPromptLifecycleProfile::EightSessionBenchmark),
         _ => Err(ServiceError::new(
             400,
             "unsupported_fixed-prompt_profile",
-            "use finite2 provider2304/host>=3072 or active8 exact4096/4096MiB",
+            "use two-session provider2304/host>=3072MiB or eight-session benchmark provider4096/host4096MiB",
         )),
     }
 }
@@ -175,7 +175,7 @@ pub(super) fn inference_error(
     }
 }
 #[cfg(test)]
-mod active8_tests {
+mod eight_session_profile_tests {
     use super::*;
     use crate::builtins::text::tokenizer_tests::CHANNEL_TESTS as HOST_TEST_LOCK;
     use zerogravity_engine::router::{
@@ -199,12 +199,12 @@ mod active8_tests {
     fn router_passes_exact_lifecycle_to_real_source_loader() {
         assert_eq!(
             validate_profile(GpuBackend::Cuda, &profile(2, 2304), 3072).unwrap(),
-            source::FixedPromptLifecycleProfile::FiniteTwo
+            source::FixedPromptLifecycleProfile::TwoSession
         );
         for active in 1..=8 {
             assert_eq!(
                 validate_profile(GpuBackend::Cuda, &profile(active, 4096), 4096).unwrap(),
-                source::FixedPromptLifecycleProfile::BenchmarkEight
+                source::FixedPromptLifecycleProfile::EightSessionBenchmark
             );
         }
         for (active, provider, host) in [

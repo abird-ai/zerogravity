@@ -697,7 +697,7 @@ fn queued_pair(server: &OwnedServer, first: &Value, second: &Value) -> Proof<(Re
 }
 
 /// Real queued requests, all written before reading any response. Cancel the
-/// observable GPU quantum's owner so active8 can admit all eight queued rows.
+/// observable GPU quantum's owner so the eight-session benchmark profile can admit all eight queued rows.
 fn queued_group(server: &OwnedServer, bodies: &[Value]) -> Proof<Vec<Response>> {
     if !matches!(bodies.len(), 4 | 8) {
         return Err("wide HTTP group requires four or eight real requests".into());
