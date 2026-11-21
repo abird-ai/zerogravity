@@ -567,15 +567,23 @@ Vulkan-only retry passed, so no source failure follows.
   same-stream `OwnedCudaEvent` marks, the same single 1MiB device page, and exact retained
   `TensorWindow`/output owners. Strict CUDA/HIP checks and the existing retirement/accounting
   tests passed, but a same-tree matched opt1/codegen64/non-LTO explicit
-  Contiguous/Streamed2B32K/prompt48 A/B measured **38.323s serial vs39.281s ring**; the ring
-  was ~2.5% slower and was fully reverted. A separate24.267s Auto run selected paged state
-  plus resident weights and therefore is not evidence for this streamed-path candidate; it
-  does confirm the default smart policy already avoids this fallback when residency fits.
-  Temporary policy overrides/include view were removed and no new evidence fixture was
-  retained. Do not retry one-page same-stream runahead; meaningful streamed overlap would
-  require separately admitted extra device-page/copy-stream authority and should be driven
-  by a real workload need. Future direct/async IO must compose at the authenticated
-  cache-miss boundary.
+  Contiguous/Streamed2B32K/prompt48 A/B measured **38.323s serial vs39.281s ring**; the
+  Qwen one-page consumer/selector was ~2.5% slower and remains rejected. A separate24.267s
+  Auto run selected paged state plus resident weights and therefore is not evidence for this
+  streamed-path candidate; it does confirm the default smart policy already avoids this
+  fallback when residency fits. The reusable mechanism is deliberately retained dormant:
+  backend completion witnesses now implement the shared `RetirementMark` contract directly:
+  CUDA `OwnedCudaEvent` and HIP `OwnedHipTransferRetirement`. The zero-cost aliases
+  `CudaTransferRetirementRing<Owner>` / `HipTransferRetirementRing<Owner>` specialize the
+  existing generic `TransferRetirementRing` without wrapper allocation. The ring owns only
+  completion marks plus caller-supplied exact owners; model/session/publication policy stays
+  with the future consumer. This preserves the primitive for Gemma, larger streamed models,
+  other CUDA/HIP devices or different workload shapes without selecting it for Qwen. Temporary policy overrides/include view were removed
+  and no new evidence fixture was retained. Do not retry the rejected Qwen one-page selector
+  without new evidence; a future consumer may reuse the primitive after separately proving
+  its owner graph/admission and a measured benefit. Meaningful Qwen streamed overlap beyond
+  this still requires separately admitted extra device-page/copy-stream authority. Future
+  direct/async IO must compose at the authenticated cache-miss boundary.
   **Scoped worker prefix reuse is
   now implemented and physically accepted.** `PrefixSharingScope` is a validated
   nonzero Copy ID. Existing `Request` stays unchanged; ordinary `request_text`

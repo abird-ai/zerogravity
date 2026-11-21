@@ -8,6 +8,36 @@ pub(crate) trait RetirementMark: Send + Sync + 'static {
     fn wait(&mut self) -> Result<()>;
 }
 
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+impl RetirementMark for cubecl::cuda::OwnedCudaEvent {
+    #[inline]
+    fn ready(&mut self) -> Result<bool> {
+        cubecl::cuda::OwnedCudaEvent::ready(self)
+            .map_err(|error| Error::State(format!("CUDA transfer retirement query: {error}")))
+    }
+
+    #[inline]
+    fn wait(&mut self) -> Result<()> {
+        cubecl::cuda::OwnedCudaEvent::wait(self)
+            .map_err(|error| Error::State(format!("CUDA transfer retirement wait: {error}")))
+    }
+}
+
+#[cfg(feature = "hip")]
+impl RetirementMark for cubecl::hip::OwnedHipTransferRetirement {
+    #[inline]
+    fn ready(&mut self) -> Result<bool> {
+        cubecl::hip::OwnedHipTransferRetirement::ready(self)
+            .map_err(|error| Error::State(format!("HIP transfer retirement query: {error}")))
+    }
+
+    #[inline]
+    fn wait(&mut self) -> Result<()> {
+        cubecl::hip::OwnedHipTransferRetirement::wait(self)
+            .map_err(|error| Error::State(format!("HIP transfer retirement wait: {error}")))
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct RetirementCounts {
     pub(crate) issued: usize,
@@ -26,6 +56,28 @@ pub(crate) struct TransferRetirementRing<M: RetirementMark, O: Send + Sync + 'st
     counts: RetirementCounts,
     quarantine: Option<Quarantine<M, O>>,
 }
+
+/// Reusable CUDA specialization for any exact owner graph that is ordered on
+/// one `OwnedCudaQueue`. The ring owns only completion marks and caller-supplied
+/// owners; model/session/publication policy stays with the consumer.
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[allow(
+    dead_code,
+    reason = "dormant reusable primitive; consumers are selected by measured model/backend policy"
+)]
+pub(crate) type CudaTransferRetirementRing<O> =
+    TransferRetirementRing<cubecl::cuda::OwnedCudaEvent, O>;
+
+/// Reusable HIP specialization for any exact owner graph whose native actor
+/// produces `OwnedHipTransferRetirement` marks. Consumer policy stays outside
+/// the ring just as it does on CUDA.
+#[cfg(feature = "hip")]
+#[allow(
+    dead_code,
+    reason = "dormant reusable primitive; consumers are selected by measured model/backend policy"
+)]
+pub(crate) type HipTransferRetirementRing<O> =
+    TransferRetirementRing<cubecl::hip::OwnedHipTransferRetirement, O>;
 
 impl<M: RetirementMark, O: Send + Sync + 'static> TransferRetirementRing<M, O> {
     /// `quarantine` retains the original service, full physical/charged owners

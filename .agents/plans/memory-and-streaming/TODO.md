@@ -94,12 +94,18 @@ The following extends existing owners; source-byte qualification is not inferenc
   The next simple overlap attempt is now rejected too: generalizing the existing two-slot
   retirement ring to CUDA while keeping one device page/same stream passed strict checks,
   but matched same-tree Contiguous/Streamed2B32K/prompt48 measured **38.323s serial vs
-  39.281s ring** (~2.5% slower). The candidate and its temporary Contiguous policy switch
-  were removed; an Auto control at24.267s chose paged state + resident weights and did not
-  exercise this fallback. Do not add another one-page ring. A future second device page or
-  copy stream needs separate physical admission and a real workload case that still requires
-  streamed weights. No benchmark fixture/evidence pin was added. Direct/async source IO
-  remains future work only if it composes with the verified cache/miss policy instead of
+  39.281s ring** (~2.5% slower). The Qwen consumer/selector and temporary Contiguous policy
+  switch were removed; an Auto control at24.267s chose paged state + resident weights and did
+  not exercise this fallback. Keep the reusable mechanism: CUDA `OwnedCudaEvent` and HIP
+  `OwnedHipTransferRetirement` directly implement `RetirementMark`; the zero-cost
+  `CudaTransferRetirementRing<Owner>` / `HipTransferRetirementRing<Owner>` aliases reuse the
+  existing generic bounded ring with no wrapper allocation or model policy. These dormant
+  primitives are available to Gemma, larger streamed models, other CUDA/HIP devices or
+  workload shapes that can separately prove exact ownership/admission and a measured benefit. Do not re-enable the
+  rejected Qwen one-page selector merely because the primitive exists. A future second device
+  page or copy stream still needs separate physical admission and a real workload case that
+  requires streamed weights. No benchmark fixture/evidence pin was added. Direct/async source
+  IO remains future work only if it composes with the verified cache/miss policy instead of
   bypassing it.
 - [~] Canonical physical buffer identity now exists in the model-neutral device
   ledger. `DeviceBufferIdentity` is an opaque process-local **ledger namespace +

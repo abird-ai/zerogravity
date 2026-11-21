@@ -34,9 +34,15 @@ live source, current TODO and actual results govern capability claims.
 - Production ShortHF already uses one terminal status/12B packet cohort.
   Full producer/logit/KV readbacks are qualification work. Keep that distinction.
 - Gemma's draft waits on every source page and Observe. Bounded staging/frame
-  retirement can remove repeated CPU waits. One same-stream device page can
-  order upload→consume→overwrite; host DMA owners must still survive completion.
-  Additional device pages or copy streams require separate actual admission.
+  retirement can remove repeated CPU waits. The shared mechanism is retained for
+  experimentation: CUDA `OwnedCudaEvent` and HIP `OwnedHipTransferRetirement` implement
+  `RetirementMark`, so exact owner graphs can use the zero-cost CUDA/HIP specializations of
+  `TransferRetirementRing` without model-specific wrappers. Qwen2B's one-page/same-stream
+  consumer measured ~2.5% slower and is not selected; that result does not remove the
+  primitive for Gemma, other models/devices or workload shapes.
+  One same-stream device page can order upload→consume→overwrite; host DMA owners must still
+  survive completion. Additional device pages or copy streams require separate actual
+  admission.
 - Current cold-preparation source batch adds shared content keys, cold GDN/FA
   copy definitions and immutable source-seal reuse. Focused strict checks and
   joint release pass. Original301edge+40natural/all5fault and matchedAPI checks
