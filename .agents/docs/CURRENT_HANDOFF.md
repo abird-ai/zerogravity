@@ -200,9 +200,15 @@ container dependencies: AMD hipSPARSELt0.2.6.70203 and OpenMPI4.1.6's legacy C++
 `vllm-rocm` and the refactored `vllm-cuda` realize successfully on L5. Signed `93d80f3` was synced
 exactly to X2 by verified Git bundle; `vllm-rocm` realizes there too. One physical smoke through the
 native-GPU harness reports vLLM0.33.0 / torch2.13.0+git733fca1 / HIP7.2.53211, one AMD Radeon8060S,
-`gfx1151`, and full103079215104-byte VRAM visibility. After process exit X2 returns to274452480B,
-0% busy and no KFD owner. The next unit is the fresh matched0.8B/2B/27B ROCm serving matrix; do not
-repeat the provider/import gate or revive Podman/FUSE for that campaign.
+`gfx1151`, and full103079215104-byte VRAM visibility. Signed `c8b1bed` closes the one runtime gap found
+by real serving: ROCm Triton JIT now receives the Nix host C compiler explicitly. Optimized text-only
+0.8B at `gpu-memory-utilization=0.25` then loads1.5GiB of model state, runs normal torch.compile and
+PIECEWISE+FULL graph capture, and returns exact C1 token IDs `[248068,198,90700]` with client TTFT
+60.063ms / service latency74.278ms. A prior unchanged attempt correctly refused because another shared
+X2 owner temporarily left only9.68GiB free; nothing was reclaimed or killed. The card cleared naturally,
+and five seconds after the successful server shutdown X2 returned to274452480B/0% busy/no KFD owner.
+Next: matched2B C1, then reuse the existing population matrix; do not repeat provider/import setup or
+revive Podman/FUSE.
 
 ### Error architecture — 21 Nov 2026
 

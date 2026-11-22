@@ -71,8 +71,12 @@ pinned ROCm7.2.3 userspace. Podman/FUSE is no longer a fresh-baseline dependency
 Signed `93d80f3` was bundle-synced exactly to X2; the same provider realizes there and
 its harnessed device smoke reports vLLM0.33.0/Torch2.13/HIP7.2.53211 on one gfx1151
 Radeon8060S with full103079215104B VRAM visibility, then returns to274452480B/0% busy/
-no KFD owner. Next physical unit is matched ROCm serving; do not rerun either the
-completed native HIP ladder or the provider/import gate first.
+no KFD owner. Signed `c8b1bed` supplies the ROCm Triton JIT host compiler explicitly.
+The first real optimized0.8B C1 at a24GiB vLLM envelope now starts through normal
+compile/graph capture and returns exact `[248068,198,90700]` with60.063ms TTFT /
+74.278ms service latency; after shutdown the card returns to274452480B/0% busy/no
+KFD owner. Next physical unit is matched2B C1, then the population matrix; do not
+rerun either the completed native HIP ladder or the provider/import gate first.
 
 Use the continuation queue below over historical milestone notes later in this file.
 

@@ -71,9 +71,18 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   was bundle-synced to X2, where `vllm-rocm` realizes too. Physical harness smoke
   passes with vLLM0.33.0 / torch2.13.0+git733fca1 / HIP7.2.53211, one AMD Radeon
   8060S, `gfx1151`, full103079215104-byte VRAM visibility, then clean return to
-  274452480B/0% busy/no KFD owner. Next: reuse the existing comparator for matched
-  0.8B/2B/27B timing; do not rerun the provider/import gate first. Retained Podman
-  ROCm results remain historical evidence only.
+  274452480B/0% busy/no KFD owner. Signed `c8b1bed` adds the only runtime seam found
+  by real serving: ROCm Triton JIT needs the Nix C compiler on `PATH`/`CC`. With
+  that fix, optimized text-only0.8B serving at `gpu-memory-utilization=0.25`
+  (24GiB of the96GiB card, matching the native small-model total envelope) starts
+  normally, compiles/captures PIECEWISE+FULL graphs and returns exact C1 IDs
+  `[248068,198,90700]`; client TTFT60.063ms and service latency74.278ms. A first
+  admission attempt correctly refused while an unrelated shared-card owner left
+  only9.68GiB free; no owner was disturbed and the unchanged rerun passed after the
+  card cleared. Five seconds after shutdown X2 was back to274452480B/0% busy/no KFD
+  owner. Next: run matched2B C1, then the existing population matrix; retain0.25 for
+  small-model resource matching and the historical near75GiB envelope for27B.
+  Retained Podman ROCm results remain historical evidence only.
 - [x] `c282f20` restores HIP-only source-profile compilation after a shared CUDA
   optimization accidentally gated the model-neutral packed-BF16 numeric-zero
   greedy kernel behind `cuda-cublas`; stale HIP test/support profiles now specify
