@@ -102,11 +102,12 @@ impl ResidentProgram {
         flight: &mut Flight<'_>,
         requests: &[ForwardPlan],
         states: &[Vec<StateBinding>],
+        head_projection: &crate::resident_leases::ResidentLease,
         logits: &crate::resident_leases::ResidentLease,
     ) -> Result<super::text_execution::DecodeCohortSubmission> {
         match &self.body {
             ResidentProgramBody::TextExecution(body) => {
-                body.execute_decode_cohort(flight, requests, states, logits)
+                body.execute_decode_cohort(flight, requests, states, head_projection, logits)
                     .await
             }
             _ => Err(Error::Unsupported(

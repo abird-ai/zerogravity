@@ -148,6 +148,11 @@ impl ResidentModel {
         let logits = self
             .service
             .allocate_uninitialized(logits_bytes, BufferRole::Output)?;
+        // The ordinary head scratch is deliberately one selected vocabulary row.
+        // Cohorts pay for a wider head temporary only while a cohort is live.
+        let head_projection = self
+            .service
+            .allocate_uninitialized(logits_bytes, BufferRole::Activation)?;
 
         let ticket = self.service.queue().submit(
             self.service.budget(),
@@ -176,6 +181,7 @@ impl ResidentModel {
         }
         let mut accesses = workspace.logit_accesses.clone();
         accesses.push((logits.clone(), DeviceAccess::Write));
+        accesses.push((head_projection.clone(), DeviceAccess::Write));
         for (session, candidate) in sessions.iter().zip(&candidates) {
             accesses.extend(candidate.state_accesses(&session.domains)?);
         }
@@ -189,7 +195,13 @@ impl ResidentModel {
         }
         let submitted = workspace
             .program
-            .launch_text_execution_decode_cohort(&mut flight, requests, &bindings, &logits)
+            .launch_text_execution_decode_cohort(
+                &mut flight,
+                requests,
+                &bindings,
+                &head_projection,
+                &logits,
+            )
             .await?;
         if submitted.fused_dispatches == 0 {
             return Err(Error::State(

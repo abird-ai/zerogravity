@@ -29,6 +29,7 @@ impl Cold {
         flight: &mut Flight<'_>,
         requests: &[ForwardPlan],
         states: &[Vec<StateBinding>],
+        head_projection: &ResidentLease,
         logits: &ResidentLease,
     ) -> Result<DecodeCohortSubmission> {
         let width = requests.len();
@@ -94,7 +95,10 @@ impl Cold {
                 }
             }
         }
-        flight.require_accesses([(logits, DeviceAccess::Write)])?;
+        flight.require_accesses([
+            (head_projection, DeviceAccess::Write),
+            (logits, DeviceAccess::Write),
+        ])?;
         flight.retain_completion_owner(self.clone())?;
         self.native
             .require_live(self.service.client(), self.source.source_identity())?;
@@ -134,7 +138,7 @@ impl Cold {
             let first = descriptors[0];
             if matches!(first.kind(), SourceOperatorKind::Projection { .. }) {
                 let (actual, fused) = self
-                    .projection_decode_cohort(flight, node, first, width, logits)
+                    .projection_decode_cohort(flight, node, first, width, head_projection, logits)
                     .await?;
                 dispatches = dispatches
                     .checked_add(actual)
@@ -231,6 +235,7 @@ impl Cold {
         node: &PlanNode,
         descriptor: &SourceOperator,
         width: usize,
+        head_projection: &ResidentLease,
         logits: &ResidentLease,
     ) -> Result<(usize, usize)> {
         let SourceOperatorKind::Projection { selected_row } = descriptor.kind() else {
@@ -290,7 +295,17 @@ impl Cold {
         let mut dispatches = 0usize;
         let mut fused = 0usize;
         for matrix in descriptor.matrices() {
-            let temporary = self.s(layout::PROJECT, width * matrix.rows)?;
+            let (temporary, temporary_lease) = if selected_row.is_some() {
+                (
+                    view(head_projection, 0, width * matrix.rows * 4)?,
+                    head_projection,
+                )
+            } else {
+                (
+                    self.s(layout::PROJECT, width * matrix.rows)?,
+                    &self.scratch[layout::PROJECT],
+                )
+            };
             dispatches = dispatches
                 .checked_add(
                     self.operands[&matrix.name]
@@ -301,7 +316,7 @@ impl Cold {
                                 input: &input,
                                 input_lease: self.value_lease(node.inputs[0])?,
                                 output: &temporary,
-                                output_lease: &self.scratch[layout::PROJECT],
+                                output_lease: temporary_lease,
                                 packed: &self.packed,
                                 accumulation: &self.accumulation,
                                 flags: &self.flags,
