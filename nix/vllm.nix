@@ -358,12 +358,16 @@ in {
     backend = "rocm";
     workspaceRoot = sourceRoot + "/benchmarks/vllm/rocm";
     python = pkgs.python312;
-    runtimePackages = [pkgs.rocmPackages.clr];
+    runtimePackages = [
+      pkgs.rocmPackages.clr
+      pkgs.stdenv.cc
+    ];
     runtimeLibraryPaths = [
       "${pkgs.rocmPackages.clr}/lib"
       "${pkgs.rocmPackages."rocm-runtime"}/lib"
     ];
     runtimeEnvironment = {
+      CC = "${pkgs.stdenv.cc}/bin/cc";
       HIP_PATH = pkgs.rocmPackages.clr;
       ROCM_HOME = pkgs.rocmPackages.clr;
       ROCM_PATH = pkgs.rocmPackages.clr;
