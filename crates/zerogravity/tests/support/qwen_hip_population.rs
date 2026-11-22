@@ -301,6 +301,10 @@ fn public_source_population_benchmark() {
         .map(|s| s.parse().unwrap())
         .collect();
     assert!(!clients.is_empty() && clients.iter().all(|c| [1, 4, 8, 16, 32, 64].contains(c)));
+    let cohort_width = std::env::var("ZG_QWEN_HIP_COHORT_WIDTH")
+        .ok()
+        .map(|value| value.parse::<usize>().unwrap())
+        .unwrap_or(0);
     let load = Instant::now();
     let h = Harness::open_benchmark(&label, 8, 1024, 3, 65);
     println!(
@@ -346,13 +350,17 @@ fn public_source_population_benchmark() {
             let admission = h.admission();
             assert_eq!(admission["failed_gpu_quanta"], 0);
             assert_eq!(admission["queued_requests"], 0);
-            assert_eq!(admission["gpu_fused_batches"], 0);
+            if cohort_width == 0 {
+                assert_eq!(admission["gpu_fused_batches"], 0);
+            } else {
+                assert!(admission["gpu_fused_batches"].as_u64().unwrap() > 0);
+            }
             println!(
                 "HIP_BENCH_WAVE {}",
                 serde_json::json!({"model":label,"clients":clients,"wave":wave,
                 "warmup":wave==0,"elapsed_ms":elapsed_ms,"completed":outputs.len(),"output_tokens":3*outputs.len(),
                 "token_ids":outputs,"expected":expected,"replay_match":true,"lane_invariant":lane_invariant,
-                "native_batch_width":1,"active_sessions_limit":8,"admission":admission})
+                "native_batch_width":cohort_width,"active_sessions_limit":8,"admission":admission})
             );
         }
     }
