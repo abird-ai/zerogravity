@@ -146,10 +146,10 @@ The current implementation priorities implied by that baseline are:
 
 1. fix the fused CUDA C4+ lane-invariance correctness bug before accepting wider CUDA
    performance comparisons;
-2. HIP decode cohorts now share projections plus pure row-wise activation operators;
-   0.8B C4/C8 remains exact at13.074/13.216tok/s, while dispatches drop another
-   8.78%/10.46% with little wall-time change. Target the hottest clean state/position
-   operator next rather than widening the stateless subset;
+2. HIP decode cohorts now share projections, pure row-wise activation operators and
+   aligned QK/rotary preparation;0.8B C4/C8 remains exact at13.053/13.343tok/s with
+   32,194/61,530 forward dispatches. Further launch cleanup is low leverage; target
+   the 18-layer GDN/conv private-state path next before the six attention layers;
 3. optimize HIP singleton execution as a separate hot path, because C1 is already
    materially behind vLLM on all three model sizes;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
