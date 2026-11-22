@@ -129,7 +129,8 @@ fn qwen_cuda_population_runtime(model: &str) -> Runtime {
     let snapshot = match model {
         "08" => "d7c7bf56e176bd70a8190acb9873cc719e65b6b306181039f2896d6f9387b36c",
         "2b" => "88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52",
-        _ => panic!("explicit approved small CUDA source required"),
+        "27b" => "98cea13c169310196c4d8a113765f8fe58ab7a7961f0d1be69212c70dba8015e",
+        _ => panic!("explicit approved CUDA source required"),
     };
     let runtime = Runtime::builder()
         .limits(SchedulerLimits {
@@ -286,7 +287,7 @@ fn qwen_cuda_populated_context_sdk_replays() {
 
 #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
 #[test]
-#[ignore = "approved small CUDA snapshots; matched public-SDK population benchmark"]
+#[ignore = "approved CUDA snapshots; matched public-SDK population benchmark"]
 fn qwen_cuda_public_sdk_population_benchmark() {
     use std::{
         collections::BTreeSet,

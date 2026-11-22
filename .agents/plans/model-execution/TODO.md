@@ -17,71 +17,24 @@ Fixed-prompt benchmark lifecycle uses the explicit **eight-session benchmark pro
 `EightSessionBenchmark` (with `TwoSession` for the smaller lifecycle); production temporal
 prefill uses **4-token equal-frontier prefill chunks**.
 
-[Fabric transition](../fabric-vnext-transition/TODO.md) is accepted through source
-`8c43844`, docs `1c99929`. Genuine multi-row and populated1K–16K0.8B/2B HIP now pass native/SDK/HTTP
-correctness and original retirement; final isolated gate passes.
-Signed `8ffb511` closes the populated0.8B/2B HIP checkpoint.
-Owner prioritizes roadmap items1/2: item1 is signed complete; advance CUDA
-reference/state/executable closure on l5 while 27B HIP full-model qualification remains open.
-Missing legacy CUDA authority remains distinct from new vLLM references.
-Native batching remains subsequent; matched baselines need not wait for it.
-Preserve accepted source/operator/lifetime evidence; no repeated Fabric extraction.
-Main only; no new or resumed subagents. Last existing reviewer finished.
-Assemble substantial shared surfaces, then batch numerical/state/lifecycle/serving
-checks; narrow diagnostics only for concrete blockers, complete gate last.
-Owner correction: prioritize working implementation and quick matched-vLLM feedback.
-Reuse existing end-to-end checks/evidence; add fixtures only for concrete bugs or
-uncovered contracts, not speculative coverage or more evidence administration.
-Prefer simple shared fixes; optimize measured hot paths. Benchmark each completed,
-qualified comparable path without waiting for all models/backends/batching.
-Owner resumed items2/3: finish implementation quickly with real-model/serving
-feedback, reusing accepted results and avoiding extensive synthetics.
-Existing approved model inputs/devices; approved x2 ROCm vLLM runtime retained.
-No gfx90c, recovery, push or recurrence restart. Recurrence`17aafa71` remains cancelled.
+The current implementation baseline is ../../docs/CURRENT_BASELINE.md.
+It supersedes older timing/evidence chronology for performance decisions. Preserve
+accepted source/operator/state/lifetime contracts and reusable primitives, but do not
+repeat old benchmark/evidence administration.
 
-Owner architecture correction: models compose established shared primitives; do
-not build another per-size engine. Family source/config owns geometry, roles,
-ties and traversal; backend implementations own explicit numerical/layout domains.
-Reuse accepted primitive/ownership evidence; compact real-model composition and
-state checks first, deeper diagnostics for concrete gaps or changed optimizations.
-CUDA composition is signed in`4f1e827` (signatureG): source-derived layouts/geometry, parameterized
-attention/rotary, grouped-head GDN using existing16-head leaves, and bounded
-source-page weight streaming on the6GiB l5 device. Fresh small-model resident
-and streamed numerical/state diagnostics pass. Shared public SDK/HTTP and streamed
-cancellation/quarantine scopes now pass. Large-source composition smoke and the
-assembled final gate pass; independent large numerical qualification stays open. Preserve explicit primitive domains; do not
-remove guards without implementing their capability. New-shape vendor bitwise
-parity is separate from correctness under an established operator contract.
-Owner approved a fresh approximately75GiB total native27B HIP GPU budget for the
-resident comparison;16GiB host and4GiB context remain. Explicit budget plumbing
-is implemented. Resident C1 and all66 original observer-free state/logit calls
-pass with independently verified original retirement. Offered C1..64 completes
-with matching outputs; final isolated gate passes. Signed`d16f096` (signatureG),
-no push; larger CUDA/HTTP/context/batching debt remains separate.
+Immediate execution priorities are intentionally small:
 
-22 Nov fresh current-path feedback supersedes the older timing-only population
-records where it overlaps. On exact `277a279`, X2 HIP0.8B/2B offered1/4/8/16/32/64
-is exact, replay-stable and lane-invariant; resident27B now completes the same full
-population ladder under the explicit75GiB envelope, including exact C64 timed waves
-362.100/362.703s and clean return to ~274MiB/0% busy/no KFD owner. Physical HIP
-batch width remains1, so the flat throughput is expected and native fused batching
-is still open. A backend-neutral Nix vLLM provider now realizes both CUDA and ROCm
-on L5; the ROCm graph pins vLLM0.33.0+rocm72/Torch2.13/Triton3.8/AITer0.1.26 on
-pinned ROCm7.2.3 userspace. Podman/FUSE is no longer a fresh-baseline dependency.
-Signed `93d80f3` was bundle-synced exactly to X2; the same provider realizes there and
-its harnessed device smoke reports vLLM0.33.0/Torch2.13/HIP7.2.53211 on one gfx1151
-Radeon8060S with full103079215104B VRAM visibility, then returns to274452480B/0% busy/
-no KFD owner. Signed `c8b1bed` supplies the ROCm Triton JIT host compiler explicitly.
-The fresh configured-envelope-matched small-model matrix is now complete at
-`gpu-memory-utilization=0.25` =24GiB of the96GiB card, matching the native small-model
-total envelope. Same literal47-token prompt/3 greedy outputs/active8/one warmup + two
-timed waves; every vLLM request is exact `[248068,198,90700]`. Median vLLM output
-tok/s at offered1/4/8/16/32/64:0.8B =51.966/135.358/219.612/245.256/271.828/
-284.356;2B =36.054/96.233/140.847/150.059/156.828/159.801. Both scopes retire to
-274452480B/0% busy/no KFD owner. The native comparison remains physical batch1, so
-this measures the serving/batching throughput gap without claiming identical arithmetic
-engines. Next physical unit is27B vLLM at exact75GiB (`0.78125` of96GiB) against the
-existing explicit75GiB native ladder; do not rerun small-model/provider gates first.
+- fix CUDA fused identical-lane correctness before wider CUDA performance work;
+- implement clean model-neutral HIP native batching using existing scheduler/cohort/state
+  ownership rather than another per-model engine;
+- separately improve HIP singleton hot paths because C1 is already well behind vLLM;
+- optimize L5 27B streamed source/transfer overlap as a distinct memory-constrained mode;
+- benchmark completed changes quickly against the canonical current baseline, with no
+  speculative test matrix or duplicate paging/COW/streaming abstraction.
+
+L5 remains the only source-authoring host; X2 remains ROCm execution/testing only; A1 is
+offline/out of scope. Exact L5 commits move to X2 by Git bundle. No push unless explicitly
+requested.
 
 Use the continuation queue below over historical milestone notes later in this file.
 

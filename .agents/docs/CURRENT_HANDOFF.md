@@ -133,91 +133,30 @@ qualification and integration compilation remain green; do not repair those test
 issues absent direct relevance. No physical GPU run was added for this behavior-free naming
 slice.
 
-### Nix-native matched vLLM provider — 22 Nov 2026
+### Current performance baseline — 22 Nov 2026
 
-Fresh matched CUDA and ROCm baselines are Nix-native; retained Podman images are historical
-artifacts only. The repo owns one reusable provider factory around frozen upstream wheel graphs
-under `benchmarks/vllm/{cuda,rocm}`. For CUDA, pinned nixpkgs supplies Python3.12.14 +
-uv0.12.17 and `uv.lock`
-(SHA256 `3c9c500b8e990187df6ede3f5a475250b123f2d6ccbbe32416a0a036827c3b96`)
-resolves vLLM0.33.0 / torch2.14.0+cu130, and the provider borrows only the live NVIDIA
-driver. NixOS-specific runtime seams are explicit rather than emulated with an FHS image:
-the pinned C++ runtime is on `LD_LIBRARY_PATH` and Triton gets
-`TRITON_LIBCUDA_PATH=/run/opengl-driver/lib`. `prepare` is the only network-capable action
-and materializes the frozen environment plus matching FlashInfer kernels; `check` and
-`serve` run the exact persistent interpreter offline. No host Python packages or host CUDA
-toolkit are required.
+The active performance authority is now CURRENT_BASELINE.md.
+It contains only the fresh current-path CUDA/ROCm measurements for 0.8B, 2B and 27B,
+including the matched Nix-native vLLM baselines and L5 27B SSD-streamed result.
+Historical eager-vLLM, Podman, superseded provider runs and old microbenchmark evidence
+are no longer active engineering inputs; use Git history only when archaeology is
+explicitly required.
 
-L5 private-loopback correctness is physically accepted on the exact local Qwen3.5 0.8B and
-2B snapshots. Both providers advertise the expected `/v1/models` name, accept a
-temperature-zero `/v1/completions` request, return one deterministic completion, and shut
-down with the RTX3060 back at37MiB. The original correctness smoke deliberately used eager
-mode. The pre-existing staged provider follow-up has now been revalidated as coherent
-ownership work: `uv2nix` + `pyproject-nix` realize the frozen wheel graph into the Nix
-store, leaving only host-specific kernel materialization in the XDG cache; `check`/`serve`
-perform no package sync. Offline evaluation/import reports Python3.12.14 /
-torch2.14.0+cu130 / vLLM0.33.0. A real optimized 0.8B private-loopback smoke with no
-`--enforce-eager` captures PIECEWISE + FULL CUDA graphs, returns the deterministic
-completion and retires the RTX3060 to37MiB. Matched performance must use this normal
-optimized execution. **A1 is now explicitly offline/out of scope until the owner re-enables
-it**; do not connect to it, resume/delete partial model-transfer residue, or schedule
-correctness/benchmark work there. The current matched campaign is L5-first: reuse
-`serve-compare.py` / `serve-matrix.py` for concurrency=1/4/8/16/32/64 on the exact local
-0.8B/2B snapshots. The current ZeroGravity side now has one narrow ignored public-SDK
-population benchmark over the real `ModelLoadRequest::QwenCuda` path: exact canonical47,
-active8, C1/4/8/16/32/64, one warmup + two timed waves per offered width, exact token/cohort
-records and clean shutdown. The physical0.8B C1 smoke returns
-`[248068,198,90700]` exactly and measures58.280/57.405ms for the two timed waves after
-warmup. This avoids benchmarking the older finite `qwen35-cuda-bf16` CLI qualification
-loader as though it were current production. The existing HTTP benchmark primitive now
-supports bounded raw `/v1/completions` requests for already-framed prompts; chat remains
-the default. This matters because the current Qwen chat template appends four extra
-thinking/control tokens. The final text-only optimized vLLM baseline (`--language-model-only`,
-normal graph execution, GPU utilization0.90) corrects the earlier provisional smoke: at C1 both
-0.8B and2B match ZeroGravity exactly at `[248068,198,90700]`. ZeroGravity's fused CUDA C4+ path,
-however, is deterministic but not lane-invariant for identical requests (approximately3/4 correct
-lanes per4-row group and6/8 per8-row group), while vLLM remains lane-invariant; therefore C4+ ZG
-numbers are correctness-failed performance observations, not accepted parity/wins. Current output
-tok/s ZG/vLLM at offered1/4/8/16/32/64:0.8B =39.621/55.062,119.613/125.637,
-133.676/227.948,137.410/257.028,135.918/277.783,136.385/292.064;2B =
-34.802/42.264,83.038/100.917,96.099/157.678,95.255/170.158,96.091/178.899,
-95.962/182.560. The retained eager-vLLM72.20tok/s figure is historical only; ZeroGravity's
-~135tok/s native8 result did not regress, the comparator became properly optimized.
+The current implementation priorities implied by that baseline are:
 
-The existing HIP public-source population harness now carries the same narrow workload without
-adding a second framework. Fresh X2 `277a279` results are exact/replay-stable/lane-invariant for
-all offered widths:0.8B =12.406/12.048/12.139/11.881/11.848/11.797tok/s;2B =
-6.169/6.897/6.771/6.752/6.735/6.721. Explicit75GiB resident27B C1/4/8/16/32/64 =
-0.540921/0.536684/0.534072/0.530675/0.528366/0.529800tok/s; final C64 timed waves were
-362.100/362.703s for192 output tokens and X2 returned to ~274MiB/0% busy/no KFD owners.
-Physical HIP batch width remains1, so this is not fused native batching.
+1. fix the fused CUDA C4+ lane-invariance correctness bug before accepting wider CUDA
+   performance comparisons;
+2. add clean model-neutral HIP native batching, because the current path remains
+   physical batch width 1 while vLLM scales strongly through offered concurrency 8;
+3. optimize HIP singleton execution as a separate hot path, because C1 is already
+   materially behind vLLM on all three model sizes;
+4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
+   47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
+   streaming mechanics are the relevant optimization target there.
 
-The same Nix provider factory now has a ROCm sibling. Its frozen x86_64 Linux graph resolves
-Python3.12 / vLLM0.33.0+rocm72 / torch2.13.0+git733fca1 / Triton3.8.0+git669b31ac /
-AITer0.1.26; upstream ROCm wheels are hash-frozen explicitly. Pinned nixpkgs supplies the7.2.3
-ROCm math/runtime stack. Two wheel-ABI gaps are isolated fixed-output runtimes rather than host or
-container dependencies: AMD hipSPARSELt0.2.6.70203 and OpenMPI4.1.6's legacy C++ ABI. Both
-`vllm-rocm` and the refactored `vllm-cuda` realize successfully on L5. Signed `93d80f3` was synced
-exactly to X2 by verified Git bundle; `vllm-rocm` realizes there too. One physical smoke through the
-native-GPU harness reports vLLM0.33.0 / torch2.13.0+git733fca1 / HIP7.2.53211, one AMD Radeon8060S,
-`gfx1151`, and full103079215104-byte VRAM visibility. Signed `c8b1bed` closes the one runtime gap found
-by real serving: ROCm Triton JIT now receives the Nix host C compiler explicitly. Optimized text-only
-serving uses normal torch.compile + PIECEWISE/FULL graph capture.
-
-Fresh configured-envelope-matched X2 small-model results are now complete. vLLM uses
-`gpu-memory-utilization=0.25`, exactly24GiB of the96GiB card, matching the native small-model total
-envelope. Same literal47-token prompt,3 greedy output tokens, active/max-num-seqs8, one warmup + two
-timed waves at offered1/4/8/16/32/64; every vLLM request returns exact
-`[248068,198,90700]`. Median vLLM output tok/s:0.8B =
-51.966/135.358/219.612/245.256/271.828/284.356;2B =
-36.054/96.233/140.847/150.059/156.828/159.801. The same-card native HIP medians are
-12.406/12.048/12.139/11.881/11.848/11.797 and6.169/6.897/6.771/6.752/6.735/6.721.
-Native physical batch width remains1, so this establishes the current serving/batching throughput gap
-without claiming identical arithmetic engines. Both vLLM runs return to274452480B/0% busy/no KFD
-owner. The exploratory0.90 full-card vLLM runs are retained only as upper-bound observations and are not
-the matched comparison. Next physical unit is fresh27B vLLM at
-`gpu-memory-utilization=0.78125`, exactly75GiB of the96GiB card, against the existing explicit75GiB
-resident HIP ladder. Do not rerun the small-model/provider gates or revive Podman/FUSE.
+The matched vLLM provider is Nix-native for both CUDA and ROCm. Podman/FUSE is not part
+of the current baseline architecture. A1 remains offline/out of scope until explicitly
+re-enabled.
 
 ### Error architecture — 21 Nov 2026
 
