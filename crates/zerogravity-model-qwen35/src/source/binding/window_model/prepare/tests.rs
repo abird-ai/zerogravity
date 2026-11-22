@@ -208,7 +208,7 @@ mod fixture {
                 )[0];
                 let qk = apply(layer, QwenOperation::AttentionQk, &[packed]);
                 assert!(apply(layer, QwenOperation::KvAppend, &[qk[1], packed]).is_empty());
-                let fa = apply(layer, QwenOperation::FlashAttention, &[qk[0]])[0];
+                let fa = apply(layer, QwenOperation::Attention, &[qk[0]])[0];
                 let sig = apply(layer, QwenOperation::Sigmoid, &[qk[2]])[0];
                 let gated = apply(layer, QwenOperation::Multiply, &[fa, sig])[0];
                 apply(
@@ -321,7 +321,7 @@ fn fa_uses_the_original_appended_private_read_and_never_a_fake_write() -> Result
         let descriptor = QwenOperator::new(
             call.model_invocation().clone(),
             Some(call.model_invocation().layer(layer)?),
-            QwenOperation::FlashAttention,
+            QwenOperation::Attention,
             Vec::new(),
             Vec::new(),
         )?;

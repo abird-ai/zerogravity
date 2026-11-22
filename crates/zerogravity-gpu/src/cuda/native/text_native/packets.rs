@@ -113,7 +113,7 @@ pub(crate) fn is_native(kind: SourceOperatorKind) -> bool {
             | SourceOperatorKind::SiluAndMul { .. }
             | SourceOperatorKind::QkRmsRotaryGated(_)
             | SourceOperatorKind::KvAppend { .. }
-            | SourceOperatorKind::FlashAttention { .. }
+            | SourceOperatorKind::Attention { .. }
             | SourceOperatorKind::Sigmoid { .. }
             | SourceOperatorKind::Multiply { .. }
     )

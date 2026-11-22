@@ -66,7 +66,7 @@ fn fa_uses_the_original_appended_private_read_and_never_a_fake_write() -> Result
         let descriptor = QwenOperator::new(
             call.model_invocation().clone(),
             Some(call.model_invocation().layer(layer)?),
-            QwenOperation::FlashAttention,
+            QwenOperation::Attention,
             Vec::new(),
             Vec::new(),
         )?;

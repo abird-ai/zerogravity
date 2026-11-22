@@ -187,7 +187,8 @@ pub enum QwenOperation {
     GdnRecurrent,
     AttentionQk,
     KvAppend,
-    FlashAttention,
+    /// Semantic causal attention; the physical provider is selected later.
+    Attention,
     Sigmoid,
     Multiply,
     SiluAndMul,
@@ -291,7 +292,7 @@ impl QwenOperator {
             }
             QwenOperation::AttentionQk
             | QwenOperation::KvAppend
-            | QwenOperation::FlashAttention
+            | QwenOperation::Attention
             | QwenOperation::Sigmoid
             | QwenOperation::Multiply
                 if !attention =>
@@ -438,7 +439,7 @@ impl QwenOperator {
             // V is the original packed projection's strided tail; fused QK
             // writes only Q/K/gate. Never mint an unwritten dense V producer.
             QwenOperation::KvAppend => vec![n * 512, n * 5120],
-            QwenOperation::FlashAttention => vec![n * 2048],
+            QwenOperation::Attention => vec![n * 2048],
             QwenOperation::Sigmoid => vec![n * 2048],
             QwenOperation::Multiply => vec![n * 2048, n * 2048],
             QwenOperation::SiluAndMul => vec![n * profile.intermediate_size() * 2],
@@ -459,7 +460,7 @@ impl QwenOperator {
             }],
             QwenOperation::GdnConv => vec![n * 6144, n * 2048],
             QwenOperation::GdnRecurrent
-            | QwenOperation::FlashAttention
+            | QwenOperation::Attention
             | QwenOperation::Sigmoid
             | QwenOperation::Multiply => vec![n * 2048],
             QwenOperation::AttentionQk => vec![n * 2048, n * 512, n * 2048],
@@ -593,7 +594,7 @@ pub(super) fn precision(
                 ));
             }
         }
-        QwenOperation::FlashAttention => {
+        QwenOperation::Attention => {
             if origin(0)?.kind != QwenOperation::AttentionQk || origin(0)?.output_index != 0 {
                 return Err(Error::State(
                     "full-model real rotated query producer".into(),
@@ -1123,10 +1124,10 @@ fn verify_recipe(
             }
         }
         match (kind, state) {
-            (QwenOperation::FlashAttention, Some(version))
+            (QwenOperation::Attention, Some(version))
                 if version.slot == StateSlot::Kv(KvDomain(layer.unwrap().index()))
                     && version.ordinal == 1 => {}
-            (QwenOperation::FlashAttention, _) => {
+            (QwenOperation::Attention, _) => {
                 return Err(Error::State(
                     "FA must read its actual private appended version".into(),
                 ));
@@ -1168,7 +1169,7 @@ fn verify_recipe(
             )?[0];
             let qk = take(Some(layer), QwenOperation::AttentionQk, &[packed])?;
             take(Some(layer), QwenOperation::KvAppend, &[qk[1], packed])?;
-            let fa = take(Some(layer), QwenOperation::FlashAttention, &[qk[0]])?[0];
+            let fa = take(Some(layer), QwenOperation::Attention, &[qk[0]])?[0];
             let sigmoid = take(Some(layer), QwenOperation::Sigmoid, &[qk[2]])?[0];
             let gated = take(Some(layer), QwenOperation::Multiply, &[fa, sigmoid])?[0];
             take(

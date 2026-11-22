@@ -94,7 +94,7 @@ impl QwenOperator {
                     row_stride: 5120,
                 },
             },
-            QwenOperation::FlashAttention => SourceOperatorKind::FlashAttention {
+            QwenOperation::Attention => SourceOperatorKind::Attention {
                 domain: KvDomain(layer),
                 geometry: AttentionGeometry {
                     width: 256,

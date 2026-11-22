@@ -628,7 +628,7 @@ impl Cold {
                 }
                 Ok(1)
             }
-            FlashAttention {
+            Attention {
                 domain,
                 geometry: g,
                 ..

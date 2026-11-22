@@ -44,11 +44,11 @@ fn capture(cached: bool) -> Result<()> {
                 let (node, descriptor) = readback.record().plan().nodes().iter().find_map(|node| {
                     match &node.operation {
                         PlanOperation::SourceOperator { descriptor, .. }
-                            if matches!(descriptor.kind(), SourceOperatorKind::FlashAttention { .. }) => Some((node, descriptor)),
+                            if matches!(descriptor.kind(), SourceOperatorKind::Attention { .. }) => Some((node, descriptor)),
                         _ => None,
                     }
                 }).ok_or_else(|| fail("reference attention absent"))?;
-                let SourceOperatorKind::FlashAttention { domain, geometry, scale, .. } = descriptor.kind() else { unreachable!() };
+                let SourceOperatorKind::Attention { domain, geometry, scale, .. } = descriptor.kind() else { unreachable!() };
                 ensure(node.inputs.len() == 1 && node.outputs.len() == 1, "attention SSA arity")?;
                 let rows = descriptor.invocation().tokens().len();
                 let base = descriptor.invocation().tokens().base();

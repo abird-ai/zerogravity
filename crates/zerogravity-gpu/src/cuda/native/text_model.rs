@@ -90,10 +90,10 @@ fn require_state_read(node: &PlanNode, descriptor: &SourceOperator) -> Result<()
         ));
     }
     let valid = match (descriptor.kind(), state) {
-        (SourceOperatorKind::FlashAttention { domain, .. }, Some(version)) => {
+        (SourceOperatorKind::Attention { domain, .. }, Some(version)) => {
             node.state.is_none() && version.slot == StateSlot::Kv(domain) && version.ordinal == 1
         }
-        (SourceOperatorKind::FlashAttention { .. }, None) => false,
+        (SourceOperatorKind::Attention { .. }, None) => false,
         (_, None) => true,
         (_, Some(_)) => false,
     };
@@ -219,7 +219,7 @@ fn analyze_plan(plan: &ForwardPlan, selection: &SourceSelection) -> Result<TextA
                 if !matches!(
                     ops[0].kind(),
                     SourceOperatorKind::Projection { selected_row: None }
-                ) || !matches!(ops[3].kind(), SourceOperatorKind::FlashAttention { domain: d, .. } if d == domain)
+                ) || !matches!(ops[3].kind(), SourceOperatorKind::Attention { domain: d, .. } if d == domain)
                     || !matches!(ops[4].kind(), SourceOperatorKind::Sigmoid { .. })
                     || !matches!(ops[5].kind(), SourceOperatorKind::Multiply { .. })
                     || !matches!(

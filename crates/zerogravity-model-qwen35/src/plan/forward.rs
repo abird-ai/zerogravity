@@ -446,7 +446,7 @@ impl crate::hybrid_decoder::HybridDecoder for ForwardRecorder<'_> {
         {
             return Err(Error::State("forward KV append output".into()));
         }
-        let value = self.one(Some(index), QwenOperation::FlashAttention, &[query])?;
+        let value = self.one(Some(index), QwenOperation::Attention, &[query])?;
         let gate = self.one(Some(index), QwenOperation::Sigmoid, &[gate])?;
         self.one(Some(index), QwenOperation::Multiply, &[value, gate])
     }
@@ -579,7 +579,7 @@ fn mathematical_kind(
                 row_stride: 2 * (profile.query_width() + profile.kv_width()),
             },
         },
-        QwenOperation::FlashAttention => SourceOperatorKind::FlashAttention {
+        QwenOperation::Attention => SourceOperatorKind::Attention {
             domain: KvDomain(index),
             geometry: AttentionGeometry {
                 width: 256,

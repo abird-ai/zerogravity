@@ -266,7 +266,7 @@ fn same_invocation_different_qk_cohort_cannot_supply_private_appended_kv() {
         before
     );
     builder.source_operator(&append, &[a[1], packed_a]).unwrap();
-    let fa = descriptor(&call, Some(3), QwenOperation::FlashAttention);
+    let fa = descriptor(&call, Some(3), QwenOperation::Attention);
     let before = (builder.core.nodes().len(), builder.core.values().len());
     assert!(builder.source_operator(&fa, &[b[0]]).is_err());
     assert_eq!(

@@ -302,13 +302,16 @@ fn validate_geometry(
     Ok(geometry)
 }
 
-pub(super) struct CudaForwardAttention {
+/// ZeroGravity-authored online-softmax implementation. This is one physical
+/// provider for the semantic Attention operator, not the semantic operation
+/// itself.
+struct BuiltinCudaAttention {
     service: Arc<ResidentService>,
     capacity: usize,
     geometry: crate::cuda::text_forward::Geometry,
 }
 
-impl CudaForwardAttention {
+impl BuiltinCudaAttention {
     pub(super) fn prepare(
         service: Arc<ResidentService>,
         capacity: usize,
@@ -335,7 +338,7 @@ impl CudaForwardAttention {
             || operator.invocation().tokens().capacity() != self.capacity
             || !matches!(
                 operator.kind(),
-                SourceOperatorKind::FlashAttention {
+                SourceOperatorKind::Attention {
                     geometry,
                     scale,
                     mask: SourceAttentionMask::Causal,
@@ -631,6 +634,106 @@ impl CudaForwardAttention {
         )?;
         launch.launch_on(client)?;
         Ok(1)
+    }
+}
+
+/// Phase-specific provider plan selected once during cold model preparation.
+/// The wrapper owns no KV/state authority; providers consume the exact retained
+/// state and service leases supplied by the enclosing resident program.
+pub(super) struct CudaForwardAttention {
+    providers: crate::AttentionProviderPlan,
+    builtin: Arc<BuiltinCudaAttention>,
+}
+
+impl CudaForwardAttention {
+    pub(super) fn prepare(
+        service: Arc<ResidentService>,
+        capacity: usize,
+        geometry: crate::cuda::text_forward::Geometry,
+        providers: crate::AttentionProviderPlan,
+    ) -> Result<Arc<Self>> {
+        let builtin = BuiltinCudaAttention::prepare(service, capacity, geometry)?;
+        Ok(Arc::new(Self { providers, builtin }))
+    }
+
+    fn provider(
+        &self,
+        phase: zerogravity_core::accelerator::program::InvocationPhase,
+    ) -> crate::AttentionProvider {
+        self.providers.provider(phase)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn enqueue(
+        &self,
+        client: &cubecl::client::Client,
+        operator: &zerogravity_core::accelerator::program::SourceOperator,
+        query: &cubecl::server::Handle,
+        candidate_keys: &crate::resident_program::DeviceBuffer,
+        candidate_values: &crate::resident_program::DeviceBuffer,
+        output: &cubecl::server::Handle,
+        status: &ResidentLease,
+    ) -> Result<usize> {
+        match self.provider(operator.invocation().phase()) {
+            crate::AttentionProvider::Builtin => self.builtin.enqueue(
+                client,
+                operator,
+                query,
+                candidate_keys,
+                candidate_values,
+                output,
+                status,
+            ),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn enqueue_cohort(
+        &self,
+        client: &cubecl::client::Client,
+        operator: &zerogravity_core::accelerator::program::SourceOperator,
+        bases: [usize; 4],
+        query: &cubecl::server::Handle,
+        states: &[(
+            &crate::resident_program::DeviceBuffer,
+            &crate::resident_program::DeviceBuffer,
+        )],
+        output: &cubecl::server::Handle,
+        status: &ResidentLease,
+    ) -> Result<usize> {
+        match self.provider(operator.invocation().phase()) {
+            crate::AttentionProvider::Builtin => self
+                .builtin
+                .enqueue_cohort(client, operator, bases, query, states, output, status),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn enqueue_prefill_cohort4(
+        &self,
+        client: &cubecl::client::Client,
+        operator: &zerogravity_core::accelerator::program::SourceOperator,
+        rows: usize,
+        bases: [usize; 4],
+        query: &cubecl::server::Handle,
+        states: &[(
+            &crate::resident_program::DeviceBuffer,
+            &crate::resident_program::DeviceBuffer,
+        )],
+        output: &cubecl::server::Handle,
+        status: &ResidentLease,
+    ) -> Result<usize> {
+        use zerogravity_core::accelerator::program::InvocationPhase;
+        if operator.invocation().phase() != InvocationPhase::Prefill {
+            return Err(Error::State(
+                "prefill attention cohort routed with non-prefill invocation".into(),
+            ));
+        }
+        match self.providers.prefill() {
+            crate::AttentionProvider::Builtin => self.builtin.enqueue_prefill_cohort4(
+                client, operator, rows, bases, query, states, output, status,
+            ),
+        }
     }
 }
 

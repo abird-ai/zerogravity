@@ -299,7 +299,7 @@ impl Layout {
                         bytes: key_width * plan.prefix_capacity() * 8,
                     })
                 }
-                SourceOperatorKind::FlashAttention {
+                SourceOperatorKind::Attention {
                     geometry: g,
                     scale,
                     mask,

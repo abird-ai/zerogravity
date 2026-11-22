@@ -387,7 +387,7 @@ fn require_kv_extension(nodes: &[PlanNode]) -> Result<()> {
     );
     if !matches!(a.kind(), SourceOperatorKind::QkRmsRotaryGated(_))
         || !matches!(b.kind(),SourceOperatorKind::KvAppend {domain,..} if domain==KvDomain(3))
-        || !matches!(c.kind(),SourceOperatorKind::FlashAttention {domain,..} if domain==KvDomain(3))
+        || !matches!(c.kind(),SourceOperatorKind::Attention {domain,..} if domain==KvDomain(3))
         || a.invocation() != b.invocation()
         || b.invocation() != c.invocation()
         || qk.inputs != [ValueId(41)]

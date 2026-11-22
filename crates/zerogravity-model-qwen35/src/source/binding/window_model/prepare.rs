@@ -428,7 +428,7 @@ fn require_state_read(node: &PlanNode, descriptor: &QwenOperator) -> Result<()> 
     };
     descriptor.require_mathematical_operator(actual)?;
     let valid = match (descriptor.kind(), state) {
-        (QwenOperation::FlashAttention, Some(version)) => {
+        (QwenOperation::Attention, Some(version)) => {
             node.state.is_none()
                 && descriptor.layer().is_some_and(|layer| {
                     layer.is_attention()
@@ -436,7 +436,7 @@ fn require_state_read(node: &PlanNode, descriptor: &QwenOperator) -> Result<()> 
                         && version.ordinal == 1
                 })
         }
-        (QwenOperation::FlashAttention, None) => false,
+        (QwenOperation::Attention, None) => false,
         (_, None) => true,
         (_, Some(_)) => false,
     };
@@ -575,7 +575,7 @@ fn analyze_text_record(
             QwenOperation::Projection(QwenProjection::AttentionQkv),
             QwenOperation::AttentionQk,
             QwenOperation::KvAppend,
-            QwenOperation::FlashAttention,
+            QwenOperation::Attention,
             QwenOperation::Sigmoid,
             QwenOperation::Multiply,
             QwenOperation::Projection(QwenProjection::AttentionOut),
@@ -1063,10 +1063,10 @@ fn source_state_descriptor(node: &PlanNode) -> Result<&SourceOperator> {
         ));
     };
     let valid = match (descriptor.kind(), state) {
-        (SourceOperatorKind::FlashAttention { domain, .. }, Some(version)) => {
+        (SourceOperatorKind::Attention { domain, .. }, Some(version)) => {
             node.state.is_none() && version.slot == StateSlot::Kv(domain) && version.ordinal == 1
         }
-        (SourceOperatorKind::FlashAttention { .. }, None) => false,
+        (SourceOperatorKind::Attention { .. }, None) => false,
         (_, None) => true,
         (_, Some(_)) => false,
     };

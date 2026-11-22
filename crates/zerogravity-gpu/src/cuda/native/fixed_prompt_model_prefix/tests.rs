@@ -181,14 +181,8 @@ fn kv_extension() -> (Vec<PlanNode>, BTreeMap<usize, QwenOperator>) {
         vec![],
         Some(effect),
     ));
-    let fa = QwenOperator::new(
-        call,
-        Some(layer),
-        QwenOperation::FlashAttention,
-        vec![],
-        vec![],
-    )
-    .unwrap();
+    let fa =
+        QwenOperator::new(call, Some(layer), QwenOperation::Attention, vec![], vec![]).unwrap();
     metadata.insert(35, fa.clone());
     nodes.push(PlanNode::new(
         "excluded actual FA".into(),

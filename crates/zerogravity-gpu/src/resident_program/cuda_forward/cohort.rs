@@ -1657,7 +1657,7 @@ impl CudaForwardBody {
                 continue;
             }
 
-            if let SourceOperatorKind::FlashAttention { domain, .. } = template.kind()
+            if let SourceOperatorKind::Attention { domain, .. } = template.kind()
                 && lanes.is_multiple_of(4)
                 && row_counts
                     .chunks_exact(4)
@@ -2125,7 +2125,7 @@ impl CudaForwardBody {
                     .launch(client)?;
                     continue;
                 }
-                if let SourceOperatorKind::FlashAttention { domain, .. } = template.kind()
+                if let SourceOperatorKind::Attention { domain, .. } = template.kind()
                     && requests.len() >= 4
                 {
                     let ([query], [output]) = (node.inputs.as_slice(), node.outputs.as_slice())

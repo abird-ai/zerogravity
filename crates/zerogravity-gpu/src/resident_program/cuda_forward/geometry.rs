@@ -53,7 +53,7 @@ pub(super) fn derive(plan: &ForwardPlan) -> Result<(Geometry, HeadGroups)> {
                 consistent(&mut attention, g.attention)?;
                 consistent(&mut rotary, g.rotary_dimensions)?;
             }
-            SourceOperatorKind::FlashAttention {
+            SourceOperatorKind::Attention {
                 geometry, scale, ..
             } => {
                 if scale.to_bits() != 0.0625f32.to_bits() {

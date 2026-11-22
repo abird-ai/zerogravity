@@ -413,7 +413,7 @@ fn require_states(plan: &ForwardPlan, requirements: &[StateRequirement]) -> Resu
                 slab: key_width,
                 capacity: plan.prefix_capacity(),
             }),
-            SourceOperatorKind::FlashAttention { geometry, .. } => Some(StateLayout::Kv {
+            SourceOperatorKind::Attention { geometry, .. } => Some(StateLayout::Kv {
                 slab: geometry
                     .kv_heads
                     .checked_mul(geometry.width)

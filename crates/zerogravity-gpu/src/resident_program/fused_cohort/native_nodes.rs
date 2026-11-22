@@ -42,7 +42,7 @@ impl CohortNativeNodes {
                     | SourceOperatorKind::SiluAndMul { .. }
                     | SourceOperatorKind::QkRmsRotaryGated(_)
                     | SourceOperatorKind::KvAppend { .. }
-                    | SourceOperatorKind::FlashAttention { .. }
+                    | SourceOperatorKind::Attention { .. }
                     | SourceOperatorKind::Sigmoid { .. }
                     | SourceOperatorKind::Multiply { .. }
             ) {
@@ -57,7 +57,7 @@ impl CohortNativeNodes {
                 kind,
                 SourceOperatorKind::QkRmsRotaryGated(_)
                     | SourceOperatorKind::KvAppend { .. }
-                    | SourceOperatorKind::FlashAttention { .. }
+                    | SourceOperatorKind::Attention { .. }
                     | SourceOperatorKind::Sigmoid { .. }
                     | SourceOperatorKind::Multiply { .. }
             ) {

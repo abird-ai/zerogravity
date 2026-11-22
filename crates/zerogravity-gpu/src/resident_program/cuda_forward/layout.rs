@@ -359,7 +359,7 @@ fn require_plan_shape(plan: &ForwardPlan) -> Result<()> {
                 | GatedDelta { .. }
                 | QkRmsRotaryGated(_)
                 | KvAppend { .. }
-                | FlashAttention { .. }
+                | Attention { .. }
                 | Sigmoid { .. }
                 | Multiply { .. }
                 | SiluAndMul { .. }

@@ -4,6 +4,7 @@
 //! source bindings and the already-recorded mathematical plan.
 
 mod async_bridge;
+mod attention_provider;
 mod attention_qk;
 mod attention_softmax;
 mod attention_value;
@@ -143,6 +144,7 @@ pub mod vulkan;
 #[cfg(feature = "qualification")]
 pub mod qualification;
 
+pub use attention_provider::{AttentionProvider, AttentionProviderPlan};
 #[cfg(feature = "cuda")]
 pub use cubecl::cuda::{CudaDeviceMetadata, observe_cuda_devices};
 pub use cubecl::{Device, device::WgpuDeviceKind};

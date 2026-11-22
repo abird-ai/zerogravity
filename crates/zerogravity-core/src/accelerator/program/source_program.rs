@@ -467,7 +467,10 @@ pub enum SourceOperatorKind {
         key_width: usize,
         packed_value: TensorView,
     },
-    FlashAttention {
+    /// Semantic attention operation. Physical execution may be provided by a
+    /// ZeroGravity builtin kernel, FlashAttention, FlashInfer, AITER or another
+    /// qualified backend without changing the model plan.
+    Attention {
         domain: KvDomain,
         geometry: AttentionGeometry,
         scale: f32,
@@ -592,7 +595,7 @@ impl SourceOperatorTemplate {
             CausalConvSplit { domain, .. } => SourceStateAccess::Write(StateSlot::Conv(domain)),
             GatedDelta { domain, .. } => SourceStateAccess::Write(StateSlot::Recurrent(domain)),
             KvAppend { domain, .. } => SourceStateAccess::Write(StateSlot::Kv(domain)),
-            FlashAttention { domain, .. } => SourceStateAccess::Read(StateSlot::Kv(domain)),
+            Attention { domain, .. } => SourceStateAccess::Read(StateSlot::Kv(domain)),
             StateCarry { slot } => SourceStateAccess::Write(slot),
             _ => SourceStateAccess::None,
         }
@@ -738,7 +741,7 @@ impl SourceOperator {
             CausalConvSplit { domain, .. } => SourceStateAccess::Write(StateSlot::Conv(domain)),
             GatedDelta { domain, .. } => SourceStateAccess::Write(StateSlot::Recurrent(domain)),
             KvAppend { domain, .. } => SourceStateAccess::Write(StateSlot::Kv(domain)),
-            FlashAttention { domain, .. } => SourceStateAccess::Read(StateSlot::Kv(domain)),
+            Attention { domain, .. } => SourceStateAccess::Read(StateSlot::Kv(domain)),
             StateCarry { slot } => SourceStateAccess::Write(slot),
             _ => SourceStateAccess::None,
         }
@@ -960,7 +963,7 @@ impl SourceOperator {
                 )?)?;
                 (0, 0)
             }
-            FlashAttention {
+            Attention {
                 geometry, scale, ..
             } => {
                 geometry.validate()?;
@@ -1017,7 +1020,7 @@ impl SourceOperator {
                 packed_value,
                 ..
             } => vec![p(n, key_width)?, p(n, packed_value.row_stride)?],
-            FlashAttention { geometry, .. } => vec![p(n, geometry.validate()?.0)?],
+            Attention { geometry, .. } => vec![p(n, geometry.validate()?.0)?],
             Sigmoid { width } | SiluAndMul { width } => vec![p(
                 n,
                 if matches!(self.kind(), SiluAndMul { .. }) {
@@ -1058,7 +1061,7 @@ impl SourceOperator {
                 vec![p(n, query)?, p(n, kv)?, p(n, query)?]
             }
             KvAppend { .. } | StateCarry { .. } => vec![],
-            FlashAttention { geometry, .. } => vec![p(n, geometry.validate()?.0)?],
+            Attention { geometry, .. } => vec![p(n, geometry.validate()?.0)?],
             Sigmoid { width } | Multiply { width } | SiluAndMul { width } => vec![p(n, width)?],
         };
         Ok(values)

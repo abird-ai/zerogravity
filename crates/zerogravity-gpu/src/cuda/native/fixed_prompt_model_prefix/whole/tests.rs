@@ -96,7 +96,7 @@ fn fixture(
             Some(effect),
         ),
         (
-            QwenOperation::FlashAttention,
+            QwenOperation::Attention,
             vec![],
             vec![],
             vec![ValueId(2)],

@@ -532,7 +532,7 @@ fn source_geometry_extends_the_same_plan_without_extending_captured_cuda() {
                     }
                     recurrent += 1;
                 }
-                SourceOperatorKind::FlashAttention { geometry, .. } => {
+                SourceOperatorKind::Attention { geometry, .. } => {
                     assert_eq!(
                         (geometry.query_heads, geometry.kv_heads, geometry.width),
                         (24, 4, 256)

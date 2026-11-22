@@ -138,6 +138,7 @@ impl CudaForwardCold {
             service.clone(),
             layout.plan().prefix_capacity(),
             geometry,
+            crate::AttentionProviderPlan::builtin(),
         )?;
 
         let mut gdn_internal = BTreeMap::new();

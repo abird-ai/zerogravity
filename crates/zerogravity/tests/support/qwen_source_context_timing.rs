@@ -90,7 +90,7 @@ pub async fn run(
             let PlanOperation::SourceOperatorTemplate { descriptor, .. } = &node.operation else {
                 unreachable!("validated templates")
             };
-            if matches!(descriptor.kind(), SourceOperatorKind::FlashAttention { .. }) {
+            if matches!(descriptor.kind(), SourceOperatorKind::Attention { .. }) {
                 need(node.outputs.len() == 1, "one original attention output")?;
                 let previous = previous.ok_or_else(|| {
                     zerogravity::Error::State("attention timing predecessor absent".into())

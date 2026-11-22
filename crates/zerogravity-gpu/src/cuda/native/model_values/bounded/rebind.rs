@@ -120,7 +120,7 @@ mod tests {
             PlanOperation::SourceOperator {
                 descriptor: Box::new(SourceOperator::new(
                     call,
-                    SourceOperatorKind::FlashAttention {
+                    SourceOperatorKind::Attention {
                         domain: KvDomain(3),
                         geometry: AttentionGeometry {
                             width: 256,

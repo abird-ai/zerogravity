@@ -316,7 +316,7 @@ impl crate::hybrid_decoder::HybridDecoder for FullSourceRecorder<'_> {
                 "KV append is one private effect without public value".into(),
             ));
         }
-        let fa = self.one(layer, QwenOperation::FlashAttention, &[q])?;
+        let fa = self.one(layer, QwenOperation::Attention, &[q])?;
         let sigmoid = self.one(layer, QwenOperation::Sigmoid, &[gate])?;
         self.one(layer, QwenOperation::Multiply, &[fa, sigmoid])
     }

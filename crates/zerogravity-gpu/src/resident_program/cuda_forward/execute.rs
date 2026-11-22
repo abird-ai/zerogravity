@@ -1050,7 +1050,7 @@ impl CudaForwardBody {
                 launches += 1;
                 Ok((launches, 0))
             }
-            FlashAttention { domain, .. } => {
+            Attention { domain, .. } => {
                 let ([query], [output]) = (node.inputs.as_slice(), node.outputs.as_slice()) else {
                     return Err(Error::State("CUDA forward attention SSA arity".into()));
                 };

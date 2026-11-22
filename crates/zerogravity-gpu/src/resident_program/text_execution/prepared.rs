@@ -372,7 +372,7 @@ pub(super) fn kernels(
                     l.plan.prefix_capacity()
                 );
             }
-            SourceOperatorKind::FlashAttention { geometry: g, .. } => {
+            SourceOperatorKind::Attention { geometry: g, .. } => {
                 out.extend(crate::source_attention::rows::kernels(
                     client,
                     crate::source_attention::rows::Geometry::new(

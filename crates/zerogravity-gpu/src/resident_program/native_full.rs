@@ -806,7 +806,7 @@ impl FullModelProgram {
                 ));
             }
             if self.fault.load(Ordering::Acquire) == 19
-                && matches!(op.kind(), SourceOperatorKind::FlashAttention { .. })
+                && matches!(op.kind(), SourceOperatorKind::Attention { .. })
                 && self.attention_sites.get(&index) == Some(&23)
             {
                 self.fault_cut.store(true, Ordering::Release);
@@ -838,7 +838,7 @@ impl FullModelProgram {
             self.device_copies
                 .fetch_add(submitted.copies, Ordering::AcqRel);
             if self.fault.load(Ordering::Acquire) == 19
-                && matches!(op.kind(), SourceOperatorKind::FlashAttention { .. })
+                && matches!(op.kind(), SourceOperatorKind::Attention { .. })
                 && self.attention_sites.get(&index) == Some(&23)
             {
                 self.fault_cut.store(true, Ordering::Release);
@@ -1037,7 +1037,7 @@ impl FullModelProgram {
                 }
                 result
             }
-            SourceOperatorKind::FlashAttention { .. }
+            SourceOperatorKind::Attention { .. }
                 if bound
                     .fixed_prompt_prefix
                     .as_ref()
@@ -1119,7 +1119,7 @@ impl FullModelProgram {
             SourceOperatorKind::Projection { .. }
             | SourceOperatorKind::QkRmsRotaryGated(_)
             | SourceOperatorKind::KvAppend { .. }
-            | SourceOperatorKind::FlashAttention { .. }
+            | SourceOperatorKind::Attention { .. }
             | SourceOperatorKind::Sigmoid { .. }
             | SourceOperatorKind::Multiply { .. }
                 if self.attention_sites.contains_key(&index) =>

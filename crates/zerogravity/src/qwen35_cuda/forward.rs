@@ -184,7 +184,7 @@ fn plan_primitives(
         SourceOperatorKind::Projection { .. }
         | SourceOperatorKind::CausalConvSplit { .. }
         | SourceOperatorKind::GatedDelta { .. }
-        | SourceOperatorKind::FlashAttention { .. } => Vec::new(),
+        | SourceOperatorKind::Attention { .. } => Vec::new(),
         SourceOperatorKind::RetainedRows { .. }
         | SourceOperatorKind::CausalConvSiluZero { .. }
         | SourceOperatorKind::GroupedQkNormalize(_)

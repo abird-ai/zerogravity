@@ -11,10 +11,10 @@ pub(super) fn descriptor(node: &PlanNode) -> Result<&SourceOperator> {
         ));
     };
     let valid = match (descriptor.kind(), state) {
-        (SourceOperatorKind::FlashAttention { domain, .. }, Some(version)) => {
+        (SourceOperatorKind::Attention { domain, .. }, Some(version)) => {
             node.state.is_none() && version.slot == StateSlot::Kv(domain) && version.ordinal == 1
         }
-        (SourceOperatorKind::FlashAttention { .. }, None) => false,
+        (SourceOperatorKind::Attention { .. }, None) => false,
         (_, None) => true,
         (_, Some(_)) => false,
     };
@@ -53,7 +53,7 @@ mod tests {
     }
     // Fixture math matches the original cases; no model/profile eligibility.
     fn fa(layer: usize) -> SourceOperatorKind {
-        SourceOperatorKind::FlashAttention {
+        SourceOperatorKind::Attention {
             domain: KvDomain(layer),
             geometry: AttentionGeometry {
                 width: 256,

@@ -53,7 +53,7 @@ impl AttentionSite {
         }
         let fa_count=nodes.iter().filter(|node| matches!(&node.operation,
             PlanOperation::SourceOperator{descriptor,..}
-            if matches!(descriptor.kind(),SourceOperatorKind::FlashAttention{domain,..} if domain==KvDomain(index)))).count();
+            if matches!(descriptor.kind(),SourceOperatorKind::Attention{domain,..} if domain==KvDomain(index)))).count();
         if fa_count != 1 {
             return Err(Error::State(
                 "whole actual attention domain repeated/absent".into(),
@@ -73,7 +73,7 @@ impl AttentionSite {
                     matches!(descriptor.kind(),SourceOperatorKind::KvAppend{domain,..} if domain==KvDomain(index))
                 }
                 3 => {
-                    matches!(descriptor.kind(),SourceOperatorKind::FlashAttention{domain,..} if domain==KvDomain(index))
+                    matches!(descriptor.kind(),SourceOperatorKind::Attention{domain,..} if domain==KvDomain(index))
                 }
                 4 => matches!(descriptor.kind(), SourceOperatorKind::Sigmoid { .. }),
                 5 => matches!(descriptor.kind(), SourceOperatorKind::Multiply { .. }),

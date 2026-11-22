@@ -1021,7 +1021,7 @@ impl FullModelCohort {
             Some(TextCohortFault::UnknownAfterFirstConvolution) => matches!(&node.operation,
                 PlanOperation::SourceOperator { descriptor, .. } if matches!(descriptor.kind(), zerogravity_core::accelerator::program::SourceOperatorKind::CausalConvSplit { domain: zerogravity_core::accelerator::program::ConvDomain(0), .. })),
             Some(TextCohortFault::UnknownAfterLastFa) => matches!(&node.operation,
-                PlanOperation::SourceOperator { descriptor, .. } if matches!(descriptor.kind(), zerogravity_core::accelerator::program::SourceOperatorKind::FlashAttention { domain: zerogravity_core::accelerator::program::KvDomain(23), .. })),
+                PlanOperation::SourceOperator { descriptor, .. } if matches!(descriptor.kind(), zerogravity_core::accelerator::program::SourceOperatorKind::Attention { domain: zerogravity_core::accelerator::program::KvDomain(23), .. })),
             Some(TextCohortFault::UnknownAfterHead) => index == 254,
             None => false,
         };

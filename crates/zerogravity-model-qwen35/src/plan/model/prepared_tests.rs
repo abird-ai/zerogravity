@@ -165,7 +165,7 @@ fn record(call: &PromptInvocation) -> QwenPlan {
             )[0];
             let qk = apply(layer, QwenOperation::AttentionQk, &[packed]);
             assert!(apply(layer, QwenOperation::KvAppend, &[qk[1], packed]).is_empty());
-            let fa = apply(layer, QwenOperation::FlashAttention, &[qk[0]])[0];
+            let fa = apply(layer, QwenOperation::Attention, &[qk[0]])[0];
             let sig = apply(layer, QwenOperation::Sigmoid, &[qk[2]])[0];
             let gated = apply(layer, QwenOperation::Multiply, &[fa, sig])[0];
             apply(
