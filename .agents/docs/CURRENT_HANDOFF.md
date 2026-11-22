@@ -1,13 +1,28 @@
-# ZeroGravity current comprehensive handoff — 21 Nov 2026
+# ZeroGravity current comprehensive handoff — 22 Nov 2026
 
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
-Full dated takeover snapshot: [`FULL_COMPREHENSIVE_HANDOFF_2026-11-21.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-21.md). The 21 Nov pack embeds this live handoff, current owning-plan snapshots, the exact post-20-Nov signed chronology, and the complete 20 Nov pack; the 20 Nov pack in turn carries the 18 Nov/15 Nov/14 Nov/October design foundation.
+Full dated takeover snapshot: [`FULL_COMPREHENSIVE_HANDOFF_2026-11-22.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-22.md). The 22 Nov pack adds the current L5/X2/A1 authority, post-21-Nov implementation/terminology/performance chronology, reusable-primitive preservation rules and Nix-native vLLM state, then embeds this maintained handoff and the complete 21 Nov pack. The 21 Nov pack in turn carries the 20 Nov/18 Nov/15 Nov/14 Nov/October design foundation.
 
 This file is the complete takeover map and a pointer into maintained source, tests
 and plans. It is deliberately **not** the retired monolithic SHA/archive/evidence
 handoff model. Git history retains superseded checkpoints; current source, tests
 and live TODOs are authoritative.
+
+### Host authority — 22 Nov 2026
+
+- L5 / `dotlink---l5` is the only source-authoring host; use the single persistent
+  `main` worktree at `/home/pvl/spaces/abird/src/zerogravity`.
+- X2 / `dotlink---x2` is execution/testing only for AMD/ROCm large-VRAM work; move
+  exact L5 commits by Git bundle rather than pushing merely for transport.
+- **A1 is offline/out of scope until the owner explicitly re-enables it.** Do not
+  connect, resume/delete partial transfer residue, or schedule benchmark/correctness
+  work there.
+- All hosts use repo `/home/pvl/spaces/abird/src/zerogravity`, cache
+  `/home/pvl/.cache/abird/zerogravity`, `CARGO_BUILD_JOBS=8`, and
+  `RUSTC_WRAPPER=/run/current-system/sw/bin/kache`.
+- Physical GPU work goes through `python3 -B scripts/native-gpu.py -- ...`; loopback
+  traffic uses the accepted private-network envelope and `--require-private-network`.
 
 ### Terminology architecture — 21 Nov 2026
 
@@ -136,14 +151,13 @@ L5 private-loopback correctness is physically accepted on the exact local Qwen3.
 2B snapshots. Both providers advertise the expected `/v1/models` name, accept a
 temperature-zero `/v1/completions` request, return one deterministic completion, and shut
 down with the RTX3060 back at37MiB. The correctness smoke deliberately used eager mode;
-matched performance must use vLLM's normal optimized execution. pvl-a1 is a compatible
-second CUDA target (RTX4060 Laptop 8GiB, driver620.70.06/CUDA UMD13.5 and the same private
-loopback envelope), but the exact L5 0.8B/2B snapshots are absent there. Next transfer those
-exact source directories through verified host transport, sync this exact Git checkpoint,
-repeat provider correctness on A1, then run the existing `serve-compare.py` /
-`serve-matrix.py` C1/C4/C8/C16/C32/C64 campaign on both L5 and A1. Do not invent a second
-benchmark framework. The same provider constructor is the intended basis for a later ROCm
-sibling on X2 after its environment gate is repaired.
+matched performance must use vLLM's normal optimized execution. **A1 is now explicitly
+offline/out of scope until the owner re-enables it**; do not connect to it, resume/delete
+partial model-transfer residue, or schedule correctness/benchmark work there. The current
+matched campaign is L5-only: reuse `serve-compare.py` / `serve-matrix.py` for
+concurrency=1/4/8/16/32/64 on the exact local0.8B/2B snapshots. The same provider constructor
+is the intended basis for a later ROCm sibling on X2 after exact L5 commit sync and its
+environment gate is repaired. Do not invent a second benchmark framework.
 
 ### Error architecture — 21 Nov 2026
 

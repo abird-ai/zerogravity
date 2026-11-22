@@ -33,11 +33,12 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   passes the exact local Qwen3.5 0.8B and2B snapshots: `/v1/models` + deterministic
   `/v1/completions` return200 for both and RTX3060 returns to37MiB after shutdown.
   No Podman, host Python packages or host CUDA toolkit are required.
-- [ ] **Next matched baseline unit:** sync this exact source checkpoint and the exact
-  L5 0.8B/2B snapshots to pvl-a1 using verified transport, prove the same provider
-  on its RTX4060, then reuse existing `serve-compare.py` / `serve-matrix.py` for
-  C1/C4/C8/C16/C32/C64 on both L5 and A1. Do not create a second benchmark harness.
-  The same provider constructor is intended to grow a ROCm/X2 sibling later.
+- [ ] **Next matched baseline unit:** A1 is owner-paused/offline; do not connect,
+  resume/delete partial transfer residue or run benchmarks there. On L5, reuse the
+  existing `serve-compare.py` / `serve-matrix.py` for exact0.8B/2B matched
+  concurrency=1/4/8/16/32/64 with optimized vLLM execution and the accepted private
+  provider lifecycle. Do not create a second benchmark harness. After that, grow the
+  same provider constructor into the ROCm/X2 sibling using exact L5 commit sync.
 - [x] `c282f20` restores HIP-only source-profile compilation after a shared CUDA
   optimization accidentally gated the model-neutral packed-BF16 numeric-zero
   greedy kernel behind `cuda-cublas`; stale HIP test/support profiles now specify
