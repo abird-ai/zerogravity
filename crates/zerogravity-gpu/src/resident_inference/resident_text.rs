@@ -10,8 +10,8 @@ use zerogravity_core::accelerator::program::{BoundInvocation, InvocationPhase, N
 
 #[cfg(feature = "cuda-cublas")]
 mod cohort;
-#[cfg(feature = "cuda-cublas")]
-pub use cohort::{ResidentTextCohortPending, ResidentTextCohortPreparation};
+#[cfg(all(feature = "hip-source", feature = "hip"))]
+mod hip_cohort;
 
 #[cfg(all(
     feature = "hardware-abort-probe",
@@ -66,7 +66,6 @@ pub struct ResidentTextModel {
     sessions: Arc<async_lock::Semaphore>,
     _control: WindowWorkspace,
     contract: NumericalContract,
-    #[cfg(feature = "cuda-cublas")]
     cohort_width: usize,
     #[cfg(feature = "cuda-cublas")]
     state_policy: CudaSourceStatePolicy,
@@ -85,6 +84,55 @@ struct ReaderScope {
     model: Arc<ResidentTextModel>,
     _host: WindowWorkspace,
 }
+
+pub enum ResidentTextCohortPreparation {
+    Capacity,
+    Ready(ResidentTextCohortPending),
+}
+
+#[must_use = "dropping a completed source cohort discards every private root"]
+pub struct ResidentTextCohortPending {
+    inner: PreparedResidentCohort,
+    scopes: Vec<Arc<ReaderScope>>,
+}
+
+impl ResidentTextCohortPending {
+    pub fn dispatches(&self) -> usize {
+        self.inner.dispatches()
+    }
+    pub fn fused_dispatches(&self) -> usize {
+        self.inner.fused_dispatches()
+    }
+    pub fn commit(
+        self,
+        sessions: &mut [&mut ResidentTextSession],
+    ) -> Result<Vec<ResidentTextReadback<InferenceReadback>>> {
+        if sessions.len() != self.scopes.len()
+            || sessions
+                .iter()
+                .zip(&self.scopes)
+                .any(|(session, scope)| !Arc::ptr_eq(&session.model, &scope.model))
+        {
+            return Err(Error::State(
+                "source cohort original session/model coverage differs".into(),
+            ));
+        }
+        let mut inner = sessions
+            .iter_mut()
+            .map(|session| &mut session.inner)
+            .collect::<Vec<_>>();
+        let readbacks = self.inner.commit(&mut inner)?;
+        Ok(readbacks
+            .into_iter()
+            .zip(self.scopes)
+            .map(|(data, scope)| ResidentTextReadback {
+                data,
+                _scope: scope,
+            })
+            .collect())
+    }
+}
+
 /// Immutable access only: moving a raw Vec out cannot release its credit early.
 pub struct ResidentTextReadback<T> {
     data: T,
@@ -202,6 +250,33 @@ impl ResidentModel {
         budget: crate::hip::native::HipSourceBudget,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<ResidentTextModel>> {
+        Self::load_cpu_forward_source_with_budget_and_cohort(
+            device,
+            source,
+            source_owner,
+            plan,
+            max_sessions,
+            0,
+            budget,
+            cancelled,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn load_cpu_forward_source_with_budget_and_cohort(
+        device: Device,
+        source: VerifiedTensorSource,
+        source_owner: Arc<dyn std::any::Any + Send + Sync>,
+        plan: Arc<ForwardPlan>,
+        max_sessions: usize,
+        cohort_width: usize,
+        budget: crate::hip::native::HipSourceBudget,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<Arc<ResidentTextModel>> {
+        if !matches!(cohort_width, 0 | 4 | 8) || cohort_width != 0 && max_sessions < cohort_width {
+            return Err(Error::Limit("resident-text HIP cohort capacity".into()));
+        }
         forward_not_cancelled(cancelled)?;
         let control = source.reserve_workspace(CONTROL_BYTES)?;
         let capacity = plan.prefix_capacity();
@@ -246,8 +321,7 @@ impl ResidentModel {
             sessions: Arc::new(async_lock::Semaphore::new(max_sessions)),
             _control: control,
             contract: NumericalContract::TorchCpuAvx2Bf16MixedV1,
-            #[cfg(feature = "cuda-cublas")]
-            cohort_width: 0,
+            cohort_width,
             #[cfg(feature = "cuda-cublas")]
             state_policy: CudaSourceStatePolicy::Contiguous,
             #[cfg(feature = "cuda-cublas")]

@@ -3716,16 +3716,19 @@ mod forward_shutdown_owner_tests {
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
 mod resident_text;
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+pub use resident_text::CudaSourceStatePolicy;
 #[cfg(all(
     feature = "cuda-cublas",
     feature = "hardware-abort-probe",
     target_os = "linux"
 ))]
 pub use resident_text::ResidentTextPagedPoolSnapshot;
-#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-pub use resident_text::{
-    CudaSourceStatePolicy, ResidentTextCohortPending, ResidentTextCohortPreparation,
-};
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
+pub use resident_text::{ResidentTextCohortPending, ResidentTextCohortPreparation};
 #[cfg(all(
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))

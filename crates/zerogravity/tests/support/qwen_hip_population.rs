@@ -95,12 +95,16 @@ impl Harness {
             .unwrap();
         let explicit = source_budget::explicit().unwrap();
         let budget = explicit.unwrap_or_default();
+        let cohort_width = std::env::var("ZG_QWEN_HIP_COHORT_WIDTH")
+            .ok()
+            .map(|value| value.parse::<usize>().unwrap())
+            .unwrap_or(0);
         let profile = QwenServingProfile {
             active,
             context,
             output,
             max_pending: Some(pending),
-            cohort_width: 0,
+            cohort_width,
         };
         let aliases = vec!["source".into(), "alias".into()];
         let cache = CacheOptions::new(None, 96 * 1024 * 1024 * 1024);

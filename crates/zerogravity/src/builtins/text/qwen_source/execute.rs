@@ -1,5 +1,5 @@
 use super::*;
-#[cfg(feature = "qwen35-cuda")]
+#[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
 use crate::gpu::{ResidentTextCohortPending, ResidentTextCohortPreparation};
 use crate::{
     accelerator::program::InvocationPhase,
@@ -16,7 +16,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
     time::Instant,
 };
-#[cfg(feature = "qwen35-cuda")]
+#[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
 use zerogravity_engine::router::waves::Phase;
 #[cfg(feature = "qwen35-cuda")]
 use zerogravity_engine::state_cache::{
@@ -30,16 +30,16 @@ use zerogravity_engine::{
     },
 };
 pub(super) struct SourceText;
-#[cfg(feature = "qwen35-cuda")]
+#[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
 type CohortReady = ResidentTextCohortPending;
-#[cfg(not(feature = "qwen35-cuda"))]
+#[cfg(not(any(feature = "qwen35-cuda", feature = "qwen35-hip")))]
 type CohortReady = std::convert::Infallible;
 struct Feedback {
     root: RootBinding,
     id: u32,
     device: Option<ResidentToken>,
 }
-#[cfg(feature = "qwen35-cuda")]
+#[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
 fn native_phase_compatible(
     first_prefill: Option<(u64, usize)>,
     row_prefill: Option<(u64, usize)>,
@@ -255,9 +255,13 @@ impl Executor for SourceText {
         #[allow(unreachable_code)]
         Ok(zerogravity_engine::state_cache::PrefixCacheEviction::default())
     }
-    #[cfg(feature = "qwen35-cuda")]
+    #[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
     fn cohort_eligible(row: &Active<Self>) -> bool {
+        let device_greedy = row.state.session.supports_device_greedy();
         if row.cursor < row.prompt.len() {
+            if !device_greedy {
+                return false;
+            }
             let rows = row.prefill_count();
             let frontier = row.state.session.binding().frontier() as usize;
             rows != 0
@@ -273,11 +277,12 @@ impl Executor for SourceText {
             row.packet_presented
                 && row.blocked_since.is_none()
                 && row.state.feedback.as_ref().is_some_and(|feedback| {
-                    feedback.root == row.state.session.binding() && feedback.device.is_some()
+                    feedback.root == row.state.session.binding()
+                        && feedback.device.is_some() == device_greedy
                 })
         }
     }
-    #[cfg(feature = "qwen35-cuda")]
+    #[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
     fn compatible(first: &Active<Self>, row: &Active<Self>) -> bool {
         let prefill = |row: &Active<Self>| {
             (row.cursor < row.prompt.len())
@@ -288,6 +293,14 @@ impl Executor for SourceText {
         }
         let first_prefill = prefill(first);
         let row_prefill = prefill(row);
+        if first_prefill.is_none()
+            && row_prefill.is_none()
+            && !first.state.session.supports_device_greedy()
+        {
+            return first.state.session.binding().frontier()
+                == row.state.session.binding().frontier();
+        }
+        #[cfg(feature = "qwen35-cuda")]
         let rows_compatible = match (first_prefill, row_prefill) {
             (Some((_, left)), Some((_, right))) => first
                 .model
@@ -295,9 +308,11 @@ impl Executor for SourceText {
                 .is_ok_and(|model| model.prefill_rows_compatible(left, right)),
             _ => false,
         };
+        #[cfg(not(feature = "qwen35-cuda"))]
+        let rows_compatible = false;
         native_phase_compatible(first_prefill, row_prefill, rows_compatible)
     }
-    #[cfg(feature = "qwen35-cuda")]
+    #[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
     fn validate_cohort(rows: &[Active<Self>], work: CohortWork) -> Result<(), ServiceError> {
         let phase_matches = match work.phase {
             Phase::Prefill => rows.iter().all(|row| row.cursor < row.prompt.len()),
@@ -319,12 +334,12 @@ impl Executor for SourceText {
             return Err(ServiceError::new(
                 500,
                 "source_cohort",
-                "source CUDA cohort requires aligned native prefill chunks or compatible cached-decode rows",
+                "source cohort requires compatible native rows",
             ));
         }
         Ok(())
     }
-    #[cfg(feature = "qwen35-cuda")]
+    #[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
     fn prepare(
         rows: &mut [Active<Self>],
         work: CohortWork,
@@ -345,31 +360,53 @@ impl Executor for SourceText {
         let model = rows[0].model.resident()?;
         let ready = match work.phase {
             Phase::Prefill => {
-                let invocations = rows
-                    .iter()
-                    .map(|row| {
-                        let end = row.cursor.checked_add(row.prefill_count()).ok_or_else(|| {
-                            crate::Error::Limit("source cohort prefill cursor".into())
-                        })?;
-                        row.model.source.plan.bind_invocation(
-                            InvocationPhase::Prefill,
-                            Self::frontier(&row.state),
-                            Arc::from(&row.prompt[row.cursor..end]),
-                            !work.state_only,
-                        )
-                    })
-                    .collect::<crate::Result<Vec<_>>>()
-                    .map_err(ServiceError::inference)?;
-                let inputs = rows
-                    .iter()
-                    .zip(&invocations)
-                    .map(|(row, invocation)| (&row.state.session, invocation.bound_invocation()))
-                    .collect::<Vec<_>>();
-                match block_on(model.prepare_prefill_cohort_admitted(&inputs))
-                    .map_err(ServiceError::inference)?
+                #[cfg(feature = "qwen35-cuda")]
                 {
-                    ResidentTextCohortPreparation::Capacity => return Ok(Preparation::Capacity),
-                    ResidentTextCohortPreparation::Ready(ready) => ready,
+                    if !rows[0].state.session.supports_device_greedy() {
+                        return Err(ServiceError::new(
+                            500,
+                            "source_cohort",
+                            "HIP cohorts intentionally keep prefill on the singleton path",
+                        ));
+                    }
+                    let invocations =
+                        rows.iter()
+                            .map(|row| {
+                                let end = row.cursor.checked_add(row.prefill_count()).ok_or_else(
+                                    || crate::Error::Limit("source cohort prefill cursor".into()),
+                                )?;
+                                row.model.source.plan.bind_invocation(
+                                    InvocationPhase::Prefill,
+                                    Self::frontier(&row.state),
+                                    Arc::from(&row.prompt[row.cursor..end]),
+                                    !work.state_only,
+                                )
+                            })
+                            .collect::<crate::Result<Vec<_>>>()
+                            .map_err(ServiceError::inference)?;
+                    let inputs = rows
+                        .iter()
+                        .zip(&invocations)
+                        .map(|(row, invocation)| {
+                            (&row.state.session, invocation.bound_invocation())
+                        })
+                        .collect::<Vec<_>>();
+                    match block_on(model.prepare_prefill_cohort_admitted(&inputs))
+                        .map_err(ServiceError::inference)?
+                    {
+                        ResidentTextCohortPreparation::Capacity => {
+                            return Ok(Preparation::Capacity);
+                        }
+                        ResidentTextCohortPreparation::Ready(ready) => ready,
+                    }
+                }
+                #[cfg(not(feature = "qwen35-cuda"))]
+                {
+                    return Err(ServiceError::new(
+                        500,
+                        "source_cohort",
+                        "HIP cohorts intentionally keep prefill on the singleton path",
+                    ));
                 }
             }
             Phase::Decode => {
@@ -386,26 +423,69 @@ impl Executor for SourceText {
                     })
                     .collect::<crate::Result<Vec<_>>>()
                     .map_err(ServiceError::inference)?;
-                let inputs = rows
-                    .iter()
-                    .zip(&invocations)
-                    .map(|(row, invocation)| {
-                        (
-                            &row.state.session,
-                            invocation.bound_invocation(),
-                            row.state
-                                .feedback
-                                .as_ref()
-                                .and_then(|feedback| feedback.device.as_ref())
-                                .expect("validated device feedback"),
-                        )
-                    })
-                    .collect::<Vec<_>>();
-                match block_on(model.prepare_greedy_decode_cohort_admitted(&inputs))
-                    .map_err(ServiceError::inference)?
-                {
-                    ResidentTextCohortPreparation::Capacity => return Ok(Preparation::Capacity),
-                    ResidentTextCohortPreparation::Ready(ready) => ready,
+
+                if rows[0].state.session.supports_device_greedy() {
+                    #[cfg(feature = "qwen35-cuda")]
+                    {
+                        let inputs = rows
+                            .iter()
+                            .zip(&invocations)
+                            .map(|(row, invocation)| {
+                                (
+                                    &row.state.session,
+                                    invocation.bound_invocation(),
+                                    row.state
+                                        .feedback
+                                        .as_ref()
+                                        .and_then(|feedback| feedback.device.as_ref())
+                                        .expect("validated device feedback"),
+                                )
+                            })
+                            .collect::<Vec<_>>();
+                        match block_on(model.prepare_greedy_decode_cohort_admitted(&inputs))
+                            .map_err(ServiceError::inference)?
+                        {
+                            ResidentTextCohortPreparation::Capacity => {
+                                return Ok(Preparation::Capacity);
+                            }
+                            ResidentTextCohortPreparation::Ready(ready) => ready,
+                        }
+                    }
+                    #[cfg(not(feature = "qwen35-cuda"))]
+                    {
+                        return Err(ServiceError::new(
+                            500,
+                            "source_cohort",
+                            "device-token cohort requires CUDA",
+                        ));
+                    }
+                } else {
+                    #[cfg(feature = "qwen35-hip")]
+                    {
+                        let inputs = rows
+                            .iter()
+                            .zip(&invocations)
+                            .map(|(row, invocation)| {
+                                (&row.state.session, invocation.bound_invocation())
+                            })
+                            .collect::<Vec<_>>();
+                        match block_on(model.prepare_decode_cohort_admitted(&inputs))
+                            .map_err(ServiceError::inference)?
+                        {
+                            ResidentTextCohortPreparation::Capacity => {
+                                return Ok(Preparation::Capacity);
+                            }
+                            ResidentTextCohortPreparation::Ready(ready) => ready,
+                        }
+                    }
+                    #[cfg(not(feature = "qwen35-hip"))]
+                    {
+                        return Err(ServiceError::new(
+                            500,
+                            "source_cohort",
+                            "host-logit cohort requires HIP",
+                        ));
+                    }
                 }
             }
         };
@@ -426,7 +506,7 @@ impl Executor for SourceText {
             fused,
         }))
     }
-    #[cfg(feature = "qwen35-cuda")]
+    #[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
     fn commit(
         ready: Self::Ready,
         rows: &mut [Active<Self>],
@@ -476,26 +556,29 @@ impl Executor for SourceText {
                         observation: None,
                     });
                 }
-                let token = read.device_token.clone().ok_or_else(|| {
-                    ServiceError::new(
-                        500,
-                        "source_cohort_token",
-                        "source cohort completion has no device token",
-                    )
-                })?;
-                if read.logit_steps != 1 || !read.logits.is_empty() {
+                if read.logit_steps != 1 {
                     return Err(ServiceError::new(
                         500,
                         "source_cohort_readout",
                         "source cohort completion returned invalid readout",
                     ));
                 }
+                let (id, device) = if let Some(token) = read.device_token.clone() {
+                    if !read.logits.is_empty() {
+                        return Err(ServiceError::new(
+                            500,
+                            "source_cohort_readout",
+                            "device-token cohort also returned host logits",
+                        ));
+                    }
+                    (token.id, Some(token))
+                } else {
+                    let id = select(&read.logits, row.model.vocabulary_size())
+                        .map_err(ServiceError::inference)?;
+                    (id, None)
+                };
                 let root = row.state.session.binding();
-                row.state.feedback = Some(Feedback {
-                    root,
-                    id: token.id,
-                    device: Some(token),
-                });
+                row.state.feedback = Some(Feedback { root, id, device });
                 Ok(Published {
                     consumed,
                     readout: true,

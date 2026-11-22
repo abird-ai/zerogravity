@@ -7,6 +7,7 @@ use super::{
 use std::{collections::BTreeMap, sync::Arc};
 use zerogravity_core::{Error, Result, accelerator::program::NumericalContract};
 mod body;
+mod cohort;
 mod cold;
 #[cfg(all(
     feature = "hardware-abort-probe",
@@ -19,6 +20,7 @@ mod layout;
 mod math;
 mod observation;
 mod prepared;
+pub(crate) use cohort::DecodeCohortSubmission;
 pub(super) use cold::Cold;
 
 fn tables() -> Vec<Vec<u8>> {

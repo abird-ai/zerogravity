@@ -245,16 +245,19 @@ pub use vulkan::native::retained_partial_native_modules;
 ))]
 pub use hip::native::{HipSourceSetIdentity, SharedHipColdPlan, SharedHipNative};
 
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+pub use resident_inference::CudaSourceStatePolicy;
 #[cfg(all(
     feature = "cuda-cublas",
     feature = "hardware-abort-probe",
     target_os = "linux"
 ))]
 pub use resident_inference::ResidentTextPagedPoolSnapshot;
-#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-pub use resident_inference::{
-    CudaSourceStatePolicy, ResidentTextCohortPending, ResidentTextCohortPreparation,
-};
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
+pub use resident_inference::{ResidentTextCohortPending, ResidentTextCohortPreparation};
 #[cfg(all(
     feature = "hip-source",
     feature = "hip",

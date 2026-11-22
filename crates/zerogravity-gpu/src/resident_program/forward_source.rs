@@ -96,6 +96,25 @@ impl ResidentProgram {
         }
     }
 
+    #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+    pub(crate) async fn launch_text_execution_decode_cohort(
+        &self,
+        flight: &mut Flight<'_>,
+        requests: &[ForwardPlan],
+        states: &[Vec<StateBinding>],
+        logits: &crate::resident_leases::ResidentLease,
+    ) -> Result<super::text_execution::DecodeCohortSubmission> {
+        match &self.body {
+            ResidentProgramBody::TextExecution(body) => {
+                body.execute_decode_cohort(flight, requests, states, logits)
+                    .await
+            }
+            _ => Err(Error::Unsupported(
+                "decode cohort requires HIP text execution".into(),
+            )),
+        }
+    }
+
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
     pub(crate) async fn launch_forward_source_prefill_cohort(
         &self,

@@ -4,54 +4,6 @@
 use super::*;
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
 
-pub enum ResidentTextCohortPreparation {
-    Capacity,
-    Ready(ResidentTextCohortPending),
-}
-
-#[must_use = "dropping a completed source cohort discards every private root"]
-pub struct ResidentTextCohortPending {
-    inner: PreparedResidentCohort,
-    scopes: Vec<Arc<ReaderScope>>,
-}
-
-impl ResidentTextCohortPending {
-    pub fn dispatches(&self) -> usize {
-        self.inner.dispatches()
-    }
-    pub fn fused_dispatches(&self) -> usize {
-        self.inner.fused_dispatches()
-    }
-    pub fn commit(
-        self,
-        sessions: &mut [&mut ResidentTextSession],
-    ) -> Result<Vec<ResidentTextReadback<InferenceReadback>>> {
-        if sessions.len() != self.scopes.len()
-            || sessions
-                .iter()
-                .zip(&self.scopes)
-                .any(|(session, scope)| !Arc::ptr_eq(&session.model, &scope.model))
-        {
-            return Err(Error::State(
-                "source cohort original session/model coverage differs".into(),
-            ));
-        }
-        let mut inner = sessions
-            .iter_mut()
-            .map(|session| &mut session.inner)
-            .collect::<Vec<_>>();
-        let readbacks = self.inner.commit(&mut inner)?;
-        Ok(readbacks
-            .into_iter()
-            .zip(self.scopes)
-            .map(|(data, scope)| ResidentTextReadback {
-                data,
-                _scope: scope,
-            })
-            .collect())
-    }
-}
-
 impl ResidentTextModel {
     /// Compatible native cached-decode calls. Stateful CUDA kernels may internally
     /// split a wider cohort while preserving each session's private frontier/root.

@@ -16,7 +16,7 @@ use zerogravity_core::{
 };
 
 impl Cold {
-    fn value_lease(&self, id: ValueId) -> Result<&ResidentLease> {
+    pub(super) fn value_lease(&self, id: ValueId) -> Result<&ResidentLease> {
         let b = self
             .layout
             .bindings
@@ -26,7 +26,7 @@ impl Cold {
             .get(b.slot)
             .ok_or_else(|| Error::State("text-execution value slot absent".into()))
     }
-    fn value(&self, id: ValueId, elements: usize) -> Result<Handle> {
+    pub(super) fn value(&self, id: ValueId, elements: usize) -> Result<Handle> {
         let shape = self
             .layout
             .plan
@@ -224,6 +224,23 @@ impl Cold {
             .zip(&output_lengths)
             .map(|(id, n)| self.value(*id, *n))
             .collect::<Result<Vec<_>>>()?;
+        self.node_views(flight, node, d, states, rows, base, &inputs, &outputs)
+            .await
+    }
+
+    pub(super) async fn node_views(
+        &self,
+        flight: &mut Flight<'_>,
+        node: &PlanNode,
+        d: &SourceOperator,
+        states: &BTreeMap<StateSlot, &StateBinding>,
+        rows: usize,
+        base: usize,
+        inputs: &[Handle],
+        outputs: &[Handle],
+    ) -> Result<usize> {
+        let input_lengths = d.input_elements()?;
+        let output_lengths = d.output_elements()?;
         let client = self.service.client();
         let status = self.status_view()?;
         use SourceOperatorKind::*;

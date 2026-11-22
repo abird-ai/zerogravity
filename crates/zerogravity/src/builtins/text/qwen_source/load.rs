@@ -475,14 +475,6 @@ pub(crate) fn load_router(
     #[cfg(feature = "qwen35-cuda")]
     let (profile, backend) = normalize_cuda_smart_input(profile, backend);
     backend.validate(profile)?;
-    #[cfg(feature = "qwen35-hip")]
-    if profile.cohort_width != 0 && matches!(backend, SourceBackend::Hip(_)) {
-        return Err(ServiceError::new(
-            400,
-            "unsupported_source_batch",
-            "source cohort_width currently requires CUDA",
-        ));
-    }
     validate_aliases(&aliases)?;
     crate::cache::paths::validate_digest(&snapshot).map_err(ServiceError::inference)?;
     let arbiter = ResourceArbiter::process_shared();
@@ -519,15 +511,18 @@ pub(crate) fn load_router(
     // reconstruction and no alternate scheduler/publisher.
     let resident = match backend {
         #[cfg(feature = "qwen35-hip")]
-        SourceBackend::Hip(budget) => block_on(ResidentModel::load_cpu_forward_source_with_budget(
-            Device::Hip(Default::default()),
-            source.plan.source().clone(),
-            source.clone(),
-            source.plan.plan().clone(),
-            profile.active,
-            budget,
-            None,
-        )),
+        SourceBackend::Hip(budget) => block_on(
+            ResidentModel::load_cpu_forward_source_with_budget_and_cohort(
+                Device::Hip(Default::default()),
+                source.plan.source().clone(),
+                source.clone(),
+                source.plan.plan().clone(),
+                profile.active,
+                profile.cohort_width,
+                budget,
+                None,
+            ),
+        ),
         #[cfg(feature = "qwen35-cuda")]
         SourceBackend::Cuda {
             provider_bytes,
