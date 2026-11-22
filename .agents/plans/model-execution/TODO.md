@@ -72,11 +72,16 @@ Signed `93d80f3` was bundle-synced exactly to X2; the same provider realizes the
 its harnessed device smoke reports vLLM0.33.0/Torch2.13/HIP7.2.53211 on one gfx1151
 Radeon8060S with full103079215104B VRAM visibility, then returns to274452480B/0% busy/
 no KFD owner. Signed `c8b1bed` supplies the ROCm Triton JIT host compiler explicitly.
-The first real optimized0.8B C1 at a24GiB vLLM envelope now starts through normal
-compile/graph capture and returns exact `[248068,198,90700]` with60.063ms TTFT /
-74.278ms service latency; after shutdown the card returns to274452480B/0% busy/no
-KFD owner. Next physical unit is matched2B C1, then the population matrix; do not
-rerun either the completed native HIP ladder or the provider/import gate first.
+The fresh configured-envelope-matched small-model matrix is now complete at
+`gpu-memory-utilization=0.25` =24GiB of the96GiB card, matching the native small-model
+total envelope. Same literal47-token prompt/3 greedy outputs/active8/one warmup + two
+timed waves; every vLLM request is exact `[248068,198,90700]`. Median vLLM output
+tok/s at offered1/4/8/16/32/64:0.8B =51.966/135.358/219.612/245.256/271.828/
+284.356;2B =36.054/96.233/140.847/150.059/156.828/159.801. Both scopes retire to
+274452480B/0% busy/no KFD owner. The native comparison remains physical batch1, so
+this measures the serving/batching throughput gap without claiming identical arithmetic
+engines. Next physical unit is27B vLLM at exact75GiB (`0.78125` of96GiB) against the
+existing explicit75GiB native ladder; do not rerun small-model/provider gates first.
 
 Use the continuation queue below over historical milestone notes later in this file.
 

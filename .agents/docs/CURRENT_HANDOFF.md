@@ -202,13 +202,22 @@ exactly to X2 by verified Git bundle; `vllm-rocm` realizes there too. One physic
 native-GPU harness reports vLLM0.33.0 / torch2.13.0+git733fca1 / HIP7.2.53211, one AMD Radeon8060S,
 `gfx1151`, and full103079215104-byte VRAM visibility. Signed `c8b1bed` closes the one runtime gap found
 by real serving: ROCm Triton JIT now receives the Nix host C compiler explicitly. Optimized text-only
-0.8B at `gpu-memory-utilization=0.25` then loads1.5GiB of model state, runs normal torch.compile and
-PIECEWISE+FULL graph capture, and returns exact C1 token IDs `[248068,198,90700]` with client TTFT
-60.063ms / service latency74.278ms. A prior unchanged attempt correctly refused because another shared
-X2 owner temporarily left only9.68GiB free; nothing was reclaimed or killed. The card cleared naturally,
-and five seconds after the successful server shutdown X2 returned to274452480B/0% busy/no KFD owner.
-Next: matched2B C1, then reuse the existing population matrix; do not repeat provider/import setup or
-revive Podman/FUSE.
+serving uses normal torch.compile + PIECEWISE/FULL graph capture.
+
+Fresh configured-envelope-matched X2 small-model results are now complete. vLLM uses
+`gpu-memory-utilization=0.25`, exactly24GiB of the96GiB card, matching the native small-model total
+envelope. Same literal47-token prompt,3 greedy output tokens, active/max-num-seqs8, one warmup + two
+timed waves at offered1/4/8/16/32/64; every vLLM request returns exact
+`[248068,198,90700]`. Median vLLM output tok/s:0.8B =
+51.966/135.358/219.612/245.256/271.828/284.356;2B =
+36.054/96.233/140.847/150.059/156.828/159.801. The same-card native HIP medians are
+12.406/12.048/12.139/11.881/11.848/11.797 and6.169/6.897/6.771/6.752/6.735/6.721.
+Native physical batch width remains1, so this establishes the current serving/batching throughput gap
+without claiming identical arithmetic engines. Both vLLM runs return to274452480B/0% busy/no KFD
+owner. The exploratory0.90 full-card vLLM runs are retained only as upper-bound observations and are not
+the matched comparison. Next physical unit is fresh27B vLLM at
+`gpu-memory-utilization=0.78125`, exactly75GiB of the96GiB card, against the existing explicit75GiB
+resident HIP ladder. Do not rerun the small-model/provider gates or revive Podman/FUSE.
 
 ### Error architecture — 21 Nov 2026
 
