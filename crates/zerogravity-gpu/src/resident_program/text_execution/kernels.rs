@@ -156,6 +156,156 @@ pub(super) fn convolution(
     }
 }
 
+/// Independent cached-decode rows sharing one Conv4 launch. The bounded ABI
+/// keeps every session's state in its original buffer; inactive bindings are
+/// unreachable and may alias row zero.
+#[cube(launch_unchecked)]
+pub(super) fn convolution_cohort(
+    packed: &[f32],
+    p0: &[f32],
+    p1: &[f32],
+    p2: &[f32],
+    p3: &[f32],
+    p4: &[f32],
+    p5: &[f32],
+    p6: &[f32],
+    p7: &[f32],
+    weights: &[f32],
+    activated: &mut [f32],
+    gate: &mut [f32],
+    n0: &mut [f32],
+    n1: &mut [f32],
+    n2: &mut [f32],
+    n3: &mut [f32],
+    n4: &mut [f32],
+    n5: &mut [f32],
+    n6: &mut [f32],
+    n7: &mut [f32],
+    status: &[Atomic<u32>],
+    initialized: u32,
+    #[comptime] rows: usize,
+    #[comptime] channels: usize,
+    #[comptime] gates: usize,
+) {
+    let at = ABSOLUTE_POS;
+    if at < rows * channels {
+        let row = at / channels;
+        let c = at % channels;
+        let stride = channels + gates;
+        let base = c * 4usize;
+        for j in 0..4usize {
+            let mut x = p0[base + j];
+            if row == 1usize {
+                x = p1[base + j];
+            } else if row == 2usize {
+                x = p2[base + j];
+            } else if row == 3usize {
+                x = p3[base + j];
+            } else if row == 4usize {
+                x = p4[base + j];
+            } else if row == 5usize {
+                x = p5[base + j];
+            } else if row == 6usize {
+                x = p6[base + j];
+            } else if row == 7usize {
+                x = p7[base + j];
+            }
+            if !source_bf16(x) || (initialized == 0u32 && u32::reinterpret(x) != 0u32) {
+                status[0].fetch_or(NONFINITE_VALUE);
+            }
+        }
+        let mut values = Array::<f32>::new(4usize);
+        for j in 0..4usize {
+            let combined = j + 1usize;
+            let mut x = if combined < 4usize {
+                p0[base + combined]
+            } else {
+                packed[row * stride + c]
+            };
+            if combined < 4usize {
+                if row == 1usize {
+                    x = p1[base + combined];
+                } else if row == 2usize {
+                    x = p2[base + combined];
+                } else if row == 3usize {
+                    x = p3[base + combined];
+                } else if row == 4usize {
+                    x = p4[base + combined];
+                } else if row == 5usize {
+                    x = p5[base + combined];
+                } else if row == 6usize {
+                    x = p6[base + combined];
+                } else if row == 7usize {
+                    x = p7[base + combined];
+                }
+            }
+            let w = weights[c * 4usize + j];
+            values[j] = mul(x, w);
+            if !source_bf16(x) || !source_bf16(w) {
+                status[0].fetch_or(NONFINITE_VALUE);
+            }
+        }
+        let raw = bf16(add(
+            add(add(values[0usize], values[1usize]), values[2usize]),
+            values[3usize],
+        ));
+        let y = bf16(crate::source_sleef::silu(raw));
+        activated[row * channels + c] = y;
+        if !finite(y) {
+            status[0].fetch_or(NONFINITE_VALUE);
+        }
+        if c < gates {
+            let z = packed[row * stride + channels + c];
+            gate[row * gates + c] = z;
+            if !source_bf16(z) {
+                status[0].fetch_or(NONFINITE_VALUE);
+            }
+        }
+        for j in 0..4usize {
+            let combined = j + 1usize;
+            let mut x = if combined < 4usize {
+                p0[base + combined]
+            } else {
+                packed[row * stride + c]
+            };
+            if combined < 4usize {
+                if row == 1usize {
+                    x = p1[base + combined];
+                } else if row == 2usize {
+                    x = p2[base + combined];
+                } else if row == 3usize {
+                    x = p3[base + combined];
+                } else if row == 4usize {
+                    x = p4[base + combined];
+                } else if row == 5usize {
+                    x = p5[base + combined];
+                } else if row == 6usize {
+                    x = p6[base + combined];
+                } else if row == 7usize {
+                    x = p7[base + combined];
+                }
+            }
+            if row == 0usize {
+                n0[base + j] = x;
+            } else if row == 1usize {
+                n1[base + j] = x;
+            } else if row == 2usize {
+                n2[base + j] = x;
+            } else if row == 3usize {
+                n3[base + j] = x;
+            } else if row == 4usize {
+                n4[base + j] = x;
+            } else if row == 5usize {
+                n5[base + j] = x;
+            } else if row == 6usize {
+                n6[base + j] = x;
+            } else if row == 7usize {
+                n7[base + j] = x;
+            }
+        }
+    }
+}
+
 #[cube(launch_unchecked)]
 pub(super) fn repeat_qkv(
     activated: &[f32],

@@ -133,6 +133,37 @@ pub(super) fn kernels(
                     g.qkv_channels,
                     g.z_channels
                 );
+                for rows in [2usize, 4, 8] {
+                    add!(
+                        super::kernels::convolution_cohort::ConvolutionCohort,
+                        32,
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        (),
+                        rows,
+                        g.qkv_channels,
+                        g.z_channels
+                    );
+                }
             }
             SourceOperatorKind::GatedDelta { geometry: g, .. } => {
                 let kh = g.key_heads;

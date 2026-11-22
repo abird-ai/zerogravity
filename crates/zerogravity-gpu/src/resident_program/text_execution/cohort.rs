@@ -172,6 +172,12 @@ impl Cold {
                     .ok_or_else(|| Error::Limit("decode cohort fused count".into()))?;
                 continue;
             }
+            if matches!(first.kind(), SourceOperatorKind::CausalConvSplit { .. }) {
+                dispatches = dispatches
+                    .checked_add(self.convolution_decode_cohort(node, first, &maps, width, base)?)
+                    .ok_or_else(|| Error::Limit("decode cohort dispatch count".into()))?;
+                continue;
+            }
             if matches!(
                 first.kind(),
                 SourceOperatorKind::Rms(_)
@@ -305,6 +311,126 @@ impl Cold {
             dispatches,
             fused_dispatches,
         })
+    }
+
+    fn convolution_decode_cohort(
+        &self,
+        node: &PlanNode,
+        descriptor: &SourceOperator,
+        states: &[BTreeMap<StateSlot, &StateBinding>],
+        width: usize,
+        base: usize,
+    ) -> Result<usize> {
+        let SourceOperatorKind::CausalConvSplit {
+            domain,
+            geometry: g,
+        } = descriptor.kind()
+        else {
+            unreachable!("validated convolution")
+        };
+        let input_lengths = descriptor.input_elements()?;
+        let output_lengths = descriptor.output_elements()?;
+        let [input_elements] = input_lengths.as_slice() else {
+            return Err(Error::State("decode cohort convolution input arity".into()));
+        };
+        let [activated_elements, gate_elements] = output_lengths.as_slice() else {
+            return Err(Error::State(
+                "decode cohort convolution output arity".into(),
+            ));
+        };
+        if node.inputs.len() != 1
+            || node.outputs.len() != 2
+            || *input_elements != g.qkv_channels + g.z_channels
+            || *activated_elements != g.qkv_channels
+            || *gate_elements != g.z_channels
+            || descriptor.parameters().len() != 1
+        {
+            return Err(Error::State(
+                "decode cohort convolution one-row geometry".into(),
+            ));
+        }
+        let packed = self.value(
+            node.inputs[0],
+            input_elements
+                .checked_mul(width)
+                .ok_or_else(|| Error::Limit("decode cohort convolution input".into()))?,
+        )?;
+        let activated = self.value(
+            node.outputs[0],
+            activated_elements
+                .checked_mul(width)
+                .ok_or_else(|| Error::Limit("decode cohort convolution activated".into()))?,
+        )?;
+        let gate = self.value(
+            node.outputs[1],
+            gate_elements
+                .checked_mul(width)
+                .ok_or_else(|| Error::Limit("decode cohort convolution gate".into()))?,
+        )?;
+        let weights = self.parameter(&descriptor.parameters()[0])?;
+        let state_words = g
+            .qkv_channels
+            .checked_mul(4)
+            .ok_or_else(|| Error::Limit("decode cohort convolution state".into()))?;
+        let mut prior = Vec::with_capacity(width);
+        let mut candidate = Vec::with_capacity(width);
+        for map in states {
+            let binding = map
+                .get(&StateSlot::Conv(domain))
+                .copied()
+                .ok_or_else(|| Error::State("decode cohort convolution state absent".into()))?;
+            let p = binding.prior.handles();
+            let n = binding.candidate.handles();
+            if p.len() != 1 || n.len() != 1 {
+                return Err(Error::State(
+                    "decode cohort convolution vector state".into(),
+                ));
+            }
+            prior.push(p[0].clone());
+            candidate.push(n[0].clone());
+        }
+        if prior.len() != width || candidate.len() != width {
+            return Err(Error::State(
+                "decode cohort convolution state coverage".into(),
+            ));
+        }
+        let p = |row: usize| prior.get(row).unwrap_or(&prior[0]);
+        let n = |row: usize| candidate.get(row).unwrap_or(&candidate[0]);
+        let status = self.status_view()?;
+        let client = self.service.client();
+        unsafe {
+            super::kernels::convolution_cohort::launch_unchecked(
+                client,
+                grid(width * g.qkv_channels),
+                dim(),
+                arg(&packed, width * input_elements),
+                arg(p(0), state_words),
+                arg(p(1), state_words),
+                arg(p(2), state_words),
+                arg(p(3), state_words),
+                arg(p(4), state_words),
+                arg(p(5), state_words),
+                arg(p(6), state_words),
+                arg(p(7), state_words),
+                arg(&weights, g.qkv_channels * 4),
+                arg(&activated, width * activated_elements),
+                arg(&gate, width * gate_elements),
+                arg(n(0), state_words),
+                arg(n(1), state_words),
+                arg(n(2), state_words),
+                arg(n(3), state_words),
+                arg(n(4), state_words),
+                arg(n(5), state_words),
+                arg(n(6), state_words),
+                arg(n(7), state_words),
+                arg(&status, 1),
+                u32::from(base != 0),
+                width,
+                g.qkv_channels,
+                g.z_channels,
+            );
+        }
+        Ok(1)
     }
 
     async fn projection_decode_cohort(
