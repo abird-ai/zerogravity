@@ -147,6 +147,14 @@ struct Observed {
     output: String,
 }
 fn complete(events: RequestEvents, tokens: usize, tokenizer: &dyn TextTokenizer) -> Observed {
+    complete_with_fused(events, tokens, tokenizer, false)
+}
+fn complete_with_fused(
+    events: RequestEvents,
+    tokens: usize,
+    tokenizer: &dyn TextTokenizer,
+    allow_fused: bool,
+) -> Observed {
     let mut result = Observed {
         ids: Vec::new(),
         roots: Vec::new(),
@@ -158,7 +166,10 @@ fn complete(events: RequestEvents, tokens: usize, tokenizer: &dyn TextTokenizer)
                 assert_eq!(token.index, result.ids.len());
                 let root = token.gpu.expect("actual source publication observation");
                 assert_eq!(root.producer_frontier, (tokens + token.index) as u64);
-                assert!(root.producer_root.is_some() && root.fused_cohort.is_none());
+                assert!(root.producer_root.is_some());
+                if !allow_fused {
+                    assert!(root.fused_cohort.is_none());
+                }
                 result.ids.push(token.id);
                 result.roots.push(root);
                 result.output.push_str(&text);

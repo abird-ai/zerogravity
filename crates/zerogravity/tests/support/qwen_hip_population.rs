@@ -334,7 +334,8 @@ fn public_source_population_benchmark() {
             let mut sessions = BTreeSet::new();
             let mut outputs = Vec::with_capacity(clients);
             for events in requests {
-                let output = complete(events, 47, h.tokenizer.as_ref());
+                let output =
+                    complete_with_fused(events, 47, h.tokenizer.as_ref(), cohort_width != 0);
                 assert!(sessions.insert(output.roots[0].producer_root.unwrap().session_id));
                 outputs.push(output.ids);
             }

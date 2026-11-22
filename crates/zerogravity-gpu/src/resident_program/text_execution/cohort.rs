@@ -3,7 +3,6 @@
 //! each session's private state and position.
 use super::{
     cold::{Cold, view},
-    layout,
     math::{arg, dim, grid},
     *,
 };
