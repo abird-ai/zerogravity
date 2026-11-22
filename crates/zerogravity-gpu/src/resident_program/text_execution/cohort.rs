@@ -150,6 +150,14 @@ impl Cold {
                 })
                 .collect::<Result<Vec<_>>>()?;
             let first = descriptors[0];
+            if descriptors[1..]
+                .iter()
+                .any(|descriptor| !first.shares_semantics(descriptor))
+            {
+                return Err(Error::State(
+                    "text-execution decode cohort operator semantics differ".into(),
+                ));
+            }
             if matches!(first.kind(), SourceOperatorKind::Projection { .. }) {
                 let (actual, fused) = self
                     .projection_decode_cohort(flight, node, first, width, projection, logits)
@@ -160,6 +168,59 @@ impl Cold {
                 fused_dispatches = fused_dispatches
                     .checked_add(fused)
                     .ok_or_else(|| Error::Limit("decode cohort fused count".into()))?;
+                continue;
+            }
+            if matches!(
+                first.kind(),
+                SourceOperatorKind::Rms(_)
+                    | SourceOperatorKind::ResidualRms(_)
+                    | SourceOperatorKind::Sigmoid { .. }
+                    | SourceOperatorKind::Multiply { .. }
+                    | SourceOperatorKind::SiluAndMul { .. }
+            ) {
+                let input_lengths = first.input_elements()?;
+                let output_lengths = first.output_elements()?;
+                if node.inputs.len() != input_lengths.len()
+                    || node.outputs.len() != output_lengths.len()
+                {
+                    return Err(Error::State(
+                        "text-execution decode cohort row-wise operand count".into(),
+                    ));
+                }
+                let inputs = node
+                    .inputs
+                    .iter()
+                    .zip(&input_lengths)
+                    .map(|(id, elements)| {
+                        self.value(
+                            *id,
+                            elements.checked_mul(width).ok_or_else(|| {
+                                Error::Limit("decode cohort row-wise input extent".into())
+                            })?,
+                        )
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                let outputs = node
+                    .outputs
+                    .iter()
+                    .zip(&output_lengths)
+                    .map(|(id, elements)| {
+                        self.value(
+                            *id,
+                            elements.checked_mul(width).ok_or_else(|| {
+                                Error::Limit("decode cohort row-wise output extent".into())
+                            })?,
+                        )
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                dispatches = dispatches
+                    .checked_add(
+                        self.node_views(
+                            flight, node, first, &maps[0], width, base, &inputs, &outputs,
+                        )
+                        .await?,
+                    )
+                    .ok_or_else(|| Error::Limit("decode cohort dispatch count".into()))?;
                 continue;
             }
 
