@@ -168,7 +168,13 @@ active8, C1/4/8/16/32/64, one warmup + two timed waves per offered width, exact 
 records and clean shutdown. The physical0.8B C1 smoke returns
 `[248068,198,90700]` exactly and measures58.280/57.405ms for the two timed waves after
 warmup. This avoids benchmarking the older finite `qwen35-cuda-bf16` CLI qualification
-loader as though it were current production. X2 is execution-only and should receive this
+loader as though it were current production. The existing HTTP benchmark primitive now
+supports bounded raw `/v1/completions` requests for already-framed prompts; chat remains
+the default. This matters because the current Qwen chat template appends four extra
+thinking/control tokens. The first optimized-vLLM0.8B raw C1 smoke on the exact canonical47
+returns `[198,248068,198]` instead of ZeroGravity's `[248068,198,90700]`. Preserve this
+as a failed matched-output gate while collecting the requested matrix; mismatched cells are
+performance/capability observations only, not accepted parity/wins. X2 is execution-only and should receive this
 exact L5 source checkpoint by Git bundle before the corresponding ROCm0.8B/2B/27B campaign.
 Do not invent a second benchmark framework.
 

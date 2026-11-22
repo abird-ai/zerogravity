@@ -226,12 +226,18 @@ def wire_token_observation(groups: list[dict], extension: object, aggregate: obj
 
 def stream_one(url: str, model: str, prompt: str, max_tokens: int,
                timeout: float, key: str | None, *, request_id: str | None = None,
-               return_token_ids: bool = False) -> Outcome:
+               return_token_ids: bool = False, request_kind: str = "chat") -> Outcome:
+    if request_kind not in {"chat", "completions"}:
+        raise ValueError("request kind must be chat or completions")
     payload = {
-        "model": model, "messages": [{"role": "user", "content": prompt}],
+        "model": model,
         "temperature": 0, "top_p": 1, "n": 1, "stream": True,
         "stream_options": {"include_usage": True}, "max_tokens": max_tokens,
     }
+    if request_kind == "chat":
+        payload["messages"] = [{"role": "user", "content": prompt}]
+    else:
+        payload["prompt"] = prompt
     if return_token_ids:
         payload["return_token_ids"] = True
     body = json.dumps(payload, separators=(",", ":")).encode()
@@ -240,7 +246,8 @@ def stream_one(url: str, model: str, prompt: str, max_tokens: int,
         headers["Authorization"] = f"Bearer {key}"
     if request_id:
         headers["X-Request-ID"] = request_id
-    request = urllib.request.Request(url.rstrip("/") + "/v1/chat/completions",
+    route = "/v1/chat/completions" if request_kind == "chat" else "/v1/completions"
+    request = urllib.request.Request(url.rstrip("/") + route,
                                      data=body, headers=headers, method="POST")
     started = time.monotonic()
     ttft, previous, count, reason, status, provider_id, provider_code = (None,) * 7
@@ -458,11 +465,13 @@ def bench(url: str, model: str, prompt: str, count: int, concurrency: int,
           token_trace_path: str | None = None, snapshot_url: str | None = None,
           run_id: str | None = None, max_pending: int | None = None,
           launch_deadline_seconds: float | None = None,
-          return_token_ids: bool = False) -> dict:
+          return_token_ids: bool = False, request_kind: str = "chat") -> dict:
     if not 1 <= count <= 1024 or not 1 <= concurrency <= min(64, count):
         raise ValueError("bounded requests/concurrency required (1..1024, 1..64)")
     if not 1 <= max_tokens <= 512 or not number(timeout, 1, 600):
         raise ValueError("bounded token/deadline limits")
+    if request_kind not in {"chat", "completions"}:
+        raise ValueError("request kind must be chat or completions")
     for bound in [ttft_slo_seconds, chunk_slo_seconds, itl_slo_seconds, launch_deadline_seconds]:
         if bound is not None and not number(bound, .000001, 600):
             raise ValueError("positive SLO/deadline <=600 seconds required")
@@ -520,7 +529,7 @@ def bench(url: str, model: str, prompt: str, count: int, concurrency: int,
             out = Outcome(False, None, 0, None, [], None, "launch_deadline", classification="launch_deadline")
         else:
             out = stream_one(url, model, item["prompt"], item["max_tokens"], timeout, key, request_id=wire_id,
-                             return_token_ids=return_token_ids)
+                             return_token_ids=return_token_ids, request_kind=request_kind)
         return make_record(item, out, offered, submitted, dispatched, wire_id)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
@@ -887,6 +896,8 @@ def main() -> None:
     parser.add_argument("--itl-slo", type=float, help="requires complete provider token trace")
     parser.add_argument("--token-events", help="provider token-trace.v1 JSON; read after requests complete")
     parser.add_argument("--return-token-ids", action="store_true", help="request actual token IDs; validate individual delivery and optional provider commit observations")
+    parser.add_argument("--request-kind", choices=["chat", "completions"], default="chat",
+                        help="OpenAI request route; completions preserves a pre-framed raw prompt")
     parser.add_argument("--provider-snapshot-url", help="raw before/after literal loopback HTTP JSON")
     parser.add_argument("--run-id", help="trace binding; default unique random run")
     parser.add_argument("--max-pending", type=int)
@@ -908,7 +919,7 @@ def main() -> None:
             ttft_slo_seconds=args.ttft_slo, chunk_slo_seconds=args.chunk_slo, itl_slo_seconds=args.itl_slo,
             token_trace_path=args.token_events, snapshot_url=args.provider_snapshot_url, run_id=args.run_id,
             max_pending=args.max_pending, launch_deadline_seconds=args.launch_deadline,
-            return_token_ids=args.return_token_ids)
+            return_token_ids=args.return_token_ids, request_kind=args.request_kind)
     except (OSError, ValueError, TypeError, KeyError) as exc:
         parser.exit(2, f"Cannot benchmark: {exc}\n")
     print(json.dumps(result, indent=2, sort_keys=True))

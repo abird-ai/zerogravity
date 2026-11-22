@@ -50,7 +50,13 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   active8, one warmup + two timed waves per offered width, token/cohort JSON and
   clean shutdown. Its physical0.8B C1 smoke is exact at
   `[248068,198,90700]`, with timed waves58.280/57.405ms after warmup and final
-  shutdown. Keep `serve-compare.py` / `serve-matrix.py` as the HTTP/comparison
+  shutdown. The existing `serve-bench.py` now also has a bounded raw-completions
+  request mode so a pre-framed prompt is not silently re-templated by the chat API.
+  Its first optimized-vLLM0.8B C1 smoke proves the exact workload is reaching the
+  provider but returns `[198,248068,198]`, not ZeroGravity's accepted IDs. Preserve
+  that mismatch as a failed matched-output gate; continue the requested matrix as
+  capability/performance evidence but make no parity/superiority claim for mismatched
+  cells. Keep `serve-compare.py` / `serve-matrix.py` as the HTTP/comparison
   framework; do not create a second production benchmark stack. After L5, run the
   corresponding ROCm/X2 campaign from the exact L5 commit.
 - [x] `c282f20` restores HIP-only source-profile compilation after a shared CUDA
