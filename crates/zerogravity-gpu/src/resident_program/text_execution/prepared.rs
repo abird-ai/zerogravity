@@ -303,17 +303,19 @@ pub(super) fn kernels(
                         n,
                         n
                     );
-                    add!(
-                        crate::source_rotary::kernels::apply::Apply,
-                        32,
-                        b(),
-                        b(),
-                        b(),
-                        b(),
-                        256usize,
-                        n,
-                        64usize
-                    );
+                    for rows in [1usize, 2, 4, 8] {
+                        add!(
+                            crate::source_rotary::kernels::apply::Apply,
+                            32,
+                            b(),
+                            b(),
+                            b(),
+                            b(),
+                            256usize,
+                            rows * n,
+                            64usize
+                        );
+                    }
                 }
             }
             SourceOperatorKind::KvAppend {
