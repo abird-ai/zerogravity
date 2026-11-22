@@ -32,12 +32,18 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   benchmark artifacts for implementation decisions.
 - [x] The reusable Nix vLLM provider supports both CUDA and ROCm. ROCm real serving
   includes the pinned Triton host-compiler seam; fresh physical runs retire cleanly.
-- [ ] Next implementation unit — HIP native batching: preserve the current
-  request/session/state/lifetime authority and add the smallest model-neutral native
-  cohort transport that lets compatible HIP requests execute together. Reuse the
-  existing scheduler/cohort abstractions; do not build a Qwen-size-specific engine.
-  Validate first with the existing0.8B/2B population workload and exact IDs, then use
-  the same27B workload if the shared primitive applies cleanly.
+- [x] First HIP native-batching cut: aligned cached-decode rows now reuse the
+  existing scheduler/cohort publication authority and share BF16 projection work in
+  the model-neutral HIP text-execution body. Stateful operators retain private
+  per-session state/position; prefill and greedy policy are unchanged. Physical0.8B
+  C4/C8 is exact/replay-stable/lane-invariant with real fused cohort receipts and
+  zero admission refusals. Timed medians improve12.048→13.270tok/s (+10.14%) and
+  12.139→13.061tok/s (+7.60%).
+- [ ] Next HIP performance unit: use the existing cohort geometry to remove measured
+  per-row decode work where a clean shared stateful kernel is possible. Keep private
+  state/root semantics unchanged and measure0.8B C4/C8 first; separately retain C1
+  as the singleton hot-path target. Do not expand to prefill/27B until the shared
+  decode primitive earns it.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.

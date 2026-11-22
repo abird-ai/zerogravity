@@ -146,8 +146,9 @@ The current implementation priorities implied by that baseline are:
 
 1. fix the fused CUDA C4+ lane-invariance correctness bug before accepting wider CUDA
    performance comparisons;
-2. add clean model-neutral HIP native batching, because the current path remains
-   physical batch width 1 while vLLM scales strongly through offered concurrency 8;
+2. extend the now-proven HIP decode cohort beyond shared projections only when
+   a clean model-neutral stateful kernel removes measured per-row work; the first
+   0.8B C4/C8 cut is exact and improves throughput by about10.1%/7.6%;
 3. optimize HIP singleton execution as a separate hot path, because C1 is already
    materially behind vLLM on all three model sizes;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact

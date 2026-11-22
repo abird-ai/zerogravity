@@ -73,9 +73,26 @@ max-num-seqs=8, BF16, text-only optimized execution.
 | 32 | 271.828 | 11.848 | 156.828 | 6.735 |
 | 64 | 284.356 | 11.797 | 159.801 | 6.721 |
 
-All outputs are exact [248068, 198, 90700]. The current HIP execution path is
-physical batch width 1, which explains the flat offered-population curve but
-does not explain the full C1 gap.
+All outputs are exact [248068, 198, 90700]. These rows are the clean
+pre-optimization baseline; that path was physical batch width 1.
+
+### First HIP decode-cohort checkpoint — 0.8B
+
+The first model-neutral batching cut shares only BF16 projection work across
+aligned cached-decode rows. Stateful operators retain each session's private
+state/position and execute per row; prefill and full-logit host greedy remain
+unchanged. With admitted cohort width 8 on X2:
+
+| Offered | Baseline tok/s | Projection-cohort tok/s | Change |
+| ---: | ---: | ---: | ---: |
+| 4 | 12.048 | 13.270 | +10.14% |
+| 8 | 12.139 | 13.061 | +7.60% |
+
+Both cells are exact [248068, 198, 90700], replay-stable and lane-invariant.
+The runtime reports real fused width-4/8 cohort publications, zero cohort
+admission refusals, and clean retirement to 274,452,480 B VRAM / 0% busy /
+no KFD owner. This proves the shared cohort path without claiming full-model
+physical fusion.
 
 ### Matched 75 GiB envelope — 27B
 
@@ -98,11 +115,12 @@ to 274,452,480 B VRAM, 0% busy and no KFD owner after the vLLM run.
 
 ## What this baseline says
 
-1. HIP batching is missing. ZeroGravity stays physical batch-1 while vLLM
-   scales strongly through offered 8.
+1. The first HIP batching primitive is now proven: aligned decode rows can
+   share projection work while retaining independent state/root authority. The
+   modest C4/C8 gain shows the remaining stateful per-row work is substantial.
 2. Batching is not the whole HIP gap. C1 is already substantially behind
    vLLM on 0.8B, 2B and especially 27B, so singleton kernel/execution efficiency
-   is independently important.
+   remains independently important.
 3. CUDA fused correctness comes before CUDA scaling work. C4+ performance
    numbers cannot become accepted comparisons until identical lanes agree.
 4. 27B L5 streaming is a distinct memory-constrained mode. It is expected
