@@ -330,7 +330,7 @@ impl Cold {
         };
         let input_lengths = descriptor.input_elements()?;
         let output_lengths = descriptor.output_elements()?;
-        let [input_elements] = input_lengths.as_slice() else {
+        let [packed_elements, coefficient_elements] = input_lengths.as_slice() else {
             return Err(Error::State("decode cohort convolution input arity".into()));
         };
         let [activated_elements, gate_elements] = output_lengths.as_slice() else {
@@ -338,9 +338,10 @@ impl Cold {
                 "decode cohort convolution output arity".into(),
             ));
         };
-        if node.inputs.len() != 1
+        if node.inputs.len() != 2
             || node.outputs.len() != 2
-            || *input_elements != g.qkv_channels + g.z_channels
+            || *packed_elements != g.qkv_channels + g.z_channels
+            || *coefficient_elements != g.coefficient_channels
             || *activated_elements != g.qkv_channels
             || *gate_elements != g.z_channels
             || descriptor.parameters().len() != 1
@@ -351,7 +352,7 @@ impl Cold {
         }
         let packed = self.value(
             node.inputs[0],
-            input_elements
+            packed_elements
                 .checked_mul(width)
                 .ok_or_else(|| Error::Limit("decode cohort convolution input".into()))?,
         )?;
@@ -403,7 +404,7 @@ impl Cold {
                 client,
                 grid(width * g.qkv_channels),
                 dim(),
-                arg(&packed, width * input_elements),
+                arg(&packed, width * packed_elements),
                 arg(p(0), state_words),
                 arg(p(1), state_words),
                 arg(p(2), state_words),
