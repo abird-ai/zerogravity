@@ -197,9 +197,12 @@ Python3.12 / vLLM0.33.0+rocm72 / torch2.13.0+git733fca1 / Triton3.8.0+git669b31a
 AITer0.1.26; upstream ROCm wheels are hash-frozen explicitly. Pinned nixpkgs supplies the7.2.3
 ROCm math/runtime stack. Two wheel-ABI gaps are isolated fixed-output runtimes rather than host or
 container dependencies: AMD hipSPARSELt0.2.6.70203 and OpenMPI4.1.6's legacy C++ ABI. Both
-`vllm-rocm` and the refactored `vllm-cuda` realize successfully on L5. Next: sync the exact signed
-provider commit to X2 by Git bundle and run one physical import/device smoke before the fresh ROCm
-matched matrix. Do not revive Podman/FUSE for that campaign.
+`vllm-rocm` and the refactored `vllm-cuda` realize successfully on L5. Signed `93d80f3` was synced
+exactly to X2 by verified Git bundle; `vllm-rocm` realizes there too. One physical smoke through the
+native-GPU harness reports vLLM0.33.0 / torch2.13.0+git733fca1 / HIP7.2.53211, one AMD Radeon8060S,
+`gfx1151`, and full103079215104-byte VRAM visibility. After process exit X2 returns to274452480B,
+0% busy and no KFD owner. The next unit is the fresh matched0.8B/2B/27B ROCm serving matrix; do not
+repeat the provider/import gate or revive Podman/FUSE for that campaign.
 
 ### Error architecture — 21 Nov 2026
 

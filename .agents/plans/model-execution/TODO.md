@@ -68,8 +68,11 @@ batch width remains1, so the flat throughput is expected and native fused batchi
 is still open. A backend-neutral Nix vLLM provider now realizes both CUDA and ROCm
 on L5; the ROCm graph pins vLLM0.33.0+rocm72/Torch2.13/Triton3.8/AITer0.1.26 on
 pinned ROCm7.2.3 userspace. Podman/FUSE is no longer a fresh-baseline dependency.
-Next physical unit is an exact-bundle X2 provider import/device smoke, then matched
-ROCm serving; do not rerun the completed native HIP ladder first.
+Signed `93d80f3` was bundle-synced exactly to X2; the same provider realizes there and
+its harnessed device smoke reports vLLM0.33.0/Torch2.13/HIP7.2.53211 on one gfx1151
+Radeon8060S with full103079215104B VRAM visibility, then returns to274452480B/0% busy/
+no KFD owner. Next physical unit is matched ROCm serving; do not rerun either the
+completed native HIP ladder or the provider/import gate first.
 
 Use the continuation queue below over historical milestone notes later in this file.
 

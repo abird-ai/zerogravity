@@ -60,17 +60,20 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   were362.100/362.703s for192 output tokens, all exact, then X2 returned to
   ~274MiB/0% busy/no KFD owners. Physical HIP batch width remains1; this is not
   native fused batching.
-- [ ] **Fresh X2 vLLM ROCm baseline:** Podman/FUSE is not part of the current
-  architecture. The existing Nix provider factory now has a ROCm sibling with a
-  frozen x86_64 Linux wheel graph: Python3.12, vLLM0.33.0+rocm72,
+- [~] **Fresh X2 vLLM ROCm baseline:** Podman/FUSE is not part of the current
+  architecture. Signed `93d80f3` adds the ROCm sibling to the existing Nix provider
+  factory with a frozen x86_64 Linux wheel graph: Python3.12, vLLM0.33.0+rocm72,
   torch2.13.0+git733fca1, Triton3.8.0+git669b31ac and AITer0.1.26. Upstream ROCm
   wheel hashes are frozen explicitly; pinned nixpkgs supplies the7.2.3 ROCm math
   stack. Two missing binary-ABI pieces are fixed-output runtimes only:
   AMD hipSPARSELt0.2.6.70203 and OpenMPI4.1.6's legacy C++ ABI. Both `vllm-rocm`
-  and refactored `vllm-cuda` now realize successfully on L5. Next: exact signed
-  bundle sync to X2, one physical import/device smoke through `native-gpu.py`, then
-  reuse the existing comparator for matched0.8B/2B/27B timing. Retained Podman ROCm
-  results remain historical evidence only.
+  and refactored `vllm-cuda` realize successfully on L5; the exact signed commit
+  was bundle-synced to X2, where `vllm-rocm` realizes too. Physical harness smoke
+  passes with vLLM0.33.0 / torch2.13.0+git733fca1 / HIP7.2.53211, one AMD Radeon
+  8060S, `gfx1151`, full103079215104-byte VRAM visibility, then clean return to
+  274452480B/0% busy/no KFD owner. Next: reuse the existing comparator for matched
+  0.8B/2B/27B timing; do not rerun the provider/import gate first. Retained Podman
+  ROCm results remain historical evidence only.
 - [x] `c282f20` restores HIP-only source-profile compilation after a shared CUDA
   optimization accidentally gated the model-neutral packed-BF16 numeric-zero
   greedy kernel behind `cuda-cublas`; stale HIP test/support profiles now specify
