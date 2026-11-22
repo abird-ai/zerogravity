@@ -46,7 +46,10 @@ pub(crate) struct Metadata {
 pub(crate) struct Opened {
     pub(crate) seal: ForwardSourceSeal,
     pub(crate) metadata: Metadata,
-    #[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
+    #[cfg(any(
+        all(feature = "model-qwen35", feature = "hip"),
+        all(feature = "model-qwen35", feature = "cuda")
+    ))]
     pub(crate) tokenizer: Option<Vec<u8>>,
 }
 
@@ -79,7 +82,10 @@ pub(crate) fn open(
         .ok_or_else(|| Error::Malformed("complete compiled source membership".into()))?;
     dir.require_inventory(spec, files.len(), cancelled)?;
 
-    #[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
+    #[cfg(any(
+        all(feature = "model-qwen35", feature = "hip"),
+        all(feature = "model-qwen35", feature = "cuda")
+    ))]
     let mut tokenizer = None;
     let mut index = None;
     let mut shards = Vec::with_capacity(spec.shard_count);
@@ -107,7 +113,10 @@ pub(crate) fn open(
                 return Err(Error::State("held selected config changed".into()));
             }
             "model.safetensors.index.json" => index = Some(raw),
-            #[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
+            #[cfg(any(
+                all(feature = "model-qwen35", feature = "hip"),
+                all(feature = "model-qwen35", feature = "cuda")
+            ))]
             "tokenizer.json" if dir.retains_tokenizer() => tokenizer = Some(raw),
             _ => {}
         }
@@ -175,7 +184,10 @@ pub(crate) fn open(
     }
     Ok(Opened {
         seal,
-        #[cfg(any(feature = "qwen35-hip", feature = "qwen35-cuda"))]
+        #[cfg(any(
+            all(feature = "model-qwen35", feature = "hip"),
+            all(feature = "model-qwen35", feature = "cuda")
+        ))]
         tokenizer,
         metadata: Metadata {
             family: spec.family,

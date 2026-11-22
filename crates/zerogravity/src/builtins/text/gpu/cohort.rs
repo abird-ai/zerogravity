@@ -150,7 +150,7 @@ pub(super) fn prepare(
         state_only: work.state_only,
     };
     #[cfg(test)]
-    if work.cohort_width == 0 || native {
+    if work.cohort_width == 0 || fused {
         let hook = AFTER_COHORT_READY.with(|slot| slot.borrow_mut().take());
         if let Some(hook) = hook {
             hook();

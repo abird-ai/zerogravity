@@ -20,7 +20,7 @@ pub use prepared_native::{
     HipScopedSetObservation, NativeRetention, PreparedHipNative, RegisteredHipNative,
     SourcePageAuthority, scoped_metadata_bytes,
 };
-pub use runtime::{HipRuntime, preflight_physical};
+pub use runtime::{HipDeviceMetadata, HipRuntime, observe_device, preflight_physical};
 
 /// Whether both dynamic HIP runtime and RTC libraries can be loaded. Does not
 /// enumerate devices, create a client, compile or launch a kernel. Set SDK

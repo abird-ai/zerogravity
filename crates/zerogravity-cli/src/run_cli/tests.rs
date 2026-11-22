@@ -514,12 +514,12 @@ fn every_explicit_device_compatible_before_source_effects() {
 }
 
 #[cfg(all(
-    feature = "qwen35-cuda",
+    all(feature = "model-qwen35", feature = "cuda"),
     not(feature = "qwen35-cuda-qualification"),
     target_os = "linux"
 ))]
 #[test]
-fn ordinary_qwen_cuda_explicit_targets_refuse_before_injected_device_discovery() {
+fn ordinary_qwen_cuda_explicit_targets_reach_shared_device_discovery() {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     let root = std::env::temp_dir().join(format!("zg-explicit-qwen-route-{}", std::process::id()));
@@ -539,11 +539,14 @@ fn ordinary_qwen_cuda_explicit_targets_refuse_before_injected_device_discovery()
         let discoveries = AtomicUsize::new(0);
         let error = execute::run_with_discovery(request, || {
             discoveries.fetch_add(1, Ordering::SeqCst);
-            Err(Error::State("injected discovery must not run".into()))
+            Err(Error::State("shared production discovery reached".into()))
         })
         .unwrap_err();
-        assert!(matches!(error, Error::Unsupported(_)), "{target}: {error}");
-        assert_eq!(discoveries.load(Ordering::SeqCst), 0, "{target}");
+        assert!(
+            matches!(error, Error::State(ref message) if message == "shared production discovery reached"),
+            "{target}: {error}"
+        );
+        assert_eq!(discoveries.load(Ordering::SeqCst), 1, "{target}");
     }
     std::fs::remove_dir_all(root).unwrap();
 }

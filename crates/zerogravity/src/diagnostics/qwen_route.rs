@@ -55,11 +55,14 @@ pub fn require_route_capability() -> Result<()> {
     {
         Ok(())
     }
-    #[cfg(all(feature = "qwen35-cuda", not(feature = "qwen35-cuda-qualification")))]
+    #[cfg(all(
+        all(feature = "model-qwen35", feature = "cuda"),
+        not(feature = "qwen35-cuda-qualification")
+    ))]
     {
         crate::qwen35_cuda::require_forward_capability()
     }
-    #[cfg(not(feature = "qwen35-cuda"))]
+    #[cfg(not(all(feature = "model-qwen35", feature = "cuda")))]
     {
         Err(Error::Unsupported(
             "Qwen CUDA requires the qwen35-cuda feature".into(),

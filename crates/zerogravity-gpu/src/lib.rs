@@ -293,6 +293,8 @@ pub use resident_program::text_observation::{TextFrame, TextFrameKind, TextObser
 ))]
 pub use resident_inference::source_native_probe::{SourceTextNativeProbe, SourceTextNativeState};
 
+#[cfg(feature = "hip")]
+pub use cubecl_hip::{HipDeviceMetadata, observe_device as observe_hip_device};
 #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
 pub use hip::native::HipSourceBudget;
 #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]

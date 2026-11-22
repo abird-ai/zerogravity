@@ -28,7 +28,20 @@
 
   cross = import ./cross.nix {inherit nixpkgs overlay sourceRoot version mkCraneLib;};
 
-  development = forAllSystems (system: import ./dev.nix {native = native.${system};});
+  development = forAllSystems (system:
+    import ./dev.nix {
+      native = native.${system};
+      inherit sourceRoot;
+      gpuPkgs =
+        if system == "x86_64-linux"
+        then
+          import nixpkgs {
+            inherit system;
+            overlays = [overlay];
+            config.allowUnfree = true;
+          }
+        else null;
+    });
   vllm = forAllSystems (system:
     import ./vllm.nix {
       inherit sourceRoot uv2nix pyproject-nix pyproject-build-systems;
@@ -87,6 +100,7 @@ in {
       default = development.${system}.shell;
     }
     // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+      gpu = development.${system}.gpu;
       vllm-cuda = vllm.${system}.cuda.shell;
       vllm-rocm = vllm.${system}.rocm.shell;
     });

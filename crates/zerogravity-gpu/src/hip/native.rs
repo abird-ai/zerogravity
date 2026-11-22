@@ -158,9 +158,9 @@ impl SingleSourceProfile {
             #[cfg(feature = "hip-source")]
             Self::ResidentText(budget) => {
                 if budget == HipSourceBudget::default() {
-                    "gfx1151-source-bf16-resident-projections-v1"
+                    "hip-source-bf16-resident-projections-v1"
                 } else {
-                    "gfx1151-source-bf16-explicit-total-device-budget-v1"
+                    "hip-source-bf16-explicit-total-device-budget-v1"
                 }
             }
         }
@@ -532,7 +532,7 @@ fn begin_single_source(
             "Gemma actual context partition extent differs".into(),
         ));
     }
-    require_environment(service.client(), service.physical_key())?;
+    require_environment(service.client(), service.physical_key(), profile)?;
 
     Ok(ColdNativePreparation {
         service,
@@ -570,8 +570,29 @@ fn persistent_context_host(
     )?)));
     Ok(persistent_host)
 }
-fn require_environment(client: &Client, physical: PhysicalDeviceKey) -> Result<()> {
+fn require_environment(
+    client: &Client,
+    physical: PhysicalDeviceKey,
+    profile: SingleSourceProfile,
+) -> Result<()> {
     let environment = PreparedHipNative::environment(client).map_err(native)?;
+
+    #[cfg(feature = "hip-source")]
+    if matches!(profile, SingleSourceProfile::ResidentText(_)) {
+        if physical.backend != "pci"
+            || !environment.fingerprint.starts_with("hip-kernel_gfx")
+            || environment.compiler_options.is_empty()
+            || environment.runtime_version <= 0
+            || environment.driver_version <= 0
+            || environment.rtc_major <= 0
+        {
+            return Err(Error::Unsupported(
+                "HIP source runtime environment is incomplete".into(),
+            ));
+        }
+        return Ok(());
+    }
+
     if physical != PhysicalDeviceKey::new("pci", "0000:c6:00.0")?
         || environment.fingerprint != "hip-kernel_gfx1151"
         || environment.compiler_options != OPTIONS
@@ -581,11 +602,11 @@ fn require_environment(client: &Client, physical: PhysicalDeviceKey) -> Result<(
         || environment.rtc_minor != 0
     {
         return Err(Error::Unsupported(
-            "Gemma provisional exact x2 native environment".into(),
+            "qualification requires the exact x2 native environment".into(),
         ));
     }
     #[cfg(feature = "qualification")]
-    eprintln!("GEMMA_NATIVE_ENVIRONMENT {environment:?}");
+    eprintln!("HIP_NATIVE_ENVIRONMENT {environment:?}");
     Ok(())
 }
 

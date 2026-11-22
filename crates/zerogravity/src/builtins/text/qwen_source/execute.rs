@@ -1,5 +1,8 @@
 use super::*;
-#[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
+#[cfg(any(
+    all(feature = "model-qwen35", feature = "cuda"),
+    all(feature = "model-qwen35", feature = "hip")
+))]
 use crate::gpu::{ResidentTextCohortPending, ResidentTextCohortPreparation};
 use crate::{
     accelerator::program::InvocationPhase,
@@ -16,9 +19,12 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
     time::Instant,
 };
-#[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
+#[cfg(any(
+    all(feature = "model-qwen35", feature = "cuda"),
+    all(feature = "model-qwen35", feature = "hip")
+))]
 use zerogravity_engine::router::waves::Phase;
-#[cfg(feature = "qwen35-cuda")]
+#[cfg(all(feature = "model-qwen35", feature = "cuda"))]
 use zerogravity_engine::state_cache::{
     PrefixCacheEviction, PrefixCompatibility, PrefixSharingScope,
 };
@@ -30,16 +36,25 @@ use zerogravity_engine::{
     },
 };
 pub(super) struct SourceText;
-#[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
+#[cfg(any(
+    all(feature = "model-qwen35", feature = "cuda"),
+    all(feature = "model-qwen35", feature = "hip")
+))]
 type CohortReady = ResidentTextCohortPending;
-#[cfg(not(any(feature = "qwen35-cuda", feature = "qwen35-hip")))]
+#[cfg(not(any(
+    all(feature = "model-qwen35", feature = "cuda"),
+    all(feature = "model-qwen35", feature = "hip")
+)))]
 type CohortReady = std::convert::Infallible;
 struct Feedback {
     root: RootBinding,
     id: u32,
     device: Option<ResidentToken>,
 }
-#[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
+#[cfg(any(
+    all(feature = "model-qwen35", feature = "cuda"),
+    all(feature = "model-qwen35", feature = "hip")
+))]
 fn native_phase_compatible(
     first_prefill: Option<(u64, usize)>,
     row_prefill: Option<(u64, usize)>,
@@ -86,7 +101,7 @@ fn completion(read: &InferenceReadback, consumed: usize, readout: bool) -> Compl
         ..Completion::default()
     }
 }
-#[cfg(feature = "qwen35-cuda")]
+#[cfg(all(feature = "model-qwen35", feature = "cuda"))]
 fn prefix_compatibility(
     model: &Model,
     sharing: PrefixSharingScope,
@@ -159,7 +174,7 @@ impl Executor for SourceText {
         prompt: &[u32],
         sharing: Option<zerogravity_engine::state_cache::PrefixSharingScope>,
     ) -> Result<usize, ServiceError> {
-        #[cfg(feature = "qwen35-cuda")]
+        #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
         {
             let Some(sharing) = sharing else {
                 return Ok(0);
@@ -192,7 +207,7 @@ impl Executor for SourceText {
         prefix: &[u32],
         sharing: Option<zerogravity_engine::state_cache::PrefixSharingScope>,
     ) -> Result<(), ServiceError> {
-        #[cfg(feature = "qwen35-cuda")]
+        #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
         {
             let Some(sharing) = sharing else {
                 return Ok(());
@@ -229,7 +244,7 @@ impl Executor for SourceText {
         models: &BTreeMap<String, Self::Model>,
         sharing: zerogravity_engine::state_cache::PrefixSharingScope,
     ) -> Result<zerogravity_engine::state_cache::PrefixCacheEviction, ServiceError> {
-        #[cfg(feature = "qwen35-cuda")]
+        #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
         {
             let mut seen = Vec::<Self::Model>::new();
             let mut total = PrefixCacheEviction::default();
@@ -255,7 +270,10 @@ impl Executor for SourceText {
         #[allow(unreachable_code)]
         Ok(zerogravity_engine::state_cache::PrefixCacheEviction::default())
     }
-    #[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
+    #[cfg(any(
+        all(feature = "model-qwen35", feature = "cuda"),
+        all(feature = "model-qwen35", feature = "hip")
+    ))]
     fn cohort_eligible(row: &Active<Self>) -> bool {
         let device_greedy = row.state.session.supports_device_greedy();
         if row.cursor < row.prompt.len() {
@@ -282,7 +300,10 @@ impl Executor for SourceText {
                 })
         }
     }
-    #[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
+    #[cfg(any(
+        all(feature = "model-qwen35", feature = "cuda"),
+        all(feature = "model-qwen35", feature = "hip")
+    ))]
     fn compatible(first: &Active<Self>, row: &Active<Self>) -> bool {
         let prefill = |row: &Active<Self>| {
             (row.cursor < row.prompt.len())
@@ -300,7 +321,7 @@ impl Executor for SourceText {
             return first.state.session.binding().frontier()
                 == row.state.session.binding().frontier();
         }
-        #[cfg(feature = "qwen35-cuda")]
+        #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
         let rows_compatible = match (first_prefill, row_prefill) {
             (Some((_, left)), Some((_, right))) => first
                 .model
@@ -308,11 +329,14 @@ impl Executor for SourceText {
                 .is_ok_and(|model| model.prefill_rows_compatible(left, right)),
             _ => false,
         };
-        #[cfg(not(feature = "qwen35-cuda"))]
+        #[cfg(not(all(feature = "model-qwen35", feature = "cuda")))]
         let rows_compatible = false;
         native_phase_compatible(first_prefill, row_prefill, rows_compatible)
     }
-    #[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
+    #[cfg(any(
+        all(feature = "model-qwen35", feature = "cuda"),
+        all(feature = "model-qwen35", feature = "hip")
+    ))]
     fn validate_cohort(rows: &[Active<Self>], work: CohortWork) -> Result<(), ServiceError> {
         let phase_matches = match work.phase {
             Phase::Prefill => rows.iter().all(|row| row.cursor < row.prompt.len()),
@@ -339,7 +363,10 @@ impl Executor for SourceText {
         }
         Ok(())
     }
-    #[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
+    #[cfg(any(
+        all(feature = "model-qwen35", feature = "cuda"),
+        all(feature = "model-qwen35", feature = "hip")
+    ))]
     fn prepare(
         rows: &mut [Active<Self>],
         work: CohortWork,
@@ -360,7 +387,7 @@ impl Executor for SourceText {
         let model = rows[0].model.resident()?;
         let ready = match work.phase {
             Phase::Prefill => {
-                #[cfg(feature = "qwen35-cuda")]
+                #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
                 {
                     if !rows[0].state.session.supports_device_greedy() {
                         return Err(ServiceError::new(
@@ -400,7 +427,7 @@ impl Executor for SourceText {
                         ResidentTextCohortPreparation::Ready(ready) => ready,
                     }
                 }
-                #[cfg(not(feature = "qwen35-cuda"))]
+                #[cfg(not(all(feature = "model-qwen35", feature = "cuda")))]
                 {
                     return Err(ServiceError::new(
                         500,
@@ -425,7 +452,7 @@ impl Executor for SourceText {
                     .map_err(ServiceError::inference)?;
 
                 if rows[0].state.session.supports_device_greedy() {
-                    #[cfg(feature = "qwen35-cuda")]
+                    #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
                     {
                         let inputs = rows
                             .iter()
@@ -451,7 +478,7 @@ impl Executor for SourceText {
                             ResidentTextCohortPreparation::Ready(ready) => ready,
                         }
                     }
-                    #[cfg(not(feature = "qwen35-cuda"))]
+                    #[cfg(not(all(feature = "model-qwen35", feature = "cuda")))]
                     {
                         return Err(ServiceError::new(
                             500,
@@ -460,7 +487,7 @@ impl Executor for SourceText {
                         ));
                     }
                 } else {
-                    #[cfg(feature = "qwen35-hip")]
+                    #[cfg(all(feature = "model-qwen35", feature = "hip"))]
                     {
                         let inputs = rows
                             .iter()
@@ -478,7 +505,7 @@ impl Executor for SourceText {
                             ResidentTextCohortPreparation::Ready(ready) => ready,
                         }
                     }
-                    #[cfg(not(feature = "qwen35-hip"))]
+                    #[cfg(not(all(feature = "model-qwen35", feature = "hip")))]
                     {
                         return Err(ServiceError::new(
                             500,
@@ -506,7 +533,10 @@ impl Executor for SourceText {
             fused,
         }))
     }
-    #[cfg(any(feature = "qwen35-cuda", feature = "qwen35-hip"))]
+    #[cfg(any(
+        all(feature = "model-qwen35", feature = "cuda"),
+        all(feature = "model-qwen35", feature = "hip")
+    ))]
     fn commit(
         ready: Self::Ready,
         rows: &mut [Active<Self>],
@@ -730,7 +760,7 @@ impl Executor for SourceText {
     }
     fn retire(models: &BTreeMap<String, Self::Model>) -> Result<(), ServiceError> {
         for model in models.values() {
-            #[cfg(feature = "qwen35-cuda")]
+            #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
             if let Some(cache) = model.prefix_cache.lock().map_err(|_| poison())?.as_mut() {
                 cache.clear();
             }
@@ -760,14 +790,14 @@ impl Executor for SourceText {
         let mut source_models = Vec::with_capacity(models.len());
         for (alias, model) in models {
             let metadata = &model.source.metadata;
-            #[cfg(feature = "qwen35-cuda")]
+            #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
             let prefix_cache = model
                 .prefix_cache
                 .lock()
                 .map_err(|_| poison())?
                 .as_ref()
                 .map(|cache| cache.snapshot());
-            #[cfg(feature = "qwen35-cuda")]
+            #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
             let paged_pool = model
                 .resident
                 .lock()
@@ -787,7 +817,7 @@ impl Executor for SourceText {
                 "prefill_rows": 64,
                 "numerical_contract": format!("{:?}", model.source.plan.source_seal().numerical_contract()),
             });
-            #[cfg(feature = "qwen35-cuda")]
+            #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
             {
                 model_report["prefix_cache"] = prefix_cache
                     .map(|cache| {
@@ -827,17 +857,21 @@ mod tests {
         assert_eq!(phase(64, 17), InvocationPhase::Prefill);
         assert_eq!(phase(47, 64), InvocationPhase::Prefill);
     }
-    #[cfg(feature = "qwen35-cuda")]
+    #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
     #[test]
     fn native_prefill_requires_same_base_and_reduction_compatible_rows() {
         assert!(native_phase_compatible(Some((0, 48)), Some((0, 49)), true));
-        assert!(!fused_phase_compatible(Some((0, 47)), Some((0, 48)), false));
-        assert!(!fused_phase_compatible(
+        assert!(!native_phase_compatible(
+            Some((0, 47)),
+            Some((0, 48)),
+            false
+        ));
+        assert!(!native_phase_compatible(
             Some((47, 17)),
             Some((48, 17)),
             true
         ));
-        assert!(!fused_phase_compatible(Some((47, 17)), None, true));
+        assert!(!native_phase_compatible(Some((47, 17)), None, true));
         assert!(native_phase_compatible(None, None, false));
     }
     #[test]

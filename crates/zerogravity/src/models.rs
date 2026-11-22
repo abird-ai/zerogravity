@@ -1,15 +1,18 @@
 //! Source-bound cold registration through the runtime's one engine/catalog.
 #[cfg(all(
-    any(feature = "qwen35-hip", feature = "qwen35-cuda"),
+    any(
+        all(feature = "model-qwen35", feature = "hip"),
+        all(feature = "model-qwen35", feature = "cuda")
+    ),
     target_os = "linux"
 ))]
 pub use crate::builtins::text::QwenServingProfile;
-#[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "hip", target_os = "linux"))]
 pub use crate::gpu::HipSourceBudget;
 
 pub use crate::smart_config::{SmartConfig, SmartConfigMode};
 
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct QwenCudaSmartOverrides {
     pub state_policy: Option<QwenCudaStatePolicy>,
@@ -18,7 +21,7 @@ pub struct QwenCudaSmartOverrides {
     pub cohort_width: Option<usize>,
 }
 
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum QwenCudaStatePolicy {
     #[default]
@@ -28,7 +31,7 @@ pub enum QwenCudaStatePolicy {
         max_append_tokens: usize,
     },
 }
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 impl From<QwenCudaStatePolicy> for crate::gpu::CudaSourceStatePolicy {
     fn from(policy: QwenCudaStatePolicy) -> Self {
         match policy {
@@ -43,6 +46,15 @@ impl From<QwenCudaStatePolicy> for crate::gpu::CudaSourceStatePolicy {
         }
     }
 }
+#[cfg(all(
+    feature = "model-qwen35",
+    any(feature = "cuda", feature = "hip"),
+    target_os = "linux"
+))]
+pub fn qwen_source_snapshot(target: &str) -> Option<&'static str> {
+    crate::qwen35_source::source_inventory::snapshot_for_target(target)
+}
+
 pub use crate::model::DeclaredModel;
 pub use zerogravity_core::model::{ModelAssembly, ModelDefinition, ModelProgram, ProgramRequest};
 pub use zerogravity_core::provider::{PreparedExecutable, RegionExecutionProvider};
@@ -54,9 +66,16 @@ pub use zerogravity_engine::{
 
 /// One complete cold route set. This is not live model replacement or residency.
 /// Aliases share the original source; an already configured runtime refuses.
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
+const MIB: usize = 1024 * 1024;
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
+const QWEN_CUDA_PROVIDER_BYTES: usize = 4608 * MIB;
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
+const QWEN_CUDA_DEVICE_BYTES: u64 = 5120 * MIB as u64;
+
 pub enum ModelLoadRequest {
     /// Canonical original source with smart startup configuration Enabled.
-    #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+    #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
     QwenCuda {
         aliases: Vec<String>,
         cache: crate::cache::CacheOptions,
@@ -69,7 +88,7 @@ pub enum ModelLoadRequest {
     },
     /// User state-policy value; under Enabled it overrides this knob while
     /// future unspecified smart-config knobs remain eligible for Auto selection.
-    #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+    #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
     QwenCudaWithStatePolicy {
         aliases: Vec<String>,
         cache: crate::cache::CacheOptions,
@@ -80,7 +99,7 @@ pub enum ModelLoadRequest {
         state_policy: QwenCudaStatePolicy,
     },
     /// Explicit control of the shared startup smart-config layer.
-    #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+    #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
     QwenCudaWithSmartConfig {
         aliases: Vec<String>,
         cache: crate::cache::CacheOptions,
@@ -91,7 +110,7 @@ pub enum ModelLoadRequest {
         smart_config: SmartConfig<QwenCudaSmartOverrides>,
     },
     /// Canonical original HF source through the shared worker; cold HIP only.
-    #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
+    #[cfg(all(feature = "model-qwen35", feature = "hip", target_os = "linux"))]
     QwenHip {
         aliases: Vec<String>,
         cache: crate::cache::CacheOptions,
@@ -99,7 +118,7 @@ pub enum ModelLoadRequest {
         profile: QwenServingProfile,
     },
     /// Same cold HIP route with an explicit total device envelope, including context.
-    #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
+    #[cfg(all(feature = "model-qwen35", feature = "hip", target_os = "linux"))]
     QwenHipWithBudget {
         aliases: Vec<String>,
         cache: crate::cache::CacheOptions,
@@ -126,6 +145,45 @@ pub enum ModelLoadRequest {
         backend: crate::devices::GpuBackend,
         profile: crate::builtins::text::GpuProfile,
     },
+}
+
+impl ModelLoadRequest {
+    /// Canonical production Qwen CUDA load. Backend/model selection remains
+    /// caller policy; this constructor owns the adapter's qualified envelopes.
+    #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
+    pub fn qwen_cuda(
+        aliases: Vec<String>,
+        cache: crate::cache::CacheOptions,
+        snapshot: String,
+        profile: QwenServingProfile,
+    ) -> Self {
+        Self::QwenCuda {
+            aliases,
+            cache,
+            snapshot,
+            profile,
+            provider_bytes: QWEN_CUDA_PROVIDER_BYTES,
+            device_bytes: QWEN_CUDA_DEVICE_BYTES,
+        }
+    }
+
+    /// Canonical production Qwen HIP load with an explicit device envelope.
+    #[cfg(all(feature = "model-qwen35", feature = "hip", target_os = "linux"))]
+    pub fn qwen_hip(
+        aliases: Vec<String>,
+        cache: crate::cache::CacheOptions,
+        snapshot: String,
+        profile: QwenServingProfile,
+        budget: HipSourceBudget,
+    ) -> Self {
+        Self::QwenHipWithBudget {
+            aliases,
+            cache,
+            snapshot,
+            profile,
+            budget,
+        }
+    }
 }
 
 pub struct ModelCatalog<'a> {

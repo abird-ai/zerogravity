@@ -13,7 +13,7 @@ pub struct BuiltinStatus {
     pub fabric: MigrationStatus,
 }
 
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 pub mod text_gpu;
 
 /// Explicit original CPU source/audit driver; not a scheduling or serving owner.

@@ -10,13 +10,15 @@ default-run = "zerogravity"
 
 [features]
 default = ["cpu", "model-qwen35", "text"]
-# Opt-in native HTTP/1.1 OpenAI surface; CPU continuous interleaving
-# uses the existing model and state owners.
-serve = ["cpu", "model-qwen35", "text", "cache", "zerogravity/serve", "dep:signal-hook"]
+# Protocol/frontend capability only. Models and execution backends are selected
+# independently and contribute the routes this server can actually load.
+serve = ["zerogravity/serve", "dep:signal-hook"]
 cpu = ["zerogravity/cpu"]
-model-qwen35 = ["zerogravity/model-qwen35"]
+# Model contribution: task/cache/source support is additive, while device
+# implementations still require an independently selected backend feature.
+model-qwen35 = ["zerogravity/model-qwen35", "text", "cache"]
 model-gemma4 = ["zerogravity/model-gemma4"]
-text = ["model-qwen35", "zerogravity/text"]
+text = ["zerogravity/text"]
 cache = ["zerogravity/cache"]
 gemma4-cpu-candidate = ["model-gemma4", "cpu", "cache", "zerogravity/model-gemma4-cpu-candidate", "dep:signal-hook"]
 gemma4-hip-resident-candidate = ["gemma4-cpu-candidate", "hip", "zerogravity/gemma4-hip-qualification"]
@@ -25,14 +27,17 @@ diagnostic-acquisition = ["acquisition", "zerogravity/diagnostic-acquisition"]
 vulkan = ["zerogravity/vulkan"]
 cuda = ["zerogravity/cuda"]
 # Previous features: short-hf-run, canonical47-serving, short-hf-serving.
-qwen35-cuda = ["cuda", "cache", "model-qwen35", "text", "zerogravity/qwen35-cuda"]
+# Compatibility aliases only. Normal builds select model + backend separately.
+qwen35-cuda = ["cuda", "model-qwen35", "zerogravity/qwen35-cuda"]
+qwen35-hip = ["hip", "model-qwen35", "zerogravity/qwen35-hip"]
 # Explicit diagnostic target for finite captured Qwen CUDA execution.
 qwen35-cuda-qualification = ["qwen35-cuda", "zerogravity/qwen35-cuda-qualification"]
 qwen35-cuda-serving = ["serve", "qwen35-cuda", "zerogravity/qwen35-cuda-serving"]
 hip = ["zerogravity/hip"]
 all-models = ["model-qwen35", "model-gemma4"]
 all-backends = ["cpu", "vulkan", "cuda", "hip"]
-all = ["all-models", "all-backends", "text"]
+# Normal production superset. Diagnostics/qualification remain explicit.
+all = ["all-models", "all-backends", "acquisition", "serve"]
 diagnostic-gdn-trace = ["zerogravity/diagnostic-gdn-trace"]
 diagnostic-cpu-checkpoint = ["zerogravity/diagnostic-cpu-checkpoint"]
 

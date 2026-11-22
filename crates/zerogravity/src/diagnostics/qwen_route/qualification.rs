@@ -8,7 +8,7 @@ fn bad(message: impl Into<String>) -> Error {
 /// Finite route scalars the card proposal and refusal trace need; separated
 /// from `ShortHfRouteMetadata` so the pure proposal is unit-testable without
 /// a real source directory.
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 pub(super) struct FiniteRouteProfile {
     /// Selected finite CUDA HOST requirement (meta.host_bytes).
     pub host_bytes: usize,
@@ -23,7 +23,7 @@ pub(super) struct FiniteRouteProfile {
 /// card scan continues, so one trace can hold both host and card reasons.
 /// No arbiter mutation, no Client, no I/O beyond the caller-supplied
 /// snapshot state.
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 pub(super) fn select_sm86_card(
     request: &Request,
     profile: &FiniteRouteProfile,
@@ -121,7 +121,7 @@ pub(super) fn select_sm86_card(
 
 /// Exact refusal when nothing proposes; a host-fit failure keeps today's
 /// host limit, otherwise the no-card limit stays verbatim.
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 pub(super) fn no_route_refusal(profile: &FiniteRouteProfile, exclusions: &[String]) -> Error {
     if exclusions.iter().any(|e| e.starts_with("host:")) {
         Error::Limit(format!(
@@ -135,7 +135,7 @@ pub(super) fn no_route_refusal(profile: &FiniteRouteProfile, exclusions: &[Strin
 
 /// Dry-run status fields shared with the generic decision trace: a dry-run
 /// proposal is never a reservation.
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 pub(super) fn dry_run_trace_status(trace: &mut serde_json::Value) {
     trace["dry_run"] = serde_json::json!(true);
     trace["reservation"] = serde_json::json!("none");
@@ -143,14 +143,14 @@ pub(super) fn dry_run_trace_status(trace: &mut serde_json::Value) {
 
 /// A dry-run holds nothing; the finite adapter keeps reporting the explicit
 /// pre-Client gap until a route actually boots a Client.
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 pub(super) fn dry_run_admission_trace(trace: &mut serde_json::Value) {
     trace["pre_client_admission_gap"] = serde_json::json!(true);
 }
 
 /// Executing --explain trace: the transactional seam (below) replaced the
 /// open pre-Client gap; the boundary stays advisory exactly as before.
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 pub(super) fn executing_admission_trace(trace: &mut serde_json::Value) {
     trace["pre_client_admission"] =
         serde_json::json!("transactional card hold before Client; released at verified identity");
@@ -168,7 +168,7 @@ pub(super) fn executing_admission_trace(trace: &mut serde_json::Value) {
 /// then drop it; the native backend/compiler-context reservation owns the
 /// ledger from its own admission onward. This is NOT an OS hard memory
 /// guarantee: other processes and driver allocations stay advisory.
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 pub(super) fn admit_pre_client_card(
     arbiter: &crate::resource_arbiter::ResourceArbiter,
     physical: &crate::resource_arbiter::PhysicalDeviceKey,
@@ -185,7 +185,7 @@ pub(super) fn admit_pre_client_card(
     )
 }
 
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 fn same_host(
     a: &crate::resource_arbiter::DeviceBudgetSnapshot,
     b: &crate::resource_arbiter::DeviceBudgetSnapshot,
@@ -198,7 +198,7 @@ fn same_host(
         && a.active_models == b.active_models
         && a.fenced == b.fenced
 }
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 fn fresh_host(snapshot: &crate::resource_arbiter::DeviceBudgetSnapshot, limit: u64) -> Result<()> {
     if snapshot.limit != limit
         || snapshot.reserved != 0
@@ -214,7 +214,7 @@ fn fresh_host(snapshot: &crate::resource_arbiter::DeviceBudgetSnapshot, limit: u
     }
     Ok(())
 }
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 fn bootstrap_baseline(
     host: &crate::cache::TransferAdmission,
     limit: u64,
@@ -255,7 +255,7 @@ fn bootstrap_baseline(
     }
     Ok(actual)
 }
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 fn after_backend(
     baseline: &crate::resource_arbiter::DeviceBudgetSnapshot,
     backend_bytes: u64,
@@ -286,7 +286,7 @@ fn after_backend(
     expected.active_models.insert("backend/cuda".into());
     Ok(expected)
 }
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 fn request_credit_parts(
     host: &crate::cache::TransferAdmission,
     session: &str,
@@ -300,7 +300,7 @@ fn request_credit_parts(
     let inventory = lease_actual_inventory_bytes(&host.resource, &owner, 2)?;
     Ok((bytes, inventory))
 }
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 fn admit_request_credit(
     host: &crate::cache::TransferAdmission,
     session: &str,
@@ -326,7 +326,7 @@ fn admit_request_credit(
         ],
     )
 }
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 fn request_credit(
     host: &crate::cache::TransferAdmission,
     session: &str,
@@ -335,7 +335,7 @@ fn request_credit(
     let (payload, inventory) = request_credit_parts(host, session, bytes)?;
     admit_request_credit(host, session, payload, inventory)
 }
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 fn prompt_payload_bytes(
     tokenizer: &crate::qwen35::tokenize::QwenTokenizer,
     prompt: &str,
@@ -355,7 +355,7 @@ fn prompt_payload_bytes(
         .ok_or_else(|| Error::Limit("planned prompt payload sum".into()))?;
     Ok((payload, id_capacity))
 }
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 fn decode_payload_bytes(
     tokenizer: &crate::qwen35::tokenize::QwenTokenizer,
     tokens: usize,
@@ -372,7 +372,7 @@ fn decode_payload_bytes(
         .checked_add(text)
         .ok_or_else(|| Error::Limit("decoded payload sum".into()))
 }
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 fn with_request_credit(
     baseline: &crate::resource_arbiter::DeviceBudgetSnapshot,
     model: &str,
@@ -408,7 +408,7 @@ fn with_request_credit(
     expected.active_models.insert(model.into());
     Ok(expected)
 }
-#[cfg(not(all(feature = "qwen35-cuda", target_os = "linux")))]
+#[cfg(not(all(feature = "model-qwen35", feature = "cuda", target_os = "linux")))]
 pub(super) fn run(
     _: Request,
     _: devices::Inventory,
@@ -417,7 +417,7 @@ pub(super) fn run(
 ) -> Result<()> {
     Err(Error::Unsupported("original HF CUDA direct run requires Linux and compiled qwen35-cuda; no source/model/client is loaded".into()))
 }
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 pub(super) fn run(
     mut request: Request,
     inventory: devices::Inventory,
@@ -928,7 +928,11 @@ pub(super) fn run(
     drop(cached_lease);
     result
 }
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux", test))]
+#[cfg(all(
+    all(feature = "model-qwen35", feature = "cuda"),
+    target_os = "linux",
+    test
+))]
 mod baseline_tests {
     use super::*;
     use crate::resource_arbiter::{AllocationClass, DeviceBudgetSnapshot};

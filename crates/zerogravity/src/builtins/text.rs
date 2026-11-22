@@ -92,12 +92,18 @@ pub(crate) mod gpu;
 pub use gpu::{GpuProfile, load_gpu_router};
 
 #[cfg(all(
-    any(feature = "qwen35-hip", feature = "qwen35-cuda"),
+    any(
+        all(feature = "model-qwen35", feature = "hip"),
+        all(feature = "model-qwen35", feature = "cuda")
+    ),
     target_os = "linux"
 ))]
 pub(crate) mod qwen_source;
 #[cfg(all(
-    any(feature = "qwen35-hip", feature = "qwen35-cuda"),
+    any(
+        all(feature = "model-qwen35", feature = "hip"),
+        all(feature = "model-qwen35", feature = "cuda")
+    ),
     target_os = "linux"
 ))]
 pub use qwen_source::QwenServingProfile;

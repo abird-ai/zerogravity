@@ -13,9 +13,9 @@ use zerogravity_engine::{model_instance::execution::*, router::Router};
 
 #[derive(Clone, Copy)]
 pub(crate) enum SourceBackend {
-    #[cfg(feature = "qwen35-hip")]
+    #[cfg(all(feature = "model-qwen35", feature = "hip"))]
     Hip(crate::gpu::HipSourceBudget),
-    #[cfg(feature = "qwen35-cuda")]
+    #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
     Cuda {
         provider_bytes: usize,
         device_bytes: u64,
@@ -24,7 +24,7 @@ pub(crate) enum SourceBackend {
 }
 impl SourceBackend {
     fn validate(self, profile: QwenServingProfile) -> Result<(), ServiceError> {
-        #[cfg(feature = "qwen35-cuda")]
+        #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
         if let Self::Cuda {
             provider_bytes,
             device_bytes,
@@ -39,7 +39,7 @@ impl SourceBackend {
                 "CUDA requires a positive provider capacity within physical device admission",
             ));
         }
-        #[cfg(feature = "qwen35-cuda")]
+        #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
         if let Self::Cuda { smart_config, .. } = self
             && smart_config.mode != crate::smart_config::SmartConfigMode::Exclusive
         {
@@ -50,28 +50,28 @@ impl SourceBackend {
                 profile.validate_cohort_width(cohort_width)?;
             }
         }
-        #[cfg(feature = "qwen35-hip")]
+        #[cfg(all(feature = "model-qwen35", feature = "hip"))]
         if matches!(self, Self::Hip(_)) {
             profile.validate_base()?;
             profile.validate_cohort_width(profile.cohort_width)?;
         } else {
             profile.validate_base()?;
         }
-        #[cfg(not(feature = "qwen35-hip"))]
+        #[cfg(not(all(feature = "model-qwen35", feature = "hip")))]
         profile.validate_base()?;
         Ok(())
     }
     fn contract(self) -> NumericalContract {
         match self {
-            #[cfg(feature = "qwen35-hip")]
+            #[cfg(all(feature = "model-qwen35", feature = "hip"))]
             Self::Hip(_) => NumericalContract::TorchCpuAvx2Bf16MixedV1,
-            #[cfg(feature = "qwen35-cuda")]
+            #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
             Self::Cuda { .. } => NumericalContract::CudaSm86Bf16ReferenceV1,
         }
     }
 }
 
-#[cfg(feature = "qwen35-cuda")]
+#[cfg(all(feature = "model-qwen35", feature = "cuda"))]
 fn validate_cuda_state_policy(
     profile: QwenServingProfile,
     policy: crate::models::QwenCudaStatePolicy,
@@ -94,7 +94,7 @@ fn validate_cuda_state_policy(
     Ok(())
 }
 
-#[cfg(feature = "qwen35-cuda")]
+#[cfg(all(feature = "model-qwen35", feature = "cuda"))]
 fn describe_cuda_state_policy(policy: crate::models::QwenCudaStatePolicy) -> String {
     match policy {
         crate::models::QwenCudaStatePolicy::Contiguous => "contiguous".into(),
@@ -105,7 +105,7 @@ fn describe_cuda_state_policy(policy: crate::models::QwenCudaStatePolicy) -> Str
     }
 }
 
-#[cfg(feature = "qwen35-cuda")]
+#[cfg(all(feature = "model-qwen35", feature = "cuda"))]
 fn smart_cuda_provider_cap(
     configured_provider: usize,
     device_bytes: u64,
@@ -162,7 +162,7 @@ fn smart_cuda_provider_cap(
     )
 }
 
-#[cfg(feature = "qwen35-cuda")]
+#[cfg(all(feature = "model-qwen35", feature = "cuda"))]
 fn normalize_cuda_smart_input(
     mut profile: QwenServingProfile,
     backend: SourceBackend,
@@ -186,12 +186,12 @@ fn normalize_cuda_smart_input(
                 },
             )
         }
-        #[cfg(feature = "qwen35-hip")]
+        #[cfg(all(feature = "model-qwen35", feature = "hip"))]
         SourceBackend::Hip(_) => (profile, backend),
     }
 }
 
-#[cfg(feature = "qwen35-cuda")]
+#[cfg(all(feature = "model-qwen35", feature = "cuda"))]
 #[derive(Clone)]
 struct CudaSmartCandidate {
     state_policy: crate::models::QwenCudaStatePolicy,
@@ -199,7 +199,7 @@ struct CudaSmartCandidate {
     inventory: crate::gpu::CudaForwardSourceInventory,
 }
 
-#[cfg(feature = "qwen35-cuda")]
+#[cfg(all(feature = "model-qwen35", feature = "cuda"))]
 fn automatic_cohort_width(active: usize) -> &'static [usize] {
     match active {
         8.. => &[8, 4, 0],
@@ -208,7 +208,7 @@ fn automatic_cohort_width(active: usize) -> &'static [usize] {
     }
 }
 
-#[cfg(feature = "qwen35-cuda")]
+#[cfg(all(feature = "model-qwen35", feature = "cuda"))]
 fn resolve_cuda_smart_config(
     model: &str,
     mut profile: QwenServingProfile,
@@ -228,7 +228,7 @@ fn resolve_cuda_smart_config(
             device_bytes,
             smart_config,
         } => (provider_bytes, device_bytes, smart_config),
-        #[cfg(feature = "qwen35-hip")]
+        #[cfg(all(feature = "model-qwen35", feature = "hip"))]
         SourceBackend::Hip(_) => return Ok((backend, profile)),
     };
 
@@ -472,7 +472,7 @@ pub(crate) fn load_router(
     profile: QwenServingProfile,
     backend: SourceBackend,
 ) -> Result<Router, ServiceError> {
-    #[cfg(feature = "qwen35-cuda")]
+    #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
     let (profile, backend) = normalize_cuda_smart_input(profile, backend);
     backend.validate(profile)?;
     validate_aliases(&aliases)?;
@@ -502,15 +502,15 @@ pub(crate) fn load_router(
         &host,
         backend.contract(),
     )?;
-    #[cfg(feature = "qwen35-cuda")]
+    #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
     let (backend, profile) =
         resolve_cuda_smart_config(&aliases[0], profile, source.plan.plan().clone(), backend)?;
-    #[cfg(not(feature = "qwen35-cuda"))]
+    #[cfg(not(all(feature = "model-qwen35", feature = "cuda")))]
     let profile = profile;
     // Exact original source/template/owner. No qualification loader or program
     // reconstruction and no alternate scheduler/publisher.
     let resident = match backend {
-        #[cfg(feature = "qwen35-hip")]
+        #[cfg(all(feature = "model-qwen35", feature = "hip"))]
         SourceBackend::Hip(budget) => block_on(
             ResidentModel::load_cpu_forward_source_with_budget_and_cohort(
                 Device::Hip(Default::default()),
@@ -523,7 +523,7 @@ pub(crate) fn load_router(
                 None,
             ),
         ),
-        #[cfg(feature = "qwen35-cuda")]
+        #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
         SourceBackend::Cuda {
             provider_bytes,
             device_bytes,
@@ -546,7 +546,7 @@ pub(crate) fn load_router(
         )),
     }
     .map_err(ServiceError::inference)?;
-    #[cfg(feature = "qwen35-cuda")]
+    #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
     let prefix_cache = if resident.supports_shared_prefix() {
         Some(
             zerogravity_engine::state_cache::PrefixCache::new(
@@ -560,7 +560,7 @@ pub(crate) fn load_router(
     };
     let model = Arc::new(Model {
         resident: Mutex::new(Some(resident)),
-        #[cfg(feature = "qwen35-cuda")]
+        #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
         prefix_cache: Mutex::new(prefix_cache),
         source,
         tokenizer,
@@ -695,7 +695,7 @@ fn open_source(
     })
 }
 
-#[cfg(all(test, feature = "qwen35-hip"))]
+#[cfg(all(test, all(feature = "model-qwen35", feature = "hip")))]
 mod tests {
     use super::*;
     #[test]
@@ -787,7 +787,7 @@ mod tests {
                 true,
             )
             .unwrap();
-        let materialized = call.materialize().unwrap();
+        let materialized = call.materialize_plan().unwrap();
         assert_eq!(materialized.source(), plan.plan().source());
         drop((materialized, call));
         let weak_source = Arc::downgrade(&parts.source);
@@ -820,7 +820,7 @@ mod tests {
     }
 }
 
-#[cfg(all(test, feature = "qwen35-cuda"))]
+#[cfg(all(test, all(feature = "model-qwen35", feature = "cuda")))]
 mod cuda_paged_tests {
     use super::*;
     use crate::{

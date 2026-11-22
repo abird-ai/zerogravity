@@ -7,6 +7,14 @@ mod config;
 mod devices;
 mod execute;
 mod qwen35_cuda;
+#[cfg(all(
+    feature = "model-qwen35",
+    feature = "cache",
+    feature = "text",
+    target_os = "linux",
+    any(feature = "cuda", feature = "hip")
+))]
+mod qwen_source;
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct Arguments {

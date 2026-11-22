@@ -12,8 +12,10 @@ license = "MIT"
 default = ["cpu", "model-qwen35", "text"]
 # Cold embedded server API; protocol execution migrates in Fabric F2.
 serve = ["dep:zerogravity-serving"]
+# Backends are system capabilities. Optional models contribute their own
+# implementations only when both the model and backend are selected.
 cpu = ["dep:zerogravity-cpu", "zerogravity-model-qwen35?/cpu"]
-model-qwen35 = ["dep:zerogravity-model-qwen35"]
+model-qwen35 = ["dep:zerogravity-model-qwen35", "text", "cache"]
 # Source contracts only; selecting this feature does not enable Gemma inference.
 model-gemma4 = ["dep:zerogravity-model-gemma4"]
 # Analytic source/text reference; no tokenizer, trained model or native permit.
@@ -25,25 +27,45 @@ gemma4-vulkan-qualification = ["model-gemma4-cpu-candidate", "vulkan", "zerograv
 gemma4-vulkan-peer-qualification = ["gemma4-vulkan-qualification", "hip", "zerogravity-gpu/hardware-abort-probe"]
 qwen27b-hip-qualification = ["cpu", "cache", "model-qwen35", "hip", "zerogravity-model-qwen35/source-binding", "zerogravity-gpu/qwen-source-qualification"]
 shared-hip-qualification = ["gemma4-hip-qualification", "qwen27b-hip-qualification", "zerogravity-model-gemma4/shared-hip-qualification"]
-text = ["model-qwen35", "zerogravity-model-qwen35/text"]
+# Task support is weakly contributed by whichever optional models are present.
+# Selecting text alone does not pull a model into the build.
+text = ["zerogravity-model-qwen35?/text"]
 cache = ["zerogravity-artifacts/cache", "zerogravity-cpu?/cache", "zerogravity-model-qwen35?/cache"]
 acquisition = ["cache", "zerogravity-artifacts/acquisition"]
 diagnostic-acquisition = ["acquisition", "zerogravity-artifacts/diagnostic-acquisition"]
 vulkan = ["dep:futures-lite", "dep:zerogravity-gpu", "zerogravity-gpu/vulkan"]
-cuda = ["dep:futures-lite", "dep:zerogravity-gpu", "zerogravity-gpu/cuda", "dep:nvml-wrapper"]
-# Source contracts and ordinary capability refusal only. Finite captured
-# execution belongs to the explicit diagnostic feature below.
-# Previous features: canonical47-serving, short-hf-serving.
-qwen35-cuda = ["cuda", "cache", "text", "zerogravity-gpu/cuda-cublas", "zerogravity-model-qwen35/source-binding", "dep:rustix"]
-qwen35-hip = ["hip", "cache", "text", "zerogravity-gpu/hip-source", "zerogravity-model-qwen35/source-binding", "dep:rustix"]
+# CUDA/HIP own model-neutral production primitives. Model-specific adapters are
+# compiled by source cfg intersections such as model-qwen35 + cuda/hip.
+cuda = [
+    "dep:futures-lite",
+    "dep:zerogravity-gpu",
+    "zerogravity-gpu/cuda",
+    "zerogravity-gpu/cuda-cublas",
+    "zerogravity-model-qwen35?/cuda",
+    "dep:nvml-wrapper",
+    "dep:rustix",
+]
+hip = [
+    "dep:futures-lite",
+    "dep:zerogravity-gpu",
+    "zerogravity-gpu/hip",
+    "zerogravity-gpu/hip-source",
+    "zerogravity-model-qwen35?/hip",
+    "dep:rustix",
+]
+# Compatibility aliases for existing scripts/tests. New callers select the
+# backend and model independently: e.g. --features cuda,model-qwen35.
+qwen35-cuda = ["cuda", "model-qwen35"]
+qwen35-hip = ["hip", "model-qwen35"]
 qwen35-cuda-serving = ["serve", "qwen35-cuda"]
 qwen35-cuda-qualification = ["qwen35-cuda", "zerogravity-gpu/qualification", "zerogravity-gpu/cuda-native-qualification"]
 # P12-C cancellation probes only; no default or batched paged behavior.
 qwen35-cuda-paged-cancellation-qualification = ["qwen35-cuda-qualification", "zerogravity-gpu/hardware-abort-probe"]
-hip = ["dep:futures-lite", "dep:zerogravity-gpu", "zerogravity-gpu/hip"]
 all-models = ["model-qwen35", "model-gemma4"]
 all-backends = ["cpu", "vulkan", "cuda", "hip"]
-all = ["all-models", "all-backends", "text"]
+# Normal production superset. Qualification/fault-injection features remain
+# explicit and are deliberately excluded.
+all = ["all-models", "all-backends", "acquisition", "serve"]
 diagnostic-gdn-trace = ["model-qwen35", "zerogravity-model-qwen35/diagnostic-gdn-trace"]
 diagnostic-cpu-checkpoint = ["model-qwen35", "zerogravity-model-qwen35/diagnostic-cpu-checkpoint"]
 

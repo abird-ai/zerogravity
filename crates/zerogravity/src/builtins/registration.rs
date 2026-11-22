@@ -10,7 +10,7 @@ pub(crate) fn load_text(
     limits: SchedulerLimits,
 ) -> Result<Router, ServiceError> {
     match request {
-        #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+        #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
         ModelLoadRequest::QwenCuda {
             aliases,
             cache,
@@ -28,7 +28,7 @@ pub(crate) fn load_text(
             crate::models::SmartConfig::default(),
             limits,
         ),
-        #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+        #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
         ModelLoadRequest::QwenCudaWithStatePolicy {
             aliases,
             cache,
@@ -50,7 +50,7 @@ pub(crate) fn load_text(
             }),
             limits,
         ),
-        #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+        #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
         ModelLoadRequest::QwenCudaWithSmartConfig {
             aliases,
             cache,
@@ -69,7 +69,7 @@ pub(crate) fn load_text(
             smart_config,
             limits,
         ),
-        #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
+        #[cfg(all(feature = "model-qwen35", feature = "hip", target_os = "linux"))]
         ModelLoadRequest::QwenHipWithBudget {
             aliases,
             cache,
@@ -88,7 +88,7 @@ pub(crate) fn load_text(
                 super::text::qwen_source::SourceBackend::Hip(budget),
             )
         }
-        #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
+        #[cfg(all(feature = "model-qwen35", feature = "hip", target_os = "linux"))]
         ModelLoadRequest::QwenHip {
             aliases,
             cache,
@@ -161,7 +161,7 @@ pub(crate) fn load_text(
     }
 }
 
-#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 #[allow(clippy::too_many_arguments)]
 fn load_qwen_cuda(
     aliases: Vec<String>,
@@ -209,7 +209,11 @@ fn validate_limits(
     }
 }
 
-#[cfg(all(test, feature = "qwen35-cuda", target_os = "linux"))]
+#[cfg(all(
+    test,
+    all(feature = "model-qwen35", feature = "cuda"),
+    target_os = "linux"
+))]
 mod tests {
     use super::*;
     use crate::{

@@ -94,7 +94,7 @@ fn composed_usage() {
         println!("    zerogravity run-cache --help  (explicit offline verified cache model)");
     }
     if cfg!(feature = "serve") {
-        println!("    zerogravity serve --help  (loopback OpenAI-compatible Qwen3.5 CPU router)");
+        println!("    zerogravity serve --help  (loopback OpenAI-compatible inference router)");
     }
     println!("\nCOMPILED CAPABILITIES:");
     println!("    source inspection: enabled");
@@ -102,7 +102,7 @@ fn composed_usage() {
         ("CPU", cfg!(feature = "cpu")),
         ("Qwen3.5", cfg!(feature = "model-qwen35")),
         ("text tokenizer", cfg!(feature = "text")),
-        ("OpenAI text HTTP (CPU)", cfg!(feature = "serve")),
+        ("OpenAI HTTP frontend", cfg!(feature = "serve")),
         ("Vulkan", cfg!(feature = "vulkan")),
         ("CUDA", cfg!(feature = "cuda")),
         ("HIP/ROCm", cfg!(feature = "hip")),

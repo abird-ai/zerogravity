@@ -301,6 +301,8 @@ impl ResidentModel {
                 logit_accesses: prepared.accesses.clone(),
                 leases: prepared.accesses,
                 batch: None,
+                #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+                forward_cohort_values: None,
             }),
             allocation: Mutex::new(()),
             states: preflight.states,

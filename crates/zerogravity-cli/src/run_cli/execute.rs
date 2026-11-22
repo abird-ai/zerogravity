@@ -22,12 +22,23 @@ pub(super) fn run_with_discovery(
         .iter()
         .position(|m| &m.id == id)
         .ok_or_else(|| bad("direct entrypoint model absent"))?;
+    let inventory = discover()?;
+    #[cfg(all(
+        feature = "model-qwen35",
+        feature = "cache",
+        feature = "text",
+        target_os = "linux",
+        any(feature = "cuda", feature = "hip")
+    ))]
+    if let Some(backend) =
+        super::qwen_source::selected_backend(&request, &request.graph.models[i], &inventory)?
+    {
+        return super::qwen_source::run(request, inventory, backend);
+    }
     if qwen35_cuda::selected(&request.backend, &request.graph.models[i]) {
         qwen35_cuda::require_route_capability()?;
-        let inventory = discover()?;
         return qwen35_cuda::run_route(request, inventory);
     }
-    let inventory = discover()?;
     gguf(request, inventory)
 }
 #[cfg(not(all(feature = "cpu", feature = "model-qwen35", feature = "text")))]

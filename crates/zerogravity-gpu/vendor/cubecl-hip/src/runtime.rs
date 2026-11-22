@@ -78,6 +78,76 @@ pub fn preflight_physical(device: AmdDevice) -> Option<PhysicalDevice> {
     Some(physical)
 }
 
+/// Driver-owned facts used for cold placement before CubeCL creates a client.
+/// This is observation only: callers still choose their own conservative
+/// operator/provider envelope and the runtime revalidates it on construction.
+#[derive(Clone, Debug)]
+pub struct HipDeviceMetadata {
+    pub physical: PhysicalDevice,
+    pub name: String,
+    pub arch_name: String,
+    pub integrated: bool,
+    pub free_memory: u64,
+    pub total_memory: u64,
+}
+
+/// Query the same HIP device properties and memory pool facts used by runtime
+/// initialization, without compiling a kernel or allocating model storage.
+pub fn observe_device(device: AmdDevice) -> Option<HipDeviceMetadata> {
+    if !cubecl_hip_sys::is_available() {
+        return None;
+    }
+    let index = device.index as cubecl_hip_sys::hipDevice_t;
+    let props = unsafe {
+        let mut props = MaybeUninit::uninit();
+        let status = cubecl_hip_sys::hipGetDevicePropertiesR0600(props.as_mut_ptr(), index);
+        checked("hipGetDevicePropertiesR0600", status).ok()?;
+        props.assume_init()
+    };
+    let (arch_name, name) = unsafe {
+        (
+            CStr::from_ptr(props.gcnArchName.as_ptr())
+                .to_string_lossy()
+                .into_owned(),
+            CStr::from_ptr(props.name.as_ptr())
+                .to_string_lossy()
+                .into_owned(),
+        )
+    };
+    let physical = preflight_physical(device)?;
+
+    let mut previous: cubecl_hip_sys::hipDevice_t = 0;
+    unsafe {
+        checked(
+            "hipGetDevice",
+            cubecl_hip_sys::hipGetDevice(&mut previous),
+        )
+        .ok()?;
+        checked("hipSetDevice", cubecl_hip_sys::hipSetDevice(index)).ok()?;
+    }
+    let mut free = 0usize;
+    let mut total = 0usize;
+    let memory = unsafe {
+        checked(
+            "hipMemGetInfo",
+            cubecl_hip_sys::hipMemGetInfo(&mut free, &mut total),
+        )
+    };
+    if previous != index {
+        let _ = unsafe { cubecl_hip_sys::hipSetDevice(previous) };
+    }
+    memory.ok()?;
+
+    Some(HipDeviceMetadata {
+        physical,
+        name,
+        arch_name,
+        integrated: props.integrated != 0,
+        free_memory: free as u64,
+        total_memory: total as u64,
+    })
+}
+
 /// The values that control how a HIP Runtime will perform its calculations.
 #[derive(Default)]
 pub struct RuntimeOptions {

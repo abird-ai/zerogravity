@@ -15,6 +15,11 @@ diagnostic-gdn-trace = []
 cache = ["zerogravity-artifacts/cache", "dep:sha2", "dep:serde"]
 # Previous feature: original-hf-binding.
 source-binding = ["cache", "zerogravity-cpu?/cache"]
+# Backend contributions are weakly selected by the parent system backend.
+# Neither feature pulls a GPU runtime into the model crate; they enable only the
+# model-side source contracts needed by that backend's adapter.
+cuda = ["source-binding"]
+hip = ["source-binding"]
 diagnostic-cpu-checkpoint = ["zerogravity-core/diagnostic-cpu-checkpoint"]
 
 [dependencies]

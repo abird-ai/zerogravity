@@ -6,7 +6,7 @@ use crate::{
     resource_arbiter::{AllocationClass, GlobalResourceLease},
 };
 use std::sync::{Arc, Mutex};
-#[cfg(feature = "qwen35-cuda")]
+#[cfg(all(feature = "model-qwen35", feature = "cuda"))]
 use zerogravity_engine::state_cache::PrefixCache;
 use zerogravity_engine::{
     model_instance::{PreparedModel, TextTokenizer},
@@ -77,7 +77,7 @@ struct Source {
 }
 struct Model {
     resident: Mutex<Option<Arc<ResidentTextModel>>>,
-    #[cfg(feature = "qwen35-cuda")]
+    #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
     prefix_cache: Mutex<Option<PrefixCache<u32, crate::gpu::ResidentTextSnapshot>>>,
     source: Arc<Source>,
     tokenizer: Arc<dyn TextTokenizer>,
@@ -191,7 +191,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "qwen35-cuda")]
+    #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
     #[test]
     fn paged_cuda_policy_refuses_invalid_shape_before_source_io() {
         let base = QwenServingProfile {
