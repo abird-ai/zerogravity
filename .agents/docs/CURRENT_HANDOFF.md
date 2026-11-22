@@ -162,9 +162,15 @@ optimized execution. **A1 is now explicitly offline/out of scope until the owner
 it**; do not connect to it, resume/delete partial model-transfer residue, or schedule
 correctness/benchmark work there. The current matched campaign is L5-first: reuse
 `serve-compare.py` / `serve-matrix.py` for concurrency=1/4/8/16/32/64 on the exact local
-0.8B/2B snapshots. X2 is execution-only and should receive this exact L5 source checkpoint
-by Git bundle before the corresponding ROCm 0.8B/2B/27B campaign. Do not invent a second
-benchmark framework.
+0.8B/2B snapshots. The current ZeroGravity side now has one narrow ignored public-SDK
+population benchmark over the real `ModelLoadRequest::QwenCuda` path: exact canonical47,
+active8, C1/4/8/16/32/64, one warmup + two timed waves per offered width, exact token/cohort
+records and clean shutdown. The physical0.8B C1 smoke returns
+`[248068,198,90700]` exactly and measures58.280/57.405ms for the two timed waves after
+warmup. This avoids benchmarking the older finite `qwen35-cuda-bf16` CLI qualification
+loader as though it were current production. X2 is execution-only and should receive this
+exact L5 source checkpoint by Git bundle before the corresponding ROCm0.8B/2B/27B campaign.
+Do not invent a second benchmark framework.
 
 ### Error architecture — 21 Nov 2026
 

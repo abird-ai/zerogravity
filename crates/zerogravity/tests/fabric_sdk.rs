@@ -118,6 +118,47 @@ fn qwen_cuda_context_runtime(model: &str, context: usize, output: usize) -> Runt
     runtime
 }
 
+#[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+fn qwen_cuda_population_runtime(model: &str) -> Runtime {
+    use zerogravity::{
+        cache::CacheOptions,
+        models::{ModelLoadRequest, QwenServingProfile},
+        runtime::SchedulerLimits,
+    };
+    const MIB: usize = 1024 * 1024;
+    let snapshot = match model {
+        "08" => "d7c7bf56e176bd70a8190acb9873cc719e65b6b306181039f2896d6f9387b36c",
+        "2b" => "88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52",
+        _ => panic!("explicit approved small CUDA source required"),
+    };
+    let runtime = Runtime::builder()
+        .limits(SchedulerLimits {
+            max_active: 8,
+            max_queued: Some(128),
+            ..Default::default()
+        })
+        .build()
+        .unwrap();
+    runtime
+        .models()
+        .load(ModelLoadRequest::QwenCuda {
+            aliases: vec!["source".into()],
+            cache: CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
+            snapshot: snapshot.into(),
+            profile: QwenServingProfile {
+                active: 8,
+                context: 512,
+                output: 3,
+                max_pending: Some(128),
+                cohort_width: 0,
+            },
+            provider_bytes: 4608 * MIB,
+            device_bytes: 5120 * MIB as u64,
+        })
+        .unwrap();
+    runtime
+}
+
 #[test]
 fn external_sdk_compiles_without_cli_or_concrete_model_features() {
     let runtime = Runtime::builder().build().unwrap();
@@ -241,6 +282,121 @@ fn qwen_cuda_populated_context_sdk_replays() {
     println!(
         "P12_CUDA_POPULATED_CONTEXT_PASS model={model} context={context} prompt_tokens={prompt_tokens} output_tokens={OUTPUT} replay=exact independent_sessions=true producer_frontiers=exact final_shutdown=true independent_all_state_domains_reference=false"
     );
+}
+
+#[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+#[test]
+#[ignore = "approved small CUDA snapshots; matched public-SDK population benchmark"]
+fn qwen_cuda_public_sdk_population_benchmark() {
+    use std::{
+        collections::BTreeSet,
+        time::{Duration, Instant},
+    };
+    use zerogravity::runtime::text::{Request, ResponseEvent, TokenMetricsRequest};
+
+    let model = std::env::var("ZG_QWEN_CUDA_BENCH_MODEL").unwrap();
+    let clients = std::env::var("ZG_QWEN_CUDA_BENCH_CLIENTS")
+        .unwrap_or_else(|_| "1,4,8,16,32,64".into())
+        .split(',')
+        .map(|value| value.parse::<usize>().unwrap())
+        .collect::<Vec<_>>();
+    assert!(
+        !clients.is_empty()
+            && clients
+                .iter()
+                .all(|value| [1, 4, 8, 16, 32, 64].contains(value))
+    );
+    let runtime = qwen_cuda_population_runtime(&model);
+    let resolved = runtime.models().resolve("source").unwrap();
+    let tokenizer = resolved.prepared().tokenizer();
+    let prompt = "<|im_start|>user\nContinue this list of integers, separated by commas, for many more terms: 1, 2, 3, 4, 5, 6, 7, 8,<|im_end|>\n<|im_start|>assistant\n";
+    let prompt_ids = tokenizer.prompt_tokens(prompt, false).unwrap();
+    assert_eq!(prompt_ids.len(), 47);
+    println!(
+        "CUDA_BENCH_INPUT {}",
+        serde_json::json!({"model":model,"prompt":prompt,"prompt_token_ids":prompt_ids})
+    );
+
+    let mut expected = None;
+    for clients in clients {
+        for wave in 0..3 {
+            let started = Instant::now();
+            let events = (0..clients)
+                .map(|_| {
+                    runtime
+                        .request_text(Request {
+                            model: "source".into(),
+                            input: prompt.into(),
+                            chat: false,
+                            max_tokens: 3,
+                            stream: true,
+                            token_metrics: Some(TokenMetricsRequest {
+                                started,
+                                wire_request_id: None,
+                            }),
+                        })
+                        .unwrap()
+                })
+                .collect::<Vec<_>>();
+            let mut outputs = Vec::with_capacity(clients);
+            let mut cohorts = BTreeSet::new();
+            for events in events {
+                let mut ids = Vec::with_capacity(3);
+                loop {
+                    match events
+                        .events
+                        .recv_timeout(Duration::from_secs(300))
+                        .expect("CUDA benchmark response deadline")
+                    {
+                        ResponseEvent::TokenText { token, .. } => {
+                            if let Some(cohort) = token.gpu.and_then(|gpu| gpu.fused_cohort) {
+                                cohorts.insert(cohort.width);
+                            }
+                            ids.push(token.id);
+                        }
+                        ResponseEvent::Done {
+                            prompt_tokens,
+                            completion_tokens,
+                            ..
+                        } => {
+                            assert_eq!((prompt_tokens, completion_tokens), (47, 3));
+                            break;
+                        }
+                        ResponseEvent::Error(error) => panic!("CUDA benchmark worker: {error}"),
+                        ResponseEvent::Text(_) => panic!("streaming token observations required"),
+                    }
+                }
+                assert_eq!(ids.len(), 3);
+                if let Some(expected) = &expected {
+                    assert_eq!(&ids, expected);
+                } else {
+                    expected = Some(ids.clone());
+                }
+                outputs.push(ids);
+            }
+            let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+            println!(
+                "CUDA_BENCH_WAVE {}",
+                serde_json::json!({
+                    "model":model,
+                    "clients":clients,
+                    "wave":wave,
+                    "warmup":wave==0,
+                    "elapsed_ms":elapsed_ms,
+                    "completed":outputs.len(),
+                    "output_tokens":3*outputs.len(),
+                    "token_ids":outputs,
+                    "expected":expected,
+                    "cohort_widths":cohorts,
+                    "output_match":true
+                })
+            );
+        }
+    }
+    drop(resolved);
+    runtime.shutdown().unwrap();
+    assert!(runtime.status().closed);
+    println!("CUDA_BENCH_CLOSED model={model} closed=true output_match=true");
 }
 
 #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]

@@ -43,10 +43,16 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   graphs, returns a deterministic two-token completion and retires RTX3060 to37MiB.
 - [ ] **Next matched baseline unit:** A1 is owner-paused/offline; do not connect,
   resume/delete partial transfer residue or run benchmarks there. On L5, reuse the
-  existing `serve-compare.py` / `serve-matrix.py` for exact0.8B/2B matched
-  concurrency=1/4/8/16/32/64 with optimized vLLM execution and the accepted private
-  provider lifecycle. Do not create a second benchmark harness. After that, grow the
-  same provider constructor into the ROCm/X2 sibling using exact L5 commit sync.
+  existing benchmark/lifecycle machinery for exact0.8B/2B matched
+  concurrency=1/4/8/16/32/64 with optimized vLLM execution. A narrow ignored
+  public-SDK population target now drives the current `ModelLoadRequest::QwenCuda`
+  path directly (not the retired finite CLI qualification route): exact canonical47,
+  active8, one warmup + two timed waves per offered width, token/cohort JSON and
+  clean shutdown. Its physical0.8B C1 smoke is exact at
+  `[248068,198,90700]`, with timed waves58.280/57.405ms after warmup and final
+  shutdown. Keep `serve-compare.py` / `serve-matrix.py` as the HTTP/comparison
+  framework; do not create a second production benchmark stack. After L5, run the
+  corresponding ROCm/X2 campaign from the exact L5 commit.
 - [x] `c282f20` restores HIP-only source-profile compilation after a shared CUDA
   optimization accidentally gated the model-neutral packed-BF16 numeric-zero
   greedy kernel behind `cuda-cublas`; stale HIP test/support profiles now specify
