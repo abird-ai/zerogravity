@@ -135,9 +135,10 @@ slice.
 
 ### Nix-native matched vLLM provider — 22 Nov 2026
 
-The old Podman dependency is no longer required for the CUDA baseline. The repo now owns a
-small reusable Nix provider around a frozen upstream wheel graph under
-`benchmarks/vllm/cuda`: pinned nixpkgs supplies Python3.12.14 + uv0.12.17, `uv.lock`
+Fresh matched CUDA and ROCm baselines are Nix-native; retained Podman images are historical
+artifacts only. The repo owns one reusable provider factory around frozen upstream wheel graphs
+under `benchmarks/vllm/{cuda,rocm}`. For CUDA, pinned nixpkgs supplies Python3.12.14 +
+uv0.12.17 and `uv.lock`
 (SHA256 `3c9c500b8e990187df6ede3f5a475250b123f2d6ccbbe32416a0a036827c3b96`)
 resolves vLLM0.33.0 / torch2.14.0+cu130, and the provider borrows only the live NVIDIA
 driver. NixOS-specific runtime seams are explicit rather than emulated with an FHS image:
@@ -171,17 +172,34 @@ warmup. This avoids benchmarking the older finite `qwen35-cuda-bf16` CLI qualifi
 loader as though it were current production. The existing HTTP benchmark primitive now
 supports bounded raw `/v1/completions` requests for already-framed prompts; chat remains
 the default. This matters because the current Qwen chat template appends four extra
-thinking/control tokens. The first optimized-vLLM0.8B raw C1 smoke on the exact canonical47
-returns `[198,248068,198]` instead of ZeroGravity's `[248068,198,90700]`. Preserve this
-as a failed matched-output gate while collecting the requested matrix; mismatched cells are
-performance/capability observations only, not accepted parity/wins. The existing HIP public-source
-population harness now has the same narrow benchmark mode: it skips the independent reference archive
-only for timing, uses the identical literal canonical47 prompt, offers C1/4/8/16/32/64 with active8,
-requires exact per-width replay across one warmup + two timed waves, reports singleton physical execution
-and retains the existing source/model/device retirement checks. Correctness/fault tests still use the
-independent reference path unchanged. X2 is execution-only and should receive this exact L5 source
-checkpoint by Git bundle before the corresponding ROCm0.8B/2B/27B campaign. Do not invent a second
-benchmark framework.
+thinking/control tokens. The final text-only optimized vLLM baseline (`--language-model-only`,
+normal graph execution, GPU utilization0.90) corrects the earlier provisional smoke: at C1 both
+0.8B and2B match ZeroGravity exactly at `[248068,198,90700]`. ZeroGravity's fused CUDA C4+ path,
+however, is deterministic but not lane-invariant for identical requests (approximately3/4 correct
+lanes per4-row group and6/8 per8-row group), while vLLM remains lane-invariant; therefore C4+ ZG
+numbers are correctness-failed performance observations, not accepted parity/wins. Current output
+tok/s ZG/vLLM at offered1/4/8/16/32/64:0.8B =39.621/55.062,119.613/125.637,
+133.676/227.948,137.410/257.028,135.918/277.783,136.385/292.064;2B =
+34.802/42.264,83.038/100.917,96.099/157.678,95.255/170.158,96.091/178.899,
+95.962/182.560. The retained eager-vLLM72.20tok/s figure is historical only; ZeroGravity's
+~135tok/s native8 result did not regress, the comparator became properly optimized.
+
+The existing HIP public-source population harness now carries the same narrow workload without
+adding a second framework. Fresh X2 `277a279` results are exact/replay-stable/lane-invariant for
+all offered widths:0.8B =12.406/12.048/12.139/11.881/11.848/11.797tok/s;2B =
+6.169/6.897/6.771/6.752/6.735/6.721. Explicit75GiB resident27B C1/4/8/16/32/64 =
+0.540921/0.536684/0.534072/0.530675/0.528366/0.529800tok/s; final C64 timed waves were
+362.100/362.703s for192 output tokens and X2 returned to ~274MiB/0% busy/no KFD owners.
+Physical HIP batch width remains1, so this is not fused native batching.
+
+The same Nix provider factory now has a ROCm sibling. Its frozen x86_64 Linux graph resolves
+Python3.12 / vLLM0.33.0+rocm72 / torch2.13.0+git733fca1 / Triton3.8.0+git669b31ac /
+AITer0.1.26; upstream ROCm wheels are hash-frozen explicitly. Pinned nixpkgs supplies the7.2.3
+ROCm math/runtime stack. Two wheel-ABI gaps are isolated fixed-output runtimes rather than host or
+container dependencies: AMD hipSPARSELt0.2.6.70203 and OpenMPI4.1.6's legacy C++ ABI. Both
+`vllm-rocm` and the refactored `vllm-cuda` realize successfully on L5. Next: sync the exact signed
+provider commit to X2 by Git bundle and run one physical import/device smoke before the fresh ROCm
+matched matrix. Do not revive Podman/FUSE for that campaign.
 
 ### Error architecture — 21 Nov 2026
 

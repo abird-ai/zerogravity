@@ -59,9 +59,18 @@ pass with independently verified original retirement. Offered C1..64 completes
 with matching outputs; final isolated gate passes. Signed`d16f096` (signatureG),
 no push; larger CUDA/HTTP/context/batching debt remains separate.
 
-Closeout: no live build/device campaign or owner to inherit. The latest user
-request is a signed all-changes/handoff checkpoint, not a new physical launch.
-Original budget R1/R2 are complete; do not rerun them or restart cancelled watches.
+22 Nov fresh current-path feedback supersedes the older timing-only population
+records where it overlaps. On exact `277a279`, X2 HIP0.8B/2B offered1/4/8/16/32/64
+is exact, replay-stable and lane-invariant; resident27B now completes the same full
+population ladder under the explicit75GiB envelope, including exact C64 timed waves
+362.100/362.703s and clean return to ~274MiB/0% busy/no KFD owner. Physical HIP
+batch width remains1, so the flat throughput is expected and native fused batching
+is still open. A backend-neutral Nix vLLM provider now realizes both CUDA and ROCm
+on L5; the ROCm graph pins vLLM0.33.0+rocm72/Torch2.13/Triton3.8/AITer0.1.26 on
+pinned ROCm7.2.3 userspace. Podman/FUSE is no longer a fresh-baseline dependency.
+Next physical unit is an exact-bundle X2 provider import/device smoke, then matched
+ROCm serving; do not rerun the completed native HIP ladder first.
+
 Use the continuation queue below over historical milestone notes later in this file.
 
 Provenance commit: `6d74f76`.

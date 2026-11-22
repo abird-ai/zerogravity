@@ -48,6 +48,7 @@ in {
     }
     // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
       vllm-cuda = vllm.${system}.cuda.provider;
+      vllm-rocm = vllm.${system}.rocm.provider;
     }
     // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") (import ./release.nix {
       inherit system nixpkgs version;
@@ -68,6 +69,10 @@ in {
         type = "app";
         program = "${vllm.${system}.cuda.provider}/bin/zerogravity-vllm-cuda";
       };
+      vllm-rocm = {
+        type = "app";
+        program = "${vllm.${system}.rocm.provider}/bin/zerogravity-vllm-rocm";
+      };
     });
 
   checks = forAllSystems (system:
@@ -83,6 +88,7 @@ in {
     }
     // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
       vllm-cuda = vllm.${system}.cuda.shell;
+      vllm-rocm = vllm.${system}.rocm.shell;
     });
 
   formatter = forAllSystems (system: development.${system}.formatter);

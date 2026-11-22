@@ -1,0 +1,16 @@
+[project]
+name = "zerogravity-vllm-rocm-benchmark"
+version = "0.1.0"
+requires-python = "==3.12.*"
+dependencies = [
+  "vllm==0.33.0+rocm72",
+]
+
+[[tool.uv.index]]
+name = "vllm-rocm"
+url = "https://wheels.vllm.ai/rocm/0.33.0/rocm72/"
+
+[tool.uv]
+environments = [
+  "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]

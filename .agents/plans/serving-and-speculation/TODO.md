@@ -41,29 +41,36 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   import report Python3.12.14 / torch2.14.0+cu130 / vLLM0.33.0. A private-loopback
   optimized 0.8B physical smoke (no `--enforce-eager`) captures PIECEWISE + FULL CUDA
   graphs, returns a deterministic two-token completion and retires RTX3060 to37MiB.
-- [ ] **Next matched baseline unit:** A1 is owner-paused/offline; do not connect,
-  resume/delete partial transfer residue or run benchmarks there. On L5, reuse the
-  existing benchmark/lifecycle machinery for exact0.8B/2B matched
-  concurrency=1/4/8/16/32/64 with optimized vLLM execution. A narrow ignored
-  public-SDK population target now drives the current `ModelLoadRequest::QwenCuda`
-  path directly (not the retired finite CLI qualification route): exact canonical47,
-  active8, one warmup + two timed waves per offered width, token/cohort JSON and
-  clean shutdown. Its physical0.8B C1 smoke is exact at
-  `[248068,198,90700]`, with timed waves58.280/57.405ms after warmup and final
-  shutdown. The existing `serve-bench.py` now also has a bounded raw-completions
-  request mode so a pre-framed prompt is not silently re-templated by the chat API.
-  Its first optimized-vLLM0.8B C1 smoke proves the exact workload is reaching the
-  provider but returns `[198,248068,198]`, not ZeroGravity's accepted IDs. Preserve
-  that mismatch as a failed matched-output gate; continue the requested matrix as
-  capability/performance evidence but make no parity/superiority claim for mismatched
-  cells. The existing HIP population harness now exposes a benchmark-only path with
-  the same literal canonical47 prompt and C1/4/8/16/32/64 offered populations; it
-  uses active8, one warmup + two timed waves, exact per-width replay, singleton
-  physical execution and the original retirement checks without requiring the
-  independent reference archive. Normal HIP correctness/fault paths still require
-  that archive unchanged. Keep `serve-compare.py` / `serve-matrix.py` as the HTTP/
-  comparison framework; do not create a second production benchmark stack. After
-  L5, run the corresponding ROCm/X2 campaign from the exact L5 commit.
+- [x] **22 Nov fresh CUDA/HIP population feedback:** the current public-SDK paths
+  now have one warmup + two timed waves at offered concurrency1/4/8/16/32/64.
+  Optimized text-only vLLM0.33 on L5 matches ZeroGravity's exact C1 IDs
+  `[248068,198,90700]` for both0.8B/2B. ZeroGravity C4+ is deterministic but currently
+  fails lane invariance for identical requests (roughly3/4 correct lanes in each
+  4-row group,6/8 in each8-row group), so those higher-width timings are diagnostic
+  only until the fused-CUDA correctness bug is fixed. vLLM stays lane-invariant.
+  Fresh output tok/s ZG/vLLM:0.8B C1..64 =39.621/55.062,119.613/125.637,
+  133.676/227.948,137.410/257.028,135.918/277.783,136.385/292.064;2B =
+  34.802/42.264,83.038/100.917,96.099/157.678,95.255/170.158,
+  96.091/178.899,95.962/182.560. This supersedes the old eager-vLLM72.20tok/s
+  comparison as a current performance baseline; ZeroGravity itself did not regress.
+  The same generic population harness on X2 is exact/replay-stable/lane-invariant
+  throughout: HIP0.8B =12.406/12.048/12.139/11.881/11.848/11.797tok/s and HIP2B =
+  6.169/6.897/6.771/6.752/6.735/6.721. Resident27B C1..64 =
+  0.540921/0.536684/0.534072/0.530675/0.528366/0.529800tok/s; C64 timed waves
+  were362.100/362.703s for192 output tokens, all exact, then X2 returned to
+  ~274MiB/0% busy/no KFD owners. Physical HIP batch width remains1; this is not
+  native fused batching.
+- [ ] **Fresh X2 vLLM ROCm baseline:** Podman/FUSE is not part of the current
+  architecture. The existing Nix provider factory now has a ROCm sibling with a
+  frozen x86_64 Linux wheel graph: Python3.12, vLLM0.33.0+rocm72,
+  torch2.13.0+git733fca1, Triton3.8.0+git669b31ac and AITer0.1.26. Upstream ROCm
+  wheel hashes are frozen explicitly; pinned nixpkgs supplies the7.2.3 ROCm math
+  stack. Two missing binary-ABI pieces are fixed-output runtimes only:
+  AMD hipSPARSELt0.2.6.70203 and OpenMPI4.1.6's legacy C++ ABI. Both `vllm-rocm`
+  and refactored `vllm-cuda` now realize successfully on L5. Next: exact signed
+  bundle sync to X2, one physical import/device smoke through `native-gpu.py`, then
+  reuse the existing comparator for matched0.8B/2B/27B timing. Retained Podman ROCm
+  results remain historical evidence only.
 - [x] `c282f20` restores HIP-only source-profile compilation after a shared CUDA
   optimization accidentally gated the model-neutral packed-BF16 numeric-zero
   greedy kernel behind `cuda-cublas`; stale HIP test/support profiles now specify
