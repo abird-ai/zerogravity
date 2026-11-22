@@ -33,17 +33,17 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 - [x] The reusable Nix vLLM provider supports both CUDA and ROCm. ROCm real serving
   includes the pinned Triton host-compiler seam; fresh physical runs retire cleanly.
 - [x] Current HIP decode cohort: aligned cached-decode rows reuse the existing
-  scheduler/publication authority and share BF16 projections, RMS/residual RMS,
-  sigmoid/multiply/SILU-multiply, plus aligned QK normalization/rotary preparation.
-  Private state/publication ownership is unchanged. Physical0.8B C4/C8 stays exact,
-  replay-stable and lane-invariant with zero cohort refusals at13.053/13.343tok/s
-  (+8.34%/+9.92% versus the clean batch-1 baseline), using32,194/61,530 forward
-  dispatches per wave. Further stateless/position launch cleanup is low leverage.
-- [ ] Next HIP performance unit: start with the 18-layer GDN/conv path before the
-  six full-attention layers. Batch one genuine private-state operator seam only if
-  its row dimension stays simple: preserve independent roots/publication, reuse the
-  existing state transport primitives where useful, and remeasure only0.8B C4/C8.
-  Keep C1 as the separate singleton hot-path target; no prefill/27B expansion yet.
+  scheduler/publication authority and share projections, row-wise activation/QK/rotary
+  work, plus the 18 GDN layers' Conv4 update. Conv4 uses one bounded 2/4/8-row CubeCL
+  launch over the original independent prior/candidate state buffers—no staging and no
+  new root authority. Physical0.8B C4/C8 stays exact/replay-stable/lane-invariant with
+  zero refusals at13.297/13.351tok/s (+10.37%/+9.98% versus clean batch-1), using
+  32,086/61,278 forward dispatches per wave.
+- [ ] Next HIP performance unit: batch the recurrent GDN decode state path. Keep the
+  singleton resident arena compact; prefer transient dense cohort state plus the
+  existing bounded state-transport semantics only if direct independent-row binding
+  would make the recurrent kernels convoluted. Preserve each lane's original roots
+  and publication, then remeasure only0.8B C4/C8. Keep C1 separate; no prefill/27B yet.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.

@@ -79,24 +79,25 @@ pre-optimization baseline; that path was physical batch width 1.
 ### Current HIP decode cohort — 0.8B
 
 Aligned cached-decode rows now share BF16 projections, row-wise
-RMS/residual-RMS/sigmoid/multiply/SILU-multiply, and the Q/K normalization plus
-shared-frontier rotary preparation used by full-attention layers. Embedding,
-convolution, recurrent GDN, KV append and attention state still retain each
-session's private execution/publication path. Prefill and full-logit host greedy
+RMS/residual-RMS/sigmoid/multiply/SILU-multiply, aligned Q/K normalization and
+rotary preparation, plus the 18 GDN layers' Conv4 state update. Conv4 binds each
+lane's original private prior/candidate buffers directly in one bounded 2/4/8-row
+kernel; no state staging or publication authority was added. Recurrent GDN, KV
+append and attention state remain per-session. Prefill and full-logit host greedy
 remain unchanged.
 
 | Offered | Clean baseline tok/s | Current tok/s | Change |
 | ---: | ---: | ---: | ---: |
-| 4 | 12.048 | 13.053 | +8.34% |
-| 8 | 12.139 | 13.343 | +9.92% |
+| 4 | 12.048 | 13.297 | +10.37% |
+| 8 | 12.139 | 13.351 | +9.98% |
 
 Both cells are exact [248068, 198, 90700], replay-stable and lane-invariant.
 The runtime reports real fused width-4/8 cohort publications, zero cohort
 admission refusals, and clean retirement to 274,452,480 B VRAM / 0% busy /
-no KFD owner. Current physical forward dispatches are 32,194 per C4 wave and
-61,530 per C8 wave. QK/rotary batching trims another 2.72%/3.30% of dispatches
-but changes wall throughput only within noise at C4 and about +0.96% at C8;
-the next useful batching target is genuinely stateful execution.
+no KFD owner. Current physical forward dispatches are 32,086 per C4 wave and
+61,278 per C8 wave. The stateful Conv4 cut improves C4 about 1.87% over the prior
+checkpoint and leaves C8 effectively flat; the much larger recurrent GDN state
+path is the next useful batching target.
 
 ### Matched 75 GiB envelope — 27B
 
@@ -119,10 +120,10 @@ to 274,452,480 B VRAM, 0% busy and no KFD owner after the vLLM run.
 
 ## What this baseline says
 
-1. HIP decode cohorts now share projections, pure row-wise activation work and
-   aligned QK/rotary preparation while retaining independent state/root authority.
-   Further launch-count reduction barely moves wall time, so the next meaningful
-   batching work is genuinely stateful GDN/conv/KV/attention execution.
+1. HIP decode cohorts now share projections, row-wise activation/QK/rotary work
+   and the 18 GDN layers' Conv4 private-state update while retaining independent
+   StateRoot/publication authority. Conv4 is exact but only modestly moves wall time;
+   recurrent GDN's state-wide decode work is the next meaningful batching target.
 2. Batching is not the whole HIP gap. C1 is already substantially behind
    vLLM on 0.8B, 2B and especially 27B, so singleton kernel/execution efficiency
    remains independently important.
