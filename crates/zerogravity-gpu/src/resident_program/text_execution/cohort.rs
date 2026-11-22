@@ -150,10 +150,12 @@ impl Cold {
                 })
                 .collect::<Result<Vec<_>>>()?;
             let first = descriptors[0];
-            if descriptors[1..]
-                .iter()
-                .any(|descriptor| !first.shares_semantics(descriptor))
-            {
+            if descriptors[1..].iter().any(|descriptor| {
+                first.kind() != descriptor.kind()
+                    || first.numerical_contract() != descriptor.numerical_contract()
+                    || first.matrices() != descriptor.matrices()
+                    || first.parameters() != descriptor.parameters()
+            }) {
                 return Err(Error::State(
                     "text-execution decode cohort operator semantics differ".into(),
                 ));
