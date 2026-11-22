@@ -174,9 +174,14 @@ the default. This matters because the current Qwen chat template appends four ex
 thinking/control tokens. The first optimized-vLLM0.8B raw C1 smoke on the exact canonical47
 returns `[198,248068,198]` instead of ZeroGravity's `[248068,198,90700]`. Preserve this
 as a failed matched-output gate while collecting the requested matrix; mismatched cells are
-performance/capability observations only, not accepted parity/wins. X2 is execution-only and should receive this
-exact L5 source checkpoint by Git bundle before the corresponding ROCm0.8B/2B/27B campaign.
-Do not invent a second benchmark framework.
+performance/capability observations only, not accepted parity/wins. The existing HIP public-source
+population harness now has the same narrow benchmark mode: it skips the independent reference archive
+only for timing, uses the identical literal canonical47 prompt, offers C1/4/8/16/32/64 with active8,
+requires exact per-width replay across one warmup + two timed waves, reports singleton physical execution
+and retains the existing source/model/device retirement checks. Correctness/fault tests still use the
+independent reference path unchanged. X2 is execution-only and should receive this exact L5 source
+checkpoint by Git bundle before the corresponding ROCm0.8B/2B/27B campaign. Do not invent a second
+benchmark framework.
 
 ### Error architecture — 21 Nov 2026
 

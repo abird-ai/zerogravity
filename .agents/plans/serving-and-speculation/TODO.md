@@ -56,9 +56,14 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   provider but returns `[198,248068,198]`, not ZeroGravity's accepted IDs. Preserve
   that mismatch as a failed matched-output gate; continue the requested matrix as
   capability/performance evidence but make no parity/superiority claim for mismatched
-  cells. Keep `serve-compare.py` / `serve-matrix.py` as the HTTP/comparison
-  framework; do not create a second production benchmark stack. After L5, run the
-  corresponding ROCm/X2 campaign from the exact L5 commit.
+  cells. The existing HIP population harness now exposes a benchmark-only path with
+  the same literal canonical47 prompt and C1/4/8/16/32/64 offered populations; it
+  uses active8, one warmup + two timed waves, exact per-width replay, singleton
+  physical execution and the original retirement checks without requiring the
+  independent reference archive. Normal HIP correctness/fault paths still require
+  that archive unchanged. Keep `serve-compare.py` / `serve-matrix.py` as the HTTP/
+  comparison framework; do not create a second production benchmark stack. After
+  L5, run the corresponding ROCm/X2 campaign from the exact L5 commit.
 - [x] `c282f20` restores HIP-only source-profile compilation after a shared CUDA
   optimization accidentally gated the model-neutral packed-BF16 numeric-zero
   greedy kernel behind `cuda-cublas`; stale HIP test/support profiles now specify

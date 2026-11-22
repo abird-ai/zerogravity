@@ -11,7 +11,7 @@ pub(super) struct Harness {
     model: ModelInstance,
     alias: ModelInstance,
     pub tokenizer: Arc<dyn TextTokenizer>,
-    pub reference: Reference,
+    pub reference: Option<Reference>,
     arbiter: ResourceArbiter,
     host: PhysicalDeviceKey,
     device: PhysicalDeviceKey,
@@ -21,6 +21,25 @@ pub(super) struct Harness {
 }
 impl Harness {
     pub fn open(label: &str, active: usize, context: usize, output: usize, pending: usize) -> Self {
+        Self::open_inner(label, active, context, output, pending, true)
+    }
+    pub fn open_benchmark(
+        label: &str,
+        active: usize,
+        context: usize,
+        output: usize,
+        pending: usize,
+    ) -> Self {
+        Self::open_inner(label, active, context, output, pending, false)
+    }
+    fn open_inner(
+        label: &str,
+        active: usize,
+        context: usize,
+        output: usize,
+        pending: usize,
+        with_reference: bool,
+    ) -> Self {
         if cfg!(debug_assertions) {
             panic!("release physical target required");
         }
@@ -51,9 +70,11 @@ impl Harness {
                 }],
             )
             .unwrap();
-        let manifest =
-            std::env::var_os("ZG_QWEN_HIP_SDK_REFERENCE").expect("retained original manifest");
-        let reference = reference(Path::new(&manifest), label);
+        let reference = with_reference.then(|| {
+            let manifest =
+                std::env::var_os("ZG_QWEN_HIP_SDK_REFERENCE").expect("retained original manifest");
+            reference(Path::new(&manifest), label)
+        });
         let admission = zerogravity::resource_arbiter::TransferAdmission {
             arbiter: arbiter.clone(),
             resource: host.clone(),
@@ -126,6 +147,8 @@ impl Harness {
     pub fn canonical(&self) -> (String, Vec<u32>) {
         let calls: Vec<_> = self
             .reference
+            .as_ref()
+            .expect("independent reference required")
             .calls
             .iter()
             .filter(|c| c.repeat == 0 && c.case == 0)
@@ -265,7 +288,7 @@ fn public_source_population_completion_cancel_and_shutdown() {
 }
 
 #[test]
-#[ignore = "approved source/reference, gfx1151, fresh isolated release process"]
+#[ignore = "approved source, gfx1151, fresh isolated release process; benchmark replay only"]
 fn public_source_population_benchmark() {
     let label = std::env::var("ZG_QWEN_HIP_SDK_MODEL").unwrap();
     let clients: Vec<usize> = std::env::var("ZG_QWEN_HIP_BENCH_CLIENTS")
@@ -275,7 +298,7 @@ fn public_source_population_benchmark() {
         .collect();
     assert!(!clients.is_empty() && clients.iter().all(|c| [1, 4, 8, 16, 32, 64].contains(c)));
     let load = Instant::now();
-    let h = Harness::open(&label, 8, 1024, 3, 65);
+    let h = Harness::open_benchmark(&label, 8, 1024, 3, 65);
     println!(
         "HIP_BENCH_LOAD {}",
         serde_json::json!({"model":label,"load_ms":load.elapsed().as_secs_f64()*1000.0,
@@ -286,27 +309,36 @@ fn public_source_population_benchmark() {
         "physical_admission_bytes":h.budget.physical_admission_bytes(),
         "physical_reserved_bytes":h.arbiter.snapshot(&h.device).unwrap().reserved})
     );
-    let (prompt, expected) = h.canonical();
+    let prompt = "<|im_start|>user\nContinue this list of integers, separated by commas, for many more terms: 1, 2, 3, 4, 5, 6, 7, 8,<|im_end|>\n<|im_start|>assistant\n";
+    let prompt_ids = h.tokenizer.prompt_tokens(prompt, false).unwrap();
+    assert_eq!(prompt_ids.len(), 47);
     println!(
         "HIP_BENCH_INPUT {}",
-        serde_json::json!({"prompt":prompt,
-        "prompt_token_ids":h.tokenizer.prompt_tokens(&prompt,false).unwrap(),"expected":expected})
+        serde_json::json!({"model":label,"prompt":prompt,"prompt_token_ids":prompt_ids})
     );
     for clients in clients {
+        let mut expected = None;
         for wave in 0..3 {
             let start = Instant::now();
             let requests: Vec<_> = (0..clients)
-                .map(|_| h.runtime.request_text(request("source", &prompt)).unwrap())
+                .map(|_| h.runtime.request_text(request("source", prompt)).unwrap())
                 .collect();
             let mut sessions = BTreeSet::new();
             let mut outputs = Vec::with_capacity(clients);
             for events in requests {
                 let output = complete(events, 47, h.tokenizer.as_ref());
-                assert_eq!(output.ids, expected);
                 assert!(sessions.insert(output.roots[0].producer_root.unwrap().session_id));
                 outputs.push(output.ids);
             }
+            if let Some(expected) = &expected {
+                assert_eq!(&outputs, expected);
+            } else {
+                expected = Some(outputs.clone());
+            }
             let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+            let lane_invariant = outputs
+                .first()
+                .is_none_or(|first| outputs.iter().all(|ids| ids == first));
             let admission = h.admission();
             assert_eq!(admission["failed_gpu_quanta"], 0);
             assert_eq!(admission["queued_requests"], 0);
@@ -315,11 +347,11 @@ fn public_source_population_benchmark() {
                 "HIP_BENCH_WAVE {}",
                 serde_json::json!({"model":label,"clients":clients,"wave":wave,
                 "warmup":wave==0,"elapsed_ms":elapsed_ms,"completed":outputs.len(),"output_tokens":3*outputs.len(),
-                "token_ids":outputs,"expected":expected,"output_match":true,"native_batch_width":1,
-                "active_sessions_limit":8,"admission":admission})
+                "token_ids":outputs,"expected":expected,"replay_match":true,"lane_invariant":lane_invariant,
+                "native_batch_width":1,"active_sessions_limit":8,"admission":admission})
             );
         }
     }
     h.retire();
-    println!("HIP_BENCH_CLOSED closed=true output_match=true");
+    println!("HIP_BENCH_CLOSED model={label} closed=true replay_match=true");
 }

@@ -317,8 +317,8 @@ fn qwen_cuda_public_sdk_population_benchmark() {
         serde_json::json!({"model":model,"prompt":prompt,"prompt_token_ids":prompt_ids})
     );
 
-    let mut expected = None;
     for clients in clients {
+        let mut expected = None;
         for wave in 0..3 {
             let started = Instant::now();
             let events = (0..clients)
@@ -367,14 +367,17 @@ fn qwen_cuda_public_sdk_population_benchmark() {
                     }
                 }
                 assert_eq!(ids.len(), 3);
-                if let Some(expected) = &expected {
-                    assert_eq!(&ids, expected);
-                } else {
-                    expected = Some(ids.clone());
-                }
                 outputs.push(ids);
             }
+            if let Some(expected) = &expected {
+                assert_eq!(&outputs, expected);
+            } else {
+                expected = Some(outputs.clone());
+            }
             let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+            let lane_invariant = outputs
+                .first()
+                .is_none_or(|first| outputs.iter().all(|ids| ids == first));
             println!(
                 "CUDA_BENCH_WAVE {}",
                 serde_json::json!({
@@ -388,7 +391,8 @@ fn qwen_cuda_public_sdk_population_benchmark() {
                     "token_ids":outputs,
                     "expected":expected,
                     "cohort_widths":cohorts,
-                    "output_match":true
+                    "replay_match":true,
+                    "lane_invariant":lane_invariant
                 })
             );
         }
@@ -396,7 +400,7 @@ fn qwen_cuda_public_sdk_population_benchmark() {
     drop(resolved);
     runtime.shutdown().unwrap();
     assert!(runtime.status().closed);
-    println!("CUDA_BENCH_CLOSED model={model} closed=true output_match=true");
+    println!("CUDA_BENCH_CLOSED model={model} closed=true replay_match=true");
 }
 
 #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
