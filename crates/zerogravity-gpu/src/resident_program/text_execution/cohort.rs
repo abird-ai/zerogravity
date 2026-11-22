@@ -24,12 +24,25 @@ pub(crate) struct DecodeCohortSubmission {
 }
 
 impl Cold {
+    pub(crate) fn decode_cohort_projection_bytes(&self, width: usize) -> Result<usize> {
+        if !matches!(width, 2 | 4 | 8) {
+            return Err(Error::Unsupported(
+                "text-execution decode cohort requires two, four or eight rows".into(),
+            ));
+        }
+        self.layout
+            .projection_scratch_words
+            .checked_mul(width)
+            .and_then(|words| words.checked_mul(4))
+            .ok_or_else(|| Error::Limit("text-execution decode cohort projection scratch".into()))
+    }
+
     pub(crate) async fn execute_decode_cohort(
         self: &Arc<Self>,
         flight: &mut Flight<'_>,
         requests: &[ForwardPlan],
         states: &[Vec<StateBinding>],
-        head_projection: &ResidentLease,
+        projection: [&ResidentLease; 3],
         logits: &ResidentLease,
     ) -> Result<DecodeCohortSubmission> {
         let width = requests.len();
@@ -96,7 +109,9 @@ impl Cold {
             }
         }
         flight.require_accesses([
-            (head_projection, DeviceAccess::Write),
+            (projection[0], DeviceAccess::Write),
+            (projection[1], DeviceAccess::Write),
+            (projection[2], DeviceAccess::Write),
             (logits, DeviceAccess::Write),
         ])?;
         flight.retain_completion_owner(self.clone())?;
@@ -138,7 +153,7 @@ impl Cold {
             let first = descriptors[0];
             if matches!(first.kind(), SourceOperatorKind::Projection { .. }) {
                 let (actual, fused) = self
-                    .projection_decode_cohort(flight, node, first, width, head_projection, logits)
+                    .projection_decode_cohort(flight, node, first, width, projection, logits)
                     .await?;
                 dispatches = dispatches
                     .checked_add(actual)
@@ -235,7 +250,7 @@ impl Cold {
         node: &PlanNode,
         descriptor: &SourceOperator,
         width: usize,
-        head_projection: &ResidentLease,
+        projection: [&ResidentLease; 3],
         logits: &ResidentLease,
     ) -> Result<(usize, usize)> {
         let SourceOperatorKind::Projection { selected_row } = descriptor.kind() else {
@@ -295,17 +310,7 @@ impl Cold {
         let mut dispatches = 0usize;
         let mut fused = 0usize;
         for matrix in descriptor.matrices() {
-            let (temporary, temporary_lease) = if selected_row.is_some() {
-                (
-                    view(head_projection, 0, width * matrix.rows * 4)?,
-                    head_projection,
-                )
-            } else {
-                (
-                    self.s(layout::PROJECT, width * matrix.rows)?,
-                    &self.scratch[layout::PROJECT],
-                )
-            };
+            let temporary = view(projection[0], 0, width * matrix.rows * 4)?;
             dispatches = dispatches
                 .checked_add(
                     self.operands[&matrix.name]
@@ -316,10 +321,10 @@ impl Cold {
                                 input: &input,
                                 input_lease: self.value_lease(node.inputs[0])?,
                                 output: &temporary,
-                                output_lease: temporary_lease,
+                                output_lease: projection[0],
                                 packed: &self.packed,
-                                accumulation: &self.accumulation,
-                                flags: &self.flags,
+                                accumulation: projection[1],
+                                flags: projection[2],
                                 status: &self.status,
                                 zero: &self.zero,
                             },

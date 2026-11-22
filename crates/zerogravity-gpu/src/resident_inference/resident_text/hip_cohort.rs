@@ -118,9 +118,6 @@ impl ResidentModel {
             .ok_or_else(|| Error::Limit("HIP decode cohort logit bytes".into()))?;
 
         let allocation = self.allocation.lock().await;
-        if logits_bytes > self.service.remaining_capacity()? {
-            return Ok(None);
-        }
         let mut candidates = Vec::with_capacity(width);
         for session in sessions {
             let position = usize::try_from(session.binding().frontier())
@@ -145,14 +142,37 @@ impl ResidentModel {
             .iter()
             .map(|candidate| candidate.bindings().to_vec())
             .collect::<Vec<_>>();
+        let projection_bytes = {
+            let workspace = self.workspace.lock().await;
+            if !workspace.program.is_forward_source() {
+                return Err(Error::State(
+                    "HIP decode cohort reached another resident model".into(),
+                ));
+            }
+            workspace
+                .program
+                .text_execution_decode_cohort_projection_bytes(width)?
+        };
+        let transient_bytes = projection_bytes
+            .checked_mul(3)
+            .and_then(|bytes| bytes.checked_add(logits_bytes))
+            .ok_or_else(|| Error::Limit("HIP decode cohort transient bytes".into()))?;
+        if transient_bytes > self.service.remaining_capacity()? {
+            return Ok(None);
+        }
         let logits = self
             .service
             .allocate_uninitialized(logits_bytes, BufferRole::Output)?;
-        // The ordinary head scratch is deliberately one selected vocabulary row.
-        // Cohorts pay for a wider head temporary only while a cohort is live.
-        let head_projection = self
-            .service
-            .allocate_uninitialized(logits_bytes, BufferRole::Activation)?;
+        // Multi-row projection scratch is transient. The ordinary model retains
+        // its compact singleton arena when no cohort is live.
+        let projection = [
+            self.service
+                .allocate_uninitialized(projection_bytes, BufferRole::Activation)?,
+            self.service
+                .allocate_uninitialized(projection_bytes, BufferRole::Scratch)?,
+            self.service
+                .allocate_uninitialized(projection_bytes, BufferRole::Scratch)?,
+        ];
 
         let ticket = self.service.queue().submit(
             self.service.budget(),
@@ -181,7 +201,12 @@ impl ResidentModel {
         }
         let mut accesses = workspace.logit_accesses.clone();
         accesses.push((logits.clone(), DeviceAccess::Write));
-        accesses.push((head_projection.clone(), DeviceAccess::Write));
+        accesses.extend(
+            projection
+                .iter()
+                .cloned()
+                .map(|lease| (lease, DeviceAccess::Write)),
+        );
         for (session, candidate) in sessions.iter().zip(&candidates) {
             accesses.extend(candidate.state_accesses(&session.domains)?);
         }
@@ -199,7 +224,7 @@ impl ResidentModel {
                 &mut flight,
                 requests,
                 &bindings,
-                &head_projection,
+                [&projection[0], &projection[1], &projection[2]],
                 &logits,
             )
             .await?;
