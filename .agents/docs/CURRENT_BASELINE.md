@@ -76,23 +76,25 @@ max-num-seqs=8, BF16, text-only optimized execution.
 All outputs are exact [248068, 198, 90700]. These rows are the clean
 pre-optimization baseline; that path was physical batch width 1.
 
-### First HIP decode-cohort checkpoint — 0.8B
+### Current HIP decode cohort — 0.8B
 
-The first model-neutral batching cut shares only BF16 projection work across
-aligned cached-decode rows. Stateful operators retain each session's private
-state/position and execute per row; prefill and full-logit host greedy remain
-unchanged. With admitted cohort width 8 on X2:
+Aligned cached-decode rows now share BF16 projections plus the row-wise
+RMS/residual-RMS/sigmoid/multiply/SILU-multiply operators. Embedding, rotary
+position work, convolution, recurrent GDN, KV append and attention retain each
+session's private state/position path. Prefill and full-logit host greedy remain
+unchanged.
 
-| Offered | Baseline tok/s | Projection-cohort tok/s | Change |
+| Offered | Clean baseline tok/s | Current tok/s | Change |
 | ---: | ---: | ---: | ---: |
-| 4 | 12.048 | 13.270 | +10.14% |
-| 8 | 12.139 | 13.061 | +7.60% |
+| 4 | 12.048 | 13.074 | +8.51% |
+| 8 | 12.139 | 13.216 | +8.87% |
 
 Both cells are exact [248068, 198, 90700], replay-stable and lane-invariant.
 The runtime reports real fused width-4/8 cohort publications, zero cohort
 admission refusals, and clean retirement to 274,452,480 B VRAM / 0% busy /
-no KFD owner. This proves the shared cohort path without claiming full-model
-physical fusion.
+no KFD owner. Current physical forward dispatches are 33,094 per C4 wave and
+63,630 per C8 wave. The remaining state/position operators are the next batching
+target.
 
 ### Matched 75 GiB envelope — 27B
 
@@ -115,9 +117,10 @@ to 274,452,480 B VRAM, 0% busy and no KFD owner after the vLLM run.
 
 ## What this baseline says
 
-1. The first HIP batching primitive is now proven: aligned decode rows can
-   share projection work while retaining independent state/root authority. The
-   modest C4/C8 gain shows the remaining stateful per-row work is substantial.
+1. HIP decode cohorts now share projections and pure row-wise activation work
+   while retaining independent state/root authority. Dispatch count falls further,
+   but wall throughput barely moves versus projection-only batching, so remaining
+   state/position work is the next meaningful batching target.
 2. Batching is not the whole HIP gap. C1 is already substantially behind
    vLLM on 0.8B, 2B and especially 27B, so singleton kernel/execution efficiency
    remains independently important.

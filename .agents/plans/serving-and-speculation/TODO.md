@@ -32,18 +32,18 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   benchmark artifacts for implementation decisions.
 - [x] The reusable Nix vLLM provider supports both CUDA and ROCm. ROCm real serving
   includes the pinned Triton host-compiler seam; fresh physical runs retire cleanly.
-- [x] First HIP native-batching cut: aligned cached-decode rows now reuse the
-  existing scheduler/cohort publication authority and share BF16 projection work in
-  the model-neutral HIP text-execution body. Stateful operators retain private
-  per-session state/position; prefill and greedy policy are unchanged. Physical0.8B
-  C4/C8 is exact/replay-stable/lane-invariant with real fused cohort receipts and
-  zero admission refusals. Timed medians improve12.048→13.270tok/s (+10.14%) and
-  12.139→13.061tok/s (+7.60%).
-- [ ] Next HIP performance unit: use the existing cohort geometry to remove measured
-  per-row decode work where a clean shared stateful kernel is possible. Keep private
-  state/root semantics unchanged and measure0.8B C4/C8 first; separately retain C1
-  as the singleton hot-path target. Do not expand to prefill/27B until the shared
-  decode primitive earns it.
+- [x] Current HIP decode cohort: aligned cached-decode rows reuse the existing
+  scheduler/publication authority and share BF16 projections plus RMS, residual RMS,
+  sigmoid, multiply and SILU-multiply in the model-neutral text-execution body.
+  Embedding/position/state operators retain private per-session execution. Physical
+  0.8B C4/C8 is exact/replay-stable/lane-invariant with zero cohort refusals at
+  13.074/13.216tok/s (+8.51%/+8.87% versus the clean batch-1 baseline), using
+  33,094/63,630 forward dispatches per wave. Do not widen the stateless subset further.
+- [ ] Next HIP performance unit: batch one measured state/position operator family at
+  a time only where the existing private-root semantics admit a clean row dimension.
+  Start from convolution/GDN/KV/attention execution cost, choose the hottest simple
+  seam, preserve independent publication/state ownership, and remeasure only0.8B
+  C4/C8. Keep C1 as the separate singleton hot-path target; no prefill/27B expansion yet.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.
