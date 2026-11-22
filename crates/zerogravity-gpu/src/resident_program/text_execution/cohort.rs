@@ -176,6 +176,7 @@ impl Cold {
                 first.kind(),
                 SourceOperatorKind::Rms(_)
                     | SourceOperatorKind::ResidualRms(_)
+                    | SourceOperatorKind::QkRmsRotaryGated(_)
                     | SourceOperatorKind::Sigmoid { .. }
                     | SourceOperatorKind::Multiply { .. }
                     | SourceOperatorKind::SiluAndMul { .. }

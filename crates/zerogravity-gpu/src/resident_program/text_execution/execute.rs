@@ -11,7 +11,9 @@ use crate::resident_program::{
 };
 use cubecl::{bytes::Bytes, server::Handle};
 use zerogravity_core::{
-    accelerator::program::{PlanNode, SourceOperator, SourceOperatorKind, TextInvocation, ValueId},
+    accelerator::program::{
+        InvocationPhase, PlanNode, SourceOperator, SourceOperatorKind, TextInvocation, ValueId,
+    },
     device_events::{BufferRole, DeviceAccess},
 };
 
@@ -470,6 +472,68 @@ impl Cold {
                         rows * heads,
                         crate::source_rms::Gamma::OnePlusRaw,
                     )?;
+                }
+                let aligned_decode = rows > 1
+                    && d.invocation().phase() == InvocationPhase::Decode
+                    && d.invocation().tokens().len() == 1;
+                if aligned_decode {
+                    unsafe {
+                        crate::source_rotary::kernels::angles::launch_unchecked(
+                            client,
+                            grid(32),
+                            dim(),
+                            arg(&freq, 32),
+                            arg(&angles, 32),
+                            base as u32,
+                            32,
+                        );
+                        crate::source_trig::cpu::sincos_angles::launch_unchecked(
+                            client,
+                            grid(32),
+                            dim(),
+                            arg(&angles, 32),
+                            arg(&table, crate::source_trig::cpu::TABLES.len()),
+                            arg(&trig, 64),
+                            arg(&status, 1),
+                            32,
+                        );
+                    }
+                    count += 2;
+                    for (norm, target, heads) in
+                        [(&normq, &outputs[0], qh), (&normk, &outputs[1], kh)]
+                    {
+                        let width = heads * 256;
+                        unsafe {
+                            kernels::columns::launch_unchecked(
+                                client,
+                                grid(rows * width),
+                                dim(),
+                                arg(norm, rows * width),
+                                arg(target, rows * width),
+                                arg(&status, 1),
+                                rows as u32,
+                                0u32,
+                                0u32,
+                                width,
+                                width,
+                                width,
+                            );
+                            crate::source_rotary::kernels::apply::launch_unchecked(
+                                client,
+                                grid(rows * heads * 32),
+                                dim(),
+                                arg(norm, rows * width),
+                                arg(&trig, 64),
+                                arg(target, rows * width),
+                                arg(&status, 1),
+                                256,
+                                rows * width,
+                                64,
+                            );
+                        }
+                        count += 2;
+                    }
+                    return Ok(count);
                 }
                 for row in 0..rows {
                     unsafe {
