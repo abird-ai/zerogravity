@@ -150,14 +150,21 @@ toolkit are required.
 L5 private-loopback correctness is physically accepted on the exact local Qwen3.5 0.8B and
 2B snapshots. Both providers advertise the expected `/v1/models` name, accept a
 temperature-zero `/v1/completions` request, return one deterministic completion, and shut
-down with the RTX3060 back at37MiB. The correctness smoke deliberately used eager mode;
-matched performance must use vLLM's normal optimized execution. **A1 is now explicitly
-offline/out of scope until the owner re-enables it**; do not connect to it, resume/delete
-partial model-transfer residue, or schedule correctness/benchmark work there. The current
-matched campaign is L5-only: reuse `serve-compare.py` / `serve-matrix.py` for
-concurrency=1/4/8/16/32/64 on the exact local0.8B/2B snapshots. The same provider constructor
-is the intended basis for a later ROCm sibling on X2 after exact L5 commit sync and its
-environment gate is repaired. Do not invent a second benchmark framework.
+down with the RTX3060 back at37MiB. The original correctness smoke deliberately used eager
+mode. The pre-existing staged provider follow-up has now been revalidated as coherent
+ownership work: `uv2nix` + `pyproject-nix` realize the frozen wheel graph into the Nix
+store, leaving only host-specific kernel materialization in the XDG cache; `check`/`serve`
+perform no package sync. Offline evaluation/import reports Python3.12.14 /
+torch2.14.0+cu130 / vLLM0.33.0. A real optimized 0.8B private-loopback smoke with no
+`--enforce-eager` captures PIECEWISE + FULL CUDA graphs, returns the deterministic
+completion and retires the RTX3060 to37MiB. Matched performance must use this normal
+optimized execution. **A1 is now explicitly offline/out of scope until the owner re-enables
+it**; do not connect to it, resume/delete partial model-transfer residue, or schedule
+correctness/benchmark work there. The current matched campaign is L5-first: reuse
+`serve-compare.py` / `serve-matrix.py` for concurrency=1/4/8/16/32/64 on the exact local
+0.8B/2B snapshots. X2 is execution-only and should receive this exact L5 source checkpoint
+by Git bundle before the corresponding ROCm 0.8B/2B/27B campaign. Do not invent a second
+benchmark framework.
 
 ### Error architecture — 21 Nov 2026
 

@@ -2,7 +2,7 @@
   inputs,
   sourceRoot,
 }: let
-  inherit (inputs) self nixpkgs crane rust-overlay;
+  inherit (inputs) self nixpkgs crane rust-overlay uv2nix pyproject-nix pyproject-build-systems;
   systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
   forAllSystems = f: nixpkgs.lib.genAttrs systems f;
   overlay = import rust-overlay;
@@ -31,7 +31,7 @@
   development = forAllSystems (system: import ./dev.nix {native = native.${system};});
   vllm = forAllSystems (system:
     import ./vllm.nix {
-      inherit sourceRoot;
+      inherit sourceRoot uv2nix pyproject-nix pyproject-build-systems;
       pkgs = native.${system}.pkgs;
     });
 in {

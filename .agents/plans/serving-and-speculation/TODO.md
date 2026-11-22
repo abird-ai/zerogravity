@@ -33,6 +33,14 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   passes the exact local Qwen3.5 0.8B and2B snapshots: `/v1/models` + deterministic
   `/v1/completions` return200 for both and RTX3060 returns to37MiB after shutdown.
   No Podman, host Python packages or host CUDA toolkit are required.
+- [x] **22 Nov Nix-realized provider follow-up:** the pre-existing staged
+  provider delta is coherent ownership work, not unrelated drift. `uv2nix` +
+  `pyproject-nix` now realize the frozen wheel graph into the Nix store; the XDG
+  cache retains only host-specific downloaded kernels, so `check`/`serve` no longer
+  perform package resolution or `uv sync`. Offline flake evaluation and interpreter
+  import report Python3.12.14 / torch2.14.0+cu130 / vLLM0.33.0. A private-loopback
+  optimized 0.8B physical smoke (no `--enforce-eager`) captures PIECEWISE + FULL CUDA
+  graphs, returns a deterministic two-token completion and retires RTX3060 to37MiB.
 - [ ] **Next matched baseline unit:** A1 is owner-paused/offline; do not connect,
   resume/delete partial transfer residue or run benchmarks there. On L5, reuse the
   existing `serve-compare.py` / `serve-matrix.py` for exact0.8B/2B matched
