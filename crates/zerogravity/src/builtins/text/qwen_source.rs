@@ -98,23 +98,6 @@ fn poison() -> ServiceError {
     ServiceError::new(500, "source_owner", "original model owner lock poisoned")
 }
 impl PreparedModel for Model {
-    fn validate_chat(&self) -> Result<(), ServiceError> {
-        Err(ServiceError::new(
-            400,
-            "unsupported_chat",
-            "original source GPU currently accepts raw text only",
-        ))
-    }
-    fn validate_request(
-        &self,
-        request: &zerogravity_engine::router::Request,
-    ) -> Result<(), ServiceError> {
-        if request.chat {
-            self.validate_chat()
-        } else {
-            Ok(())
-        }
-    }
     fn source(&self) -> SourceIdentity {
         self.source.plan.source_seal().source_identity()
     }
