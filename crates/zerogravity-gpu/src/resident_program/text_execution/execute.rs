@@ -315,7 +315,7 @@ impl Cold {
                 let combined = d.matrices().iter().map(|m| m.rows).sum::<usize>();
                 let input_lease = self.value_lease(node.inputs[0])?;
                 let output_lease = self.value_lease(node.outputs[0])?;
-                let direct = active == 1 && input_lease.id() != output_lease.id();
+                let direct = active == 1;
                 let mut offset = 0;
                 let mut count = 0;
                 for m in d.matrices() {
