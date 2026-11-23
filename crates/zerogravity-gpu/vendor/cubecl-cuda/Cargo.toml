@@ -36,6 +36,7 @@ llvm = ["dep:cubecl-llvm"]
 cpp = []
 owned-cublas-allocator = []
 owned-cubin = []
+flash-attn = []
 precompiled-shared = []
 default = [
     "llvm",

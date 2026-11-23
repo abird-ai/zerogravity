@@ -27,6 +27,8 @@ mod runtime;
 pub use compiler::{CudaCompilationOptions, CudaCompiler, CudaRepresentation};
 pub use device::*;
 pub use owned_command::OwnedCudaQueue;
+#[cfg(all(feature = "flash-attn", target_os = "linux"))]
+pub use owned_command::{Bf16FlashAttention, Bf16FlashAttentionBindings};
 #[cfg(target_os = "linux")]
 pub use owned_command::SourceWeightLayout;
 #[cfg(target_os = "linux")]

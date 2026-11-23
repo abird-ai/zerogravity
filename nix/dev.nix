@@ -24,6 +24,26 @@
     gpuPkgs.rocmPackages.rocblas
   ];
   gpuLibraryPath = gpuPkgs.lib.makeLibraryPath (gpuPackages ++ [gpuPkgs.stdenv.cc.cc]);
+  flashAttentionSrc =
+    if gpuPkgs == null
+    then null
+    else
+      gpuPkgs.fetchFromGitHub {
+        owner = "vllm-project";
+        repo = "flash-attention";
+        rev = "b273a02621d3c94bc747df67204f591b67f38fae";
+        hash = "sha256-8qGtJl18nIo8Kd/jPYlDK8K83uuu4W1mZ0x0oTvXU8w=";
+      };
+  flashAttentionCutlass =
+    if gpuPkgs == null
+    then null
+    else
+      gpuPkgs.fetchFromGitHub {
+        owner = "NVIDIA";
+        repo = "cutlass";
+        rev = "62750a2b75c802660e4894434dc55e839f322277";
+        hash = "sha256-eL64JYiFAqrn6OJDzijpMR4DbEB4El/8yT7++iCZBlE=";
+      };
 in {
   shell = native.craneLib.devShell {
     checks = {inherit (native) tests clippy;};
@@ -43,6 +63,9 @@ in {
           export HIP_PATH="${gpuPkgs.rocmPackages.clr}"
           export ROCM_HOME="$HIP_PATH"
           export ROCM_PATH="$HIP_PATH"
+          export ZEROGRAVITY_FLASH_ATTN_SRC="${flashAttentionSrc}"
+          export ZEROGRAVITY_FLASH_ATTN_CUTLASS="${flashAttentionCutlass}"
+          export ZEROGRAVITY_CUDART_LIB="${gpuPkgs.cudaPackages.cuda_cudart}/lib"
           export CUDA_PATH="''${TMPDIR:-/tmp}/zerogravity-cuda-$UID"
           "${sourceRoot}/scripts/cuda-nix-include-view.sh" \
             "${gpuPkgs.cudaPackages.cuda_cudart}/include" \

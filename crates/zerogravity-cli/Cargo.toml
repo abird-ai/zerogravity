@@ -26,6 +26,8 @@ acquisition = ["cache", "zerogravity/acquisition", "dep:signal-hook", "dep:rusti
 diagnostic-acquisition = ["acquisition", "zerogravity/diagnostic-acquisition"]
 vulkan = ["zerogravity/vulkan"]
 cuda = ["zerogravity/cuda"]
+# Opt-in native FlashAttention provider; normal CUDA remains unchanged.
+cuda-flash-attn = ["cuda", "zerogravity/cuda-flash-attn"]
 # Previous features: short-hf-run, canonical47-serving, short-hf-serving.
 # Compatibility aliases only. Normal builds select model + backend separately.
 qwen35-cuda = ["cuda", "model-qwen35", "zerogravity/qwen35-cuda"]

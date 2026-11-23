@@ -12,6 +12,9 @@ use zerogravity_core::accelerator::program::InvocationPhase;
 pub enum AttentionProvider {
     /// ZeroGravity-authored backend kernel.
     Builtin,
+    /// Statically compiled FlashAttention 2 BF16/head-256 CUDA forward kernel.
+    #[cfg(feature = "cuda-flash-attn")]
+    FlashAttentionFa2,
 }
 
 /// Phase-specific provider choice resolved during cold model preparation.
@@ -28,6 +31,14 @@ impl AttentionProviderPlan {
 
     pub const fn builtin() -> Self {
         Self::new(AttentionProvider::Builtin, AttentionProvider::Builtin)
+    }
+
+    #[cfg(feature = "cuda-flash-attn")]
+    pub const fn flash_attention_fa2() -> Self {
+        Self::new(
+            AttentionProvider::FlashAttentionFa2,
+            AttentionProvider::FlashAttentionFa2,
+        )
     }
 
     pub const fn provider(self, phase: InvocationPhase) -> AttentionProvider {

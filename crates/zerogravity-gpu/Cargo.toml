@@ -27,6 +27,8 @@ cuda-native = ["cuda", "zerogravity-artifacts/cache", "dep:cubecl-cuda", "cubecl
 # Historical finite native orchestration is diagnostic-only.
 cuda-native-qualification = ["cuda-native", "qualification"]
 cuda-cublas = ["cuda-native", "cubecl-cuda/owned-cublas-allocator"]
+# Forward-only BF16/head-256 FlashAttention FA2 provider, statically compiled into the binary.
+cuda-flash-attn = ["cuda-cublas", "cubecl-cuda/flash-attn"]
 
 [dependencies]
 zerogravity-core = { path = "../zerogravity-core" }

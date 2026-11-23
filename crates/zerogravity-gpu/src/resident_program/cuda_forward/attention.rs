@@ -302,6 +302,118 @@ fn validate_geometry(
     Ok(geometry)
 }
 
+fn require_operator(
+    capacity: usize,
+    geometry: crate::cuda::text_forward::Geometry,
+    operator: &zerogravity_core::accelerator::program::SourceOperator,
+) -> Result<()> {
+    use zerogravity_core::accelerator::program::{
+        NumericalContract, SourceAttentionMask, SourceOperatorKind,
+    };
+    operator.validate()?;
+    if operator.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
+        || operator.invocation().tokens().capacity() != capacity
+        || !matches!(
+            operator.kind(),
+            SourceOperatorKind::Attention {
+                geometry: attention,
+                scale,
+                mask: SourceAttentionMask::Causal,
+                ..
+            } if attention.width == WIDTH
+                && attention.query_heads == geometry.query_heads
+                && attention.kv_heads == geometry.kv_heads
+                && scale.to_bits() == SCALE.to_bits()
+        )
+        || !operator.matrices().is_empty()
+        || !operator.parameters().is_empty()
+    {
+        return Err(Error::State(
+            "CUDA forward exact source attention contract differs".into(),
+        ));
+    }
+    Ok(())
+}
+
+struct SingleAttentionBinding {
+    rows: usize,
+    base: usize,
+    query_elements: usize,
+    keys: cubecl::server::Handle,
+    values: cubecl::server::Handle,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn bind_single_attention(
+    service: &Arc<ResidentService>,
+    capacity: usize,
+    geometry: crate::cuda::text_forward::Geometry,
+    client: &cubecl::client::Client,
+    operator: &zerogravity_core::accelerator::program::SourceOperator,
+    query: &cubecl::server::Handle,
+    candidate_keys: &crate::resident_program::DeviceBuffer,
+    candidate_values: &crate::resident_program::DeviceBuffer,
+    output: &cubecl::server::Handle,
+    status: &ResidentLease,
+) -> Result<SingleAttentionBinding> {
+    use crate::resident_program::{ResidentBufferLayout, ResidentPhysicalType};
+
+    require_operator(capacity, geometry, operator)?;
+    service.ensure_usable()?;
+    if client.service_id() != service.client().service_id()
+        || query.service != client.service_id()
+        || output.service != client.service_id()
+        || !Arc::ptr_eq(status.service(), service)
+        || status.bytes() != 4
+    {
+        return Err(Error::State(
+            "CUDA forward attention original service/status differs".into(),
+        ));
+    }
+
+    let rows = operator.invocation().tokens().len();
+    let base = operator.invocation().tokens().base();
+    base.checked_add(rows)
+        .filter(|end| *end <= capacity)
+        .ok_or_else(|| Error::Limit("forward attention active prefix".into()))?;
+    let query_elements = rows
+        .checked_mul(geometry.query_width()?)
+        .ok_or_else(|| Error::Limit("forward attention query batch".into()))?;
+    if query.size_in_used() != (query_elements * 2) as u64
+        || output.size_in_used() != (query_elements * 2) as u64
+    {
+        return Err(Error::State(
+            "forward attention BF16 query/output extent differs".into(),
+        ));
+    }
+
+    let state_elements = capacity
+        .checked_mul(geometry.kv_width()?)
+        .ok_or_else(|| Error::Limit("forward attention state extent".into()))?;
+    let layout = ResidentBufferLayout::new(ResidentPhysicalType::Bf16, state_elements)?;
+    candidate_keys.require_layout(layout)?;
+    candidate_values.require_layout(layout)?;
+    let keys = candidate_keys.original_lease()?;
+    let values = candidate_values.original_lease()?;
+    if !Arc::ptr_eq(keys.service(), service)
+        || !Arc::ptr_eq(values.service(), service)
+        || keys.bytes() != state_elements * 2
+        || values.bytes() != state_elements * 2
+    {
+        return Err(Error::State(
+            "forward attention candidate KV physical owner/extent differs".into(),
+        ));
+    }
+
+    Ok(SingleAttentionBinding {
+        rows,
+        base,
+        query_elements,
+        keys: keys.handle(),
+        values: values.handle(),
+    })
+}
+
 /// ZeroGravity-authored online-softmax implementation. This is one physical
 /// provider for the semantic Attention operator, not the semantic operation
 /// itself.
@@ -326,38 +438,6 @@ impl BuiltinCudaAttention {
         }))
     }
 
-    fn require_operator(
-        &self,
-        operator: &zerogravity_core::accelerator::program::SourceOperator,
-    ) -> Result<()> {
-        use zerogravity_core::accelerator::program::{
-            NumericalContract, SourceAttentionMask, SourceOperatorKind,
-        };
-        operator.validate()?;
-        if operator.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
-            || operator.invocation().tokens().capacity() != self.capacity
-            || !matches!(
-                operator.kind(),
-                SourceOperatorKind::Attention {
-                    geometry,
-                    scale,
-                    mask: SourceAttentionMask::Causal,
-                    ..
-                } if geometry.width == WIDTH
-                    && geometry.query_heads == self.geometry.query_heads
-                    && geometry.kv_heads == self.geometry.kv_heads
-                    && scale.to_bits() == SCALE.to_bits()
-            )
-            || !operator.matrices().is_empty()
-            || !operator.parameters().is_empty()
-        {
-            return Err(Error::State(
-                "CUDA forward exact source attention contract differs".into(),
-            ));
-        }
-        Ok(())
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub(super) fn enqueue(
         &self,
@@ -369,58 +449,21 @@ impl BuiltinCudaAttention {
         output: &cubecl::server::Handle,
         status: &ResidentLease,
     ) -> Result<usize> {
-        use crate::resident_program::{ResidentBufferLayout, ResidentPhysicalType};
-        self.require_operator(operator)?;
-        self.service.ensure_usable()?;
-        if client.service_id() != self.service.client().service_id()
-            || query.service != client.service_id()
-            || output.service != client.service_id()
-            || !Arc::ptr_eq(status.service(), &self.service)
-            || status.bytes() != 4
-        {
-            return Err(Error::State(
-                "CUDA forward attention original service/status differs".into(),
-            ));
-        }
-        let rows = operator.invocation().tokens().len();
-        let base = operator.invocation().tokens().base();
-        let end = base
-            .checked_add(rows)
-            .filter(|end| *end <= self.capacity)
-            .ok_or_else(|| Error::Limit("forward attention active prefix".into()))?;
-        let query_elements = rows
-            .checked_mul(self.geometry.query_width()?)
-            .ok_or_else(|| Error::Limit("forward attention query batch".into()))?;
-        if query.size_in_used() != (query_elements * 2) as u64
-            || output.size_in_used() != (query_elements * 2) as u64
-        {
-            return Err(Error::State(
-                "forward attention BF16 query/output extent differs".into(),
-            ));
-        }
-
-        let state_elements = self
-            .capacity
-            .checked_mul(self.geometry.kv_width()?)
-            .ok_or_else(|| Error::Limit("forward attention state extent".into()))?;
-        let layout = ResidentBufferLayout::new(ResidentPhysicalType::Bf16, state_elements)?;
-        candidate_keys.require_layout(layout)?;
-        candidate_values.require_layout(layout)?;
-        let keys = candidate_keys.original_lease()?;
-        let values = candidate_values.original_lease()?;
-        if !Arc::ptr_eq(keys.service(), &self.service)
-            || !Arc::ptr_eq(values.service(), &self.service)
-            || keys.bytes() != state_elements * 2
-            || values.bytes() != state_elements * 2
-        {
-            return Err(Error::State(
-                "forward attention candidate KV physical owner/extent differs".into(),
-            ));
-        }
-
+        let binding = bind_single_attention(
+            &self.service,
+            self.capacity,
+            self.geometry,
+            client,
+            operator,
+            query,
+            candidate_keys,
+            candidate_values,
+            output,
+            status,
+        )?;
         let launch = crate::cuda::bf16_attention::Bf16CausalAttention::new(
-            rows,
-            base,
+            binding.rows,
+            binding.base,
             self.capacity,
             self.geometry.query_heads,
             self.geometry.kv_heads,
@@ -431,14 +474,13 @@ impl BuiltinCudaAttention {
             client,
             [
                 query.clone(),
-                keys.handle(),
-                values.handle(),
+                binding.keys,
+                binding.values,
                 output.clone(),
                 status.handle(),
             ],
         )?;
         launch.launch_on(client)?;
-        debug_assert_eq!(end, base + rows);
         Ok(1)
     }
 
@@ -457,7 +499,7 @@ impl BuiltinCudaAttention {
         status: &ResidentLease,
     ) -> Result<usize> {
         use crate::resident_program::{ResidentBufferLayout, ResidentPhysicalType};
-        self.require_operator(operator)?;
+        require_operator(self.capacity, self.geometry, operator)?;
         self.service.ensure_usable()?;
         if states.len() != 4
             || operator.invocation().tokens().len() != 1
@@ -552,7 +594,7 @@ impl BuiltinCudaAttention {
         status: &ResidentLease,
     ) -> Result<usize> {
         use crate::resident_program::{ResidentBufferLayout, ResidentPhysicalType};
-        self.require_operator(operator)?;
+        require_operator(self.capacity, self.geometry, operator)?;
         self.service.ensure_usable()?;
         if rows == 0
             || states.len() != 4
@@ -637,23 +679,138 @@ impl BuiltinCudaAttention {
     }
 }
 
-/// Phase-specific provider plan selected once during cold model preparation.
-/// The wrapper owns no KV/state authority; providers consume the exact retained
-/// state and service leases supplied by the enclosing resident program.
+#[cfg(feature = "cuda-flash-attn")]
+struct FlashCudaAttention {
+    service: Arc<ResidentService>,
+    capacity: usize,
+    geometry: crate::cuda::text_forward::Geometry,
+    softmax_lse: ResidentLease,
+}
+
+#[cfg(feature = "cuda-flash-attn")]
+impl FlashCudaAttention {
+    fn prepare(
+        service: Arc<ResidentService>,
+        init: &mut ResidentInitialization<'_>,
+        capacity: usize,
+        geometry: crate::cuda::text_forward::Geometry,
+    ) -> Result<Arc<Self>> {
+        init.require_service(&service)?;
+        service.ensure_usable()?;
+        service.pinned_cuda_queue()?;
+        let geometry = validate_geometry(capacity, geometry)?;
+        let lse_bytes = crate::cuda::text_forward::MAX_CAUSAL_ROWS
+            .checked_mul(geometry.query_heads)
+            .and_then(|elements| elements.checked_mul(4))
+            .ok_or_else(|| Error::Limit("FlashAttention LSE scratch bytes".into()))?;
+        let softmax_lse = init.allocate_empty(lse_bytes, BufferRole::Scratch)?;
+        Ok(Arc::new(Self {
+            service,
+            capacity,
+            geometry,
+            softmax_lse,
+        }))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn enqueue(
+        &self,
+        client: &cubecl::client::Client,
+        operator: &zerogravity_core::accelerator::program::SourceOperator,
+        query: &cubecl::server::Handle,
+        candidate_keys: &crate::resident_program::DeviceBuffer,
+        candidate_values: &crate::resident_program::DeviceBuffer,
+        output: &cubecl::server::Handle,
+        status: &ResidentLease,
+    ) -> Result<usize> {
+        let binding = bind_single_attention(
+            &self.service,
+            self.capacity,
+            self.geometry,
+            client,
+            operator,
+            query,
+            candidate_keys,
+            candidate_values,
+            output,
+            status,
+        )?;
+        if binding.rows > crate::cuda::text_forward::MAX_CAUSAL_ROWS {
+            return Err(Error::Limit(
+                "CUDA FlashAttention active rows exceed causal bound".into(),
+            ));
+        }
+
+        let lse_bytes = binding
+            .rows
+            .checked_mul(self.geometry.query_heads)
+            .and_then(|elements| elements.checked_mul(4))
+            .ok_or_else(|| Error::Limit("CUDA FlashAttention active LSE bytes".into()))?;
+        let softmax_lse = exact_view(
+            &self.softmax_lse,
+            0,
+            lse_bytes,
+            "FlashAttention softmax LSE",
+        )?;
+        let operation = cubecl::cuda::Bf16FlashAttention::new(
+            binding.rows,
+            binding.base,
+            self.capacity,
+            self.geometry.query_heads,
+            self.geometry.kv_heads,
+            SCALE,
+        )
+        .map_err(|error| Error::State(format!("CUDA FlashAttention geometry: {error:?}")))?;
+        let bindings = cubecl::cuda::Bf16FlashAttentionBindings {
+            query: query.clone(),
+            keys: binding.keys,
+            values: binding.values,
+            output: output.clone(),
+            softmax_lse,
+        };
+        // SAFETY: the resident submission owner retains query/K/V/output/LSE and
+        // the exact pinned CUDA service through completion or quarantine.
+        unsafe {
+            self.service
+                .pinned_cuda_queue()?
+                .enqueue_bf16_flash_attention(operation, bindings)
+        }
+        .map_err(|error| Error::State(format!("CUDA FlashAttention enqueue: {error:?}")))?;
+
+        // FA2 owns arithmetic only; retain ZeroGravity's non-finite status contract.
+        certify(client, output, &status.handle(), binding.query_elements)?;
+        Ok(2)
+    }
+}
+
+/// Phase-specific ordinary-attention provider plan selected once during cold
+/// model preparation. Cohort-specific physical leaves keep their own selection
+/// until a provider has a genuine cohort ABI. The wrapper owns no KV/state
+/// authority.
 pub(super) struct CudaForwardAttention {
     providers: crate::AttentionProviderPlan,
     builtin: Arc<BuiltinCudaAttention>,
+    #[cfg(feature = "cuda-flash-attn")]
+    flash: Arc<FlashCudaAttention>,
 }
 
 impl CudaForwardAttention {
     pub(super) fn prepare(
         service: Arc<ResidentService>,
+        _init: &mut ResidentInitialization<'_>,
         capacity: usize,
         geometry: crate::cuda::text_forward::Geometry,
         providers: crate::AttentionProviderPlan,
     ) -> Result<Arc<Self>> {
-        let builtin = BuiltinCudaAttention::prepare(service, capacity, geometry)?;
-        Ok(Arc::new(Self { providers, builtin }))
+        let builtin = BuiltinCudaAttention::prepare(service.clone(), capacity, geometry)?;
+        #[cfg(feature = "cuda-flash-attn")]
+        let flash = FlashCudaAttention::prepare(service, _init, capacity, geometry)?;
+        Ok(Arc::new(Self {
+            providers,
+            builtin,
+            #[cfg(feature = "cuda-flash-attn")]
+            flash,
+        }))
     }
 
     fn provider(
@@ -684,6 +841,16 @@ impl CudaForwardAttention {
                 output,
                 status,
             ),
+            #[cfg(feature = "cuda-flash-attn")]
+            crate::AttentionProvider::FlashAttentionFa2 => self.flash.enqueue(
+                client,
+                operator,
+                query,
+                candidate_keys,
+                candidate_values,
+                output,
+                status,
+            ),
         }
     }
 
@@ -701,11 +868,8 @@ impl CudaForwardAttention {
         output: &cubecl::server::Handle,
         status: &ResidentLease,
     ) -> Result<usize> {
-        match self.provider(operator.invocation().phase()) {
-            crate::AttentionProvider::Builtin => self
-                .builtin
-                .enqueue_cohort(client, operator, bases, query, states, output, status),
-        }
+        self.builtin
+            .enqueue_cohort(client, operator, bases, query, states, output, status)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -729,11 +893,8 @@ impl CudaForwardAttention {
                 "prefill attention cohort routed with non-prefill invocation".into(),
             ));
         }
-        match self.providers.prefill() {
-            crate::AttentionProvider::Builtin => self.builtin.enqueue_prefill_cohort4(
-                client, operator, rows, bases, query, states, output, status,
-            ),
-        }
+        self.builtin
+            .enqueue_prefill_cohort4(client, operator, rows, bases, query, states, output, status)
     }
 }
 

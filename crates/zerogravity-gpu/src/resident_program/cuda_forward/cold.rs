@@ -134,11 +134,16 @@ impl CudaForwardCold {
             layout.geometry().query_heads,
             layout.geometry().kv_heads,
         )?;
+        #[cfg(feature = "cuda-flash-attn")]
+        let attention_providers = crate::AttentionProviderPlan::flash_attention_fa2();
+        #[cfg(not(feature = "cuda-flash-attn"))]
+        let attention_providers = crate::AttentionProviderPlan::builtin();
         let attention = CudaForwardAttention::prepare(
             service.clone(),
+            init,
             layout.plan().prefix_capacity(),
             geometry,
-            crate::AttentionProviderPlan::builtin(),
+            attention_providers,
         )?;
 
         let mut gdn_internal = BTreeMap::new();
