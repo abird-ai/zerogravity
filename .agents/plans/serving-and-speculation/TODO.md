@@ -39,11 +39,21 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   new root authority. Physical0.8B C4/C8 stays exact/replay-stable/lane-invariant with
   zero refusals at13.297/13.351tok/s (+10.37%/+9.98% versus clean batch-1), using
   32,086/61,278 forward dispatches per wave.
-- [ ] Next HIP performance unit: batch the recurrent GDN decode state path. Keep the
-  singleton resident arena compact; prefer transient dense cohort state plus the
-  existing bounded state-transport semantics only if direct independent-row binding
-  would make the recurrent kernels convoluted. Preserve each lane's original roots
-  and publication, then remeasure only0.8B C4/C8. Keep C1 separate; no prefill/27B yet.
+- [x] Recurrent GDN direct-private-state cohort experiment: signed `11f692b` added
+  reusable row-aware recurrent kernels and a Qwen HIP selector without dense state
+  gather/scatter. On A1 gfx1150, the unchanged existing population benchmark (temporary
+  PCI identity adaptation only) stayed exact/replay-stable/lane-invariant with zero
+  refusals. Warm C4 baseline14,080.01ms vs candidate14,046.02ms (~0.24% better);
+  C8 baseline23,916.51ms vs candidate24,354.49ms (~1.83% worse). Dispatches fell
+  47,758→45,562 per C4 wave (~4.6%) and87,398→82,610 per C8 wave (~5.5%), proving
+  launch reduction alone was not an end-to-end win. Signed `7fcc9c4` removes only the
+  selector/load-time preparation and keeps the correct source-level cohort kernels plus
+  row-generalized B1 primitives dormant. Final public A1 B1 `run-rocm` still passes and
+  retires to the exact KFD baseline.
+- [ ] Next HIP performance unit: target the measured singleton C1 hot path. Do not add
+  another recurrent staging design merely because fewer launches looked attractive;
+  reconsider the retained recurrent primitives on X2/another shape only when measured
+  stage evidence justifies it. No prefill/27B detour yet.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.

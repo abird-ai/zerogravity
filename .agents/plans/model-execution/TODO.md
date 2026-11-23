@@ -25,9 +25,10 @@ repeat old benchmark/evidence administration.
 Immediate execution priorities are intentionally small:
 
 - fix CUDA fused identical-lane correctness before wider CUDA performance work;
-- implement clean model-neutral HIP native batching using existing scheduler/cohort/state
-  ownership rather than another per-model engine;
-- separately improve HIP singleton hot paths because C1 is already well behind vLLM;
+- keep accepted HIP batching on the existing scheduler/cohort/state ownership; the
+  direct recurrent-state cohort consumer lost its A/B on gfx1150 and is removed while
+  its reusable row-aware kernels remain dormant;
+- improve HIP singleton hot paths next because C1 is already well behind vLLM;
 - optimize L5 27B streamed source/transfer overlap as a distinct memory-constrained mode;
 - benchmark completed changes quickly against the canonical current baseline, with no
   speculative test matrix or duplicate paging/COW/streaming abstraction.

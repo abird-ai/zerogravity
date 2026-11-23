@@ -190,19 +190,24 @@ The current implementation priorities implied by that baseline are:
 
 1. fix the fused CUDA C4+ lane-invariance correctness bug before accepting wider CUDA
    performance comparisons;
-2. HIP decode cohorts now also batch the 18 GDN layers' Conv4 private-state update
-   directly over each lane's original state buffers;0.8B C4/C8 remains exact at
-   13.297/13.351tok/s with32,086/61,278 forward dispatches. Target recurrent GDN's
-   much larger state-wide decode path next, keeping singleton residency compact;
-3. optimize HIP singleton execution as a separate hot path, because C1 is already
-   materially behind vLLM on all three model sizes;
+2. HIP decode cohorts batch projections, row-wise work and the18 GDN Conv4 updates.
+   A direct private-state recurrent cohort candidate (`11f692b`) stayed exact and cut
+   A1 C4/C8 dispatches by ~4.6%/~5.5%, but warm wall time was only ~0.24% better at
+   C4 and ~1.83% worse at C8. The selector/load-time preparation was therefore removed
+   in signed `7fcc9c4`; the clean row-aware recurrent kernels remain dormant reusable
+   primitives for other devices/models/shapes. Do not promote that consumer from launch
+   count alone;
+3. optimize HIP singleton execution next, because C1 is already materially behind
+   vLLM on all three model sizes. Revisit recurrent cohort selection only with a new
+   measured physical reason or on a device where the retained primitive wins;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
    47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
    streaming mechanics are the relevant optimization target there.
 
 The matched vLLM provider is Nix-native for both CUDA and ROCm. Podman/FUSE is not part
-of the current baseline architecture. A1 remains offline/out of scope until explicitly
-re-enabled.
+of the current baseline architecture. A1 is explicitly available for execution/testing;
+its gfx1150 HIP path is useful for quick physical A/Bs, while X2 remains the canonical
+large-VRAM ROCm baseline host once its current runtime closure is usable.
 
 ### Error architecture — 21 Nov 2026
 
