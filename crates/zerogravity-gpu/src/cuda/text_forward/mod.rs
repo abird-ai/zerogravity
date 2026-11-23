@@ -266,6 +266,7 @@ pub enum BufferRole {
     /// Projection output rows: gate[intermediate], up[intermediate].
     PackedGateUp,
     InverseFrequency,
+    RotaryTables,
     TokenIds,
     EmbeddingTable,
     Input,
@@ -416,6 +417,7 @@ pub(crate) enum Primitive {
     QueryHeadRms,
     KeyHeadRms,
     QueryKeyHeadRms,
+    QueryKeyHeadRmsRotary,
     /// Diagnostic online-FP32 arithmetic; not Qwen numerical authority and
     /// never selected by [`Program::definitions`].
     UnqualifiedOnlineFp32Attention,
@@ -441,6 +443,7 @@ impl Primitive {
             Self::QueryHeadRms => "zg_ot_query_head_rms_v1",
             Self::KeyHeadRms => "zg_ot_key_head_rms_v1",
             Self::QueryKeyHeadRms => "zg_ot_query_key_head_rms_v1",
+            Self::QueryKeyHeadRmsRotary => "zg_ot_query_key_head_rms_rotary_v1",
             Self::UnqualifiedOnlineFp32Attention => "zg_ot_unqualified_online_fp32_attention_v1",
             Self::Greedy => "zg_ot_greedy_v1",
         }
@@ -717,6 +720,11 @@ impl Definition {
             Primitive::QueryKeyHeadRms => {
                 return Err(Error::Unsupported(
                     "private dual Q/K head RMS has no selectable contract".into(),
+                ));
+            }
+            Primitive::QueryKeyHeadRmsRotary => {
+                return Err(Error::Unsupported(
+                    "private fused Q/K RMS rotary has no selectable contract".into(),
                 ));
             }
             Primitive::Greedy => PrimitiveKind::Greedy,
@@ -1608,6 +1616,130 @@ impl Program {
                         .ok_or_else(|| Error::Limit("forward text dual head RMS grid".into()))?,
                 )
                 .map_err(|_| Error::Limit("forward text dual head RMS grid".into()))?,
+                1,
+                1,
+            ],
+        )
+    }
+
+    /// Exact physical fusion of dual head RMS and source rotary for one
+    /// contiguous causal span. This is a backend implementation detail; the
+    /// semantic model operator remains QkRmsRotaryGated.
+    pub(crate) fn query_key_head_rms_rotary_stateless(
+        &self,
+        rows: StatelessRowExtent,
+        base: usize,
+        epsilon: f32,
+    ) -> Result<Definition> {
+        if !epsilon.is_finite()
+            || epsilon <= 0.0
+            || base.checked_add(rows.active()).is_none()
+            || u32::try_from(base).is_err()
+        {
+            return Err(Error::Unsupported(
+                "forward text fused QK RMS rotary geometry".into(),
+            ));
+        }
+        let query_bytes = extent(
+            rows.bound(),
+            self.geometry.query_width()?,
+            BF16_BYTES,
+            "fused QK rotary query",
+        )?;
+        let key_bytes = extent(
+            rows.bound(),
+            self.geometry.kv_width()?,
+            BF16_BYTES,
+            "fused QK rotary key",
+        )?;
+        let packed = self.packed_attention_bytes(rows.bound())?;
+        let gamma = self.geometry.head_width * BF16_BYTES;
+        let query_offset = 0usize;
+        let key_offset = checked_mul(
+            2,
+            self.geometry.query_width()?,
+            "packed attention fused key offset",
+        )?;
+        let query_head_stride =
+            checked_mul(2, self.geometry.head_width, "fused query/gate head stride")?;
+        let key_head_stride = self.geometry.head_width;
+        let input_stride = self.attention_row_stride()?;
+        require_strided_view(
+            rows.active(),
+            input_stride,
+            self.geometry.query_heads,
+            query_head_stride,
+            query_offset,
+            self.geometry.head_width,
+            packed / BF16_BYTES,
+            "packed attention fused query",
+        )?;
+        require_strided_view(
+            rows.active(),
+            input_stride,
+            self.geometry.kv_heads,
+            key_head_stride,
+            key_offset,
+            self.geometry.head_width,
+            packed / BF16_BYTES,
+            "packed attention fused key",
+        )?;
+        let tables_bytes = crate::source_trig::TRIG_TABLES.len() * core::mem::size_of::<f64>();
+        self.definition(
+            Primitive::QueryKeyHeadRmsRotary,
+            vec![
+                binding(BufferRole::PackedAttention, packed, Access::Read),
+                binding(BufferRole::QueryRawGamma, gamma, Access::Read),
+                binding(BufferRole::KeyRawGamma, gamma, Access::Read),
+                binding(BufferRole::InverseFrequency, 32 * 4, Access::Read),
+                BufferBinding {
+                    role: BufferRole::RotaryTables,
+                    bytes: tables_bytes,
+                    alignment: 8,
+                    access: Access::Read,
+                },
+                binding(BufferRole::QueryNormalized, query_bytes, Access::Write),
+                binding(BufferRole::KeyNormalized, key_bytes, Access::Write),
+                status(),
+            ],
+            words(&[
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(rows.active() as u64),
+                ),
+                (StaticScalarType::U32, StaticScalarValue::U32(base as u64)),
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(query_offset as u64),
+                ),
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(key_offset as u64),
+                ),
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(input_stride as u64),
+                ),
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(query_head_stride as u64),
+                ),
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(key_head_stride as u64),
+                ),
+                (
+                    StaticScalarType::F32Bits,
+                    StaticScalarValue::F32Bits(epsilon.to_bits()),
+                ),
+            ])?,
+            [
+                u32::try_from(
+                    rows.active()
+                        .checked_mul(self.geometry.query_heads + self.geometry.kv_heads)
+                        .ok_or_else(|| Error::Limit("forward fused QK rotary grid".into()))?,
+                )
+                .map_err(|_| Error::Limit("forward fused QK rotary grid".into()))?,
                 1,
                 1,
             ],

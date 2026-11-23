@@ -903,90 +903,160 @@ impl CudaForwardBody {
                     workspace_row,
                     row_extent,
                 )?;
-                // Rotary consumes exact active extents; only the forward-text
-                // RMS kernels use capacity-sized cohort ABI views.
-                let query_handle =
-                    self.value_handle_in(values, request, *query, outputs[0], workspace_row)?;
-                let key_handle =
-                    self.value_handle_in(values, request, *key, outputs[1], workspace_row)?;
-                self.enqueue_primitive(
-                    self.cold()
-                        .program()
-                        .query_head_rms_bounded(row_extent, geometry.epsilon)?,
-                    vec![
-                        LaunchBinding::new(
-                            ForwardRole::PackedAttention,
-                            Access::Read,
-                            packed_bounded.clone(),
-                        ),
-                        LaunchBinding::new(
-                            ForwardRole::QueryRawGamma,
-                            Access::Read,
-                            query_gamma.lease().handle(),
-                        ),
-                        LaunchBinding::new(
-                            ForwardRole::QueryNormalized,
-                            Access::Write,
-                            query_bounded,
-                        ),
-                    ],
-                )?;
-                self.enqueue_primitive(
-                    self.cold()
-                        .program()
-                        .key_head_rms_bounded(row_extent, geometry.epsilon)?,
-                    vec![
-                        LaunchBinding::new(
-                            ForwardRole::PackedAttention,
-                            Access::Read,
-                            packed_bounded,
-                        ),
-                        LaunchBinding::new(
-                            ForwardRole::KeyRawGamma,
-                            Access::Read,
-                            key_gamma.lease().handle(),
-                        ),
-                        LaunchBinding::new(ForwardRole::KeyNormalized, Access::Write, key_bounded),
-                    ],
-                )?;
-                let rotary_launches = if let Some(positions) = row_positions {
-                    if workspace_row != 0 || positions.len() != step.rows {
-                        return Err(Error::State(
-                            "CUDA forward explicit rotary position coverage".into(),
-                        ));
-                    }
-                    let query_elements = outputs[0]
-                        .checked_div(step.rows)
-                        .ok_or_else(|| Error::State("CUDA forward query row extent".into()))?;
-                    let key_elements = outputs[1]
-                        .checked_div(step.rows)
-                        .ok_or_else(|| Error::State("CUDA forward key row extent".into()))?;
-                    let mut launches = 0;
-                    for (row, &position) in positions.iter().enumerate() {
-                        launches += self.cold().rotary().enqueue(
-                            &self.value_handle_in(values, request, *query, query_elements, row)?,
-                            &self.value_handle_in(values, request, *key, key_elements, row)?,
+
+                let fused_prefill = false
+                    && row_positions.is_none()
+                    && matches!(
+                        descriptor.invocation().phase(),
+                        zerogravity_core::accelerator::program::InvocationPhase::Prefill
+                    );
+                let launches = if fused_prefill {
+                    self.enqueue_primitive(
+                        self.cold().program().query_key_head_rms_rotary_stateless(
+                            row_extent.into(),
+                            step.base,
+                            geometry.epsilon,
+                        )?,
+                        vec![
+                            LaunchBinding::new(
+                                ForwardRole::PackedAttention,
+                                Access::Read,
+                                packed_bounded,
+                            ),
+                            LaunchBinding::new(
+                                ForwardRole::QueryRawGamma,
+                                Access::Read,
+                                query_gamma.lease().handle(),
+                            ),
+                            LaunchBinding::new(
+                                ForwardRole::KeyRawGamma,
+                                Access::Read,
+                                key_gamma.lease().handle(),
+                            ),
+                            LaunchBinding::new(
+                                ForwardRole::InverseFrequency,
+                                Access::Read,
+                                self.cold().inverse_frequency().handle(),
+                            ),
+                            LaunchBinding::new(
+                                ForwardRole::RotaryTables,
+                                Access::Read,
+                                self.cold().rotary().tables().handle(),
+                            ),
+                            LaunchBinding::new(
+                                ForwardRole::QueryNormalized,
+                                Access::Write,
+                                query_bounded,
+                            ),
+                            LaunchBinding::new(
+                                ForwardRole::KeyNormalized,
+                                Access::Write,
+                                key_bounded,
+                            ),
+                        ],
+                    )?;
+                    1
+                } else {
+                    self.enqueue_primitive(
+                        self.cold()
+                            .program()
+                            .query_head_rms_bounded(row_extent, geometry.epsilon)?,
+                        vec![
+                            LaunchBinding::new(
+                                ForwardRole::PackedAttention,
+                                Access::Read,
+                                packed_bounded.clone(),
+                            ),
+                            LaunchBinding::new(
+                                ForwardRole::QueryRawGamma,
+                                Access::Read,
+                                query_gamma.lease().handle(),
+                            ),
+                            LaunchBinding::new(
+                                ForwardRole::QueryNormalized,
+                                Access::Write,
+                                query_bounded,
+                            ),
+                        ],
+                    )?;
+                    self.enqueue_primitive(
+                        self.cold()
+                            .program()
+                            .key_head_rms_bounded(row_extent, geometry.epsilon)?,
+                        vec![
+                            LaunchBinding::new(
+                                ForwardRole::PackedAttention,
+                                Access::Read,
+                                packed_bounded,
+                            ),
+                            LaunchBinding::new(
+                                ForwardRole::KeyRawGamma,
+                                Access::Read,
+                                key_gamma.lease().handle(),
+                            ),
+                            LaunchBinding::new(
+                                ForwardRole::KeyNormalized,
+                                Access::Write,
+                                key_bounded,
+                            ),
+                        ],
+                    )?;
+                    let rotary_launches = if let Some(positions) = row_positions {
+                        if workspace_row != 0 || positions.len() != step.rows {
+                            return Err(Error::State(
+                                "CUDA forward explicit rotary position coverage".into(),
+                            ));
+                        }
+                        let query_elements = outputs[0]
+                            .checked_div(step.rows)
+                            .ok_or_else(|| Error::State("CUDA forward query row extent".into()))?;
+                        let key_elements = outputs[1]
+                            .checked_div(step.rows)
+                            .ok_or_else(|| Error::State("CUDA forward key row extent".into()))?;
+                        let mut launches = 0;
+                        for (row, &position) in positions.iter().enumerate() {
+                            launches += self.cold().rotary().enqueue(
+                                &self.value_handle_in(
+                                    values,
+                                    request,
+                                    *query,
+                                    query_elements,
+                                    row,
+                                )?,
+                                &self.value_handle_in(values, request, *key, key_elements, row)?,
+                                self.cold().inverse_frequency(),
+                                self.cold().status(),
+                                position,
+                                1,
+                            )?;
+                        }
+                        launches
+                    } else {
+                        let query_handle = self.value_handle_in(
+                            values,
+                            request,
+                            *query,
+                            outputs[0],
+                            workspace_row,
+                        )?;
+                        let key_handle =
+                            self.value_handle_in(values, request, *key, outputs[1], workspace_row)?;
+                        self.cold().rotary().enqueue(
+                            &query_handle,
+                            &key_handle,
                             self.cold().inverse_frequency(),
                             self.cold().status(),
-                            position,
-                            1,
-                        )?;
-                    }
-                    launches
-                } else {
-                    self.cold().rotary().enqueue(
-                        &query_handle,
-                        &key_handle,
-                        self.cold().inverse_frequency(),
-                        self.cold().status(),
-                        step.base,
-                        step.rows,
-                    )?
+                            step.base,
+                            step.rows,
+                        )?
+                    };
+                    2 + rotary_launches
                 };
+
                 if gate_alias.insert(gate.0, packed.0).is_some() {
                     return Err(Error::State("CUDA forward QK gate alias duplicated".into()));
                 }
-                Ok((2 + rotary_launches, 0))
+                Ok((launches, 0))
             }
             KvAppend { domain, .. } => {
                 let ([key, packed], []) = (node.inputs.as_slice(), node.outputs.as_slice()) else {

@@ -14,12 +14,14 @@ struct alignas(8) ZgWords3 { unsigned long long words[3]; };
 struct alignas(8) ZgWords4 { unsigned long long words[4]; };
 struct alignas(8) ZgWords5 { unsigned long long words[5]; };
 struct alignas(8) ZgWords7 { unsigned long long words[7]; };
+struct alignas(8) ZgWords8 { unsigned long long words[8]; };
 static_assert(sizeof(ZgWords1) == 8 && alignof(ZgWords1) == 8, "words1 ABI");
 static_assert(sizeof(ZgWords2) == 16 && alignof(ZgWords2) == 8, "words2 ABI");
 static_assert(sizeof(ZgWords3) == 24 && alignof(ZgWords3) == 8, "words3 ABI");
 static_assert(sizeof(ZgWords4) == 32 && alignof(ZgWords4) == 8, "words4 ABI");
 static_assert(sizeof(ZgWords5) == 40 && alignof(ZgWords5) == 8, "words5 ABI");
 static_assert(sizeof(ZgWords7) == 56 && alignof(ZgWords7) == 8, "words7 ABI");
+static_assert(sizeof(ZgWords8) == 64 && alignof(ZgWords8) == 8, "words8 ABI");
 
 static __device__ __forceinline__ unsigned zg_u32(unsigned long long word) {
     return (unsigned)word;
@@ -418,6 +420,192 @@ void zg_ot_query_key_head_rms_v1(
     if (!isfinite(x) || !isfinite(g) || !isfinite(mean) ||
         !isfinite(inverse) || inverse == 0.0f || !isfinite(y))
         zg_bad(status, 2u);
+}
+
+// Source-exact helpers adapted from the shared Arm optimized-routines profile
+// in ../../source_trig.rs. Copyright (c) 2018-2024, Arm Limited. SPDX-License-Identifier: MIT.
+// Full permission notice: ../../LICENSE-ARM-MATH.
+static __device__ __forceinline__ double zg_source_widen(float x) {
+    const unsigned bits = __float_as_uint(x);
+    double result = (double)x;
+    if ((bits & 0x7f800000u) == 0u) {
+        result = (double)(bits & 0x007fffffu) * 1.401298464324817e-45;
+        if ((bits & 0x80000000u) != 0u) result = -result;
+    }
+    return result;
+}
+
+static __device__ __forceinline__ float zg_source_round(double x, unsigned sign) {
+    float result = (float)x;
+    if (fabs(x) < 1.1754943508222875e-38) {
+        const double scaled = fabs(x) * 7.1362384635298e44;
+        unsigned bits = (unsigned)scaled;
+        const double remainder = scaled - (double)bits;
+        if (remainder > 0.5 || (remainder == 0.5 && (bits & 1u) != 0u)) ++bits;
+        unsigned packed_sign = sign;
+        if (x != 0.0) packed_sign = x < 0.0 ? 0x80000000u : 0u;
+        result = __uint_as_float(bits | packed_sign);
+    }
+    return result;
+}
+
+static __device__ __forceinline__ float zg_source_mul(float a, float b) {
+    return zg_source_round(
+        zg_source_widen(a) * zg_source_widen(b),
+        (__float_as_uint(a) ^ __float_as_uint(b)) & 0x80000000u);
+}
+
+static __device__ __forceinline__ float zg_source_neg(float x) {
+    return __uint_as_float(__float_as_uint(x) ^ 0x80000000u);
+}
+
+static __device__ __forceinline__ void zg_source_sincos(
+    float y, const double* tables, float* sine, float* cosine) {
+    const unsigned top = (__float_as_uint(y) >> 20u) & 0x7ffu;
+    float sin_value = y;
+    float cos_value = 1.0f;
+    if (top >= 0x398u) {
+        double x = zg_source_widen(y);
+        int n = 0;
+        int original_sign = 0;
+        if (top >= 0x3f4u) {
+            if (top < 0x42fu) {
+                n = ((int)(x * tables[0]) + 0x800000) >> 24;
+                x = fma(-(double)n, tables[1], x);
+            } else {
+                const unsigned bits = __float_as_uint(y);
+                const unsigned j = (bits >> 26u) & 15u;
+                const unsigned xi =
+                    ((bits & 0xffffffu) | 0x800000u) << ((bits >> 23u) & 7u);
+                const unsigned long long r0 =
+                    (unsigned long long)xi * (unsigned long long)tables[11 + j];
+                const unsigned long long r1 =
+                    (unsigned long long)xi * (unsigned long long)tables[15 + j];
+                const unsigned long long r2 =
+                    (unsigned long long)xi * (unsigned long long)tables[19 + j];
+                const unsigned long long r =
+                    ((r2 >> 32u) | (r0 << 32u)) + r1;
+                const unsigned long long q = (r + (1ull << 61u)) >> 62u;
+                const unsigned long long remainder = r - (q << 62u);
+                n = (int)q;
+                x = (double)(long long)remainder * tables[10];
+                original_sign = (int)(bits >> 31u);
+            }
+        }
+        const int quadrant = n + original_sign;
+        double xs = x;
+        if ((quadrant & 3) == 1 || (quadrant & 3) == 2) xs = -x;
+        const double csign = (quadrant & 2) != 0 ? -1.0 : 1.0;
+        const double x2 = x * x;
+        const double x3 = x2 * xs;
+        const double x4 = x2 * x2;
+        const double x5 = x3 * x2;
+        const double x6 = x4 * x2;
+        const double s = fma(
+            x5, fma(tables[9], x2, tables[8]),
+            fma(x3, tables[7], xs));
+        const double c = fma(
+            x6,
+            fma(tables[6] * csign, x2, tables[5] * csign),
+            fma(x4, tables[4] * csign,
+                fma(x2, tables[3] * csign, tables[2] * csign)));
+        const unsigned ssign = s < 0.0 ? 0x80000000u : 0u;
+        const unsigned csign_bits = c < 0.0 ? 0x80000000u : 0u;
+        if ((n & 1) != 0) {
+            sin_value = zg_source_round(c, csign_bits);
+            cos_value = zg_source_round(s, ssign);
+        } else {
+            sin_value = zg_source_round(s, ssign);
+            cos_value = zg_source_round(c, csign_bits);
+        }
+    }
+    *sine = sin_value;
+    *cosine = cos_value;
+}
+
+// Physical fusion of exact query/key head RMS and source-exact rotary.
+// The RMS result is first rounded to BF16 exactly as zg_ot_query_key_head_rms_v1;
+// rotary then reloads those BF16 bits before applying the source FP32-FMA profile.
+// words = [rows, base_position, q_offset, k_offset, input_row_stride,
+//          q_head_stride, k_head_stride, epsilon_f32_bits].
+extern "C" __global__ __launch_bounds__(ZG_THREADS)
+void zg_ot_query_key_head_rms_rotary_v1(
+    void* input_raw, void* query_gamma_raw, void* key_gamma_raw,
+    void* inverse_raw, void* trig_tables_raw,
+    void* query_output_raw, void* key_output_raw,
+    void* status_raw, ZgWords8 scalars) {
+    const __nv_bfloat16* input = (const __nv_bfloat16*)input_raw;
+    const __nv_bfloat16* query_gamma = (const __nv_bfloat16*)query_gamma_raw;
+    const __nv_bfloat16* key_gamma = (const __nv_bfloat16*)key_gamma_raw;
+    const float* inverse_frequency = (const float*)inverse_raw;
+    const double* trig_tables = (const double*)trig_tables_raw;
+    __nv_bfloat16* query_output = (__nv_bfloat16*)query_output_raw;
+    __nv_bfloat16* key_output = (__nv_bfloat16*)key_output_raw;
+    unsigned* status = (unsigned*)status_raw;
+    __shared__ float reduction[ZG_THREADS];
+
+    const unsigned rows = zg_u32(scalars.words[0]);
+    const unsigned base_position = zg_u32(scalars.words[1]);
+    const unsigned query_groups = rows * ZG_QUERY_HEADS;
+    const unsigned key_groups = rows * ZG_KV_HEADS;
+    const unsigned group = blockIdx.x;
+    if (group >= query_groups + key_groups) return;
+
+    const bool is_query = group < query_groups;
+    const unsigned local_group = is_query ? group : group - query_groups;
+    const unsigned heads = is_query ? ZG_QUERY_HEADS : ZG_KV_HEADS;
+    const unsigned row = local_group / heads;
+    const unsigned head = local_group % heads;
+    const unsigned input_offset = zg_u32(scalars.words[is_query ? 2 : 3]);
+    const unsigned input_stride = zg_u32(scalars.words[4]);
+    const unsigned input_head_stride = zg_u32(scalars.words[is_query ? 5 : 6]);
+    const size_t input_base =
+        (size_t)row * input_stride + input_offset +
+        (size_t)head * input_head_stride;
+
+    const float sum = zg_head_square_sum(input + input_base, status, reduction);
+    const float mean = __fmaf_rn(
+        sum, 1.0f / (float)ZG_HEAD_DIM, zg_f32(scalars.words[7]));
+    const float inverse = rsqrtf(mean);
+    const unsigned lane = threadIdx.x;
+    const float x = zg_load(input + input_base + lane);
+    const __nv_bfloat16* gamma = is_query ? query_gamma : key_gamma;
+    __nv_bfloat16* output = is_query ? query_output : key_output;
+    const float g = zg_load(gamma + lane);
+    const float normalized =
+        __fmul_rn(__fmul_rn(x, inverse), __fadd_rn(1.0f, g));
+    const size_t output_base = (size_t)local_group * ZG_HEAD_DIM;
+    output[output_base + lane] = zg_store(normalized);
+    if (!isfinite(x) || !isfinite(g) || !isfinite(mean) ||
+        !isfinite(inverse) || inverse == 0.0f || !isfinite(normalized))
+        zg_bad(status, 2u);
+
+    // Rotary must observe the rounded BF16 RMS result written above.
+    __syncthreads();
+    if (lane < ZG_ROTARY_WIDTH / 2u) {
+        const unsigned second_lane = lane + ZG_ROTARY_WIDTH / 2u;
+        const float a = zg_load(output + output_base + lane);
+        const float b = zg_load(output + output_base + second_lane);
+        const unsigned position = base_position + row;
+        const float angle =
+            zg_source_mul(inverse_frequency[lane], (float)position);
+        float sine, cosine;
+        zg_source_sincos(angle, trig_tables, &sine, &cosine);
+        const __nv_bfloat16 sine_bf16 = zg_store(sine);
+        const __nv_bfloat16 cosine_bf16 = zg_store(cosine);
+        const float rounded_sine = __bfloat162float(sine_bf16);
+        const float rounded_cosine = __bfloat162float(cosine_bf16);
+        const float bs = zg_source_mul(b, rounded_sine);
+        const float as = zg_source_mul(a, rounded_sine);
+        const float rotated_a =
+            __fmaf_rn(a, rounded_cosine, zg_source_neg(bs));
+        const float rotated_b =
+            __fmaf_rn(b, rounded_cosine, as);
+        output[output_base + lane] = zg_store(rotated_a);
+        output[output_base + second_lane] = zg_store(rotated_b);
+        if (!isfinite(rotated_a) || !isfinite(rotated_b))
+            zg_bad(status, 2u);
+    }
 }
 
 // Packed GateUp words = [rows, gate_offset, up_offset, row_stride] in elements.

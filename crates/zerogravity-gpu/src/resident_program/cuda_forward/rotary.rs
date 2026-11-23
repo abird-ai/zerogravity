@@ -83,6 +83,10 @@ impl CudaForwardRotary {
         Ok(owner)
     }
 
+    pub(super) fn tables(&self) -> &ResidentLease {
+        &self.tables
+    }
+
     pub(super) fn accesses(&self) -> Vec<(ResidentLease, DeviceAccess)> {
         vec![
             (self.query.clone(), DeviceAccess::Write),
