@@ -178,12 +178,6 @@ impl Cold {
                     .ok_or_else(|| Error::Limit("decode cohort dispatch count".into()))?;
                 continue;
             }
-            if matches!(first.kind(), SourceOperatorKind::GatedDelta { .. }) {
-                dispatches = dispatches
-                    .checked_add(self.gated_delta_decode_cohort(node, first, &maps, width)?)
-                    .ok_or_else(|| Error::Limit("decode cohort dispatch count".into()))?;
-                continue;
-            }
             if matches!(
                 first.kind(),
                 SourceOperatorKind::Rms(_)
@@ -438,89 +432,6 @@ impl Cold {
             );
         }
         Ok(1)
-    }
-
-    fn gated_delta_decode_cohort(
-        &self,
-        node: &PlanNode,
-        descriptor: &SourceOperator,
-        states: &[BTreeMap<StateSlot, &StateBinding>],
-        width: usize,
-    ) -> Result<usize> {
-        let SourceOperatorKind::GatedDelta { domain, geometry } = descriptor.kind() else {
-            unreachable!("validated recurrent GDN")
-        };
-        let input_lengths = descriptor.input_elements()?;
-        let output_lengths = descriptor.output_elements()?;
-        let [activated_elements, gate_elements, ba_elements] = input_lengths.as_slice() else {
-            return Err(Error::State("decode cohort recurrent input arity".into()));
-        };
-        let [output_elements] = output_lengths.as_slice() else {
-            return Err(Error::State("decode cohort recurrent output arity".into()));
-        };
-        let recurrent_width = geometry.value_heads * 128;
-        let channels = (2 * geometry.key_heads + geometry.value_heads) * 128;
-        if node.inputs.len() != 3
-            || node.outputs.len() != 1
-            || *activated_elements != channels
-            || *gate_elements != recurrent_width
-            || *ba_elements != geometry.value_heads * 2
-            || *output_elements != recurrent_width
-        {
-            return Err(Error::State(
-                "decode cohort recurrent one-row geometry".into(),
-            ));
-        }
-        let activated = self.value(
-            node.inputs[0],
-            activated_elements
-                .checked_mul(width)
-                .ok_or_else(|| Error::Limit("decode cohort recurrent activated".into()))?,
-        )?;
-        let gate = self.value(
-            node.inputs[1],
-            gate_elements
-                .checked_mul(width)
-                .ok_or_else(|| Error::Limit("decode cohort recurrent gate".into()))?,
-        )?;
-        let ba = self.value(
-            node.inputs[2],
-            ba_elements
-                .checked_mul(width)
-                .ok_or_else(|| Error::Limit("decode cohort recurrent coefficients".into()))?,
-        )?;
-        let output = self.value(
-            node.outputs[0],
-            output_elements
-                .checked_mul(width)
-                .ok_or_else(|| Error::Limit("decode cohort recurrent output".into()))?,
-        )?;
-        let mut prior = Vec::with_capacity(width);
-        let mut candidate = Vec::with_capacity(width);
-        for map in states {
-            let binding = map
-                .get(&StateSlot::Recurrent(domain))
-                .copied()
-                .ok_or_else(|| Error::State("decode cohort recurrent state absent".into()))?;
-            let p = binding.prior.handles();
-            let n = binding.candidate.handles();
-            if p.len() != 1 || n.len() != 1 {
-                return Err(Error::State("decode cohort recurrent vector state".into()));
-            }
-            prior.push(p[0].clone());
-            candidate.push(n[0].clone());
-        }
-        self.gdn_decode_cohort(
-            &activated,
-            &gate,
-            &ba,
-            &prior,
-            &candidate,
-            &output,
-            descriptor.parameters(),
-            geometry,
-            width,
-        )
     }
 
     async fn projection_decode_cohort(
