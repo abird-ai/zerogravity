@@ -222,9 +222,12 @@ pub(super) fn prepare(phase: GdnPhase, slot: GdnCacheSlot, stage: GdnStage) -> R
 }
 
 pub(super) fn prepare_batch_conv(rows: usize) -> Result<Definition> {
+    if rows == 1 {
+        return prepare(GdnPhase::CachedDecode, GdnCacheSlot::One, GdnStage::Conv);
+    }
     if rows != 4 {
         return Err(Error::Unsupported(
-            "parameterized cached GDN conv batch requires four rows".into(),
+            "parameterized cached GDN conv direct path requires one or four rows".into(),
         ));
     }
     let schema = StaticScalarSchema::new(
