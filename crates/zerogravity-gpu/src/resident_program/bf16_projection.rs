@@ -301,19 +301,8 @@ impl PreparedBf16Projection {
         ];
         for (i, lease) in all.iter().enumerate() {
             let range = BufferRange::new(&lease.handle())?;
-            for (j, peer) in all[..i].iter().enumerate() {
-                // Resident projection packs the complete logical input before
-                // any output-row launch. The ordered queue therefore permits
-                // the exact input/output lease to be reused after that pack;
-                // every other physical overlap remains forbidden.
-                let packed_input_output_alias = self.storage == Bf16ProjectionStorage::Resident
-                    && i == 2
-                    && j == 1
-                    && lease.id() == peer.id();
-                if !packed_input_output_alias
-                    && (lease.id() == peer.id()
-                        || range.overlaps(&BufferRange::new(&peer.handle())?))
-                {
+            for peer in &all[..i] {
+                if lease.id() == peer.id() || range.overlaps(&BufferRange::new(&peer.handle())?) {
                     return Err(Error::State(
                         "BF16 original projection buffers alias".into(),
                     ));
