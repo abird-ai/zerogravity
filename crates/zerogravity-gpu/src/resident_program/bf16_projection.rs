@@ -223,6 +223,33 @@ impl PreparedBf16Projection {
         input_rows: usize,
         flag: Option<&AtomicBool>,
     ) -> Result<usize> {
+        self.enqueue_rows_with_status(flight, page, b, input_rows, flag, false)
+            .await
+    }
+
+    /// Retained alternate for devices/models where one status reduction after all
+    /// singleton weight tiles wins. Current Qwen HIP keeps the per-tile contract.
+    #[allow(dead_code)]
+    pub(crate) async fn enqueue_rows_coalesced_status(
+        &self,
+        flight: &mut Flight<'_>,
+        page: &Arc<source_page::ResidentSourcePage>,
+        b: Bf16ProjectionBindings<'_>,
+        flag: Option<&AtomicBool>,
+    ) -> Result<usize> {
+        self.enqueue_rows_with_status(flight, page, b, 1, flag, true)
+            .await
+    }
+
+    async fn enqueue_rows_with_status(
+        &self,
+        flight: &mut Flight<'_>,
+        page: &Arc<source_page::ResidentSourcePage>,
+        b: Bf16ProjectionBindings<'_>,
+        input_rows: usize,
+        flag: Option<&AtomicBool>,
+        coalesce_singleton_status: bool,
+    ) -> Result<usize> {
         let (input_elements, output_elements) =
             row_extents(input_rows, self.matrix.columns(), self.matrix.rows())?;
         cancelled(flag)?;
@@ -320,7 +347,7 @@ impl PreparedBf16Projection {
                 arg(&b.status.handle(), 1),
             );
         }
-        let singleton = input_rows == 1;
+        let singleton = coalesce_singleton_status;
         if singleton {
             view(b.flags, 0, output_elements * 4)?;
         }
