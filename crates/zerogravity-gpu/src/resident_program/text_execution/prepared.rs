@@ -209,6 +209,7 @@ pub(super) fn kernels(
                     b(),
                     b(),
                     b(),
+                    (),
                     kh,
                     vh,
                     true
@@ -243,6 +244,7 @@ pub(super) fn kernels(
                     b(),
                     b(),
                     b(),
+                    (),
                     kh,
                     values
                 );
@@ -260,6 +262,93 @@ pub(super) fn kernels(
                     state,
                     false
                 );
+                let bf16 = d.parameters()[2].kind
+                    == zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                        zerogravity_core::encoding::ScalarDType::Bf16,
+                    );
+                for rows in [2usize, 4, 8] {
+                    add!(
+                        crate::source_standalone_exp::normal_vector::NormalVector,
+                        32,
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        rows * vh
+                    );
+                    add!(
+                        crate::source_gdn::recurrent::key_reduce_decayed_cohort::KeyReduceDecayedCohort,
+                        32,
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        rows,
+                        values
+                    );
+                    add!(
+                        crate::source_gdn::recurrent::state_update_decayed_cohort::StateUpdateDecayedCohort,
+                        32,
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        rows,
+                        state
+                    );
+                    add!(
+                        crate::source_gdn::recurrent::key_reduce_private_cohort::KeyReducePrivateCohort,
+                        32,
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        rows,
+                        values,
+                        true
+                    );
+                    add!(
+                        crate::source_activation::gated::Gated,
+                        32,
+                        b(),
+                        b(),
+                        b(),
+                        b(),
+                        rows * values,
+                        bf16
+                    );
+                }
                 out.extend(crate::source_gdn::chunk::prepared::kernels(client, vh)?);
                 out.extend(crate::source_rms::prepared::kernels(
                     client,
@@ -267,10 +356,6 @@ pub(super) fn kernels(
                     vh,
                     crate::source_rms::Gamma::DirectF32AfterBf16,
                 )?);
-                let bf16 = d.parameters()[2].kind
-                    == zerogravity_core::encoding::StoredTensorEncoding::Scalar(
-                        zerogravity_core::encoding::ScalarDType::Bf16,
-                    );
                 add!(
                     crate::source_activation::gated::Gated,
                     32,

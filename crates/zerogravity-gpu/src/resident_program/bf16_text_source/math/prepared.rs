@@ -116,6 +116,7 @@ fn add_gdn_normalize_qk(b: &mut Builder, kh: usize, vh: usize, cached: bool) -> 
         buffer(),
         buffer(),
         buffer(),
+        (),
         kh,
         vh,
         cached,
@@ -173,6 +174,7 @@ fn add_gdn_delta(b: &mut Builder, kh: usize, values: usize) -> Result<()> {
         buffer(),
         buffer(),
         buffer(),
+        (),
         kh,
         values,
     ))

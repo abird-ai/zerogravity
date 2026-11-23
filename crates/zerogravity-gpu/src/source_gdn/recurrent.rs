@@ -79,13 +79,19 @@ pub(crate) fn normalize_qk(
     query: &mut [f32],
     key: &mut [f32],
     status: &[Atomic<u32>],
+    rows: u32,
     #[comptime] kh: usize,
     #[comptime] vh: usize,
     #[comptime] cached: bool,
 ) {
-    let h = ABSOLUTE_POS;
-    if h < vh {
+    let at = ABSOLUTE_POS;
+    if at < rows as usize * vh {
+        let row = at / vh;
+        let h = at % vh;
         let group = h / (vh / kh);
+        let channels = (2usize * kh + vh) * 128usize;
+        let input_base = row * channels;
+        let output_base = row * vh * 128usize;
         let mut qs = Array::<f32>::new(32usize);
         let mut ks = Array::<f32>::new(32usize);
         for lane in 0..32usize {
@@ -94,8 +100,8 @@ pub(crate) fn normalize_qk(
         }
         for block in 0..4usize {
             for lane in 0..32usize {
-                let q = activated[group * 128usize + block * 32usize + lane];
-                let k = activated[(kh + group) * 128usize + block * 32usize + lane];
+                let q = activated[input_base + group * 128usize + block * 32usize + lane];
+                let k = activated[input_base + (kh + group) * 128usize + block * 32usize + lane];
                 qs[lane] = add(qs[lane], mul(q, q));
                 ks[lane] = add(ks[lane], mul(k, k));
             }
@@ -129,13 +135,14 @@ pub(crate) fn normalize_qk(
             f32::cast_from(crate::source_float::widen_source(kden).sqrt()),
         );
         for i in 0..128usize {
-            let q = mul(activated[group * 128usize + i], qi);
+            let q = mul(activated[input_base + group * 128usize + i], qi);
             let mut scaled = mul(q, f32::reinterpret(0x3db504f3u32));
             if comptime!(cached) {
                 scaled = div(q, f32::reinterpret(0x413504f3u32));
             }
-            query[h * 128usize + i] = scaled;
-            key[h * 128usize + i] = mul(activated[(kh + group) * 128usize + i], ki);
+            query[output_base + h * 128usize + i] = scaled;
+            key[output_base + h * 128usize + i] =
+                mul(activated[input_base + (kh + group) * 128usize + i], ki);
         }
         if !finite(qi) || !finite(ki) {
             status[0].fetch_or(NONFINITE_VALUE);
@@ -192,6 +199,216 @@ pub(crate) fn decayed(
 }
 
 /// Materialized product rounding +eight16-key subtotal/carry reductions.
+/// Cached-decode cohort reduction over independent private states. The decay
+/// multiplication stays in the original FP32 order but is not materialized into
+/// a dense state buffer.
+#[cube(launch_unchecked)]
+pub(crate) fn key_reduce_decayed_cohort(
+    p0: &[f32],
+    p1: &[f32],
+    p2: &[f32],
+    p3: &[f32],
+    p4: &[f32],
+    p5: &[f32],
+    p6: &[f32],
+    p7: &[f32],
+    decay: &[f32],
+    vector: &[f32],
+    output: &mut [f32],
+    status: &[Atomic<u32>],
+    #[comptime] rows: usize,
+    #[comptime] values: usize,
+) {
+    let at = ABSOLUTE_POS;
+    if at < rows * values {
+        let row = at / values;
+        let local = at % values;
+        let heads = values / 128usize;
+        let h = local / 128usize;
+        let j = local % 128usize;
+        let d = decay[row * heads + h];
+        let mut carry = 0.0f32;
+        for block in 0..8usize {
+            let mut subtotal = 0.0f32;
+            for key in block * 16usize..(block + 1usize) * 16usize {
+                let state_at = (h * 128usize + key) * 128usize + j;
+                let mut x = p0[state_at];
+                if row == 1usize {
+                    x = p1[state_at];
+                } else if row == 2usize {
+                    x = p2[state_at];
+                } else if row == 3usize {
+                    x = p3[state_at];
+                } else if row == 4usize {
+                    x = p4[state_at];
+                } else if row == 5usize {
+                    x = p5[state_at];
+                } else if row == 6usize {
+                    x = p6[state_at];
+                } else if row == 7usize {
+                    x = p7[state_at];
+                }
+                let decayed = mul(x, d);
+                subtotal = add(
+                    subtotal,
+                    mul(decayed, vector[row * values + h * 128usize + key]),
+                );
+                if !finite(x) || !finite(decayed) || d < 0.0f32 || d > 1.0f32 {
+                    status[0].fetch_or(NONFINITE_VALUE);
+                }
+            }
+            carry = add(carry, subtotal);
+        }
+        output[at] = carry;
+        if !finite(carry) {
+            status[0].fetch_or(NONFINITE_VALUE);
+        }
+    }
+}
+
+/// Cached-decode cohort update into each lane's original private candidate state.
+/// The decayed prior is recomputed in the same FP32 order, avoiding a dense
+/// gather/scatter buffer and its two extra state-sized transfers.
+#[cube(launch_unchecked)]
+pub(crate) fn state_update_decayed_cohort(
+    p0: &[f32],
+    p1: &[f32],
+    p2: &[f32],
+    p3: &[f32],
+    p4: &[f32],
+    p5: &[f32],
+    p6: &[f32],
+    p7: &[f32],
+    decay: &[f32],
+    key: &[f32],
+    delta: &[f32],
+    n0: &mut [f32],
+    n1: &mut [f32],
+    n2: &mut [f32],
+    n3: &mut [f32],
+    n4: &mut [f32],
+    n5: &mut [f32],
+    n6: &mut [f32],
+    n7: &mut [f32],
+    status: &[Atomic<u32>],
+    #[comptime] rows: usize,
+    #[comptime] elements: usize,
+) {
+    let at = ABSOLUTE_POS;
+    if at < rows * elements {
+        let row = at / elements;
+        let local = at % elements;
+        let values = elements / 128usize;
+        let heads = elements / 16384usize;
+        let h = local / 16384usize;
+        let k = (local / 128usize) % 128usize;
+        let j = local % 128usize;
+        let mut x = p0[local];
+        if row == 1usize {
+            x = p1[local];
+        } else if row == 2usize {
+            x = p2[local];
+        } else if row == 3usize {
+            x = p3[local];
+        } else if row == 4usize {
+            x = p4[local];
+        } else if row == 5usize {
+            x = p5[local];
+        } else if row == 6usize {
+            x = p6[local];
+        } else if row == 7usize {
+            x = p7[local];
+        }
+        let d = decay[row * heads + h];
+        let decayed = mul(x, d);
+        let update = mul(
+            key[row * values + h * 128usize + k],
+            delta[row * values + h * 128usize + j],
+        );
+        let y = add(decayed, update);
+        if row == 0usize {
+            n0[local] = y;
+        } else if row == 1usize {
+            n1[local] = y;
+        } else if row == 2usize {
+            n2[local] = y;
+        } else if row == 3usize {
+            n3[local] = y;
+        } else if row == 4usize {
+            n4[local] = y;
+        } else if row == 5usize {
+            n5[local] = y;
+        } else if row == 6usize {
+            n6[local] = y;
+        } else if row == 7usize {
+            n7[local] = y;
+        }
+        if !finite(x) || !finite(decayed) || !finite(y) || d < 0.0f32 || d > 1.0f32 {
+            status[0].fetch_or(NONFINITE_VALUE);
+        }
+    }
+}
+
+/// Reduction from independent private cohort states into one row-major vector.
+#[cube(launch_unchecked)]
+pub(crate) fn key_reduce_private_cohort(
+    p0: &[f32],
+    p1: &[f32],
+    p2: &[f32],
+    p3: &[f32],
+    p4: &[f32],
+    p5: &[f32],
+    p6: &[f32],
+    p7: &[f32],
+    vector: &[f32],
+    output: &mut [f32],
+    status: &[Atomic<u32>],
+    #[comptime] rows: usize,
+    #[comptime] values: usize,
+    #[comptime] round_bf16: bool,
+) {
+    let at = ABSOLUTE_POS;
+    if at < rows * values {
+        let row = at / values;
+        let local = at % values;
+        let h = local / 128usize;
+        let j = local % 128usize;
+        let mut carry = 0.0f32;
+        for block in 0..8usize {
+            let mut subtotal = 0.0f32;
+            for key in block * 16usize..(block + 1usize) * 16usize {
+                let state_at = (h * 128usize + key) * 128usize + j;
+                let mut x = p0[state_at];
+                if row == 1usize {
+                    x = p1[state_at];
+                } else if row == 2usize {
+                    x = p2[state_at];
+                } else if row == 3usize {
+                    x = p3[state_at];
+                } else if row == 4usize {
+                    x = p4[state_at];
+                } else if row == 5usize {
+                    x = p5[state_at];
+                } else if row == 6usize {
+                    x = p6[state_at];
+                } else if row == 7usize {
+                    x = p7[state_at];
+                }
+                subtotal = add(subtotal, mul(x, vector[row * values + h * 128usize + key]));
+            }
+            carry = add(carry, subtotal);
+        }
+        let mut y = carry;
+        if comptime!(round_bf16) {
+            y = bf16(y);
+        }
+        output[at] = y;
+        if !finite(y) {
+            status[0].fetch_or(NONFINITE_VALUE);
+        }
+    }
+}
+
 #[cube(launch_unchecked)]
 pub(crate) fn key_reduce(
     state: &[f32],
@@ -235,14 +452,22 @@ pub(crate) fn delta(
     beta: &[f32],
     output: &mut [f32],
     status: &[Atomic<u32>],
+    rows: u32,
     #[comptime] kh: usize,
     #[comptime] values: usize,
 ) {
     let at = ABSOLUTE_POS;
-    if at < values {
+    if at < rows as usize * values {
+        let row = at / values;
+        let local = at % values;
+        let heads = values / 128usize;
+        let channels = kh * 256usize + values;
         let y = mul(
-            sub(activated[kh * 256usize + at], memory[at]),
-            beta[at / 128usize],
+            sub(
+                activated[row * channels + kh * 256usize + local],
+                memory[at],
+            ),
+            beta[row * heads + local / 128usize],
         );
         output[at] = y;
         if !finite(y) {

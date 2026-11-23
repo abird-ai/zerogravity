@@ -288,6 +288,7 @@ pub(super) fn gdn(
             s.arg(8, values),
             s.arg(9, values),
             arg(status, 1),
+            1u32,
             kh,
             heads,
             !initial,
@@ -337,6 +338,7 @@ pub(super) fn gdn(
                 s.arg(14, heads),
                 s.arg(18, values),
                 arg(status, 1),
+                1u32,
                 kh,
                 values,
             );
