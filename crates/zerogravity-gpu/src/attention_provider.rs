@@ -33,11 +33,13 @@ impl AttentionProviderPlan {
         Self::new(AttentionProvider::Builtin, AttentionProvider::Builtin)
     }
 
+    /// Use FA2 only for dense prefill; decode stays on the builtin provider
+    /// until a decode-oriented provider demonstrates a real win.
     #[cfg(feature = "cuda-flash-attn")]
-    pub const fn flash_attention_fa2() -> Self {
+    pub const fn flash_attention_fa2_prefill() -> Self {
         Self::new(
             AttentionProvider::FlashAttentionFa2,
-            AttentionProvider::FlashAttentionFa2,
+            AttentionProvider::Builtin,
         )
     }
 

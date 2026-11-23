@@ -135,7 +135,7 @@ impl CudaForwardCold {
             layout.geometry().kv_heads,
         )?;
         #[cfg(feature = "cuda-flash-attn")]
-        let attention_providers = crate::AttentionProviderPlan::flash_attention_fa2();
+        let attention_providers = crate::AttentionProviderPlan::flash_attention_fa2_prefill();
         #[cfg(not(feature = "cuda-flash-attn"))]
         let attention_providers = crate::AttentionProviderPlan::builtin();
         let attention = CudaForwardAttention::prepare(
