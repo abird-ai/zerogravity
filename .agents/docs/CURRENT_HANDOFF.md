@@ -34,6 +34,29 @@ live TODOs are authoritative.
   see the 23 Nov comprehensive handoff before touching CUDA provider/state-transport
   surfaces.
 
+### Production build/run convergence revalidation — 23 Nov 2026
+
+Exact committed `fb20345bb7b5ce0b3285470c77564e492331254b` was archived outside
+the active worktree so the concurrent FlashInfer/paired-GDN dirt could not affect the
+result. In `nix develop .#gpu`, with `CARGO_BUILD_JOBS=8` and the required kache
+wrapper, `zerogravity-cli --no-default-features --features all` passes `cargo check
+--locked` and an optimized `cargo build --locked --release`. The emitted 69 MiB
+binary has SHA-256
+`cd3df0f8173dc55ecda00af4d078214f51c9963a058bb15c4e4a06dfaf8b9e9f` and
+truthfully reports CPU, Qwen3.5, text, OpenAI HTTP, Vulkan, CUDA and HIP/ROCm
+capabilities; `run-cuda` and `run-rocm` expose the same canonical run surface.
+This closes fresh source/build revalidation of the production feature algebra without
+creating another feature-matrix fixture.
+
+A1 and X2 were both fast-forwarded to that exact commit by verified Git bundle for
+execution-only follow-up; neither origin was pushed. A1's connector went offline while
+its exact mixed-GPU Nix shell was realizing missing local closure pieces, and X2's
+current flake evaluation is blocked in the connector environment before model execution.
+No host repair, SDK splicing or weaker execution environment was substituted. The real
+A1 gfx1150 0.8B/2B public `run-rocm` canary therefore remains pending; SM89 CUDA
+remains deliberately unqualified until the remaining SM86-closed leaves are generalized
+and physically qualified.
+
 ### Terminology architecture — 21 Nov 2026
 
 Active naming follows [TERMINOLOGY.md](TERMINOLOGY.md). The first cleanup
