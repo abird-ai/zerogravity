@@ -2036,10 +2036,15 @@ is already green; repeat it only if host/runtime state changes.
 > Current reusable performance work must not be lost: dormant lane-regroup,
 > copy+tail-zero, 17 BF16 GEMM strategies, recurrent transpose, GDN occupancy and
 > backend transfer-retirement variants are retained without production consumers.
-> **Reject the selector/consumer, not a correct reusable primitive.** Delete the
-> primitive only for correctness/safety/resource-contract failure or when an
-> equivalent retained primitive strictly supersedes it; remove temporary probes,
-> runners and model-specific wiring normally.
+> **Reject the selector/consumer, not a correct reusable primitive.** A performance
+> loss means the current selector/default/adapter is rejected; retain the clean
+> model-neutral implementation, physical provider, kernel strategy or composition
+> primitive so future models, shapes, batches and backends can requalify it cheaply.
+> Delete the primitive only for correctness/safety/resource-contract failure or
+> when an equivalent retained primitive strictly supersedes its useful domain.
+> Temporary probes, runners, evidence-only fixtures and model-specific wiring should
+> still be removed normally. A dormant primitive must not be described as selected
+> production behavior or as a performance win.
 >
 > Fresh matched vLLM is still deferred by environment, not policy: the pinned
 > `vllm-0.31.0-cu129` store exists, but this connector cannot enter the rootless

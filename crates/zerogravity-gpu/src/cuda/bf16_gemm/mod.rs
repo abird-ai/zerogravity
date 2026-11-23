@@ -211,6 +211,127 @@ impl Bf16HeadGreedyPartials {
     }
 }
 
+/// Exact B1 row-major LaneStrided<16,512> projection with immediate
+/// numeric-zero greedy reduction over the eight columns computed by one CTA.
+///
+/// This is a physical projection/reduction primitive only. It owns no model,
+/// sampler, session, root, completion or publication policy.
+pub(crate) struct Bf16HeadGreedyPartialsSingle {
+    kernel: PinnedKernel,
+    grid: [u32; 3],
+    records: usize,
+    partial_bytes: usize,
+}
+
+impl Bf16HeadGreedyPartialsSingle {
+    pub(crate) const COLUMNS_PER_RECORD: usize = 8;
+
+    pub(crate) fn records(columns: usize) -> Result<usize> {
+        if columns == 0 || u32::try_from(columns).is_err() {
+            return Err(Error::Unsupported(
+                "single-row BF16 head greedy requires nonzero u32 vocabulary".into(),
+            ));
+        }
+        Ok(columns.div_ceil(Self::COLUMNS_PER_RECORD))
+    }
+
+    pub(crate) fn partial_bytes(columns: usize) -> Result<usize> {
+        Self::records(columns)?
+            .checked_mul(3 * 4)
+            .filter(|bytes| *bytes <= isize::MAX as usize)
+            .ok_or_else(|| Error::Limit("single-row BF16 head greedy partial extent".into()))
+    }
+
+    pub(crate) fn new(columns: usize, inner: usize) -> Result<Self> {
+        let shape = Bf16GemmShape::new(columns, 1, inner)?;
+        let records = Self::records(columns)?;
+        let partial_bytes = Self::partial_bytes(columns)?;
+        let schema = StaticScalarSchema::new(
+            &[
+                (StaticScalarType::U64, 0),
+                (StaticScalarType::U64, 8),
+                (StaticScalarType::U64, 16),
+                (StaticScalarType::U64, 24),
+                (StaticScalarType::U64, 32),
+                (StaticScalarType::U64, 40),
+            ],
+            48,
+            8,
+        )?;
+        let scalars = StaticScalarBlock::new(
+            schema,
+            &[columns, 1, inner, 512, 4, columns].map(|value| StaticScalarValue::U64(value as u64)),
+        )?;
+        let x = u32::try_from(records)
+            .ok()
+            .filter(|value| *value <= i32::MAX as u32)
+            .ok_or_else(|| Error::Limit("single-row BF16 head greedy grid overflow".into()))?;
+        let kernel = PinnedKernel::new_with_static_scalars(
+            "bf16_gemm_lane_strided_single_greedy_partials",
+            SOURCE.into(),
+            128,
+            vec![
+                (shape.weight_bytes(), BufferIOAttr::ReadOnly),
+                (shape.input_bytes(), BufferIOAttr::ReadOnly),
+                (partial_bytes, BufferIOAttr::WriteOnly),
+                (4, BufferIOAttr::ReadWrite),
+            ]
+            .into(),
+            scalars,
+        )?
+        .with_binding_alignment(2)?;
+        Ok(Self {
+            kernel,
+            grid: [x, 1, 1],
+            records,
+            partial_bytes,
+        })
+    }
+
+    pub(crate) fn record_count(&self) -> usize {
+        self.records
+    }
+
+    pub(crate) fn output_bytes(&self) -> usize {
+        self.partial_bytes
+    }
+
+    pub(crate) fn prepare_code(&self, queue: &cubecl::cuda::OwnedCudaQueue) -> Result<()> {
+        self.kernel.prepare_code(queue)
+    }
+
+    pub(crate) fn prepare(
+        &self,
+        client: &Client,
+        weights: Handle,
+        input: Handle,
+        partials: Handle,
+        status: Handle,
+    ) -> Result<PreparedPinnedLaunch> {
+        require_disjoint_output(&weights, &input, &partials)?;
+        if status.service != client.service_id()
+            || status.size_in_used() != 4
+            || partials.service != client.service_id()
+        {
+            return Err(Error::State(
+                "single-row BF16 head greedy status service/extent".into(),
+            ));
+        }
+        let partial_range = range(&partials)?;
+        let status_range = range(&status)?;
+        if partials.memory.descriptor().id == status.memory.descriptor().id
+            && partial_range.0 < status_range.1
+            && status_range.0 < partial_range.1
+        {
+            return Err(Error::State(
+                "single-row BF16 head greedy partials overlap status".into(),
+            ));
+        }
+        self.kernel
+            .prepare(client, self.grid, vec![weights, input, partials, status])
+    }
+}
+
 /// Two exact B8 projections sharing one row-major activation binding.
 ///
 /// The primary projection retains the accepted Ordered K64 arithmetic and the

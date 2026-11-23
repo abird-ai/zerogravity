@@ -133,6 +133,100 @@ pub(crate) fn launch_bf16_numeric_zero(
     )
 }
 
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+#[allow(clippy::too_many_arguments, dead_code)] // Retained for future fused producers/models.
+pub(crate) fn launch_partials_numeric_zero(
+    client: &Client,
+    source: &Handle,
+    source_count: usize,
+    vocabulary: usize,
+    partial0: &Handle,
+    partial1: &Handle,
+    private_packet: &Handle,
+    status: &Handle,
+) -> Result<usize> {
+    if source_count == 0 || source_count > program_kernels::MAX_WORD_OPS || vocabulary == 0 {
+        return Err(Error::Unsupported(
+            "resident greedy partial continuation geometry".into(),
+        ));
+    }
+    let source_bytes = source_count
+        .checked_mul(ARGMAX_RECORD_WORDS * 4)
+        .ok_or_else(|| Error::Limit("resident greedy partial source bytes".into()))?;
+    let sizes = workspace_bytes(vocabulary)?;
+    let buffers = [source, partial0, partial1, private_packet, status];
+    let required = [source_bytes, sizes[0], sizes[1], 12usize, 4usize];
+    for (index, (&handle, &bytes)) in buffers.iter().zip(&required).enumerate() {
+        check_buffer(client, handle, bytes)?;
+        let allocation = handle.clone().binding().memory.id();
+        if buffers[..index]
+            .iter()
+            .any(|prior| (*prior).clone().binding().memory.id() == allocation)
+        {
+            return Err(Error::State(
+                "resident greedy partial continuation bindings share an allocation".into(),
+            ));
+        }
+    }
+
+    let partials = [partial0, partial1];
+    let words = [sizes[0] / 4, sizes[1] / 4];
+    let mut checked_count = source_count;
+    let mut checked_destination = 0usize;
+    while checked_count > 1 {
+        let next = program_kernels::argmax_partial_count(checked_count, TILE)?;
+        if next * ARGMAX_RECORD_WORDS > words[checked_destination] {
+            return Err(Error::State(
+                "resident greedy partial continuation exceeds workspace".into(),
+            ));
+        }
+        checked_count = next;
+        checked_destination ^= 1;
+    }
+
+    let grid = |n: usize| CubeCount::Static((n as u32).div_ceil(32), 1, 1);
+    let threads = CubeDim::new_1d(32);
+    let mut count = source_count;
+    let mut current = source.clone();
+    let mut current_words = source_bytes / 4;
+    let mut destination = 0usize;
+    let mut dispatches = 0usize;
+    unsafe {
+        while count > 1 {
+            let next = count.div_ceil(TILE);
+            program_kernels::argmax_partials_numeric_zero::launch_unchecked(
+                client,
+                grid(next),
+                threads,
+                BufferArg::from_raw_parts(current, current_words),
+                BufferArg::from_raw_parts(partials[destination].clone(), words[destination]),
+                BufferArg::from_raw_parts(status.clone(), 1),
+                0,
+                0,
+                count,
+                vocabulary,
+                TILE,
+            );
+            current = partials[destination].clone();
+            current_words = words[destination];
+            count = next;
+            destination ^= 1;
+            dispatches += 1;
+        }
+        program_kernels::finish_argmax::launch_unchecked(
+            client,
+            grid(1),
+            threads,
+            BufferArg::from_raw_parts(current, current_words),
+            BufferArg::from_raw_parts(private_packet.clone(), 3),
+            BufferArg::from_raw_parts(status.clone(), 1),
+            0,
+            vocabulary,
+        );
+    }
+    Ok(dispatches + 1)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn launch_ordered(
     client: &Client,

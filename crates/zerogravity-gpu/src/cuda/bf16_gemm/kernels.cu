@@ -821,6 +821,93 @@ void bf16_gemm_lane_strided_batch8_inner_major_greedy_partials(
         w, x, partials, status, s);
 }
 
+template <unsigned TERMS>
+__device__ __forceinline__ void lane_strided_single_greedy_partials_fixed_terms(
+    const unsigned short* w, const unsigned short* x, unsigned* partials,
+    unsigned* status, GemmShape s) {
+    constexpr unsigned LANES = 16, ITEMS = TERMS / LANES, GROUPS = 128 / LANES;
+    constexpr unsigned CONTROL = ((32 - LANES) << 8) | 31;
+    __shared__ unsigned record_id[GROUPS];
+    __shared__ unsigned record_bits[GROUPS];
+    __shared__ unsigned record_flags[GROUPS];
+
+    const unsigned lane = threadIdx.x & (LANES - 1);
+    const unsigned group = threadIdx.x / LANES;
+    const unsigned long long record = blockIdx.x;
+    const unsigned long long col = record * GROUPS + group;
+
+    float total = 0;
+    for (unsigned long long start = 0; start < s.inner; start += TERMS) {
+        float partial = 0;
+        #pragma unroll
+        for (unsigned item = 0; item < ITEMS; ++item) {
+            const unsigned long long k = start + lane + item * LANES;
+            if (col < s.columns && k < s.inner) {
+                partial = add_product(partial,
+                    widen_bf16(w[col * s.inner + k]), widen_bf16(x[k]));
+            }
+        }
+        total += partial;
+    }
+
+    float result = lane_value(total, 0, CONTROL);
+    #pragma unroll
+    for (unsigned i = 1; i < LANES; ++i) result += lane_value(total, i, CONTROL);
+
+    if (lane == 0) {
+        record_id[group] = 0xffffffffu;
+        record_bits[group] = 0u;
+        record_flags[group] = 0u;
+        if (col < s.columns) {
+            const unsigned short rounded = round_bf16(result);
+            if ((rounded & 0x7f80u) == 0x7f80u) {
+                record_flags[group] = 2u;
+                atomicOr(status, 2u);
+            } else {
+                record_id[group] = (unsigned)col;
+                record_bits[group] = ((unsigned)rounded) << 16;
+            }
+        }
+    }
+    __syncthreads();
+
+    if (threadIdx.x == 0) {
+        unsigned best_id = 0xffffffffu;
+        unsigned best_bits = 0u;
+        unsigned best_key = 0u;
+        unsigned flags = 0u;
+        bool found = false;
+        #pragma unroll
+        for (unsigned candidate = 0; candidate < GROUPS; ++candidate) {
+            const unsigned token = record_id[candidate];
+            const unsigned bits = record_bits[candidate];
+            flags |= record_flags[candidate];
+            if (token != 0xffffffffu) {
+                const unsigned key = numeric_sortable_key(bits);
+                if (!found || key > best_key || (key == best_key && token < best_id)) {
+                    found = true;
+                    best_id = token;
+                    best_bits = bits;
+                    best_key = key;
+                }
+            }
+        }
+        if (!found) flags |= 4u;
+        const unsigned long long dst = record * 3u;
+        partials[dst] = best_id;
+        partials[dst + 1] = best_bits;
+        partials[dst + 2] = flags;
+        if (flags != 0u) atomicOr(status, flags);
+    }
+}
+
+extern "C" __global__ __launch_bounds__(128)
+void bf16_gemm_lane_strided_single_greedy_partials(
+    const unsigned short* w, const unsigned short* x, unsigned* partials,
+    unsigned* status, GemmShape s) {
+    lane_strided_single_greedy_partials_fixed_terms<512>(w, x, partials, status, s);
+}
+
 __device__ __forceinline__ void lane_strided_body(
     const unsigned short* w, const unsigned short* x, unsigned short* y,
     unsigned* status, GemmShape s) {
