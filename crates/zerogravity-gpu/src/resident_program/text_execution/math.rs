@@ -239,7 +239,6 @@ impl Cold {
                 let decay = self.s(layout::DECAY, vh)?;
                 let q = self.s(layout::QUERY, width)?;
                 let k = self.s(layout::KEY, width)?;
-                let decayed = self.s(layout::DECAYED, state)?;
                 let memory = self.s(layout::MEMORY, width)?;
                 let delta = self.s(layout::DELTA, width)?;
                 use crate::source_gdn::recurrent as r;
@@ -267,27 +266,24 @@ impl Cold {
                         vh,
                         true,
                     );
-                    r::decayed::launch_unchecked(
-                        client,
-                        grid(state),
-                        dim(),
-                        arg(prior, state),
-                        arg(&decay, vh),
-                        arg(&decayed, state),
-                        arg(&status, 1),
-                        state,
-                        false,
-                    );
-                    r::key_reduce::launch_unchecked(
+                    r::key_reduce_decayed_private::launch_unchecked(
                         client,
                         grid(width),
                         dim(),
-                        arg(&decayed, state),
+                        arg(prior, state),
+                        arg(prior, state),
+                        arg(prior, state),
+                        arg(prior, state),
+                        arg(prior, state),
+                        arg(prior, state),
+                        arg(prior, state),
+                        arg(prior, state),
+                        arg(&decay, vh),
                         arg(&k, width),
                         arg(&memory, width),
                         arg(&status, 1),
+                        1usize,
                         width,
-                        false,
                     );
                     r::delta::launch_unchecked(
                         client,
@@ -302,34 +298,54 @@ impl Cold {
                         kh,
                         width,
                     );
-                    r::state_update::launch_unchecked(
+                    r::state_update_decayed_private::launch_unchecked(
                         client,
                         grid(state),
                         dim(),
-                        arg(&decayed, state),
+                        arg(prior, state),
+                        arg(prior, state),
+                        arg(prior, state),
+                        arg(prior, state),
+                        arg(prior, state),
+                        arg(prior, state),
+                        arg(prior, state),
+                        arg(prior, state),
+                        arg(&decay, vh),
                         arg(&k, width),
                         arg(&delta, width),
-                        arg(activated, channels),
-                        arg(&beta, vh),
+                        arg(next, state),
+                        arg(next, state),
+                        arg(next, state),
+                        arg(next, state),
+                        arg(next, state),
+                        arg(next, state),
+                        arg(next, state),
                         arg(next, state),
                         arg(&status, 1),
-                        kh,
+                        1usize,
                         state,
-                        false,
                     );
-                    r::key_reduce::launch_unchecked(
+                    r::key_reduce_private::launch_unchecked(
                         client,
                         grid(width),
                         dim(),
                         arg(next, state),
+                        arg(next, state),
+                        arg(next, state),
+                        arg(next, state),
+                        arg(next, state),
+                        arg(next, state),
+                        arg(next, state),
+                        arg(next, state),
                         arg(&q, width),
                         arg(&core, width),
                         arg(&status, 1),
+                        1usize,
                         width,
                         true,
                     );
                 }
-                count += 7;
+                count += 6;
             }
         }
         let normalized = self.s(layout::NORMAL, n)?;
