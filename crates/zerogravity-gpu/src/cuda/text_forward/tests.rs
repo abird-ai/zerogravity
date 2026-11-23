@@ -500,10 +500,11 @@ fn kernel_source_flags_nonfinite_gate_embedding_and_all_arithmetic_inputs() {
     ] {
         assert!(source.contains(entry));
     }
-    // Four vector RMS kernels plus the shared head-RMS macro all fail closed
-    // on nonfinite/zero inverse normalization.
-    assert_eq!(source.matches("!isfinite(mean)").count(), 5);
-    assert_eq!(source.matches("inverse == 0.0f").count(), 5);
+    // Four vector RMS kernels, the shared per-head macro, the dual-head
+    // composition and the fused Q/K RMS+rotary leaf all fail closed on
+    // nonfinite/zero inverse normalization.
+    assert_eq!(source.matches("!isfinite(mean)").count(), 7);
+    assert_eq!(source.matches("inverse == 0.0f").count(), 7);
     for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         assert!(!value.is_finite());
     }

@@ -904,8 +904,7 @@ impl CudaForwardBody {
                     row_extent,
                 )?;
 
-                let fused_prefill = false
-                    && row_positions.is_none()
+                let fused_prefill = row_positions.is_none()
                     && matches!(
                         descriptor.invocation().phase(),
                         zerogravity_core::accelerator::program::InvocationPhase::Prefill
