@@ -48,14 +48,25 @@ capabilities; `run-cuda` and `run-rocm` expose the same canonical run surface.
 This closes fresh source/build revalidation of the production feature algebra without
 creating another feature-matrix fixture.
 
-A1 and X2 were both fast-forwarded to that exact commit by verified Git bundle for
-execution-only follow-up; neither origin was pushed. A1's connector went offline while
-its exact mixed-GPU Nix shell was realizing missing local closure pieces, and X2's
-current flake evaluation is blocked in the connector environment before model execution.
-No host repair, SDK splicing or weaker execution environment was substituted. The real
-A1 gfx1150 0.8B/2B public `run-rocm` canary therefore remains pending; SM89 CUDA
-remains deliberately unqualified until the remaining SM86-closed leaves are generalized
-and physically qualified.
+A1 and X2 were both fast-forwarded by verified Git bundle for execution-only
+follow-up; neither origin was pushed. A1's exact mixed-GPU shell is now realized and
+reports ROCm7.2.3 on Radeon890M `gfx1150` / wave32. Its cache had the exact complete
+0.8B payload but only partial cache-control metadata, so only L5's canonical 201-byte
+`policy.json` plus the empty protected cache-directory skeleton were synchronized; no
+model payload was transferred. The 2B payload on A1 is incomplete, so do not copy
+gigabytes merely to fill that canary.
+
+The first real public 0.8B run exposed one stale product refusal rather than a HIP bug:
+the source GPU adapter rejected `chat=true` even though the approved Qwen tokenizer
+already owns the exact single-user ChatML framing and its prompt/scratch bounds. Signed
+`6f4418ba8262baff0dc023923865ea8bcfb7d63c` deletes only that 17-line refusal and
+falls back to the existing `PreparedModel` defaults. A clean HIP+Qwen production
+composition check passes, then exact-commit A1
+`run-rocm qwen3.5-0.8b --prompt hello --max-tokens 2 --context 512` succeeds through
+the public Runtime seam **without** `--raw`; two tokens are generated and the KFD owner
+set returns exactly to its pre-run baseline with no lingering ZeroGravity process.
+SM89 CUDA remains deliberately unqualified until the remaining SM86-closed leaves are
+generalized and physically qualified.
 
 ### Terminology architecture — 21 Nov 2026
 

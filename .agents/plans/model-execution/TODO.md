@@ -32,8 +32,13 @@ Immediate execution priorities are intentionally small:
 - benchmark completed changes quickly against the canonical current baseline, with no
   speculative test matrix or duplicate paging/COW/streaming abstraction.
 
-L5 remains the only source-authoring host; X2 remains ROCm execution/testing only; A1 is
-offline/out of scope. Exact L5 commits move to X2 by Git bundle. No push unless explicitly
+L5 remains the only source-authoring host; X2 and A1 remain execution/testing only.
+Exact L5 commits move by verified Git bundle; no push merely for transport. On23 Nov,
+A1 Radeon890M/gfx1150 physically passes the public0.8B `run-rocm` path at signed
+`6f4418b`, including default tokenizer-owned single-turn chat framing and clean KFD
+retirement. Its local2B payload is incomplete, so do not perform a large transfer just
+to extend that canary. A1 RTX4060/SM89 CUDA remains unqualified until the remaining
+SM86-closed leaves are generalized and physically qualified. No push unless explicitly
 requested.
 
 Use the continuation queue below over historical milestone notes later in this file.
