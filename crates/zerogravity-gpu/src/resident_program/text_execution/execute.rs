@@ -313,19 +313,28 @@ impl Cold {
                     inputs[0].clone()
                 };
                 let combined = d.matrices().iter().map(|m| m.rows).sum::<usize>();
+                let input_lease = self.value_lease(node.inputs[0])?;
+                let output_lease = self.value_lease(node.outputs[0])?;
+                let direct = active == 1 && input_lease.id() != output_lease.id();
                 let mut offset = 0;
                 let mut count = 0;
                 for m in d.matrices() {
-                    let temporary = self.s(layout::PROJECT, active * m.rows)?;
+                    let temporary;
+                    let (destination, destination_lease) = if direct {
+                        (subview(&outputs[0], offset * 4, m.rows * 4)?, output_lease)
+                    } else {
+                        temporary = self.s(layout::PROJECT, active * m.rows)?;
+                        (temporary.clone(), &self.scratch[layout::PROJECT])
+                    };
                     count += self.operands[&m.name]
                         .enqueue_rows(
                             flight,
                             &self.page,
                             Bf16ProjectionBindings {
                                 input: &input,
-                                input_lease: self.value_lease(node.inputs[0])?,
-                                output: &temporary,
-                                output_lease: &self.scratch[layout::PROJECT],
+                                input_lease,
+                                output: &destination,
+                                output_lease: destination_lease,
                                 packed: &self.packed,
                                 accumulation: &self.accumulation,
                                 flags: &self.flags,
@@ -336,23 +345,25 @@ impl Cold {
                             None,
                         )
                         .await?;
-                    unsafe {
-                        kernels::columns::launch_unchecked(
-                            client,
-                            grid(active * m.rows),
-                            dim(),
-                            arg(&temporary, active * m.rows),
-                            arg(&outputs[0], active * combined),
-                            arg(&status, 1),
-                            active as u32,
-                            0u32,
-                            offset as u32,
-                            m.rows,
-                            m.rows,
-                            combined,
-                        );
+                    if !direct {
+                        unsafe {
+                            kernels::columns::launch_unchecked(
+                                client,
+                                grid(active * m.rows),
+                                dim(),
+                                arg(&destination, active * m.rows),
+                                arg(&outputs[0], active * combined),
+                                arg(&status, 1),
+                                active as u32,
+                                0u32,
+                                offset as u32,
+                                m.rows,
+                                m.rows,
+                                combined,
+                            );
+                        }
+                        count += 1;
                     }
-                    count += 1;
                     offset += m.rows;
                 }
                 Ok(count)
