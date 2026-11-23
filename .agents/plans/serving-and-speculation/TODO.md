@@ -50,10 +50,27 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   selector/load-time preparation and keeps the correct source-level cohort kernels plus
   row-generalized B1 primitives dormant. Final public A1 B1 `run-rocm` still passes and
   retires to the exact KFD baseline.
-- [ ] Next HIP performance unit: target the measured singleton C1 hot path. Do not add
-  another recurrent staging design merely because fewer launches looked attractive;
-  reconsider the retained recurrent primitives on X2/another shape only when measured
-  stage evidence justifies it. No prefill/27B detour yet.
+- [x] HIP singleton C1 localization/first projection cut. Temporary execution-only
+  instrumentation on A1 finds cached decode4,474 dispatches/token: projection3,360
+  (~75%), GDN360, residual-RMS480 and all other groups smaller; prefill is9,080 with
+  projection3,360. Recurrent B1 cuts `69630ec`/`0d201ff` reduced dispatches
+  18,028→17,992 but did not improve warm wall time; `879bee7` rejects those consumers
+  while retaining their reusable private-state/fused-coefficient kernels. `4070610`
+  writes active=1 projection matrices directly into their final combined-output subview
+  when logical leases are distinct, eliminating one scatter launch per matrix. It stays
+  exact/replay-stable and improves A147+3 warm mean ~6.401→6.359s (~0.65%) with
+  dispatches18,028→17,653; the decode-heavy16-output cell improves
+  ~32.070→31.350s (~2.25%) with76,190→73,384 dispatches. Broader post-pack alias
+  permission (`fdc5a8e`) added no structural reduction and `baf4c9f` restores the narrow
+  contract. `ec6fb57` coalesced singleton projection status per matrix and cut47+3 to
+  14,557 dispatches / output16 to53,310, but the stronger decode-heavy wall time was
+  ~31.518s, slower than `4070610`; `d15b02f` keeps that correct model-neutral alternate
+  as an explicit dormant method while restoring per-tile status selection.
+- [ ] Next HIP C1 unit: one Projection node can own several matrices with the same input,
+  while each current operand repacks that unchanged singleton activation independently.
+  Reuse one exact packed input across those matrices without changing weight streaming,
+  projection arithmetic or status semantics; remeasure the same47+3 and decode-heavy
+  cell. Do not detour into another GDN/state micro-optimization.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.

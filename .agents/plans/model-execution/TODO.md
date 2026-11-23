@@ -28,7 +28,10 @@ Immediate execution priorities are intentionally small:
 - keep accepted HIP batching on the existing scheduler/cohort/state ownership; the
   direct recurrent-state cohort consumer lost its A/B on gfx1150 and is removed while
   its reusable row-aware kernels remain dormant;
-- improve HIP singleton hot paths next because C1 is already well behind vLLM;
+- continue the measured HIP singleton projection path: `4070610` direct singleton
+  destinations are accepted; status coalescing remains dormant after losing the
+  decode-heavy A/B. Next remove repeated singleton input packing across matrices in one
+  Projection node before considering deeper projection-kernel changes;
 - optimize L5 27B streamed source/transfer overlap as a distinct memory-constrained mode;
 - benchmark completed changes quickly against the canonical current baseline, with no
   speculative test matrix or duplicate paging/COW/streaming abstraction.

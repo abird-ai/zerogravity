@@ -197,9 +197,20 @@ The current implementation priorities implied by that baseline are:
    in signed `7fcc9c4`; the clean row-aware recurrent kernels remain dormant reusable
    primitives for other devices/models/shapes. Do not promote that consumer from launch
    count alone;
-3. optimize HIP singleton execution next, because C1 is already materially behind
-   vLLM on all three model sizes. Revisit recurrent cohort selection only with a new
-   measured physical reason or on a device where the retained primitive wins;
+3. HIP singleton localization is now measured on A1: one cached0.8B decode token is
+   4,474 forward dispatches, of which BF16 projection is3,360 (~75%); the47-token
+   prefill is9,080 dispatches with the same3,360 projection share. B1 recurrent
+   decay/coefficient consumers (`69630ec`/`0d201ff`) reduced launches but not wall time,
+   so signed `879bee7` restores the accepted consumer while retaining those reusable
+   kernels dormant. Signed `4070610` removes the singleton projection scatter only when
+   input/output leases are distinct:47+3 dispatches18,028→17,653 with warm mean
+   ~6.401→6.359s (~0.65%), while a decode-heavy16-output cell improves
+   ~32.070→31.350s (~2.25%); it stays selected. Alias widening (`fdc5a8e`) produced no
+   extra dispatch reduction and was reverted by `baf4c9f`. Singleton status coalescing
+   (`ec6fb57`) cut far more launches but lost to `4070610` on the decode-heavy cell
+   (~31.518s vs~31.350s), so `d15b02f` keeps that model-neutral transform dormant.
+   Next C1 projection unit: avoid repacking one unchanged singleton activation once per
+   matrix inside the same Projection node, then remeasure before deeper kernel changes;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
    47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
    streaming mechanics are the relevant optimization target there.
