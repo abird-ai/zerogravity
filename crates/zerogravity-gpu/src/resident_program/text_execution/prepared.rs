@@ -194,6 +194,19 @@ pub(super) fn kernels(
                     vh
                 );
                 add!(
+                    super::kernels::coefficients_decode::CoefficientsDecode,
+                    32,
+                    b(),
+                    b(),
+                    b(),
+                    b(),
+                    b(),
+                    b(),
+                    b(),
+                    (),
+                    vh
+                );
+                add!(
                     crate::source_standalone_exp::normal_vector::NormalVector,
                     32,
                     b(),

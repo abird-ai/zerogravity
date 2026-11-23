@@ -329,6 +329,43 @@ pub(super) fn repeat_qkv(
     }
 }
 
+/// Cached-decode coefficients with the immutable per-head exp evaluated in
+/// the same source arithmetic, avoiding a separate tiny-vector launch/scratch.
+#[cube(launch_unchecked)]
+pub(super) fn coefficients_decode(
+    packed: &[f32],
+    bias: &[f32],
+    a_log: &[f32],
+    normal: &[u32],
+    beta_input: &mut [f32],
+    log_decay: &mut [f32],
+    status: &[Atomic<u32>],
+    rows: u32,
+    #[comptime] heads: usize,
+) {
+    let i = ABSOLUTE_POS;
+    if i < rows as usize * heads {
+        let h = i % heads;
+        let at = i / heads * heads * 2usize + h;
+        let b = packed[at];
+        let a = packed[at + heads];
+        let x = a_log[h];
+        let bits = u32::reinterpret(x) & 0x7fffffffu32;
+        let mut a_exp = 0.0f32;
+        if bits <= 0x42ae0000u32 {
+            a_exp = crate::source_standalone_exp::mkl_ha_normal(x, normal);
+        } else {
+            status[0].fetch_or(NONFINITE_VALUE);
+        }
+        let d = mul(neg(a_exp), crate::source_sleef::softplus(add(a, bias[h])));
+        beta_input[i] = b;
+        log_decay[i] = d;
+        if !source_bf16(a) || !source_bf16(b) || !finite(bias[h]) || !finite(d) {
+            status[0].fetch_or(NONFINITE_VALUE);
+        }
+    }
+}
+
 #[cube(launch_unchecked)]
 pub(super) fn coefficients(
     packed: &[f32],

@@ -153,37 +153,64 @@ impl Cold {
         let bias = self.parameter(&parameters[1])?;
         let gamma = self.parameter(&parameters[2])?;
         let normal = self.table(0, 256 * 4)?;
-        let a_exp = self.s(layout::A_EXP, vh)?;
+        if mode == InvocationPhase::Decode && rows != 1 {
+            return Err(Error::State("text-execution cached GDN row count".into()));
+        }
         let beta_input = self.s(layout::BETA_INPUT, coeff)?;
         let beta = self.s(layout::BETA, coeff)?;
         let decay_log = self.s(layout::LOG_DECAY, coeff)?;
         let core = self.s(layout::CORE, n)?;
-        unsafe {
-            crate::source_standalone_exp::normal_vector::launch_unchecked(
-                client,
-                grid(vh),
-                dim(),
-                arg(&a, vh),
-                arg(&normal, 256),
-                arg(&a_exp, vh),
-                arg(&status, 1),
-                vh,
-            );
-            super::kernels::coefficients::launch_unchecked(
-                client,
-                grid(coeff),
-                dim(),
-                arg(ba, coeff * 2),
-                arg(&bias, vh),
-                arg(&a_exp, vh),
-                arg(&beta_input, coeff),
-                arg(&decay_log, coeff),
-                arg(&status, 1),
-                rows as u32,
-                vh,
-            );
-        }
-        let mut count = 2 + self.sigmoid(&beta_input, &beta, coeff)?;
+        let mut count = match mode {
+            InvocationPhase::Prefill => {
+                let a_exp = self.s(layout::A_EXP, vh)?;
+                unsafe {
+                    crate::source_standalone_exp::normal_vector::launch_unchecked(
+                        client,
+                        grid(vh),
+                        dim(),
+                        arg(&a, vh),
+                        arg(&normal, 256),
+                        arg(&a_exp, vh),
+                        arg(&status, 1),
+                        vh,
+                    );
+                    super::kernels::coefficients::launch_unchecked(
+                        client,
+                        grid(coeff),
+                        dim(),
+                        arg(ba, coeff * 2),
+                        arg(&bias, vh),
+                        arg(&a_exp, vh),
+                        arg(&beta_input, coeff),
+                        arg(&decay_log, coeff),
+                        arg(&status, 1),
+                        rows as u32,
+                        vh,
+                    );
+                }
+                2
+            }
+            InvocationPhase::Decode => {
+                unsafe {
+                    super::kernels::coefficients_decode::launch_unchecked(
+                        client,
+                        grid(coeff),
+                        dim(),
+                        arg(ba, coeff * 2),
+                        arg(&bias, vh),
+                        arg(&a, vh),
+                        arg(&normal, 256),
+                        arg(&beta_input, coeff),
+                        arg(&decay_log, coeff),
+                        arg(&status, 1),
+                        rows as u32,
+                        vh,
+                    );
+                }
+                1
+            }
+        };
+        count += self.sigmoid(&beta_input, &beta, coeff)?;
         match mode {
             InvocationPhase::Prefill => {
                 let q = self.s(layout::QUERY, n)?;
@@ -233,9 +260,6 @@ impl Cold {
                 )?;
             }
             InvocationPhase::Decode => {
-                if rows != 1 {
-                    return Err(Error::State("text-execution cached GDN row count".into()));
-                }
                 let decay = self.s(layout::DECAY, vh)?;
                 let q = self.s(layout::QUERY, width)?;
                 let k = self.s(layout::KEY, width)?;
