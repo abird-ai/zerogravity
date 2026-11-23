@@ -1,28 +1,38 @@
-# ZeroGravity current comprehensive handoff — 22 Nov 2026
+# ZeroGravity current comprehensive handoff — 23 Nov 2026
 
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
-Full dated takeover snapshot: [`FULL_COMPREHENSIVE_HANDOFF_2026-11-22.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-22.md). The 22 Nov pack adds the current L5/X2/A1 authority, post-21-Nov implementation/terminology/performance chronology, reusable-primitive preservation rules and Nix-native vLLM state, then embeds this maintained handoff and the complete 21 Nov pack. The 21 Nov pack in turn carries the 20 Nov/18 Nov/15 Nov/14 Nov/October design foundation.
+Full dated takeover snapshot:
+[`FULL_COMPREHENSIVE_HANDOFF_2026-11-23.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-23.md).
+The 23 Nov pack records the complete post-22-Nov implementation, benchmark and
+product-design delta, the current dirty FlashInfer/paired-GDN ownership map, and
+the ready-to-paste next-agent prompt. It chains to the 22 Nov pack for the full
+October→22 Nov design/decision/evidence lineage.
 
-This file is the complete takeover map and a pointer into maintained source, tests
-and plans. It is deliberately **not** the retired monolithic SHA/archive/evidence
-handoff model. Git history retains superseded checkpoints; current source, tests
-and live TODOs are authoritative.
+This file remains the maintained current map and pointer into live source, tests
+and plans. Git history retains superseded checkpoints; current source, tests and
+live TODOs are authoritative.
 
-### Host authority — 22 Nov 2026
+### Host authority — 23 Nov 2026
 
 - L5 / `dotlink---l5` is the only source-authoring host; use the single persistent
   `main` worktree at `/home/pvl/spaces/abird/src/zerogravity`.
 - X2 / `dotlink---x2` is execution/testing only for AMD/ROCm large-VRAM work; move
   exact L5 commits by Git bundle rather than pushing merely for transport.
-- **A1 is offline/out of scope until the owner explicitly re-enables it.** Do not
-  connect, resume/delete partial transfer residue, or schedule benchmark/correctness
-  work there.
+- A1 is now explicitly re-enabled for mixed NVIDIA SM89 + AMD gfx1150 build/runtime
+  validation, but remains execution/testing only. Source changes land on L5 first.
 - All hosts use repo `/home/pvl/spaces/abird/src/zerogravity`, cache
   `/home/pvl/.cache/abird/zerogravity`, `CARGO_BUILD_JOBS=8`, and
   `RUSTC_WRAPPER=/run/current-system/sw/bin/kache`.
-- Physical GPU work goes through `python3 -B scripts/native-gpu.py -- ...`; loopback
-  traffic uses the accepted private-network envelope and `--require-private-network`.
+- Physical GPU work goes through `python3 -B scripts/native-gpu.py -- ...` when the
+  owning qualification requires the native-GPU envelope; loopback traffic uses the
+  accepted private-network envelope and `--require-private-network`.
+- Source checkpoint at handoff creation is `f3f872cb567a6885918ae2b4866ee6d535d736d8`;
+  `origin/main` is `2a595be84bc7c5dccf7509e35e4f9b3a341662a2`. Revalidate actual
+  HEAD first because the handoff docs commit may sit above the source checkpoint.
+- Another agent owns the current dirty FlashInfer-decode + paired-GDN-state files;
+  see the 23 Nov comprehensive handoff before touching CUDA provider/state-transport
+  surfaces.
 
 ### Terminology architecture — 21 Nov 2026
 
