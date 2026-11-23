@@ -194,19 +194,6 @@ pub(super) fn kernels(
                     vh
                 );
                 add!(
-                    super::kernels::coefficients_decode::CoefficientsDecode,
-                    32,
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    (),
-                    vh
-                );
-                add!(
                     crate::source_standalone_exp::normal_vector::NormalVector,
                     32,
                     b(),
@@ -274,68 +261,6 @@ pub(super) fn kernels(
                     kh,
                     state,
                     false
-                );
-                add!(
-                    crate::source_gdn::recurrent::key_reduce_decayed_private::KeyReduceDecayedPrivate,
-                    32,
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    1usize,
-                    values
-                );
-                add!(
-                    crate::source_gdn::recurrent::state_update_decayed_private::StateUpdateDecayedPrivate,
-                    32,
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    1usize,
-                    state
-                );
-                add!(
-                    crate::source_gdn::recurrent::key_reduce_private::KeyReducePrivate,
-                    32,
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    1usize,
-                    values,
-                    true
                 );
                 let bf16 = d.parameters()[2].kind
                     == zerogravity_core::encoding::StoredTensorEncoding::Scalar(

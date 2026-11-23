@@ -153,64 +153,37 @@ impl Cold {
         let bias = self.parameter(&parameters[1])?;
         let gamma = self.parameter(&parameters[2])?;
         let normal = self.table(0, 256 * 4)?;
-        if mode == InvocationPhase::Decode && rows != 1 {
-            return Err(Error::State("text-execution cached GDN row count".into()));
-        }
+        let a_exp = self.s(layout::A_EXP, vh)?;
         let beta_input = self.s(layout::BETA_INPUT, coeff)?;
         let beta = self.s(layout::BETA, coeff)?;
         let decay_log = self.s(layout::LOG_DECAY, coeff)?;
         let core = self.s(layout::CORE, n)?;
-        let mut count = match mode {
-            InvocationPhase::Prefill => {
-                let a_exp = self.s(layout::A_EXP, vh)?;
-                unsafe {
-                    crate::source_standalone_exp::normal_vector::launch_unchecked(
-                        client,
-                        grid(vh),
-                        dim(),
-                        arg(&a, vh),
-                        arg(&normal, 256),
-                        arg(&a_exp, vh),
-                        arg(&status, 1),
-                        vh,
-                    );
-                    super::kernels::coefficients::launch_unchecked(
-                        client,
-                        grid(coeff),
-                        dim(),
-                        arg(ba, coeff * 2),
-                        arg(&bias, vh),
-                        arg(&a_exp, vh),
-                        arg(&beta_input, coeff),
-                        arg(&decay_log, coeff),
-                        arg(&status, 1),
-                        rows as u32,
-                        vh,
-                    );
-                }
-                2
-            }
-            InvocationPhase::Decode => {
-                unsafe {
-                    super::kernels::coefficients_decode::launch_unchecked(
-                        client,
-                        grid(coeff),
-                        dim(),
-                        arg(ba, coeff * 2),
-                        arg(&bias, vh),
-                        arg(&a, vh),
-                        arg(&normal, 256),
-                        arg(&beta_input, coeff),
-                        arg(&decay_log, coeff),
-                        arg(&status, 1),
-                        rows as u32,
-                        vh,
-                    );
-                }
-                1
-            }
-        };
-        count += self.sigmoid(&beta_input, &beta, coeff)?;
+        unsafe {
+            crate::source_standalone_exp::normal_vector::launch_unchecked(
+                client,
+                grid(vh),
+                dim(),
+                arg(&a, vh),
+                arg(&normal, 256),
+                arg(&a_exp, vh),
+                arg(&status, 1),
+                vh,
+            );
+            super::kernels::coefficients::launch_unchecked(
+                client,
+                grid(coeff),
+                dim(),
+                arg(ba, coeff * 2),
+                arg(&bias, vh),
+                arg(&a_exp, vh),
+                arg(&beta_input, coeff),
+                arg(&decay_log, coeff),
+                arg(&status, 1),
+                rows as u32,
+                vh,
+            );
+        }
+        let mut count = 2 + self.sigmoid(&beta_input, &beta, coeff)?;
         match mode {
             InvocationPhase::Prefill => {
                 let q = self.s(layout::QUERY, n)?;
@@ -260,9 +233,13 @@ impl Cold {
                 )?;
             }
             InvocationPhase::Decode => {
+                if rows != 1 {
+                    return Err(Error::State("text-execution cached GDN row count".into()));
+                }
                 let decay = self.s(layout::DECAY, vh)?;
                 let q = self.s(layout::QUERY, width)?;
                 let k = self.s(layout::KEY, width)?;
+                let decayed = self.s(layout::DECAYED, state)?;
                 let memory = self.s(layout::MEMORY, width)?;
                 let delta = self.s(layout::DELTA, width)?;
                 use crate::source_gdn::recurrent as r;
@@ -290,24 +267,27 @@ impl Cold {
                         vh,
                         true,
                     );
-                    r::key_reduce_decayed_private::launch_unchecked(
+                    r::decayed::launch_unchecked(
+                        client,
+                        grid(state),
+                        dim(),
+                        arg(prior, state),
+                        arg(&decay, vh),
+                        arg(&decayed, state),
+                        arg(&status, 1),
+                        state,
+                        false,
+                    );
+                    r::key_reduce::launch_unchecked(
                         client,
                         grid(width),
                         dim(),
-                        arg(prior, state),
-                        arg(prior, state),
-                        arg(prior, state),
-                        arg(prior, state),
-                        arg(prior, state),
-                        arg(prior, state),
-                        arg(prior, state),
-                        arg(prior, state),
-                        arg(&decay, vh),
+                        arg(&decayed, state),
                         arg(&k, width),
                         arg(&memory, width),
                         arg(&status, 1),
-                        1usize,
                         width,
+                        false,
                     );
                     r::delta::launch_unchecked(
                         client,
@@ -322,54 +302,34 @@ impl Cold {
                         kh,
                         width,
                     );
-                    r::state_update_decayed_private::launch_unchecked(
+                    r::state_update::launch_unchecked(
                         client,
                         grid(state),
                         dim(),
-                        arg(prior, state),
-                        arg(prior, state),
-                        arg(prior, state),
-                        arg(prior, state),
-                        arg(prior, state),
-                        arg(prior, state),
-                        arg(prior, state),
-                        arg(prior, state),
-                        arg(&decay, vh),
+                        arg(&decayed, state),
                         arg(&k, width),
                         arg(&delta, width),
-                        arg(next, state),
-                        arg(next, state),
-                        arg(next, state),
-                        arg(next, state),
-                        arg(next, state),
-                        arg(next, state),
-                        arg(next, state),
+                        arg(activated, channels),
+                        arg(&beta, vh),
                         arg(next, state),
                         arg(&status, 1),
-                        1usize,
+                        kh,
                         state,
+                        false,
                     );
-                    r::key_reduce_private::launch_unchecked(
+                    r::key_reduce::launch_unchecked(
                         client,
                         grid(width),
                         dim(),
                         arg(next, state),
-                        arg(next, state),
-                        arg(next, state),
-                        arg(next, state),
-                        arg(next, state),
-                        arg(next, state),
-                        arg(next, state),
-                        arg(next, state),
                         arg(&q, width),
                         arg(&core, width),
                         arg(&status, 1),
-                        1usize,
                         width,
                         true,
                     );
                 }
-                count += 6;
+                count += 7;
             }
         }
         let normalized = self.s(layout::NORMAL, n)?;

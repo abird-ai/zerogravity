@@ -20,6 +20,7 @@ pub(super) const LOG_DECAY: usize = 14;
 pub(super) const A_EXP: usize = 15;
 pub(super) const CORE: usize = 16;
 pub(super) const NORMAL: usize = 17;
+pub(super) const DECAYED: usize = 18;
 pub(super) const MEMORY: usize = 19;
 pub(super) const DELTA: usize = 20;
 pub(super) const DECAY: usize = 21;
@@ -422,7 +423,7 @@ impl Layout {
             heads,
             v.max(a),
             v.max(a),
-            64, // Retired dense-decayed slot; keep scratch indices stable.
+            heads * 16384,
             heads * 128,
             heads * 128,
             heads,
