@@ -7,7 +7,8 @@ use crate::{
         gdn::{
             GdnRuntimeBuffer, GdnRuntimeCacheSlot, GdnRuntimePartition, GdnRuntimePlan,
             state_transport::{
-                CONV_ELEMENTS, RECURRENT_ELEMENTS, StateCopy, StateTransport, plane_handle,
+                CONV_ELEMENTS, RECURRENT_ELEMENTS, RecurrentOutCertified, StateCopy,
+                StateTransport, plane_handle,
             },
         },
         text_forward::{
@@ -1592,21 +1593,36 @@ impl CudaForwardBody {
         let mut dispatches = 1usize
             .checked_add(launches)
             .ok_or_else(|| Error::Limit("CUDA forward GDN recurrent dispatch count".into()))?;
-        dispatches += attention::certify(
-            self.cold().service().client(),
-            &output_handle,
-            &self.cold().status().handle(),
-            outputs[0],
-        )?;
-        StateTransport::prepare(
-            self.cold().service(),
-            StateCopy::RecurrentOut,
-            native,
-            candidate.handle.clone(),
-            self.cold().status(),
-        )?
-        .launch(self.cold().service())?;
-        dispatches += 1;
+        if descriptor.invocation().phase() == InvocationPhase::Decode
+            && step.rows == 1
+            && outputs[0] == 2048
+        {
+            RecurrentOutCertified::prepare(
+                self.cold().service(),
+                native,
+                candidate.handle.clone(),
+                output_handle,
+                self.cold().status(),
+            )?
+            .launch(self.cold().service())?;
+            dispatches += 1;
+        } else {
+            dispatches += attention::certify(
+                self.cold().service().client(),
+                &output_handle,
+                &self.cold().status().handle(),
+                outputs[0],
+            )?;
+            StateTransport::prepare(
+                self.cold().service(),
+                StateCopy::RecurrentOut,
+                native,
+                candidate.handle.clone(),
+                self.cold().status(),
+            )?
+            .launch(self.cold().service())?;
+            dispatches += 1;
+        }
         Ok((dispatches, 0))
     }
 
