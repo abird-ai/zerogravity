@@ -320,15 +320,23 @@ impl PreparedBf16Projection {
                 arg(&b.status.handle(), 1),
             );
         }
+        let singleton = input_rows == 1;
+        if singleton {
+            view(b.flags, 0, output_elements * 4)?;
+        }
         let mut commands = 1;
         for first in (0..total_rows).step_by(self.rows_per_launch) {
             cancelled(flag)?;
             let rows = self.rows_per_launch.min(total_rows - first);
             let range = first..first + rows;
             let elements = rows * batch;
-            let launches = 2;
+            let launches = if singleton { 1 } else { 2 };
             let accumulation = view(b.accumulation, 0, elements * 4)?;
-            let flags = view(b.flags, 0, elements * 4)?;
+            let flags = if singleton {
+                view(b.flags, first * 4, elements * 4)?
+            } else {
+                view(b.flags, 0, elements * 4)?
+            };
             let destination_rows = row_destination(batch, total_rows, first, rows)?;
             let destination = b
                 .output
@@ -336,7 +344,8 @@ impl PreparedBf16Projection {
                 .offset_start((destination_rows.start * 4) as u64)
                 .offset_end(((output_elements - destination_rows.end) * 4) as u64);
             let launch = |weights: &Handle| unsafe {
-                // Compact scratch; rounded stores retain each complete output-row stride.
+                // Compact accumulation. Singleton flags keep their final row
+                // positions so one status reduction can follow all weight tiles.
                 crate::bf16_projection_kernel::project_cpu_bf16::launch_unchecked(
                     service.client(),
                     CubeCount::Static(elements as u32, 1, 1),
@@ -351,13 +360,15 @@ impl PreparedBf16Projection {
                     columns,
                     total_rows,
                 );
-                projection_status::launch_unchecked(
-                    service.client(),
-                    grid(elements),
-                    threads(),
-                    arg(&flags, elements),
-                    arg(&b.status.handle(), 1),
-                );
+                if !singleton {
+                    projection_status::launch_unchecked(
+                        service.client(),
+                        grid(elements),
+                        threads(),
+                        arg(&flags, elements),
+                        arg(&b.status.handle(), 1),
+                    );
+                }
             };
             match self.storage {
                 Bf16ProjectionStorage::Resident => {
@@ -390,17 +401,33 @@ impl PreparedBf16Projection {
                             return Err(Error::State("BF16 streamed exact full-K view".into()));
                         }
                         launch(actual.handle());
-                        Ok(vec![
+                        let mut outputs = vec![
                             b.output_lease.clone(),
                             b.accumulation.clone(),
                             b.flags.clone(),
-                            b.status.clone(),
-                        ])
+                        ];
+                        if !singleton {
+                            outputs.push(b.status.clone());
+                        }
+                        Ok(outputs)
                     })
                     .await?;
                 }
             }
             commands += launches;
+        }
+        if singleton {
+            let flags = view(b.flags, 0, output_elements * 4)?;
+            unsafe {
+                projection_status::launch_unchecked(
+                    service.client(),
+                    grid(output_elements),
+                    threads(),
+                    arg(&flags, output_elements),
+                    arg(&b.status.handle(), 1),
+                );
+            }
+            commands += 1;
         }
         Ok(commands)
     }
