@@ -7,8 +7,11 @@ models through the existing shared scheduler/root owner. Projection-only
 C8 throughput improves to 30.978/23.737 tok/s for 0.8B/2B; 27B C1 1.979 tok/s.
 The retained vLLM comparison still leaves a substantial gap; no new paired
 vLLM result. Native GDN dense products now also use the owned rocBLAS provider, reaching
-39.778/29.088 tok/s at C8. Next: native triangular solve (92 ms in the
-projection-only profile), activation/RMS/dispatch overhead. Prefer mature tuned standard operators wherever their
+39.778/29.088 tok/s at C8 in V1. Shared compact dense GEMM/solve
+geometry and borrowed HIP command adapter now support native V2 GDN
+triangular solve, reaching43.638/30.949tok/s at C8. Next: actual native
+row-wise/attention regions and large dispatch amortization, guided by
+the current whole-model profile. Prefer mature tuned standard operators wherever their
 contract fits; specialize model-specific hot paths. See
 [model execution priority reset](../model-execution/TODO.md#priority-reset--24-nov-native-matrix-execution)
 and CURRENT_BASELINE. Preserve exact-reference serving and reusable kernels.

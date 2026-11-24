@@ -114,8 +114,51 @@ three models retire native ownership; final physical observation returns to
 259768320 B idle VRAM, zero busy and no KFD owner. GPU feature boundaries
 and CPU Clippy pass; the full gate stops at the pre-existing CPU admission
 assertion in cache_prepare.rs:142.
-These are the new native performance cells; exact-reference performance
+These are the V1 native performance cells; exact-reference performance
 remains separate.
+
+### Native dense composition and unit-lower solve (V2)
+
+`e1901b16` puts compact row-major GEMM and unit-lower solve in
+`zerogravity_core::accelerator::dense`, and uses borrowed commands through one
+HIP dense adapter. BF16 projection and all six chunk GEMMs use the common
+geometry. `79a9073a` moves the existing CUDA owned BLAS diagnostic adapter
+to the same GEMM geometry; no ordinary CUDA selection or physical claim.
+`9a571088` validates a previous input writer before claiming new writes,
+including TRSM's in-place RHS. The physical owned provider qualifier passes
+NN/NT/TN and 7x11 unit-lower solve with three independent batches, all
+integer-reference outputs exact. GDN uses two strided batched FP32 TRSM calls
+and existing copies/finite certificates over the original RHS/solution views.
+No additional workspace, allocator, stream or root authority. Native
+`HipRocBlasBf16MixedV2` / `HipRocBlasF32SolveV2` identifies the changed
+arithmetic; V1 source seal/loader and exact reference remain available.
+
+Actual 47+3 SDK benchmark, one warmup/two timed waves, 24GiB, active8/cohort8.
+Retained V1 checkpoint comparison, not fresh paired A/B:
+
+| Model / offered | V1 mean (ms) | V2 mean (ms) | V2 tok/s |
+| --- | ---: | ---: | ---: |
+| 0.8B C1 | 130.158 | 123.070 | 24.376 |
+| 0.8B C8 | 603.350 | 549.986 | 43.638 |
+| 2B C1 | 285.147 | 281.740 | 10.648 |
+| 2B C8 | 825.072 | 775.460 | 30.949 |
+| 27B C1 (68GiB) | 1362.961 | 1346.401 | 2.228 |
+
+All expected token IDs/replay/lane invariance, zero failed quanta,
+distinct multichunk state-only continuation and exact-source singleton
+canary (189.790ms warm mean) pass. 27B returns exact expected IDs,
+replays and retires under the original 68GiB envelope. Native C1/C8 dispatches 9,871/55,887 per wave versus
+9,781/55,167 previously: faster execution despite more launches.
+The C8 gaps versus retained vLLM are now about 5.0x/4.6x. No fresh
+paired vLLM or physical CUDA/Vulkan performance inference. All processes
+return to259768320B idle VRAM/no KFD owner. Combined workspace gate passes
+GPU feature boundaries and CPU Clippy before the same cache_prepare.rs:142
+CPU admission assertion; final HIP read/write fix compiles and passes physical
+provider and model checks.
+Next measure remaining whole-model costs; prioritize native row-wise
+normalization/gating and actual batched attention/rotary execution, then
+large dispatch regions. See the native operator composition boundary
+in the model execution TODO.
 
 ## Workload
 

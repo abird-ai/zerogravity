@@ -53,12 +53,32 @@ the source, physical owner, state/root, completion or cancellation contracts.
   continuation and 27B C1 pass; C8 reaches 39.778/29.088 tok/s and 27B C1
   reaches 2.201 tok/s with clean retirement. Original exact
   source kernels remain reusable.
-- [ ] Continue native GDN solve and dense/stateful execution after the measured
-  FP32 product unit. Use rocBLAS batched products and triangular solve where
-  supported, with explicit arithmetic identity; retain specialized recurrent
-  and attention kernels for where a mature native library does not fit.
-  Prioritize meaningful model-level speedups, device-resident sampling and
-  graph/dispatch amortization from the new profile.
+- [x] Shared dense operation seam: `e1901b16` places compact row-major
+  `Gemm` / `UnitLowerSolve`, precision, transpose and checked byte extents
+  in core; GPU commands borrow exact views. HIP lowers both projections and
+  chunk GEMMs through one borrowed adapter on the admitted native set and
+  workspace. `79a9073a` moves existing owned CUDA BLAS adapter to the same
+  GEMM descriptor (diagnostic consumer, not ordinary execution selection).
+  `9a571088` handles original input validation before a read/write RHS is
+  claimed by the new write scope; the provider lifecycle qualifier passes
+  all prior GEMMs and the in-place unit-lower solve. No new owner, runtime
+  registry or virtual dispatch.
+- [x] Native unit-lower solve on the common dense provider; V2 numerical
+  identity, original guarded solve retained in V1 and exact source.
+  `9a571088` physical model C1/C8 means0.8B123.070/549.986ms,
+  2B281.740/775.460ms, 1.2–8.8% lower vs retained V1. Expected IDs,
+  replay/lane invariance, actual state-only continuation and exact canary
+  pass. 27B C1 at68GiB1346.401ms/2.228tok/s exact expected tokens/replay,
+  all physical owners retire. Same workspace and original per-session state
+  ownership. Combined GPU feature gates and CPU Clippy pass; full gate
+  still stops at the existing CPU cache admission assertion.
+- [ ] Next native execution region: replace whole reference row-wise/attention
+  stages (normalization, gated activations, QK/rotary, attention) with mature
+  native implementations where available. Re-profile actual V2 C8 and cached
+  decode, share compatible independent rows, keep actual state/position
+  semantics. Then amortize large dispatch regions using existing graph/actor
+  ownership, including device-resident sampling. No scalar microtuning
+  campaign or general speculative provider registry.
 - [ ] NVIDIA: connect existing owned cuBLAS/cuBLASLt provider to ordinary
   resident projection/compatible dense products, not just reference diagnostics.
   Preserve existing native tensor-core/CUTLASS primitives; resolve fused lane
@@ -72,6 +92,28 @@ the source, physical owner, state/root, completion or cancellation contracts.
   existing shader primitives. Do not silently cast or adopt a second engine.
 - [ ] Restore a current matched vLLM comparison when its pinned local closure is
   available. No new download or unrelated dependency repin just for evidence.
+
+### Native operator composition boundary
+
+- Core descriptors express mathematical geometry/precision, not provider or
+  allocation permission. Add layouts, formats and operations only for a real
+  consumer. Compact rows/head batches are the first shared dense geometry.
+- Model/source lowering stays authoritative. Cold numerical contract and
+  backend capability determine the immutable executable choices and workspace
+  admission. A native math contract is not the exact CPU reduction contract.
+- Native adapters translate geometry and borrowed views into vendor calls;
+  use monomorphized commands and existing actor/flight/lease ownership. No
+  second stream, buffer cache, root publisher or backend-specific model loop.
+  Backend-local read/write dependency and retirement semantics stay at that
+  boundary. Unsupported geometry refuses before work; an actual failed native
+  submission cannot retry with another implementation on the same root.
+- Reuse mature native libraries for large dense/attention blocks. The next
+  architectural boundary is native batched row-wise and attention regions
+  (RMS, gating, QK/rotary and stateful attention), then graph/dispatch
+  amortization over the existing invocation/cohort plan. Profile real model
+  throughput before adding provider-specific specializations. Do not force
+  dense, quantized, attention or stateful operators into one universal GEMM
+  interface; compose the smallest shared contracts that actual consumers use.
 
 Earlier execution priorities below retain context, not precedence over this unit:
 

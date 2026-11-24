@@ -59,6 +59,21 @@ integration seam, not another scalar microkernel campaign.
   GEMM via mature ggml Vulkan shaders where capability and licensing allow.
   Preserve all custom and exact-reference primitives; avoid duplicating
   the execution fabric or silently changing precision.
+- `e1901b16` / `79a9073a` / `9a571088`: shared compact row-major
+  `Gemm` and `UnitLowerSolve` core geometry, borrowed GPU command and
+  HIP lowering; existing CUDA owned BLAS diagnostic accepts the same
+  GEMM descriptor. No new provider owner/registry or CUDA production claim.
+  In-place solve validates original read dependency before new write scope.
+  Owned physical qualifier passes all original GEMMs and unit-lower solve.
+  New native V2 arithmetic identity (batched TRSM with original RHS copy/
+  finite checks); V1 source binding/loader and exact source solver retained.
+  Actual 0.8B/2B C8 warm549.986/775.460ms (43.638/30.949tok/s), C1
+  123.070/281.740ms; exact expected output, replay, distinct state-only
+  continuation, exact-source C1 canary, 27B C1 at68GiB1346.401ms/2.228tok/s,
+  original idle retirement. Native SDK/
+  CLI selects V2, exact source stays default. Next native row-wise and
+  attention regions and dispatch amortization, not another general framework.
+  See model execution TODO for the shared operator composition boundary.
 - X2's existing rocBLAS 7.2.4 closure
   /nix/store/ngf5gxxijv293l72lb1jdc77b7y2zjrd-rocblas-7.2.4/lib
   matches the already recovered HIP/glibc runtime. Use the existing local loader
