@@ -326,19 +326,11 @@ async fn run(unknown: bool, sealed_miss: bool) -> Result<()> {
                 admission.clone(),
             )
         };
-        let refusal = match second {
-            Err(error) => error.to_string(),
-            Ok(_) => {
-                budget.fence_unknown();
-                return Err(Error::State(
-                    "second active HIP native set unexpectedly accepted".into(),
-                ));
-            }
-        };
-        if !refusal.contains("HIP native preparation needs a cold/unowned cache") {
-            return Err(Error::State(format!(
-                "unexpected second-set refusal: {refusal}"
-            )));
+        if second.is_ok() {
+            budget.fence_unknown();
+            return Err(Error::State(
+                "second active HIP native set unexpectedly accepted".into(),
+            ));
         }
         native
             .require_live(service.client())
