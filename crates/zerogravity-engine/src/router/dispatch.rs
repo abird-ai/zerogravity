@@ -6,6 +6,7 @@ use super::pending::{
     self, CancelToken, PendingQueue, QueueSnapshot, ServingCharge, ServingHost as HostPool,
     WorkerQueue,
 };
+pub use super::registry::ModelRead;
 use super::{host::HostLogits, registry, statistics::WorkStats, waves, worker};
 pub use crate::model_instance::TextTokenizer;
 use crate::model_instance::execution::*;
@@ -500,6 +501,8 @@ pub struct Scheduled {
     pub cancel: CancelToken,
     pub prompt_charge: Option<ServingCharge>,
     pub transport: Option<Arc<ServingCharge>>,
+    /// Only direct diagnostic row construction may omit the registry reader.
+    pub model_reader: Option<ModelRead>,
 }
 pub struct Router {
     models: Arc<dyn registry::Models>,
@@ -702,9 +705,16 @@ impl Router {
             pending::checked_sum(&[
                 arc_bytes::<registry::Registry<A>>()?,
                 arc_bytes::<WorkStats>()?,
+                // One owner per distinct prepared model (at most alias count).
+                // Covers the additional route Arc/state and stable slot.
+                (arc_bytes::<registry::Route<A>>()? + fixed_size::<Arc<registry::Route<A>>>()?)
+                    .checked_mul(models.len() as u64)
+                    .ok_or_else(|| {
+                        ServiceError::new(400, "size_overflow", "route owner inventory overflow")
+                    })?,
             ])?,
         )?;
-        let models = Arc::new(registry::Registry::<A> { models });
+        let models = Arc::new(registry::Registry::<A>::new(models));
         let stats = Arc::new(WorkStats::default());
         let queue = PendingQueue::new(host.clone(), config.max_pending)?;
         let rows = vecdeque_backing_bytes::<worker::Active<A>>(config.active)?;
@@ -810,13 +820,11 @@ impl Router {
         }
         Ok(aliases)
     }
-    pub(crate) fn require_sole_owner(&self, model: &ModelInstance) -> crate::Result<()> {
-        if self.aliases(model)?.count() != self.model_ids().count() {
-            return Err(crate::Error::Unsupported(
-                "selective retirement of a mixed-owner route set is not implemented".into(),
-            ));
-        }
-        Ok(())
+    pub(crate) fn begin_unload(
+        &self,
+        model: &ModelInstance,
+    ) -> crate::Result<Option<registry::SelectiveRetirement>> {
+        self.models.begin_unload(model)
     }
     pub fn host(&self) -> &HostPool {
         &self.host
@@ -905,10 +913,7 @@ impl Router {
         ingress: Option<Vec<ServingCharge>>,
         prefix_sharing: Option<crate::state_cache::PrefixSharingScope>,
     ) -> Result<RequestEvents, ServiceError> {
-        let model = self
-            .models
-            .model(&request.model)
-            .ok_or_else(|| ServiceError::new(404, "model_not_found", "model is not registered"))?;
+        let (model, model_reader) = self.models.acquire(&request.model)?;
         if request.input.is_empty()
             || request.input.len() > 1024 * 1024
             || request.max_tokens == 0
@@ -1026,6 +1031,7 @@ impl Router {
             cancel: cancel.clone(),
             prompt_charge: Some(prompt_charge),
             transport: Some(Arc::clone(&transport)),
+            model_reader: Some(model_reader),
         };
         if let Err((error, _)) = self.queue.enqueue(ticket, scheduled) {
             return Err(error);

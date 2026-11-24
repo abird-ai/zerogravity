@@ -41,13 +41,14 @@ enum TextPhase {
     Empty,
     Loading(std::thread::ThreadId),
     Ready(Router),
+    Retiring(Router, std::thread::ThreadId),
     Joining(std::thread::ThreadId),
     Closed,
 }
 impl TextControl {
     fn router(&self) -> Option<&Router> {
         match &self.phase {
-            TextPhase::Ready(router) => Some(router),
+            TextPhase::Ready(router) | TextPhase::Retiring(router, _) => Some(router),
             _ => None,
         }
     }
@@ -86,11 +87,21 @@ impl<'a> LifecycleOperation<'a> {
         if text.failure.is_none() {
             text.failure = failure.map(str::to_owned);
         }
-        text.phase = if self.inner.closed.load(Ordering::Acquire) {
-            TextPhase::Closed
+        if matches!(text.phase, TextPhase::Retiring(..)) {
+            let TextPhase::Retiring(router, _) =
+                std::mem::replace(&mut text.phase, TextPhase::Empty)
+            else {
+                unreachable!()
+            };
+            // Even if shutdown raced, the remaining router must still join.
+            text.phase = TextPhase::Ready(router);
         } else {
-            TextPhase::Empty
-        };
+            text.phase = if self.inner.closed.load(Ordering::Acquire) {
+                TextPhase::Closed
+            } else {
+                TextPhase::Empty
+            };
+        }
         self.armed = false;
         self.inner.changed.notify_all();
     }
@@ -378,8 +389,8 @@ impl Runtime {
             .map(|aliases| aliases.map(str::to_owned).collect())
     }
 
-    /// One original lifecycle operation; never close the runtime merely to
-    /// remove its sole loaded owner. A racing shutdown waits for the same join.
+    /// Close only the selected owner's admission, drain its accepted readers
+    /// unlocked, then retire it. The last owner uses the existing whole join.
     pub(crate) fn unload_text_model(&self, model: &ModelInstance) -> Result<()> {
         if crate::router::on_worker_thread() {
             return Err(Error::State(
@@ -387,29 +398,42 @@ impl Runtime {
             ));
         }
         let current = std::thread::current().id();
-        let router = {
-            let mut text = self
-                .inner
-                .text
-                .lock()
-                .map_err(|_| Error::State("runtime lock poisoned".into()))?;
-            self.require_open()?;
-            let router = text
-                .router()
-                .ok_or_else(|| Error::State("no ready text adapter for model retirement".into()))?;
-            router.require_sole_owner(model)?;
-            router.close_admission();
-            let TextPhase::Ready(router) =
-                std::mem::replace(&mut text.phase, TextPhase::Joining(current))
-            else {
-                unreachable!("matched ready router");
-            };
-            router
+        let mut text = self
+            .inner
+            .text
+            .lock()
+            .map_err(|_| Error::State("runtime lock poisoned".into()))?;
+        self.require_open()?;
+        let TextPhase::Ready(router) = &text.phase else {
+            return Err(Error::State(
+                "no ready text adapter for model retirement".into(),
+            ));
         };
-        let operation = LifecycleOperation::new(&self.inner, "text model retirement panicked");
-        let failure = self.retire_text_router(router);
-        operation.finish();
-        failure.map_or(Ok(()), |message| Err(Error::State(message)))
+        let selected = router.begin_unload(model)?;
+        if selected.is_none() {
+            router.close_admission();
+        }
+        let TextPhase::Ready(router) =
+            std::mem::replace(&mut text.phase, TextPhase::Joining(current))
+        else {
+            unreachable!("matched ready router");
+        };
+        if let Some(selected) = selected {
+            text.phase = TextPhase::Retiring(router, current);
+            drop(text);
+            let mut operation =
+                LifecycleOperation::new(&self.inner, "selective model retirement panicked");
+            let result = selected.finish();
+            let failure = result.as_ref().err().map(ToString::to_string);
+            operation.complete(failure.as_deref());
+            result
+        } else {
+            drop(text);
+            let operation = LifecycleOperation::new(&self.inner, "text model retirement panicked");
+            let failure = self.retire_text_router(router);
+            operation.finish();
+            failure.map_or(Ok(()), |message| Err(Error::State(message)))
+        }
     }
 
     /// Close admission under the lifecycle lock before waiting for retirement.
@@ -429,7 +453,7 @@ impl Runtime {
                 .text
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if matches!(&text.phase, TextPhase::Loading(owner) | TextPhase::Joining(owner) if *owner == current)
+            if matches!(&text.phase, TextPhase::Loading(owner) | TextPhase::Joining(owner) | TextPhase::Retiring(_, owner) if *owner == current)
             {
                 return Err(Error::State(
                     "blocking runtime shutdown from its loader/retirement owner is unsupported"
@@ -454,7 +478,7 @@ impl Runtime {
                         };
                         break router;
                     }
-                    TextPhase::Loading(_) | TextPhase::Joining(_) => {
+                    TextPhase::Loading(_) | TextPhase::Joining(_) | TextPhase::Retiring(..) => {
                         #[cfg(test)]
                         {
                             text.shutdown_waiters += 1;

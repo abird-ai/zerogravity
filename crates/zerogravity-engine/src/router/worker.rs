@@ -62,6 +62,7 @@ pub struct Active<A: Executor> {
     _transport: Option<Arc<ServingCharge>>,
     _source_lease: A::Lease,
     _cancel: CancelToken,
+    _model_reader: Option<ModelRead>,
 }
 impl<A: Executor> Active<A> {
     pub fn new(
@@ -79,6 +80,7 @@ impl<A: Executor> Active<A> {
             cancel,
             prompt_charge,
             transport,
+            model_reader,
         } = job;
         let lease = payload.ok_or_else(|| {
             ServiceError::new(
@@ -155,6 +157,7 @@ impl<A: Executor> Active<A> {
             _transport: transport,
             _source_lease: source_lease,
             _cancel: cancel,
+            _model_reader: model_reader,
         })
     }
     pub fn prefill_count(&self) -> usize {
@@ -466,13 +469,21 @@ fn run<A: Executor>(
                     .expect("scheduled payload")
                     .request
                     .model;
-                let model = models
-                    .models
-                    .get(alias)
-                    .expect("router validated model")
-                    .clone();
                 let errors = job.events.clone();
-                match Active::<A>::new(job, model, config, &host, stats.clone()) {
+                let model = job
+                    .model_reader
+                    .as_ref()
+                    .ok_or_else(|| {
+                        ServiceError::new(
+                            500,
+                            "model_reader",
+                            "queued request lacks its registry owner",
+                        )
+                    })
+                    .and_then(|reader| models.model_for_job(alias, reader));
+                match model
+                    .and_then(|model| Active::<A>::new(job, model, config, &host, stats.clone()))
+                {
                     Ok(row) => active.push_back(row),
                     Err(error) => {
                         if error.status == 499 && error.code == "cancelled" {
@@ -487,7 +498,7 @@ fn run<A: Executor>(
         }
         if active.is_empty() {
             if closing {
-                if let Err(error) = A::retire(&models.models) {
+                if let Err(error) = models.retire_all() {
                     stats.failed.fetch_add(1, Ordering::Relaxed);
                     stats.retirement_failed.store(true, Ordering::Release);
                     eprintln!("source retirement failed: {error}");

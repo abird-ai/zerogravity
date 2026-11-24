@@ -19,10 +19,10 @@ impl<'a> ModelCatalog<'a> {
         self.runtime.text_model_aliases(model)
     }
 
-    /// Retire the sole prepared owner and all its aliases; drain accepted work
-    /// and join the original workers. The runtime stays open for a new cold load.
-    /// Multiple distinct owners refuse until selective retirement is supported.
-    /// External model/tokenizer readers retain their original source ownership.
+    /// Retire this prepared owner and all its aliases, draining accepted work.
+    /// Independent owners continue on the same workers if the adapter supports
+    /// selective retirement. The last owner joins the workers, leaving an open
+    /// runtime. External source/tokenizer readers retain their own ownership.
     pub fn unload(&self, model: &ModelInstance) -> Result<()> {
         self.runtime.unload_text_model(model)
     }

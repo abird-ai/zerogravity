@@ -1013,20 +1013,57 @@ fn qwen_gguf_cuda_sdk_unloads_with_retained_handle() {
     let device =
         PhysicalDeviceKey::new("pci", &normalize_pci(&physical.pci_bus_id).unwrap()).unwrap();
     let host = PhysicalDeviceKey::new("host", "zerogravity-serve-cpu").unwrap();
+    struct OtherSource(PathBuf);
+    impl Drop for OtherSource {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let parent = path.parent().unwrap();
+    let other_source = OtherSource(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tmp")
+            .join(format!("_tmp_mixed_gguf_{}", std::process::id())),
+    );
+    std::fs::create_dir(&other_source.0).unwrap();
+    let other_path = other_source.0.join("model.gguf");
+    for (original, target) in [
+        (path.clone(), other_path.clone()),
+        (
+            parent.join("config.json"),
+            other_source.0.join("config.json"),
+        ),
+        (
+            parent.join("tokenizer.json"),
+            other_source.0.join("tokenizer.json"),
+        ),
+    ] {
+        std::fs::hard_link(original, target).unwrap();
+    }
     let arbiter = ResourceArbiter::process_shared();
-    let runtime = Runtime::builder().build().unwrap();
+    let runtime = Runtime::builder()
+        .limits(zerogravity::runtime::SchedulerLimits {
+            max_active: 2,
+            ..Default::default()
+        })
+        .build()
+        .unwrap();
     runtime
         .models()
         .load(ModelLoadRequest::GpuText {
-            declared: vec![("source".into(), path.clone()), ("alias".into(), path)],
+            declared: vec![
+                ("source".into(), path.clone()),
+                ("alias".into(), path),
+                ("other".into(), other_path),
+            ],
             backend: GpuBackend::Cuda,
             profile: GpuProfile {
                 workers: 1,
-                active: 1,
+                active: 2,
                 context: 512,
                 output: 1,
-                host_mib: 4096,
-                provider_mib: 4096,
+                host_mib: 8192,
+                provider_mib: 2048,
                 device_mib: 5120,
                 cohort_width: 0,
                 max_pending: Some(4),
@@ -1038,11 +1075,13 @@ fn qwen_gguf_cuda_sdk_unloads_with_retained_handle() {
         runtime.models().aliases(&handle).unwrap(),
         ["alias", "source"]
     );
+    let other = runtime.models().resolve("other").unwrap();
+    assert!(!handle.shares_source(&other));
     let tokenizer = handle.prepared().tokenizer();
     let prompt = " a";
     let ids = tokenizer.prompt_tokens(prompt, false).unwrap();
-    let complete = |alias: &str| {
-        let events = runtime
+    let submit = |alias: &str| {
+        runtime
             .request_text(Request {
                 model: alias.into(),
                 input: prompt.into(),
@@ -1051,38 +1090,58 @@ fn qwen_gguf_cuda_sdk_unloads_with_retained_handle() {
                 stream: false,
                 token_metrics: None,
             })
-            .unwrap();
-        match events
-            .events
-            .recv_timeout(Duration::from_secs(120))
             .unwrap()
-        {
-            ResponseEvent::Done {
-                output,
-                prompt_tokens,
-                completion_tokens,
-                ..
-            } => {
-                assert_eq!(prompt_tokens, ids.len());
-                assert!(completion_tokens <= 1);
-                output
-            }
-            ResponseEvent::Error(error) => panic!("GGUF worker: {error}"),
-            _ => panic!("unexpected GGUF response"),
-        }
     };
-    assert_eq!(complete("source"), complete("alias"));
+    let complete = |events: zerogravity::runtime::text::RequestEvents| match events
+        .events
+        .recv_timeout(Duration::from_secs(120))
+        .unwrap()
+    {
+        ResponseEvent::Done {
+            output,
+            prompt_tokens,
+            completion_tokens,
+            ..
+        } => {
+            assert_eq!(prompt_tokens, ids.len());
+            assert!(completion_tokens <= 1);
+            output
+        }
+        ResponseEvent::Error(error) => panic!("GGUF worker: {error}"),
+        _ => panic!("unexpected GGUF response"),
+    };
+    let expected = complete(submit("source"));
+    assert_eq!(complete(submit("alias")), expected);
+    assert_eq!(complete(submit("other")), expected);
     let before = arbiter.snapshot(&host).unwrap().reserved;
-    assert!(arbiter.snapshot(&device).unwrap().reserved > 0);
+    let before_device = arbiter.snapshot(&device).unwrap();
+    assert_eq!(before_device.reserved, 4096 * 1024 * 1024);
+    let accepted_target = submit("alias");
+    let accepted_other = submit("other");
     runtime.models().unload(&handle).unwrap();
+    assert_eq!(complete(accepted_target), expected);
+    assert_eq!(complete(accepted_other), expected);
     assert!(!runtime.status().closed);
-    assert!(runtime.models().list().unwrap().is_empty());
+    assert_eq!(runtime.status().loaded_models, 1);
+    assert!(runtime.models().resolve("source").is_err());
+    assert!(runtime.models().resolve("alias").is_err());
+    assert!(
+        runtime
+            .models()
+            .resolve("other")
+            .unwrap()
+            .shares_source(&other)
+    );
     let retired = arbiter.snapshot(&device).unwrap();
-    assert_eq!(retired.reserved, 0);
+    assert_eq!(retired.reserved, 2048 * 1024 * 1024);
     assert!(!retired.fenced);
     assert!(before - arbiter.snapshot(&host).unwrap().reserved >= weight_bytes);
     assert_eq!(tokenizer.prompt_tokens(prompt, false).unwrap(), ids);
-    drop((handle, tokenizer));
+    assert_eq!(complete(submit("other")), expected);
+    runtime.models().unload(&other).unwrap();
+    assert_eq!(arbiter.snapshot(&device).unwrap().reserved, 0);
+    assert!(runtime.models().list().unwrap().is_empty());
+    drop((handle, tokenizer, other));
     runtime.shutdown().unwrap();
-    println!("GGUF_CUDA_CATALOG_UNLOAD_PASS");
+    println!("GGUF_CUDA_SELECTIVE_CATALOG_UNLOAD_PASS");
 }

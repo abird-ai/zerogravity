@@ -94,26 +94,26 @@ fn source_bound_sdk_http_lifecycle() {
     let model = root.join("model.gguf");
     let declared = vec![("tiny".into(), model.clone()), ("alias".into(), model)];
     #[cfg(not(feature = "serve"))]
-    let load = || crate::models::ModelLoadRequest::CpuText {
-        declared: declared.clone(),
+    let load = |declared| crate::models::ModelLoadRequest::CpuText {
+        declared,
         config: TextConfig {
             workers: 1,
             active_per_worker: 1,
             max_context: MAX_CONTEXT,
             max_output: MAX_OUTPUT,
-            host_mib: HOST_MIB,
+            host_mib: 2 * HOST_MIB,
             max_pending: Some(4),
         },
     };
     #[cfg(feature = "serve")]
-    let load = || crate::models::ModelLoadRequest::ServingText {
-        declared: declared.clone(),
+    let load = |declared| crate::models::ModelLoadRequest::ServingText {
+        declared,
         profile: crate::serving::TextProfile {
             workers: 1,
             active_per_worker: 1,
             max_context: MAX_CONTEXT,
             max_output: MAX_OUTPUT,
-            host_mib: HOST_MIB,
+            host_mib: 2 * HOST_MIB,
             max_pending_requests: Some(4),
             backend: "cpu".into(),
             source_profile: "gguf".into(),
@@ -127,7 +127,7 @@ fn source_bound_sdk_http_lifecycle() {
     };
     runtime
         .models()
-        .load(load())
+        .load(load(declared.clone()))
         .expect("public source-bound CPU load");
     #[cfg(feature = "serve")]
     {
@@ -233,12 +233,49 @@ fn source_bound_sdk_http_lifecycle() {
     drop(final_reader);
     assert!(tokenizer.upgrade().is_none());
 
-    runtime.models().load(load()).unwrap();
+    // Same immutable GGUF bytes at a distinct canonical path mean two actual
+    // source allocations, not aliases. Hard-link avoids a second disk copy.
+    let other_path = root.join("other.gguf");
+    std::fs::hard_link(root.join("model.gguf"), &other_path).unwrap();
+    let mut declared = declared;
+    declared.push(("other".into(), other_path));
+    runtime.models().load(load(declared)).unwrap();
     assert_eq!(direct(&clone, "tiny"), expected);
-    let new = runtime.models().resolve("tiny").unwrap();
-    let source = Arc::downgrade(new.prepared());
-    let tokenizer = Arc::downgrade(&new.prepared().tokenizer());
-    drop(new);
+    let target = runtime.models().resolve("tiny").unwrap();
+    let other = runtime.models().resolve("other").unwrap();
+    assert!(!target.shares_source(&other));
+    assert_eq!(
+        runtime.models().aliases(&target).unwrap(),
+        ["alias", "tiny"]
+    );
+    let target_weak = Arc::downgrade(target.prepared());
+    let source = Arc::downgrade(other.prepared());
+    let tokenizer = Arc::downgrade(&other.prepared().tokenizer());
+    let first = runtime.request_text(request()).unwrap();
+    let mut survivor_request = request();
+    survivor_request.model = "other".into();
+    let survivor = runtime.request_text(survivor_request).unwrap();
+    runtime.models().unload(&target).unwrap();
+    assert_eq!(terminal(first.events.recv_timeout(WAIT).unwrap()), expected);
+    assert_eq!(
+        terminal(survivor.events.recv_timeout(WAIT).unwrap()),
+        expected
+    );
+    drop((first, survivor, target));
+    assert!(target_weak.upgrade().is_none());
+    assert!(runtime.models().resolve("alias").is_err());
+    assert!(runtime.models().resolve("tiny").is_err());
+    assert_eq!(runtime.status().loaded_models, 1);
+    assert_eq!(runtime.status().execution_adapters, 1);
+    assert!(
+        runtime
+            .models()
+            .resolve("other")
+            .unwrap()
+            .shares_source(&other)
+    );
+    assert_eq!(direct(&clone, "other"), expected);
+    drop(other);
     runtime.shutdown().unwrap();
     for handle in [&runtime, &clone] {
         assert!(handle.status().closed);

@@ -127,6 +127,10 @@ impl Executor for HostLogits {
             }),
         })
     }
+    fn selective_retirement() -> Option<ModelRetirement<Self::Model>> {
+        // CPU source weights are retained by the original final Arc readers.
+        Some(|_| Ok(()))
+    }
     fn diagnostics(
         _: &BTreeMap<String, Self::Model>,
         snapshot: &SchedulerSnapshot,

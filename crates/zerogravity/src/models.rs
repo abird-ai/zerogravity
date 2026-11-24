@@ -244,9 +244,10 @@ impl<'a> ModelCatalog<'a> {
     pub fn aliases(&self, model: &ModelInstance) -> crate::Result<Vec<String>> {
         self.runtime.engine.models().aliases(model)
     }
-    /// Retire the sole prepared model and all its aliases without closing the
-    /// runtime. Accepted work drains on the original workers. A mixed-owner
-    /// route set refuses; retained source/tokenizer readers remain valid.
+    /// Retire this prepared model and all its aliases without closing the
+    /// runtime. Accepted work drains; independent owners continue serving
+    /// when the adapter supports selective retirement. The last owner joins
+    /// the original workers; retained source/tokenizer readers remain valid.
     pub fn unload(&self, model: &ModelInstance) -> crate::Result<()> {
         self.runtime.engine.models().unload(model)
     }

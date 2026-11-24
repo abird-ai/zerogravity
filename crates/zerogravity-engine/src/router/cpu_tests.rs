@@ -454,48 +454,145 @@ fn catalog_unloads_exact_owner_and_drains_before_cold_reload() {
 }
 
 #[test]
-fn catalog_refuses_mixed_owner_retirement_without_changing_routes() {
+fn selective_catalog_retirement_preserves_other_workers_and_shutdown_order() {
     use crate::Runtime;
-    let host = HostPool::isolated(256).unwrap();
-    let first = MockModel::new(&host, None);
-    let second = MockModel::new(&host, None);
-    let runtime = Runtime::builder()
-        .limits(crate::scheduler::SchedulerLimits {
-            max_active: 2,
-            ..Default::default()
-        })
-        .build()
-        .unwrap();
-    runtime
-        .configure_text(|| {
-            let a: Arc<dyn LogitModel> = first.clone();
-            let b: Arc<dyn LogitModel> = second.clone();
-            Router::new(
-                BTreeMap::from([("model".into(), a), ("alias".into(), b)]),
-                1,
-                2,
-                128,
-                16,
-                host.clone(),
-                Some(16),
-            )
-        })
-        .unwrap();
-    let model = runtime.models().resolve("model").unwrap();
-    assert!(matches!(
-        runtime.models().unload(&model),
-        Err(crate::Error::Unsupported(_))
-    ));
-    assert_eq!(runtime.models().aliases(&model).unwrap(), ["model"]);
-    assert_eq!(runtime.models().list().unwrap().len(), 2);
-    assert_eq!(
-        done(&runtime.request_text(request("still live")).unwrap()),
-        "AB"
-    );
-    let mut req = request("other owner");
-    req.model = "alias".into();
-    assert_eq!(done(&runtime.request_text(req).unwrap()), "AB");
-    runtime.shutdown().unwrap();
-    drop((model, runtime, first, second));
-    assert_eq!(host.snapshot().unwrap().1, 0);
+    use std::time::Instant;
+    for race_shutdown in [false, true] {
+        let host = HostPool::isolated(256).unwrap();
+        let retiring_gate = Arc::new(Gate::default());
+        let survivor_gate = Arc::new(Gate::default());
+        let retiring = MockModel::new(&host, Some(retiring_gate.clone()));
+        let survivor = MockModel::new(&host, Some(survivor_gate.clone()));
+        let runtime = Runtime::builder()
+            .limits(crate::scheduler::SchedulerLimits {
+                max_active: 2,
+                ..Default::default()
+            })
+            .build()
+            .unwrap();
+        runtime
+            .configure_text(|| {
+                let a: Arc<dyn LogitModel> = retiring.clone();
+                let b: Arc<dyn LogitModel> = survivor.clone();
+                Router::new(
+                    BTreeMap::from([
+                        ("model".into(), a.clone()),
+                        ("alias".into(), a),
+                        ("other".into(), b),
+                    ]),
+                    2,
+                    1,
+                    128,
+                    16,
+                    host.clone(),
+                    Some(16),
+                )
+            })
+            .unwrap();
+        let model = runtime.models().resolve("model").unwrap();
+        let other = runtime.models().resolve("other").unwrap();
+        assert_eq!(
+            runtime.models().aliases(&model).unwrap(),
+            ["alias", "model"]
+        );
+        let first = runtime.request_text(request("first target")).unwrap();
+        retiring_gate.entered();
+        let other_request = || {
+            let mut req = request("survivor");
+            req.model = "other".into();
+            req
+        };
+        let first_other = runtime.request_text(other_request()).unwrap();
+        survivor_gate.entered();
+        let mut alias = request("queued target");
+        alias.model = "alias".into();
+        let second = runtime.request_text(alias).unwrap();
+        let cancelled = runtime
+            .request_text(request("cancelled queued target"))
+            .unwrap();
+        cancelled.cancel();
+        drop(cancelled);
+        let retire = runtime.clone();
+        let handle = model.clone();
+        let joining = std::thread::spawn(move || retire.models().unload(&handle));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while runtime.status().loaded_models != 1 {
+            assert!(
+                Instant::now() < deadline,
+                "selective admission did not close"
+            );
+            std::thread::yield_now();
+        }
+        assert_eq!(runtime.status().execution_adapters, 1);
+        assert!(runtime.models().aliases(&model).is_err());
+        assert!(runtime.models().resolve("alias").is_err());
+        assert_eq!(
+            runtime
+                .request_text(request("late target"))
+                .err()
+                .unwrap()
+                .code,
+            "model_not_found"
+        );
+        assert!(
+            runtime.models().unload(&other).is_err(),
+            "one lifecycle operation at a time"
+        );
+        assert!(
+            runtime
+                .models()
+                .resolve("other")
+                .unwrap()
+                .shares_source(&other)
+        );
+        let new_other = runtime.request_text(other_request()).unwrap();
+        survivor_gate.release();
+        assert_eq!(done(&first_other), "AB");
+        assert_eq!(
+            done(&second),
+            "AB",
+            "accepted alias survives admission close"
+        );
+        assert_eq!(
+            done(&new_other),
+            "AB",
+            "unrelated owner continues during drain"
+        );
+        assert!(!joining.is_finished(), "target has a live session");
+
+        let shutdown = race_shutdown.then(|| {
+            let runtime = runtime.clone();
+            std::thread::spawn(move || runtime.shutdown())
+        });
+        if shutdown.is_some() {
+            runtime.wait_for_shutdown_waiters(1);
+            assert!(runtime.status().closed);
+        }
+        retiring_gate.release();
+        assert_eq!(done(&first), "AB");
+        joining.join().unwrap().unwrap();
+        if let Some(shutdown) = shutdown {
+            shutdown.join().unwrap().unwrap();
+        } else {
+            assert!(!runtime.status().closed);
+            assert_eq!(runtime.models().list().unwrap().len(), 1);
+            assert!(runtime.models().unload(&model).is_err());
+            assert_eq!(done(&runtime.request_text(other_request()).unwrap()), "AB");
+            runtime.models().unload(&other).unwrap();
+            assert!(runtime.models().list().unwrap().is_empty());
+        }
+        runtime.shutdown().unwrap();
+        drop((
+            first,
+            second,
+            first_other,
+            new_other,
+            model,
+            other,
+            runtime,
+            retiring,
+            survivor,
+        ));
+        assert_eq!(host.snapshot().unwrap().1, 0);
+    }
 }

@@ -1006,11 +1006,30 @@ impl ResidentModel {
             any(feature = "qualification", feature = "cuda-native")
         ))]
         model.retire_production_graph_cached().await?;
+        // The shared actor cleanup can wait on its streams. Serialize it
+        // against other original models' commands using the existing queue,
+        // after any graph-specific retirement (which owns its own slots).
+        let bytes = service.resident_bytes()?;
+        let ticket = service.queue().submit(
+            service.budget(),
+            service.owner().clone(),
+            &[AllocationRequest {
+                kind: AllocationClass::Other,
+                bytes: bytes as u64,
+            }],
+            None,
+        )?;
+        let mut slot = ticket.wait().await?;
+        service.ensure_usable()?;
+        slot.begin_submission()?;
         // Drop original handles while the service still owns the namespace.
         drop(model);
         service.client().memory_cleanup().map_err(|error| {
             Error::State(format!("resident tensor-source shutdown cleanup: {error}"))
         })?;
+        // Known actor cleanup is complete. Outstanding external readers
+        // still refuse namespace close without inventing unknown work.
+        slot.finish()?;
         service.close_model_namespace()
     }
 

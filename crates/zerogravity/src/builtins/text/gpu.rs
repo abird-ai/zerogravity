@@ -178,6 +178,24 @@ fn start(
         },
     )
 }
+fn retire_model(model: &Arc<Model>) -> Result<(), ServiceError> {
+    if model.readers.load(Ordering::Acquire) != 0 {
+        return Err(ServiceError::new(
+            500,
+            "source_readers",
+            "resident model still has active readers",
+        ));
+    }
+    let resident = model
+        .resident
+        .lock()
+        .map_err(|_| ServiceError::new(500, "source_owner", "resident model lock poisoned"))?
+        .take();
+    if let Some(resident) = resident {
+        block_on(resident.shutdown_tensor_source()).map_err(ServiceError::inference)?;
+    }
+    Ok(())
+}
 impl Executor for NativeText {
     type Model = Arc<Model>;
     type State = State;
@@ -321,25 +339,12 @@ impl Executor for NativeText {
                     .map_or(true, |resident| resident.is_some())
         })
     }
+    fn selective_retirement() -> Option<ModelRetirement<Self::Model>> {
+        Some(retire_model)
+    }
     fn retire(models: &BTreeMap<String, Arc<Model>>) -> Result<(), ServiceError> {
         for model in models.values() {
-            if model.readers.load(Ordering::Acquire) != 0 {
-                return Err(ServiceError::new(
-                    500,
-                    "source_readers",
-                    "resident model still has active readers",
-                ));
-            }
-            let resident = model
-                .resident
-                .lock()
-                .map_err(|_| {
-                    ServiceError::new(500, "source_owner", "resident model lock poisoned")
-                })?
-                .take();
-            if let Some(resident) = resident {
-                block_on(resident.shutdown_tensor_source()).map_err(ServiceError::inference)?;
-            }
+            retire_model(model)?;
         }
         Ok(())
     }

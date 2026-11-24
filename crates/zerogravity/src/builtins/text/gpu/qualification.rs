@@ -226,6 +226,7 @@ impl Fixture {
                 cancel,
                 prompt_charge: None,
                 transport: None,
+                model_reader: None,
             },
             Arc::clone(&self.model),
             WorkerConfig {

@@ -10,7 +10,12 @@ use std::{collections::BTreeMap, sync::Arc, time::Instant};
 
 type Result<T> = std::result::Result<T, ServiceError>;
 
+/// Cold adapter cleanup of one independently drained prepared owner.
+pub type ModelRetirement<M> = fn(&M) -> Result<()>;
+
 /// The shared registry and typed workers hold the very same model handles.
+/// Identical erased Arc identity must mean the same typed execution owner;
+/// clones retain that owner, including its original cleanup authority.
 pub trait ModelHandle: Clone + Send + Sync + 'static {
     fn model(&self) -> &dyn PreparedModel;
     fn erased(&self) -> Arc<dyn PreparedModel>;
@@ -215,6 +220,12 @@ pub trait Executor: Sized + Send + Sync + 'static {
             "unsupported_cohort",
             "no cohort publisher",
         ))
+    }
+    /// Independent model cleanup on the lifecycle caller, after all accepted
+    /// requests of that exact owner have retired. Other models may be running.
+    /// Return a hook only when the adapter's original ownership allows this.
+    fn selective_retirement() -> Option<ModelRetirement<Self::Model>> {
+        None
     }
     fn retirement_pending(_models: &BTreeMap<String, Self::Model>) -> bool {
         false

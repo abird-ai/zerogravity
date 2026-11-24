@@ -322,6 +322,7 @@ impl Rig {
                 cancel,
                 prompt_charge: None,
                 transport: None,
+                model_reader: None,
             };
             rows.push_back(
                 Active::<StatusOnly>::new(
