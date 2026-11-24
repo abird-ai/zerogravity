@@ -15,11 +15,13 @@ pub fn validate_source_request(request: &crate::run_policy::Request) -> crate::R
             "required speculative execution has no qualified local adapter; use auto/off".into(),
         ));
     }
-    if request.numerical.as_deref().is_some_and(|p| p != "source") {
-        return Err(Error::Unsupported(
-            "requested numerical profile has no qualified direct adapter; source is available"
-                .into(),
-        ));
+    match request.numerical.as_deref() {
+        None | Some("source") => {}
+        Some("native") if request.backend == Backend::Rocm
+            && cfg!(all(feature = "hip", feature = "model-qwen35", feature = "text", target_os = "linux")) => {}
+        _ => return Err(Error::Unsupported(
+            "requested numerical profile has no qualified direct adapter; native requires explicit ROCm source execution".into(),
+        )),
     }
     let compiled = match request.backend {
         Backend::Auto => cfg!(any(

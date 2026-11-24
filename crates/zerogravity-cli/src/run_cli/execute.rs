@@ -35,6 +35,11 @@ pub(super) fn run_with_discovery(
     {
         return super::qwen_source::run(request, inventory, backend);
     }
+    if request.numerical.as_deref() == Some("native") {
+        return Err(Error::Unsupported(
+            "native numerical profile requires canonical Qwen ROCm source".into(),
+        ));
+    }
     if qwen35_cuda::selected(&request.backend, &request.graph.models[i]) {
         qwen35_cuda::require_route_capability()?;
         return qwen35_cuda::run_route(request, inventory);

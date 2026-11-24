@@ -62,6 +62,12 @@ pub(super) fn run(
         .find(|model| &model.id == id)
         .ok_or_else(|| bad("direct entrypoint model absent"))?;
     let resolved = resolve(model, id)?;
+    let native = request.numerical.as_deref() == Some("native");
+    if native && backend != SelectedBackend::Hip {
+        return Err(Error::Unsupported(
+            "native numerical profile requires ROCm".into(),
+        ));
+    }
 
     if request.diagnostics.dry_run {
         println!(
@@ -71,6 +77,7 @@ pub(super) fn run(
                 "model": resolved.target,
                 "snapshot": resolved.snapshot,
                 "backend": match backend { SelectedBackend::Cuda => "cuda", SelectedBackend::Hip => "rocm" },
+                "numerical": if native { "hip-rocblas-bf16-mixed-v1" } else { "source" },
                 "context": request.task.context,
                 "max_tokens": request.task.max_tokens,
                 "source": "canonical-cache-snapshot",
@@ -99,6 +106,7 @@ pub(super) fn run(
                 "model": resolved.target,
                 "snapshot": resolved.snapshot,
                 "backend": match backend { SelectedBackend::Cuda => "cuda", SelectedBackend::Hip => "rocm" },
+                "numerical": if native { "hip-rocblas-bf16-mixed-v1" } else { "source" },
                 "context": request.task.context,
                 "max_tokens": request.task.max_tokens,
                 "source": "canonical-cache-snapshot",
@@ -130,6 +138,7 @@ pub(super) fn run(
                 resolved.snapshot.clone(),
                 profile,
                 hip_budget(&request, &inventory)?,
+                native,
             )?,
         };
         runtime
@@ -338,10 +347,13 @@ fn hip_load(
     snapshot: String,
     profile: QwenServingProfile,
     budget: zerogravity::models::HipSourceBudget,
+    native: bool,
 ) -> Result<ModelLoadRequest> {
-    Ok(ModelLoadRequest::qwen_hip(
-        aliases, cache, snapshot, profile, budget,
-    ))
+    Ok(if native {
+        ModelLoadRequest::qwen_hip_native(aliases, cache, snapshot, profile, budget)
+    } else {
+        ModelLoadRequest::qwen_hip(aliases, cache, snapshot, profile, budget)
+    })
 }
 #[cfg(not(feature = "hip"))]
 fn hip_load(
@@ -350,6 +362,7 @@ fn hip_load(
     _: String,
     _: QwenServingProfile,
     _: (),
+    _: bool,
 ) -> Result<ModelLoadRequest> {
     Err(Error::Unsupported(
         "ROCm/HIP backend is not compiled".into(),

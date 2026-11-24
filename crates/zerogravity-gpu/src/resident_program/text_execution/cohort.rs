@@ -60,10 +60,10 @@ fn bytes(words: usize) -> Result<usize> {
 
 /// Resident weights can revisit a bounded token tile without a source reload.
 /// Keep streamed weight traversal across the whole cohort.
-fn projection_token_tile(operand: &PreparedBf16Projection, active: usize) -> usize {
+fn projection_token_tile(operand: &PreparedBf16Projection, active: usize, native: bool) -> usize {
     match operand.storage() {
-        Bf16ProjectionStorage::Resident => active.min(128),
-        Bf16ProjectionStorage::Streamed => active,
+        Bf16ProjectionStorage::Resident if !native => active.min(128),
+        _ => active,
     }
 }
 
@@ -140,7 +140,8 @@ impl Cold {
                 };
                 for m in d.matrices() {
                     let operand = &self.operands[&m.name];
-                    let tile = projection_token_tile(operand, active);
+                    let tile =
+                        projection_token_tile(operand, active, self.rocblas_workspace.is_some());
                     let words = tile
                         .checked_mul(m.rows)
                         .ok_or_else(|| Error::Limit("text cohort projection extent".into()))?;
@@ -747,7 +748,7 @@ impl Cold {
         let mut fused = 0usize;
         for matrix in descriptor.matrices() {
             let operand = &self.operands[&matrix.name];
-            let tile = projection_token_tile(operand, active);
+            let tile = projection_token_tile(operand, active, self.rocblas_workspace.is_some());
             // A single complete matrix already has the final row stride.
             // Keep scratch for combined matrices, aliases and the head readback.
             let direct = selected_row.is_none()
