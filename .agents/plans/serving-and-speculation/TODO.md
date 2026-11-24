@@ -281,18 +281,38 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   zero failed quanta and clean retirement. GPU feature boundaries/CPU Clippy
   pass; full isolated check.sh stops at the same CPU cache admission assertion.
   See CURRENT_BASELINE.
-- [ ] Next HIP priority: GDN triangular prefill (second individual hotspot)
-  and prefill cohort sharing. Inspect exact dependency/order before changing
-  arithmetic; each triangular column has a sequential64-row dependency
-  and a four-accumulator reduction. Inspect guarded normal FP32 multiply/add
-  specialization with original subnormal/zero/nonfinite fallback, not a changed
-  solve order. Existing prefill cohort preparation is CUDA-contract gated;
-  extend shared composition deliberately, never enable by removing the guard.
-  Re-localize on selected
-  hoisted path as needed, then measure real C1/C4/C8 rather than expand
-  microbenchmarks. Restore unavailable pinned vLLM closure separately
-  for fresh paired runs; no acquisition/repin merely to benchmark.
-  No A1 comparison to X2/L5 vLLM; no broader qualification inferred.
+- [x] `393d0f56` retains reusable exact `mul_then_add_normal` (separate
+  FP32 product and add with guarded normal path, exact zero-product sign,
+  widened fallback) and shared-body guarded triangular solver. No change
+  to sequential64-row dependence, four-accumulator tree, final subtraction,
+  status or scratch. Direct gfx1151 A/B16 heads, six paired16-launch windows
+  47 active/padded64 26.365→9.737ms (-63.1%), full64 17.217→9.162ms
+  (-46.8%). Both complete matrices finite bits exact, faults/status and
+  NaN classification match, original retirement. Existing arithmetic
+  scalar-body test extended by one comparison; both denormal modes pass.
+- [x] `cd86a965` actual same-binary ABBA,0.8B/2B C1/C4/C8,24GiB,
+  active8/configured width8,47+3, four timed waves per variant/cell.
+  Means0.8B211.801/765.845/1545.560→191.113/681.951/1378.619ms;
+  2B389.243/1386.046/2841.161→370.777/1302.572/2677.231ms.
+  All six means improve4.74–10.95%, exact IDs/replay/lane invariance,
+  unchanged dispatches9,673/31,794/60,790, zero failed quanta, clean
+  retirement. `4a5961da` selects guarded triangular only on qualified
+  gfx1151, cold immutable choice shared by catalogue and launch. Canonical
+  and original independent qualification paths retained. Temporary direct
+  probe/benchmark adaptation/env selector removed. Final unchanged C1
+  0.8B24GiB/27B68GiB canaries pass at190.322/5,301.120ms warm means,
+  exact IDs/replay, unchanged dispatches, zero failed quanta, clean retirement.
+  GPU feature boundaries/CPU Clippy pass; full isolated check.sh stops at
+  existing CPU cache admission assertion. See CURRENT_BASELINE.
+- [ ] Next HIP priority: shared prefill composition. Existing prefill cohort
+  preparation is CUDA-contract gated; extend actual shared execution and
+  ownership deliberately, never enable by removing the guard. Start with
+  aligned equal-frontier prefill chunks and independent state roots using
+  current cohort/projection primitives; measure real C4/C8 before expanding.
+  Re-localize selected kernel costs when necessary, no fixture proliferation.
+  Restore unavailable pinned vLLM closure separately for fresh paired runs;
+  no acquisition/repin merely to benchmark. No A1 comparison to X2/L5
+  vLLM; no broader qualification inferred.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.

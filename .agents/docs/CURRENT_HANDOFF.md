@@ -382,11 +382,25 @@ and lane/replay/ownership, dispatch count unchanged. Temp probe/selector
 removed. Final0.8B24GiB/27B68GiB C1 canaries pass at211.004/5,376.029ms
 warm means, exact tokens/replay and original retirement. GPU feature and
 CPU Clippy gates pass; full gate remains blocked by existing CPU cache
-assertion. Next localize selected GDN triangular prefill (sequential64-row
-dependency, four accumulators; preserve exact order) and share aligned
-prefill work, preserving exact arithmetic and private state roots. Existing
-prefill cohort admission is CUDA-contract gated, not yet a HIP capability. See
-CURRENT_BASELINE for measured cells; no fresh paired vLLM claim.
+assertion. `393d0f56` adds the reusable separately rounded guarded FP32
+`mul_then_add_normal` with exact zero-product handling and original widened
+fallback; guarded triangular shares the canonical sequential64-row solve
+and four-accumulator reduction. Direct gfx1151 finite bits/status exact,
+including padded rows/faults;47/64 active rows device time falls63.1%/46.8%.
+Existing scalar-body arithmetic check passes both denormal modes.
+`cd86a965` actual0.8B/2B C1/C4/C8 ABBA at24GiB,47+3 improves all six
+means4.74–10.95%, exact outputs/replay/lane invariance, unchanged dispatches
+and clean retirement. `4a5961da` selects guarded triangular at cold
+preparation only for qualified gfx1151; same immutable choice seals catalogue
+and launch. Canonical solver/reference route retained; temporary probes
+and switch removed. Final0.8B24GiB/27B68GiB C1 canaries pass at
+190.322/5,301.120ms warm means, exact IDs/replay and original retirement.
+GPU feature boundaries/CPU Clippy pass; full gate still stops at existing
+CPU cache admission assertion. Next share aligned HIP prefill work,
+preserving exact arithmetic and private state roots. Existing prefill cohort admission is
+CUDA-contract gated, not yet a HIP capability; extend the actual shared
+execution rather than relaxing the guard. See CURRENT_BASELINE for measured
+cells; no fresh paired vLLM claim.
 
 Local X2 recovery recipe (revalidate store paths after GC; use the normal locked
 shell once available). Build with existing Nix cargo/rustc1.95, gcc15.3 and

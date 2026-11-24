@@ -163,7 +163,7 @@ Both models pass all identical lanes, exact greedy IDs and replay, and
 retire to original idle VRAM/KFD. Dispatches/wave31,794 at C4 and60,790 at
 C8 for both.
 
-### Current selected HIP path — qualified gfx1151 hoisted projection
+### HIP hoisted projection — qualified gfx1151
 
 Physical localization (`533c72c`, temporary observer removed) with 47+1
 versus 47+16 for C1 and 47+1 versus 47+3 for C8: each side twice in ABBA
@@ -188,7 +188,7 @@ one warmup + two timed waves at each C1/C4/C8, same original47+3 prompt,
 hoisted traversal for both qualified integrated gfx1150/gfx1151 resident
 policies (other paths unchanged).
 
-| Model / offered | Canonical mean (ms) | Hoisted mean (ms) | Current ZG tok/s | Retained matched vLLM tok/s |
+| Model / offered | Canonical mean (ms) | Hoisted mean (ms) | Hoisted ZG tok/s | Retained matched vLLM tok/s |
 | --- | ---: | ---: | ---: | ---: |
 | 0.8B C1 | 238.514 | 211.895 | 14.158 | 51.966 |
 | 0.8B C4 | 872.431 | 765.040 | 15.685 | 135.358 |
@@ -207,9 +207,46 @@ and27B68GiB mean5,376.029ms,0.5580tok/s versus previous5,556.005ms.
 The 27B single recheck is a correctness/residency canary, not a paired
 performance claim. Exact expected IDs/replay, unchanged dispatches9,673/36,741,
 zero failed quanta and original idle VRAM/no KFD owner.
-No new vLLM execution or fresh paired comparison; current C8 gap still
-~14.1x/~16.7x. Next prioritize GDN triangular arithmetic and shared prefill
-execution, not further marginal launch-count experiments.
+No new vLLM execution or fresh paired comparison; at that checkpoint C8
+gaps were~14.1x/~16.7x.
+
+### Current selected gfx1151 HIP path — guarded GDN triangular
+
+`393d0f56` adds separately rounded guarded FP32 multiply-then-add with
+the original widened fallback. Exact zero products preserve the stored
+addend and IEEE zero sign. No change to the sequential 64-row solve,
+four-way partial accumulation/reduction, status or scratch ownership.
+Direct physical A/B (16 heads, six paired 16-launch windows per cell)
+47 active rows padded to64:26.365→9.737ms (-63.1%);
+64 active rows:17.217→9.162ms (-46.8%). Both complete output matrices match
+finite bits and status, including padded zeros, signed zero/subnormal,
+overflow/nonfinite cases and NaN classification. Existing scalar-body
+regression passes both denormal-preserving and simulated flush modes.
+
+Same-binary ABBA `cd86a965`, existing47+3 population benchmark,24GiB,
+active8/configured cohort8, two fresh loads and four timed waves per
+variant/cell. `4a5961da` selects guarded triangular only on qualified gfx1151;
+other paths including the original reference qualifier retain canonical
+arithmetic. Cold selection is immutable and shared by catalogue and launch.
+
+| Model / offered | Previous mean (ms) | Guarded mean (ms) | Current ZG tok/s | Retained matched vLLM tok/s |
+| --- | ---: | ---: | ---: | ---: |
+| 0.8B C1 | 211.801 | 191.113 | 15.697 | 51.966 |
+| 0.8B C4 | 765.845 | 681.951 | 17.597 | 135.358 |
+| 0.8B C8 | 1,545.560 | 1,378.619 | 17.409 | 219.612 |
+| 2B C1 | 389.243 | 370.777 | 8.091 | 36.054 |
+| 2B C4 | 1,386.046 | 1,302.572 | 9.213 | 96.233 |
+| 2B C8 | 2,841.161 | 2,677.231 | 8.964 | 140.847 |
+
+All six means improve4.74–10.95%, exact expected IDs, replay, lane
+invariance, unchanged9,673/31,794/60,790 dispatches, zero failed quanta
+and original retirement. Final `4a5961da` unchanged C1 benchmark passes
+0.8B24GiB warm mean190.322ms,15.763tok/s, and27B68GiB warm mean5,301.120ms,
+0.5659tok/s (correctness/residency canary, not paired performance evidence).
+Expected IDs, replay, unchanged9,673/36,741 dispatches/request, zero failed
+quanta, original idle VRAM259,768,320B and no KFD owners.
+No new vLLM execution or fresh paired comparison; C8 gaps remain~12.6x/~15.7x.
+Prefill sharing remains the larger scaling target.
 
 ## A1 — Radeon 890M gfx1150 — local resident HIP comparison, 24 Nov
 
@@ -233,7 +270,8 @@ The retained matched vLLM tables above are unchanged.
    and the 18 GDN layers' Conv4 private-state update while retaining independent
    StateRoot/publication authority. Conv4 is exact but only modestly moves wall time;
    current X2 localization shows that independent prefill dominates short
-   C8 waves; prioritize prefill sharing and exact GDN triangular work.
+   C8 waves; guarded GDN triangular now improves all six short-wave cells,
+   and prefill sharing remains the larger scaling target.
 2. Batching is not the whole HIP gap. C1 is already substantially behind
    vLLM on 0.8B, 2B and especially 27B, so singleton kernel/execution efficiency
    remains independently important.

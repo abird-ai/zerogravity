@@ -67,8 +67,14 @@ Immediate execution priorities are intentionally small:
   Existing hoisted traversal wins all12 direct shapes; `99eb7990` selects it
   for qualified resident gfx1151 too, after exact real0.8B/2B ABBA at C1/C4/C8
   improves latency7.75–13.83%. No extra selection machinery. See CURRENT_BASELINE.
-  Next prioritize exact GDN triangular prefill arithmetic and prefill cohort
-  sharing. Fresh paired vLLM remains blocked by missing pinned provider closure.
+  `4a5961da` selects exact guarded GDN triangular on qualified gfx1151:
+  reusable separately rounded FP32 multiply-then-add, exact zero handling
+  and widened fallback; original sequential solve/reduction unchanged.
+  Direct timing improves46.8–63.1%; actual0.8B/2B C1/C4/C8 ABBA improves
+  all means4.74–10.95%, exact outputs/replay/lane invariance and unchanged
+  dispatches/ownership. Next prioritize shared HIP prefill composition,
+  presently CUDA-contract gated. Fresh paired vLLM remains blocked by
+  missing pinned provider closure.
   Combined backend feature boundaries restored at `c89d0ee7`; full gate now
   stops at a separate CPU cache admission assertion. See serving plan;
 - optimize L5 27B streamed source/transfer overlap as a distinct memory-constrained mode;
