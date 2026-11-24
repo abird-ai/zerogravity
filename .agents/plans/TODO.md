@@ -2,7 +2,8 @@
 
 Current source, tests, and this queue are authoritative; Git retains retired history.
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
-Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-21.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-21.md).
+Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md).
+The 24 Nov pack links the full dated history and carries generated inventories of current plans/open work/Git chronology; live source and owning TODOs remain authoritative.
 
 **20 Nov authoritative refresh:** pushed/tracked `origin/main` is `f0f0640`; local signed
 source lineage above it includes `1222f8a` (multi-token GDN prefill), `60ba956` (matched

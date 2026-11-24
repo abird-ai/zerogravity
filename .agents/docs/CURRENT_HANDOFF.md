@@ -1,38 +1,49 @@
-# ZeroGravity current comprehensive handoff — 23 Nov 2026
+# ZeroGravity current comprehensive handoff — 24 Nov 2026
 
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
 Full dated takeover snapshot:
-[`FULL_COMPREHENSIVE_HANDOFF_2026-11-23.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-23.md).
-The 23 Nov pack records the complete post-22-Nov implementation, benchmark and
-product-design delta, the current dirty FlashInfer/paired-GDN ownership map, and
-the ready-to-paste next-agent prompt. It chains to the 22 Nov pack for the full
-October→22 Nov design/decision/evidence lineage.
+[`FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md).
+The 24 Nov pack is the canonical current takeover: it reconciles the original
+architecture through current source, includes the complete post-23-Nov CUDA/HIP
+history, records selected versus dormant primitives and current next steps, and
+generates exhaustive appendices for every docs/plans file, every open TODO and
+the full project-period Git ledger. It chains to the 23/22/21/... packs for exact
+historical detail rather than replacing them.
+
+Current handoff creation point is signed `e1929762a87b1e34de099d9f40b85bcff385c27d`,
+which was also `origin/main`; revalidate actual HEAD before editing. The old
+FlashInfer/paired-GDN dirty ownership warning is obsolete: that complete slice was
+explicitly committed/pushed as `6d5dc72d3711cd3b0e14db0a3c007851984a0745`.
+Treat it as landed source but revalidate current CUDA physical correctness/provider
+cells before making new performance claims.
 
 This file remains the maintained current map and pointer into live source, tests
 and plans. Git history retains superseded checkpoints; current source, tests and
 live TODOs are authoritative.
 
-### Host authority — 23 Nov 2026
+### Host authority — 24 Nov 2026
 
 - L5 / `dotlink---l5` is the only source-authoring host; use the single persistent
   `main` worktree at `/home/pvl/spaces/abird/src/zerogravity`.
 - X2 / `dotlink---x2` is execution/testing only for AMD/ROCm large-VRAM work; move
-  exact L5 commits by Git bundle rather than pushing merely for transport.
-- A1 is now explicitly re-enabled for mixed NVIDIA SM89 + AMD gfx1150 build/runtime
-  validation, but remains execution/testing only. Source changes land on L5 first.
+  exact L5 commits by verified Git bundle rather than pushing merely for transport.
+- A1 is execution/testing only for mixed NVIDIA SM89 + AMD gfx1150 build/runtime
+  validation. Source changes land on L5 first and exact commits move by bundle.
 - All hosts use repo `/home/pvl/spaces/abird/src/zerogravity`, cache
   `/home/pvl/.cache/abird/zerogravity`, `CARGO_BUILD_JOBS=8`, and
-  `RUSTC_WRAPPER=/run/current-system/sw/bin/kache`.
+  `RUSTC_WRAPPER=/run/current-system/sw/bin/kache` unless concrete resource pressure
+  requires less.
 - Physical GPU work goes through `python3 -B scripts/native-gpu.py -- ...` when the
   owning qualification requires the native-GPU envelope; loopback traffic uses the
   accepted private-network envelope and `--require-private-network`.
-- Source checkpoint at handoff creation is `f3f872cb567a6885918ae2b4866ee6d535d736d8`;
-  `origin/main` is `2a595be84bc7c5dccf7509e35e4f9b3a341662a2`. Revalidate actual
-  HEAD first because the handoff docs commit may sit above the source checkpoint.
-- Another agent owns the current dirty FlashInfer-decode + paired-GDN-state files;
-  see the 23 Nov comprehensive handoff before touching CUDA provider/state-transport
-  surfaces.
+- Source checkpoint immediately before the 24 Nov handoff docs is
+  `e1929762a87b1e34de099d9f40b85bcff385c27d`, and tracked `origin/main` matched it.
+  Revalidate actual HEAD because the handoff-doc commit may sit above that source point.
+- There is no longer a concurrent dirty FlashInfer/paired-GDN slice. The complete
+  previously protected work was explicitly committed/pushed as
+  `6d5dc72d3711cd3b0e14db0a3c007851984a0745`; revalidate its current CUDA physical
+  correctness/provider cells before treating it as new performance authority.
 
 ### Production build/run convergence revalidation — 23 Nov 2026
 

@@ -10,7 +10,7 @@ Repository naming follows the short canonical vocabulary in
 [TERMINOLOGY.md](../docs/TERMINOLOGY.md). New code must name the engineering
 concept rather than historical qualification shorthand.
 
-Cross-window continuation starts at [the canonical current handoff](../docs/CURRENT_HANDOFF.md). For a new agent that needs the complete current takeover context plus the full historical chain, read the [23 Nov comprehensive takeover pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-23.md). It records the complete post-22-Nov implementation/design/benchmark delta and links to the 22 Nov pack, which carries the earlier 21/20/18/15/14 Nov and October lineage. The current handoff remains an index/pointer into this maintained plan/status set, not a generated archive.
+Cross-window continuation starts at [the canonical current handoff](../docs/CURRENT_HANDOFF.md). For a new agent that needs the complete current takeover context plus the full historical chain, read the [24 Nov comprehensive takeover pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md). It reconciles the original architecture through the current source state, links the older dated packs, and includes generated appendices covering every docs/plans file, every currently open TODO and the complete project-period Git ledger. The current handoff remains an index/pointer into this maintained plan/status set; live source, tests and owning TODOs stay authoritative.
 
 ## Layout
 
