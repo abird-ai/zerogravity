@@ -20,7 +20,8 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
-**Prepared text calls and producer observations — source slice, validation pending.**
+**Accepted source checkpoint `7e86aad7d74882baa474a50a584e141f1d58eee3` —
+prepared text calls and producer observations.**
 Source-template regions derive token and absolute-position ports and original
 producer observation sites, including internal values. A borrowed
 phase-explicit BoundTextCall keeps the original invocation/phase for
@@ -34,8 +35,20 @@ without fencing the resident owner. Original physical state, scheduling,
 resource and publication ownership stays unchanged. Contiguous text
 positions only; no standalone partial dispatch, arbitrary state conversion,
 general host/IO observation, or graph SDK activation. Focused preparation
-tests/Clippy and both backend builds pass; physical observation/refusal
-and source canaries/full isolated gate pending.
+tests (8), strict core/engine Clippy and both backend builds pass.
+Actual Qwen 0.8B HIP observed 653 producer values over state-only and
+logits calls; observed logits equal original readback bit-for-bit. CUDA
+unsupported observations refuse before submission, and subsequent ordinary
+calls commit on the same session. X2 native V2 C1/C8, exact-reference C1,
+multichunk continuation and L5 native C1/C8 paged/contiguous canaries pass
+expected tokens/replay and original retirement; no new performance or
+independent numerical parity claim. Full isolated gate: 2383 Rust test
+executions, zero failures, 101 explicit skips, release/installer/scripts pass.
+Both GPUs returned to baseline (L5 37 MiB, X2 259768320 B) with no compute
+owners. Exact signed source on X2 by verified incremental bundle; A1 untouched.
+Next: reconcile cold capability, provider/device selection and resource
+admission/reporting through actual native loader/SDK owners; retain legacy
+non-template and backend-specific physical contracts.
 
 Prior accepted private transport checkpoint:
 

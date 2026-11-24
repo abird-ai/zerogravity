@@ -125,12 +125,15 @@ partial execution and general state conversion remain open. Accepted
 secondary-stream completion to original physical flights; no implicit copy,
 host wait, allocation or publication. Physical certified GEMM/copy/interrupt,
 event lifecycle, native CUDA/HIP canaries and full isolated gate pass.
-The next source slice closes contiguous text token/position and producer
+Accepted `7e86aad7` closes contiguous text token/position and producer
 observation ports, phase-explicit borrowed call/state binding and original
 whole-text preparation for HIP/CUDA singleton/cohort calls. Observation
 support is explicit (HIP at producer, CUDA refusal before submission).
-Focused checks pass; physical and assembled gate acceptance pending.
-Extend external allocation/runtime/device interop only for real consumers.
+Physical Qwen 0.8B observation/refusal, native/exact/continuation and
+CUDA contiguous/paged canaries and full isolated gate pass.
+Next reconcile cold capability, provider/device selection and resource
+admission/reporting through actual native loader/SDK owners. Extend external
+allocation/runtime/device interop only for real consumers.
 None of these slices closes Phase 1.
 
 Complete the engineering contracts and their real consumers, including every

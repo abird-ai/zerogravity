@@ -157,8 +157,9 @@ any external compiler. All phases retain the original resource/state owners.
   calls validate before credit/materialization; shared mixed-source cached
   singleton decode law applies to native singleton/cohort and region state
   handoff. HIP reads actual original producer sites; CUDA refuses unsupported
-  observers before submission. Focused checks pass; physical/gate pending
-  (composition TODO).
+  observers before submission. Accepted `7e86aad7`: real producer observations,
+  CUDA refusal/reuse, native/exact/continuation and paged/contiguous canaries
+  and full isolated gate pass (composition TODO).
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

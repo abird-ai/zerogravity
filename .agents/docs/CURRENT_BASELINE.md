@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 24 Nov — prepared text call/observation acceptance
+
+`7e86aad7` binds the original source/plan/phase and explicit text
+controls/producer sites to actual HIP/CUDA whole-program preparation.
+Physical Qwen 0.8B HIP producer observation (653 values, exact final-logit
+readback consistency) and CUDA early observation refusal with ordinary
+same-session continuation pass. X2 native V2 C1/C8, exact C1, multichunk,
+L5 native C1 and C8 contiguous/paged consistency pass expected tokens/replay
+and retirement. No new independent reference or performance campaign.
+Full isolated gate passes (2383 Rust executions, 0 failures, 101 skips).
+Existing measured performance baseline and provider selections remain unchanged.
+
 ## 24 Nov — private provider transport acceptance
 
 `6eae81c6` shares original CUDA copy/stream/event ownership with an internal

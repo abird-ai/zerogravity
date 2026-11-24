@@ -291,8 +291,12 @@ their existing numeric/source/physical acceptance gates.
   owner identity; HIP/CUDA resident singleton and cohort calls use this
   preparation. HIP observes producer sites before reuse; CUDA unsupported
   observed calls refuse before work. Legacy non-template owners unchanged.
-- [ ] Physical source observation/refusal, native canaries and assembled
-  isolated gate acceptance.
+- [x] Accepted `7e86aad7`: actual Qwen 0.8B HIP observed 653 producer values
+  (state-only and logits), observed logits equal original readback; CUDA
+  refuses unsupported observations and then commits ordinary calls. X2
+  native V2 C1/C8, exact C1, multichunk and L5 native C1/C8 paged/contiguous
+  pass expected tokens/replay and retirement. Full isolated gate 2383/0/101
+  (passed/failed/ignored), release/installer/scripts pass.
 
 ## Uncommitted
 
