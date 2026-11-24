@@ -20,6 +20,54 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed source checkpoint `2b6656b3d427092dea5bcdbb801bc71e59ba000c` —
+selective catalog retirement with the original workers.**
+Recovered the interrupted 24 Nov source edits and completed the assembled
+slice on 25 Nov. One immutable bounded alias table, with one typed Route
+per exact prepared owner; equal source IDs do not merge distinct owners.
+A ModelRead moves from request admission to queued job to active row
+and drops after physical state, model/presentation and source-reader
+owners. Queue sweep, refusal and last-consumer destruction release it.
+The owner closes all aliases atomically under the existing lifecycle lock;
+accepted readers drain and the selected adapter cleanup runs unlocked.
+Retiring keeps the original Router available to unrelated owners. A second
+unload/load refuses during that operation; racing shutdown waits for it,
+then joins the remaining workers. Last owner still uses the original full
+queue drain/join and cold reload boundary. Failure remains sticky for
+shutdown/new-load policy. No per-token registry lock, new queue, or new
+physical ledger. Stable retired alias slots remain bounded until the route
+set closes; no live insertion or replacement.
+
+Executor::selective_retirement is an optional independently safe cleanup
+hook. HostLogits and ordinary GPU GGUF opt in. CPU actual Arc readers retain
+their source charges; ordinary GPU reuses the prior resident shutdown and
+takes its executable once despite metadata/tokenizer readers. Final actor
+cleanup uses the original physical queue after graph retirement, so it
+does not overlap another model's commands. Device fences still govern all
+affected owners. Native HF and finite/captured adapters retain their
+original whole-set retirement and do not acquire selective eligibility
+from this contract. Adapter snapshots are bounded cold views, not another
+catalog. No physical mixed-owner HIP/Vulkan or cross-backend residency claim.
+
+Revalidation: all 102 engine unit tests, strict engine Clippy, combined
+HIP/CUDA SDK compilation. Real CPU GGUF fixture SDK/HTTP unload/reload and
+mixed-owner survivor inference pass. L5 real Qwen 0.8B GGUF two independent
+owners (same bytes at distinct canonical paths, two aliases on target)
+pass target/survivor accepted work, exact device reservation 4 GiB -> 2 GiB
+-> 0, released target host weight credit, retained tokenizer and continued
+survivor inference. Native CUDA C1 and X2 native HIP V2 C1/C8 pass
+`[248068,198,90700]`, replay/lane consistency and original retirement
+(HIP zero failed quanta). Both GPUs idle at original levels, no compute
+owners. X2 clean at exact signed source via incremental bundle; A1 untouched.
+Full isolated gate passes (2388 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass). Combined CPU/CUDA/HIP all-target compile passes. No new performance or independent
+numerical parity claim. Next: reconcile typed catalog/SDK effective
+capabilities, lifecycle and resource reporting through the actual loaded
+owners; continue remaining source/state/pipeline foundations in plan order.
+Do not build a second registry or promote hot replacement/heterogeneous
+residency or backend-context reinitialization without actual consumers.
+
+Prior accepted sole-owner checkpoint:
+
 **Source checkpoint `057683d1c315fa026e0d4787b073757ca8caf699` —
 shared local source admission and bounded catalog retirement.**
 L5 test-only diagnostic correction `139bdbdf`; X2 executed the original

@@ -329,6 +329,19 @@ their existing numeric/source/physical acceptance gates.
   after qualification-only invocation accessor migration; test-only correction
   `139bdbdf`. Full isolated gate: 2388 passed, 0 failed, 101 explicit skips; release/installer/scripts pass.
 
+## Selective catalog retirement — 25 Nov
+
+- [x] `2b6656b3`: exact typed owner shared by aliases; original request
+  reader spans admission, FIFO, active session and terminal drop. Selective
+  retirement drains only that owner while other routes remain ready. One
+  lifecycle/registry/worker queue; last owner retains whole drain/join.
+- [x] CPU/ordinary GPU independent-retirement hook, GPU actor cleanup
+  serialized by original physical queue. Existing native HF/captured
+  whole-set retirement unchanged; no arbitrary mixed-backend eligibility.
+- [x] Engine/Clippy, CPU SDK/HTTP mixed-owner, actual two-owner CUDA GGUF
+  unload with surviving inference and released target host/device admission,
+  native CUDA C1 and HIP V2 C1/C8 pass. Full isolated gate passes (2388 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass). Combined CPU/CUDA/HIP all-target compile passes.
+
 ## Uncommitted
 
 ### Phase 1 — source, semantics and executable lowering
@@ -336,9 +349,9 @@ their existing numeric/source/physical acceptance gates.
 Contract: [closed regions](REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering)
 and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
 
-- [ ] Continue selective mixed-owner retirement and remaining source lifecycle
-  through actual HF/GGUF consumers; generalize cold placement only through
-  real consumers. Keep selected shape bands and typed ports, no naked
+- [ ] Reconcile typed catalog/SDK effective capabilities, lifecycle and
+  resource reporting through actual loaded owners; continue remaining
+  source lifecycle/placement only through real consumers. Keep selected shape bands and typed ports, no naked
   scope or implicit retry. Contiguous text invocation/producer ports and the
   whole-text prepared boundary are implemented above; arbitrary explicit
   position tensors and host/IO effects remain unsupported. Extend

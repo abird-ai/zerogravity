@@ -5,6 +5,20 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — selective catalog retirement
+
+`2b6656b3`: exact prepared-owner aliases share a request-lifetime reader;
+selective unload drains accepted target work while the existing workers
+serve unrelated owners. CPU and ordinary GPU independent-retirement hooks,
+original physical queue for GPU actor cleanup. Real CPU GGUF SDK/HTTP and
+two-owner CUDA GGUF pass survivor execution and target retirement
+(4 GiB -> 2 GiB -> 0 original device reservation); native CUDA C1 and
+X2 native HIP V2 C1/C8 retain expected tokens, replay and original
+retirement. Engine 102 tests, strict Clippy, combined all-target compile
+and full isolated gate (2388/0/101) pass. No new performance or independent
+numerical-parity claim; native HF/finite adapters retain whole-set
+retirement, no hot insertion/replacement or backend context reinitialization.
+
 ## 24 Nov — catalog retirement and local source admission
 
 `057683d1` (test-only correction `139bdbdf`): CPU/GPU shared held-descriptor

@@ -145,11 +145,20 @@ sole-owner catalog unload/drain/join and cold reload through the original
 lifecycle. CPU SDK/HTTP unload/reload, X2 native HIP C1/C8 and L5 native
 CUDA C1 plus ordinary physical GGUF unload pass with retained-reader
 checks. Combined CPU/CUDA/HIP all-target compile passes. Full isolated
-gate: 2388 passed, 0 failed, 101 explicit skips; release/installer/scripts pass. Mixed-owner selective retirement, further
-source lifecycle/placement and state/pipeline/observability seams remain
-open; no new context reinitialization or execution eligibility. Extend
-physical admission and external allocation/runtime/device interop only
-for real consumers. None of these slices closes Phase 1.
+gate: 2388 passed, 0 failed, 101 explicit skips; release/installer/scripts pass.
+Signed `2b6656b3` implements selective retirement of independent prepared
+CPU/ordinary GPU owners using the same registry, request-lifetime readers,
+workers and lifecycle. Existing accepted work drains; unrelated owners
+continue. Ordinary GGUF GPU cleanup uses the original physical queue.
+Real CPU GGUF SDK/HTTP, L5 two-owner CUDA GGUF selective unload and native
+CUDA C1, X2 native HIP V2 C1/C8 pass with original retirement.
+Full isolated gate passes (2388 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass). Combined CPU/CUDA/HIP all-target compile passes. Optional adapters without an independent
+retirement hook still refuse mixed-owner unload; no live insertion,
+replacement or backend context reinitialization. Next reconcile typed
+catalog/SDK lifecycle, actual model capabilities and resource reporting,
+then remaining source/state/placement/pipeline seams. Extend physical
+admission and external allocation/runtime/device interop only for real
+consumers. None of these slices closes Phase 1.
 
 Complete the engineering contracts and their real consumers, including every
 foundation below. This is not a requirement to finish every backend optimization,

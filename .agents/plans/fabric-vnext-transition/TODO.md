@@ -560,8 +560,24 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   native C1 and ordinary CUDA GGUF alias replay/retirement with retained
   handles. Focused tests and combined all-target compile pass.
   `139bdbdf` fixes only a test diagnostic. Full isolated gate: 2388 passed, 0 failed, 101 explicit skips; release/installer/scripts pass.
-- [ ] Selective retirement of mixed-owner route sets, hot replacement,
-  backend context reinitialization and remaining source-lifecycle integration.
+## Selective catalog retirement — 25 Nov
+
+- [x] `2b6656b3`: one bounded alias table of exact prepared owners. Request
+  reader from admission to terminal state/lease drop; selective close/drain
+  outside the runtime mutex, unrelated models remain on existing workers;
+  racing shutdown waits and joins the remainder. Last-owner behavior
+  unchanged. Failure sticky, no new load/retirement while busy.
+- [x] Optional executor independent-retirement hook; CPU/ordinary GPU opt
+  in, native HF/finite adapters retain whole-set policy. Ordinary resident
+  final cleanup uses the original physical queue, no per-token registry
+  locks or new resource authority.
+- [x] Engine 102 tests, strict Clippy, combined HIP/CUDA SDK build; real CPU
+  fixture SDK/HTTP mixed-owner and cold reload, physical CUDA GGUF
+  4 GiB -> 2 GiB -> 0 reservation with survivor inference/host reader
+  retirement, native CUDA C1 and HIP V2 C1/C8 pass. Full isolated gate passes (2388 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass). Combined CPU/CUDA/HIP all-target compile passes.
+- [ ] Live insertion/replacement, heterogeneous/native shared residency,
+  additional independent adapter retirement and context reinitialization.
+  Continue typed loaded-owner status/capability/resource reporting.
 
 ## Handoff and documentation maintenance
 

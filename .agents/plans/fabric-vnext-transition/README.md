@@ -26,9 +26,12 @@ must be present together. Existing source/format/host-budget refusals still appl
 - `Runtime::models().load(ModelLoadRequest)`: CPU/GPU/profiled cold route set,
   using original loaders, alias registry and lifecycle. `resolve` retains the
   actual source. `aliases` and `unload` check the exact registered owner;
-  sole-owner route sets retire all aliases and keep the runtime open for
-  another cold load, subject to existing backend context policy. Selective
-  mixed-owner retirement and hot replacement remain unsupported.
+  CPU and ordinary GPU adapters retire all aliases of that owner, drain
+  its accepted requests, and leave unrelated owners on the same workers.
+  The last owner joins the route set and keeps the runtime open for
+  another cold load, subject to backend context policy. Other adapters
+  require an explicit independent-retirement hook; hot insertion and
+  replacement remain unsupported.
 - `Runtime::load_text` / `load_gpu_text`: direct forms of the same catalog load.
 - `models::{ModelProgram,ProgramRequest,prepare_executable,ExecutableBundle}`:
   original source-owned recording and typed preparation, consumed by ordinary
