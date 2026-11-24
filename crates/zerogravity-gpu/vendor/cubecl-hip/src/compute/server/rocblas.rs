@@ -101,11 +101,14 @@ impl HipServer {
             }
         }
         let bindings = handles.map(Handle::binding);
+        // Validate the previous writer before claiming the new write set.
+        // TRSM's RHS is both input and output; checking inside the scope
+        // would see our own provisional failure rather than its prior writer.
+        self.streams.ensure_written(bindings[..2].iter())?;
         let mut written = self.write_set();
         written.extend(bindings[N - 2..].iter().cloned());
         ExecuteScope::over(self, stream, written)
             .execute(move |server| {
-                server.streams.ensure_written(bindings[..2].iter())?;
                 let mut command = server.command(stream, bindings.iter())?;
                 if command.stream().capturing.is_recording() {
                     return Err(failure("rocBLAS graph capture is not admitted"));
