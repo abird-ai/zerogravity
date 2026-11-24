@@ -619,7 +619,8 @@ pub(crate) fn pack(input: &[f32], output: &mut [u32], status: &[Atomic<u32>]) {
 /// but publishes the input-nonfinite bit here as well as the source-invalid bit.
 /// Composed with `project_cpu_bf16_input_certified`, the final shared status is
 /// identical to `pack` + canonical projection while the GEMM avoids rechecking
-/// the same packed activation once per output row.
+/// the same packed activation once per output row. Retained dormant because the
+/// current gfx1150 consumer does not win direct projection device time.
 #[allow(dead_code)]
 #[cube(launch_unchecked)]
 pub(crate) fn pack_projection_input(input: &[f32], output: &mut [u32], status: &[Atomic<u32>]) {

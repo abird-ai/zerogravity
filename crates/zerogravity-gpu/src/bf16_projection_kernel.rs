@@ -314,6 +314,8 @@ pub(crate) fn project_cpu_bf16(
 /// Exact packed-load sibling. Adjacent lanes share each packed u32 with a
 /// plane XOR shuffle, halving the global packed-word loads in principle while
 /// preserving the canonical64 independent partials and reduction tree.
+/// Current gfx1150 Qwen keeps independent loads: paired sharing regressed
+/// 3584x1024 by ~2.36x and6144x1024 by ~2.05x in direct device timing.
 #[allow(dead_code)]
 #[cube(launch_unchecked)]
 pub(crate) fn project_cpu_bf16_pair_load(
@@ -348,6 +350,8 @@ pub(crate) fn project_cpu_bf16_pair_load(
 /// Exact input-certified sibling. The pack phase has already published the
 /// packed-input nonfinite bit into shared status, so the hot GEMM keeps only
 /// weight/result checks while preserving every arithmetic operation.
+/// Current gfx1150 Qwen keeps the canonical input check:3584x1024 was only
+/// ~0.6% faster while6144x1024 regressed ~19.7% in paired device timing.
 #[allow(dead_code)]
 #[cube(launch_unchecked)]
 pub(crate) fn project_cpu_bf16_input_certified(
