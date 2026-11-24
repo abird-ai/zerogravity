@@ -239,6 +239,21 @@ The current implementation priorities implied by that baseline are:
    around0.53–0.56s (one~0.895s outlier), while output16 drops73,384→31,592 dispatches
    and warm mean~31.350s→~0.962s (~32.6× faster), with exact tokens/replay/retirement.
    gfx1151/X2 and all unmatched environments remain on8GiB until separately qualified;
+   Resident-path re-localization on exact `fd4611e` changes the singleton picture again.
+   One47-row prefill is6,467 dispatches; one cached decode token is1,675:
+   projection561 (~33.5%), RMS/residual-RMS489 (~29.2%), GDN360 (~21.5%),
+   QK/rotary150 (~9.0%), with all remaining families smaller. C1 warm47+3 is
+   ~0.541–0.551s; C4 warm~1.978–2.010s; C8 warm~4.044–4.584s, so C4 gives
+   modest goodput gain while C8 is not clearly better per request. Signed `ffd5ff8`
+   fuses the BF16 residual add into RMS's first squares pass while preserving the exact
+   downstream reduction tree and retaining the standalone residual primitive. It removes
+   48 launches per prefill/decode invocation:47+3 9,817→9,673; C4 32,082→31,794;
+   output16 31,592→30,824. C4 warm mean improves~1.994→1.973s (~1.1%) and
+   output16~0.962→0.951s (~1.1%), exact/replay-stable. C1 remained noisy, so acceptance
+   rests on the stronger C4/decode-heavy cells. Next resident HIP unit: fuse the four
+   exact RMS scalar stages (mean→epsilon→sqrt→reciprocal) into one reusable cascade
+   kernel; this can reduce three launches per RMS invocation across plain/residual RMS,
+   GDN RMS and QK RMS without changing the reduction tree;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
    47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
    streaming mechanics are the relevant optimization target there.

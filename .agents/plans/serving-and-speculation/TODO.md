@@ -101,10 +101,26 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   17,653→9,817 and stable elapsed values are ~0.53–0.56s (one~0.895s outlier) versus
   selected streamed~6.359s. Decode-heavy output16 falls73,384→31,592 dispatches and
   warm mean~31.350s→~0.962s (~32.6×), exact/replay/lane-invariant with clean retirement.
-- [ ] Next HIP performance unit: re-localize C1/C4/C8 on the now-resident gfx1150 path
-  before any more projection/GDN micro-tuning, and compare against the relevant vLLM
-  baseline when available without rebuilding a benchmark framework. Separately qualify
-  gfx1151/X2 native opaque accounting before changing its8GiB fallback.
+- [x] Re-localized the resident gfx1150 path with the existing population benchmark.
+  Exact `fd4611e` C1 decode is1,675 dispatches/token: projection561 (~33.5%),
+  RMS/residual-RMS489 (~29.2%), GDN360 (~21.5%), QK/rotary150 (~9.0%). Prefill is
+  6,467 dispatches. Warm47+3 C1 is~0.541–0.551s; C4~1.978–2.010s; C8
+  ~4.044–4.584s. C4 modestly improves per-request goodput; C8 is not clearly better.
+  A1 has no matched vLLM baseline; the maintained vLLM matrix is X2/gfx1151, so do not
+  compare raw A1 latency against it.
+- [x] `ffd5ff8` adds a model-neutral `residual_squares` RMS first pass and selects it
+  for `ResidualRms`: materialize the exact `bf16(add(x, prior))` residual and square
+  that same rounded value in one launch, then reuse the unchanged RMS sum/scalar/
+  normalize/weight/store cascade. The standalone residual kernel remains reusable.
+  Dispatches: C1 47+3 9,817→9,673; C4 32,082→31,794; output16 31,592→30,824.
+  C4 warm mean~1.994→1.973s and output16~0.962→0.951s (~1.1% each), exact/replay
+  stable. C1 timing was noisy, so it was not used as the acceptance signal.
+- [ ] Next resident HIP unit: replace RMS's four one-scalar launches (mean, epsilon add,
+  sqrt, reciprocal) with one exact scalar-cascade primitive while preserving the same
+  f32 operation sequence/status contract. It is shared by plain/residual RMS, GDN RMS
+  and QK RMS and should remove three launches per RMS invocation. Keep the individual
+  scalar primitive available for other models/tests. Separately qualify gfx1151/X2
+  native opaque accounting before changing its8GiB fallback.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.
