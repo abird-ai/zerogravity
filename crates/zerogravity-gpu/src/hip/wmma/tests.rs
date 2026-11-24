@@ -22,10 +22,10 @@ fn native_bf16_wmma_projection() {
         output_stride: 24,
     };
     let w = (0..g.rows * g.columns)
-        .map(|i| ((i * 7 + i / 64 * 3) % 7) as f32 - 3.)
+        .map(|i| ((i * 13 + i / 64 * 3 + i / 3) % 7) as f32 - 3.)
         .collect::<Vec<_>>();
     let x = (0..g.requests * g.columns)
-        .map(|i| ((i * 11 + i / 64 * 5) % 11) as f32 - 5.)
+        .map(|i| ((i * 17 + i / 64 * 5 + i / 5) % 11) as f32 - 5.)
         .collect::<Vec<_>>();
     let packed = |xs: &[f32]| {
         xs.chunks_exact(2)
@@ -55,8 +55,8 @@ fn native_bf16_wmma_projection() {
             let bits = sum.to_bits();
             let rounded = f32::from_bits((bits + 0x7fff + ((bits >> 16) & 1)) & 0xffff0000);
             assert_eq!(
-                actual[i * g.output_stride + j].to_bits(),
-                rounded.to_bits(),
+                actual[i * g.output_stride + j],
+                rounded,
                 "row={i} column={j}"
             );
         }
