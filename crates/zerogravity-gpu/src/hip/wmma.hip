@@ -28,11 +28,12 @@ void zg_bf16_wmma(const short* weights, const short* input,
     for (unsigned t = 0; t < 8; ++t) {
         const unsigned row = blockIdx.y * 16 + 2 * t + lane / 16;
         if (row < m && j < n) {
-            unsigned bits = __builtin_bit_cast(unsigned, acc[t]);
+            const float value = acc[t];
+            unsigned bits = __float_as_uint(value);
             invalid |= (bits & 0x7f800000u) == 0x7f800000u;
             bits = (bits + (0x7fffu + ((bits >> 16) & 1u))) & 0xffff0000u;
             invalid |= (bits & 0x7f800000u) == 0x7f800000u;
-            output[row * stride + j] = __builtin_bit_cast(float, bits);
+            output[row * stride + j] = __uint_as_float(bits);
         }
     }
     if (invalid) atomicOr(status, 2u);
