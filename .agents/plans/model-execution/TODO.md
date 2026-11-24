@@ -127,6 +127,12 @@ any external compiler. All phases retain the original resource/state owners.
   `0db60ede`: assembled isolated gate and bounded real Qwen 0.8B native,
   exact, continuation and CUDA C1 checks pass with original retirement
   (composition TODO).
+- Provider-local resource requirements now cover actual native HIP workspace
+  and CUDA projection/graph flight binding. The original service validates
+  scratch Write authority, distinct opaque reservations and queue compatibility;
+  captured replay retains its owner at launch, unknown capture retirement
+  quarantines retained resources. No new numerical or serving selection.
+  Final assembled/physical checks pending (composition TODO).
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

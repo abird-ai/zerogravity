@@ -20,7 +20,8 @@ use zerogravity_core::{
     identity::SourceIdentity,
     model::{ModelDefinition, ModelProgram, ModelRegion, ProgramRequest},
     provider::{
-        ExecutionMode, PreparedExecutable, PreparedRegion, ProviderKind, RegionExecutionProvider,
+        ExecutionMode, PreparedExecutable, PreparedRegion, ProviderBufferMode,
+        ProviderCompletionMode, ProviderKind, ProviderRequirements, RegionExecutionProvider,
         SelectedMode,
     },
     source::{SourceTensorRef, TensorSource},
@@ -462,6 +463,7 @@ fn closed_region_ports_and_active_invocation_keep_original_semantics() {
     let head = PreparedRegion::new(
         head,
         selected,
+        ProviderRequirements::original_queue(0, 0),
         1..=64,
         &[ValueStorageFormat::Bf16],
         &[ValueStorageFormat::F32],
@@ -478,6 +480,7 @@ fn closed_region_ports_and_active_invocation_keep_original_semantics() {
             PreparedRegion::new(
                 program.closed_region(1..3).unwrap(),
                 selected,
+                ProviderRequirements::original_queue(0, 0),
                 rows,
                 &[ValueStorageFormat::Bf16],
                 &[ValueStorageFormat::Bf16; 2]
@@ -489,6 +492,7 @@ fn closed_region_ports_and_active_invocation_keep_original_semantics() {
         PreparedRegion::new(
             program.closed_region(1..3).unwrap(),
             selected,
+            ProviderRequirements::original_queue(0, 0),
             1..=8,
             &[ValueStorageFormat::Bf16],
             &[ValueStorageFormat::Bf16]
@@ -527,6 +531,7 @@ impl RegionExecutionProvider for RegionProbe {
                         provider,
                         mode: ExecutionMode::Graph,
                     },
+                    ProviderRequirements::original_queue(256, 1024),
                     2..=8,
                     &[ValueStorageFormat::Bf16],
                     &[ValueStorageFormat::Bf16, ValueStorageFormat::F32],
@@ -575,6 +580,32 @@ fn partial_provider_preparation_retains_exact_source_plan_and_scope() {
             assert!(Arc::ptr_eq(&ready(bundle.program()).unwrap(), &plan));
             let prepared = bundle.prepared_region().unwrap();
             assert_eq!(prepared.selected().mode, ExecutionMode::Graph);
+            let requirements = prepared.requirements();
+            assert_eq!(requirements.device_bytes().unwrap(), 1280);
+            requirements.require_original_queue().unwrap();
+            requirements.require_admitted(256, 1024).unwrap();
+            assert!(requirements.require_admitted(0, 1024).is_err());
+            assert!(requirements.require_admitted(256, 0).is_err());
+            for bridge in [
+                ProviderRequirements {
+                    buffers: ProviderBufferMode::Private,
+                    ..requirements
+                },
+                ProviderRequirements {
+                    completion: ProviderCompletionMode::ExternalFence,
+                    ..requirements
+                },
+            ] {
+                assert!(matches!(
+                    bridge.require_original_queue(),
+                    Err(Error::Unsupported(_))
+                ));
+            }
+            assert!(
+                ProviderRequirements::original_queue(usize::MAX, 1)
+                    .device_bytes()
+                    .is_err()
+            );
             assert_eq!(prepared.supported_rows(), 2..=8);
             assert_eq!(
                 prepared.capacity().input(0).unwrap().byte_len().unwrap(),

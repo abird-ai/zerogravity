@@ -109,9 +109,12 @@ physical region ports (selected provider/mode, explicit row band, per-port
 encoding and checked byte layout), native CUDA/HIP consumers and original
 lease-view and invocation-issuer checks. Full isolated gate and physical
 Qwen 0.8B native/exact/continuation on X2 and CUDA C1 on L5 pass.
-Provider-specific workspace/persistent-resource reporting, external
-stream/completion bridges, stateful region effects and remaining
-foundations are still open. None of these slices closes Phase 1.
+The next source slice adds incremental provider-local workspace and opaque
+device requirements, original-flight resource binding and captured CUDA
+stream/retirement ownership. Shared context/module accounting stays with
+the original owners. Validation pending. Private-buffer and foreign-stream
+completion bridges, stateful effects and remaining foundations remain open.
+None of these slices closes Phase 1.
 
 Complete the engineering contracts and their real consumers, including every
 foundation below. This is not a requirement to finish every backend optimization,

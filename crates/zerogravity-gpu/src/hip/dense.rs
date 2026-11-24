@@ -7,10 +7,7 @@ use crate::{
     resident_program::BufferRange,
 };
 use std::sync::Arc;
-use zerogravity_core::{
-    Error, Result,
-    device_events::{BufferRole, DeviceAccess},
-};
+use zerogravity_core::{Error, Result, provider::ProviderRequirements};
 
 pub(crate) struct Dense<'a> {
     native: &'a PreparedSourceNative,
@@ -18,21 +15,15 @@ pub(crate) struct Dense<'a> {
     workspace: &'a ResidentLease,
 }
 impl<'a> Dense<'a> {
+    pub(crate) const REQUIREMENTS: ProviderRequirements =
+        ProviderRequirements::original_queue(cubecl::hip::ROCBLAS_WORKSPACE_BYTES, 0);
     pub(crate) fn new(
         native: &'a PreparedSourceNative,
         service: &'a Arc<ResidentService>,
         workspace: &'a ResidentLease,
         flight: &ResidentSubmission<'_>,
     ) -> Result<Self> {
-        flight.require_accesses([(workspace, DeviceAccess::Write)])?;
-        if !Arc::ptr_eq(workspace.service(), service)
-            || workspace.role() != BufferRole::Scratch
-            || workspace.bytes() != cubecl::hip::ROCBLAS_WORKSPACE_BYTES
-        {
-            return Err(Error::State(
-                "native dense original workspace differs".into(),
-            ));
-        }
+        flight.require_provider(service, Self::REQUIREMENTS, Some(workspace), &[])?;
         Ok(Self {
             native,
             service,

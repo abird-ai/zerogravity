@@ -94,6 +94,7 @@ impl CudaForwardProjection {
                 provider: ProviderKind::Cuda,
                 mode: ExecutionMode::Native,
             },
+            CudaForwardGemm::REQUIREMENTS,
             1..=max_rows,
             &[ValueStorageFormat::Bf16],
             &[ValueStorageFormat::Bf16],
@@ -164,6 +165,7 @@ impl CudaForwardProjection {
                 provider: ProviderKind::Cuda,
                 mode: ExecutionMode::Native,
             })
+            || region.requirements() != CudaForwardGemm::REQUIREMENTS
             || region.supported_rows() != (1..=template.max_rows())
             || region.capacity().input(0)?.row_bytes() != weights.columns() * 2
             || region.capacity().output(0)?.row_bytes() != weights.rows() * 2

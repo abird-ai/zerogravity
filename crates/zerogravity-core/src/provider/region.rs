@@ -1,5 +1,5 @@
 //! Source-owned physical region contract. No allocation or completion permit.
-use super::SelectedMode;
+use super::{ProviderRequirements, SelectedMode};
 use crate::{
     Error, Result,
     accelerator::program::{SourceRowSelection, ValueId, ValueStorageFormat},
@@ -67,6 +67,7 @@ impl PhysicalRegionPort {
 pub struct PreparedRegion<S: ProgramSource = Arc<dyn TensorSource>> {
     model: ModelRegion<S>,
     selected: SelectedMode,
+    requirements: ProviderRequirements,
     rows: RangeInclusive<usize>,
     inputs: Box<[PhysicalRegionPort]>,
     outputs: Box<[PhysicalRegionPort]>,
@@ -75,10 +76,12 @@ impl<S: ProgramSource> PreparedRegion<S> {
     pub fn new(
         model: ModelRegion<S>,
         selected: SelectedMode,
+        requirements: ProviderRequirements,
         rows: RangeInclusive<usize>,
         input_formats: &[ValueStorageFormat],
         output_formats: &[ValueStorageFormat],
     ) -> Result<Self> {
+        requirements.device_bytes()?;
         let region = model.region();
         if rows.is_empty() || *rows.start() == 0 || *rows.end() > region.max_rows() {
             return Err(Error::Unsupported(
@@ -102,6 +105,7 @@ impl<S: ProgramSource> PreparedRegion<S> {
         Ok(Self {
             model,
             selected,
+            requirements,
             rows,
             inputs,
             outputs,
@@ -112,6 +116,9 @@ impl<S: ProgramSource> PreparedRegion<S> {
     }
     pub fn selected(&self) -> SelectedMode {
         self.selected
+    }
+    pub fn requirements(&self) -> ProviderRequirements {
+        self.requirements
     }
     pub fn supported_rows(&self) -> RangeInclusive<usize> {
         self.rows.clone()

@@ -14,7 +14,7 @@ use zerogravity_core::{
     accelerator::program::{PlanOperation, SourceOperatorKind, ValueStorageFormat},
     device_events::{BufferRole, DeviceAccess},
     model::ModelProgram,
-    provider::{ExecutionMode, PreparedRegion, ProviderKind, SelectedMode},
+    provider::{ExecutionMode, PreparedRegion, ProviderKind, ProviderRequirements, SelectedMode},
 };
 
 /// Cold/configured-call working set, not a live reservation. Retained results
@@ -86,6 +86,12 @@ impl Admission {
         }
         let metadata = source.reserve_workspace(8 * 1024 * 1024)?;
         let mut layout = layout::Layout::derive(plan)?;
+        let native_gemm = layout.plan.numerical_profile().uses_hip_native_dense();
+        let requirements = if native_gemm {
+            crate::hip::dense::Dense::REQUIREMENTS
+        } else {
+            ProviderRequirements::original_queue(0, 0)
+        };
         // HIP uses widened F32 activation storage; the same logical region
         // contract must agree with its original SSA storage admission.
         let model = ModelProgram::from_recorded(source.clone(), layout.plan.clone())?;
@@ -101,6 +107,7 @@ impl Admission {
                         provider: ProviderKind::Hip,
                         mode: ExecutionMode::Native,
                     },
+                    requirements,
                     1..=max_rows,
                     &[ValueStorageFormat::F32],
                     &[ValueStorageFormat::F32],
@@ -116,7 +123,6 @@ impl Admission {
                 }
             }
         }
-        let native_gemm = layout.plan.numerical_profile().uses_hip_native_dense();
         if native_gemm {
             if native_policy != crate::hip::native::HipSourceNativePolicy::Gfx1151 {
                 return Err(Error::Unsupported(
@@ -125,7 +131,7 @@ impl Admission {
             }
             layout.preflight.workspace_bytes = layout::sum([
                 layout.preflight.workspace_bytes,
-                cubecl::hip::ROCBLAS_WORKSPACE_BYTES,
+                requirements.workspace_bytes,
             ])?;
         }
         let source_weight_bytes = layout.preflight.source_bytes;
@@ -371,7 +377,12 @@ impl Admission {
         let status = init.allocate_empty(layout::ALIGNMENT, BufferRole::Scratch)?;
         let zero = init.upload_zeroed(layout::ALIGNMENT, BufferRole::ImmutableWeights)?;
         let rocblas_workspace = native_gemm
-            .then(|| init.allocate_empty(cubecl::hip::ROCBLAS_WORKSPACE_BYTES, BufferRole::Scratch))
+            .then(|| {
+                init.allocate_empty(
+                    crate::hip::dense::Dense::REQUIREMENTS.workspace_bytes,
+                    BufferRole::Scratch,
+                )
+            })
             .transpose()?;
         let mut accesses = Vec::new();
         accesses.extend(

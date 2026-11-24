@@ -20,6 +20,21 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**New source slice — provider requirements and original-flight binding.**
+PreparedRegion reports additional provider-local workspace/opaque device
+reservations and buffer/completion compatibility. No double-charge of
+original tensors, scratch or shared context/module envelopes. Native CUDA
+binds the original GEMM/context owner once per flight; HIP dense uses one
+workspace requirement across preflight, allocation and execution. Captured
+CUDA graph resources use the same requirement contract and replay binds
+its actual pinned stream, leases and charge owner at launch. Capture-stop
+failure/untransferred ownership retains the graph reservation in quarantine.
+No arithmetic, public graph selection or allocator/queue change.
+Private-buffer transfer, foreign-stream completion and stateful region
+effects/bridges remain open; assembled/physical validation pending.
+
+Prior accepted physical-region checkpoint:
+
 **Accepted source checkpoint `0db60ede170634d6be5f9ffecd82939c2745ab95` —
 prepared physical region ports.** PreparedRegion
 replaces bare prepared scope with original source/plan and selected

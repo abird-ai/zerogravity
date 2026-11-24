@@ -11,6 +11,7 @@ use std::sync::{
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_core::{
     Error, Result, device_events::DeviceAccess, placement::PreparedTensorLayout,
+    provider::ProviderRequirements,
 };
 
 pub(super) struct CudaForwardGemm {
@@ -19,6 +20,16 @@ pub(super) struct CudaForwardGemm {
     retired: AtomicBool,
 }
 impl CudaForwardGemm {
+    pub(super) const REQUIREMENTS: ProviderRequirements =
+        ProviderRequirements::original_queue(0, 0);
+
+    /// Bind once per original call/cohort, before any native enqueue.
+    pub(super) fn bind_flight(self: &Arc<Self>, flight: &mut ResidentSubmission<'_>) -> Result<()> {
+        flight.retain_completion_owner(self.clone())?;
+        self.require_service(&self.service)?;
+        flight.require_provider(&self.service, Self::REQUIREMENTS, None, &[])
+    }
+
     pub(super) fn prepare(
         service: Arc<ResidentService>,
         source: &VerifiedTensorSource,

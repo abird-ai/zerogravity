@@ -1,5 +1,6 @@
 //! Coarse source-owned preparation; no execution authority from a descriptor.
 mod region;
+mod resources;
 mod selection;
 use crate::{
     Error, Result,
@@ -8,6 +9,7 @@ use crate::{
     source::ProgramSource,
 };
 pub use region::{PhysicalRegionPort, PreparedRegion, RegionShape};
+pub use resources::{ProviderBufferMode, ProviderCompletionMode, ProviderRequirements};
 pub use selection::{
     ExecutionMode, SelectedMode, SelectionPolicy, ShapeMissPolicy, StateBridge, SwitchingBoundary,
 };

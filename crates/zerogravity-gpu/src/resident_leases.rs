@@ -1092,6 +1092,35 @@ impl ResidentSubmission<'_> {
         }
         Ok(())
     }
+    #[cfg(any(
+        feature = "cuda-native",
+        all(feature = "qualification", feature = "cuda"),
+        all(feature = "hip-source", target_os = "linux")
+    ))]
+    pub(crate) fn require_provider(
+        &self,
+        service: &Arc<ResidentService>,
+        requirements: zerogravity_core::provider::ProviderRequirements,
+        workspace: Option<&ResidentLease>,
+        charges: &[Arc<ForeignProviderCharge>],
+    ) -> Result<()> {
+        requirements.require_original_queue()?;
+        if !Arc::ptr_eq(self.service, service)
+            || workspace.is_some_and(|lease| lease.role() != BufferRole::Scratch)
+        {
+            return Err(Error::State(
+                "provider original flight/workspace owner differs".into(),
+            ));
+        }
+        self.require_accesses(
+            workspace
+                .into_iter()
+                .map(|lease| (lease, DeviceAccess::Write)),
+        )?;
+        let opaque = ForeignProviderCharge::require_total(service, charges)?;
+        requirements.require_admitted(workspace.map_or(0, ResidentLease::bytes), opaque)
+    }
+
     pub(crate) fn retain_completion_owner(
         &mut self,
         owner: crate::physical_quarantine::CompletionOwner,

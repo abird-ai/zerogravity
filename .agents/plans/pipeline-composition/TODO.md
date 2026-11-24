@@ -212,6 +212,23 @@ their existing numeric/source/physical acceptance gates.
   with expected tokens/replay and original resource retirement.
   No new performance baseline or broader parity grant.
 
+## Provider requirements and original-flight binding — 24 Nov
+
+- [x] PreparedRegion carries explicit incremental provider-local device
+  requirements: borrowed workspace, opaque model reservation, buffer mode,
+  and completion mode. Existing mathematical scratch, source/state storage,
+  and shared backend context/module envelopes remain priced by their owners.
+- [x] CUDA projection binds the original GEMM/context owner once per flight.
+  HIP dense preflight, allocation and execution share the same workspace
+  requirement; actual flight validates original scratch Write access and
+  distinct opaque charges without a new allocator or ledger.
+- [x] Captured CUDA replay uses the same resource/flight contract, validates
+  the original pinned stream, and attaches the graph/charge owner at the
+  actual launch entry. Failed or interrupted capture retains untransferred
+  reservations and original storage in quarantine. Existing graph policy,
+  retirement barriers and Native serving selection remain authoritative.
+- [ ] Assembled gate and physical consumer validation pending.
+
 ## Uncommitted
 
 ### Phase 1 — source, semantics and executable lowering
@@ -219,10 +236,10 @@ their existing numeric/source/physical acceptance gates.
 Contract: [closed regions](REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering)
 and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
 
-- [ ] Extend the landed stateless physical preparation/binding contract
-  through actual captured/compiled consumers: explicit borrowed/private
-  workspace and persistent-resource admission, external stream/completion
-  bridge, and stateful effect/bridge contracts. Keep selected shape bands
+- [ ] Extend the landed original-queue resource/binding contract to
+  explicit private-buffer transfers and foreign-stream/event completion
+  when an actual consumer requires them; current adapters refuse both.
+  Extend closed-region stateful effect and state-bridge semantics. Keep selected shape bands
   and typed port layouts; do not reintroduce naked scope or implicit retry. Native and captured consumers retain
   original source/numerical/state authority. Graph-only preparation may
   lower supported native semantic regions directly, without ONNX. No

@@ -1481,7 +1481,7 @@ impl CudaForwardBody {
             }
         }
         flight.retain_completion_owner(self.cold().clone())?;
-        flight.retain_completion_owner(self.gemm().clone())?;
+        self.gemm().bind_flight(flight)?;
 
         let client = self.cold().service().client();
         self.clear_and_bind_call(client, first, false)?;
@@ -1860,7 +1860,7 @@ impl CudaForwardBody {
             }
         }
         flight.retain_completion_owner(self.cold().clone())?;
-        flight.retain_completion_owner(self.gemm().clone())?;
+        self.gemm().bind_flight(flight)?;
 
         let client = self.cold().service().client();
         self.clear_and_bind_call(client, &batch_call, false)?;

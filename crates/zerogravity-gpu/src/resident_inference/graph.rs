@@ -19,7 +19,7 @@ use std::sync::{
     Mutex as HostMutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-use zerogravity_core::accelerator::SourceIdentity;
+use zerogravity_core::{accelerator::SourceIdentity, provider::ProviderRequirements};
 #[cfg(feature = "qualification")]
 pub(super) mod qualification;
 #[cfg(feature = "qualification")]
@@ -228,7 +228,7 @@ fn graph_policy_bytes(dispatches: usize, access_capacity: usize) -> Result<usize
 struct GraphResourceAdmission {
     charges: Vec<Arc<ForeignProviderCharge>>,
     dispatch_slots: usize,
-    bytes: usize,
+    requirements: ProviderRequirements,
 }
 impl GraphResourceAdmission {
     fn initial(
@@ -245,7 +245,7 @@ impl GraphResourceAdmission {
         Ok(Self {
             charges: vec![charge],
             dispatch_slots: dispatches,
-            bytes,
+            requirements: ProviderRequirements::original_queue(0, bytes),
         })
     }
 
@@ -264,6 +264,10 @@ impl GraphResourceAdmission {
             .checked_sub(self.dispatch_slots)
             .and_then(|n| n.checked_mul(GRAPH_DISPATCH_RESERVE_BYTES))
             .ok_or_else(|| Error::Limit("graph additional dispatch reserve overflow".into()))?;
+        let total = self
+            .bytes()
+            .checked_add(extra)
+            .ok_or_else(|| Error::Limit("graph total reserve overflow".into()))?;
         let charge = service.reserve_foreign_provider(extra)?;
         charge.require_service(service)?;
         if charge.bytes() != extra {
@@ -273,25 +277,20 @@ impl GraphResourceAdmission {
         }
         self.charges.push(charge);
         self.dispatch_slots = dispatches;
-        self.bytes = self
-            .bytes
-            .checked_add(extra)
-            .ok_or_else(|| Error::Limit("graph total reserve overflow".into()))?;
+        self.requirements.opaque_device_bytes = total;
         Ok(())
     }
 
     fn require_service(&self, service: &Arc<ResidentService>) -> Result<()> {
-        if self.bytes == 0 || self.charges.is_empty() {
+        if self.bytes() == 0 || self.charges.is_empty() {
             return Err(Error::State("graph resource admission absent".into()));
         }
-        for charge in &self.charges {
-            charge.require_service(service)?;
-        }
-        Ok(())
+        let opaque = ForeignProviderCharge::require_total(service, &self.charges)?;
+        self.requirements.require_admitted(0, opaque)
     }
 
     fn bytes(&self) -> usize {
-        self.bytes
+        self.requirements.opaque_device_bytes
     }
 }
 
@@ -448,12 +447,25 @@ impl CapturedResidentGraph {
     /// least the access authority recorded at capture. This prevents a valid
     /// executable from being paired with replacement storage or a sibling
     /// physical event merely because the batch geometry still matches.
-    pub(super) fn require_flight(
+    fn require_flight(
         &self,
         flight: &crate::resident_leases::ResidentSubmission<'_>,
     ) -> Result<()> {
-        self.service.ensure_usable()?;
-        self.resource.require_service(&self.service)?;
+        flight.require_provider(
+            &self.service,
+            self.resource.requirements,
+            None,
+            &self.resource.charges,
+        )?;
+        let queue = self.service.pinned_cuda_queue()?;
+        if queue.service_id() != self.service.client().service_id()
+            || queue.logical_stream_id().value != self.stream
+            || self.retired.load(Ordering::Acquire)
+        {
+            return Err(Error::State(
+                "resident graph original stream/owner differs".into(),
+            ));
+        }
         if self.accesses.is_empty() {
             return Err(Error::State(
                 "resident graph captured no storage authority".into(),
@@ -463,11 +475,16 @@ impl CapturedResidentGraph {
     }
 
     pub(super) fn launch(
-        &self,
+        self: &Arc<Self>,
+        flight: &mut crate::resident_leases::ResidentSubmission<'_>,
         program: &mut BatchProgram,
         parameters: &[RuntimeParameters],
         bindings: &[Vec<StateBinding>],
     ) -> Result<crate::resident_program::ResidentSubmission> {
+        // Attach before validating/enqueuing: unknown completion retains the
+        // actual executable, original captured storage and opaque reservation.
+        flight.retain_completion_owner(self.clone())?;
+        self.require_flight(flight)?;
         let graph = self
             .graph
             .lock()
@@ -529,8 +546,13 @@ impl CapturedResidentGraph {
             .collect::<Vec<_>>();
         slot.begin_submission()?;
         let mut flight = self.service.submit(root, &accesses)?;
-        let owner: CompletionOwner = self.clone();
-        flight.retain_completion_owner(owner)?;
+        flight.retain_completion_owner(self.clone())?;
+        flight.require_provider(
+            &self.service,
+            self.resource.requirements,
+            None,
+            &self.resource.charges,
+        )?;
         if destroy {
             // Barrier one completed before this method was entered. Preserve
             // leases, band pin and flight until actor graph destruction retires.
@@ -624,29 +646,42 @@ impl CaptureWindow {
     }
     fn stop(&mut self) -> Result<Graph> {
         self.active = false; // Vendor end_capture closes even on refusal.
+        match self.service.client().stop_capture() {
+            Ok(graph) => Ok(graph),
+            Err(error) => {
+                // A failed stop is not proof that opaque capture resources
+                // are retired. The original flight will also fence.
+                self.quarantine(None);
+                Err(Error::State(format!("graph stop: {error}")))
+            }
+        }
+    }
+
+    fn quarantine(&mut self, graph: Option<Graph>) {
+        let resource = self
+            .resource
+            .take()
+            .expect("capture retains resource admission");
+        let owner: CompletionOwner = Arc::new(QuarantinedGraph {
+            _graph: graph,
+            _leases: self.leases.clone(),
+            _service: self.service.clone(),
+            _resource: resource,
+            _band_pin: self.band_pin.clone(),
+        });
         self.service
-            .client()
-            .stop_capture()
-            .map_err(|e| Error::State(format!("graph stop: {e}")))
+            .fence_and_retain_owners(&self.leases, vec![owner]);
     }
 }
 impl Drop for CaptureWindow {
     fn drop(&mut self) {
-        if self.active {
-            let graph = self.service.client().stop_capture().ok();
-            let resource = self
-                .resource
-                .take()
-                .expect("active capture window retains resource admission");
-            let owner: CompletionOwner = Arc::new(QuarantinedGraph {
-                _graph: graph,
-                _leases: self.leases.clone(),
-                _service: self.service.clone(),
-                _resource: resource,
-                _band_pin: self.band_pin.clone(),
-            });
-            self.service
-                .fence_and_retain_owners(&self.leases, vec![owner]);
+        if self.resource.is_some() {
+            let graph = if self.active {
+                self.service.client().stop_capture().ok()
+            } else {
+                None
+            };
+            self.quarantine(graph);
         }
     }
 }
@@ -1245,7 +1280,7 @@ impl CapturedResidentGraph {
     }
     pub fn qualification_resource_witness(&self) -> (usize, usize, Vec<usize>) {
         (
-            self.resource.bytes,
+            self.resource.bytes(),
             self.resource.charges.len(),
             self.resource
                 .charges

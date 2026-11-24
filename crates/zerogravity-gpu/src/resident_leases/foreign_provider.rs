@@ -371,11 +371,30 @@ impl<O: ForeignProviderOwner> ForeignProviderCharge<O> {
 #[cfg(any(
     feature = "cuda-native",
     all(feature = "qualification", feature = "cuda"),
-    all(test, feature = "cuda-cublas")
+    all(test, feature = "cuda-cublas"),
+    all(feature = "hip-source", target_os = "linux")
 ))]
 impl ForeignProviderCharge<super::native_cache::NativeCacheBudget> {
     pub(crate) fn require_service(&self, service: &Arc<ResidentService>) -> Result<()> {
         self.owner.require_service(service)
+    }
+
+    /// Sum only distinct charges retained by the original model namespace.
+    pub(crate) fn require_total(
+        service: &Arc<ResidentService>,
+        charges: &[Arc<Self>],
+    ) -> Result<usize> {
+        let mut bytes = 0usize;
+        for (i, charge) in charges.iter().enumerate() {
+            charge.require_service(service)?;
+            if charges[..i].iter().any(|prior| Arc::ptr_eq(prior, charge)) {
+                return Err(Error::State("provider opaque charge counted twice".into()));
+            }
+            bytes = bytes
+                .checked_add(charge.bytes())
+                .ok_or_else(|| Error::Limit("provider opaque charge sum overflow".into()))?;
+        }
+        Ok(bytes)
     }
 }
 #[cfg(any(

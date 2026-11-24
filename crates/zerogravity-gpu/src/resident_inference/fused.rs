@@ -915,15 +915,7 @@ impl ResidentModel {
             feature = "cuda",
             any(feature = "qualification", feature = "cuda-native")
         ))]
-        let flight = {
-            let mut flight = flight;
-            if let FusedExecution::Graph(graph) = &execution {
-                let owner: crate::physical_quarantine::CompletionOwner = graph.clone();
-                flight.retain_completion_owner(owner)?;
-                graph.require_flight(&flight)?;
-            }
-            flight
-        };
+        let mut flight = flight;
         let program = &mut workspace.batch.as_mut().unwrap().program;
         let launch_native = |program: &mut BatchProgram| {
             if let Some(tokens) = &device_buffers {
@@ -958,7 +950,9 @@ impl ResidentModel {
                 feature = "cuda",
                 any(feature = "qualification", feature = "cuda-native")
             ))]
-            FusedExecution::Graph(graph) => graph.launch(program, &parameters, &bindings)?,
+            FusedExecution::Graph(graph) => {
+                graph.launch(&mut flight, program, &parameters, &bindings)?
+            }
         };
         let expected = workspace.program.plan().proposed_domains();
         if submitted.proposals.len() != expected.len() * rows.len()

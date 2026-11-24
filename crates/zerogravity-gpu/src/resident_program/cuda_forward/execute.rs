@@ -176,7 +176,7 @@ impl CudaForwardBody {
             }
         }
         flight.retain_completion_owner(self.cold().clone())?;
-        flight.retain_completion_owner(self.gemm().clone())?;
+        self.gemm().bind_flight(flight)?;
         // Once a streamed call starts, finish its original flight; cancellation
         // discards the completed candidate rather than abandoning a page owner.
         let cancelled = if self.waits_on_cancel() {
