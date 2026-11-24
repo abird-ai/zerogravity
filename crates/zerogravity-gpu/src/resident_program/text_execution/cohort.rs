@@ -8,7 +8,10 @@ use super::{
 };
 use crate::{
     resident_leases::{ResidentLease, ResidentSubmission as Flight},
-    resident_program::{StateBinding, bf16_projection::Bf16ProjectionBindings},
+    resident_program::{
+        StateBinding,
+        bf16_projection::{Bf16ProjectionBindings, Bf16ProjectionStorage, PreparedBf16Projection},
+    },
 };
 use cubecl::{bytes::Bytes, server::Handle};
 use zerogravity_core::{
@@ -53,6 +56,15 @@ fn bytes(words: usize) -> Result<usize> {
     words
         .checked_mul(4)
         .ok_or_else(|| Error::Limit("text cohort word extent".into()))
+}
+
+/// Resident weights can revisit a bounded token tile without a source reload.
+/// Keep streamed weight traversal across the whole cohort.
+fn projection_token_tile(operand: &PreparedBf16Projection, active: usize) -> usize {
+    match operand.storage() {
+        Bf16ProjectionStorage::Resident => active.min(128),
+        Bf16ProjectionStorage::Streamed => active,
+    }
 }
 
 impl Cold {
@@ -127,16 +139,18 @@ impl Cold {
                     width * rows
                 };
                 for m in d.matrices() {
-                    let words = active
+                    let operand = &self.operands[&m.name];
+                    let tile = projection_token_tile(operand, active);
+                    let words = tile
                         .checked_mul(m.rows)
                         .ok_or_else(|| Error::Limit("text cohort projection extent".into()))?;
-                    if active * self.operands[&m.name].max_launch_rows()
+                    if tile * operand.max_launch_rows()
                         > self.service.client().properties().hardware.max_cube_count.0 as usize
                     {
                         return Ok(None);
                     }
                     projection = projection.max(bytes(words)?);
-                    packed = packed.max(bytes(active * m.columns)? / 2);
+                    packed = packed.max(bytes(tile * m.columns)? / 2);
                     if selected_row.is_some() && rows > 1 {
                         selected = selected.max(bytes(active * m.columns)?);
                     }
@@ -732,62 +746,74 @@ impl Cold {
         let mut offset = 0usize;
         let mut fused = 0usize;
         for matrix in descriptor.matrices() {
-            let elements = active * matrix.rows;
+            let operand = &self.operands[&matrix.name];
+            let tile = projection_token_tile(operand, active);
             // A single complete matrix already has the final row stride.
             // Keep scratch for combined matrices, aliases and the head readback.
             let direct = selected_row.is_none()
                 && matrix.rows == combined
                 && input_lease.id() != output_lease.id();
-            let (destination, destination_lease) = if direct {
-                (output.clone(), output_lease)
-            } else {
-                (
-                    view(&buffers.projection[0], 0, bytes(elements)?)?,
-                    &buffers.projection[0],
-                )
-            };
-            dispatches = dispatches
-                .checked_add(
-                    self.operands[&matrix.name]
-                        .enqueue_rows(
-                            flight,
-                            &self.page,
-                            Bf16ProjectionBindings {
-                                input: &input,
-                                input_lease,
-                                output: &destination,
-                                output_lease: destination_lease,
-                                packed: &buffers.packed,
-                                accumulation: &buffers.projection[1],
-                                flags: &buffers.projection[2],
-                                status: &self.status,
-                                zero: &self.zero,
-                            },
-                            active,
-                            None,
-                        )
-                        .await?,
-                )
-                .ok_or_else(|| Error::Limit("text cohort projection dispatches".into()))?;
-            if !direct {
-                flight.require_accesses([(output_lease, DeviceAccess::Write)])?;
-                unsafe {
-                    super::kernels::columns::launch_unchecked(
-                        client,
-                        grid(elements),
-                        dim(),
-                        arg(&destination, elements),
-                        arg(&output, expected_output),
-                        arg(&status, 1),
-                        active as u32,
-                        0u32,
-                        offset as u32,
-                        matrix.rows,
-                        matrix.rows,
-                        combined,
-                    );
+            for first in (0..active).step_by(tile) {
+                let count = tile.min(active - first);
+                let elements = count * matrix.rows;
+                let input =
+                    super::math::subview(&input, bytes(first * columns)?, bytes(count * columns)?)?;
+                let output = super::math::subview(
+                    &output,
+                    bytes(first * combined)?,
+                    bytes(count * combined)?,
+                )?;
+                let (destination, destination_lease) = if direct {
+                    (output.clone(), output_lease)
+                } else {
+                    (
+                        view(&buffers.projection[0], 0, bytes(elements)?)?,
+                        &buffers.projection[0],
+                    )
+                };
+                dispatches = dispatches
+                    .checked_add(
+                        operand
+                            .enqueue_rows(
+                                flight,
+                                &self.page,
+                                Bf16ProjectionBindings {
+                                    input: &input,
+                                    input_lease,
+                                    output: &destination,
+                                    output_lease: destination_lease,
+                                    packed: &buffers.packed,
+                                    accumulation: &buffers.projection[1],
+                                    flags: &buffers.projection[2],
+                                    status: &self.status,
+                                    zero: &self.zero,
+                                },
+                                count,
+                                None,
+                            )
+                            .await?,
+                    )
+                    .ok_or_else(|| Error::Limit("text cohort projection dispatches".into()))?;
+                if !direct {
+                    flight.require_accesses([(output_lease, DeviceAccess::Write)])?;
+                    unsafe {
+                        super::kernels::columns::launch_unchecked(
+                            client,
+                            grid(elements),
+                            dim(),
+                            arg(&destination, elements),
+                            arg(&output, count * combined),
+                            arg(&status, 1),
+                            count as u32,
+                            0u32,
+                            offset as u32,
+                            matrix.rows,
+                            matrix.rows,
+                            combined,
+                        );
+                    }
+                    dispatches += 1;
                 }
-                dispatches += 1;
             }
             fused += 1;
             offset += matrix.rows;
