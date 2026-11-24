@@ -113,10 +113,14 @@ impl Admission {
                     "text-execution authenticated matrix differs".into(),
                 ));
             }
-            operands.insert(
-                d.name.clone(),
-                PreparedBf16Projection::new(source.clone(), m, storage)?,
-            );
+            let operand = if storage == Bf16ProjectionStorage::Resident
+                && native_policy.prefers_hoisted_projection()
+            {
+                PreparedBf16Projection::new_resident_hoisted(source.clone(), m)?
+            } else {
+                PreparedBf16Projection::new(source.clone(), m, storage)?
+            };
+            operands.insert(d.name.clone(), operand);
         }
         for p in layout.parameters.values() {
             source.bind_declared_parameter(p)?;

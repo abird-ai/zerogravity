@@ -43,8 +43,13 @@ Immediate execution priorities are intentionally small:
   `55477b4` retains exact adjacent-lane packed-word sharing, but gfx1150 loses ~2x.
   `ba8c5ea` retains exact input-certified packing/GEMM composition;3584x1024 is flat
   (~0.6% faster) while6144x1024 regresses~19.7%, so canonical input checks stay selected.
-  Next reuse an existing source/resident weight-finiteness proof only if one already
-  exists; otherwise keep the weight check and try simple packed-word index hoisting;
+  Production source/resident authentication proves byte identity/coverage, not BF16
+  finiteness; retain both exponent checks. `d717c7b` adds exact packed-index hoisting.
+  On A1 gfx1150 the resident full-K64 hoisted traversal wins direct timing and the
+  47+16 real-model A/B (~10.2% lower warm request latency). Select it at cold preparation
+  only for the existing qualified gfx1150 resident HIP policy; keep canonical traversal
+  for all other paths. See serving plan for results; next profile the selected path
+  and prioritize measured remaining hot work;
 - optimize L5 27B streamed source/transfer overlap as a distinct memory-constrained mode;
 - benchmark completed changes quickly against the canonical current baseline, with no
   speculative test matrix or duplicate paging/COW/streaming abstraction.

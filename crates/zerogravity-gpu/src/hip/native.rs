@@ -120,6 +120,11 @@ impl HipSourceNativePolicy {
         module_opaque_bytes: QUALIFIED_GFX1150_MODULE_OPAQUE,
     };
 
+    /// Resident full-K64 packed-index traversal wins on this qualified actor.
+    pub(crate) fn prefers_hoisted_projection(self) -> bool {
+        self == Self::GFX1150_ROCM_7_2_53211
+    }
+
     fn preparation_upper_bytes(self) -> (usize, usize) {
         (
             COMPILER_HOST + 2 * MAX_CODE + 2 * 1024 * 1024,

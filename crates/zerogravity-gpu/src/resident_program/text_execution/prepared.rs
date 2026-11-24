@@ -62,7 +62,7 @@ pub(super) fn kernels(
     );
     for p in operands.values() {
         for rows in p.launch_rows() {
-            if p.use_hoisted() {
+            if p.uses_hoisted_indices() {
                 add!(
                     crate::bf16_projection_kernel::project_cpu_bf16_hoisted::ProjectCpuBf16Hoisted,
                     64,

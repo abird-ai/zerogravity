@@ -306,10 +306,20 @@ The current implementation priorities implied by that baseline are:
    same-commit paired timing is3584x1024 61.786→61.422ms (~0.6% faster) but
    6144x1024 38.045→45.533ms (~19.7% slower). No whole-model A/B was warranted.
    Rows1/canonical checks stay selected; both new primitives remain dormant/reusable.
-   Next projection unit: inspect whether existing authenticated source/resident weight
-   preparation already proves BF16 weight finiteness. Only if that proof already exists,
-   compose an exact weight-certified GEMM sibling that removes the hot-loop weight
-   exponent check. Do not add a new verification layer just for this optimization;
+   Weight-finiteness investigation complete: authenticated source/resident upload
+   proves exact bytes/coverage, not finite BF16 values. Keep both exponent checks;
+   CUDA qualification finite-window/tied-table checks do not cover production HIP.
+   Signed `d717c7b` retains exact packed-word address/index hoisting. Clean direct
+   paired device timing (96 launches/window) improves3584x1024 8.313→7.481ms
+   and6144x1024 13.377→12.193ms; all accumulator/rounded/status bits match,
+   including nonfinite and strided multi-request probes. Actual resident0.8B
+   47+16 A/B `224085b1` (C1,14GiB, ABBA, eight timed waves/variant) improves
+   warm mean924.5→830.2ms (~10.2%), all16 IDs/replay exact, 30,824 dispatches,
+   zero failed quanta and clean retirement. Select the hoisted traversal at cold
+   preparation only for the existing qualified gfx1150 resident HIP policy;
+   native catalogue and launch share the immutable operand choice. Other paths
+   keep canonical; prior alternatives remain dormant. Next re-localize selected
+   hot paths and choose a clean measured cut, not more fixture administration;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
    47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
    streaming mechanics are the relevant optimization target there.

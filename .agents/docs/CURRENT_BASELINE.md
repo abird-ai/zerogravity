@@ -118,6 +118,22 @@ Every fresh vLLM request returns exact [248068, 198, 760]; the resident
 ZeroGravity ladder is likewise exact/replay-stable/lane-invariant. X2 retires
 to 274,452,480 B VRAM, 0% busy and no KFD owner after the vLLM run.
 
+## A1 — Radeon 890M gfx1150 — local resident HIP comparison, 24 Nov
+
+Separate local optimization cell, not a matched vLLM baseline: Qwen3.5-0.8B,
+C1, 47-token prompt +16 output, context1024,14GiB admission. Same-binary ABBA
+at `224085b1`, two fresh loads/variant, one warmup + four timed requests/load.
+
+| Traversal | Warm mean | Timed range |
+| --- | ---: | ---: |
+| Canonical full-K64 | 924.5 ms | 885.3–997.5 ms |
+| Hoisted packed indices | 830.2 ms | 806.5–849.6 ms |
+
+10.2% lower mean request latency; exact greedy IDs/replay, 30,824 dispatches
+unchanged, no failed quanta, clean source/session retirement and no added KFD
+owners. Hoisted traversal selected for the qualified gfx1150 resident HIP path.
+The matched X2 and L5 tables above are unchanged.
+
 ## What this baseline says
 
 1. HIP decode cohorts now share projections, row-wise activation/QK/rotary work

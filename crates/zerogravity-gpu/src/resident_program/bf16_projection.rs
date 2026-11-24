@@ -26,6 +26,7 @@ pub(crate) struct PreparedBf16Projection {
     storage: Bf16ProjectionStorage,
     rows_per_launch: usize,
     launch_row_cap: Option<usize>,
+    hoist_packed_indices: bool,
     resident: OnceLock<Arc<ResidentMatrix>>,
 }
 pub(crate) struct Bf16ProjectionBindings<'a> {
@@ -56,6 +57,23 @@ impl PreparedBf16Projection {
         matrix: VerifiedMatrix,
         storage: Bf16ProjectionStorage,
         launch_row_cap: Option<usize>,
+    ) -> Result<Arc<Self>> {
+        Self::new_with_traversal(source, matrix, storage, launch_row_cap, false)
+    }
+    /// Resident full-K64 projection with hoisted packed indices.
+    #[cfg(feature = "hip-source")]
+    pub(crate) fn new_resident_hoisted(
+        source: VerifiedTensorSource,
+        matrix: VerifiedMatrix,
+    ) -> Result<Arc<Self>> {
+        Self::new_with_traversal(source, matrix, Bf16ProjectionStorage::Resident, None, true)
+    }
+    fn new_with_traversal(
+        source: VerifiedTensorSource,
+        matrix: VerifiedMatrix,
+        storage: Bf16ProjectionStorage,
+        launch_row_cap: Option<usize>,
+        hoist_packed_indices: bool,
     ) -> Result<Arc<Self>> {
         if launch_row_cap.is_some_and(|n| n == 0 || n > 8192) {
             return Err(Error::Limit(
@@ -96,6 +114,7 @@ impl PreparedBf16Projection {
             storage,
             rows_per_launch,
             launch_row_cap,
+            hoist_packed_indices,
             resident: OnceLock::new(),
         }))
     }
@@ -117,11 +136,9 @@ impl PreparedBf16Projection {
     pub(crate) fn storage(&self) -> Bf16ProjectionStorage {
         self.storage
     }
-    // Temporary A/B: use the identical decision during cold sealing and execution.
-    pub(crate) fn use_hoisted(&self) -> bool {
-        static HOISTED: OnceLock<bool> = OnceLock::new();
-        self.storage == Bf16ProjectionStorage::Resident
-            && *HOISTED.get_or_init(|| std::env::var_os("ZG_TMP_HOISTED").is_some())
+    /// The cold catalogue and execution use the same immutable traversal.
+    pub(crate) fn uses_hoisted_indices(&self) -> bool {
+        self.hoist_packed_indices
     }
     pub(crate) fn launch_rows(&self) -> impl Iterator<Item = usize> + '_ {
         (0..self.matrix.rows())
@@ -395,7 +412,7 @@ impl PreparedBf16Projection {
                 );
             }
         }
-        let hoisted = self.use_hoisted();
+        let hoisted = self.uses_hoisted_indices();
         let singleton = coalesce_singleton_status;
         if singleton {
             view(b.flags, 0, output_elements * 4)?;

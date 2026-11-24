@@ -155,14 +155,25 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   repeated activation exponent check. Paired same-commit timing is3584x1024
   61.786→61.422ms (~0.6% faster) and6144x1024 38.045→45.533ms (~19.7% slower).
   No whole-model A/B; canonical rows1 remains selected.
-- [ ] Next resident projection unit: inspect existing authenticated source/resident
-  weight preparation for an already-valid BF16 finiteness proof. If and only if it
-  already proves the exact weights consumed by resident projection, add a reusable
-  weight-certified GEMM sibling that removes the per-K64 weight exponent test while
-  keeping all64 FMA chains/reduction/status semantics. Do not add a new verifier or
-  fixture hierarchy for this optimization. If no proof exists, leave the check and move
-  to simpler packed-word address/index hoisting. Separately qualify gfx1151/X2 native
-  opaque accounting before changing its8GiB fallback.
+- [x] Weight-finiteness investigation: VerifiedMatrix/source windows and completed
+  resident upload authenticate bytes/geometry, not finite BF16 values. The CUDA
+  qualification finite-window check and tied-table check do not cover HIP resident
+  projections. No new verifier; keep both operand checks. `d717c7b` retains exact
+  full-K64 packed-index hoisting; no FMA/reduction/status changes. A1 direct synthetic
+  A/B passed bit-exact accumulator/rounding/status including nonfinite operands and
+  strided multi-request output. Clean repeat (six paired96-launch HIP device-event
+  windows):3584x1024 8.313→7.481ms (-10.0%),6144x1024 13.377→12.193ms (-8.9%);
+  first repeat was noisy. Same-binary real0.8B resident C1 47+16 A/B `224085b1`
+  (14GiB, ABBA, two fresh loads and eight timed waves per variant) warm means
+  924.5→830.2ms (-10.2%); all output IDs identical, replay exact, dispatches30,824
+  unchanged, zero failed quanta, clean retirement and original KFD owner set.
+  Select hoisted traversal only for the qualified gfx1150 resident HIP policy,
+  immutable in the prepared operand and shared by native catalogue/launch.
+  Canonical and prior alternatives remain reusable; remove temporary probes/switches.
+- [ ] Next resident HIP unit: re-localize selected hot paths with existing device
+  events and choose the next clean measured optimization. Separately qualify
+  gfx1151/X2 native opaque accounting before changing its8GiB fallback. No A1
+  comparison to X2/L5 vLLM; no broader model/device qualification inferred.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.
