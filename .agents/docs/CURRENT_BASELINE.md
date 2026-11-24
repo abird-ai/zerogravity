@@ -5,6 +5,14 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 24 Nov — physical region binding acceptance
+
+`0db60ede` preserves native numerical paths and adds prepared physical
+port layouts, shape bands and original lease views. Full isolated gate,
+X2 Qwen 0.8B native V2 C1/C8, exact C1, distinct multichunk continuation,
+and L5 CUDA C1 pass expected tokens/replay and resource retirement.
+No new performance baseline or wider parity claim.
+
 ## 24 Nov — closed-region foundation acceptance
 
 `82f895da` preserves existing numerical paths while binding native CUDA

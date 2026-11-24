@@ -123,8 +123,10 @@ any external compiler. All phases retain the original resource/state owners.
   in actual row lowering and HIP admission uses the widened F32 layout.
   Borrowed views check exact original lease range and physical alignment.
   Singleton/cohort ingress checks original plan issuer once. No arithmetic,
-  dispatch policy, scratch allocation or publication changes; final
-  assembled/physical checks pending (composition TODO).
+  dispatch policy, scratch allocation or publication changes. Accepted
+  `0db60ede`: assembled isolated gate and bounded real Qwen 0.8B native,
+  exact, continuation and CUDA C1 checks pass with original retirement
+  (composition TODO).
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

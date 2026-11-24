@@ -20,7 +20,8 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
-**New source slice — prepared physical region ports.** PreparedRegion
+**Accepted source checkpoint `0db60ede170634d6be5f9ffecd82939c2745ab95` —
+prepared physical region ports.** PreparedRegion
 replaces bare prepared scope with original source/plan and selected
 provider/mode, finite row band, per-port storage encoding and checked
 physical row layout. Native CUDA projection owns the contract; HIP
@@ -29,8 +30,19 @@ plan identity before singleton/cohort admission. Existing native flights
 borrow exact lease views (CUDA packed BF16 row/inner-major, HIP widened
 F32); no independent allocator, queue, stream or completion owner.
 Standalone partial dispatch, captured/compiled workspace and external
-completion bridges, and stateful effects remain open. Final assembled and
-physical validation pending.
+completion bridges, and stateful effects remain open. Focused preparation,
+allocation identity, strict core/engine Clippy and combined GPU builds passed.
+The complete isolated workspace gate passed (2381 Rust test executions,
+zero failures, 101 explicit skips). Real Qwen 0.8B on X2 native V2 C1/C8,
+exact C1 and distinct multichunk continuation, plus L5 CUDA public SDK C1,
+all passed expected tokens/replay and original retirement. X2 received
+the exact source commit by verified bundle; both GPUs returned to idle
+(259768320 B on X2, 37 MiB on L5), no compute owners. A1 unchanged.
+No fresh performance or wider parity claim. One feature-dependent unused
+range-check helper warning remains in a non-consuming GPU build.
+Next: workspace/persistent-resource requirements and original
+stream/completion ownership through actual provider consumers; then
+stateful effects/bridges. Preserve native primitives and original owners.
 
 Prior accepted region checkpoint:
 

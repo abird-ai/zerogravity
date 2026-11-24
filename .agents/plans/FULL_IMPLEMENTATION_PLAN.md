@@ -104,10 +104,11 @@ tests/Clippy, the full isolated workspace gate, X2 native/exact/continuation
 and L5 CUDA C1 physical canaries pass with original resource retirement.
 Standalone partial execution, stateful region effects/bridge and full
 capability/lifecycle scaffolding remain open. Continue those foundations
-through existing physical owners. The next source slice adds prepared
+through existing physical owners. Accepted `0db60ede` adds prepared
 physical region ports (selected provider/mode, explicit row band, per-port
 encoding and checked byte layout), native CUDA/HIP consumers and original
-lease-view and invocation-issuer checks. Assembled validation pending.
+lease-view and invocation-issuer checks. Full isolated gate and physical
+Qwen 0.8B native/exact/continuation on X2 and CUDA C1 on L5 pass.
 Provider-specific workspace/persistent-resource reporting, external
 stream/completion bridges, stateful region effects and remaining
 foundations are still open. None of these slices closes Phase 1.

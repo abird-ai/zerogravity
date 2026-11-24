@@ -189,7 +189,7 @@ their existing numeric/source/physical acceptance gates.
   reference campaign, broader CUDA cohort qualification or general partial
   dispatch claim.
 
-## Prepared physical region ports — 24 Nov
+## `0db60ede` — Prepared physical region ports (24 Nov)
 
 - [x] Replace bare prepared node-range reporting with a typed PreparedRegion
   on the original executable. Retain the exact ModelRegion/source/plan,
@@ -206,7 +206,11 @@ their existing numeric/source/physical acceptance gates.
   HIP projection checks actual widened F32 views against original allocation
   identity, range and alignment. Preserve existing original flight access,
   numerical status, workspace, context, completion and retirement owners.
-- [ ] Final assembled isolated gate and real-source canaries pending.
+- [x] Assembled isolated gate passed (2381 Rust test executions, zero
+  failures, 101 explicit skips). X2 Qwen 0.8B native V2 C1/C8, exact C1
+  and distinct multichunk continuation, L5 CUDA public SDK C1 passed
+  with expected tokens/replay and original resource retirement.
+  No new performance baseline or broader parity grant.
 
 ## Uncommitted
 
