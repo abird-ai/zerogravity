@@ -77,6 +77,7 @@ fn project_value(
     #[comptime] rows: usize,
     #[comptime] columns: usize,
     #[comptime] shared_pair: bool,
+    #[comptime] input_certified: bool,
 ) -> (usize, f32, u32, u32) {
     let output = output_index(usize::cast_from(CUBE_POS_X), requests, rows);
     let request = output / rows;
@@ -103,7 +104,7 @@ fn project_value(
         if (wb & 0x7f80u32) == 0x7f80u32 {
             invalid |= 1u32;
         }
-        if (xb & 0x7f80u32) == 0x7f80u32 {
+        if comptime!(!input_certified) && (xb & 0x7f80u32) == 0x7f80u32 {
             invalid |= 2u32;
         }
         accumulator = fma(
@@ -301,6 +302,7 @@ pub(crate) fn project_cpu_bf16(
         rows,
         columns,
         false,
+        false,
     );
     if lane == 0usize {
         accumulation[output] = result;
@@ -333,6 +335,41 @@ pub(crate) fn project_cpu_bf16_pair_load(
         accumulation.len() / rows,
         rows,
         columns,
+        true,
+        false,
+    );
+    if lane == 0usize {
+        accumulation[output] = result;
+        rounded[rounded_index(output, rows, output_row_stride)] = f32::reinterpret(rounded_bits);
+        status[output] = combined;
+    }
+}
+
+/// Exact input-certified sibling. The pack phase has already published the
+/// packed-input nonfinite bit into shared status, so the hot GEMM keeps only
+/// weight/result checks while preserving every arithmetic operation.
+#[allow(dead_code)]
+#[cube(launch_unchecked)]
+pub(crate) fn project_cpu_bf16_input_certified(
+    weights: &[u32],
+    input: &[u32],
+    zero: &[f32],
+    accumulation: &mut [f32],
+    rounded: &mut [f32],
+    status: &mut [u32],
+    #[comptime] rows: usize,
+    #[comptime] columns: usize,
+    #[comptime] output_row_stride: usize,
+) {
+    let lane = usize::cast_from(UNIT_POS);
+    let (output, result, rounded_bits, combined) = project_value(
+        weights,
+        input,
+        zero,
+        accumulation.len() / rows,
+        rows,
+        columns,
+        false,
         true,
     );
     if lane == 0usize {
@@ -609,6 +646,7 @@ pub(crate) fn project_cpu_bf16_certified(
         accumulation.len() / rows,
         rows,
         columns,
+        false,
         false,
     );
     if lane == 0usize {

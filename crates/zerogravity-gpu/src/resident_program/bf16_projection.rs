@@ -615,6 +615,35 @@ pub(crate) fn pack(input: &[f32], output: &mut [u32], status: &[Atomic<u32>]) {
         output[i] = (a >> 16u32) | (b & 0xffff0000u32);
     }
 }
+/// Projection-specific pack sibling. It preserves the canonical packed bytes,
+/// but publishes the input-nonfinite bit here as well as the source-invalid bit.
+/// Composed with `project_cpu_bf16_input_certified`, the final shared status is
+/// identical to `pack` + canonical projection while the GEMM avoids rechecking
+/// the same packed activation once per output row.
+#[allow(dead_code)]
+#[cube(launch_unchecked)]
+pub(crate) fn pack_projection_input(input: &[f32], output: &mut [u32], status: &[Atomic<u32>]) {
+    let i = ABSOLUTE_POS;
+    if i < output.len() {
+        let a = u32::reinterpret(input[2usize * i]);
+        let b = u32::reinterpret(input[2usize * i + 1usize]);
+        let non_bf16 = (a & 0xffffu32) != 0u32 || (b & 0xffffu32) != 0u32;
+        let nonfinite =
+            (a & 0x7f800000u32) == 0x7f800000u32 || (b & 0x7f800000u32) == 0x7f800000u32;
+        let mut flags = 0u32;
+        if non_bf16 || nonfinite {
+            flags |= 1u32;
+        }
+        if nonfinite {
+            flags |= 2u32;
+        }
+        if flags != 0u32 {
+            status[0].fetch_or(flags);
+        }
+        output[i] = (a >> 16u32) | (b & 0xffff0000u32);
+    }
+}
+
 #[cube(launch_unchecked)]
 pub(crate) fn projection_status(input: &[u32], status: &[Atomic<u32>]) {
     let i = ABSOLUTE_POS;
