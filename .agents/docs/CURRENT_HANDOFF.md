@@ -42,20 +42,22 @@ shape/binding/preparation on the same typed source and semantic plan; the
 broader Phase 1 foundations remain open. See the full plan and composition TODO.
 
 Full dated takeover snapshot:
-[`FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md).
-The 24 Nov pack is the canonical current takeover: it reconciles the original
-architecture through current source, includes the complete post-23-Nov CUDA/HIP
-history, records selected versus dormant primitives and current next steps, and
-generates exhaustive appendices for every docs/plans file, every open TODO and
-the full project-period Git ledger. It chains to the 23/22/21/... packs for exact
-historical detail rather than replacing them.
+[`FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md).
+The foundations handoff is the canonical comprehensive takeover after accepted
+source preparation at `17e2b7176eaec5b9a5b78aded583690795e81c30`. It records
+the initial architecture, complete historical chain, native provider work,
+ordered implementation plan, current foundation boundary and pending work.
+Its inventories cover all maintained docs/plans, the open checklist snapshot
+and every reachable commit through the source checkpoint. Read its main
+body first; use the appendices and older dated handoffs for detail as needed.
+They are historical snapshots, not a competing live task ledger.
 
-Current handoff creation point is signed `e1929762a87b1e34de099d9f40b85bcff385c27d`,
-which was also `origin/main`; revalidate actual HEAD before editing. The old
-FlashInfer/paired-GDN dirty ownership warning is obsolete: that complete slice was
-explicitly committed/pushed as `6d5dc72d3711cd3b0e14db0a3c007851984a0745`.
-Treat it as landed source but revalidate current CUDA physical correctness/provider
-cells before making new performance claims.
+The earlier [24 Nov morning takeover](FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md)
+preserves the pre-native chronology at `e1929762`. The previously concurrent
+FlashInfer/paired-GDN slice was committed/pushed as
+`6d5dc72d3711cd3b0e14db0a3c007851984a0745`; source is landed but fresh
+physical CUDA correctness/provider qualification remains open. Revalidate
+actual Git state and use the current ordered plan, not older next-step prose.
 
 This file remains the maintained current map and pointer into live source, tests
 and plans. Git history retains superseded checkpoints; current source, tests and
