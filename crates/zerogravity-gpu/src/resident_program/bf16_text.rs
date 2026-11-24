@@ -36,7 +36,7 @@ pub struct TextTraffic {
     pub producer_readback_bytes: usize,
     pub kv_diagnostic_readback_bytes: usize,
 }
-pub trait TextObserver {
+pub trait Bf16TextObserver {
     fn completed_producer(
         &mut self,
         position: usize,
@@ -87,7 +87,7 @@ pub(super) trait Execution {
 }
 struct ArmedExecution<'a, 's, 'o> {
     flight: RefCell<&'a mut crate::resident_leases::ResidentSubmission<'s>>,
-    observer: &'a RefCell<Option<&'o mut dyn TextObserver>>,
+    observer: &'a RefCell<Option<&'o mut dyn Bf16TextObserver>>,
     row: usize,
     call: &'a Bf16TextCall,
     cancelled: Option<&'a std::sync::atomic::AtomicBool>,
@@ -1348,7 +1348,7 @@ impl ResidentProgram {
         domain: zerogravity_core::accelerator::program::KvDomain,
         value: bool,
         active: usize,
-        observer: &mut dyn TextObserver,
+        observer: &mut dyn Bf16TextObserver,
     ) -> Result<()> {
         let ResidentProgramBody::Bf16Text(body) = &self.body else {
             return Err(Error::Unsupported(
@@ -1383,7 +1383,7 @@ impl ResidentProgram {
         current: zerogravity_core::session_root::RootBinding,
         row: usize,
         bindings: &[StateBinding],
-        observer: &RefCell<Option<&mut dyn TextObserver>>,
+        observer: &RefCell<Option<&mut dyn Bf16TextObserver>>,
         flag: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<ResidentSubmission> {
         let ResidentProgramBody::Bf16Text(body) = &self.body else {

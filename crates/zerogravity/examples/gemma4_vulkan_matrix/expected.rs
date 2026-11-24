@@ -460,7 +460,7 @@ fn values(actual: &[u8]) -> Result<Vec<f32>> {
         .map(|w| f32::from_bits(u32::from_ne_bytes(w.try_into().expect("whole F32 word"))))
         .collect())
 }
-impl zerogravity_gpu::TextObserver for Expected {
+impl zerogravity_gpu::Bf16TextObserver for Expected {
     fn completed_producer(
         &mut self,
         position: usize,

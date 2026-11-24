@@ -74,7 +74,8 @@ pub use resident_inference::bf16_text::{
 };
 #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
 pub use resident_program::bf16_text::{
-    TextHostOwners, TextNativeOwners, TextObserver, TextResourceInventory, TextStorage, TextTraffic,
+    Bf16TextObserver, TextHostOwners, TextNativeOwners, TextResourceInventory, TextStorage,
+    TextTraffic,
 };
 // Pure physical byte metadata; no allocation/backend/model eligibility permit.
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]

@@ -127,7 +127,7 @@ impl Completed {
         self.boundaries == 70 * self.rows && self.layers.iter().all(|v| *v)
     }
 }
-impl zerogravity_gpu::TextObserver for Completed {
+impl zerogravity_gpu::Bf16TextObserver for Completed {
     fn completed_producer(
         &mut self,
         position: usize,

@@ -211,6 +211,7 @@ impl SharedHipNative {
         let context = Arc::new(Context {
             device: context_device,
             policy: POLICY,
+            module_opaque_bytes: MODULE_OPAQUE,
             _host: persistent_host,
             compiler: Some(Arc::new(PersistentCompilerBudget::new(
                 arbiter.clone(),
@@ -218,7 +219,7 @@ impl SharedHipNative {
             ))),
             _shared_control: Some(control),
         });
-        require_environment(physical.client(), physical.physical_key())?;
+        require_environment(physical.client(), physical.physical_key(), None)?;
         // SAFETY: same just-admitted cold actor; fix neutral-client refusal
         // before publishing this source-neutral bootstrap owner.
         unsafe { RegisteredHipNative::select_scoped(physical.client()) }.map_err(native)?;

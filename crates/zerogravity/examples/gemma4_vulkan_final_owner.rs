@@ -21,7 +21,9 @@ use zerogravity::{
         AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
     },
 };
-use zerogravity_gpu::{Device, TextFinalOwnerReceipt, TextHostOwners, TextObserver, TextStorage};
+use zerogravity_gpu::{
+    Bf16TextObserver, Device, TextFinalOwnerReceipt, TextHostOwners, TextStorage,
+};
 const GIB: u64 = 1024 * 1024 * 1024;
 const PERSISTENT_CONTEXT_HOST: u64 = 2 * GIB;
 const PERSISTENT_COMPILER_HOST: u64 = 8 * GIB;
@@ -54,7 +56,7 @@ struct Completed {
     full_vocab: usize,
     best: Option<(u32, u32)>,
 }
-impl TextObserver for Completed {
+impl Bf16TextObserver for Completed {
     fn completed_producer(
         &mut self,
         position: usize,

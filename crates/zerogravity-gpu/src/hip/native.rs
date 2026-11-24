@@ -106,13 +106,12 @@ const QUALIFIED_GFX1150_MODULE_OPAQUE: usize = GIB;
 const MAX_CODE: usize = GIB;
 const MAX_MODULES: usize = 1024;
 
-#[cfg(feature = "hip-source")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct HipSourceNativePolicy {
     module_opaque_bytes: usize,
 }
-#[cfg(feature = "hip-source")]
 impl HipSourceNativePolicy {
+    #[cfg(feature = "hip-source")]
     pub(crate) const FALLBACK: Self = Self {
         module_opaque_bytes: MODULE_OPAQUE,
     };
@@ -121,10 +120,12 @@ impl HipSourceNativePolicy {
     };
 
     /// Resident full-K64 packed-index traversal wins on this qualified actor.
+    #[cfg(feature = "hip-source")]
     pub(crate) fn prefers_hoisted_projection(self) -> bool {
         self == Self::GFX1150_ROCM_7_2_53211
     }
 
+    #[cfg(feature = "hip-source")]
     fn preparation_upper_bytes(self) -> (usize, usize) {
         (
             COMPILER_HOST + 2 * MAX_CODE + 2 * 1024 * 1024,
@@ -273,7 +274,6 @@ impl GemmaColdProfile {
     }
 }
 const OPTIONS: &str = "HipCompilationOptions { cpp: CompilationOptions { warp_size: 32, supports_features: CppSupportedFeatures { grid_constants: false, clusters: false, fast_math: true, fast_tanh: false, elect_sync: false, dp4a: false }, amd_wmma: Some(Rdna3) }, arch: Some(GfxArch { name: \"gfx1151\", family: GFX11 }) }";
-#[cfg(feature = "hip-source")]
 const GFX1150_OPTIONS: &str = "HipCompilationOptions { cpp: CompilationOptions { warp_size: 32, supports_features: CppSupportedFeatures { grid_constants: false, clusters: false, fast_math: true, fast_tanh: false, elect_sync: false, dp4a: false }, amd_wmma: Some(Rdna3) }, arch: Some(GfxArch { name: \"gfx1150\", family: GFX11 }) }";
 
 fn native(error: impl std::fmt::Display) -> Error {
@@ -606,7 +606,11 @@ fn begin_single_source(
             "Gemma actual context partition extent differs".into(),
         ));
     }
-    require_environment(service.client(), service.physical_key(), profile)?;
+    require_environment(
+        service.client(),
+        service.physical_key(),
+        profile.resident_text_native_policy(),
+    )?;
 
     Ok(ColdNativePreparation {
         service,
@@ -647,12 +651,11 @@ fn persistent_context_host(
 fn require_environment(
     client: &Client,
     physical: PhysicalDeviceKey,
-    profile: SingleSourceProfile,
+    source_policy: Option<HipSourceNativePolicy>,
 ) -> Result<()> {
     let environment = PreparedHipNative::environment(client).map_err(native)?;
 
-    #[cfg(feature = "hip-source")]
-    if let Some(native) = profile.resident_text_native_policy() {
+    if let Some(native) = source_policy {
         if physical.backend != "pci" {
             return Err(Error::Unsupported(
                 "HIP source runtime environment is incomplete".into(),

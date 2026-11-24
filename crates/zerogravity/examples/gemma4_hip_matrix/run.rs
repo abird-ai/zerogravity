@@ -60,14 +60,14 @@ struct Tracing<'a> {
     inner: &'a mut Expected,
     observed: &'a mut Observation,
 }
-impl zerogravity_gpu::TextObserver for Tracing<'_> {
+impl zerogravity_gpu::Bf16TextObserver for Tracing<'_> {
     fn completed_producer(
         &mut self,
         p: usize,
         o: &zerogravity::accelerator::program::TextObservation,
         b: &[u8],
     ) -> zerogravity::Result<()> {
-        zerogravity_gpu::TextObserver::completed_producer(self.inner, p, o, b)
+        zerogravity_gpu::Bf16TextObserver::completed_producer(self.inner, p, o, b)
     }
     fn completed_kv(
         &mut self,
@@ -77,7 +77,7 @@ impl zerogravity_gpu::TextObserver for Tracing<'_> {
         active: usize,
         b: &[u8],
     ) -> zerogravity::Result<()> {
-        zerogravity_gpu::TextObserver::completed_kv(self.inner, prior, d, v, active, b)?;
+        zerogravity_gpu::Bf16TextObserver::completed_kv(self.inner, prior, d, v, active, b)?;
         if prior && active > 0 {
             self.observed.prior += 1;
         } else if !prior && active == self.observed.frontier {
@@ -247,14 +247,14 @@ fn trajectory(
     Ok(true)
 }
 struct BorrowedObserver<'a, 'b>(&'a std::cell::RefCell<&'b mut Expected>);
-impl zerogravity_gpu::TextObserver for BorrowedObserver<'_, '_> {
+impl zerogravity_gpu::Bf16TextObserver for BorrowedObserver<'_, '_> {
     fn completed_producer(
         &mut self,
         p: usize,
         o: &zerogravity::accelerator::program::TextObservation,
         b: &[u8],
     ) -> zerogravity::Result<()> {
-        zerogravity_gpu::TextObserver::completed_producer(&mut **self.0.borrow_mut(), p, o, b)
+        zerogravity_gpu::Bf16TextObserver::completed_producer(&mut **self.0.borrow_mut(), p, o, b)
     }
     fn completed_kv(
         &mut self,
@@ -264,7 +264,7 @@ impl zerogravity_gpu::TextObserver for BorrowedObserver<'_, '_> {
         a: usize,
         b: &[u8],
     ) -> zerogravity::Result<()> {
-        zerogravity_gpu::TextObserver::completed_kv(&mut **self.0.borrow_mut(), p, d, v, a, b)
+        zerogravity_gpu::Bf16TextObserver::completed_kv(&mut **self.0.borrow_mut(), p, d, v, a, b)
     }
 }
 /// Pre-cancel, completed-Ready Drop and post-completion refusal/late-cancel on
@@ -359,7 +359,7 @@ struct UnknownObserver {
     completed: usize,
     stage: &'static str,
 }
-impl zerogravity_gpu::TextObserver for UnknownObserver {
+impl zerogravity_gpu::Bf16TextObserver for UnknownObserver {
     fn completed_producer(
         &mut self,
         _: usize,

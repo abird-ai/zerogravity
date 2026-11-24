@@ -97,7 +97,7 @@ impl BufferRange {
         target_os = "linux",
         any(
             feature = "qualification",
-            feature = "cuda-cublas",
+            feature = "cuda-native",
             feature = "hip-source"
         )
     ))]

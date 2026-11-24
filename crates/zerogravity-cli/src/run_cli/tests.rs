@@ -599,11 +599,19 @@ fn ordinary_cpu_and_gguf_routes_reach_injected_discovery() {
             ))
         })
         .unwrap_err();
-        assert!(
-            matches!(error, Error::State(message) if message == "generic direct-source route reached discovery"),
-            "{source}"
-        );
-        assert_eq!(discoveries.load(Ordering::SeqCst), 1, "{source}");
+        if backend == "cpu" && !cfg!(feature = "cpu") {
+            assert!(
+                matches!(error, Error::Unsupported(ref message) if message.contains("cpu backend requires compiled features")),
+                "{source}: {error}"
+            );
+            assert_eq!(discoveries.load(Ordering::SeqCst), 0, "{source}");
+        } else {
+            assert!(
+                matches!(error, Error::State(message) if message == "generic direct-source route reached discovery"),
+                "{source}"
+            );
+            assert_eq!(discoveries.load(Ordering::SeqCst), 1, "{source}");
+        }
     }
 }
 

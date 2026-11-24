@@ -5,7 +5,7 @@ use super::*;
 use crate::resident_program::bf16_text::{
     Bf16TextBody, TextHostOwners, TextNativeOwners, TextStorage,
 };
-use crate::resident_program::bf16_text::{TextObserver, TextResourceInventory};
+use crate::resident_program::bf16_text::{Bf16TextObserver, TextResourceInventory};
 use crate::resident_program::text_source::TextSourcePlan;
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
@@ -95,13 +95,13 @@ impl TextNativeTarget {
 pub(super) struct TextOptions<'a, 'o> {
     pub source: &'a VerifiedTensorSource,
     pub bindings: &'a TextPlanBindings,
-    pub observer: &'a std::cell::RefCell<Option<&'o mut dyn TextObserver>>,
+    pub observer: &'a std::cell::RefCell<Option<&'o mut dyn Bf16TextObserver>>,
     pub cancelled: Option<&'a AtomicBool>,
 }
 pub(super) struct TextStep<'a, 'o> {
     pub call: &'a Bf16TextCall,
     pub row: usize,
-    pub observer: &'a std::cell::RefCell<Option<&'o mut dyn TextObserver>>,
+    pub observer: &'a std::cell::RefCell<Option<&'o mut dyn Bf16TextObserver>>,
     pub cancelled: Option<&'a AtomicBool>,
 }
 pub(super) fn check_cancel(flag: Option<&AtomicBool>) -> Result<()> {
@@ -597,7 +597,7 @@ impl Bf16TextSession {
     pub async fn prepare_prompt(
         &self,
         max_output: usize,
-        observer: Option<&mut dyn TextObserver>,
+        observer: Option<&mut dyn Bf16TextObserver>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Bf16TextPending> {
         if self.calls != 0
@@ -619,7 +619,7 @@ impl Bf16TextSession {
     }
     pub async fn prepare_next(
         &self,
-        observer: Option<&mut dyn TextObserver>,
+        observer: Option<&mut dyn Bf16TextObserver>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Bf16TextPending> {
         check_cancel(cancelled)?;
@@ -644,7 +644,7 @@ impl Bf16TextSession {
         &self,
         ids: &[u32],
         limit: usize,
-        observer: Option<&mut dyn TextObserver>,
+        observer: Option<&mut dyn Bf16TextObserver>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Bf16TextPending> {
         check_cancel(cancelled)?;
@@ -730,7 +730,7 @@ impl Bf16TextSession {
     pub async fn infer_prompt(
         &mut self,
         max_output: usize,
-        observer: Option<&mut dyn TextObserver>,
+        observer: Option<&mut dyn Bf16TextObserver>,
         cancelled: Option<&AtomicBool>,
         validate_completed: impl FnOnce(&InferenceReadback) -> Result<()>,
     ) -> Result<Bf16TextResult> {
@@ -755,7 +755,7 @@ impl Bf16TextSession {
     /// Next IDs come only from this session's actual committed private packet.
     pub async fn infer_next(
         &mut self,
-        observer: Option<&mut dyn TextObserver>,
+        observer: Option<&mut dyn Bf16TextObserver>,
         cancelled: Option<&AtomicBool>,
         validate_completed: impl FnOnce(&InferenceReadback) -> Result<()>,
     ) -> Result<Bf16TextResult> {
@@ -782,7 +782,7 @@ impl Bf16TextSession {
         &mut self,
         ids: &[u32],
         limit: usize,
-        observer: Option<&mut dyn TextObserver>,
+        observer: Option<&mut dyn Bf16TextObserver>,
         cancelled: Option<&AtomicBool>,
         validate_completed: impl FnOnce(&InferenceReadback) -> Result<()>,
     ) -> Result<Bf16TextResult> {

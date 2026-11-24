@@ -59,7 +59,7 @@ cargo test --locked --offline -p zerogravity --no-default-features \
 
 cargo test --locked --offline -p zerogravity --no-default-features \
   --features qwen35-cuda-qualification --lib \
-  diagnostics::text_gpu::fixed_prompt::active8_tests -- --test-threads=1
+  diagnostics::text_gpu::fixed_prompt::eight_session_profile_tests -- --test-threads=1
 
 printf 'Checking source-only native qualification regressions...\n'
 python3 -B -m unittest discover -s tools/gemma4-hip-qualification -p test_row_traffic.py
