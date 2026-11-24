@@ -40,25 +40,17 @@ fn rounded_index(
     }
 }
 
-/// One [request,original output row] per64-thread workgroup. The lane index
-/// is exactly CPU register*8+lane; no subgroup reduction or TensorCore math.
-#[cube(launch_unchecked)]
-pub(crate) fn project_cpu_bf16(
+/// Exact CPU BF16 dot/reduction shared by diagnostic and certified stores.
+#[cube]
+fn project_value(
     weights: &[u32],
     input: &[u32],
     zero: &[f32],
-    accumulation: &mut [f32],
-    rounded: &mut [f32],
-    status: &mut [u32],
+    requests: usize,
     #[comptime] rows: usize,
     #[comptime] columns: usize,
-    #[comptime] output_row_stride: usize,
-) {
-    let output = output_index(
-        usize::cast_from(CUBE_POS_X),
-        accumulation.len() / rows,
-        rows,
-    );
+) -> (usize, f32, u32, u32) {
+    let output = output_index(usize::cast_from(CUBE_POS_X), requests, rows);
     let request = output / rows;
     let row = output % rows;
     let lane = usize::cast_from(UNIT_POS);
@@ -95,35 +87,32 @@ pub(crate) fn project_cpu_bf16(
     // Fold integer status alongside the unchanged float tree/barriers.
     sync_cube();
     if lane < 32usize {
-        let collapsed = sums[lane] + sums[lane + 32usize];
-        sums[lane] = collapsed;
-        let combined = flags[lane] | flags[lane + 32usize];
-        flags[lane] = combined;
+        sums[lane] = sums[lane] + sums[lane + 32usize];
+        flags[lane] = flags[lane] | flags[lane + 32usize];
     }
     sync_cube();
     if lane < 16usize {
-        let collapsed = sums[lane] + sums[lane + 16usize];
-        sums[lane] = collapsed;
-        let combined = flags[lane] | flags[lane + 16usize];
-        flags[lane] = combined;
+        sums[lane] = sums[lane] + sums[lane + 16usize];
+        flags[lane] = flags[lane] | flags[lane + 16usize];
     }
     sync_cube();
     if lane < 8usize {
-        let collapsed = sums[lane] + sums[lane + 8usize];
-        sums[lane] = collapsed;
-        let combined = flags[lane] | flags[lane + 8usize];
-        flags[lane] = combined;
+        sums[lane] = sums[lane] + sums[lane + 8usize];
+        flags[lane] = flags[lane] | flags[lane + 8usize];
     }
     sync_cube();
+
+    let mut result = 0.0f32;
+    let mut rounded_bits = 0u32;
+    let mut combined = 0u32;
     if lane == 0usize {
         let r0 = sums[0] + sums[4];
         let r1 = sums[1] + sums[5];
         let r2 = sums[2] + sums[6];
         let r3 = sums[3] + sums[7];
-        let result = ((r0 + r2) + (r1 + r3)) + z;
+        result = ((r0 + r2) + (r1 + r3)) + z;
         let bits = u32::reinterpret(result);
-        let rounded_bits = (bits + (0x7fffu32 + ((bits >> 16u32) & 1u32))) & 0xffff0000u32;
-        let mut combined = 0u32;
+        rounded_bits = (bits + (0x7fffu32 + ((bits >> 16u32) & 1u32))) & 0xffff0000u32;
         for at in 0..8usize {
             combined |= flags[at];
         }
@@ -133,9 +122,69 @@ pub(crate) fn project_cpu_bf16(
         if (rounded_bits & 0x7f800000u32) == 0x7f800000u32 {
             combined |= 16u32;
         }
+    }
+    (output, result, rounded_bits, combined)
+}
+
+/// One [request,original output row] per64-thread workgroup. The lane index
+/// is exactly CPU register*8+lane; no subgroup reduction or TensorCore math.
+#[cube(launch_unchecked)]
+pub(crate) fn project_cpu_bf16(
+    weights: &[u32],
+    input: &[u32],
+    zero: &[f32],
+    accumulation: &mut [f32],
+    rounded: &mut [f32],
+    status: &mut [u32],
+    #[comptime] rows: usize,
+    #[comptime] columns: usize,
+    #[comptime] output_row_stride: usize,
+) {
+    let lane = usize::cast_from(UNIT_POS);
+    let (output, result, rounded_bits, combined) = project_value(
+        weights,
+        input,
+        zero,
+        accumulation.len() / rows,
+        rows,
+        columns,
+    );
+    if lane == 0usize {
         accumulation[output] = result;
         rounded[rounded_index(output, rows, output_row_stride)] = f32::reinterpret(rounded_bits);
         status[output] = combined;
+    }
+}
+
+/// Production sibling: preserve the exact projection arithmetic while certifying
+/// validity directly into the shared flight status instead of a per-output vector.
+#[cube(launch_unchecked)]
+pub(crate) fn project_cpu_bf16_certified(
+    weights: &[u32],
+    input: &[u32],
+    zero: &[f32],
+    accumulation: &mut [f32],
+    rounded: &mut [f32],
+    status: &[Atomic<u32>],
+    #[comptime] rows: usize,
+    #[comptime] columns: usize,
+    #[comptime] output_row_stride: usize,
+) {
+    let lane = usize::cast_from(UNIT_POS);
+    let (output, result, rounded_bits, combined) = project_value(
+        weights,
+        input,
+        zero,
+        accumulation.len() / rows,
+        rows,
+        columns,
+    );
+    if lane == 0usize {
+        accumulation[output] = result;
+        rounded[rounded_index(output, rows, output_row_stride)] = f32::reinterpret(rounded_bits);
+        if combined != 0u32 {
+            status[0].fetch_or(combined);
+        }
     }
 }
 

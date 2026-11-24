@@ -223,7 +223,7 @@ impl PreparedBf16Projection {
         input_rows: usize,
         flag: Option<&AtomicBool>,
     ) -> Result<usize> {
-        self.enqueue_rows_with_options(flight, page, b, input_rows, flag, true, false)
+        self.enqueue_rows_with_options(flight, page, b, input_rows, flag, true, false, false)
             .await
     }
 
@@ -239,7 +239,7 @@ impl PreparedBf16Projection {
         input_rows: usize,
         flag: Option<&AtomicBool>,
     ) -> Result<usize> {
-        self.enqueue_rows_with_options(flight, page, b, input_rows, flag, false, false)
+        self.enqueue_rows_with_options(flight, page, b, input_rows, flag, false, false, false)
             .await
     }
 
@@ -253,7 +253,21 @@ impl PreparedBf16Projection {
         b: Bf16ProjectionBindings<'_>,
         flag: Option<&AtomicBool>,
     ) -> Result<usize> {
-        self.enqueue_rows_with_options(flight, page, b, 1, flag, true, true)
+        self.enqueue_rows_with_options(flight, page, b, 1, flag, true, true, false)
+            .await
+    }
+
+    /// Production-friendly sibling: keep exact projection arithmetic while
+    /// certifying validity directly into the shared flight status.
+    pub(crate) async fn enqueue_rows_certified(
+        &self,
+        flight: &mut Flight<'_>,
+        page: &Arc<source_page::ResidentSourcePage>,
+        b: Bf16ProjectionBindings<'_>,
+        input_rows: usize,
+        flag: Option<&AtomicBool>,
+    ) -> Result<usize> {
+        self.enqueue_rows_with_options(flight, page, b, input_rows, flag, true, false, true)
             .await
     }
 
@@ -266,7 +280,13 @@ impl PreparedBf16Projection {
         flag: Option<&AtomicBool>,
         pack_input: bool,
         coalesce_singleton_status: bool,
+        certified_status: bool,
     ) -> Result<usize> {
+        if coalesce_singleton_status && certified_status {
+            return Err(Error::State(
+                "BF16 projection status modes are mutually exclusive".into(),
+            ));
+        }
         let (input_elements, output_elements) =
             row_extents(input_rows, self.matrix.columns(), self.matrix.rows())?;
         cancelled(flag)?;
@@ -376,7 +396,7 @@ impl PreparedBf16Projection {
             let rows = self.rows_per_launch.min(total_rows - first);
             let range = first..first + rows;
             let elements = rows * batch;
-            let launches = if singleton { 1 } else { 2 };
+            let launches = if singleton || certified_status { 1 } else { 2 };
             let accumulation = view(b.accumulation, 0, elements * 4)?;
             let flags = if singleton {
                 view(b.flags, first * 4, elements * 4)?
@@ -390,30 +410,47 @@ impl PreparedBf16Projection {
                 .offset_start((destination_rows.start * 4) as u64)
                 .offset_end(((output_elements - destination_rows.end) * 4) as u64);
             let launch = |weights: &Handle| unsafe {
-                // Compact accumulation. Singleton flags keep their final row
-                // positions so one status reduction can follow all weight tiles.
-                crate::bf16_projection_kernel::project_cpu_bf16::launch_unchecked(
-                    service.client(),
-                    CubeCount::Static(elements as u32, 1, 1),
-                    CubeDim::new_1d(64),
-                    arg(weights, rows * columns / 2),
-                    arg(&packed, batch * columns / 2),
-                    arg(&b.zero.handle(), 1),
-                    arg(&accumulation, elements),
-                    arg(&destination, destination_rows.len()),
-                    arg(&flags, elements),
-                    rows,
-                    columns,
-                    total_rows,
-                );
-                if !singleton {
-                    projection_status::launch_unchecked(
+                if certified_status {
+                    crate::bf16_projection_kernel::project_cpu_bf16_certified::launch_unchecked(
                         service.client(),
-                        grid(elements),
-                        threads(),
-                        arg(&flags, elements),
+                        CubeCount::Static(elements as u32, 1, 1),
+                        CubeDim::new_1d(64),
+                        arg(weights, rows * columns / 2),
+                        arg(&packed, batch * columns / 2),
+                        arg(&b.zero.handle(), 1),
+                        arg(&accumulation, elements),
+                        arg(&destination, destination_rows.len()),
                         arg(&b.status.handle(), 1),
+                        rows,
+                        columns,
+                        total_rows,
                     );
+                } else {
+                    // Compact accumulation. Singleton flags keep their final row
+                    // positions so one status reduction can follow all weight tiles.
+                    crate::bf16_projection_kernel::project_cpu_bf16::launch_unchecked(
+                        service.client(),
+                        CubeCount::Static(elements as u32, 1, 1),
+                        CubeDim::new_1d(64),
+                        arg(weights, rows * columns / 2),
+                        arg(&packed, batch * columns / 2),
+                        arg(&b.zero.handle(), 1),
+                        arg(&accumulation, elements),
+                        arg(&destination, destination_rows.len()),
+                        arg(&flags, elements),
+                        rows,
+                        columns,
+                        total_rows,
+                    );
+                    if !singleton {
+                        projection_status::launch_unchecked(
+                            service.client(),
+                            grid(elements),
+                            threads(),
+                            arg(&flags, elements),
+                            arg(&b.status.handle(), 1),
+                        );
+                    }
                 }
             };
             match self.storage {
@@ -447,13 +484,14 @@ impl PreparedBf16Projection {
                             return Err(Error::State("BF16 streamed exact full-K view".into()));
                         }
                         launch(actual.handle());
-                        let mut outputs = vec![
-                            b.output_lease.clone(),
-                            b.accumulation.clone(),
-                            b.flags.clone(),
-                        ];
-                        if !singleton {
+                        let mut outputs = vec![b.output_lease.clone(), b.accumulation.clone()];
+                        if certified_status {
                             outputs.push(b.status.clone());
+                        } else {
+                            outputs.push(b.flags.clone());
+                            if !singleton {
+                                outputs.push(b.status.clone());
+                            }
                         }
                         Ok(outputs)
                     })
