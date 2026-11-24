@@ -278,6 +278,127 @@ pub(crate) fn project_cpu_bf16(
     }
 }
 
+/// Singleton specialization that computes two adjacent output rows in one
+/// workgroup. Each lane loads the packed activation once per K64 chunk and reuses
+/// that exact BF16 value across two independent row accumulators. Every row keeps
+/// the scalar kernel's FMA order, reduction tree, rounding and status contract.
+#[allow(dead_code)]
+#[cube(launch_unchecked)]
+pub(crate) fn project_cpu_bf16_rows2(
+    weights: &[u32],
+    input: &[u32],
+    zero: &[f32],
+    accumulation: &mut [f32],
+    rounded: &mut [f32],
+    status: &mut [u32],
+    #[comptime] rows: usize,
+    #[comptime] columns: usize,
+    #[comptime] output_row_stride: usize,
+) {
+    let group = usize::cast_from(CUBE_POS_X);
+    let requests = accumulation.len() / rows;
+    let request = group % requests;
+    let first_row = (group / requests) * 2usize;
+    let lane = usize::cast_from(UNIT_POS);
+
+    let z = zero[0];
+    let mut zero_flag = 0u32;
+    if u32::reinterpret(z) != 0u32 {
+        zero_flag |= 4u32;
+    }
+
+    let mut accumulators = Array::<f32>::new(2usize);
+    let mut invalids = Array::<u32>::new(2usize);
+    for local in 0..2usize {
+        accumulators[local] = z;
+        invalids[local] = zero_flag;
+    }
+
+    for chunk in 0..columns / 64usize {
+        let column = chunk * 64usize + lane;
+        let xi = request * columns + column;
+        let xb = (input[xi / 2usize] >> (u32::cast_from(xi % 2usize) * 16u32)) & 0xffffu32;
+        let input_invalid = (xb & 0x7f80u32) == 0x7f80u32;
+        let x = f32::reinterpret(xb << 16u32);
+
+        for local in 0..2usize {
+            let row = first_row + local;
+            let wi = row * columns + column;
+            let wb = (weights[wi / 2usize] >> (u32::cast_from(wi % 2usize) * 16u32)) & 0xffffu32;
+            if (wb & 0x7f80u32) == 0x7f80u32 {
+                invalids[local] |= 1u32;
+            }
+            if input_invalid {
+                invalids[local] |= 2u32;
+            }
+            accumulators[local] = fma(f32::reinterpret(wb << 16u32), x, accumulators[local]);
+        }
+    }
+
+    let mut sums = Shared::<[f32]>::new_slice(128usize);
+    let mut flags = Shared::<[u32]>::new_slice(128usize);
+    for local in 0..2usize {
+        let at = local * 64usize + lane;
+        sums[at] = accumulators[local];
+        flags[at] = invalids[local];
+    }
+    sync_cube();
+
+    if lane < 32usize {
+        for local in 0..2usize {
+            let at = local * 64usize + lane;
+            sums[at] = sums[at] + sums[at + 32usize];
+            flags[at] = flags[at] | flags[at + 32usize];
+        }
+    }
+    sync_cube();
+    if lane < 16usize {
+        for local in 0..2usize {
+            let at = local * 64usize + lane;
+            sums[at] = sums[at] + sums[at + 16usize];
+            flags[at] = flags[at] | flags[at + 16usize];
+        }
+    }
+    sync_cube();
+    if lane < 8usize {
+        for local in 0..2usize {
+            let at = local * 64usize + lane;
+            sums[at] = sums[at] + sums[at + 8usize];
+            flags[at] = flags[at] | flags[at + 8usize];
+        }
+    }
+    sync_cube();
+
+    if lane == 0usize {
+        for local in 0..2usize {
+            let at = local * 64usize;
+            let r0 = sums[at] + sums[at + 4usize];
+            let r1 = sums[at + 1usize] + sums[at + 5usize];
+            let r2 = sums[at + 2usize] + sums[at + 6usize];
+            let r3 = sums[at + 3usize] + sums[at + 7usize];
+            let result = ((r0 + r2) + (r1 + r3)) + z;
+            let bits = u32::reinterpret(result);
+            let rounded_bits = (bits + (0x7fffu32 + ((bits >> 16u32) & 1u32))) & 0xffff0000u32;
+            let mut combined = 0u32;
+            for lane_flag in 0..8usize {
+                combined |= flags[at + lane_flag];
+            }
+            if (bits & 0x7f800000u32) == 0x7f800000u32 {
+                combined |= 8u32;
+            }
+            if (rounded_bits & 0x7f800000u32) == 0x7f800000u32 {
+                combined |= 16u32;
+            }
+
+            let output = request * rows + first_row + local;
+            accumulation[output] = result;
+            rounded[rounded_index(output, rows, output_row_stride)] =
+                f32::reinterpret(rounded_bits);
+            status[output] = combined;
+        }
+    }
+}
+
 /// Retained singleton specialization that computes four adjacent output rows in one
 /// workgroup. Each lane loads the packed activation once per K64 chunk and reuses
 /// that exact BF16 value across four independent row accumulators. Every row keeps
