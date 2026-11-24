@@ -295,7 +295,8 @@ pub(crate) fn embedding_projection_slice<B: MathematicalBackend>(
                 "Qwen slice has no analytic F32 text contract".into(),
             ));
         }
-        crate::accelerator::program::NumericalProfile::HipRocBlasBf16MixedV1 => {
+        crate::accelerator::program::NumericalProfile::HipRocBlasBf16MixedV1
+        | crate::accelerator::program::NumericalProfile::HipRocBlasBf16MixedV2 => {
             return Err(Error::Unsupported(
                 "Qwen CPU slice has no native HIP GEMM contract".into(),
             ));

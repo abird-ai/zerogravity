@@ -48,4 +48,4 @@ mod tests {
 #[cfg(target_os = "linux")]
 mod rocblas;
 #[cfg(target_os = "linux")]
-pub use rocblas::{ROCBLAS_WORKSPACE_BYTES, RocBlasGemm};
+pub use rocblas::{ROCBLAS_WORKSPACE_BYTES, RocBlasGemm, RocBlasUnitLowerSolve};

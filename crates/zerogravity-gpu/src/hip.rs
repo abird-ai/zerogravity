@@ -11,3 +11,6 @@ mod qualification;
 #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
 #[allow(dead_code)]
 pub(crate) mod wmma;
+
+#[cfg(all(feature = "hip-source", target_os = "linux"))]
+pub(crate) mod dense;

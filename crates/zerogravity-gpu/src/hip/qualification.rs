@@ -635,6 +635,81 @@ async fn run(unknown: bool, sealed_miss: bool, rocblas: bool) -> Result<()> {
                     );
                 }
                 eprintln!("ROCBLAS_F32_BATCHED layouts=NN,NT,TN batches={batches} exact=true");
+                drop((left, right));
+                // L has unrelated upper and diagonal values; only its strict
+                // lower triangle is part of the unit-lower solve.
+                let lower = (0..batches * m * m)
+                    .map(|i| {
+                        let row = i / m % m;
+                        let col = i % m;
+                        if col < row {
+                            ((i * 7 + 3) % 3) as f32 - 1.
+                        } else {
+                            999.
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let solution = (0..batches * m * n)
+                    .map(|i| ((i * 13 + 7) % 17) as f32 - 8.)
+                    .collect::<Vec<_>>();
+                let rhs = solution
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &x)| {
+                        let (batch, row, col) = (i / (m * n), i / n % m, i % n);
+                        x + (0..row)
+                            .map(|j| {
+                                lower[batch * m * m + row * m + j]
+                                    * solution[batch * m * n + j * n + col]
+                            })
+                            .sum::<f32>()
+                    })
+                    .collect::<Vec<_>>();
+                let mut init = service.begin_initialization(0)?;
+                init.retain_completion_owner(native.clone())?;
+                let l = init.upload_bytes(&bytes(&lower), BufferRole::ImmutableWeights)?;
+                let b = init.upload_bytes(&bytes(&rhs), BufferRole::Activation)?;
+                drop(init.complete_sync().await?);
+                let op = cubecl::hip::RocBlasUnitLowerSolve::new(m, n, batches)
+                    .map_err(|e| Error::State(e.to_string()))?;
+                let mut flight = service.submit(
+                    0,
+                    &[
+                        (l.clone(), DeviceAccess::Read),
+                        (b.clone(), DeviceAccess::Write),
+                        (scratch.clone(), DeviceAccess::Write),
+                    ],
+                )?;
+                flight.retain_completion_owner(native.clone())?;
+                unsafe {
+                    native.enqueue_rocblas_solve(
+                        service.client(),
+                        op,
+                        [l.handle(), b.handle(), scratch.handle()],
+                    )
+                }
+                .map_err(|e| Error::State(format!("batched unit-lower solve: {e}")))?;
+                drop(
+                    flight
+                        .complete_with_readback(
+                            &[b.clone(), scratch.clone()],
+                            &[b.readback(0, b.bytes())?],
+                            |raw| {
+                                for (i, word) in raw[0].chunks_exact(4).enumerate() {
+                                    let got = f32::from_le_bytes(word.try_into().unwrap());
+                                    if got != solution[i] {
+                                        return Err(Error::State(format!(
+                                            "batched unit-lower solve {i}: {got} != {}",
+                                            solution[i]
+                                        )));
+                                    }
+                                }
+                                Ok(())
+                            },
+                        )
+                        .await?,
+                );
+                eprintln!("ROCBLAS_F32_SOLVE order={m} rhs={n} batches={batches} exact=true");
             }
             drop(scratch);
         }

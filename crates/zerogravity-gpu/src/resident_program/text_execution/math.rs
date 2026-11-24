@@ -203,6 +203,7 @@ impl Cold {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn gdn(
         &self,
+        flight: &crate::resident_leases::ResidentSubmission<'_>,
         activated: &Handle,
         gate: &Handle,
         ba: &Handle,
@@ -298,40 +299,27 @@ impl Cold {
                 let inputs = [&q, &k, &v, &beta, &decay_log, prior];
                 let outputs = std::array::from_fn(|i| &out[i]);
                 let temp = [&temp[0], &temp[1]];
-                let products = self.rocblas_workspace.as_ref().map(|workspace| {
-                    move |p: crate::source_gdn::chunk::execution::Product, buffers: [&Handle; 3]| {
-                        let op = cubecl::hip::RocBlasGemm::f32_batched(
-                            p.m,
-                            p.n,
-                            p.k,
-                            p.batches,
-                            p.transpose_left,
-                            p.transpose_right,
-                        )
-                        .map_err(|e| Error::State(format!("native GDN product: {e}")))?;
-                        self.native.enqueue_rocblas(
+                let dense = self
+                    .rocblas_workspace
+                    .as_ref()
+                    .map(|workspace| {
+                        crate::hip::dense::Dense::new(
+                            &self.native,
                             &self.service,
-                            op,
-                            [
-                                buffers[0].clone(),
-                                buffers[1].clone(),
-                                buffers[2].clone(),
-                                workspace.handle(),
-                            ],
+                            workspace,
+                            flight,
                         )
-                    }
-                });
-                count += 1 + crate::source_gdn::chunk::execution::launch_with_products(
-                    client,
-                    g,
-                    self.guarded_triangular,
-                    inputs,
-                    outputs,
-                    temp,
-                    &normal,
-                    &rare,
-                    &status,
-                    products,
+                    })
+                    .transpose()?;
+                count += 1 + crate::source_gdn::chunk::execution::launch_with_dense(
+                    client, g, self.guarded_triangular, inputs, outputs, temp,
+                    &normal, &rare, &status,
+                    geometry.contract == zerogravity_core::accelerator::program::GdnContract::HipRocBlasF32SolveV2,
+                    dense.as_ref().map(|dense| move |command: crate::dense::Command<'_>| {
+                        // SAFETY: the original flight and shared chunk validate all views,
+                        // scratch and private state remain retained through completion.
+                        unsafe { dense.enqueue(command) }
+                    }),
                 )?;
             }
             InvocationPhase::Decode => {

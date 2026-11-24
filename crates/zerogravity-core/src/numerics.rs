@@ -38,6 +38,8 @@ pub enum NumericalProfile {
     /// Prior name: Gemma4E2bBf16TextCandidateV1. Direct gamma; no qualification.
     DirectGammaBf16TextCandidateV1,
     HipRocBlasBf16MixedV1,
+    /// Also uses batched FP32 unit-lower triangular solves.
+    HipRocBlasBf16MixedV2,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -65,13 +67,26 @@ pub enum NumericalContract {
     /// Mixed source layout, native BF16 projection and batched F32 GDN products.
     /// Reduction differs from the CPU64 projection reference.
     HipRocBlasBf16MixedV1,
+    /// Also uses batched FP32 unit-lower triangular solves.
+    HipRocBlasBf16MixedV2,
 }
+impl NumericalProfile {
+    pub const fn uses_hip_native_dense(self) -> bool {
+        matches!(
+            self,
+            Self::HipRocBlasBf16MixedV1 | Self::HipRocBlasBf16MixedV2
+        )
+    }
+}
+
 impl NumericalContract {
     /// Original mixed source roles, state geometry and standalone exp.
     pub fn uses_torch_mixed_operators(self) -> bool {
         matches!(
             self,
-            Self::TorchCpuAvx2Bf16MixedV1 | Self::HipRocBlasBf16MixedV1
+            Self::TorchCpuAvx2Bf16MixedV1
+                | Self::HipRocBlasBf16MixedV1
+                | Self::HipRocBlasBf16MixedV2
         )
     }
     pub fn is_f32(self) -> bool {
@@ -85,6 +100,7 @@ impl NumericalContract {
             Self::CudaSm86Bf16ReferenceV1 => NumericalProfile::CudaSm86Bf16ReferenceV1,
             Self::TorchCpuAvx2Bf16MixedV1 => NumericalProfile::TorchCpuAvx2Bf16MixedV1,
             Self::HipRocBlasBf16MixedV1 => NumericalProfile::HipRocBlasBf16MixedV1,
+            Self::HipRocBlasBf16MixedV2 => NumericalProfile::HipRocBlasBf16MixedV2,
             Self::GgmlF32V1 | Self::GgmlQ4Repack8x8F32V1 | Self::OpenBlas033Zen16Q8F32V1 => {
                 NumericalProfile::GgufReferenceV1
             }

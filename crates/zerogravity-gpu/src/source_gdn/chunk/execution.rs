@@ -60,16 +60,7 @@ impl Geometry {
     }
 }
 
-/// Row-major contiguous batched F32 product, right/left/output bindings.
-#[derive(Clone, Copy)]
-pub(crate) struct Product {
-    pub m: usize,
-    pub n: usize,
-    pub k: usize,
-    pub batches: usize,
-    pub transpose_left: bool,
-    pub transpose_right: bool,
-}
+use crate::dense::{Command, DensePrecision, Gemm, Transpose, UnitLowerSolve};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn launch(
@@ -83,7 +74,7 @@ pub(crate) fn launch(
     rare: &Handle,
     status_handle: &Handle,
 ) -> Result<usize> {
-    launch_with_products(
+    launch_with_dense(
         client,
         g,
         guarded_triangular,
@@ -93,12 +84,13 @@ pub(crate) fn launch(
         normal,
         rare,
         status_handle,
-        None::<fn(Product, [&Handle; 3]) -> Result<()>>,
+        false,
+        None::<fn(Command<'_>) -> Result<()>>,
     )
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn launch_with_products(
+pub(crate) fn launch_with_dense(
     client: &Client,
     g: Geometry,
     guarded_triangular: bool,
@@ -108,9 +100,15 @@ pub(crate) fn launch_with_products(
     normal: &Handle,
     rare: &Handle,
     status_handle: &Handle,
-    mut products: Option<impl FnMut(Product, [&Handle; 3]) -> Result<()>>,
+    native_solve: bool,
+    mut dense: Option<impl FnMut(Command<'_>) -> Result<()>>,
 ) -> Result<usize> {
     use crate::resident_program::BufferRange;
+    if native_solve && dense.is_none() {
+        return Err(Error::State(
+            "native triangular solve requires dense provider".into(),
+        ));
+    }
     let mut writes = Vec::with_capacity(22);
     for (handle, bytes) in o
         .iter()
@@ -157,14 +155,17 @@ pub(crate) fn launch_with_products(
     };
     let f = |handle: &Handle, n: usize| arg(handle, n, 4);
     let status_arg = || f(status_handle, 1);
-    let product = |m, n, k, transpose_left, transpose_right| Product {
+    let product = |m, n, k, left, right| Gemm {
         m,
         n,
         k,
         batches: h,
-        transpose_left,
-        transpose_right,
+        left,
+        right,
+        precision: DensePrecision::F32,
     };
+    let nn = Transpose::None;
+    let tr = Transpose::Transposed;
     let mut count = 10;
     unsafe {
         normalize::launch_unchecked(
@@ -217,9 +218,19 @@ pub(crate) fn launch_with_products(
             status_arg(),
             h,
         );
-        if let Some(products) = &mut products {
-            products(product(64, 64, 128, false, true), [o[1], o[2], o[6]])?;
-            products(product(64, 64, 128, false, true), [o[1], o[0], o[7]])?;
+        if let Some(dense) = &mut dense {
+            dense(Command::Gemm {
+                geometry: product(64, 64, 128, nn, tr),
+                left: o[2],
+                right: o[1],
+                output: o[6],
+            })?;
+            dense(Command::Gemm {
+                geometry: product(64, 64, 128, nn, tr),
+                left: o[0],
+                right: o[1],
+                output: o[7],
+            })?;
             gram_epilogue::launch_unchecked(
                 client,
                 grid(h * 4096),
@@ -260,26 +271,80 @@ pub(crate) fn launch_with_products(
             status_arg(),
             h,
         );
-        let triangular = if guarded_triangular {
-            triangular_guarded::launch_unchecked
+        if native_solve {
+            let dense = dense.as_mut().expect("validated dense provider");
+            let geometry = UnitLowerSolve {
+                order: 64,
+                rhs_columns: 128,
+                batches: h,
+            };
+            crate::program_kernels::checked_copy_words(h, 8192, 8192, 8192)?;
+            for (input, rhs) in [(o[3], o[9]), (o[8], o[10])] {
+                crate::program_kernels::copy_strided_words::launch_unchecked(
+                    client,
+                    grid(h * 8192),
+                    dim,
+                    f(input, h * 8192),
+                    f(rhs, h * 8192),
+                    status_arg(),
+                    0u32,
+                    0u32,
+                    8192u32,
+                    8192u32,
+                    h,
+                    8192usize,
+                    true,
+                );
+                dense(Command::Solve {
+                    geometry,
+                    lower: o[6],
+                    rhs,
+                })?;
+                crate::program_kernels::certify_finite_strided::launch_unchecked(
+                    client,
+                    grid(h * 8192),
+                    dim,
+                    f(rhs, h * 8192),
+                    status_arg(),
+                    0u32,
+                    8192u32,
+                    h,
+                    8192usize,
+                );
+            }
+            count += 5;
         } else {
-            triangular::launch_unchecked
-        };
-        triangular(
-            client,
-            grid(h * 128),
-            dim,
-            f(o[6], h * 4096),
-            f(o[3], h * 8192),
-            f(o[8], h * 8192),
-            f(o[9], h * 8192),
-            f(o[10], h * 8192),
-            status_arg(),
-            h,
-        );
-        if let Some(products) = &mut products {
-            products(product(64, 128, 128, false, false), [i[5], o[10], o[14]])?;
-            products(product(64, 128, 128, false, false), [i[5], o[11], o[15]])?;
+            let triangular = if guarded_triangular {
+                triangular_guarded::launch_unchecked
+            } else {
+                triangular::launch_unchecked
+            };
+            triangular(
+                client,
+                grid(h * 128),
+                dim,
+                f(o[6], h * 4096),
+                f(o[3], h * 8192),
+                f(o[8], h * 8192),
+                f(o[9], h * 8192),
+                f(o[10], h * 8192),
+                status_arg(),
+                h,
+            );
+        }
+        if let Some(dense) = &mut dense {
+            dense(Command::Gemm {
+                geometry: product(64, 128, 128, nn, nn),
+                left: o[10],
+                right: i[5],
+                output: o[14],
+            })?;
+            dense(Command::Gemm {
+                geometry: product(64, 128, 128, nn, nn),
+                left: o[11],
+                right: i[5],
+                output: o[15],
+            })?;
             prior_epilogue::launch_unchecked(
                 client,
                 grid(h * 8192),
@@ -305,8 +370,13 @@ pub(crate) fn launch_with_products(
                 h,
             );
         }
-        if let Some(products) = &mut products {
-            products(product(64, 128, 64, false, false), [o[14], o[7], o[16]])?;
+        if let Some(dense) = &mut dense {
+            dense(Command::Gemm {
+                geometry: product(64, 128, 64, nn, nn),
+                left: o[7],
+                right: o[14],
+                output: o[16],
+            })?;
             core_epilogue::launch_unchecked(
                 client,
                 grid(h * 8192),
@@ -334,8 +404,13 @@ pub(crate) fn launch_with_products(
                 h,
             );
         }
-        if let Some(products) = &mut products {
-            products(product(128, 128, 64, true, false), [o[14], o[12], o[17]])?;
+        if let Some(dense) = &mut dense {
+            dense(Command::Gemm {
+                geometry: product(128, 128, 64, tr, nn),
+                left: o[12],
+                right: o[14],
+                output: o[17],
+            })?;
             state_epilogue::launch_unchecked(
                 client,
                 grid(h * 16384),

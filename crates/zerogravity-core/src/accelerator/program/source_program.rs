@@ -412,6 +412,18 @@ pub enum GdnContract {
     TorchCpuAvx2L2SiluBf16V1,
     /// Native batched F32 chunk products; original L2, solve and gate.
     HipRocBlasF32ChunkV1,
+    /// Native batched F32 chunk products and unit-lower solve.
+    HipRocBlasF32SolveV2,
+}
+impl GdnContract {
+    pub fn for_numerical(numerical: NumericalContract) -> Self {
+        match numerical {
+            NumericalContract::HipRocBlasBf16MixedV1 => Self::HipRocBlasF32ChunkV1,
+            NumericalContract::HipRocBlasBf16MixedV2 => Self::HipRocBlasF32SolveV2,
+            contract if contract.uses_torch_mixed_operators() => Self::TorchCpuAvx2L2SiluBf16V1,
+            _ => Self::ReferenceCudaSm86L2SiluBf16V1,
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SourceGdnGeometry {
@@ -886,13 +898,7 @@ impl SourceOperator {
                 (0, 1)
             }
             GatedDelta { geometry, .. } => {
-                let expected = match self.numerical_contract() {
-                    NumericalContract::HipRocBlasBf16MixedV1 => GdnContract::HipRocBlasF32ChunkV1,
-                    contract if contract.uses_torch_mixed_operators() => {
-                        GdnContract::TorchCpuAvx2L2SiluBf16V1
-                    }
-                    _ => GdnContract::ReferenceCudaSm86L2SiluBf16V1,
-                };
+                let expected = GdnContract::for_numerical(self.numerical_contract());
                 if geometry.contract != expected {
                     return Err(Error::Unsupported(
                         "source GDN arithmetic contract differs".into(),

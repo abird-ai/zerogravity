@@ -446,6 +446,7 @@ impl ResidentPagedKvDomain {
             zerogravity_core::accelerator::program::NumericalContract::GgmlQ4Repack8x8F32V1 => 4,
             zerogravity_core::accelerator::program::NumericalContract::OpenBlas033Zen16Q8F32V1 => 5,
             zerogravity_core::accelerator::program::NumericalContract::HipRocBlasBf16MixedV1 => 6,
+            zerogravity_core::accelerator::program::NumericalContract::HipRocBlasBf16MixedV2 => 7,
         };
         let StateLayout::Kv { slab, capacity } = requirement.layout else {
             return Err(Error::State(

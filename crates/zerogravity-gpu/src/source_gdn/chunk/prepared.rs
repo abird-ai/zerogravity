@@ -8,13 +8,14 @@ pub(crate) fn kernels(
     heads: usize,
     guarded_triangular: bool,
 ) -> Result<Vec<Box<dyn CubeKernel>>> {
-    kernels_with_products(client, heads, guarded_triangular, false)
+    kernels_with_dense(client, heads, guarded_triangular, false, false)
 }
-pub(crate) fn kernels_with_products(
+pub(crate) fn kernels_with_dense(
     client: &Client,
     heads: usize,
     guarded_triangular: bool,
     native_products: bool,
+    native_solve: bool,
 ) -> Result<Vec<Box<dyn CubeKernel>>> {
     super::execution::Geometry::new(1, heads)?;
     let mut output: Vec<Box<dyn CubeKernel>> = Vec::new();
@@ -79,7 +80,30 @@ pub(crate) fn kernels_with_products(
         b(),
         heads
     );
-    if guarded_triangular {
+    if native_solve {
+        kernel!(
+            crate::program_kernels::copy_strided_words::CopyStridedWords,
+            b(),
+            b(),
+            b(),
+            (),
+            (),
+            (),
+            (),
+            heads,
+            8192usize,
+            true
+        );
+        kernel!(
+            crate::program_kernels::certify_finite_strided::CertifyFiniteStrided,
+            b(),
+            b(),
+            (),
+            (),
+            heads,
+            8192usize
+        );
+    } else if guarded_triangular {
         kernel!(
             super::triangular_guarded::TriangularGuarded,
             b(),

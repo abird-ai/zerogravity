@@ -346,9 +346,8 @@ impl PreparedBf16Projection {
         let packed = view(b.packed, 0, inputs * 2)?;
         let rounded = view(b.accumulation, 0, outputs * 2)?;
         let status = view(b.status, 0, 4)?;
-        let op = cubecl::hip::RocBlasGemm::new(rows, columns, input_rows)
-            .map_err(|e| Error::State(format!("native GEMM geometry: {e}")))?;
-        let scratch = view(workspace, 0, cubecl::hip::ROCBLAS_WORKSPACE_BYTES)?;
+        let geometry = crate::dense::Gemm::bf16_projection(input_rows, rows, columns);
+        let dense = crate::hip::dense::Dense::new(native, service, workspace, flight)?;
         unsafe {
             pack::launch_unchecked(
                 service.client(),
@@ -360,16 +359,15 @@ impl PreparedBf16Projection {
             );
         }
         resident.with_rows(flight, &self.source, &self.matrix, 0..rows, &mut |actual| {
-            native.enqueue_rocblas(
-                service,
-                op,
-                [
-                    actual.handle().clone(),
-                    packed.clone(),
-                    rounded.clone(),
-                    scratch.clone(),
-                ],
-            )?;
+            // SAFETY: original flight retains all checked non-overlapping views.
+            unsafe {
+                dense.enqueue(crate::dense::Command::Gemm {
+                    geometry,
+                    left: &packed,
+                    right: actual.handle(),
+                    output: &rounded,
+                })
+            }?;
             Ok(1)
         })?;
         unsafe {

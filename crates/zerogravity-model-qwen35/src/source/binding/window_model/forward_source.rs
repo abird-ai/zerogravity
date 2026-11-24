@@ -84,6 +84,9 @@ impl OriginalWindowModelSource {
     pub fn bind_hip_native_forward_source(self: &Arc<Self>) -> Result<ForwardSourceSeal> {
         self.bind_forward_source(NumericalContract::HipRocBlasBf16MixedV1)
     }
+    pub fn bind_hip_native_solve_forward_source(self: &Arc<Self>) -> Result<ForwardSourceSeal> {
+        self.bind_forward_source(NumericalContract::HipRocBlasBf16MixedV2)
+    }
     fn bind_forward_source(
         self: &Arc<Self>,
         numerical: NumericalContract,

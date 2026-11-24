@@ -90,7 +90,9 @@ impl Layout {
             || plan.is_operator_slice()
             || !matches!(
                 plan.numerical_profile(),
-                NumericalProfile::TorchCpuAvx2Bf16MixedV1 | NumericalProfile::HipRocBlasBf16MixedV1
+                NumericalProfile::TorchCpuAvx2Bf16MixedV1
+                    | NumericalProfile::HipRocBlasBf16MixedV1
+                    | NumericalProfile::HipRocBlasBf16MixedV2
             )
             || plan.standalone_exp_profile()
                 != Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1)
@@ -237,12 +239,7 @@ impl Layout {
                     domain,
                     geometry: g,
                 } => {
-                    let expected =
-                        if plan.numerical_profile() == NumericalProfile::HipRocBlasBf16MixedV1 {
-                            GdnContract::HipRocBlasF32ChunkV1
-                        } else {
-                            GdnContract::TorchCpuAvx2L2SiluBf16V1
-                        };
+                    let expected = GdnContract::for_numerical(d.numerical_contract());
                     if g.contract != expected
                         || g.key_width != 128
                         || g.value_width != 128

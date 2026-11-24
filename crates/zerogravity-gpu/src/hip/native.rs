@@ -893,6 +893,28 @@ impl PreparedSourceNative {
         op: cubecl::hip::RocBlasGemm,
         handles: [cubecl::server::Handle; 4],
     ) -> Result<()> {
+        self.require_rocblas_service(service)?;
+        // Caller retains exact read/write leases in the original flight.
+        unsafe { self.prepared.enqueue_rocblas(service.client(), op, handles) }.map_err(native)
+    }
+
+    #[cfg(feature = "hip-source")]
+    pub(crate) fn enqueue_rocblas_solve(
+        &self,
+        service: &Arc<ResidentService>,
+        op: cubecl::hip::RocBlasUnitLowerSolve,
+        handles: [cubecl::server::Handle; 3],
+    ) -> Result<()> {
+        self.require_rocblas_service(service)?;
+        unsafe {
+            self.prepared
+                .enqueue_rocblas_solve(service.client(), op, handles)
+        }
+        .map_err(native)
+    }
+
+    #[cfg(feature = "hip-source")]
+    fn require_rocblas_service(&self, service: &Arc<ResidentService>) -> Result<()> {
         if !self
             .service
             .upgrade()
@@ -900,11 +922,10 @@ impl PreparedSourceNative {
             || self.source != service.source_identity()
         {
             return Err(Error::State(
-                "native GEMM original service/source differs".into(),
+                "native dense original service/source differs".into(),
             ));
         }
-        // Caller retains exact read/write leases in the original flight.
-        unsafe { self.prepared.enqueue_rocblas(service.client(), op, handles) }.map_err(native)
+        Ok(())
     }
 
     pub(crate) fn require_live(&self, client: &Client, source: SourceIdentity) -> Result<()> {

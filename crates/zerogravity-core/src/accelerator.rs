@@ -17,6 +17,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_SOURCE_ALLOCATION: AtomicU64 = AtomicU64::new(1);
 
+pub mod dense;
 pub mod program;
 
 /// Process-unique identity for ONE immutable loaded source model allocation.

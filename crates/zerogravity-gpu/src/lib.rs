@@ -25,6 +25,8 @@ mod batch_recurrent;
 mod bf16_projection_kernel;
 #[cfg(all(feature = "qualification", feature = "cuda", target_os = "linux"))]
 mod cpu_bf16_projection;
+#[cfg(all(feature = "hip-source", target_os = "linux"))]
+mod dense;
 mod device_activation;
 mod elementwise;
 mod embedding;

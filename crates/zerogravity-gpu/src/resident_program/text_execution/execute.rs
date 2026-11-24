@@ -455,6 +455,7 @@ impl Cold {
             GatedDelta { domain, geometry } => {
                 let b = states[&StateSlot::Recurrent(domain)];
                 self.gdn(
+                    flight,
                     &inputs[0],
                     &inputs[1],
                     &inputs[2],

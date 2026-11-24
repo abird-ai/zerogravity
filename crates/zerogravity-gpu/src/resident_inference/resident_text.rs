@@ -309,6 +309,7 @@ impl ResidentModel {
         let contract = match plan.numerical_profile() {
             NumericalProfile::TorchCpuAvx2Bf16MixedV1 => NumericalContract::TorchCpuAvx2Bf16MixedV1,
             NumericalProfile::HipRocBlasBf16MixedV1 => NumericalContract::HipRocBlasBf16MixedV1,
+            NumericalProfile::HipRocBlasBf16MixedV2 => NumericalContract::HipRocBlasBf16MixedV2,
             _ => return Err(Error::Unsupported("resident HIP numerical profile".into())),
         };
         if !matches!(cohort_width, 0 | 4 | 8) || cohort_width != 0 && max_sessions < cohort_width {

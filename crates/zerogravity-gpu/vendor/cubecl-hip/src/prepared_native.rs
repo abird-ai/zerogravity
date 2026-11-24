@@ -308,7 +308,7 @@ impl PreparedHipNative {
             .map_err(|e| failure(format!("HIP rocBLAS preparation actor: {e:?}")))?
     }
 
-    /// Enqueue BF16 output on the original prepared logical stream.
+    /// Enqueue a dense product on the original prepared logical stream.
     ///
     /// # Safety
     /// The original flight owns all four buffers through actual completion;
@@ -319,6 +319,40 @@ impl PreparedHipNative {
         client: &Client,
         op: crate::RocBlasGemm,
         handles: [cubecl_core::server::Handle; 4],
+    ) -> Result<(), ServerError> {
+        self.submit_rocblas(client, move |server, key, stream| {
+            server.enqueue_rocblas(key, stream, op, handles)
+        })
+    }
+
+    /// In-place FP32 triangular solve on the original prepared logical stream.
+    ///
+    /// # Safety
+    /// The original flight owns coefficient Read, RHS Read/Write and exclusive
+    /// workspace Write until actual completion.
+    #[cfg(target_os = "linux")]
+    pub unsafe fn enqueue_rocblas_solve(
+        &self,
+        client: &Client,
+        op: crate::RocBlasUnitLowerSolve,
+        handles: [cubecl_core::server::Handle; 3],
+    ) -> Result<(), ServerError> {
+        self.submit_rocblas(client, move |server, key, stream| {
+            server.enqueue_rocblas_solve(key, stream, op, handles)
+        })
+    }
+
+    #[cfg(target_os = "linux")]
+    fn submit_rocblas(
+        &self,
+        client: &Client,
+        submit: impl FnOnce(
+            &mut HipServer,
+            u64,
+            cubecl_environment::stream::StreamId,
+        ) -> Result<(), ServerError>
+        + Send
+        + 'static,
     ) -> Result<(), ServerError> {
         if self.retired.load(Ordering::Acquire)
             || client.service_id() != self.service_id()
@@ -334,7 +368,7 @@ impl PreparedHipNative {
             value: self.scoped_logical_stream().unwrap_or(0),
         };
         self.actor
-            .submit_blocking(move |server| server.enqueue_rocblas(key, stream, op, handles))
+            .submit_blocking(move |server| submit(server, key, stream))
             .map_err(|e| failure(format!("HIP rocBLAS enqueue actor: {e:?}")))?
     }
 

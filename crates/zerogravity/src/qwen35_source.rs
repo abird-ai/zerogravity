@@ -172,6 +172,7 @@ pub(crate) fn open(
         NumericalContract::CudaSm86Bf16ReferenceV1 => model.bind_cuda_forward_source()?,
         NumericalContract::TorchCpuAvx2Bf16MixedV1 => model.bind_cpu_forward_source()?,
         NumericalContract::HipRocBlasBf16MixedV1 => model.bind_hip_native_forward_source()?,
+        NumericalContract::HipRocBlasBf16MixedV2 => model.bind_hip_native_solve_forward_source()?,
         _ => {
             return Err(Error::Unsupported(
                 "forward source numerical contract".into(),

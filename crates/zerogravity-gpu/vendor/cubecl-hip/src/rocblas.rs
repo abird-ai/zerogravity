@@ -82,6 +82,39 @@ impl RocBlasGemm {
     }
 }
 
+/// Compact row-major FP32 L*X=B, unit lower, independent batches.
+#[derive(Clone, Copy, Debug)]
+pub struct RocBlasUnitLowerSolve {
+    order: i32,
+    rhs_columns: i32,
+    batches: i32,
+}
+impl RocBlasUnitLowerSolve {
+    pub fn new(order: usize, rhs_columns: usize, batches: usize) -> Result<Self, ServerError> {
+        let op = Self {
+            order: RocBlasGemm::dim(order)?,
+            rhs_columns: RocBlasGemm::dim(rhs_columns)?,
+            batches: RocBlasGemm::dim(batches)?,
+        };
+        op.extents()?;
+        Ok(op)
+    }
+    pub fn extents(self) -> Result<[usize; 3], ServerError> {
+        let extent = |a: i32, b: i32| {
+            (a as usize)
+                .checked_mul(b as usize)
+                .and_then(|n| n.checked_mul(self.batches as usize))
+                .and_then(|n| n.checked_mul(4))
+                .ok_or_else(|| failure("rocBLAS solve extent"))
+        };
+        Ok([
+            extent(self.order, self.order)?,
+            extent(self.order, self.rhs_columns)?,
+            ROCBLAS_WORKSPACE_BYTES,
+        ])
+    }
+}
+
 type Create = unsafe extern "C" fn(*mut *mut c_void) -> c_int;
 type Destroy = unsafe extern "C" fn(*mut c_void) -> c_int;
 type SetStream = unsafe extern "C" fn(*mut c_void, cubecl_hip_sys::hipStream_t) -> c_int;
@@ -135,6 +168,24 @@ type SgemmBatched = unsafe extern "C" fn(
     c_int,
 ) -> c_int;
 
+type StrsmBatched = unsafe extern "C" fn(
+    *mut c_void,
+    c_int,
+    c_int,
+    c_int,
+    c_int,
+    c_int,
+    c_int,
+    *const f32,
+    *const f32,
+    c_int,
+    i64,
+    *mut f32,
+    c_int,
+    i64,
+    c_int,
+) -> c_int;
+
 #[derive(Clone, Copy)]
 pub(crate) struct Api {
     destroy: Destroy,
@@ -142,6 +193,7 @@ pub(crate) struct Api {
     workspace: SetWorkspace,
     gemm: Gemm,
     sgemm_batched: SgemmBatched,
+    strsm_batched: StrsmBatched,
 }
 fn checked(status: c_int, name: &'static str) -> Result<(), ServerError> {
     if status == 0 {
@@ -184,6 +236,7 @@ impl Provider {
                 workspace: symbol(&library, b"rocblas_set_workspace\0")?,
                 gemm: symbol(&library, b"rocblas_gemm_ex\0")?,
                 sgemm_batched: symbol(&library, b"rocblas_sgemm_strided_batched\0")?,
+                strsm_batched: symbol(&library, b"rocblas_strsm_strided_batched\0")?,
             };
             let create = symbol(&library, b"rocblas_create_handle\0")?;
             let pointer_mode = symbol(&library, b"rocblas_set_pointer_mode\0")?;
@@ -236,7 +289,22 @@ impl Drop for Provider {
     }
 }
 impl Api {
-    /// Exact C ABI: transposed weights, contiguous input/output; alpha1 beta0.
+    unsafe fn bind(
+        self,
+        handle: *mut c_void,
+        stream: cubecl_hip_sys::hipStream_t,
+        workspace: *mut c_void,
+    ) -> Result<(), ServerError> {
+        unsafe {
+            checked((self.stream)(handle, stream), "original stream")?;
+            checked(
+                (self.workspace)(handle, workspace, ROCBLAS_WORKSPACE_BYTES),
+                "original workspace",
+            )
+        }
+    }
+
+    /// Native contiguous products; alpha1 beta0.
     pub(crate) unsafe fn enqueue(
         self,
         handle: usize,
@@ -248,11 +316,7 @@ impl Api {
         let [weights, input, output, workspace] = ptrs;
         let (alpha, beta) = (1.0f32, 0.0f32);
         unsafe {
-            checked((self.stream)(handle, stream), "original stream")?;
-            checked(
-                (self.workspace)(handle, workspace, ROCBLAS_WORKSPACE_BYTES),
-                "original workspace",
-            )?;
+            self.bind(handle, stream, workspace)?;
             if op.bf16 {
                 checked(
                     (self.gemm)(
@@ -319,6 +383,43 @@ impl Api {
                     "sgemm_strided_batched",
                 )
             }
+        }
+    }
+
+    pub(crate) unsafe fn solve(
+        self,
+        handle: usize,
+        stream: cubecl_hip_sys::hipStream_t,
+        op: RocBlasUnitLowerSolve,
+        ptrs: [*mut c_void; 3],
+    ) -> Result<(), ServerError> {
+        let handle = handle as *mut c_void;
+        let [lower, rhs, workspace] = ptrs;
+        let alpha = 1.0f32;
+        // Row-major L*X=B becomes X^T*L^T=B^T: right, upper,
+        // no transpose, unit diagonal in the column-major vendor ABI.
+        unsafe {
+            self.bind(handle, stream, workspace)?;
+            checked(
+                (self.strsm_batched)(
+                    handle,
+                    142,
+                    121,
+                    111,
+                    132,
+                    op.rhs_columns,
+                    op.order,
+                    &alpha,
+                    lower.cast(),
+                    op.order,
+                    i64::from(op.order) * i64::from(op.order),
+                    rhs.cast(),
+                    op.rhs_columns,
+                    i64::from(op.order) * i64::from(op.rhs_columns),
+                    op.batches,
+                ),
+                "strsm_strided_batched",
+            )
         }
     }
 }

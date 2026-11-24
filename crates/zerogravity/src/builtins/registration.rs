@@ -87,7 +87,7 @@ pub(crate) fn load_text(
                 profile,
                 super::text::qwen_source::SourceBackend::Hip(
                     budget,
-                    crate::accelerator::program::NumericalContract::HipRocBlasBf16MixedV1,
+                    crate::accelerator::program::NumericalContract::HipRocBlasBf16MixedV2,
                 ),
             )
         }

@@ -81,8 +81,7 @@ impl Admission {
         }
         let metadata = source.reserve_workspace(8 * 1024 * 1024)?;
         let mut layout = layout::Layout::derive(plan)?;
-        let native_gemm = layout.plan.numerical_profile()
-            == zerogravity_core::numerics::NumericalProfile::HipRocBlasBf16MixedV1;
+        let native_gemm = layout.plan.numerical_profile().uses_hip_native_dense();
         if native_gemm {
             if native_policy != crate::hip::native::HipSourceNativePolicy::Gfx1151 {
                 return Err(Error::Unsupported(
@@ -266,8 +265,7 @@ impl Admission {
             ));
         }
         init.retain_completion_owner(native.clone())?;
-        let native_gemm = self.layout.plan.numerical_profile()
-            == zerogravity_core::numerics::NumericalProfile::HipRocBlasBf16MixedV1;
+        let native_gemm = self.layout.plan.numerical_profile().uses_hip_native_dense();
         if native_gemm {
             native.prepare_rocblas(&service)?;
         }
