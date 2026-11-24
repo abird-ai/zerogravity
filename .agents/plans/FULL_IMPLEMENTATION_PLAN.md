@@ -1,8 +1,8 @@
 # ZeroGravity — implementation plan
 
-Author: Project owner  
-Co-authors: GPT-6.2  
-Owner: @pvl  
+Author: Project owner
+Co-authors: GPT-6.2
+Owner: @pvl
 Decision: 24 Nov 2026
 
 **One execution fabric. Native models first. Mature operators wherever possible.
