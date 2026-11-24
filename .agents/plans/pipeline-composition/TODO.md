@@ -234,7 +234,7 @@ their existing numeric/source/physical acceptance gates.
 - [x] Complete isolated `scripts/check.sh` passes; no new performance
   or driver-internal accounting claim.
 
-## Source state effects and original-layout bridges — 24 Nov
+## 262712f1 — Source state effects and original-layout bridges — 24 Nov
 
 - [x] Derive source-template state domains from the original writer/read
   chain once in native preflight. Convolution full-window/history follows
@@ -255,8 +255,13 @@ their existing numeric/source/physical acceptance gates.
   fixed-size iteration. CUDA paged KV retains the existing private staging
   alias rule; HIP requires distinct original state. No kernel or state
   publication changes.
-- [ ] Full isolated gate and physical native/continuation/state-bridge
-  canaries pending.
+- [x] Seven preparation tests, strict core/engine Clippy, combined GPU
+  compilation and real Qwen 0.8B X2 native V2 C1/C8, exact C1, distinct-prompt
+  continuation; L5 CUDA C1 and C8 contiguous/paged token consistency pass.
+  Original resource retirement/shutdown verified on both machines. No
+  independent CUDA fused-lane qualification or performance claim.
+- [x] Full isolated workspace gate passes: 2382 Rust test executions,
+  zero failures, 101 explicit skips, release/installer and script checks.
 
 ## Uncommitted
 

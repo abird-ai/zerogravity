@@ -20,7 +20,8 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
-**New source slice — stateful region effects and original-layout bridges.**
+**Accepted source checkpoint `262712f1c94daa8423060155633545b632a54e88` —
+stateful region effects and original-layout bridges.**
 Core derives ordered source-template state writer/read edges and exact
 logical plane geometry for native CUDA/HIP preflight. CUDA convolution
 history and mixed full-window layouts retain their distinct numerical
@@ -35,7 +36,23 @@ publication remain unchanged. StateCarry without a declared layout,
 arbitrary observations/embedding/rotary and output-policy crossings still
 refuse as closed regions. No general standalone stateful region dispatch,
 committed-root conversion/recompute or external completion bridge.
-Assembled and physical validation pending.
+Focused preparation (7 tests), strict core/engine Clippy and combined GPU
+compilation pass. Physical Qwen 0.8B on X2: native V2 C1/C8, exact C1 and
+distinct-prompt multichunk continuation all pass; expected token IDs,
+replay, lane invariance and zero failed GPU quanta. L5: native CUDA C1
+expected tokens/replay and C8 contiguous-versus-paged matched token
+comparison pass (48 prompt + 3 output tokens per request). Original
+native/final-reader retirement and CUDA shutdown pass. X2 returns to
+259768320 B VRAM, no KFD owners; L5 to 37 MiB, no CUDA compute owners.
+The C8 comparison is state-layout consistency, not independent fused-lane
+qualification or a new throughput baseline. X2 runs the exact signed
+source via verified incremental bundle; A1 unchanged. Full isolated
+workspace gate passes (2382 Rust test executions, zero failures,
+101 explicit skips), including release CLI, installer and script checks.
+Next: extend actual admitted private-buffer transfer and foreign-stream
+completion bridges through original physical owners; then close remaining
+region input/observation and whole-model preparation boundaries as needed
+by real consumers. No standalone stateful dispatch or conversion claim.
 
 Prior accepted provider resource checkpoint:
 

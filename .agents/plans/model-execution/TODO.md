@@ -141,7 +141,9 @@ any external compiler. All phases retain the original resource/state owners.
   binding. Stateful region ports distinguish committed vs provisional versions,
   bind original advance attempts and permit metadata-only original-layout
   handoff; paged staging, publication and numerical profiles remain unchanged.
-  Assembled/physical checks pending (composition TODO).
+  Accepted `262712f1`: full isolated gate, X2 native/exact/continuation
+  and L5 native C1 plus C8 contiguous/paged state consistency pass
+  (composition TODO).
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

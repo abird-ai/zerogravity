@@ -5,6 +5,15 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 24 Nov — source state-region acceptance
+
+`262712f1` shares source-template state geometry and version/attempt
+validation with existing native consumers. X2 Qwen 0.8B native V2 C1/C8,
+exact C1 and distinct multichunk, L5 native C1 and C8 contiguous/paged
+state consistency pass with expected tokens/replay and original resource
+retirement. Full isolated gate passes. No new performance baseline,
+independent CUDA fused-lane qualification or general stateful dispatch.
+
 ## 24 Nov — provider resource and completion acceptance
 
 `77e8b4ae` preserves existing numerical paths and binds incremental
