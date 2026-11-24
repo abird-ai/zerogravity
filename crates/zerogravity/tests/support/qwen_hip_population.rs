@@ -45,9 +45,9 @@ impl Harness {
         }
         assert_eq!(std::env::var("HIP_VISIBLE_DEVICES").as_deref(), Ok("0"));
         assert_eq!(std::env::var("ROCR_VISIBLE_DEVICES").as_deref(), Ok("0"));
-        for (field, expected) in [("vendor", "0x1002"), ("device", "0x1586")] {
+        for (field, expected) in [("vendor", "0x1002"), ("device", "0x150e")] {
             assert_eq!(
-                std::fs::read_to_string(format!("/sys/bus/pci/devices/0000:c6:00.0/{field}"))
+                std::fs::read_to_string(format!("/sys/bus/pci/devices/0000:66:00.0/{field}"))
                     .unwrap()
                     .trim(),
                 expected
@@ -56,7 +56,7 @@ impl Harness {
         let snapshot = source_snapshot(label);
         let arbiter = ResourceArbiter::process_shared();
         let host = PhysicalDeviceKey::new("host", "system-ram").unwrap();
-        let device = PhysicalDeviceKey::new("pci", "0000:c6:00.0").unwrap();
+        let device = PhysicalDeviceKey::new("pci", "0000:66:00.0").unwrap();
         arbiter
             .register_matching(host.clone(), 16 * 1024 * 1024 * 1024)
             .unwrap();
@@ -367,4 +367,72 @@ fn public_source_population_benchmark() {
     }
     h.retire();
     println!("HIP_BENCH_CLOSED model={label} closed=true replay_match=true");
+}
+
+// Temporary real-model kernel localization; uses the existing CubeCL observer.
+#[test]
+#[ignore = "temporary gfx1150 real-model localization"]
+fn resident_profile() {
+    use cubecl_runtime::logging::{
+        Duration, LaunchObservation, LaunchObserver, TimingMethod, TimingRequest,
+    };
+    use std::collections::BTreeMap;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct Observer(Mutex<BTreeMap<&'static str, (usize, usize, u128)>>);
+    impl LaunchObserver for Observer {
+        fn launched(&self, name: &'static str) {
+            self.0.lock().unwrap().entry(name).or_default().0 += 1;
+        }
+        fn timing(&self) -> TimingRequest {
+            TimingRequest::Resolved
+        }
+        fn timed(&self, name: &'static str, duration: Duration, method: TimingMethod) {
+            let mut data = self.0.lock().unwrap();
+            let entry = data.get_mut(name).unwrap();
+            if method == TimingMethod::Device && duration.as_secs() < 3600 {
+                entry.1 += 1;
+                entry.2 += duration.as_nanos();
+            }
+        }
+    }
+    let h = Harness::open_benchmark("08", 8, 1024, 16, 65);
+    let prompt = "<|im_start|>user\nContinue this list of integers, separated by commas, for many more terms: 1, 2, 3, 4, 5, 6, 7, 8,<|im_end|>\n<|im_start|>assistant\n";
+    assert_eq!(h.tokenizer.prompt_tokens(prompt, false).unwrap().len(), 47);
+    let run = |output| {
+        let mut req = request("source", prompt);
+        req.max_tokens = output;
+        complete_with_fused(
+            h.runtime.request_text(req).unwrap(),
+            47,
+            h.tokenizer.as_ref(),
+            false,
+        )
+        .ids
+    };
+    let expected = run(16);
+    assert_eq!(expected.len(), 16);
+    assert_eq!(&expected[..3], &[248068, 198, 90700]);
+    for output in [1, 16, 16, 1] {
+        let observer = Arc::new(Observer::default());
+        let guard = LaunchObservation::new(observer.clone());
+        let actual = run(output);
+        drop(guard);
+        assert_eq!(actual, expected[..output]);
+        let data = observer.0.lock().unwrap();
+        let mut count = 0;
+        let mut total = 0;
+        for (name, &(issued, timed, ns)) in data.iter() {
+            assert_eq!(issued, timed, "{name}");
+            assert!(ns > 0, "{name}");
+            count += timed;
+            total += ns;
+            println!("PROFILE output={output} name={name} launches={timed} ns={ns}");
+        }
+        assert!(count > 0);
+        println!("PROFILE_TOTAL output={output} launches={count} ns={total}");
+    }
+    assert_eq!(h.admission()["failed_gpu_quanta"], 0);
+    h.retire();
 }
