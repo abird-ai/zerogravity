@@ -76,7 +76,7 @@ impl HipServer {
                         .checked_add(extents[i])
                         .ok_or_else(|| failure("rocBLAS physical range"))?;
                     if start == 0
-                        || start % 2 != 0
+                        || start % if i == 3 { 256 } else { op.element_bytes() } != 0
                         || (0..i).any(|j| {
                             let other = ptrs[j] as usize;
                             other

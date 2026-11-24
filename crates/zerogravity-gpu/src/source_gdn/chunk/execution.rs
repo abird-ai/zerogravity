@@ -60,6 +60,17 @@ impl Geometry {
     }
 }
 
+/// Row-major contiguous batched F32 product, right/left/output bindings.
+#[derive(Clone, Copy)]
+pub(crate) struct Product {
+    pub m: usize,
+    pub n: usize,
+    pub k: usize,
+    pub batches: usize,
+    pub transpose_left: bool,
+    pub transpose_right: bool,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn launch(
     client: &Client,
@@ -71,6 +82,33 @@ pub(crate) fn launch(
     normal: &Handle,
     rare: &Handle,
     status_handle: &Handle,
+) -> Result<usize> {
+    launch_with_products(
+        client,
+        g,
+        guarded_triangular,
+        i,
+        o,
+        s,
+        normal,
+        rare,
+        status_handle,
+        None::<fn(Product, [&Handle; 3]) -> Result<()>>,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn launch_with_products(
+    client: &Client,
+    g: Geometry,
+    guarded_triangular: bool,
+    i: [&Handle; 6],
+    o: [&Handle; 19],
+    s: [&Handle; 2],
+    normal: &Handle,
+    rare: &Handle,
+    status_handle: &Handle,
+    mut products: Option<impl FnMut(Product, [&Handle; 3]) -> Result<()>>,
 ) -> Result<usize> {
     use crate::resident_program::BufferRange;
     let mut writes = Vec::with_capacity(22);
@@ -119,6 +157,15 @@ pub(crate) fn launch(
     };
     let f = |handle: &Handle, n: usize| arg(handle, n, 4);
     let status_arg = || f(status_handle, 1);
+    let product = |m, n, k, transpose_left, transpose_right| Product {
+        m,
+        n,
+        k,
+        batches: h,
+        transpose_left,
+        transpose_right,
+    };
+    let mut count = 10;
     unsafe {
         normalize::launch_unchecked(
             client,
@@ -170,19 +217,34 @@ pub(crate) fn launch(
             status_arg(),
             h,
         );
-        gram::launch_unchecked(
-            client,
-            grid(h * 4096),
-            dim,
-            f(o[0], h * 8192),
-            f(o[1], h * 8192),
-            f(o[2], h * 8192),
-            f(o[5], h * 4096),
-            f(o[6], h * 4096),
-            f(o[7], h * 4096),
-            status_arg(),
-            h,
-        );
+        if let Some(products) = &mut products {
+            products(product(64, 64, 128, false, true), [o[1], o[2], o[6]])?;
+            products(product(64, 64, 128, false, true), [o[1], o[0], o[7]])?;
+            gram_epilogue::launch_unchecked(
+                client,
+                grid(h * 4096),
+                dim,
+                f(o[6], h * 4096),
+                f(o[7], h * 4096),
+                f(o[5], h * 4096),
+                status_arg(),
+            );
+            count += 2;
+        } else {
+            gram::launch_unchecked(
+                client,
+                grid(h * 4096),
+                dim,
+                f(o[0], h * 8192),
+                f(o[1], h * 8192),
+                f(o[2], h * 8192),
+                f(o[5], h * 4096),
+                f(o[6], h * 4096),
+                f(o[7], h * 4096),
+                status_arg(),
+                h,
+            );
+        }
         decay_vectors::launch_unchecked(
             client,
             grid(h * 8192),
@@ -215,44 +277,89 @@ pub(crate) fn launch(
             status_arg(),
             h,
         );
-        prior_products::launch_unchecked(
-            client,
-            grid(h * 8192),
-            dim,
-            f(o[10], h * 8192),
-            f(o[11], h * 8192),
-            f(i[5], h * 16384),
-            f(o[9], h * 8192),
-            f(o[14], h * 8192),
-            f(o[15], h * 8192),
-            status_arg(),
-            h,
-        );
-        core_product::launch_unchecked(
-            client,
-            grid(h * 8192),
-            dim,
-            f(o[7], h * 4096),
-            f(o[14], h * 8192),
-            f(o[15], h * 8192),
-            f(o[16], h * 8192),
-            f(o[18], g.rows * h * 128),
-            status_arg(),
-            rows,
-            h,
-        );
-        state_product::launch_unchecked(
-            client,
-            grid(h * 16384),
-            dim,
-            f(o[12], h * 8192),
-            f(o[14], h * 8192),
-            f(i[5], h * 16384),
-            f(o[13], h),
-            f(o[17], h * 16384),
-            status_arg(),
-            h,
-        );
+        if let Some(products) = &mut products {
+            products(product(64, 128, 128, false, false), [i[5], o[10], o[14]])?;
+            products(product(64, 128, 128, false, false), [i[5], o[11], o[15]])?;
+            prior_epilogue::launch_unchecked(
+                client,
+                grid(h * 8192),
+                dim,
+                f(o[9], h * 8192),
+                f(o[14], h * 8192),
+                f(o[15], h * 8192),
+                status_arg(),
+            );
+            count += 2;
+        } else {
+            prior_products::launch_unchecked(
+                client,
+                grid(h * 8192),
+                dim,
+                f(o[10], h * 8192),
+                f(o[11], h * 8192),
+                f(i[5], h * 16384),
+                f(o[9], h * 8192),
+                f(o[14], h * 8192),
+                f(o[15], h * 8192),
+                status_arg(),
+                h,
+            );
+        }
+        if let Some(products) = &mut products {
+            products(product(64, 128, 64, false, false), [o[14], o[7], o[16]])?;
+            core_epilogue::launch_unchecked(
+                client,
+                grid(h * 8192),
+                dim,
+                f(o[15], h * 8192),
+                f(o[16], h * 8192),
+                f(o[18], g.rows * h * 128),
+                status_arg(),
+                rows,
+                h,
+            );
+            count += 1;
+        } else {
+            core_product::launch_unchecked(
+                client,
+                grid(h * 8192),
+                dim,
+                f(o[7], h * 4096),
+                f(o[14], h * 8192),
+                f(o[15], h * 8192),
+                f(o[16], h * 8192),
+                f(o[18], g.rows * h * 128),
+                status_arg(),
+                rows,
+                h,
+            );
+        }
+        if let Some(products) = &mut products {
+            products(product(128, 128, 64, true, false), [o[14], o[12], o[17]])?;
+            state_epilogue::launch_unchecked(
+                client,
+                grid(h * 16384),
+                dim,
+                f(i[5], h * 16384),
+                f(o[13], h),
+                f(o[17], h * 16384),
+                status_arg(),
+            );
+            count += 1;
+        } else {
+            state_product::launch_unchecked(
+                client,
+                grid(h * 16384),
+                dim,
+                f(o[12], h * 8192),
+                f(o[14], h * 8192),
+                f(i[5], h * 16384),
+                f(o[13], h),
+                f(o[17], h * 16384),
+                status_arg(),
+                h,
+            );
+        }
     }
-    Ok(10)
+    Ok(count)
 }

@@ -295,16 +295,43 @@ impl Cold {
                     .map(|(i, n)| self.s(layout::CHUNK_SCRATCH.start + i, n))
                     .collect::<Result<Vec<_>>>()?;
                 let rare = self.table(4, 128 * 8)?;
-                count += 1 + crate::source_gdn::chunk::execution::launch(
+                let inputs = [&q, &k, &v, &beta, &decay_log, prior];
+                let outputs = std::array::from_fn(|i| &out[i]);
+                let temp = [&temp[0], &temp[1]];
+                let products = self.rocblas_workspace.as_ref().map(|workspace| {
+                    move |p: crate::source_gdn::chunk::execution::Product, buffers: [&Handle; 3]| {
+                        let op = cubecl::hip::RocBlasGemm::f32_batched(
+                            p.m,
+                            p.n,
+                            p.k,
+                            p.batches,
+                            p.transpose_left,
+                            p.transpose_right,
+                        )
+                        .map_err(|e| Error::State(format!("native GDN product: {e}")))?;
+                        self.native.enqueue_rocblas(
+                            &self.service,
+                            op,
+                            [
+                                buffers[0].clone(),
+                                buffers[1].clone(),
+                                buffers[2].clone(),
+                                workspace.handle(),
+                            ],
+                        )
+                    }
+                });
+                count += 1 + crate::source_gdn::chunk::execution::launch_with_products(
                     client,
                     g,
                     self.guarded_triangular,
-                    [&q, &k, &v, &beta, &decay_log, prior],
-                    std::array::from_fn(|i| &out[i]),
-                    [&temp[0], &temp[1]],
+                    inputs,
+                    outputs,
+                    temp,
                     &normal,
                     &rare,
                     &status,
+                    products,
                 )?;
             }
             InvocationPhase::Decode => {

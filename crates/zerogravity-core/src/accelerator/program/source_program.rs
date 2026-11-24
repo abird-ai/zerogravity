@@ -410,6 +410,8 @@ pub enum GdnContract {
     // Prior arithmetic name: Vllm031CudaSm86L2SiluBf16V1.
     ReferenceCudaSm86L2SiluBf16V1,
     TorchCpuAvx2L2SiluBf16V1,
+    /// Native batched F32 chunk products; original L2, solve and gate.
+    HipRocBlasF32ChunkV1,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SourceGdnGeometry {
@@ -885,6 +887,7 @@ impl SourceOperator {
             }
             GatedDelta { geometry, .. } => {
                 let expected = match self.numerical_contract() {
+                    NumericalContract::HipRocBlasBf16MixedV1 => GdnContract::HipRocBlasF32ChunkV1,
                     contract if contract.uses_torch_mixed_operators() => {
                         GdnContract::TorchCpuAvx2L2SiluBf16V1
                     }

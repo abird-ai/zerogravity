@@ -7,36 +7,71 @@ use std::ffi::{c_int, c_void};
 
 pub const ROCBLAS_WORKSPACE_BYTES: usize = 64 * 1024 * 1024;
 
-/// Row-major X[requests,K] times W[rows,K]^T; packed BF16 inputs and output,
-/// FP32 accumulation. Geometry is data, not a model-specific recipe.
+/// Row-major dense matrix product. The backend performs the transposed
+/// column-major operation without copying either input.
 #[derive(Clone, Copy, Debug)]
 pub struct RocBlasGemm {
-    rows: i32,
-    columns: i32,
-    requests: i32,
+    rows: i32,     // output columns
+    columns: i32,  // inner
+    requests: i32, // output rows
+    batches: i32,
+    transpose_left: bool,
+    transpose_right: bool,
+    bf16: bool,
 }
 impl RocBlasGemm {
+    fn dim(n: usize) -> Result<i32, ServerError> {
+        i32::try_from(n)
+            .ok()
+            .filter(|&n| n > 0)
+            .ok_or_else(|| failure("rocBLAS positive i32 matrix geometry"))
+    }
+    /// BF16 X[requests,K] * W[rows,K]^T, with packed BF16 output.
     pub fn new(rows: usize, columns: usize, requests: usize) -> Result<Self, ServerError> {
-        let dim = |n| {
-            i32::try_from(n)
-                .ok()
-                .filter(|&n| n > 0)
-                .ok_or_else(|| failure("rocBLAS positive i32 matrix geometry"))
-        };
         let op = Self {
-            rows: dim(rows)?,
-            columns: dim(columns)?,
-            requests: dim(requests)?,
+            rows: Self::dim(rows)?,
+            columns: Self::dim(columns)?,
+            requests: Self::dim(requests)?,
+            batches: 1,
+            transpose_left: false,
+            transpose_right: true,
+            bf16: true,
         };
         op.extents()?;
         Ok(op)
     }
+    /// Contiguous independent row-major F32 products, no broadcast or padding.
+    pub fn f32_batched(
+        m: usize,
+        n: usize,
+        k: usize,
+        batches: usize,
+        transpose_left: bool,
+        transpose_right: bool,
+    ) -> Result<Self, ServerError> {
+        let op = Self {
+            rows: Self::dim(n)?,
+            columns: Self::dim(k)?,
+            requests: Self::dim(m)?,
+            batches: Self::dim(batches)?,
+            transpose_left,
+            transpose_right,
+            bf16: false,
+        };
+        op.extents()?;
+        Ok(op)
+    }
+    pub(crate) fn element_bytes(self) -> usize {
+        if self.bf16 { 2 } else { 4 }
+    }
+    /// Binding order: right, left, output, workspace.
     pub fn extents(self) -> Result<[usize; 4], ServerError> {
         let extent = |a: i32, b: i32| {
             (a as usize)
                 .checked_mul(b as usize)
-                .and_then(|n| n.checked_mul(2))
-                .ok_or_else(|| failure("rocBLAS BF16 extent"))
+                .and_then(|n| n.checked_mul(self.batches as usize))
+                .and_then(|n| n.checked_mul(self.element_bytes()))
+                .ok_or_else(|| failure("rocBLAS matrix extent"))
         };
         Ok([
             extent(self.rows, self.columns)?,
@@ -79,12 +114,34 @@ type Gemm = unsafe extern "C" fn(
     u32,
 ) -> c_int;
 
+type SgemmBatched = unsafe extern "C" fn(
+    *mut c_void,
+    c_int,
+    c_int,
+    c_int,
+    c_int,
+    c_int,
+    *const f32,
+    *const f32,
+    c_int,
+    i64,
+    *const f32,
+    c_int,
+    i64,
+    *const f32,
+    *mut f32,
+    c_int,
+    i64,
+    c_int,
+) -> c_int;
+
 #[derive(Clone, Copy)]
 pub(crate) struct Api {
     destroy: Destroy,
     stream: SetStream,
     workspace: SetWorkspace,
     gemm: Gemm,
+    sgemm_batched: SgemmBatched,
 }
 fn checked(status: c_int, name: &'static str) -> Result<(), ServerError> {
     if status == 0 {
@@ -126,6 +183,7 @@ impl Provider {
                 stream: symbol(&library, b"rocblas_set_stream\0")?,
                 workspace: symbol(&library, b"rocblas_set_workspace\0")?,
                 gemm: symbol(&library, b"rocblas_gemm_ex\0")?,
+                sgemm_batched: symbol(&library, b"rocblas_sgemm_strided_batched\0")?,
             };
             let create = symbol(&library, b"rocblas_create_handle\0")?;
             let pointer_mode = symbol(&library, b"rocblas_set_pointer_mode\0")?;
@@ -195,35 +253,72 @@ impl Api {
                 (self.workspace)(handle, workspace, ROCBLAS_WORKSPACE_BYTES),
                 "original workspace",
             )?;
-            checked(
-                (self.gemm)(
-                    handle,
-                    112,
-                    111,
-                    op.rows,
-                    op.requests,
-                    op.columns,
-                    (&alpha as *const f32).cast(),
-                    weights,
-                    168,
-                    op.columns,
-                    input,
-                    168,
-                    op.columns,
-                    (&beta as *const f32).cast(),
-                    output,
-                    168,
-                    op.rows,
-                    output,
-                    168,
-                    op.rows,
-                    151,
-                    0,
-                    0,
-                    0,
-                ),
-                "gemm_ex",
-            )
+            if op.bf16 {
+                checked(
+                    (self.gemm)(
+                        handle,
+                        112,
+                        111,
+                        op.rows,
+                        op.requests,
+                        op.columns,
+                        (&alpha as *const f32).cast(),
+                        weights,
+                        168,
+                        op.columns,
+                        input,
+                        168,
+                        op.columns,
+                        (&beta as *const f32).cast(),
+                        output,
+                        168,
+                        op.rows,
+                        output,
+                        168,
+                        op.rows,
+                        151,
+                        0,
+                        0,
+                        0,
+                    ),
+                    "gemm_ex",
+                )
+            } else {
+                let trans = |yes| if yes { 112 } else { 111 };
+                let lda = if op.transpose_right {
+                    op.columns
+                } else {
+                    op.rows
+                };
+                let ldb = if op.transpose_left {
+                    op.requests
+                } else {
+                    op.columns
+                };
+                checked(
+                    (self.sgemm_batched)(
+                        handle,
+                        trans(op.transpose_right),
+                        trans(op.transpose_left),
+                        op.rows,
+                        op.requests,
+                        op.columns,
+                        &alpha,
+                        weights.cast(),
+                        lda,
+                        i64::from(op.rows) * i64::from(op.columns),
+                        input.cast(),
+                        ldb,
+                        i64::from(op.requests) * i64::from(op.columns),
+                        &beta,
+                        output.cast(),
+                        op.rows,
+                        i64::from(op.requests) * i64::from(op.rows),
+                        op.batches,
+                    ),
+                    "sgemm_strided_batched",
+                )
+            }
         }
     }
 }

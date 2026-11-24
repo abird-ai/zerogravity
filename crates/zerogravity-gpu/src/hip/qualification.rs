@@ -561,7 +561,82 @@ async fn run(unknown: bool, sealed_miss: bool, rocblas: bool) -> Result<()> {
             eprintln!(
                 "ROCBLAS_OWNED cycle={cycle} rows={rows} columns={columns} requests={requests} time_ms={time:.6}"
             );
-            drop((result, w, x, y, scratch));
+            drop((result, w, x, y));
+            if cycle == 0 {
+                // One nonsquare batched fixture covers the three GDN product layouts.
+                let (m, n, k, batches) = (7, 11, 13, 3);
+                let a = (0..m * k * batches)
+                    .map(|i| ((i * 7 + 3) % 19) as f32 - 9.)
+                    .collect::<Vec<_>>();
+                let b = (0..k * n * batches)
+                    .map(|i| ((i * 11 + 5) % 23) as f32 - 11.)
+                    .collect::<Vec<_>>();
+                let bytes = |v: &[f32]| v.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<_>>();
+                let mut init = service.begin_initialization(0)?;
+                init.retain_completion_owner(native.clone())?;
+                let left = init.upload_bytes(&bytes(&a), BufferRole::Activation)?;
+                let right = init.upload_bytes(&bytes(&b), BufferRole::ImmutableWeights)?;
+                drop(init.complete_sync().await?);
+                for (tl, tr) in [(false, false), (false, true), (true, false)] {
+                    let op = cubecl::hip::RocBlasGemm::f32_batched(m, n, k, batches, tl, tr)
+                        .map_err(|e| Error::State(e.to_string()))?;
+                    let [_, _, yb, _] = op.extents().map_err(|e| Error::State(e.to_string()))?;
+                    let y = service.allocate_uninitialized(yb, BufferRole::Output)?;
+                    let mut flight = service.submit(
+                        0,
+                        &[
+                            (left.clone(), DeviceAccess::Read),
+                            (right.clone(), DeviceAccess::Read),
+                            (y.clone(), DeviceAccess::Write),
+                            (scratch.clone(), DeviceAccess::Write),
+                        ],
+                    )?;
+                    flight.retain_completion_owner(native.clone())?;
+                    // SAFETY: same original flight and explicitly leased workspace.
+                    unsafe {
+                        native.enqueue_rocblas(
+                            service.client(),
+                            op,
+                            [right.handle(), left.handle(), y.handle(), scratch.handle()],
+                        )
+                    }
+                    .map_err(|e| Error::State(format!("batched rocBLAS: {e}")))?;
+                    drop(
+                        flight
+                            .complete_with_readback(
+                                &[y.clone(), scratch.clone()],
+                                &[y.readback(0, yb)?],
+                                |raw| {
+                                    for (i, word) in raw[0].chunks_exact(4).enumerate() {
+                                        let (batch, row, col) = (i / (m * n), i / n % m, i % n);
+                                        let want = (0..k)
+                                            .map(|j| {
+                                                a[batch * m * k
+                                                    + if tl { j * m + row } else { row * k + j }]
+                                                    * b[batch * k * n
+                                                        + if tr {
+                                                            col * k + j
+                                                        } else {
+                                                            j * n + col
+                                                        }]
+                                            })
+                                            .sum::<f32>();
+                                        let got = f32::from_le_bytes(word.try_into().unwrap());
+                                        if got != want {
+                                            return Err(Error::State(format!(
+                                                "batched rocBLAS {tl}/{tr} {i}: {got} != {want}"
+                                            )));
+                                        }
+                                    }
+                                    Ok(())
+                                },
+                            )
+                            .await?,
+                    );
+                }
+                eprintln!("ROCBLAS_F32_BATCHED layouts=NN,NT,TN batches={batches} exact=true");
+            }
+            drop(scratch);
         }
         native
             .retire()

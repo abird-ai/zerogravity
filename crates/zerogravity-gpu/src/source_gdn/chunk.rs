@@ -483,3 +483,90 @@ pub(crate) fn state_product(
         }
     }
 }
+
+// Dense products may be supplied by the native matrix provider. These
+// epilogues preserve the original pointwise math and private state layout.
+#[cube(launch_unchecked)]
+pub(crate) fn gram_epilogue(
+    system: &mut [f32],
+    attention: &mut [f32],
+    decay: &[f32],
+    status: &[Atomic<u32>],
+) {
+    let at = ABSOLUTE_POS;
+    if at < system.len() {
+        let a = mul(add(0.0f32, system[at]), decay[at]);
+        let b = mul(add(0.0f32, attention[at]), decay[at]);
+        system[at] = a;
+        attention[at] = b;
+        if !finite(a) || !finite(b) {
+            status[0].fetch_or(NONFINITE_VALUE);
+        }
+    }
+}
+
+#[cube(launch_unchecked)]
+pub(crate) fn prior_epilogue(
+    values: &[f32],
+    correction: &mut [f32],
+    inter: &mut [f32],
+    status: &[Atomic<u32>],
+) {
+    let at = ABSOLUTE_POS;
+    if at < correction.len() {
+        let a = sub(values[at], add(0.0f32, correction[at]));
+        let b = add(0.0f32, inter[at]);
+        correction[at] = a;
+        inter[at] = b;
+        if !finite(a) || !finite(b) {
+            status[0].fetch_or(NONFINITE_VALUE);
+        }
+    }
+}
+
+#[cube(launch_unchecked)]
+pub(crate) fn core_epilogue(
+    inter: &[f32],
+    core: &mut [f32],
+    output: &mut [f32],
+    status: &[Atomic<u32>],
+    rows: u32,
+    #[comptime] heads: usize,
+) {
+    let at = ABSOLUTE_POS;
+    if at < heads * 8192usize {
+        let h = at / 8192usize;
+        let row = (at / 128usize) % 64usize;
+        let col = at % 128usize;
+        let y = add(inter[at], add(0.0f32, core[at]));
+        core[at] = y;
+        if row < usize::cast_from(rows) {
+            let out = bf16(y);
+            output[(row * heads + h) * 128usize + col] = out;
+            if !finite(out) {
+                status[0].fetch_or(NONFINITE_VALUE);
+            }
+        }
+        if !finite(y) {
+            status[0].fetch_or(NONFINITE_VALUE);
+        }
+    }
+}
+
+#[cube(launch_unchecked)]
+pub(crate) fn state_epilogue(
+    prior: &[f32],
+    chunk_decay: &[f32],
+    output: &mut [f32],
+    status: &[Atomic<u32>],
+) {
+    let at = ABSOLUTE_POS;
+    if at < output.len() {
+        let h = at / 16384usize;
+        let y = add(mul(prior[at], chunk_decay[h]), add(0.0f32, output[at]));
+        output[at] = y;
+        if !finite(y) {
+            status[0].fetch_or(NONFINITE_VALUE);
+        }
+    }
+}

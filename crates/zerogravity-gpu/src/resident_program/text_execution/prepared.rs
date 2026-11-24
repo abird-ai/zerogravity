@@ -319,10 +319,12 @@ pub(super) fn kernels(
                     == zerogravity_core::encoding::StoredTensorEncoding::Scalar(
                         zerogravity_core::encoding::ScalarDType::Bf16,
                     );
-                out.extend(crate::source_gdn::chunk::prepared::kernels(
+                out.extend(crate::source_gdn::chunk::prepared::kernels_with_products(
                     client,
                     vh,
                     guarded_triangular,
+                    l.plan.numerical_profile()
+                        == zerogravity_core::numerics::NumericalProfile::HipRocBlasBf16MixedV1,
                 )?);
                 out.extend(crate::source_rms::prepared::kernels(
                     client,

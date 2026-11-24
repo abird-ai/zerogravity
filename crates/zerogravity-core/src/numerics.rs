@@ -62,12 +62,12 @@ pub enum NumericalContract {
     GgmlF32V1,
     GgmlQ4Repack8x8F32V1,
     OpenBlas033Zen16Q8F32V1,
-    /// Original mixed source operators with native BF16 GEMM/FP32 accumulation.
+    /// Mixed source layout, native BF16 projection and batched F32 GDN products.
     /// Reduction differs from the CPU64 projection reference.
     HipRocBlasBf16MixedV1,
 }
 impl NumericalContract {
-    /// Same non-projection mixed source operators and state geometry.
+    /// Original mixed source roles, state geometry and standalone exp.
     pub fn uses_torch_mixed_operators(self) -> bool {
         matches!(
             self,

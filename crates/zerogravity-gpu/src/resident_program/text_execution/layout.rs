@@ -237,7 +237,13 @@ impl Layout {
                     domain,
                     geometry: g,
                 } => {
-                    if g.contract != GdnContract::TorchCpuAvx2L2SiluBf16V1
+                    let expected =
+                        if plan.numerical_profile() == NumericalProfile::HipRocBlasBf16MixedV1 {
+                            GdnContract::HipRocBlasF32ChunkV1
+                        } else {
+                            GdnContract::TorchCpuAvx2L2SiluBf16V1
+                        };
+                    if g.contract != expected
                         || g.key_width != 128
                         || g.value_width != 128
                         || !(1..=16).contains(&g.key_heads)

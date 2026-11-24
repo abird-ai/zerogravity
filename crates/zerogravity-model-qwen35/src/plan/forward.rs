@@ -550,7 +550,9 @@ fn mathematical_kind(
                 key_width: 128,
                 value_width: 128,
                 epsilon: 1e-6,
-                contract: if numerical.uses_torch_mixed_operators() {
+                contract: if numerical == NumericalContract::HipRocBlasBf16MixedV1 {
+                    GdnContract::HipRocBlasF32ChunkV1
+                } else if numerical.uses_torch_mixed_operators() {
                     GdnContract::TorchCpuAvx2L2SiluBf16V1
                 } else {
                     GdnContract::ReferenceCudaSm86L2SiluBf16V1

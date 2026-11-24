@@ -8,6 +8,14 @@ pub(crate) fn kernels(
     heads: usize,
     guarded_triangular: bool,
 ) -> Result<Vec<Box<dyn CubeKernel>>> {
+    kernels_with_products(client, heads, guarded_triangular, false)
+}
+pub(crate) fn kernels_with_products(
+    client: &Client,
+    heads: usize,
+    guarded_triangular: bool,
+    native_products: bool,
+) -> Result<Vec<Box<dyn CubeKernel>>> {
     super::execution::Geometry::new(1, heads)?;
     let mut output: Vec<Box<dyn CubeKernel>> = Vec::new();
     let b = || BufferCompilationArg { inplace: None };
@@ -53,7 +61,11 @@ pub(crate) fn kernels(
         b(),
         heads
     );
-    kernel!(super::gram::Gram, b(), b(), b(), b(), b(), b(), b(), heads);
+    if native_products {
+        kernel!(super::gram_epilogue::GramEpilogue, b(), b(), b(), b());
+    } else {
+        kernel!(super::gram::Gram, b(), b(), b(), b(), b(), b(), b(), heads);
+    }
     kernel!(
         super::decay_vectors::DecayVectors,
         b(),
@@ -90,37 +102,57 @@ pub(crate) fn kernels(
             heads
         );
     }
-    kernel!(
-        super::prior_products::PriorProducts,
-        b(),
-        b(),
-        b(),
-        b(),
-        b(),
-        b(),
-        b(),
-        heads
-    );
-    kernel!(
-        super::core_product::CoreProduct,
-        b(),
-        b(),
-        b(),
-        b(),
-        b(),
-        b(),
-        (),
-        heads
-    );
-    kernel!(
-        super::state_product::StateProduct,
-        b(),
-        b(),
-        b(),
-        b(),
-        b(),
-        b(),
-        heads
-    );
+    if native_products {
+        kernel!(super::prior_epilogue::PriorEpilogue, b(), b(), b(), b());
+    } else {
+        kernel!(
+            super::prior_products::PriorProducts,
+            b(),
+            b(),
+            b(),
+            b(),
+            b(),
+            b(),
+            b(),
+            heads
+        );
+    }
+    if native_products {
+        kernel!(
+            super::core_epilogue::CoreEpilogue,
+            b(),
+            b(),
+            b(),
+            b(),
+            (),
+            heads
+        );
+    } else {
+        kernel!(
+            super::core_product::CoreProduct,
+            b(),
+            b(),
+            b(),
+            b(),
+            b(),
+            b(),
+            (),
+            heads
+        );
+    }
+    if native_products {
+        kernel!(super::state_epilogue::StateEpilogue, b(), b(), b(), b());
+    } else {
+        kernel!(
+            super::state_product::StateProduct,
+            b(),
+            b(),
+            b(),
+            b(),
+            b(),
+            b(),
+            heads
+        );
+    }
     Ok(output)
 }
