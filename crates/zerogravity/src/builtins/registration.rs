@@ -70,6 +70,28 @@ pub(crate) fn load_text(
             limits,
         ),
         #[cfg(all(feature = "model-qwen35", feature = "hip", target_os = "linux"))]
+        ModelLoadRequest::QwenHipNative {
+            aliases,
+            cache,
+            snapshot,
+            profile,
+            budget,
+        } => {
+            profile.validate_base()?;
+            profile.validate_cohort_width(profile.cohort_width)?;
+            validate_limits(1, profile.active, profile.max_pending, limits)?;
+            super::text::qwen_source::load_router(
+                aliases,
+                cache,
+                snapshot,
+                profile,
+                super::text::qwen_source::SourceBackend::Hip(
+                    budget,
+                    crate::accelerator::program::NumericalContract::HipRocBlasBf16MixedV1,
+                ),
+            )
+        }
+        #[cfg(all(feature = "model-qwen35", feature = "hip", target_os = "linux"))]
         ModelLoadRequest::QwenHipWithBudget {
             aliases,
             cache,
@@ -85,7 +107,10 @@ pub(crate) fn load_text(
                 cache,
                 snapshot,
                 profile,
-                super::text::qwen_source::SourceBackend::Hip(budget),
+                super::text::qwen_source::SourceBackend::Hip(
+                    budget,
+                    crate::accelerator::program::NumericalContract::TorchCpuAvx2Bf16MixedV1,
+                ),
             )
         }
         #[cfg(all(feature = "model-qwen35", feature = "hip", target_os = "linux"))]
@@ -103,7 +128,10 @@ pub(crate) fn load_text(
                 cache,
                 snapshot,
                 profile,
-                super::text::qwen_source::SourceBackend::Hip(Default::default()),
+                super::text::qwen_source::SourceBackend::Hip(
+                    Default::default(),
+                    crate::accelerator::program::NumericalContract::TorchCpuAvx2Bf16MixedV1,
+                ),
             )
         }
         #[cfg(feature = "serve")]

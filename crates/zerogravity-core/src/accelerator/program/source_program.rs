@@ -885,7 +885,7 @@ impl SourceOperator {
             }
             GatedDelta { geometry, .. } => {
                 let expected = match self.numerical_contract() {
-                    NumericalContract::TorchCpuAvx2Bf16MixedV1 => {
+                    contract if contract.uses_torch_mixed_operators() => {
                         GdnContract::TorchCpuAvx2L2SiluBf16V1
                     }
                     _ => GdnContract::ReferenceCudaSm86L2SiluBf16V1,
@@ -1123,7 +1123,7 @@ impl PlanBuilder {
             numerical.program_profile(),
             false,
         )?;
-        if numerical == NumericalContract::TorchCpuAvx2Bf16MixedV1 {
+        if numerical.uses_torch_mixed_operators() {
             builder.standalone_exp = Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1);
         }
         builder.source_template = Some(geometry);
@@ -1166,7 +1166,7 @@ impl PlanBuilder {
             numerical.program_profile(),
             false,
         )?;
-        if numerical == NumericalContract::TorchCpuAvx2Bf16MixedV1 {
+        if numerical.uses_torch_mixed_operators() {
             builder.standalone_exp = Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1);
         }
         builder.text_invocation = Some(invocation);
@@ -1484,7 +1484,7 @@ impl ForwardPlan {
 }
 fn matches_numerical(builder: &PlanBuilder, numerical: NumericalContract) -> bool {
     builder.profile == numerical.program_profile()
-        && (numerical != NumericalContract::TorchCpuAvx2Bf16MixedV1
+        && (!numerical.uses_torch_mixed_operators()
             || builder.standalone_exp == Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1))
 }
 

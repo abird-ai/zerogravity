@@ -88,7 +88,10 @@ impl Layout {
         if plan.text_invocation().is_some()
             || plan.frontier_delta() != 0
             || plan.is_operator_slice()
-            || plan.numerical_profile() != NumericalProfile::TorchCpuAvx2Bf16MixedV1
+            || !matches!(
+                plan.numerical_profile(),
+                NumericalProfile::TorchCpuAvx2Bf16MixedV1 | NumericalProfile::HipRocBlasBf16MixedV1
+            )
             || plan.standalone_exp_profile()
                 != Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1)
             || !(1..=32768).contains(&plan.prefix_capacity())
@@ -156,7 +159,7 @@ impl Layout {
                 ));
             };
             if d.source() != plan.source()
-                || d.numerical_contract() != NumericalContract::TorchCpuAvx2Bf16MixedV1
+                || d.numerical_contract().program_profile() != plan.numerical_profile()
                 || d.max_rows() != MAX_ROWS
                 || vocabulary != 0 && vocabulary != d.vocabulary()
             {

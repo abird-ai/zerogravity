@@ -61,7 +61,10 @@ pub(super) fn kernels(
         b(),
         ()
     );
-    for p in operands.values() {
+    for p in operands.values().filter(|_| {
+        l.plan.numerical_profile()
+            != zerogravity_core::numerics::NumericalProfile::HipRocBlasBf16MixedV1
+    }) {
         for rows in p.launch_rows() {
             if p.uses_hoisted_indices() {
                 add!(

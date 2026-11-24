@@ -81,6 +81,19 @@ impl Admission {
         }
         let metadata = source.reserve_workspace(8 * 1024 * 1024)?;
         let mut layout = layout::Layout::derive(plan)?;
+        let native_gemm = layout.plan.numerical_profile()
+            == zerogravity_core::numerics::NumericalProfile::HipRocBlasBf16MixedV1;
+        if native_gemm {
+            if native_policy != crate::hip::native::HipSourceNativePolicy::Gfx1151 {
+                return Err(Error::Unsupported(
+                    "native rocBLAS profile requires qualified gfx1151".into(),
+                ));
+            }
+            layout.preflight.workspace_bytes = layout::sum([
+                layout.preflight.workspace_bytes,
+                cubecl::hip::ROCBLAS_WORKSPACE_BYTES,
+            ])?;
+        }
         let source_weight_bytes = layout.preflight.source_bytes;
         let root_count = 2 * max_sessions + 2;
         let root_bytes = layout.preflight.prior_state_bytes;
@@ -97,6 +110,11 @@ impl Admission {
             budget.model_device_bytes(),
         )?;
         if storage == Bf16ProjectionStorage::Streamed {
+            if native_gemm {
+                return Err(Error::Unsupported(
+                    "native rocBLAS profile needs resident weight capacity".into(),
+                ));
+            }
             // Immutable source extent is unchanged. Only the original bounded
             // source-page transport is resident; its bytes are already priced.
             layout.preflight.source_bytes = 0;
@@ -248,10 +266,20 @@ impl Admission {
             ));
         }
         init.retain_completion_owner(native.clone())?;
+        let native_gemm = self.layout.plan.numerical_profile()
+            == zerogravity_core::numerics::NumericalProfile::HipRocBlasBf16MixedV1;
+        if native_gemm {
+            native.prepare_rocblas(&service)?;
+        }
         let mut pending = Vec::new();
         for operand in self.operands.values() {
             operand.require_capability(&service)?;
-            pending.push((operand.clone(), operand.upload(init, cancelled).await?));
+            pending.push((
+                operand.clone(),
+                operand
+                    .upload_with_finiteness(init, cancelled, native_gemm)
+                    .await?,
+            ));
         }
         let page = source_page::ResidentSourcePage::allocate_observed(
             self.source.clone(),
@@ -309,7 +337,16 @@ impl Admission {
         )?;
         let status = init.allocate_empty(layout::ALIGNMENT, BufferRole::Scratch)?;
         let zero = init.upload_zeroed(layout::ALIGNMENT, BufferRole::ImmutableWeights)?;
+        let rocblas_workspace = native_gemm
+            .then(|| init.allocate_empty(cubecl::hip::ROCBLAS_WORKSPACE_BYTES, BufferRole::Scratch))
+            .transpose()?;
         let mut accesses = Vec::new();
+        accesses.extend(
+            rocblas_workspace
+                .iter()
+                .cloned()
+                .map(|l| (l, DeviceAccess::Write)),
+        );
         accesses.extend(
             slots
                 .iter()
@@ -368,6 +405,7 @@ impl Admission {
             layout: self.layout,
             service,
             native,
+            rocblas_workspace,
             slots,
             scratch,
             parameters,
@@ -398,6 +436,7 @@ pub(in crate::resident_program) struct Cold {
     pub(super) layout: Arc<layout::Layout>,
     pub(super) service: Arc<ResidentService>,
     pub(super) native: Arc<crate::hip::native::PreparedSourceNative>,
+    pub(super) rocblas_workspace: Option<ResidentLease>,
     pub(super) slots: Vec<ResidentLease>,
     pub(super) scratch: Vec<ResidentLease>,
     pub(super) parameters: BTreeMap<String, ResidentLease>,

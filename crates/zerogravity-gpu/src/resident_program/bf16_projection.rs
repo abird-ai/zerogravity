@@ -185,17 +185,48 @@ impl PreparedBf16Projection {
         }
         Ok(())
     }
+    #[cfg_attr(
+        not(any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification"
+        )),
+        allow(dead_code)
+    )]
     pub(crate) async fn upload(
         &self,
         init: &mut ResidentInitialization<'_>,
         flag: Option<&AtomicBool>,
     ) -> Result<Option<PendingResidentMatrix>> {
+        self.upload_with_finiteness(init, flag, false).await
+    }
+    pub(crate) async fn upload_with_finiteness(
+        &self,
+        init: &mut ResidentInitialization<'_>,
+        flag: Option<&AtomicBool>,
+        finite: bool,
+    ) -> Result<Option<PendingResidentMatrix>> {
         match self.storage {
-            Bf16ProjectionStorage::Streamed => Ok(None),
+            Bf16ProjectionStorage::Streamed => {
+                if finite {
+                    return Err(Error::Unsupported(
+                        "native GEMM requires resident finite weights".into(),
+                    ));
+                }
+                Ok(None)
+            }
             Bf16ProjectionStorage::Resident => {
-                let pending = init
-                    .upload_bf16_matrix(self.source.clone(), self.matrix.clone(), flag)
-                    .await?;
+                let pending = if finite {
+                    init.upload_bf16_matrix_with_finiteness(
+                        self.source.clone(),
+                        self.matrix.clone(),
+                        flag,
+                        true,
+                    )
+                    .await?
+                } else {
+                    init.upload_bf16_matrix(self.source.clone(), self.matrix.clone(), flag)
+                        .await?
+                };
                 let range = self.matrix.byte_range()?;
                 if pending.lease().bytes() as u64 != range.end - range.start
                     || pending.lease().source_identity() != self.source.source_identity()
@@ -248,6 +279,111 @@ impl PreparedBf16Projection {
     ) -> Result<usize> {
         self.enqueue_rows_with_options(flight, page, b, input_rows, flag, true, false, false)
             .await
+    }
+
+    /// Native BF16/FP32 GEMM. Only the distinct native numerical profile calls
+    /// this path; exact CPU64 arithmetic remains the original consumer.
+    #[cfg(feature = "hip-source")]
+    pub(crate) fn enqueue_native_rows(
+        &self,
+        flight: &mut Flight<'_>,
+        b: Bf16ProjectionBindings<'_>,
+        input_rows: usize,
+        native: &crate::hip::native::PreparedSourceNative,
+        workspace: &ResidentLease,
+    ) -> Result<usize> {
+        let columns = self.matrix.columns();
+        let rows = self.matrix.rows();
+        let (inputs, outputs) = row_extents(input_rows, columns, rows)?;
+        if !rows.is_multiple_of(2) || !columns.is_multiple_of(2) {
+            return Err(Error::Unsupported(
+                "packed BF16 native GEMM geometry".into(),
+            ));
+        }
+        let service = b.output_lease.service();
+        let resident = self
+            .resident()
+            .ok_or_else(|| Error::State("native GEMM resident operand absent".into()))?;
+        resident.require_matrix(&self.source, service, &self.matrix)?;
+        resident.require_finite()?;
+        flight.require_accesses([
+            (resident.lease(), DeviceAccess::Read),
+            (b.input_lease, DeviceAccess::Read),
+            (b.output_lease, DeviceAccess::Write),
+            (b.packed, DeviceAccess::Write),
+            (b.accumulation, DeviceAccess::Write),
+            (b.status, DeviceAccess::Write),
+            (workspace, DeviceAccess::Write),
+        ])?;
+        require_view(b.input_lease, b.input, inputs * 4)?;
+        require_view(b.output_lease, b.output, outputs * 4)?;
+        if b.input_lease.role() != BufferRole::Activation
+            || b.output_lease.role() != BufferRole::Activation
+            || b.packed.role() != BufferRole::Scratch
+            || b.accumulation.role() != BufferRole::Scratch
+            || b.status.role() != BufferRole::Scratch
+            || workspace.role() != BufferRole::Scratch
+        {
+            return Err(Error::State("native GEMM original lease roles".into()));
+        }
+        let owners = [
+            resident.lease(),
+            b.input_lease,
+            b.output_lease,
+            b.packed,
+            b.accumulation,
+            b.status,
+            workspace,
+        ];
+        for (i, lease) in owners.iter().enumerate() {
+            let range = BufferRange::new(&lease.handle())?;
+            for peer in &owners[..i] {
+                if lease.id() == peer.id() || range.overlaps(&BufferRange::new(&peer.handle())?) {
+                    return Err(Error::State("native GEMM original leases alias".into()));
+                }
+            }
+        }
+        let packed = view(b.packed, 0, inputs * 2)?;
+        let rounded = view(b.accumulation, 0, outputs * 2)?;
+        let status = view(b.status, 0, 4)?;
+        let op = cubecl::hip::RocBlasGemm::new(rows, columns, input_rows)
+            .map_err(|e| Error::State(format!("native GEMM geometry: {e}")))?;
+        let scratch = view(workspace, 0, cubecl::hip::ROCBLAS_WORKSPACE_BYTES)?;
+        unsafe {
+            pack::launch_unchecked(
+                service.client(),
+                grid(inputs / 2),
+                threads(),
+                arg(b.input, inputs),
+                arg(&packed, inputs / 2),
+                arg(&status, 1),
+            );
+        }
+        resident.with_rows(flight, &self.source, &self.matrix, 0..rows, &mut |actual| {
+            native.enqueue_rocblas(
+                service,
+                op,
+                [
+                    actual.handle().clone(),
+                    packed.clone(),
+                    rounded.clone(),
+                    scratch.clone(),
+                ],
+            )?;
+            Ok(1)
+        })?;
+        unsafe {
+            widen::launch_unchecked(
+                service.client(),
+                grid(outputs),
+                threads(),
+                arg(&rounded, outputs / 2),
+                arg(b.output, outputs),
+                arg(&status, 1),
+                crate::program_kernels::NONFINITE_VALUE,
+            );
+        }
+        Ok(3)
     }
 
     /// Retained alternate: reuse the exact packed input produced by an earlier

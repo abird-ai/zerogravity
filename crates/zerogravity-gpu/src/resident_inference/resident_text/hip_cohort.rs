@@ -21,7 +21,7 @@ impl ResidentTextModel {
         if !matches!(self.cohort_width, 4 | 8)
             || !matches!(rows.len(), 2 | 4 | 8)
             || rows.len() > self.cohort_width
-            || self.contract != NumericalContract::TorchCpuAvx2Bf16MixedV1
+            || !self.contract.uses_torch_mixed_operators()
         {
             return Err(Error::Unsupported(
                 "source HIP cohort requires an admitted width".into(),

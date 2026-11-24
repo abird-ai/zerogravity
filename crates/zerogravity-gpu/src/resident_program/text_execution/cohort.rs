@@ -773,25 +773,23 @@ impl Cold {
                 };
                 dispatches = dispatches
                     .checked_add(
-                        operand
-                            .enqueue_rows(
-                                flight,
-                                &self.page,
-                                Bf16ProjectionBindings {
-                                    input: &input,
-                                    input_lease,
-                                    output: &destination,
-                                    output_lease: destination_lease,
-                                    packed: &buffers.packed,
-                                    accumulation: &buffers.projection[1],
-                                    flags: &buffers.projection[2],
-                                    status: &self.status,
-                                    zero: &self.zero,
-                                },
-                                count,
-                                None,
-                            )
-                            .await?,
+                        self.enqueue_projection(
+                            flight,
+                            operand,
+                            Bf16ProjectionBindings {
+                                input: &input,
+                                input_lease,
+                                output: &destination,
+                                output_lease: destination_lease,
+                                packed: &buffers.packed,
+                                accumulation: &buffers.projection[1],
+                                flags: &buffers.projection[2],
+                                status: &self.status,
+                                zero: &self.zero,
+                            },
+                            count,
+                        )
+                        .await?,
                     )
                     .ok_or_else(|| Error::Limit("text cohort projection dispatches".into()))?;
                 if !direct {

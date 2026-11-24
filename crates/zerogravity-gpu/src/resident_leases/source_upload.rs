@@ -94,6 +94,7 @@ impl PendingTiedWeight {
             self.owner.source.as_ref().clone(),
             self.owner.matrix.clone(),
             self.owner.clone(),
+            false,
         )?;
         Ok(Arc::new(TiedWeight {
             owner: self.owner,

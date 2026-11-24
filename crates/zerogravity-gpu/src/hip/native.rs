@@ -878,6 +878,35 @@ impl PreparedSourceNative {
         });
         self.prepared.source_page_actor(authority)
     }
+    #[cfg(feature = "hip-source")]
+    pub(crate) fn prepare_rocblas(&self, service: &Arc<ResidentService>) -> Result<()> {
+        self.require_live(service.client(), service.source_identity())?;
+        // The qualified original persistent context already has a 4 GiB
+        // device / 2 GiB host allowance; workspace is separately leased.
+        unsafe { self.prepared.prepare_rocblas(service.client()) }.map_err(native)
+    }
+
+    #[cfg(feature = "hip-source")]
+    pub(crate) fn enqueue_rocblas(
+        &self,
+        service: &Arc<ResidentService>,
+        op: cubecl::hip::RocBlasGemm,
+        handles: [cubecl::server::Handle; 4],
+    ) -> Result<()> {
+        if !self
+            .service
+            .upgrade()
+            .is_some_and(|owner| Arc::ptr_eq(&owner, service))
+            || self.source != service.source_identity()
+        {
+            return Err(Error::State(
+                "native GEMM original service/source differs".into(),
+            ));
+        }
+        // Caller retains exact read/write leases in the original flight.
+        unsafe { self.prepared.enqueue_rocblas(service.client(), op, handles) }.map_err(native)
+    }
+
     pub(crate) fn require_live(&self, client: &Client, source: SourceIdentity) -> Result<()> {
         if source != self.source {
             return Err(Error::State("HIP native original source differs".into()));

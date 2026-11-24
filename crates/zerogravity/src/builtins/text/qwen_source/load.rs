@@ -14,7 +14,7 @@ use zerogravity_engine::{model_instance::execution::*, router::Router};
 #[derive(Clone, Copy)]
 pub(crate) enum SourceBackend {
     #[cfg(all(feature = "model-qwen35", feature = "hip"))]
-    Hip(crate::gpu::HipSourceBudget),
+    Hip(crate::gpu::HipSourceBudget, NumericalContract),
     #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
     Cuda {
         provider_bytes: usize,
@@ -51,7 +51,7 @@ impl SourceBackend {
             }
         }
         #[cfg(all(feature = "model-qwen35", feature = "hip"))]
-        if matches!(self, Self::Hip(_)) {
+        if matches!(self, Self::Hip(..)) {
             profile.validate_base()?;
             profile.validate_cohort_width(profile.cohort_width)?;
         } else {
@@ -64,7 +64,7 @@ impl SourceBackend {
     fn contract(self) -> NumericalContract {
         match self {
             #[cfg(all(feature = "model-qwen35", feature = "hip"))]
-            Self::Hip(_) => NumericalContract::TorchCpuAvx2Bf16MixedV1,
+            Self::Hip(_, numerical) => numerical,
             #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
             Self::Cuda { .. } => NumericalContract::CudaSm86Bf16ReferenceV1,
         }
@@ -187,7 +187,7 @@ fn normalize_cuda_smart_input(
             )
         }
         #[cfg(all(feature = "model-qwen35", feature = "hip"))]
-        SourceBackend::Hip(_) => (profile, backend),
+        SourceBackend::Hip(..) => (profile, backend),
     }
 }
 
@@ -229,7 +229,7 @@ fn resolve_cuda_smart_config(
             smart_config,
         } => (provider_bytes, device_bytes, smart_config),
         #[cfg(all(feature = "model-qwen35", feature = "hip"))]
-        SourceBackend::Hip(_) => return Ok((backend, profile)),
+        SourceBackend::Hip(..) => return Ok((backend, profile)),
     };
 
     let mode = smart_config.mode;
@@ -511,8 +511,8 @@ pub(crate) fn load_router(
     // reconstruction and no alternate scheduler/publisher.
     let resident = match backend {
         #[cfg(all(feature = "model-qwen35", feature = "hip"))]
-        SourceBackend::Hip(budget) => block_on(
-            ResidentModel::load_cpu_forward_source_with_budget_and_cohort(
+        SourceBackend::Hip(budget, _) => block_on(
+            ResidentModel::load_hip_forward_source_with_budget_and_cohort(
                 Device::Hip(Default::default()),
                 source.plan.source().clone(),
                 source.clone(),

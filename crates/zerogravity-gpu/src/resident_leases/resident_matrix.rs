@@ -67,6 +67,7 @@ pub(crate) struct ResidentMatrix {
     source: VerifiedTensorSource,
     matrix: VerifiedMatrix,
     layout: Geometry,
+    finite: bool,
     // The verified uploader owns actual coverage/checkpoints and source admission.
     _upload: crate::physical_quarantine::CompletionOwner,
 }
@@ -78,6 +79,7 @@ impl ResidentMatrix {
         source: VerifiedTensorSource,
         matrix: VerifiedMatrix,
         upload: crate::physical_quarantine::CompletionOwner,
+        finite: bool,
     ) -> Result<Arc<Self>> {
         let layout = Self::authenticate(&source, &matrix)?;
         source.require_matrix_binding(&matrix)?;
@@ -87,6 +89,7 @@ impl ResidentMatrix {
             source,
             matrix: authenticated,
             layout,
+            finite,
             _upload: upload,
         });
         result.require(
@@ -112,6 +115,15 @@ impl ResidentMatrix {
             ));
         }
         Geometry::new(matrix.rows(), matrix.columns())
+    }
+    #[cfg(feature = "hip-source")]
+    pub(crate) fn require_finite(&self) -> Result<()> {
+        if !self.finite {
+            return Err(Error::State(
+                "native GEMM needs finite authenticated weight upload".into(),
+            ));
+        }
+        Ok(())
     }
     pub(crate) fn lease(&self) -> &ResidentLease {
         &self.lease

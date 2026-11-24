@@ -274,6 +274,43 @@ impl ResidentModel {
         budget: crate::hip::native::HipSourceBudget,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<ResidentTextModel>> {
+        if plan.numerical_profile()
+            != zerogravity_core::numerics::NumericalProfile::TorchCpuAvx2Bf16MixedV1
+        {
+            return Err(Error::Unsupported(
+                "exact CPU-source HIP profile required".into(),
+            ));
+        }
+        Self::load_hip_forward_source_with_budget_and_cohort(
+            device,
+            source,
+            source_owner,
+            plan,
+            max_sessions,
+            cohort_width,
+            budget,
+            cancelled,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn load_hip_forward_source_with_budget_and_cohort(
+        device: Device,
+        source: VerifiedTensorSource,
+        source_owner: Arc<dyn std::any::Any + Send + Sync>,
+        plan: Arc<ForwardPlan>,
+        max_sessions: usize,
+        cohort_width: usize,
+        budget: crate::hip::native::HipSourceBudget,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<Arc<ResidentTextModel>> {
+        use zerogravity_core::numerics::NumericalProfile;
+        let contract = match plan.numerical_profile() {
+            NumericalProfile::TorchCpuAvx2Bf16MixedV1 => NumericalContract::TorchCpuAvx2Bf16MixedV1,
+            NumericalProfile::HipRocBlasBf16MixedV1 => NumericalContract::HipRocBlasBf16MixedV1,
+            _ => return Err(Error::Unsupported("resident HIP numerical profile".into())),
+        };
         if !matches!(cohort_width, 0 | 4 | 8) || cohort_width != 0 && max_sessions < cohort_width {
             return Err(Error::Limit("resident-text HIP cohort capacity".into()));
         }
@@ -328,7 +365,7 @@ impl ResidentModel {
             source,
             sessions: Arc::new(async_lock::Semaphore::new(max_sessions)),
             _control: control,
-            contract: NumericalContract::TorchCpuAvx2Bf16MixedV1,
+            contract,
             cohort_width,
             #[cfg(feature = "cuda-cublas")]
             state_policy: CudaSourceStatePolicy::Contiguous,
@@ -522,7 +559,7 @@ impl ResidentTextModel {
             return false;
         }
         #[cfg(all(feature = "hip-source", feature = "hip"))]
-        if self.contract == NumericalContract::TorchCpuAvx2Bf16MixedV1 {
+        if self.contract.uses_torch_mixed_operators() {
             // A one-token prompt tail uses singleton decode arithmetic.
             return left == right && (2..=64).contains(&left);
         }
@@ -543,7 +580,7 @@ impl ResidentTextModel {
         rows: &[(&ResidentTextSession, &BoundInvocation)],
     ) -> Result<ResidentTextCohortPreparation> {
         #[cfg(all(feature = "hip-source", feature = "hip"))]
-        if self.contract == NumericalContract::TorchCpuAvx2Bf16MixedV1 {
+        if self.contract.uses_torch_mixed_operators() {
             return self
                 .prepare_hip_cohort_admitted(rows, InvocationPhase::Prefill)
                 .await;

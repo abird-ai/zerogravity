@@ -37,6 +37,7 @@ pub enum NumericalProfile {
     AnalyticF32TextV1,
     /// Prior name: Gemma4E2bBf16TextCandidateV1. Direct gamma; no qualification.
     DirectGammaBf16TextCandidateV1,
+    HipRocBlasBf16MixedV1,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -61,8 +62,18 @@ pub enum NumericalContract {
     GgmlF32V1,
     GgmlQ4Repack8x8F32V1,
     OpenBlas033Zen16Q8F32V1,
+    /// Original mixed source operators with native BF16 GEMM/FP32 accumulation.
+    /// Reduction differs from the CPU64 projection reference.
+    HipRocBlasBf16MixedV1,
 }
 impl NumericalContract {
+    /// Same non-projection mixed source operators and state geometry.
+    pub fn uses_torch_mixed_operators(self) -> bool {
+        matches!(
+            self,
+            Self::TorchCpuAvx2Bf16MixedV1 | Self::HipRocBlasBf16MixedV1
+        )
+    }
     pub fn is_f32(self) -> bool {
         matches!(
             self,
@@ -73,6 +84,7 @@ impl NumericalContract {
         match self {
             Self::CudaSm86Bf16ReferenceV1 => NumericalProfile::CudaSm86Bf16ReferenceV1,
             Self::TorchCpuAvx2Bf16MixedV1 => NumericalProfile::TorchCpuAvx2Bf16MixedV1,
+            Self::HipRocBlasBf16MixedV1 => NumericalProfile::HipRocBlasBf16MixedV1,
             Self::GgmlF32V1 | Self::GgmlQ4Repack8x8F32V1 | Self::OpenBlas033Zen16Q8F32V1 => {
                 NumericalProfile::GgufReferenceV1
             }

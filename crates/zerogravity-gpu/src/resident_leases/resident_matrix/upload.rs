@@ -41,6 +41,7 @@ pub(in crate::resident_leases) struct UploadOwner {
     progress: Mutex<Progress>,
     lease: ResidentLease,
     matrix: Bf16MatrixSource,
+    finite: bool,
     _control: WindowWorkspace,
 }
 impl UploadOwner {
@@ -94,7 +95,8 @@ impl PendingResidentMatrix {
             self.owner.lease.clone(),
             self.owner.matrix.source().clone(),
             self.owner.matrix.matrix().clone(),
-            self.owner,
+            self.owner.clone(),
+            self.owner.finite,
         )
     }
 }
@@ -111,11 +113,22 @@ impl ResidentInitialization<'_> {
         matrix: VerifiedMatrix,
         cancelled: Option<&AtomicBool>,
     ) -> Result<PendingResidentMatrix> {
+        self.upload_bf16_matrix_with_finiteness(source, matrix, cancelled, false)
+            .await
+    }
+    pub(crate) async fn upload_bf16_matrix_with_finiteness(
+        &mut self,
+        source: VerifiedTensorSource,
+        matrix: VerifiedMatrix,
+        cancelled: Option<&AtomicBool>,
+        finite: bool,
+    ) -> Result<PendingResidentMatrix> {
         match self
             .upload_bf16_matrix_inner(
                 source,
                 matrix,
                 cancelled,
+                finite,
                 #[cfg(feature = "qualification")]
                 Cut::Never,
             )
@@ -134,7 +147,7 @@ impl ResidentInitialization<'_> {
         cancelled: Option<&AtomicBool>,
         cut: Cut,
     ) -> Result<Attempt> {
-        self.upload_bf16_matrix_inner(source, matrix, cancelled, cut)
+        self.upload_bf16_matrix_inner(source, matrix, cancelled, false, cut)
             .await
     }
     async fn upload_bf16_matrix_inner(
@@ -142,6 +155,7 @@ impl ResidentInitialization<'_> {
         source: VerifiedTensorSource,
         matrix: VerifiedMatrix,
         cancelled: Option<&AtomicBool>,
+        finite: bool,
         #[cfg(feature = "qualification")] cut: Cut,
     ) -> Result<Attempt> {
         not_cancelled(cancelled)?;
@@ -165,6 +179,7 @@ impl ResidentInitialization<'_> {
             }),
             lease,
             matrix,
+            finite,
             _control: control,
         });
         self.retain_completion_owner(owner.clone())?;
@@ -182,6 +197,14 @@ impl ResidentInitialization<'_> {
             };
             let window = owner.matrix.read_region(region, cancelled)?;
             owner.matrix.require_window(&window, region)?;
+            if finite
+                && window
+                    .as_slice()
+                    .chunks_exact(2)
+                    .any(|word| u16::from_le_bytes([word[0], word[1]]) & 0x7f80 == 0x7f80)
+            {
+                return Err(Error::State("nonfinite BF16 native GEMM source".into()));
+            }
             // TensorWindow already owns its exact source staging. This separate
             // ticket prices Bytes plus the runtime pinned/fallback bounce.
             let staging = owner.matrix.source().reserve_workspace(2 * region.bytes)?;

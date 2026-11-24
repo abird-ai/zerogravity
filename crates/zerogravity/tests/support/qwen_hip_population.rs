@@ -108,7 +108,9 @@ impl Harness {
         };
         let aliases = vec!["source".into(), "alias".into()];
         let cache = CacheOptions::new(None, 96 * 1024 * 1024 * 1024);
-        let request = if let Some(budget) = explicit {
+        let request = if std::env::var_os("ZG_QWEN_HIP_NATIVE_GEMM").is_some() {
+            ModelLoadRequest::qwen_hip_native(aliases, cache, snapshot.into(), profile, budget)
+        } else if let Some(budget) = explicit {
             ModelLoadRequest::QwenHipWithBudget {
                 aliases,
                 cache,
@@ -373,8 +375,12 @@ fn public_source_population_benchmark() {
             let mut sessions = BTreeSet::new();
             let mut outputs = Vec::with_capacity(clients);
             for events in requests {
-                let output =
-                    complete_with_fused(events, 47, h.tokenizer.as_ref(), cohort_width != 0);
+                let output = complete_with_fused(
+                    events,
+                    47,
+                    h.tokenizer.as_ref(),
+                    cohort_width != 0 && clients > 1,
+                );
                 assert!(sessions.insert(output.roots[0].producer_root.unwrap().session_id));
                 outputs.push(output.ids);
             }
@@ -390,7 +396,7 @@ fn public_source_population_benchmark() {
             let admission = h.admission();
             assert_eq!(admission["failed_gpu_quanta"], 0);
             assert_eq!(admission["queued_requests"], 0);
-            if cohort_width == 0 {
+            if cohort_width == 0 || clients == 1 {
                 assert_eq!(admission["gpu_fused_batches"], 0);
             } else {
                 assert!(admission["gpu_fused_batches"].as_u64().unwrap() > 0);

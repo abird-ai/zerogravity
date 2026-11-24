@@ -18,6 +18,21 @@ use zerogravity_core::{
 };
 
 impl Cold {
+    pub(super) async fn enqueue_projection(
+        &self,
+        flight: &mut Flight<'_>,
+        operand: &crate::resident_program::bf16_projection::PreparedBf16Projection,
+        bindings: Bf16ProjectionBindings<'_>,
+        rows: usize,
+    ) -> Result<usize> {
+        if let Some(workspace) = &self.rocblas_workspace {
+            operand.enqueue_native_rows(flight, bindings, rows, &self.native, workspace)
+        } else {
+            operand
+                .enqueue_rows(flight, &self.page, bindings, rows, None)
+                .await
+        }
+    }
     pub(super) fn value_lease(&self, id: ValueId) -> Result<&ResidentLease> {
         self.value_lease_in(&self.slots, id)
     }
@@ -344,10 +359,10 @@ impl Cold {
                         temporary = self.s(layout::PROJECT, active * m.rows)?;
                         (temporary.clone(), &self.scratch[layout::PROJECT])
                     };
-                    count += self.operands[&m.name]
-                        .enqueue_rows(
+                    count += self
+                        .enqueue_projection(
                             flight,
-                            &self.page,
+                            &self.operands[&m.name],
                             Bf16ProjectionBindings {
                                 input: &input,
                                 input_lease,
@@ -360,7 +375,6 @@ impl Cold {
                                 zero: &self.zero,
                             },
                             active,
-                            None,
                         )
                         .await?;
                     if !direct {

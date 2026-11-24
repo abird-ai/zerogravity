@@ -155,7 +155,7 @@ fn require_source_phase(
 ) -> Result<()> {
     // Original HF takes cached recurrence for every initialized single-row call.
     // Refuse a contradictory declaration; never silently rewrite the phase.
-    if numerical == NumericalContract::TorchCpuAvx2Bf16MixedV1
+    if numerical.uses_torch_mixed_operators()
         && base > 0
         && rows == 1
         && phase != InvocationPhase::Decode
@@ -550,7 +550,7 @@ fn mathematical_kind(
                 key_width: 128,
                 value_width: 128,
                 epsilon: 1e-6,
-                contract: if numerical == NumericalContract::TorchCpuAvx2Bf16MixedV1 {
+                contract: if numerical.uses_torch_mixed_operators() {
                     GdnContract::TorchCpuAvx2L2SiluBf16V1
                 } else {
                     GdnContract::ReferenceCudaSm86L2SiluBf16V1

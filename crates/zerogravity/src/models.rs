@@ -126,6 +126,15 @@ pub enum ModelLoadRequest {
         profile: QwenServingProfile,
         budget: HipSourceBudget,
     },
+    /// Native HIP BF16 projection profile; requires admitted resident weights.
+    #[cfg(all(feature = "model-qwen35", feature = "hip", target_os = "linux"))]
+    QwenHipNative {
+        aliases: Vec<String>,
+        cache: crate::cache::CacheOptions,
+        snapshot: String,
+        profile: QwenServingProfile,
+        budget: HipSourceBudget,
+    },
     /// Existing serving source profiles, including explicitly finite diagnostics.
     #[cfg(feature = "serve")]
     ServingText {
@@ -164,6 +173,24 @@ impl ModelLoadRequest {
             profile,
             provider_bytes: QWEN_CUDA_PROVIDER_BYTES,
             device_bytes: QWEN_CUDA_DEVICE_BYTES,
+        }
+    }
+
+    /// Explicit native ROCm projection route, distinct from the CPU reference.
+    #[cfg(all(feature = "model-qwen35", feature = "hip", target_os = "linux"))]
+    pub fn qwen_hip_native(
+        aliases: Vec<String>,
+        cache: crate::cache::CacheOptions,
+        snapshot: String,
+        profile: QwenServingProfile,
+        budget: HipSourceBudget,
+    ) -> Self {
+        Self::QwenHipNative {
+            aliases,
+            cache,
+            snapshot,
+            profile,
+            budget,
         }
     }
 
