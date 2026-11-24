@@ -19,7 +19,7 @@ use crate::{
     resident_program::{
         DeviceBuffer, ResidentBufferLayout, ResidentOutput, ResidentPhysicalType,
         ResidentSubmission as ProgramSubmission, StateBinding, StateBindingMode, StateBuffers,
-        StateLayout, StateRequirement, cohort_rows::CohortRowSpans,
+        StateLayout, cohort_rows::CohortRowSpans,
     },
 };
 use cubecl::{bytes::Bytes, server::Handle};
@@ -410,13 +410,8 @@ impl CudaForwardBody {
                     "CUDA forward state slot/frontier differs".into(),
                 ));
             }
-            let prior = self.state_leases(&binding.prior, requirement)?;
-            let candidate = self.state_leases(&binding.candidate, requirement)?;
-            if prior.len() != candidate.len() {
-                return Err(Error::State(
-                    "CUDA forward state prior/candidate plane count differs".into(),
-                ));
-            }
+            let prior = binding.prior.original_leases(requirement)?;
+            let candidate = binding.candidate.original_leases(requirement)?;
             let validate = |lease: &ResidentLease| {
                 Arc::ptr_eq(lease.service(), self.cold().service())
                     && lease.source_identity() == self.cold().plan().source()
@@ -427,8 +422,7 @@ impl CudaForwardBody {
             if binding.mode == StateBindingMode::KvInPlace {
                 require_in_place_kv_alias(binding)?;
                 if !matches!(requirement.layout, StateLayout::Kv { .. })
-                    || prior.len() != 2
-                    || prior.iter().any(|lease| {
+                    || prior.clone().any(|lease| {
                         !validate(lease) || lease.is_initialized() || !seen.insert(lease.id())
                     })
                 {
@@ -437,14 +431,14 @@ impl CudaForwardBody {
                     ));
                 }
             } else {
-                for lease in prior.iter().chain(&candidate) {
+                for lease in prior.clone().chain(candidate) {
                     if !validate(lease) || !seen.insert(lease.id()) {
                         return Err(Error::State(
                             "CUDA forward state physical owner aliases/differs".into(),
                         ));
                     }
                 }
-                if prior.iter().any(|lease| !lease.is_initialized()) {
+                if prior.clone().any(|lease| !lease.is_initialized()) {
                     return Err(Error::State(
                         "CUDA forward prior state is not physically initialized".into(),
                     ));
@@ -453,28 +447,6 @@ impl CudaForwardBody {
             map.insert(binding.slot, binding);
         }
         Ok(map)
-    }
-
-    fn state_leases<'a>(
-        &self,
-        buffers: &'a StateBuffers,
-        requirement: &StateRequirement,
-    ) -> Result<Vec<&'a ResidentLease>> {
-        let (planes, physical) = requirement.plane_layout()?;
-        match (&requirement.layout, buffers) {
-            (StateLayout::Vector { .. }, StateBuffers::Vector(value)) if planes == 1 => {
-                value.require_layout(physical)?;
-                Ok(vec![value.original_lease()?])
-            }
-            (StateLayout::Kv { .. }, StateBuffers::Kv { keys, values }) if planes == 2 => {
-                keys.require_layout(physical)?;
-                values.require_layout(physical)?;
-                Ok(vec![keys.original_lease()?, values.original_lease()?])
-            }
-            _ => Err(Error::State(
-                "CUDA forward typed state buffer/layout differs".into(),
-            )),
-        }
     }
 
     pub(super) fn clear_and_bind_call(

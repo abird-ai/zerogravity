@@ -2,7 +2,7 @@
 //! Model topology and source issuers remain in the original ForwardPlan.
 use super::{
     ForwardPlan, PlanOperation, ResidentBufferLayout, ResidentPhysicalType, ResidentPreflight,
-    StateLayout, StateRequirement, StateSlot,
+    StateRequirement, StateSlot,
 };
 use std::{collections::BTreeMap, sync::Arc};
 use zerogravity_core::{Error, Result};

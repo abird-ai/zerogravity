@@ -2,8 +2,8 @@
 use super::*;
 use zerogravity_core::accelerator::program::{
     GdnContract, NumericalProfile, SourceAttentionMask, SourceGamma, SourceOperatorKind,
-    SourceParameter, SourceRowSelection, SourceStateAccess, SourceTensor, StandaloneExpProfile,
-    ValueStorageBinding, ValueStorageLimits, ValueStorageRetention, ValueStorageReusePolicy,
+    SourceParameter, SourceRowSelection, SourceTensor, StandaloneExpProfile, ValueStorageBinding,
+    ValueStorageLimits, ValueStorageRetention, ValueStorageReusePolicy,
 };
 use zerogravity_core::encoding::{ScalarDType, StoredTensorEncoding};
 
@@ -57,15 +57,7 @@ pub(super) fn sum(values: impl IntoIterator<Item = usize>) -> Result<usize> {
             .ok_or_else(|| Error::Limit("text-execution owner byte sum".into()))
     })
 }
-fn f32_vector(slot: StateSlot, elements: usize) -> Result<StateRequirement> {
-    let layout = ResidentBufferLayout::new(ResidentPhysicalType::F32, elements)?;
-    Ok(StateRequirement {
-        slot,
-        layout: StateLayout::Vector { elements },
-        physical: ResidentPhysicalType::F32,
-        bytes: layout.bytes()?,
-    })
-}
+
 fn insert<T: PartialEq + Clone>(
     map: &mut BTreeMap<String, T>,
     name: &str,
@@ -142,7 +134,6 @@ impl Layout {
         let bindings = storage.bindings().to_vec();
         let mut matrices = BTreeMap::new();
         let mut parameters = BTreeMap::new();
-        let mut states = BTreeMap::new();
         let mut max_columns = 0;
         let mut max_matrix_rows = 0;
         let mut project = 0;
@@ -194,11 +185,10 @@ impl Layout {
                 }
                 insert(&mut parameters, &p.name, p)?;
             }
-            let state = match d.kind() {
-                SourceOperatorKind::EmbeddingRows => None,
+            match d.kind() {
+                SourceOperatorKind::EmbeddingRows => {}
                 SourceOperatorKind::Projection { selected_row: None } => {
                     project = project.max(d.output_elements()?.into_iter().max().unwrap_or(0));
-                    None
                 }
                 SourceOperatorKind::Rms(g) | SourceOperatorKind::ResidualRms(g) => {
                     if g.width == 0
@@ -212,12 +202,8 @@ impl Layout {
                         ));
                     }
                     rms = rms.max(g.width);
-                    None
                 }
-                SourceOperatorKind::CausalConvSplit {
-                    domain,
-                    geometry: g,
-                } => {
+                SourceOperatorKind::CausalConvSplit { geometry: g, .. } => {
                     if g.kernel != 4
                         || g.qkv_channels == 0
                         || g.qkv_channels > 10240
@@ -233,12 +219,8 @@ impl Layout {
                         ));
                     }
                     channels = channels.max(g.qkv_channels);
-                    Some(f32_vector(StateSlot::Conv(domain), g.qkv_channels * 4)?)
                 }
-                SourceOperatorKind::GatedDelta {
-                    domain,
-                    geometry: g,
-                } => {
+                SourceOperatorKind::GatedDelta { geometry: g, .. } => {
                     let expected = GdnContract::for_numerical(d.numerical_contract());
                     if g.contract != expected
                         || g.key_width != 128
@@ -255,10 +237,6 @@ impl Layout {
                     }
                     heads = heads.max(g.value_heads);
                     rms = rms.max(g.value_heads * 128);
-                    Some(f32_vector(
-                        StateSlot::Recurrent(domain),
-                        g.value_heads * 16384,
-                    )?)
                 }
                 SourceOperatorKind::QkRmsRotaryGated(g) => {
                     crate::source_attention::rows::Geometry::new(
@@ -278,12 +256,11 @@ impl Layout {
                     qheads = qheads.max(g.attention.query_heads);
                     kvheads = kvheads.max(g.attention.kv_heads);
                     rms = rms.max(g.attention.query_heads * 256);
-                    None
                 }
                 SourceOperatorKind::KvAppend {
-                    domain,
                     key_width,
                     packed_value,
+                    ..
                 } => {
                     if key_width == 0
                         || key_width > 1024
@@ -294,16 +271,6 @@ impl Layout {
                             "text-execution original KV extent".into(),
                         ));
                     }
-                    let layout = StateLayout::Kv {
-                        slab: key_width,
-                        capacity: plan.prefix_capacity(),
-                    };
-                    Some(StateRequirement {
-                        slot: StateSlot::Kv(domain),
-                        layout,
-                        physical: ResidentPhysicalType::F32,
-                        bytes: key_width * plan.prefix_capacity() * 8,
-                    })
                 }
                 SourceOperatorKind::Attention {
                     geometry: g,
@@ -326,7 +293,6 @@ impl Layout {
                     }
                     qheads = qheads.max(g.query_heads);
                     kvheads = kvheads.max(g.kv_heads);
-                    None
                 }
                 SourceOperatorKind::Sigmoid { width }
                 | SourceOperatorKind::Multiply { width }
@@ -339,52 +305,20 @@ impl Layout {
                     if matches!(d.kind(), SourceOperatorKind::Sigmoid { .. }) {
                         sigmoid_width = sigmoid_width.max(width);
                     }
-                    None
                 }
                 _ => {
                     return Err(Error::Unsupported(
                         "text-execution kernel implementation absent".into(),
                     ));
                 }
-            };
-            if let Some(s) = state {
-                s.plane_layout()?;
-                let effect = node
-                    .state
-                    .ok_or_else(|| Error::State("text-execution state effect absent".into()))?;
-                if effect.read.slot != s.slot
-                    || effect.write.slot != s.slot
-                    || effect.read.ordinal != 0
-                    || effect.write.ordinal != 1
-                    || d.state_access() != SourceStateAccess::Write(s.slot)
-                    || states.insert(s.slot, s).is_some()
-                {
-                    return Err(Error::State(
-                        "text-execution original state effect chain".into(),
-                    ));
-                }
             }
         }
-        let mut ordered = Vec::new();
-        for (slot, version) in plan.required_domains().iter().zip(plan.proposed_domains()) {
-            if version.slot != *slot || version.ordinal != 1 {
-                return Err(Error::State(
-                    "text-execution proposed domain version".into(),
-                ));
-            }
-            ordered.push(
-                states.remove(slot).ok_or_else(|| {
-                    Error::State("text-execution missing state definition".into())
-                })?,
-            );
-        }
-        if !states.is_empty()
-            || heads == 0
-            || qheads == 0
-            || channels == 0
-            || rms == 0
-            || matrices.is_empty()
-        {
+        let ordered = plan
+            .source_state_domains()?
+            .into_iter()
+            .map(|domain| StateRequirement::from_source_domain(domain, ResidentPhysicalType::F32))
+            .collect::<Result<Vec<_>>>()?;
+        if heads == 0 || qheads == 0 || channels == 0 || rms == 0 || matrices.is_empty() {
             return Err(Error::Unsupported(
                 "text-execution incomplete source math population".into(),
             ));

@@ -20,6 +20,25 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**New source slice — stateful region effects and original-layout bridges.**
+Core derives ordered source-template state writer/read edges and exact
+logical plane geometry for native CUDA/HIP preflight. CUDA convolution
+history and mixed full-window layouts retain their distinct numerical
+contracts; recurrent precision and paired KV storage stay explicit.
+ClosedRegion exports state versions 0/1 with their original layouts;
+prepared stateful regions require explicit storage and bind the exact
+original invocation/advance attempt. Same-layout provisional handoff
+checks source/plan/order/version/storage, never grants Ready or publication.
+Native state binding shares exact original lease plane validation without
+per-domain heap allocation. Existing paged KV staging and distinct root
+publication remain unchanged. StateCarry without a declared layout,
+arbitrary observations/embedding/rotary and output-policy crossings still
+refuse as closed regions. No general standalone stateful region dispatch,
+committed-root conversion/recompute or external completion bridge.
+Assembled and physical validation pending.
+
+Prior accepted provider resource checkpoint:
+
 **Accepted source checkpoint `77e8b4ae0487a5219140727007cc316f43c01663` —
 provider requirements and original-flight binding.**
 PreparedRegion reports additional provider-local workspace/opaque device

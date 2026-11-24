@@ -234,6 +234,30 @@ their existing numeric/source/physical acceptance gates.
 - [x] Complete isolated `scripts/check.sh` passes; no new performance
   or driver-internal accounting claim.
 
+## Source state effects and original-layout bridges — 24 Nov
+
+- [x] Derive source-template state domains from the original writer/read
+  chain once in native preflight. Convolution full-window/history follows
+  the numerical profile; recurrent extent and paired KV layout come from
+  actual declared geometry. Validate complete proposal coverage, ordered
+  KV reads of provisional version 1 and matching append/attention width.
+  Move the existing StateLayout into core; native GPU API reexports it.
+- [x] ClosedRegion exposes committed inputs, provisional outputs and
+  externally produced provisional state inputs. Support bounded convolution,
+  GDN, KV append and attention; append can export only a state port.
+  PreparedRegion::with_state requires explicit dense state storage,
+  independent of activation encoding. Original-layout bridge binds one
+  original call/attempt, same source/plan, producer-before-consumer order
+  and exact version/storage. No completion/publication grant.
+- [x] Share original forward-attempt validation, including epoch/advance
+  versus replacement, across singleton/cohort and existing fragment
+  consumers. CUDA/HIP validate original typed state planes with borrowed
+  fixed-size iteration. CUDA paged KV retains the existing private staging
+  alias rule; HIP requires distinct original state. No kernel or state
+  publication changes.
+- [ ] Full isolated gate and physical native/continuation/state-bridge
+  canaries pending.
+
 ## Uncommitted
 
 ### Phase 1 — source, semantics and executable lowering
@@ -244,8 +268,11 @@ and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
 - [ ] Extend the landed original-queue resource/binding contract to
   explicit private-buffer transfers and foreign-stream/event completion
   when an actual consumer requires them; current adapters refuse both.
-  Extend closed-region stateful effect and state-bridge semantics. Keep selected shape bands
-  and typed port layouts; do not reintroduce naked scope or implicit retry. Native and captured consumers retain
+  Extend stateful regions only with actual qualified state layouts/bridges:
+  independent partial execution, committed-frontier conversion/recompute,
+  complete implicit token/position/observation coverage and arbitrary state
+  schemas remain open. Keep selected shape bands and typed ports; no naked
+  scope or implicit retry. Native and captured consumers retain
   original source/numerical/state authority. Graph-only preparation may
   lower supported native semantic regions directly, without ONNX. No
   additional IR, allocator, scheduler or compiler framework.

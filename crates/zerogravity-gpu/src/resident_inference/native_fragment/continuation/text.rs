@@ -4,18 +4,7 @@ use crate::cuda::native::text_model::TextModelBinding;
 use zerogravity_core::accelerator::program::TextInvocation;
 
 fn coordinates(base: RootBinding, attempt: &RootAttempt, call: &TextInvocation) -> Result<()> {
-    let start = call.tokens().base();
-    let rows = call.tokens().len();
-    if attempt.base() != base
-        || call.source() != base.source()
-        || base.frontier() != start as u64
-        || attempt.frontier() != (start + rows) as u64
-    {
-        return Err(Error::State(
-            "text actual current RootAttempt coordinates".into(),
-        ));
-    }
-    Ok(())
+    call.require_attempt(base, attempt)
 }
 impl GdnAttemptSchedule {
     pub(in crate::resident_inference) fn new_text(

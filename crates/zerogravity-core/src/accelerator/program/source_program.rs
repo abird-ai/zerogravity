@@ -107,6 +107,18 @@ impl TextInvocation {
     pub fn tokens(&self) -> &TokenSpan {
         &self.tokens
     }
+    pub fn require_attempt(
+        &self,
+        current: crate::session_root::RootBinding,
+        attempt: &crate::session_root::RootAttempt,
+    ) -> Result<()> {
+        attempt.require_advance(
+            current,
+            self.source(),
+            self.tokens().base() as u64,
+            self.tokens().frontier() as u64,
+        )
+    }
     pub fn phase(&self) -> InvocationPhase {
         self.phase
     }

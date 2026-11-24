@@ -4,6 +4,8 @@
 //! source reads, GPU allocations, provider creation, request binding or launch.
 
 use super::rotary;
+#[cfg(test)]
+use crate::resident_program::StateLayout;
 use crate::{
     cuda::gdn::{
         GdnKernelConfig, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel,
@@ -12,11 +14,10 @@ use crate::{
     },
     resident_leases::forward_parameter_upload::ForwardParameterStorage,
     resident_program::{
-        ResidentBufferLayout, ResidentPhysicalType, ResidentPreflight, StateLayout,
-        StateRequirement,
+        ResidentBufferLayout, ResidentPhysicalType, ResidentPreflight, StateRequirement,
     },
 };
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{
@@ -413,86 +414,20 @@ fn residual_aliases(plan: &ForwardPlan) -> Result<Vec<Option<ValueId>>> {
 }
 
 fn state_requirements(plan: &ForwardPlan) -> Result<Vec<StateRequirement>> {
-    let mut writers = BTreeMap::new();
-    for node in plan.nodes() {
-        let PlanOperation::SourceOperatorTemplate { descriptor, .. } = &node.operation else {
-            return Err(Error::Unsupported(
-                "CUDA forward state source template".into(),
-            ));
-        };
-        let state = match descriptor.kind() {
-            SourceOperatorKind::CausalConvSplit { domain, geometry } => {
-                let elements = geometry
-                    .kernel
-                    .checked_sub(1)
-                    .and_then(|history| history.checked_mul(geometry.qkv_channels))
-                    .ok_or_else(|| Error::Limit("CUDA forward convolution state extent".into()))?;
-                state_vector(StateSlot::Conv(domain), elements, ResidentPhysicalType::F32)?
-            }
-            SourceOperatorKind::GatedDelta { domain, geometry } => {
-                let elements = geometry
-                    .value_heads
-                    .checked_mul(geometry.key_width)
-                    .and_then(|n| n.checked_mul(geometry.value_width))
-                    .ok_or_else(|| Error::Limit("CUDA forward recurrent state extent".into()))?;
-                state_vector(
-                    StateSlot::Recurrent(domain),
-                    elements,
-                    ResidentPhysicalType::F32,
-                )?
-            }
-            SourceOperatorKind::KvAppend {
-                domain, key_width, ..
-            } => {
-                let elements = key_width
-                    .checked_mul(plan.prefix_capacity())
-                    .ok_or_else(|| Error::Limit("CUDA forward KV state extent".into()))?;
-                let layout = ResidentBufferLayout::new(ResidentPhysicalType::Bf16, elements)?;
-                StateRequirement {
-                    slot: StateSlot::Kv(domain),
-                    layout: StateLayout::Kv {
-                        slab: key_width,
-                        capacity: plan.prefix_capacity(),
-                    },
-                    physical: ResidentPhysicalType::Bf16,
-                    bytes: layout
-                        .bytes()?
-                        .checked_mul(2)
-                        .ok_or_else(|| Error::Limit("CUDA forward KV state bytes".into()))?,
-                }
-            }
-            _ => continue,
-        };
-        state.plane_layout()?;
-        if writers.insert(state.slot, state).is_some() {
-            return Err(Error::State(
-                "CUDA forward state has multiple writers".into(),
-            ));
-        }
-    }
-    if writers.len() != plan.required_domains().len()
-        || plan.proposed_domains().len() != plan.required_domains().len()
-    {
-        return Err(Error::State(
-            "CUDA forward state writer/domain coverage".into(),
-        ));
-    }
-    plan.required_domains()
-        .iter()
-        .zip(plan.proposed_domains())
-        .map(|(&slot, version)| {
-            if version.slot != slot || version.ordinal != 1 {
-                return Err(Error::State(
-                    "CUDA forward proposed state slot/version differs".into(),
-                ));
-            }
-            writers
-                .remove(&slot)
-                .ok_or_else(|| Error::State("CUDA forward state writer absent".into()))
+    plan.source_state_domains()?
+        .into_iter()
+        .map(|domain| {
+            let physical = if matches!(domain.slot(), StateSlot::Kv(_)) {
+                ResidentPhysicalType::Bf16
+            } else {
+                ResidentPhysicalType::F32
+            };
+            StateRequirement::from_source_domain(domain, physical)
         })
         .collect()
 }
 
+#[cfg(test)]
 fn state_vector(
     slot: StateSlot,
     elements: usize,

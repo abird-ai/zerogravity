@@ -72,6 +72,27 @@ impl RootAttempt {
     pub const fn frontier(&self) -> u64 {
         self.next.frontier
     }
+
+    /// Match an actual current root and forward span, never a replacement
+    /// attempt with coincident coordinates. No physical readiness grant.
+    pub fn require_advance(
+        &self,
+        current: RootBinding,
+        source: SourceIdentity,
+        base: u64,
+        frontier: u64,
+    ) -> Result<()> {
+        if self.base != current
+            || current.source() != source
+            || current.frontier() != base
+            || self.next.frontier != frontier
+            || self.next.session_epoch != current.session_epoch()
+            || frontier <= base
+        {
+            return Err(Error::State("original forward root attempt differs".into()));
+        }
+        Ok(())
+    }
 }
 
 /// Sole logical root authority for one session. Do not clone or mirror this

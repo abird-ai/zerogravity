@@ -392,6 +392,38 @@ pub(crate) enum StateBuffers {
     PagedKv,
 }
 impl StateBuffers {
+    /// Exact original dense state planes, including paired KV. Paged roots
+    /// must first use their existing admitted contiguous staging bridge.
+    /// Fixed-size borrowed iteration avoids a per-domain heap allocation.
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "cuda-cublas", feature = "hip-source")
+    ))]
+    fn original_leases<'a>(
+        &'a self,
+        requirement: &StateRequirement,
+    ) -> Result<impl Iterator<Item = &'a crate::resident_leases::ResidentLease> + Clone> {
+        let (planes, physical) = requirement.plane_layout()?;
+        let bind = |value: &'a DeviceBuffer| {
+            value.require_layout(physical)?;
+            value.original_lease()
+        };
+        let leases = match (&requirement.layout, self) {
+            (StateLayout::Vector { .. }, Self::Vector(value)) if planes == 1 => {
+                [Some(bind(value)?), None]
+            }
+            (StateLayout::Kv { .. }, Self::Kv { keys, values }) if planes == 2 => {
+                [Some(bind(keys)?), Some(bind(values)?)]
+            }
+            _ => {
+                return Err(Error::State(
+                    "resident original state plane layout differs".into(),
+                ));
+            }
+        };
+        Ok(leases.into_iter().flatten())
+    }
+
     pub fn buffers(&self) -> Vec<&DeviceBuffer> {
         match self {
             Self::Vector(v) => vec![v],
@@ -511,26 +543,7 @@ impl ResidentOutput {
         }
     }
 }
-#[derive(Clone, Copy, Debug)]
-pub enum StateLayout {
-    Vector { elements: usize },
-    Kv { slab: usize, capacity: usize },
-}
-impl StateLayout {
-    /// Actual plane count and F32 word extent per plane. A KV domain is two
-    /// planes of one checked `slab*capacity` extent; total requirement bytes/4
-    /// covers both and is never a plane extent.
-    pub(crate) fn planes(&self) -> Result<(usize, usize)> {
-        match *self {
-            Self::Vector { elements } => Ok((1usize, elements)),
-            Self::Kv { slab, capacity } => Ok((
-                2usize,
-                slab.checked_mul(capacity)
-                    .ok_or_else(|| Error::Limit("resident state KV plane extent".into()))?,
-            )),
-        }
-    }
-}
+pub use zerogravity_core::semantic::StateLayout;
 #[derive(Clone, Copy, Debug)]
 pub struct StateRequirement {
     pub slot: StateSlot,
@@ -539,6 +552,30 @@ pub struct StateRequirement {
     pub bytes: usize,
 }
 impl StateRequirement {
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "cuda-cublas", feature = "hip-source")
+    ))]
+    pub(crate) fn from_source_domain(
+        domain: zerogravity_core::semantic::SourceStateDomain,
+        physical: ResidentPhysicalType,
+    ) -> Result<Self> {
+        use zerogravity_core::{accelerator::program::ValueStorageFormat, provider::StateStorage};
+        let format = match physical {
+            ResidentPhysicalType::F32 => ValueStorageFormat::F32,
+            ResidentPhysicalType::Bf16 => ValueStorageFormat::Bf16,
+        };
+        let storage = StateStorage::new(domain.slot(), domain.layout, format)?;
+        let requirement = Self {
+            slot: domain.slot(),
+            layout: domain.layout,
+            physical,
+            bytes: storage.bytes()?,
+        };
+        requirement.plane_layout()?;
+        Ok(requirement)
+    }
+
     pub(crate) fn plane_layout(&self) -> Result<(usize, ResidentBufferLayout)> {
         let (planes, elements) = self.layout.planes()?;
         let layout = ResidentBufferLayout::new(self.physical, elements)?;

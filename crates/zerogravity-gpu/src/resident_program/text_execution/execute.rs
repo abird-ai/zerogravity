@@ -6,7 +6,7 @@ use super::{
 };
 use crate::resident_leases::{ResidentLease, ResidentSubmission as Flight};
 use crate::resident_program::{
-    BufferRange, DeviceBuffer, ResidentOutput, ResidentSubmission, StateBinding,
+    DeviceBuffer, ResidentOutput, ResidentSubmission, StateBinding,
     bf16_projection::{Bf16ProjectionBindings, Bf16ProjectionStorage},
 };
 use cubecl::{bytes::Bytes, server::Handle};
@@ -83,20 +83,14 @@ impl Cold {
             if b.slot != expected.slot
                 || map.insert(b.slot, b).is_some()
                 || b.prior_tokens != call.tokens().base()
+                || b.mode != crate::resident_program::StateBindingMode::Distinct
             {
                 return Err(Error::State(
                     "text-execution original domain/frontier differs".into(),
                 ));
             }
-            let (planes, shape) = expected.plane_layout()?;
             for (buffers, prior) in [(&b.prior, true), (&b.candidate, false)] {
-                let actual = buffers.buffers();
-                if actual.len() != planes {
-                    return Err(Error::State("text-execution root plane count".into()));
-                }
-                for buffer in actual {
-                    buffer.require_layout(shape)?;
-                    let lease = buffer.original_lease()?;
+                for lease in buffers.original_leases(expected)? {
                     if !Arc::ptr_eq(lease.service(), &self.service)
                         || lease.source_identity() != self.source.source_identity()
                         || lease.role() != BufferRole::RecurrentState
@@ -107,8 +101,6 @@ impl Cold {
                             "text-execution original root lease differs".into(),
                         ));
                     }
-                    let range = BufferRange::new(&buffer.handle)?;
-                    range.require_exact_len(shape.bytes()?)?;
                     physical.push(lease.clone());
                 }
             }

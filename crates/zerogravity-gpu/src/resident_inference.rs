@@ -3118,6 +3118,7 @@ impl ResidentSession {
         let count = u64::try_from(call.tokens().len())
             .map_err(|_| Error::Limit("CUDA forward request row count".into()))?;
         let attempt = self.authority.begin_advance(count)?;
+        call.require_attempt(base, &attempt)?;
         forward_not_cancelled(cancelled)?;
         let candidate = self
             .model

@@ -96,15 +96,7 @@ fn require_published_span(
     invocation: &TextInvocation,
 ) -> Result<PositionSpan> {
     let span = PositionSpan::new(invocation)?;
-    if current != attempt.base()
-        || current.source() != invocation.source()
-        || u64::try_from(span.base).ok() != Some(current.frontier())
-        || u64::try_from(span.base + span.rows).ok() != Some(attempt.frontier())
-    {
-        return Err(Error::State(
-            "original published-root position attempt/span differs".into(),
-        ));
-    }
+    invocation.require_attempt(current, attempt)?;
     Ok(span)
 }
 

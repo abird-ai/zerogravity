@@ -2,6 +2,7 @@
 mod region;
 mod resources;
 mod selection;
+mod state;
 use crate::{
     Error, Result,
     model::{ModelProgram, ModelRegion},
@@ -13,6 +14,7 @@ pub use resources::{ProviderBufferMode, ProviderCompletionMode, ProviderRequirem
 pub use selection::{
     ExecutionMode, SelectedMode, SelectionPolicy, ShapeMissPolicy, StateBridge, SwitchingBoundary,
 };
+pub use state::{BoundRegionState, StateStorage};
 use std::{future::Future, sync::Arc};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

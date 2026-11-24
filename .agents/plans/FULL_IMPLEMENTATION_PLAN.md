@@ -114,9 +114,13 @@ opaque device requirements, original-flight resource binding and captured
 CUDA stream/retirement ownership. Shared context/module accounting stays
 with the original owners. Physical native/exact/continuation and captured
 graph lifecycle checks and the full isolated workspace gate pass.
-Stateful effects, private-buffer/foreign-stream completion bridges and
-remaining foundations remain open.
-None of these slices closes Phase 1.
+Next source slice derives stateful region ports and the original state
+writer/read chain, reuses native CUDA/HIP state plane preflight/binding,
+and binds same-layout provisional state to the exact forward attempt.
+No second publisher or state allocator. Validation pending. Independent
+partial execution, general state conversion and external completion/transfer
+bridges plus remaining foundations remain open. None of these slices closes
+Phase 1.
 
 Complete the engineering contracts and their real consumers, including every
 foundation below. This is not a requirement to finish every backend optimization,

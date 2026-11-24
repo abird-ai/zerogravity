@@ -1,5 +1,7 @@
 //! Closed, dense source-template regions; the original plan remains authoritative.
-use super::{BoundInvocation, ForwardPlan, PlanNode, PlanOperation, ValueId, ValueShape};
+use super::{
+    BoundInvocation, ForwardPlan, PlanNode, PlanOperation, RegionStatePort, ValueId, ValueShape,
+};
 use crate::{
     Error, Result,
     accelerator::program::{SourceOperatorKind, SourceRowSelection, SourceStateAccess, TensorView},
@@ -42,14 +44,18 @@ pub struct RegionBinding {
     pub layout: TensorView,
 }
 
-/// A contiguous stateless region of the original invocation-free program.
-/// All operations (including numerical checks) remain required. No state,
-/// implicit token/position inputs, or output-policy boundary may be hidden.
+/// A contiguous dense region of the original invocation-free program.
+/// All operations remain required. Stateful operators explicitly export
+/// original versioned state ports and use the bound invocation's frontier.
+/// Embedding, rotary, arbitrary observations and output-policy crossings
+/// are not yet supported by this region contract.
 pub struct ClosedRegion {
     plan: Arc<ForwardPlan>,
     range: Range<usize>,
     inputs: Vec<RegionPort>,
     outputs: Vec<RegionPort>,
+    state_inputs: Vec<RegionStatePort>,
+    state_outputs: Vec<RegionStatePort>,
     max_rows: usize,
 }
 impl ClosedRegion {
@@ -110,6 +116,19 @@ impl ClosedRegion {
         };
         let mut inputs = Vec::new();
         let mut outputs = Vec::new();
+        let mut state_inputs = Vec::new();
+        let mut state_outputs = Vec::new();
+        let domains = if plan.nodes()[range.clone()].iter().any(|node| {
+            node.state.is_some()
+                || matches!(
+                    &node.operation,
+                    PlanOperation::SourceOperatorTemplate { state: Some(_), .. }
+                )
+        }) {
+            plan.source_state_domains()?
+        } else {
+            Vec::new()
+        };
         let mut escapes = vec![false; plan.values().len()];
         for node in &plan.nodes()[range.end..] {
             for value in &node.inputs {
@@ -123,29 +142,27 @@ impl ClosedRegion {
         }
         for (index, node) in plan.nodes()[range.clone()].iter().enumerate() {
             let index = range.start + index;
-            let PlanOperation::SourceOperatorTemplate {
-                descriptor,
-                state: None,
-            } = &node.operation
+            let PlanOperation::SourceOperatorTemplate { descriptor, state } = &node.operation
             else {
                 return Err(Error::Unsupported(
                     "region operation requires an explicit effect contract".into(),
                 ));
             };
-            if node.state.is_some()
-                || descriptor.state_access() != SourceStateAccess::None
-                || !matches!(
-                    descriptor.kind(),
-                    SourceOperatorKind::Projection { selected_row: None }
-                        | SourceOperatorKind::Rms(_)
-                        | SourceOperatorKind::ResidualRms(_)
-                        | SourceOperatorKind::Sigmoid { .. }
-                        | SourceOperatorKind::Multiply { .. }
-                        | SourceOperatorKind::SiluAndMul { .. }
-                )
-            {
+            if !matches!(
+                descriptor.kind(),
+                SourceOperatorKind::Projection { selected_row: None }
+                    | SourceOperatorKind::Rms(_)
+                    | SourceOperatorKind::ResidualRms(_)
+                    | SourceOperatorKind::Sigmoid { .. }
+                    | SourceOperatorKind::Multiply { .. }
+                    | SourceOperatorKind::SiluAndMul { .. }
+                    | SourceOperatorKind::CausalConvSplit { .. }
+                    | SourceOperatorKind::GatedDelta { .. }
+                    | SourceOperatorKind::KvAppend { .. }
+                    | SourceOperatorKind::Attention { .. }
+            ) {
                 return Err(Error::Unsupported(
-                    "region operation is not supported stateless dense math".into(),
+                    "region operation is not supported dense math/state".into(),
                 ));
             }
             if descriptor.source() != plan.source()
@@ -156,6 +173,42 @@ impl ClosedRegion {
                 return Err(Error::State(
                     "region source template geometry differs".into(),
                 ));
+            }
+            let lookup = |slot| {
+                domains
+                    .iter()
+                    .find(|domain| domain.slot() == slot)
+                    .ok_or_else(|| Error::State("region original state domain absent".into()))
+            };
+            match descriptor.state_access() {
+                SourceStateAccess::None => {
+                    if state.is_some() || node.state.is_some() {
+                        return Err(Error::State("region unexpected state effect".into()));
+                    }
+                }
+                SourceStateAccess::Write(slot) => {
+                    let domain = lookup(slot)?;
+                    state_inputs.push(RegionStatePort {
+                        version: domain.effect.read,
+                        layout: domain.layout,
+                    });
+                    state_outputs.push(RegionStatePort {
+                        version: domain.effect.write,
+                        layout: domain.layout,
+                    });
+                }
+                SourceStateAccess::Read(slot) => {
+                    let domain = lookup(slot)?;
+                    if !range.contains(&domain.writer) {
+                        let port = RegionStatePort {
+                            version: domain.effect.write,
+                            layout: domain.layout,
+                        };
+                        if !state_inputs.contains(&port) {
+                            state_inputs.push(port);
+                        }
+                    }
+                }
             }
             let input_elements = descriptor.input_elements()?;
             let output_elements = descriptor.output_elements()?;
@@ -195,7 +248,9 @@ impl ClosedRegion {
                 }
             }
         }
-        if inputs.is_empty() || outputs.is_empty() {
+        if (inputs.is_empty() && state_inputs.is_empty())
+            || (outputs.is_empty() && state_outputs.is_empty())
+        {
             return Err(Error::Unsupported(
                 "region requires explicit input and output ports".into(),
             ));
@@ -205,6 +260,8 @@ impl ClosedRegion {
             range,
             inputs,
             outputs,
+            state_inputs,
+            state_outputs,
             max_rows,
         })
     }
@@ -223,6 +280,12 @@ impl ClosedRegion {
     }
     pub fn outputs(&self) -> &[RegionPort] {
         &self.outputs
+    }
+    pub fn state_inputs(&self) -> &[RegionStatePort] {
+        &self.state_inputs
+    }
+    pub fn state_outputs(&self) -> &[RegionStatePort] {
+        &self.state_outputs
     }
     pub fn max_rows(&self) -> usize {
         self.max_rows
@@ -261,6 +324,15 @@ pub struct BoundRegion<'a> {
     invocation: &'a BoundInvocation,
 }
 impl BoundRegion<'_> {
+    pub fn invocation(&self) -> &BoundInvocation {
+        self.invocation
+    }
+    pub fn state_inputs(&self) -> &[RegionStatePort] {
+        self.region.state_inputs()
+    }
+    pub fn state_outputs(&self) -> &[RegionStatePort] {
+        self.region.state_outputs()
+    }
     pub fn inputs(&self) -> impl Iterator<Item = RegionBinding> + '_ {
         self.region
             .inputs

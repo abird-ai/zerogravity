@@ -11,10 +11,10 @@ use std::{
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{
-        ForwardPlan, InvocationInput, KvDomain, MathematicalBackend, MatrixAxes, NumericalContract,
-        ParameterRef, ParameterSlot, PlanBuilder, SourceOperatorKind, SourceOperatorTemplate,
-        SourcePlanGeometry, SourceRowSelection, SourceTensor, StateSlot, TextCallGeometry,
-        ValueStorageFormat,
+        AttentionGeometry, ForwardPlan, InvocationInput, KvDomain, MathematicalBackend, MatrixAxes,
+        NumericalContract, ParameterRef, ParameterSlot, PlanBuilder, SourceAttentionMask,
+        SourceOperatorKind, SourceOperatorTemplate, SourcePlanGeometry, SourceRowSelection,
+        SourceTensor, StateSlot, TensorView, TextCallGeometry, ValueStorageFormat,
     },
     encoding::{ScalarDType, StoredTensorEncoding},
     identity::SourceIdentity,
@@ -22,8 +22,10 @@ use zerogravity_core::{
     provider::{
         ExecutionMode, PreparedExecutable, PreparedRegion, ProviderBufferMode,
         ProviderCompletionMode, ProviderKind, ProviderRequirements, RegionExecutionProvider,
-        SelectedMode,
+        SelectedMode, StateBridge, StateStorage,
     },
+    semantic::{RegionStatePort, StateLayout, StateVersion},
+    session_root::SessionAuthority,
     source::{SourceTensorRef, TensorSource},
     task::TaskKind,
 };
@@ -383,15 +385,44 @@ fn region_program(source: Arc<Definition>) -> ModelProgram {
         .unwrap()[0];
     builder
         .record_source_template(
-            "carry",
+            "append",
             &template(
-                SourceOperatorKind::StateCarry { slot },
+                SourceOperatorKind::KvAppend {
+                    domain: KvDomain(0),
+                    key_width: 16,
+                    packed_value: TensorView {
+                        offset: 0,
+                        rows: 64,
+                        width: 16,
+                        row_stride: 16,
+                    },
+                },
                 SourceRowSelection::AllActive,
                 vec![],
             ),
-            &[],
+            &[projected, activated],
         )
         .unwrap();
+    let attended = builder
+        .record_source_template(
+            "attention",
+            &template(
+                SourceOperatorKind::Attention {
+                    domain: KvDomain(0),
+                    geometry: AttentionGeometry {
+                        width: 16,
+                        query_heads: 1,
+                        kv_heads: 1,
+                    },
+                    scale: 0.25,
+                    mask: SourceAttentionMask::Causal,
+                },
+                SourceRowSelection::AllActive,
+                vec![],
+            ),
+            &[product],
+        )
+        .unwrap()[0];
     let logits = builder
         .record_source_template(
             "head",
@@ -400,7 +431,7 @@ fn region_program(source: Arc<Definition>) -> ModelProgram {
                 SourceRowSelection::LastActive,
                 vec![matrix("head", 17)],
             ),
-            &[product],
+            &[attended],
         )
         .unwrap()[0];
     ModelProgram::from_recorded(
@@ -423,7 +454,7 @@ fn closed_region_ports_and_active_invocation_keep_original_semantics() {
         region.outputs().iter().map(|p| p.value).collect::<Vec<_>>(),
         vec![plan.nodes()[1].outputs[0], plan.nodes()[2].outputs[0]]
     );
-    let head = program.closed_region(5..6).unwrap();
+    let head = program.closed_region(6..7).unwrap();
     let bind = |plan: &Arc<ForwardPlan>, rows, emit| {
         plan.bind_invocation(
             InvocationInput::new(
@@ -501,9 +532,176 @@ fn closed_region_ports_and_active_invocation_keep_original_semantics() {
     );
     let copy = Arc::new(plan.as_ref().clone());
     assert!(region.bind(&bind(&copy, 2, true)).is_err());
-    for range in [0..0, 0..1, 4..5, 3..6, 5..7] {
+    for range in [0..0, 0..1, 3..7, 6..8] {
         assert!(program.closed_region(range).is_err());
     }
+}
+
+#[test]
+fn stateful_region_ports_and_bridge_keep_provisional_versions_on_one_attempt() {
+    let program = region_program(definition(Recording::Original));
+    let plan = program.program();
+    let slot = StateSlot::Kv(KvDomain(0));
+    let prior = StateVersion { slot, ordinal: 0 };
+    let candidate = StateVersion { slot, ordinal: 1 };
+    let layout = StateLayout::Kv {
+        slab: 16,
+        capacity: 512,
+    };
+    let port = |version| RegionStatePort { version, layout };
+    let domains = plan.source_state_domains().unwrap();
+    assert_eq!(domains.len(), 1);
+    assert_eq!(domains[0].writer, 4);
+    assert_eq!(domains[0].layout, layout);
+    assert_eq!(domains[0].effect.read, prior);
+    assert_eq!(domains[0].effect.write, candidate);
+
+    let append = program.closed_region(4..5).unwrap();
+    assert!(append.region().outputs().is_empty());
+    assert_eq!(append.region().state_inputs(), [port(prior)]);
+    assert_eq!(append.region().state_outputs(), [port(candidate)]);
+    let attention = program.closed_region(5..6).unwrap();
+    assert_eq!(attention.region().state_inputs(), [port(candidate)]);
+    assert!(attention.region().state_outputs().is_empty());
+    let both = program.closed_region(4..6).unwrap();
+    assert_eq!(both.region().state_inputs(), [port(prior)]);
+    assert_eq!(both.region().state_outputs(), [port(candidate)]);
+    let state = StateStorage::new(slot, layout, ValueStorageFormat::Bf16).unwrap();
+    let widened = StateStorage::new(slot, layout, ValueStorageFormat::F32).unwrap();
+    assert_eq!(state.bytes().unwrap(), 2 * 16 * 512 * 2);
+    assert_eq!(widened.bytes().unwrap(), 2 * state.bytes().unwrap());
+    let selected = SelectedMode {
+        provider: ProviderKind::Cuda,
+        mode: ExecutionMode::Native,
+    };
+    let requirements = ProviderRequirements::original_queue(0, 0);
+    let prepare = |range,
+                   storage: &[StateStorage],
+                   inputs: &[ValueStorageFormat],
+                   outputs: &[ValueStorageFormat]| {
+        PreparedRegion::with_state(
+            program.closed_region(range).unwrap(),
+            selected,
+            requirements,
+            1..=64,
+            inputs,
+            outputs,
+            storage,
+        )
+    };
+    assert!(
+        PreparedRegion::new(
+            program.closed_region(4..5).unwrap(),
+            selected,
+            requirements,
+            1..=64,
+            &[ValueStorageFormat::Bf16; 2],
+            &[]
+        )
+        .is_err()
+    );
+    assert!(prepare(4..5, &[state, state], &[ValueStorageFormat::Bf16; 2], &[]).is_err());
+    let wrong = StateStorage::new(
+        slot,
+        StateLayout::Kv {
+            slab: 32,
+            capacity: 256,
+        },
+        ValueStorageFormat::Bf16,
+    )
+    .unwrap();
+    assert_eq!(wrong.bytes().unwrap(), state.bytes().unwrap());
+    assert!(prepare(4..5, &[wrong], &[ValueStorageFormat::Bf16; 2], &[]).is_err());
+    let append = prepare(4..5, &[state], &[ValueStorageFormat::Bf16; 2], &[]).unwrap();
+    let attention = prepare(
+        5..6,
+        &[state],
+        &[ValueStorageFormat::Bf16],
+        &[ValueStorageFormat::Bf16],
+    )
+    .unwrap();
+    let different = prepare(
+        5..6,
+        &[widened],
+        &[ValueStorageFormat::Bf16],
+        &[ValueStorageFormat::Bf16],
+    )
+    .unwrap();
+
+    let invocation = plan
+        .bind_invocation(
+            InvocationInput::new(
+                TextCallGeometry::new(plan.source(), 17, 512).unwrap(),
+                0,
+                vec![1; 7].into(),
+                false,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    let owner = SessionAuthority::new(plan.source()).unwrap();
+    let current = owner.binding();
+    let attempt = owner.begin_advance(7).unwrap();
+    let replacement = owner.begin_validated_replacement(7).unwrap();
+    assert!(
+        append
+            .bind_state(&invocation, current, &replacement)
+            .is_err()
+    );
+    let foreign = SessionAuthority::new(plan.source())
+        .unwrap()
+        .begin_advance(7)
+        .unwrap();
+    assert!(append.bind_state(&invocation, current, &foreign).is_err());
+    let write = append.bind_state(&invocation, current, &attempt).unwrap();
+    let read = attention
+        .bind_state(&invocation, current, &attempt)
+        .unwrap();
+    assert_eq!(write.prior(), current);
+    assert_eq!(write.frontier(), 7);
+    read.require_input_from(&write, candidate, StateBridge::OriginalLayout)
+        .unwrap();
+    assert!(
+        read.require_input_from(&write, prior, StateBridge::OriginalLayout)
+            .is_err()
+    );
+    assert!(
+        read.require_input_from(&write, candidate, StateBridge::ConvertAtCommittedFrontier)
+            .is_err()
+    );
+    assert!(
+        write
+            .require_input_from(&read, candidate, StateBridge::OriginalLayout)
+            .is_err()
+    );
+    assert!(
+        different
+            .bind_state(&invocation, current, &attempt)
+            .unwrap()
+            .require_input_from(&write, candidate, StateBridge::OriginalLayout)
+            .is_err()
+    );
+    let other_attempt = owner.begin_advance(7).unwrap();
+    assert!(
+        attention
+            .bind_state(&invocation, current, &other_attempt)
+            .unwrap()
+            .require_input_from(&write, candidate, StateBridge::OriginalLayout)
+            .is_err()
+    );
+    let other_call = invocation.clone();
+    assert!(
+        attention
+            .bind_state(&other_call, current, &attempt)
+            .unwrap()
+            .require_input_from(&write, candidate, StateBridge::OriginalLayout)
+            .is_err()
+    );
+    assert_eq!(
+        owner.binding(),
+        current,
+        "region binding cannot publish state"
+    );
 }
 
 struct RegionProbe {

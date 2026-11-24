@@ -125,9 +125,11 @@ impl ResidentModel {
         }
 
         let mut attempts = Vec::with_capacity(width);
-        for session in sessions {
+        for (session, call) in sessions.iter().zip(&calls) {
             self.validate_domains(&session.domains, true)?;
-            attempts.push(session.authority.begin_advance(tokens as u64)?);
+            let attempt = session.authority.begin_advance(tokens as u64)?;
+            call.require_attempt(session.binding(), &attempt)?;
+            attempts.push(attempt);
         }
         let staging_bytes = self
             .state_bytes

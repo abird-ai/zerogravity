@@ -1,12 +1,13 @@
 //! Source-owned physical region contract. No allocation or completion permit.
-use super::{ProviderRequirements, SelectedMode};
+use super::{BoundRegionState, ProviderRequirements, SelectedMode, StateStorage};
 use crate::{
     Error, Result,
     accelerator::program::{SourceRowSelection, ValueId, ValueStorageFormat},
     model::ModelRegion,
     numerics::ActivationPrecision,
     placement::PreparedTensorLayout,
-    semantic::{BoundInvocation, RegionPort},
+    semantic::{BoundInvocation, RegionPort, StateSlot},
+    session_root::{RootAttempt, RootBinding},
     source::{ProgramSource, TensorSource},
 };
 use std::{ops::RangeInclusive, sync::Arc};
@@ -71,6 +72,7 @@ pub struct PreparedRegion<S: ProgramSource = Arc<dyn TensorSource>> {
     rows: RangeInclusive<usize>,
     inputs: Box<[PhysicalRegionPort]>,
     outputs: Box<[PhysicalRegionPort]>,
+    states: Box<[StateStorage]>,
 }
 impl<S: ProgramSource> PreparedRegion<S> {
     pub fn new(
@@ -81,8 +83,47 @@ impl<S: ProgramSource> PreparedRegion<S> {
         input_formats: &[ValueStorageFormat],
         output_formats: &[ValueStorageFormat],
     ) -> Result<Self> {
+        Self::with_state(
+            model,
+            selected,
+            requirements,
+            rows,
+            input_formats,
+            output_formats,
+            &[],
+        )
+    }
+
+    /// Exact original state layouts are required for stateful preparation.
+    /// Nothing may silently infer state storage from activation format.
+    pub fn with_state(
+        model: ModelRegion<S>,
+        selected: SelectedMode,
+        requirements: ProviderRequirements,
+        rows: RangeInclusive<usize>,
+        input_formats: &[ValueStorageFormat],
+        output_formats: &[ValueStorageFormat],
+        states: &[StateStorage],
+    ) -> Result<Self> {
         requirements.device_bytes()?;
         let region = model.region();
+        let state_ports = || region.state_inputs().iter().chain(region.state_outputs());
+        for (i, storage) in states.iter().enumerate() {
+            if states[..i]
+                .iter()
+                .any(|prior| prior.slot() == storage.slot())
+                || !state_ports().any(|port| port.version.slot == storage.slot())
+            {
+                return Err(Error::State("region extra/duplicate state storage".into()));
+            }
+        }
+        for &port in state_ports() {
+            states
+                .iter()
+                .find(|storage| storage.slot() == port.version.slot)
+                .ok_or_else(|| Error::State("region state storage absent".into()))?
+                .require_port(port)?;
+        }
         if rows.is_empty() || *rows.start() == 0 || *rows.end() > region.max_rows() {
             return Err(Error::Unsupported(
                 "region prepared row band outside semantic bounds".into(),
@@ -109,6 +150,7 @@ impl<S: ProgramSource> PreparedRegion<S> {
             rows,
             inputs,
             outputs,
+            states: states.into(),
         })
     }
     pub fn model(&self) -> &ModelRegion<S> {
@@ -119,6 +161,21 @@ impl<S: ProgramSource> PreparedRegion<S> {
     }
     pub fn requirements(&self) -> ProviderRequirements {
         self.requirements
+    }
+    pub fn state_storage(&self, slot: StateSlot) -> Result<StateStorage> {
+        self.states
+            .iter()
+            .find(|state| state.slot() == slot)
+            .copied()
+            .ok_or_else(|| Error::State("prepared region state domain absent".into()))
+    }
+    pub fn bind_state<'a>(
+        &'a self,
+        invocation: &'a BoundInvocation,
+        current: RootBinding,
+        attempt: &'a RootAttempt,
+    ) -> Result<BoundRegionState<'a, S>> {
+        BoundRegionState::new(self, invocation, current, attempt)
     }
     pub fn supported_rows(&self) -> RangeInclusive<usize> {
         self.rows.clone()

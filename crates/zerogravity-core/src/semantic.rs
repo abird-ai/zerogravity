@@ -7,4 +7,6 @@ pub use crate::accelerator::program::{
 pub use crate::pipeline::ValueKind;
 
 mod region;
+mod state;
 pub use region::{BoundRegion, ClosedRegion, RegionBinding, RegionPort};
+pub use state::{RegionStatePort, SourceStateDomain, StateLayout};

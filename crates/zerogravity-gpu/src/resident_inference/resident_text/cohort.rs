@@ -212,7 +212,9 @@ impl ResidentModel {
             self.validate_domains(&session.domains, true)?;
             let prompt_advance = u64::try_from(call.tokens().len())
                 .map_err(|_| Error::Limit("ordinary source prefill cohort prompt rows".into()))?;
-            attempts.push(session.authority.begin_advance(prompt_advance)?);
+            let attempt = session.authority.begin_advance(prompt_advance)?;
+            call.require_attempt(session.binding(), &attempt)?;
+            attempts.push(attempt);
         }
         let staging_bytes = self
             .state_bytes
@@ -594,9 +596,11 @@ impl ResidentModel {
             ));
         }
         let mut attempts = Vec::with_capacity(width);
-        for session in sessions {
+        for (session, call) in sessions.iter().zip(&calls) {
             self.validate_domains(&session.domains, true)?;
-            attempts.push(session.authority.begin_advance(1)?);
+            let attempt = session.authority.begin_advance(1)?;
+            call.require_attempt(session.binding(), &attempt)?;
+            attempts.push(attempt);
         }
         let staging_bytes = self
             .state_bytes

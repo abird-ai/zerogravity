@@ -135,6 +135,13 @@ any external compiler. All phases retain the original resource/state owners.
   Accepted `77e8b4ae`: full isolated workspace gate, physical X2
   native/exact/continuation and L5 native CUDA C1 plus captured B2 graph
   lifecycle pass with original retirement (composition TODO).
+- Source-template state domains now derive original writer/read edges and
+  exact vector/paired-KV geometry in shared core. Native CUDA/HIP preflight
+  selects existing physical formats and shares original typed lease plane
+  binding. Stateful region ports distinguish committed vs provisional versions,
+  bind original advance attempts and permit metadata-only original-layout
+  handoff; paged staging, publication and numerical profiles remain unchanged.
+  Assembled/physical checks pending (composition TODO).
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.
