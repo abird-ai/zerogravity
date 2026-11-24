@@ -156,10 +156,12 @@ pub(crate) fn project_cpu_bf16(
     }
 }
 
-/// Singleton specialization that computes four adjacent output rows in one
+/// Retained singleton specialization that computes four adjacent output rows in one
 /// workgroup. Each lane loads the packed activation once per K64 chunk and reuses
 /// that exact BF16 value across four independent row accumulators. Every row keeps
 /// the scalar kernel's FMA order, reduction tree, rounding and status contract.
+/// Current gfx1150 Qwen keeps the scalar row kernel because rows4 loses wall time.
+#[allow(dead_code)]
 #[cube(launch_unchecked)]
 pub(crate) fn project_cpu_bf16_rows4(
     weights: &[u32],

@@ -1,6 +1,6 @@
 //! Cold source/geometry kernels. Row counts, positions and IDs remain runtime data.
 use super::*;
-use crate::resident_program::bf16_projection::{Bf16ProjectionStorage, PreparedBf16Projection};
+use crate::resident_program::bf16_projection::PreparedBf16Projection;
 use cubecl::{client::Client, prelude::*};
 use cubecl_server::kernel::CubeKernel;
 use zerogravity_core::accelerator::program::SourceOperatorKind;
@@ -75,21 +75,6 @@ pub(super) fn kernels(
                 p.matrix().columns(),
                 p.matrix().rows()
             );
-            if p.storage() == Bf16ProjectionStorage::Resident && rows.is_multiple_of(4) {
-                add!(
-                    crate::bf16_projection_kernel::project_cpu_bf16_rows4::ProjectCpuBf16Rows4,
-                    64,
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    b(),
-                    rows,
-                    p.matrix().columns(),
-                    p.matrix().rows()
-                );
-            }
         }
     }
     for node in l.plan.nodes() {

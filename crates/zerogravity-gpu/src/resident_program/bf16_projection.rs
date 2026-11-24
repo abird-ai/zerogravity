@@ -399,11 +399,6 @@ impl PreparedBf16Projection {
             let rows = self.rows_per_launch.min(total_rows - first);
             let range = first..first + rows;
             let elements = rows * batch;
-            let rows4 = self.storage == Bf16ProjectionStorage::Resident
-                && input_rows == 1
-                && rows.is_multiple_of(4)
-                && !singleton
-                && !certified_status;
             let launches = if singleton || certified_status { 1 } else { 2 };
             let accumulation = view(b.accumulation, 0, elements * 4)?;
             let flags = if singleton {
@@ -436,37 +431,20 @@ impl PreparedBf16Projection {
                 } else {
                     // Compact accumulation. Singleton flags keep their final row
                     // positions so one status reduction can follow all weight tiles.
-                    if rows4 {
-                        crate::bf16_projection_kernel::project_cpu_bf16_rows4::launch_unchecked(
-                            service.client(),
-                            CubeCount::Static((elements / 4) as u32, 1, 1),
-                            CubeDim::new_1d(64),
-                            arg(weights, rows * columns / 2),
-                            arg(&packed, batch * columns / 2),
-                            arg(&b.zero.handle(), 1),
-                            arg(&accumulation, elements),
-                            arg(&destination, destination_rows.len()),
-                            arg(&flags, elements),
-                            rows,
-                            columns,
-                            total_rows,
-                        );
-                    } else {
-                        crate::bf16_projection_kernel::project_cpu_bf16::launch_unchecked(
-                            service.client(),
-                            CubeCount::Static(elements as u32, 1, 1),
-                            CubeDim::new_1d(64),
-                            arg(weights, rows * columns / 2),
-                            arg(&packed, batch * columns / 2),
-                            arg(&b.zero.handle(), 1),
-                            arg(&accumulation, elements),
-                            arg(&destination, destination_rows.len()),
-                            arg(&flags, elements),
-                            rows,
-                            columns,
-                            total_rows,
-                        );
-                    }
+                    crate::bf16_projection_kernel::project_cpu_bf16::launch_unchecked(
+                        service.client(),
+                        CubeCount::Static(elements as u32, 1, 1),
+                        CubeDim::new_1d(64),
+                        arg(weights, rows * columns / 2),
+                        arg(&packed, batch * columns / 2),
+                        arg(&b.zero.handle(), 1),
+                        arg(&accumulation, elements),
+                        arg(&destination, destination_rows.len()),
+                        arg(&flags, elements),
+                        rows,
+                        columns,
+                        total_rows,
+                    );
                     if !singleton {
                         projection_status::launch_unchecked(
                             service.client(),
