@@ -1,5 +1,10 @@
 //! Migration/capability observations are not execution permits.
-pub use zerogravity_engine::diagnostics::RuntimeStatus;
+pub use zerogravity_engine::diagnostics::{RuntimePhase, RuntimeSnapshot, RuntimeStatus};
+pub use zerogravity_engine::router::{
+    pending::{HostBudgetSnapshot, QueueSnapshot},
+    statistics::Counters,
+    worker::SchedulerSnapshot,
+};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MigrationStatus {
     AwaitingAdapter,

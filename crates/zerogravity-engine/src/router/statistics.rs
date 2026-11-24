@@ -32,7 +32,7 @@ pub struct WorkStats {
     pub(crate) parked: AtomicUsize,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub struct Counters {
     pub attempted: u64,
     pub completed: u64,

@@ -1,6 +1,6 @@
 //! Additional provider-local resources and execution compatibility.
 //! The original physical owner admits and retains them.
-use crate::{Error, Result};
+use crate::{Error, Result, resource_arbiter::PhysicalDeviceKey};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProviderBufferMode {
@@ -71,6 +71,40 @@ impl ProviderRequirements {
         }
         Ok(())
     }
+}
+
+/// Actual ordinary resident model quota and logical root size; the used
+/// bytes come from its original lease ledger, not driver VRAM usage.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResidentModelMemory {
+    pub device: PhysicalDeviceKey,
+    pub model_capacity_bytes: u64,
+    pub physical_limit_bytes: u64,
+    pub resident_bytes: usize,
+    pub root_bytes: usize,
+}
+
+/// Cold resource bounds and original physical admission, not current VRAM
+/// usage. Context budgets are separate from model capacity/required bytes.
+/// Paged state reserve can differ from logical root bytes * root count.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResidentTextAdmission {
+    pub device: PhysicalDeviceKey,
+    pub configured_model_capacity_bytes: usize,
+    pub admitted_model_capacity_bytes: usize,
+    pub model_required_bytes: usize,
+    pub context_device_budget_bytes: usize,
+    pub physical_limit_bytes: u64,
+    pub host_upper_bytes: Option<usize>,
+    pub source_weight_bytes: usize,
+    pub resident_weight_bytes: usize,
+    pub root_bytes: usize,
+    pub root_count: usize,
+    pub state_reserve_bytes: usize,
+    pub max_sessions: usize,
+    pub cohort_width: usize,
 }
 
 /// Cold device/provider envelope, not a reservation. The difference is

@@ -1,7 +1,7 @@
 use crate::{
     Error, Result,
     catalog::ModelCatalog,
-    diagnostics::RuntimeStatus,
+    diagnostics::{ModelSnapshot, RuntimePhase, RuntimeSnapshot, RuntimeStatus},
     model_instance::ModelInstance,
     output::{OutputStream, TextOutputStream},
     request::{TaskInput, TaskRequest},
@@ -50,6 +50,25 @@ impl TextControl {
         match &self.phase {
             TextPhase::Ready(router) | TextPhase::Retiring(router, _) => Some(router),
             _ => None,
+        }
+    }
+    fn status(&self, closed: bool) -> RuntimeStatus {
+        let router = self.router();
+        let (loaded_models, loaded_owners) = router.map_or((0, 0), Router::ready_counts);
+        RuntimeStatus {
+            closed,
+            phase: match &self.phase {
+                TextPhase::Empty => RuntimePhase::Empty,
+                TextPhase::Loading(_) => RuntimePhase::Loading,
+                TextPhase::Ready(_) => RuntimePhase::Ready,
+                TextPhase::Retiring(..) => RuntimePhase::Retiring,
+                TextPhase::Joining(_) => RuntimePhase::Joining,
+                TextPhase::Closed => RuntimePhase::Closed,
+            },
+            failed: self.failure.is_some(),
+            loaded_models,
+            loaded_owners,
+            execution_adapters: usize::from(router.is_some()),
         }
     }
     fn terminal_result(&self) -> Result<()> {
@@ -153,11 +172,47 @@ impl Runtime {
             .text
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        RuntimeStatus {
-            closed: self.inner.closed.load(Ordering::Acquire),
-            loaded_models: text.router().map_or(0, |router| router.model_ids().count()),
-            execution_adapters: usize::from(text.router().is_some()),
-        }
+        text.status(self.inner.closed.load(Ordering::Acquire))
+    }
+    /// Read-only even during load/retirement/shutdown. The process resource
+    /// ledger remains observable after the runtime releases its route set.
+    pub fn snapshot(&self) -> Result<RuntimeSnapshot> {
+        let (status, failure, scheduler, catalog) = {
+            let text = self
+                .inner
+                .text
+                .lock()
+                .map_err(|_| Error::State("runtime lock poisoned".into()))?;
+            let router = text.router();
+            (
+                text.status(self.inner.closed.load(Ordering::Acquire)),
+                text.failure.clone(),
+                router.map(Router::scheduler_snapshot),
+                router
+                    .map(Router::catalog_snapshot)
+                    .transpose()?
+                    .unwrap_or_default(),
+            )
+        };
+        Ok(RuntimeSnapshot {
+            status,
+            failure,
+            limits: self.inner.limits,
+            scheduler,
+            catalog,
+            resources: self.inner.resources.snapshots()?,
+        })
+    }
+    pub(crate) fn catalog_snapshot(&self) -> Result<Vec<ModelSnapshot>> {
+        let text = self
+            .inner
+            .text
+            .lock()
+            .map_err(|_| Error::State("runtime lock poisoned".into()))?;
+        text.router()
+            .map(Router::catalog_snapshot)
+            .transpose()
+            .map(Option::unwrap_or_default)
     }
     pub fn resources(&self) -> &ResourceArbiter {
         &self.inner.resources

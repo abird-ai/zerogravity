@@ -61,6 +61,14 @@ impl Executor for HostLogits {
             },
         ))
     }
+    fn describe_model(model: &Self::Model) -> crate::Result<crate::diagnostics::ModelDetails> {
+        let mut details = model.describe()?;
+        details.memory = Some(crate::diagnostics::ModelMemory::Host {
+            session_state_bytes: model.max_session_bytes(),
+            session_scratch_bytes: model.session_scratch_bytes(),
+        });
+        Ok(details)
+    }
     fn prefill(_: &Self::Model) -> Prefill {
         Prefill::Chunks(32)
     }
@@ -135,9 +143,13 @@ impl Executor for HostLogits {
         _: &BTreeMap<String, Self::Model>,
         snapshot: &SchedulerSnapshot,
     ) -> Result<serde_json::Value, ServiceError> {
-        let (limit, reserved, remaining, serving) = snapshot.host.ok_or_else(|| {
-            ServiceError::new(500, "host_state", "host admission snapshot unavailable")
-        })?;
+        let (limit, reserved, remaining, serving) = snapshot
+            .host
+            .as_ref()
+            .map(|host| host.totals())
+            .ok_or_else(|| {
+                ServiceError::new(500, "host_state", "host admission snapshot unavailable")
+            })?;
         let q = &snapshot.queue;
         Ok(serde_json::json!({"kind":"configured_host_cpu",
             "host_limit_bytes":limit,"total_host_limit_bytes":limit,"total_host_reserved_bytes":reserved,

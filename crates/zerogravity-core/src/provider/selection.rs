@@ -17,6 +17,8 @@ pub enum ShapeMissPolicy {
     Refuse,
     QualifiedDecomposition,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExecutionMode {
     Portable,
@@ -35,6 +37,7 @@ pub struct SelectionPolicy {
     pub state_bridge: StateBridge,
 }
 /// Selected physical mode description; not evidence, a state bridge or Ready.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SelectedMode {
     pub provider: ProviderKind,

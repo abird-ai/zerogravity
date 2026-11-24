@@ -47,6 +47,8 @@ pub struct GpuProfile {
 struct Model {
     resident: Mutex<Option<Arc<ResidentModel>>>,
     source: SourceIdentity,
+    execution: zerogravity_core::provider::ExecutionDescription,
+    source_host_reserved_bytes: Option<u64>,
     tokenizer: Arc<dyn TextTokenizer>,
     group: usize,
     hidden_width: usize,
@@ -81,6 +83,18 @@ impl PreparedModel for Model {
     }
     fn vocabulary_size(&self) -> u64 {
         self.vocabulary_size
+    }
+    fn describe(&self) -> crate::Result<zerogravity_engine::diagnostics::ModelDetails> {
+        use zerogravity_engine::diagnostics::{ModelDetails, ModelMemory};
+        let resident = self.resident().map_err(ServiceError::into_core)?;
+        Ok(ModelDetails {
+            artifact: Some(local::artifact_description()),
+            execution: Some(self.execution.clone()),
+            state_policy: Some(zerogravity_core::provider::ResidentStatePolicy::Contiguous),
+            prefix_sharing: Some(false),
+            source_host_reserved_bytes: self.source_host_reserved_bytes,
+            memory: Some(ModelMemory::Resident(resident.memory_snapshot()?)),
+        })
     }
 }
 pub(crate) fn adapter_metadata<T>(

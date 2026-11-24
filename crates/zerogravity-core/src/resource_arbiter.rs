@@ -19,6 +19,7 @@ mod host_workspace;
 mod partition;
 pub use host_workspace::HostWorkspace;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PhysicalDeviceKey {
     /// Explicit backend/service namespace; must correspond to one physical
@@ -39,6 +40,8 @@ impl PhysicalDeviceKey {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AllocationClass {
     ImmutableWeights,
@@ -494,6 +497,7 @@ pub struct ResourceArbiter {
     shared: Arc<Mutex<ArbiterState>>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Debug)]
 pub struct DeviceBudgetSnapshot {
     pub limit: u64,
@@ -503,6 +507,36 @@ pub struct DeviceBudgetSnapshot {
     pub fenced: bool,
     pub per_class: BTreeMap<AllocationClass, u64>,
     pub active_models: BTreeSet<String>,
+}
+
+/// A descriptive row from the original physical resource ledger.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Clone, Debug)]
+pub struct ResourceSnapshot {
+    pub key: PhysicalDeviceKey,
+    pub budget: DeviceBudgetSnapshot,
+}
+
+impl DeviceBudget {
+    fn snapshot(&self) -> DeviceBudgetSnapshot {
+        let mut per_class: BTreeMap<AllocationClass, u64> = BTreeMap::new();
+        let mut active_models = BTreeSet::new();
+        for reservation in self.reservations.values() {
+            active_models.insert(reservation.owner.model.clone());
+            for part in &reservation.allocations {
+                *per_class.entry(part.kind).or_default() += part.bytes;
+            }
+        }
+        DeviceBudgetSnapshot {
+            limit: self.limit,
+            reserved: self.committed,
+            remaining: self.limit - self.committed,
+            reservations: self.reservations.len(),
+            fenced: self.fenced,
+            per_class,
+            active_models,
+        }
+    }
 }
 
 impl ResourceArbiter {
@@ -729,23 +763,24 @@ impl ResourceArbiter {
             .budgets
             .get(key)
             .ok_or_else(|| Error::State("unknown device budget".into()))?;
-        let mut per_class: BTreeMap<AllocationClass, u64> = BTreeMap::new();
-        let mut active_models = BTreeSet::new();
-        for reservation in b.reservations.values() {
-            active_models.insert(reservation.owner.model.clone());
-            for part in &reservation.allocations {
-                *per_class.entry(part.kind).or_default() += part.bytes;
-            }
-        }
-        Ok(DeviceBudgetSnapshot {
-            limit: b.limit,
-            reserved: b.committed,
-            remaining: b.limit - b.committed,
-            reservations: b.reservations.len(),
-            fenced: b.fenced,
-            per_class,
-            active_models,
-        })
+        Ok(b.snapshot())
+    }
+
+    /// Process/domain-wide accounting, including retained and fenced owners
+    /// not currently in a model catalog. Not OS/device memory telemetry.
+    pub fn snapshots(&self) -> Result<Vec<ResourceSnapshot>> {
+        let state = self
+            .shared
+            .lock()
+            .map_err(|_| Error::State("resource arbiter mutex poisoned".into()))?;
+        Ok(state
+            .budgets
+            .iter()
+            .map(|(key, budget)| ResourceSnapshot {
+                key: key.clone(),
+                budget: budget.snapshot(),
+            })
+            .collect())
     }
 
     /// Reusable resident leases need one atomic Ready/Reserved→Submitted
@@ -1123,6 +1158,11 @@ mod tests {
             a.admit(&gpu, owner("model-B"), &[req(AllocationClass::Scratch, 16)])
                 .is_err()
         );
+        let domains = a.snapshots().unwrap();
+        assert_eq!(domains.len(), 1);
+        assert_eq!(domains[0].key, gpu);
+        assert!(domains[0].budget.fenced);
+        assert_eq!(domains[0].budget.reserved, snapshot.reserved);
         // Unknown physical GPU allocations are never released by timeout.
     }
 

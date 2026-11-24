@@ -118,7 +118,7 @@ impl TextService for Router {
         Ok(Router::model_ids(self).map(str::to_owned).collect())
     }
     fn max_output(&self) -> Result<usize> {
-        Ok(self.max_output)
+        Ok(Router::max_output(self))
     }
     fn admission(&self) -> Result<Value> {
         Router::admission(self)

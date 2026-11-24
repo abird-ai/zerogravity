@@ -495,6 +495,25 @@ fn selective_catalog_retirement_preserves_other_workers_and_shutdown_order() {
             runtime.models().aliases(&model).unwrap(),
             ["alias", "model"]
         );
+        use crate::diagnostics::{ModelLifecycle, ModelMemory, RuntimePhase};
+        let initial = runtime.snapshot().unwrap();
+        assert_eq!(initial.status.phase, RuntimePhase::Ready);
+        assert_eq!(
+            (initial.status.loaded_models, initial.status.loaded_owners),
+            (3, 2)
+        );
+        assert_eq!(initial.catalog.len(), 2);
+        assert_eq!(initial.catalog[0].aliases, ["alias", "model"]);
+        let capabilities = initial.catalog[0].capabilities.as_ref().unwrap();
+        assert!(matches!(
+            capabilities.details.memory,
+            Some(ModelMemory::Host { .. })
+        ));
+        assert!(
+            capabilities.details.execution.is_none(),
+            "unknown adapter profile not inferred"
+        );
+        assert_eq!(initial.scheduler.as_ref().unwrap().config.workers, 2);
         let first = runtime.request_text(request("first target")).unwrap();
         retiring_gate.entered();
         let other_request = || {
@@ -523,6 +542,17 @@ fn selective_catalog_retirement_preserves_other_workers_and_shutdown_order() {
             );
             std::thread::yield_now();
         }
+        let draining = runtime.snapshot().unwrap();
+        assert_eq!(draining.status.phase, RuntimePhase::Retiring);
+        assert_eq!(
+            (draining.status.loaded_models, draining.status.loaded_owners),
+            (1, 1)
+        );
+        assert_eq!(draining.catalog[0].lifecycle, ModelLifecycle::Draining);
+        assert!(draining.catalog[0].admitted_requests >= 2);
+        assert!(draining.catalog[0].capabilities.is_none());
+        assert_eq!(draining.catalog[1].lifecycle, ModelLifecycle::Ready);
+        assert!(draining.catalog[1].capabilities.is_some());
         assert_eq!(runtime.status().execution_adapters, 1);
         assert!(runtime.models().aliases(&model).is_err());
         assert!(runtime.models().resolve("alias").is_err());
@@ -574,6 +604,11 @@ fn selective_catalog_retirement_preserves_other_workers_and_shutdown_order() {
         if let Some(shutdown) = shutdown {
             shutdown.join().unwrap().unwrap();
         } else {
+            let retired = runtime.models().snapshot().unwrap();
+            assert_eq!(retired[0].lifecycle, ModelLifecycle::Retired);
+            assert_eq!(retired[0].admitted_requests, 0);
+            assert!(retired[0].capabilities.is_none());
+            assert_eq!(retired[1].source, other.source());
             assert!(!runtime.status().closed);
             assert_eq!(runtime.models().list().unwrap().len(), 1);
             assert!(runtime.models().unload(&model).is_err());
@@ -582,6 +617,9 @@ fn selective_catalog_retirement_preserves_other_workers_and_shutdown_order() {
             assert!(runtime.models().list().unwrap().is_empty());
         }
         runtime.shutdown().unwrap();
+        let closed = runtime.snapshot().unwrap();
+        assert_eq!(closed.status.phase, RuntimePhase::Closed);
+        assert!(closed.scheduler.is_none() && closed.catalog.is_empty());
         drop((
             first,
             second,

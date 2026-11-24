@@ -57,6 +57,16 @@ impl AdmittedGguf {
     pub(super) fn model(&self) -> &Arc<LoadedQwenModel> {
         &self.model
     }
+    pub(super) fn host_reserved_bytes(&self) -> crate::Result<u64> {
+        self._weight_charge.reserved_bytes()
+    }
+}
+pub(super) fn artifact_description() -> zerogravity_engine::diagnostics::ArtifactDescription {
+    zerogravity_engine::diagnostics::ArtifactDescription {
+        family: "qwen35".into(),
+        format: zerogravity_artifacts::artifact::ArtifactFormat::Gguf,
+        revision: None,
+    }
 }
 impl TensorSource for AdmittedGguf {
     fn source_identity(&self) -> crate::identity::SourceIdentity {

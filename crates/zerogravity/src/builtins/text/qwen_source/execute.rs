@@ -766,7 +766,8 @@ impl Executor for SourceText {
         report["model_and_backend_host_reserved_bytes"] = serde_json::json!(
             snapshot
                 .host
-                .and_then(|(_, reserved, _, serving)| reserved.checked_sub(serving))
+                .as_ref()
+                .and_then(|host| { host.reserved_bytes.checked_sub(host.serving_reserved_bytes) })
         );
         let mut source_models = Vec::with_capacity(models.len());
         for (alias, model) in models {
@@ -785,30 +786,21 @@ impl Executor for SourceText {
             let preparation = resident.as_ref().map(|resident| {
                 use zerogravity_core::provider::PreparedExecutable;
                 let fit = resident.admission();
-                let prepared = resident.prepared_text().expect("original resident text preparation");
-                serde_json::json!({
-                    "provider": format!("{:?}", prepared.selected().provider),
-                    "mode": format!("{:?}", prepared.selected().mode),
-                    "numerical_profile": format!("{:?}", prepared.model().program().numerical_profile()),
-                    "observation_support": format!("{:?}", prepared.observations()),
-                    "min_rows": prepared.supported_rows().start(),
-                    "max_rows": prepared.supported_rows().end(),
-                    "device": { "namespace": fit.device.backend, "identity": fit.device.device },
-                    "configured_model_capacity_bytes": fit.configured_model_capacity_bytes,
-                    "admitted_model_capacity_bytes": fit.admitted_model_capacity_bytes,
-                    "model_required_bytes": fit.model_required_bytes,
-                    "context_device_budget_bytes": fit.context_device_budget_bytes,
-                    "physical_limit_bytes": fit.physical_limit_bytes,
-                    "host_upper_bytes": fit.host_upper_bytes,
-                    "source_weight_bytes": fit.source_weight_bytes,
-                    "resident_weight_bytes": fit.resident_weight_bytes,
-                    "root_bytes": fit.root_bytes,
-                    "root_count": fit.root_count,
-                    "state_reserve_bytes": fit.state_reserve_bytes,
-                    "max_sessions": fit.max_sessions,
-                    "cohort_width": fit.cohort_width,
-                })
-            });
+                let prepared = resident.prepared_text().ok_or_else(|| {
+                    ServiceError::new(500, "source_owner", "original prepared text absent")
+                })?;
+                // Legacy wire projection of the actual typed inventory.
+                let mut report = serde_json::to_value(fit)
+                    .map_err(|error| ServiceError::new(500, "diagnostics", error.to_string()))?;
+                report["device"] = serde_json::json!({ "namespace": fit.device.backend, "identity": fit.device.device });
+                report["provider"] = serde_json::json!(format!("{:?}", prepared.selected().provider));
+                report["mode"] = serde_json::json!(format!("{:?}", prepared.selected().mode));
+                report["numerical_profile"] = serde_json::json!(format!("{:?}", prepared.model().program().numerical_profile()));
+                report["observation_support"] = serde_json::json!(format!("{:?}", prepared.observations()));
+                report["min_rows"] = serde_json::json!(prepared.supported_rows().start());
+                report["max_rows"] = serde_json::json!(prepared.supported_rows().end());
+                Ok::<_, ServiceError>(report)
+            }).transpose()?;
             #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
             let paged_pool = resident
                 .as_ref()

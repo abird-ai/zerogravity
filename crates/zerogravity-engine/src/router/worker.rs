@@ -18,9 +18,11 @@ use std::{
 
 mod cohorts;
 
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct SchedulerSnapshot {
+    pub config: WorkerConfig,
     pub queue: super::pending::QueueSnapshot,
-    pub host: Option<(u64, u64, u64, u64)>,
+    pub host: Option<super::pending::HostBudgetSnapshot>,
     pub active_limit: usize,
     pub cohort_width: usize,
     pub counters: Counters,

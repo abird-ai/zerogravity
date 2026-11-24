@@ -20,6 +20,7 @@ enum Action {
     ReadyCancel,
     ReadyDiscard,
 }
+#[derive(Default)]
 struct Control {
     group: usize,
     next: AtomicUsize,
@@ -587,6 +588,9 @@ impl<const FAIL: bool> Executor for Retirement<FAIL> {
     fn single(_: &mut Active<Self>) -> Result<SingleCompleted, ServiceError> {
         Err(refusal())
     }
+    fn selective_retirement() -> Option<ModelRetirement<Self::Model>> {
+        Some(|_| if FAIL { Err(refusal()) } else { Ok(()) })
+    }
     fn retire(_: &BTreeMap<String, Self::Model>) -> Result<(), ServiceError> {
         if FAIL { Err(refusal()) } else { Ok(()) }
     }
@@ -612,6 +616,57 @@ fn shutdown_rejects_new_retirement_failures_after_real_join_and_keeps_them_stick
     run::<false>(7);
     run::<true>(7);
     run::<true>(u64::MAX);
+}
+
+#[test]
+fn failed_selective_retirement_is_visible_and_never_reopens_admission() {
+    use crate::{
+        Runtime,
+        diagnostics::{ModelLifecycle, RuntimePhase},
+    };
+    let host = HostPool::isolated(256).unwrap();
+    let model = || {
+        Arc::new(Model {
+            source: SourceIdentity::for_new_allocation().unwrap(),
+            control: Arc::default(),
+            prefill_chunk: 1,
+        })
+    };
+    let a = model();
+    let b = model();
+    let runtime = Runtime::builder().build().unwrap();
+    runtime
+        .configure_text(|| {
+            Router::with_executor::<Retirement<true>>(
+                BTreeMap::from([("a".into(), a), ("b".into(), b)]),
+                host.clone(),
+                WorkerConfig {
+                    workers: 1,
+                    active: 1,
+                    context: 16,
+                    output: 1,
+                    max_pending: Some(1),
+                    policy: WorkPolicy::Sequential,
+                },
+            )
+        })
+        .unwrap();
+    let target = runtime.models().resolve("a").unwrap();
+    assert!(runtime.models().unload(&target).is_err());
+    let failed = runtime.snapshot().unwrap();
+    assert_eq!(failed.status.phase, RuntimePhase::Ready);
+    assert!(failed.status.failed && failed.failure.is_some());
+    assert_eq!(failed.catalog[0].lifecycle, ModelLifecycle::Failed);
+    assert!(failed.catalog[0].capabilities.is_none());
+    assert_eq!(failed.catalog[1].lifecycle, ModelLifecycle::Ready);
+    assert!(runtime.models().resolve("a").is_err());
+    assert!(runtime.models().resolve("b").is_ok());
+    assert!(runtime.shutdown().is_err());
+    let closed = runtime.snapshot().unwrap();
+    assert_eq!(closed.status.phase, RuntimePhase::Closed);
+    assert_eq!(closed.failure, failed.failure);
+    drop((target, runtime));
+    assert_eq!(host.snapshot().unwrap().1, 0);
 }
 
 #[test]

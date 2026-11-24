@@ -152,6 +152,10 @@ pub fn load_gpu_router(
             })?;
         let vocabulary_size = source.model().geometry().vocab_size;
         let source_identity = source.model().source_identity();
+        let source_host_reserved_bytes = source
+            .host_reserved_bytes()
+            .map_err(ServiceError::inference)?;
+
         let program = crate::models::ModelProgram::record(
             source,
             crate::models::ProgramRequest {
@@ -168,10 +172,14 @@ pub fn load_gpu_router(
         let resident = block_on(crate::models::prepare_executable(program, &provider))
             .map_err(ServiceError::inference)?
             .into_prepared();
+        let execution =
+            block_on(resident.tensor_source_description()).map_err(ServiceError::inference)?;
         let metadata = adapter_metadata::<Model>(&host, alias, "gpu-model-adapter")?;
         Ok(Arc::new(Model {
             resident: Mutex::new(Some(resident)),
             source: source_identity,
+            execution,
+            source_host_reserved_bytes: Some(source_host_reserved_bytes),
             tokenizer,
             group,
             hidden_width,

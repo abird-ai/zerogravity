@@ -13,14 +13,17 @@ use crate::{
 pub use region::{PhysicalRegionPort, PreparedRegion, RegionShape};
 pub use resources::{
     ProviderBufferMode, ProviderCompletionMode, ProviderMemoryBudget, ProviderRequirements,
+    ResidentModelMemory, ResidentTextAdmission,
 };
 pub use selection::{
     ExecutionMode, SelectedMode, SelectionPolicy, ShapeMissPolicy, StateBridge, SwitchingBoundary,
 };
-pub use state::{BoundRegionState, StateStorage};
+pub use state::{BoundRegionState, ResidentStatePolicy, StateStorage};
 use std::{future::Future, sync::Arc};
-pub use text::{ObservationSupport, PreparedTextProgram};
+pub use text::{ExecutionDescription, ObservationSupport, PreparedTextProgram, TextCallSupport};
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProviderKind {
     Cpu,

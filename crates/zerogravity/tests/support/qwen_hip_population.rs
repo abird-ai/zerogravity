@@ -174,8 +174,60 @@ impl Harness {
     pub fn retire(self) {
         let weak = Arc::downgrade(self.model.prepared());
         if !self.runtime.status().closed {
+            use zerogravity::{
+                models::ModelMemory,
+                provider::{ObservationSupport, ProviderKind, ResidentStatePolicy},
+            };
+            let snapshot = self.runtime.snapshot().unwrap();
+            assert_eq!(snapshot.status.loaded_owners, 1);
+            assert_eq!(snapshot.catalog.len(), 1);
+            let entry = &snapshot.catalog[0];
+            assert_eq!(entry.source, self.model.source());
+            assert_eq!(entry.aliases, ["alias", "source"]);
+            assert!(!entry.independent_retirement);
+            let details = &entry.capabilities.as_ref().unwrap().details;
+            let execution = details.execution.as_ref().unwrap();
+            assert_eq!(execution.selected.provider, ProviderKind::Hip);
+            assert_eq!(
+                execution.text_calls.as_ref().unwrap().observations,
+                ObservationSupport::AtProducer
+            );
+            assert_eq!(details.state_policy, Some(ResidentStatePolicy::Contiguous));
+            assert_eq!(details.prefix_sharing, Some(false));
+            assert_eq!(
+                details.artifact.as_ref().unwrap().format,
+                zerogravity_artifacts::artifact::ArtifactFormat::Safetensors
+            );
+            assert!(details.artifact.as_ref().unwrap().revision.is_some());
+            let Some(ModelMemory::ResidentText {
+                admission,
+                resident_bytes,
+            }) = &details.memory
+            else {
+                panic!("original native text admission absent");
+            };
+            assert_eq!(admission.device, self.device);
+            assert_eq!(
+                admission.admitted_model_capacity_bytes,
+                self.budget.model_device_bytes()
+            );
+            assert_eq!(
+                admission.context_device_budget_bytes,
+                self.budget.context_device_bytes()
+            );
+            assert!(
+                *resident_bytes > 0 && *resident_bytes <= admission.admitted_model_capacity_bytes
+            );
+            assert!(snapshot.resources.iter().any(|r| r.key == self.device
+                && r.budget.limit == admission.physical_limit_bytes
+                && !r.budget.fenced));
             let report = self.admission();
             let models = report["source_models"].as_array().unwrap();
+            assert_eq!(
+                report["catalog"][0]["capabilities"]["details"]["memory"]["resident_text"]["admission"],
+                serde_json::to_value(admission).unwrap()
+            );
+
             assert!(!models.is_empty());
             for model in models {
                 let fit = &model["preparation"];

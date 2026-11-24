@@ -369,7 +369,11 @@ impl Executor for CapturedText {
         models: &BTreeMap<String, Arc<CapturedModel>>,
         snapshot: &SchedulerSnapshot,
     ) -> Result<serde_json::Value, ServiceError> {
-        let host_snapshot = snapshot.host.unwrap_or((0, 0, 0, 0));
+        let host_snapshot = snapshot
+            .host
+            .as_ref()
+            .map(|host| host.totals())
+            .unwrap_or((0, 0, 0, 0));
         let hf = qwen35_cuda::health(models, host_snapshot);
         let backend = hf
             .as_ref()

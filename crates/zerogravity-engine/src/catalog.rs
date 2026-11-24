@@ -10,6 +10,10 @@ impl<'a> ModelCatalog<'a> {
     pub fn list(&self) -> Result<Vec<ModelInstance>> {
         self.runtime.loaded_text_models()
     }
+    /// Read-only lifecycle/alias groups; no retained executable handles.
+    pub fn snapshot(&self) -> Result<Vec<crate::diagnostics::ModelSnapshot>> {
+        self.runtime.catalog_snapshot()
+    }
     pub fn resolve(&self, alias: &str) -> Result<ModelInstance> {
         self.runtime.resolve_text(alias)
     }

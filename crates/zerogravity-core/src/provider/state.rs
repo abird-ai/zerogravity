@@ -10,6 +10,19 @@ use crate::{
 };
 use std::sync::Arc;
 
+/// Prepared resident text state allocation policy. No page allocation or
+/// provider eligibility follows from this value alone.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResidentStatePolicy {
+    Contiguous,
+    Paged {
+        page_tokens: usize,
+        max_append_tokens: usize,
+    },
+}
+
 /// Explicit dense state storage, independently of logical arithmetic. The
 /// original semantic program/profile supplies vector ordering and precision.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

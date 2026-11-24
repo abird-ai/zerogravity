@@ -113,6 +113,43 @@ impl PreparedModel for Model {
     fn vocabulary_size(&self) -> u64 {
         self.source.plan.model_profile().vocabulary_size() as u64
     }
+    fn describe(&self) -> crate::Result<zerogravity_engine::diagnostics::ModelDetails> {
+        use zerogravity_core::provider::PreparedExecutable;
+        use zerogravity_engine::diagnostics::{
+            ArtifactDescription, ModelDetails, ModelMemory, SourceRevision,
+        };
+        let resident = self.resident().map_err(ServiceError::into_core)?;
+        let prepared = resident.prepared_text().ok_or_else(|| {
+            crate::Error::State("original resident text preparation absent".into())
+        })?;
+        let metadata = &self.source.metadata;
+        #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
+        let prefix_sharing = self
+            .prefix_cache
+            .lock()
+            .map_err(|_| poison().into_core())?
+            .is_some();
+        #[cfg(not(all(feature = "model-qwen35", feature = "cuda")))]
+        let prefix_sharing = false;
+        Ok(ModelDetails {
+            artifact: Some(ArtifactDescription {
+                family: metadata.family.into(),
+                format: zerogravity_artifacts::artifact::ArtifactFormat::Safetensors,
+                revision: Some(SourceRevision {
+                    repository: metadata.repository.into(),
+                    revision: metadata.revision.into(),
+                }),
+            }),
+            execution: Some(prepared.description()),
+            state_policy: Some(resident.state_policy()),
+            prefix_sharing: Some(prefix_sharing),
+            source_host_reserved_bytes: None,
+            memory: Some(ModelMemory::ResidentText {
+                admission: resident.admission().clone(),
+                resident_bytes: resident.resident_bytes()?,
+            }),
+        })
+    }
 }
 
 #[cfg(test)]

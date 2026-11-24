@@ -26,6 +26,8 @@ impl ActivationPrecision {
 }
 
 /// Reserved program contract, not inference support or a backend-global dtype.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum NumericalProfile {
     #[default]

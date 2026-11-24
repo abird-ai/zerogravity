@@ -35,20 +35,14 @@ mod probe;
 pub use probe::{ResidentTextFinalReader, ResidentTextReaderObservation};
 
 mod admission;
-pub use admission::ResidentTextAdmission;
+pub use zerogravity_core::provider::ResidentTextAdmission;
 
 const CONTROL_BYTES: usize = 64 * 1024;
 const CALL_HOST_BYTES: usize = 32 * 1024 * 1024;
 
+use zerogravity_core::provider::ResidentStatePolicy;
 #[cfg(feature = "cuda-cublas")]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CudaSourceStatePolicy {
-    Contiguous,
-    Paged {
-        page_tokens: usize,
-        max_append_tokens: usize,
-    },
-}
+pub use zerogravity_core::provider::ResidentStatePolicy as CudaSourceStatePolicy;
 
 #[cfg(feature = "cuda-cublas")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -76,8 +70,7 @@ pub struct ResidentTextModel {
     _control: WindowWorkspace,
     contract: NumericalContract,
     admission: ResidentTextAdmission,
-    #[cfg(feature = "cuda-cublas")]
-    state_policy: CudaSourceStatePolicy,
+    state_policy: ResidentStatePolicy,
     #[cfg(feature = "cuda-cublas")]
     prefill_projection_classes:
         Option<crate::resident_program::cuda_forward::PrefillProjectionClasses>,
@@ -356,7 +349,7 @@ impl ResidentModel {
         )?;
         let prepared = program::prepare(device, admission, source_owner, cancelled).await?;
         require_prepared_text(&executable, &prepared.program)?;
-        let admission = ResidentTextAdmission::hip(
+        let admission = admission::hip(
             &prepared.service,
             &prepared.inventory,
             max_sessions,
@@ -403,8 +396,7 @@ impl ResidentModel {
             _control: control,
             contract,
             admission,
-            #[cfg(feature = "cuda-cublas")]
-            state_policy: CudaSourceStatePolicy::Contiguous,
+            state_policy: ResidentStatePolicy::Contiguous,
             #[cfg(feature = "cuda-cublas")]
             prefill_projection_classes: None,
             _source_owner: None,
@@ -553,8 +545,7 @@ impl ResidentModel {
             cancelled,
         )
         .await?;
-        let admission =
-            ResidentTextAdmission::cuda(&model.service, &inventory, provider_cap, max_sessions)?;
+        let admission = admission::cuda(&model.service, &inventory, provider_cap, max_sessions)?;
         match state_policy {
             CudaSourceStatePolicy::Contiguous => {
                 model.install_window_root_pool(source.clone(), roots)?;
@@ -633,6 +624,13 @@ impl ResidentTextModel {
     /// Read-only effective cold fit, from the original loaded service.
     pub fn admission(&self) -> &ResidentTextAdmission {
         &self.admission
+    }
+    /// Current leases in the original model namespace, not device free memory.
+    pub fn resident_bytes(&self) -> Result<usize> {
+        self.inner.service.resident_bytes()
+    }
+    pub fn state_policy(&self) -> ResidentStatePolicy {
+        self.state_policy
     }
 
     fn bind_invocation<'a>(

@@ -9,9 +9,11 @@ pub(crate) struct Resources {
 }
 impl Resources {
     pub fn ordinary(snapshot: &SchedulerSnapshot) -> Self {
-        let (limit, reserved, _, serving) = snapshot.host.unwrap_or((0, 0, 0, 0));
         Self {
-            host: Some((limit, reserved, reserved.checked_sub(serving), 0, serving)),
+            host: snapshot.host.as_ref().map(|host| {
+                let (limit, reserved, _, serving) = host.totals();
+                (limit, reserved, reserved.checked_sub(serving), 0, serving)
+            }),
             fixed: None,
             hf_source: None,
             hf_resources: None,

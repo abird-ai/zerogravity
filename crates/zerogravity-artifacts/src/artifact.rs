@@ -25,7 +25,8 @@ const MAX_STRING: u64 = 8 * 1024 * 1024;
 const MAX_ARRAY_ITEMS: u64 = 4_000_000;
 const MAX_REFERENCE_READ: u64 = 64 * 1024 * 1024;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ArtifactFormat {
     Safetensors,
     Gguf,

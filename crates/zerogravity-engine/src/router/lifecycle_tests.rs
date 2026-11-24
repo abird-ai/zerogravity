@@ -91,6 +91,14 @@ fn worker_status_is_unlocked_and_every_shutdown_waits_for_the_same_failed_join()
         error,
         "failure must remain sticky for later clones"
     );
+    let snapshot = runtime.snapshot().unwrap();
+    assert_eq!(
+        snapshot.status.phase,
+        crate::diagnostics::RuntimePhase::Closed
+    );
+    assert!(snapshot.status.failed);
+    assert!(snapshot.failure.unwrap().contains("worker panicked"));
+    assert!(snapshot.catalog.is_empty() && snapshot.scheduler.is_none());
     assert_eq!(host.snapshot().unwrap().1, 0);
 }
 

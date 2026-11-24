@@ -140,6 +140,45 @@ fn source_bound_sdk_http_lifecycle() {
     }
     assert_eq!(clone.status().loaded_models, 2);
     assert_eq!(clone.status().execution_adapters, 1);
+    use crate::{
+        diagnostics::RuntimePhase,
+        models::{ModelLifecycle, ModelMemory},
+        provider::ProviderKind,
+    };
+    let description = clone.snapshot().unwrap();
+    assert_eq!(description.status.phase, RuntimePhase::Ready);
+    assert_eq!(description.status.loaded_owners, 1);
+    assert_eq!(description.catalog.len(), 1);
+    let model_description = &description.catalog[0];
+    assert_eq!(model_description.aliases, ["alias", "tiny"]);
+    assert_eq!(model_description.lifecycle, ModelLifecycle::Ready);
+    assert!(model_description.independent_retirement);
+    let capabilities = model_description.capabilities.as_ref().unwrap();
+    assert_eq!(capabilities.max_context, MAX_CONTEXT);
+    assert_eq!(
+        capabilities.details.artifact.as_ref().unwrap().format,
+        zerogravity_artifacts::artifact::ArtifactFormat::Gguf
+    );
+    let execution = capabilities.details.execution.as_ref().unwrap();
+    assert_eq!(execution.selected.provider, ProviderKind::Cpu);
+    assert!(execution.text_calls.is_none());
+    assert!(capabilities.details.source_host_reserved_bytes.unwrap() > 0);
+    assert!(
+        matches!(capabilities.details.memory, Some(ModelMemory::Host { session_state_bytes, session_scratch_bytes }) if session_state_bytes > 0 && session_scratch_bytes > 0)
+    );
+    let scheduler = description.scheduler.as_ref().unwrap();
+    assert_eq!(scheduler.config.context, MAX_CONTEXT);
+    assert_eq!(scheduler.config.output, MAX_OUTPUT);
+    let host = scheduler.host.as_ref().unwrap();
+    assert_eq!(host.limit_bytes, 2 * HOST_MIB as u64 * 1024 * 1024);
+    assert!(
+        description
+            .resources
+            .iter()
+            .any(|resource| resource.key == host.key && resource.budget.limit == host.limit_bytes)
+    );
+    // A metadata snapshot does not retain the original source past unload.
+
     let models = clone.models().list().unwrap();
     assert_eq!(models.len(), 2);
     assert!(models[0].shares_source(&models[1]));
@@ -267,6 +306,14 @@ fn source_bound_sdk_http_lifecycle() {
     assert!(runtime.models().resolve("tiny").is_err());
     assert_eq!(runtime.status().loaded_models, 1);
     assert_eq!(runtime.status().execution_adapters, 1);
+    let catalog = runtime.models().snapshot().unwrap();
+    assert_eq!(catalog.len(), 2);
+    assert_eq!(catalog[0].lifecycle, ModelLifecycle::Retired);
+    assert!(catalog[0].capabilities.is_none());
+    assert_eq!(catalog[1].lifecycle, ModelLifecycle::Ready);
+    assert_eq!(catalog[1].source, other.source());
+    assert_eq!(runtime.status().loaded_owners, 1);
+
     assert!(
         runtime
             .models()
@@ -358,6 +405,37 @@ fn http_checkpoint(runtime: &Runtime, task: &TaskRequest, expected: &Outcome) {
     let address = server.local_addr();
     assert!(address.ip().is_loopback());
     assert_ne!(address.port(), 0);
+    let mut health = TcpStream::connect_timeout(&address, WAIT).unwrap();
+    health.set_read_timeout(Some(WAIT)).unwrap();
+    health
+        .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        .unwrap();
+    let mut raw = String::new();
+    health
+        .take((WIRE_LIMIT + 1) as u64)
+        .read_to_string(&mut raw)
+        .unwrap();
+    assert!(raw.starts_with("HTTP/1.1 200 OK\r\n"), "{raw}");
+    let health: serde_json::Value =
+        serde_json::from_str(raw.split_once("\r\n\r\n").unwrap().1).unwrap();
+    let catalog = runtime.models().snapshot().unwrap();
+    let expected_catalog = serde_json::to_value(catalog).unwrap();
+    assert_eq!(
+        health["admission"]["catalog"][0]["aliases"],
+        expected_catalog[0]["aliases"]
+    );
+    assert_eq!(
+        health["admission"]["catalog"][0]["capabilities"],
+        expected_catalog[0]["capabilities"]
+    );
+    assert_eq!(
+        health["admission"]["scheduler"]["config"]["context"],
+        MAX_CONTEXT
+    );
+    assert!(
+        health["admission"].get("resources").is_none(),
+        "process-wide owner names stay local to the SDK"
+    );
     let usage = serde_json::json!({
         "prompt_tokens": expected.1, "completion_tokens": expected.2,
         "total_tokens": expected.1 + expected.2,

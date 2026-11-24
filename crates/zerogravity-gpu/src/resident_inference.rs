@@ -1033,6 +1033,36 @@ impl ResidentModel {
         service.close_model_namespace()
     }
 
+    /// Cold description of the actual ordinary tensor-source program. No
+    /// graph/template capability is inferred from the backing device.
+    pub async fn tensor_source_description(
+        &self,
+    ) -> Result<zerogravity_core::provider::ExecutionDescription> {
+        use zerogravity_core::provider::{ExecutionDescription, ExecutionMode, SelectedMode};
+        let workspace = self.workspace.lock().await;
+        workspace.program.owned_source()?;
+        let provider = crate::backend::Provider::selected(&self.service.physical_owner().device())?;
+        Ok(ExecutionDescription {
+            selected: SelectedMode {
+                provider: provider.kind(),
+                mode: ExecutionMode::Native,
+            },
+            numerical_profile: Some(workspace.program.plan().numerical_profile()),
+            text_calls: None,
+        })
+    }
+    /// Read the existing model quota/leases, with no new allocation or actor IO.
+    pub fn memory_snapshot(&self) -> Result<zerogravity_core::provider::ResidentModelMemory> {
+        let service = &self.service;
+        Ok(zerogravity_core::provider::ResidentModelMemory {
+            device: service.physical_key(),
+            model_capacity_bytes: service.budget().provider_capacity(),
+            physical_limit_bytes: service.budget().device_capacity(),
+            resident_bytes: service.resident_bytes()?,
+            root_bytes: self.state_bytes,
+        })
+    }
+
     pub fn physical_owner(&self) -> Arc<ResidentPhysical> {
         self.service.physical_owner().clone()
     }

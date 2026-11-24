@@ -34,7 +34,7 @@ pub struct Limits {
     pub max_scratch: usize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Fairness {
     /// Aggregate logical tokens allowed across all waves selected this round.
     pub round_tokens: usize,

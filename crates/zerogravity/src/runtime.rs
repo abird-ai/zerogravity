@@ -3,7 +3,7 @@ use crate::{
     Result,
     artifacts::ArtifactService,
     devices::Devices,
-    diagnostics::RuntimeStatus,
+    diagnostics::{RuntimeSnapshot, RuntimeStatus},
     models::ModelCatalog,
     run::{OutputStream, TaskRequest},
 };
@@ -97,6 +97,10 @@ impl Runtime {
     }
     pub fn status(&self) -> RuntimeStatus {
         self.engine.status()
+    }
+    /// On-demand effective runtime, model and process resource facts.
+    pub fn snapshot(&self) -> Result<RuntimeSnapshot> {
+        self.engine.snapshot()
     }
     /// Close admission and join workers. Engine-worker and same-runtime loader/
     /// retirement callbacks return an error rather than synchronously self-joining.

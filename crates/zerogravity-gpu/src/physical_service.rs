@@ -429,10 +429,6 @@ impl PhysicalServiceBudget {
     pub(crate) fn provider_capacity(&self) -> u64 {
         self.provider_cap
     }
-    #[cfg(all(
-        target_os = "linux",
-        any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
-    ))]
     pub(crate) fn device_capacity(&self) -> u64 {
         self.total_limit
     }

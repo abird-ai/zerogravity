@@ -30,6 +30,7 @@ pub mod program;
 ///
 /// This is a local residency identity, not a cryptographic model checksum or
 /// a distributed content-addressed artifact identity.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SourceIdentity(u64);
 

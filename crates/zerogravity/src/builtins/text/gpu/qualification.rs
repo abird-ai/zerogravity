@@ -137,9 +137,12 @@ impl Fixture {
         .unwrap();
         let max_token_bytes = tokenizer.max_token_bytes().unwrap();
         let metadata = adapter_metadata::<Model>(&host, "qualification", "model-adapter").unwrap();
+        let execution = block_on(resident.tensor_source_description()).unwrap();
         let model = Arc::new(Model {
             resident: Mutex::new(Some(resident)),
             source: source.source_identity(),
+            execution,
+            source_host_reserved_bytes: None,
             tokenizer: crate::builtins::text::tokenizer_owner(
                 (tokenizer, retained),
                 |owner| &owner.0,

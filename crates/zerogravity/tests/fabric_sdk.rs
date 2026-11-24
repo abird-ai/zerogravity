@@ -433,6 +433,39 @@ fn qwen_cuda_paged_native_sdk_matches_contiguous() {
         let report = engine
             .with_text_router(|router| router.admission())
             .unwrap();
+        use zerogravity::{
+            models::ModelMemory,
+            provider::{ObservationSupport, ProviderKind, ResidentStatePolicy},
+        };
+        let snapshot = runtime.snapshot().unwrap();
+        assert_eq!(snapshot.status.loaded_owners, 1);
+        let details = &snapshot.catalog[0].capabilities.as_ref().unwrap().details;
+        let execution = details.execution.as_ref().unwrap();
+        assert_eq!(execution.selected.provider, ProviderKind::Cuda);
+        assert_eq!(
+            execution.text_calls.as_ref().unwrap().observations,
+            ObservationSupport::None
+        );
+        assert_eq!(
+            matches!(
+                details.state_policy,
+                Some(ResidentStatePolicy::Paged { .. })
+            ),
+            paged
+        );
+        assert_eq!(details.prefix_sharing, Some(paged));
+        let Some(ModelMemory::ResidentText {
+            admission,
+            resident_bytes,
+        }) = &details.memory
+        else {
+            panic!("original native text admission absent");
+        };
+        assert!(*resident_bytes > 0 && *resident_bytes <= admission.admitted_model_capacity_bytes);
+        assert_eq!(
+            report["catalog"][0]["capabilities"]["details"]["memory"]["resident_text"]["admission"],
+            serde_json::to_value(admission).unwrap()
+        );
         let fit = &report["source_models"][0]["preparation"];
         assert_eq!(fit["provider"], "Cuda");
         assert_eq!(fit["device"]["namespace"], "pci");
@@ -1077,6 +1110,41 @@ fn qwen_gguf_cuda_sdk_unloads_with_retained_handle() {
     );
     let other = runtime.models().resolve("other").unwrap();
     assert!(!handle.shares_source(&other));
+    use zerogravity::{
+        models::{ModelLifecycle, ModelMemory},
+        provider::ProviderKind,
+    };
+    let loaded = runtime.snapshot().unwrap();
+    assert_eq!(
+        (loaded.status.loaded_models, loaded.status.loaded_owners),
+        (3, 2)
+    );
+    assert_eq!(loaded.catalog.len(), 2);
+    for model in &loaded.catalog {
+        assert_eq!(model.lifecycle, ModelLifecycle::Ready);
+        assert!(model.independent_retirement);
+        let details = &model.capabilities.as_ref().unwrap().details;
+        assert_eq!(
+            details.execution.as_ref().unwrap().selected.provider,
+            ProviderKind::Cuda
+        );
+        assert!(details.source_host_reserved_bytes.unwrap() >= weight_bytes);
+        let Some(ModelMemory::Resident(memory)) = &details.memory else {
+            panic!("original GGUF model memory absent");
+        };
+        assert_eq!(memory.device, device);
+        assert_eq!(memory.model_capacity_bytes, 2048 * 1024 * 1024);
+        assert!(
+            memory.resident_bytes > 0
+                && memory.resident_bytes as u64 <= memory.model_capacity_bytes
+        );
+    }
+    assert!(
+        loaded
+            .resources
+            .iter()
+            .any(|r| r.key == device && r.budget.reserved == 4096 * 1024 * 1024)
+    );
     let tokenizer = handle.prepared().tokenizer();
     let prompt = " a";
     let ids = tokenizer.prompt_tokens(prompt, false).unwrap();
@@ -1131,6 +1199,17 @@ fn qwen_gguf_cuda_sdk_unloads_with_retained_handle() {
             .resolve("other")
             .unwrap()
             .shares_source(&other)
+    );
+    let observed = runtime.snapshot().unwrap();
+    assert_eq!(observed.status.loaded_owners, 1);
+    assert_eq!(observed.catalog[0].lifecycle, ModelLifecycle::Retired);
+    assert!(observed.catalog[0].capabilities.is_none());
+    assert_eq!(observed.catalog[1].source, other.source());
+    assert!(
+        observed
+            .resources
+            .iter()
+            .any(|r| r.key == device && r.budget.reserved == 2048 * 1024 * 1024)
     );
     let retired = arbiter.snapshot(&device).unwrap();
     assert_eq!(retired.reserved, 2048 * 1024 * 1024);

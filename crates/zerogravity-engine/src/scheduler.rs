@@ -2,7 +2,7 @@
 use crate::{Error, Result};
 pub use zerogravity_core::device_queue::{DeviceTask, DispatchChoice, FairDeviceQueue};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct SchedulerLimits {
     pub max_active: usize,
     /// None removes only the count ceiling; physical host admission still bounds every entry.

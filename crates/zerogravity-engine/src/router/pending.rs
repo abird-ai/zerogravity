@@ -13,8 +13,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant};
 use zerogravity_core::resource_arbiter::{
-    AllocationClass, AllocationRequest, GlobalResourceLease, PhysicalDeviceKey, ResourceArbiter,
-    ResourceOwner,
+    AllocationClass, AllocationRequest, DeviceBudgetSnapshot, GlobalResourceLease,
+    PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
 };
 
 /// One process-wide observation ledger per original arbiter/key domain.
@@ -37,6 +37,25 @@ pub struct ServingHost {
     arbiter: ResourceArbiter,
     key: PhysicalDeviceKey,
     domain: Arc<ServingDomain>,
+}
+/// Coherent original host ledger + serving-domain subdivision.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct HostBudgetSnapshot {
+    pub key: PhysicalDeviceKey,
+    pub limit_bytes: u64,
+    pub reserved_bytes: u64,
+    pub remaining_bytes: u64,
+    pub serving_reserved_bytes: u64,
+}
+impl HostBudgetSnapshot {
+    pub fn totals(&self) -> (u64, u64, u64, u64) {
+        (
+            self.limit_bytes,
+            self.reserved_bytes,
+            self.remaining_bytes,
+            self.serving_reserved_bytes,
+        )
+    }
 }
 impl ServingHost {
     pub fn new(configured_mib: usize) -> Result<Self, ServiceError> {
@@ -193,15 +212,25 @@ impl ServingHost {
     /// under it, so `reserved.saturating_sub(serving)` is never a fabricated
     /// residual while an admission is in flight.
     pub fn snapshot(&self) -> Option<(u64, u64, u64, u64)> {
+        let (budget, serving) = self.observe()?;
+        Some((budget.limit, budget.reserved, budget.remaining, serving))
+    }
+    fn observe(&self) -> Option<(DeviceBudgetSnapshot, u64)> {
         let _state = self.domain.lock.lock().ok()?;
-        let snapshot = self.arbiter.snapshot(&self.key).ok()?;
-        let serving = self.domain.bytes.load(Ordering::Acquire);
         Some((
-            snapshot.limit,
-            snapshot.reserved,
-            snapshot.remaining,
-            serving,
+            self.arbiter.snapshot(&self.key).ok()?,
+            self.domain.bytes.load(Ordering::Acquire),
         ))
+    }
+    pub fn budget_snapshot(&self) -> Option<HostBudgetSnapshot> {
+        let (budget, serving_reserved_bytes) = self.observe()?;
+        Some(HostBudgetSnapshot {
+            key: self.key.clone(),
+            limit_bytes: budget.limit,
+            reserved_bytes: budget.reserved,
+            remaining_bytes: budget.remaining,
+            serving_reserved_bytes,
+        })
     }
     /// Reusable typed-admission seam for tokenizer/bootstrap owners. Clones
     /// the existing arbiter/key and constructs the owner only: no domain,
@@ -624,7 +653,7 @@ impl Drop for AdmissionTicket {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct QueueSnapshot {
     pub limit: Option<usize>,
     pub pending: usize,

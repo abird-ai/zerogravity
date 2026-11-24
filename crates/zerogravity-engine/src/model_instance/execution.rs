@@ -37,17 +37,20 @@ impl ModelHandle for Arc<dyn LogitModel> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Prefill {
     Chunks(usize),
     Atomic,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RetryOrder {
     Regroup,
     NextRound,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Cohorts {
     None,
     /// Independent final-prompt calls still publish through one all-row barrier.
@@ -58,7 +61,7 @@ pub enum Cohorts {
         retry: RetryOrder,
     },
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize)]
 pub struct WavePolicy {
     pub max_members: usize,
     pub max_tokens: usize,
@@ -71,14 +74,15 @@ pub struct WavePolicy {
     pub cohorts: Cohorts,
     pub cohort_width: usize,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum WorkPolicy {
     /// One cooperative quantum before checking pending work again.
     Sequential,
     /// Every eligible row gets one fair round; output-blocked rows are parked.
     Waves(WavePolicy),
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize)]
 pub struct WorkerConfig {
     pub workers: usize,
     pub active: usize,
@@ -153,6 +157,9 @@ pub trait Executor: Sized + Send + Sync + 'static {
         cancelled: &Arc<std::sync::atomic::AtomicBool>,
         host: &HostPool,
     ) -> Result<(Self::State, Self::Lease)>;
+    fn describe_model(model: &Self::Model) -> crate::Result<crate::diagnostics::ModelDetails> {
+        model.model().describe()
+    }
     fn prefill(model: &Self::Model) -> Prefill;
     fn group(model: &Self::Model) -> usize;
     fn frontier(state: &Self::State) -> usize;

@@ -7,6 +7,7 @@ use crate::{
 /// Invocation row count and phase are always explicit in BoundTextCall.
 /// These additional dependencies identify actual logical token/position
 /// inputs, not a mandatory host upload or a new physical buffer.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct InvocationPorts {
     pub token_ids: bool,

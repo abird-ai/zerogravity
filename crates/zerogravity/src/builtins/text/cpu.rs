@@ -55,6 +55,27 @@ impl PreparedModel for Model {
     fn vocabulary_size(&self) -> u64 {
         self.weights.model().geometry().vocab_size
     }
+    fn describe(&self) -> crate::Result<zerogravity_engine::diagnostics::ModelDetails> {
+        use zerogravity_core::provider::{
+            ExecutionDescription, ExecutionMode, ProviderKind, SelectedMode,
+        };
+        use zerogravity_engine::diagnostics::ModelDetails;
+        Ok(ModelDetails {
+            artifact: Some(super::local::artifact_description()),
+            execution: Some(ExecutionDescription {
+                selected: SelectedMode {
+                    provider: ProviderKind::Cpu,
+                    mode: ExecutionMode::Native,
+                },
+                // This direct CPU adapter has no explicit prepared ForwardPlan.
+                numerical_profile: None,
+                text_calls: None,
+            }),
+            prefix_sharing: Some(false),
+            source_host_reserved_bytes: Some(self.weights.host_reserved_bytes()?),
+            ..Default::default()
+        })
+    }
 }
 impl LogitModel for Model {
     fn max_session_bytes(&self) -> u64 {

@@ -61,6 +61,10 @@ pub use zerogravity_core::model::{
 };
 pub use zerogravity_core::provider::{PreparedExecutable, RegionExecutionProvider};
 pub use zerogravity_core::source::{ProgramSource, SourceTensorRef, TensorSource};
+pub use zerogravity_engine::diagnostics::{
+    ArtifactDescription, ModelCapabilities, ModelDetails, ModelLifecycle, ModelMemory,
+    ModelSnapshot, SourceRevision,
+};
 pub use zerogravity_engine::model_instance::{ModelInstance, PreparedModel};
 pub use zerogravity_engine::{
     executable::ExecutableBundle,
@@ -75,7 +79,7 @@ const QWEN_CUDA_PROVIDER_BYTES: usize = 4608 * MIB;
 const QWEN_CUDA_DEVICE_BYTES: u64 = 5120 * MIB as u64;
 
 /// One complete cold route set. Aliases share the original source.
-/// A configured runtime refuses a new load until its sole owner is retired.
+/// A configured runtime refuses a new load until its last owner is retired.
 pub enum ModelLoadRequest {
     /// Canonical original source with smart startup configuration Enabled.
     #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
@@ -225,6 +229,9 @@ impl<'a> ModelCatalog<'a> {
     }
     pub fn list(&self) -> crate::Result<Vec<ModelInstance>> {
         self.runtime.engine.models().list()
+    }
+    pub fn snapshot(&self) -> crate::Result<Vec<ModelSnapshot>> {
+        self.runtime.engine.models().snapshot()
     }
     /// Resolve once to the actual retained model, never a new source identity.
     pub fn resolve(&self, alias: &str) -> crate::Result<ModelInstance> {

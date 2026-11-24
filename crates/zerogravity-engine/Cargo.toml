@@ -8,7 +8,7 @@ publish = false
 license = "MIT"
 
 [dependencies]
-zerogravity-core = { path = "../zerogravity-core" }
+zerogravity-core = { path = "../zerogravity-core", features = ["serde"] }
 zerogravity-artifacts = { path = "../zerogravity-artifacts" }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"

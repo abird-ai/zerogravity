@@ -4,6 +4,7 @@ use crate::{
     Error, Result,
     accelerator::program::InvocationPhase,
     model::ModelProgram,
+    numerics::NumericalProfile,
     semantic::{BoundInvocation, BoundTextCall, InvocationPorts},
     source::{ProgramSource, TensorSource},
 };
@@ -11,6 +12,8 @@ use std::{ops::RangeInclusive, sync::Arc};
 
 /// A declared physical capability, not observation completion. AtProducer
 /// includes requested value sites and original prior/provisional state planes.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ObservationSupport {
     #[default]
@@ -26,6 +29,24 @@ impl ObservationSupport {
         }
         Ok(())
     }
+}
+
+/// Descriptive selected executable, not a capability or completion permit.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExecutionDescription {
+    pub selected: SelectedMode,
+    /// None when the adapter has no explicit recorded arithmetic profile.
+    pub numerical_profile: Option<NumericalProfile>,
+    /// Only a real prepared text template supplies this binding contract.
+    pub text_calls: Option<TextCallSupport>,
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TextCallSupport {
+    pub supported_rows: RangeInclusive<usize>,
+    pub invocation_ports: InvocationPorts,
+    pub observations: ObservationSupport,
 }
 
 /// Whole text-template executable contract. Physical state representation,
@@ -84,6 +105,17 @@ impl<S: ProgramSource> PreparedTextProgram<S> {
     }
     pub fn observations(&self) -> ObservationSupport {
         self.observations
+    }
+    pub fn description(&self) -> ExecutionDescription {
+        ExecutionDescription {
+            selected: self.selected,
+            numerical_profile: Some(self.model.program().numerical_profile()),
+            text_calls: Some(TextCallSupport {
+                supported_rows: self.rows.clone(),
+                invocation_ports: self.ports,
+                observations: self.observations,
+            }),
+        }
     }
 
     /// Refuse a foreign plan, shape/phase miss or unsupported observation

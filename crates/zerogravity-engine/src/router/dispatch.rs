@@ -515,9 +515,7 @@ pub struct Router {
     // Declared after `workers` so the joins/handles pay out first.
     _worker_charge: ServingCharge,
     next_id: AtomicU64,
-    pub max_context: usize,
-    pub max_output: usize,
-    policy: WorkPolicy,
+    config: WorkerConfig,
     _control_charge: ServingCharge,
 }
 impl Router {
@@ -793,9 +791,7 @@ impl Router {
             workers: handles,
             _worker_charge: worker_charge,
             next_id: AtomicU64::new(1),
-            max_context: config.context,
-            max_output: config.output,
-            policy: config.policy,
+            config,
             _control_charge: control_charge,
         })
     }
@@ -841,17 +837,49 @@ impl Router {
             .ok_or_else(|| ServiceError::new(404, "model_not_found", "model is not registered"))?
             .validate_chat()
     }
-    pub fn admission(&self) -> Result<serde_json::Value, ServiceError> {
-        self.models.admission(&worker::SchedulerSnapshot {
+    pub fn scheduler_snapshot(&self) -> worker::SchedulerSnapshot {
+        worker::SchedulerSnapshot {
+            config: self.config,
             queue: self.queue_snapshot(),
-            host: self.memory_snapshot(),
+            host: self.host.budget_snapshot(),
             active_limit: self.active_limit,
-            cohort_width: match self.policy {
+            cohort_width: match self.config.policy {
                 WorkPolicy::Sequential => 0,
                 WorkPolicy::Waves(p) => p.cohort_width,
             },
             counters: self.stats.snapshot(),
-        })
+        }
+    }
+    pub fn catalog_snapshot(&self) -> crate::Result<Vec<crate::diagnostics::ModelSnapshot>> {
+        self.models.catalog_snapshot()
+    }
+    pub(crate) fn ready_counts(&self) -> (usize, usize) {
+        self.models.ready_counts()
+    }
+    pub fn max_output(&self) -> usize {
+        self.config.output
+    }
+    pub fn max_context(&self) -> usize {
+        self.config.context
+    }
+    pub fn admission(&self) -> Result<serde_json::Value, ServiceError> {
+        let scheduler = self.scheduler_snapshot();
+        let mut report = self.models.admission(&scheduler)?;
+        // Preserve legacy adapter diagnostics and attach the same typed
+        // observations available to the Rust SDK.
+        if let Some(fields) = report.as_object_mut() {
+            fields.insert(
+                "catalog".into(),
+                serde_json::to_value(self.catalog_snapshot()?)
+                    .map_err(|e| ServiceError::new(500, "diagnostics", e.to_string()))?,
+            );
+            fields.insert(
+                "scheduler".into(),
+                serde_json::to_value(scheduler)
+                    .map_err(|e| ServiceError::new(500, "diagnostics", e.to_string()))?,
+            );
+        }
+        Ok(report)
     }
     pub fn invalidate_prefix_scope(
         &self,
@@ -917,7 +945,7 @@ impl Router {
         if request.input.is_empty()
             || request.input.len() > 1024 * 1024
             || request.max_tokens == 0
-            || request.max_tokens > self.max_output
+            || request.max_tokens > self.config.output
         {
             return Err(ServiceError::new(
                 400,
@@ -963,7 +991,7 @@ impl Router {
             AllocationClass::Scratch,
             event_copy_bytes,
         )?;
-        let max_tokens = request.max_tokens.min(self.max_context);
+        let max_tokens = request.max_tokens.min(self.config.context);
         let prompt_bound = model
             .tokenizer()
             .prompt_token_bound(request.input.len(), request.chat);
@@ -1062,7 +1090,7 @@ impl Router {
             Err(std::io::Error::other("CPU serving worker panicked"))
         } else if self.stats.retirement_failed.load(Ordering::Acquire)
             || self.models.retirement_pending()
-            || (matches!(self.policy, WorkPolicy::Waves(_))
+            || (matches!(self.config.policy, WorkPolicy::Waves(_))
                 && self.stats.failed.load(Ordering::Acquire) != before)
         {
             Err(std::io::Error::other("source retirement failed"))

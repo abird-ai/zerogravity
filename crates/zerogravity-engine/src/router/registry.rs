@@ -6,21 +6,26 @@ use crate::model_instance::{
     execution::{Executor, ModelHandle, ModelRetirement},
 };
 use crate::state_cache::{PrefixCacheEviction, PrefixSharingScope};
-use crate::{Error, Result};
+use crate::{
+    Error, Result,
+    diagnostics::{ModelCapabilities, ModelLifecycle, ModelSnapshot},
+};
 use std::{
     collections::BTreeMap,
     sync::{Arc, Condvar, Mutex, MutexGuard},
 };
+use zerogravity_core::identity::SourceIdentity;
 
 /// A single owner may be visible, draining, or retired. Its stable alias
 /// keys stay until the enclosing route set retires; no separate live catalog.
 struct OwnerState<M> {
     model: Option<M>,
-    accepting: bool,
+    lifecycle: ModelLifecycle,
     readers: usize,
 }
 
 pub(super) struct Route<A: Executor> {
+    source: SourceIdentity,
     state: Mutex<OwnerState<A::Model>>,
     drained: Condvar,
     retire: Option<ModelRetirement<A::Model>>,
@@ -28,9 +33,10 @@ pub(super) struct Route<A: Executor> {
 impl<A: Executor> Route<A> {
     fn new(model: A::Model) -> Self {
         Self {
+            source: model.model().source(),
             state: Mutex::new(OwnerState {
                 model: Some(model),
-                accepting: true,
+                lifecycle: ModelLifecycle::Ready,
                 readers: 0,
             }),
             drained: Condvar::new(),
@@ -44,11 +50,11 @@ impl<A: Executor> Route<A> {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
     fn accepting(&self) -> bool {
-        self.state().accepting
+        self.state().lifecycle == ModelLifecycle::Ready
     }
     fn model(&self) -> Option<A::Model> {
         let state = self.state();
-        if state.accepting {
+        if state.lifecycle == ModelLifecycle::Ready {
             state.model.clone()
         } else {
             None
@@ -62,7 +68,7 @@ impl<A: Executor> Route<A> {
         self: &Arc<Self>,
     ) -> std::result::Result<(Arc<dyn PreparedModel>, ModelRead), ServiceError> {
         let mut state = self.state();
-        if !state.accepting {
+        if state.lifecycle != ModelLifecycle::Ready {
             return Err(missing_model());
         }
         let model = state.model.as_ref().ok_or_else(missing_model)?.erased();
@@ -80,10 +86,10 @@ impl<A: Executor> Route<A> {
             ));
         }
         let mut state = self.state();
-        if !state.accepting {
+        if state.lifecycle != ModelLifecycle::Ready {
             return Err(Error::State("model is already retiring or retired".into()));
         }
-        state.accepting = false;
+        state.lifecycle = ModelLifecycle::Draining;
         Ok(SelectiveRetirement(self.clone()))
     }
 }
@@ -91,12 +97,13 @@ impl<A: Executor> Route<A> {
 trait RouteControl: Send + Sync {
     fn release(&self);
     fn retire(&self) -> Result<()>;
+    fn failed_retirement(&self);
 }
 impl<A: Executor> RouteControl for Route<A> {
     fn release(&self) {
         let mut state = self.state();
         state.readers -= 1;
-        if state.readers == 0 && !state.accepting {
+        if state.readers == 0 && state.lifecycle == ModelLifecycle::Draining {
             self.drained.notify_all();
         }
     }
@@ -108,18 +115,35 @@ impl<A: Executor> RouteControl for Route<A> {
             .drained
             .wait_while(self.state(), |state| state.readers != 0)
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.accepting {
+        if state.lifecycle != ModelLifecycle::Draining {
             return Err(Error::State(
-                "model retirement requires closed admission".into(),
+                "model retirement requires draining admission".into(),
             ));
         }
         let model = state
             .model
             .take()
             .ok_or_else(|| Error::State("model already retired".into()))?;
+        state.lifecycle = ModelLifecycle::Retiring;
         drop(state);
         // Actual adapter cleanup and final source destruction are unlocked.
-        retire(&model).map_err(ServiceError::into_core)
+        let result = retire(&model).map_err(ServiceError::into_core);
+        drop(model);
+        self.state().lifecycle = if result.is_ok() {
+            ModelLifecycle::Retired
+        } else {
+            ModelLifecycle::Failed
+        };
+        result
+    }
+    fn failed_retirement(&self) {
+        let mut state = self.state();
+        if matches!(
+            state.lifecycle,
+            ModelLifecycle::Draining | ModelLifecycle::Retiring
+        ) {
+            state.lifecycle = ModelLifecycle::Failed;
+        }
     }
 }
 
@@ -136,6 +160,12 @@ pub(crate) struct SelectiveRetirement(Arc<dyn RouteControl>);
 impl SelectiveRetirement {
     pub(crate) fn finish(self) -> Result<()> {
         self.0.retire()
+    }
+}
+impl Drop for SelectiveRetirement {
+    fn drop(&mut self) {
+        // On unwind preserve a failed lifecycle observation, not Ready.
+        self.0.failed_retirement();
     }
 }
 
@@ -200,6 +230,8 @@ pub(crate) trait Models: Send + Sync {
         alias: &str,
     ) -> std::result::Result<(Arc<dyn PreparedModel>, ModelRead), ServiceError>;
     fn alias_slots(&self) -> usize;
+    fn ready_counts(&self) -> (usize, usize);
+    fn catalog_snapshot(&self) -> Result<Vec<ModelSnapshot>>;
     fn alias(&self, index: usize) -> Option<&str>;
     fn begin_unload(&self, model: &ModelInstance) -> Result<Option<SelectiveRetirement>>;
     fn admission(
@@ -224,6 +256,76 @@ impl<A: Executor> Models for Registry<A> {
     }
     fn alias_slots(&self) -> usize {
         self.routes.len()
+    }
+    fn ready_counts(&self) -> (usize, usize) {
+        let mut aliases = 0;
+        let mut owners = 0;
+        for (index, route) in self.routes.values().enumerate() {
+            if route.accepting() {
+                aliases += 1;
+                if !self
+                    .routes
+                    .values()
+                    .take(index)
+                    .any(|prior| Arc::ptr_eq(prior, route))
+                {
+                    owners += 1;
+                }
+            }
+        }
+        (aliases, owners)
+    }
+    fn catalog_snapshot(&self) -> Result<Vec<ModelSnapshot>> {
+        let mut entries = Vec::new();
+        for (index, route) in self.routes.values().enumerate() {
+            if self
+                .routes
+                .values()
+                .take(index)
+                .any(|prior| Arc::ptr_eq(prior, route))
+            {
+                continue;
+            }
+            let (lifecycle, admitted_requests, model) = {
+                let state = route.state();
+                (
+                    state.lifecycle,
+                    state.readers,
+                    if state.lifecycle == ModelLifecycle::Ready {
+                        state.model.clone()
+                    } else {
+                        None
+                    },
+                )
+            };
+            let capabilities = model
+                .map(|model| {
+                    let prepared = model.model();
+                    Ok::<_, Error>(ModelCapabilities {
+                        max_context: prepared.max_context(),
+                        vocabulary_size: prepared.vocabulary_size(),
+                        max_token_bytes: prepared.max_token_bytes(),
+                        prefill: A::prefill(&model),
+                        chat_allowed: prepared.validate_chat().is_ok(),
+                        details: A::describe_model(&model)?,
+                    })
+                })
+                .transpose()?;
+            entries.push(ModelSnapshot {
+                source: route.source,
+                aliases: self
+                    .routes
+                    .iter()
+                    .filter(|(_, other)| Arc::ptr_eq(other, route))
+                    .map(|(alias, _)| alias.clone())
+                    .collect(),
+                lifecycle,
+                admitted_requests,
+                independent_retirement: route.retire.is_some(),
+                capabilities,
+            });
+        }
+        Ok(entries)
     }
     fn alias(&self, index: usize) -> Option<&str> {
         let (alias, route) = self.routes.iter().nth(index)?;
