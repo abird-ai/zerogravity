@@ -29,11 +29,7 @@ impl ResidentModelProvider {
 impl RegionExecutionProvider for ResidentModelProvider {
     type Executable = Arc<ResidentModel>;
     fn kind(&self) -> ProviderKind {
-        match self.provider {
-            Provider::Cuda => ProviderKind::Cuda,
-            Provider::Hip => ProviderKind::Hip,
-            Provider::Vulkan => ProviderKind::Vulkan,
-        }
+        self.provider.kind()
     }
     async fn prepare(&self, program: ModelProgram) -> Result<Self::Executable> {
         let (source, plan) = program.into_parts();

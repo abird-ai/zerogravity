@@ -236,6 +236,7 @@ impl ResidentService {
             device_cap,
             policy,
             context_bytes,
+            None,
         )?;
         let cap = physical.available_model_capacity()?;
         Ok((

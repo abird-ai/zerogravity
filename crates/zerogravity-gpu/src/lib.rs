@@ -267,6 +267,14 @@ pub use resident_inference::ResidentTextPagedPoolSnapshot;
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
+pub use resident_inference::{
+    ResidentTextAdmission, ResidentTextModel, ResidentTextPending, ResidentTextPreparation,
+    ResidentTextPublication, ResidentTextReadback, ResidentTextSession, ResidentTextSnapshot,
+};
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
 pub use resident_inference::{ResidentTextCohortPending, ResidentTextCohortPreparation};
 #[cfg(all(
     feature = "hip-source",
@@ -276,14 +284,6 @@ pub use resident_inference::{ResidentTextCohortPending, ResidentTextCohortPrepar
     target_os = "linux"
 ))]
 pub use resident_inference::{ResidentTextFinalReader, ResidentTextReaderObservation};
-#[cfg(all(
-    target_os = "linux",
-    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
-))]
-pub use resident_inference::{
-    ResidentTextModel, ResidentTextPending, ResidentTextPreparation, ResidentTextPublication,
-    ResidentTextReadback, ResidentTextSession, ResidentTextSnapshot,
-};
 #[cfg(all(
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))

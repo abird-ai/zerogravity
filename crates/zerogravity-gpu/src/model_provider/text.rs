@@ -41,6 +41,11 @@ impl RegionExecutionProvider for ResidentTextProvider<'_> {
         &self,
         program: ModelProgram<VerifiedTensorSource>,
     ) -> Result<Self::Executable> {
+        if Provider::selected(&self.device)?.kind() != self.kind() {
+            return Err(zerogravity_core::Error::Unsupported(
+                "resident text policy contradicts explicitly selected device".into(),
+            ));
+        }
         let (source, plan) = program.into_parts();
         match self.policy {
             #[cfg(all(feature = "hip-source", feature = "hip"))]

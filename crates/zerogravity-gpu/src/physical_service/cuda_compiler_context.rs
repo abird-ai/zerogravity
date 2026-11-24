@@ -24,19 +24,27 @@ pub(crate) struct CudaCompilerContextBudget {
     adopted: Arc<AtomicBool>,
 }
 impl CudaCompilerContextBudget {
+    pub(crate) fn require_device_envelope(provider_bytes: u64, device_bytes: u64) -> Result<()> {
+        if device_bytes != 5120 * 1024 * 1024
+            || provider_bytes
+                .checked_add(CUDA_COMPILER_DEVICE_BYTES)
+                .is_none_or(|n| n > device_bytes)
+        {
+            return Err(Error::Limit(
+                "CUDA model+backend context exceeds original5GiB physical cap".into(),
+            ));
+        }
+        Ok(())
+    }
+
     pub(crate) fn admit(
         original: &PhysicalServiceBudget,
         source: &zerogravity_artifacts::source_weights::VerifiedTensorSource,
     ) -> Result<Arc<Self>> {
-        if original.total_limit != 5120 * 1024 * 1024
-            || original
-                .provider_cap
-                .checked_add(CUDA_COMPILER_DEVICE_BYTES)
-                .is_none_or(|n| n > original.total_limit)
-            || original.fence_flag.load(Ordering::Acquire)
-        {
-            return Err(Error::Limit(
-                "CUDA model+backend context exceeds original5GiB physical cap".into(),
+        Self::require_device_envelope(original.provider_cap, original.total_limit)?;
+        if original.fence_flag.load(Ordering::Acquire) {
+            return Err(Error::State(
+                "CUDA compiler original context is fenced".into(),
             ));
         }
         // Capture the actual finite source-issued workspace limit. No generic

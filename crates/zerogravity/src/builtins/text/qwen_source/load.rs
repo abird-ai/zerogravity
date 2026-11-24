@@ -109,57 +109,52 @@ fn describe_cuda_state_policy(policy: crate::models::QwenCudaStatePolicy) -> Str
 fn smart_cuda_provider_cap(
     configured_provider: usize,
     device_bytes: u64,
-) -> (usize, Option<u128>, String) {
+) -> crate::Result<(usize, Option<u128>, String)> {
+    let budget =
+        zerogravity_core::provider::ProviderMemoryBudget::new(configured_provider, device_bytes)?;
     let Ok(inventory) = crate::devices::discover() else {
-        return (
+        return Ok((
             configured_provider,
             None,
             "current CUDA observation unavailable; using configured provider envelope".into(),
-        );
+        ));
     };
     if crate::devices::fresh(&inventory).is_err() {
-        return (
+        return Ok((
             configured_provider,
             Some(inventory.observed_unix_ms),
             "current CUDA observation stale; using configured provider envelope".into(),
-        );
+        ));
     }
     let Some(device) = inventory.devices.iter().find(|device| {
         device.vendor == "nvidia" && device.cuda_ordinal == Some(0) && device.exclusion.is_none()
     }) else {
-        return (
+        return Ok((
             configured_provider,
             Some(inventory.observed_unix_ms),
             "CUDA ordinal0 current availability unavailable; using configured provider envelope"
                 .into(),
-        );
+        ));
     };
     let Some(free) = device
         .available
         .and_then(|bytes| usize::try_from(bytes).ok())
     else {
-        return (
+        return Ok((
             configured_provider,
             Some(inventory.observed_unix_ms),
             "CUDA ordinal0 free VRAM unavailable; using configured provider envelope".into(),
-        );
+        ));
     };
-    let Some(device_bytes) = usize::try_from(device_bytes).ok() else {
-        return (
-            configured_provider,
-            Some(inventory.observed_unix_ms),
-            "configured device envelope exceeds host usize; using provider envelope".into(),
-        );
-    };
-    let headroom = device_bytes.saturating_sub(configured_provider);
-    let effective = configured_provider.min(free.saturating_sub(headroom));
-    (
+    let effective = budget.fit_available(free as u64)?;
+    Ok((
         effective,
         Some(inventory.observed_unix_ms),
         format!(
-            "fresh CUDA ordinal0 available={free}B configured_provider={configured_provider}B device_headroom={headroom}B"
+            "fresh CUDA ordinal0 available={free}B configured_provider={configured_provider}B device_headroom={}B",
+            budget.headroom_bytes()
         ),
-    )
+    ))
 }
 
 #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
@@ -319,9 +314,10 @@ fn resolve_cuda_smart_config(
     }
 
     let (effective_cap, observed_unix_ms, observation) =
-        smart_cuda_provider_cap(provider_bytes, device_bytes);
+        smart_cuda_provider_cap(provider_bytes, device_bytes).map_err(ServiceError::inference)?;
     let mut candidates = Vec::with_capacity(state_values.len() * native_values.len());
     let mut refusals = Vec::new();
+    let mut capacity_miss: Option<crate::ResourceLimit> = None;
     for cohort_width in native_values {
         for state_policy in &state_values {
             match ResidentModel::cuda_forward_source_preflight_for_state_policy(
@@ -336,10 +332,19 @@ fn resolve_cuda_smart_config(
                     cohort_width,
                     inventory,
                 }),
-                Err(error) => refusals.push(format!(
+                Err(crate::Error::Resource(miss)) => {
+                    if capacity_miss
+                        .as_ref()
+                        .is_none_or(|prior| miss.requested < prior.requested)
+                    {
+                        capacity_miss = Some(miss);
+                    }
+                }
+                Err(error @ crate::Error::Unsupported(_)) => refusals.push(format!(
                     "state={} cohort_width={cohort_width}: {error}",
                     describe_cuda_state_policy(*state_policy)
                 )),
+                Err(error) => return Err(ServiceError::inference(error)),
             }
         }
     }
@@ -359,19 +364,14 @@ fn resolve_cuda_smart_config(
             )
         })
         .ok_or_else(|| {
-            ServiceError::inference(if effective_cap < provider_bytes {
-                crate::Error::resource(
-                    "GPU provider memory / VRAM budget",
-                    "smart model startup candidate selection",
-                    provider_bytes as u64,
-                    effective_cap as u64,
-                )
-            } else {
-                crate::Error::State(format!(
-                    "no qualified CUDA smart-config candidate: {}",
-                    refusals.join("; ")
-                ))
-            })
+            ServiceError::inference(capacity_miss.map(crate::Error::Resource).unwrap_or_else(
+                || {
+                    crate::Error::Unsupported(format!(
+                        "no qualified CUDA smart-config candidate: {}",
+                        refusals.join("; ")
+                    ))
+                },
+            ))
         })?;
 
     let common_reason = format!(

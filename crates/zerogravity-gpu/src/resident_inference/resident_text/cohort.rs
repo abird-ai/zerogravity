@@ -11,9 +11,9 @@ impl ResidentTextModel {
         self: &Arc<Self>,
         rows: &[(&ResidentTextSession, &BoundInvocation, &ResidentToken)],
     ) -> Result<ResidentTextCohortPreparation> {
-        if !matches!(self.cohort_width, 4 | 8)
+        if !matches!(self.admission.cohort_width, 4 | 8)
             || !matches!(rows.len(), 2 | 4 | 8)
-            || rows.len() > self.cohort_width
+            || rows.len() > self.admission.cohort_width
             || self.contract != NumericalContract::CudaSm86Bf16ReferenceV1
         {
             return Err(Error::Unsupported(
@@ -62,9 +62,9 @@ impl ResidentTextModel {
         self: &Arc<Self>,
         rows: &[(&ResidentTextSession, &BoundInvocation)],
     ) -> Result<ResidentTextCohortPreparation> {
-        if !matches!(self.cohort_width, 4 | 8)
+        if !matches!(self.admission.cohort_width, 4 | 8)
             || !matches!(rows.len(), 2 | 4 | 8)
-            || rows.len() > self.cohort_width
+            || rows.len() > self.admission.cohort_width
             || self.contract != NumericalContract::CudaSm86Bf16ReferenceV1
         {
             return Err(Error::Unsupported(

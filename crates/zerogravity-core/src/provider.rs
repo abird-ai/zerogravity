@@ -11,7 +11,9 @@ use crate::{
     source::ProgramSource,
 };
 pub use region::{PhysicalRegionPort, PreparedRegion, RegionShape};
-pub use resources::{ProviderBufferMode, ProviderCompletionMode, ProviderRequirements};
+pub use resources::{
+    ProviderBufferMode, ProviderCompletionMode, ProviderMemoryBudget, ProviderRequirements,
+};
 pub use selection::{
     ExecutionMode, SelectedMode, SelectionPolicy, ShapeMissPolicy, StateBridge, SwitchingBoundary,
 };

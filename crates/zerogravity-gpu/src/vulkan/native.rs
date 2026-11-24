@@ -331,6 +331,7 @@ pub(crate) fn begin_gemma_qualification(
         DEVICE_CAP,
         Arc::from(profile.policy()),
         CONTEXT_DEVICE,
+        None,
     )?;
     let service = physical.attach_model(
         ResidentSource::Windows(source.clone()),

@@ -564,6 +564,10 @@ impl CudaForwardAdmission {
     pub(crate) fn capacity(&self) -> usize {
         self.layout.plan().prefix_capacity()
     }
+    pub(crate) fn state_reserve_bytes(&self) -> usize {
+        self.state_reserve_bytes
+    }
+
     pub(crate) fn vocabulary(&self) -> usize {
         self.layout.geometry().vocabulary
     }

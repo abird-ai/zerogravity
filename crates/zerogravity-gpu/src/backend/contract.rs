@@ -8,6 +8,14 @@ pub(crate) enum Provider {
     Vulkan,
 }
 impl Provider {
+    pub(crate) const fn kind(self) -> zerogravity_core::provider::ProviderKind {
+        use zerogravity_core::provider::ProviderKind;
+        match self {
+            Self::Cuda => ProviderKind::Cuda,
+            Self::Hip => ProviderKind::Hip,
+            Self::Vulkan => ProviderKind::Vulkan,
+        }
+    }
     pub(crate) fn selected(device: &Device) -> Result<Self> {
         match device {
             Device::Cuda(_) => Ok(Self::Cuda),

@@ -196,7 +196,7 @@ impl HybridStateInventoryPlan {
             .and_then(|n| n.checked_mul(staging_sets))
             .ok_or_else(|| Error::Limit("resident hybrid active page bound".into()))?;
         if max_pages < minimum_active_pages {
-            return Err(Error::Limit(
+            return Err(Error::Unsupported(
                 "resident hybrid page inventory cannot fork every active session".into(),
             ));
         }
@@ -957,7 +957,7 @@ mod tests {
         let state_bytes = states.iter().map(|state| state.bytes).sum::<usize>();
         assert!(matches!(
             HybridStateInventoryPlan::analyze(&states, state_bytes, 2, 1, 4, 4, 512),
-            Err(Error::Limit(reason))
+            Err(Error::Unsupported(reason))
                 if reason == "resident hybrid page inventory cannot fork every active session"
         ));
     }

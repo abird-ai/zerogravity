@@ -34,6 +34,9 @@ mod probe;
 ))]
 pub use probe::{ResidentTextFinalReader, ResidentTextReaderObservation};
 
+mod admission;
+pub use admission::ResidentTextAdmission;
+
 const CONTROL_BYTES: usize = 64 * 1024;
 const CALL_HOST_BYTES: usize = 32 * 1024 * 1024;
 
@@ -72,7 +75,7 @@ pub struct ResidentTextModel {
     sessions: Arc<async_lock::Semaphore>,
     _control: WindowWorkspace,
     contract: NumericalContract,
-    cohort_width: usize,
+    admission: ResidentTextAdmission,
     #[cfg(feature = "cuda-cublas")]
     state_policy: CudaSourceStatePolicy,
     #[cfg(feature = "cuda-cublas")]
@@ -353,6 +356,12 @@ impl ResidentModel {
         )?;
         let prepared = program::prepare(device, admission, source_owner, cancelled).await?;
         require_prepared_text(&executable, &prepared.program)?;
+        let admission = ResidentTextAdmission::hip(
+            &prepared.service,
+            &prepared.inventory,
+            max_sessions,
+            cohort_width,
+        )?;
         let preflight = prepared.program.budget().clone();
         let vocabulary = prepared.program.plan().values()[prepared
             .program
@@ -393,7 +402,7 @@ impl ResidentModel {
             sessions: Arc::new(async_lock::Semaphore::new(max_sessions)),
             _control: control,
             contract,
-            cohort_width,
+            admission,
             #[cfg(feature = "cuda-cublas")]
             state_policy: CudaSourceStatePolicy::Contiguous,
             #[cfg(feature = "cuda-cublas")]
@@ -531,7 +540,7 @@ impl ResidentModel {
         );
         let executable =
             prepared_text_contract(&source, &plan, ProviderKind::Cuda, ObservationSupport::None)?;
-        let model = Self::load_cuda_forward_roots(
+        let (model, inventory) = Self::load_cuda_forward_roots(
             device,
             source.clone(),
             plan,
@@ -544,6 +553,8 @@ impl ResidentModel {
             cancelled,
         )
         .await?;
+        let admission =
+            ResidentTextAdmission::cuda(&model.service, &inventory, provider_cap, max_sessions)?;
         match state_policy {
             CudaSourceStatePolicy::Contiguous => {
                 model.install_window_root_pool(source.clone(), roots)?;
@@ -573,7 +584,7 @@ impl ResidentModel {
             sessions: Arc::new(async_lock::Semaphore::new(max_sessions)),
             _control: control,
             contract: NumericalContract::CudaSm86Bf16ReferenceV1,
-            cohort_width,
+            admission,
             state_policy,
             prefill_projection_classes,
             _source_owner: Some(source_owner),
@@ -619,6 +630,11 @@ fn require_prepared_text(
 }
 
 impl ResidentTextModel {
+    /// Read-only effective cold fit, from the original loaded service.
+    pub fn admission(&self) -> &ResidentTextAdmission {
+        &self.admission
+    }
+
     fn bind_invocation<'a>(
         &self,
         invocation: &'a BoundInvocation,
@@ -634,7 +650,7 @@ impl ResidentTextModel {
 
     #[cfg(any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip")))]
     pub fn prefill_rows_compatible(&self, left: usize, right: usize) -> bool {
-        if self.cohort_width == 0 {
+        if self.admission.cohort_width == 0 {
             return false;
         }
         #[cfg(all(feature = "hip-source", feature = "hip"))]

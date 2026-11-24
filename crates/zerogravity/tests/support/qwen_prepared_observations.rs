@@ -109,6 +109,47 @@ fn prepared_source_observation_contract() -> Result<()> {
             cohort_width: 0,
             cancelled: None,
         };
+        #[cfg(feature = "hip")]
+        {
+            use zerogravity::resource_arbiter::{
+                AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter,
+                ResourceOwner,
+            };
+            let ResidentTextPolicy::Hip(budget) = &provider.policy else {
+                unreachable!()
+            };
+            let Device::Hip(selected) = &provider.device else {
+                unreachable!()
+            };
+            let observed = zerogravity::gpu::observe_hip_device(selected.clone())
+                .expect("original HIP device observation");
+            let key =
+                PhysicalDeviceKey::new("pci", &observed.physical.pci_address.unwrap().to_string())?;
+            let host = PhysicalDeviceKey::new("host", "system-ram")?;
+            let arbiter = ResourceArbiter::process_shared();
+            arbiter.register_matching(key.clone(), budget.physical_admission_bytes())?;
+            let blocker_bytes =
+                budget.physical_admission_bytes() - budget.total_device_bytes() as u64 + 1;
+            let blocker = arbiter.admit(
+                &key,
+                ResourceOwner::new("admission-test", "pressure")?,
+                &[AllocationRequest {
+                    kind: AllocationClass::Scratch,
+                    bytes: blocker_bytes,
+                }],
+            )?;
+            let before = arbiter.snapshot(&host)?.reserved;
+            assert!(matches!(
+                prepare_executable(plan.model_program()?, &provider).await,
+                Err(Error::Resource(_))
+            ));
+            assert_eq!(arbiter.snapshot(&host)?.reserved, before);
+            let card = arbiter.snapshot(&key)?;
+            assert_eq!(card.reserved, blocker_bytes);
+            assert!(!card.fenced);
+            drop(blocker);
+            println!("PRE_CLIENT_CAPACITY_REFUSAL_PASS");
+        }
         let executable = prepare_executable(plan.model_program()?, &provider).await?;
         let prepared = executable
             .prepared_text()

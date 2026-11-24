@@ -115,6 +115,8 @@ use zerogravity_core::accelerator::program::{
 };
 use zerogravity_core::accelerator::program::{PlanOperation, StateSlot};
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+use zerogravity_core::resource_arbiter::PhysicalDeviceKey;
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
 use zerogravity_core::session_root::{RootAttempt, RootBinding, SessionAuthority};
 use zerogravity_core::source::TensorSource;
@@ -167,7 +169,9 @@ pub struct CudaForwardSourceInventory {
     pub value_bytes: usize,
     pub workspace_bytes: usize,
     pub parameter_bytes: usize,
+    /// Full contiguous bytes of one logical root; actual pool reserve below.
     pub root_bytes: usize,
+    pub state_reserve_bytes: usize,
     pub runtime_reserve_bytes: usize,
     pub model_admission_bytes: usize,
     pub total_admission_bytes: usize,
@@ -639,7 +643,17 @@ fn cuda_forward_source_admission(
             provider_cap as u64,
         )
     })?;
-    let admission = admission.fit(fit_cap)?;
+    let admission = admission.fit(fit_cap).map_err(|error| match error {
+        // The payload fit excludes the already-priced runtime reserve.
+        // Compare/report all candidate capacity misses in the whole-model envelope.
+        Error::Resource(miss) => Error::resource(
+            "CUDA provider memory / VRAM budget",
+            "CUDA forward cold/root/runtime admission",
+            miss.requested.saturating_add(runtime_reserve as u64),
+            provider_cap as u64,
+        ),
+        other => other,
+    })?;
     let model_admission_bytes = admission.total_bytes()?;
     let total = model_admission_bytes
         .checked_add(runtime_reserve)
@@ -676,11 +690,59 @@ fn cuda_forward_source_admission(
         workspace_bytes: preflight.workspace_bytes,
         parameter_bytes: preflight.parameter_bytes,
         root_bytes: preflight.prior_state_bytes,
+        state_reserve_bytes: admission.state_reserve_bytes(),
         runtime_reserve_bytes: runtime_reserve,
         model_admission_bytes,
         total_admission_bytes: total,
     };
     Ok((admission, inventory))
+}
+
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+fn observe_cuda_source_device(
+    device: &Device,
+    provider_cap: usize,
+    device_cap: u64,
+) -> Result<PhysicalDeviceKey> {
+    let Device::Cuda(selected) = device else {
+        return Err(Error::Unsupported(
+            "CUDA forward resident model requires CUDA".into(),
+        ));
+    };
+    crate::physical_service::CudaCompilerContextBudget::require_device_envelope(
+        provider_cap as u64,
+        device_cap,
+    )?;
+    let devices = cubecl::cuda::observe_cuda_devices()
+        .map_err(|error| Error::Unsupported(format!("CUDA source device observation: {error}")))?;
+    let actual = devices
+        .iter()
+        .find(|view| view.ordinal == selected.index)
+        .ok_or_else(|| Error::Unsupported("selected CUDA source device unavailable".into()))?;
+    if actual.compute_capability != (8, 6) {
+        return Err(Error::Unsupported(
+            "CUDA source requires qualified SM86 device".into(),
+        ));
+    }
+    let pci = |view: &cubecl::cuda::CudaDeviceMetadata| -> Result<cubecl::ir::PciAddress> {
+        view.pci_bus_id
+            .parse()
+            .map_err(|error| Error::State(format!("CUDA source physical PCI identity: {error}")))
+    };
+    let key = pci(actual)?;
+    for other in &devices {
+        if other.ordinal != actual.ordinal && pci(other)? == key {
+            return Err(Error::Unsupported(
+                "CUDA source physical PCI has ambiguous device views".into(),
+            ));
+        }
+    }
+    crate::physical_service::checked_caps(
+        Some(actual.total_bytes),
+        device_cap,
+        provider_cap as u64,
+    )?;
+    PhysicalDeviceKey::new("pci", &key.to_string())
 }
 
 impl ResidentModel {
@@ -769,6 +831,7 @@ impl ResidentModel {
             cancelled,
         )
         .await
+        .map(|(model, _)| model)
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
@@ -784,19 +847,15 @@ impl ResidentModel {
         state_reserve_bytes: Option<usize>,
         source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
         cancelled: Option<&std::sync::atomic::AtomicBool>,
-    ) -> Result<Arc<Self>> {
+    ) -> Result<(Arc<Self>, CudaForwardSourceInventory)> {
         validate_provider(&device)?;
-        if !matches!(device, Device::Cuda(_)) {
-            return Err(Error::Unsupported(
-                "CUDA forward resident model requires CUDA".into(),
-            ));
-        }
+        let observed_key = observe_cuda_source_device(&device, provider_cap, device_cap)?;
 
         // Validate the configured source/plan envelope before touching physical
         // CUDA. A live shared-card observation below may only LOWER this cap;
         // when it does, rerun this exact same placement helper rather than
         // introducing a second estimator.
-        let (configured_admission, _inventory) = cuda_forward_source_admission(
+        let (configured_admission, configured_inventory) = cuda_forward_source_admission(
             plan.clone(),
             provider_cap,
             roots,
@@ -811,9 +870,14 @@ impl ResidentModel {
         }
 
         let physical = ResidentPhysical::new_pinned_cuda(device, provider_cap, device_cap)?;
+        if physical.physical_key() != observed_key {
+            return Err(Error::State(
+                "CUDA source actor physical identity differs from selected device".into(),
+            ));
+        }
         let effective_cap = physical.available_model_capacity()?;
-        let admission = if effective_cap == provider_cap {
-            configured_admission
+        let (admission, inventory) = if effective_cap == provider_cap {
+            (configured_admission, configured_inventory)
         } else {
             cuda_forward_source_admission(
                 plan,
@@ -822,7 +886,6 @@ impl ResidentModel {
                 cohort_width,
                 state_reserve_bytes,
             )?
-            .0
         };
         let capacity = admission.capacity();
         let vocab = admission.vocabulary() as u64;
@@ -873,29 +936,32 @@ impl ResidentModel {
         leases.extend(prepared.cohort_value_accesses);
         leases.extend(prepared.greedy_accesses);
 
-        Ok(Arc::new(Self {
-            service,
-            states,
-            state_bytes,
-            capacity,
-            vocab,
-            native_batch: false,
-            state_pool: std::sync::OnceLock::new(),
-            #[cfg(feature = "hardware-abort-probe")]
-            abort_after_launch: std::sync::atomic::AtomicUsize::new(0),
-            #[cfg(feature = "hardware-abort-probe")]
-            launch_seen: std::sync::atomic::AtomicUsize::new(0),
-            workspace: Mutex::new(Workspace {
-                program,
-                greedy: Some(greedy),
-                forward_cohort_values,
-                leases,
-                state_accesses: prepared.state_accesses,
-                logit_accesses: prepared.logit_accesses,
-                batch: None,
+        Ok((
+            Arc::new(Self {
+                service,
+                states,
+                state_bytes,
+                capacity,
+                vocab,
+                native_batch: false,
+                state_pool: std::sync::OnceLock::new(),
+                #[cfg(feature = "hardware-abort-probe")]
+                abort_after_launch: std::sync::atomic::AtomicUsize::new(0),
+                #[cfg(feature = "hardware-abort-probe")]
+                launch_seen: std::sync::atomic::AtomicUsize::new(0),
+                workspace: Mutex::new(Workspace {
+                    program,
+                    greedy: Some(greedy),
+                    forward_cohort_values,
+                    leases,
+                    state_accesses: prepared.state_accesses,
+                    logit_accesses: prepared.logit_accesses,
+                    batch: None,
+                }),
+                allocation: Mutex::new(()),
             }),
-            allocation: Mutex::new(()),
-        }))
+            inventory,
+        ))
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
@@ -3730,15 +3796,15 @@ pub use resident_text::ResidentTextPagedPoolSnapshot;
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
-pub use resident_text::{ResidentTextCohortPending, ResidentTextCohortPreparation};
+pub use resident_text::{
+    ResidentTextAdmission, ResidentTextModel, ResidentTextPending, ResidentTextPreparation,
+    ResidentTextPublication, ResidentTextReadback, ResidentTextSession, ResidentTextSnapshot,
+};
 #[cfg(all(
     target_os = "linux",
     any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
 ))]
-pub use resident_text::{
-    ResidentTextModel, ResidentTextPending, ResidentTextPreparation, ResidentTextPublication,
-    ResidentTextReadback, ResidentTextSession, ResidentTextSnapshot,
-};
+pub use resident_text::{ResidentTextCohortPending, ResidentTextCohortPreparation};
 
 #[cfg(all(
     feature = "hip-source",

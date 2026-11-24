@@ -29,6 +29,7 @@ pub struct ResidentTextInventory {
     pub workspace_bytes: usize,
     pub root_bytes: usize,
     pub root_count: usize,
+    pub state_reserve_bytes: usize,
     pub model_device_upper_bytes: usize,
     pub physical_device_upper_bytes: usize,
     pub context_device_bytes: usize,
@@ -137,11 +138,14 @@ impl Admission {
         let source_weight_bytes = layout.preflight.source_bytes;
         let root_count = 2 * max_sessions + 2;
         let root_bytes = layout.preflight.prior_state_bytes;
+        let state_reserve_bytes = root_bytes
+            .checked_mul(root_count)
+            .ok_or_else(|| Error::Limit("text-execution root reserve extent".into()))?;
         let (_, native_device) =
             crate::hip::native::source_preparation_upper_bytes_for(native_policy);
         let fixed_device_bytes = layout::sum([
             layout.preflight.owned_bytes()? - source_weight_bytes,
-            root_bytes * root_count,
+            state_reserve_bytes,
             native_device,
         ])?;
         let storage = weight_storage(
@@ -151,8 +155,11 @@ impl Admission {
         )?;
         if storage == Bf16ProjectionStorage::Streamed {
             if native_gemm {
-                return Err(Error::Unsupported(
-                    "native rocBLAS profile needs resident weight capacity".into(),
+                return Err(Error::resource(
+                    "model device memory / VRAM budget",
+                    "native rocBLAS resident weights",
+                    layout::sum([source_weight_bytes, fixed_device_bytes])? as u64,
+                    budget.model_device_bytes() as u64,
                 ));
             }
             // Immutable source extent is unchanged. Only the original bounded
@@ -224,7 +231,7 @@ impl Admission {
         }
         let model_device_upper_bytes = layout::sum([
             layout.preflight.owned_bytes()?,
-            root_bytes * root_count,
+            state_reserve_bytes,
             native_device,
         ])?;
         let (context_device_bytes, physical_device_upper_bytes) =
@@ -238,6 +245,7 @@ impl Admission {
             workspace_bytes: layout.preflight.owned_bytes()? - layout.preflight.source_bytes,
             root_bytes,
             root_count,
+            state_reserve_bytes,
             model_device_upper_bytes,
             physical_device_upper_bytes,
             context_device_bytes,

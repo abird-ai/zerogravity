@@ -778,16 +778,45 @@ impl Executor for SourceText {
                 .map_err(|_| poison())?
                 .as_ref()
                 .map(|cache| cache.snapshot());
+            // Snapshot the actual prepared owner, not the earlier smart
+            // candidate estimate. Alias rows describe shared ownership; they
+            // must not be summed as separate reservations.
+            let resident = model.resident.lock().map_err(|_| poison())?;
+            let preparation = resident.as_ref().map(|resident| {
+                use zerogravity_core::provider::PreparedExecutable;
+                let fit = resident.admission();
+                let prepared = resident.prepared_text().expect("original resident text preparation");
+                serde_json::json!({
+                    "provider": format!("{:?}", prepared.selected().provider),
+                    "mode": format!("{:?}", prepared.selected().mode),
+                    "numerical_profile": format!("{:?}", prepared.model().program().numerical_profile()),
+                    "observation_support": format!("{:?}", prepared.observations()),
+                    "min_rows": prepared.supported_rows().start(),
+                    "max_rows": prepared.supported_rows().end(),
+                    "device": { "namespace": fit.device.backend, "identity": fit.device.device },
+                    "configured_model_capacity_bytes": fit.configured_model_capacity_bytes,
+                    "admitted_model_capacity_bytes": fit.admitted_model_capacity_bytes,
+                    "model_required_bytes": fit.model_required_bytes,
+                    "context_device_budget_bytes": fit.context_device_budget_bytes,
+                    "physical_limit_bytes": fit.physical_limit_bytes,
+                    "host_upper_bytes": fit.host_upper_bytes,
+                    "source_weight_bytes": fit.source_weight_bytes,
+                    "resident_weight_bytes": fit.resident_weight_bytes,
+                    "root_bytes": fit.root_bytes,
+                    "root_count": fit.root_count,
+                    "state_reserve_bytes": fit.state_reserve_bytes,
+                    "max_sessions": fit.max_sessions,
+                    "cohort_width": fit.cohort_width,
+                })
+            });
             #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
-            let paged_pool = model
-                .resident
-                .lock()
-                .map_err(|_| poison())?
+            let paged_pool = resident
                 .as_ref()
                 .map(|resident| resident.paged_pool_snapshot())
                 .transpose()
                 .map_err(ServiceError::inference)?
                 .flatten();
+            drop(resident);
             let mut model_report = serde_json::json!({
                 "alias": alias,
                 "family": metadata.family,
@@ -797,6 +826,7 @@ impl Executor for SourceText {
                 "context": model.max_context(),
                 "prefill_rows": 64,
                 "numerical_contract": format!("{:?}", model.source.plan.source_seal().numerical_contract()),
+                "preparation": preparation,
             });
             #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
             {

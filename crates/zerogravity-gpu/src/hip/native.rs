@@ -590,12 +590,19 @@ fn begin_single_source(
             "Gemma exact pre-bound HIP host/provider policy".into(),
         ));
     }
-    configure_single_stream()?;
+    let pre = crate::resident_leases::ResidentPhysical::preadmit_hip_device(
+        &device,
+        profile.provider_cap(),
+        profile.device_cap(),
+    )?;
     let host_key = PhysicalDeviceKey::new("host", "system-ram")?;
     let arbiter = ResourceArbiter::process_shared();
     // Register_matching never upgrades an existing128MiB CPU contract.
     arbiter.register_matching(host_key.clone(), SOURCE_HOST_BYTES)?;
-    let persistent_host = persistent_context_host(&arbiter, &host_key)?;
+    let host_lease = context_host_lease(&arbiter, &host_key)?;
+    configure_single_stream()?;
+    // Only retain permanently once the irreversible bootstrap is about to start.
+    let persistent_host = Arc::new(PersistentHost(Arc::new(host_lease)));
     let (physical, context_device) =
         crate::resident_leases::ResidentPhysical::new_with_native_context(
             device,
@@ -603,6 +610,7 @@ fn begin_single_source(
             profile.device_cap(),
             Arc::from(profile.policy()),
             CONTEXT_DEVICE,
+            Some(pre),
         )?;
     let service = physical.attach_model(
         crate::resident_leases::ResidentSource::Windows(source.clone()),
@@ -660,19 +668,18 @@ fn configure_single_stream() -> Result<()> {
     eprintln!("GEMMA_NATIVE_RUNTIME_CONFIG {config:?}");
     Ok(())
 }
-fn persistent_context_host(
+fn context_host_lease(
     arbiter: &ResourceArbiter,
     host_key: &PhysicalDeviceKey,
-) -> Result<Arc<PersistentHost>> {
-    let persistent_host = Arc::new(PersistentHost(Arc::new(arbiter.admit(
+) -> Result<GlobalResourceLease> {
+    arbiter.admit(
         host_key,
         ResourceOwner::new("backend/hip", "persistent-finite-qualification-context")?,
         &[AllocationRequest {
             kind: AllocationClass::Scratch,
             bytes: CONTEXT_HOST,
         }],
-    )?)));
-    Ok(persistent_host)
+    )
 }
 fn require_environment(
     client: &Client,

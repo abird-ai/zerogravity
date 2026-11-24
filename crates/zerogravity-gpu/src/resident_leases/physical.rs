@@ -189,22 +189,8 @@ impl ResidentPhysical {
         device_cap: u64,
         free_bytes: usize,
     ) -> Result<usize> {
-        let device_cap = usize::try_from(device_cap)
-            .map_err(|_| Error::Limit("CUDA device capacity overflow".into()))?;
-        let headroom = device_cap.checked_sub(provider_cap).ok_or_else(|| {
-            Error::Limit("CUDA provider capacity exceeds configured device capacity".into())
-        })?;
-        let available = free_bytes.saturating_sub(headroom);
-        let effective = provider_cap.min(available);
-        if effective == 0 {
-            return Err(Error::resource(
-                "CUDA device free memory / VRAM",
-                "provider headroom admission",
-                headroom.saturating_add(1) as u64,
-                free_bytes as u64,
-            ));
-        }
-        Ok(effective)
+        zerogravity_core::provider::ProviderMemoryBudget::new(provider_cap, device_cap)?
+            .fit_available(free_bytes as u64)
     }
 
     pub fn new(device: Device, provider_cap: usize, device_cap: u64) -> Result<Arc<Self>> {
@@ -232,12 +218,13 @@ impl ResidentPhysical {
         Self::from_budget(device, client, provider_cap, provider, budget)
     }
     #[cfg(all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
         any(
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification"
-        ),
-        feature = "vulkan",
-        target_os = "linux"
+            feature = "hip-source",
+            all(test, feature = "qualification", feature = "hip")
+        )
     ))]
     fn from_client_preadmitted(
         device: Device,
@@ -316,11 +303,14 @@ impl ResidentPhysical {
     pub(crate) fn client(&self) -> &Client {
         &self.client
     }
-    #[cfg(all(
-        feature = "qwen-source-qualification",
-        feature = "gemma-bf16-qualification",
-        feature = "hip",
-        target_os = "linux"
+    #[cfg(any(
+        all(feature = "cuda-cublas", target_os = "linux"),
+        all(
+            feature = "qwen-source-qualification",
+            feature = "gemma-bf16-qualification",
+            feature = "hip",
+            target_os = "linux"
+        )
     ))]
     pub(crate) fn physical_key(&self) -> PhysicalDeviceKey {
         self.budget.physical_key()
@@ -421,6 +411,35 @@ impl ResidentPhysical {
     }
     #[cfg(all(
         target_os = "linux",
+        feature = "hip",
+        any(feature = "gemma-bf16-qualification", feature = "hip-source")
+    ))]
+    pub(crate) fn preadmit_hip_device(
+        device: &Device,
+        provider_cap: usize,
+        device_cap: u64,
+    ) -> Result<crate::physical_service::PreAdmittedDevice> {
+        let Device::Hip(selected) = device else {
+            return Err(Error::Unsupported(
+                "HIP source requires a HIP device".into(),
+            ));
+        };
+        crate::backend::validate_provider(device)?;
+        // Driver observation, not a Client or an independent free-memory estimate.
+        let observed = cubecl::hip::observe_device(selected.clone()).ok_or_else(|| {
+            Error::Unsupported("HIP source physical device observation unavailable".into())
+        })?;
+        let key = crate::physical_service::physical_key(Some(&observed.physical))?;
+        PhysicalServiceBudget::preadmit_device(
+            key,
+            observed.total_memory,
+            device_cap,
+            provider_cap as u64,
+            ResourceOwner::new("backend/physical", "original-owner")?,
+        )
+    }
+    #[cfg(all(
+        target_os = "linux",
         any(feature = "hip", feature = "vulkan"),
         any(
             feature = "gemma-bf16-qualification",
@@ -434,6 +453,7 @@ impl ResidentPhysical {
         device_cap: u64,
         policy: Arc<str>,
         context_bytes: u64,
+        pre: Option<crate::physical_service::PreAdmittedDevice>,
     ) -> Result<(Arc<Self>, Arc<crate::physical_service::NativeContextBudget>)> {
         let backend = match &device {
             Device::Hip(_) => "backend/hip",
@@ -453,87 +473,8 @@ impl ResidentPhysical {
             ));
         }
         crate::backend::validate_provider(&device)?;
-        #[cfg(all(
-            any(
-                feature = "gemma-bf16-qualification",
-                feature = "qwen-source-qualification"
-            ),
-            feature = "vulkan",
-            target_os = "linux"
-        ))]
-        let mut physical = {
-            if matches!(&device, Device::Wgpu(wgpu) if wgpu.backend == cubecl::device::WgpuBackend::Vulkan)
-            {
-                let preflight = crate::vulkan::native::preflight_vulkan_device(&device)?;
-                let pre = PhysicalServiceBudget::preadmit_device(
-                    preflight.key().clone(),
-                    preflight.max_memory(),
-                    device_cap,
-                    provider_cap as u64,
-                    ResourceOwner::new("backend/physical", "original-owner")?,
-                )?;
-                NATIVE_CONTEXT_CONSTRUCTED
-                    .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-                    .map_err(|_| {
-                        let name = if backend == "backend/hip" {
-                            "HIP"
-                        } else {
-                            "Vulkan"
-                        };
-                        Error::State(format!(
-                            "{name} physical context constructor already attempted"
-                        ))
-                    })?;
-                if let Err(error) = preflight.register(&device) {
-                    pre.fence_and_retain();
-                    return Err(error);
-                }
-                match Self::from_client_preadmitted(device, provider_cap, device_cap, &pre) {
-                    Ok(physical) => Arc::new(physical),
-                    Err(error) => {
-                        pre.fence_and_retain();
-                        return Err(error);
-                    }
-                }
-            } else {
-                NATIVE_CONTEXT_CONSTRUCTED
-                    .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-                    .map_err(|_| {
-                        let name = if backend == "backend/hip" {
-                            "HIP"
-                        } else {
-                            "Vulkan"
-                        };
-                        Error::State(format!(
-                            "{name} physical context constructor already attempted"
-                        ))
-                    })?;
-                Self::new(device, provider_cap, device_cap)?
-            }
-        };
-        #[cfg(not(all(
-            any(
-                feature = "gemma-bf16-qualification",
-                feature = "qwen-source-qualification"
-            ),
-            feature = "vulkan",
-            target_os = "linux"
-        )))]
-        let mut physical = {
-            NATIVE_CONTEXT_CONSTRUCTED
-                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-                .map_err(|_| {
-                    let name = if backend == "backend/hip" {
-                        "HIP"
-                    } else {
-                        "Vulkan"
-                    };
-                    Error::State(format!(
-                        "{name} physical context constructor already attempted"
-                    ))
-                })?;
-            Self::new(device, provider_cap, device_cap)?
-        };
+        let mut physical =
+            Self::bootstrap_native_context(device, provider_cap, device_cap, backend, pre)?;
         let original = Arc::get_mut(&mut physical).expect("cold physical owner exclusive");
         let context = original
             .budget
@@ -547,6 +488,66 @@ impl ResidentPhysical {
         )?));
         Ok((physical, context))
     }
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "hip-source",
+            all(test, feature = "qualification", feature = "hip")
+        )
+    ))]
+    fn bootstrap_native_context(
+        device: Device,
+        provider_cap: usize,
+        device_cap: u64,
+        backend: &str,
+        pre: Option<crate::physical_service::PreAdmittedDevice>,
+    ) -> Result<Arc<Self>> {
+        let claim = || {
+            NATIVE_CONTEXT_CONSTRUCTED
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .map_err(|_| {
+                    Error::State(format!(
+                        "{backend} physical context constructor already attempted"
+                    ))
+                })
+        };
+
+        if let Some(pre) = pre {
+            claim()?;
+            return pre.bootstrap(|pre| {
+                Self::from_client_preadmitted(device, provider_cap, device_cap, pre).map(Arc::new)
+            });
+        }
+
+        #[cfg(all(
+            any(
+                feature = "gemma-bf16-qualification",
+                feature = "qwen-source-qualification"
+            ),
+            feature = "vulkan",
+        ))]
+        if matches!(&device, Device::Wgpu(wgpu) if wgpu.backend == cubecl::device::WgpuBackend::Vulkan)
+        {
+            let observed = crate::vulkan::native::preflight_vulkan_device(&device)?;
+            let pre = PhysicalServiceBudget::preadmit_device(
+                observed.key().clone(),
+                observed.max_memory(),
+                device_cap,
+                provider_cap as u64,
+                ResourceOwner::new("backend/physical", "original-owner")?,
+            )?;
+            claim()?;
+            return pre.bootstrap(|pre| {
+                observed.register(&device)?;
+                Self::from_client_preadmitted(device, provider_cap, device_cap, pre).map(Arc::new)
+            });
+        }
+        claim()?;
+        Self::new(device, provider_cap, device_cap)
+    }
+
     #[cfg(all(
         feature = "cuda",
         any(feature = "qualification", feature = "cuda-native")

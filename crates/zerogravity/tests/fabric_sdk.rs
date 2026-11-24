@@ -424,6 +424,34 @@ fn qwen_cuda_paged_native_sdk_matches_contiguous() {
 
     let run = |paged: bool| {
         let runtime = qwen_cuda_native_runtime(paged);
+        let engine: zerogravity_engine::Runtime = runtime.clone().into();
+        let report = engine
+            .with_text_router(|router| router.admission())
+            .unwrap();
+        let fit = &report["source_models"][0]["preparation"];
+        assert_eq!(fit["provider"], "Cuda");
+        assert_eq!(fit["device"]["namespace"], "pci");
+        assert_eq!(
+            fit["physical_limit_bytes"].as_u64().unwrap(),
+            5120 * 1024 * 1024
+        );
+        assert_eq!(
+            fit["context_device_budget_bytes"].as_u64().unwrap(),
+            512 * 1024 * 1024
+        );
+        assert!(fit["host_upper_bytes"].is_null());
+        assert!(
+            fit["model_required_bytes"].as_u64().unwrap()
+                <= fit["admitted_model_capacity_bytes"].as_u64().unwrap()
+        );
+        let full_roots = fit["root_bytes"].as_u64().unwrap() * fit["root_count"].as_u64().unwrap();
+        let actual_state = fit["state_reserve_bytes"].as_u64().unwrap();
+        if paged {
+            assert!(actual_state <= full_roots);
+        } else {
+            assert_eq!(actual_state, full_roots);
+        }
+        drop(engine);
         let model = runtime.models().resolve("source").unwrap();
         let tokenizer = model.prepared().tokenizer();
         let prompt = " a".repeat(48);

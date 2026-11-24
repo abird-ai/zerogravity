@@ -187,7 +187,11 @@ impl SharedHipNative {
                 "shared native candidate requires original HIP".into(),
             ));
         }
-        configure_single_stream()?;
+        let pre = crate::resident_leases::ResidentPhysical::preadmit_hip_device(
+            &device,
+            SHARED_PROVIDER,
+            DEVICE_CAP,
+        )?;
         let arbiter = ResourceArbiter::process_shared();
         let host_key = PhysicalDeviceKey::new("host", "system-ram")?;
         arbiter.register_matching(host_key.clone(), SHARED_HOST_BYTES)?;
@@ -199,7 +203,9 @@ impl SharedHipNative {
                 bytes: CONTROL_HOST as u64,
             }],
         )?);
-        let persistent_host = persistent_context_host(&arbiter, &host_key)?;
+        let host_lease = context_host_lease(&arbiter, &host_key)?;
+        configure_single_stream()?;
+        let persistent_host = Arc::new(PersistentHost(Arc::new(host_lease)));
         let (physical, context_device) =
             crate::resident_leases::ResidentPhysical::new_with_native_context(
                 device,
@@ -207,6 +213,7 @@ impl SharedHipNative {
                 DEVICE_CAP,
                 Arc::from(POLICY),
                 CONTEXT_DEVICE,
+                Some(pre),
             )?;
         let context = Arc::new(Context {
             device: context_device,

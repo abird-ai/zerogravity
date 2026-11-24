@@ -48,13 +48,21 @@ pub(crate) fn physical_key(physical: Option<&PhysicalDevice>) -> Result<Physical
 
 /// Backend property alone may describe allocated/addressable memory rather
 /// than currently free memory. Require an explicit conservative operator cap.
-fn checked_caps(reported: Option<u64>, operator: u64, provider: u64) -> Result<()> {
+pub(crate) fn checked_caps(reported: Option<u64>, operator: u64, provider: u64) -> Result<()> {
     let maximum = reported.ok_or_else(|| {
         Error::State("CubeCL backend has no physical memory budget; refusing GTT guess".into())
     })?;
-    if operator == 0 || provider == 0 || operator > maximum || provider > operator {
+    if operator == 0 || provider == 0 || provider > operator {
         return Err(Error::Limit(
-            "operator/device/provider physical memory budget absent or inconsistent with reported memory".into()
+            "operator/device/provider physical memory budget absent or inconsistent".into(),
+        ));
+    }
+    if operator > maximum {
+        return Err(Error::resource(
+            "physical device memory / VRAM budget",
+            "configured device envelope exceeds reported capacity",
+            operator,
+            maximum,
         ));
     }
     Ok(())
@@ -93,9 +101,14 @@ mod cuda_compiler_context;
     any(feature = "cuda-native-qualification", feature = "cuda-cublas"),
     target_os = "linux"
 ))]
-pub(crate) use cuda_compiler_context::CudaCompilerContextBudget;
+pub(crate) use cuda_compiler_context::CUDA_COMPILER_DEVICE_BYTES;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
-pub(crate) use cuda_compiler_context::{CUDA_COMPILER_DEVICE_BYTES, CUDA_COMPILER_HOST_BYTES};
+pub(crate) use cuda_compiler_context::CUDA_COMPILER_HOST_BYTES;
+#[cfg(all(
+    any(feature = "cuda-native-qualification", feature = "cuda-cublas"),
+    target_os = "linux"
+))]
+pub(crate) use cuda_compiler_context::CudaCompilerContextBudget;
 
 pub struct PhysicalServiceBudget {
     client: Client,
@@ -111,41 +124,73 @@ pub struct PhysicalServiceBudget {
     in_flight: Arc<Mutex<usize>>,
 }
 
-/// Physical device admission taken before any context or device exists. It
+/// Physical device admission taken before the CubeCL Client is constructed. It
 /// carries the one original lease into `PhysicalServiceBudget` without a
 /// second charge.
 #[cfg(all(
+    target_os = "linux",
+    any(feature = "hip", feature = "vulkan"),
     any(
         feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification"
-    ),
-    feature = "vulkan",
-    target_os = "linux"
+        feature = "hip-source",
+        all(test, feature = "qualification", feature = "hip")
+    )
 ))]
 pub(crate) struct PreAdmittedDevice {
     key: PhysicalDeviceKey,
     reported_max: u64,
+    operator_limit: u64,
+    armed: bool,
     lease: Arc<GlobalResourceLease>,
     fence_flag: Arc<AtomicBool>,
     in_flight: Arc<Mutex<usize>>,
 }
 
 #[cfg(all(
+    target_os = "linux",
+    any(feature = "hip", feature = "vulkan"),
     any(
         feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification"
-    ),
-    feature = "vulkan",
-    target_os = "linux"
+        feature = "hip-source",
+        all(test, feature = "qualification", feature = "hip")
+    )
 ))]
 impl PreAdmittedDevice {
     /// Bootstrap uncertainty: retain the charge and fence the card instead of
     /// crediting an admission whose context may have been constructed.
-    pub(crate) fn fence_and_retain(&self) {
+    fn fence_and_retain(&self) {
         self.lease.fence_unknown();
         self.fence_flag.store(true, Ordering::Release);
         std::mem::forget(self.lease.clone());
         std::mem::forget(self.fence_flag.clone());
+    }
+
+    /// Any error or unwind after a bootstrap starts retains the original
+    /// envelope. A refusal before this point drops only unused admission.
+    pub(crate) fn bootstrap<T>(mut self, construct: impl FnOnce(&Self) -> Result<T>) -> Result<T> {
+        self.armed = true;
+        let result = construct(&self);
+        if result.is_ok() {
+            self.armed = false;
+        }
+        result
+    }
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "hip", feature = "vulkan"),
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "hip-source",
+        all(test, feature = "qualification", feature = "hip")
+    )
+))]
+impl Drop for PreAdmittedDevice {
+    fn drop(&mut self) {
+        if self.armed {
+            self.fence_and_retain();
+        }
     }
 }
 
@@ -153,12 +198,13 @@ impl PhysicalServiceBudget {
     /// Admit the selected adapter's actual identity/device-local capacity
     /// before `device.client()` or native context construction.
     #[cfg(all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
         any(
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification"
-        ),
-        feature = "vulkan",
-        target_os = "linux"
+            feature = "hip-source",
+            all(test, feature = "qualification", feature = "hip")
+        )
     ))]
     pub(crate) fn preadmit_device(
         key: PhysicalDeviceKey,
@@ -181,6 +227,8 @@ impl PhysicalServiceBudget {
         Ok(PreAdmittedDevice {
             key,
             reported_max,
+            operator_limit: operator_device_cap,
+            armed: false,
             lease: Arc::new(lease),
             fence_flag: Arc::new(AtomicBool::new(false)),
             in_flight: Arc::new(Mutex::new(0)),
@@ -191,12 +239,13 @@ impl PhysicalServiceBudget {
     /// client's selected identity and capacity must match the preflight; no
     /// second arbiter admission is made.
     #[cfg(all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
         any(
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification"
-        ),
-        feature = "vulkan",
-        target_os = "linux"
+            feature = "hip-source",
+            all(test, feature = "qualification", feature = "hip")
+        )
     ))]
     pub(crate) fn attach_preadmitted(
         client: &Client,
@@ -207,7 +256,10 @@ impl PhysicalServiceBudget {
     ) -> Result<Self> {
         let properties = client.properties();
         let key = physical_key(properties.identity.physical.as_ref())?;
-        if key != pre.key
+        if !pre.armed
+            || key != pre.key
+            || operator_device_cap != pre.operator_limit
+            || provider_cap != pre.lease.reserved_bytes()?
             || properties
                 .memory
                 .max_memory()
@@ -376,6 +428,13 @@ impl PhysicalServiceBudget {
 
     pub(crate) fn provider_capacity(&self) -> u64 {
         self.provider_cap
+    }
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+    ))]
+    pub(crate) fn device_capacity(&self) -> u64 {
+        self.total_limit
     }
 
     /// Same original physical envelope, detached from Client/actor lifetime.
