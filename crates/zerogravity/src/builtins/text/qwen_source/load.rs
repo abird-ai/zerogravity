@@ -807,6 +807,204 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "approved canonical cache snapshot, physical HIP, isolated process"]
+    fn aligned_hip_prefill_matches_singleton_state_and_readout() {
+        use crate::{
+            accelerator::program::InvocationPhase,
+            gpu::{
+                ResidentOutput, ResidentTextCohortPreparation, ResidentTextPreparation,
+                ResidentTextPublication,
+            },
+        };
+        let snapshot =
+            std::env::var("ZG_QWEN_SOURCE_SNAPSHOT").expect("explicit approved snapshot");
+        let root = std::env::var_os("ZG_QWEN_CACHE_ROOT").map(std::path::PathBuf::from);
+        let arbiter = ResourceArbiter::process_shared();
+        let resource = PhysicalDeviceKey::new("host", "system-ram").unwrap();
+        arbiter
+            .register_matching(resource.clone(), 16 * 1024 * 1024 * 1024)
+            .unwrap();
+        let admission = TransferAdmission {
+            arbiter: arbiter.clone(),
+            resource,
+            owner: ResourceOwner::new("source-prefill", "differential").unwrap(),
+        };
+        let host = ServingHost::from_process_admission(&admission).unwrap();
+        let _bootstrap =
+            crate::tokenize_admission::approve_arbiter(&admission, "bootstrap").unwrap();
+        let parts = open_source(
+            "source-prefill",
+            CacheOptions::new(root, 96 * 1024 * 1024 * 1024),
+            &snapshot,
+            128,
+            &host,
+            NumericalContract::TorchCpuAvx2Bf16MixedV1,
+        )
+        .unwrap();
+        let plan = &parts.source.plan;
+        let tokens = [
+            "A red bird follows the river. ",
+            "The blue train climbs a mountain. ",
+        ]
+        .map(|p| {
+            let mut ids = parts.tokenizer.prompt_tokens(&p.repeat(32), false).unwrap();
+            assert!(ids.len() >= 81);
+            ids.truncate(81);
+            ids
+        });
+        assert_ne!(tokens[0], tokens[1]);
+        block_on(async {
+            let model = ResidentModel::load_cpu_forward_source_with_budget_and_cohort(
+                Device::Hip(Default::default()),
+                plan.source().clone(),
+                parts.source.clone(),
+                plan.plan().clone(),
+                4,
+                4,
+                crate::gpu::HipSourceBudget::default(),
+                None,
+            )
+            .await
+            .unwrap();
+            let mut singles = [
+                model.session().await.unwrap(),
+                model.session().await.unwrap(),
+            ];
+            let mut cohort = [
+                model.session().await.unwrap(),
+                model.session().await.unwrap(),
+            ];
+            let mut base = 0;
+            let mut compared = 0usize;
+            for (rows, emit) in [(64usize, false), (17, true)] {
+                let calls = tokens
+                    .iter()
+                    .map(|ids| {
+                        plan.bind_invocation(
+                            InvocationPhase::Prefill,
+                            base,
+                            Arc::from(&ids[base..base + rows]),
+                            emit,
+                        )
+                        .unwrap()
+                    })
+                    .collect::<Vec<_>>();
+                let output = if emit {
+                    ResidentOutput::Logits
+                } else {
+                    ResidentOutput::StateOnly
+                };
+                let mut expected = Vec::new();
+                for (session, call) in singles.iter_mut().zip(&calls) {
+                    let ResidentTextPreparation::Ready(pending) = session
+                        .prepare(
+                            call.bound_invocation(),
+                            InvocationPhase::Prefill,
+                            output,
+                            None,
+                        )
+                        .await
+                        .unwrap()
+                    else {
+                        panic!("singleton prefill refused")
+                    };
+                    let ResidentTextPublication::Committed(read) = session.commit(pending).unwrap()
+                    else {
+                        panic!("singleton prefill discarded")
+                    };
+                    expected.push(read);
+                }
+                if emit {
+                    let before = cohort.each_ref().map(|session| session.binding());
+                    let inputs = cohort
+                        .iter()
+                        .zip(&calls)
+                        .map(|(session, call)| (session, call.bound_invocation()))
+                        .collect::<Vec<_>>();
+                    let ResidentTextCohortPreparation::Ready(discard) = model
+                        .prepare_prefill_cohort_admitted(&inputs)
+                        .await
+                        .unwrap()
+                    else {
+                        panic!("cohort prefill refused")
+                    };
+                    assert!(discard.fused_dispatches() > 0);
+                    drop(discard);
+                    assert_eq!(cohort.each_ref().map(|session| session.binding()), before);
+                }
+                let inputs = cohort
+                    .iter()
+                    .zip(&calls)
+                    .map(|(session, call)| (session, call.bound_invocation()))
+                    .collect::<Vec<_>>();
+                let ResidentTextCohortPreparation::Ready(pending) = model
+                    .prepare_prefill_cohort_admitted(&inputs)
+                    .await
+                    .unwrap()
+                else {
+                    panic!("cohort prefill refused")
+                };
+                assert!(pending.fused_dispatches() > 0);
+                let reads = pending
+                    .commit(&mut cohort.iter_mut().collect::<Vec<_>>())
+                    .unwrap();
+                base += rows;
+                for lane in 0..2 {
+                    assert_eq!(cohort[lane].binding().frontier(), base as u64);
+                    assert_eq!(singles[lane].binding().frontier(), base as u64);
+                    assert_ne!(
+                        cohort[lane].binding().session(),
+                        singles[lane].binding().session()
+                    );
+                    assert_eq!(reads[lane].logit_steps, usize::from(emit));
+                    assert_eq!(reads[lane].state_only_steps, usize::from(!emit));
+                    let bits_equal = |a: &[f32], b: &[f32]| {
+                        a.len() == b.len()
+                            && a.iter().zip(b).all(|(a, b)| a.to_bits() == b.to_bits())
+                    };
+                    assert!(
+                        bits_equal(&reads[lane].logits, &expected[lane].logits),
+                        "logits lane={lane} base={base}"
+                    );
+                    let actual = cohort[lane]
+                        .snapshot()
+                        .unwrap()
+                        .read_domains()
+                        .await
+                        .unwrap();
+                    let expected = singles[lane]
+                        .snapshot()
+                        .unwrap()
+                        .read_domains()
+                        .await
+                        .unwrap();
+                    assert_eq!(actual.len(), expected.len());
+                    for ((slot, a), (expected_slot, b)) in actual.iter().zip(expected.iter()) {
+                        assert_eq!(slot, expected_slot);
+                        assert!(
+                            bits_equal(a, b),
+                            "state lane={lane} base={base} slot={slot:?}"
+                        );
+                        compared += a.len();
+                    }
+                    compared += reads[lane].logits.len();
+                }
+                assert_ne!(cohort[0].binding().session(), cohort[1].binding().session());
+                println!(
+                    "HIP_PREFILL_DIFFERENTIAL rows={rows} frontier={base} state_only={} words={compared}",
+                    !emit
+                );
+            }
+            drop((singles, cohort, model));
+        });
+        let device = arbiter
+            .snapshot(&PhysicalDeviceKey::new("pci", "0000:c6:00.0").unwrap())
+            .unwrap();
+        assert_eq!(device.reserved, 4 * 1024 * 1024 * 1024);
+        assert!(!device.fenced);
+    }
+
+    #[test]
     fn aliases_refuse_before_cache_or_device_access() {
         assert!(validate_aliases(&["a".into(), "b".into()]).is_ok());
         for aliases in [

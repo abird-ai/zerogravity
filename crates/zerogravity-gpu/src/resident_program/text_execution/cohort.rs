@@ -755,8 +755,8 @@ impl Cold {
                             Bf16ProjectionBindings {
                                 input: &input,
                                 input_lease,
-                                output: &temporary,
-                                output_lease: &buffers.projection[0],
+                                output: &destination,
+                                output_lease: destination_lease,
                                 packed: &buffers.packed,
                                 accumulation: &buffers.projection[1],
                                 flags: &buffers.projection[2],
