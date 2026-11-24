@@ -91,6 +91,15 @@ struct SourceOwner {
 #[derive(Clone)]
 pub struct VerifiedTensorSource(Arc<SourceOwner>);
 
+impl zerogravity_core::source::ProgramSource for VerifiedTensorSource {
+    fn source_identity(&self) -> SourceIdentity {
+        self.source_identity()
+    }
+    fn same_issuer(&self, other: &Self) -> bool {
+        self.same_issuer(other)
+    }
+}
+
 /// Observes the actual backing owner without keeping source descriptors alive.
 pub struct SourceOwnerWitness(std::sync::Weak<SourceOwner>);
 impl SourceOwnerWitness {

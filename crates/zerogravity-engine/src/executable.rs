@@ -6,6 +6,9 @@ pub struct ExecutableBundle<E: PreparedExecutable> {
     pub(crate) prepared: E,
 }
 impl<E: PreparedExecutable> ExecutableBundle<E> {
+    pub async fn source(&self) -> Result<E::Source> {
+        self.prepared.source().await
+    }
     pub async fn program(&self) -> Result<Arc<ForwardPlan>> {
         self.prepared.program().await
     }

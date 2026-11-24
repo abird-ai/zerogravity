@@ -13,6 +13,22 @@ pub trait TensorSource: Send + Sync {
     fn tensor(&self, name: &str) -> Result<SourceTensorRef<'_>>;
 }
 
+/// Retained source binding for cold preparation. No byte-access, allocation or
+/// execution permission: implementations keep their actual backing and access
+/// mechanism. Equality means the original issuer, not just equal source IDs.
+pub trait ProgramSource: Clone + Send + Sync {
+    fn source_identity(&self) -> SourceIdentity;
+    fn same_issuer(&self, other: &Self) -> bool;
+}
+impl ProgramSource for std::sync::Arc<dyn TensorSource> {
+    fn source_identity(&self) -> SourceIdentity {
+        self.as_ref().source_identity()
+    }
+    fn same_issuer(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(self, other)
+    }
+}
+
 /// Exact immutable content equality; shared storage avoids rereading bytes.
 /// Different allocations still compare every byte. This is no source permit.
 pub fn exact_text_eq(left: &str, right: &str) -> bool {

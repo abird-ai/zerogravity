@@ -1,6 +1,6 @@
 //! Coarse source-owned preparation; no execution authority from a descriptor.
 mod selection;
-use crate::{Result, model::ModelProgram, semantic::ForwardPlan, source::TensorSource};
+use crate::{Result, model::ModelProgram, semantic::ForwardPlan, source::ProgramSource};
 pub use selection::{
     ExecutionMode, SelectedMode, SelectionPolicy, ShapeMissPolicy, StateBridge, SwitchingBoundary,
 };
@@ -19,11 +19,13 @@ pub enum ProviderKind {
 /// Original semantic program and provider-owned resources. This interface does
 /// not publish roots or expose Ready; existing typed execution adapters do that.
 pub trait PreparedExecutable: Send + Sync {
-    fn source(&self) -> impl Future<Output = Result<Arc<dyn TensorSource>>>;
+    type Source: ProgramSource;
+    fn source(&self) -> impl Future<Output = Result<Self::Source>>;
     fn program(&self) -> impl Future<Output = Result<Arc<ForwardPlan>>>;
 }
 impl<T: PreparedExecutable + ?Sized> PreparedExecutable for Arc<T> {
-    fn source(&self) -> impl Future<Output = Result<Arc<dyn TensorSource>>> {
+    type Source = T::Source;
+    fn source(&self) -> impl Future<Output = Result<Self::Source>> {
         self.as_ref().source()
     }
     fn program(&self) -> impl Future<Output = Result<Arc<ForwardPlan>>> {
@@ -38,5 +40,8 @@ impl<T: PreparedExecutable + ?Sized> PreparedExecutable for Arc<T> {
 pub trait RegionExecutionProvider: Send + Sync {
     type Executable: PreparedExecutable;
     fn kind(&self) -> ProviderKind;
-    fn prepare(&self, program: ModelProgram) -> impl Future<Output = Result<Self::Executable>>;
+    fn prepare(
+        &self,
+        program: ModelProgram<<Self::Executable as PreparedExecutable>::Source>,
+    ) -> impl Future<Output = Result<Self::Executable>>;
 }

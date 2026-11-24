@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     accelerator::program::NumericalContract,
     cache::{CacheOptions, CacheStore},
-    gpu::{Device, ResidentModel},
+    gpu::Device,
     qwen35_source::{self, Inputs},
     resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner, TransferAdmission},
     tokenize::QwenTokenizer,
@@ -507,45 +507,48 @@ pub(crate) fn load_router(
         resolve_cuda_smart_config(&aliases[0], profile, source.plan.plan().clone(), backend)?;
     #[cfg(not(all(feature = "model-qwen35", feature = "cuda")))]
     let profile = profile;
-    // Exact original source/template/owner. No qualification loader or program
-    // reconstruction and no alternate scheduler/publisher.
-    let resident = match backend {
+    // The same source-owned preparation boundary as borrowed GGUF models.
+    // Window access and the original family/cache lease stay with the provider.
+    use crate::gpu::{ResidentTextPolicy, ResidentTextProvider};
+    let (device, policy) = match backend {
         #[cfg(all(feature = "model-qwen35", feature = "hip"))]
-        SourceBackend::Hip(budget, _) => block_on(
-            ResidentModel::load_hip_forward_source_with_budget_and_cohort(
-                Device::Hip(Default::default()),
-                source.plan.source().clone(),
-                source.clone(),
-                source.plan.plan().clone(),
-                profile.active,
-                profile.cohort_width,
-                budget,
-                None,
-            ),
+        SourceBackend::Hip(budget, _) => (
+            Device::Hip(Default::default()),
+            ResidentTextPolicy::Hip(budget),
         ),
         #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
         SourceBackend::Cuda {
             provider_bytes,
             device_bytes,
             smart_config,
-        } => block_on(ResidentModel::load_cuda_forward_source_with_state_policy(
+        } => (
             Device::Cuda(Default::default()),
-            source.plan.source().clone(),
-            source.clone(),
-            source.plan.plan().clone(),
-            profile.active,
-            profile.cohort_width,
-            provider_bytes,
-            device_bytes,
-            smart_config
-                .overrides
-                .state_policy
-                .expect("resolved CUDA smart config")
-                .into(),
-            None,
-        )),
-    }
-    .map_err(ServiceError::inference)?;
+            ResidentTextPolicy::Cuda {
+                provider_bytes,
+                device_bytes,
+                state: smart_config
+                    .overrides
+                    .state_policy
+                    .expect("resolved CUDA smart config")
+                    .into(),
+            },
+        ),
+    };
+    let provider = ResidentTextProvider {
+        device,
+        policy,
+        source_owner: source.clone(),
+        max_sessions: profile.active,
+        cohort_width: profile.cohort_width,
+        cancelled: None,
+    };
+    let program = source
+        .plan
+        .model_program()
+        .map_err(ServiceError::inference)?;
+    let resident = block_on(crate::models::prepare_executable(program, &provider))
+        .map_err(ServiceError::inference)?
+        .into_prepared();
     #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
     let prefix_cache = if resident.supports_shared_prefix() {
         Some(
@@ -698,6 +701,7 @@ fn open_source(
 #[cfg(all(test, all(feature = "model-qwen35", feature = "hip")))]
 mod tests {
     use super::*;
+    use crate::gpu::ResidentModel;
     #[test]
     #[ignore = "approved canonical cache snapshot; host-only, no GPU"]
     fn canonical_source_and_tokenizer_keep_original_cache_and_host_owners() {
@@ -728,6 +732,10 @@ mod tests {
         )
         .unwrap();
         let plan = &parts.source.plan;
+        let program = plan.model_program().unwrap();
+        assert!(program.source().same_issuer(plan.source()));
+        assert!(Arc::ptr_eq(program.program(), plan.plan()));
+        drop(program);
         assert_eq!(
             plan.source_seal().numerical_contract(),
             NumericalContract::TorchCpuAvx2Bf16MixedV1

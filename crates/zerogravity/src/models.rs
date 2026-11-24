@@ -58,7 +58,7 @@ pub fn qwen_source_snapshot(target: &str) -> Option<&'static str> {
 pub use crate::model::DeclaredModel;
 pub use zerogravity_core::model::{ModelAssembly, ModelDefinition, ModelProgram, ProgramRequest};
 pub use zerogravity_core::provider::{PreparedExecutable, RegionExecutionProvider};
-pub use zerogravity_core::source::{SourceTensorRef, TensorSource};
+pub use zerogravity_core::source::{ProgramSource, SourceTensorRef, TensorSource};
 pub use zerogravity_engine::model_instance::{ModelInstance, PreparedModel};
 pub use zerogravity_engine::{
     executable::ExecutableBundle, prepare::prepare as prepare_executable,

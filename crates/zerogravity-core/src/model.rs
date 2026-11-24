@@ -1,6 +1,9 @@
 //! Source-owned family recording; a semantic program is never execution or Ready.
 use crate::{
-    Error, Result, identity::SourceIdentity, semantic::ForwardPlan, source::TensorSource,
+    Error, Result,
+    identity::SourceIdentity,
+    semantic::ForwardPlan,
+    source::{ProgramSource, TensorSource},
     task::TaskKind,
 };
 use std::sync::Arc;
@@ -22,15 +25,15 @@ pub trait ModelDefinition: Send + Sync {
     fn program(&self, request: ProgramRequest) -> Result<ForwardPlan>;
 }
 
-/// Original recorded graph and its actual source owner, not another model IR.
-/// Construction requires a family recorder and retained source, never a bare plan or ID.
-pub struct ModelProgram {
+/// Original recorded graph and retained source binding, not another model IR.
+/// Source access remains typed: borrowed tensors need not stand in for windows.
+pub struct ModelProgram<S: ProgramSource = Arc<dyn TensorSource>> {
     plan: Arc<ForwardPlan>,
-    source: Arc<dyn TensorSource>,
+    source: S,
 }
 impl ModelProgram {
-    /// This provider binding needs borrowed tensors; the general family contract
-    /// does not. Window-bound sources keep their own source-retaining adapters.
+    /// Record a borrowed-tensor family. Window-backed families transfer their
+    /// existing authenticated recording with `from_recorded`.
     pub fn record<M: ModelDefinition + TensorSource + 'static>(
         model: Arc<M>,
         request: ProgramRequest,
@@ -61,19 +64,30 @@ impl ModelProgram {
                 "model recording differs from its source/task request".into(),
             ));
         }
-        Ok(Self {
-            plan: Arc::new(plan),
-            source: model,
-        })
+        Self::from_recorded(model, Arc::new(plan))
+    }
+}
+impl<S: ProgramSource> ModelProgram<S> {
+    /// Transfer an already source-bound whole-model recording, preserving both
+    /// owners. This checks the binding, not source authentication or model math;
+    /// the family recorder and physical provider still validate their contracts.
+    pub fn from_recorded(source: S, plan: Arc<ForwardPlan>) -> Result<Self> {
+        let identity = source.source_identity();
+        if !identity.is_bound() || plan.source() != identity || plan.is_operator_slice() {
+            return Err(Error::State(
+                "recorded model program source/region differs".into(),
+            ));
+        }
+        Ok(Self { plan, source })
     }
     pub fn program(&self) -> &Arc<ForwardPlan> {
         &self.plan
     }
-    pub fn source(&self) -> &Arc<dyn TensorSource> {
+    pub fn source(&self) -> &S {
         &self.source
     }
     /// Transfer the original owners to the physical provider; no reconstruction.
-    pub fn into_parts(self) -> (Arc<dyn TensorSource>, Arc<ForwardPlan>) {
+    pub fn into_parts(self) -> (S, Arc<ForwardPlan>) {
         (self.source, self.plan)
     }
 }

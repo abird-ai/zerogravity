@@ -32,6 +32,19 @@ impl QwenForwardPlan {
     pub fn plan(&self) -> &Arc<ForwardPlan> {
         &self.owner.plan
     }
+    /// Reuse the source-bound recording in provider-neutral preparation.
+    pub fn model_program(
+        &self,
+    ) -> Result<
+        zerogravity_core::model::ModelProgram<
+            zerogravity_artifacts::source_weights::VerifiedTensorSource,
+        >,
+    > {
+        zerogravity_core::model::ModelProgram::from_recorded(
+            self.source().clone(),
+            self.plan().clone(),
+        )
+    }
     /// Authenticated source capability retained with the static plan.
     pub fn source_seal(&self) -> &ForwardSourceSeal {
         &self.owner.source

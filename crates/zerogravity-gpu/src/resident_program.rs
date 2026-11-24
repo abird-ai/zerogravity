@@ -1588,6 +1588,20 @@ impl ResidentProgram {
             )),
         }
     }
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+    ))]
+    pub(crate) fn window_source(
+        &self,
+    ) -> Result<zerogravity_artifacts::source_weights::VerifiedTensorSource> {
+        match &self._source_owner {
+            ResidentProgramSource::Windows(source) => Ok(source.clone()),
+            ResidentProgramSource::Owned(_) => Err(Error::State(
+                "window-backed executable source absent".into(),
+            )),
+        }
+    }
     pub fn budget(&self) -> &ResidentPreflight {
         &self.preflight
     }

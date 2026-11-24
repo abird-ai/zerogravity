@@ -47,3 +47,14 @@ impl RegionExecutionProvider for ResidentModelProvider {
         .await
     }
 }
+
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
+mod text;
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
+pub use text::{ResidentTextPolicy, ResidentTextProvider};

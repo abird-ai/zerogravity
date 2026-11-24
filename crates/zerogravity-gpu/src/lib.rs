@@ -90,6 +90,11 @@ pub use resident_program::{StateLayout, StateRequirement};
 mod model_provider;
 mod resident_provider;
 pub use model_provider::ResidentModelProvider;
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
+pub use model_provider::{ResidentTextPolicy, ResidentTextProvider};
 mod resident_state_transport;
 mod rms_norm;
 mod rope_angles;

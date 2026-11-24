@@ -588,6 +588,7 @@ fn lease_for<'a>(
 }
 
 impl zerogravity_core::provider::PreparedExecutable for ResidentModel {
+    type Source = Arc<dyn TensorSource>;
     async fn source(&self) -> Result<Arc<dyn TensorSource>> {
         self.workspace.lock().await.program.owned_source()
     }

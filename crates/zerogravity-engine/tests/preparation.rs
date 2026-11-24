@@ -127,6 +127,7 @@ struct OwnerProbe {
     plan: Arc<ForwardPlan>,
 }
 impl PreparedExecutable for OwnerProbe {
+    type Source = Arc<dyn TensorSource>;
     async fn source(&self) -> Result<Arc<dyn TensorSource>> {
         Ok(self.source.clone())
     }
@@ -239,8 +240,21 @@ fn original_source_and_program_survive_preparation_and_final_reader() {
     let original: Arc<dyn TensorSource> = source.clone();
     let program = ModelProgram::record(source, request()).unwrap();
     assert!(Arc::ptr_eq(&original, program.source()));
-    drop(original);
     let plan = program.program().clone();
+    // The other ingress path must retain the same source and original plan,
+    // without recording again. A foreign source cannot bind this recording.
+    let rebound = ModelProgram::from_recorded(original.clone(), plan.clone()).unwrap();
+    assert!(Arc::ptr_eq(rebound.program(), &plan));
+    assert!(Arc::ptr_eq(rebound.source(), &original));
+    assert!(
+        ModelProgram::from_recorded(
+            definition(Recording::Original) as Arc<dyn TensorSource>,
+            plan.clone()
+        )
+        .is_err()
+    );
+    drop((original, program));
+    let program = rebound;
     let provider = ProviderProbe {
         mode: Preparation::Original,
         yield_once: true,
@@ -255,7 +269,7 @@ fn original_source_and_program_survive_preparation_and_final_reader() {
     let bundle = result.unwrap();
     assert!(Arc::ptr_eq(&plan, &ready(bundle.program()).unwrap()));
     assert_eq!(
-        ready(bundle.prepared().source()).unwrap().source_identity(),
+        ready(bundle.source()).unwrap().source_identity(),
         plan.source()
     );
     let owner = bundle.into_prepared();

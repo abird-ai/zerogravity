@@ -74,6 +74,16 @@ pub struct ResidentTextModel {
         Option<crate::resident_program::cuda_forward::PrefillProjectionClasses>,
     _source_owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
 }
+impl zerogravity_core::provider::PreparedExecutable for ResidentTextModel {
+    type Source = VerifiedTensorSource;
+    async fn source(&self) -> Result<Self::Source> {
+        self.inner.workspace.lock().await.program.window_source()
+    }
+    async fn program(&self) -> Result<Arc<ForwardPlan>> {
+        Ok(self.inner.workspace.lock().await.program.shared_plan())
+    }
+}
+
 pub struct ResidentTextSession {
     inner: ResidentSession,
     _permit: async_lock::SemaphoreGuardArc,
