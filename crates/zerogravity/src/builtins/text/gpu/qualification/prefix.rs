@@ -11,7 +11,7 @@ impl PrefixOracle {
     fn new(fixture: &Fixture) -> Self {
         Self {
             cpu: QwenDenseCpu::from_shared(Arc::clone(&fixture.source)).unwrap(),
-            gpu: block_on(fixture.model.resident.session()).unwrap(),
+            gpu: block_on(fixture.model.resident().unwrap().session()).unwrap(),
             consumed: 0,
             packet: None,
         }

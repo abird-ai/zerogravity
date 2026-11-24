@@ -172,42 +172,52 @@ impl Harness {
         engine.with_text_router(|r| r.admission()).unwrap()
     }
     pub fn retire(self) {
-        let report = self.admission();
-        let models = report["source_models"].as_array().unwrap();
-        assert!(!models.is_empty());
-        for model in models {
-            let fit = &model["preparation"];
-            assert_eq!(fit["provider"], "Hip");
-            assert_eq!(fit["device"]["namespace"], self.device.backend);
-            assert_eq!(fit["device"]["identity"], self.device.device);
-            assert_eq!(
-                fit["admitted_model_capacity_bytes"].as_u64().unwrap(),
-                self.budget.model_device_bytes() as u64
-            );
-            assert_eq!(
-                fit["context_device_budget_bytes"].as_u64().unwrap(),
-                self.budget.context_device_bytes() as u64
-            );
-            assert_eq!(
-                fit["physical_limit_bytes"].as_u64().unwrap(),
-                self.budget.physical_admission_bytes()
-            );
-            assert!(
-                fit["model_required_bytes"].as_u64().unwrap()
-                    <= fit["admitted_model_capacity_bytes"].as_u64().unwrap()
-            );
-            assert!(fit["host_upper_bytes"].as_u64().unwrap() > 0);
-            assert_eq!(
-                fit["state_reserve_bytes"].as_u64().unwrap(),
-                fit["root_bytes"].as_u64().unwrap() * fit["root_count"].as_u64().unwrap()
-            );
-        }
-        assert!(
-            models
-                .windows(2)
-                .all(|pair| pair[0]["preparation"] == pair[1]["preparation"])
-        );
         let weak = Arc::downgrade(self.model.prepared());
+        if !self.runtime.status().closed {
+            let report = self.admission();
+            let models = report["source_models"].as_array().unwrap();
+            assert!(!models.is_empty());
+            for model in models {
+                let fit = &model["preparation"];
+                assert_eq!(fit["provider"], "Hip");
+                assert_eq!(fit["device"]["namespace"], self.device.backend);
+                assert_eq!(fit["device"]["identity"], self.device.device);
+                assert_eq!(
+                    fit["admitted_model_capacity_bytes"].as_u64().unwrap(),
+                    self.budget.model_device_bytes() as u64
+                );
+                assert_eq!(
+                    fit["context_device_budget_bytes"].as_u64().unwrap(),
+                    self.budget.context_device_bytes() as u64
+                );
+                assert_eq!(
+                    fit["physical_limit_bytes"].as_u64().unwrap(),
+                    self.budget.physical_admission_bytes()
+                );
+                assert!(
+                    fit["model_required_bytes"].as_u64().unwrap()
+                        <= fit["admitted_model_capacity_bytes"].as_u64().unwrap()
+                );
+                assert!(fit["host_upper_bytes"].as_u64().unwrap() > 0);
+                assert_eq!(
+                    fit["state_reserve_bytes"].as_u64().unwrap(),
+                    fit["root_bytes"].as_u64().unwrap() * fit["root_count"].as_u64().unwrap()
+                );
+            }
+            assert!(
+                models
+                    .windows(2)
+                    .all(|pair| pair[0]["preparation"] == pair[1]["preparation"])
+            );
+            assert!(self.runtime.models().aliases(&self.alias).unwrap().len() >= 2);
+            self.runtime.models().unload(&self.alias).unwrap();
+            assert!(!self.runtime.status().closed);
+            assert!(self.runtime.models().list().unwrap().is_empty());
+            assert_eq!(self.runtime.status().execution_adapters, 0);
+            let retired = self.arbiter.snapshot(&self.device).unwrap();
+            assert_eq!(retired.reserved, 4 * 1024 * 1024 * 1024);
+            assert!(!retired.fenced);
+        }
         self.runtime.shutdown().unwrap();
         assert!(self.runtime.status().closed);
         assert_eq!(self.runtime.status().execution_adapters, 0);

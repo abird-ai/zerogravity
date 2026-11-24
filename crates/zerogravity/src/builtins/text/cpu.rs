@@ -1,8 +1,10 @@
-use super::{QwenTokenizer, TextTokenizer, read_approved_tokenizer, tokenizer_owner};
+use super::{
+    TextTokenizer,
+    local::{AdmittedGguf, LocalRoutes},
+};
 use crate::qwen35::{LoadedQwenModel, QwenDenseCpu, StateSpec};
-use crate::resource_arbiter::{AllocationClass, GlobalResourceLease};
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use zerogravity_engine::model_instance::{LogitModel, PreparedModel, TextSession};
 use zerogravity_engine::router::{Router, ServiceError, pending::ServingHost, validate_config};
@@ -14,17 +16,11 @@ mod load;
 use budget::session_budget;
 
 struct Model {
-    weights: Arc<LoadedQwenModel>,
+    weights: Arc<AdmittedGguf>,
     tokenizer: Arc<dyn TextTokenizer>,
     max_context: usize,
     max_session_bytes: u64,
     max_token_bytes: usize,
-    _weight_charge: GlobalResourceLease,
-}
-/// The parsed tokenizer cannot outlive its original R+G+V inventory owner.
-struct AdmittedTokenizer {
-    tokenizer: QwenTokenizer,
-    _inventory_charge: crate::tokenize_admission::Retained,
 }
 struct Session {
     session: QwenDenseCpu,
@@ -44,7 +40,7 @@ impl TextSession for Session {
 }
 impl PreparedModel for Model {
     fn source(&self) -> crate::identity::SourceIdentity {
-        self.weights.source_identity()
+        self.weights.model().source_identity()
     }
     fn tokenizer(&self) -> Arc<dyn TextTokenizer> {
         self.tokenizer.clone()
@@ -57,7 +53,7 @@ impl PreparedModel for Model {
         self.max_token_bytes
     }
     fn vocabulary_size(&self) -> u64 {
-        self.weights.geometry().vocab_size
+        self.weights.model().geometry().vocab_size
     }
 }
 impl LogitModel for Model {
@@ -72,7 +68,7 @@ impl LogitModel for Model {
     }
     fn new_session(self: Arc<Self>) -> crate::Result<Box<dyn TextSession>> {
         Ok(Box::new(Session {
-            session: self.weights.new_session()?,
+            session: self.weights.model().new_session()?,
             _source: self,
         }))
     }
@@ -97,6 +93,7 @@ pub fn load_router(
         max_output,
         max_pending,
     )?;
+    let declared = LocalRoutes::resolve(declared)?;
     let host = ServingHost::new(host_mib)?;
     let models = load::load_models(declared, &host, max_context)?;
     // The same process-lifetime Rayon owner is admitted before any worker.

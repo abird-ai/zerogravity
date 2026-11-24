@@ -385,3 +385,117 @@ fn runtime_direct_text_and_task_stream_share_scheduler_and_shutdown() {
     drop((runtime, clone, model));
     assert_eq!(host.snapshot().unwrap().1, 0);
 }
+
+#[test]
+fn catalog_unloads_exact_owner_and_drains_before_cold_reload() {
+    use crate::{Runtime, model_instance::ModelInstance};
+    use std::time::Instant;
+    let host = HostPool::isolated(256).unwrap();
+    let gate = Arc::new(Gate::default());
+    let old = MockModel::new(&host, Some(gate.clone()));
+    let fresh = MockModel::new(&host, None);
+    let runtime = Runtime::builder()
+        .limits(crate::scheduler::SchedulerLimits {
+            max_active: 2,
+            ..Default::default()
+        })
+        .build()
+        .unwrap();
+    runtime.configure_text(|| Ok(router(&host, &old))).unwrap();
+    let registered = runtime.models().resolve("alias").unwrap();
+    let foreign = ModelInstance::new(fresh.clone());
+    assert_eq!(
+        runtime.models().aliases(&registered).unwrap(),
+        ["alias", "model"]
+    );
+    assert!(runtime.models().unload(&foreign).is_err());
+    let first = runtime.request_text(request("first")).unwrap();
+    gate.entered();
+    let mut queued = request("second");
+    queued.model = "alias".into();
+    let second = runtime.request_text(queued).unwrap();
+    let retire = runtime.clone();
+    let handle = registered.clone();
+    let join = std::thread::spawn(move || retire.models().unload(&handle));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while runtime.status().execution_adapters != 0 {
+        assert!(
+            Instant::now() < deadline,
+            "retirement did not close admission"
+        );
+        std::thread::yield_now();
+    }
+    assert_eq!(
+        runtime.request_text(request("late")).err().unwrap().code,
+        "runtime_unconfigured"
+    );
+    assert_eq!(
+        runtime
+            .configure_text(|| panic!("cannot load during join"))
+            .unwrap_err()
+            .code,
+        "runtime_configured"
+    );
+    gate.release();
+    assert_eq!(done(&first), "AB");
+    assert_eq!(done(&second), "AB");
+    join.join().unwrap().unwrap();
+    assert!(!runtime.status().closed);
+    assert!(runtime.models().list().unwrap().is_empty());
+    runtime
+        .configure_text(|| Ok(router(&host, &fresh)))
+        .unwrap();
+    assert!(runtime.models().unload(&registered).is_err());
+    assert_eq!(done(&runtime.request_text(request("fresh")).unwrap()), "AB");
+    runtime.models().unload(&foreign).unwrap();
+    runtime.shutdown().unwrap();
+    drop((first, second, registered, foreign, old, fresh, runtime));
+    assert_eq!(host.snapshot().unwrap().1, 0);
+}
+
+#[test]
+fn catalog_refuses_mixed_owner_retirement_without_changing_routes() {
+    use crate::Runtime;
+    let host = HostPool::isolated(256).unwrap();
+    let first = MockModel::new(&host, None);
+    let second = MockModel::new(&host, None);
+    let runtime = Runtime::builder()
+        .limits(crate::scheduler::SchedulerLimits {
+            max_active: 2,
+            ..Default::default()
+        })
+        .build()
+        .unwrap();
+    runtime
+        .configure_text(|| {
+            let a: Arc<dyn LogitModel> = first.clone();
+            let b: Arc<dyn LogitModel> = second.clone();
+            Router::new(
+                BTreeMap::from([("model".into(), a), ("alias".into(), b)]),
+                1,
+                2,
+                128,
+                16,
+                host.clone(),
+                Some(16),
+            )
+        })
+        .unwrap();
+    let model = runtime.models().resolve("model").unwrap();
+    assert!(matches!(
+        runtime.models().unload(&model),
+        Err(crate::Error::Unsupported(_))
+    ));
+    assert_eq!(runtime.models().aliases(&model).unwrap(), ["model"]);
+    assert_eq!(runtime.models().list().unwrap().len(), 2);
+    assert_eq!(
+        done(&runtime.request_text(request("still live")).unwrap()),
+        "AB"
+    );
+    let mut req = request("other owner");
+    req.model = "alias".into();
+    assert_eq!(done(&runtime.request_text(req).unwrap()), "AB");
+    runtime.shutdown().unwrap();
+    drop((model, runtime, first, second));
+    assert_eq!(host.snapshot().unwrap().1, 0);
+}

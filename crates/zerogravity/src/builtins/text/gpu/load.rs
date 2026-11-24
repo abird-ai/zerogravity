@@ -129,13 +129,7 @@ pub fn load_gpu_router(
         ));
     }
     preflight_cuda_toolkit(backend)?;
-    if declared.is_empty() || declared.len() > 16 {
-        return Err(ServiceError::new(
-            400,
-            "invalid_models",
-            "GPU model routes require 1..16 IDs",
-        ));
-    }
+    let declared = local::LocalRoutes::resolve(declared)?;
     // CPU fallback is forbidden: unlinked or absent provider must refuse
     // before a resident model is constructed or HTTP announces readiness.
     let provider_cap = provider_mib
@@ -146,68 +140,18 @@ pub fn load_gpu_router(
     // process-global tokenizer bootstrap, the retained inventory and the
     // cold constructor are admitted ahead of the work they price.
     let host = ServingHost::new(host_mib)?;
-    let mut models = BTreeMap::new();
-    let mut unique = BTreeMap::<PathBuf, Arc<Model>>::new();
-    for (alias, path) in declared {
-        if alias.is_empty()
-            || alias.len() > 96
-            || !alias
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
-            || models.contains_key(&alias)
-        {
-            return Err(ServiceError::new(
-                400,
-                "invalid_model",
-                "bad/duplicate GPU route name",
-            ));
-        }
-        let path = std::fs::canonicalize(path)
-            .map_err(|_| ServiceError::new(400, "missing_model", "GGUF source does not exist"))?;
-        if let Some(resident) = unique.get(&path) {
-            models.insert(alias, Arc::clone(resident));
-            continue;
-        }
-        let parent = path.parent().unwrap_or(Path::new("."));
-        // One process-global tokenizer owner, admitted before any source
-        // parse: ByteLevel statics, retained inventory, cold constructor.
-        let tokenizer_admission = host.transfer_admission(&alias, "tokenizer-source")?;
-        let bootstrap =
-            crate::tokenize_admission::approve_arbiter(&tokenizer_admission, "bootstrap")?;
-        let inventory_charge =
-            bootstrap.retain_arbiter(&tokenizer_admission, "retained-inventory")?;
-        // Approved source identity (12,807,982 B + SHA-256), the bounded
-        // BPE-cache serving profile and the census of the exact bytes.
-        // Price the capped held copy before allocating it; the no-follow
-        // reader enforces extent/EOF/stamp and the parser checks SHA-256
-        // on these same bytes before any JSON is parsed.
-        let tokenizer_copy = host.charge(
-            &alias,
-            "tokenizer-source-copy",
-            AllocationClass::Scratch,
-            crate::tokenize::APPROVED_TOKENIZER_BYTES,
-        )?;
-        let tokenizer_bytes = read_approved_tokenizer(&parent.join("tokenizer.json"))?;
-        let tokenizer = {
-            let _constructor = bootstrap.constructor_of_arbiter(
-                &tokenizer_admission,
-                "tokenizer-constructor",
-                &tokenizer_bytes,
-            )?;
-            QwenTokenizer::from_approved_bytes(&tokenizer_bytes).map_err(ServiceError::inference)?
-        };
-        // Release the held bytes before their source-copy charge, then
-        // validate the parsed inventory against the admitted plan.
-        drop(tokenizer_bytes);
-        drop(tokenizer_copy);
-        bootstrap.verify(&tokenizer)?;
-        let source = LoadedQwenModel::open(&path, &parent.join("config.json"))
-            .map_err(ServiceError::inference)?;
-        let hidden_width = usize::try_from(source.geometry().hidden_size).map_err(|_| {
-            ServiceError::new(400, "source_hidden", "invalid Qwen source hidden width")
-        })?;
-        let vocabulary_size = source.geometry().vocab_size;
-        let source_identity = source.source_identity();
+    let models = declared.prepare(|alias, path, group| {
+        let local::LocalModel {
+            weights: source,
+            tokenizer,
+            max_token_bytes,
+        } = local::load(alias, path, &host)?;
+        let hidden_width =
+            usize::try_from(source.model().geometry().hidden_size).map_err(|_| {
+                ServiceError::new(400, "source_hidden", "invalid Qwen source hidden width")
+            })?;
+        let vocabulary_size = source.model().geometry().vocab_size;
+        let source_identity = source.model().source_identity();
         let program = crate::models::ModelProgram::record(
             source,
             crate::models::ProgramRequest {
@@ -224,30 +168,20 @@ pub fn load_gpu_router(
         let resident = block_on(crate::models::prepare_executable(program, &provider))
             .map_err(ServiceError::inference)?
             .into_prepared();
-        let max_token_bytes = tokenizer
-            .max_token_bytes()
-            .map_err(ServiceError::inference)?;
-        let metadata = adapter_metadata::<Model>(&host, &alias, "gpu-model-adapter")?;
-        let shared = Arc::new(Model {
-            resident,
+        let metadata = adapter_metadata::<Model>(&host, alias, "gpu-model-adapter")?;
+        Ok(Arc::new(Model {
+            resident: Mutex::new(Some(resident)),
             source: source_identity,
-            tokenizer: crate::builtins::text::tokenizer_owner(
-                (tokenizer, inventory_charge),
-                |owner| &owner.0,
-                &host,
-                &alias,
-            )?,
-            group: unique.len(),
+            tokenizer,
+            group,
             hidden_width,
             vocabulary_size,
             cohort_width,
             max_token_bytes,
             readers: Arc::new(AtomicUsize::new(0)),
             _metadata: metadata,
-        });
-        unique.insert(path, Arc::clone(&shared));
-        models.insert(alias, shared);
-    }
+        }))
+    })?;
     start(models, active, output, cohort_width, host, max_pending)
 }
 #[cfg(test)]

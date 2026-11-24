@@ -1052,7 +1052,7 @@ impl ResidentModel {
             reason = "production graph teardown is admitted before its serving selector"
         )
     )]
-    async fn retire_production_graph_cached(self: &Arc<Self>) -> Result<bool> {
+    pub(super) async fn retire_production_graph_cached(&self) -> Result<bool> {
         let _allocation = self.allocation.lock().await;
         let retirement = {
             let mut workspace = self.workspace.lock().await;

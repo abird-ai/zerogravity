@@ -7,9 +7,11 @@ use zerogravity_engine::router::{
 };
 
 use crate::accelerator::program::StateSlot;
+use crate::builtins::text::read_approved_tokenizer;
 use crate::gpu::ResidentSnapshot;
-use crate::qwen35::QwenDenseCpu;
+use crate::qwen35::{LoadedQwenModel, QwenDenseCpu};
 use crate::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter};
+use crate::tokenize::QwenTokenizer;
 
 type Domains = Vec<(StateSlot, Vec<f32>)>;
 
@@ -136,7 +138,7 @@ impl Fixture {
         let max_token_bytes = tokenizer.max_token_bytes().unwrap();
         let metadata = adapter_metadata::<Model>(&host, "qualification", "model-adapter").unwrap();
         let model = Arc::new(Model {
-            resident,
+            resident: Mutex::new(Some(resident)),
             source: source.source_identity(),
             tokenizer: crate::builtins::text::tokenizer_owner(
                 (tokenizer, retained),
@@ -367,7 +369,7 @@ impl Reference {
         assert_eq!(lane.cursor, lane.prompt.len());
         let mut cpu = QwenDenseCpu::from_shared(Arc::clone(&fixture.source)).unwrap();
         let selected = best(&cpu.prefill_transaction(&lane.prompt).unwrap());
-        let mut gpu = block_on(fixture.model.resident.session()).unwrap();
+        let mut gpu = block_on(fixture.model.resident().unwrap().session()).unwrap();
         let read = block_on(gpu.forward_greedy(&lane.prompt)).unwrap();
         assert!(read.logits.is_empty());
         assert_eq!(read.bytes, 16);

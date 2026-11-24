@@ -10,6 +10,14 @@ use zerogravity_engine::router::{ServiceError, pending::ServingHost};
 mod source;
 pub use source::read_approved_tokenizer;
 
+#[cfg(any(
+    all(feature = "cpu", feature = "cache"),
+    feature = "vulkan",
+    feature = "cuda",
+    feature = "hip"
+))]
+mod local;
+
 /// Retain the actual tokenizer/source owner, including its original admission.
 /// Admit the new wrapper in the same host domain before allocating its Arc.
 pub fn tokenizer_owner<T: Send + Sync + 'static>(

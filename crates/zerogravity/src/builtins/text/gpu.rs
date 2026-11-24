@@ -1,18 +1,16 @@
 //! Ordinary resident GGUF composition; no captured recipes or scheduler.
-use super::{arc_owner_bytes, read_approved_tokenizer};
+use super::{arc_owner_bytes, local};
 use crate::gpu::{
     InferenceReadback, PreparedResidentCohort, ResidentModel, ResidentSession, ResidentToken,
     resident_batch::ResidentBatchRows,
 };
-use crate::qwen35::LoadedQwenModel;
-use crate::tokenize::QwenTokenizer;
 use crate::{devices::GpuBackend, identity::SourceIdentity, resource_arbiter::AllocationClass};
 use futures_lite::future::block_on;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Instant,
@@ -47,7 +45,7 @@ pub struct GpuProfile {
 }
 
 struct Model {
-    resident: Arc<ResidentModel>,
+    resident: Mutex<Option<Arc<ResidentModel>>>,
     source: SourceIdentity,
     tokenizer: Arc<dyn TextTokenizer>,
     group: usize,
@@ -57,6 +55,16 @@ struct Model {
     max_token_bytes: usize,
     readers: Arc<AtomicUsize>,
     _metadata: Arc<zerogravity_engine::router::pending::ServingCharge>,
+}
+impl Model {
+    fn resident(&self) -> Result<Arc<ResidentModel>, ServiceError> {
+        self.resident
+            .lock()
+            .map_err(|_| ServiceError::new(500, "source_owner", "resident model lock poisoned"))?
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| ServiceError::new(503, "model_retired", "resident model retired"))
+    }
 }
 impl PreparedModel for Model {
     fn source(&self) -> SourceIdentity {
@@ -185,7 +193,7 @@ impl Executor for NativeText {
             return Err(ServiceError::new(499, "cancelled", "request cancelled"));
         }
         let readers = SourceReaders::enter(&model.readers, &model._metadata);
-        let session = block_on(model.resident.session()).map_err(ServiceError::inference)?;
+        let session = block_on(model.resident()?.session()).map_err(ServiceError::inference)?;
         Ok((
             State {
                 session,
@@ -225,8 +233,10 @@ impl Executor for NativeText {
             && row.state.device_token.is_none()
     }
     fn compatible(first: &Row, row: &Row) -> bool {
-        Arc::ptr_eq(&first.model.resident, &row.model.resident)
-            && first.model.hidden_width == row.model.hidden_width
+        Arc::ptr_eq(
+            first.state.session.resident_model(),
+            row.state.session.resident_model(),
+        ) && first.model.hidden_width == row.model.hidden_width
             && first.cursor < first.prompt.len()
             && row.cursor < row.prompt.len()
             && first.prefill_count() == row.prefill_count()
@@ -304,9 +314,34 @@ impl Executor for NativeText {
         cohort::commit(ready, rows, work)
     }
     fn retirement_pending(models: &BTreeMap<String, Arc<Model>>) -> bool {
-        models
-            .values()
-            .any(|m| m.readers.load(Ordering::Acquire) != 0)
+        models.values().any(|m| {
+            m.readers.load(Ordering::Acquire) != 0
+                || m.resident
+                    .lock()
+                    .map_or(true, |resident| resident.is_some())
+        })
+    }
+    fn retire(models: &BTreeMap<String, Arc<Model>>) -> Result<(), ServiceError> {
+        for model in models.values() {
+            if model.readers.load(Ordering::Acquire) != 0 {
+                return Err(ServiceError::new(
+                    500,
+                    "source_readers",
+                    "resident model still has active readers",
+                ));
+            }
+            let resident = model
+                .resident
+                .lock()
+                .map_err(|_| {
+                    ServiceError::new(500, "source_owner", "resident model lock poisoned")
+                })?
+                .take();
+            if let Some(resident) = resident {
+                block_on(resident.shutdown_tensor_source()).map_err(ServiceError::inference)?;
+            }
+        }
+        Ok(())
     }
     fn diagnostics(
         _: &BTreeMap<String, Arc<Model>>,

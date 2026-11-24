@@ -497,7 +497,6 @@ async fn retire_forward_cancelled(
     Ok(())
 }
 
-#[cfg(any(test, feature = "cuda-cublas"))]
 fn into_unique_owner<T>(owner: Arc<T>, label: &str) -> Result<T> {
     Arc::try_unwrap(owner)
         .map_err(|_| Error::State(format!("{label} still has live session/model owners")))
@@ -991,6 +990,27 @@ impl ResidentModel {
                 "CUDA forward shutdown left resident bytes or events".into(),
             ));
         }
+        service.close_model_namespace()
+    }
+
+    /// Explicit retirement of an ordinary borrowed-tensor executable.
+    /// No session can enter after exclusive ownership is acquired. The
+    /// existing native source adapters retain their separate module teardown.
+    pub async fn shutdown_tensor_source(self: Arc<Self>) -> Result<()> {
+        let model = into_unique_owner(self, "resident tensor-source model")?;
+        model.workspace.lock().await.program.owned_source()?;
+        let service = model.service.clone();
+        service.ensure_usable()?;
+        #[cfg(all(
+            feature = "cuda",
+            any(feature = "qualification", feature = "cuda-native")
+        ))]
+        model.retire_production_graph_cached().await?;
+        // Drop original handles while the service still owns the namespace.
+        drop(model);
+        service.client().memory_cleanup().map_err(|error| {
+            Error::State(format!("resident tensor-source shutdown cleanup: {error}"))
+        })?;
         service.close_model_namespace()
     }
 
@@ -2855,6 +2875,10 @@ impl ResidentSession {
         }
     }
 
+    /// Original session's physical model owner, not a new model lookup.
+    pub fn resident_model(&self) -> &Arc<ResidentModel> {
+        &self.model
+    }
     pub fn binding(&self) -> RootBinding {
         self.authority.binding()
     }

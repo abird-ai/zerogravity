@@ -67,8 +67,6 @@ pub use zerogravity_engine::{
     prepare::{prepare as prepare_executable, prepare_region},
 };
 
-/// One complete cold route set. This is not live model replacement or residency.
-/// Aliases share the original source; an already configured runtime refuses.
 #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 const MIB: usize = 1024 * 1024;
 #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
@@ -76,6 +74,8 @@ const QWEN_CUDA_PROVIDER_BYTES: usize = 4608 * MIB;
 #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 const QWEN_CUDA_DEVICE_BYTES: u64 = 5120 * MIB as u64;
 
+/// One complete cold route set. Aliases share the original source.
+/// A configured runtime refuses a new load until its sole owner is retired.
 pub enum ModelLoadRequest {
     /// Canonical original source with smart startup configuration Enabled.
     #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
@@ -240,8 +240,13 @@ impl<'a> ModelCatalog<'a> {
             .engine
             .configure_text(|| crate::builtins::load_text(request, self.runtime.engine.limits()))
     }
-    /// Individual model retirement remains future work; shutdown retires the
-    /// configured route set only after closing admission and joining workers.
+    /// Current aliases of the exact registered prepared owner.
+    pub fn aliases(&self, model: &ModelInstance) -> crate::Result<Vec<String>> {
+        self.runtime.engine.models().aliases(model)
+    }
+    /// Retire the sole prepared model and all its aliases without closing the
+    /// runtime. Accepted work drains on the original workers. A mixed-owner
+    /// route set refuses; retained source/tokenizer readers remain valid.
     pub fn unload(&self, model: &ModelInstance) -> crate::Result<()> {
         self.runtime.engine.models().unload(model)
     }

@@ -792,6 +792,32 @@ impl Router {
     pub fn model(&self, alias: &str) -> Option<ModelInstance> {
         registry::instance(self.models.as_ref(), alias)
     }
+    pub(crate) fn aliases<'a>(
+        &'a self,
+        model: &'a ModelInstance,
+    ) -> crate::Result<impl Iterator<Item = &'a str> + 'a> {
+        let mut aliases = self
+            .model_ids()
+            .filter(move |id| {
+                self.model(id)
+                    .is_some_and(|registered| registered.shares_source(model))
+            })
+            .peekable();
+        if aliases.peek().is_none() {
+            return Err(crate::Error::State(
+                "model is not the original registered owner".into(),
+            ));
+        }
+        Ok(aliases)
+    }
+    pub(crate) fn require_sole_owner(&self, model: &ModelInstance) -> crate::Result<()> {
+        if self.aliases(model)?.count() != self.model_ids().count() {
+            return Err(crate::Error::Unsupported(
+                "selective retirement of a mixed-owner route set is not implemented".into(),
+            ));
+        }
+        Ok(())
+    }
     pub fn host(&self) -> &HostPool {
         &self.host
     }
@@ -1137,6 +1163,31 @@ pub fn validate_alias(id: &str) -> Result<(), ServiceError> {
             "invalid_model",
             "duplicate or invalid model alias",
         ));
+    }
+    Ok(())
+}
+
+/// Validate the complete declaration before source IO, not after an earlier
+/// alias has already constructed its source. Bounded, allocation-free.
+pub fn validate_aliases<'a>(
+    aliases: impl IntoIterator<Item = &'a str>,
+) -> Result<(), ServiceError> {
+    let mut seen = [""; 16];
+    let mut count = 0;
+    for alias in aliases {
+        validate_alias(alias)?;
+        if count == seen.len() || seen[..count].contains(&alias) {
+            return Err(ServiceError::new(
+                400,
+                "invalid_model",
+                "duplicate or excessive model aliases",
+            ));
+        }
+        seen[count] = alias;
+        count += 1;
+    }
+    if count == 0 {
+        return Err(ServiceError::new(400, "invalid_model", "no model aliases"));
     }
     Ok(())
 }

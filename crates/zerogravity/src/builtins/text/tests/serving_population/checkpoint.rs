@@ -94,8 +94,8 @@ fn source_bound_sdk_http_lifecycle() {
     let model = root.join("model.gguf");
     let declared = vec![("tiny".into(), model.clone()), ("alias".into(), model)];
     #[cfg(not(feature = "serve"))]
-    let load = crate::models::ModelLoadRequest::CpuText {
-        declared,
+    let load = || crate::models::ModelLoadRequest::CpuText {
+        declared: declared.clone(),
         config: TextConfig {
             workers: 1,
             active_per_worker: 1,
@@ -106,8 +106,8 @@ fn source_bound_sdk_http_lifecycle() {
         },
     };
     #[cfg(feature = "serve")]
-    let load = crate::models::ModelLoadRequest::ServingText {
-        declared,
+    let load = || crate::models::ModelLoadRequest::ServingText {
+        declared: declared.clone(),
         profile: crate::serving::TextProfile {
             workers: 1,
             active_per_worker: 1,
@@ -127,7 +127,7 @@ fn source_bound_sdk_http_lifecycle() {
     };
     runtime
         .models()
-        .load(load)
+        .load(load())
         .expect("public source-bound CPU load");
     #[cfg(feature = "serve")]
     {
@@ -213,6 +213,32 @@ fn source_bound_sdk_http_lifecycle() {
         "later SDK request (after server stop when serve is enabled)"
     );
 
+    let instance = runtime.models().resolve("alias").unwrap();
+    let final_reader = instance.prepared().tokenizer();
+    assert_eq!(
+        runtime.models().aliases(&instance).unwrap(),
+        ["alias", "tiny"]
+    );
+    runtime.models().unload(&instance).unwrap();
+    assert!(!runtime.status().closed);
+    assert!(clone.models().list().unwrap().is_empty());
+    assert_eq!(runtime.status().execution_adapters, 0);
+    assert_eq!(
+        runtime.request_text(request()).err().unwrap().code,
+        "runtime_unconfigured"
+    );
+    assert_eq!(final_reader.prompt_tokens("!", false).unwrap(), prompt);
+    drop(instance);
+    assert!(source.upgrade().is_none());
+    drop(final_reader);
+    assert!(tokenizer.upgrade().is_none());
+
+    runtime.models().load(load()).unwrap();
+    assert_eq!(direct(&clone, "tiny"), expected);
+    let new = runtime.models().resolve("tiny").unwrap();
+    let source = Arc::downgrade(new.prepared());
+    let tokenizer = Arc::downgrade(&new.prepared().tokenizer());
+    drop(new);
     runtime.shutdown().unwrap();
     for handle in [&runtime, &clone] {
         assert!(handle.status().closed);

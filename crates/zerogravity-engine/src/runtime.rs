@@ -176,6 +176,9 @@ impl Runtime {
                     "text scheduler already configured or loading",
                 ));
             }
+            if let Some(failure) = &text.failure {
+                return Err(ServiceError::new(503, "runtime_failed", failure.clone()));
+            }
             text.phase = TextPhase::Loading(std::thread::current().id());
         }
         // Declared before the returned router: unwinding retires that owner
@@ -360,6 +363,55 @@ impl Runtime {
             .model(alias)
             .ok_or_else(|| Error::State(format!("model is not registered: {alias}")))
     }
+    pub(crate) fn text_model_aliases(&self, model: &ModelInstance) -> Result<Vec<String>> {
+        let text = self
+            .inner
+            .text
+            .lock()
+            .map_err(|_| Error::State("runtime lock poisoned".into()))?;
+        self.require_open()?;
+        let router = text
+            .router()
+            .ok_or_else(|| Error::State("no source-bound text adapter configured".into()))?;
+        router
+            .aliases(model)
+            .map(|aliases| aliases.map(str::to_owned).collect())
+    }
+
+    /// One original lifecycle operation; never close the runtime merely to
+    /// remove its sole loaded owner. A racing shutdown waits for the same join.
+    pub(crate) fn unload_text_model(&self, model: &ModelInstance) -> Result<()> {
+        if crate::router::on_worker_thread() {
+            return Err(Error::State(
+                "blocking model unload from an engine worker is unsupported".into(),
+            ));
+        }
+        let current = std::thread::current().id();
+        let router = {
+            let mut text = self
+                .inner
+                .text
+                .lock()
+                .map_err(|_| Error::State("runtime lock poisoned".into()))?;
+            self.require_open()?;
+            let router = text
+                .router()
+                .ok_or_else(|| Error::State("no ready text adapter for model retirement".into()))?;
+            router.require_sole_owner(model)?;
+            router.close_admission();
+            let TextPhase::Ready(router) =
+                std::mem::replace(&mut text.phase, TextPhase::Joining(current))
+            else {
+                unreachable!("matched ready router");
+            };
+            router
+        };
+        let operation = LifecycleOperation::new(&self.inner, "text model retirement panicked");
+        let failure = self.retire_text_router(router);
+        operation.finish();
+        failure.map_or(Ok(()), |message| Err(Error::State(message)))
+    }
+
     /// Close admission under the lifecycle lock before waiting for retirement.
     /// One caller retires outside the mutex; other callers see the same result.
     /// Calls from engine workers or this runtime's loader/retirement owner are

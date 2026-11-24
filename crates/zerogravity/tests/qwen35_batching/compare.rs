@@ -97,8 +97,8 @@ pub(super) fn completed(
             record.plan().nodes().len() == 255
                 && record.plan().values().len() == 327
                 && record.selection().boundaries().len() == 24
-                && record.call().rows().len() == rows
-                && record.call().rows().ids() == original.input(row, call)?,
+                && record.invocation().tokens().len() == rows
+                && record.invocation().tokens().ids() == original.input(row, call)?,
             "actual independent source-issued record/phase/autoregressive feedback",
         )?;
         let mut previous: Option<(Vec<u8>, Vec<u8>)> = None;
@@ -302,7 +302,7 @@ pub(super) fn residual_rms_node(
         node.inputs.as_slice() == inputs
             && matches!(&node.operation, PlanOperation::SourceOperator { descriptor, state: None }
                 if matches!(descriptor.kind(), SourceOperatorKind::ResidualRms(_))
-                    && descriptor.call() == record.call())
+                    && descriptor.invocation() == record.invocation())
     });
     let (index, node) = found
         .next()
@@ -322,7 +322,7 @@ pub(super) fn residual_rms_node(
     ensure(
         producer.node_index() == index
             && producer.output_index() == 0
-            && producer.call() == record.call()
+            && producer.invocation() == record.invocation()
             && producer.inputs() == inputs,
         "same actual residual RMS SSA inputs",
     )?;

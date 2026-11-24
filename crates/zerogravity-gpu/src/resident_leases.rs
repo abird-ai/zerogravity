@@ -411,10 +411,6 @@ impl ResidentService {
             .ok_or_else(|| Error::State("resident capacity accounting invalid".into()))
     }
 
-    #[cfg(any(
-        any(feature = "qualification", feature = "hip-source"),
-        feature = "cuda-cublas"
-    ))]
     pub(crate) fn model_events(&self) -> Result<usize> {
         self.ledger
             .lock()
@@ -422,7 +418,6 @@ impl ResidentService {
             .map_err(|_| Error::State("resident event ledger poisoned".into()))
     }
 
-    #[cfg(any(feature = "cuda-cublas", all(feature = "hip", feature = "hip-source")))]
     pub(crate) fn close_model_namespace(&self) -> Result<()> {
         self.ensure_usable()?;
         if self.resident_bytes()? != 0 || self.model_events()? != 0 {

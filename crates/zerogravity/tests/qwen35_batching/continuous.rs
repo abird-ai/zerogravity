@@ -50,7 +50,7 @@ impl Expected {
         };
         let record = read.record();
         ensure(
-            record.call().rows().len() == 1,
+            record.invocation().tokens().len() == 1,
             "independent N1 cached reference only",
         )?;
         let mut ids = record
@@ -116,14 +116,14 @@ impl Expected {
             "all consumed and candidate state domains",
         )?;
         ensure(
-            record.call().rows().ids().len() == 1,
+            record.invocation().tokens().ids().len() == 1,
             "one original cached teacher ID",
         )?;
         Ok(Self {
             values,
             sums,
             states,
-            input: record.call().rows().ids().to_vec(),
+            input: record.invocation().tokens().ids().to_vec(),
             selected: read.greedy(),
         })
     }
@@ -135,14 +135,14 @@ impl Expected {
     fn diagnose(&self, read: &native::TextCohortReadback<'_>, row: usize) -> Result<()> {
         let record = &read.records[row];
         ensure(
-            record.call().rows().ids() == self.input,
+            record.invocation().tokens().ids() == self.input,
             "same diagnostic producer token",
         )?;
         println!(
             "QWEN35_BATCHING_SAME_PRIOR_ROW row={row} span={:?} profile={:?} source={:?}",
-            record.call().rows(),
+            record.invocation().tokens(),
             record.plan().numerical_profile(),
-            record.call().source()
+            record.invocation().source()
         );
         // Report every early producer and prior before the original exact failure.
         for id in 0..10 {
@@ -219,7 +219,7 @@ impl Expected {
     }
     fn compare(&self, read: &native::TextCohortReadback<'_>, row: usize) -> Result<()> {
         ensure(
-            read.records[row].call().rows().ids() == self.input,
+            read.records[row].invocation().tokens().ids() == self.input,
             "same actual committed producer token",
         )?;
         for (&id, expected) in &self.values {

@@ -446,24 +446,7 @@ fn resolve_cuda_smart_config(
 }
 
 fn validate_aliases(aliases: &[String]) -> Result<(), ServiceError> {
-    if aliases.is_empty()
-        || aliases.len() > 16
-        || aliases.iter().enumerate().any(|(i, alias)| {
-            alias.is_empty()
-                || alias.len() > 96
-                || !alias
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
-                || aliases[..i].contains(alias)
-        })
-    {
-        return Err(ServiceError::new(
-            400,
-            "invalid_model",
-            "source model requires 1..16 unique valid aliases",
-        ));
-    }
-    Ok(())
+    zerogravity_engine::router::validate_aliases(aliases.iter().map(String::as_str))
 }
 pub(crate) fn load_router(
     aliases: Vec<String>,

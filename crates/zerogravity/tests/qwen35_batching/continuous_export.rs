@@ -519,11 +519,11 @@ impl Export {
         layer: Option<usize>,
     ) -> Result<()> {
         let raw = read.value(row, id)?;
-        let input_tokens = read.record(row).call().rows().len();
+        let input_tokens = read.record(row).invocation().tokens().len();
         self.push(
             json!({"role":role,"kind":"producer","phase":if input_tokens==47 {"prefill"} else {"decode"},
             "codec":"bf16-dense-row-major-v1","request_index":row,"value_id":id.0,"layer":layer,
-            "dtype":"bf16-le","shape":[if role=="logits" {1} else {read.record(row).call().rows().len()},raw.len()/2/if role=="logits" {1} else {read.record(row).call().rows().len()}]}),
+            "dtype":"bf16-le","shape":[if role=="logits" {1} else {read.record(row).invocation().tokens().len()},raw.len()/2/if role=="logits" {1} else {read.record(row).invocation().tokens().len()}]}),
             raw,
         )
     }
@@ -544,15 +544,15 @@ impl Export {
         )?;
         self.done = true;
         let mut rows = Vec::with_capacity(roots.len());
-        let input_tokens = read.record(0).call().rows().len();
+        let input_tokens = read.record(0).invocation().tokens().len();
         ensure(matches!(input_tokens, 1 | 47), "source transition rows1/47")?;
         for row in 0..roots.len() {
             let record = read.record(row);
-            let span = record.call().rows();
+            let span = record.invocation().tokens();
             ensure(
                 span.len() == input_tokens
                     && span.base() as u64 == roots[row].frontier()
-                    && record.call().source() == roots[row].source()
+                    && record.invocation().source() == roots[row].source()
                     && record.selection().boundaries().len() == 24,
                 "export exact actual current source/root/span",
             )?;
@@ -757,13 +757,13 @@ impl Trace {
             .map(|row| {
                 (
                     roots[row],
-                    read.record(row).call().rows().len(),
+                    read.record(row).invocation().tokens().len(),
                     read.selected(row),
                 )
             })
             .collect::<Vec<_>>();
         self.event(json!({"kind":"transition","ordinal":self.transitions,"directory":name,"manifest_sha256":sha,
-            "request_batch_size":read.request_batch_size(),"prompt_tokens":prompt.len(),"phase":if read.record(0).call().rows().len()==47 {"prefill"} else {"decode"},"input_tokens":read.record(0).call().rows().len(),"requests":roots.iter().map(|root|json!({"cached_tokens":root.frontier()})).collect::<Vec<_>>(),"bytes":archive.bytes}))?;
+            "request_batch_size":read.request_batch_size(),"prompt_tokens":prompt.len(),"phase":if read.record(0).invocation().tokens().len()==47 {"prefill"} else {"decode"},"input_tokens":read.record(0).invocation().tokens().len(),"requests":roots.iter().map(|root|json!({"cached_tokens":root.frontier()})).collect::<Vec<_>>(),"bytes":archive.bytes}))?;
         self.transitions += 1;
         self.pending = Some(pending);
         Ok(())

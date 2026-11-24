@@ -406,6 +406,11 @@ fn qwen_cuda_public_sdk_population_benchmark() {
             );
         }
     }
+    runtime.models().unload(&resolved).unwrap();
+    assert!(!runtime.status().closed);
+    assert!(runtime.models().list().unwrap().is_empty());
+    assert_eq!(runtime.status().execution_adapters, 0);
+    assert_eq!(tokenizer.prompt_tokens(prompt, false).unwrap(), prompt_ids);
     drop(resolved);
     runtime.shutdown().unwrap();
     assert!(runtime.status().closed);
@@ -984,4 +989,99 @@ fn unavailable_catalog_adapter_refuses_before_source_or_worker_creation() {
     assert_eq!(runtime.status().loaded_models, 0);
     assert_eq!(runtime.status().execution_adapters, 0);
     runtime.shutdown().unwrap();
+}
+
+#[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+#[test]
+#[ignore = "explicit local GGUF and physical CUDA device"]
+fn qwen_gguf_cuda_sdk_unloads_with_retained_handle() {
+    use std::{path::PathBuf, time::Duration};
+    use zerogravity::{
+        builtins::text::GpuProfile,
+        devices::{GpuBackend, normalize_pci},
+        models::ModelLoadRequest,
+        resource_arbiter::{PhysicalDeviceKey, ResourceArbiter},
+        runtime::text::{Request, ResponseEvent},
+    };
+    let path = PathBuf::from(std::env::var_os("ZG_QWEN_GGUF").expect("approved GGUF"));
+    let weight_bytes = std::fs::metadata(&path).unwrap().len();
+    let physical = zerogravity::gpu::observe_cuda_devices()
+        .unwrap()
+        .into_iter()
+        .find(|d| d.ordinal == 0)
+        .unwrap();
+    let device =
+        PhysicalDeviceKey::new("pci", &normalize_pci(&physical.pci_bus_id).unwrap()).unwrap();
+    let host = PhysicalDeviceKey::new("host", "zerogravity-serve-cpu").unwrap();
+    let arbiter = ResourceArbiter::process_shared();
+    let runtime = Runtime::builder().build().unwrap();
+    runtime
+        .models()
+        .load(ModelLoadRequest::GpuText {
+            declared: vec![("source".into(), path.clone()), ("alias".into(), path)],
+            backend: GpuBackend::Cuda,
+            profile: GpuProfile {
+                workers: 1,
+                active: 1,
+                context: 512,
+                output: 1,
+                host_mib: 4096,
+                provider_mib: 4096,
+                device_mib: 5120,
+                cohort_width: 0,
+                max_pending: Some(4),
+            },
+        })
+        .unwrap();
+    let handle = runtime.models().resolve("alias").unwrap();
+    assert_eq!(
+        runtime.models().aliases(&handle).unwrap(),
+        ["alias", "source"]
+    );
+    let tokenizer = handle.prepared().tokenizer();
+    let prompt = " a";
+    let ids = tokenizer.prompt_tokens(prompt, false).unwrap();
+    let complete = |alias: &str| {
+        let events = runtime
+            .request_text(Request {
+                model: alias.into(),
+                input: prompt.into(),
+                chat: false,
+                max_tokens: 1,
+                stream: false,
+                token_metrics: None,
+            })
+            .unwrap();
+        match events
+            .events
+            .recv_timeout(Duration::from_secs(120))
+            .unwrap()
+        {
+            ResponseEvent::Done {
+                output,
+                prompt_tokens,
+                completion_tokens,
+                ..
+            } => {
+                assert_eq!(prompt_tokens, ids.len());
+                assert!(completion_tokens <= 1);
+                output
+            }
+            event => panic!("unexpected GGUF response: {event:?}"),
+        }
+    };
+    assert_eq!(complete("source"), complete("alias"));
+    let before = arbiter.snapshot(&host).unwrap().reserved;
+    assert!(arbiter.snapshot(&device).unwrap().reserved > 0);
+    runtime.models().unload(&handle).unwrap();
+    assert!(!runtime.status().closed);
+    assert!(runtime.models().list().unwrap().is_empty());
+    let retired = arbiter.snapshot(&device).unwrap();
+    assert_eq!(retired.reserved, 0);
+    assert!(!retired.fenced);
+    assert!(before - arbiter.snapshot(&host).unwrap().reserved >= weight_bytes);
+    assert_eq!(tokenizer.prompt_tokens(prompt, false).unwrap(), ids);
+    drop((handle, tokenizer));
+    runtime.shutdown().unwrap();
+    println!("GGUF_CUDA_CATALOG_UNLOAD_PASS");
 }

@@ -32,7 +32,7 @@ pub(super) fn validate(rows: &[Row], work: CohortWork) -> Result<(), ServiceErro
             "original cohort has no rows",
         ));
     };
-    let model = &first.model.resident;
+    let model = first.state.session.resident_model();
     let roots = rows
         .iter()
         .map(|r| r.state.session.binding())
@@ -40,7 +40,7 @@ pub(super) fn validate(rows: &[Row], work: CohortWork) -> Result<(), ServiceErro
     ResidentBatchRows::new(&roots, first.model.hidden_width)
         .and_then(|batch| {
             if rows.iter().any(|r| {
-                !Arc::ptr_eq(&r.model.resident, model)
+                !Arc::ptr_eq(r.state.session.resident_model(), model)
                     || r.model.hidden_width != batch.row_elements()
                     || (work.phase == Phase::Prefill
                         && (r.cursor >= r.prompt.len()
@@ -68,7 +68,7 @@ pub(super) fn prepare(
     rows: &mut [Row],
     work: CohortWork,
 ) -> Result<Preparation<PreparedResidentCohort>, ServiceError> {
-    let model = rows[0].model.resident.clone();
+    let model = rows[0].state.session.resident_model().clone();
     let prepared = if work.phase == Phase::Decode {
         let inputs = rows
             .iter()
