@@ -22,6 +22,44 @@ This file remains the maintained current map and pointer into live source, tests
 and plans. Git history retains superseded checkpoints; current source, tests and
 live TODOs are authoritative.
 
+### 24 Nov — native throughput priority (supersedes scalar tuning queue)
+
+Current user's direction: attack order-of-magnitude gaps before marginal kernel
+wins; no test/evidence proliferation; keep reusable primitives and clean
+zero-cost ownership. The new owned ROCm provider is the next real-model
+integration seam, not another scalar microkernel campaign.
+
+- e80216b0/591913f5: retained BF16 wave32 WMMA with actual gfx1151 mapping,
+  partial/strided output, finite checks and direct timings. Mixed B1/expansion
+  results; no selection.
+- 7b37d338/9b9e4996: new optional Linux rocBLAS provider on the existing
+  PreparedHipNative set and HIP actor. External workspace is an exclusive
+  resident lease. The library/handle is retained until actual stream
+  synchronization and destruction; uncertain state fences rather than
+  releasing code/ownership. Persistent context caches remain charged.
+  Physical unscoped original-actor qualifier passed four cycles, mean
+  .094436 ms on 6144x1024, 128 input rows versus 1.934770 ms scalar
+  (~20.5x kernel-level opportunity). No model-level speedup yet.
+- Build/execute the new native profile on X2 next. Keep the exact historical
+  TorchCpuAvx2Bf16MixedV1 route, and give native BF16/FP32 projection its own
+  explicit numerical identity. Use original resident source authentication,
+  certify finite weights at cold upload, reuse activation conversion/status
+  kernels and admitted scratch, verify the scoped actor path. Avoid another
+  engine or duplicated scheduler/root protocol. Get real C1/C8 0.8B/2B
+  results early; then use whole-model localization to target the next major gap.
+- X2's existing rocBLAS 7.2.4 closure
+  /nix/store/ngf5gxxijv293l72lb1jdc77b7y2zjrd-rocblas-7.2.4/lib
+  matches the already recovered HIP/glibc runtime. Use the existing local loader
+  recipe (see X2 runtime recovery below), adding this lib directory to its
+  library path; no SDK acquisition. Physical qualifier:
+  `hip::qualification::actual_native_rocblas_lifecycle` with hip,qualification.
+  Production selection remains unimplemented; no profile or model permission
+  is inferred from synthetic matrix results. Full phase gate reached the
+  existing CPU cache-admission assertion after GPU feature gates/CPU Clippy.
+- The missing pinned vLLM closure remains a blocker for a fresh paired
+  comparison. CURRENT_BASELINE records the retained comparison and native
+  provider opportunity separately.
+
 ### Host authority — 24 Nov 2026
 
 - L5 / `dotlink---l5` is the only source-authoring host; use the single persistent

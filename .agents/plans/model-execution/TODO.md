@@ -22,7 +22,40 @@ It supersedes older timing/evidence chronology for performance decisions. Preser
 accepted source/operator/state/lifetime contracts and reusable primitives, but do not
 repeat old benchmark/evidence administration.
 
-Immediate execution priorities are intentionally small:
+## Priority reset — 24 Nov: native matrix execution
+
+The ~12–15x X2 C8 gap is not a launch-count or scalar micro-optimization problem.
+Attack the largest wall-time component and measure real-model throughput early.
+Keep exact-reference arithmetic available; do not force production hardware GEMM
+to reproduce the CPU AVX2 reduction tree. Separate numerical identity is required
+for native projection (BF16 inputs/outputs, FP32 accumulation), without weakening
+the source, physical owner, state/root, completion or cancellation contracts.
+
+- [x] Native RDNA wave32 BF16 WMMA primitive (e80216b0, 591913f5): same HIP
+  compilation/actor, strided tails, BF16 round and status, physical gfx1151 mapping
+  check passed. Multi-row shape speedups 0.87–7.10x, B1 mixed; retain reusable,
+  no production selection.
+- [x] Tuned rocBLAS GEMM provider (7b37d338, 9b9e4996): original prepared native
+  set, actor/stream and write scope, explicit 64 MiB resident scratch, BF16 packed
+  output. Four actual lifecycle cycles passed, 6144x1024 by 128 rows averaged
+  0.094436 ms versus 1.934770 ms scalar (~20.5x); all 786432 outputs verified per
+  cycle. Provider caches persist in the HIP context after handle destruction;
+  original persistent context envelope remains charged until process exit.
+- [ ] **Next major implementation:** explicit opt-in native HIP numerical profile,
+  existing shared model/cohort execution with a native projection consumer.
+  Reuse authenticated resident matrices, certify finite weights during the original
+  cold upload, use existing activation pack/widen/status, admit provider workspace
+  once, keep provider handle/cache on the original actor. Verify scoped stream and
+  actual source model correctness/replay, compare 0.8B/2B C1/C8 immediately.
+  Do not create a second inference engine, test-driven production selectors, or
+  prematurely choose the custom WMMA over tuned BLAS. Keep scalar/GEMV for shapes
+  where native GEMM loses; choose after the real-model result. Continue larger
+  stateful math, device-resident sampling and graph/dispatch amortization from
+  the new whole-model profile, not from obsolete scalar microbenchmark rankings.
+- [ ] Restore a current matched vLLM comparison when its pinned local closure is
+  available. No new download or unrelated dependency repin just for evidence.
+
+Earlier execution priorities below retain context, not precedence over this unit:
 
 - fix CUDA fused identical-lane correctness before wider CUDA performance work;
 - keep accepted HIP batching on the existing scheduler/cohort/state ownership; the

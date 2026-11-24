@@ -5,6 +5,52 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 24 Nov — native projection opportunity (not model throughput)
+
+Production exact HIP remains unchanged from 909cf1e6. The retained matched
+C8 comparison is 0.8B 18.701 versus 219.612 tok/s and 2B 9.481 versus
+140.847 tok/s (11.7x/14.9x). Current vLLM provider closure is unavailable,
+so do not describe these as fresh paired measurements.
+
+Physical X2 synthetic finite BF16 projection timing, ms per GEMM; scalar includes
+its projection status reduction, custom WMMA fuses status/output, rocBLAS writes
+packed BF16. No activation pack/widen or whole-model timing in this table.
+
+| Weight rows x columns | Input rows | Scalar hoisted | Custom WMMA | Direct rocBLAS |
+| --- | ---: | ---: | ---: | ---: |
+| 3584x1024 | 1 | .044465 | .040280 | .040289 |
+| 3584x1024 | 47 | .382650 | .235214 | .036096 |
+| 3584x1024 | 128 | 1.060866 | .668301 | .062983 |
+| 6144x1024 | 1 | .043819 | .063958 | .073326 |
+| 6144x1024 | 47 | .658727 | .755345 | .072908 |
+| 6144x1024 | 128 | 1.934770 | 1.205674 | .085698 |
+| 1024x3584 | 1 | .039322 | .053106 | .075483 |
+| 1024x3584 | 47 | .488879 | .072773 | .075573 |
+| 1024x3584 | 128 | 1.445303 | .203698 | .072723 |
+| 5120x2048 | 1 | .062353 | .079488 | .104410 |
+| 5120x2048 | 47 | 1.222097 | .362536 | .106822 |
+| 5120x2048 | 128 | 3.446642 | .851763 | .098360 |
+
+Custom WMMA passes the non-symmetric 19x21x64 integer mapping and strided tail
+test; normalized RMSE <= 1.56e-6 versus scalar in these random finite cells.
+This is not bit parity, a quality grant, or a model permission. Direct rocBLAS
+7.2.4 uses BF16 A/B/C/D and FP32 compute, all-one integer oracle, preallocated
+64 MiB workspace. Its 128-row direct GEMM speedups are ~16.8–35.0x;
+B1 is mixed. The separate owned-actor rocBLAS qualification at 9b9e4996
+uses 6144x1024 by 128 rows with varied signed integer rows and checks every
+output in four prepare/enqueue/complete/retire cycles. Device means per cycle:
+.095802/.084230/.085970/.111742 ms, mean .094436 ms (~20.5x versus the
+independent scalar measurement). All cycles retire per-model ownership;
+only persistent context envelope remains, and the process returns VRAM to
+259768320 B/no KFD owner. Separate direct handle/library lifecycle shows
+~187 MB context-resident cache after destruction, stable across two cycles.
+No extra stream/allocator or inferred memory reclamation.
+
+Next: wire the real native projection profile/consumer, measure actual
+0.8B/2B C1/C8 with quality, replay and lifecycle checks. Treat the numbers as
+a provider ceiling and target end-to-end improvement, not a claimed 20x model
+speedup. Preserve the exact CPU-reference path and custom WMMA alternative.
+
 ## Workload
 
 All rows use the same pre-framed 47-token integer-continuation prompt and greedy

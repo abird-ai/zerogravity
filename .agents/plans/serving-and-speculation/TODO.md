@@ -1,6 +1,18 @@
 # Serving and speculation
 
-## Current priority — correctness, HIP batching, measured hot paths
+## Current priority — correctness and hardware-native throughput
+
+24 Nov: the C8 throughput gap remains ~12–15x on X2 after accepted shared
+prefill. The next major serving unit is native BF16 matrix execution through the
+same admitted model/cohort owner under a distinct numerical profile. See the
+[model execution priority reset](../model-execution/TODO.md#priority-reset--24-nov-native-matrix-execution)
+and CURRENT_BASELINE for the measured provider ceiling. No further marginal
+scalar or launch-count optimization campaign before a real native-model run.
+Keep existing exact-reference serving, and all correct reusable primitives.
+Measure C1/C8 early; then prioritize the largest remaining model-level gap.
+CUDA fused lane correctness remains a separate outstanding unit.
+
+## Prior context — correctness, HIP batching, measured hot paths
 
 [Fabric transition](../fabric-vnext-transition/TODO.md) S0–S3/F0–F4 and scoped
 acceptance are complete on source`8c43844`; ordinary multi-row HIP landed
