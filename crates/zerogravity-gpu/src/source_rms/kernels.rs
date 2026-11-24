@@ -16,6 +16,30 @@ pub(crate) fn squares(input: &[f32], output: &mut [f32], status: &[Atomic<u32>])
         }
     }
 }
+
+/// Residual-RMS first pass: materialize the source-defined BF16 residual and
+/// square that exact rounded value for the unchanged RMS reduction cascade.
+#[cube(launch_unchecked)]
+pub(crate) fn residual_squares(
+    input: &[f32],
+    prior: &[f32],
+    residual: &mut [f32],
+    squares: &mut [f32],
+    status: &[Atomic<u32>],
+) {
+    let i = ABSOLUTE_POS;
+    if i < squares.len() {
+        let x = input[i];
+        let y = prior[i];
+        let z = bf16(add(x, y));
+        let square = mul(z, z);
+        residual[i] = z;
+        squares[i] = square;
+        if !source_bf16(x) || !source_bf16(y) || !source_bf16(z) || !finite(square) {
+            status[0].fetch_or(NONFINITE_VALUE);
+        }
+    }
+}
 #[cube(launch_unchecked)]
 pub(crate) fn sum(input: &[f32], zero: &[f32], output: &mut [f32], #[comptime] width: usize) {
     let lane = usize::cast_from(UNIT_POS);

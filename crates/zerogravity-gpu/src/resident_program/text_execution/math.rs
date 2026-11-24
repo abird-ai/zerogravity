@@ -65,10 +65,51 @@ impl Cold {
         groups: usize,
         mode: crate::source_rms::Gamma,
     ) -> Result<usize> {
+        self.rms_input(input, None, gamma, output, width, groups, mode)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn residual_rms(
+        &self,
+        input: &Handle,
+        prior: &Handle,
+        residual: &Handle,
+        gamma: &Handle,
+        output: &Handle,
+        width: usize,
+        groups: usize,
+        mode: crate::source_rms::Gamma,
+    ) -> Result<usize> {
+        self.rms_input(
+            input,
+            Some((prior, residual)),
+            gamma,
+            output,
+            width,
+            groups,
+            mode,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn rms_input(
+        &self,
+        input: &Handle,
+        residual: Option<(&Handle, &Handle)>,
+        gamma: &Handle,
+        output: &Handle,
+        width: usize,
+        groups: usize,
+        mode: crate::source_rms::Gamma,
+    ) -> Result<usize> {
         let (bytes, tiles) = rms_tiles(width, groups)?;
         // Validate the complete borrowed vectors before submitting any tile.
         subview(input, 0, bytes)?;
         subview(output, 0, bytes)?;
+        if let Some((prior, residual)) = residual {
+            subview(prior, 0, bytes)?;
+            subview(residual, 0, bytes)?;
+        }
         let lengths =
             crate::source_rms::scratch_words(width, groups.min(crate::source_rms::MAX_GROUPS))?;
         let scratch = lengths
@@ -78,18 +119,37 @@ impl Cold {
             .collect::<Result<Vec<_>>>()?;
         let mut count = 0;
         for (offset, bytes, groups) in tiles {
-            count += crate::source_rms::launch(
-                self.service.client(),
-                &scratch,
-                &subview(input, offset, bytes)?,
-                Some(gamma),
-                &subview(output, offset, bytes)?,
-                &self.status_view()?,
-                &self.zero_view()?,
-                width,
-                groups,
-                mode,
-            )?;
+            let input = subview(input, offset, bytes)?;
+            let output = subview(output, offset, bytes)?;
+            count += if let Some((prior, residual)) = residual {
+                crate::source_rms::launch_residual(
+                    self.service.client(),
+                    &scratch,
+                    &input,
+                    &subview(prior, offset, bytes)?,
+                    &subview(residual, offset, bytes)?,
+                    Some(gamma),
+                    &output,
+                    &self.status_view()?,
+                    &self.zero_view()?,
+                    width,
+                    groups,
+                    mode,
+                )?
+            } else {
+                crate::source_rms::launch(
+                    self.service.client(),
+                    &scratch,
+                    &input,
+                    Some(gamma),
+                    &output,
+                    &self.status_view()?,
+                    &self.zero_view()?,
+                    width,
+                    groups,
+                    mode,
+                )?
+            };
         }
         Ok(count)
     }

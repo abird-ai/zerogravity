@@ -8,6 +8,7 @@ pub(crate) fn kernels(
     width: usize,
     groups: usize,
     mode: Gamma,
+    residual: bool,
 ) -> Result<Vec<Box<dyn CubeKernel>>> {
     super::scratch_words(width, groups)?;
     let mut out: Vec<Box<dyn CubeKernel>> = Vec::new();
@@ -18,7 +19,18 @@ pub(crate) fn kernels(
             client.properties_shared(),client.target_properties_shared(),$($a),*
         )))}
     }
-    add!(super::kernels::squares::Squares, b(), b(), b());
+    if residual {
+        add!(
+            super::kernels::residual_squares::ResidualSquares,
+            b(),
+            b(),
+            b(),
+            b(),
+            b()
+        );
+    } else {
+        add!(super::kernels::squares::Squares, b(), b(), b());
+    }
     add!(super::kernels::sum::Sum, b(), b(), b(), width);
     for stage in 0..4u32 {
         add!(super::kernels::scalar::Scalar, b(), b(), b(), stage, width);

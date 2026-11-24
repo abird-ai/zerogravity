@@ -56,11 +56,89 @@ pub(crate) fn scratch_words(width: usize, groups: usize) -> Result<[usize; 8]> {
     let count = width * groups;
     Ok([count, groups, groups, groups, groups, groups, count, count])
 }
+#[derive(Clone, Copy)]
+enum RmsInput<'a> {
+    Direct(&'a Handle),
+    Residual {
+        input: &'a Handle,
+        prior: &'a Handle,
+        residual: &'a Handle,
+    },
+}
+impl<'a> RmsInput<'a> {
+    fn normalized(self) -> &'a Handle {
+        match self {
+            Self::Direct(input) => input,
+            Self::Residual { residual, .. } => residual,
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn launch(
     client: &Client,
     scratch: &[Handle],
     input: &Handle,
+    gamma: Option<&Handle>,
+    output: &Handle,
+    status: &Handle,
+    zero: &Handle,
+    width: usize,
+    groups: usize,
+    mode: Gamma,
+) -> Result<usize> {
+    launch_input(
+        client,
+        scratch,
+        RmsInput::Direct(input),
+        gamma,
+        output,
+        status,
+        zero,
+        width,
+        groups,
+        mode,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn launch_residual(
+    client: &Client,
+    scratch: &[Handle],
+    input: &Handle,
+    prior: &Handle,
+    residual: &Handle,
+    gamma: Option<&Handle>,
+    output: &Handle,
+    status: &Handle,
+    zero: &Handle,
+    width: usize,
+    groups: usize,
+    mode: Gamma,
+) -> Result<usize> {
+    launch_input(
+        client,
+        scratch,
+        RmsInput::Residual {
+            input,
+            prior,
+            residual,
+        },
+        gamma,
+        output,
+        status,
+        zero,
+        width,
+        groups,
+        mode,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn launch_input(
+    client: &Client,
+    scratch: &[Handle],
+    input: RmsInput<'_>,
     gamma: Option<&Handle>,
     output: &Handle,
     status: &Handle,
@@ -79,21 +157,30 @@ pub(crate) fn launch(
     for (h, n) in scratch.iter().zip(extents) {
         check(h, n)?;
     }
-    check(input, count)?;
+    match input {
+        RmsInput::Direct(input) => check(input, count)?,
+        RmsInput::Residual {
+            input,
+            prior,
+            residual,
+        } => {
+            check(input, count)?;
+            check(prior, count)?;
+            check(residual, count)?;
+        }
+    }
     check(output, count)?;
     check(status, 1)?;
     check(zero, 1)?;
     if let Some(g) = gamma {
         check(g, width)?;
     }
-    let mut unique = Vec::with_capacity(13);
-    for handle in scratch
-        .iter()
-        .chain([input, output, status, zero])
-        .chain(gamma)
-    {
+
+    let normalized = input.normalized();
+    let mut unique = Vec::with_capacity(16);
+    let mut require_distinct = |handle: &Handle| -> Result<()> {
         let range = crate::resident_program::BufferRange::new(handle)?;
-        if handle.service != input.service
+        if handle.service != normalized.service
             || unique
                 .iter()
                 .any(|old: &crate::resident_program::BufferRange| old.overlaps(&range))
@@ -103,18 +190,57 @@ pub(crate) fn launch(
             ));
         }
         unique.push(range);
+        Ok(())
+    };
+    for handle in scratch {
+        require_distinct(handle)?;
     }
+    match input {
+        RmsInput::Direct(input) => require_distinct(input)?,
+        RmsInput::Residual {
+            input,
+            prior,
+            residual,
+        } => {
+            require_distinct(input)?;
+            require_distinct(prior)?;
+            require_distinct(residual)?;
+        }
+    }
+    for handle in [output, status, zero] {
+        require_distinct(handle)?;
+    }
+    if let Some(gamma) = gamma {
+        require_distinct(gamma)?;
+    }
+
     let dim = CubeDim::new_1d(32);
     let grid = |n: usize| CubeCount::Static((n as u32).div_ceil(32), 1, 1);
     unsafe {
-        kernels::squares::launch_unchecked(
-            client,
-            grid(count),
-            dim,
-            arg(input, count),
-            arg(&scratch[0], count),
-            arg(status, 1),
-        );
+        match input {
+            RmsInput::Direct(input) => kernels::squares::launch_unchecked(
+                client,
+                grid(count),
+                dim,
+                arg(input, count),
+                arg(&scratch[0], count),
+                arg(status, 1),
+            ),
+            RmsInput::Residual {
+                input,
+                prior,
+                residual,
+            } => kernels::residual_squares::launch_unchecked(
+                client,
+                grid(count),
+                dim,
+                arg(input, count),
+                arg(prior, count),
+                arg(residual, count),
+                arg(&scratch[0], count),
+                arg(status, 1),
+            ),
+        }
         kernels::sum::launch_unchecked(
             client,
             CubeCount::Static(groups as u32, 1, 1),
@@ -140,7 +266,7 @@ pub(crate) fn launch(
             client,
             grid(count),
             dim,
-            arg(input, count),
+            arg(normalized, count),
             arg(&scratch[5], groups),
             arg(&scratch[6], count),
             arg(status, 1),

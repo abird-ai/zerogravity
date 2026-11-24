@@ -368,36 +368,29 @@ impl Cold {
                 }
                 Ok(count)
             }
-            Rms(g) | ResidualRms(g) => {
-                let mut count = 0;
-                let input = if matches!(d.kind(), ResidualRms(_)) {
-                    unsafe {
-                        kernels::residual::launch_unchecked(
-                            client,
-                            grid(rows * g.width),
-                            dim(),
-                            arg(&inputs[0], rows * g.width),
-                            arg(&inputs[1], rows * g.width),
-                            arg(&outputs[1], rows * g.width),
-                            arg(&status, 1),
-                            (rows * g.width) as u32,
-                        );
-                    }
-                    count += 1;
-                    &outputs[1]
-                } else {
-                    &inputs[0]
-                };
+            Rms(g) => {
                 let gamma = self.parameter(&d.parameters()[0])?;
-                count += self.rms(
-                    input,
+                self.rms(
+                    &inputs[0],
                     &gamma,
                     &outputs[0],
                     g.width,
                     rows,
                     crate::source_rms::Gamma::OnePlusRaw,
-                )?;
-                Ok(count)
+                )
+            }
+            ResidualRms(g) => {
+                let gamma = self.parameter(&d.parameters()[0])?;
+                self.residual_rms(
+                    &inputs[0],
+                    &inputs[1],
+                    &outputs[1],
+                    &gamma,
+                    &outputs[0],
+                    g.width,
+                    rows,
+                    crate::source_rms::Gamma::OnePlusRaw,
+                )
             }
             CausalConvSplit {
                 domain,

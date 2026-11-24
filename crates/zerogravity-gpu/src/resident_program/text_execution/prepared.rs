@@ -34,15 +34,6 @@ pub(super) fn kernels(
         b()
     );
     add!(
-        super::kernels::residual::Residual,
-        32,
-        b(),
-        b(),
-        b(),
-        b(),
-        ()
-    );
-    add!(
         super::kernels::multiply::Multiply,
         32,
         b(),
@@ -109,12 +100,22 @@ pub(super) fn kernels(
                     );
                 }
             }
-            SourceOperatorKind::Rms(g) | SourceOperatorKind::ResidualRms(g) => {
+            SourceOperatorKind::Rms(g) => {
                 out.extend(crate::source_rms::prepared::kernels(
                     client,
                     g.width,
                     1,
                     crate::source_rms::Gamma::OnePlusRaw,
+                    false,
+                )?);
+            }
+            SourceOperatorKind::ResidualRms(g) => {
+                out.extend(crate::source_rms::prepared::kernels(
+                    client,
+                    g.width,
+                    1,
+                    crate::source_rms::Gamma::OnePlusRaw,
+                    true,
                 )?);
             }
             SourceOperatorKind::CausalConvSplit { geometry: g, .. } => {
@@ -272,6 +273,7 @@ pub(super) fn kernels(
                     128,
                     vh,
                     crate::source_rms::Gamma::DirectF32AfterBf16,
+                    false,
                 )?);
                 add!(
                     crate::source_activation::gated::Gated,
@@ -322,6 +324,7 @@ pub(super) fn kernels(
                         256,
                         heads,
                         crate::source_rms::Gamma::OnePlusRaw,
+                        false,
                     )?);
                     add!(
                         super::kernels::columns::Columns,
