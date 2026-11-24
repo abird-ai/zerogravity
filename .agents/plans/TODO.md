@@ -9,6 +9,13 @@ Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md).
 The foundations pack links the complete dated history, source checkpoint, original design and plan/open-work/Git inventories. Live source and owning TODOs remain authoritative.
 
+**24 Nov Phase 1 checkpoint:** `82f895da` accepted bounded stateless
+closed-region preparation and native CUDA/HIP consumers, with full isolated
+gate and physical Qwen canaries. Continue the remaining region
+capability/effect/lifecycle foundations in
+[pipeline composition](pipeline-composition/TODO.md) and the full plan;
+not a backend-tuning checkpoint.
+
 **20 Nov authoritative refresh:** pushed/tracked `origin/main` is `f0f0640`; local signed
 source lineage above it includes `1222f8a` (multi-token GDN prefill), `60ba956` (matched
 performance profile), `3afb990` (reduced-band GDN layouts), docs-only `7beb1be`,

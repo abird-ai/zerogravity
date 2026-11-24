@@ -5,6 +5,14 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 24 Nov — closed-region foundation acceptance
+
+`82f895da` preserves existing numerical paths while binding native CUDA
+projection preparation and HIP admission to original source-owned stateless
+regions. Full isolated gate, X2 native/exact/continuation and L5 CUDA C1
+physical Qwen 0.8B canaries pass, with original token/replay and resource
+retirement. No new performance baseline or wider backend-parity claim.
+
 ## 24 Nov — source-preparation acceptance
 
 Whole-program source preparation at `8c34c472` retains the existing HIP/CUDA

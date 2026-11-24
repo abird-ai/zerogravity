@@ -160,7 +160,7 @@ their existing numeric/source/physical acceptance gates.
   rejects empty model configuration before backend selection. Isolation
   fixtures explicitly mock child-network discovery; production guard unchanged.
   Retained physical X2 evidence applies to the unchanged model path.
-## Closed stateless source-region preparation — 24 Nov
+## 82f895da — Closed stateless source-region preparation
 
 - [x] Derive contiguous stateless dense source-template regions from the
   original ModelProgram/ForwardPlan. Inputs and escaping outputs follow SSA
@@ -177,8 +177,17 @@ their existing numeric/source/physical acceptance gates.
 - [x] Six focused engine preparation tests and strict core/engine Clippy
   pass; ordinary CUDA serving compiles after updating the cohort accessor.
   No standalone partial dispatch, compiler SDK, or new numerical claim.
-- [ ] Assembled isolated workspace gate and real-source consumer canaries
-  pending; do not treat source implementation as physical acceptance.
+- [x] Full isolated `scripts/check.sh` passed on this source (2381 successful
+  Rust test executions across configurations, zero failures, 101 explicit
+  skips; source/quality/release checks passed). The initial CUDA cohort
+  accessor compilation failure was corrected before the terminal pass.
+- [x] Real Qwen 0.8B consumers passed: X2 HIP native V2 C1/C8, exact
+  arithmetic C1 and native distinct-prompt multichunk continuation; L5
+  CUDA public SDK C1 (three replay waves). All fixed-prompt outputs match
+  the retained token IDs; both GPUs return to original idle VRAM with
+  no compute owners. No new throughput baseline, independent numerical
+  reference campaign, broader CUDA cohort qualification or general partial
+  dispatch claim.
 
 ## Uncommitted
 

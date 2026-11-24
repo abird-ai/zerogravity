@@ -113,8 +113,11 @@ any external compiler. All phases retain the original resource/state owners.
   the original source-owned program; CUDA projection cold preparation owns
   the original region and packed matrix issuer, and HIP admission checks the
   same logical shape against F32 storage. Existing dispatch/reduction,
-  state roots and physical completion owners remain unchanged. Physical and
-  assembled validation pending; see the composition TODO.
+  state roots and physical completion owners remain unchanged. Accepted
+  `82f895da`: assembled isolated gate, X2 HIP native C1/C8, exact C1 and
+  distinct multichunk continuation, L5 CUDA C1 SDK replay and original
+  physical retirement passed. See the composition TODO for remaining
+  region capability/effect/lifecycle foundations.
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

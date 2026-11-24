@@ -96,13 +96,15 @@ continuation and retirement checks pass. The complete assembled
 `scripts/check.sh` gate is green under mandatory isolation. Acceptance fixes
 preserve typed physical-resource refusals, configured limits, ownership and
 rollback; empty model declarations refuse before backend selection. No
-additional physical CUDA qualification is claimed. The next source slice
-implements bounded stateless closed-region shape/binding/preparation on that
-same plan and typed source, with CUDA projection ownership and HIP admission
-consumers. Focused tests/Clippy and ordinary CUDA serving compilation pass;
-assembled gate and physical canaries pending. Standalone partial execution,
-stateful region effects/bridge and full capability/lifecycle scaffolding
-remain open. Neither slice closes the remaining Phase 1 foundations.
+additional physical CUDA qualification was claimed for that earlier slice.
+Accepted next foundation slice: `82f895da` implements bounded stateless
+closed-region shape/binding/preparation on the same plan and typed source,
+with CUDA projection ownership and HIP admission consumers. Focused
+tests/Clippy, the full isolated workspace gate, X2 native/exact/continuation
+and L5 CUDA C1 physical canaries pass with original resource retirement.
+Standalone partial execution, stateful region effects/bridge and full
+capability/lifecycle scaffolding remain open. Continue those foundations
+through existing physical owners. Neither slice closes Phase 1.
 
 Complete the engineering contracts and their real consumers, including every
 foundation below. This is not a requirement to finish every backend optimization,

@@ -20,7 +20,8 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
-**New source slice — bounded closed stateless regions.** ModelRegion retains
+**Accepted source checkpoint `82f895dae795f2bcabf83a95ce52cb6705e64280` —
+bounded closed stateless regions.** ModelRegion retains
 the original ProgramSource issuer and ForwardPlan; ClosedRegion derives dense
 SSA boundary ports, precision and active/last-row layout. Binding requires
 the exact invocation plan and output schedule. The existing provider seam
@@ -29,9 +30,30 @@ preparation. CUDA projection cold owners retain the region and verify source
 issuer/packed geometry. HIP admission checks region capacities against
 widened F32 storage. No arithmetic, dispatch selection, allocator or
 publication changes. Six engine preparation tests, strict core/engine Clippy
-and ordinary CUDA serving compilation pass. Full isolated gate and actual
-source canaries pending. General stateful/captured region execution, physical
-capability/lifecycle scaffolding and remaining Phase 1 foundations are open.
+and ordinary CUDA serving compilation pass. The complete
+`scripts/check.sh` gate passed with mandatory private-network isolation
+(exit 0; 2381 successful Rust test executions across configurations, zero
+failures, 101 explicit skips). Initial CUDA cohort accessor compile error
+was corrected before the signed source checkpoint and full rerun.
+
+Actual approved Qwen 0.8B source on the exact checkpoint: X2 native V2
+C1/C8 (three waves each), exact arithmetic C1 (three waves), distinct-prompt
+native multichunk singleton/continuation test; L5 CUDA public SDK C1
+(three waves, existing optimized test profile). Fixed-prompt IDs remain
+248068/198/90700, replay exact, HIP lane invariant and zero failed quanta;
+native final reader/retirement and CUDA shutdown pass. X2 returns to
+259768320 B and no KFD owners; L5 returns to 37 MiB and no CUDA compute
+processes. These are bounded correctness canaries, not fresh independent
+reference or throughput/parity qualification. X2 received the exact signed
+source via verified incremental Git bundle; A1 was unchanged. No push.
+
+Next: extend the existing bounded region contract through real consumers
+for explicit physical capability/shape misses, workspace and external
+buffer ownership, state effects/bridges, completion and retirement,
+including captured/compiled preparation scaffolding. Standalone partial
+execution and general stateful region composition are not implemented.
+Keep one original plan/source and the existing physical fabric; no new IR
+or graph SDK. Broader Phase 1 foundations remain open.
 
 Prior accepted source-preparation checkpoint:
 
