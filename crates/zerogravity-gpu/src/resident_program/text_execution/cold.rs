@@ -10,7 +10,11 @@ use crate::resident_program::{
 };
 use std::sync::atomic::AtomicBool;
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
-use zerogravity_core::device_events::{BufferRole, DeviceAccess};
+use zerogravity_core::{
+    accelerator::program::{PlanOperation, SourceOperatorKind},
+    device_events::{BufferRole, DeviceAccess},
+    model::ModelProgram,
+};
 
 /// Cold/configured-call working set, not a live reservation. Retained results
 /// and extra snapshot readers require their own original host admission.
@@ -81,6 +85,28 @@ impl Admission {
         }
         let metadata = source.reserve_workspace(8 * 1024 * 1024)?;
         let mut layout = layout::Layout::derive(plan)?;
+        // HIP uses widened F32 activation storage; the same logical region
+        // contract must agree with its original SSA storage admission.
+        let model = ModelProgram::from_recorded(source.clone(), layout.plan.clone())?;
+        for (index, node) in layout.plan.nodes().iter().enumerate() {
+            if matches!(&node.operation, PlanOperation::SourceOperatorTemplate { descriptor, .. }
+                if matches!(descriptor.kind(), SourceOperatorKind::Projection { .. }))
+            {
+                let region = model.closed_region(index..index + 1)?;
+                for binding in region.region().capacity_bindings() {
+                    let bytes = ResidentBufferLayout::new(
+                        ResidentPhysicalType::F32,
+                        binding.layout.elements()?,
+                    )?
+                    .bytes()?;
+                    if layout.bindings[binding.value.0 as usize].bytes != bytes {
+                        return Err(Error::State(
+                            "HIP projection region storage extent differs".into(),
+                        ));
+                    }
+                }
+            }
+        }
         let native_gemm = layout.plan.numerical_profile().uses_hip_native_dense();
         if native_gemm {
             if native_policy != crate::hip::native::HipSourceNativePolicy::Gfx1151 {

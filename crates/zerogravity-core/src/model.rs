@@ -2,11 +2,11 @@
 use crate::{
     Error, Result,
     identity::SourceIdentity,
-    semantic::ForwardPlan,
+    semantic::{ClosedRegion, ForwardPlan},
     source::{ProgramSource, TensorSource},
     task::TaskKind,
 };
-use std::sync::Arc;
+use std::{ops::Range, sync::Arc};
 
 #[derive(Clone, Copy, Debug)]
 pub struct ProgramRequest {
@@ -86,9 +86,33 @@ impl<S: ProgramSource> ModelProgram<S> {
     pub fn source(&self) -> &S {
         &self.source
     }
+    /// Derive a closed region from the original program and retain its typed source.
+    pub fn closed_region(&self, nodes: Range<usize>) -> Result<ModelRegion<S>> {
+        Ok(ModelRegion {
+            source: self.source.clone(),
+            region: ClosedRegion::derive(self.plan.clone(), nodes)?,
+        })
+    }
     /// Transfer the original owners to the physical provider; no reconstruction.
     pub fn into_parts(self) -> (S, Arc<ForwardPlan>) {
         (self.source, self.plan)
+    }
+}
+
+/// Source-bound region contract, not an executable or physical admission.
+pub struct ModelRegion<S: ProgramSource = Arc<dyn TensorSource>> {
+    source: S,
+    region: ClosedRegion,
+}
+impl<S: ProgramSource> ModelRegion<S> {
+    pub fn source(&self) -> &S {
+        &self.source
+    }
+    pub fn region(&self) -> &ClosedRegion {
+        &self.region
+    }
+    pub fn program(&self) -> &Arc<ForwardPlan> {
+        self.region.program()
     }
 }
 

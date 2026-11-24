@@ -24,6 +24,7 @@ use zerogravity_core::{
         SourceTensor,
     },
     device_events::{BufferRole, DeviceAccess},
+    model::ModelProgram,
 };
 
 pub(super) struct CudaForwardCold {
@@ -68,6 +69,25 @@ impl CudaForwardCold {
             return Err(Error::State(
                 "CUDA forward cold source/service/plan differs".into(),
             ));
+        }
+        // Close and check the original semantic projection ports before allocation.
+        let model = ModelProgram::from_recorded(source.clone(), layout.plan().clone())?;
+        let mut projection_regions = BTreeMap::new();
+        for (index, node) in layout.plan().nodes().iter().enumerate() {
+            if matches!(&node.operation, PlanOperation::SourceOperatorTemplate { descriptor, .. }
+                if matches!(descriptor.kind(), SourceOperatorKind::Projection { .. }))
+            {
+                let region = model.closed_region(index..index + 1)?;
+                for binding in region.region().capacity_bindings() {
+                    layout.value_layouts()[binding.value.0 as usize].require(
+                        crate::resident_program::ResidentBufferLayout::new(
+                            crate::resident_program::ResidentPhysicalType::Bf16,
+                            binding.layout.elements()?,
+                        )?,
+                    )?;
+                }
+                projection_regions.insert(index, region);
+            }
         }
         if !layout.resident_weights() {
             let host = source
@@ -319,7 +339,9 @@ impl CudaForwardCold {
                 }
                 SourceOperatorKind::Projection { .. } => {
                     let projection = CudaForwardProjection::prepare_with_weights(
-                        descriptor,
+                        projection_regions
+                            .remove(&index)
+                            .ok_or_else(|| Error::State("CUDA projection region missing".into()))?,
                         find_pack(descriptor.matrices())?,
                         super::arithmetic::projection_use(layout.plan(), index)?,
                     )?;
@@ -332,7 +354,7 @@ impl CudaForwardCold {
                 _ => {}
             }
         }
-        if projections.is_empty() || node_parameters.is_empty() {
+        if projections.is_empty() || !projection_regions.is_empty() || node_parameters.is_empty() {
             return Err(Error::State(
                 "CUDA forward cold projection/parameter population differs".into(),
             ));

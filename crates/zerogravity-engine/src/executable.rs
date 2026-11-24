@@ -12,6 +12,9 @@ impl<E: PreparedExecutable> ExecutableBundle<E> {
     pub async fn program(&self) -> Result<Arc<ForwardPlan>> {
         self.prepared.program().await
     }
+    pub fn region_nodes(&self) -> Option<std::ops::Range<usize>> {
+        self.prepared.region_nodes()
+    }
     pub fn prepared(&self) -> &E {
         &self.prepared
     }

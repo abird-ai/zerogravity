@@ -56,7 +56,7 @@ impl CudaForwardProjection {
         let lanes = descriptors.len();
         if !matches!(lanes, 2 | 4 | 8)
             || row_counts.len() != lanes
-            || self.template.row_selection() != SourceRowSelection::AllActive
+            || self.template().row_selection() != SourceRowSelection::AllActive
         {
             return Err(Error::State(
                 "CUDA forward independent projection cohort geometry differs".into(),

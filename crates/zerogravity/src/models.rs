@@ -56,12 +56,15 @@ pub fn qwen_source_snapshot(target: &str) -> Option<&'static str> {
 }
 
 pub use crate::model::DeclaredModel;
-pub use zerogravity_core::model::{ModelAssembly, ModelDefinition, ModelProgram, ProgramRequest};
+pub use zerogravity_core::model::{
+    ModelAssembly, ModelDefinition, ModelProgram, ModelRegion, ProgramRequest,
+};
 pub use zerogravity_core::provider::{PreparedExecutable, RegionExecutionProvider};
 pub use zerogravity_core::source::{ProgramSource, SourceTensorRef, TensorSource};
 pub use zerogravity_engine::model_instance::{ModelInstance, PreparedModel};
 pub use zerogravity_engine::{
-    executable::ExecutableBundle, prepare::prepare as prepare_executable,
+    executable::ExecutableBundle,
+    prepare::{prepare as prepare_executable, prepare_region},
 };
 
 /// One complete cold route set. This is not live model replacement or residency.

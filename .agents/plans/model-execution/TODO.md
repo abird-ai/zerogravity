@@ -109,6 +109,12 @@ Prefer native graph/network construction for MIGraphX/TensorRT; ONNX import
 is independent. Native source formats and model definitions do not depend on
 any external compiler. All phases retain the original resource/state owners.
 
+- Bounded stateless dense source-template regions now derive typed ports from
+  the original source-owned program; CUDA projection cold preparation owns
+  the original region and packed matrix issuer, and HIP admission checks the
+  same logical shape against F32 storage. Existing dispatch/reduction,
+  state roots and physical completion owners remain unchanged. Physical and
+  assembled validation pending; see the composition TODO.
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

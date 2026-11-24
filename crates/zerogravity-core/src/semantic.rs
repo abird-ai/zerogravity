@@ -6,9 +6,5 @@ pub use crate::accelerator::program::{
 };
 pub use crate::pipeline::ValueKind;
 
-/// An inspection range, not a closed-region replacement permit.
-#[derive(Clone, Debug)]
-pub struct RegionRequest<'a> {
-    pub program: &'a ForwardPlan,
-    pub nodes: std::ops::Range<usize>,
-}
+mod region;
+pub use region::{BoundRegion, ClosedRegion, RegionBinding, RegionPort};

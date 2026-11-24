@@ -40,6 +40,9 @@ impl BoundSourceMatrices {
     pub(crate) fn source_identity(&self) -> SourceIdentity {
         self.owner.source.source_identity()
     }
+    pub(crate) fn same_source(&self, source: &VerifiedTensorSource) -> bool {
+        self.owner.source.same_issuer(source)
+    }
     pub(crate) fn rows(&self) -> usize {
         self.rows
     }

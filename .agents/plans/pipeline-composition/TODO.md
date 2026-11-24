@@ -160,9 +160,25 @@ their existing numeric/source/physical acceptance gates.
   rejects empty model configuration before backend selection. Isolation
   fixtures explicitly mock child-network discovery; production guard unchanged.
   Retained physical X2 evidence applies to the unchanged model path.
-- [ ] Next Phase 1 boundary: complete closed-region shape/binding/preparation
-  semantics over the existing plan and typed source, without inventing a
-  second canonical program or granting partial replacement prematurely.
+## Closed stateless source-region preparation — 24 Nov
+
+- [x] Derive contiguous stateless dense source-template regions from the
+  original ModelProgram/ForwardPlan. Inputs and escaping outputs follow SSA
+  edges; explicit all-active/last-active row layout, precision, numerical
+  profile and output-policy boundary. Reject state/implicit token or position
+  operations, unsupported layouts and foreign invocation plans.
+- [x] ModelRegion retains the typed source issuer and original plan. The
+  existing RegionExecutionProvider/ExecutableBundle preparation seam checks
+  exact scope as well as source and plan; whole-only providers refuse partial
+  preparation before work. Native CUDA projection retains the closed region
+  and checks original packed matrix issuer/port capacity. HIP source admission
+  checks the same logical capacities against widened F32 storage. Original
+  initialization, resource and completion/retirement owners unchanged.
+- [x] Six focused engine preparation tests and strict core/engine Clippy
+  pass; ordinary CUDA serving compiles after updating the cohort accessor.
+  No standalone partial dispatch, compiler SDK, or new numerical claim.
+- [ ] Assembled isolated workspace gate and real-source consumer canaries
+  pending; do not treat source implementation as physical acceptance.
 
 ## Uncommitted
 
@@ -171,14 +187,13 @@ their existing numeric/source/physical acceptance gates.
 Contract: [closed regions](REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering)
 and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
 
-- [ ] Complete the existing closed-region preparation/binding seam with
-  authenticated source and format handling separate from semantic operations
-  and executable selection. Native and captured consumers retain the same
-  source/numerical/state authority; a graph-only provider can prepare a
-  supported region without mandatory ONNX export, conversion or import.
-  Keep actual owner/resource requirements, typed bindings and completion in
-  the original fabric. Exercise the seam with existing real consumers and
-  a bounded unsupported-provider check; no new IR or compiler framework.
+- [ ] Extend the landed bounded stateless region preparation contract to
+  actual selected region execution as needed: capability/shape-miss,
+  explicit physical workspace/external buffers, completion/retirement, and
+  stateful effect/bridge contracts. Native and captured consumers retain
+  original source/numerical/state authority. Graph-only preparation may
+  lower supported native semantic regions directly, without ONNX. No
+  additional IR, allocator, scheduler or compiler framework.
 - [ ] Keep external compiler integration and ONNX import out of the foundation
   dependency graph. The concrete MIGraphX/TensorRT direct-lowering adapters
   and optional graph import are tracked in

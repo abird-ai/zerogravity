@@ -39,10 +39,11 @@ pub(crate) mod rotary;
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{
-        NumericalContract, SourceOperator, SourceOperatorKind, SourceOperatorTemplate,
-        SourceRowSelection,
+        NumericalContract, PlanOperation, SourceOperator, SourceOperatorKind,
+        SourceOperatorTemplate, SourceRowSelection,
     },
     device_events::{BufferRole, DeviceAccess},
+    model::ModelRegion,
     resource_arbiter::{AllocationClass, AllocationRequest},
 };
 
@@ -70,68 +71,113 @@ fn exact_view(
 /// One source-derived full projection. Cold ownership binds the call-free
 /// template; request-local row geometry never owns or reloads weights.
 pub(crate) struct CudaForwardProjection {
-    template: SourceOperatorTemplate,
+    region: ModelRegion<VerifiedTensorSource>,
     weights: Arc<BoundSourceMatrices>,
     arithmetic: ProjectionUse,
 }
 impl CudaForwardProjection {
+    fn projection_template(
+        region: &ModelRegion<VerifiedTensorSource>,
+    ) -> Result<&SourceOperatorTemplate> {
+        let [node] = region.region().nodes() else {
+            return Err(Error::Unsupported(
+                "CUDA projection requires one closed operation".into(),
+            ));
+        };
+        let PlanOperation::SourceOperatorTemplate {
+            descriptor,
+            state: None,
+        } = &node.operation
+        else {
+            return Err(Error::State(
+                "CUDA projection region lacks source template".into(),
+            ));
+        };
+        if descriptor.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
+            || !matches!(
+                descriptor.kind(),
+                SourceOperatorKind::Projection { selected_row: None }
+            )
+            || descriptor.source() != region.source().source_identity()
+            || descriptor.matrices().is_empty()
+            || !descriptor.parameters().is_empty()
+        {
+            return Err(Error::Unsupported(
+                "CUDA projection region numerical/source contract differs".into(),
+            ));
+        }
+        Ok(descriptor)
+    }
+
     pub(crate) async fn prepare(
         service: &Arc<ResidentService>,
         init: &mut ResidentInitialization<'_>,
-        source: VerifiedTensorSource,
-        template: &SourceOperatorTemplate,
+        region: ModelRegion<VerifiedTensorSource>,
         arithmetic: ProjectionUse,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
-        if template.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1 {
-            return Err(Error::Unsupported(
-                "CUDA forward projection numerical contract differs".into(),
-            ));
-        }
-        if !matches!(
-            template.kind(),
-            SourceOperatorKind::Projection { selected_row: None }
-        ) || template.source() != source.source_identity()
-            || template.matrices().is_empty()
-            || !template.parameters().is_empty()
-        {
-            return Err(Error::State(
-                "CUDA forward projection template/source contract differs".into(),
-            ));
-        }
+        let template = Self::projection_template(&region)?;
         let weights = init
-            .upload_forward_projection(service, source, template.matrices(), cancelled)
+            .upload_forward_projection(
+                service,
+                region.source().clone(),
+                template.matrices(),
+                cancelled,
+            )
             .await?;
-        Self::prepare_with_weights(template, weights, arithmetic)
+        Self::prepare_with_weights(region, weights, arithmetic)
     }
 
     pub(crate) fn prepare_with_weights(
-        template: &SourceOperatorTemplate,
+        region: ModelRegion<VerifiedTensorSource>,
         weights: Arc<BoundSourceMatrices>,
         arithmetic: ProjectionUse,
     ) -> Result<Arc<Self>> {
-        if template.numerical_contract() != NumericalContract::CudaSm86Bf16ReferenceV1
-            || !matches!(
-                template.kind(),
-                SourceOperatorKind::Projection { selected_row: None }
-            )
-            || template.source() != weights.source_identity()
-            || template.matrices().is_empty()
-            || !template.parameters().is_empty()
-        {
+        let template = Self::projection_template(&region)?;
+        if !weights.same_source(region.source()) {
             return Err(Error::State(
-                "CUDA forward projection shared weights/template differs".into(),
+                "CUDA projection region original source issuer differs".into(),
             ));
         }
         weights.require_members(template.matrices())?;
+        let [input] = region.region().inputs() else {
+            return Err(Error::State(
+                "CUDA projection region input arity differs".into(),
+            ));
+        };
+        let [output] = region.region().outputs() else {
+            return Err(Error::State(
+                "CUDA projection region output arity differs".into(),
+            ));
+        };
+        if input.width != weights.columns()
+            || output.width != weights.rows()
+            || input.rows != SourceRowSelection::AllActive
+            || output.rows != template.row_selection()
+        {
+            return Err(Error::State(
+                "CUDA projection region packed geometry differs".into(),
+            ));
+        }
         Ok(Arc::new(Self {
-            template: template.clone(),
+            region,
             weights,
             arithmetic,
         }))
     }
 
+    fn template(&self) -> &SourceOperatorTemplate {
+        // Construction already checked this immutable original node.
+        let PlanOperation::SourceOperatorTemplate { descriptor, .. } =
+            &self.region.region().nodes()[0].operation
+        else {
+            unreachable!()
+        };
+        descriptor
+    }
+
     fn operation(&self, descriptor: &SourceOperator) -> Result<(Bf16GemmShape, usize)> {
+        let template = self.template();
         descriptor.validate()?;
         let rows = descriptor.invocation().tokens().len();
         let SourceOperatorKind::Projection { selected_row } = descriptor.kind() else {
@@ -139,19 +185,19 @@ impl CudaForwardProjection {
                 "CUDA forward projection runtime descriptor kind differs".into(),
             ));
         };
-        let expected_selected = match self.template.row_selection() {
+        let expected_selected = match template.row_selection() {
             SourceRowSelection::AllActive => None,
             SourceRowSelection::LastActive => Some(
                 rows.checked_sub(1)
                     .ok_or_else(|| Error::State("CUDA forward projection empty call".into()))?,
             ),
         };
-        if descriptor.numerical_contract() != self.template.numerical_contract()
-            || descriptor.invocation().source() != self.template.source()
-            || descriptor.invocation().tokens().vocabulary() != self.template.vocabulary()
-            || rows > self.template.max_rows()
-            || descriptor.matrices() != self.template.matrices()
-            || descriptor.parameters() != self.template.parameters()
+        if descriptor.numerical_contract() != template.numerical_contract()
+            || descriptor.invocation().source() != template.source()
+            || descriptor.invocation().tokens().vocabulary() != template.vocabulary()
+            || rows > template.max_rows()
+            || descriptor.matrices() != template.matrices()
+            || descriptor.parameters() != template.parameters()
             || selected_row != expected_selected
         {
             return Err(Error::State(
@@ -310,16 +356,17 @@ impl CudaForwardProjection {
         status: &ResidentLease,
         page: Option<&Arc<crate::resident_leases::source_page::ResidentSourcePage>>,
     ) -> Result<usize> {
+        let template = self.template();
         if rows == 0
-            || rows > self.template.max_rows()
-            || self.template.row_selection() != SourceRowSelection::LastActive
-            || !matches!(self.template.kind(), SourceOperatorKind::Projection { .. })
+            || rows > template.max_rows()
+            || template.row_selection() != SourceRowSelection::LastActive
+            || !matches!(template.kind(), SourceOperatorKind::Projection { .. })
         {
             return Err(Error::State(
                 "CUDA forward decode projection row geometry differs".into(),
             ));
         }
-        self.weights.require_members(self.template.matrices())?;
+        self.weights.require_members(template.matrices())?;
         let operation = Bf16GemmShape::new(self.weights.rows(), rows, self.weights.columns())?;
         if input.bytes() < operation.input_bytes() || output.bytes() < operation.output_bytes() {
             return Err(Error::State(

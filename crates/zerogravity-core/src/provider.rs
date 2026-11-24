@@ -1,10 +1,15 @@
 //! Coarse source-owned preparation; no execution authority from a descriptor.
 mod selection;
-use crate::{Result, model::ModelProgram, semantic::ForwardPlan, source::ProgramSource};
+use crate::{
+    Error, Result,
+    model::{ModelProgram, ModelRegion},
+    semantic::ForwardPlan,
+    source::ProgramSource,
+};
 pub use selection::{
     ExecutionMode, SelectedMode, SelectionPolicy, ShapeMissPolicy, StateBridge, SwitchingBoundary,
 };
-use std::{future::Future, sync::Arc};
+use std::{future::Future, ops::Range, sync::Arc};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProviderKind {
@@ -22,6 +27,11 @@ pub trait PreparedExecutable: Send + Sync {
     type Source: ProgramSource;
     fn source(&self) -> impl Future<Output = Result<Self::Source>>;
     fn program(&self) -> impl Future<Output = Result<Arc<ForwardPlan>>>;
+    /// None denotes the whole original program; partial preparation must
+    /// explicitly identify its closed scope.
+    fn region_nodes(&self) -> Option<Range<usize>> {
+        None
+    }
 }
 impl<T: PreparedExecutable + ?Sized> PreparedExecutable for Arc<T> {
     type Source = T::Source;
@@ -31,10 +41,13 @@ impl<T: PreparedExecutable + ?Sized> PreparedExecutable for Arc<T> {
     fn program(&self) -> impl Future<Output = Result<Arc<ForwardPlan>>> {
         self.as_ref().program()
     }
+    fn region_nodes(&self) -> Option<Range<usize>> {
+        self.as_ref().region_nodes()
+    }
 }
 
-/// Whole-program closed regions only. The provider retains actual device/budget
-/// selection; arbitrary placement and partial-region replacement are not exposed.
+/// Whole-program and explicitly supported closed-region preparation.
+/// The provider retains actual device/budget selection and physical ownership.
 /// Preparation must complete original initialization or retirement before return.
 /// As with original loaders, callers must drive submitted preparation to completion.
 pub trait RegionExecutionProvider: Send + Sync {
@@ -44,4 +57,12 @@ pub trait RegionExecutionProvider: Send + Sync {
         &self,
         program: ModelProgram<<Self::Executable as PreparedExecutable>::Source>,
     ) -> impl Future<Output = Result<Self::Executable>>;
+    fn prepare_region(
+        &self,
+        _region: ModelRegion<<Self::Executable as PreparedExecutable>::Source>,
+    ) -> impl Future<Output = Result<Self::Executable>> {
+        std::future::ready(Err(Error::Unsupported(
+            "provider does not prepare closed regions".into(),
+        )))
+    }
 }

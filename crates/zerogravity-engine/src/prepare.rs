@@ -2,7 +2,7 @@
 use crate::{Error, Result, executable::ExecutableBundle};
 use std::sync::Arc;
 use zerogravity_core::{
-    model::ModelProgram,
+    model::{ModelProgram, ModelRegion},
     provider::{PreparedExecutable, RegionExecutionProvider},
     source::ProgramSource,
 };
@@ -16,11 +16,34 @@ pub async fn prepare<P: RegionExecutionProvider>(
     let expected = program.program().clone();
     let source = program.source().clone();
     let prepared = provider.prepare(program).await?;
+    verify(prepared, source, expected, None).await
+}
+
+/// No implicit whole-model fallback. The provider must finish initialization
+/// or retirement before returning, exactly as for whole-program preparation.
+pub async fn prepare_region<P: RegionExecutionProvider>(
+    region: ModelRegion<<P::Executable as PreparedExecutable>::Source>,
+    provider: &P,
+) -> Result<ExecutableBundle<P::Executable>> {
+    let expected = region.program().clone();
+    let source = region.source().clone();
+    let scope = region.region().range();
+    let prepared = provider.prepare_region(region).await?;
+    verify(prepared, source, expected, Some(scope)).await
+}
+
+async fn verify<E: PreparedExecutable>(
+    prepared: E,
+    source: E::Source,
+    expected: Arc<zerogravity_core::semantic::ForwardPlan>,
+    scope: Option<std::ops::Range<usize>>,
+) -> Result<ExecutableBundle<E>> {
     if !source.same_issuer(&prepared.source().await?)
         || !Arc::ptr_eq(&expected, &prepared.program().await?)
+        || prepared.region_nodes() != scope
     {
         return Err(Error::State(
-            "prepared provider replaced the original source/program".into(),
+            "prepared provider replaced the original source/program/scope".into(),
         ));
     }
     Ok(ExecutableBundle { prepared })

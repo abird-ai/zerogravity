@@ -20,6 +20,21 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**New source slice — bounded closed stateless regions.** ModelRegion retains
+the original ProgramSource issuer and ForwardPlan; ClosedRegion derives dense
+SSA boundary ports, precision and active/last-row layout. Binding requires
+the exact invocation plan and output schedule. The existing provider seam
+verifies the exact prepared scope; whole-only providers refuse partial
+preparation. CUDA projection cold owners retain the region and verify source
+issuer/packed geometry. HIP admission checks region capacities against
+widened F32 storage. No arithmetic, dispatch selection, allocator or
+publication changes. Six engine preparation tests, strict core/engine Clippy
+and ordinary CUDA serving compilation pass. Full isolated gate and actual
+source canaries pending. General stateful/captured region execution, physical
+capability/lifecycle scaffolding and remaining Phase 1 foundations are open.
+
+Prior accepted source-preparation checkpoint:
+
 `8c34c472` unifies borrowed/window-backed source preparation through typed
 ProgramSource, original ForwardPlan and PreparedExecutable; real window-backed
 Qwen HIP/CUDA uses the same engine prepare boundary. No inference arithmetic
@@ -37,9 +52,8 @@ longer depend on the outer environment. CPU and optional acquisition sweeps
 passed (1102 and 592 tests respectively), with explicit qualification skips.
 No production inference or resource-admission change in the acceptance fixes.
 Retain the original X2 physical evidence; no fresh CUDA physical validation.
-Whole-program source preparation is accepted. Next complete closed-region
-shape/binding/preparation on the same typed source and semantic plan; the
-broader Phase 1 foundations remain open. See the full plan and composition TODO.
+Whole-program source preparation is accepted; the bounded next region
+slice is described above. The broader Phase 1 foundations remain open. See the full plan and composition TODO.
 
 Full dated takeover snapshot:
 [`FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md).
