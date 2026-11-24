@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1040" height="900" viewBox="0 0 1040 900" role="img" aria-labelledby="title desc">
   <title id="title">ZeroGravity execution architecture</title>
-  <desc id="desc">One execution fabric owns serving, scheduling, batching, memory and state. Model semantics and execution planning choose native execution or optional compiled regions. Both use the appropriate device backend and physical hardware. Named providers include planned integrations.</desc>
+  <desc id="desc">One execution fabric owns serving, scheduling, batching, memory and state. Model semantics and execution planning choose native execution or optional compiled regions. Both use the appropriate device backend and physical hardware.</desc>
   <defs>
     <style>
       text {
@@ -49,7 +49,7 @@
     <text x="542" y="492">TensorRT</text>
     <text x="542" y="526">IREE</text>
     <text x="542" y="560">ONNX Runtime</text>
-    <text x="542" y="594">Future graph accelerators</text>
+    <text x="542" y="594">Graph-only accelerators</text>
   </g>
 
   <g text-anchor="middle">

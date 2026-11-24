@@ -20,7 +20,7 @@ Run _models locally_ without compromise - *one engine to run them all*.
 - **High-concurrency serving.** Continuous batching, chunked prefill, paged/hybrid state, prefix reuse, multi-model routing, and latency-aware admission.
 - **Joint optimization.** Choose compatible batch, draft, kernel, residency, and placement strategies together—not as isolated optimizations.
 - **Correct by construction.** Source-verified mathematics, explicit state effects, actual device completion, and one authoritative session-state publisher.
-- **Simple interface.** Local CLI and Rust API, with HTTP/OpenAI-compatible, WebSocket, WebRTC, and distributed serving in the architecture.
+- **Simple interface.** CLI, TUI, Web UI, and Rust API share one execution fabric, with OpenAI-compatible HTTP, WebSocket, and WebRTC serving.
 
 ## Quick start
 
@@ -45,24 +45,28 @@ Run the repository's quality checks:
 ./scripts/check.sh
 ~~~
 
-Only local files are used; no model weights are automatically downloaded or executed as third-party model code. See [Implementation status](#implementation-status-and-roadmap) for the currently supported execution paths.
+These commands use local model files without implicit downloads or execution of third-party model code.
 
 ## Architecture
 
 ![ZeroGravity execution architecture](docs/architecture-overview.svg)
 
 **Reuse optimized mathematics; own the execution fabric.** Native execution
-composes shared operators, vendor libraries and specialized kernels.
-Compiled execution providers are optional realizations of closed regions or
-whole models—not another scheduler, allocator or state authority.
+composes shared operators, mature vendor libraries, specialized kernels, and
+captured command graphs. Compiled providers—MIGraphX, TensorRT, IREE, and
+ONNX Runtime—execute closed regions or whole models under the same resource,
+scheduling, and state authority.
 
-Device backends own physical execution and completion. Model semantics and
-numerical contracts remain independent of the implementation. Original
-Hugging Face checkpoints (Safetensors) and GGUF are the primary source paths;
-native inference does not require ONNX conversion or a graph compiler.
+**Define a model once.** Original Hugging Face checkpoints (Safetensors)
+and GGUF feed source-bound Rust model definitions. The semantic program
+describes the computation, tensor layouts, numerical contracts, and state
+effects. Native operators and compiled providers lower that program into
+prepared executables. ONNX is an independent graph-import format, not a
+required intermediate representation.
 
-The diagram describes the architecture, including planned integrations.
-MIGraphX, TensorRT, IREE and ONNX Runtime are later optional providers.
+**Separate computation from placement.** CPU, CUDA, HIP, and Vulkan provide
+physical execution and completion. Model semantics remain independent of
+the selected implementation, hardware, and memory tier.
 
 **Four independent concerns:**
 
@@ -126,38 +130,42 @@ A larger batch can waste padded MoE rows. A longer draft can touch more experts.
 | Surface | Purpose |
 |---|---|
 | **CLI / Rust** | Local model inspection, execution, and embedded workflows |
+| **TUI / Web** | Interactive model management, configuration, serving, and observability |
 | **HTTP / OpenAI-compatible** | Text, embeddings, model routing, tools, and structured outputs |
 | **WebSocket / WebRTC** | Streaming text, speech, native duplex audio, and live multimodal sessions |
 | **Media tasks** | Image, video, speech synthesis/transcription, and asynchronous generation |
 | **Distributed** | Qualified compute, model weights, session state, and cache placement across devices or peers |
-
-These are **architectural targets**, not a claim that every interface or model family is implemented today.
 
 ## Implementation status and roadmap
 
 | Available now | In progress / planned |
 |---|---|
 | Native Rust **Qwen3.5 0.8B / 2B** GGUF text CPU execution and inspection | Complete native accelerator model execution and additional model families |
-| Original-model CPU state, snapshots, prefill, and source-reference checks | General compiled SemanticProgram / ExecutableBundle |
-| Shared immutable model loading and model catalog foundations | Continuous batching, exact speculation, and OpenAI-compatible multi-model server |
+| Original-model CPU state, snapshots, prefill, and source-reference checks | Closed-region preparation and compiled execution providers (MIGraphX, TensorRT, IREE, ONNX Runtime) |
+| Shared immutable model loading and model catalog foundations | Unified CLI, TUI and Web; broader OpenAI-compatible serving and speculation |
 | Native source-backed **HIP Qwen 0.8B / 2B / 27B** execution on qualified gfx1151; bounded CUDA and Vulkan paths | Optimized backend parity, broader model coverage, optional compiled providers and distributed execution |
 | Bounded physical GPU admission, fair worker primitives, and real-event safety probes | First-class SSD execution, multimodal media/real-time models, and full hardware tuning |
 
 **Qualification:** the original Qwen CPU Phase 1 gate passed through 8K. Whole-model HIP source execution, shared cohorts and native rocBLAS projection/GDN have passed bounded physical model tests. Exact-reference execution remains available. Optimized vLLM parity, wider hardware/model qualification and multimodal specialization remain implementation work. See the [current baseline](.agents/docs/CURRENT_BASELINE.md) for the measured scope.
 
+**Delivery order:** foundations → CLI, TUI and Web → ROCm parity with vLLM →
+CUDA parity with vLLM → Vulkan → compiled execution providers. The
+implementation plan defines the phased work, acceptance criteria, and
+remaining qualifications.
+
 **Roadmap:** [implementation plan](.agents/plans/FULL_IMPLEMENTATION_PLAN.md) · [current baseline](.agents/docs/CURRENT_BASELINE.md) · [current progress](.agents/plans/CURRENT_STATUS_AND_TRACKING.md) · [phases P00–P23](.agents/plans/IMPLEMENTATION_ROADMAP.md) · [acceptance](.agents/plans/REQUIREMENTS_AND_TEST_TRACEABILITY.md)
 
 ## FAQ
 
-**Which models does zerogravity support?** The architecture is model-family agnostic, but execution requires verified source semantics, codecs, and kernels. See [Implementation status](#implementation-status-and-roadmap) for what runs today.
+**How are models defined?** Each model family supplies verified source semantics, tensor encodings, task definitions, and state requirements. Shared operators and execution providers realize those definitions without a separate inference engine for each family.
 
 **Does it require a GPU or a Python inference engine?** No. The core is native Rust and supports CPU execution; accelerator providers are optional. Zerogravity does not wrap a separate Python/C++ model-serving engine.
 
-**Can a model use SSD when it does not fit in GPU memory?** The design supports one logical tensor across GPU, unified RAM, host memory, and asynchronously streamed SSD. Resident access remains direct; actual SSD misses have measurable latency. Native SSD execution is still on the roadmap.
+**How does SSD execution work?** One logical tensor spans GPU VRAM, unified memory, host RAM, and SSD. Resident access takes the direct path; cache misses use bounded asynchronous materialization under the same resource and lifetime contracts.
 
-**How does it differ from vLLM?** Zerogravity targets the same concurrency fundamentals while jointly specializing model semantics, kernels, quantization, state, memory tier, hardware, and serving QoS. Performance superiority must be established by comparable benchmarks, not assumed.
+**How does it differ from vLLM?** Zerogravity combines high-concurrency inference with joint specialization of model semantics, kernels, quantization, state, memory tiers, hardware, and serving QoS across text and multimodal pipelines.
 
-**Can I run several models at once?** The model catalog and shared-weight foundation exist. Full multi-model inference serving and cross-model admission are planned; registering models does not imply they all fit in physical memory.
+**How do multiple models run together?** One runtime manages independently admitted model instances and composes them into reusable task pipelines. Immutable weights and compatible caches can be shared; mutable session state remains private. Placement and residency follow the physical resource budget.
 
 ## Related projects
 

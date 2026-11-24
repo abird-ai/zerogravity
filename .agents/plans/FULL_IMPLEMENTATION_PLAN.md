@@ -16,6 +16,12 @@ work. Do not recreate their histories here or treat a design as qualification.
 Read [current handoff](../docs/CURRENT_HANDOFF.md) and
 [current baseline](../docs/CURRENT_BASELINE.md) before implementation.
 
+**README convention:** describe the intended engineering architecture directly.
+Keep implementation status, pending integrations, qualification limits and
+delivery dates in the roadmap and owning plans, not in architectural descriptions
+or diagrams. Concrete usage examples use supported paths; performance and
+availability claims belong to measured status.
+
 ## Delivery order
 
 | Phase | Objective | Exit |
@@ -133,6 +139,14 @@ native execution. MIGraphX, TensorRT, IREE and ONNX Runtime can realize complete
 computations at the region boundary, often using the same native libraries.
 A graph compiler is not a device backend. Capturing a command sequence is
 not graph optimization, and both can coexist.
+
+Distinguish source artifacts (Safetensors, GGUF), the authoritative semantic
+program (ModelProgram / ForwardPlan), and prepared executables. Provider-specific
+graphs and compiler IRs are internal lowering representations, not new canonical
+model IRs. Compiled artifacts retain the original source and numerical identity.
+Graph import (e.g. ONNX) is independent of direct graph lowering from native
+model regions; neither ONNX nor a Python runtime is mandatory. Establish this
+boundary in Phase 1 without introducing concrete external compiler dependencies.
 
 - [ ] Generalize only proven shared mathematical contracts: keep the dense
   seam and add bounded native row-wise, normalization/gating, rotary, attention,
@@ -405,11 +419,13 @@ on their native backends. IREE and ONNX Runtime extend portable/graph-model
 coverage where useful. Integrate in useful, independently qualified slices;
 optional build support is not a reason to skip the actual planned adapters.
 
-- [ ] MIGraphX on HIP: qualify runtime/hardware and external device arguments/
+- [ ] MIGraphX on HIP: lower native semantic regions through programmatic
+  graph construction, qualify runtime/hardware and external device arguments/
   stream interop, compile/prepare a closed FFN or other dense region, then
   compare native and compiled paths at actual model/serving level. Consider
   whole encoders/embeddings/ASR where source format and model semantics fit.
-- [ ] TensorRT on CUDA: same closed-region/whole-model boundary, compatible
+- [ ] TensorRT on CUDA: lower native semantic regions through programmatic
+  network construction, same closed-region/whole-model boundary, compatible
   caller-bound tensor addresses/context memory/stream, admitted engine
   compilation/cache and explicit supported shape/profile. Benchmark a real
   region or conventional model, not another complete LLM serving engine.
