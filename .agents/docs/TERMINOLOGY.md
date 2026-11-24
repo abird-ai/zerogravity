@@ -41,6 +41,7 @@ authority explicit.
 - **Resident text** — live model/session/pending/readback/snapshot ownership for
   source-backed text execution. Use `ResidentText*`; the backend program body is
   `text_execution`, and observation uses `TextFrame` / `TextObserver`.
+  The separate BF16 producer/KV diagnostic callback is `Bf16TextObserver`.
 
 ## Reserved words
 

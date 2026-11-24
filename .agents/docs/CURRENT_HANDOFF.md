@@ -320,12 +320,22 @@ The current implementation priorities implied by that baseline are:
    native catalogue and launch share the immutable operand choice. Other paths
    keep canonical; prior alternatives remain dormant. Final `3be8a812` CLI 47+16
    canary passed, original KFD owners restored. Temp runner/selector removed.
-   Full isolated check.sh passed formatting/architecture but is blocked by
-   handoff-existing combined HIP qualification compile errors: duplicate TextObserver
-   exports, missing Context.module_opaque_bytes, stale require_environment call.
-   Restore that feature-boundary build before closing the full phase gate.
-   Next re-localize selected hot paths and choose a clean measured cut,
-   not more fixture administration;
+   `c89d0ee7` restores combined HIP/Vulkan/CUDA-native feature boundaries:
+   distinct BF16 producer/KV observer and resident invocation-frame observer,
+   shared HIP original8GiB opaque allowance and exact X2 environment gate,
+   CUDA-native exact range check, CPU-free CLI refusal expectation and renamed
+   eight-session test filter. GPU feature boundary gate plus the corrected2/2
+   lifecycle tests pass. Full isolated check.sh reaches CPU workspace tests
+   after CPU Clippy and stops at cache_prepare admission Error::Limit assertion;
+   full phase gate remains open.
+   Current A1 real0.8B resident 47+1/47+16 serialized device-event localization
+   (temporary observer at `fd02260`, removed): repeat mean-subtraction gives
+   37.27ms/cached step, projection19.48ms (~52%), RMS7.35ms (~20%),
+   GDN6.73ms (~18%). Exact greedy prefix/replay and original KFD retirement
+   in both physical runs. Largest remaining individual non-projection kernel
+   is GDN key_reduce3.10ms/step (36 launches). Next use independent8x16-term
+   subtotals in parallel, preserve all original FP32 operations/final carry and
+   status, retain scalar sibling, measure before selecting;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
    47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
    streaming mechanics are the relevant optimization target there.

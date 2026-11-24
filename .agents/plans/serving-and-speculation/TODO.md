@@ -172,14 +172,35 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   Canonical and prior alternatives remain reusable; temporary probes/switches removed.
   Final production CLI at `3be8a812` generated all16 tokens from the same raw prompt,
   clean KFD retirement. Formatting/architecture passed.
-- [ ] Restore combined HIP qualification build: full isolated check.sh stops on
-  pre-existing duplicate TextObserver exports (lib.rs), missing Context.module_opaque_bytes
-  and stale require_environment call (hip/native/shared.rs), confirmed at handoff f6bd058.
-  Full phase gate remains open; no new CUDA physical acceptance claimed.
-- [ ] Next resident HIP unit: re-localize selected hot paths with existing device
-  events and choose the next clean measured optimization. Separately qualify
-  gfx1151/X2 native opaque accounting before changing its8GiB fallback. No A1
-  comparison to X2/L5 vLLM; no broader model/device qualification inferred.
+- [x] `c89d0ee7` restores combined backend feature boundaries: distinct
+  Bf16TextObserver producer/KV callbacks vs TextObserver invocation frames; shared
+  HIP keeps the original8GiB opaque allowance and exact X2 environment validation,
+  with optional source native policy rather than a single-source loader dependency.
+  Retained CUDA-native primitives use the existing exact-length check under
+  cuda-native. CPU-free CLI routing test expects early unsupported refusal; the
+  renamed eight-session lifecycle filter now runs its two original tests.
+  Combined HIP/Vulkan/CUDA-native compilation, affected CLI/refusal tests,
+  architecture and GPU feature boundary gate pass; corrected lifecycle filter passes2/2.
+- [ ] Full isolated check.sh proceeds through CPU Clippy but stops at
+  cache_prepare::role_and_staging_admission_fail_without_model_source_allocation
+  (expected Error::Limit assertion). Investigate this separate CPU cache boundary
+  before claiming the full gate. CUDA physical provider/correctness unchanged.
+- [x] Re-localized the selected resident gfx1150 path at `fd02260` using the
+  existing CubeCL resolved device-event observer and population harness; temp
+  probe removed. Two physical runs complete exact 47+1/47+16 greedy prefixes,
+  replay, zero failed quanta, and original KFD owner set. Repeat ABBA subtraction
+  (mean16-output minus mean1-output divided by15) gives ~37.27ms/token summed
+  serialized device kernels (first run~37.15ms). Projection19.48ms (~52.3%),
+  RMS7.35ms (~19.7%), GDN6.73ms (~18.1%), other2.15ms, attention/KV1.28ms,
+  rotary0.27ms. GEMM17.07ms; next individual non-projection hotspot is GDN
+  key_reduce3.10ms (36 launches), then RMS scalar2.73ms. Prefill+first output
+  sums~386ms (projection200ms, GDN122ms). Not an end-to-end latency measurement.
+- [ ] Next resident HIP unit: parallelize independent8x16-term FP32 key_reduce
+  subtotals without changing the sequential within-block sums, final carry order,
+  rounding or status. Prefer one shared workgroup and no global scratch;
+  retain the scalar primitive. Direct/real-model feedback before selecting.
+  Separately qualify gfx1151/X2 native opaque accounting before changing its8GiB
+  fallback. No A1 comparison to X2/L5 vLLM; no broader qualification inferred.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.
