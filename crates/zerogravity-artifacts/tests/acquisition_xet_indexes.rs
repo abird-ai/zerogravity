@@ -384,7 +384,7 @@ fn original_admission_denies_index_scratch_before_read_grant_or_signed_body() {
             &small,
             &AtomicBool::new(false)
         ),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert_eq!(script.calls.load(Ordering::Relaxed), 3);
     assert_eq!(script.rows.lock().unwrap().len(), 4); // no CAS-grant/signed body

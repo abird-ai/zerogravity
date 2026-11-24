@@ -522,7 +522,7 @@ fn shared_request_byte_and_file_limits_and_cancel_precede_payload() {
             &denied,
             &AtomicBool::new(false)
         ),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert_eq!(script.calls.load(Ordering::Relaxed), 0);
     assert_no_host_reservation(&denied);

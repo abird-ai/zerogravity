@@ -435,7 +435,7 @@ fn preparation_is_local_admitted_exact_and_cancellation_releases_control() {
         let denied = admission(1);
         assert!(matches!(
             spec.prepare(&PullLimits::default(), &denied, &AtomicBool::new(false)),
-            Err(Error::Limit(_))
+            Err(Error::Resource(limit)) if limit.requested > limit.available
         ));
         assert_no_host_reservation(&denied);
         let allowed = admission(128 * 1024 * 1024);

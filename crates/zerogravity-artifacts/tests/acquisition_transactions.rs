@@ -327,7 +327,9 @@ fn public_resolve_admission_and_cancellation_precede_provider_metadata() {
         if canceled {
             assert!(matches!(result, Err(Error::State(_))));
         } else {
-            assert!(matches!(result, Err(Error::Limit(_))));
+            assert!(
+                matches!(result, Err(Error::Resource(limit)) if limit.requested > limit.available)
+            );
         }
         assert_no_host_reservation(&admission);
     }
@@ -356,17 +358,21 @@ fn unfit_host_or_distinct_unknown_disk_peak_never_requests_a_body() {
             .collect();
         let plan = plan(files);
         let script = Script::new(&store, &admission, vec![]);
-        assert!(matches!(
-            execute(
-                &store,
-                &plan,
-                &script,
-                &admission,
-                &Arc::new(AtomicBool::new(false)),
-                None
-            ),
-            Err(Error::Limit(_))
-        ));
+        let result = execute(
+            &store,
+            &plan,
+            &script,
+            &admission,
+            &Arc::new(AtomicBool::new(false)),
+            None,
+        );
+        if cap == 1 {
+            assert!(
+                matches!(result, Err(Error::Resource(limit)) if limit.requested > limit.available)
+            );
+        } else {
+            assert!(matches!(result, Err(Error::Limit(_))));
+        }
         assert_eq!(script.calls.load(Ordering::Relaxed), 0);
         assert_no_host_reservation(&admission);
     }

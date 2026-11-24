@@ -400,8 +400,8 @@ mod thread_control {
             // Long domain strings plus an owner that carries spare capacity:
             // the base typed subtotal ALONE fits, the actual admission does not.
             let key = PhysicalDeviceKey {
-                backend: "host-with-a-deliberately-long-backend-name".into(),
-                device: "root-spare-capacity".into(),
+                backend: "host".into(),
+                device: "root-spare-capacity-with-a-deliberately-long-device-name".into(),
             };
             // `String::clone` allocates exactly `len`, so every attempt gets a
             // freshly constructed owner that really carries spare capacity.
@@ -434,7 +434,7 @@ mod thread_control {
             let scope = limit.scope.unwrap();
             assert!(
                 scope.contains(
-                    "device=host-with-a-deliberately-long-backend-name/root-spare-capacity"
+                    "device=host/root-spare-capacity-with-a-deliberately-long-device-name"
                 )
             );
             assert!(scope.contains("owner=model/session"));

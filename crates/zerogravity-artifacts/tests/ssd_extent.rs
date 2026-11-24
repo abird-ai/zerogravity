@@ -154,7 +154,7 @@ fn mutation_short_io_and_physical_budget_fail_closed() {
     let (small, key) = admission(4096);
     assert!(matches!(
         source.read_verified(&[0, 1], &small),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert_eq!(small.arbiter.snapshot(&key).unwrap().reserved, 0);
     let (large, key) = admission(staging_charge(8192, 2));
@@ -226,7 +226,7 @@ fn sparse_multi_gib_source_manifest_never_requires_multi_gib_residency() {
     let (admit, key) = admission(1024);
     assert!(matches!(
         source.read_verified(&[0], &admit),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert_eq!(admit.arbiter.snapshot(&key).unwrap().reserved, 0);
     // No sparse payload read; metadata-only source admission.
@@ -268,7 +268,7 @@ fn tiny_chunk_offset_storage_is_charged_with_its_owned_data() {
     let (short, short_key) = admission(2);
     assert!(matches!(
         source.read_window(0, 2, &short),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert_eq!(short.arbiter.snapshot(&short_key).unwrap().reserved, 0);
     let charged = staging_charge(2, 2);
@@ -279,7 +279,7 @@ fn tiny_chunk_offset_storage_is_charged_with_its_owned_data() {
     assert_eq!(host.arbiter.snapshot(&key).unwrap().reserved, charged);
     assert!(matches!(
         source.read_window(2, 1, &host),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     drop(window);
     assert_eq!(host.arbiter.snapshot(&key).unwrap().reserved, 0);

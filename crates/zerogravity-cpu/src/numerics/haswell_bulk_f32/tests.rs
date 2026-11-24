@@ -259,7 +259,7 @@ fn actual_capacity_pre_cancel_and_mid_output_cancel_release_only_private_storage
             },
             None
         ),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert_eq!(arbiter.snapshot(&key).unwrap().reserved, 0);
     let (arbiter, key, owner) = budget(4096);

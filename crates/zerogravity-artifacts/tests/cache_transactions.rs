@@ -561,7 +561,7 @@ fn admission_precedes_body_read_and_cancel_releases_synchronous_resources() {
             &too_small,
             Arc::new(AtomicBool::new(false))
         ),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert_no_host_reservation(&too_small);
     assert_eq!(store.usage().unwrap().reserved_bytes, 0);
@@ -630,7 +630,7 @@ fn host_and_cooperative_disk_reservations_are_shared_before_source_reads() {
             &admission,
             Arc::new(AtomicBool::new(false))
         ),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     drop(filler);
     drop(transaction);

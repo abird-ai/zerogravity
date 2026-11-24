@@ -635,7 +635,13 @@ mod tests {
         // Refuse uncompiled GPU backend before initializing a device.
         #[cfg(not(any(feature = "vulkan", feature = "cuda", feature = "hip")))]
         {
-            let missing = run(&["--backend".into(), "cuda".into()]).unwrap_err();
+            let missing = run(&[
+                "--backend".into(),
+                "cuda".into(),
+                "--model".into(),
+                "unqualified=missing.gguf".into(),
+            ])
+            .unwrap_err();
             assert_eq!(missing.code, "backend_not_compiled");
         }
     }

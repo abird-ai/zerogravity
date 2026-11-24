@@ -378,7 +378,7 @@ fn insufficient_host_budget_and_default_4gib_source_cap_refuse_before_any_materi
     let (admit, key) = admission(1024);
     assert!(matches!(
         fx.prepare(&admit, 1024 * 1024),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert_eq!(admit.arbiter.snapshot(&key).unwrap().reserved, 0);
     let (admit, key) = admission(128 * 1024 * 1024);
@@ -409,7 +409,7 @@ fn multiple_cold_transactions_share_one_admitted_host_budget_and_rollback_exactl
     let plan_b = fx.prepare(&admit, 1024 * 1024).unwrap();
     assert!(matches!(
         fx.prepare(&admit, 1024 * 1024),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     let charged = admit.arbiter.snapshot(&key).unwrap().reserved;
     let owned = Arc::new(plan_a.materialize().unwrap());
@@ -487,7 +487,7 @@ fn sparse_large_original_file_header_must_refuse_pre_admission_not_read_5gib() {
     };
     let physical =
         SourceWeights::prepare_verified_shards(&idx, &sha(&idx), vec![huge], bigger, &admit);
-    assert!(matches!(physical, Err(Error::Limit(_))));
+    assert!(matches!(physical, Err(Error::Resource(limit)) if limit.requested > limit.available));
     assert_eq!(admit.arbiter.snapshot(&key).unwrap().reserved, 0);
     // No huge file read, data download or 5GiB transient allocation.
 }

@@ -588,7 +588,7 @@ mod tests {
                 &denied,
                 &AtomicBool::new(false)
             ),
-            Err(Error::Limit(_))
+            Err(Error::Resource(limit)) if limit.requested > limit.available
         ));
         released(&denied);
         let admission = memory(128 * 1024 * 1024);

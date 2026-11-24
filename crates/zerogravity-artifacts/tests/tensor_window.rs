@@ -211,7 +211,7 @@ fn shared_small_window_reuse_spends_only_prepaid_capacity_and_keeps_source_alive
     let other_shard = source.matrix("bf16", MatrixAxes::OutputInput).unwrap();
     assert!(matches!(
         source.read_rows(&other_shard, 0..1),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     drop(other_shard);
     assert!(
@@ -623,11 +623,15 @@ fn whole_hash_index_payload_and_actual_header_closure_fail_without_source_public
 fn metadata_scan_and_window_capacity_refusals_are_real_and_do_not_fence() {
     let fixture = Fixture::new();
     let too_small = admission(META - 1, "host");
-    assert!(matches!(fixture.plan(&too_small), Err(Error::Limit(_))));
+    assert!(
+        matches!(fixture.plan(&too_small), Err(Error::Resource(limit)) if limit.requested > limit.available)
+    );
     assert_eq!(reserved(&too_small), 0);
     let no_scan = admission(META, "host");
     let plan = fixture.plan(&no_scan).unwrap();
-    assert!(matches!(plan.open(), Err(Error::Limit(_))));
+    assert!(
+        matches!(plan.open(), Err(Error::Resource(limit)) if limit.requested > limit.available)
+    );
     assert_eq!(reserved(&no_scan), 0);
     let host = admission(META + 256, "host");
     // Exercise actual staging pressure; cached views share prepaid bytes.
@@ -646,7 +650,7 @@ fn metadata_scan_and_window_capacity_refusals_are_real_and_do_not_fence() {
     assert!(!windows.is_empty());
     assert!(matches!(
         source.read_rows(&matrix, 0..4),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert!(reserved(&host) <= META + 256);
     assert!(!host.arbiter.snapshot(&host.resource).unwrap().fenced);
@@ -1113,7 +1117,7 @@ fn parameter_cancel_and_real_pool_exhaustion_preserve_prior_stage_and_release_al
         .unwrap();
     assert!(matches!(
         source.read_parameter(&parameter, 0..40),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert_eq!(reserved(&host), META + 4096);
     drop(occupied);

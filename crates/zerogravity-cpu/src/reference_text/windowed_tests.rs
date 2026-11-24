@@ -202,7 +202,7 @@ fn expert_projection_refuses_real_exhausted_host_then_recovers_without_source_re
         .unwrap();
     assert!(matches!(
         source.project_expert(&expert, 1, &[1.; 4], None),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     drop(rest);
     drop(first);

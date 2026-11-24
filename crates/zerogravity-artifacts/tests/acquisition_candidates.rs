@@ -447,7 +447,7 @@ fn canceled_or_denied_admission_precedes_metadata_and_postcall_cancel_wins() {
             &admission(1),
             &AtomicBool::new(false)
         ),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert!(matches!(
         discover_candidates(

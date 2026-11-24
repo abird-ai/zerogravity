@@ -153,6 +153,13 @@ their existing numeric/source/physical acceptance gates.
   clean retirement to259768320B idle. No fresh CUDA physical claim.
   CUDA test-only import corrected in assembled validation. Combined GPU
   feature checks and CPU Clippy pass.
+- [x] Assembled source-preparation acceptance: full `scripts/check.sh` passed
+  under mandatory private-network isolation. Typed physical Resource refusals
+  distinguish requested/available capacity from configured Limit; retain
+  rollback, cancellation, source ownership and quota assertions. Serving
+  rejects empty model configuration before backend selection. Isolation
+  fixtures explicitly mock child-network discovery; production guard unchanged.
+  Retained physical X2 evidence applies to the unchanged model path.
 - [ ] Next Phase 1 boundary: complete closed-region shape/binding/preparation
   semantics over the existing plan and typed source, without inventing a
   second canonical program or granting partial replacement prematurely.

@@ -283,7 +283,7 @@ fn default_native_envelope_refuses_128mib_and_succeeds_with_256mib_without_reduc
         Some("keep"),
     )
     .unwrap_err();
-    assert!(matches!(error, Error::Limit(_)));
+    assert!(matches!(error, Error::Resource(limit) if limit.requested > limit.available));
     assert_eq!(
         script.calls.load(Ordering::Relaxed),
         3,

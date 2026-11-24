@@ -80,7 +80,7 @@ fn cancellation_and_real_phase_pressure_refuse_before_source_parse_and_retire_al
     assert_eq!(h.arbiter.snapshot(&h.resource).unwrap().reserved, 0);
     assert!(matches!(
         Gemma4TextTokenizer::prepare(invalid_files(), &h, None),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert_eq!(h.arbiter.snapshot(&h.resource).unwrap().reserved, 0);
 }

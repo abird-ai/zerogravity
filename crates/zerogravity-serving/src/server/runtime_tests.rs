@@ -159,7 +159,7 @@ fn server_stop_preserves_callers_runtime_active_and_queued_sdk_tasks() {
     for events in [active, queued] {
         match events.events.recv_timeout(Duration::from_secs(3)).unwrap() {
             ResponseEvent::Error(error) => {
-                assert_eq!(error.code, "inference_error");
+                assert_eq!((error.status, error.code), (400, "unsupported"));
                 assert!(
                     error
                         .message

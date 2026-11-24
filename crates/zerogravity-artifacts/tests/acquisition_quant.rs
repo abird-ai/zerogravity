@@ -472,7 +472,7 @@ fn cancelled_denied_or_capped_request_never_touches_metadata() {
             &admission(1),
             &AtomicBool::new(false)
         ),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert!(matches!(
         quant::resolve(

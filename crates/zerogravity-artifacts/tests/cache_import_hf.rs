@@ -316,7 +316,7 @@ fn denied_control_payload_quota_limits_and_cancellation_publish_nothing() {
             &denied,
             Arc::new(AtomicBool::new(false))
         ),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert_no_host_reservation(&denied);
     let memory = admission(128 * 1024 * 1024);
@@ -337,7 +337,7 @@ fn denied_control_payload_quota_limits_and_cancellation_publish_nothing() {
     );
     assert!(matches!(
         plan.apply(fixture.options()),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert_no_host_reservation(&payload_denied);
     let store = CacheStore::open(fixture.options()).unwrap();

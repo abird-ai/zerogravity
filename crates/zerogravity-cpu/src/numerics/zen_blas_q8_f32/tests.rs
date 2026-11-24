@@ -128,7 +128,7 @@ fn one_byte_pressure_and_pre_cancel_leave_no_private_reservation() {
     let budget = Budget::new(SCRATCH_BYTES + OUTPUT_BYTES - 1);
     assert!(matches!(
         execute(request(&weights, &input), budget.admission(), None),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert_eq!(budget.reserved(), 0);
     let budget = Budget::new(SCRATCH_BYTES + OUTPUT_BYTES);

@@ -603,7 +603,7 @@ fn window_model_role_metadata_pressure_refuses_before_new_payload_allocation() {
     let full = reserved(&admission);
     assert!(matches!(
         OriginalWindowModelSource::from_owner(owner.clone()),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert_eq!(reserved(&admission), full);
     drop(hold);

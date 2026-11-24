@@ -5,6 +5,17 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 24 Nov — source-preparation acceptance
+
+Whole-program source preparation at `8c34c472` retains the existing HIP/CUDA
+numerical paths and original source owners. X2 physical native V2 C1/C8,
+distinct multichunk, exact-reference C1 and final-reader retirement passed;
+0.8B C8 warm mean 552.423 ms (43.44 tok/s), with unchanged dispatches and
+expected tokens. This is retained physical evidence, not a new benchmark of
+the acceptance fixes. The assembled full workspace `scripts/check.sh` gate
+now passes under mandatory isolation, superseding the earlier CPU gate
+blockers below. No new physical CUDA qualification or performance claim.
+
 ## 24 Nov — native projection opportunity (not model throughput)
 
 Production exact HIP remains unchanged from 909cf1e6. The retained matched

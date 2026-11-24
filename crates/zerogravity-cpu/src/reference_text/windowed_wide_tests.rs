@@ -79,7 +79,7 @@ fn genuine21504_column_windows_compute_tail_words_refuse_pressure_and_retain_sou
     let rest = source.source().reserve_workspace(remaining).unwrap();
     assert!(matches!(
         source.project(&descriptor, &input, None),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     drop(rest);
     drop(first);

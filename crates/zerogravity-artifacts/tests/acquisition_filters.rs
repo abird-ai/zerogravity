@@ -528,7 +528,7 @@ fn bounded_control_memory_and_metadata_call_budget_refuse_before_unplanned_io() 
                 &admission(96 * 1024 * 1024 - 1),
                 &AtomicBool::new(false)
             ),
-            Err(Error::Limit(_))
+            Err(Error::Resource(limit)) if limit.requested > limit.available
         ));
         assert_eq!(script.calls.load(Ordering::Relaxed), 0);
         let mut planned = rows(provider, &paths);

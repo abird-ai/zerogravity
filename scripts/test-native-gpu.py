@@ -160,6 +160,7 @@ class ExecutionGuardTests(unittest.TestCase):
             mock.patch.object(NATIVE.sys, "platform", "linux"),
             mock.patch.object(NATIVE.platform, "machine", return_value="x86_64"),
             mock.patch.object(NATIVE, "bubblewrap_network_isolation", return_value=None),
+            mock.patch.object(NATIVE, "isolated_child_network_namespace", return_value=False),
             # Deliberately unrelated: the upstream artifact path ignores it.
             mock.patch.dict(os.environ, {
                 "XDG_DATA_HOME": str(self.home / ".local/share"),

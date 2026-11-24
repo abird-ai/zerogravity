@@ -157,7 +157,7 @@ fn original_logical_format_and_actual_owned_bytes_reach_only_existing_source_iss
     ));
     assert!(matches!(
         lease.source_weights(MODEL, &denied_admission()),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert!(lease.source_weights(CONFIG, &admission()).is_err());
     assert!(lease.read_verified("absent", 4096).is_err());
@@ -443,7 +443,7 @@ fn raw_owned_source_reservation_precedes_copy_and_lasts_until_all_model_owners_d
     descriptor.seek(SeekFrom::Start(11)).unwrap();
     assert!(matches!(
         lease.source_weights(MODEL, &denied),
-        Err(Error::Limit(_))
+        Err(Error::Resource(limit)) if limit.requested > limit.available
     ));
     assert_eq!(descriptor.stream_position().unwrap(), 11);
     assert_eq!(

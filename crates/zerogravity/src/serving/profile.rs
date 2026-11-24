@@ -45,6 +45,9 @@ impl TextProfile {
         validate_source_profile(self)
     }
     pub(crate) fn load(self, declared: Vec<(String, PathBuf)>) -> Result<Router, ServiceError> {
+        if declared.is_empty() {
+            return Err(ServiceError::new(400, "invalid_config", "no model routes"));
+        }
         let options = self;
         let backend = options.backend.as_str();
         match backend {

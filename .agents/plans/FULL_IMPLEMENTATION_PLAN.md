@@ -80,29 +80,25 @@ The last two small-model C8 vLLM reference values are 219.612/140.847 tok/s
 (retained comparisons, not fresh paired results). CUDA has substantial native
 and paged/cohort execution, but deterministic fused-lane correctness remains
 open and current physical performance must be revalidated. Vulkan has bounded
-operator evidence, not whole-model parity. The last full workspace gate passes
-GPU feature boundaries and CPU Clippy then stops at the existing CPU cache
-admission assertion. Resolve it as part of foundation acceptance, not by
-weakening the gate. The pinned X2 vLLM closure is currently unavailable;
+operator evidence, not whole-model parity. The assembled source-preparation
+checkpoint now passes the full workspace gate, including CPU/cache/serving,
+optional acquisition, release/installer and isolation checks. The pinned X2 vLLM closure is currently unavailable;
 restore the approved local environment before claiming fresh parity.
 See CURRENT_BASELINE for measured scope; none of these observations grants
 arbitrary model, hardware or numerical support.
 
 ## 1. Foundations
 
-Current foundation slice: `8c34c472` makes source-owned preparation generic
+Accepted foundation slice: `8c34c472` makes source-owned preparation generic
 over actual borrowed/window-backed source owners and routes production Qwen
 HIP/CUDA through the shared whole-program seam. Physical X2 source/replay/
-continuation and retirement checks pass. Partial-region preparation is still
-open. The CPU workspace gate progressed past the old cache_prepare assertion
-after its migration to typed Resource refusal (including available/requested
-bytes and no retained charge). The no-fail-fast CPU sweep exposed 22 remaining
-failures:20 capacity/Limit expectations across artifact, CPU and family
-tests, one core resource-kind classification mismatch, one serving public
-error-code mismatch. Audit actual error contracts and ownership before
-changing assertions; resolve the batch before Phase 1 acceptance. Do not
-weaken resource, malformed, cancellation or publication checks.
-
+continuation and retirement checks pass. The complete assembled
+`scripts/check.sh` gate is green under mandatory isolation. Acceptance fixes
+preserve typed physical-resource refusals, configured limits, ownership and
+rollback; empty model declarations refuse before backend selection. No
+additional physical CUDA qualification is claimed. Next complete closed-region
+shape/binding/preparation over the same plan and typed source. Whole-program
+ingress acceptance does not close the remaining Phase 1 foundations.
 
 Complete the engineering contracts and their real consumers, including every
 foundation below. This is not a requirement to finish every backend optimization,

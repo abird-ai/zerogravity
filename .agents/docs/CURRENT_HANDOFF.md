@@ -27,14 +27,19 @@ changed. X2 host source/final reader, native V2 C1/C8, distinct multichunk and
 exact-reference C1 pass; C8 warm552.423ms/43.44tok/s, unchanged dispatches,
 expected tokens/replay/lane invariance, original idle retirement. CUDA
 test-only import restored; GPU feature boundaries and CPU Clippy pass.
-The old cache_prepare CPU assertion now checks actual Resource refusal and
-zero remaining charge. A complete no-fail-fast CPU sweep exposed 22 other
-failures (20 resource/Limit assertion mismatches, core resource-kind label,
-serving error-code). Next resolve these as a bounded foundation acceptance
-batch, inspecting actual contracts rather than blanket matching either error.
-Full gate is not green; no fresh CUDA physical validation. Then complete
-closed-region binding/preparation; whole-program ingress is only the first
-slice. See the full plan and composition TODO.
+The assembled source-preparation acceptance gate now passes in full:
+`scripts/check.sh` completed under the required private child network namespace.
+Physical budget refusals assert typed Resource with requested > available;
+configured/overflow/disk-quota limits retain Limit and rollback checks.
+Empty serving model declarations refuse before backend selection, valid
+unsupported backends retain their own error, and isolation-test fixtures no
+longer depend on the outer environment. CPU and optional acquisition sweeps
+passed (1102 and 592 tests respectively), with explicit qualification skips.
+No production inference or resource-admission change in the acceptance fixes.
+Retain the original X2 physical evidence; no fresh CUDA physical validation.
+Whole-program source preparation is accepted. Next complete closed-region
+shape/binding/preparation on the same typed source and semantic plan; the
+broader Phase 1 foundations remain open. See the full plan and composition TODO.
 
 Full dated takeover snapshot:
 [`FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md).
