@@ -318,8 +318,14 @@ The current implementation priorities implied by that baseline are:
    zero failed quanta and clean retirement. Select the hoisted traversal at cold
    preparation only for the existing qualified gfx1150 resident HIP policy;
    native catalogue and launch share the immutable operand choice. Other paths
-   keep canonical; prior alternatives remain dormant. Next re-localize selected
-   hot paths and choose a clean measured cut, not more fixture administration;
+   keep canonical; prior alternatives remain dormant. Final `3be8a812` CLI 47+16
+   canary passed, original KFD owners restored. Temp runner/selector removed.
+   Full isolated check.sh passed formatting/architecture but is blocked by
+   handoff-existing combined HIP qualification compile errors: duplicate TextObserver
+   exports, missing Context.module_opaque_bytes, stale require_environment call.
+   Restore that feature-boundary build before closing the full phase gate.
+   Next re-localize selected hot paths and choose a clean measured cut,
+   not more fixture administration;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
    47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
    streaming mechanics are the relevant optimization target there.

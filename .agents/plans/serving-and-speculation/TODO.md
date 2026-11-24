@@ -169,7 +169,13 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   unchanged, zero failed quanta, clean retirement and original KFD owner set.
   Select hoisted traversal only for the qualified gfx1150 resident HIP policy,
   immutable in the prepared operand and shared by native catalogue/launch.
-  Canonical and prior alternatives remain reusable; remove temporary probes/switches.
+  Canonical and prior alternatives remain reusable; temporary probes/switches removed.
+  Final production CLI at `3be8a812` generated all16 tokens from the same raw prompt,
+  clean KFD retirement. Formatting/architecture passed.
+- [ ] Restore combined HIP qualification build: full isolated check.sh stops on
+  pre-existing duplicate TextObserver exports (lib.rs), missing Context.module_opaque_bytes
+  and stale require_environment call (hip/native/shared.rs), confirmed at handoff f6bd058.
+  Full phase gate remains open; no new CUDA physical acceptance claimed.
 - [ ] Next resident HIP unit: re-localize selected hot paths with existing device
   events and choose the next clean measured optimization. Separately qualify
   gfx1151/X2 native opaque accounting before changing its8GiB fallback. No A1
