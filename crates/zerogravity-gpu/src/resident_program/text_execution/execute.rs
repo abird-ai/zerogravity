@@ -316,10 +316,6 @@ impl Cold {
                 let input_lease = self.value_lease(node.inputs[0])?;
                 let output_lease = self.value_lease(node.outputs[0])?;
                 let direct = active == 1 && input_lease.id() != output_lease.id();
-                let reuse_packed = active == 1
-                    && self.operands[&d.matrices()[0].name].storage()
-                        == Bf16ProjectionStorage::Resident;
-                let mut packed_ready = false;
                 let mut offset = 0;
                 let mut count = 0;
                 for m in d.matrices() {
@@ -330,28 +326,25 @@ impl Cold {
                         temporary = self.s(layout::PROJECT, active * m.rows)?;
                         (temporary.clone(), &self.scratch[layout::PROJECT])
                     };
-                    let operand = &self.operands[&m.name];
-                    let bindings = Bf16ProjectionBindings {
-                        input: &input,
-                        input_lease,
-                        output: &destination,
-                        output_lease: destination_lease,
-                        packed: &self.packed,
-                        accumulation: &self.accumulation,
-                        flags: &self.flags,
-                        status: &self.status,
-                        zero: &self.zero,
-                    };
-                    count += if reuse_packed && packed_ready {
-                        operand
-                            .enqueue_rows_prepacked(flight, &self.page, bindings, active, None)
-                            .await?
-                    } else {
-                        operand
-                            .enqueue_rows(flight, &self.page, bindings, active, None)
-                            .await?
-                    };
-                    packed_ready |= reuse_packed;
+                    count += self.operands[&m.name]
+                        .enqueue_rows(
+                            flight,
+                            &self.page,
+                            Bf16ProjectionBindings {
+                                input: &input,
+                                input_lease,
+                                output: &destination,
+                                output_lease: destination_lease,
+                                packed: &self.packed,
+                                accumulation: &self.accumulation,
+                                flags: &self.flags,
+                                status: &self.status,
+                                zero: &self.zero,
+                            },
+                            active,
+                            None,
+                        )
+                        .await?;
                     if !direct {
                         unsafe {
                             kernels::columns::launch_unchecked(

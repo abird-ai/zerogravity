@@ -228,8 +228,9 @@ impl PreparedBf16Projection {
     }
 
     /// Retained alternate: reuse the exact packed input produced by an earlier
-    /// projection on this same ordered flight. Current streamed Qwen execution
-    /// keeps per-matrix packing because it overlaps source-window transport better.
+    /// projection on this same ordered flight. Current Qwen keeps per-matrix packing:
+    /// streamed weights overlap pack with source transport, while the resident
+    /// singleton A/B still loses wall time despite fewer launches.
     #[allow(dead_code)]
     pub(crate) async fn enqueue_rows_prepacked(
         &self,
