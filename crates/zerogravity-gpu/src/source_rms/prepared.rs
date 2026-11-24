@@ -32,9 +32,13 @@ pub(crate) fn kernels(
         add!(super::kernels::squares::Squares, b(), b(), b());
     }
     add!(super::kernels::sum::Sum, b(), b(), b(), width);
-    for stage in 0..4u32 {
-        add!(super::kernels::scalar::Scalar, b(), b(), b(), stage, width);
-    }
+    add!(
+        super::kernels::scalar_cascade::ScalarCascade,
+        b(),
+        b(),
+        b(),
+        width
+    );
     add!(
         super::kernels::normalize::Normalize,
         b(),

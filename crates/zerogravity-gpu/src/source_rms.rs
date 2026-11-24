@@ -250,18 +250,15 @@ fn launch_input(
             arg(&scratch[1], groups),
             width,
         );
-        for stage in 0..4u32 {
-            kernels::scalar::launch_unchecked(
-                client,
-                grid(groups),
-                dim,
-                arg(&scratch[stage as usize + 1], groups),
-                arg(&scratch[stage as usize + 2], groups),
-                arg(status, 1),
-                stage,
-                width,
-            );
-        }
+        kernels::scalar_cascade::launch_unchecked(
+            client,
+            grid(groups),
+            dim,
+            arg(&scratch[1], groups),
+            arg(&scratch[5], groups),
+            arg(status, 1),
+            width,
+        );
         kernels::normalize::launch_unchecked(
             client,
             grid(count),
@@ -303,9 +300,9 @@ fn launch_input(
         }
     }
     Ok(if mode == Gamma::DirectF32AfterBf16 {
-        8
+        5
     } else {
-        9
+        6
     })
 }
 

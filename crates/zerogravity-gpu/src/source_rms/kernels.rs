@@ -71,6 +71,24 @@ pub(crate) fn sum(input: &[f32], zero: &[f32], output: &mut [f32], #[comptime] w
         output[row] = add(z, total);
     }
 }
+#[cube]
+fn scalar_value(x: f32, #[comptime] stage: u32, #[comptime] width: usize) -> f32 {
+    let mut y = x;
+    if comptime!(stage == 0) {
+        y = round_source(widen_source(x) / f64::cast_from(width), 0u32);
+    }
+    if comptime!(stage == 1) {
+        y = add(x, f32::reinterpret(0x358637bdu32));
+    }
+    if comptime!(stage == 2) {
+        y = f32::cast_from(widen_source(x).sqrt());
+    }
+    if comptime!(stage == 3) {
+        y = div(1.0f32, x);
+    }
+    y
+}
+
 #[cube(launch_unchecked)]
 pub(crate) fn scalar(
     input: &[f32],
@@ -81,20 +99,39 @@ pub(crate) fn scalar(
 ) {
     let i = ABSOLUTE_POS;
     if i < output.len() {
-        let x = input[i];
-        let mut y = x;
-        if comptime!(stage == 0) {
-            y = round_source(widen_source(x) / f64::cast_from(width), 0u32);
+        let y = scalar_value(input[i], stage, width);
+        output[i] = y;
+        if !finite(y) {
+            status[0].fetch_or(NONFINITE_VALUE);
         }
-        if comptime!(stage == 1) {
-            y = add(x, f32::reinterpret(0x358637bdu32));
+    }
+}
+
+/// Exact RMS scalar chain: mean -> epsilon -> sqrt -> reciprocal.
+/// Each stage retains the standalone kernel's f32 operation and status check.
+#[cube(launch_unchecked)]
+pub(crate) fn scalar_cascade(
+    input: &[f32],
+    output: &mut [f32],
+    status: &[Atomic<u32>],
+    #[comptime] width: usize,
+) {
+    let i = ABSOLUTE_POS;
+    if i < output.len() {
+        let mut y = input[i];
+        y = scalar_value(y, 0u32, width);
+        if !finite(y) {
+            status[0].fetch_or(NONFINITE_VALUE);
         }
-        if comptime!(stage == 2) {
-            y = f32::cast_from(widen_source(x).sqrt());
+        y = scalar_value(y, 1u32, width);
+        if !finite(y) {
+            status[0].fetch_or(NONFINITE_VALUE);
         }
-        if comptime!(stage == 3) {
-            y = div(1.0f32, x);
+        y = scalar_value(y, 2u32, width);
+        if !finite(y) {
+            status[0].fetch_or(NONFINITE_VALUE);
         }
+        y = scalar_value(y, 3u32, width);
         output[i] = y;
         if !finite(y) {
             status[0].fetch_or(NONFINITE_VALUE);
