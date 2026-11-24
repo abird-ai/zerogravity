@@ -56,9 +56,14 @@ Immediate execution priorities are intentionally small:
   scalar selected and parallel reusable. RMS scalar review gives no clear
   next cut. `6f2ededf` retains exact two-barrier projection subtrees with
   unchanged math/status; direct A1 timing is flat (<=1.5% gain), so the
-  current four-barrier hoisted consumer stays selected. Move to matched
-  gfx1151/X2 real-model serving and conservative native accounting qualification
-  instead of more marginal A1 microkernel experiments.
+  current four-barrier hoisted consumer stays selected. X2 runtime recovery and
+  native lifecycle are complete (`42d4703d`); all three real model catalogues
+  consume ~168MB incremental physical VRAM. `38f20ca3` qualifies gfx1151
+  resident native accounting (1GiB opaque + unchanged 1GiB code bound) without
+  activating the gfx1150 traversal. See CURRENT_BASELINE for original-envelope
+  C1/C4/C8 and reduced-envelope rechecks. Fresh paired vLLM remains blocked by its
+  missing pinned provider closure. Prioritize current X2 projection/serving
+  localization instead of more marginal A1 microkernel experiments.
   Combined backend feature boundaries restored at `c89d0ee7`; full gate now
   stops at a separate CPU cache admission assertion. See serving plan;
 - optimize L5 27B streamed source/transfer overlap as a distinct memory-constrained mode;
@@ -490,8 +495,10 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   the accepted opt3/codegen16/non-LTO test profile and private child-net isolation was
   accepted, but runtime loading refused before GPU allocation. X2 stayed at the exact
  274,448,384B/0% baseline and was restored to `b599db3`; probe/bundle removed. Repair
-  the X2 ROCm environment separately before another27B/ROCm2B run. Missing approved
- 66-call and populated1K/2K references remain a separate blocker.
+  the X2 ROCm environment separately before another27B/ROCm2B run. Update24Nov:
+  process-local compatible loader restores actual ROCm SDK execution for all three
+  models; see CURRENT_HANDOFF and CURRENT_BASELINE. HTTP/populated context
+  qualification and missing approved 66-call/1K/2K references remain separate.
   R10 audit is complete and mixed; R11 remains staged/unlaunched. Review its older
   binary/budget before any fresh successor. Both context captures remain interrupted;
   the waived12GiB host-available threshold is not a current blocker.

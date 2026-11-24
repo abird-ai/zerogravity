@@ -249,7 +249,7 @@ The current implementation priorities implied by that baseline are:
    weights from streamed to resident:47+3 dispatches17,653→9,817 and stable runs land
    around0.53–0.56s (one~0.895s outlier), while output16 drops73,384→31,592 dispatches
    and warm mean~31.350s→~0.962s (~32.6× faster), with exact tokens/replay/retirement.
-   gfx1151/X2 and all unmatched environments remain on8GiB until separately qualified;
+   gfx1151/X2 was still on8GiB at that point; see24Nov X2 recovery below.
    Resident-path re-localization on exact `fd4611e` changes the singleton picture again.
    One47-row prefill is6,467 dispatches; one cached decode token is1,675:
    projection561 (~33.5%), RMS/residual-RMS489 (~29.2%), GDN360 (~21.5%),
@@ -347,9 +347,8 @@ The current implementation priorities implied by that baseline are:
    rounded output and status are bit-exact (including strided/fault inputs),
    but timing gains are <=1.5% with mixed paired windows. Keep current
    four-barrier hoisted production selection; no whole-model candidate A/B.
-   Probe removed. Next prioritize matched-vLLM X2 serving: revalidate runtime
-   and source availability, qualify gfx1151 native opaque accounting before
-   changing its8GiB fallback, then measure the real current models;
+   Probe removed. X2 recovery below now closes the native accounting unit;
+   next prioritize actual X2 resident projection/serving gaps;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
    47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
    streaming mechanics are the relevant optimization target there.
@@ -357,7 +356,48 @@ The current implementation priorities implied by that baseline are:
 The matched vLLM provider is Nix-native for both CUDA and ROCm. Podman/FUSE is not part
 of the current baseline architecture. A1 is explicitly available for execution/testing;
 its gfx1150 HIP path is useful for quick physical A/Bs, while X2 remains the canonical
-large-VRAM ROCm baseline host once its current runtime closure is usable.
+large-VRAM ROCm baseline host.
+
+### X2 runtime recovery and native accounting — 24 Nov 2026
+
+X2's pinned GPU dev shell fails to realize offline (missing rust-overlay input,
+CA error on retrieval); its previous vLLM provider is also absent. Do not repin
+the flake or weaken TLS. The installed CLR7.2.4 closure is healthy when invoked
+with its matching glibc2.44 loader instead of the current system's glibc2.42.
+No host/profile changes or model downloads. Native lifecycle and all real
+0.8B/2B/27B SDK cells pass. Use the existing population benchmark rather than
+new fixtures. Native module allowance now1GiB on both qualified integrated
+gfx1150/gfx1151, exact runtime/driver70253211,RTC9.0 and compiler/fingerprint
+revalidation before load (`38f20ca3`). Unknown versions/architectures and
+device-free/finite/shared qualification retain 8GiB; source-derived code bound
+and ownership unchanged. Only gfx1150 selects the hoisted packed traversal.
+See CURRENT_BASELINE for the actual measured cells.
+
+Local X2 recovery recipe (revalidate store paths after GC; use the normal locked
+shell once available). Build with existing Nix cargo/rustc1.95, gcc15.3 and
+pkg-config on PATH, kache, four jobs given ~10GiB available host RAM,
+`CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16`;
+run `cargo test --no-run --locked --offline --release -p zerogravity --no-default-features --features qwen35-hip,zerogravity-gpu/qualification --test qwen_hip_sdk`
+through the private-network native-gpu wrapper. Use the emitted binary:
+
+```sh
+py=/nix/store/xahxrjs30p3mw0a42bqg9ikgkikskw8m-python3-3.14.8/bin/python3.14
+glibc=/nix/store/pqyiidz5mi73wv5f91d48s9plcqyj5bz-glibc-2.44-57
+hip=/nix/store/nyccgqvlq59jxsk7klrxipq260l1ibin-clr-7.2.4
+libs="$glibc/lib:/nix/store/l3msfz6rylwsyhnjzsbr8ylfshh1xw5f-gcc-prefix/x86_64-unknown-linux-gnu/lib:/nix/store/7a2cjhcgzyym5zaz6m4fksw47qvm150w-gcc-16.2.0-lib/lib:$hip/lib"
+export HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIP_PATH="$hip" ROCM_PATH="$hip" ROCM_HOME="$hip"
+export PATH="$hip/bin:$PATH" PYTHONDONTWRITEBYTECODE=1
+export HIP_DEVICE_LIB_PATH=/nix/store/yk7752h3h1k7r66h509ps2k0q3bnyg6v-rocm-device-libs-22.0.0-rocm/amdgcn/bitcode
+"$py" -B scripts/native-gpu.py -- "$glibc/lib/ld-linux-x86-64.so.2" --library-path "$libs" "$binary" --ignored --exact population::public_source_population_benchmark --nocapture --test-threads=1
+```
+
+Set the existing `ZG_QWEN_HIP_SDK_MODEL`, `ZG_QWEN_HIP_TOTAL_DEVICE_BYTES`,
+`ZG_QWEN_HIP_BENCH_CLIENTS`, and `ZG_QWEN_HIP_COHORT_WIDTH` for the chosen
+cell (model labels `08`, `2b`, `27b`); check shared free capacity and KFD owners before/after. Use an external
+periodic VRAM/status heartbeat for long silent X2 loads; don't add a production
+telemetry loop. Scope loader/library-path overrides to the test process, never
+the host shell. Retained vLLM measurements are the reference until the pinned
+provider closure is restored; these are not fresh paired performance claims.
 
 ### Error architecture — 21 Nov 2026
 

@@ -118,6 +118,53 @@ Every fresh vLLM request returns exact [248068, 198, 760]; the resident
 ZeroGravity ladder is likewise exact/replay-stable/lane-invariant. X2 retires
 to 274,452,480 B VRAM, 0% busy and no KFD owner after the vLLM run.
 
+### X2 recovery and native admission — 24 Nov
+
+All three resident models run again on the installed CLR7.2.4/glibc2.44
+closure (runtime/driver70253211,RTC9.0); see CURRENT_HANDOFF for the temporary
+process-local loader recipe. The locked development shell and pinned vLLM
+provider are not currently available on X2. The following uses the original
+SDK population benchmark, optimized non-LTO/codegen16, one warmup + two
+timed waves. Native catalogue probe `11a44d60` measured the original envelopes;
+selected policy `38f20ca3` removes the probe and rechecks smaller envelopes.
+
+| Model | Current C1, original envelope (GiB) | Output tok/s | Retained matched vLLM tok/s | Native modules | Native prepare delta (MB) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 0.8B | 24 | 12.508 | 51.966 | 93 | 168.116 |
+| 2B | 24 | 6.977 | 36.054 | 90 | 168.059 |
+| 27B | 75 | 0.5392 | 3.803 | 95 | 168.153 |
+
+The four-cycle native lifecycle observes a maximum ~194MB incremental VRAM;
+complete native sets contain 2.37–2.49MB of load segments. Qualified integrated
+gfx1151 now has a 1GiB opaque allowance instead of 8GiB, plus the unchanged
+1GiB upper code bound. Actual reduced-envelope validation:
+
+| Model | Total admitted GiB | Warm mean (ms) | Output tok/s | Native device charge (B) | Dispatches/request |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 2B | 14 | 434.714 | 6.901 | 1,076,111,858 | 9,673 |
+| 27B | 68 | 5,556.005 | 0.5400 | 1,076,230,179 | 36,741 |
+
+Actual VRAM peaks remain ~4.54GB and ~56.43GB respectively, unchanged within
+measurement variation: this is admission headroom, not a physical allocation
+or throughput reduction. All cells return exact expected IDs, replay-stable,
+lane-invariant, with zero failed quanta and original 259,768,320B idle VRAM/no
+KFD owner after retirement.
+
+Current small-model cohort recheck at the original matched 24GiB envelope,
+`38f20ca3`, configured width8, actual fused decode cohorts (two publications
+per wave), no failed quanta:
+
+| Offered | Current ZG 0.8B | Retained vLLM 0.8B | Current ZG 2B | Retained vLLM 2B |
+| ---: | ---: | ---: | ---: | ---: |
+| 4 | 13.743 | 135.358 | 7.842 | 96.233 |
+| 8 | 13.482 | 219.612 | 7.641 | 140.847 |
+
+Both models pass all identical lanes, exact greedy IDs and replay, and
+retire to original idle VRAM/KFD. Dispatches/wave31,794 at C4 and60,790 at
+C8 for both. Scaling remains weak; measure X2 prefill versus cached decode
+and projection/GDN hot paths, then select useful existing primitives rather
+than adding new fixture grids. No new vLLM execution or fresh paired comparison.
+
 ## A1 — Radeon 890M gfx1150 — local resident HIP comparison, 24 Nov
 
 Separate local optimization cell, not a matched vLLM baseline: Qwen3.5-0.8B,
@@ -132,7 +179,7 @@ at `224085b1`, two fresh loads/variant, one warmup + four timed requests/load.
 10.2% lower mean request latency; exact greedy IDs/replay, 30,824 dispatches
 unchanged, no failed quanta, clean source/session retirement and no added KFD
 owners. Hoisted traversal selected for the qualified gfx1150 resident HIP path.
-The matched X2 and L5 tables above are unchanged.
+The retained matched vLLM tables above are unchanged.
 
 ## What this baseline says
 

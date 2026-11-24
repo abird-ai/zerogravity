@@ -223,11 +223,41 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   2048x1024 4.372→4.310. Gains <=1.5%, mixed individual pairs; no
   whole-model A/B justified. Retain both exact siblings; production selector
   unchanged and temporary probe removed. Original KFD owner set restored.
-- [ ] Next HIP priority: move from marginal A1 microkernels to the matched
-  gfx1151/X2 serving envelope. Revalidate actual runtime/cache/source state,
-  qualify its native opaque accounting with the existing lifecycle before
-  changing the8GiB fallback, then get real current resident Qwen/vLLM
-  comparisons. No A1 comparison to X2/L5 vLLM; no broader qualification inferred.
+- [x] Recover actual gfx1151/X2 execution and qualify native accounting.
+  The installed CLR7.2.4 works with its glibc2.44 loader and matching libraries;
+  the locked Nix dev-shell input remains unavailable locally. Reuse the original
+  four-cycle lifecycle: `42d4703d` checks second-live-set refusal and unchanged
+  ownership instead of obsolete error wording. All four cycles pass; observed
+  peak incremental physical VRAM~194MB, clean original retirement.
+  Temporary catalogue observation (`11a44d60`, removed) measures complete
+  0.8B/2B/27B native sets:93/90/95 modules,~2.4MB load segments each,
+  incremental physical VRAM168.116/168.059/168.153MB. Actual C1 at the original
+  24/24/75GiB envelopes:12.508/6.977/0.539 output tok/s, exact IDs/replay,
+  no failed GPU quanta, clean retirement. `38f20ca3` qualifies 1GiB opaque
+  for integrated gfx1151 on the same runtime/driver70253211,RTC9.0 tuple.
+  The 1GiB source-derived code bound is unchanged. Cold version observation
+  preserves 8GiB fallback for unknown runtimes/architectures; the actor
+  revalidates its exact fingerprint/compiler options and versions before load.
+  Distinct policy variants preserve gfx1150-only hoisted projection selection.
+  Device-free and original finite/shared qualification keep conservative accounting.
+  Final `38f20ca3` real2B at14GiB and real27B at68GiB pass exact output/replay,
+  9,673/36,741 dispatches per request, zero failed quanta and clean original
+  retirement; warm mean434.714/5,556.005ms. Actual native charges
+  1,076,111,858/1,076,230,179B; original-envelope throughput essentially
+  unchanged. GPU feature/CPU Clippy gates pass; full check.sh stops on the
+  pre-existing CPU cache admission assertion.
+- [x] Final-policy X2 C4/C8 recheck, both models at24GiB/configured width8:
+  0.8B13.743/13.482 tok/s,2B7.842/7.641 tok/s. Exact identical-lane output,
+  replay, actual fused decode cohorts (two per wave), zero failed quanta;
+  31,794/60,790 dispatches per wave; clean original retirement.
+  Against retained matched vLLM, C8 gaps remain~16.3x/~18.4x.
+- [ ] Next HIP priority: X2 device-event localization separating prefill and
+  cached decode, then address the largest measured projection/serving gap.
+  Try retained reusable primitives on gfx1151; no selector without actual
+  exact-output and material measured gain. Prioritize prefill/cohort scaling
+  and real model feedback over marginal A1 cuts. Restore the unavailable pinned vLLM provider closure
+  separately for fresh paired runs; no acquisition/repin merely to benchmark.
+  No A1 comparison to X2/L5 vLLM; no broader qualification inferred.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.
