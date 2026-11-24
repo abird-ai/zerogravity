@@ -98,38 +98,47 @@ const CONTEXT_DEVICE: u64 = (4 * GIB) as u64;
 const CONTEXT_HOST: u64 = (2 * GIB) as u64;
 const COMPILER_HOST: usize = 8 * GIB;
 const MODULE_OPAQUE: usize = 8 * GIB;
-// A1 gfx1150 / ROCm+driver 7.2.53211 / RTC 9.0: four cold native
-// prepare/load/launch/unload cycles plus the complete 92-module Qwen0.8B
-// catalogue stayed below 158 MiB observed first-use device delta. Keep a
-// 1 GiB fixed policy margin; mismatched actor environments refuse before load.
-const QUALIFIED_GFX1150_MODULE_OPAQUE: usize = GIB;
+// Integrated gfx1150/gfx1151, ROCm+driver 7.2.53211 / RTC 9.0:
+// four cold lifecycle cycles and complete real Qwen catalogues stayed below
+// 194 MB first-use device delta. Keep 1 GiB opaque plus the unchanged code bound.
+const QUALIFIED_MODULE_OPAQUE: usize = GIB;
+const QUALIFIED_VERSIONS: (i32, i32, i32, i32) = (70253211, 70253211, 9, 0);
 const MAX_CODE: usize = GIB;
 const MAX_MODULES: usize = 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct HipSourceNativePolicy {
-    module_opaque_bytes: usize,
+pub(crate) enum HipSourceNativePolicy {
+    Fallback,
+    Gfx1150,
+    Gfx1151,
 }
 impl HipSourceNativePolicy {
-    #[cfg(feature = "hip-source")]
-    pub(crate) const FALLBACK: Self = Self {
-        module_opaque_bytes: MODULE_OPAQUE,
-    };
-    const GFX1150_ROCM_7_2_53211: Self = Self {
-        module_opaque_bytes: QUALIFIED_GFX1150_MODULE_OPAQUE,
-    };
+    fn module_opaque_bytes(self) -> usize {
+        match self {
+            Self::Fallback => MODULE_OPAQUE,
+            Self::Gfx1150 | Self::Gfx1151 => QUALIFIED_MODULE_OPAQUE,
+        }
+    }
+
+    fn required_environment(self) -> Option<(&'static str, &'static str)> {
+        match self {
+            Self::Fallback => None,
+            Self::Gfx1150 => Some(("hip-kernel_gfx1150", GFX1150_OPTIONS)),
+            Self::Gfx1151 => Some(("hip-kernel_gfx1151", GFX1151_OPTIONS)),
+        }
+    }
 
     /// Resident full-K64 packed-index traversal wins on this qualified actor.
     #[cfg(feature = "hip-source")]
     pub(crate) fn prefers_hoisted_projection(self) -> bool {
-        self == Self::GFX1150_ROCM_7_2_53211
+        self == Self::Gfx1150
     }
 
     #[cfg(feature = "hip-source")]
     fn preparation_upper_bytes(self) -> (usize, usize) {
         (
             COMPILER_HOST + 2 * MAX_CODE + 2 * 1024 * 1024,
-            self.module_opaque_bytes + MAX_CODE,
+            self.module_opaque_bytes() + MAX_CODE,
         )
     }
 }
@@ -142,19 +151,28 @@ pub(crate) fn source_native_policy(device: &Device) -> Result<HipSourceNativePol
     };
     let observed = cubecl::hip::observe_device(device.clone())
         .ok_or_else(|| Error::Unsupported("HIP source native device observation".into()))?;
-    // Cold device facts only nominate the qualified candidate. The actual
-    // prepared actor revalidates the exact ROCm/driver/RTC/compiler tuple
-    // before any module is compiled or loaded.
-    Ok(if observed.arch_name == "gfx1150" && observed.integrated {
-        HipSourceNativePolicy::GFX1150_ROCM_7_2_53211
-    } else {
-        HipSourceNativePolicy::FALLBACK
-    })
+    // Nominate only the qualified integrated device/runtime tuple. The
+    // prepared actor revalidates its exact environment before compilation.
+    use HipSourceNativePolicy::*;
+    let candidate = match (observed.integrated, observed.arch_name.as_str()) {
+        (true, "gfx1150") => Gfx1150,
+        (true, "gfx1151") => Gfx1151,
+        _ => Fallback,
+    };
+    Ok(
+        if candidate != Fallback
+            && cubecl::hip::observe_native_versions().ok() == Some(QUALIFIED_VERSIONS)
+        {
+            candidate
+        } else {
+            Fallback
+        },
+    )
 }
 #[cfg(feature = "hip-source")]
 #[allow(dead_code)]
 pub(crate) fn source_preparation_upper_bytes() -> (usize, usize) {
-    HipSourceNativePolicy::FALLBACK.preparation_upper_bytes()
+    HipSourceNativePolicy::Fallback.preparation_upper_bytes()
 }
 #[cfg(feature = "hip-source")]
 pub(crate) fn source_preparation_upper_bytes_for(policy: HipSourceNativePolicy) -> (usize, usize) {
@@ -213,7 +231,7 @@ impl SingleSourceProfile {
     }
     fn module_opaque_bytes(self) -> usize {
         self.resident_text_native_policy()
-            .map_or(MODULE_OPAQUE, |native| native.module_opaque_bytes)
+            .map_or(MODULE_OPAQUE, HipSourceNativePolicy::module_opaque_bytes)
     }
     fn policy(self) -> &'static str {
         match self {
@@ -222,15 +240,17 @@ impl SingleSourceProfile {
             #[cfg(feature = "qwen-source-qualification")]
             Self::Qwen => "x2-gfx1151-qwen27b-initial-cached-full-catalogue-provisional-v1",
             #[cfg(feature = "hip-source")]
-            Self::ResidentText(budget, native) => match (
-                native == HipSourceNativePolicy::GFX1150_ROCM_7_2_53211,
-                budget == HipSourceBudget::default(),
-            ) {
-                (true, true) => "hip-source-gfx1150-rocm7.2.53211-opaque1g-default-v1",
-                (true, false) => "hip-source-gfx1150-rocm7.2.53211-opaque1g-explicit-v1",
-                (false, true) => "hip-source-bf16-resident-projections-v1",
-                (false, false) => "hip-source-bf16-explicit-total-device-budget-v1",
-            },
+            Self::ResidentText(budget, native) => {
+                use HipSourceNativePolicy::*;
+                match (native, budget == HipSourceBudget::default()) {
+                    (Gfx1150, true) => "hip-source-gfx1150-rocm7.2.53211-opaque1g-default-v1",
+                    (Gfx1150, false) => "hip-source-gfx1150-rocm7.2.53211-opaque1g-explicit-v1",
+                    (Gfx1151, true) => "hip-source-gfx1151-rocm7.2.53211-opaque1g-default-v1",
+                    (Gfx1151, false) => "hip-source-gfx1151-rocm7.2.53211-opaque1g-explicit-v1",
+                    (Fallback, true) => "hip-source-bf16-resident-projections-v1",
+                    (Fallback, false) => "hip-source-bf16-explicit-total-device-budget-v1",
+                }
+            }
         }
     }
 }
@@ -273,7 +293,7 @@ impl GemmaColdProfile {
         }
     }
 }
-const OPTIONS: &str = "HipCompilationOptions { cpp: CompilationOptions { warp_size: 32, supports_features: CppSupportedFeatures { grid_constants: false, clusters: false, fast_math: true, fast_tanh: false, elect_sync: false, dp4a: false }, amd_wmma: Some(Rdna3) }, arch: Some(GfxArch { name: \"gfx1151\", family: GFX11 }) }";
+const GFX1151_OPTIONS: &str = "HipCompilationOptions { cpp: CompilationOptions { warp_size: 32, supports_features: CppSupportedFeatures { grid_constants: false, clusters: false, fast_math: true, fast_tanh: false, elect_sync: false, dp4a: false }, amd_wmma: Some(Rdna3) }, arch: Some(GfxArch { name: \"gfx1151\", family: GFX11 }) }";
 const GFX1150_OPTIONS: &str = "HipCompilationOptions { cpp: CompilationOptions { warp_size: 32, supports_features: CppSupportedFeatures { grid_constants: false, clusters: false, fast_math: true, fast_tanh: false, elect_sync: false, dp4a: false }, amd_wmma: Some(Rdna3) }, arch: Some(GfxArch { name: \"gfx1150\", family: GFX11 }) }";
 
 fn native(error: impl std::fmt::Display) -> Error {
@@ -532,7 +552,7 @@ pub(crate) fn begin_resident_source(
         source_owner,
         model_device_upper,
         HipSourceBudget::default(),
-        HipSourceNativePolicy::FALLBACK,
+        HipSourceNativePolicy::Fallback,
     )
 }
 #[cfg(feature = "hip-source")]
@@ -654,6 +674,12 @@ fn require_environment(
     source_policy: Option<HipSourceNativePolicy>,
 ) -> Result<()> {
     let environment = PreparedHipNative::environment(client).map_err(native)?;
+    let versions = (
+        environment.runtime_version,
+        environment.driver_version,
+        environment.rtc_major,
+        environment.rtc_minor,
+    );
 
     if let Some(native) = source_policy {
         if physical.backend != "pci" {
@@ -661,16 +687,13 @@ fn require_environment(
                 "HIP source runtime environment is incomplete".into(),
             ));
         }
-        if native == HipSourceNativePolicy::GFX1150_ROCM_7_2_53211 {
-            if environment.fingerprint != "hip-kernel_gfx1150"
-                || environment.compiler_options != GFX1150_OPTIONS
-                || environment.runtime_version != 70253211
-                || environment.driver_version != 70253211
-                || environment.rtc_major != 9
-                || environment.rtc_minor != 0
+        if let Some((fingerprint, compiler_options)) = native.required_environment() {
+            if environment.fingerprint != fingerprint
+                || environment.compiler_options != compiler_options
+                || versions != QUALIFIED_VERSIONS
             {
                 return Err(Error::Unsupported(
-                    "qualified gfx1150 HIP native policy environment differs".into(),
+                    "qualified HIP native policy environment differs".into(),
                 ));
             }
         } else if !environment.fingerprint.starts_with("hip-kernel_gfx")
@@ -688,11 +711,8 @@ fn require_environment(
 
     if physical != PhysicalDeviceKey::new("pci", "0000:c6:00.0")?
         || environment.fingerprint != "hip-kernel_gfx1151"
-        || environment.compiler_options != OPTIONS
-        || environment.runtime_version != 70253211
-        || environment.driver_version != 70253211
-        || environment.rtc_major != 9
-        || environment.rtc_minor != 0
+        || environment.compiler_options != GFX1151_OPTIONS
+        || versions != QUALIFIED_VERSIONS
     {
         return Err(Error::Unsupported(
             "qualification requires the exact x2 native environment".into(),
@@ -956,15 +976,6 @@ impl ColdNativePreparation {
         )?;
         let mut slot = ticket.wait().await?;
         slot.begin_submission()?;
-        #[cfg(feature = "qualification")]
-        let native_vram_path = format!(
-            "/sys/bus/pci/devices/{}/mem_info_vram_used",
-            service.physical_key().device
-        );
-        #[cfg(feature = "qualification")]
-        let native_vram_before = std::fs::read_to_string(&native_vram_path)
-            .ok()
-            .and_then(|s| s.trim().parse::<u64>().ok());
         // SAFETY: complete original generated catalogue; backend-fixed explicit
         // allowances; SAME detached service/global/ledger; original fair slot.
         let prepared = match scoped {
@@ -998,13 +1009,6 @@ impl ColdNativePreparation {
         eprintln!(
             "GEMMA_NATIVE_INVENTORY kernels={kernel_count} host={host_bytes} device={device_bytes} persistent_device={CONTEXT_DEVICE} persistent_host={CONTEXT_HOST} {:?}",
             prepared.inventory()
-        );
-        #[cfg(feature = "qualification")]
-        eprintln!(
-            "HIP_NATIVE_VRAM before={native_vram_before:?} after={:?}",
-            std::fs::read_to_string(&native_vram_path)
-                .ok()
-                .and_then(|s| s.trim().parse::<u64>().ok())
         );
         slot.finish()?;
         let service_ref = Arc::downgrade(&service);

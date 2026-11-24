@@ -81,6 +81,31 @@ pub struct HipNativeEnvironment {
     pub rtc_minor: i32,
 }
 
+/// Process-local HIP runtime, driver and RTC major/minor versions.
+/// No client, kernel compilation or admission authority.
+pub fn observe_native_versions() -> Result<(i32, i32, i32, i32), ServerError> {
+    if !crate::is_runtime_available() {
+        return Err(failure("HIP runtime version observation unavailable"));
+    }
+    let (mut runtime_version, mut driver_version, mut rtc_major, mut rtc_minor) = (0, 0, 0, 0);
+    // SAFETY: each version API writes only the supplied live stack integer(s).
+    unsafe {
+        crate::compute::status::checked(
+            "hipRuntimeGetVersion",
+            cubecl_hip_sys::hipRuntimeGetVersion(&mut runtime_version),
+        )?;
+        crate::compute::status::checked(
+            "hipDriverGetVersion",
+            cubecl_hip_sys::hipDriverGetVersion(&mut driver_version),
+        )?;
+        crate::compute::status::checked(
+            "hiprtcVersion",
+            cubecl_hip_sys::hiprtcVersion(&mut rtc_major, &mut rtc_minor),
+        )?;
+    }
+    Ok((runtime_version, driver_version, rtc_major, rtc_minor))
+}
+
 /// Immutable pinned view reserved before source-service allocation/enqueue.
 /// The trusted engine attaches its source/admission before preparing the catalogue.
 pub struct RegisteredHipNative {

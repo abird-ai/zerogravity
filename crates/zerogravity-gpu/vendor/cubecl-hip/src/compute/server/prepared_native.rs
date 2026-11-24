@@ -9,23 +9,8 @@ impl HipServer {
         &mut self,
     ) -> Result<crate::prepared_native::HipNativeEnvironment, ServerError> {
         self.require_known_storage_retirement()?;
-        let (mut runtime_version, mut driver_version, mut rtc_major, mut rtc_minor) = (0, 0, 0, 0);
-        // SAFETY: original actor has selected this actual device; each version
-        // API writes only the supplied live stack integer(s).
-        unsafe {
-            crate::compute::status::checked(
-                "hipRuntimeGetVersion",
-                cubecl_hip_sys::hipRuntimeGetVersion(&mut runtime_version),
-            )?;
-            crate::compute::status::checked(
-                "hipDriverGetVersion",
-                cubecl_hip_sys::hipDriverGetVersion(&mut driver_version),
-            )?;
-            crate::compute::status::checked(
-                "hiprtcVersion",
-                cubecl_hip_sys::hiprtcVersion(&mut rtc_major, &mut rtc_minor),
-            )?;
-        }
+        let (runtime_version, driver_version, rtc_major, rtc_minor) =
+            crate::prepared_native::observe_native_versions()?;
         Ok(crate::prepared_native::HipNativeEnvironment {
             fingerprint: self.ctx.properties.identity.fingerprint.clone(),
             compiler_options: format!("{:?}", self.ctx.compilation_options),

@@ -18,7 +18,7 @@ pub use device::*;
 pub use prepared_native::{
     HipNativeAdmission, HipNativeEnvironment, HipNativeInventory, HipScopedObservation,
     HipScopedSetObservation, NativeRetention, PreparedHipNative, RegisteredHipNative,
-    SourcePageAuthority, scoped_metadata_bytes,
+    SourcePageAuthority, observe_native_versions, scoped_metadata_bytes,
 };
 pub use runtime::{HipDeviceMetadata, HipRuntime, observe_device, preflight_physical};
 

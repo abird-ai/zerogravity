@@ -63,7 +63,7 @@ impl Admission {
             plan,
             max_sessions,
             budget,
-            crate::hip::native::HipSourceNativePolicy::FALLBACK,
+            crate::hip::native::HipSourceNativePolicy::Fallback,
         )
     }
     pub(crate) fn with_budget_and_native_policy(
