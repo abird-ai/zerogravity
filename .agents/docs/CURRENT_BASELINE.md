@@ -5,6 +5,16 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 24 Nov — provider resource and completion acceptance
+
+`77e8b4ae` preserves existing numerical paths and binds incremental
+provider requirements to original physical flights. Full isolated gate,
+X2 Qwen 0.8B native V2 C1/C8, exact C1 and distinct multichunk,
+L5 CUDA C1 and original GGUF B2 captured graph lifecycle pass with
+original retirement. Captured logits/all state domains and final zero
+reservation verified; no new performance, driver-internal byte or wider
+parity claim.
+
 ## 24 Nov — physical region binding acceptance
 
 `0db60ede` preserves native numerical paths and adds prepared physical

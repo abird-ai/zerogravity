@@ -20,7 +20,8 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
-**New source slice — provider requirements and original-flight binding.**
+**Accepted source checkpoint `77e8b4ae0487a5219140727007cc316f43c01663` —
+provider requirements and original-flight binding.**
 PreparedRegion reports additional provider-local workspace/opaque device
 reservations and buffer/completion compatibility. No double-charge of
 original tensors, scratch or shared context/module envelopes. Native CUDA
@@ -30,8 +31,22 @@ CUDA graph resources use the same requirement contract and replay binds
 its actual pinned stream, leases and charge owner at launch. Capture-stop
 failure/untransferred ownership retains the graph reservation in quarantine.
 No arithmetic, public graph selection or allocator/queue change.
-Private-buffer transfer, foreign-stream completion and stateful region
-effects/bridges remain open; assembled/physical validation pending.
+Focused preparation, strict core/engine Clippy and GPU feature builds pass.
+X2 Qwen 0.8B native V2 C1/C8, exact C1 and distinct multichunk
+continuation, and L5 CUDA SDK C1 pass expected tokens and replay/retirement.
+The original GGUF CUDA graph B2 lifecycle passes full-vocabulary logits,
+all 42 state domains, compatible replay, incompatible-profile fallback,
+recapture and retirement before workspace replacement; final reserved
+bytes are zero. Actual driver-internal bytes remain unqualified.
+Both GPUs returned to their initial idle memory with no compute owners.
+Full isolated workspace gate passes (2381 Rust test executions, zero
+failures, 101 explicit skips); X2 runs the exact signed source received
+by verified bundle. A1 unchanged.
+Next: close stateful region effects/bridges on original state owners;
+reuse existing physical event/queue ownership for explicit external
+completion and transfer bridges when needed by a real consumer. The
+current adapters refuse private buffers and foreign completion. No new
+numerical profile, throughput baseline or wider backend parity claim.
 
 Prior accepted physical-region checkpoint:
 

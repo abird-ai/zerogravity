@@ -109,11 +109,13 @@ physical region ports (selected provider/mode, explicit row band, per-port
 encoding and checked byte layout), native CUDA/HIP consumers and original
 lease-view and invocation-issuer checks. Full isolated gate and physical
 Qwen 0.8B native/exact/continuation on X2 and CUDA C1 on L5 pass.
-The next source slice adds incremental provider-local workspace and opaque
-device requirements, original-flight resource binding and captured CUDA
-stream/retirement ownership. Shared context/module accounting stays with
-the original owners. Validation pending. Private-buffer and foreign-stream
-completion bridges, stateful effects and remaining foundations remain open.
+Accepted `77e8b4ae` adds incremental provider-local workspace and
+opaque device requirements, original-flight resource binding and captured
+CUDA stream/retirement ownership. Shared context/module accounting stays
+with the original owners. Physical native/exact/continuation and captured
+graph lifecycle checks and the full isolated workspace gate pass.
+Stateful effects, private-buffer/foreign-stream completion bridges and
+remaining foundations remain open.
 None of these slices closes Phase 1.
 
 Complete the engineering contracts and their real consumers, including every

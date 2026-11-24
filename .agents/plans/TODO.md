@@ -9,11 +9,12 @@ Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md).
 The foundations pack links the complete dated history, source checkpoint, original design and plan/open-work/Git inventories. Live source and owning TODOs remain authoritative.
 
-**24 Nov Phase 1 checkpoint:** `0db60ede` accepted typed physical region
-ports, shape bands and original CUDA/HIP lease views on the bounded stateless
-region foundation, with full isolated gate and physical Qwen canaries.
-Continue provider workspace/persistent-resource and completion ownership,
-then stateful region effects/bridges in
+**24 Nov Phase 1 checkpoint:** `77e8b4ae` accepted incremental provider
+workspace/opaque resource requirements, original-flight binding and
+captured CUDA retirement ownership. Full isolated gate and physical
+native/exact/continuation/graph lifecycle checks pass.
+Continue stateful region effects/bridges and explicit private-buffer or
+foreign-stream completion bridges as needed by real consumers in
 [pipeline composition](pipeline-composition/TODO.md) and the full plan;
 not a backend-tuning checkpoint.
 

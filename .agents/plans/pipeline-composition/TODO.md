@@ -212,7 +212,7 @@ their existing numeric/source/physical acceptance gates.
   with expected tokens/replay and original resource retirement.
   No new performance baseline or broader parity grant.
 
-## Provider requirements and original-flight binding — 24 Nov
+## Provider requirements and original-flight binding — 24 Nov (`77e8b4ae`)
 
 - [x] PreparedRegion carries explicit incremental provider-local device
   requirements: borrowed workspace, opaque model reservation, buffer mode,
@@ -227,7 +227,12 @@ their existing numeric/source/physical acceptance gates.
   actual launch entry. Failed or interrupted capture retains untransferred
   reservations and original storage in quarantine. Existing graph policy,
   retirement barriers and Native serving selection remain authoritative.
-- [ ] Assembled gate and physical consumer validation pending.
+- [x] Focused preparation/Clippy and physical consumers pass: X2 native
+  C1/C8, exact C1, distinct multichunk; L5 native CUDA C1 and original
+  GGUF captured B2 full logits/all state domains, selection, recapture
+  and retirement with zero final reservation. Both GPUs return to idle.
+- [x] Complete isolated `scripts/check.sh` passes; no new performance
+  or driver-internal accounting claim.
 
 ## Uncommitted
 
