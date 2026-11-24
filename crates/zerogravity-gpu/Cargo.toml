@@ -29,6 +29,8 @@ cuda-native-qualification = ["cuda-native", "qualification"]
 cuda-cublas = ["cuda-native", "cubecl-cuda/owned-cublas-allocator"]
 # Forward-only BF16/head-256 FlashAttention FA2 provider, statically compiled into the binary.
 cuda-flash-attn = ["cuda-cublas", "cubecl-cuda/flash-attn"]
+# Single-request BF16/head-256 FlashInfer decode provider.
+cuda-flashinfer = ["cuda-cublas", "cubecl-cuda/flashinfer"]
 
 [dependencies]
 zerogravity-core = { path = "../zerogravity-core" }

@@ -45,6 +45,8 @@ mod bf16_gemm;
 mod cubin;
 #[cfg(all(feature = "flash-attn", target_os = "linux"))]
 mod flash_attn;
+#[cfg(all(feature = "flashinfer", target_os = "linux"))]
+mod flashinfer;
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
 mod embedding_rows;
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]

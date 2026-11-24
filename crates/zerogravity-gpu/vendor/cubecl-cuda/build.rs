@@ -20,6 +20,9 @@ fn main() {
     if env::var_os("CARGO_FEATURE_FLASH_ATTN").is_some() {
         build_flash_attention();
     }
+    if env::var_os("CARGO_FEATURE_FLASHINFER").is_some() {
+        build_flashinfer();
+    }
 }
 
 fn required_path(name: &str) -> PathBuf {
@@ -120,6 +123,62 @@ fn build_flash_attention() {
 
     println!("cargo:rustc-link-search=native={}", out.display());
     println!("cargo:rustc-link-lib=static=zg_flash_attn_fa2");
+    println!("cargo:rustc-link-search=native={}", cudart.display());
+    println!("cargo:rustc-link-lib=dylib=cudart");
+    println!("cargo:rustc-link-lib=dylib=stdc++");
+}
+
+fn build_flashinfer() {
+    let source = required_path("ZEROGRAVITY_FLASHINFER_SRC");
+    let cudart = required_path("ZEROGRAVITY_CUDART_LIB");
+    let out = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR"));
+    let bridge = PathBuf::from("src/owned_command/flashinfer/bridge.cu");
+    let object = out.join("flashinfer_decode_bridge.o");
+    let archive = out.join("libzg_flashinfer_decode.a");
+
+    println!("cargo:rerun-if-changed={}", bridge.display());
+
+    let nvcc = env::var_os("NVCC").unwrap_or_else(|| "nvcc".into());
+    let args = vec![
+        "-std=c++17".into(),
+        "-O3".into(),
+        "-use_fast_math".into(),
+        "--expt-relaxed-constexpr".into(),
+        "-DNDEBUG".into(),
+        "-DFLASHINFER_ENABLE_BF16".into(),
+        "-I".into(),
+        source
+            .join("3rdparty/cccl/libcudacxx/include")
+            .into_os_string(),
+        "-I".into(),
+        source.join("3rdparty/cccl/cub").into_os_string(),
+        "-I".into(),
+        source.join("include").into_os_string(),
+        "-gencode".into(),
+        "arch=compute_80,code=compute_80".into(),
+        "-gencode".into(),
+        "arch=compute_86,code=sm_86".into(),
+        "-gencode".into(),
+        "arch=compute_89,code=sm_89".into(),
+        "-c".into(),
+        bridge.into_os_string(),
+        "-o".into(),
+        object.clone().into_os_string(),
+    ];
+    run(&nvcc, &args);
+
+    let ar = env::var_os("AR").unwrap_or_else(|| "ar".into());
+    run(
+        &ar,
+        &[
+            "crs".into(),
+            archive.into_os_string(),
+            object.into_os_string(),
+        ],
+    );
+
+    println!("cargo:rustc-link-search=native={}", out.display());
+    println!("cargo:rustc-link-lib=static=zg_flashinfer_decode");
     println!("cargo:rustc-link-search=native={}", cudart.display());
     println!("cargo:rustc-link-lib=dylib=cudart");
     println!("cargo:rustc-link-lib=dylib=stdc++");

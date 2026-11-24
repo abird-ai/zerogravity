@@ -7,8 +7,8 @@ use crate::{
         gdn::{
             GdnRuntimeBuffer, GdnRuntimeCacheSlot, GdnRuntimePartition, GdnRuntimePlan,
             state_transport::{
-                CONV_ELEMENTS, RECURRENT_ELEMENTS, RecurrentOutCertified, StateCopy,
-                StateTransport, plane_handle,
+                CONV_ELEMENTS, GdnStateIn, GdnStateOutCertified, RECURRENT_ELEMENTS,
+                RecurrentOutCertified, StateCopy, StateTransport, plane_handle,
             },
         },
         text_forward::{
@@ -30,8 +30,8 @@ use std::{
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{
-        ForwardPlan, InvocationPhase, PlanNode, PlanOperation, SourceOperator, SourceOperatorKind,
-        SourceStateAccess, StateSlot, TextInvocation, ValueId,
+        ConvDomain, ForwardPlan, InvocationPhase, PlanNode, PlanOperation, RecurrentDomain,
+        SourceOperator, SourceOperatorKind, SourceStateAccess, StateSlot, TextInvocation, ValueId,
     },
     device_events::{BufferRole, DeviceAccess},
 };
@@ -1280,6 +1280,7 @@ impl CudaForwardBody {
                 node,
                 descriptor,
                 self.state(states, StateSlot::Conv(domain))?,
+                self.state(states, StateSlot::Recurrent(RecurrentDomain(domain.0)))?,
                 step,
                 workspace_row,
                 values,
@@ -1290,6 +1291,7 @@ impl CudaForwardBody {
                 node,
                 descriptor,
                 self.state(states, StateSlot::Recurrent(domain))?,
+                self.state(states, StateSlot::Conv(ConvDomain(domain.0)))?,
                 step,
                 workspace_row,
                 values,
@@ -1311,6 +1313,7 @@ impl CudaForwardBody {
         node: &PlanNode,
         descriptor: &SourceOperator,
         state: &StateBinding,
+        recurrent_state: &StateBinding,
         step: Step,
         workspace_row: usize,
         values: Option<CohortValues<'_>>,
@@ -1364,20 +1367,55 @@ impl CudaForwardBody {
             ResidentPhysicalType::F32,
             CONV_ELEMENTS,
         )?)?;
+        let paired_decode = values.is_none()
+            && descriptor.invocation().phase() == InvocationPhase::Decode
+            && step.rows == 1;
+        let recurrent_pair = if paired_decode {
+            let (StateBuffers::Vector(recurrent_prior), StateBuffers::Vector(recurrent_candidate)) =
+                (&recurrent_state.prior, &recurrent_state.candidate)
+            else {
+                return Err(Error::State(
+                    "CUDA forward paired GDN recurrent state layout".into(),
+                ));
+            };
+            let layout = ResidentBufferLayout::new(ResidentPhysicalType::F32, RECURRENT_ELEMENTS)?;
+            recurrent_prior.require_layout(layout)?;
+            recurrent_candidate.require_layout(layout)?;
+            Some((recurrent_prior, recurrent_candidate))
+        } else {
+            None
+        };
 
         let runtime = self.gdn_plan(step, descriptor.invocation().phase())?;
         self.write_gdn_controls(&runtime)?;
         let cache = self.cold().gdn_internal(GdnRuntimeBuffer::CacheArena)?;
         let view = runtime.convolution_state();
         let native = plane_handle(cache, view.offset(), view.bytes())?;
-        StateTransport::prepare(
-            self.cold().service(),
-            StateCopy::ConvIn,
-            prior.handle.clone(),
-            native.clone(),
-            self.cold().status(),
-        )?
-        .launch(self.cold().service())?;
+        if let Some((recurrent_prior, _)) = recurrent_pair {
+            let recurrent_native = plane_handle(
+                cache,
+                runtime.slot().recurrent_offset(),
+                RECURRENT_ELEMENTS * 4,
+            )?;
+            GdnStateIn::prepare(
+                self.cold().service(),
+                prior.handle.clone(),
+                recurrent_prior.handle.clone(),
+                native.clone(),
+                recurrent_native,
+                self.cold().status(),
+            )?
+            .launch(self.cold().service())?;
+        } else {
+            StateTransport::prepare(
+                self.cold().service(),
+                StateCopy::ConvIn,
+                prior.handle.clone(),
+                native.clone(),
+                self.cold().status(),
+            )?
+            .launch(self.cold().service())?;
+        }
 
         let row_extent =
             self.gdn_row_extent(request, descriptor.invocation().phase(), step.rows)?;
@@ -1440,27 +1478,29 @@ impl CudaForwardBody {
         let mut dispatches = 1usize
             .checked_add(launches)
             .ok_or_else(|| Error::Limit("CUDA forward GDN conv dispatch count".into()))?;
-        dispatches += attention::certify(
-            self.cold().service().client(),
-            &conv_handle,
-            &self.cold().status().handle(),
-            outputs[0],
-        )?;
-        dispatches += attention::certify(
-            self.cold().service().client(),
-            &z_handle,
-            &self.cold().status().handle(),
-            outputs[1],
-        )?;
-        StateTransport::prepare(
-            self.cold().service(),
-            StateCopy::ConvOut,
-            native,
-            candidate.handle.clone(),
-            self.cold().status(),
-        )?
-        .launch(self.cold().service())?;
-        dispatches += 1;
+        if !paired_decode {
+            dispatches += attention::certify(
+                self.cold().service().client(),
+                &conv_handle,
+                &self.cold().status().handle(),
+                outputs[0],
+            )?;
+            dispatches += attention::certify(
+                self.cold().service().client(),
+                &z_handle,
+                &self.cold().status().handle(),
+                outputs[1],
+            )?;
+            StateTransport::prepare(
+                self.cold().service(),
+                StateCopy::ConvOut,
+                native,
+                candidate.handle.clone(),
+                self.cold().status(),
+            )?
+            .launch(self.cold().service())?;
+            dispatches += 1;
+        }
         Ok((dispatches, 0))
     }
 
@@ -1472,6 +1512,7 @@ impl CudaForwardBody {
         node: &PlanNode,
         descriptor: &SourceOperator,
         state: &StateBinding,
+        conv_state: &StateBinding,
         step: Step,
         workspace_row: usize,
         values: Option<CohortValues<'_>>,
@@ -1519,6 +1560,23 @@ impl CudaForwardBody {
             ResidentBufferLayout::new(ResidentPhysicalType::F32, RECURRENT_ELEMENTS)?;
         prior.require_layout(recurrent_layout)?;
         candidate.require_layout(recurrent_layout)?;
+        let paired_decode = values.is_none()
+            && descriptor.invocation().phase() == InvocationPhase::Decode
+            && step.rows == 1;
+        let conv_candidate = if paired_decode {
+            let StateBuffers::Vector(conv_candidate) = &conv_state.candidate else {
+                return Err(Error::State(
+                    "CUDA forward paired GDN conv candidate layout".into(),
+                ));
+            };
+            conv_candidate.require_layout(ResidentBufferLayout::new(
+                ResidentPhysicalType::F32,
+                CONV_ELEMENTS,
+            )?)?;
+            Some(conv_candidate)
+        } else {
+            None
+        };
 
         let runtime = self.gdn_plan(step, descriptor.invocation().phase())?;
         self.write_gdn_controls(&runtime)?;
@@ -1528,33 +1586,32 @@ impl CudaForwardBody {
             runtime.slot().recurrent_offset(),
             RECURRENT_ELEMENTS * 4,
         )?;
-        StateTransport::prepare(
-            self.cold().service(),
-            StateCopy::RecurrentIn,
-            prior.handle.clone(),
-            native.clone(),
-            self.cold().status(),
-        )?
-        .launch(self.cold().service())?;
+        if !paired_decode {
+            StateTransport::prepare(
+                self.cold().service(),
+                StateCopy::RecurrentIn,
+                prior.handle.clone(),
+                native.clone(),
+                self.cold().status(),
+            )?
+            .launch(self.cold().service())?;
+        }
 
         let row_extent =
             self.gdn_row_extent(request, descriptor.invocation().phase(), step.rows)?;
         let mut handles = self.gdn_internal_handles()?;
-        handles.insert(
-            GdnRuntimeBuffer::ConvOutput,
-            self.value_handle_extent_in(
-                values,
-                request,
-                *conv_output,
-                inputs[0],
-                workspace_row,
-                row_extent,
-            )?,
-        );
-        handles.insert(
-            GdnRuntimeBuffer::ZCompact,
-            self.value_handle_extent_in(values, request, *z, inputs[1], workspace_row, row_extent)?,
-        );
+        let conv_output_handle = self.value_handle_extent_in(
+            values,
+            request,
+            *conv_output,
+            inputs[0],
+            workspace_row,
+            row_extent,
+        )?;
+        let z_handle =
+            self.value_handle_extent_in(values, request, *z, inputs[1], workspace_row, row_extent)?;
+        handles.insert(GdnRuntimeBuffer::ConvOutput, conv_output_handle.clone());
+        handles.insert(GdnRuntimeBuffer::ZCompact, z_handle.clone());
         handles.insert(
             GdnRuntimeBuffer::PackedBa,
             self.value_handle_extent_in(
@@ -1590,10 +1647,29 @@ impl CudaForwardBody {
                 GdnRuntimePartition::Recurrent,
             )?
             .launch()?;
-        let mut dispatches = 1usize
-            .checked_add(launches)
+        let mut dispatches = launches
+            .checked_add(if paired_decode { 0 } else { 1 })
             .ok_or_else(|| Error::Limit("CUDA forward GDN recurrent dispatch count".into()))?;
-        if descriptor.invocation().phase() == InvocationPhase::Decode
+        if let Some(conv_candidate) = conv_candidate {
+            let conv_native = plane_handle(
+                cache,
+                runtime.slot().convolution_offset(),
+                CONV_ELEMENTS * 2,
+            )?;
+            GdnStateOutCertified::prepare(
+                self.cold().service(),
+                conv_native,
+                native,
+                conv_candidate.handle.clone(),
+                candidate.handle.clone(),
+                conv_output_handle,
+                z_handle,
+                output_handle,
+                self.cold().status(),
+            )?
+            .launch(self.cold().service())?;
+            dispatches += 1;
+        } else if descriptor.invocation().phase() == InvocationPhase::Decode
             && step.rows == 1
             && outputs[0] == 2048
         {

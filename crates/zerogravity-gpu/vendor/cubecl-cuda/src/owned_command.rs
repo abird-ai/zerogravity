@@ -15,6 +15,8 @@ mod compiler;
 mod event;
 #[cfg(all(feature = "flash-attn", target_os = "linux"))]
 mod flash_attn;
+#[cfg(all(feature = "flashinfer", target_os = "linux"))]
+mod flashinfer;
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
 pub(crate) mod embedding_rows;
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
@@ -27,6 +29,10 @@ pub use event::OwnedCudaEvent;
 pub use weight_upload::SourceWeightLayout;
 #[cfg(all(feature = "flash-attn", target_os = "linux"))]
 pub use flash_attn::{Bf16FlashAttention, Bf16FlashAttentionBindings};
+#[cfg(all(feature = "flashinfer", target_os = "linux"))]
+pub use flashinfer::{
+    Bf16FlashInferDecode, Bf16FlashInferDecodeBindings, FLASHINFER_DECODE_SCRATCH_BYTES,
+};
 
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
 pub(crate) mod cubin;

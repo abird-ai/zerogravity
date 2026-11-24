@@ -29,6 +29,10 @@ pub use device::*;
 pub use owned_command::OwnedCudaQueue;
 #[cfg(all(feature = "flash-attn", target_os = "linux"))]
 pub use owned_command::{Bf16FlashAttention, Bf16FlashAttentionBindings};
+#[cfg(all(feature = "flashinfer", target_os = "linux"))]
+pub use owned_command::{
+    Bf16FlashInferDecode, Bf16FlashInferDecodeBindings, FLASHINFER_DECODE_SCRATCH_BYTES,
+};
 #[cfg(target_os = "linux")]
 pub use owned_command::SourceWeightLayout;
 #[cfg(target_os = "linux")]

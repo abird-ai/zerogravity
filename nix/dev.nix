@@ -44,6 +44,14 @@
         rev = "62750a2b75c802660e4894434dc55e839f322277";
         hash = "sha256-eL64JYiFAqrn6OJDzijpMR4DbEB4El/8yT7++iCZBlE=";
       };
+  flashInferSrc =
+    if gpuPkgs == null
+    then null
+    else
+      gpuPkgs.fetchzip {
+        url = "https://files.pythonhosted.org/packages/05/76/1a42eafe2a3cd26924e485fb85bc635a2a41fcb14f453a8c037214b32940/flashinfer_python-0.7.2.post1.tar.gz";
+        hash = "sha256-VOR0Wn/rbIyQDcR6sXE0BrvSK6dKP0oEY3vOEuv4v2c=";
+      };
 in {
   shell = native.craneLib.devShell {
     checks = {inherit (native) tests clippy;};
@@ -65,6 +73,7 @@ in {
           export ROCM_PATH="$HIP_PATH"
           export ZEROGRAVITY_FLASH_ATTN_SRC="${flashAttentionSrc}"
           export ZEROGRAVITY_FLASH_ATTN_CUTLASS="${flashAttentionCutlass}"
+          export ZEROGRAVITY_FLASHINFER_SRC="${flashInferSrc}"
           export ZEROGRAVITY_CUDART_LIB="${gpuPkgs.cudaPackages.cuda_cudart}/lib"
           export CUDA_PATH="''${TMPDIR:-/tmp}/zerogravity-cuda-$UID"
           "${sourceRoot}/scripts/cuda-nix-include-view.sh" \

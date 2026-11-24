@@ -45,8 +45,9 @@ cuda = [
     "dep:nvml-wrapper",
     "dep:rustix",
 ]
-# Opt-in until the external provider passes real-model correctness/performance.
+# Opt-in until the external providers pass real-model correctness/performance.
 cuda-flash-attn = ["cuda", "zerogravity-gpu/cuda-flash-attn"]
+cuda-flashinfer = ["cuda", "zerogravity-gpu/cuda-flashinfer"]
 hip = [
     "dep:futures-lite",
     "dep:zerogravity-gpu",

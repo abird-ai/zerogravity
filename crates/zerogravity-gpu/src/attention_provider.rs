@@ -15,6 +15,9 @@ pub enum AttentionProvider {
     /// Statically compiled FlashAttention 2 BF16/head-256 CUDA forward kernel.
     #[cfg(feature = "cuda-flash-attn")]
     FlashAttentionFa2,
+    /// Statically compiled FlashInfer BF16/head-256 single-request decode kernel.
+    #[cfg(feature = "cuda-flashinfer")]
+    FlashInferDecode,
 }
 
 /// Phase-specific provider choice resolved during cold model preparation.
@@ -31,16 +34,6 @@ impl AttentionProviderPlan {
 
     pub const fn builtin() -> Self {
         Self::new(AttentionProvider::Builtin, AttentionProvider::Builtin)
-    }
-
-    /// Use FA2 only for dense prefill; decode stays on the builtin provider
-    /// until a decode-oriented provider demonstrates a real win.
-    #[cfg(feature = "cuda-flash-attn")]
-    pub const fn flash_attention_fa2_prefill() -> Self {
-        Self::new(
-            AttentionProvider::FlashAttentionFa2,
-            AttentionProvider::Builtin,
-        )
     }
 
     pub const fn provider(self, phase: InvocationPhase) -> AttentionProvider {

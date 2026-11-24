@@ -783,6 +783,105 @@ impl FlashCudaAttention {
     }
 }
 
+#[cfg(feature = "cuda-flashinfer")]
+struct FlashInferCudaAttention {
+    service: Arc<ResidentService>,
+    capacity: usize,
+    geometry: crate::cuda::text_forward::Geometry,
+    scratch: ResidentLease,
+}
+
+#[cfg(feature = "cuda-flashinfer")]
+impl FlashInferCudaAttention {
+    fn prepare(
+        service: Arc<ResidentService>,
+        init: &mut ResidentInitialization<'_>,
+        capacity: usize,
+        geometry: crate::cuda::text_forward::Geometry,
+    ) -> Result<Arc<Self>> {
+        init.require_service(&service)?;
+        service.ensure_usable()?;
+        service.pinned_cuda_queue()?;
+        let geometry = validate_geometry(capacity, geometry)?;
+        let scratch = init.allocate_empty(
+            cubecl::cuda::FLASHINFER_DECODE_SCRATCH_BYTES,
+            BufferRole::Scratch,
+        )?;
+        Ok(Arc::new(Self {
+            service,
+            capacity,
+            geometry,
+            scratch,
+        }))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn enqueue(
+        &self,
+        client: &cubecl::client::Client,
+        operator: &zerogravity_core::accelerator::program::SourceOperator,
+        query: &cubecl::server::Handle,
+        candidate_keys: &crate::resident_program::DeviceBuffer,
+        candidate_values: &crate::resident_program::DeviceBuffer,
+        output: &cubecl::server::Handle,
+        status: &ResidentLease,
+    ) -> Result<usize> {
+        use zerogravity_core::accelerator::program::InvocationPhase;
+
+        if operator.invocation().phase() != InvocationPhase::Decode
+            || operator.invocation().tokens().len() != 1
+        {
+            return Err(Error::State(
+                "CUDA FlashInfer requires one-row decode invocation".into(),
+            ));
+        }
+        let binding = bind_single_attention(
+            &self.service,
+            self.capacity,
+            self.geometry,
+            client,
+            operator,
+            query,
+            candidate_keys,
+            candidate_values,
+            output,
+            status,
+        )?;
+        let kv_len = binding
+            .base
+            .checked_add(1)
+            .ok_or_else(|| Error::Limit("CUDA FlashInfer active prefix".into()))?;
+        let operation = cubecl::cuda::Bf16FlashInferDecode::new(
+            kv_len,
+            self.capacity,
+            self.geometry.query_heads,
+            self.geometry.kv_heads,
+            SCALE,
+        )
+        .map_err(|error| Error::State(format!("CUDA FlashInfer geometry: {error:?}")))?;
+        let bindings = cubecl::cuda::Bf16FlashInferDecodeBindings {
+            query: query.clone(),
+            keys: binding.keys,
+            values: binding.values,
+            output: output.clone(),
+            scratch: self.scratch.handle(),
+        };
+
+        // SAFETY: the resident submission owner retains query/K/V/output/scratch
+        // and the exact pinned CUDA service through completion or quarantine.
+        unsafe {
+            self.service
+                .pinned_cuda_queue()?
+                .enqueue_bf16_flashinfer_decode(operation, bindings)
+        }
+        .map_err(|error| Error::State(format!("CUDA FlashInfer enqueue: {error:?}")))?;
+
+        // FlashInfer owns arithmetic only; retain ZeroGravity's non-finite status contract.
+        certify(client, output, &status.handle(), binding.query_elements)?;
+        Ok(2)
+    }
+}
+
 /// Phase-specific ordinary-attention provider plan selected once during cold
 /// model preparation. Cohort-specific physical leaves keep their own selection
 /// until a provider has a genuine cohort ABI. The wrapper owns no KV/state
@@ -792,6 +891,8 @@ pub(super) struct CudaForwardAttention {
     builtin: Arc<BuiltinCudaAttention>,
     #[cfg(feature = "cuda-flash-attn")]
     flash: Arc<FlashCudaAttention>,
+    #[cfg(feature = "cuda-flashinfer")]
+    flashinfer: Arc<FlashInferCudaAttention>,
 }
 
 impl CudaForwardAttention {
@@ -804,12 +905,17 @@ impl CudaForwardAttention {
     ) -> Result<Arc<Self>> {
         let builtin = BuiltinCudaAttention::prepare(service.clone(), capacity, geometry)?;
         #[cfg(feature = "cuda-flash-attn")]
-        let flash = FlashCudaAttention::prepare(service, _init, capacity, geometry)?;
+        let flash = FlashCudaAttention::prepare(service.clone(), _init, capacity, geometry)?;
+        #[cfg(feature = "cuda-flashinfer")]
+        let flashinfer =
+            FlashInferCudaAttention::prepare(service.clone(), _init, capacity, geometry)?;
         Ok(Arc::new(Self {
             providers,
             builtin,
             #[cfg(feature = "cuda-flash-attn")]
             flash,
+            #[cfg(feature = "cuda-flashinfer")]
+            flashinfer,
         }))
     }
 
@@ -843,6 +949,16 @@ impl CudaForwardAttention {
             ),
             #[cfg(feature = "cuda-flash-attn")]
             crate::AttentionProvider::FlashAttentionFa2 => self.flash.enqueue(
+                client,
+                operator,
+                query,
+                candidate_keys,
+                candidate_values,
+                output,
+                status,
+            ),
+            #[cfg(feature = "cuda-flashinfer")]
+            crate::AttentionProvider::FlashInferDecode => self.flashinfer.enqueue(
                 client,
                 operator,
                 query,

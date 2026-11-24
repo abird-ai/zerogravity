@@ -8,6 +8,8 @@ use zerogravity_core::{Error, Result};
 
 const STATE_COPY_SOURCE: &str = include_str!("resident/state_copy.cu");
 const CONV_B4_SOURCE: &str = include_str!("resident/state_copy_conv_b4.cu");
+const GDN_STATE_IN_SOURCE: &str = include_str!("resident/state_pair_in.cu");
+const GDN_STATE_OUT_CERTIFIED_SOURCE: &str = include_str!("resident/state_pair_out_certified.cu");
 const RECURRENT_B8_SOURCE: &str = include_str!("resident/state_copy_recurrent_b8.cu");
 const RECURRENT_OUT_CERTIFIED_SOURCE: &str =
     include_str!("resident/state_copy_recurrent_out_certified.cu");
@@ -91,6 +93,12 @@ pub(crate) struct ConvB4Transport {
     launch: PreparedPinnedLaunch,
 }
 pub(crate) struct RecurrentB8Transport {
+    launch: PreparedPinnedLaunch,
+}
+pub(crate) struct GdnStateIn {
+    launch: PreparedPinnedLaunch,
+}
+pub(crate) struct GdnStateOutCertified {
     launch: PreparedPinnedLaunch,
 }
 #[allow(dead_code)]
@@ -374,6 +382,241 @@ impl RecurrentB8Transport {
         ];
         Ok(Self {
             launch: kernel.prepare(client, grid, handles)?,
+        })
+    }
+
+    pub(crate) fn launch(&self, service: &Arc<ResidentService>) -> Result<usize> {
+        self.launch.launch_on(service.client())?;
+        Ok(1)
+    }
+}
+
+fn require_exact_pair_binding(
+    service: &Arc<ResidentService>,
+    handle: &Handle,
+    bytes: usize,
+    role: &str,
+) -> Result<()> {
+    if bytes == 0
+        || handle.service != service.client().service_id()
+        || handle.size_in_used() != bytes as u64
+    {
+        return Err(Error::State(format!(
+            "paired GDN state {role} service/extent differs"
+        )));
+    }
+    Ok(())
+}
+
+fn require_pair_nonaliasing(handles: &[&Handle]) -> Result<()> {
+    let ranges = handles
+        .iter()
+        .map(|handle| crate::resident_program::BufferRange::new(handle))
+        .collect::<Result<Vec<_>>>()?;
+    for left in 0..ranges.len() {
+        for right in left + 1..ranges.len() {
+            if ranges[left].overlaps(&ranges[right]) {
+                return Err(Error::State("paired GDN state bindings alias".into()));
+            }
+        }
+    }
+    Ok(())
+}
+
+impl GdnStateIn {
+    /// One coalesced canonical->native import for the paired convolution and
+    /// recurrent state of one GDN layer.
+    pub(crate) fn prepare(
+        service: &Arc<ResidentService>,
+        conv_source: Handle,
+        recurrent_source: Handle,
+        conv_destination: Handle,
+        recurrent_destination: Handle,
+        status: &ResidentLease,
+    ) -> Result<Self> {
+        let conv_f32 = CONV_ELEMENTS
+            .checked_mul(4)
+            .ok_or_else(|| Error::Limit("paired GDN convolution F32 bytes".into()))?;
+        let conv_bf16 = CONV_ELEMENTS
+            .checked_mul(2)
+            .ok_or_else(|| Error::Limit("paired GDN convolution BF16 bytes".into()))?;
+        let recurrent_bytes = RECURRENT_ELEMENTS
+            .checked_mul(4)
+            .ok_or_else(|| Error::Limit("paired GDN recurrent bytes".into()))?;
+        let status_handle = status.handle();
+        for (handle, bytes, role) in [
+            (&conv_source, conv_f32, "conv source"),
+            (&recurrent_source, recurrent_bytes, "recurrent source"),
+            (&conv_destination, conv_bf16, "conv destination"),
+            (
+                &recurrent_destination,
+                recurrent_bytes,
+                "recurrent destination",
+            ),
+            (&status_handle, 4, "status"),
+        ] {
+            require_exact_pair_binding(service, handle, bytes, role)?;
+        }
+        require_pair_nonaliasing(&[
+            &conv_source,
+            &recurrent_source,
+            &conv_destination,
+            &recurrent_destination,
+            &status_handle,
+        ])?;
+        let source: Arc<str> = format!(
+            "{}\n#define ZG_CONV_ELEMENTS {}u\n#define ZG_RECURRENT_ELEMENTS {}u\n{}",
+            "// cubecl.cuda.dynamic_shared_bytes=0",
+            CONV_ELEMENTS,
+            RECURRENT_ELEMENTS,
+            GDN_STATE_IN_SOURCE,
+        )
+        .into();
+        let kernel = PinnedKernel::new(
+            "zg_gdn_state_in",
+            source,
+            128,
+            Arc::from([
+                (conv_f32, BufferIOAttr::ReadOnly),
+                (recurrent_bytes, BufferIOAttr::ReadOnly),
+                (conv_bf16, BufferIOAttr::WriteOnly),
+                (recurrent_bytes, BufferIOAttr::WriteOnly),
+                (4, BufferIOAttr::ReadWrite),
+            ]),
+        )?;
+        let grid = [(RECURRENT_ELEMENTS as u32).div_ceil(128), 1, 1];
+        Ok(Self {
+            launch: kernel.prepare(
+                service.client(),
+                grid,
+                vec![
+                    conv_source,
+                    recurrent_source,
+                    conv_destination,
+                    recurrent_destination,
+                    status_handle,
+                ],
+            )?,
+        })
+    }
+
+    pub(crate) fn launch(&self, service: &Arc<ResidentService>) -> Result<usize> {
+        self.launch.launch_on(service.client())?;
+        Ok(1)
+    }
+}
+
+impl GdnStateOutCertified {
+    /// One coalesced native->canonical export for paired GDN state plus
+    /// finiteness certification of the three BF16 values that feed/leave the
+    /// recurrent half of the layer.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn prepare(
+        service: &Arc<ResidentService>,
+        conv_source: Handle,
+        recurrent_source: Handle,
+        conv_destination: Handle,
+        recurrent_destination: Handle,
+        certificate0: Handle,
+        certificate1: Handle,
+        certificate2: Handle,
+        status: &ResidentLease,
+    ) -> Result<Self> {
+        let conv_bf16 = CONV_ELEMENTS
+            .checked_mul(2)
+            .ok_or_else(|| Error::Limit("paired GDN convolution BF16 bytes".into()))?;
+        let conv_f32 = CONV_ELEMENTS
+            .checked_mul(4)
+            .ok_or_else(|| Error::Limit("paired GDN convolution F32 bytes".into()))?;
+        let recurrent_bytes = RECURRENT_ELEMENTS
+            .checked_mul(4)
+            .ok_or_else(|| Error::Limit("paired GDN recurrent bytes".into()))?;
+        let certificate_elements = |handle: &Handle, role: &str| -> Result<usize> {
+            let bytes = usize::try_from(handle.size_in_used())
+                .map_err(|_| Error::Limit(format!("paired GDN {role} bytes")))?;
+            if bytes == 0 || !bytes.is_multiple_of(2) {
+                return Err(Error::State(format!(
+                    "paired GDN {role} is not a nonempty BF16 payload"
+                )));
+            }
+            let elements = bytes / 2;
+            if elements > RECURRENT_ELEMENTS || u32::try_from(elements).is_err() {
+                return Err(Error::Limit(format!("paired GDN {role} elements")));
+            }
+            Ok(elements)
+        };
+        let certificate0_elements = certificate_elements(&certificate0, "certificate0")?;
+        let certificate1_elements = certificate_elements(&certificate1, "certificate1")?;
+        let certificate2_elements = certificate_elements(&certificate2, "certificate2")?;
+        let status_handle = status.handle();
+        for (handle, bytes, role) in [
+            (&conv_source, conv_bf16, "conv source"),
+            (&recurrent_source, recurrent_bytes, "recurrent source"),
+            (&conv_destination, conv_f32, "conv destination"),
+            (
+                &recurrent_destination,
+                recurrent_bytes,
+                "recurrent destination",
+            ),
+            (&certificate0, certificate0_elements * 2, "certificate0"),
+            (&certificate1, certificate1_elements * 2, "certificate1"),
+            (&certificate2, certificate2_elements * 2, "certificate2"),
+            (&status_handle, 4, "status"),
+        ] {
+            require_exact_pair_binding(service, handle, bytes, role)?;
+        }
+        require_pair_nonaliasing(&[
+            &conv_source,
+            &recurrent_source,
+            &conv_destination,
+            &recurrent_destination,
+            &certificate0,
+            &certificate1,
+            &certificate2,
+            &status_handle,
+        ])?;
+        let source: Arc<str> = format!(
+            "{}\n#define ZG_CONV_ELEMENTS {}u\n#define ZG_RECURRENT_ELEMENTS {}u\n#define ZG_CERTIFICATE0_ELEMENTS {}u\n#define ZG_CERTIFICATE1_ELEMENTS {}u\n#define ZG_CERTIFICATE2_ELEMENTS {}u\n{}",
+            "// cubecl.cuda.dynamic_shared_bytes=0",
+            CONV_ELEMENTS,
+            RECURRENT_ELEMENTS,
+            certificate0_elements,
+            certificate1_elements,
+            certificate2_elements,
+            GDN_STATE_OUT_CERTIFIED_SOURCE,
+        )
+        .into();
+        let kernel = PinnedKernel::new(
+            "zg_gdn_state_out_certified",
+            source,
+            128,
+            Arc::from([
+                (conv_bf16, BufferIOAttr::ReadOnly),
+                (recurrent_bytes, BufferIOAttr::ReadOnly),
+                (conv_f32, BufferIOAttr::WriteOnly),
+                (recurrent_bytes, BufferIOAttr::WriteOnly),
+                (certificate0_elements * 2, BufferIOAttr::ReadOnly),
+                (certificate1_elements * 2, BufferIOAttr::ReadOnly),
+                (certificate2_elements * 2, BufferIOAttr::ReadOnly),
+                (4, BufferIOAttr::ReadWrite),
+            ]),
+        )?;
+        let grid = [(RECURRENT_ELEMENTS as u32).div_ceil(128), 1, 1];
+        Ok(Self {
+            launch: kernel.prepare(
+                service.client(),
+                grid,
+                vec![
+                    conv_source,
+                    recurrent_source,
+                    conv_destination,
+                    recurrent_destination,
+                    certificate0,
+                    certificate1,
+                    certificate2,
+                    status_handle,
+                ],
+            )?,
         })
     }
 
