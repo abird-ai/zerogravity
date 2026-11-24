@@ -117,6 +117,12 @@ impl PreparedBf16Projection {
     pub(crate) fn storage(&self) -> Bf16ProjectionStorage {
         self.storage
     }
+    // Temporary A/B: use the identical decision during cold sealing and execution.
+    pub(crate) fn use_hoisted(&self) -> bool {
+        static HOISTED: OnceLock<bool> = OnceLock::new();
+        self.storage == Bf16ProjectionStorage::Resident
+            && *HOISTED.get_or_init(|| std::env::var_os("ZG_TMP_HOISTED").is_some())
+    }
     pub(crate) fn launch_rows(&self) -> impl Iterator<Item = usize> + '_ {
         (0..self.matrix.rows())
             .step_by(self.rows_per_launch)
@@ -389,11 +395,7 @@ impl PreparedBf16Projection {
                 );
             }
         }
-        // Temporary A/B: only resident HIP projections; remove after decision.
-        static HOISTED: OnceLock<bool> = OnceLock::new();
-        let hoisted = self.storage == Bf16ProjectionStorage::Resident
-            && matches!(service.device(), cubecl::Device::Hip(_))
-            && *HOISTED.get_or_init(|| std::env::var_os("ZG_TMP_HOISTED").is_some());
+        let hoisted = self.use_hoisted();
         let singleton = coalesce_singleton_status;
         if singleton {
             view(b.flags, 0, output_elements * 4)?;

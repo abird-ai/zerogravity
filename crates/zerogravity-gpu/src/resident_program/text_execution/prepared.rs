@@ -62,19 +62,35 @@ pub(super) fn kernels(
     );
     for p in operands.values() {
         for rows in p.launch_rows() {
-            add!(
-                crate::bf16_projection_kernel::project_cpu_bf16::ProjectCpuBf16,
-                64,
-                b(),
-                b(),
-                b(),
-                b(),
-                b(),
-                b(),
-                rows,
-                p.matrix().columns(),
-                p.matrix().rows()
-            );
+            if p.use_hoisted() {
+                add!(
+                    crate::bf16_projection_kernel::project_cpu_bf16_hoisted::ProjectCpuBf16Hoisted,
+                    64,
+                    b(),
+                    b(),
+                    b(),
+                    b(),
+                    b(),
+                    b(),
+                    rows,
+                    p.matrix().columns(),
+                    p.matrix().rows()
+                );
+            } else {
+                add!(
+                    crate::bf16_projection_kernel::project_cpu_bf16::ProjectCpuBf16,
+                    64,
+                    b(),
+                    b(),
+                    b(),
+                    b(),
+                    b(),
+                    b(),
+                    rows,
+                    p.matrix().columns(),
+                    p.matrix().rows()
+                );
+            }
         }
     }
     for node in l.plan.nodes() {
