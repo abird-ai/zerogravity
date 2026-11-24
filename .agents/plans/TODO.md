@@ -9,17 +9,15 @@ Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md).
 The foundations pack links the complete dated history, source checkpoint, original design and plan/open-work/Git inventories. Live source and owning TODOs remain authoritative.
 
-**24 Nov Phase 1 checkpoint:** `7e86aad7` accepted phase-bound borrowed
-text calls, explicit contiguous token/position and producer observation ports,
-original whole-text preparation and native singleton/cohort consumers.
-HIP observes real producers; CUDA refuses unsupported observations before work.
-Physical observation/refusal, native/exact/continuation and CUDA paged/contiguous
-canaries and full isolated workspace gate pass.
-Next reconcile cold capability, provider/device selection and resource
-admission/reporting through existing native loader/SDK owners in the
-[full plan](FULL_IMPLEMENTATION_PLAN.md) and
-[pipeline composition](pipeline-composition/TODO.md). No new backend tuning
-or compiled SDK selection.
+**24 Nov Phase 1 checkpoint:** `f4746c23` accepted native cold device
+selection, common headroom fit, pre-Client HIP envelope and actual prepared
+resource reporting. HIP refusal/retry, native V2 C1/C8, exact C1 and L5
+native C1/C8 paged/contiguous pass with original retirement. Full isolated
+gate passes (2384/0/101). CUDA actual actor admission remains post-Client; no new
+physical Vulkan support. Next reconcile existing catalog/model lifecycle
+and immutable source selection for actual HF/GGUF consumers in the
+[full plan](FULL_IMPLEMENTATION_PLAN.md) and owning plans. No second catalog,
+allocator or scheduler, backend tuning or compiled SDK selection.
 
 **20 Nov authoritative refresh:** pushed/tracked `origin/main` is `f0f0640`; local signed
 source lineage above it includes `1222f8a` (multi-token GDN prefill), `60ba956` (matched

@@ -5,6 +5,16 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 24 Nov — cold native admission acceptance
+
+`f4746c23` shares capacity/headroom fit and retains actual native loader
+admission in SDK diagnostics. HIP pressure refusal/retry and Qwen 0.8B
+producer observation, native V2 C1/C8 and exact C1 pass. CUDA C1 and
+contiguous/paged C8 pass expected singleton tokens/matching cohort outputs
+and report bounds. Both original owners retire; physical idle levels
+unchanged. Full isolated gate passes (2384/0/101). No performance baseline change,
+new numerical parity or general transactional pre-Client CUDA guarantee.
+
 ## 24 Nov — prepared text call/observation acceptance
 
 `7e86aad7` binds the original source/plan/phase and explicit text

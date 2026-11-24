@@ -20,6 +20,51 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Accepted source checkpoint `f4746c2350153b518e4730c3448e8f4ede02eab8` —
+cold capability, selected device and effective native admission.**
+Shared `ProviderMemoryBudget` applies the same headroom-preserving clamp to
+discovery and the original CUDA actor's live capacity observation. The
+native source policy checks explicit provider/device agreement; CUDA checks
+SM86, selected ordinal/PCI identity and the original 5 GiB physical /
+512 MiB context-headroom contract before Client creation. The actor still
+performs its live clamp and exact resource admission after Client creation;
+there is no general transactional pre-Client CUDA allocation guarantee.
+HIP single/shared native source loaders acquire the existing physical
+envelope before one-shot runtime configuration or Client construction,
+then attach that lease and partition the original context. Ordinary pressure
+refusal drops only unused admission; uncertain bootstrap fences and retains
+the original envelope. HIP driver observation itself is not a promise of
+zero driver-side initialization or an OS VRAM reservation. The existing
+Vulkan diagnostic preadmission uses the same guarded bootstrap, compile
+checked only this slice. No new device support.
+`ResidentTextAdmission` retains the actual native fit, not a smart-config
+estimate: original PCI identity, configured/admitted model capacity,
+required bytes, separate context budget, physical limit, source/resident
+weights, logical root and actual pool reserve, session/cohort limits, and
+HIP host upper bound (CUDA complete host upper remains unknown). The SDK
+reports it alongside the original prepared mode, profile, rows and observation
+capability. Aliases reference the same admission; these are bounds, not live
+memory use. Known capacity misses stay typed; unsupported candidate policy
+may be excluded; other failures do not trigger another selection.
+Focused headroom test and combined HIP/CUDA SDK compilation pass. Physical
+Qwen 0.8B HIP pre-Client pressure refusal leaves host/card reservations
+unchanged and unfenced; same-process retry observes 653 producers and
+matches final logits. X2 native V2 C1/C8 and exact-reference C1 pass expected
+tokens, replay, lane invariance, zero failed GPU quanta, actual SDK report
+and original last-reader retirement. L5 CUDA C1 and C8 contiguous/paged
+pass expected singleton tokens / matching cohort outputs, report bounds and
+shutdown. Both hosts clean at exact signed source; idle L5 37 MiB, X2
+259768320 B, no compute owners. A1 untouched. No new numerical parity or
+performance baseline. Full isolated workspace gate passes (2384 Rust test
+executions, zero failures, 101 explicit skips; release/installer/scripts).
+Next: reconcile catalog/model lifecycle and immutable source selection
+through the existing SDK/runtime and actual HF/GGUF consumers; examine
+model-level retirement/alias authority without another catalog or scheduler.
+Continue remaining physical admission and provider interop only for actual
+consumers; this is not Phase 1 closure.
+
+Prior accepted prepared text checkpoint:
+
 **Accepted source checkpoint `7e86aad7d74882baa474a50a584e141f1d58eee3` —
 prepared text calls and producer observations.**
 Source-template regions derive token and absolute-position ports and original

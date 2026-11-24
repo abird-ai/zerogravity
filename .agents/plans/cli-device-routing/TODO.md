@@ -91,9 +91,13 @@ build or general model/backend grant. Historical failures keep their source scop
 
 Historical source20 .8B first-use refusal (two attempts after readiness) remains
 recorded. Current21 repairs it within the finite accepted scope above.
-- [ ] Shared pre-Client transactional admission remains open and explicitly
-  reported by the finite adapter; registration/current-free checks are not an
-  OS hard memory guarantee or a reservation before Client creation.
+- [~] Shared pre-Client transactional admission: accepted `f4746c23` adopts
+  the original envelope before HIP source Client/runtime bootstrap; actual
+  Qwen refusal/retry passes without leaked reservation or fencing. CUDA
+  selected SM86/PCI/envelope checks precede Client, but the final live
+  clamp and actual admission remain actor-side after Client. Existing
+  Vulkan diagnostic attachment compiles. General transactional pre-Client
+  admission and OS hard-memory guarantees are not implied.
 
 ### Review and authorization
 

@@ -131,8 +131,16 @@ whole-text preparation for HIP/CUDA singleton/cohort calls. Observation
 support is explicit (HIP at producer, CUDA refusal before submission).
 Physical Qwen 0.8B observation/refusal, native/exact/continuation and
 CUDA contiguous/paged canaries and full isolated gate pass.
-Next reconcile cold capability, provider/device selection and resource
-admission/reporting through actual native loader/SDK owners. Extend external
+Accepted `f4746c23` reconciles explicit native provider/device selection,
+shared headroom fit, pre-Client HIP admission and actual effective native
+preparation reporting through the original SDK owner. HIP pressure
+refusal/retry and native/exact canaries, L5 CUDA singleton/paged/contiguous
+and original retirement pass; full isolated gate passes. CUDA still
+clamps/adopts the actual envelope on the Client actor; Vulkan guarded
+preadmission is compile checked, not newly physically qualified.
+Next reconcile catalog/model lifecycle and immutable source selection
+through existing SDK/runtime and actual HF/GGUF consumers; retain original
+alias/reader authority. Extend remaining physical admission and external
 allocation/runtime/device interop only for real consumers.
 None of these slices closes Phase 1.
 

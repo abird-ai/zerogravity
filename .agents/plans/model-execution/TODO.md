@@ -160,6 +160,13 @@ any external compiler. All phases retain the original resource/state owners.
   observers before submission. Accepted `7e86aad7`: real producer observations,
   CUDA refusal/reuse, native/exact/continuation and paged/contiguous canaries
   and full isolated gate pass (composition TODO).
+- Accepted `f4746c23`: shared capacity/headroom fit, explicit selected device,
+  HIP original envelope before irreversible bootstrap and actual native
+  executable resource report (model/context/state/weights/rows/cohort).
+  Physical HIP refusal/retry, native/exact and CUDA singleton/paged/contiguous
+  pass with original retirement; full isolated gate passes. No hot math
+  change, post-submit fallback or new numerical profile. CUDA actual actor
+  reservation remains post-Client.
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

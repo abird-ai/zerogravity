@@ -298,6 +298,22 @@ their existing numeric/source/physical acceptance gates.
   pass expected tokens/replay and retirement. Full isolated gate 2383/0/101
   (passed/failed/ignored), release/installer/scripts pass.
 
+## Cold native device selection and admission — 24 Nov
+
+- [x] Shared headroom-preserving capacity fit for CUDA discovery and actor
+  clamp; explicit source provider/device agreement and CUDA selected
+  SM86/PCI and original context envelope preflight.
+- [x] Native HIP single/shared source bootstrap takes original envelope
+  before one-shot runtime configuration and Client construction. Guarded
+  attachment reuses lease and fences uncertain bootstrap. SDK diagnostics
+  expose actual admitted native fit, distinct model/context bounds and
+  true root pool reserve, not a duplicate estimate/allocator.
+- [x] Accepted `f4746c23`: Qwen 0.8B HIP capacity refusal and same-process
+  retry with 653 producer observations; X2 native V2 C1/C8 and exact C1,
+  L5 CUDA C1/C8 paged/contiguous, original reports and retirement pass.
+  Full isolated gate 2384/0/101 passes. CUDA live actual fit still post-Client;
+  Vulkan compile checked, no new physical qualification.
+
 ## Uncommitted
 
 ### Phase 1 — source, semantics and executable lowering
@@ -305,8 +321,9 @@ their existing numeric/source/physical acceptance gates.
 Contract: [closed regions](REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering)
 and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
 
-- [ ] Generalize remaining cold capability/placement and lifecycle boundaries
-  through real consumers; keep selected shape bands and typed ports, no naked
+- [ ] Reconcile catalog/model lifecycle and immutable source selection for
+  actual HF/GGUF consumers; generalize remaining cold placement only through
+  real consumers. Keep selected shape bands and typed ports, no naked
   scope or implicit retry. Contiguous text invocation/producer ports and the
   whole-text prepared boundary are implemented above; arbitrary explicit
   position tensors and host/IO effects remain unsupported. Extend
