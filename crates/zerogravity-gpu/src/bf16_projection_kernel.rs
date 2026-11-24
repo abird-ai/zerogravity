@@ -282,6 +282,8 @@ pub(crate) fn project_cpu_bf16(
 /// workgroup. Each lane loads the packed activation once per K64 chunk and reuses
 /// that exact BF16 value across two independent row accumulators. Every row keeps
 /// the scalar kernel's FMA order, reduction tree, rounding and status contract.
+/// Current gfx1150 Qwen keeps rows1: the dominant3584x1024 shape flipped sign
+/// between repeats, contraction lost materially, and other expansion gains were small.
 #[allow(dead_code)]
 #[cube(launch_unchecked)]
 pub(crate) fn project_cpu_bf16_rows2(
