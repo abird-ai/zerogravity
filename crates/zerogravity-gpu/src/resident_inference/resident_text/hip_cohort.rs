@@ -1,6 +1,6 @@
 //! Independent prefill/decode cohorts for HIP text execution.
-//! Only projections share multi-row physical work in the first cut; every stateful
-//! operator still addresses each session's original private state.
+//! Share projections and compatible row-wise work while retaining each session's
+//! private state roots, admitted flight and completion authority.
 use super::*;
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
 

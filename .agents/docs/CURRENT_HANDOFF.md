@@ -201,7 +201,8 @@ The current implementation priorities implied by that baseline are:
 
 1. fix the fused CUDA C4+ lane-invariance correctness bug before accepting wider CUDA
    performance comparisons;
-2. HIP decode cohorts batch projections, row-wise work and the18 GDN Conv4 updates.
+2. HIP cohorts share aligned prefill and decode projections/stateless work,
+   with decode additionally sharing QK/rotary and the18 GDN Conv4 updates.
    A direct private-state recurrent cohort candidate (`11f692b`) stayed exact and cut
    A1 C4/C8 dispatches by ~4.6%/~5.5%, but warm wall time was only ~0.24% better at
    C4 and ~1.83% worse at C8. The selector/load-time preparation was therefore removed
@@ -396,11 +397,22 @@ and launch. Canonical solver/reference route retained; temporary probes
 and switch removed. Final0.8B24GiB/27B68GiB C1 canaries pass at
 190.322/5,301.120ms warm means, exact IDs/replay and original retirement.
 GPU feature boundaries/CPU Clippy pass; full gate still stops at existing
-CPU cache admission assertion. Next share aligned HIP prefill work,
-preserving exact arithmetic and private state roots. Existing prefill cohort admission is
-CUDA-contract gated, not yet a HIP capability; extend the actual shared
-execution rather than relaxing the guard. See CURRENT_BASELINE for measured
-cells; no fresh paired vLLM claim.
+CPU cache admission assertion. `2ed9c10f` now implements actual shared HIP
+prefill using the existing cohort traversal, admission and completion owners:
+aligned equal-length2..64-token chunks, same output policy, private state roots,
+one-token tails singleton. `282a3437` / `2eee25fa` share stateless operators
+and direct single-matrix output; `fd914f63` bounds resident projection tiles
+at128 input rows while streamed weights retain whole-cohort traversal.
+Current real0.8B/2B C4/C8 warm means657.981/1283.333ms and1249.184/2531.391ms
+(3.5–6.9% lower versus previous checkpoint), exact IDs/replay, three actual
+fused cohorts/wave,29,564/55,695 dispatches, zero failed quanta.
+Distinct-prompt complete state/logit differential passes22,922,240 exact
+FP32 words across state-only/terminal and discard/replay; public81-token
+four-session distinct-prompt test observes state-only fusion and exact
+singleton-equivalent outputs. Clean retirement. Final feature boundaries and
+CPU Clippy pass; full isolated gate stops at the existing CPU cache-admission
+assertion. Next localize selected shared prefill costs; remaining stateful work is private per session.
+See CURRENT_BASELINE; no fresh paired vLLM claim.
 
 Local X2 recovery recipe (revalidate store paths after GC; use the normal locked
 shell once available). Build with existing Nix cargo/rustc1.95, gcc15.3 and

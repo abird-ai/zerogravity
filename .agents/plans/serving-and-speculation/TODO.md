@@ -304,15 +304,26 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   exact IDs/replay, unchanged dispatches, zero failed quanta, clean retirement.
   GPU feature boundaries/CPU Clippy pass; full isolated check.sh stops at
   existing CPU cache admission assertion. See CURRENT_BASELINE.
-- [ ] Next HIP priority: shared prefill composition. Existing prefill cohort
-  preparation is CUDA-contract gated; extend actual shared execution and
-  ownership deliberately, never enable by removing the guard. Start with
-  aligned equal-frontier prefill chunks and independent state roots using
-  current cohort/projection primitives; measure real C4/C8 before expanding.
-  Re-localize selected kernel costs when necessary, no fixture proliferation.
-  Restore unavailable pinned vLLM closure separately for fresh paired runs;
-  no acquisition/repin merely to benchmark. No A1 comparison to X2/L5
-  vLLM; no broader qualification inferred.
+- [x] Shared HIP prefill composition: `2ed9c10f` generalizes the existing
+  cohort traversal/admission/completion owners to aligned equal-length
+  2..64-token prefill chunks, same output policy, private state roots;
+  one-token tails stay singleton. Flatten projections, gather terminal
+  rows, extend only required arena/scratch slots, preserve capacity fallback.
+  `282a3437` / `2eee25fa` share stateless operators and direct single-matrix
+  output. Untiled C8 locality loss motivates `fd914f63` resident128-token
+  projection tiles (streamed operands remain whole-cohort).
+  Real0.8B/2B C4/C8 exact outputs, three actual fused cohorts/wave, dispatches
+  29,564/55,695 versus31,794/60,790, warm means657.981/1283.333ms and
+  1249.184/2531.391ms,3.5–6.9% lower versus retained previous checkpoint.
+  Distinct-prompt singleton differential (`47b9f6f6`) passes22,922,240
+  exact FP32 state/logit words including state-only continuation, terminal
+  discard/replay; `74619a0b` real SDK multi-chunk regression passes with
+  observed state-only fusion. Clean retirement. See CURRENT_BASELINE.
+- [ ] Next HIP priority: localize shared prefill device costs after tiling.
+  Keep actual shared composition; target remaining private GDN/conv/attention
+  or projection throughput where measured. No speculative selector machinery
+  or fixture proliferation. Restore unavailable pinned vLLM closure separately
+  for fresh paired runs; no acquisition/repin merely to benchmark.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.

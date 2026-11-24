@@ -72,9 +72,14 @@ Immediate execution priorities are intentionally small:
   and widened fallback; original sequential solve/reduction unchanged.
   Direct timing improves46.8–63.1%; actual0.8B/2B C1/C4/C8 ABBA improves
   all means4.74–10.95%, exact outputs/replay/lane invariance and unchanged
-  dispatches/ownership. Next prioritize shared HIP prefill composition,
-  presently CUDA-contract gated. Fresh paired vLLM remains blocked by
-  missing pinned provider closure.
+  dispatches/ownership. `2ed9c10f` / `282a3437` extend actual HIP shared
+  prefill composition using the existing cohort and independent state roots.
+  `fd914f63` selects resident128-token tiles to recover untiled C8 locality;
+  C4/C8 means fall3.5–6.9% versus the previous checkpoint, exact outputs.
+  Distinct-prompt complete state/logit and public state-only cohort checks
+  pass. Next localize the shared path and target measured remaining private
+  stateful work or projection throughput. Fresh paired vLLM remains blocked
+  by missing pinned provider closure.
   Combined backend feature boundaries restored at `c89d0ee7`; full gate now
   stops at a separate CPU cache admission assertion. See serving plan;
 - optimize L5 27B streamed source/transfer overlap as a distinct memory-constrained mode;

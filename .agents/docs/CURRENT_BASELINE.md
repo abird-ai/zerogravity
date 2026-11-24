@@ -210,7 +210,7 @@ zero failed quanta and original idle VRAM/no KFD owner.
 No new vLLM execution or fresh paired comparison; at that checkpoint C8
 gaps were~14.1x/~16.7x.
 
-### Current selected gfx1151 HIP path — guarded GDN triangular
+### Previous gfx1151 HIP checkpoint — guarded GDN triangular
 
 `393d0f56` adds separately rounded guarded FP32 multiply-then-add with
 the original widened fallback. Exact zero products preserve the stored
@@ -245,8 +245,54 @@ and original retirement. Final `4a5961da` unchanged C1 benchmark passes
 0.5659tok/s (correctness/residency canary, not paired performance evidence).
 Expected IDs, replay, unchanged9,673/36,741 dispatches/request, zero failed
 quanta, original idle VRAM259,768,320B and no KFD owners.
-No new vLLM execution or fresh paired comparison; C8 gaps remain~12.6x/~15.7x.
-Prefill sharing remains the larger scaling target.
+No new vLLM execution or fresh paired comparison.
+
+### Current gfx1151 HIP path — aligned shared prefill
+
+`2ed9c10f` extends the existing HIP cohort traversal and completion owner to
+equal-frontier/equal-length 2..64-token prefill chunks with the same output
+policy. Configured cohort cap 4/8 admits widths 2/4/8 with private state roots.
+One-token prefill tails remain singleton. Projection input rows flatten
+across sessions, terminal heads gather their last rows, and activation
+slots/scratch grow only for the admitted cohort extent. Capacity refusal
+keeps singleton fallback. `282a3437` / `2eee25fa` share stateless RMS,
+sigmoid, multiply and SILU-multiply and write single-matrix projections
+directly when lease roles permit; positional and stateful prefill work
+remains per session.
+
+The first untiled shared build produced exact outputs but mixed wall time:
+C4/C8 mean0.8B659.131/1363.181ms,2B1227.278/2887.715ms.
+`fd914f63` caps resident projection token tiles at128 (streamed operands
+retain one whole-cohort traversal), reducing temporary projection extents
+and recovering C8 locality. Existing full-row primitives remain reusable.
+
+X2 actual public SDK, same canonical47+3 workload,24GiB,active8/cohort8,
+one warmup plus two timed waves per cell. Previous means are the retained
+guarded-triangular checkpoint, not fresh paired measurements:
+
+| Model / offered | Previous mean (ms) | Current mean (ms) | Current ZG tok/s | Retained matched vLLM tok/s |
+| --- | ---: | ---: | ---: | ---: |
+| 0.8B C4 | 681.951 | 657.981 | 18.238 | 135.358 |
+| 0.8B C8 | 1378.619 | 1283.333 | 18.701 | 219.612 |
+| 2B C4 | 1302.572 | 1249.184 | 9.606 | 96.233 |
+| 2B C8 | 2677.231 | 2531.391 | 9.481 | 140.847 |
+
+All expected IDs/replay/lane invariance exact; three actual fused cohorts
+per wave (prefill + two decode),29,564/55,695 dispatches versus
+31,794/60,790 previously, zero failed quanta. Mean reductions3.5–6.9%.
+C1 remains the previous checkpoint; no fresh vLLM or C1 run here.
+`47b9f6f6` differential repeated on selected tiled build: distinct
+0.8B prompts,64 state-only +17 terminal tokens, discarded terminal cohort
+then exact replay,22,922,240 FP32 words bit-exact against singleton
+state/logits. `74619a0b` public four-session 81-token distinct-prompt
+regression observes actual state-only fusion and singleton-equivalent
+output. All physical runs retire to259,768,320B idle VRAM, no KFD owners.
+Final feature-boundary/CPU Clippy gates pass; full isolated check.sh
+stops at the existing CPU cache-admission assertion.
+Current C8 gaps versus retained vLLM remain~11.7x/~14.9x.
+Next localize the selected shared-prefill path, especially remaining
+per-session stateful work and projection throughput; do not infer a
+speedup from fewer launches alone.
 
 ## A1 — Radeon 890M gfx1150 — local resident HIP comparison, 24 Nov
 
@@ -269,9 +315,10 @@ The retained matched vLLM tables above are unchanged.
 1. HIP decode cohorts now share projections, row-wise activation/QK/rotary work
    and the 18 GDN layers' Conv4 private-state update while retaining independent
    StateRoot/publication authority. Conv4 is exact but only modestly moves wall time;
-   current X2 localization shows that independent prefill dominates short
-   C8 waves; guarded GDN triangular now improves all six short-wave cells,
-   and prefill sharing remains the larger scaling target.
+   X2 now also shares aligned prefill projections and stateless operators,
+   using 128-token resident projection tiles. Stateful prefill work remains
+   private per session. Measure remaining shared-path costs before expanding
+   the stateful consumers.
 2. Batching is not the whole HIP gap. C1 is already substantially behind
    vLLM on 0.8B, 2B and especially 27B, so singleton kernel/execution efficiency
    remains independently important.
