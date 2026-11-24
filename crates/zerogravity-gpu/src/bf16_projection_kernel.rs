@@ -78,6 +78,7 @@ fn project_value(
     #[comptime] columns: usize,
     #[comptime] shared_pair: bool,
     #[comptime] input_certified: bool,
+    #[comptime] hoist_packed_indices: bool,
 ) -> (usize, f32, u32, u32) {
     let output = output_index(usize::cast_from(CUBE_POS_X), requests, rows);
     let request = output / rows;
@@ -93,14 +94,35 @@ fn project_value(
     if u32::reinterpret(z) != 0u32 {
         invalid |= 4u32;
     }
+    // Full-K64 matrices have even row strides and chunk boundaries.
+    // The packed half-word therefore depends only on the lane.
+    let weight_base = row * (columns / 2usize) + lane / 2usize;
+    let input_base = request * (columns / 2usize) + lane / 2usize;
+    let half_shift = u32::cast_from(lane % 2usize) * 16u32;
     for chunk in 0..columns / 64usize {
-        let column = chunk * 64usize + lane;
-        let wi = row * columns + column;
-        let xi = request * columns + column;
-        let packed_weight = packed_word(weights, wi / 2usize, lane, shared_pair);
-        let packed_input = packed_word(input, xi / 2usize, lane, shared_pair);
-        let wb = (packed_weight >> (u32::cast_from(wi % 2usize) * 16u32)) & 0xffffu32;
-        let xb = (packed_input >> (u32::cast_from(xi % 2usize) * 16u32)) & 0xffffu32;
+        let (wi, xi, ws, xs) = if comptime!(hoist_packed_indices) {
+            let offset = chunk * 32usize;
+            (
+                weight_base + offset,
+                input_base + offset,
+                half_shift,
+                half_shift,
+            )
+        } else {
+            let column = chunk * 64usize + lane;
+            let wi = row * columns + column;
+            let xi = request * columns + column;
+            (
+                wi / 2usize,
+                xi / 2usize,
+                u32::cast_from(wi % 2usize) * 16u32,
+                u32::cast_from(xi % 2usize) * 16u32,
+            )
+        };
+        let packed_weight = packed_word(weights, wi, lane, shared_pair);
+        let packed_input = packed_word(input, xi, lane, shared_pair);
+        let wb = (packed_weight >> ws) & 0xffffu32;
+        let xb = (packed_input >> xs) & 0xffffu32;
         if (wb & 0x7f80u32) == 0x7f80u32 {
             invalid |= 1u32;
         }
@@ -303,6 +325,41 @@ pub(crate) fn project_cpu_bf16(
         columns,
         false,
         false,
+        false,
+    );
+    if lane == 0usize {
+        accumulation[output] = result;
+        rounded[rounded_index(output, rows, output_row_stride)] = f32::reinterpret(rounded_bits);
+        status[output] = combined;
+    }
+}
+
+/// Exact full-K64 sibling with packed-word row/lane offsets and half-word
+/// shifts hoisted out of the FMA loop. Both operand exponent checks remain.
+#[allow(dead_code)]
+#[cube(launch_unchecked)]
+pub(crate) fn project_cpu_bf16_hoisted(
+    weights: &[u32],
+    input: &[u32],
+    zero: &[f32],
+    accumulation: &mut [f32],
+    rounded: &mut [f32],
+    status: &mut [u32],
+    #[comptime] rows: usize,
+    #[comptime] columns: usize,
+    #[comptime] output_row_stride: usize,
+) {
+    let lane = usize::cast_from(UNIT_POS);
+    let (output, result, rounded_bits, combined) = project_value(
+        weights,
+        input,
+        zero,
+        accumulation.len() / rows,
+        rows,
+        columns,
+        false,
+        false,
+        true,
     );
     if lane == 0usize {
         accumulation[output] = result;
@@ -338,6 +395,7 @@ pub(crate) fn project_cpu_bf16_pair_load(
         rows,
         columns,
         true,
+        false,
         false,
     );
     if lane == 0usize {
@@ -375,6 +433,7 @@ pub(crate) fn project_cpu_bf16_input_certified(
         columns,
         false,
         true,
+        false,
     );
     if lane == 0usize {
         accumulation[output] = result;
@@ -650,6 +709,7 @@ pub(crate) fn project_cpu_bf16_certified(
         accumulation.len() / rows,
         rows,
         columns,
+        false,
         false,
         false,
     );
