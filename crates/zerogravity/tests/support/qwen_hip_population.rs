@@ -292,6 +292,45 @@ fn public_source_population_completion_cancel_and_shutdown() {
 }
 
 #[test]
+#[ignore = "approved source, gfx1151, fresh isolated release process"]
+fn public_aligned_multichunk_prefill_matches_singletons() {
+    let label = std::env::var("ZG_QWEN_HIP_SDK_MODEL").unwrap();
+    let h = Harness::open_benchmark(&label, 4, 512, 3, 65);
+    let prompts = [" a", " b"].map(|p| p.repeat(81));
+    for prompt in &prompts {
+        assert_eq!(h.tokenizer.prompt_tokens(prompt, false).unwrap().len(), 81);
+    }
+    let expected = prompts.each_ref().map(|prompt| {
+        complete(
+            h.runtime.request_text(request("source", prompt)).unwrap(),
+            81,
+            h.tokenizer.as_ref(),
+        )
+        .ids
+    });
+    let before = h.admission()["gpu_fused_state_only_batches"]
+        .as_u64()
+        .unwrap();
+    let requests = (0..4)
+        .map(|i| {
+            h.runtime
+                .request_text(request("source", &prompts[i % 2]))
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    let mut sessions = BTreeSet::new();
+    for (i, events) in requests.into_iter().enumerate() {
+        let out = complete_with_fused(events, 81, h.tokenizer.as_ref(), true);
+        assert_eq!(out.ids, expected[i % 2]);
+        assert!(sessions.insert(out.roots[0].producer_root.unwrap().session_id));
+    }
+    let admission = h.admission();
+    assert!(admission["gpu_fused_state_only_batches"].as_u64().unwrap() > before);
+    assert_eq!(admission["failed_gpu_quanta"], 0);
+    h.retire();
+}
+
+#[test]
 #[ignore = "approved source, gfx1151, fresh isolated release process; benchmark replay only"]
 fn public_source_population_benchmark() {
     let label = std::env::var("ZG_QWEN_HIP_SDK_MODEL").unwrap();
