@@ -136,7 +136,7 @@ pub(crate) fn launch_residual(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(dead_code, clippy::too_many_arguments)]
 pub(crate) fn launch_fused_tail(
     client: &Client,
     scratch: &[Handle],
@@ -164,7 +164,7 @@ pub(crate) fn launch_fused_tail(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(dead_code, clippy::too_many_arguments)]
 pub(crate) fn launch_residual_fused_tail(
     client: &Client,
     scratch: &[Handle],

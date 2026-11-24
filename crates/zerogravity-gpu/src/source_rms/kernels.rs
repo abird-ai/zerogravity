@@ -215,7 +215,9 @@ pub(crate) fn store(input: &[f32], output: &mut [f32], status: &[Atomic<u32>]) {
     }
 }
 
-/// Alternate RMS vector tail with the same normalize, gamma and store sequence.
+/// Retained alternate RMS vector tail with the same normalize, gamma and store
+/// sequence. Current gfx1150 Qwen keeps separate passes because this loses wall time.
+#[allow(dead_code)]
 #[cube(launch_unchecked)]
 pub(crate) fn normalize_weight_store(
     input: &[f32],
