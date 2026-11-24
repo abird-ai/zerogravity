@@ -125,12 +125,26 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   `654adbb` restores the selected separate vector tail while retaining normalize/weight
   helpers, fused-tail kernel and alternate launchers dormant. HIP+Qwen and all-features
   compile pass on the final disposition.
-- [ ] Next resident HIP unit: stop launch-count-driven fusion and localize **GPU time** on
-  exact resident C1/output16 using existing transient profiling/timing only. Rank
-  projection, RMS, GDN and QK/rotary by device time, then change one shared primitive in
-  the actual dominant family. Do not add a permanent profiler, fixture corpus or evidence
-  hierarchy. Separately qualify gfx1151/X2 native opaque accounting before changing its
-  8GiB fallback.
+- [x] Localized actual resident gfx1150 GPU time with CubeCL/HIP's existing device-event
+  windows; the probe was temporary and serialized, so use it only for relative family
+  ranking, not serving latency. On current `a5c57c` steady cached decode, projection is
+  ~19.8–21.5ms/token (~60–62%), GDN~6.6–7.5ms (~20–22%), RMS~3.0–3.4ms
+  (~9–10%); prefill projection~296ms vs GDN~156ms. Inside projection, output16 totals
+  pack~22.2ms, exact GEMM~561.1ms, status~21.0ms. Top GEMM shapes:3584x1024
+  ~171.8ms,6144x1024~103.1ms, head248320x1024~81.7ms,1024x3584~75.1ms,
+  1024x2048~54.9ms. Clean current output16 timed mean is~0.955s (1.002/0.908s).
+- [x] `072b791` retains an exact wave32 projection sibling: one thread computes the
+  original lane and lane+32 partials independently, then performs the same CPU64
+  +32/+16/+8/final reduction. Selection was tested only in a disposable A1 archive.
+  Reject the gfx1150 consumer: serialized GEMM time561.1→577.7ms (~3.0% slower) and
+  output16 timed mean~0.955→1.101s (~15.3% slower), exact/replay-stable. Primitive stays.
+- [ ] Next resident projection unit: test a model-neutral **rows2** singleton projection
+  specialization. Reuse each packed activation across two adjacent output rows while
+  preserving each row's exact64-partial FMA/reduction/status contract. This is the
+  smallest occupancy/input-reuse point between selected rows1 and rejected rows4.
+  First compare serialized device time on the dominant3584x1024/1024x3584 shapes, then
+  run one output16 A/B only if device time wins. Separately qualify gfx1151/X2 native
+  opaque accounting before changing its8GiB fallback.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.

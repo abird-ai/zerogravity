@@ -260,10 +260,24 @@ The current implementation priorities implied by that baseline are:
    ~0.951→0.963s (~1.3%). `654adbb` restores the selected tail while retaining the
    shared normalize/weight helpers, fused-tail kernel and alternate launchers dormant.
    Both final dispositions pass HIP+Qwen and all-features compilation. Stop treating
-   launch count as the next resident optimization signal. Next HIP unit: use temporary
-   existing GPU profiling/timing to rank actual device time across projection, RMS, GDN
-   and QK/rotary on the resident path, then optimize one genuinely time-dominant shared
-   primitive; do not add a permanent profiling/test framework;
+   launch count as the next resident optimization signal. Current source then selected
+   `a5c57c`, an exact cached-GDN Q/K normalization that maps one32-lane workgroup per
+   value head while retaining the prior scalar normalization primitive.
+   Temporary serialized HIP device-event profiling on exact current resident output16
+   ranks steady decode device time very differently from launch counts: projection
+   ~19.8–21.5ms/token (~60–62%), GDN~6.6–7.5ms (~20–22%), RMS~3.0–3.4ms
+   (~9–10%), all other families individually ~2% or less. Prefill has the same order:
+   projection~296ms vs GDN~156ms. Projection sub-profiling shows the GEMM body owns
+   561.1ms of604.3ms total projection time (~92.9%); pack~22.2ms and status~21.0ms.
+   Largest output16 GEMM shapes are3584x1024~171.8ms,6144x1024~103.1ms,
+   248320x1024 head~81.7ms,1024x3584~75.1ms,1024x2048~54.9ms.
+   Signed `072b791` retains an exact one-wave `project_cpu_bf16_wave32` primitive that
+   carries original CPU partials lane/lane+32 separately and performs the unchanged
+   +32/+16/+8/final tree. Do not select it on gfx1150: serialized GEMM time regressed
+   561.1→577.7ms (~3.0%) and clean output16 timed mean regressed from~0.955s
+   (1.002/0.908s) to~1.101s (1.283/0.920s), exact/replay-stable. Next projection unit:
+   test a reusable **rows2** singleton specialization to share each packed input across
+   two adjacent output rows with half the register/shared footprint of rejected rows4;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
    47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
    streaming mechanics are the relevant optimization target there.

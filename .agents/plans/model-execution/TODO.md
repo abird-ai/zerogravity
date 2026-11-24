@@ -34,8 +34,11 @@ Immediate execution priorities are intentionally small:
   and improves C4/decode-heavy wall time ~1.1% while retaining the standalone residual
   primitive. Broader RMS scalar-cascade and fused-vector-tail candidates both reduce
   launches substantially but lose decode-heavy wall time, so their reusable primitives
-  remain dormant. Next use transient GPU-time localization to choose between projection,
-  RMS, GDN and QK/rotary before more micro-work; do not optimize dispatch count alone;
+  remain dormant. Current `a5c57c` selects the plane32 cached-GDN Q/K normalizer. Transient
+  HIP device events now show projection owns~60–62% of steady decode device time and its
+  exact GEMM body owns~92.9% of projection time. `072b791` retains an exact wave32
+  projection sibling but gfx1150 selection loses device and wall time. Next test rows2
+  input reuse on the dominant MLP shapes; do not optimize dispatch count alone;
 - optimize L5 27B streamed source/transfer overlap as a distinct memory-constrained mode;
 - benchmark completed changes quickly against the canonical current baseline, with no
   speculative test matrix or duplicate paging/COW/streaming abstraction.
