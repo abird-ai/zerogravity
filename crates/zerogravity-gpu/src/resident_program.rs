@@ -87,6 +87,30 @@ impl BufferRange {
             bytes: start..end,
         })
     }
+    /// A supplied external view must belong to the exact original allocation
+    /// and fit its range and selected physical layout; byte equality alone
+    /// cannot substitute a lease.
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "qualification", feature = "hip-source")
+    ))]
+    pub(crate) fn require_view(
+        &self,
+        actual: &Self,
+        layout: zerogravity_core::placement::PreparedTensorLayout,
+    ) -> Result<()> {
+        if actual.service != self.service
+            || actual.memory != self.memory
+            || actual.bytes.start < self.bytes.start
+            || actual.bytes.end > self.bytes.end
+        {
+            return Err(Error::State(
+                "borrowed view differs from original lease".into(),
+            ));
+        }
+        layout.validate_region(actual.bytes.start, actual.bytes.end - actual.bytes.start)
+    }
+
     pub(crate) fn overlaps(&self, other: &Self) -> bool {
         self.service == other.service
             && self.memory == other.memory
@@ -3696,8 +3720,44 @@ mod tests {
         assert!(!owned.overlaps(&c));
         assert!(!a.overlaps(&b));
         assert!(!a.overlaps(&c));
-        assert!(owned.insert(c).is_err());
+        assert!(owned.insert(c.clone()).is_err());
         assert_eq!(owned.by_memory.len(), 1);
+        #[cfg(all(
+            target_os = "linux",
+            any(feature = "qualification", feature = "hip-source")
+        ))]
+        {
+            use zerogravity_core::placement::PreparedTensorLayout;
+            let layout = PreparedTensorLayout::dense(2, 2, 2).unwrap();
+            assert!(
+                a.require_view(
+                    &BufferRange {
+                        bytes: 4..8,
+                        ..a.clone()
+                    },
+                    layout
+                )
+                .is_ok()
+            );
+            for invalid in [
+                BufferRange { bytes: 4..8, ..b },
+                BufferRange { bytes: 4..8, ..c },
+                BufferRange {
+                    bytes: 3..7,
+                    ..a.clone()
+                },
+                BufferRange {
+                    bytes: 6..10,
+                    ..a.clone()
+                },
+                BufferRange {
+                    bytes: 4..6,
+                    ..a.clone()
+                },
+            ] {
+                assert!(a.require_view(&invalid, layout).is_err());
+            }
+        }
     }
 
     #[test]

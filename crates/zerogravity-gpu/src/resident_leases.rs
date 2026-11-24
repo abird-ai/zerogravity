@@ -915,6 +915,33 @@ impl ResidentLease {
     pub fn handle(&self) -> Handle {
         self.0.handle().clone()
     }
+    /// Bounded subview of this exact original allocation. The caller retains
+    /// the lease on its existing initialization/submission owner.
+    pub(crate) fn view(&self, offset: usize, bytes: usize) -> Result<Handle> {
+        let end = offset
+            .checked_add(bytes)
+            .filter(|end| bytes != 0 && *end <= self.bytes())
+            .ok_or_else(|| Error::State("resident original lease view extent".into()))?;
+        Ok(self
+            .handle()
+            .offset_start(offset as u64)
+            .offset_end((self.bytes() - end) as u64))
+    }
+
+    /// Bind the selected physical tensor layout without copying or allocating.
+    /// Original flight membership and access are checked by the consuming adapter.
+    #[cfg(all(target_os = "linux", feature = "cuda-cublas"))]
+    pub(crate) fn typed_view(
+        &self,
+        offset: usize,
+        layout: zerogravity_core::placement::PreparedTensorLayout,
+    ) -> Result<Handle> {
+        let bytes = layout.byte_len()?;
+        let view = self.view(offset, bytes)?;
+        layout.validate_region(view.offset_start.unwrap_or(0), bytes as u64)?;
+        Ok(view)
+    }
+
     pub fn service(&self) -> &Arc<ResidentService> {
         &self.0.service
     }

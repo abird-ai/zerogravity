@@ -62,6 +62,16 @@ impl PreparedTensorLayout {
     pub fn rows(self) -> usize {
         self.rows
     }
+    /// Restrict an already checked physical row capacity without changing
+    /// stride, alignment or encoding.
+    pub fn prefix_rows(self, rows: usize) -> Result<Self> {
+        if rows > self.rows {
+            return Err(Error::State(
+                "tensor row prefix exceeds prepared capacity".into(),
+            ));
+        }
+        Ok(Self { rows, ..self })
+    }
     /// Includes inter-row padding, not padding after the final row. Empty spans
     /// remain describable; callers still enforce their nonempty operation law.
     pub fn byte_len(self) -> Result<usize> {
@@ -130,6 +140,16 @@ mod tests {
     fn padded_layout_never_accepts_overlapping_or_overflowing_views() {
         let layout = PreparedTensorLayout::strided(4, 8, 16, 3).unwrap();
         assert_eq!(layout.byte_len().unwrap(), 40);
+        let prefix = layout.prefix_rows(2).unwrap();
+        assert_eq!(
+            (
+                prefix.row_bytes(),
+                prefix.row_stride_bytes(),
+                prefix.byte_len().unwrap()
+            ),
+            (8, 16, 24)
+        );
+        assert!(layout.prefix_rows(4).is_err());
         layout.validate_region(4, 40).unwrap();
         for (offset, bytes) in [(2, 40), (4, 48), (u64::MAX - 3, 40)] {
             assert!(layout.validate_region(offset, bytes).is_err());

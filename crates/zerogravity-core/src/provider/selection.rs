@@ -20,6 +20,7 @@ pub enum ShapeMissPolicy {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExecutionMode {
     Portable,
+    Native,
     FusedRegion,
     Graph,
     Remote,

@@ -62,6 +62,7 @@ pub struct ResidentTextPagedPressure {
 /// No exposed inner model/session: detached readers must retain these owners.
 pub struct ResidentTextModel {
     inner: Arc<ResidentModel>,
+    plan: Arc<ForwardPlan>,
     source: VerifiedTensorSource,
     sessions: Arc<async_lock::Semaphore>,
     _control: WindowWorkspace,
@@ -337,6 +338,7 @@ impl ResidentModel {
             native_policy,
         )?;
         let prepared = program::prepare(device, admission, source_owner, cancelled).await?;
+        let original_plan = prepared.program.shared_plan();
         let preflight = prepared.program.budget().clone();
         let vocabulary = prepared.program.plan().values()[prepared
             .program
@@ -373,6 +375,7 @@ impl ResidentModel {
         forward_not_cancelled(cancelled)?;
         Ok(Arc::new(ResidentTextModel {
             inner: model,
+            plan: original_plan,
             source,
             sessions: Arc::new(async_lock::Semaphore::new(max_sessions)),
             _control: control,
@@ -545,8 +548,10 @@ impl ResidentModel {
             }
         }
         forward_not_cancelled(cancelled)?;
+        let original_plan = model.workspace.lock().await.program.shared_plan();
         Ok(Arc::new(ResidentTextModel {
             inner: model,
+            plan: original_plan,
             source,
             sessions: Arc::new(async_lock::Semaphore::new(max_sessions)),
             _control: control,
@@ -559,6 +564,14 @@ impl ResidentModel {
     }
 }
 impl ResidentTextModel {
+    fn require_invocation(&self, invocation: &BoundInvocation) -> Result<()> {
+        if !Arc::ptr_eq(&self.plan, invocation.plan()) {
+            return Err(Error::State(
+                "resident-text invocation belongs to another original program".into(),
+            ));
+        }
+        Ok(())
+    }
     #[cfg(feature = "cuda-cublas")]
     pub fn supports_shared_prefix(&self) -> bool {
         matches!(self.state_policy, CudaSourceStatePolicy::Paged { .. })
@@ -933,6 +946,7 @@ impl ResidentTextSession {
         {
             return Ok(ResidentTextPreparation::CancelledBeforeLaunch);
         }
+        self.model.require_invocation(invocation)?;
         // Credit precedes materialization, access/control containers and readback.
         if invocation.input().emit_logits() != (output == ResidentOutput::Logits) {
             return Err(Error::State(

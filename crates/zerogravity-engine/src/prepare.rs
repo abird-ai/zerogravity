@@ -3,7 +3,7 @@ use crate::{Error, Result, executable::ExecutableBundle};
 use std::sync::Arc;
 use zerogravity_core::{
     model::{ModelProgram, ModelRegion},
-    provider::{PreparedExecutable, RegionExecutionProvider},
+    provider::{PreparedExecutable, ProviderKind, RegionExecutionProvider},
     source::ProgramSource,
 };
 
@@ -27,7 +27,7 @@ pub async fn prepare_region<P: RegionExecutionProvider>(
 ) -> Result<ExecutableBundle<P::Executable>> {
     let expected = region.program().clone();
     let source = region.source().clone();
-    let scope = region.region().range();
+    let scope = (region.region().range(), provider.kind());
     let prepared = provider.prepare_region(region).await?;
     verify(prepared, source, expected, Some(scope)).await
 }
@@ -36,11 +36,20 @@ async fn verify<E: PreparedExecutable>(
     prepared: E,
     source: E::Source,
     expected: Arc<zerogravity_core::semantic::ForwardPlan>,
-    scope: Option<std::ops::Range<usize>>,
+    scope: Option<(std::ops::Range<usize>, ProviderKind)>,
 ) -> Result<ExecutableBundle<E>> {
     if !source.same_issuer(&prepared.source().await?)
         || !Arc::ptr_eq(&expected, &prepared.program().await?)
-        || prepared.region_nodes() != scope
+        || match (scope, prepared.prepared_region()) {
+            (None, None) => false,
+            (Some((range, kind)), Some(region)) => {
+                region.model().region().range() != range
+                    || region.selected().provider != kind
+                    || !source.same_issuer(region.model().source())
+                    || !Arc::ptr_eq(&expected, region.model().program())
+            }
+            _ => true,
+        }
     {
         return Err(Error::State(
             "prepared provider replaced the original source/program/scope".into(),

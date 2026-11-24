@@ -104,7 +104,13 @@ tests/Clippy, the full isolated workspace gate, X2 native/exact/continuation
 and L5 CUDA C1 physical canaries pass with original resource retirement.
 Standalone partial execution, stateful region effects/bridge and full
 capability/lifecycle scaffolding remain open. Continue those foundations
-through existing physical owners. Neither slice closes Phase 1.
+through existing physical owners. The next source slice adds prepared
+physical region ports (selected provider/mode, explicit row band, per-port
+encoding and checked byte layout), native CUDA/HIP consumers and original
+lease-view and invocation-issuer checks. Assembled validation pending.
+Provider-specific workspace/persistent-resource reporting, external
+stream/completion bridges, stateful region effects and remaining
+foundations are still open. None of these slices closes Phase 1.
 
 Complete the engineering contracts and their real consumers, including every
 foundation below. This is not a requirement to finish every backend optimization,

@@ -77,14 +77,19 @@ impl CudaForwardCold {
             if matches!(&node.operation, PlanOperation::SourceOperatorTemplate { descriptor, .. }
                 if matches!(descriptor.kind(), SourceOperatorKind::Projection { .. }))
             {
-                let region = model.closed_region(index..index + 1)?;
-                for binding in region.region().capacity_bindings() {
-                    layout.value_layouts()[binding.value.0 as usize].require(
-                        crate::resident_program::ResidentBufferLayout::new(
-                            crate::resident_program::ResidentPhysicalType::Bf16,
-                            binding.layout.elements()?,
-                        )?,
-                    )?;
+                let region =
+                    CudaForwardProjection::lowering(model.closed_region(index..index + 1)?)?;
+                let capacity = region.capacity();
+                for binding in capacity.inputs().chain(capacity.outputs()) {
+                    let (port, physical) = binding?;
+                    let actual = layout.value_layouts()[port.value().0 as usize];
+                    if actual.kind() != crate::resident_program::ResidentPhysicalType::Bf16
+                        || actual.bytes()? != physical.byte_len()?
+                    {
+                        return Err(Error::State(
+                            "CUDA projection physical port capacity differs".into(),
+                        ));
+                    }
                 }
                 projection_regions.insert(index, region);
             }

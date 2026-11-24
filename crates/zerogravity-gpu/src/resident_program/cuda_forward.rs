@@ -40,10 +40,11 @@ use zerogravity_core::{
     Error, Result,
     accelerator::program::{
         NumericalContract, PlanOperation, SourceOperator, SourceOperatorKind,
-        SourceOperatorTemplate, SourceRowSelection,
+        SourceOperatorTemplate, SourceRowSelection, ValueStorageFormat,
     },
     device_events::{BufferRole, DeviceAccess},
     model::ModelRegion,
+    provider::{ExecutionMode, PreparedExecutable, PreparedRegion, ProviderKind, SelectedMode},
     resource_arbiter::{AllocationClass, AllocationRequest},
 };
 
@@ -58,24 +59,47 @@ fn exact_view(
     bytes: usize,
     role: &str,
 ) -> Result<cubecl::server::Handle> {
-    let end = offset
-        .checked_add(bytes)
-        .filter(|end| *end <= lease.bytes())
-        .ok_or_else(|| Error::Limit(format!("CUDA forward {role} view exceeds lease")))?;
-    Ok(lease
-        .handle()
-        .offset_start(offset as u64)
-        .offset_end((lease.bytes() - end) as u64))
+    lease
+        .view(offset, bytes)
+        .map_err(|_| Error::Limit(format!("CUDA forward {role} view exceeds lease")))
 }
 
 /// One source-derived full projection. Cold ownership binds the call-free
 /// template; request-local row geometry never owns or reloads weights.
 pub(crate) struct CudaForwardProjection {
-    region: ModelRegion<VerifiedTensorSource>,
+    region: PreparedRegion<VerifiedTensorSource>,
     weights: Arc<BoundSourceMatrices>,
     arithmetic: ProjectionUse,
 }
+impl PreparedExecutable for CudaForwardProjection {
+    type Source = VerifiedTensorSource;
+    async fn source(&self) -> Result<Self::Source> {
+        Ok(self.region.model().source().clone())
+    }
+    async fn program(&self) -> Result<Arc<zerogravity_core::semantic::ForwardPlan>> {
+        Ok(self.region.model().program().clone())
+    }
+    fn prepared_region(&self) -> Option<&PreparedRegion<Self::Source>> {
+        Some(&self.region)
+    }
+}
 impl CudaForwardProjection {
+    pub(super) fn lowering(
+        region: ModelRegion<VerifiedTensorSource>,
+    ) -> Result<PreparedRegion<VerifiedTensorSource>> {
+        let max_rows = Self::projection_template(&region)?.max_rows();
+        PreparedRegion::new(
+            region,
+            SelectedMode {
+                provider: ProviderKind::Cuda,
+                mode: ExecutionMode::Native,
+            },
+            1..=max_rows,
+            &[ValueStorageFormat::Bf16],
+            &[ValueStorageFormat::Bf16],
+        )
+    }
+
     fn projection_template(
         region: &ModelRegion<VerifiedTensorSource>,
     ) -> Result<&SourceOperatorTemplate> {
@@ -116,11 +140,12 @@ impl CudaForwardProjection {
         arithmetic: ProjectionUse,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
-        let template = Self::projection_template(&region)?;
+        let region = Self::lowering(region)?;
+        let template = Self::projection_template(region.model())?;
         let weights = init
             .upload_forward_projection(
                 service,
-                region.source().clone(),
+                region.model().source().clone(),
                 template.matrices(),
                 cancelled,
             )
@@ -129,23 +154,32 @@ impl CudaForwardProjection {
     }
 
     pub(crate) fn prepare_with_weights(
-        region: ModelRegion<VerifiedTensorSource>,
+        region: PreparedRegion<VerifiedTensorSource>,
         weights: Arc<BoundSourceMatrices>,
         arithmetic: ProjectionUse,
     ) -> Result<Arc<Self>> {
-        let template = Self::projection_template(&region)?;
-        if !weights.same_source(region.source()) {
+        let template = Self::projection_template(region.model())?;
+        if region.selected()
+            != (SelectedMode {
+                provider: ProviderKind::Cuda,
+                mode: ExecutionMode::Native,
+            })
+            || region.supported_rows() != (1..=template.max_rows())
+            || region.capacity().input(0)?.row_bytes() != weights.columns() * 2
+            || region.capacity().output(0)?.row_bytes() != weights.rows() * 2
+            || !weights.same_source(region.model().source())
+        {
             return Err(Error::State(
-                "CUDA projection region original source issuer differs".into(),
+                "CUDA projection region selected layout/source differs".into(),
             ));
         }
         weights.require_members(template.matrices())?;
-        let [input] = region.region().inputs() else {
+        let [input] = region.model().region().inputs() else {
             return Err(Error::State(
                 "CUDA projection region input arity differs".into(),
             ));
         };
-        let [output] = region.region().outputs() else {
+        let [output] = region.model().region().outputs() else {
             return Err(Error::State(
                 "CUDA projection region output arity differs".into(),
             ));
@@ -169,7 +203,7 @@ impl CudaForwardProjection {
     fn template(&self) -> &SourceOperatorTemplate {
         // Construction already checked this immutable original node.
         let PlanOperation::SourceOperatorTemplate { descriptor, .. } =
-            &self.region.region().nodes()[0].operation
+            &self.region.model().region().nodes()[0].operation
         else {
             unreachable!()
         };
@@ -180,6 +214,7 @@ impl CudaForwardProjection {
         let template = self.template();
         descriptor.validate()?;
         let rows = descriptor.invocation().tokens().len();
+        let bound = self.region.shape(rows)?;
         let SourceOperatorKind::Projection { selected_row } = descriptor.kind() else {
             return Err(Error::State(
                 "CUDA forward projection runtime descriptor kind differs".into(),
@@ -195,7 +230,6 @@ impl CudaForwardProjection {
         if descriptor.numerical_contract() != template.numerical_contract()
             || descriptor.invocation().source() != template.source()
             || descriptor.invocation().tokens().vocabulary() != template.vocabulary()
-            || rows > template.max_rows()
             || descriptor.matrices() != template.matrices()
             || descriptor.parameters() != template.parameters()
             || selected_row != expected_selected
@@ -205,14 +239,13 @@ impl CudaForwardProjection {
             ));
         }
         self.weights.require_members(descriptor.matrices())?;
-        let active_rows = usize::from(selected_row.is_none())
-            .checked_mul(rows)
-            .and_then(|all| all.checked_add(usize::from(selected_row.is_some())))
-            .ok_or_else(|| Error::Limit("CUDA forward projection active rows".into()))?;
+        let input_layout = bound.input(0)?;
+        let output_layout = bound.output(0)?;
+        let active_rows = output_layout.rows();
         let operation =
             Bf16GemmShape::new(self.weights.rows(), active_rows, self.weights.columns())?;
-        if descriptor.input_elements()?.as_slice() != [rows * self.weights.columns()]
-            || descriptor.output_elements()?.as_slice() != [active_rows * self.weights.rows()]
+        if descriptor.input_elements()?.as_slice() != [input_layout.byte_len()? / 2]
+            || descriptor.output_elements()?.as_slice() != [output_layout.byte_len()? / 2]
         {
             return Err(Error::State(
                 "CUDA forward projection operator/packed geometry differs".into(),
@@ -220,8 +253,7 @@ impl CudaForwardProjection {
         }
         let input_offset = selected_row
             .unwrap_or(0)
-            .checked_mul(self.weights.columns())
-            .and_then(|elements| elements.checked_mul(2))
+            .checked_mul(input_layout.row_stride_bytes())
             .ok_or_else(|| Error::Limit("CUDA forward projection input offset overflow".into()))?;
         Ok((operation, input_offset))
     }

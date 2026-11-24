@@ -118,6 +118,13 @@ any external compiler. All phases retain the original resource/state owners.
   distinct multichunk continuation, L5 CUDA C1 SDK replay and original
   physical retirement passed. See the composition TODO for remaining
   region capability/effect/lifecycle foundations.
+- Prepared physical region ports now retain selected provider/mode, bounded
+  row bands and explicit per-port storage; CUDA projection uses the contract
+  in actual row lowering and HIP admission uses the widened F32 layout.
+  Borrowed views check exact original lease range and physical alignment.
+  Singleton/cohort ingress checks original plan issuer once. No arithmetic,
+  dispatch policy, scratch allocation or publication changes; final
+  assembled/physical checks pending (composition TODO).
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

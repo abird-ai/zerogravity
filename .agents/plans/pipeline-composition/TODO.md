@@ -189,6 +189,25 @@ their existing numeric/source/physical acceptance gates.
   reference campaign, broader CUDA cohort qualification or general partial
   dispatch claim.
 
+## Prepared physical region ports — 24 Nov
+
+- [x] Replace bare prepared node-range reporting with a typed PreparedRegion
+  on the original executable. Retain the exact ModelRegion/source/plan,
+  selected provider/mode, finite row band and independent physical encoding
+  for each logical boundary port. Compute checked byte layouts at preparation;
+  runtime uses bounded row prefixes. Graph-only preparation uses the same
+  native semantic region; unsupported shapes refuse before submission.
+- [x] CUDA's existing prepared projection owns and consumes the physical
+  region, including last-active output and compact BF16 binding. HIP admission
+  uses the same contract for widened F32. Original source model checks the
+  actual invocation plan before admitting singleton or cohort work.
+- [x] Share exact lease subview construction and checked physical-layout view
+  containment. CUDA GEMM borrows typed row/inner-major input and output views;
+  HIP projection checks actual widened F32 views against original allocation
+  identity, range and alignment. Preserve existing original flight access,
+  numerical status, workspace, context, completion and retirement owners.
+- [ ] Final assembled isolated gate and real-source canaries pending.
+
 ## Uncommitted
 
 ### Phase 1 — source, semantics and executable lowering
@@ -196,10 +215,11 @@ their existing numeric/source/physical acceptance gates.
 Contract: [closed regions](REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering)
 and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
 
-- [ ] Extend the landed bounded stateless region preparation contract to
-  actual selected region execution as needed: capability/shape-miss,
-  explicit physical workspace/external buffers, completion/retirement, and
-  stateful effect/bridge contracts. Native and captured consumers retain
+- [ ] Extend the landed stateless physical preparation/binding contract
+  through actual captured/compiled consumers: explicit borrowed/private
+  workspace and persistent-resource admission, external stream/completion
+  bridge, and stateful effect/bridge contracts. Keep selected shape bands
+  and typed port layouts; do not reintroduce naked scope or implicit retry. Native and captured consumers retain
   original source/numerical/state authority. Graph-only preparation may
   lower supported native semantic regions directly, without ONNX. No
   additional IR, allocator, scheduler or compiler framework.

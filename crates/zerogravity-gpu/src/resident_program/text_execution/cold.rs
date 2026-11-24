@@ -11,9 +11,10 @@ use crate::resident_program::{
 use std::sync::atomic::AtomicBool;
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::{
-    accelerator::program::{PlanOperation, SourceOperatorKind},
+    accelerator::program::{PlanOperation, SourceOperatorKind, ValueStorageFormat},
     device_events::{BufferRole, DeviceAccess},
     model::ModelProgram,
+    provider::{ExecutionMode, PreparedRegion, ProviderKind, SelectedMode},
 };
 
 /// Cold/configured-call working set, not a live reservation. Retained results
@@ -93,13 +94,21 @@ impl Admission {
                 if matches!(descriptor.kind(), SourceOperatorKind::Projection { .. }))
             {
                 let region = model.closed_region(index..index + 1)?;
-                for binding in region.region().capacity_bindings() {
-                    let bytes = ResidentBufferLayout::new(
-                        ResidentPhysicalType::F32,
-                        binding.layout.elements()?,
-                    )?
-                    .bytes()?;
-                    if layout.bindings[binding.value.0 as usize].bytes != bytes {
+                let max_rows = region.region().max_rows();
+                let prepared = PreparedRegion::new(
+                    region,
+                    SelectedMode {
+                        provider: ProviderKind::Hip,
+                        mode: ExecutionMode::Native,
+                    },
+                    1..=max_rows,
+                    &[ValueStorageFormat::F32],
+                    &[ValueStorageFormat::F32],
+                )?;
+                let capacity = prepared.capacity();
+                for binding in capacity.inputs().chain(capacity.outputs()) {
+                    let (port, physical) = binding?;
+                    if layout.bindings[port.value().0 as usize].bytes != physical.byte_len()? {
                         return Err(Error::State(
                             "HIP projection region storage extent differs".into(),
                         ));
@@ -497,19 +506,7 @@ pub(super) fn view(
     offset: usize,
     bytes: usize,
 ) -> Result<cubecl::server::Handle> {
-    if bytes == 0
-        || offset
-            .checked_add(bytes)
-            .is_none_or(|end| end > lease.bytes())
-    {
-        return Err(Error::State(
-            "text-execution exact original lease view".into(),
-        ));
-    }
-    Ok(lease
-        .handle()
-        .offset_start(offset as u64)
-        .offset_end((lease.bytes() - offset - bytes) as u64))
+    lease.view(offset, bytes)
 }
 
 #[cfg(feature = "hardware-abort-probe")]

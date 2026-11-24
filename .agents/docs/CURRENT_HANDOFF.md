@@ -20,6 +20,20 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**New source slice — prepared physical region ports.** PreparedRegion
+replaces bare prepared scope with original source/plan and selected
+provider/mode, finite row band, per-port storage encoding and checked
+physical row layout. Native CUDA projection owns the contract; HIP
+admission uses its F32 layout. The original text model validates invocation
+plan identity before singleton/cohort admission. Existing native flights
+borrow exact lease views (CUDA packed BF16 row/inner-major, HIP widened
+F32); no independent allocator, queue, stream or completion owner.
+Standalone partial dispatch, captured/compiled workspace and external
+completion bridges, and stateful effects remain open. Final assembled and
+physical validation pending.
+
+Prior accepted region checkpoint:
+
 **Accepted source checkpoint `82f895dae795f2bcabf83a95ce52cb6705e64280` —
 bounded closed stateless regions.** ModelRegion retains
 the original ProgramSource issuer and ForwardPlan; ClosedRegion derives dense

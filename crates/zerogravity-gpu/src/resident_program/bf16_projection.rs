@@ -729,30 +729,14 @@ fn cancelled(flag: Option<&AtomicBool>) -> Result<()> {
     Ok(())
 }
 fn require_view(lease: &ResidentLease, handle: &Handle, bytes: usize) -> Result<()> {
-    let owner = BufferRange::new(&lease.handle())?;
-    let actual = BufferRange::new(handle)?;
-    actual.require_exact_len(bytes)?;
-    if actual.service != owner.service
-        || actual.memory != owner.memory
-        || actual.bytes.start < owner.bytes.start
-        || actual.bytes.end > owner.bytes.end
-    {
-        return Err(Error::State(
-            "BF16 borrowed view differs from original lease".into(),
-        ));
+    if !bytes.is_multiple_of(4) || bytes == 0 {
+        return Err(Error::State("BF16 widened F32 view extent".into()));
     }
-    Ok(())
+    let layout = zerogravity_core::placement::PreparedTensorLayout::dense(4, 4, bytes / 4)?;
+    BufferRange::new(&lease.handle())?.require_view(&BufferRange::new(handle)?, layout)
 }
 fn view(lease: &ResidentLease, offset: usize, bytes: usize) -> Result<Handle> {
-    if bytes == 0 || offset.checked_add(bytes).is_none_or(|n| n > lease.bytes()) {
-        return Err(Error::State(
-            "BF16 original projection scratch extent".into(),
-        ));
-    }
-    Ok(lease
-        .handle()
-        .offset_start(offset as u64)
-        .offset_end((lease.bytes() - offset - bytes) as u64))
+    lease.view(offset, bytes)
 }
 fn arg(handle: &Handle, count: usize) -> BufferArg {
     unsafe { BufferArg::from_raw_parts(handle.clone(), count) }

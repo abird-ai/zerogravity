@@ -14,11 +14,15 @@ use zerogravity_core::{
         ForwardPlan, InvocationInput, KvDomain, MathematicalBackend, MatrixAxes, NumericalContract,
         ParameterRef, ParameterSlot, PlanBuilder, SourceOperatorKind, SourceOperatorTemplate,
         SourcePlanGeometry, SourceRowSelection, SourceTensor, StateSlot, TextCallGeometry,
+        ValueStorageFormat,
     },
     encoding::{ScalarDType, StoredTensorEncoding},
     identity::SourceIdentity,
     model::{ModelDefinition, ModelProgram, ModelRegion, ProgramRequest},
-    provider::{PreparedExecutable, ProviderKind, RegionExecutionProvider},
+    provider::{
+        ExecutionMode, PreparedExecutable, PreparedRegion, ProviderKind, RegionExecutionProvider,
+        SelectedMode,
+    },
     source::{SourceTensorRef, TensorSource},
     task::TaskKind,
 };
@@ -126,7 +130,7 @@ fn ready<T>(future: impl Future<Output = T>) -> T {
 struct OwnerProbe {
     source: Arc<dyn TensorSource>,
     plan: Arc<ForwardPlan>,
-    scope: Option<std::ops::Range<usize>>,
+    region: Option<PreparedRegion>,
 }
 impl PreparedExecutable for OwnerProbe {
     type Source = Arc<dyn TensorSource>;
@@ -136,8 +140,8 @@ impl PreparedExecutable for OwnerProbe {
     async fn program(&self) -> Result<Arc<ForwardPlan>> {
         Ok(self.plan.clone())
     }
-    fn region_nodes(&self) -> Option<std::ops::Range<usize>> {
-        self.scope.clone()
+    fn prepared_region(&self) -> Option<&PreparedRegion> {
+        self.region.as_ref()
     }
 }
 #[derive(Clone, Copy)]
@@ -188,7 +192,7 @@ impl RegionExecutionProvider for ProviderProbe {
         Ok(OwnerProbe {
             source,
             plan,
-            scope: None,
+            region: None,
         })
     }
 }
@@ -451,6 +455,46 @@ fn closed_region_ports_and_active_invocation_keep_original_semantics() {
     let state_only = bind(plan, 2, false);
     assert!(region.bind(&state_only).is_ok());
     assert!(head.region().bind(&state_only).is_err());
+    let selected = SelectedMode {
+        provider: ProviderKind::Cuda,
+        mode: ExecutionMode::Native,
+    };
+    let head = PreparedRegion::new(
+        head,
+        selected,
+        1..=64,
+        &[ValueStorageFormat::Bf16],
+        &[ValueStorageFormat::F32],
+    )
+    .unwrap();
+    let call = bind(plan, 7, true);
+    let bound = head.bind(&call).unwrap();
+    assert_eq!(bound.input(0).unwrap().byte_len().unwrap(), 7 * 16 * 2);
+    assert_eq!(bound.output(0).unwrap().rows(), 1);
+    assert_eq!(bound.output(0).unwrap().byte_len().unwrap(), 17 * 4);
+    assert!(head.bind(&state_only).is_err());
+    for rows in [0..=8, 1..=65, std::ops::RangeInclusive::new(9, 8)] {
+        assert!(
+            PreparedRegion::new(
+                program.closed_region(1..3).unwrap(),
+                selected,
+                rows,
+                &[ValueStorageFormat::Bf16],
+                &[ValueStorageFormat::Bf16; 2]
+            )
+            .is_err()
+        );
+    }
+    assert!(
+        PreparedRegion::new(
+            program.closed_region(1..3).unwrap(),
+            selected,
+            1..=8,
+            &[ValueStorageFormat::Bf16],
+            &[ValueStorageFormat::Bf16]
+        )
+        .is_err()
+    );
     let copy = Arc::new(plan.as_ref().clone());
     assert!(region.bind(&bind(&copy, 2, true)).is_err());
     for range in [0..0, 0..1, 4..5, 3..6, 5..7] {
@@ -460,7 +504,7 @@ fn closed_region_ports_and_active_invocation_keep_original_semantics() {
 
 struct RegionProbe {
     inner: ProviderProbe,
-    wrong_scope: bool,
+    selection: Option<ProviderKind>,
 }
 impl RegionExecutionProvider for RegionProbe {
     type Executable = OwnerProbe;
@@ -471,23 +515,45 @@ impl RegionExecutionProvider for RegionProbe {
         self.inner.prepare(program).await
     }
     async fn prepare_region(&self, region: ModelRegion) -> Result<OwnerProbe> {
-        let scope = region.region().range();
         let program =
             ModelProgram::from_recorded(region.source().clone(), region.program().clone())?;
         let mut owner = self.inner.prepare(program).await?;
-        owner.scope = if self.wrong_scope { None } else { Some(scope) };
+        owner.region = self
+            .selection
+            .map(|provider| {
+                PreparedRegion::new(
+                    region,
+                    SelectedMode {
+                        provider,
+                        mode: ExecutionMode::Graph,
+                    },
+                    2..=8,
+                    &[ValueStorageFormat::Bf16],
+                    &[ValueStorageFormat::Bf16, ValueStorageFormat::F32],
+                )
+            })
+            .transpose()?;
         Ok(owner)
     }
 }
 
 #[test]
 fn partial_provider_preparation_retains_exact_source_plan_and_scope() {
-    for (mode, wrong_scope, accepted) in [
-        (Preparation::Original, false, true),
-        (Preparation::Original, true, false),
-        (Preparation::CopiedProgram, false, false),
-        (Preparation::SameIdDifferentOwner, false, false),
-        (Preparation::Refused, false, false),
+    for (mode, selection, accepted) in [
+        (Preparation::Original, Some(ProviderKind::GraphOnly), true),
+        (Preparation::Original, None, false),
+        (Preparation::Original, Some(ProviderKind::Cuda), false),
+        (
+            Preparation::CopiedProgram,
+            Some(ProviderKind::GraphOnly),
+            false,
+        ),
+        (
+            Preparation::SameIdDifferentOwner,
+            Some(ProviderKind::GraphOnly),
+            false,
+        ),
+        (Preparation::Refused, Some(ProviderKind::GraphOnly), false),
     ] {
         let source = definition(Recording::Original);
         let drops = source.drops.clone();
@@ -500,13 +566,53 @@ fn partial_provider_preparation_retains_exact_source_plan_and_scope() {
                 mode,
                 yield_once: false,
             },
-            wrong_scope,
+            selection,
         };
         let result = ready(prepare_region(region, &provider));
         if accepted {
             let bundle = result.unwrap();
             assert_eq!(bundle.region_nodes(), Some(1..3));
             assert!(Arc::ptr_eq(&ready(bundle.program()).unwrap(), &plan));
+            let prepared = bundle.prepared_region().unwrap();
+            assert_eq!(prepared.selected().mode, ExecutionMode::Graph);
+            assert_eq!(prepared.supported_rows(), 2..=8);
+            assert_eq!(
+                prepared.capacity().input(0).unwrap().byte_len().unwrap(),
+                8 * 16 * 2
+            );
+            let bind = |plan: &Arc<ForwardPlan>, rows| {
+                plan.bind_invocation(
+                    InvocationInput::new(
+                        TextCallGeometry::new(plan.source(), 17, 512).unwrap(),
+                        0,
+                        vec![1; rows].into(),
+                        true,
+                    )
+                    .unwrap(),
+                )
+                .unwrap()
+            };
+            let invocation = bind(&plan, 7);
+            let bound = prepared.bind(&invocation).unwrap();
+            assert_eq!(bound.input(0).unwrap().row_stride_bytes(), 16 * 2);
+            assert_eq!(bound.output(0).unwrap().byte_len().unwrap(), 7 * 16 * 2);
+            assert_eq!(bound.output(1).unwrap().byte_len().unwrap(), 7 * 16 * 4);
+            assert_eq!(
+                bound.outputs().nth(1).unwrap().unwrap().0.format(),
+                ValueStorageFormat::F32
+            );
+            assert!(matches!(
+                prepared.bind(&bind(&plan, 1)),
+                Err(Error::Unsupported(_))
+            ));
+            assert!(matches!(
+                prepared.bind(&bind(&plan, 9)),
+                Err(Error::Unsupported(_))
+            ));
+            assert!(matches!(
+                prepared.bind(&bind(&Arc::new(plan.as_ref().clone()), 7)),
+                Err(Error::State(_))
+            ));
             assert_eq!(drops.load(Ordering::SeqCst), 0);
             drop(bundle);
         } else {

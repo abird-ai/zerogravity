@@ -1,4 +1,5 @@
 //! Coarse source-owned preparation; no execution authority from a descriptor.
+mod region;
 mod selection;
 use crate::{
     Error, Result,
@@ -6,10 +7,11 @@ use crate::{
     semantic::ForwardPlan,
     source::ProgramSource,
 };
+pub use region::{PhysicalRegionPort, PreparedRegion, RegionShape};
 pub use selection::{
     ExecutionMode, SelectedMode, SelectionPolicy, ShapeMissPolicy, StateBridge, SwitchingBoundary,
 };
-use std::{future::Future, ops::Range, sync::Arc};
+use std::{future::Future, sync::Arc};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProviderKind {
@@ -27,9 +29,9 @@ pub trait PreparedExecutable: Send + Sync {
     type Source: ProgramSource;
     fn source(&self) -> impl Future<Output = Result<Self::Source>>;
     fn program(&self) -> impl Future<Output = Result<Arc<ForwardPlan>>>;
-    /// None denotes the whole original program; partial preparation must
-    /// explicitly identify its closed scope.
-    fn region_nodes(&self) -> Option<Range<usize>> {
+    /// Partial preparation carries the original region and explicit physical
+    /// port/shape contract. Whole-program owners retain their existing layout.
+    fn prepared_region(&self) -> Option<&PreparedRegion<Self::Source>> {
         None
     }
 }
@@ -41,8 +43,8 @@ impl<T: PreparedExecutable + ?Sized> PreparedExecutable for Arc<T> {
     fn program(&self) -> impl Future<Output = Result<Arc<ForwardPlan>>> {
         self.as_ref().program()
     }
-    fn region_nodes(&self) -> Option<Range<usize>> {
-        self.as_ref().region_nodes()
+    fn prepared_region(&self) -> Option<&PreparedRegion<Self::Source>> {
+        self.as_ref().prepared_region()
     }
 }
 

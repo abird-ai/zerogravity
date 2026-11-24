@@ -1,5 +1,4 @@
 //! Original-flight adapter for the shared allocation-free GEMM primitive.
-use super::exact_view;
 use crate::{
     cuda::bf16_gemm::{Bf16Gemm, Bf16GemmInputLayout, Bf16GemmReduction, Bf16GemmShape},
     physical_service::CudaCompilerContextBudget,
@@ -10,7 +9,9 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
-use zerogravity_core::{Error, Result, device_events::DeviceAccess};
+use zerogravity_core::{
+    Error, Result, device_events::DeviceAccess, placement::PreparedTensorLayout,
+};
 
 pub(super) struct CudaForwardGemm {
     service: Arc<ResidentService>,
@@ -217,6 +218,15 @@ impl CudaForwardGemm {
             (output, DeviceAccess::Write),
             (status, DeviceAccess::Write),
         ])?;
+        let input_storage = match input_layout {
+            Bf16GemmInputLayout::RowMajor => {
+                PreparedTensorLayout::dense(2, shape.inner * 2, shape.rows)?
+            }
+            Bf16GemmInputLayout::InnerMajor => {
+                PreparedTensorLayout::dense(2, shape.rows * 2, shape.inner)?
+            }
+        };
+        let output_storage = PreparedTensorLayout::dense(2, shape.columns * 2, shape.rows)?;
         let launch = Bf16Gemm::with_reduction_input_layout_certified(
             shape.columns,
             shape.rows,
@@ -227,8 +237,8 @@ impl CudaForwardGemm {
         .prepare_certified(
             self.service.client(),
             weights.handle(),
-            exact_view(input, input_offset, shape.input_bytes(), "GEMM input")?,
-            exact_view(output, output_offset, shape.output_bytes(), "GEMM output")?,
+            input.typed_view(input_offset, input_storage)?,
+            output.typed_view(output_offset, output_storage)?,
             status.handle(),
         )?;
         flight.retain_completion_owner(self.context.clone())?;
