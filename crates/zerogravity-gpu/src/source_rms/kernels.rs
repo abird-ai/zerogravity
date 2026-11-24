@@ -107,8 +107,10 @@ pub(crate) fn scalar(
     }
 }
 
-/// Exact RMS scalar chain: mean -> epsilon -> sqrt -> reciprocal.
+/// Retained alternate RMS scalar chain: mean -> epsilon -> sqrt -> reciprocal.
 /// Each stage retains the standalone kernel's f32 operation and status check.
+/// Current gfx1150 Qwen keeps separate stages because the cascade loses wall time.
+#[allow(dead_code)]
 #[cube(launch_unchecked)]
 pub(crate) fn scalar_cascade(
     input: &[f32],
