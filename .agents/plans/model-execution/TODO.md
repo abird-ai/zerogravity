@@ -28,11 +28,12 @@ Immediate execution priorities are intentionally small:
 - keep accepted HIP batching on the existing scheduler/cohort/state ownership; the
   direct recurrent-state cohort consumer lost its A/B on gfx1150 and is removed while
   its reusable row-aware kernels remain dormant;
-- keep `4070610` as the selected HIP singleton projection cut. Prepacked-input,
-  coalesced-status and certified-status variants all reduce launches but lose wall-time
-  A/Bs and remain reusable dormant primitives. The next HIP performance blocker is the
-  inherited8GiB opaque first-module admission that can force small models into streamed
-  weights; re-qualify that physical accounting safely before more projection micro-work;
+- keep `4070610` plus signed `c5b3fad` as the current gfx1150 HIP path. The latter uses
+  an exact environment-qualified1GiB first-module allowance while retaining the8GiB
+  fallback everywhere else; this makes0.8B weights resident under the same14GiB A1
+  envelope and cuts decode-heavy output16 from~31.35s to~0.962s. Re-localize the
+  now-resident C1/C4/C8 hot path before more projection/GDN micro-work; all losing
+  projection variants remain reusable dormant primitives;
 - optimize L5 27B streamed source/transfer overlap as a distinct memory-constrained mode;
 - benchmark completed changes quickly against the canonical current baseline, with no
   speculative test matrix or duplicate paging/COW/streaming abstraction.

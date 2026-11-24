@@ -222,8 +222,23 @@ The current implementation priorities implied by that baseline are:
    total, so forcing residency under that policy would leave only~17MiB headroom and
    is unsafe. Production `run-rocm` instead derives its budget from current HIP free
    memory minus configured headroom; do not generalize the14GiB A1 benchmark to X2.
-   Next HIP unit: safely re-qualify the inherited8GiB opaque-module charge using
-   physical accounting/evidence; do not shrink it from historical constants alone;
+   Signed `c5b3fad` now closes that unit with an exact backend-qualified gfx1150 policy.
+   The existing four-cycle native lifecycle was rerun on A1's exact gfx1150 / ROCm+driver
+   7.2.53211 / RTC9.0 tuple using its pre-existing1GiB opaque policy: all four cold
+   compile/load/launch/unload cycles, second-live-set refusal and final retirement passed.
+   The four probe modules total81,396B load segments; first cold prepare consumed about
+   149MB and first launch added about8.4MB, with the persistent first-use cost retained
+   after module unload as expected. The complete real0.8B catalogue then prepared92
+   modules with7,843,872B retained-host bytes /2,398,636B load segments and an observed
+   cold native delta of150,908,928B. `c5b3fad` therefore keeps the8GiB fallback for every
+   other HIP source environment but gives integrated gfx1150 a1GiB first-module allowance
+   only after cold nomination and exact actor revalidation of fingerprint, compiler
+   options, runtime/driver70253211 and RTC9.0 before module load. Device-free preflight
+   remains conservative. Under the same explicit14GiB A1 envelope this switches0.8B
+   weights from streamed to resident:47+3 dispatches17,653→9,817 and stable runs land
+   around0.53–0.56s (one~0.895s outlier), while output16 drops73,384→31,592 dispatches
+   and warm mean~31.350s→~0.962s (~32.6× faster), with exact tokens/replay/retirement.
+   gfx1151/X2 and all unmatched environments remain on8GiB until separately qualified;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
    47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
    streaming mechanics are the relevant optimization target there.

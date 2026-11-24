@@ -84,13 +84,27 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   so do not force it. Production `run-rocm` derives an explicit total from HIP current
   free memory minus configured headroom; X2's canonical24GiB envelope may therefore
   have different residency and must not inherit A1-streaming conclusions blindly.
-- [ ] Next HIP architecture/performance unit: re-qualify the inherited8GiB first-module
-  opaque allowance with a fail-closed physical accounting design. `HipNativeInventory`
-  already source-bounds code-object load bytes; the opaque allowance predates ordinary
-  Qwen runtime and came from a provisional qualification policy. Do not simply change
-  8GiB→1GiB or release arbiter charge from a racy before/after memory observation.
-  Establish a controlled physical bound/attribution on an isolated execution host, then
-  price the native owner from that bound and re-check small-model residency/performance.
+- [x] Qualified gfx1150 native-module accounting and small-model residency (`c5b3fad`).
+  Reused the existing physical native lifecycle instead of adding a fixture corpus.
+  Temporary A1 adaptation of that qualifier passed four cold compile/load/launch/unload
+  cycles on exact `hip-kernel_gfx1150`, ROCm+driver70253211, RTC9.0, including second
+  live-set refusal and clean final retirement. Four probe modules total81,396B ELF load
+  segments; observed first cold compile/load delta is ~149MB and first launch adds~8.4MB.
+  The complete real Qwen0.8B catalogue then prepared92 modules with7,843,872B retained
+  host bytes and2,398,636B source-derived load segments; observed native prepare delta
+  is150,908,928B. The retained policy keeps a conservative1GiB opaque allowance (>6×
+  measured first-use delta) only for integrated gfx1150 nominated by cold device facts;
+  the actual actor must then exactly match fingerprint/compiler options/runtime/driver/
+  RTC before any compile/load. Every mismatch and every other HIP source device keeps
+  the existing8GiB fallback; public device-free preflight also stays conservative.
+  Under the exact same14GiB A1 envelope, weights become resident.47+3 dispatches fall
+  17,653→9,817 and stable elapsed values are ~0.53–0.56s (one~0.895s outlier) versus
+  selected streamed~6.359s. Decode-heavy output16 falls73,384→31,592 dispatches and
+  warm mean~31.350s→~0.962s (~32.6×), exact/replay/lane-invariant with clean retirement.
+- [ ] Next HIP performance unit: re-localize C1/C4/C8 on the now-resident gfx1150 path
+  before any more projection/GDN micro-tuning, and compare against the relevant vLLM
+  baseline when available without rebuilding a benchmark framework. Separately qualify
+  gfx1151/X2 native opaque accounting before changing its8GiB fallback.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.
