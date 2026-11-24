@@ -227,8 +227,10 @@ impl PreparedBf16Projection {
             .await
     }
 
-    /// Reuse the exact packed input produced by an earlier projection on this
-    /// same ordered flight. Callers must keep input geometry identical.
+    /// Retained alternate: reuse the exact packed input produced by an earlier
+    /// projection on this same ordered flight. Current streamed Qwen execution
+    /// keeps per-matrix packing because it overlaps source-window transport better.
+    #[allow(dead_code)]
     pub(crate) async fn enqueue_rows_prepacked(
         &self,
         flight: &mut Flight<'_>,
