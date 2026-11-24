@@ -316,7 +316,7 @@ The current implementation priorities implied by that baseline are:
    47+16 A/B `224085b1` (C1,14GiB, ABBA, eight timed waves/variant) improves
    warm mean924.5→830.2ms (~10.2%), all16 IDs/replay exact, 30,824 dispatches,
    zero failed quanta and clean retirement. Select the hoisted traversal at cold
-   preparation only for the existing qualified gfx1150 resident HIP policy;
+   preparation initially for the qualified gfx1150 resident HIP policy;
    native catalogue and launch share the immutable operand choice. Other paths
    keep canonical; prior alternatives remain dormant. Final `3be8a812` CLI 47+16
    canary passed, original KFD owners restored. Temp runner/selector removed.
@@ -347,8 +347,8 @@ The current implementation priorities implied by that baseline are:
    rounded output and status are bit-exact (including strided/fault inputs),
    but timing gains are <=1.5% with mixed paired windows. Keep current
    four-barrier hoisted production selection; no whole-model candidate A/B.
-   Probe removed. X2 recovery below now closes the native accounting unit;
-   next prioritize actual X2 resident projection/serving gaps;
+   Probe removed. X2 recovery below closes native accounting and qualifies
+   the same hoisted projection primitive on gfx1151;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
    47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
    streaming mechanics are the relevant optimization target there.
@@ -370,8 +370,23 @@ new fixtures. Native module allowance now1GiB on both qualified integrated
 gfx1150/gfx1151, exact runtime/driver70253211,RTC9.0 and compiler/fingerprint
 revalidation before load (`38f20ca3`). Unknown versions/architectures and
 device-free/finite/shared qualification retain 8GiB; source-derived code bound
-and ownership unchanged. Only gfx1150 selects the hoisted packed traversal.
-See CURRENT_BASELINE for the actual measured cells.
+and ownership unchanged. `99eb7990` now selects the hoisted packed traversal
+for both qualified integrated gfx1150/gfx1151 resident policies. X2 profiling
+(`533c72c`) separates prefill from cached decode:0.8B C1 199.62/23.65ms,
+C8 1,589.56/87.68ms;2B C1 332.48/41.14ms. GEMM dominates; GDN triangular
+prefill is next (32.83ms/C1,262.65ms/C8). `f7ebf647` retains exact
+request-tiled weight reuse (2/4 input rows), but direct timing loses.
+Existing hoisted sibling wins all12 direct cells. `c1cd04f3` same-binary
+ABBA improves all six real0.8B/2B C1/C4/C8 means by7.75–13.83%, exact IDs
+and lane/replay/ownership, dispatch count unchanged. Temp probe/selector
+removed. Final0.8B24GiB/27B68GiB C1 canaries pass at211.004/5,376.029ms
+warm means, exact tokens/replay and original retirement. GPU feature and
+CPU Clippy gates pass; full gate remains blocked by existing CPU cache
+assertion. Next localize selected GDN triangular prefill (sequential64-row
+dependency, four accumulators; preserve exact order) and share aligned
+prefill work, preserving exact arithmetic and private state roots. Existing
+prefill cohort admission is CUDA-contract gated, not yet a HIP capability. See
+CURRENT_BASELINE for measured cells; no fresh paired vLLM claim.
 
 Local X2 recovery recipe (revalidate store paths after GC; use the normal locked
 shell once available). Build with existing Nix cargo/rustc1.95, gcc15.3 and

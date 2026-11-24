@@ -238,7 +238,7 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   The 1GiB source-derived code bound is unchanged. Cold version observation
   preserves 8GiB fallback for unknown runtimes/architectures; the actor
   revalidates its exact fingerprint/compiler options and versions before load.
-  Distinct policy variants preserve gfx1150-only hoisted projection selection.
+  Distinct policy variants initially preserve gfx1150-only hoisted projection selection.
   Device-free and original finite/shared qualification keep conservative accounting.
   Final `38f20ca3` real2B at14GiB and real27B at68GiB pass exact output/replay,
   9,673/36,741 dispatches per request, zero failed quanta and clean original
@@ -251,12 +251,47 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   replay, actual fused decode cohorts (two per wave), zero failed quanta;
   31,794/60,790 dispatches per wave; clean original retirement.
   Against retained matched vLLM, C8 gaps remain~16.3x/~18.4x.
-- [ ] Next HIP priority: X2 device-event localization separating prefill and
-  cached decode, then address the largest measured projection/serving gap.
-  Try retained reusable primitives on gfx1151; no selector without actual
-  exact-output and material measured gain. Prioritize prefill/cohort scaling
-  and real model feedback over marginal A1 cuts. Restore the unavailable pinned vLLM provider closure
-  separately for fresh paired runs; no acquisition/repin merely to benchmark.
+- [x] X2 actual device-event localization (`533c72c`, temporary observer removed):
+  0.8B C1 prefill+first output199.62ms (GEMM85.44, GDN triangular32.83),
+  cached23.65ms/step (GEMM10.21); C8 prefill1,589.56ms (GEMM680.35,
+  triangular262.65), cached87.68ms/cohort step (GEMM31.04).
+  2B C1 prefill332.48ms (GEMM214.79, triangular33.01), cached41.14ms
+  (GEMM25.98). C8 prefill remains independent; cached cohorts share only
+  two additional decode invocations for47+3. Exact prefix/replay/retirement.
+- [x] `f7ebf647` retains model-neutral `project_cpu_bf16_requests`:
+  two/four independent input rows share packed weight loads, keep each
+  original K64 FMA/reduction/status tree; partial request tiles and strided
+  output supported, no additional global scratch or owner. X2 direct A/B
+  bit-exact accumulator, rounded output, flags including nonfinite operands
+  and strided tails; all8/47-row tile2/4 cells lose device time. Keep sibling
+  dormant. The same direct A/B finds the existing hoisted sibling wins all
+  twelve (four shapes x1/8/47 input rows) by6.4–48.9%, every4-pair mean
+  positive. Select the existing primitive instead of new consumer plumbing.
+- [x] `c1cd04f3` real0.8B/2B same-binary ABBA,24GiB,active8,configured
+  width8,47+3, four timed waves per variant/cell. Mean request latency
+  C1/C4/C8 0.8B238.514/872.431/1787.195→211.895/765.040/1540.048ms;
+  2B420.655/1533.845/3153.334→388.041/1389.398/2848.838ms.
+  Every candidate beats fastest same-cell baseline; exact IDs, replay,
+  lane invariance, unchanged dispatches9,673/31,794/60,790, no failed quanta,
+  clean original retirement. `99eb7990` selects hoisted traversal for
+  both qualified integrated gfx1150/gfx1151 resident policies, no new
+  owner/selector machinery. All temporary observers/runners/env switches
+  removed. Final unchanged benchmark0.8B24GiB/27B68GiB passes at
+  mean211.004/5,376.029ms with exact outputs, replay, unchanged dispatches,
+  zero failed quanta and clean retirement. GPU feature boundaries/CPU Clippy
+  pass; full isolated check.sh stops at the same CPU cache admission assertion.
+  See CURRENT_BASELINE.
+- [ ] Next HIP priority: GDN triangular prefill (second individual hotspot)
+  and prefill cohort sharing. Inspect exact dependency/order before changing
+  arithmetic; each triangular column has a sequential64-row dependency
+  and a four-accumulator reduction. Inspect guarded normal FP32 multiply/add
+  specialization with original subnormal/zero/nonfinite fallback, not a changed
+  solve order. Existing prefill cohort preparation is CUDA-contract gated;
+  extend shared composition deliberately, never enable by removing the guard.
+  Re-localize on selected
+  hoisted path as needed, then measure real C1/C4/C8 rather than expand
+  microbenchmarks. Restore unavailable pinned vLLM closure separately
+  for fresh paired runs; no acquisition/repin merely to benchmark.
   No A1 comparison to X2/L5 vLLM; no broader qualification inferred.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.

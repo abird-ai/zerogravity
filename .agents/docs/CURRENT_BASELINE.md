@@ -128,7 +128,7 @@ SDK population benchmark, optimized non-LTO/codegen16, one warmup + two
 timed waves. Native catalogue probe `11a44d60` measured the original envelopes;
 selected policy `38f20ca3` removes the probe and rechecks smaller envelopes.
 
-| Model | Current C1, original envelope (GiB) | Output tok/s | Retained matched vLLM tok/s | Native modules | Native prepare delta (MB) |
+| Model | Pre-hoist C1, original envelope (GiB) | Output tok/s | Retained matched vLLM tok/s | Native modules | Native prepare delta (MB) |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | 0.8B | 24 | 12.508 | 51.966 | 93 | 168.116 |
 | 2B | 24 | 6.977 | 36.054 | 90 | 168.059 |
@@ -150,20 +150,66 @@ or throughput reduction. All cells return exact expected IDs, replay-stable,
 lane-invariant, with zero failed quanta and original 259,768,320B idle VRAM/no
 KFD owner after retirement.
 
-Current small-model cohort recheck at the original matched 24GiB envelope,
+Pre-hoist small-model cohort recheck at the original matched 24GiB envelope,
 `38f20ca3`, configured width8, actual fused decode cohorts (two publications
 per wave), no failed quanta:
 
-| Offered | Current ZG 0.8B | Retained vLLM 0.8B | Current ZG 2B | Retained vLLM 2B |
+| Offered | Pre-hoist ZG 0.8B | Retained vLLM 0.8B | Pre-hoist ZG 2B | Retained vLLM 2B |
 | ---: | ---: | ---: | ---: | ---: |
 | 4 | 13.743 | 135.358 | 7.842 | 96.233 |
 | 8 | 13.482 | 219.612 | 7.641 | 140.847 |
 
 Both models pass all identical lanes, exact greedy IDs and replay, and
 retire to original idle VRAM/KFD. Dispatches/wave31,794 at C4 and60,790 at
-C8 for both. Scaling remains weak; measure X2 prefill versus cached decode
-and projection/GDN hot paths, then select useful existing primitives rather
-than adding new fixture grids. No new vLLM execution or fresh paired comparison.
+C8 for both.
+
+### Current selected HIP path — qualified gfx1151 hoisted projection
+
+Physical localization (`533c72c`, temporary observer removed) with 47+1
+versus 47+16 for C1 and 47+1 versus 47+3 for C8: each side twice in ABBA
+order, exact greedy prefix/replay. Summed serialized device events, not
+end-to-end latency. Cached decode is mean difference divided by extra outputs.
+
+| Model / offered | Prefill + first output (ms) | Projection GEMM (ms) | Cached decode step (ms) | Projection GEMM (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| 0.8B C1 | 199.62 | 85.44 | 23.65 | 10.21 |
+| 0.8B C8 | 1,589.56 | 680.35 | 87.68 | 31.04 |
+| 2B C1 | 332.48 | 214.79 | 41.14 | 25.98 |
+
+C8 prefill remains eight independent invocations (51,352 launches versus
+6,419 at C1); cached decode cohorts cut the eight-client step to4,719
+launches instead of8×1,627. GDN triangular prefill is the next individual
+hotspot (32.83ms/C1,262.65ms/C8,33.01ms/2B C1). These are pre-selection
+localization results.
+
+Same-binary real-model ABBA `c1cd04f3`, two fresh loads per variant/model,
+one warmup + two timed waves at each C1/C4/C8, same original47+3 prompt,
+24GiB total, active8/configured width8. `99eb7990` selects the existing
+hoisted traversal for both qualified integrated gfx1150/gfx1151 resident
+policies (other paths unchanged).
+
+| Model / offered | Canonical mean (ms) | Hoisted mean (ms) | Current ZG tok/s | Retained matched vLLM tok/s |
+| --- | ---: | ---: | ---: | ---: |
+| 0.8B C1 | 238.514 | 211.895 | 14.158 | 51.966 |
+| 0.8B C4 | 872.431 | 765.040 | 15.685 | 135.358 |
+| 0.8B C8 | 1,787.195 | 1,540.048 | 15.584 | 219.612 |
+| 2B C1 | 420.655 | 388.041 | 7.731 | 36.054 |
+| 2B C4 | 1,533.845 | 1,389.398 | 8.637 | 96.233 |
+| 2B C8 | 3,153.334 | 2,848.838 | 8.424 | 140.847 |
+
+All 48 timed waves plus warmups exact, lane-invariant and replay-stable;
+unchanged dispatches9,673/31,794/60,790 per C1/4/8 wave, zero failed quanta,
+clean original VRAM/KFD retirement. Every candidate timed wave beats the
+fastest same-cell baseline. Warm mean latency falls7.75–13.83%.
+Final source `99eb7990` (temporary switch/runner removed) physically passes
+the unchanged original C1 benchmark:0.8B24GiB mean211.004ms,14.218tok/s,
+and27B68GiB mean5,376.029ms,0.5580tok/s versus previous5,556.005ms.
+The 27B single recheck is a correctness/residency canary, not a paired
+performance claim. Exact expected IDs/replay, unchanged dispatches9,673/36,741,
+zero failed quanta and original idle VRAM/no KFD owner.
+No new vLLM execution or fresh paired comparison; current C8 gap still
+~14.1x/~16.7x. Next prioritize GDN triangular arithmetic and shared prefill
+execution, not further marginal launch-count experiments.
 
 ## A1 — Radeon 890M gfx1150 — local resident HIP comparison, 24 Nov
 
@@ -186,7 +232,8 @@ The retained matched vLLM tables above are unchanged.
 1. HIP decode cohorts now share projections, row-wise activation/QK/rotary work
    and the 18 GDN layers' Conv4 private-state update while retaining independent
    StateRoot/publication authority. Conv4 is exact but only modestly moves wall time;
-   recurrent GDN's state-wide decode work is the next meaningful batching target.
+   current X2 localization shows that independent prefill dominates short
+   C8 waves; prioritize prefill sharing and exact GDN triangular work.
 2. Batching is not the whole HIP gap. C1 is already substantially behind
    vLLM on 0.8B, 2B and especially 27B, so singleton kernel/execution efficiency
    remains independently important.

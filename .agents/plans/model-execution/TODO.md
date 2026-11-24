@@ -47,8 +47,8 @@ Immediate execution priorities are intentionally small:
   finiteness; retain both exponent checks. `d717c7b` adds exact packed-index hoisting.
   On A1 gfx1150 the resident full-K64 hoisted traversal wins direct timing and the
   47+16 real-model A/B (~10.2% lower warm request latency). Select it at cold preparation
-  only for the existing qualified gfx1150 resident HIP policy; keep canonical traversal
-  for all other paths. Current device-event re-profile: projection19.48ms (~52%),
+  initially for the qualified gfx1150 resident HIP policy; the later gfx1151
+  selection uses the same primitive. Device-event re-profile on A1: projection19.48ms (~52%),
   RMS7.35ms (~20%), GDN6.73ms (~18%) of37.27ms/cached token; next individual
   non-projection kernel is GDN key_reduce3.10ms/token. `7d0b395b` retains exact
   parallel8x16 subtotals; direct kernel time improves25–28%, but real0.8B 47+16
@@ -59,11 +59,16 @@ Immediate execution priorities are intentionally small:
   current four-barrier hoisted consumer stays selected. X2 runtime recovery and
   native lifecycle are complete (`42d4703d`); all three real model catalogues
   consume ~168MB incremental physical VRAM. `38f20ca3` qualifies gfx1151
-  resident native accounting (1GiB opaque + unchanged 1GiB code bound) without
-  activating the gfx1150 traversal. See CURRENT_BASELINE for original-envelope
-  C1/C4/C8 and reduced-envelope rechecks. Fresh paired vLLM remains blocked by its
-  missing pinned provider closure. Prioritize current X2 projection/serving
-  localization instead of more marginal A1 microkernel experiments.
+  resident native accounting (1GiB opaque + unchanged 1GiB code bound).
+  X2 physical localization shows independent prefill dominates C8 short-wave
+  cost (1,589.56ms versus87.68ms/cached cohort step); GEMM680.35ms and GDN
+  triangular262.65ms are the leading individual kernels. `f7ebf647` retains
+  exact request-tiled weight sharing, but tile2/4 loses direct timing.
+  Existing hoisted traversal wins all12 direct shapes; `99eb7990` selects it
+  for qualified resident gfx1151 too, after exact real0.8B/2B ABBA at C1/C4/C8
+  improves latency7.75–13.83%. No extra selection machinery. See CURRENT_BASELINE.
+  Next prioritize exact GDN triangular prefill arithmetic and prefill cohort
+  sharing. Fresh paired vLLM remains blocked by missing pinned provider closure.
   Combined backend feature boundaries restored at `c89d0ee7`; full gate now
   stops at a separate CPU cache admission assertion. See serving plan;
 - optimize L5 27B streamed source/transfer overlap as a distinct memory-constrained mode;
