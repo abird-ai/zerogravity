@@ -314,9 +314,9 @@ impl Cold {
                         arg(&status, 1),
                         vh,
                     );
-                    r::normalize_qk::launch_unchecked(
+                    r::normalize_qk_plane32::launch_unchecked(
                         client,
-                        grid(vh),
+                        CubeCount::Static(vh as u32, 1, 1),
                         dim(),
                         arg(activated, channels),
                         arg(&q, width),

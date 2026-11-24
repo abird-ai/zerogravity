@@ -216,6 +216,18 @@ pub(super) fn kernels(
                     true
                 );
                 add!(
+                    crate::source_gdn::recurrent::normalize_qk_plane32::NormalizeQkPlane32,
+                    32,
+                    b(),
+                    b(),
+                    b(),
+                    b(),
+                    (),
+                    kh,
+                    vh,
+                    true
+                );
+                add!(
                     crate::source_gdn::recurrent::decayed::Decayed,
                     32,
                     b(),

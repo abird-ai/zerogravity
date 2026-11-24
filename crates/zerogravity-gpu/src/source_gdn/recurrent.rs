@@ -150,6 +150,102 @@ pub(crate) fn normalize_qk(
     }
 }
 
+/// Cached-decode normalization with one 32-lane workgroup per value head.
+/// Each lane retains one of the original 32 partials and its four-element
+/// accumulation order; lane 0 performs the unchanged final eight-part reduction.
+#[cube(launch_unchecked)]
+pub(crate) fn normalize_qk_plane32(
+    activated: &[f32],
+    query: &mut [f32],
+    key: &mut [f32],
+    status: &[Atomic<u32>],
+    rows: u32,
+    #[comptime] kh: usize,
+    #[comptime] vh: usize,
+    #[comptime] cached: bool,
+) {
+    let at = usize::cast_from(CUBE_POS_X);
+    if at < rows as usize * vh {
+        let row = at / vh;
+        let h = at % vh;
+        let group = h / (vh / kh);
+        let lane = usize::cast_from(UNIT_POS);
+        let channels = (2usize * kh + vh) * 128usize;
+        let input_base = row * channels;
+        let output_base = row * vh * 128usize;
+
+        let mut qpart = 0.0f32;
+        let mut kpart = 0.0f32;
+        for block in 0..4usize {
+            let i = block * 32usize + lane;
+            let q = activated[input_base + group * 128usize + i];
+            let k = activated[input_base + (kh + group) * 128usize + i];
+            qpart = add(qpart, mul(q, q));
+            kpart = add(kpart, mul(k, k));
+        }
+
+        let mut parts = Shared::<[f32]>::new_slice(64usize);
+        parts[lane] = qpart;
+        parts[32usize + lane] = kpart;
+        sync_cube();
+
+        let mut inverse = Shared::<[f32]>::new_slice(2usize);
+        if lane == 0usize {
+            let mut qsum = 0.0f32;
+            let mut ksum = 0.0f32;
+            for i in 0..8usize {
+                qsum = add(
+                    qsum,
+                    add(
+                        add(add(parts[i], parts[i + 8usize]), parts[i + 16usize]),
+                        parts[i + 24usize],
+                    ),
+                );
+                ksum = add(
+                    ksum,
+                    add(
+                        add(
+                            add(parts[32usize + i], parts[40usize + i]),
+                            parts[48usize + i],
+                        ),
+                        parts[56usize + i],
+                    ),
+                );
+            }
+            let qden = add(qsum, f32::reinterpret(0x358637bdu32));
+            let kden = add(ksum, f32::reinterpret(0x358637bdu32));
+            let qi = div(
+                1.0f32,
+                f32::cast_from(crate::source_float::widen_source(qden).sqrt()),
+            );
+            let ki = div(
+                1.0f32,
+                f32::cast_from(crate::source_float::widen_source(kden).sqrt()),
+            );
+            inverse[0] = qi;
+            inverse[1] = ki;
+            if !finite(qi) || !finite(ki) {
+                status[0].fetch_or(NONFINITE_VALUE);
+            }
+        }
+        sync_cube();
+
+        let qi = inverse[0];
+        let ki = inverse[1];
+        for block in 0..4usize {
+            let i = block * 32usize + lane;
+            let q = mul(activated[input_base + group * 128usize + i], qi);
+            let mut scaled = mul(q, f32::reinterpret(0x3db504f3u32));
+            if comptime!(cached) {
+                scaled = div(q, f32::reinterpret(0x413504f3u32));
+            }
+            query[output_base + h * 128usize + i] = scaled;
+            key[output_base + h * 128usize + i] =
+                mul(activated[input_base + (kh + group) * 128usize + i], ki);
+        }
+    }
+}
+
 #[cube(launch_unchecked)]
 pub(crate) fn initial_dot(
     query: &[f32],
