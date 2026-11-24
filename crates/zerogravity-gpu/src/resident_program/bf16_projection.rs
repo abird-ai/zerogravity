@@ -389,6 +389,11 @@ impl PreparedBf16Projection {
                 );
             }
         }
+        // Temporary A/B: only resident HIP projections; remove after decision.
+        static HOISTED: OnceLock<bool> = OnceLock::new();
+        let hoisted = self.storage == Bf16ProjectionStorage::Resident
+            && matches!(service.device(), cubecl::Device::Hip(_))
+            && *HOISTED.get_or_init(|| std::env::var_os("ZG_TMP_HOISTED").is_some());
         let singleton = coalesce_singleton_status;
         if singleton {
             view(b.flags, 0, output_elements * 4)?;
@@ -431,7 +436,12 @@ impl PreparedBf16Projection {
                 } else {
                     // Compact accumulation. Singleton flags keep their final row
                     // positions so one status reduction can follow all weight tiles.
-                    crate::bf16_projection_kernel::project_cpu_bf16::launch_unchecked(
+                    let project = if hoisted {
+                        crate::bf16_projection_kernel::project_cpu_bf16_hoisted::launch_unchecked
+                    } else {
+                        crate::bf16_projection_kernel::project_cpu_bf16::launch_unchecked
+                    };
+                    project(
                         service.client(),
                         CubeCount::Static(elements as u32, 1, 1),
                         CubeDim::new_1d(64),

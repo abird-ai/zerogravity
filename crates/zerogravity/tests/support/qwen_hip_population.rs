@@ -45,9 +45,9 @@ impl Harness {
         }
         assert_eq!(std::env::var("HIP_VISIBLE_DEVICES").as_deref(), Ok("0"));
         assert_eq!(std::env::var("ROCR_VISIBLE_DEVICES").as_deref(), Ok("0"));
-        for (field, expected) in [("vendor", "0x1002"), ("device", "0x1586")] {
+        for (field, expected) in [("vendor", "0x1002"), ("device", "0x150e")] {
             assert_eq!(
-                std::fs::read_to_string(format!("/sys/bus/pci/devices/0000:c6:00.0/{field}"))
+                std::fs::read_to_string(format!("/sys/bus/pci/devices/0000:66:00.0/{field}"))
                     .unwrap()
                     .trim(),
                 expected
@@ -56,7 +56,7 @@ impl Harness {
         let snapshot = source_snapshot(label);
         let arbiter = ResourceArbiter::process_shared();
         let host = PhysicalDeviceKey::new("host", "system-ram").unwrap();
-        let device = PhysicalDeviceKey::new("pci", "0000:c6:00.0").unwrap();
+        let device = PhysicalDeviceKey::new("pci", "0000:66:00.0").unwrap();
         arbiter
             .register_matching(host.clone(), 16 * 1024 * 1024 * 1024)
             .unwrap();
@@ -306,11 +306,11 @@ fn public_source_population_benchmark() {
         .map(|value| value.parse::<usize>().unwrap())
         .unwrap_or(0);
     let load = Instant::now();
-    let h = Harness::open_benchmark(&label, 8, 1024, 3, 65);
+    let h = Harness::open_benchmark(&label, 8, 1024, 16, 65);
     println!(
         "HIP_BENCH_LOAD {}",
         serde_json::json!({"model":label,"load_ms":load.elapsed().as_secs_f64()*1000.0,
-        "active_limit":8,"context":1024,"output":3,
+        "active_limit":8,"context":1024,"output":16,
         "total_device_budget_bytes":h.budget.total_device_bytes(),
         "context_device_bytes":h.budget.context_device_bytes(),
         "model_device_capacity_bytes":h.budget.model_device_bytes(),
@@ -326,10 +326,14 @@ fn public_source_population_benchmark() {
     );
     for clients in clients {
         let mut expected = None;
-        for wave in 0..3 {
+        for wave in 0..5 {
             let start = Instant::now();
             let requests: Vec<_> = (0..clients)
-                .map(|_| h.runtime.request_text(request("source", prompt)).unwrap())
+                .map(|_| {
+                    let mut req = request("source", prompt);
+                    req.max_tokens = 16;
+                    h.runtime.request_text(req).unwrap()
+                })
                 .collect();
             let mut sessions = BTreeSet::new();
             let mut outputs = Vec::with_capacity(clients);
@@ -337,6 +341,7 @@ fn public_source_population_benchmark() {
                 let output =
                     complete_with_fused(events, 47, h.tokenizer.as_ref(), cohort_width != 0);
                 assert!(sessions.insert(output.roots[0].producer_root.unwrap().session_id));
+                assert_eq!(output.ids.len(), 16);
                 outputs.push(output.ids);
             }
             if let Some(expected) = &expected {
@@ -359,7 +364,7 @@ fn public_source_population_benchmark() {
             println!(
                 "HIP_BENCH_WAVE {}",
                 serde_json::json!({"model":label,"clients":clients,"wave":wave,
-                "warmup":wave==0,"elapsed_ms":elapsed_ms,"completed":outputs.len(),"output_tokens":3*outputs.len(),
+                "warmup":wave==0,"elapsed_ms":elapsed_ms,"completed":outputs.len(),"output_tokens":16*outputs.len(),
                 "token_ids":outputs,"expected":expected,"replay_match":true,"lane_invariant":lane_invariant,
                 "native_batch_width":cohort_width,"active_sessions_limit":8,"admission":admission})
             );
