@@ -40,7 +40,34 @@ fn rounded_index(
     }
 }
 
+/// One packed BF16 word for this lane. The alternate pair-load path lets
+/// adjacent lanes share the exact same u32 through a plane shuffle: only the
+/// even lane performs the global load, while both lanes keep their original
+/// low/high-half arithmetic. shared_pair=false compiles to the canonical
+/// independent load with no runtime branch.
+#[cube]
+fn packed_word(values: &[u32], word: usize, lane: usize, #[comptime] shared_pair: bool) -> u32 {
+    if comptime!(shared_pair) {
+        let loaded = if lane % 2usize == 0usize {
+            values[word]
+        } else {
+            0u32
+        };
+        let peer = plane_shuffle_xor(loaded, 1u32);
+        if lane % 2usize == 0usize {
+            loaded
+        } else {
+            peer
+        }
+    } else {
+        values[word]
+    }
+}
+
 /// Exact CPU BF16 dot/reduction shared by diagnostic and certified stores.
+/// shared_pair changes only how the already-packed u32 reaches adjacent lanes;
+/// each lane extracts the same original BF16 and keeps the same FMA and
+/// reduction order.
 #[cube]
 fn project_value(
     weights: &[u32],
@@ -49,6 +76,7 @@ fn project_value(
     requests: usize,
     #[comptime] rows: usize,
     #[comptime] columns: usize,
+    #[comptime] shared_pair: bool,
 ) -> (usize, f32, u32, u32) {
     let output = output_index(usize::cast_from(CUBE_POS_X), requests, rows);
     let request = output / rows;
@@ -68,8 +96,10 @@ fn project_value(
         let column = chunk * 64usize + lane;
         let wi = row * columns + column;
         let xi = request * columns + column;
-        let wb = (weights[wi / 2usize] >> (u32::cast_from(wi % 2usize) * 16u32)) & 0xffffu32;
-        let xb = (input[xi / 2usize] >> (u32::cast_from(xi % 2usize) * 16u32)) & 0xffffu32;
+        let packed_weight = packed_word(weights, wi / 2usize, lane, shared_pair);
+        let packed_input = packed_word(input, xi / 2usize, lane, shared_pair);
+        let wb = (packed_weight >> (u32::cast_from(wi % 2usize) * 16u32)) & 0xffffu32;
+        let xb = (packed_input >> (u32::cast_from(xi % 2usize) * 16u32)) & 0xffffu32;
         if (wb & 0x7f80u32) == 0x7f80u32 {
             invalid |= 1u32;
         }
@@ -270,6 +300,40 @@ pub(crate) fn project_cpu_bf16(
         accumulation.len() / rows,
         rows,
         columns,
+        false,
+    );
+    if lane == 0usize {
+        accumulation[output] = result;
+        rounded[rounded_index(output, rows, output_row_stride)] = f32::reinterpret(rounded_bits);
+        status[output] = combined;
+    }
+}
+
+/// Exact packed-load sibling. Adjacent lanes share each packed u32 with a
+/// plane XOR shuffle, halving the global packed-word loads in principle while
+/// preserving the canonical64 independent partials and reduction tree.
+#[allow(dead_code)]
+#[cube(launch_unchecked)]
+pub(crate) fn project_cpu_bf16_pair_load(
+    weights: &[u32],
+    input: &[u32],
+    zero: &[f32],
+    accumulation: &mut [f32],
+    rounded: &mut [f32],
+    status: &mut [u32],
+    #[comptime] rows: usize,
+    #[comptime] columns: usize,
+    #[comptime] output_row_stride: usize,
+) {
+    let lane = usize::cast_from(UNIT_POS);
+    let (output, result, rounded_bits, combined) = project_value(
+        weights,
+        input,
+        zero,
+        accumulation.len() / rows,
+        rows,
+        columns,
+        true,
     );
     if lane == 0usize {
         accumulation[output] = result;
@@ -545,6 +609,7 @@ pub(crate) fn project_cpu_bf16_certified(
         accumulation.len() / rows,
         rows,
         columns,
+        false,
     );
     if lane == 0usize {
         accumulation[output] = result;
