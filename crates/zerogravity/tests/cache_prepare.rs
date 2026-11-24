@@ -134,20 +134,31 @@ fn role_and_staging_admission_fail_without_model_source_allocation() {
     tx.commit(Some("fixture")).unwrap();
     let snapshot = store.resolve_ref("fixture").unwrap();
     let denied = admission(1);
+    let assert_staging_denied = |result: zerogravity::Result<PreparedQwen>| {
+        match result {
+            Err(zerogravity::Error::Resource(limit)) => {
+                assert_eq!(limit.available, 1);
+                assert!(limit.requested > limit.available);
+            }
+            Err(error) => panic!("expected resource admission refusal: {error}"),
+            Ok(_) => panic!("unexpected preparation with insufficient staging budget"),
+        }
+        assert_eq!(
+            denied.arbiter.snapshot(&denied.resource).unwrap().reserved,
+            0
+        );
+    };
     use zerogravity::artifacts::SnapshotFile;
     let selected = |path| SnapshotFile {
         snapshot: "fixture",
         path,
     };
-    assert!(matches!(
-        PreparedQwen::from_cache(
-            &store,
-            selected("model.gguf"),
-            selected("config.json"),
-            selected("tokenizer.json"),
-            &denied
-        ),
-        Err(zerogravity::Error::Limit(_))
+    assert_staging_denied(PreparedQwen::from_cache(
+        &store,
+        selected("model.gguf"),
+        selected("config.json"),
+        selected("tokenizer.json"),
+        &denied,
     ));
     assert!(matches!(
         PreparedQwen::from_cache(
@@ -170,17 +181,14 @@ fn role_and_staging_admission_fail_without_model_source_allocation() {
         .is_err()
     );
 
-    assert!(matches!(
-        PreparedQwen::from_snapshots(
-            &snapshot,
-            "model.gguf",
-            &snapshot,
-            "config.json",
-            &snapshot,
-            "tokenizer.json",
-            &denied
-        ),
-        Err(zerogravity::Error::Limit(_))
+    assert_staging_denied(PreparedQwen::from_snapshots(
+        &snapshot,
+        "model.gguf",
+        &snapshot,
+        "config.json",
+        &snapshot,
+        "tokenizer.json",
+        &denied,
     ));
     assert_eq!(
         denied.arbiter.snapshot(&denied.resource).unwrap().reserved,

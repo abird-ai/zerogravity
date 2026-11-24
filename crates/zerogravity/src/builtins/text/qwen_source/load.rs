@@ -1032,7 +1032,7 @@ mod cuda_paged_tests {
     use crate::{
         accelerator::program::InvocationPhase,
         gpu::{
-            CudaSourceStatePolicy, ResidentOutput, ResidentTextCohortPreparation,
+            CudaSourceStatePolicy, ResidentModel, ResidentOutput, ResidentTextCohortPreparation,
             ResidentTextModel, ResidentTextPreparation, ResidentTextPublication,
         },
     };

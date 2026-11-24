@@ -18,6 +18,24 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
+### Current Phase 1 checkpoint
+
+`8c34c472` unifies borrowed/window-backed source preparation through typed
+ProgramSource, original ForwardPlan and PreparedExecutable; real window-backed
+Qwen HIP/CUDA uses the same engine prepare boundary. No inference arithmetic
+changed. X2 host source/final reader, native V2 C1/C8, distinct multichunk and
+exact-reference C1 pass; C8 warm552.423ms/43.44tok/s, unchanged dispatches,
+expected tokens/replay/lane invariance, original idle retirement. CUDA
+test-only import restored; GPU feature boundaries and CPU Clippy pass.
+The old cache_prepare CPU assertion now checks actual Resource refusal and
+zero remaining charge. A complete no-fail-fast CPU sweep exposed 22 other
+failures (20 resource/Limit assertion mismatches, core resource-kind label,
+serving error-code). Next resolve these as a bounded foundation acceptance
+batch, inspecting actual contracts rather than blanket matching either error.
+Full gate is not green; no fresh CUDA physical validation. Then complete
+closed-region binding/preparation; whole-program ingress is only the first
+slice. See the full plan and composition TODO.
+
 Full dated takeover snapshot:
 [`FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md).
 The 24 Nov pack is the canonical current takeover: it reconciles the original

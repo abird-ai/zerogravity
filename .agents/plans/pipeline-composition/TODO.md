@@ -135,6 +135,28 @@ their existing numeric/source/physical acceptance gates.
   original evidence; no new stash, reset or rebase. MAIN is the sole checkout.
   Disposition.
 
+## 8c34c472 — Common source-owned preparation
+
+- [x] Generalize ModelProgram and PreparedExecutable over the retained
+  ProgramSource binding; compare actual issuer and original plan, not just
+  source IDs. Borrowed tensor and verified file-window sources retain their
+  actual backing and access mechanism. No new IR, conversion or runtime.
+- [x] Route original window-backed Qwen HIP/CUDA serving through the existing
+  prepare/ExecutableBundle boundary with typed ResidentTextProvider. Original
+  physical loaders, source owner, numerical plan and session publication stay
+  authoritative. Whole-program preparation only; no partial-region selection
+  grant. Existing borrowed source preparation remains.
+- [x] Four engine preparation tests pass. X2 actual source/tokenizer owner
+  test, native V2 C1/C8 (warm means130.572/552.423ms), native distinct
+  multichunk continuation and exact C1 (201.933ms) pass; expected tokens,
+  replay, lane invariance, unchanged dispatches, original final-reader and
+  clean retirement to259768320B idle. No fresh CUDA physical claim.
+  CUDA test-only import corrected in assembled validation. Combined GPU
+  feature checks and CPU Clippy pass.
+- [ ] Next Phase 1 boundary: complete closed-region shape/binding/preparation
+  semantics over the existing plan and typed source, without inventing a
+  second canonical program or granting partial replacement prematurely.
+
 ## Uncommitted
 
 ### Phase 1 — source, semantics and executable lowering
