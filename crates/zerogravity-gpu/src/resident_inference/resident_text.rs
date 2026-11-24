@@ -280,8 +280,14 @@ impl ResidentModel {
         forward_not_cancelled(cancelled)?;
         let control = source.reserve_workspace(CONTROL_BYTES)?;
         let capacity = plan.prefix_capacity();
-        let admission =
-            program::Admission::with_budget(source.clone(), plan, max_sessions, budget)?;
+        let native_policy = crate::hip::native::source_native_policy(&device)?;
+        let admission = program::Admission::with_budget_and_native_policy(
+            source.clone(),
+            plan,
+            max_sessions,
+            budget,
+            native_policy,
+        )?;
         let prepared = program::prepare(device, admission, source_owner, cancelled).await?;
         let preflight = prepared.program.budget().clone();
         let vocabulary = prepared.program.plan().values()[prepared

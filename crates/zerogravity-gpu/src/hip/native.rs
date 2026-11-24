@@ -98,15 +98,61 @@ const CONTEXT_DEVICE: u64 = (4 * GIB) as u64;
 const CONTEXT_HOST: u64 = (2 * GIB) as u64;
 const COMPILER_HOST: usize = 8 * GIB;
 const MODULE_OPAQUE: usize = 8 * GIB;
+// A1 gfx1150 / ROCm+driver 7.2.53211 / RTC 9.0: four cold native
+// prepare/load/launch/unload cycles plus the complete 92-module Qwen0.8B
+// catalogue stayed below 158 MiB observed first-use device delta. Keep a
+// 1 GiB fixed policy margin; mismatched actor environments refuse before load.
+const QUALIFIED_GFX1150_MODULE_OPAQUE: usize = GIB;
 const MAX_CODE: usize = GIB;
 const MAX_MODULES: usize = 1024;
+
 #[cfg(feature = "hip-source")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct HipSourceNativePolicy {
+    module_opaque_bytes: usize,
+}
+#[cfg(feature = "hip-source")]
+impl HipSourceNativePolicy {
+    pub(crate) const FALLBACK: Self = Self {
+        module_opaque_bytes: MODULE_OPAQUE,
+    };
+    const GFX1150_ROCM_7_2_53211: Self = Self {
+        module_opaque_bytes: QUALIFIED_GFX1150_MODULE_OPAQUE,
+    };
+
+    fn preparation_upper_bytes(self) -> (usize, usize) {
+        (
+            COMPILER_HOST + 2 * MAX_CODE + 2 * 1024 * 1024,
+            self.module_opaque_bytes + MAX_CODE,
+        )
+    }
+}
+#[cfg(feature = "hip-source")]
+pub(crate) fn source_native_policy(device: &Device) -> Result<HipSourceNativePolicy> {
+    let Device::Hip(device) = device else {
+        return Err(Error::State(
+            "HIP source native policy requires HIP device".into(),
+        ));
+    };
+    let observed = cubecl::hip::observe_device(device.clone())
+        .ok_or_else(|| Error::Unsupported("HIP source native device observation".into()))?;
+    // Cold device facts only nominate the qualified candidate. The actual
+    // prepared actor revalidates the exact ROCm/driver/RTC/compiler tuple
+    // before any module is compiled or loaded.
+    Ok(if observed.arch_name == "gfx1150" && observed.integrated {
+        HipSourceNativePolicy::GFX1150_ROCM_7_2_53211
+    } else {
+        HipSourceNativePolicy::FALLBACK
+    })
+}
+#[cfg(feature = "hip-source")]
+#[allow(dead_code)]
 pub(crate) fn source_preparation_upper_bytes() -> (usize, usize) {
-    // Backend-owned fixed policy ceilings; these are costs, not admission.
-    (
-        COMPILER_HOST + 2 * MAX_CODE + 2 * 1024 * 1024,
-        MODULE_OPAQUE + MAX_CODE,
-    )
+    HipSourceNativePolicy::FALLBACK.preparation_upper_bytes()
+}
+#[cfg(feature = "hip-source")]
+pub(crate) fn source_preparation_upper_bytes_for(policy: HipSourceNativePolicy) -> (usize, usize) {
+    policy.preparation_upper_bytes()
 }
 
 #[cfg(all(
@@ -126,7 +172,7 @@ enum SingleSourceProfile {
     #[cfg(feature = "qwen-source-qualification")]
     Qwen,
     #[cfg(feature = "hip-source")]
-    ResidentText(HipSourceBudget),
+    ResidentText(HipSourceBudget, HipSourceNativePolicy),
 }
 impl SingleSourceProfile {
     fn provider_cap(self) -> usize {
@@ -136,18 +182,32 @@ impl SingleSourceProfile {
             #[cfg(feature = "qwen-source-qualification")]
             Self::Qwen => PROVIDER_CAP,
             #[cfg(feature = "hip-source")]
-            Self::ResidentText(budget) => budget.total_device_bytes(),
+            Self::ResidentText(budget, _) => budget.total_device_bytes(),
         }
     }
     fn device_cap(self) -> u64 {
         match self {
             #[cfg(feature = "hip-source")]
-            Self::ResidentText(budget) => budget.physical_admission_bytes(),
+            Self::ResidentText(budget, _) => budget.physical_admission_bytes(),
             #[cfg(feature = "gemma-bf16-qualification")]
             Self::Gemma(_) => DEVICE_CAP,
             #[cfg(feature = "qwen-source-qualification")]
             Self::Qwen => DEVICE_CAP,
         }
+    }
+    fn resident_text_native_policy(self) -> Option<HipSourceNativePolicy> {
+        match self {
+            #[cfg(feature = "gemma-bf16-qualification")]
+            Self::Gemma(_) => None,
+            #[cfg(feature = "qwen-source-qualification")]
+            Self::Qwen => None,
+            #[cfg(feature = "hip-source")]
+            Self::ResidentText(_, native) => Some(native),
+        }
+    }
+    fn module_opaque_bytes(self) -> usize {
+        self.resident_text_native_policy()
+            .map_or(MODULE_OPAQUE, |native| native.module_opaque_bytes)
     }
     fn policy(self) -> &'static str {
         match self {
@@ -156,13 +216,15 @@ impl SingleSourceProfile {
             #[cfg(feature = "qwen-source-qualification")]
             Self::Qwen => "x2-gfx1151-qwen27b-initial-cached-full-catalogue-provisional-v1",
             #[cfg(feature = "hip-source")]
-            Self::ResidentText(budget) => {
-                if budget == HipSourceBudget::default() {
-                    "hip-source-bf16-resident-projections-v1"
-                } else {
-                    "hip-source-bf16-explicit-total-device-budget-v1"
-                }
-            }
+            Self::ResidentText(budget, native) => match (
+                native == HipSourceNativePolicy::GFX1150_ROCM_7_2_53211,
+                budget == HipSourceBudget::default(),
+            ) {
+                (true, true) => "hip-source-gfx1150-rocm7.2.53211-opaque1g-default-v1",
+                (true, false) => "hip-source-gfx1150-rocm7.2.53211-opaque1g-explicit-v1",
+                (false, true) => "hip-source-bf16-resident-projections-v1",
+                (false, false) => "hip-source-bf16-explicit-total-device-budget-v1",
+            },
         }
     }
 }
@@ -206,6 +268,8 @@ impl GemmaColdProfile {
     }
 }
 const OPTIONS: &str = "HipCompilationOptions { cpp: CompilationOptions { warp_size: 32, supports_features: CppSupportedFeatures { grid_constants: false, clusters: false, fast_math: true, fast_tanh: false, elect_sync: false, dp4a: false }, amd_wmma: Some(Rdna3) }, arch: Some(GfxArch { name: \"gfx1151\", family: GFX11 }) }";
+#[cfg(feature = "hip-source")]
+const GFX1150_OPTIONS: &str = "HipCompilationOptions { cpp: CompilationOptions { warp_size: 32, supports_features: CppSupportedFeatures { grid_constants: false, clusters: false, fast_math: true, fast_tanh: false, elect_sync: false, dp4a: false }, amd_wmma: Some(Rdna3) }, arch: Some(GfxArch { name: \"gfx1150\", family: GFX11 }) }";
 
 fn native(error: impl std::fmt::Display) -> Error {
     Error::State(format!("original HIP native owner: {error}"))
@@ -222,6 +286,7 @@ impl Drop for PersistentHost {
 struct Context {
     device: Arc<NativeContextBudget>,
     policy: &'static str,
+    module_opaque_bytes: usize,
     _host: Arc<PersistentHost>,
     #[cfg(all(
         feature = "qwen-source-qualification",
@@ -348,7 +413,7 @@ impl HipNativeAdmission for Admission {
         let device_bytes = inventory
             .code_object_load_bytes
             .checked_add(if totals.modules == 0 {
-                MODULE_OPAQUE
+                self.context.module_opaque_bytes
             } else {
                 0
             })
@@ -462,6 +527,7 @@ pub(crate) fn begin_resident_source(
         source_owner,
         model_device_upper,
         HipSourceBudget::default(),
+        HipSourceNativePolicy::FALLBACK,
     )
 }
 #[cfg(feature = "hip-source")]
@@ -471,13 +537,14 @@ pub(crate) fn begin_resident_source_with_budget(
     source_owner: crate::physical_quarantine::CompletionOwner,
     model_device_upper: usize,
     budget: HipSourceBudget,
+    native_policy: HipSourceNativePolicy,
 ) -> Result<ColdNativePreparation> {
     budget.inventory(model_device_upper)?;
     begin_single_source(
         device,
         source,
         source_owner,
-        SingleSourceProfile::ResidentText(budget),
+        SingleSourceProfile::ResidentText(budget, native_policy),
     )
 }
 fn begin_single_source(
@@ -512,9 +579,11 @@ fn begin_single_source(
         physical.available_model_capacity()?,
     )?;
     // Attach the persistent host before ANY later fallible policy/source step.
+    let module_opaque_bytes = profile.module_opaque_bytes();
     let context = Arc::new(Context {
         device: context_device,
         policy: profile.policy(),
+        module_opaque_bytes,
         _host: persistent_host,
         #[cfg(all(
             feature = "qwen-source-qualification",
@@ -578,9 +647,25 @@ fn require_environment(
     let environment = PreparedHipNative::environment(client).map_err(native)?;
 
     #[cfg(feature = "hip-source")]
-    if matches!(profile, SingleSourceProfile::ResidentText(_)) {
-        if physical.backend != "pci"
-            || !environment.fingerprint.starts_with("hip-kernel_gfx")
+    if let Some(native) = profile.resident_text_native_policy() {
+        if physical.backend != "pci" {
+            return Err(Error::Unsupported(
+                "HIP source runtime environment is incomplete".into(),
+            ));
+        }
+        if native == HipSourceNativePolicy::GFX1150_ROCM_7_2_53211 {
+            if environment.fingerprint != "hip-kernel_gfx1150"
+                || environment.compiler_options != GFX1150_OPTIONS
+                || environment.runtime_version != 70253211
+                || environment.driver_version != 70253211
+                || environment.rtc_major != 9
+                || environment.rtc_minor != 0
+            {
+                return Err(Error::Unsupported(
+                    "qualified gfx1150 HIP native policy environment differs".into(),
+                ));
+            }
+        } else if !environment.fingerprint.starts_with("hip-kernel_gfx")
             || environment.compiler_options.is_empty()
             || environment.runtime_version <= 0
             || environment.driver_version <= 0

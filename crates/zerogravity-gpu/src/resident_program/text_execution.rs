@@ -86,6 +86,7 @@ pub(crate) async fn prepare(
         source_owner,
         inventory.model_device_upper_bytes,
         admission.budget,
+        admission.native_policy,
     )?;
     let catalogue = admission.catalogue(native.client())?;
     let service = native.service();

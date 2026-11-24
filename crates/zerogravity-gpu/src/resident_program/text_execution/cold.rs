@@ -32,6 +32,7 @@ pub struct ResidentTextInventory {
 
 pub(crate) struct Admission {
     pub(super) budget: crate::hip::native::HipSourceBudget,
+    pub(super) native_policy: crate::hip::native::HipSourceNativePolicy,
     pub(super) source: VerifiedTensorSource,
     pub(super) layout: Arc<layout::Layout>,
     pub(super) operands: BTreeMap<String, Arc<PreparedBf16Projection>>,
@@ -57,6 +58,21 @@ impl Admission {
         max_sessions: usize,
         budget: crate::hip::native::HipSourceBudget,
     ) -> Result<Self> {
+        Self::with_budget_and_native_policy(
+            source,
+            plan,
+            max_sessions,
+            budget,
+            crate::hip::native::HipSourceNativePolicy::FALLBACK,
+        )
+    }
+    pub(crate) fn with_budget_and_native_policy(
+        source: VerifiedTensorSource,
+        plan: Arc<ForwardPlan>,
+        max_sessions: usize,
+        budget: crate::hip::native::HipSourceBudget,
+        native_policy: crate::hip::native::HipSourceNativePolicy,
+    ) -> Result<Self> {
         if !(1..=64).contains(&max_sessions) || source.source_identity() != plan.source() {
             return Err(Error::State(
                 "text-execution original source/session population".into(),
@@ -67,7 +83,8 @@ impl Admission {
         let source_weight_bytes = layout.preflight.source_bytes;
         let root_count = 2 * max_sessions + 2;
         let root_bytes = layout.preflight.prior_state_bytes;
-        let (_, native_device) = crate::hip::native::source_preparation_upper_bytes();
+        let (_, native_device) =
+            crate::hip::native::source_preparation_upper_bytes_for(native_policy);
         let fixed_device_bytes = layout::sum([
             layout.preflight.owned_bytes()? - source_weight_bytes,
             root_bytes * root_count,
@@ -104,7 +121,8 @@ impl Admission {
         for p in layout.parameters.values() {
             source.bind_declared_parameter(p)?;
         }
-        let (native_host, native_device) = crate::hip::native::source_preparation_upper_bytes();
+        let (native_host, native_device) =
+            crate::hip::native::source_preparation_upper_bytes_for(native_policy);
         let root_planes = layout
             .preflight
             .states
@@ -164,6 +182,7 @@ impl Admission {
         };
         Ok(Self {
             budget,
+            native_policy,
             source,
             layout,
             operands,
@@ -195,7 +214,8 @@ impl Admission {
     ) -> Result<Pending> {
         init.require_service(&service)?;
         native.require_live(service.client(), self.source.source_identity())?;
-        let (native_host, native_device) = crate::hip::native::source_preparation_upper_bytes();
+        let (native_host, native_device) =
+            crate::hip::native::source_preparation_upper_bytes_for(self.native_policy);
         if native.host_bytes() > native_host || native.device_bytes() > native_device {
             return Err(Error::State(
                 "text-execution actual native inventory exceeds its admitted upper bound".into(),
