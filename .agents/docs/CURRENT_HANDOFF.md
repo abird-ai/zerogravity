@@ -275,9 +275,18 @@ The current implementation priorities implied by that baseline are:
    carries original CPU partials lane/lane+32 separately and performs the unchanged
    +32/+16/+8/final tree. Do not select it on gfx1150: serialized GEMM time regressed
    561.1→577.7ms (~3.0%) and clean output16 timed mean regressed from~0.955s
-   (1.002/0.908s) to~1.101s (1.283/0.920s), exact/replay-stable. Next projection unit:
-   test a reusable **rows2** singleton specialization to share each packed input across
-   two adjacent output rows with half the register/shared footprint of rejected rows4;
+   (1.002/0.908s) to~1.101s (1.283/0.920s), exact/replay-stable.
+   Signed `253a565` then retains exact `project_cpu_bf16_rows2`, sharing one packed
+   activation across two adjacent rows while preserving independent64-partial trees.
+   Do not select rows2 on gfx1150 either. Decode-only direct timing for3584x1024
+   flipped sign across repeats (rows2~62.8ms vs rows1~81.4ms once, then rows2~77.6ms
+   vs rows1~66.0ms paired).1024x3584 loses~24%; head248320x1024 loses~4.4%.
+   6144x1024,2048x1024 and4096x1024 improve only~2.6–2.9%. There is no clean
+   geometry rule with stable aggregate upside, so rows1 remains selected and rows2/rows4/
+   wave32 all remain reusable dormant primitives. Stop row-grouping experiments here.
+   Next projection work should target the exact inner K64 weight/input traversal itself
+   (instruction/memory efficiency without changing the64-partial arithmetic contract),
+   and should first measure the dominant3584x1024/6144x1024 shapes directly;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
    47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
    streaming mechanics are the relevant optimization target there.

@@ -138,13 +138,20 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   +32/+16/+8/final reduction. Selection was tested only in a disposable A1 archive.
   Reject the gfx1150 consumer: serialized GEMM time561.1→577.7ms (~3.0% slower) and
   output16 timed mean~0.955→1.101s (~15.3% slower), exact/replay-stable. Primitive stays.
-- [ ] Next resident projection unit: test a model-neutral **rows2** singleton projection
-  specialization. Reuse each packed activation across two adjacent output rows while
-  preserving each row's exact64-partial FMA/reduction/status contract. This is the
-  smallest occupancy/input-reuse point between selected rows1 and rejected rows4.
-  First compare serialized device time on the dominant3584x1024/1024x3584 shapes, then
-  run one output16 A/B only if device time wins. Separately qualify gfx1151/X2 native
-  opaque accounting before changing its8GiB fallback.
+- [x] `253a565` retains an exact model-neutral rows2 projection primitive: one64-thread
+  workgroup computes two adjacent rows, sharing only the packed activation load while
+  each row keeps its independent64-partial FMA/reduction/rounding/status contract.
+  The gfx1150 consumer is rejected before whole-model A/B because direct device time
+  does not give a stable useful selector.3584x1024 flips from~22.9% faster in one run
+  to~17.6% slower in the paired repeat;1024x3584 is~24% slower; head248320x1024
+  is~4.4% slower. Expansion shapes6144x1024,2048x1024,4096x1024 gain only
+  ~2.6–2.9%. Rows1 stays selected; rows2/rows4/wave32 remain reusable dormant.
+- [ ] Next resident projection unit: stop row-grouping/input-reuse variants and target
+  the exact inner K64 projection traversal itself. Look for a simple reusable reduction
+  in packed-BF16 load/unpack/instruction or memory cost that preserves every original
+ 64 partial's FMA order and the existing reduction tree. Measure the dominant
+  3584x1024/6144x1024 shapes directly before any full output16 A/B. Separately
+  qualify gfx1151/X2 native opaque accounting before changing its8GiB fallback.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.

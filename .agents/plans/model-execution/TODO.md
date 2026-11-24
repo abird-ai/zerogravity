@@ -37,8 +37,11 @@ Immediate execution priorities are intentionally small:
   remain dormant. Current `a5c57c` selects the plane32 cached-GDN Q/K normalizer. Transient
   HIP device events now show projection owns~60–62% of steady decode device time and its
   exact GEMM body owns~92.9% of projection time. `072b791` retains an exact wave32
-  projection sibling but gfx1150 selection loses device and wall time. Next test rows2
-  input reuse on the dominant MLP shapes; do not optimize dispatch count alone;
+  projection sibling but gfx1150 selection loses device and wall time. `253a565` retains
+  exact rows2 input reuse, but the dominant3584x1024 shape flips sign between repeats,
+  contraction/head lose and other expansion gains are only~3%, so rows1 stays selected.
+  Next optimize the inner exact K64 load/unpack/traversal itself; do not optimize dispatch
+  count or row grouping alone;
 - optimize L5 27B streamed source/transfer overlap as a distinct memory-constrained mode;
 - benchmark completed changes quickly against the canonical current baseline, with no
   speculative test matrix or duplicate paging/COW/streaming abstraction.
