@@ -211,13 +211,23 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   reusable; remove temporary selector/catalogue/probe and benchmark adaptation.
   All16 greedy IDs/replay exact, dispatches30,824/request, zero failed quanta,
   clean retirement and original KFD owners.
-- [ ] Next resident HIP unit: prioritize measured remaining hot work. Projection
-  remains dominant; GDN key_reduce has an exact reusable parallel alternative
-  but its current singleton consumer is not selected. Inspect the actual RMS
-  scalar arithmetic or a clean projection traversal improvement before more
-  launch-fusion experiments. Separately qualify gfx1151/X2 native opaque
-  accounting before changing its8GiB fallback. No A1 comparison to X2/L5 vLLM;
-  no broader qualification inferred.
+- [x] RMS scalar review: four tiny passes (<=64 groups) and prior cascade/tail
+  fusion losses; no compelling arithmetic change selected. `6f2ededf` adds
+  the exact two-barrier CPU64 projection subtree sibling over the selected
+  hoisted traversal. Eight disjoint subtrees preserve every +32/+16/+8 add,
+  final carry, rounding and status; no new scratch or owner. Physical A1
+  direct A/B matches all accumulator/rounded/status bits, including signed
+  zero/subnormal inputs, strided multi-request output and nonfinite operands.
+  Six paired96-launch device windows (current→candidate ms):3584x1024
+  7.453→7.367,6144x1024 12.343→12.345,1024x3584 8.378→8.367,
+  2048x1024 4.372→4.310. Gains <=1.5%, mixed individual pairs; no
+  whole-model A/B justified. Retain both exact siblings; production selector
+  unchanged and temporary probe removed. Original KFD owner set restored.
+- [ ] Next HIP priority: move from marginal A1 microkernels to the matched
+  gfx1151/X2 serving envelope. Revalidate actual runtime/cache/source state,
+  qualify its native opaque accounting with the existing lifecycle before
+  changing the8GiB fallback, then get real current resident Qwen/vLLM
+  comparisons. No A1 comparison to X2/L5 vLLM; no broader qualification inferred.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.

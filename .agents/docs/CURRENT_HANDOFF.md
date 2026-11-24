@@ -342,8 +342,14 @@ The current implementation priorities implied by that baseline are:
    841.4→823.9ms, exact all16 IDs/replay and clean retirement. Gain too small
    relative to variation to justify production selector; retain scalar consumer
    and reusable parallel sibling. Temp runner/selector/catalogue removed.
-   Next prioritize measured projection/RMS arithmetic and separately unblock
-   matched-vLLM X2 qualification;
+   RMS scalar review gives no compelling arithmetic cut. `6f2ededf` retains
+   exact hoisted two-barrier projection subtrees; direct A1 accumulator,
+   rounded output and status are bit-exact (including strided/fault inputs),
+   but timing gains are <=1.5% with mixed paired windows. Keep current
+   four-barrier hoisted production selection; no whole-model candidate A/B.
+   Probe removed. Next prioritize matched-vLLM X2 serving: revalidate runtime
+   and source availability, qualify gfx1151 native opaque accounting before
+   changing its8GiB fallback, then measure the real current models;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
    47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
    streaming mechanics are the relevant optimization target there.

@@ -53,8 +53,12 @@ Immediate execution priorities are intentionally small:
   non-projection kernel is GDN key_reduce3.10ms/token. `7d0b395b` retains exact
   parallel8x16 subtotals; direct kernel time improves25–28%, but real0.8B 47+16
   mean request improvement is only~0.75% with overlapping ranges, so keep
-  scalar selected and parallel reusable. Next prioritize measured projection/RMS
-  arithmetic rather than further launch-only cuts.
+  scalar selected and parallel reusable. RMS scalar review gives no clear
+  next cut. `6f2ededf` retains exact two-barrier projection subtrees with
+  unchanged math/status; direct A1 timing is flat (<=1.5% gain), so the
+  current four-barrier hoisted consumer stays selected. Move to matched
+  gfx1151/X2 real-model serving and conservative native accounting qualification
+  instead of more marginal A1 microkernel experiments.
   Combined backend feature boundaries restored at `c89d0ee7`; full gate now
   stops at a separate CPU cache admission assertion. See serving plan;
 - optimize L5 27B streamed source/transfer overlap as a distinct memory-constrained mode;

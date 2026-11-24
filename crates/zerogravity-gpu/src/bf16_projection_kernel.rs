@@ -391,7 +391,8 @@ pub(crate) fn project_cpu_bf16_hoisted(
 }
 
 /// Hoisted packed traversal with two-barrier exact CPU64 reduction.
-/// Eight disjoint subtrees retain the original arithmetic and status order.
+/// Eight disjoint subtrees retain the original arithmetic and status bits.
+/// Gfx1150 keeps the hoisted four-barrier consumer: direct timing is flat.
 #[allow(dead_code)]
 #[cube(launch_unchecked)]
 pub(crate) fn project_cpu_bf16_subtrees(
