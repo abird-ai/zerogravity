@@ -132,6 +132,7 @@ impl HipSourceNativePolicy {
     #[cfg(feature = "hip-source")]
     pub(crate) fn prefers_hoisted_projection(self) -> bool {
         self == Self::Gfx1150
+            || (self == Self::Gfx1151 && std::env::var_os("ZG_TMP_X2_HOISTED").is_some())
     }
 
     #[cfg(feature = "hip-source")]
