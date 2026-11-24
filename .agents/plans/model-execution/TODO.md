@@ -40,8 +40,11 @@ Immediate execution priorities are intentionally small:
   projection sibling but gfx1150 selection loses device and wall time. `253a565` retains
   exact rows2 input reuse, but the dominant3584x1024 shape flips sign between repeats,
   contraction/head lose and other expansion gains are only~3%, so rows1 stays selected.
-  Next optimize the inner exact K64 load/unpack/traversal itself; do not optimize dispatch
-  count or row grouping alone;
+  `55477b4` retains exact adjacent-lane packed-word sharing, but gfx1150 loses ~2x.
+  `ba8c5ea` retains exact input-certified packing/GEMM composition;3584x1024 is flat
+  (~0.6% faster) while6144x1024 regresses~19.7%, so canonical input checks stay selected.
+  Next reuse an existing source/resident weight-finiteness proof only if one already
+  exists; otherwise keep the weight check and try simple packed-word index hoisting;
 - optimize L5 27B streamed source/transfer overlap as a distinct memory-constrained mode;
 - benchmark completed changes quickly against the canonical current baseline, with no
   speculative test matrix or duplicate paging/COW/streaming abstraction.

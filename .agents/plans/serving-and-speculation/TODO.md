@@ -146,12 +146,23 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   to~17.6% slower in the paired repeat;1024x3584 is~24% slower; head248320x1024
   is~4.4% slower. Expansion shapes6144x1024,2048x1024,4096x1024 gain only
   ~2.6–2.9%. Rows1 stays selected; rows2/rows4/wave32 remain reusable dormant.
-- [ ] Next resident projection unit: stop row-grouping/input-reuse variants and target
-  the exact inner K64 projection traversal itself. Look for a simple reusable reduction
-  in packed-BF16 load/unpack/instruction or memory cost that preserves every original
- 64 partial's FMA order and the existing reduction tree. Measure the dominant
-  3584x1024/6144x1024 shapes directly before any full output16 A/B. Separately
-  qualify gfx1151/X2 native opaque accounting before changing its8GiB fallback.
+- [x] Probed two exact inner-K64 alternatives and retained both primitives without
+  selecting them on gfx1150. `55477b4` adds paired packed-word delivery via
+  `plane_shuffle_xor`; arithmetic/reduction are unchanged, but direct device time
+  regresses3584x1024 65.20→153.73ms (~2.36x) and6144x1024 42.82→87.91ms
+  (~2.05x). `ba8c5ea` adds a projection-specific packer that publishes the same final
+  input status bits once plus an input-certified GEMM sibling that skips only the
+  repeated activation exponent check. Paired same-commit timing is3584x1024
+  61.786→61.422ms (~0.6% faster) and6144x1024 38.045→45.533ms (~19.7% slower).
+  No whole-model A/B; canonical rows1 remains selected.
+- [ ] Next resident projection unit: inspect existing authenticated source/resident
+  weight preparation for an already-valid BF16 finiteness proof. If and only if it
+  already proves the exact weights consumed by resident projection, add a reusable
+  weight-certified GEMM sibling that removes the per-K64 weight exponent test while
+  keeping all64 FMA chains/reduction/status semantics. Do not add a new verifier or
+  fixture hierarchy for this optimization. If no proof exists, leave the check and move
+  to simpler packed-word address/index hoisting. Separately qualify gfx1151/X2 native
+  opaque accounting before changing its8GiB fallback.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.

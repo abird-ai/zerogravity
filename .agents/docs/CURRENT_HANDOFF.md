@@ -284,9 +284,21 @@ The current implementation priorities implied by that baseline are:
    6144x1024,2048x1024 and4096x1024 improve only~2.6–2.9%. There is no clean
    geometry rule with stable aggregate upside, so rows1 remains selected and rows2/rows4/
    wave32 all remain reusable dormant primitives. Stop row-grouping experiments here.
-   Next projection work should target the exact inner K64 weight/input traversal itself
-   (instruction/memory efficiency without changing the64-partial arithmetic contract),
-   and should first measure the dominant3584x1024/6144x1024 shapes directly;
+   The exact inner K64 traversal was then probed without changing arithmetic. Signed
+   `55477b4` retains a paired packed-load primitive: adjacent lanes share one packed u32
+   through `plane_shuffle_xor` while keeping the same64 partials. Reject the gfx1150
+   consumer: direct decode timing regressed3584x1024 65.20→153.73ms (~2.36x) and
+   6144x1024 42.82→87.91ms (~2.05x). Signed `ba8c5ea` retains a projection-specific
+   input packer plus an input-certified GEMM sibling: the pack publishes the same eventual
+   shared input status bits once, allowing the GEMM to skip the repeated activation
+   exponent check while preserving FMAs/reduction/output status. Reject that consumer too:
+   same-commit paired timing is3584x1024 61.786→61.422ms (~0.6% faster) but
+   6144x1024 38.045→45.533ms (~19.7% slower). No whole-model A/B was warranted.
+   Rows1/canonical checks stay selected; both new primitives remain dormant/reusable.
+   Next projection unit: inspect whether existing authenticated source/resident weight
+   preparation already proves BF16 weight finiteness. Only if that proof already exists,
+   compose an exact weight-certified GEMM sibling that removes the hot-loop weight
+   exponent check. Do not add a new verification layer just for this optimization;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
    47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
    streaming mechanics are the relevant optimization target there.
