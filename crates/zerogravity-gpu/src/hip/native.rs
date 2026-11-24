@@ -956,6 +956,15 @@ impl ColdNativePreparation {
         )?;
         let mut slot = ticket.wait().await?;
         slot.begin_submission()?;
+        #[cfg(feature = "qualification")]
+        let native_vram_path = format!(
+            "/sys/bus/pci/devices/{}/mem_info_vram_used",
+            service.physical_key().device
+        );
+        #[cfg(feature = "qualification")]
+        let native_vram_before = std::fs::read_to_string(&native_vram_path)
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok());
         // SAFETY: complete original generated catalogue; backend-fixed explicit
         // allowances; SAME detached service/global/ledger; original fair slot.
         let prepared = match scoped {
@@ -989,6 +998,13 @@ impl ColdNativePreparation {
         eprintln!(
             "GEMMA_NATIVE_INVENTORY kernels={kernel_count} host={host_bytes} device={device_bytes} persistent_device={CONTEXT_DEVICE} persistent_host={CONTEXT_HOST} {:?}",
             prepared.inventory()
+        );
+        #[cfg(feature = "qualification")]
+        eprintln!(
+            "HIP_NATIVE_VRAM before={native_vram_before:?} after={:?}",
+            std::fs::read_to_string(&native_vram_path)
+                .ok()
+                .and_then(|s| s.trim().parse::<u64>().ok())
         );
         slot.finish()?;
         let service_ref = Arc::downgrade(&service);
