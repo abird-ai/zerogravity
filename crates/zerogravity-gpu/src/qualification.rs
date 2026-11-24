@@ -1127,7 +1127,7 @@ async fn qualify_ordinary_owned_blas_identity(
             CudaForwardBlas, CudaForwardProviderPaths,
         },
     };
-    use cubecl::cuda::Bf16GemmOperation;
+    use zerogravity_core::accelerator::dense::Gemm;
     use zerogravity_core::{
         Error,
         accelerator::SourceIdentity,
@@ -1193,8 +1193,7 @@ async fn qualify_ordinary_owned_blas_identity(
     let blas = CudaForwardBlas::prepare(service.clone(), 0, &paths).await?;
 
     for rows in [1usize, 2, 17, 64] {
-        let operation = Bf16GemmOperation::reference(WIDTH, rows, WIDTH)
-            .map_err(|error| Error::State(format!("ordinary BLAS identity operation: {error}")))?;
+        let operation = Gemm::bf16_projection(rows, WIDTH, WIDTH);
         let expected_bytes = rows * WIDTH * 2;
         let ticket = service.queue().submit(
             service.budget(),

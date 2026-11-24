@@ -16,6 +16,7 @@ use std::{
 };
 use zerogravity_core::{
     Error, Result,
+    accelerator::dense::Gemm,
     device_events::{BufferRole, DeviceAccess},
     resource_arbiter::{AllocationClass, AllocationRequest},
 };
@@ -329,7 +330,7 @@ impl CudaForwardBlas {
     pub(crate) fn enqueue(
         &self,
         flight: &mut ResidentSubmission<'_>,
-        operation: Bf16GemmOperation,
+        geometry: Gemm,
         weights: &ResidentLease,
         input: &ResidentLease,
         input_offset_bytes: usize,
@@ -337,8 +338,17 @@ impl CudaForwardBlas {
         output_offset_bytes: usize,
     ) -> Result<()> {
         self.require_active()?;
-        let [weight_bytes, input_bytes, output_bytes, workspace_bytes] =
-            operation.sizes().map_err(server_error)?;
+        // The existing CUDA provider supports compact BF16 projection. Other
+        // dense shapes must acquire an actual implementation before admission.
+        if geometry != Gemm::bf16_projection(geometry.m, geometry.n, geometry.k) {
+            return Err(Error::Unsupported(
+                "CUDA BLAS dense precision/layout".into(),
+            ));
+        }
+        let [input_bytes, weight_bytes, output_bytes] = geometry.operand_bytes()?;
+        let operation = Bf16GemmOperation::reference(geometry.n, geometry.m, geometry.k)
+            .map_err(server_error)?;
+        let workspace_bytes = operation.workspace_bytes();
         if weights.bytes() != weight_bytes || self.workspace.bytes() != workspace_bytes {
             return Err(Error::State(
                 "CUDA forward BLAS weights/workspace extent differs".into(),
