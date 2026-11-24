@@ -367,17 +367,18 @@ impl Cold {
                     .ok_or_else(|| Error::Limit("text cohort dispatch count".into()))?;
                 continue;
             }
-            if decode
-                && matches!(
-                    first.kind(),
-                    SourceOperatorKind::Rms(_)
-                        | SourceOperatorKind::ResidualRms(_)
-                        | SourceOperatorKind::QkRmsRotaryGated(_)
-                        | SourceOperatorKind::Sigmoid { .. }
-                        | SourceOperatorKind::Multiply { .. }
-                        | SourceOperatorKind::SiluAndMul { .. }
-                )
-            {
+            let rowwise = match first.kind() {
+                SourceOperatorKind::Rms(_)
+                | SourceOperatorKind::ResidualRms(_)
+                | SourceOperatorKind::Sigmoid { .. }
+                | SourceOperatorKind::Multiply { .. }
+                | SourceOperatorKind::SiluAndMul { .. } => true,
+                // Rotary positions repeat per prompt, not across the flattened
+                // token axis. Only the existing aligned decode path shares it.
+                SourceOperatorKind::QkRmsRotaryGated(_) => decode,
+                _ => false,
+            };
+            if rowwise {
                 let input_lengths = first.input_elements()?;
                 let output_lengths = first.output_elements()?;
                 if node.inputs.len() != input_lengths.len()
@@ -422,7 +423,7 @@ impl Cold {
                             node,
                             first,
                             &maps[0],
-                            width,
+                            width * rows,
                             base,
                             &buffers.slots,
                             &inputs,
@@ -732,7 +733,19 @@ impl Cold {
         let mut fused = 0usize;
         for matrix in descriptor.matrices() {
             let elements = active * matrix.rows;
-            let temporary = view(&buffers.projection[0], 0, bytes(elements)?)?;
+            // A single complete matrix already has the final row stride.
+            // Keep scratch for combined matrices, aliases and the head readback.
+            let direct = selected_row.is_none()
+                && matrix.rows == combined
+                && input_lease.id() != output_lease.id();
+            let (destination, destination_lease) = if direct {
+                (output.clone(), output_lease)
+            } else {
+                (
+                    view(&buffers.projection[0], 0, bytes(elements)?)?,
+                    &buffers.projection[0],
+                )
+            };
             dispatches = dispatches
                 .checked_add(
                     self.operands[&matrix.name]
@@ -756,24 +769,26 @@ impl Cold {
                         .await?,
                 )
                 .ok_or_else(|| Error::Limit("text cohort projection dispatches".into()))?;
-            flight.require_accesses([(output_lease, DeviceAccess::Write)])?;
-            unsafe {
-                super::kernels::columns::launch_unchecked(
-                    client,
-                    grid(elements),
-                    dim(),
-                    arg(&temporary, elements),
-                    arg(&output, expected_output),
-                    arg(&status, 1),
-                    active as u32,
-                    0u32,
-                    offset as u32,
-                    matrix.rows,
-                    matrix.rows,
-                    combined,
-                );
+            if !direct {
+                flight.require_accesses([(output_lease, DeviceAccess::Write)])?;
+                unsafe {
+                    super::kernels::columns::launch_unchecked(
+                        client,
+                        grid(elements),
+                        dim(),
+                        arg(&destination, elements),
+                        arg(&output, expected_output),
+                        arg(&status, 1),
+                        active as u32,
+                        0u32,
+                        offset as u32,
+                        matrix.rows,
+                        matrix.rows,
+                        combined,
+                    );
+                }
+                dispatches += 1;
             }
-            dispatches += 1;
             fused += 1;
             offset += matrix.rows;
         }

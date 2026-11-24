@@ -160,31 +160,45 @@ impl Cold {
         elements: usize,
     ) -> Result<usize> {
         let table = self.table(1, 72 * 8)?;
-        let shifted = self.s(layout::SIGMOID_SHIFT, elements * 2)?;
         let status = self.status_view()?;
-        unsafe {
-            crate::source_sigmoid::call_shift::launch_unchecked(
-                self.service.client(),
-                grid(elements),
-                dim(),
-                arg(input, elements),
-                arg(&table, 72),
-                arg(&shifted, elements),
-                elements as u32,
-            );
-            crate::source_sigmoid::call::launch_unchecked(
-                self.service.client(),
-                grid(elements),
-                dim(),
-                arg(input, elements),
-                arg(&table, 72),
-                arg(&shifted, elements),
-                arg(output, elements),
-                arg(&status, 1),
-                elements as u32,
-            );
+        let cap = self.scratch[layout::SIGMOID_SHIFT].bytes() / 8;
+        if elements == 0 || cap == 0 {
+            return Err(Error::State("text-execution sigmoid extent".into()));
         }
-        Ok(2)
+        // Use the original bounded shift scratch for all independent elements.
+        subview(input, 0, elements * 4)?;
+        subview(output, 0, elements * 4)?;
+        let mut count = 0;
+        for first in (0..elements).step_by(cap) {
+            let n = cap.min(elements - first);
+            let input = subview(input, first * 4, n * 4)?;
+            let output = subview(output, first * 4, n * 4)?;
+            let shifted = self.s(layout::SIGMOID_SHIFT, n * 2)?;
+            unsafe {
+                crate::source_sigmoid::call_shift::launch_unchecked(
+                    self.service.client(),
+                    grid(n),
+                    dim(),
+                    arg(&input, n),
+                    arg(&table, 72),
+                    arg(&shifted, n),
+                    n as u32,
+                );
+                crate::source_sigmoid::call::launch_unchecked(
+                    self.service.client(),
+                    grid(n),
+                    dim(),
+                    arg(&input, n),
+                    arg(&table, 72),
+                    arg(&shifted, n),
+                    arg(&output, n),
+                    arg(&status, 1),
+                    n as u32,
+                );
+            }
+            count += 2;
+        }
+        Ok(count)
     }
     #[allow(clippy::too_many_arguments)]
     pub(super) fn gdn(
