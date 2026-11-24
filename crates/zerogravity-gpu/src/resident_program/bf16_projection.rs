@@ -223,7 +223,21 @@ impl PreparedBf16Projection {
         input_rows: usize,
         flag: Option<&AtomicBool>,
     ) -> Result<usize> {
-        self.enqueue_rows_with_status(flight, page, b, input_rows, flag, false)
+        self.enqueue_rows_with_options(flight, page, b, input_rows, flag, true, false)
+            .await
+    }
+
+    /// Reuse the exact packed input produced by an earlier projection on this
+    /// same ordered flight. Callers must keep input geometry identical.
+    pub(crate) async fn enqueue_rows_prepacked(
+        &self,
+        flight: &mut Flight<'_>,
+        page: &Arc<source_page::ResidentSourcePage>,
+        b: Bf16ProjectionBindings<'_>,
+        input_rows: usize,
+        flag: Option<&AtomicBool>,
+    ) -> Result<usize> {
+        self.enqueue_rows_with_options(flight, page, b, input_rows, flag, false, false)
             .await
     }
 
@@ -237,17 +251,18 @@ impl PreparedBf16Projection {
         b: Bf16ProjectionBindings<'_>,
         flag: Option<&AtomicBool>,
     ) -> Result<usize> {
-        self.enqueue_rows_with_status(flight, page, b, 1, flag, true)
+        self.enqueue_rows_with_options(flight, page, b, 1, flag, true, true)
             .await
     }
 
-    async fn enqueue_rows_with_status(
+    async fn enqueue_rows_with_options(
         &self,
         flight: &mut Flight<'_>,
         page: &Arc<source_page::ResidentSourcePage>,
         b: Bf16ProjectionBindings<'_>,
         input_rows: usize,
         flag: Option<&AtomicBool>,
+        pack_input: bool,
         coalesce_singleton_status: bool,
     ) -> Result<usize> {
         let (input_elements, output_elements) =
@@ -337,21 +352,23 @@ impl PreparedBf16Projection {
             }
         }
         let packed = view(b.packed, 0, input_elements * 2)?;
-        unsafe {
-            pack::launch_unchecked(
-                service.client(),
-                grid(input_elements / 2),
-                threads(),
-                arg(b.input, input_elements),
-                arg(&packed, input_elements / 2),
-                arg(&b.status.handle(), 1),
-            );
+        if pack_input {
+            unsafe {
+                pack::launch_unchecked(
+                    service.client(),
+                    grid(input_elements / 2),
+                    threads(),
+                    arg(b.input, input_elements),
+                    arg(&packed, input_elements / 2),
+                    arg(&b.status.handle(), 1),
+                );
+            }
         }
         let singleton = coalesce_singleton_status;
         if singleton {
             view(b.flags, 0, output_elements * 4)?;
         }
-        let mut commands = 1;
+        let mut commands = usize::from(pack_input);
         for first in (0..total_rows).step_by(self.rows_per_launch) {
             cancelled(flag)?;
             let rows = self.rows_per_launch.min(total_rows - first);

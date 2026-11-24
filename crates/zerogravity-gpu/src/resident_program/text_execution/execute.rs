@@ -318,7 +318,7 @@ impl Cold {
                 let direct = active == 1 && input_lease.id() != output_lease.id();
                 let mut offset = 0;
                 let mut count = 0;
-                for m in d.matrices() {
+                for (matrix_index, m) in d.matrices().iter().enumerate() {
                     let temporary;
                     let (destination, destination_lease) = if direct {
                         (subview(&outputs[0], offset * 4, m.rows * 4)?, output_lease)
@@ -326,25 +326,26 @@ impl Cold {
                         temporary = self.s(layout::PROJECT, active * m.rows)?;
                         (temporary.clone(), &self.scratch[layout::PROJECT])
                     };
-                    count += self.operands[&m.name]
-                        .enqueue_rows(
-                            flight,
-                            &self.page,
-                            Bf16ProjectionBindings {
-                                input: &input,
-                                input_lease,
-                                output: &destination,
-                                output_lease: destination_lease,
-                                packed: &self.packed,
-                                accumulation: &self.accumulation,
-                                flags: &self.flags,
-                                status: &self.status,
-                                zero: &self.zero,
-                            },
-                            active,
-                            None,
-                        )
-                        .await?;
+                    let bindings = Bf16ProjectionBindings {
+                        input: &input,
+                        input_lease,
+                        output: &destination,
+                        output_lease: destination_lease,
+                        packed: &self.packed,
+                        accumulation: &self.accumulation,
+                        flags: &self.flags,
+                        status: &self.status,
+                        zero: &self.zero,
+                    };
+                    count += if active == 1 && matrix_index != 0 {
+                        self.operands[&m.name]
+                            .enqueue_rows_prepacked(flight, &self.page, bindings, active, None)
+                            .await?
+                    } else {
+                        self.operands[&m.name]
+                            .enqueue_rows(flight, &self.page, bindings, active, None)
+                            .await?
+                    };
                     if !direct {
                         unsafe {
                             kernels::columns::launch_unchecked(
