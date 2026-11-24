@@ -9,7 +9,13 @@ scaffolding (no concrete graph SDK required). Then finish CLI/TUI/Web and
 public serving; match vLLM on ROCm first, CUDA next, then native Vulkan.
 Actual MIGraphX/TensorRT/IREE/ONNX Runtime integrations are a later optional
 phase. Original Hugging Face checkpoints/Safetensors and GGUF remain the
-primary source paths. Older next-step performance notes below describe
+primary source paths. The
+[closed-region specification](../plans/pipeline-composition/REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering)
+separates verified ingestion, authoritative semantics and executable lowering.
+Phase 1 supports direct lowering without ONNX; Phase 6 prefers programmatic
+MIGraphX/TensorRT construction and qualifies optional graph import separately.
+No additional canonical IR, conversion pipeline or compiler dependency in
+Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
 Full dated takeover snapshot:

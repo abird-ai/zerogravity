@@ -140,13 +140,21 @@ computations at the region boundary, often using the same native libraries.
 A graph compiler is not a device backend. Capturing a command sequence is
 not graph optimization, and both can coexist.
 
-Distinguish source artifacts (Safetensors, GGUF), the authoritative semantic
-program (ModelProgram / ForwardPlan), and prepared executables. Provider-specific
-graphs and compiler IRs are internal lowering representations, not new canonical
-model IRs. Compiled artifacts retain the original source and numerical identity.
-Graph import (e.g. ONNX) is independent of direct graph lowering from native
-model regions; neither ONNX nor a Python runtime is mandatory. Establish this
-boundary in Phase 1 without introducing concrete external compiler dependencies.
+Keep ingestion, semantics and executable lowering independent:
+
+| Representation | Responsibility |
+| --- | --- |
+| Source artifact | Verified weights, metadata, tensor encodings, configuration and model provenance |
+| Semantic program | Native model definitions, ModelProgram / ForwardPlan, typed regions and state effects |
+| Prepared executable | Native commands, captured graphs or provider-compiled regions with admitted bindings and lifetimes |
+
+Source artifacts are inputs, not a third execution IR. Provider-specific graphs
+and compiler IRs are internal lowering representations, not additional canonical
+model IRs. Compiled artifacts retain original source and numerical identity.
+The [closed-region design](pipeline-composition/REGIONS_AND_PROFILES.md) defines
+this boundary. Direct provider lowering from native regions and optional graph
+import (e.g. ONNX) are independent capabilities. Neither ONNX conversion nor
+a Python runtime is mandatory.
 
 - [ ] Generalize only proven shared mathematical contracts: keep the dense
   seam and add bounded native row-wise, normalization/gating, rotary, attention,
@@ -156,12 +164,14 @@ boundary in Phase 1 without introducing concrete external compiler dependencies.
 - [ ] Complete the optional compiled-provider **scaffolding now**: a closed
   semantic region or whole model with explicit source, typed bindings,
   layout/precision/shape/shape-miss, state effects and prepared executable
-  ownership. A provider reports supported geometry, actual workspace and
-  persistent-resource needs, external-buffer/stream compatibility,
-  preparation/retirement and completion behavior. Keep a small contract; reuse
-  original physical owners, not a second IR, registry, graph optimizer or
-  generalized execution framework. Prove the boundary with native/captured
-  consumers and a minimal graph-only preparation/binding test as needed.
+  ownership. Accept the authoritative native region and verified source
+  bindings directly, without requiring graph export/import. A provider reports
+  supported geometry, actual workspace and persistent-resource needs,
+  external-buffer/stream compatibility, preparation/retirement and completion
+  behavior. Reuse original physical owners. No extra canonical IR, model
+  conversion pipeline, general compiler framework or independent ONNX
+  subsystem in Phase 1. Prove the boundary with native/captured consumers
+  and a minimal graph-only preparation/binding test as needed.
 - [ ] Make borrowed device views and external execution/completion integration
   possible without promising universal zero-copy interop. A provider may
   plan/reuse local intermediate storage inside its admitted region. When it
@@ -241,8 +251,10 @@ boundary in Phase 1 without introducing concrete external compiler dependencies.
 
 **Exit:** one source-authenticated native run via public SDK/CLI; real supported
 backend/provider paths use the common mathematical and physical contracts;
-closed-region prepare/bind/retire seam exercised with explicit unsupported
-capabilities; no new ownership plane; feature and applicable full workspace
+closed-region prepare/bind/retire seam accepts native semantic regions and
+verified source bindings independently of artifact format, with explicit
+unsupported capabilities; native paths require no ONNX or graph SDK; no new
+ownership plane; feature and applicable full workspace
 gates pass. Document remaining model/device/quality holds, not implied
 support. Detailed owners: [composition](pipeline-composition/TODO.md),
 [regions](pipeline-composition/REGIONS_AND_PROFILES.md),
@@ -419,6 +431,13 @@ on their native backends. IREE and ONNX Runtime extend portable/graph-model
 coverage where useful. Integrate in useful, independently qualified slices;
 optional build support is not a reason to skip the actual planned adapters.
 
+Prefer direct programmatic graph/network construction from source-bound
+native regions for MIGraphX and TensorRT. Treat ONNX import separately;
+a successful import, compilation or export is not numerical or performance
+qualification. Explicitly admit any repacking, dequantization, layout
+conversion or additional persistent storage required by a selected provider.
+Do not silently change the model's numerical contract or source identity.
+
 - [ ] MIGraphX on HIP: lower native semantic regions through programmatic
   graph construction, qualify runtime/hardware and external device arguments/
   stream interop, compile/prepare a closed FFN or other dense region, then
@@ -432,10 +451,14 @@ optional build support is not a reason to skip the actual planned adapters.
 - [ ] IREE: evaluate compiler/HAL interop on supported device targets, in
   particular Vulkan, and compare with the native cooperative-matrix path.
   Verify actual import/export/synchronization before promising zero-copy.
-- [ ] ONNX Runtime: optional ONNX import and execution provider for supported
-  conventional models, encoder/vision/audio/embedding compatibility, with
-  device I/O binding or explicitly budgeted materialization. Other graph
-  accelerators/TVM only when a concrete workload justifies them.
+- [ ] Optional graph import: authenticate ONNX graphs and external weights;
+  establish their typed region, numerical and effect contracts through the
+  existing source/preparation boundary. ONNX Runtime executes supported
+  conventional models, encoder/vision/audio/embedding graphs, with device
+  I/O binding or explicitly budgeted materialization. MIGraphX/TensorRT
+  import support is independently qualified; it is not a prerequisite for
+  direct native-region lowering. Other graph accelerators/TVM only when a
+  concrete workload justifies them.
 - [ ] Native/compiled selection happens at admitted preparation, with source,
   numerical/quality, layout, shapes, device/runtime, actual costs and state
   compatibility explicit. Bound compilation/autotune/artifact caches and

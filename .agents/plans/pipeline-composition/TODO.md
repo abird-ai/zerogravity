@@ -137,6 +137,25 @@ their existing numeric/source/physical acceptance gates.
 
 ## Uncommitted
 
+### Phase 1 — source, semantics and executable lowering
+
+Contract: [closed regions](REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering)
+and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
+
+- [ ] Complete the existing closed-region preparation/binding seam with
+  authenticated source and format handling separate from semantic operations
+  and executable selection. Native and captured consumers retain the same
+  source/numerical/state authority; a graph-only provider can prepare a
+  supported region without mandatory ONNX export, conversion or import.
+  Keep actual owner/resource requirements, typed bindings and completion in
+  the original fabric. Exercise the seam with existing real consumers and
+  a bounded unsupported-provider check; no new IR or compiler framework.
+- [ ] Keep external compiler integration and ONNX import out of the foundation
+  dependency graph. The concrete MIGraphX/TensorRT direct-lowering adapters
+  and optional graph import are tracked in
+  [Phase 6](../FULL_IMPLEMENTATION_PLAN.md#6-optional-compiled-execution-providers--after-native-parity);
+  do not activate them before the ordered native backend campaigns.
+
 ### Production/test separation — 26 Oct
 
 - [x] Rules/review convention landed3612ecb; no new placement-policy tests.

@@ -78,28 +78,36 @@ the source, physical owner, state/root, completion or cancellation contracts.
   all physical owners retire. Same workspace and original per-session state
   ownership. Combined GPU feature gates and CPU Clippy pass; full gate
   still stops at the existing CPU cache admission assertion.
-- [ ] Next native execution region: replace whole reference row-wise/attention
+- [ ] Phase 3 (ROCm): replace whole reference row-wise/attention
   stages (normalization, gated activations, QK/rotary, attention) with mature
   native implementations where available. Re-profile actual V2 C8 and cached
   decode, share compatible independent rows, keep actual state/position
   semantics. Then amortize large dispatch regions using existing graph/actor
   ownership, including device-resident sampling. No scalar microtuning
   campaign or general speculative provider registry.
-- [ ] NVIDIA: connect existing owned cuBLAS/cuBLASLt provider to ordinary
+- [ ] Phase 4 (CUDA): connect existing owned cuBLAS/cuBLASLt provider to ordinary
   resident projection/compatible dense products, not just reference diagnostics.
   Preserve existing native tensor-core/CUTLASS primitives; resolve fused lane
   divergence, and use FlashAttention/FlashInfer where appropriate. Benchmark
   actual correctness and C1/C8 on physical CUDA before wider selection.
-- [ ] Vulkan: evaluate reusable mature ggml Vulkan cooperative-matrix GEMM
+- [ ] Phase 5 (Vulkan): evaluate reusable mature ggml Vulkan cooperative-matrix GEMM
   kernels (`VK_KHR_cooperative_matrix`, vendor cooperative-matrix2 where
   supported) under existing owned command/buffer lifecycle. There is no single
   portable cuBLAS-equivalent library; inspect actual BF16/FP32 capability,
   licensing, layouts and integration cost before selecting. Keep scalar and
   existing shader primitives. Do not silently cast or adopt a second engine.
-- [ ] Restore a current matched vLLM comparison when its pinned local closure is
+- [ ] Phase 3 (ROCm): restore a current matched vLLM comparison when its pinned local closure is
   available. No new download or unrelated dependency repin just for evidence.
 
 ### Native operator composition boundary
+
+Phase 1 owns the common preparation and binding seam, including
+[direct native-region lowering](../pipeline-composition/REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering).
+Phase 6 owns concrete MIGraphX, TensorRT, IREE and ONNX Runtime integration
+([provider work](../FULL_IMPLEMENTATION_PLAN.md#6-optional-compiled-execution-providers--after-native-parity)).
+Prefer native graph/network construction for MIGraphX/TensorRT; ONNX import
+is independent. Native source formats and model definitions do not depend on
+any external compiler. All phases retain the original resource/state owners.
 
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
@@ -121,7 +129,8 @@ the source, physical owner, state/root, completion or cancellation contracts.
   dense, quantized, attention or stateful operators into one universal GEMM
   interface; compose the smallest shared contracts that actual consumers use.
 
-Earlier execution priorities below retain context, not precedence over this unit:
+Earlier execution priorities below retain context, not precedence over the
+[ordered implementation plan](../FULL_IMPLEMENTATION_PLAN.md):
 
 - fix CUDA fused identical-lane correctness before wider CUDA performance work;
 - keep accepted HIP batching on the existing scheduler/cohort/state ownership; the

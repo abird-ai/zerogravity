@@ -111,6 +111,31 @@ source/config + model mathematical schedule + trusted task definition
                     ordered committed task/media output
 ```
 
+### Source ingestion, semantics and executable lowering
+
+Native model ingestion authenticates Hugging Face/Safetensors or GGUF
+artifacts, configuration, tensor roles, codecs and learned parameters.
+Family definitions establish the authoritative mathematical program and
+state effects independently of the source encoding. The two enduring
+execution representations above remain the semantic program and the
+prepared physical executable; source artifacts are not a third execution IR.
+
+A closed region can lower directly to native kernels, a captured command
+graph, or a provider-specific compiled representation. The original region
+and its verified source bindings are the input to provider preparation.
+Graph import is a separate source capability: an imported ONNX graph must
+establish the same closed-region port, numerical, source and effect contracts,
+without forcing native model definitions through ONNX or a second canonical IR.
+
+[Phase 1](../FULL_IMPLEMENTATION_PLAN.md#1-foundations) completes this seam
+without external compiler dependencies or a conversion pipeline.
+[Phase 6](../FULL_IMPLEMENTATION_PLAN.md#6-optional-compiled-execution-providers--after-native-parity)
+adds concrete compiled providers. Prefer programmatic graph construction in
+MIGraphX and network construction in TensorRT from native semantic regions;
+qualify ONNX import independently. Compiler-local IR, internal temporaries
+and derived artifacts belong to the selected prepared executable, under the
+original source, admission, lifetime and publication contracts.
+
 ### Primitive layer
 
 Start with existing `PlanOperation`, typed source operands and registered media
@@ -203,7 +228,10 @@ Prepare a small candidate set outside the request hot loop:
    mathematical region is not a new runtime session.
 5. **Select closed replacements.** Existing RegionExecutionProvider seam offers
    per-op, fused-region, layer, stage or whole-model candidates. Hand-written
-   kernels and compiler-produced programs satisfy the same contract.
+   kernels and compiler-produced programs satisfy the same contract. Lower
+   native regions directly from their semantic operations and source bindings;
+   make provider-specific conversions, storage and shape restrictions explicit.
+   No required ONNX serialization round trip.
 6. **Lower physical lifetime.** Derive aliases, copies, buffer live intervals,
    encoded readers, transfer/stream dependencies, status and Ready requirements
    from the **selected** physical path, after fusion/outlining.
