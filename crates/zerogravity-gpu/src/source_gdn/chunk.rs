@@ -268,6 +268,15 @@ pub(crate) fn decay_vectors(
     }
 }
 
+#[cube]
+fn triangular_accumulate(a: f32, b: f32, c: f32, #[comptime] guarded: bool) -> f32 {
+    if comptime!(guarded) {
+        crate::source_arithmetic::mul_then_add_normal(a, b, c)
+    } else {
+        add(c, mul(a, b))
+    }
+}
+
 #[cube(launch_unchecked)]
 pub(crate) fn triangular(
     system: &[f32],
@@ -277,6 +286,54 @@ pub(crate) fn triangular(
     cumulative_key: &mut [f32],
     status: &[Atomic<u32>],
     #[comptime] heads: usize,
+) {
+    triangular_column(
+        system,
+        values,
+        decayed_beta,
+        new_values,
+        cumulative_key,
+        status,
+        heads,
+        false,
+    );
+}
+
+/// Exact guarded FP32 inner products; the original sequential solve, final
+/// reductions, subtraction and status publication remain unchanged.
+#[allow(dead_code)]
+#[cube(launch_unchecked)]
+pub(crate) fn triangular_guarded(
+    system: &[f32],
+    values: &[f32],
+    decayed_beta: &[f32],
+    new_values: &mut [f32],
+    cumulative_key: &mut [f32],
+    status: &[Atomic<u32>],
+    #[comptime] heads: usize,
+) {
+    triangular_column(
+        system,
+        values,
+        decayed_beta,
+        new_values,
+        cumulative_key,
+        status,
+        heads,
+        true,
+    );
+}
+
+#[cube]
+fn triangular_column(
+    system: &[f32],
+    values: &[f32],
+    decayed_beta: &[f32],
+    new_values: &mut [f32],
+    cumulative_key: &mut [f32],
+    status: &[Atomic<u32>],
+    #[comptime] heads: usize,
+    #[comptime] guarded: bool,
 ) {
     let at = ABSOLUTE_POS;
     if at < heads * 128usize {
@@ -296,8 +353,8 @@ pub(crate) fn triangular(
                     let j = group * 4usize + lane;
                     let a = system[(h * 64usize + row) * 64usize + j];
                     let prior = (h * 64usize + j) * 128usize + col;
-                    v[lane] = add(v[lane], mul(a, new_values[prior]));
-                    k[lane] = add(k[lane], mul(a, cumulative_key[prior]));
+                    v[lane] = triangular_accumulate(a, new_values[prior], v[lane], guarded);
+                    k[lane] = triangular_accumulate(a, cumulative_key[prior], k[lane], guarded);
                 }
             }
             let mut sv = add(add(v[0usize], v[2usize]), add(v[1usize], v[3usize]));
@@ -305,8 +362,8 @@ pub(crate) fn triangular(
             for j in groups * 4usize..row {
                 let a = system[(h * 64usize + row) * 64usize + j];
                 let prior = (h * 64usize + j) * 128usize + col;
-                sv = add(sv, mul(a, new_values[prior]));
-                sk = add(sk, mul(a, cumulative_key[prior]));
+                sv = triangular_accumulate(a, new_values[prior], sv, guarded);
+                sk = triangular_accumulate(a, cumulative_key[prior], sk, guarded);
             }
             let out = (h * 64usize + row) * 128usize + col;
             let vv = sub(values[out], sv);
@@ -426,3 +483,6 @@ pub(crate) fn state_product(
         }
     }
 }
+
+#[cfg(all(test, feature = "hip-source"))]
+mod triangular_ab;

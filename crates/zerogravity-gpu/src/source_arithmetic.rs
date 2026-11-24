@@ -50,6 +50,34 @@ pub(crate) fn add_normal(a: f32, b: f32) -> f32 {
         add(a, b)
     }
 }
+/// Separately rounded FP32 multiply, then add. Normal operands and normal
+/// intermediates/results are independent of device denormal modes. An exact
+/// zero product preserves the stored addend (including subnormals) and IEEE
+/// zero sign. All other cases retain the original widened arithmetic.
+#[allow(dead_code)]
+#[cube]
+pub(crate) fn mul_then_add_normal(a: f32, b: f32, c: f32) -> f32 {
+    let ab = u32::reinterpret(a);
+    let bb = u32::reinterpret(b);
+    let cb = u32::reinterpret(c);
+    let product = fma(a, b, 0.0f32);
+    let result = fma(product, 1.0f32, c);
+    if normal(a) && normal(b) && normal_or_zero(c) && normal(product) && normal(result) {
+        result
+    } else if ((ab & 0x7fffffffu32) == 0u32 && finite(b)
+        || (bb & 0x7fffffffu32) == 0u32 && finite(a))
+        && finite(c)
+    {
+        if (cb & 0x7fffffffu32) == 0u32 {
+            f32::reinterpret(cb & (ab ^ bb) & 0x80000000u32)
+        } else {
+            c
+        }
+    } else {
+        add(c, mul(a, b))
+    }
+}
+
 #[cube]
 pub(crate) fn mul_bf16(a: f32, b: f32) -> f32 {
     let result = fma(a, b, 0.0f32);

@@ -45,6 +45,8 @@ fn check(a:f32,b:f32,c:f32,counts:&mut [usize;2]) {
  assert_eq!(mul_bf16(a,b).to_bits(),expected.to_bits(),"mul a={:08x} b={:08x}",a.to_bits(),b.to_bits());
  let expected=if a.is_finite()&&c.is_finite() {a+c} else {add(a,c)};
  assert_eq!(add_normal(a,c).to_bits(),expected.to_bits(),"add a={:08x} c={:08x}",a.to_bits(),c.to_bits());
+ let expected=add(c,mul(a,b));
+ assert_eq!(mul_then_add_normal(a,b,c).to_bits(),expected.to_bits(),"separate mul/add a={:08x} b={:08x} c={:08x}",a.to_bits(),b.to_bits(),c.to_bits());
 }
 fn next(state:&mut u32)->u32 {
  *state^=*state<<13;*state^=*state>>17;*state^=*state<<5;*state
@@ -120,7 +122,7 @@ fn main() {
   assert_eq!(add_normal(add_normal(q0,q2),add_normal(q1,q3)).to_bits(),add(add(r0,r2),add(r1,r3)).to_bits());
   assert_eq!(add_normal(add_normal(add_normal(pv[0],pv[1]),pv[2]),pv[3]).to_bits(),add(add(add(pv_reference[0],pv_reference[1]),pv_reference[2]),pv_reference[3]).to_bits());
  }
- println!("ATTENTION_ARITHMETIC_BODY flush={} fused_normal={} fused_fallback={} scalar_checks={} mismatches=0",FLUSH,counts[0],counts[1],3*(counts[0]+counts[1]));
+ println!("ATTENTION_ARITHMETIC_BODY flush={} fused_normal={} fused_fallback={} scalar_checks={} mismatches=0",FLUSH,counts[0],counts[1],4*(counts[0]+counts[1]));
 }
 "#;
     let code = format!(
