@@ -674,6 +674,3 @@ pub(crate) fn initial_core(
         }
     }
 }
-
-#[cfg(all(test, feature = "hip-source"))]
-mod key_reduce_ab;

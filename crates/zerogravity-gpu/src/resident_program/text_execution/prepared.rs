@@ -9,6 +9,7 @@ pub(super) fn kernels(
     client: &Client,
     l: &layout::Layout,
     operands: &BTreeMap<String, Arc<PreparedBf16Projection>>,
+    parallel_key_reduce: bool,
 ) -> Result<Vec<Box<dyn CubeKernel>>> {
     let mut out: Vec<Box<dyn CubeKernel>> = Vec::new();
     let b = || BufferCompilationArg { inplace: None };
@@ -254,16 +255,29 @@ pub(super) fn kernels(
                     false
                 );
                 for round in [false, true] {
-                    add!(
-                        crate::source_gdn::recurrent::key_reduce::KeyReduce,
-                        32,
-                        b(),
-                        b(),
-                        b(),
-                        b(),
-                        values,
-                        round
-                    );
+                    if parallel_key_reduce {
+                        add!(
+                            crate::source_gdn::recurrent::key_reduce_subtotals::KeyReduceSubtotals,
+                            256,
+                            b(),
+                            b(),
+                            b(),
+                            b(),
+                            values,
+                            round
+                        );
+                    } else {
+                        add!(
+                            crate::source_gdn::recurrent::key_reduce::KeyReduce,
+                            32,
+                            b(),
+                            b(),
+                            b(),
+                            b(),
+                            values,
+                            round
+                        );
+                    }
                 }
                 add!(
                     crate::source_gdn::recurrent::delta::Delta,
