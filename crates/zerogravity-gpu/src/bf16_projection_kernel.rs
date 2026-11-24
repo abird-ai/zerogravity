@@ -752,6 +752,8 @@ pub(crate) fn project_cpu_bf16_rows4(
 /// and exact reduction tree. The last tile can be partial; it never reads or
 /// writes beyond the actual request count. No global scratch beyond the
 /// canonical compact accumulation/status and strided rounded output.
+/// Gfx1151 retains this alternate without selecting it: tile2/4 loses direct
+/// device time to independent input rows on the measured 8/47-row shapes.
 #[allow(dead_code)]
 #[cube(launch_unchecked)]
 pub(crate) fn project_cpu_bf16_requests(

@@ -131,8 +131,7 @@ impl HipSourceNativePolicy {
     /// Resident full-K64 packed-index traversal wins on this qualified actor.
     #[cfg(feature = "hip-source")]
     pub(crate) fn prefers_hoisted_projection(self) -> bool {
-        self == Self::Gfx1150
-            || (self == Self::Gfx1151 && std::env::var_os("ZG_TMP_X2_HOISTED").is_some())
+        matches!(self, Self::Gfx1150 | Self::Gfx1151)
     }
 
     #[cfg(feature = "hip-source")]
