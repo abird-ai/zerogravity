@@ -120,9 +120,12 @@ and binds same-layout provisional state to the exact forward attempt.
 No second publisher or state allocator. Focused and physical native,
 continuation and CUDA contiguous/paged state checks and the full isolated
 workspace gate pass. Independent
-partial execution, general state conversion and external completion/transfer
-bridges plus remaining foundations remain open. None of these slices closes
-Phase 1.
+partial execution and general state conversion remain open. The next source
+slice binds managed private-buffer transfer and same-context CUDA secondary
+stream completion to original physical flights; no implicit copy, host wait,
+allocation or publication. Physical/assembled validation pending. General
+external allocation/runtime/device interop and remaining foundations remain
+open. None of these slices closes Phase 1.
 
 Complete the engineering contracts and their real consumers, including every
 foundation below. This is not a requirement to finish every backend optimization,

@@ -45,6 +45,12 @@ mod foreign_provider;
     )
 ))]
 mod native_cache;
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[allow(
+    dead_code,
+    reason = "reusable private provider bridge; ordinary serving remains on its selected native path"
+)]
+mod provider_bridge;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) use enqueue::{
     ENQUEUE_PROFILE_ADMISSION_BYTES, EnqueuePlacement, enqueue_profile_enabled,
@@ -1105,20 +1111,46 @@ impl ResidentSubmission<'_> {
         charges: &[Arc<ForeignProviderCharge>],
     ) -> Result<()> {
         requirements.require_original_queue()?;
+        self.require_provider_resources(service, requirements, workspace.as_slice(), charges)
+    }
+
+    #[cfg(any(
+        feature = "cuda-native",
+        all(feature = "qualification", feature = "cuda"),
+        all(feature = "hip-source", target_os = "linux")
+    ))]
+    fn require_provider_resources(
+        &self,
+        service: &Arc<ResidentService>,
+        requirements: zerogravity_core::provider::ProviderRequirements,
+        workspace: &[&ResidentLease],
+        charges: &[Arc<ForeignProviderCharge>],
+    ) -> Result<()> {
+        requirements.device_bytes()?;
         if !Arc::ptr_eq(self.service, service)
-            || workspace.is_some_and(|lease| lease.role() != BufferRole::Scratch)
+            || workspace
+                .iter()
+                .any(|lease| lease.role() != BufferRole::Scratch)
         {
             return Err(Error::State(
                 "provider original flight/workspace owner differs".into(),
             ));
         }
-        self.require_accesses(
-            workspace
-                .into_iter()
-                .map(|lease| (lease, DeviceAccess::Write)),
-        )?;
+        self.require_accesses(workspace.iter().map(|&lease| (lease, DeviceAccess::Write)))?;
+        let mut bytes = 0usize;
+        for (index, lease) in workspace.iter().enumerate() {
+            if workspace[..index]
+                .iter()
+                .any(|prior| prior.id() == lease.id())
+            {
+                return Err(Error::State("provider workspace counted twice".into()));
+            }
+            bytes = bytes
+                .checked_add(lease.bytes())
+                .ok_or_else(|| Error::Limit("provider workspace extent overflow".into()))?;
+        }
         let opaque = ForeignProviderCharge::require_total(service, charges)?;
-        requirements.require_admitted(workspace.map_or(0, ResidentLease::bytes), opaque)
+        requirements.require_admitted(bytes, opaque)
     }
 
     pub(crate) fn retain_completion_owner(

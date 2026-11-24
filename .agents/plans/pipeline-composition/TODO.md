@@ -263,6 +263,19 @@ their existing numeric/source/physical acceptance gates.
 - [x] Full isolated workspace gate passes: 2382 Rust test executions,
   zero failures, 101 explicit skips, release/installer and script checks.
 
+## Explicit private provider transport/completion — 24 Nov
+
+- [x] Bind original admitted scratch Write leases and opaque reservations,
+  using the existing provider requirements/physical submission. Managed
+  private staging is included in workspace bytes, never a second charge.
+- [x] Original or same-context secondary CUDA provider scope; explicit
+  outbound and return device event waits. Reuse original actor/context,
+  native write-taint, checked physical copy and quarantine; no host wait
+  or state publication at the bridge. Existing captured attention copy
+  shares transport without changing its set policy.
+- [ ] Focused physical certified GEMM/private-copy/interrupt and assembled
+  gate validation pending.
+
 ## Uncommitted
 
 ### Phase 1 — source, semantics and executable lowering
@@ -270,9 +283,10 @@ their existing numeric/source/physical acceptance gates.
 Contract: [closed regions](REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering)
 and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
 
-- [ ] Extend the landed original-queue resource/binding contract to
-  explicit private-buffer transfers and foreign-stream/event completion
-  when an actual consumer requires them; current adapters refuse both.
+- [ ] Extend the bounded same-context CUDA managed-private/secondary-stream
+  bridge only for real consumers: opaque external allocations, cross-device
+  or cross-runtime transfers, other-backend completion and capture remain
+  unsupported. No implicit copy/synchronization or independent publisher.
   Extend stateful regions only with actual qualified state layouts/bridges:
   independent partial execution, committed-frontier conversion/recompute,
   complete implicit token/position/observation coverage and arbitrary state

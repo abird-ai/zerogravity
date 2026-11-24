@@ -1,24 +1,9 @@
 //! Exact original N1 FA output copy, SAME actor/context/stream/access scope.
 use super::*;
 
+#[cfg(test)]
 fn ranges(source: u64, destination: u64) -> Result<(), ServerError> {
-    let source_end = source
-        .checked_add(4096)
-        .ok_or_else(|| failure("attention source copy range overflow"))?;
-    let destination_end = destination
-        .checked_add(4096)
-        .ok_or_else(|| failure("attention destination copy range overflow"))?;
-    if source == 0
-        || destination == 0
-        || !source.is_multiple_of(16)
-        || !destination.is_multiple_of(16)
-        || (source < destination_end && destination < source_end)
-    {
-        return Err(failure(
-            "attention original copy nonalias aligned4096B ranges",
-        ));
-    }
-    Ok(())
+    super::super::owned_transfer::require_copy_ranges(source, destination, 4096, 16)
 }
 impl CudaServer {
     pub(crate) fn copy_owned_attention_output(
@@ -97,28 +82,12 @@ impl CudaServer {
                     return Err(failure("attention original copy service differs"));
                 }
                 let mut command = server.command(stream, native.iter())?;
-                if command.stream().capturing.is_recording() {
-                    return Err(failure("attention copy graph capture unsupported"));
-                }
-                let source = command.resource(native[0].clone())?;
-                let destination = command.resource(native[1].clone())?;
-                if source.size != 4096 || destination.size != 4096 {
-                    return Err(failure("attention original copy exact resource extents"));
-                }
-                ranges(source.ptr, destination.ptr)?;
-                // Full original resources/context/stream and nonalias ranges were
-                // validated before enqueue. Failure keeps original output taint;
-                // caller's armed flight follows the same uncertain quarantine.
-                status(
-                    unsafe {
-                        cudarc::driver::sys::cuMemcpyDtoDAsync_v2(
-                            destination.ptr,
-                            source.ptr,
-                            4096,
-                            command.stream().sys,
-                        )
-                    },
-                    "attention4096B cuMemcpyDtoDAsync_v2",
+                super::super::owned_transfer::copy_exact(
+                    &mut command,
+                    native[0].clone(),
+                    native[1].clone(),
+                    4096,
+                    16,
                 )
             })
             .into_result()

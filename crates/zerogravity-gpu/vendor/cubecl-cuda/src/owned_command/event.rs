@@ -63,6 +63,23 @@ impl Drop for OwnedCudaEvent {
 }
 
 impl OwnedCudaQueue {
+    /// Insert a device-side dependency, not a host wait or Ready witness.
+    /// CUDA retains a recorded event's dependency after the event is destroyed.
+    pub fn wait_for(&self, event: &OwnedCudaEvent) -> Result<(), ServerError> {
+        if event.actor.service_id() != self.service_id() {
+            return Err(ServerError::graph_state("owned event wait service differs"));
+        }
+        let stream = self.stream;
+        let event = event.event;
+        self.actor
+            .submit_blocking(move |server| server.wait_owned_event(stream, event))
+            .map_err(|error| {
+                ServerError::graph_state(format!(
+                    "owned event dependency original actor: {error:?}"
+                ))
+            })?
+    }
+
     /// Record completion after all commands already enqueued on this exact
     /// logical stream. The returned event is only a physical completion witness.
     pub fn record_event(&self) -> Result<OwnedCudaEvent, ServerError> {

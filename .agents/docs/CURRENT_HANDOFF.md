@@ -20,6 +20,23 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**New source slice — explicit private provider transport/completion.**
+A bounded CUDA provider scope consumes the original armed ResidentSubmission,
+checks actual scratch Write leases and distinct opaque charges, binds the
+exact original or same-context secondary queue/client and retains its owner.
+A secondary scope inserts actual CUDA event waits both ways; original
+readback/status validation alone can construct Ready. Managed private
+buffer copies use checked same-layout lease views and the original actor's
+device-copy driver/write-taint scope. The existing captured attention copy
+shares that transport without changing its native set policy. Failure after
+enqueue consumes the original flight and quarantines retained owners; no
+independent allocation, scheduler, ledger or publisher. Same-context CUDA
+managed staging only; opaque external-pointer imports, cross-device/runtime
+transfers, other-backend completion and capture integration remain open.
+Physical focused validation and full isolated gate pending.
+
+Prior accepted stateful region checkpoint:
+
 **Accepted source checkpoint `262712f1c94daa8423060155633545b632a54e88` —
 stateful region effects and original-layout bridges.**
 Core derives ordered source-template state writer/read edges and exact

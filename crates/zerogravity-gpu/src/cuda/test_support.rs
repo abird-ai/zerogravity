@@ -213,6 +213,195 @@ fn resident_cuda_in_flight_event_lifecycle_is_exact() -> Result<()> {
 }
 
 #[test]
+#[ignore = "physical CUDA private provider transfer and ordered secondary-stream completion"]
+fn resident_private_provider_bridge_is_ordered_and_retained() -> Result<()> {
+    use crate::cuda::bf16_gemm::{Bf16Gemm, Bf16GemmReduction};
+    use cubecl_common::bytes::Bytes;
+    use zerogravity_core::{
+        device_events::{BufferRole, DeviceAccess},
+        placement::PreparedTensorLayout,
+        provider::{ProviderBufferMode, ProviderCompletionMode, ProviderRequirements},
+    };
+
+    let diagnostic = CudaDiagnostic::new("private-provider-bridge")?;
+    let service = &diagnostic.service;
+    let primary = service.pinned_cuda_queue()?.clone();
+    let (_, secondary) = unsafe { primary.fork_stream(service.client().clone()) }
+        .map_err(|error| Error::State(format!("provider secondary queue: {error}")))?;
+    let secondary = Arc::new(secondary);
+    let (rows, inner, columns) = (8, 32, 64);
+    let gemm = Arc::new(Bf16Gemm::with_reduction_certified(
+        columns,
+        rows,
+        inner,
+        Bf16GemmReduction::Ordered,
+    )?);
+    gemm.prepare_code(&primary)?;
+    let input_layout = PreparedTensorLayout::dense(2, inner * 2, rows)?;
+    let output_layout = PreparedTensorLayout::dense(2, columns * 2, rows)?;
+    let workspace_bytes = input_layout.byte_len()? + output_layout.byte_len()? + 4;
+    let requirements = ProviderRequirements {
+        workspace_bytes,
+        opaque_device_bytes: 0,
+        buffers: ProviderBufferMode::Private,
+        completion: ProviderCompletionMode::ExternalFence,
+    };
+    let slot = || -> Result<crate::physical_queue::ActiveSlot> {
+        let ticket = service.queue().submit(
+            service.budget(),
+            service.owner().clone(),
+            &[AllocationRequest {
+                kind: AllocationClass::Scratch,
+                bytes: workspace_bytes as u64,
+            }],
+            None,
+        )?;
+        cubecl::future::block_on(ticket.wait())
+    };
+    let encode = |values: &[f32]| {
+        values
+            .iter()
+            .flat_map(|value| ((value.to_bits() >> 16) as u16).to_le_bytes())
+            .collect::<Vec<_>>()
+    };
+    let weights_bytes = encode(&vec![1.0; columns * inner]);
+    let inputs = (0..rows)
+        .flat_map(|row| std::iter::repeat_n((row + 1) as f32, inner))
+        .collect::<Vec<_>>();
+    let expected = (0..rows)
+        .flat_map(|row| std::iter::repeat_n(((row + 1) * inner) as f32, columns))
+        .collect::<Vec<_>>();
+    let expected = encode(&expected);
+
+    let mut active = slot()?;
+    active.begin_submission()?;
+    let mut init = service.begin_initialization(0)?;
+    let weights = init.upload_bytes(&weights_bytes, BufferRole::ImmutableWeights)?;
+    let input = init.allocate_empty(input_layout.byte_len()?, BufferRole::Activation)?;
+    let private_input = init.allocate_empty(input_layout.byte_len()?, BufferRole::Scratch)?;
+    let private_output = init.allocate_empty(output_layout.byte_len()?, BufferRole::Scratch)?;
+    let status = init.allocate_empty(4, BufferRole::Scratch)?;
+    let output = init.allocate_empty(output_layout.byte_len()?, BufferRole::Output)?;
+    let uncertain = init.allocate_empty(output_layout.byte_len()?, BufferRole::Output)?;
+    drop(cubecl::future::block_on(init.complete_sync())?);
+    active.finish()?;
+    let workspace = [&private_input, &private_output, &status];
+
+    let mut active = slot()?;
+    active.begin_submission()?;
+    let flight = service.submit(
+        0,
+        &[
+            (weights.clone(), DeviceAccess::Read),
+            (input.clone(), DeviceAccess::Write),
+            (private_input.clone(), DeviceAccess::Write),
+            (private_output.clone(), DeviceAccess::Write),
+            (status.clone(), DeviceAccess::Write),
+            (output.clone(), DeviceAccess::Write),
+        ],
+    )?;
+    // Real primary producer, not an already completed input. The outbound
+    // event orders the private transfer and the math behind this write.
+    service
+        .client()
+        .write(&input.handle(), Bytes::from_bytes_vec(encode(&inputs)));
+    let flight = unsafe {
+        flight.with_cuda_provider(
+            &secondary,
+            requirements,
+            &workspace,
+            &[],
+            gemm.clone(),
+            |commands| {
+                commands.copy(&input, 0, &private_input, 0, input_layout)?;
+                commands.require_accesses([
+                    (&weights, DeviceAccess::Read),
+                    (&private_input, DeviceAccess::Read),
+                    (&private_output, DeviceAccess::Write),
+                    (&status, DeviceAccess::Write),
+                ])?;
+                commands
+                    .client()
+                    .write(&status.handle(), Bytes::from_bytes_vec(vec![0; 4]));
+                gemm.prepare_certified(
+                    commands.client(),
+                    weights.handle(),
+                    private_input.handle(),
+                    private_output.handle(),
+                    status.handle(),
+                )?
+                .launch()?;
+                commands.copy(&private_output, 0, &output, 0, output_layout)
+            },
+        )
+    }?;
+    assert!(!output.is_initialized()); // No Ready merely from inserting a wait.
+    let readback = [output.readback(0, output.bytes())?, status.readback(0, 4)?];
+    let (ready, _) = cubecl::future::block_on(flight.complete_with_readback(
+        &[output.clone()],
+        &readback,
+        |actual| {
+            if actual.len() != 2 || actual[0].as_ref() != expected || actual[1].as_ref() != [0; 4] {
+                return Err(Error::State(
+                    "private provider GEMM/copy output differs".into(),
+                ));
+            }
+            Ok(())
+        },
+    ))?;
+    drop(ready);
+    active.finish()?;
+    assert!(output.is_initialized());
+    service.ensure_usable()?;
+
+    // Error after actual external enqueue cannot hand the original submission
+    // back for a premature primary readback. Keep the provider/leases fenced.
+    let mut active = slot()?;
+    active.begin_submission()?;
+    let flight = service.submit(
+        0,
+        &[
+            (input.clone(), DeviceAccess::Read),
+            (private_input.clone(), DeviceAccess::Write),
+            (private_output.clone(), DeviceAccess::Write),
+            (status.clone(), DeviceAccess::Write),
+            (uncertain.clone(), DeviceAccess::Write),
+        ],
+    )?;
+    let weak = Arc::downgrade(&gemm);
+    let handles_before = crate::physical_quarantine::quarantined_handles_for(service.client())?;
+    let result = unsafe {
+        flight.with_cuda_provider(
+            &secondary,
+            requirements,
+            &workspace,
+            &[],
+            gemm,
+            |commands| {
+                commands.copy(&input, 0, &private_input, 0, input_layout)?;
+                Err(Error::State(
+                    "diagnostic interrupted external provider".into(),
+                ))
+            },
+        )
+    };
+    assert!(
+        matches!(result, Err(Error::State(message)) if message == "diagnostic interrupted external provider")
+    );
+    drop(active);
+    assert!(service.ensure_usable().is_err());
+    assert!(!uncertain.is_initialized());
+    assert!(weak.upgrade().is_some());
+    assert!(
+        crate::physical_quarantine::quarantined_handles_for(service.client())? > handles_before
+    );
+    println!(
+        "CUDA_PRIVATE_PROVIDER_BRIDGE_PASS exact_native_gemm=true original_event_return=true private_copy=true no_early_ready=true interrupted_fenced=true retained_owner=true"
+    );
+    Ok(())
+}
+
+#[test]
 #[ignore = "physical CUDA bounded dual resident flights on disjoint streams"]
 fn resident_dual_flights_retire_independently() -> Result<()> {
     use cubecl_common::bytes::Bytes;

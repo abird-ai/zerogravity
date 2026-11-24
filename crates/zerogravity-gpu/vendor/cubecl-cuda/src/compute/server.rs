@@ -53,6 +53,8 @@ mod embedding_rows;
 mod source_upload;
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
 mod owned_event;
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+mod owned_transfer;
 mod weight_upload;
 
 /// Stage `words` into a device buffer, reusing a cached one when a launch has

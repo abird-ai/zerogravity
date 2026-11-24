@@ -13,6 +13,8 @@ use std::sync::Arc;
 mod compiler;
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
 mod event;
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+mod transfer;
 #[cfg(all(feature = "flash-attn", target_os = "linux"))]
 mod flash_attn;
 #[cfg(all(feature = "flashinfer", target_os = "linux"))]

@@ -144,6 +144,11 @@ any external compiler. All phases retain the original resource/state owners.
   Accepted `262712f1`: full isolated gate, X2 native/exact/continuation
   and L5 native C1 plus C8 contiguous/paged state consistency pass
   (composition TODO).
+- Bounded CUDA private-provider scope uses admitted scratch/opaque resources,
+  exact same-layout device copies and two-way event dependencies through the
+  original physical submission; captured attention's exact copy shares the
+  driver transport. No public provider selection or new numerical contract.
+  Focused and assembled validation pending (composition TODO).
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

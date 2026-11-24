@@ -24,7 +24,8 @@ pub enum ProviderCompletionMode {
 /// envelopes remain priced by their original owners, not once per region.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ProviderRequirements {
-    /// Exclusive writable workspace supplied by the fabric.
+    /// Exclusive writable workspace supplied by the fabric, including any
+    /// explicitly admitted managed private-buffer staging.
     pub workspace_bytes: usize,
     /// Additional model-scoped opaque provider reservation (not measured VRAM).
     pub opaque_device_bytes: usize,

@@ -3,6 +3,29 @@ use cubecl_core::server::ServerError;
 use cubecl_environment::stream::StreamId;
 
 impl CudaServer {
+    pub(crate) fn wait_owned_event(
+        &mut self,
+        stream: StreamId,
+        event: usize,
+    ) -> Result<(), ServerError> {
+        let mut command = self.command(stream, std::iter::empty())?;
+        if command.stream().capturing.is_recording() || event == 0 {
+            return Err(ServerError::graph_state(
+                "owned event dependency capture/event",
+            ));
+        }
+        // SAFETY: the owned event is live on this actor/context and has been
+        // recorded; the wait is enqueued before the owner can be dropped.
+        unsafe {
+            cudarc::driver::result::stream::wait_event(
+                command.stream().sys,
+                event as cudarc::driver::sys::CUevent,
+                cudarc::driver::sys::CUevent_wait_flags::CU_EVENT_WAIT_DEFAULT,
+            )
+        }
+        .map_err(|error| ServerError::graph_state(format!("owned event dependency: {error}")))
+    }
+
     pub(crate) fn record_owned_event(&mut self, stream: StreamId) -> Result<usize, ServerError> {
         let mut command = self.command(stream, std::iter::empty())?;
         if command.stream().capturing.is_recording() {
@@ -35,9 +58,7 @@ impl CudaServer {
     ) -> Result<bool, ServerError> {
         let mut command = self.command(stream, std::iter::empty())?;
         if command.stream().capturing.is_recording() || event == 0 {
-            return Err(ServerError::graph_state(
-                "owned event query capture/event",
-            ));
+            return Err(ServerError::graph_state("owned event query capture/event"));
         }
         let event = event as cudarc::driver::sys::CUevent;
         if wait {
@@ -49,9 +70,7 @@ impl CudaServer {
         // SAFETY: live actor-owned event in the same CUDA context.
         match unsafe { cudarc::driver::result::event::query(event) } {
             Ok(()) => Ok(true),
-            Err(error)
-                if error.0 == cudarc::driver::sys::CUresult::CUDA_ERROR_NOT_READY =>
-            {
+            Err(error) if error.0 == cudarc::driver::sys::CUresult::CUDA_ERROR_NOT_READY => {
                 Ok(false)
             }
             Err(error) => Err(ServerError::graph_state(format!(
