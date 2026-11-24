@@ -250,10 +250,20 @@ The current implementation priorities implied by that baseline are:
    48 launches per prefill/decode invocation:47+3 9,817→9,673; C4 32,082→31,794;
    output16 31,592→30,824. C4 warm mean improves~1.994→1.973s (~1.1%) and
    output16~0.962→0.951s (~1.1%), exact/replay-stable. C1 remained noisy, so acceptance
-   rests on the stronger C4/decode-heavy cells. Next resident HIP unit: fuse the four
-   exact RMS scalar stages (mean→epsilon→sqrt→reciprocal) into one reusable cascade
-   kernel; this can reduce three launches per RMS invocation across plain/residual RMS,
-   GDN RMS and QK RMS without changing the reduction tree;
+   rests on the stronger C4/decode-heavy cells. Two broader RMS launch fusions were then
+   rejected while retaining their model-neutral primitives. `b44a55c` fused the exact
+   mean→epsilon→sqrt→reciprocal scalar chain using one shared `scalar_value` definition;
+   47+3 dispatches9,673→8,260 and output16 30,824→26,330, but decode-heavy warm mean
+   regressed~0.951→1.001s (~5.2%). `11e61f8` restores separate scalar stages and keeps
+   `scalar_cascade` dormant. `9040492` fused RMS normalize→gamma→store into one exact
+   vector-tail kernel; output16 dispatches30,824→28,314 but warm mean regressed
+   ~0.951→0.963s (~1.3%). `654adbb` restores the selected tail while retaining the
+   shared normalize/weight helpers, fused-tail kernel and alternate launchers dormant.
+   Both final dispositions pass HIP+Qwen and all-features compilation. Stop treating
+   launch count as the next resident optimization signal. Next HIP unit: use temporary
+   existing GPU profiling/timing to rank actual device time across projection, RMS, GDN
+   and QK/rotary on the resident path, then optimize one genuinely time-dominant shared
+   primitive; do not add a permanent profiling/test framework;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
    47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
    streaming mechanics are the relevant optimization target there.

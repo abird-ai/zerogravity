@@ -32,8 +32,10 @@ Immediate execution priorities are intentionally small:
   residency, decode is no longer projection-dominated: projection~33.5%, RMS~29.2%,
   GDN~21.5%, QK/rotary~9%. `ffd5ff8` fuses residual materialization into RMS squares
   and improves C4/decode-heavy wall time ~1.1% while retaining the standalone residual
-  primitive. Next target the shared four-stage RMS scalar cascade before more projection/
-  GDN micro-work; all losing projection variants remain reusable dormant primitives;
+  primitive. Broader RMS scalar-cascade and fused-vector-tail candidates both reduce
+  launches substantially but lose decode-heavy wall time, so their reusable primitives
+  remain dormant. Next use transient GPU-time localization to choose between projection,
+  RMS, GDN and QK/rotary before more micro-work; do not optimize dispatch count alone;
 - optimize L5 27B streamed source/transfer overlap as a distinct memory-constrained mode;
 - benchmark completed changes quickly against the canonical current baseline, with no
   speculative test matrix or duplicate paging/COW/streaming abstraction.

@@ -115,12 +115,22 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   Dispatches: C1 47+3 9,817→9,673; C4 32,082→31,794; output16 31,592→30,824.
   C4 warm mean~1.994→1.973s and output16~0.962→0.951s (~1.1% each), exact/replay
   stable. C1 timing was noisy, so it was not used as the acceptance signal.
-- [ ] Next resident HIP unit: replace RMS's four one-scalar launches (mean, epsilon add,
-  sqrt, reciprocal) with one exact scalar-cascade primitive while preserving the same
-  f32 operation sequence/status contract. It is shared by plain/residual RMS, GDN RMS
-  and QK RMS and should remove three launches per RMS invocation. Keep the individual
-  scalar primitive available for other models/tests. Separately qualify gfx1151/X2
-  native opaque accounting before changing its8GiB fallback.
+- [x] Rejected two broader RMS launch fusions without discarding their reusable pieces.
+  `b44a55c` shares one exact `scalar_value` implementation between the retained standalone
+  scalar kernel and a four-stage `scalar_cascade`. It cuts47+3 dispatches9,673→8,260 and
+  output16 30,824→26,330, but output16 warm mean regresses~0.951→1.001s (~5.2%).
+  `11e61f8` restores the selected separate-stage consumer and keeps the cascade dormant.
+  `9040492` adds an exact `normalize_weight_store` tail and alternate fused-tail launchers;
+  output16 dispatches fall30,824→28,314 but warm mean regresses~0.951→0.963s (~1.3%).
+  `654adbb` restores the selected separate vector tail while retaining normalize/weight
+  helpers, fused-tail kernel and alternate launchers dormant. HIP+Qwen and all-features
+  compile pass on the final disposition.
+- [ ] Next resident HIP unit: stop launch-count-driven fusion and localize **GPU time** on
+  exact resident C1/output16 using existing transient profiling/timing only. Rank
+  projection, RMS, GDN and QK/rotary by device time, then change one shared primitive in
+  the actual dominant family. Do not add a permanent profiler, fixture corpus or evidence
+  hierarchy. Separately qualify gfx1151/X2 native opaque accounting before changing its
+  8GiB fallback.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.
