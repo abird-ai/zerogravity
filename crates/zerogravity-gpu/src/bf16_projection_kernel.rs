@@ -130,7 +130,9 @@ fn project_value(
 /// lane and lane+32; each partial keeps its own FMA sequence, then the
 /// first +32 reduction is performed locally before the unchanged 32->16->8
 /// shared reduction. This preserves the CPU64 arithmetic tree while requiring
-/// only one 32-lane hardware wave per output row.
+/// only one 32-lane hardware wave per output row. Current gfx1150 Qwen keeps
+/// the 64-thread kernel: output16 serialized project time was 577.7ms here vs
+/// 561.1ms selected, and whole-model wall time regressed.
 #[allow(dead_code)]
 #[cube(launch_unchecked)]
 pub(crate) fn project_cpu_bf16_wave32(
