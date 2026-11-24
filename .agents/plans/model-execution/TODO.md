@@ -50,8 +50,11 @@ Immediate execution priorities are intentionally small:
   only for the existing qualified gfx1150 resident HIP policy; keep canonical traversal
   for all other paths. Current device-event re-profile: projection19.48ms (~52%),
   RMS7.35ms (~20%), GDN6.73ms (~18%) of37.27ms/cached token; next individual
-  non-projection kernel is GDN key_reduce3.10ms/token. Parallelize independent8x16
-  subtotals with exact original arithmetic/status and retain the scalar primitive.
+  non-projection kernel is GDN key_reduce3.10ms/token. `7d0b395b` retains exact
+  parallel8x16 subtotals; direct kernel time improves25–28%, but real0.8B 47+16
+  mean request improvement is only~0.75% with overlapping ranges, so keep
+  scalar selected and parallel reusable. Next prioritize measured projection/RMS
+  arithmetic rather than further launch-only cuts.
   Combined backend feature boundaries restored at `c89d0ee7`; full gate now
   stops at a separate CPU cache admission assertion. See serving plan;
 - optimize L5 27B streamed source/transfer overlap as a distinct memory-constrained mode;

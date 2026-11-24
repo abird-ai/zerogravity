@@ -560,6 +560,8 @@ pub(crate) fn key_reduce(
 /// 256 threads per workgroup: eight independent key subtotals for 32
 /// adjacent values. Coalesced state reads; one shared-memory barrier;
 /// unchanged sequential eight-term carry, rounding and status.
+/// Gfx1150 singleton retains the scalar selector: direct timing wins
+/// but the real-model request improvement is below 1%.
 #[allow(dead_code)]
 #[cube(launch_unchecked)]
 pub(crate) fn key_reduce_subtotals(

@@ -33,7 +33,6 @@ pub struct ResidentTextInventory {
 pub(crate) struct Admission {
     pub(super) budget: crate::hip::native::HipSourceBudget,
     pub(super) native_policy: crate::hip::native::HipSourceNativePolicy,
-    parallel_key_reduce: bool,
     pub(super) source: VerifiedTensorSource,
     pub(super) layout: Arc<layout::Layout>,
     pub(super) operands: BTreeMap<String, Arc<PreparedBf16Projection>>,
@@ -101,9 +100,6 @@ impl Admission {
             // source-page transport is resident; its bytes are already priced.
             layout.preflight.source_bytes = 0;
         }
-        // Temporary A/B: selection is shared by the sealed catalogue and launch.
-        let parallel_key_reduce = storage == Bf16ProjectionStorage::Resident
-            && std::env::var_os("ZG_TMP_PARALLEL_GDN").is_some();
         let layout = Arc::new(layout);
         let mut operands = BTreeMap::new();
         for d in layout.matrices.values() {
@@ -191,7 +187,6 @@ impl Admission {
         Ok(Self {
             budget,
             native_policy,
-            parallel_key_reduce,
             source,
             layout,
             operands,
@@ -210,12 +205,7 @@ impl Admission {
         WindowWorkspace,
     )> {
         Ok((
-            prepared::kernels(
-                client,
-                &self.layout,
-                &self.operands,
-                self.parallel_key_reduce,
-            )?,
+            prepared::kernels(client, &self.layout, &self.operands)?,
             self.source.reserve_workspace(1024 * 1024)?,
         ))
     }
@@ -368,7 +358,6 @@ impl Admission {
             frame,
             source: self.source,
             layout: self.layout,
-            parallel_key_reduce: self.parallel_key_reduce,
             service,
             native,
             slots,
@@ -395,7 +384,6 @@ impl Admission {
 }
 
 pub(in crate::resident_program) struct Cold {
-    pub(super) parallel_key_reduce: bool,
     pub(super) frame: Arc<crate::resident_leases::frame_checkpoint::ResidentFrameCheckpoint>,
     pub(super) source: VerifiedTensorSource,
     pub(super) layout: Arc<layout::Layout>,

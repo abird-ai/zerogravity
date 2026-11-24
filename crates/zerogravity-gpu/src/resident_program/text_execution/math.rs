@@ -303,12 +303,6 @@ impl Cold {
                 let memory = self.s(layout::MEMORY, width)?;
                 let delta = self.s(layout::DELTA, width)?;
                 use crate::source_gdn::recurrent as r;
-                let reduce = if self.parallel_key_reduce {
-                    r::key_reduce_subtotals::launch_unchecked
-                } else {
-                    r::key_reduce::launch_unchecked
-                };
-                let reduce_dim = CubeDim::new_1d(if self.parallel_key_reduce { 256 } else { 32 });
                 unsafe {
                     crate::source_standalone_exp::normal_vector::launch_unchecked(
                         client,
@@ -344,10 +338,10 @@ impl Cold {
                         state,
                         false,
                     );
-                    reduce(
+                    r::key_reduce::launch_unchecked(
                         client,
                         grid(width),
-                        reduce_dim,
+                        dim(),
                         arg(&decayed, state),
                         arg(&k, width),
                         arg(&memory, width),
@@ -383,10 +377,10 @@ impl Cold {
                         state,
                         false,
                     );
-                    reduce(
+                    r::key_reduce::launch_unchecked(
                         client,
                         grid(width),
-                        reduce_dim,
+                        dim(),
                         arg(next, state),
                         arg(&q, width),
                         arg(&core, width),

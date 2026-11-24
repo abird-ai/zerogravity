@@ -333,9 +333,17 @@ The current implementation priorities implied by that baseline are:
    37.27ms/cached step, projection19.48ms (~52%), RMS7.35ms (~20%),
    GDN6.73ms (~18%). Exact greedy prefix/replay and original KFD retirement
    in both physical runs. Largest remaining individual non-projection kernel
-   is GDN key_reduce3.10ms/step (36 launches). Next use independent8x16-term
-   subtotals in parallel, preserve all original FP32 operations/final carry and
-   status, retain scalar sibling, measure before selecting;
+   is GDN key_reduce3.10ms/step (36 launches). `7d0b395b` retains the exact
+   parallel8x16-subtotal kernel (32 adjacent values,256 threads,one LDS barrier,
+   no global scratch; original final carry/rounding/status). Direct gfx1150
+   values2048 FP32/BF16 timing improves25.5%/27.8%, finite bits and fault
+   status/classification pass. Real0.8B 47+16 `7d3a130b` same-binary ABBA
+   (12 timed requests/variant,14GiB) means836.7→830.4ms (~0.75%), medians
+   841.4→823.9ms, exact all16 IDs/replay and clean retirement. Gain too small
+   relative to variation to justify production selector; retain scalar consumer
+   and reusable parallel sibling. Temp runner/selector/catalogue removed.
+   Next prioritize measured projection/RMS arithmetic and separately unblock
+   matched-vLLM X2 qualification;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
    47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
    streaming mechanics are the relevant optimization target there.

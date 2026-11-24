@@ -195,12 +195,29 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   rotary0.27ms. GEMM17.07ms; next individual non-projection hotspot is GDN
   key_reduce3.10ms (36 launches), then RMS scalar2.73ms. Prefill+first output
   sums~386ms (projection200ms, GDN122ms). Not an end-to-end latency measurement.
-- [ ] Next resident HIP unit: parallelize independent8x16-term FP32 key_reduce
-  subtotals without changing the sequential within-block sums, final carry order,
-  rounding or status. Prefer one shared workgroup and no global scratch;
-  retain the scalar primitive. Direct/real-model feedback before selecting.
-  Separately qualify gfx1151/X2 native opaque accounting before changing its8GiB
-  fallback. No A1 comparison to X2/L5 vLLM; no broader qualification inferred.
+- [x] `7d0b395b` adds exact model-neutral GDN key_reduce_subtotals: one256-thread
+  workgroup computes eight original16-term subtotals for32 adjacent output
+  values, one LDS barrier, then the original sequential carry and shared
+  rounding/status helper. No global scratch or state-owner changes; scalar
+  primitive remains. Direct gfx1150 values2048 A/B against scalar and CPU
+  matches finite bits for both output modes (signed zero/subnormal included),
+  nonfinite status and NaN classification. Six paired96-launch device windows:
+  FP32 5.814→4.332ms (-25.5%), BF16 6.011→4.340ms (-27.8%).
+  Actual resident0.8B 47+16 A/B `7d3a130b` (C1,14GiB,ABBA,12 timed
+  waves/variant): scalar836.7 vs parallel830.4ms mean (~0.75% lower);
+  medians841.4/823.9ms, ranges809.9–864.0/789.9–911.4ms. Both paired
+  process means favor parallel by <1%; not a sufficiently robust request-level
+  benefit for extra selector wiring. Keep scalar selected and parallel sibling
+  reusable; remove temporary selector/catalogue/probe and benchmark adaptation.
+  All16 greedy IDs/replay exact, dispatches30,824/request, zero failed quanta,
+  clean retirement and original KFD owners.
+- [ ] Next resident HIP unit: prioritize measured remaining hot work. Projection
+  remains dominant; GDN key_reduce has an exact reusable parallel alternative
+  but its current singleton consumer is not selected. Inspect the actual RMS
+  scalar arithmetic or a clean projection traversal improvement before more
+  launch-fusion experiments. Separately qualify gfx1151/X2 native opaque
+  accounting before changing its8GiB fallback. No A1 comparison to X2/L5 vLLM;
+  no broader qualification inferred.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.
