@@ -49,8 +49,8 @@ pub use text_bindings::{
 pub use text_step::TextStepBindings;
 mod source_program;
 pub use source_program::{
-    BoundInvocation, GdnContract, InvocationInput, InvocationPhase, NumericalContract,
-    SourceAttentionMask, SourceConvGeometry, SourceGamma, SourceGdnGeometry,
+    BoundInvocation, BoundTextCall, GdnContract, InvocationInput, InvocationPhase,
+    NumericalContract, SourceAttentionMask, SourceConvGeometry, SourceGamma, SourceGdnGeometry,
     SourceGroupedQkGeometry, SourceOperator, SourceOperatorKind, SourceOperatorSemantics,
     SourceOperatorTemplate, SourcePlanGeometry, SourceQkRotaryGeometry, SourceRetainedOrigin,
     SourceRmsGeometry, SourceRowSelection, SourceStateAccess, SourceValueProvenance,

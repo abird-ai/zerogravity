@@ -4,7 +4,7 @@ use super::{PreparedRegion, StateBridge};
 use crate::{
     Error, Result,
     accelerator::program::ValueStorageFormat,
-    semantic::{BoundInvocation, RegionStatePort, StateLayout, StateSlot, StateVersion},
+    semantic::{BoundTextCall, RegionStatePort, StateLayout, StateSlot, StateVersion},
     session_root::{RootAttempt, RootBinding},
     source::ProgramSource,
 };
@@ -66,18 +66,18 @@ impl StateStorage {
 /// Actual providers must still bind the same admitted private state leases.
 pub struct BoundRegionState<'a, S: ProgramSource> {
     prepared: &'a PreparedRegion<S>,
-    invocation: &'a BoundInvocation,
+    call: BoundTextCall<'a>,
     attempt: &'a RootAttempt,
 }
 impl<'a, S: ProgramSource> BoundRegionState<'a, S> {
     pub(super) fn new(
         prepared: &'a PreparedRegion<S>,
-        invocation: &'a BoundInvocation,
+        call: BoundTextCall<'a>,
         current: RootBinding,
         attempt: &'a RootAttempt,
     ) -> Result<Self> {
-        prepared.bind(invocation)?;
-        let input = invocation.input();
+        prepared.bind(call)?;
+        let input = call.input();
         attempt.require_advance(
             current,
             input.source(),
@@ -86,7 +86,7 @@ impl<'a, S: ProgramSource> BoundRegionState<'a, S> {
         )?;
         Ok(Self {
             prepared,
-            invocation,
+            call,
             attempt,
         })
     }
@@ -120,7 +120,7 @@ impl<'a, S: ProgramSource> BoundRegionState<'a, S> {
         let consumer_region = self.prepared.model();
         let producer_region = producer.prepared.model();
         if version.ordinal != 1
-            || !std::ptr::eq(self.invocation, producer.invocation)
+            || !self.call.same_call(producer.call)
             || !std::ptr::eq(self.attempt, producer.attempt)
             || !Arc::ptr_eq(consumer_region.program(), producer_region.program())
             || !consumer_region

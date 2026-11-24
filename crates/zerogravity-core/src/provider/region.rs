@@ -1,12 +1,14 @@
 //! Source-owned physical region contract. No allocation or completion permit.
-use super::{BoundRegionState, ProviderRequirements, SelectedMode, StateStorage};
+use super::{
+    BoundRegionState, ObservationSupport, ProviderRequirements, SelectedMode, StateStorage,
+};
 use crate::{
     Error, Result,
     accelerator::program::{SourceRowSelection, ValueId, ValueStorageFormat},
     model::ModelRegion,
     numerics::ActivationPrecision,
     placement::PreparedTensorLayout,
-    semantic::{BoundInvocation, RegionPort, StateSlot},
+    semantic::{BoundTextCall, RegionPort, StateSlot},
     session_root::{RootAttempt, RootBinding},
     source::{ProgramSource, TensorSource},
 };
@@ -73,6 +75,7 @@ pub struct PreparedRegion<S: ProgramSource = Arc<dyn TensorSource>> {
     inputs: Box<[PhysicalRegionPort]>,
     outputs: Box<[PhysicalRegionPort]>,
     states: Box<[StateStorage]>,
+    observations: ObservationSupport,
 }
 impl<S: ProgramSource> PreparedRegion<S> {
     pub fn new(
@@ -151,6 +154,7 @@ impl<S: ProgramSource> PreparedRegion<S> {
             inputs,
             outputs,
             states: states.into(),
+            observations: ObservationSupport::None,
         })
     }
     pub fn model(&self) -> &ModelRegion<S> {
@@ -169,13 +173,20 @@ impl<S: ProgramSource> PreparedRegion<S> {
             .copied()
             .ok_or_else(|| Error::State("prepared region state domain absent".into()))
     }
+    pub fn with_observations(mut self, support: ObservationSupport) -> Self {
+        self.observations = support;
+        self
+    }
+    pub fn observations(&self) -> ObservationSupport {
+        self.observations
+    }
     pub fn bind_state<'a>(
         &'a self,
-        invocation: &'a BoundInvocation,
+        call: BoundTextCall<'a>,
         current: RootBinding,
         attempt: &'a RootAttempt,
     ) -> Result<BoundRegionState<'a, S>> {
-        BoundRegionState::new(self, invocation, current, attempt)
+        BoundRegionState::new(self, call, current, attempt)
     }
     pub fn supported_rows(&self) -> RangeInclusive<usize> {
         self.rows.clone()
@@ -201,9 +212,13 @@ impl<S: ProgramSource> PreparedRegion<S> {
         }
     }
     /// Validate the original logical invocation before interpreting its storage.
-    pub fn bind(&self, invocation: &BoundInvocation) -> Result<RegionShape<'_>> {
-        self.model.region().bind(invocation)?;
-        self.shape(invocation.input().token_count())
+    pub fn bind(&self, call: BoundTextCall<'_>) -> Result<RegionShape<'_>> {
+        self.model.region().bind(call)?;
+        self.shape(call.input().token_count())
+    }
+    pub fn bind_observed(&self, call: BoundTextCall<'_>) -> Result<RegionShape<'_>> {
+        self.observations.require(true)?;
+        self.bind(call)
     }
 }
 

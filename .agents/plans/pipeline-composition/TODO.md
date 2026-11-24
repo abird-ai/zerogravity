@@ -280,6 +280,20 @@ their existing numeric/source/physical acceptance gates.
   101 explicit skips, release/installer and script checks. Internal
   same-context CUDA managed staging only; no new provider selection.
 
+## Prepared text calls and producer observations — 24 Nov
+
+- [x] Derive contiguous text token/position dependencies and original active
+  producer sites on closed source regions. Preserve internal observations,
+  phase identity, state attempt and optional output-tail semantics without
+  making observations escaping buffers.
+- [x] Whole source-template text executables declare original source/plan,
+  selected mode, supported rows and observation support. Shared engine verifies
+  owner identity; HIP/CUDA resident singleton and cohort calls use this
+  preparation. HIP observes producer sites before reuse; CUDA unsupported
+  observed calls refuse before work. Legacy non-template owners unchanged.
+- [ ] Physical source observation/refusal, native canaries and assembled
+  isolated gate acceptance.
+
 ## Uncommitted
 
 ### Phase 1 — source, semantics and executable lowering
@@ -287,9 +301,11 @@ their existing numeric/source/physical acceptance gates.
 Contract: [closed regions](REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering)
 and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
 
-- [ ] Close remaining implicit region token/position/observation ports and
-  whole-model prepared execution boundaries for real consumers. Keep selected
-  shape bands and typed ports; no naked scope or implicit retry. Extend
+- [ ] Generalize remaining cold capability/placement and lifecycle boundaries
+  through real consumers; keep selected shape bands and typed ports, no naked
+  scope or implicit retry. Contiguous text invocation/producer ports and the
+  whole-text prepared boundary are implemented above; arbitrary explicit
+  position tensors and host/IO effects remain unsupported. Extend
   stateful regions only with actual qualified state layouts/bridges:
   independent partial execution, committed-frontier conversion/recompute and
   arbitrary state schemas remain open. Native and captured consumers retain

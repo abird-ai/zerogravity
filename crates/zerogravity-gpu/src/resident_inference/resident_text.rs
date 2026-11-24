@@ -6,7 +6,13 @@ use crate::resident_program::text_execution as program;
 pub use program::ResidentTextInventory;
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_artifacts::source_weights::WindowWorkspace;
-use zerogravity_core::accelerator::program::{BoundInvocation, InvocationPhase, NumericalContract};
+use zerogravity_core::{
+    accelerator::program::{BoundInvocation, InvocationPhase, NumericalContract},
+    model::ModelProgram,
+    provider::{
+        ExecutionMode, ObservationSupport, PreparedTextProgram, ProviderKind, SelectedMode,
+    },
+};
 
 #[cfg(feature = "cuda-cublas")]
 mod cohort;
@@ -62,8 +68,7 @@ pub struct ResidentTextPagedPressure {
 /// No exposed inner model/session: detached readers must retain these owners.
 pub struct ResidentTextModel {
     inner: Arc<ResidentModel>,
-    plan: Arc<ForwardPlan>,
-    source: VerifiedTensorSource,
+    prepared: PreparedTextProgram<VerifiedTensorSource>,
     sessions: Arc<async_lock::Semaphore>,
     _control: WindowWorkspace,
     contract: NumericalContract,
@@ -82,6 +87,9 @@ impl zerogravity_core::provider::PreparedExecutable for ResidentTextModel {
     }
     async fn program(&self) -> Result<Arc<ForwardPlan>> {
         Ok(self.inner.workspace.lock().await.program.shared_plan())
+    }
+    fn prepared_text(&self) -> Option<&PreparedTextProgram<Self::Source>> {
+        Some(&self.prepared)
     }
 }
 
@@ -329,6 +337,12 @@ impl ResidentModel {
         forward_not_cancelled(cancelled)?;
         let control = source.reserve_workspace(CONTROL_BYTES)?;
         let capacity = plan.prefix_capacity();
+        let executable = prepared_text_contract(
+            &source,
+            &plan,
+            ProviderKind::Hip,
+            ObservationSupport::AtProducer,
+        )?;
         let native_policy = crate::hip::native::source_native_policy(&device)?;
         let admission = program::Admission::with_budget_and_native_policy(
             source.clone(),
@@ -338,7 +352,7 @@ impl ResidentModel {
             native_policy,
         )?;
         let prepared = program::prepare(device, admission, source_owner, cancelled).await?;
-        let original_plan = prepared.program.shared_plan();
+        require_prepared_text(&executable, &prepared.program)?;
         let preflight = prepared.program.budget().clone();
         let vocabulary = prepared.program.plan().values()[prepared
             .program
@@ -375,8 +389,7 @@ impl ResidentModel {
         forward_not_cancelled(cancelled)?;
         Ok(Arc::new(ResidentTextModel {
             inner: model,
-            plan: original_plan,
-            source,
+            prepared: executable,
             sessions: Arc::new(async_lock::Semaphore::new(max_sessions)),
             _control: control,
             contract,
@@ -516,6 +529,8 @@ impl ResidentModel {
         let prefill_projection_classes = Some(
             crate::resident_program::cuda_forward::PrefillProjectionClasses::from_plan(&plan)?,
         );
+        let executable =
+            prepared_text_contract(&source, &plan, ProviderKind::Cuda, ObservationSupport::None)?;
         let model = Self::load_cuda_forward_roots(
             device,
             source.clone(),
@@ -548,11 +563,13 @@ impl ResidentModel {
             }
         }
         forward_not_cancelled(cancelled)?;
-        let original_plan = model.workspace.lock().await.program.shared_plan();
+        {
+            let workspace = model.workspace.lock().await;
+            require_prepared_text(&executable, &workspace.program)?;
+        }
         Ok(Arc::new(ResidentTextModel {
             inner: model,
-            plan: original_plan,
-            source,
+            prepared: executable,
             sessions: Arc::new(async_lock::Semaphore::new(max_sessions)),
             _control: control,
             contract: NumericalContract::CudaSm86Bf16ReferenceV1,
@@ -563,14 +580,52 @@ impl ResidentModel {
         }))
     }
 }
+fn prepared_text_contract(
+    source: &VerifiedTensorSource,
+    plan: &Arc<ForwardPlan>,
+    provider: ProviderKind,
+    observations: ObservationSupport,
+) -> Result<PreparedTextProgram<VerifiedTensorSource>> {
+    let max_rows = plan
+        .source_plan_geometry()
+        .ok_or_else(|| Error::State("resident source template absent".into()))?
+        .max_rows();
+    PreparedTextProgram::new(
+        ModelProgram::from_recorded(source.clone(), plan.clone())?,
+        SelectedMode {
+            provider,
+            mode: ExecutionMode::Native,
+        },
+        1..=max_rows,
+        observations,
+    )
+}
+
+fn require_prepared_text(
+    prepared: &PreparedTextProgram<VerifiedTensorSource>,
+    actual: &ResidentProgram,
+) -> Result<()> {
+    if !Arc::ptr_eq(prepared.model().program(), &actual.shared_plan())
+        || !prepared
+            .model()
+            .source()
+            .same_issuer(&actual.window_source()?)
+    {
+        return Err(Error::State(
+            "resident text prepared owner differs from actual body".into(),
+        ));
+    }
+    Ok(())
+}
+
 impl ResidentTextModel {
-    fn require_invocation(&self, invocation: &BoundInvocation) -> Result<()> {
-        if !Arc::ptr_eq(&self.plan, invocation.plan()) {
-            return Err(Error::State(
-                "resident-text invocation belongs to another original program".into(),
-            ));
-        }
-        Ok(())
+    fn bind_invocation<'a>(
+        &self,
+        invocation: &'a BoundInvocation,
+        phase: InvocationPhase,
+        observed: bool,
+    ) -> Result<zerogravity_core::semantic::BoundTextCall<'a>> {
+        self.prepared.bind(invocation, phase, observed)
     }
     #[cfg(feature = "cuda-cublas")]
     pub fn supports_shared_prefix(&self) -> bool {
@@ -620,7 +675,11 @@ impl ResidentTextModel {
     fn reader_scope(self: &Arc<Self>, bytes: usize) -> Result<Arc<ReaderScope>> {
         Ok(Arc::new(ReaderScope {
             model: self.clone(),
-            _host: self.source.reserve_backend_workspace(bytes)?,
+            _host: self
+                .prepared
+                .model()
+                .source()
+                .reserve_backend_workspace(bytes)?,
         }))
     }
     pub async fn session(self: &Arc<Self>) -> Result<ResidentTextSession> {
@@ -628,7 +687,12 @@ impl ResidentTextModel {
             .sessions
             .try_acquire_arc()
             .ok_or_else(|| Error::Limit("resident-text session capacity".into()))?;
-        let control = Arc::new(self.source.reserve_workspace(CONTROL_BYTES)?);
+        let control = Arc::new(
+            self.prepared
+                .model()
+                .source()
+                .reserve_workspace(CONTROL_BYTES)?,
+        );
         let inner = self
             .inner
             .session_with(|init| {
@@ -946,7 +1010,9 @@ impl ResidentTextSession {
         {
             return Ok(ResidentTextPreparation::CancelledBeforeLaunch);
         }
-        self.model.require_invocation(invocation)?;
+        let call = self
+            .model
+            .bind_invocation(invocation, mode, observer.is_some())?;
         // Credit precedes materialization, access/control containers and readback.
         if invocation.input().emit_logits() != (output == ResidentOutput::Logits) {
             return Err(Error::State(
@@ -957,7 +1023,7 @@ impl ResidentTextSession {
             Ok(scope) => scope,
             Err(error) => return preparation_failure(error, false),
         };
-        let request = invocation.materialize(mode)?;
+        let request = call.materialize()?;
         let submitted = AtomicBool::new(false);
         let prepared = self
             .inner

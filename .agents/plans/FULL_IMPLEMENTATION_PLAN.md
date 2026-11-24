@@ -125,9 +125,13 @@ partial execution and general state conversion remain open. Accepted
 secondary-stream completion to original physical flights; no implicit copy,
 host wait, allocation or publication. Physical certified GEMM/copy/interrupt,
 event lifecycle, native CUDA/HIP canaries and full isolated gate pass.
-Continue remaining implicit region ports and whole-model prepared execution
-boundaries; extend external allocation/runtime/device interop only for real
-consumers. None of these slices closes Phase 1.
+The next source slice closes contiguous text token/position and producer
+observation ports, phase-explicit borrowed call/state binding and original
+whole-text preparation for HIP/CUDA singleton/cohort calls. Observation
+support is explicit (HIP at producer, CUDA refusal before submission).
+Focused checks pass; physical and assembled gate acceptance pending.
+Extend external allocation/runtime/device interop only for real consumers.
+None of these slices closes Phase 1.
 
 Complete the engineering contracts and their real consumers, including every
 foundation below. This is not a requirement to finish every backend optimization,

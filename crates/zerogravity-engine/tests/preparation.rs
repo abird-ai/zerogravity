@@ -11,20 +11,21 @@ use std::{
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{
-        AttentionGeometry, ForwardPlan, InvocationInput, KvDomain, MathematicalBackend, MatrixAxes,
-        NumericalContract, ParameterRef, ParameterSlot, PlanBuilder, SourceAttentionMask,
-        SourceOperatorKind, SourceOperatorTemplate, SourcePlanGeometry, SourceRowSelection,
+        AttentionGeometry, ForwardPlan, InvocationInput, InvocationPhase, KvDomain,
+        MathematicalBackend, MatrixAxes, NumericalContract, ParameterRef, ParameterSlot,
+        PlanBuilder, SourceAttentionMask, SourceOperatorKind, SourceOperatorTemplate,
+        SourceParameter, SourcePlanGeometry, SourceQkRotaryGeometry, SourceRowSelection,
         SourceTensor, StateSlot, TensorView, TextCallGeometry, ValueStorageFormat,
     },
     encoding::{ScalarDType, StoredTensorEncoding},
     identity::SourceIdentity,
     model::{ModelDefinition, ModelProgram, ModelRegion, ProgramRequest},
     provider::{
-        ExecutionMode, PreparedExecutable, PreparedRegion, ProviderBufferMode,
-        ProviderCompletionMode, ProviderKind, ProviderRequirements, RegionExecutionProvider,
-        SelectedMode, StateBridge, StateStorage,
+        ExecutionMode, ObservationSupport, PreparedExecutable, PreparedRegion, PreparedTextProgram,
+        ProviderBufferMode, ProviderCompletionMode, ProviderKind, ProviderRequirements,
+        RegionExecutionProvider, SelectedMode, StateBridge, StateStorage,
     },
-    semantic::{RegionStatePort, StateLayout, StateVersion},
+    semantic::{InvocationPorts, RegionStatePort, StateLayout, StateVersion},
     session_root::SessionAuthority,
     source::{SourceTensorRef, TensorSource},
     task::TaskKind,
@@ -134,6 +135,7 @@ struct OwnerProbe {
     source: Arc<dyn TensorSource>,
     plan: Arc<ForwardPlan>,
     region: Option<PreparedRegion>,
+    text: Option<PreparedTextProgram>,
 }
 impl PreparedExecutable for OwnerProbe {
     type Source = Arc<dyn TensorSource>;
@@ -146,6 +148,9 @@ impl PreparedExecutable for OwnerProbe {
     fn prepared_region(&self) -> Option<&PreparedRegion> {
         self.region.as_ref()
     }
+    fn prepared_text(&self) -> Option<&PreparedTextProgram> {
+        self.text.as_ref()
+    }
 }
 #[derive(Clone, Copy)]
 enum Preparation {
@@ -153,6 +158,8 @@ enum Preparation {
     CopiedProgram,
     WrongSource,
     SameIdDifferentOwner,
+    MissingTextContract,
+    WrongTextProvider,
     Refused,
 }
 struct ProviderProbe {
@@ -192,10 +199,30 @@ impl RegionExecutionProvider for ProviderProbe {
             }
             source = replacement;
         }
+        let text = if plan.source_plan_geometry().is_some()
+            && !matches!(self.mode, Preparation::MissingTextContract)
+        {
+            Some(PreparedTextProgram::new(
+                ModelProgram::from_recorded(source.clone(), plan.clone())?,
+                SelectedMode {
+                    provider: if matches!(self.mode, Preparation::WrongTextProvider) {
+                        ProviderKind::Cuda
+                    } else {
+                        self.kind()
+                    },
+                    mode: ExecutionMode::Graph,
+                },
+                2..=8,
+                ObservationSupport::None,
+            )?)
+        } else {
+            None
+        };
         Ok(OwnerProbe {
             source,
             plan,
             region: None,
+            text,
         })
     }
 }
@@ -383,6 +410,47 @@ fn region_program(source: Arc<Definition>) -> ModelProgram {
             &[projected, activated],
         )
         .unwrap()[0];
+    let packed = builder
+        .record_source_template(
+            "packed_qkv",
+            &template(
+                SourceOperatorKind::Projection { selected_row: None },
+                SourceRowSelection::AllActive,
+                vec![matrix("packed_qkv", 64)],
+            ),
+            &[product],
+        )
+        .unwrap()[0];
+    let gamma = |name: &str| SourceParameter {
+        source: identity,
+        name: name.into(),
+        kind: StoredTensorEncoding::Scalar(ScalarDType::Bf16),
+        shape: vec![16],
+        bytes: 32,
+    };
+    let qk = SourceOperatorTemplate::new(
+        geometry,
+        SourceRowSelection::AllActive,
+        SourceOperatorKind::QkRmsRotaryGated(SourceQkRotaryGeometry {
+            attention: AttentionGeometry {
+                width: 16,
+                query_heads: 1,
+                kv_heads: 1,
+            },
+            rotary_dimensions: 16,
+            theta: 10000.0,
+            epsilon: 1e-6,
+        }),
+        NumericalContract::CudaSm86Bf16ReferenceV1,
+        vec![],
+        vec![gamma("q_norm"), gamma("k_norm")],
+    )
+    .unwrap();
+    let [query, key, _gate] = builder
+        .record_source_template("rotary", &qk, &[packed])
+        .unwrap()
+        .try_into()
+        .unwrap();
     builder
         .record_source_template(
             "append",
@@ -391,16 +459,16 @@ fn region_program(source: Arc<Definition>) -> ModelProgram {
                     domain: KvDomain(0),
                     key_width: 16,
                     packed_value: TensorView {
-                        offset: 0,
+                        offset: 48,
                         rows: 64,
                         width: 16,
-                        row_stride: 16,
+                        row_stride: 64,
                     },
                 },
                 SourceRowSelection::AllActive,
                 vec![],
             ),
-            &[projected, activated],
+            &[key, packed],
         )
         .unwrap();
     let attended = builder
@@ -420,7 +488,7 @@ fn region_program(source: Arc<Definition>) -> ModelProgram {
                 SourceRowSelection::AllActive,
                 vec![],
             ),
-            &[product],
+            &[query],
         )
         .unwrap()[0];
     let logits = builder
@@ -454,7 +522,7 @@ fn closed_region_ports_and_active_invocation_keep_original_semantics() {
         region.outputs().iter().map(|p| p.value).collect::<Vec<_>>(),
         vec![plan.nodes()[1].outputs[0], plan.nodes()[2].outputs[0]]
     );
-    let head = program.closed_region(6..7).unwrap();
+    let head = program.closed_region(8..9).unwrap();
     let bind = |plan: &Arc<ForwardPlan>, rows, emit| {
         plan.bind_invocation(
             InvocationInput::new(
@@ -469,7 +537,9 @@ fn closed_region_ports_and_active_invocation_keep_original_semantics() {
     };
     for rows in [1, 7, 64] {
         let invocation = bind(plan, rows, true);
-        let binding = region.bind(&invocation).unwrap();
+        let binding = region
+            .bind(invocation.call(InvocationPhase::Prefill).unwrap())
+            .unwrap();
         let inputs = binding.inputs().collect::<Vec<_>>();
         let outputs = binding.outputs().collect::<Vec<_>>();
         assert_eq!(inputs[0].layout.rows, rows);
@@ -479,14 +549,25 @@ fn closed_region_ports_and_active_invocation_keep_original_semantics() {
         let mut wrong = outputs.clone();
         wrong[0].layout.row_stride += 1;
         assert!(binding.require_bindings(&inputs, &wrong).is_err());
-        let head_binding = head.region().bind(&invocation).unwrap();
+        let head_binding = head
+            .region()
+            .bind(invocation.call(InvocationPhase::Prefill).unwrap())
+            .unwrap();
         assert_eq!(head_binding.inputs().next().unwrap().layout.rows, rows);
         assert_eq!(head_binding.outputs().next().unwrap().layout.rows, 1);
         assert_eq!(head_binding.outputs().next().unwrap().layout.width, 17);
     }
     let state_only = bind(plan, 2, false);
-    assert!(region.bind(&state_only).is_ok());
-    assert!(head.region().bind(&state_only).is_err());
+    assert!(
+        region
+            .bind(state_only.call(InvocationPhase::Prefill).unwrap())
+            .is_ok()
+    );
+    assert!(
+        head.region()
+            .bind(state_only.call(InvocationPhase::Prefill).unwrap())
+            .is_err()
+    );
     let selected = SelectedMode {
         provider: ProviderKind::Cuda,
         mode: ExecutionMode::Native,
@@ -501,11 +582,16 @@ fn closed_region_ports_and_active_invocation_keep_original_semantics() {
     )
     .unwrap();
     let call = bind(plan, 7, true);
-    let bound = head.bind(&call).unwrap();
+    let bound = head
+        .bind(call.call(InvocationPhase::Prefill).unwrap())
+        .unwrap();
     assert_eq!(bound.input(0).unwrap().byte_len().unwrap(), 7 * 16 * 2);
     assert_eq!(bound.output(0).unwrap().rows(), 1);
     assert_eq!(bound.output(0).unwrap().byte_len().unwrap(), 17 * 4);
-    assert!(head.bind(&state_only).is_err());
+    assert!(
+        head.bind(state_only.call(InvocationPhase::Prefill).unwrap())
+            .is_err()
+    );
     for rows in [0..=8, 1..=65, std::ops::RangeInclusive::new(9, 8)] {
         assert!(
             PreparedRegion::new(
@@ -531,8 +617,12 @@ fn closed_region_ports_and_active_invocation_keep_original_semantics() {
         .is_err()
     );
     let copy = Arc::new(plan.as_ref().clone());
-    assert!(region.bind(&bind(&copy, 2, true)).is_err());
-    for range in [0..0, 0..1, 3..7, 6..8] {
+    assert!(
+        region
+            .bind(bind(&copy, 2, true).call(InvocationPhase::Prefill).unwrap())
+            .is_err()
+    );
+    for range in [0..0, 3..9, 8..10] {
         assert!(program.closed_region(range).is_err());
     }
 }
@@ -551,19 +641,19 @@ fn stateful_region_ports_and_bridge_keep_provisional_versions_on_one_attempt() {
     let port = |version| RegionStatePort { version, layout };
     let domains = plan.source_state_domains().unwrap();
     assert_eq!(domains.len(), 1);
-    assert_eq!(domains[0].writer, 4);
+    assert_eq!(domains[0].writer, 6);
     assert_eq!(domains[0].layout, layout);
     assert_eq!(domains[0].effect.read, prior);
     assert_eq!(domains[0].effect.write, candidate);
 
-    let append = program.closed_region(4..5).unwrap();
+    let append = program.closed_region(6..7).unwrap();
     assert!(append.region().outputs().is_empty());
     assert_eq!(append.region().state_inputs(), [port(prior)]);
     assert_eq!(append.region().state_outputs(), [port(candidate)]);
-    let attention = program.closed_region(5..6).unwrap();
+    let attention = program.closed_region(7..8).unwrap();
     assert_eq!(attention.region().state_inputs(), [port(candidate)]);
     assert!(attention.region().state_outputs().is_empty());
-    let both = program.closed_region(4..6).unwrap();
+    let both = program.closed_region(6..8).unwrap();
     assert_eq!(both.region().state_inputs(), [port(prior)]);
     assert_eq!(both.region().state_outputs(), [port(candidate)]);
     let state = StateStorage::new(slot, layout, ValueStorageFormat::Bf16).unwrap();
@@ -591,7 +681,7 @@ fn stateful_region_ports_and_bridge_keep_provisional_versions_on_one_attempt() {
     };
     assert!(
         PreparedRegion::new(
-            program.closed_region(4..5).unwrap(),
+            program.closed_region(6..7).unwrap(),
             selected,
             requirements,
             1..=64,
@@ -600,7 +690,7 @@ fn stateful_region_ports_and_bridge_keep_provisional_versions_on_one_attempt() {
         )
         .is_err()
     );
-    assert!(prepare(4..5, &[state, state], &[ValueStorageFormat::Bf16; 2], &[]).is_err());
+    assert!(prepare(6..7, &[state, state], &[ValueStorageFormat::Bf16; 2], &[]).is_err());
     let wrong = StateStorage::new(
         slot,
         StateLayout::Kv {
@@ -611,17 +701,17 @@ fn stateful_region_ports_and_bridge_keep_provisional_versions_on_one_attempt() {
     )
     .unwrap();
     assert_eq!(wrong.bytes().unwrap(), state.bytes().unwrap());
-    assert!(prepare(4..5, &[wrong], &[ValueStorageFormat::Bf16; 2], &[]).is_err());
-    let append = prepare(4..5, &[state], &[ValueStorageFormat::Bf16; 2], &[]).unwrap();
+    assert!(prepare(6..7, &[wrong], &[ValueStorageFormat::Bf16; 2], &[]).is_err());
+    let append = prepare(6..7, &[state], &[ValueStorageFormat::Bf16; 2], &[]).unwrap();
     let attention = prepare(
-        5..6,
+        7..8,
         &[state],
         &[ValueStorageFormat::Bf16],
         &[ValueStorageFormat::Bf16],
     )
     .unwrap();
     let different = prepare(
-        5..6,
+        7..8,
         &[widened],
         &[ValueStorageFormat::Bf16],
         &[ValueStorageFormat::Bf16],
@@ -639,24 +729,19 @@ fn stateful_region_ports_and_bridge_keep_provisional_versions_on_one_attempt() {
             .unwrap(),
         )
         .unwrap();
+    let call = invocation.call(InvocationPhase::Prefill).unwrap();
     let owner = SessionAuthority::new(plan.source()).unwrap();
     let current = owner.binding();
     let attempt = owner.begin_advance(7).unwrap();
     let replacement = owner.begin_validated_replacement(7).unwrap();
-    assert!(
-        append
-            .bind_state(&invocation, current, &replacement)
-            .is_err()
-    );
+    assert!(append.bind_state(call, current, &replacement).is_err());
     let foreign = SessionAuthority::new(plan.source())
         .unwrap()
         .begin_advance(7)
         .unwrap();
-    assert!(append.bind_state(&invocation, current, &foreign).is_err());
-    let write = append.bind_state(&invocation, current, &attempt).unwrap();
-    let read = attention
-        .bind_state(&invocation, current, &attempt)
-        .unwrap();
+    assert!(append.bind_state(call, current, &foreign).is_err());
+    let write = append.bind_state(call, current, &attempt).unwrap();
+    let read = attention.bind_state(call, current, &attempt).unwrap();
     assert_eq!(write.prior(), current);
     assert_eq!(write.frontier(), 7);
     read.require_input_from(&write, candidate, StateBridge::OriginalLayout)
@@ -676,7 +761,7 @@ fn stateful_region_ports_and_bridge_keep_provisional_versions_on_one_attempt() {
     );
     assert!(
         different
-            .bind_state(&invocation, current, &attempt)
+            .bind_state(call, current, &attempt)
             .unwrap()
             .require_input_from(&write, candidate, StateBridge::OriginalLayout)
             .is_err()
@@ -684,7 +769,7 @@ fn stateful_region_ports_and_bridge_keep_provisional_versions_on_one_attempt() {
     let other_attempt = owner.begin_advance(7).unwrap();
     assert!(
         attention
-            .bind_state(&invocation, current, &other_attempt)
+            .bind_state(call, current, &other_attempt)
             .unwrap()
             .require_input_from(&write, candidate, StateBridge::OriginalLayout)
             .is_err()
@@ -692,7 +777,11 @@ fn stateful_region_ports_and_bridge_keep_provisional_versions_on_one_attempt() {
     let other_call = invocation.clone();
     assert!(
         attention
-            .bind_state(&other_call, current, &attempt)
+            .bind_state(
+                other_call.call(InvocationPhase::Prefill).unwrap(),
+                current,
+                &attempt
+            )
             .unwrap()
             .require_input_from(&write, candidate, StateBridge::OriginalLayout)
             .is_err()
@@ -701,6 +790,189 @@ fn stateful_region_ports_and_bridge_keep_provisional_versions_on_one_attempt() {
         owner.binding(),
         current,
         "region binding cannot publish state"
+    );
+    let mut owner = owner;
+    owner.prepare_publish(attempt).unwrap().commit();
+    let current = owner.binding();
+    let cached = plan
+        .bind_invocation(
+            InvocationInput::new(
+                TextCallGeometry::new(plan.source(), 17, 512).unwrap(),
+                7,
+                vec![1].into(),
+                true,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    let attempt = owner.begin_advance(1).unwrap();
+    let prefill = cached.call(InvocationPhase::Prefill).unwrap();
+    let decode = cached.call(InvocationPhase::Decode).unwrap();
+    let write = append.bind_state(prefill, current, &attempt).unwrap();
+    let read = attention.bind_state(decode, current, &attempt).unwrap();
+    assert!(
+        read.require_input_from(&write, candidate, StateBridge::OriginalLayout)
+            .is_err()
+    );
+}
+
+#[test]
+fn original_text_controls_observation_sites_and_whole_preparation() {
+    let program = region_program(definition(Recording::Original));
+    let plan = program.program().clone();
+    let embedding = program.closed_region(0..1).unwrap();
+    let rotary = program.closed_region(5..6).unwrap();
+    let head = program.closed_region(8..9).unwrap();
+    let bind = |plan: &Arc<ForwardPlan>, base, rows, emit| {
+        plan.bind_invocation(
+            InvocationInput::new(
+                TextCallGeometry::new(plan.source(), 17, 512).unwrap(),
+                base,
+                vec![1; rows].into(),
+                emit,
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    };
+    let invocation = bind(&plan, 13, 7, true);
+    let call = invocation.call(InvocationPhase::Prefill).unwrap();
+    let tokens = embedding.region().bind(call).unwrap();
+    assert!(tokens.inputs().next().is_none());
+    assert_eq!(tokens.token_ids(), Some(invocation.input().ids()));
+    assert_eq!(tokens.positions(), None);
+    let positions = rotary.region().bind(call).unwrap();
+    assert_eq!(positions.positions(), Some(13..20));
+    assert_eq!(positions.token_ids(), None);
+    assert_eq!(positions.phase(), InvocationPhase::Prefill);
+    let observed = positions.observations().collect::<Vec<_>>();
+    assert_eq!(observed.len(), 3); // Includes internal/unconsumed rotary gate.
+    assert_eq!(positions.outputs().count(), 2);
+    assert_eq!(observed[2].1.value, plan.nodes()[5].outputs[2]);
+    assert_eq!(observed[2].1.layout.elements().unwrap(), 7 * 16);
+    let head_obs = head
+        .region()
+        .bind(call)
+        .unwrap()
+        .observations()
+        .collect::<Vec<_>>();
+    assert_eq!(head_obs[0].1.layout.rows, 1);
+    assert_eq!(head_obs[0].1.layout.width, 17);
+    assert_eq!(
+        plan.source_observation_ports(5)
+            .unwrap()
+            .map(|p| p.unwrap().bind(7).unwrap())
+            .collect::<Vec<_>>(),
+        observed
+            .iter()
+            .map(|(_, binding)| *binding)
+            .collect::<Vec<_>>(),
+    );
+    assert!(
+        plan.source_observation_ports(5)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .bind(65)
+            .is_err()
+    );
+
+    let selected = SelectedMode {
+        provider: ProviderKind::GraphOnly,
+        mode: ExecutionMode::Graph,
+    };
+    let prepared_embedding = PreparedRegion::new(
+        embedding,
+        selected,
+        ProviderRequirements::original_queue(0, 0),
+        1..=64,
+        &[],
+        &[ValueStorageFormat::Bf16],
+    )
+    .unwrap();
+    assert!(prepared_embedding.bind(call).is_ok());
+    assert!(prepared_embedding.bind_observed(call).is_err());
+    let prepared_embedding = prepared_embedding.with_observations(ObservationSupport::AtProducer);
+    assert!(prepared_embedding.bind_observed(call).is_ok());
+
+    let provider = ProviderProbe {
+        mode: Preparation::Original,
+        yield_once: false,
+    };
+    let bundle = ready(prepare(program, &provider)).unwrap();
+    let prepared = bundle.prepared_text().unwrap();
+    assert_eq!(
+        prepared.invocation_ports(),
+        InvocationPorts {
+            token_ids: true,
+            positions: true
+        }
+    );
+    assert_eq!(prepared.selected(), selected);
+    assert_eq!(prepared.supported_rows(), 2..=8);
+    assert!(
+        prepared
+            .bind(&invocation, InvocationPhase::Prefill, false)
+            .unwrap()
+            .same_call(call)
+    );
+    assert!(
+        prepared
+            .bind(&invocation, InvocationPhase::Prefill, true)
+            .is_err()
+    );
+    let state_only = bind(&plan, 13, 7, false);
+    let call = prepared
+        .bind(&state_only, InvocationPhase::Prefill, false)
+        .unwrap();
+    assert_eq!(
+        call.invocation().active_nodes().len(),
+        plan.state_nodes().len()
+    );
+    assert!(
+        prepared
+            .bind(&bind(&plan, 13, 9, true), InvocationPhase::Prefill, false)
+            .is_err()
+    );
+    assert!(
+        prepared
+            .bind(
+                &bind(&Arc::new(plan.as_ref().clone()), 13, 7, true),
+                InvocationPhase::Prefill,
+                false
+            )
+            .is_err()
+    );
+    assert!(
+        prepared
+            .bind(&invocation, InvocationPhase::Decode, false)
+            .is_err()
+    );
+    for mode in [
+        Preparation::MissingTextContract,
+        Preparation::WrongTextProvider,
+    ] {
+        let program = region_program(definition(Recording::Original));
+        assert!(
+            ready(prepare(
+                program,
+                &ProviderProbe {
+                    mode,
+                    yield_once: false
+                }
+            ))
+            .is_err()
+        );
+    }
+    assert!(
+        InvocationPhase::Prefill
+            .require_source_profile(
+                NumericalContract::HipRocBlasBf16MixedV2.program_profile(),
+                13,
+                1,
+            )
+            .is_err()
     );
 }
 
@@ -720,6 +992,7 @@ impl RegionExecutionProvider for RegionProbe {
         let program =
             ModelProgram::from_recorded(region.source().clone(), region.program().clone())?;
         let mut owner = self.inner.prepare(program).await?;
+        owner.text = None;
         owner.region = self
             .selection
             .map(|provider| {
@@ -822,7 +1095,9 @@ fn partial_provider_preparation_retains_exact_source_plan_and_scope() {
                 .unwrap()
             };
             let invocation = bind(&plan, 7);
-            let bound = prepared.bind(&invocation).unwrap();
+            let bound = prepared
+                .bind(invocation.call(InvocationPhase::Prefill).unwrap())
+                .unwrap();
             assert_eq!(bound.input(0).unwrap().row_stride_bytes(), 16 * 2);
             assert_eq!(bound.output(0).unwrap().byte_len().unwrap(), 7 * 16 * 2);
             assert_eq!(bound.output(1).unwrap().byte_len().unwrap(), 7 * 16 * 4);
@@ -831,15 +1106,19 @@ fn partial_provider_preparation_retains_exact_source_plan_and_scope() {
                 ValueStorageFormat::F32
             );
             assert!(matches!(
-                prepared.bind(&bind(&plan, 1)),
+                prepared.bind(bind(&plan, 1).call(InvocationPhase::Prefill).unwrap()),
                 Err(Error::Unsupported(_))
             ));
             assert!(matches!(
-                prepared.bind(&bind(&plan, 9)),
+                prepared.bind(bind(&plan, 9).call(InvocationPhase::Prefill).unwrap()),
                 Err(Error::Unsupported(_))
             ));
             assert!(matches!(
-                prepared.bind(&bind(&Arc::new(plan.as_ref().clone()), 7)),
+                prepared.bind(
+                    bind(&Arc::new(plan.as_ref().clone()), 7)
+                        .call(InvocationPhase::Prefill)
+                        .unwrap()
+                ),
                 Err(Error::State(_))
             ));
             assert_eq!(drops.load(Ordering::SeqCst), 0);

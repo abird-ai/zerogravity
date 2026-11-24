@@ -16,7 +16,7 @@ pub async fn prepare<P: RegionExecutionProvider>(
     let expected = program.program().clone();
     let source = program.source().clone();
     let prepared = provider.prepare(program).await?;
-    verify(prepared, source, expected, None).await
+    verify(prepared, source, expected, provider.kind(), None).await
 }
 
 /// No implicit whole-model fallback. The provider must finish initialization
@@ -27,22 +27,28 @@ pub async fn prepare_region<P: RegionExecutionProvider>(
 ) -> Result<ExecutableBundle<P::Executable>> {
     let expected = region.program().clone();
     let source = region.source().clone();
-    let scope = (region.region().range(), provider.kind());
+    let scope = region.region().range();
     let prepared = provider.prepare_region(region).await?;
-    verify(prepared, source, expected, Some(scope)).await
+    verify(prepared, source, expected, provider.kind(), Some(scope)).await
 }
 
 async fn verify<E: PreparedExecutable>(
     prepared: E,
     source: E::Source,
     expected: Arc<zerogravity_core::semantic::ForwardPlan>,
-    scope: Option<(std::ops::Range<usize>, ProviderKind)>,
+    kind: ProviderKind,
+    scope: Option<std::ops::Range<usize>>,
 ) -> Result<ExecutableBundle<E>> {
     if !source.same_issuer(&prepared.source().await?)
         || !Arc::ptr_eq(&expected, &prepared.program().await?)
-        || match (scope, prepared.prepared_region()) {
-            (None, None) => false,
-            (Some((range, kind)), Some(region)) => {
+        || match (scope, prepared.prepared_region(), prepared.prepared_text()) {
+            (None, None, None) => expected.source_plan_geometry().is_some(),
+            (None, None, Some(text)) => {
+                text.selected().provider != kind
+                    || !source.same_issuer(text.model().source())
+                    || !Arc::ptr_eq(&expected, text.model().program())
+            }
+            (Some(range), Some(region), None) => {
                 region.model().region().range() != range
                     || region.selected().provider != kind
                     || !source.same_issuer(region.model().source())

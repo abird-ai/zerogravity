@@ -152,6 +152,13 @@ any external compiler. All phases retain the original resource/state owners.
   enqueue quarantine, event lifecycle, L5 native C1 and X2 native V2 C1/C8
   pass; full isolated gate passes (composition TODO). Internal bridge only,
   no wider provider eligibility.
+- Prepared whole-text contract retains original source/plan, selected native
+  mode, row band and producer observation capability. Borrowed phase-bound
+  calls validate before credit/materialization; shared mixed-source cached
+  singleton decode law applies to native singleton/cohort and region state
+  handoff. HIP reads actual original producer sites; CUDA refuses unsupported
+  observers before submission. Focused checks pass; physical/gate pending
+  (composition TODO).
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

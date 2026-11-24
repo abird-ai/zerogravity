@@ -48,9 +48,9 @@ impl ResidentTextModel {
             {
                 return Err(Error::State("source HIP cohort row/root differs".into()));
             }
-            self.require_invocation(invocation)?;
+            let call = self.bind_invocation(invocation, phase, false)?;
             scopes.push(self.reader_scope(CALL_HOST_BYTES)?);
-            requests.push(invocation.materialize(phase)?);
+            requests.push(call.materialize()?);
             sessions.push(&session.inner);
         }
         let Some(inner) = self

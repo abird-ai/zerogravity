@@ -42,7 +42,7 @@ impl ResidentTextFinalReader {
             .find(|l| l.role() == BufferRole::RecurrentState)
             .ok_or_else(|| Error::State("text-invocation final recurrent reader absent".into()))?;
         if !Arc::ptr_eq(lease.service(), &model.inner.service)
-            || lease.source_identity() != model.source.source_identity()
+            || lease.source_identity() != model.prepared.model().source().source_identity()
             || !lease.is_initialized()
         {
             return Err(Error::State(

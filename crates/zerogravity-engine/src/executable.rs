@@ -2,7 +2,7 @@
 use std::sync::Arc;
 use zerogravity_core::{
     Result,
-    provider::{PreparedExecutable, PreparedRegion},
+    provider::{PreparedExecutable, PreparedRegion, PreparedTextProgram},
     semantic::ForwardPlan,
 };
 
@@ -18,6 +18,9 @@ impl<E: PreparedExecutable> ExecutableBundle<E> {
     }
     pub fn prepared_region(&self) -> Option<&PreparedRegion<E::Source>> {
         self.prepared.prepared_region()
+    }
+    pub fn prepared_text(&self) -> Option<&PreparedTextProgram<E::Source>> {
+        self.prepared.prepared_text()
     }
     pub fn region_nodes(&self) -> Option<std::ops::Range<usize>> {
         self.prepared_region()

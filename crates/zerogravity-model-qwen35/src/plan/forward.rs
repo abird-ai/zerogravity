@@ -97,7 +97,7 @@ impl QwenForwardPlan {
         )?;
         let bound = self.owner.plan.bind_invocation(invocation)?;
         // Phase is explicit; never infer cached decode from row count or base.
-        bound.input().text_invocation(phase)?;
+        bound.call(phase)?;
         Ok(QwenForwardInvocation {
             bound,
             owner: self.owner.clone(),
@@ -166,18 +166,7 @@ fn require_source_phase(
     base: usize,
     rows: usize,
 ) -> Result<()> {
-    // Original HF takes cached recurrence for every initialized single-row call.
-    // Refuse a contradictory declaration; never silently rewrite the phase.
-    if numerical.uses_torch_mixed_operators()
-        && base > 0
-        && rows == 1
-        && phase != InvocationPhase::Decode
-    {
-        return Err(Error::Unsupported(
-            "original CPU-source cached row requires explicit decode".into(),
-        ));
-    }
-    Ok(())
+    phase.require_source_profile(numerical.program_profile(), base, rows)
 }
 
 fn domains(profile: QwenForwardGeometry) -> Result<Vec<StateSlot>> {

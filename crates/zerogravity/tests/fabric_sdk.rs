@@ -8,6 +8,14 @@ use zerogravity::{
 #[path = "support/qwen_source_http.rs"]
 mod qwen_source_http;
 
+#[cfg(all(
+    feature = "model-qwen35",
+    any(feature = "hip", feature = "cuda"),
+    target_os = "linux"
+))]
+#[path = "support/qwen_prepared_observations.rs"]
+mod qwen_prepared_observations;
+
 #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
 fn qwen_cuda_native_runtime(paged: bool) -> Runtime {
     use zerogravity::{

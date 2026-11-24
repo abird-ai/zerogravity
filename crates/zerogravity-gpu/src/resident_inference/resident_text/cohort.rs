@@ -38,9 +38,9 @@ impl ResidentTextModel {
                     "source CUDA decode cohort row/token/root differs".into(),
                 ));
             }
-            self.require_invocation(invocation)?;
+            let call = self.bind_invocation(invocation, InvocationPhase::Decode, false)?;
             scopes.push(self.reader_scope(CALL_HOST_BYTES)?);
-            requests.push(invocation.materialize(InvocationPhase::Decode)?);
+            requests.push(call.materialize()?);
             sessions.push(&session.inner);
         }
         let Some(inner) = self
@@ -94,9 +94,9 @@ impl ResidentTextModel {
                     "source CUDA prefill cohort session/model differs".into(),
                 ));
             }
-            self.require_invocation(invocation)?;
+            let call = self.bind_invocation(invocation, InvocationPhase::Prefill, false)?;
             scopes.push(self.reader_scope(CALL_HOST_BYTES)?);
-            requests.push(invocation.materialize(InvocationPhase::Prefill)?);
+            requests.push(call.materialize()?);
             sessions.push(&session.inner);
         }
         let Some(inner) = self

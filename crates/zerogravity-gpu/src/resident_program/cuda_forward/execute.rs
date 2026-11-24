@@ -377,13 +377,16 @@ impl CudaForwardBody {
             || call.tokens().vocabulary() != self.cold().layout().geometry().vocabulary
             || !(1..=layout::MAX_ROWS).contains(&call.tokens().len())
             || call.tokens().frontier() > cold.prefix_capacity()
-            || (call.phase() == InvocationPhase::Decode
-                && (call.tokens().base() == 0 || call.tokens().len() != 1))
         {
             return Err(Error::State(
                 "CUDA forward request call/source/frontier differs".into(),
             ));
         }
+        call.phase().require_source_profile(
+            cold.numerical_profile(),
+            call.tokens().base(),
+            call.tokens().len(),
+        )?;
         Ok(call)
     }
 

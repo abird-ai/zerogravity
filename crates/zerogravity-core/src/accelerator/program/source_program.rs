@@ -14,6 +14,42 @@ pub enum InvocationPhase {
     Decode,
 }
 
+impl InvocationPhase {
+    fn require_span(self, base: usize, rows: usize) -> Result<()> {
+        if rows == 0 || self == Self::Decode && (base == 0 || rows != 1) {
+            return Err(Error::Malformed(
+                "decode invocation requires one cached token".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Keep original mixed-source recurrence selection explicit. No inference
+    /// of phase from row count, no provider-dependent silent rewrite.
+    pub fn require_source_profile(
+        self,
+        profile: NumericalProfile,
+        base: usize,
+        rows: usize,
+    ) -> Result<()> {
+        self.require_span(base, rows)?;
+        if matches!(
+            profile,
+            NumericalProfile::TorchCpuAvx2Bf16MixedV1
+                | NumericalProfile::HipRocBlasBf16MixedV1
+                | NumericalProfile::HipRocBlasBf16MixedV2
+        ) && base > 0
+            && rows == 1
+            && self != Self::Decode
+        {
+            return Err(Error::Unsupported(
+                "original mixed-source cached row requires explicit decode".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Immutable token issuer. Equal IDs in a separately constructed span are distinct.
 #[derive(Clone, Debug)]
 pub struct TokenSpan(Arc<TokenSpanData>);
@@ -97,11 +133,7 @@ pub struct TextInvocation {
 }
 impl TextInvocation {
     pub fn new(tokens: TokenSpan, phase: InvocationPhase) -> Result<Self> {
-        if phase == InvocationPhase::Decode && (tokens.base() == 0 || tokens.len() != 1) {
-            return Err(Error::Malformed(
-                "decode invocation requires one cached token".into(),
-            ));
-        }
+        phase.require_span(tokens.base(), tokens.len())?;
         Ok(Self { tokens, phase })
     }
     pub fn tokens(&self) -> &TokenSpan {
@@ -264,10 +296,25 @@ impl BoundInvocation {
         }
     }
 
-    /// Materialize request-local mathematical descriptors from the immutable
-    /// template. This preserves shared topology/semantics and grants no launch,
-    /// completion, queue or StateRoot authority.
+    /// Borrow the actual bound call with its explicit arithmetic phase.
+    /// No token-span allocation or source/plan copy is needed for validation.
+    pub fn call(&self, phase: InvocationPhase) -> Result<BoundTextCall<'_>> {
+        phase.require_source_profile(
+            self.plan.numerical_profile(),
+            self.input.base(),
+            self.input.token_count(),
+        )?;
+        Ok(BoundTextCall {
+            invocation: self,
+            phase,
+        })
+    }
+
     pub fn materialize(&self, phase: InvocationPhase) -> Result<ForwardPlan> {
+        self.call(phase)?.materialize()
+    }
+
+    fn materialize_call(&self, phase: InvocationPhase) -> Result<ForwardPlan> {
         let geometry = self
             .plan
             .source_template
@@ -381,6 +428,32 @@ impl BoundInvocation {
         }
         bound.text_invocation = Some(invocation);
         Ok(bound)
+    }
+}
+
+/// One borrowed original invocation and declared phase. A copy does not
+/// issue another token span, state root or execution permit.
+#[derive(Clone, Copy, Debug)]
+pub struct BoundTextCall<'a> {
+    invocation: &'a BoundInvocation,
+    phase: InvocationPhase,
+}
+impl<'a> BoundTextCall<'a> {
+    pub fn invocation(self) -> &'a BoundInvocation {
+        self.invocation
+    }
+    pub fn input(self) -> &'a InvocationInput {
+        self.invocation.input()
+    }
+    pub fn phase(self) -> InvocationPhase {
+        self.phase
+    }
+    pub fn same_call(self, other: Self) -> bool {
+        std::ptr::eq(self.invocation, other.invocation) && self.phase == other.phase
+    }
+    /// Original materialization occurs only under the caller's admission.
+    pub fn materialize(self) -> Result<ForwardPlan> {
+        self.invocation.materialize_call(self.phase)
     }
 }
 

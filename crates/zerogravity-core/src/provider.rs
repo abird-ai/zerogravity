@@ -3,6 +3,7 @@ mod region;
 mod resources;
 mod selection;
 mod state;
+mod text;
 use crate::{
     Error, Result,
     model::{ModelProgram, ModelRegion},
@@ -16,6 +17,7 @@ pub use selection::{
 };
 pub use state::{BoundRegionState, StateStorage};
 use std::{future::Future, sync::Arc};
+pub use text::{ObservationSupport, PreparedTextProgram};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProviderKind {
@@ -33,9 +35,13 @@ pub trait PreparedExecutable: Send + Sync {
     type Source: ProgramSource;
     fn source(&self) -> impl Future<Output = Result<Self::Source>>;
     fn program(&self) -> impl Future<Output = Result<Arc<ForwardPlan>>>;
-    /// Partial preparation carries the original region and explicit physical
-    /// port/shape contract. Whole-program owners retain their existing layout.
+    /// Partial preparation carries the original region and physical ports.
     fn prepared_region(&self) -> Option<&PreparedRegion<Self::Source>> {
+        None
+    }
+    /// Whole source-template text execution declares its actual call support.
+    /// Older non-template owners retain their original typed execution layout.
+    fn prepared_text(&self) -> Option<&PreparedTextProgram<Self::Source>> {
         None
     }
 }
@@ -49,6 +55,9 @@ impl<T: PreparedExecutable + ?Sized> PreparedExecutable for Arc<T> {
     }
     fn prepared_region(&self) -> Option<&PreparedRegion<Self::Source>> {
         self.as_ref().prepared_region()
+    }
+    fn prepared_text(&self) -> Option<&PreparedTextProgram<Self::Source>> {
+        self.as_ref().prepared_text()
     }
 }
 

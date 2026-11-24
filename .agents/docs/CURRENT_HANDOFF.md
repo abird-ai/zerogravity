@@ -20,6 +20,25 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Prepared text calls and producer observations — source slice, validation pending.**
+Source-template regions derive token and absolute-position ports and original
+producer observation sites, including internal values. A borrowed
+phase-explicit BoundTextCall keeps the original invocation/phase for
+region and state binding. PreparedTextProgram owns the original ModelProgram,
+selected provider, row band and observation support; engine verifies the
+returned whole-text executable against the original source/plan/provider.
+Actual HIP/CUDA resident singleton/cohort preparation uses this contract
+before host credit/materialization. HIP reads the original active producer
+sites before reuse; unsupported CUDA observations refuse before submission
+without fencing the resident owner. Original physical state, scheduling,
+resource and publication ownership stays unchanged. Contiguous text
+positions only; no standalone partial dispatch, arbitrary state conversion,
+general host/IO observation, or graph SDK activation. Focused preparation
+tests/Clippy and both backend builds pass; physical observation/refusal
+and source canaries/full isolated gate pending.
+
+Prior accepted private transport checkpoint:
+
 **Accepted source checkpoint `6eae81c68c24c58c85e707baebacbccbda523208` —
 explicit private provider transport/completion.**
 A bounded CUDA provider scope consumes the original armed ResidentSubmission,

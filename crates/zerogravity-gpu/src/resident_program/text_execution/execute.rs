@@ -149,7 +149,7 @@ impl Cold {
         let mut dispatches = 0usize;
         // A submitted call is not cut short by cancellation. Its original flight
         // must complete (or quarantine); publication decides completed discard.
-        for node in nodes {
+        for (node_index, node) in nodes.iter().enumerate() {
             let PlanOperation::SourceOperator { descriptor, .. } = &node.operation else {
                 unreachable!("validated original materialization")
             };
@@ -157,13 +157,14 @@ impl Cold {
                 .checked_add(self.node(flight, node, descriptor, &state).await?)
                 .ok_or_else(|| Error::Limit("text-execution dispatch count".into()))?;
             if let Some(observer) = &mut observer {
-                for (id, words) in node.outputs.iter().zip(descriptor.output_elements()?) {
+                for port in self.layout.plan.source_observation_ports(node_index)? {
+                    let binding = port?.bind(call.tokens().len())?;
                     self.observe(
                         flight,
                         call,
-                        super::super::text_observation::TextFrameKind::Value(*id),
-                        self.value_lease(*id)?,
-                        words,
+                        super::super::text_observation::TextFrameKind::Value(binding.value),
+                        self.value_lease(binding.value)?,
+                        binding.layout.elements()?,
                         &mut **observer,
                     )
                     .await?;

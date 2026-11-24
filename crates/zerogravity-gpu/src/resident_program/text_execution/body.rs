@@ -3,7 +3,7 @@ use super::super::{
     BufferRange, OwnedRanges, ResidentProgram, ResidentProgramBody, ResidentProgramSource,
 };
 use super::{cold::Cold, *};
-use zerogravity_core::accelerator::program::{InvocationPhase, TextInvocation};
+use zerogravity_core::accelerator::program::TextInvocation;
 
 impl Cold {
     pub(super) fn bind(self: &Arc<Self>) -> Result<ResidentProgram> {
@@ -80,13 +80,16 @@ impl Cold {
             || call.tokens().vocabulary() != self.layout.vocabulary
             || !(1..=layout::MAX_ROWS).contains(&call.tokens().len())
             || call.tokens().frontier() > cold.prefix_capacity()
-            || (call.phase() == InvocationPhase::Decode)
-                != (call.tokens().base() > 0 && call.tokens().len() == 1)
         {
             return Err(Error::State(
                 "text-execution actual source/rows/frontier/phase differs".into(),
             ));
         }
+        call.phase().require_source_profile(
+            cold.numerical_profile(),
+            call.tokens().base(),
+            call.tokens().len(),
+        )?;
         Ok(call)
     }
 }
