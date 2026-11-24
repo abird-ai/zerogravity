@@ -504,6 +504,38 @@ pub(crate) fn key_reduce_private(
     }
 }
 
+/// One of the eight original sequential 16-term sums.
+#[cube]
+fn key_subtotal(state: &[f32], vector: &[f32], h: usize, j: usize, block: usize) -> f32 {
+    let mut subtotal = 0.0f32;
+    for key in block * 16usize..(block + 1usize) * 16usize {
+        let product = mul(
+            state[(h * 128usize + key) * 128usize + j],
+            vector[h * 128usize + key],
+        );
+        subtotal = add(subtotal, product);
+    }
+    subtotal
+}
+
+#[cube]
+fn store_key_reduction(
+    output: &mut [f32],
+    status: &[Atomic<u32>],
+    at: usize,
+    carry: f32,
+    #[comptime] round_bf16: bool,
+) {
+    let mut y = carry;
+    if comptime!(round_bf16) {
+        y = bf16(y);
+    }
+    output[at] = y;
+    if !finite(y) {
+        status[0].fetch_or(NONFINITE_VALUE);
+    }
+}
+
 #[cube(launch_unchecked)]
 pub(crate) fn key_reduce(
     state: &[f32],
@@ -519,24 +551,41 @@ pub(crate) fn key_reduce(
         let j = at % 128usize;
         let mut carry = 0.0f32;
         for block in 0..8usize {
-            let mut subtotal = 0.0f32;
-            for key in block * 16usize..(block + 1usize) * 16usize {
-                let product = mul(
-                    state[(h * 128usize + key) * 128usize + j],
-                    vector[h * 128usize + key],
-                );
-                subtotal = add(subtotal, product);
-            }
-            carry = add(carry, subtotal);
+            carry = add(carry, key_subtotal(state, vector, h, j, block));
         }
-        let mut y = carry;
-        if comptime!(round_bf16) {
-            y = bf16(y);
+        store_key_reduction(output, status, at, carry, round_bf16);
+    }
+}
+
+/// 256 threads per workgroup: eight independent key subtotals for 32
+/// adjacent values. Coalesced state reads; one shared-memory barrier;
+/// unchanged sequential eight-term carry, rounding and status.
+#[allow(dead_code)]
+#[cube(launch_unchecked)]
+pub(crate) fn key_reduce_subtotals(
+    state: &[f32],
+    vector: &[f32],
+    output: &mut [f32],
+    status: &[Atomic<u32>],
+    #[comptime] values: usize,
+    #[comptime] round_bf16: bool,
+) {
+    let lane = usize::cast_from(UNIT_POS);
+    let at = usize::cast_from(CUBE_POS_X) * 32usize + lane % 32usize;
+    let block = lane / 32usize;
+    let mut partials = Shared::<[f32]>::new_slice(256usize);
+    let mut subtotal = 0.0f32;
+    if at < values {
+        subtotal = key_subtotal(state, vector, at / 128usize, at % 128usize, block);
+    }
+    partials[lane] = subtotal;
+    sync_cube();
+    if lane < 32usize && at < values {
+        let mut carry = 0.0f32;
+        for block in 0..8usize {
+            carry = add(carry, partials[block * 32usize + lane]);
         }
-        output[at] = y;
-        if !finite(y) {
-            status[0].fetch_or(NONFINITE_VALUE);
-        }
+        store_key_reduction(output, status, at, carry, round_bf16);
     }
 }
 
@@ -625,3 +674,6 @@ pub(crate) fn initial_core(
         }
     }
 }
+
+#[cfg(all(test, feature = "hip-source"))]
+mod key_reduce_ab;
