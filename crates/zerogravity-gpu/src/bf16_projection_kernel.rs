@@ -126,6 +126,126 @@ fn project_value(
     (output, result, rounded_bits, combined)
 }
 
+/// Exact wave32 sibling. One thread carries the two original CPU partials
+/// lane and lane+32; each partial keeps its own FMA sequence, then the
+/// first +32 reduction is performed locally before the unchanged 32->16->8
+/// shared reduction. This preserves the CPU64 arithmetic tree while requiring
+/// only one 32-lane hardware wave per output row.
+#[allow(dead_code)]
+#[cube(launch_unchecked)]
+pub(crate) fn project_cpu_bf16_wave32(
+    weights: &[u32],
+    input: &[u32],
+    zero: &[f32],
+    accumulation: &mut [f32],
+    rounded: &mut [f32],
+    status: &mut [u32],
+    #[comptime] rows: usize,
+    #[comptime] columns: usize,
+    #[comptime] output_row_stride: usize,
+) {
+    let group = usize::cast_from(CUBE_POS_X);
+    let requests = accumulation.len() / rows;
+    let output = output_index(group, requests, rows);
+    let request = output / rows;
+    let row = output % rows;
+    let lane = usize::cast_from(UNIT_POS);
+
+    let z = zero[0];
+    let mut low = z;
+    let mut high = z;
+    let mut low_invalid = 0u32;
+    let mut high_invalid = 0u32;
+    if u32::reinterpret(z) != 0u32 {
+        low_invalid |= 4u32;
+        high_invalid |= 4u32;
+    }
+
+    for chunk in 0..columns / 64usize {
+        let low_column = chunk * 64usize + lane;
+        let high_column = low_column + 32usize;
+
+        let low_wi = row * columns + low_column;
+        let high_wi = row * columns + high_column;
+        let low_xi = request * columns + low_column;
+        let high_xi = request * columns + high_column;
+
+        let low_wb =
+            (weights[low_wi / 2usize] >> (u32::cast_from(low_wi % 2usize) * 16u32)) & 0xffffu32;
+        let high_wb =
+            (weights[high_wi / 2usize] >> (u32::cast_from(high_wi % 2usize) * 16u32)) & 0xffffu32;
+        let low_xb =
+            (input[low_xi / 2usize] >> (u32::cast_from(low_xi % 2usize) * 16u32)) & 0xffffu32;
+        let high_xb =
+            (input[high_xi / 2usize] >> (u32::cast_from(high_xi % 2usize) * 16u32)) & 0xffffu32;
+
+        if (low_wb & 0x7f80u32) == 0x7f80u32 {
+            low_invalid |= 1u32;
+        }
+        if (high_wb & 0x7f80u32) == 0x7f80u32 {
+            high_invalid |= 1u32;
+        }
+        if (low_xb & 0x7f80u32) == 0x7f80u32 {
+            low_invalid |= 2u32;
+        }
+        if (high_xb & 0x7f80u32) == 0x7f80u32 {
+            high_invalid |= 2u32;
+        }
+
+        low = fma(
+            f32::reinterpret(low_wb << 16u32),
+            f32::reinterpret(low_xb << 16u32),
+            low,
+        );
+        high = fma(
+            f32::reinterpret(high_wb << 16u32),
+            f32::reinterpret(high_xb << 16u32),
+            high,
+        );
+    }
+
+    // Exactly the original first reduction stage: partial[lane] + partial[lane+32].
+    let mut sums = Shared::<[f32]>::new_slice(32usize);
+    let mut flags = Shared::<[u32]>::new_slice(32usize);
+    sums[lane] = low + high;
+    flags[lane] = low_invalid | high_invalid;
+    sync_cube();
+
+    if lane < 16usize {
+        sums[lane] = sums[lane] + sums[lane + 16usize];
+        flags[lane] = flags[lane] | flags[lane + 16usize];
+    }
+    sync_cube();
+    if lane < 8usize {
+        sums[lane] = sums[lane] + sums[lane + 8usize];
+        flags[lane] = flags[lane] | flags[lane + 8usize];
+    }
+    sync_cube();
+
+    if lane == 0usize {
+        let r0 = sums[0] + sums[4];
+        let r1 = sums[1] + sums[5];
+        let r2 = sums[2] + sums[6];
+        let r3 = sums[3] + sums[7];
+        let result = ((r0 + r2) + (r1 + r3)) + z;
+        let bits = u32::reinterpret(result);
+        let rounded_bits = (bits + (0x7fffu32 + ((bits >> 16u32) & 1u32))) & 0xffff0000u32;
+        let mut combined = 0u32;
+        for at in 0..8usize {
+            combined |= flags[at];
+        }
+        if (bits & 0x7f800000u32) == 0x7f800000u32 {
+            combined |= 8u32;
+        }
+        if (rounded_bits & 0x7f800000u32) == 0x7f800000u32 {
+            combined |= 16u32;
+        }
+        accumulation[output] = result;
+        rounded[rounded_index(output, rows, output_row_stride)] = f32::reinterpret(rounded_bits);
+        status[output] = combined;
+    }
+}
+
 /// One [request,original output row] per64-thread workgroup. The lane index
 /// is exactly CPU register*8+lane; no subgroup reduction or TensorCore math.
 #[cube(launch_unchecked)]
