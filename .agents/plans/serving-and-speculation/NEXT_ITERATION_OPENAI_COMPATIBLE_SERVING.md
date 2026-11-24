@@ -1,5 +1,11 @@
 # Next implementation iteration — full OpenAI-compatible serving
 
+**24 Nov delivery order:** the [full implementation plan](../FULL_IMPLEMENTATION_PLAN.md)
+sets phase priority. Shared foundations (including optional compiled-provider
+scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
+compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
+Older ordering below is context; valid owner constraints remain authoritative.
+
 Status: **design only / dormant**.
 
 This iteration runs **after**

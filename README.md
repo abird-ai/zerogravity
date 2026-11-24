@@ -49,20 +49,20 @@ Only local files are used; no model weights are automatically downloaded or exec
 
 ## Architecture
 
-~~~mermaid
-flowchart TB
-    I["CLI · SDK · HTTP · WebSocket · WebRTC"]
-    R["Model catalog · Router · Admission"]
-    S["Verified ModelAssembly + TaskDriver"]
-    P["SemanticProgram → ExecutableBundle"]
-    W["CPU · GPU · NPU · Peer workers"]
-    M["GPU VRAM · Unified RAM · Host RAM · SSD"]
-    C["Real device events → TaskCoordinator → StateRoot"]
+![ZeroGravity execution architecture](docs/architecture-overview.svg)
 
-    I --> R --> S --> P --> W --> C
-    M <--> W
-    C --> I
-~~~
+**Reuse optimized mathematics; own the execution fabric.** Native execution
+composes shared operators, vendor libraries and specialized kernels.
+Compiled execution providers are optional realizations of closed regions or
+whole models—not another scheduler, allocator or state authority.
+
+Device backends own physical execution and completion. Model semantics and
+numerical contracts remain independent of the implementation. Original
+Hugging Face checkpoints (Safetensors) and GGUF are the primary source paths;
+native inference does not require ONNX conversion or a graph compiler.
+
+The diagram describes the architecture, including planned integrations.
+MIGraphX, TensorRT, IREE and ONNX Runtime are later optional providers.
 
 **Four independent concerns:**
 
@@ -140,12 +140,12 @@ These are **architectural targets**, not a claim that every interface or model f
 | Native Rust **Qwen3.5 0.8B / 2B** GGUF text CPU execution and inspection | Complete native accelerator model execution and additional model families |
 | Original-model CPU state, snapshots, prefill, and source-reference checks | General compiled SemanticProgram / ExecutableBundle |
 | Shared immutable model loading and model catalog foundations | Continuous batching, exact speculation, and OpenAI-compatible multi-model server |
-| Source-qualified **selected** Vulkan GPU projections on NVIDIA and AMD | Whole-model GPU recurrent/attention/KV, CUDA/HIP, and distributed execution |
+| Native source-backed **HIP Qwen 0.8B / 2B / 27B** execution on qualified gfx1151; bounded CUDA and Vulkan paths | Optimized backend parity, broader model coverage, optional compiled providers and distributed execution |
 | Bounded physical GPU admission, fair worker primitives, and real-event safety probes | First-class SSD execution, multimodal media/real-time models, and full hardware tuning |
 
-**Qualification:** the Qwen CPU Phase 1 acceptance gate passed through 8K; 16K/32K full-model cases remain deferred. The GPU evidence covers selected original-model operations—not a complete GPU model run. vLLM-class serving and multimodal specialization remain design/implementation work, not measured product capabilities.
+**Qualification:** the original Qwen CPU Phase 1 gate passed through 8K. Whole-model HIP source execution, shared cohorts and native rocBLAS projection/GDN have passed bounded physical model tests. Exact-reference execution remains available. Optimized vLLM parity, wider hardware/model qualification and multimodal specialization remain implementation work. See the [current baseline](.agents/docs/CURRENT_BASELINE.md) for the measured scope.
 
-**Roadmap:** [phases P00–P23](.agents/plans/IMPLEMENTATION_ROADMAP.md) · [current progress](.agents/plans/CURRENT_STATUS_AND_TRACKING.md) · [acceptance and evidence](.agents/plans/REQUIREMENTS_AND_TEST_TRACEABILITY.md)
+**Roadmap:** [implementation plan](.agents/plans/FULL_IMPLEMENTATION_PLAN.md) · [current baseline](.agents/docs/CURRENT_BASELINE.md) · [current progress](.agents/plans/CURRENT_STATUS_AND_TRACKING.md) · [phases P00–P23](.agents/plans/IMPLEMENTATION_ROADMAP.md) · [acceptance](.agents/plans/REQUIREMENTS_AND_TEST_TRACEABILITY.md)
 
 ## FAQ
 

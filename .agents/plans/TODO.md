@@ -1,5 +1,9 @@
 # Plan queue
 
+**Current delivery order:** [Full implementation plan](FULL_IMPLEMENTATION_PLAN.md) — foundations → CLI/TUI/Web → ROCm parity → CUDA parity → Vulkan → optional compiled providers. This supersedes older ordering in linked designs; detailed owner TODOs and source/quality/lifetime constraints remain authoritative.
+
+The historical queue narratives and P-level labels below preserve owner scopes, not a competing delivery order. Work the earliest incomplete phase of the full plan first. Do not promote an icebox item or bypass an explicit hold by following a cross-reference.
+
 Current source, tests, and this queue are authoritative; Git retains retired history.
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md).

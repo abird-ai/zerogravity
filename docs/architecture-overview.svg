@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="714" viewBox="0 0 1040 714" role="img" aria-labelledby="title desc">
+  <title id="title">ZeroGravity execution architecture</title>
+  <desc id="desc">The execution fabric owns serving, scheduling, batching, memory and state. Model semantics and execution planning choose native execution or optional compiled regions. Both target device backends and physical hardware. Named libraries include future integrations, not a claim of current support.</desc>
+  <defs>
+    <style>
+      svg { color: #172033; }
+      .panel { fill: #ffffff; stroke: #d1d5db; stroke-width: 1.5; }
+      .soft { fill: #f6f8fa; stroke: #c9d1d9; stroke-width: 1.5; }
+      .label { fill: #172033; font: 600 19px system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .body { fill: #465266; font: 14px system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .small { fill: #465266; font: 12px system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .section { fill: #172033; font: 600 17px system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .rule { stroke: #d1d5db; stroke-width: 1; }
+      .arrow { fill: none; stroke: #8290a2; stroke-width: 1.5; marker-end: url(#arrow); }
+      .link { fill: none; stroke: #8290a2; stroke-width: 1.5; }
+      .arrowhead { fill: #8290a2; }
+      @media (prefers-color-scheme: dark) {
+        .panel { fill: #161b22; stroke: #414a57; }
+        .soft { fill: #212830; stroke: #4a5564; }
+        .label, .section { fill: #f0f3f6; }
+        .body, .small { fill: #b8c3d0; }
+        .rule { stroke: #414a57; }
+        .arrow, .link { stroke: #91a0b1; }
+        .arrowhead { fill: #91a0b1; }
+      }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" markerWidth="7" markerHeight="7" refX="8" refY="5" orient="auto">
+      <path class="arrowhead" d="M 0 0 L 10 5 L 0 10 z"/>
+    </marker>
+  </defs>
+  <g text-anchor="middle">
+    <rect class="soft" x="24" y="18" width="992" height="92" rx="12"/>
+    <text class="label" x="520" y="46">ZeroGravity execution fabric</text>
+    <text class="body" x="520" y="70">Serving · scheduling · batching · pipelines</text>
+    <text class="body" x="520" y="91">Memory · state · lifecycle · distributed execution</text>
+
+    <path class="arrow" d="M520 110 V130"/>
+    <rect class="panel" x="24" y="134" width="992" height="82" rx="12"/>
+    <text class="label" x="520" y="164">Model semantics and execution planning</text>
+    <text class="body" x="520" y="190">ModelProgram · ForwardPlan · closed computation regions · numerical contracts</text>
+
+    <path class="link" d="M520 216 V231 H266"/>
+    <path class="link" d="M520 231 H774"/>
+    <path class="arrow" d="M266 231 V249"/>
+    <path class="arrow" d="M774 231 V249"/>
+    <rect class="panel" x="24" y="253" width="484" height="204" rx="12"/>
+    <rect class="panel" x="532" y="253" width="484" height="204" rx="12"/>
+
+    <text class="label" x="266" y="284">Native execution</text>
+    <text class="body" x="266" y="307">Shared mathematical primitives and composed operators</text>
+    <path class="rule" d="M48 322 H484"/>
+    <text class="body" x="266" y="346">rocBLAS · hipBLASLt · cuBLASLt · CUTLASS</text>
+    <text class="body" x="266" y="369">FlashAttention · FlashInfer · MIOpen · cuDNN</text>
+    <text class="body" x="266" y="392">CubeCL · cooperative-matrix shaders · custom kernels</text>
+    <text class="body" x="266" y="415">Captured command graphs</text>
+    <text class="small" x="266" y="440">Primary execution path</text>
+
+    <text class="label" x="774" y="284">Compiled execution</text>
+    <text class="body" x="774" y="307">Whole models or closed computational regions</text>
+    <path class="rule" d="M556 322 H992"/>
+    <text class="body" x="774" y="351">MIGraphX · TensorRT</text>
+    <text class="body" x="774" y="375">IREE · ONNX Runtime</text>
+    <text class="body" x="774" y="399">Future graph accelerators</text>
+    <text class="small" x="774" y="440">Optional integrations · later phase</text>
+
+    <path class="link" d="M266 457 V477 H774 V457"/>
+    <path class="link" d="M142 477 H898"/>
+    <path class="arrow" d="M142 477 V495"/>
+    <path class="arrow" d="M394 477 V495"/>
+    <path class="arrow" d="M646 477 V495"/>
+    <path class="arrow" d="M898 477 V495"/>
+
+    <rect class="panel" x="24" y="499" width="236" height="64" rx="10"/>
+    <rect class="panel" x="276" y="499" width="236" height="64" rx="10"/>
+    <rect class="panel" x="528" y="499" width="236" height="64" rx="10"/>
+    <rect class="panel" x="780" y="499" width="236" height="64" rx="10"/>
+    <text class="section" x="142" y="525">CPU</text>
+    <text class="section" x="394" y="525">CUDA</text>
+    <text class="section" x="646" y="525">HIP / ROCm</text>
+    <text class="section" x="898" y="525">Vulkan</text>
+    <text class="small" x="142" y="546">Device backend</text>
+    <text class="small" x="394" y="546">Device backend</text>
+    <text class="small" x="646" y="546">Device backend</text>
+    <text class="small" x="898" y="546">Device backend</text>
+
+    <path class="link" d="M142 563 V582 H898 V563 M394 563 V582 M646 563 V582"/>
+    <path class="arrow" d="M520 582 V600"/>
+    <rect class="soft" x="24" y="604" width="992" height="74" rx="12"/>
+    <text class="label" x="520" y="632">Physical hardware</text>
+    <text class="body" x="520" y="656">CPU · GPU · NPU · specialized accelerators</text>
+    <text class="small" x="520" y="699">Conceptual architecture · provider support is qualified per model, backend and device</text>
+  </g>
+</svg>

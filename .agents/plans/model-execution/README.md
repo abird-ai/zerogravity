@@ -3,6 +3,12 @@ Co-authors: GPT-6
 
 # Zerogravity: source-real model execution (CPU-first)
 
+**24 Nov delivery order:** the [full implementation plan](../FULL_IMPLEMENTATION_PLAN.md)
+sets phase priority. Shared foundations (including optional compiled-provider
+scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
+compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
+Older ordering below is context; valid owner constraints remain authoritative.
+
 ## Active order
 
 1. **Qwen3.5 2B**, with 0.8B as the exact trained regression canary:

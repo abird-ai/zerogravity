@@ -1,5 +1,7 @@
 # Plans
 
+**Current delivery order:** [Full implementation plan](FULL_IMPLEMENTATION_PLAN.md) — foundations → CLI/TUI/Web → ROCm parity → CUDA parity → Vulkan → optional compiled providers. This supersedes older ordering in linked designs; detailed owner TODOs and source/quality/lifetime constraints remain authoritative.
+
 This folder is the agent planning entry point. Start here, then work from
 `TODO.md`. Git is the authoritative history (author, time, diff, provenance sha);
 this folder keeps the live queue and per-plan checklists.

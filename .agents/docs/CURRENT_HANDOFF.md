@@ -2,6 +2,16 @@
 
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
+**24 Nov priority decision:** start with the
+[full implementation plan](../plans/FULL_IMPLEMENTATION_PLAN.md). Complete
+all shared foundations, including the existing closed-region/compiled-provider
+scaffolding (no concrete graph SDK required). Then finish CLI/TUI/Web and
+public serving; match vLLM on ROCm first, CUDA next, then native Vulkan.
+Actual MIGraphX/TensorRT/IREE/ONNX Runtime integrations are a later optional
+phase. Original Hugging Face checkpoints/Safetensors and GGUF remain the
+primary source paths. Older next-step performance notes below describe
+reusable work and measured history, not precedence over this order.
+
 Full dated takeover snapshot:
 [`FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md).
 The 24 Nov pack is the canonical current takeover: it reconciles the original

@@ -4,6 +4,12 @@ Owner: @pvl
 
 # Recursive pipelines and composable optimization profiles
 
+**24 Nov delivery order:** the [full implementation plan](../FULL_IMPLEMENTATION_PLAN.md)
+sets phase priority. Shared foundations (including optional compiled-provider
+scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
+compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
+Older ordering below is context; valid owner constraints remain authoritative.
+
 Design proposal, 21 Oct 2026. Interfaces and new recursive/profile behavior remain
 unimplemented; no runtime or performance qualification follows from this document.
 Parent: pipeline composition.
