@@ -314,6 +314,21 @@ their existing numeric/source/physical acceptance gates.
   Full isolated gate 2384/0/101 passes. CUDA live actual fit still post-Client;
   Vulkan compile checked, no new physical qualification.
 
+## Shared catalog/source lifecycle — 24 Nov
+
+- [x] `057683d1`: common local GGUF path/descriptor/tokenizer/host admission
+  owner for CPU/GPU; same exact source passed into semantic recording and
+  physical ownership. Native HF snapshot/verified shard ownership remains
+  unchanged, alias declaration validation shared.
+- [x] SDK exact registered-owner alias membership and sole-owner retirement,
+  drain/join through existing lifecycle, no second registry/queue. Ordinary
+  GPU releases the original executable with retained catalog/tokenizer reader;
+  no per-step lock. CPU original readers retain their own source charges.
+- [x] CPU SDK/HTTP unload/reload, X2 native HIP C1/C8, L5 native CUDA C1
+  and local GGUF CUDA execution/unload pass. All-target combined build passes
+  after qualification-only invocation accessor migration; test-only correction
+  `139bdbdf`. Full isolated gate: 2388 passed, 0 failed, 101 explicit skips; release/installer/scripts pass.
+
 ## Uncommitted
 
 ### Phase 1 — source, semantics and executable lowering
@@ -321,8 +336,8 @@ their existing numeric/source/physical acceptance gates.
 Contract: [closed regions](REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering)
 and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
 
-- [ ] Reconcile catalog/model lifecycle and immutable source selection for
-  actual HF/GGUF consumers; generalize remaining cold placement only through
+- [ ] Continue selective mixed-owner retirement and remaining source lifecycle
+  through actual HF/GGUF consumers; generalize cold placement only through
   real consumers. Keep selected shape bands and typed ports, no naked
   scope or implicit retry. Contiguous text invocation/producer ports and the
   whole-text prepared boundary are implemented above; arbitrary explicit

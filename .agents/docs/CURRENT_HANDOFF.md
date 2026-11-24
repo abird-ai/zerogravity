@@ -20,6 +20,52 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Source checkpoint `057683d1c315fa026e0d4787b073757ca8caf699` —
+shared local source admission and bounded catalog retirement.**
+L5 test-only diagnostic correction `139bdbdf`; X2 executed the original
+implementation checkpoint. No source/kernel changes in the correction.
+`LocalRoutes` validates the full alias declaration before path access, resolves
+canonical local paths and shares the same prepared owner for aliases.
+CPU and ordinary GPU GGUF use a single held-descriptor loader: preserve the
+approved tokenizer's separate retained/constructor credits, admit the original
+conservative host-weight envelope before materialization, bound config bytes,
+and retain the weight lease on the actual `AdmittedGguf` TensorSource and
+ModelDefinition owner. Native HF keeps its existing authenticated snapshot
+and source plan; alias validation is shared. Canonical-path aliasing is not
+content-addressed deduplication across distinct paths, nor a guarantee
+against concurrent mutation of a local file.
+
+`ModelCatalog::aliases/unload` checks exact registered prepared-owner identity
+(not a name or equal source ID). Sole-owner route sets retire every alias
+together: existing admission closes under the lifecycle mutex, existing
+workers drain/join outside it, and the same Joining phase releases waiters
+before returning to Empty (or Closed if shutdown raced). Failed retirement
+stays sticky and prevents new loads. Mixed-owner selective retirement refuses
+before changing routes. Ordinary GPU GGUF now takes its executable once on
+worker retirement, uses the existing graph/lease/namespace cleanup, and
+leaves retained model metadata/tokenizer readers valid without retaining
+the executable. Cohort matching uses the original session model reference,
+not a new lock at each step. CPU retained source readers keep their own
+host credits until final drop. Native context lifetime remains backend-owned;
+cold reload is not a promise of same-process HIP context reinitialization.
+
+Focused catalog/loader tests pass (2 + 3). Genuine CPU GGUF fixture SDK/HTTP
+lifecycle unloads and reloads successfully. X2 native V2 Qwen 0.8B C1/C8
+passes expected tokens/replay/lane invariance and unload while retaining
+original handles, leaves only the context reservation, and returns to idle.
+L5 original native CUDA C1 and actual local Qwen 0.8B GGUF inference via two
+aliases pass unload; the GGUF test verifies zero device reservation,
+unfenced card, released host weight credit and valid final tokenizer.
+Combined CPU/CUDA/HIP all-target compile passes after migrating stale
+qualification-only invocation accessors. Full isolated gate: 2388 passed, 0 failed, 101 explicit skips; release/installer/scripts pass.
+No new numerical parity/performance baseline or wider provider eligibility.
+Next: selective retirement in mixed-owner route sets and remaining shared
+catalog/source lifecycle where required, preserving one registry/queue and
+actual in-flight ownership; advance other Phase 1 state, scheduling, task and
+observability seams without a second runtime.
+
+Prior accepted cold admission checkpoint:
+
 **Accepted source checkpoint `f4746c2350153b518e4730c3448e8f4ede02eab8` —
 cold capability, selected device and effective native admission.**
 Shared `ProviderMemoryBudget` applies the same headroom-preserving clamp to

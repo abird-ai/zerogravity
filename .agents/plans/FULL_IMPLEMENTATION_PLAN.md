@@ -138,11 +138,18 @@ refusal/retry and native/exact canaries, L5 CUDA singleton/paged/contiguous
 and original retirement pass; full isolated gate passes. CUDA still
 clamps/adopts the actual envelope on the Client actor; Vulkan guarded
 preadmission is compile checked, not newly physically qualified.
-Next reconcile catalog/model lifecycle and immutable source selection
-through existing SDK/runtime and actual HF/GGUF consumers; retain original
-alias/reader authority. Extend remaining physical admission and external
-allocation/runtime/device interop only for real consumers.
-None of these slices closes Phase 1.
+Source `057683d1` (test-only correction `139bdbdf`) shares CPU/GPU local
+GGUF held-descriptor host admission and canonical-path alias ownership,
+validates complete alias declarations also on HF, and implements exact
+sole-owner catalog unload/drain/join and cold reload through the original
+lifecycle. CPU SDK/HTTP unload/reload, X2 native HIP C1/C8 and L5 native
+CUDA C1 plus ordinary physical GGUF unload pass with retained-reader
+checks. Combined CPU/CUDA/HIP all-target compile passes. Full isolated
+gate: 2388 passed, 0 failed, 101 explicit skips; release/installer/scripts pass. Mixed-owner selective retirement, further
+source lifecycle/placement and state/pipeline/observability seams remain
+open; no new context reinitialization or execution eligibility. Extend
+physical admission and external allocation/runtime/device interop only
+for real consumers. None of these slices closes Phase 1.
 
 Complete the engineering contracts and their real consumers, including every
 foundation below. This is not a requirement to finish every backend optimization,

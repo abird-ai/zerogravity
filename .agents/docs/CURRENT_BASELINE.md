@@ -5,6 +5,20 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 24 Nov — catalog retirement and local source admission
+
+`057683d1` (test-only correction `139bdbdf`): CPU/GPU shared held-descriptor
+GGUF host admission, exact alias membership and sole-owner unload through
+the original drain/join lifecycle. CPU fixture SDK/HTTP unload and reload,
+X2 Qwen 0.8B native V2 C1/C8 and L5 CUDA native C1 / local GGUF two-alias
+inference and unload pass. Physical CUDA GGUF releases original device
+reservation and host weight credit while retained metadata/tokenizer
+remain valid; HIP leaves its original process context only. Combined
+CPU/CUDA/HIP all-target compile and full isolated gate (2388/0/101)
+pass. No new performance measurement, numerical parity or broader
+provider eligibility. Mixed-owner selective unload and arbitrary backend
+context reinitialization remain unsupported.
+
 ## 24 Nov — cold native admission acceptance
 
 `f4746c23` shares capacity/headroom fit and retains actual native loader

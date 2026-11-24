@@ -546,6 +546,23 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
 - [ ] E09 NPU/graph/wafer/remote distributed placement and state bridge.
 - [ ] E10 calibrated cost/autotune, matched vLLM/llama.cpp task benchmarks and release.
 
+## Sole-owner catalog retirement and local source ownership — 24 Nov
+
+- [x] `057683d1`: one lifecycle/alias registry. Exact owner membership,
+  sole-owner unload/drain/join, stale/foreign/mixed-owner refusal, sticky
+  failed retirement and cold reload after healthy retirement.
+- [x] Shared CPU/GPU held-descriptor GGUF loader and original conservative
+  host-weight charge on the retained source passed to execution; shared
+  declaration validation for HF. Ordinary GPU retirement uses the original
+  resident model/graph/lease/namespace and releases its executable despite
+  retained metadata/tokenizer. No per-token registry lock.
+- [x] Actual CPU GGUF SDK/HTTP unload and reload; HIP native C1/C8, CUDA
+  native C1 and ordinary CUDA GGUF alias replay/retirement with retained
+  handles. Focused tests and combined all-target compile pass.
+  `139bdbdf` fixes only a test diagnostic. Full isolated gate: 2388 passed, 0 failed, 101 explicit skips; release/installer/scripts pass.
+- [ ] Selective retirement of mixed-owner route sets, hot replacement,
+  backend context reinitialization and remaining source-lifecycle integration.
+
 ## Handoff and documentation maintenance
 
 - [x] Keep every transition document UTF-8, internally linked and consistent with the canonical current handoff plus the four maintained planning/status files.

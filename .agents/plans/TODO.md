@@ -9,15 +9,16 @@ Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md).
 The foundations pack links the complete dated history, source checkpoint, original design and plan/open-work/Git inventories. Live source and owning TODOs remain authoritative.
 
-**24 Nov Phase 1 checkpoint:** `f4746c23` accepted native cold device
-selection, common headroom fit, pre-Client HIP envelope and actual prepared
-resource reporting. HIP refusal/retry, native V2 C1/C8, exact C1 and L5
-native C1/C8 paged/contiguous pass with original retirement. Full isolated
-gate passes (2384/0/101). CUDA actual actor admission remains post-Client; no new
-physical Vulkan support. Next reconcile existing catalog/model lifecycle
-and immutable source selection for actual HF/GGUF consumers in the
-[full plan](FULL_IMPLEMENTATION_PLAN.md) and owning plans. No second catalog,
-allocator or scheduler, backend tuning or compiled SDK selection.
+**24 Nov Phase 1 checkpoint:** `057683d1` (test-only correction
+`139bdbdf`) shares local GGUF held-descriptor host admission and alias
+owners across CPU/GPU, validates complete aliases on HF and implements
+exact sole-owner catalog retirement through the existing lifecycle.
+CPU fixture unload/reload and real HIP C1/C8, CUDA C1 and CUDA GGUF unload
+pass; combined qualification all-target compile passes. Full isolated
+gate: 2388 passed, 0 failed, 101 explicit skips; release/installer/scripts pass. Continue mixed-owner selective retirement and
+remaining source/state/task/observability foundations in the
+[full plan](FULL_IMPLEMENTATION_PLAN.md) and owning plans. No second registry,
+allocator or scheduler, context reinitialization guarantee or backend tuning.
 
 **20 Nov authoritative refresh:** pushed/tracked `origin/main` is `f0f0640`; local signed
 source lineage above it includes `1222f8a` (multi-token GDN prefill), `60ba956` (matched
