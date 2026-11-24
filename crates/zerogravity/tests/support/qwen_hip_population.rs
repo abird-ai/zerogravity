@@ -351,7 +351,7 @@ fn public_source_population_benchmark() {
             let admission = h.admission();
             assert_eq!(admission["failed_gpu_quanta"], 0);
             assert_eq!(admission["queued_requests"], 0);
-            if cohort_width == 0 {
+            if cohort_width == 0 || clients == 1 {
                 assert_eq!(admission["gpu_fused_batches"], 0);
             } else {
                 assert!(admission["gpu_fused_batches"].as_u64().unwrap() > 0);

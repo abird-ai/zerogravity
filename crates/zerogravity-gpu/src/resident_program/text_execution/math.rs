@@ -284,6 +284,7 @@ impl Cold {
                 count += 1 + crate::source_gdn::chunk::execution::launch(
                     client,
                     g,
+                    self.guarded_triangular,
                     [&q, &k, &v, &beta, &decay_log, prior],
                     std::array::from_fn(|i| &out[i]),
                     [&temp[0], &temp[1]],

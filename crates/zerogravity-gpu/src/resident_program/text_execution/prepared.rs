@@ -9,6 +9,7 @@ pub(super) fn kernels(
     client: &Client,
     l: &layout::Layout,
     operands: &BTreeMap<String, Arc<PreparedBf16Projection>>,
+    guarded_triangular: bool,
 ) -> Result<Vec<Box<dyn CubeKernel>>> {
     let mut out: Vec<Box<dyn CubeKernel>> = Vec::new();
     let b = || BufferCompilationArg { inplace: None };
@@ -295,7 +296,11 @@ pub(super) fn kernels(
                     == zerogravity_core::encoding::StoredTensorEncoding::Scalar(
                         zerogravity_core::encoding::ScalarDType::Bf16,
                     );
-                out.extend(crate::source_gdn::chunk::prepared::kernels(client, vh)?);
+                out.extend(crate::source_gdn::chunk::prepared::kernels(
+                    client,
+                    vh,
+                    guarded_triangular,
+                )?);
                 out.extend(crate::source_rms::prepared::kernels(
                     client,
                     128,

@@ -3,7 +3,11 @@ use cubecl::prelude::{AddressType, BufferCompilationArg, ExecutionMode, KernelSe
 use cubecl::{client::Client, prelude::CubeDim};
 use cubecl_server::kernel::CubeKernel;
 use zerogravity_core::Result;
-pub(crate) fn kernels(client: &Client, heads: usize) -> Result<Vec<Box<dyn CubeKernel>>> {
+pub(crate) fn kernels(
+    client: &Client,
+    heads: usize,
+    guarded_triangular: bool,
+) -> Result<Vec<Box<dyn CubeKernel>>> {
     super::execution::Geometry::new(1, heads)?;
     let mut output: Vec<Box<dyn CubeKernel>> = Vec::new();
     let b = || BufferCompilationArg { inplace: None };
@@ -63,16 +67,29 @@ pub(crate) fn kernels(client: &Client, heads: usize) -> Result<Vec<Box<dyn CubeK
         b(),
         heads
     );
-    kernel!(
-        super::triangular::Triangular,
-        b(),
-        b(),
-        b(),
-        b(),
-        b(),
-        b(),
-        heads
-    );
+    if guarded_triangular {
+        kernel!(
+            super::triangular_guarded::TriangularGuarded,
+            b(),
+            b(),
+            b(),
+            b(),
+            b(),
+            b(),
+            heads
+        );
+    } else {
+        kernel!(
+            super::triangular::Triangular,
+            b(),
+            b(),
+            b(),
+            b(),
+            b(),
+            b(),
+            heads
+        );
+    }
     kernel!(
         super::prior_products::PriorProducts,
         b(),

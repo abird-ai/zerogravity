@@ -135,6 +135,11 @@ impl HipSourceNativePolicy {
     }
 
     #[cfg(feature = "hip-source")]
+    pub(crate) fn prefers_guarded_triangular(self) -> bool {
+        self == Self::Gfx1151 && std::env::var_os("ZG_TMP_X2_GUARDED_TRIANGULAR").is_some()
+    }
+
+    #[cfg(feature = "hip-source")]
     fn preparation_upper_bytes(self) -> (usize, usize) {
         (
             COMPILER_HOST + 2 * MAX_CODE + 2 * 1024 * 1024,

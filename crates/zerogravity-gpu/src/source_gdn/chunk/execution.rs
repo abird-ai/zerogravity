@@ -64,6 +64,7 @@ impl Geometry {
 pub(crate) fn launch(
     client: &Client,
     g: Geometry,
+    guarded_triangular: bool,
     i: [&Handle; 6],
     o: [&Handle; 19],
     s: [&Handle; 2],
@@ -197,7 +198,12 @@ pub(crate) fn launch(
             status_arg(),
             h,
         );
-        triangular::launch_unchecked(
+        let triangular = if guarded_triangular {
+            triangular_guarded::launch_unchecked
+        } else {
+            triangular::launch_unchecked
+        };
+        triangular(
             client,
             grid(h * 128),
             dim,

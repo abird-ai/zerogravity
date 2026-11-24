@@ -483,6 +483,3 @@ pub(crate) fn state_product(
         }
     }
 }
-
-#[cfg(all(test, feature = "hip-source"))]
-mod triangular_ab;

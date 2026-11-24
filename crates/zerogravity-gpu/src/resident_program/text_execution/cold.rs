@@ -33,6 +33,7 @@ pub struct ResidentTextInventory {
 pub(crate) struct Admission {
     pub(super) budget: crate::hip::native::HipSourceBudget,
     pub(super) native_policy: crate::hip::native::HipSourceNativePolicy,
+    guarded_triangular: bool,
     pub(super) source: VerifiedTensorSource,
     pub(super) layout: Arc<layout::Layout>,
     pub(super) operands: BTreeMap<String, Arc<PreparedBf16Projection>>,
@@ -187,6 +188,7 @@ impl Admission {
         Ok(Self {
             budget,
             native_policy,
+            guarded_triangular: native_policy.prefers_guarded_triangular(),
             source,
             layout,
             operands,
@@ -205,7 +207,12 @@ impl Admission {
         WindowWorkspace,
     )> {
         Ok((
-            prepared::kernels(client, &self.layout, &self.operands)?,
+            prepared::kernels(
+                client,
+                &self.layout,
+                &self.operands,
+                self.guarded_triangular,
+            )?,
             self.source.reserve_workspace(1024 * 1024)?,
         ))
     }
@@ -356,6 +363,7 @@ impl Admission {
         )?;
         let cold = Arc::new(Cold {
             frame,
+            guarded_triangular: self.guarded_triangular,
             source: self.source,
             layout: self.layout,
             service,
@@ -384,6 +392,7 @@ impl Admission {
 }
 
 pub(in crate::resident_program) struct Cold {
+    pub(super) guarded_triangular: bool,
     pub(super) frame: Arc<crate::resident_leases::frame_checkpoint::ResidentFrameCheckpoint>,
     pub(super) source: VerifiedTensorSource,
     pub(super) layout: Arc<layout::Layout>,

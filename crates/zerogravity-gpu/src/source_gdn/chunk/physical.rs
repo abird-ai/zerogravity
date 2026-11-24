@@ -38,7 +38,7 @@ async fn run() -> Result<()> {
     let mut catalogue = Vec::new();
     let mut ids = std::collections::HashSet::new();
     for heads in archive.heads() {
-        for kernel in super::prepared::kernels(cold.client(), heads)? {
+        for kernel in super::prepared::kernels(cold.client(), heads, false)? {
             if ids.insert(kernel.id()) {
                 catalogue.push(kernel);
             }
@@ -198,6 +198,7 @@ async fn execute(
     super::execution::launch(
         service.client(),
         super::execution::Geometry::new(case.rows, h)?,
+        false,
         std::array::from_fn(|n| &i[n]),
         std::array::from_fn(|n| &o[n]),
         std::array::from_fn(|n| &s[n]),
