@@ -79,6 +79,7 @@ fn project_value(
     #[comptime] shared_pair: bool,
     #[comptime] input_certified: bool,
     #[comptime] hoist_packed_indices: bool,
+    #[comptime] reduce_subtrees: bool,
 ) -> (usize, f32, u32, u32) {
     let output = output_index(usize::cast_from(CUBE_POS_X), requests, rows);
     let request = output / rows;
@@ -137,21 +138,40 @@ fn project_value(
     }
     sums[lane] = accumulator;
     flags[lane] = invalid;
-    // Fold integer status alongside the unchanged float tree/barriers.
     sync_cube();
-    if lane < 32usize {
-        sums[lane] = sums[lane] + sums[lane + 32usize];
-        flags[lane] = flags[lane] | flags[lane + 32usize];
-    }
-    sync_cube();
-    if lane < 16usize {
-        sums[lane] = sums[lane] + sums[lane + 16usize];
-        flags[lane] = flags[lane] | flags[lane + 16usize];
-    }
-    sync_cube();
-    if lane < 8usize {
-        sums[lane] = sums[lane] + sums[lane + 8usize];
-        flags[lane] = flags[lane] | flags[lane + 8usize];
+    if comptime!(reduce_subtrees) {
+        // Each of the first eight lanes owns one disjoint subtree. The
+        // +32, +16, +8 tree stays exact; no lane reads another's written slot.
+        if lane < 8usize {
+            let a = sums[lane] + sums[lane + 32usize];
+            let b = sums[lane + 16usize] + sums[lane + 48usize];
+            let c = sums[lane + 8usize] + sums[lane + 40usize];
+            let d = sums[lane + 24usize] + sums[lane + 56usize];
+            sums[lane] = (a + b) + (c + d);
+            flags[lane] = flags[lane]
+                | flags[lane + 32usize]
+                | flags[lane + 16usize]
+                | flags[lane + 48usize]
+                | flags[lane + 8usize]
+                | flags[lane + 40usize]
+                | flags[lane + 24usize]
+                | flags[lane + 56usize];
+        }
+    } else {
+        if lane < 32usize {
+            sums[lane] = sums[lane] + sums[lane + 32usize];
+            flags[lane] = flags[lane] | flags[lane + 32usize];
+        }
+        sync_cube();
+        if lane < 16usize {
+            sums[lane] = sums[lane] + sums[lane + 16usize];
+            flags[lane] = flags[lane] | flags[lane + 16usize];
+        }
+        sync_cube();
+        if lane < 8usize {
+            sums[lane] = sums[lane] + sums[lane + 8usize];
+            flags[lane] = flags[lane] | flags[lane + 8usize];
+        }
     }
     sync_cube();
 
@@ -326,6 +346,7 @@ pub(crate) fn project_cpu_bf16(
         false,
         false,
         false,
+        false,
     );
     if lane == 0usize {
         accumulation[output] = result;
@@ -359,6 +380,42 @@ pub(crate) fn project_cpu_bf16_hoisted(
         columns,
         false,
         false,
+        true,
+        false,
+    );
+    if lane == 0usize {
+        accumulation[output] = result;
+        rounded[rounded_index(output, rows, output_row_stride)] = f32::reinterpret(rounded_bits);
+        status[output] = combined;
+    }
+}
+
+/// Hoisted packed traversal with two-barrier exact CPU64 reduction.
+/// Eight disjoint subtrees retain the original arithmetic and status order.
+#[allow(dead_code)]
+#[cube(launch_unchecked)]
+pub(crate) fn project_cpu_bf16_subtrees(
+    weights: &[u32],
+    input: &[u32],
+    zero: &[f32],
+    accumulation: &mut [f32],
+    rounded: &mut [f32],
+    status: &mut [u32],
+    #[comptime] rows: usize,
+    #[comptime] columns: usize,
+    #[comptime] output_row_stride: usize,
+) {
+    let lane = usize::cast_from(UNIT_POS);
+    let (output, result, rounded_bits, combined) = project_value(
+        weights,
+        input,
+        zero,
+        accumulation.len() / rows,
+        rows,
+        columns,
+        false,
+        false,
+        true,
         true,
     );
     if lane == 0usize {
@@ -397,6 +454,7 @@ pub(crate) fn project_cpu_bf16_pair_load(
         true,
         false,
         false,
+        false,
     );
     if lane == 0usize {
         accumulation[output] = result;
@@ -433,6 +491,7 @@ pub(crate) fn project_cpu_bf16_input_certified(
         columns,
         false,
         true,
+        false,
         false,
     );
     if lane == 0usize {
@@ -709,6 +768,7 @@ pub(crate) fn project_cpu_bf16_certified(
         accumulation.len() / rows,
         rows,
         columns,
+        false,
         false,
         false,
         false,
