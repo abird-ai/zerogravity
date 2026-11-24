@@ -1067,7 +1067,8 @@ fn qwen_gguf_cuda_sdk_unloads_with_retained_handle() {
                 assert!(completion_tokens <= 1);
                 output
             }
-            event => panic!("unexpected GGUF response: {event:?}"),
+            ResponseEvent::Error(error) => panic!("GGUF worker: {error}"),
+            _ => panic!("unexpected GGUF response"),
         }
     };
     assert_eq!(complete("source"), complete("alias"));
