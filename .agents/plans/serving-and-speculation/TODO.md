@@ -66,11 +66,31 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   14,557 dispatches / output16 to53,310, but the stronger decode-heavy wall time was
   ~31.518s, slower than `4070610`; `d15b02f` keeps that correct model-neutral alternate
   as an explicit dormant method while restoring per-tile status selection.
-- [ ] Next HIP C1 unit: one Projection node can own several matrices with the same input,
-  while each current operand repacks that unchanged singleton activation independently.
-  Reuse one exact packed input across those matrices without changing weight streaming,
-  projection arithmetic or status semantics; remeasure the same47+3 and decode-heavy
-  cell. Do not detour into another GDN/state micro-optimization.
+- [x] Further singleton projection alternatives are retained but not selected.
+  `e1701e7` reused one packed activation across matrices in a Projection node and saved
+  144 dispatches per47+3 wave, but warm mean regressed~6.359→6.613s (~4.0%);
+  `1d49ec7` restores per-matrix packing and keeps `enqueue_rows_prepacked` dormant.
+  `5d51896` factors one exact shared CubeCL projection reduction and adds a certified
+  sibling that ORs validity directly into flight status. It remains exact and cuts
+  47+3 dispatches17,653→14,182 and output16 73,384→50,504, but warm means are
+  ~6.419s/~31.886s versus selected~6.359s/~31.350s; `90537b6` removes the Qwen
+  selector/load-time preparation while retaining the shared core, certified kernel and
+  certified enqueue primitive dormant. Fewer launches are not the governing cost here.
+- [x] Temporary cold-accounting probe on A1 explains its streamed0.8B profile under
+  the explicit14GiB benchmark envelope: weights=1,503,789,056B, workspace=38,384,640B,
+  root=45,809,664B ×18, while native-device admission alone is9,663,676,416B
+  (=8GiB `MODULE_OPAQUE` +1GiB `MAX_CODE`). HIP reports15.232GiB total /15.221GiB
+  free; resident0.8B under the current charge would leave only~17MiB total headroom,
+  so do not force it. Production `run-rocm` derives an explicit total from HIP current
+  free memory minus configured headroom; X2's canonical24GiB envelope may therefore
+  have different residency and must not inherit A1-streaming conclusions blindly.
+- [ ] Next HIP architecture/performance unit: re-qualify the inherited8GiB first-module
+  opaque allowance with a fail-closed physical accounting design. `HipNativeInventory`
+  already source-bounds code-object load bytes; the opaque allowance predates ordinary
+  Qwen runtime and came from a provisional qualification policy. Do not simply change
+  8GiB→1GiB or release arbiter charge from a racy before/after memory observation.
+  Establish a controlled physical bound/attribution on an isolated execution host, then
+  price the native owner from that bound and re-check small-model residency/performance.
 - [ ] Parallel CUDA correctness unit: localize and fix the deterministic C4/B8
   identical-lane divergence before using wider CUDA throughput as accepted evidence.
   The existing population benchmark is the reproducer; do not add a fixture corpus.

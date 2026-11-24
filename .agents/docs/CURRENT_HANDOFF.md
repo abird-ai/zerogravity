@@ -209,8 +209,21 @@ The current implementation priorities implied by that baseline are:
    extra dispatch reduction and was reverted by `baf4c9f`. Singleton status coalescing
    (`ec6fb57`) cut far more launches but lost to `4070610` on the decode-heavy cell
    (~31.518s vs~31.350s), so `d15b02f` keeps that model-neutral transform dormant.
-   Next C1 projection unit: avoid repacking one unchanged singleton activation once per
-   matrix inside the same Projection node, then remeasure before deeper kernel changes;
+   Reusing one packed singleton activation across matrices (`e1701e7`) saved144
+   dispatches but regressed47+3 warm mean ~6.359→6.613s (~4.0%); signed `1d49ec7`
+   restores per-matrix packing and keeps the prepacked entry point dormant. A shared
+   exact projection core plus certified in-kernel status (`5d51896`) cut47+3
+   17,653→14,182 dispatches and output16 73,384→50,504, but lost wall time
+   (~6.419s and~31.886s versus selected~6.359s/~31.350s); `90537b6` removes only
+   its selector/preparation and retains the certified primitive dormant. The larger
+   finding is cold accounting: an A1 14GiB test envelope has1,503,789,056B weights,
+   ~38.4MB workspace and18×45,809,664B roots, but9GiB native-device reservation
+   (8GiB `MODULE_OPAQUE` +1GiB max code) forces streaming. A1 HIP reports15.232GiB
+   total, so forcing residency under that policy would leave only~17MiB headroom and
+   is unsafe. Production `run-rocm` instead derives its budget from current HIP free
+   memory minus configured headroom; do not generalize the14GiB A1 benchmark to X2.
+   Next HIP unit: safely re-qualify the inherited8GiB opaque-module charge using
+   physical accounting/evidence; do not shrink it from historical constants alone;
 4. treat L5 27B SSD streaming as its own memory-constrained mode: the current exact
    47+3-token cell takes about 305.95 s timed median, so source/transfer overlap and
    streaming mechanics are the relevant optimization target there.
