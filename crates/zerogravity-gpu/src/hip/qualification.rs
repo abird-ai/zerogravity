@@ -531,7 +531,7 @@ async fn run(unknown: bool, sealed_miss: bool, rocblas: bool) -> Result<()> {
             let time = timing
                 .resolve()
                 .await
-                .map_err(|e| Error::State(e.to_string()))?
+                .ok_or_else(|| Error::State("rocBLAS device timing unavailable".into()))?
                 .duration()
                 .as_secs_f64()
                 * 1000.0
