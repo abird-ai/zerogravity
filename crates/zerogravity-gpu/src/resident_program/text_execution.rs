@@ -20,7 +20,7 @@ mod layout;
 mod math;
 mod observation;
 mod prepared;
-pub(crate) use cohort::DecodeCohortSubmission;
+pub(crate) use cohort::{CohortBuffers, CohortSubmission};
 pub(super) use cold::Cold;
 
 fn tables() -> Vec<Vec<u8>> {

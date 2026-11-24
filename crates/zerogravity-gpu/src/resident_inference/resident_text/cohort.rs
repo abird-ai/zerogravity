@@ -57,7 +57,7 @@ impl ResidentTextModel {
     /// Reduction-compatible native prompt chunks at one committed frontier.
     /// Intermediate chunks are state-only; terminal chunks may produce greedy
     /// readout. Compatibility is derived from the source plan, not model names.
-    pub async fn prepare_prefill_cohort_admitted(
+    pub(super) async fn prepare_cuda_prefill_cohort_admitted(
         self: &Arc<Self>,
         rows: &[(&ResidentTextSession, &BoundInvocation)],
     ) -> Result<ResidentTextCohortPreparation> {

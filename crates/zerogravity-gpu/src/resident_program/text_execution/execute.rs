@@ -19,12 +19,19 @@ use zerogravity_core::{
 
 impl Cold {
     pub(super) fn value_lease(&self, id: ValueId) -> Result<&ResidentLease> {
+        self.value_lease_in(&self.slots, id)
+    }
+    pub(super) fn value_lease_in<'a>(
+        &self,
+        slots: &'a [ResidentLease],
+        id: ValueId,
+    ) -> Result<&'a ResidentLease> {
         let b = self
             .layout
             .bindings
             .get(id.0 as usize)
             .ok_or_else(|| Error::State("text-execution value binding absent".into()))?;
-        self.slots
+        slots
             .get(b.slot)
             .ok_or_else(|| Error::State("text-execution value slot absent".into()))
     }
@@ -226,8 +233,18 @@ impl Cold {
             .zip(&output_lengths)
             .map(|(id, n)| self.value(*id, *n))
             .collect::<Result<Vec<_>>>()?;
-        self.node_views(flight, node, d, states, rows, base, &inputs, &outputs)
-            .await
+        self.node_views(
+            flight,
+            node,
+            d,
+            states,
+            rows,
+            base,
+            &self.slots,
+            &inputs,
+            &outputs,
+        )
+        .await
     }
 
     pub(super) async fn node_views(
@@ -238,6 +255,7 @@ impl Cold {
         states: &BTreeMap<StateSlot, &StateBinding>,
         rows: usize,
         base: usize,
+        slots: &[ResidentLease],
         inputs: &[Handle],
         outputs: &[Handle],
     ) -> Result<usize> {
@@ -294,7 +312,7 @@ impl Cold {
                                     }
                                     launch(actual.handle());
                                     Ok(vec![
-                                        self.value_lease(node.outputs[0])?.clone(),
+                                        self.value_lease_in(slots, node.outputs[0])?.clone(),
                                         self.status.clone(),
                                     ])
                                 })
@@ -313,8 +331,8 @@ impl Cold {
                     inputs[0].clone()
                 };
                 let combined = d.matrices().iter().map(|m| m.rows).sum::<usize>();
-                let input_lease = self.value_lease(node.inputs[0])?;
-                let output_lease = self.value_lease(node.outputs[0])?;
+                let input_lease = self.value_lease_in(slots, node.inputs[0])?;
+                let output_lease = self.value_lease_in(slots, node.outputs[0])?;
                 let direct = active == 1 && input_lease.id() != output_lease.id();
                 let mut offset = 0;
                 let mut count = 0;

@@ -1,4 +1,4 @@
-//! Independent cached-decode cohorts for HIP text execution.
+//! Independent prefill/decode cohorts for HIP text execution.
 //! Only projections share multi-row physical work in the first cut; every stateful
 //! operator still addresses each session's original private state.
 use super::*;
@@ -9,37 +9,52 @@ impl ResidentTextModel {
         self: &Arc<Self>,
         rows: &[(&ResidentTextSession, &BoundInvocation)],
     ) -> Result<ResidentTextCohortPreparation> {
+        self.prepare_hip_cohort_admitted(rows, InvocationPhase::Decode)
+            .await
+    }
+
+    pub(super) async fn prepare_hip_cohort_admitted(
+        self: &Arc<Self>,
+        rows: &[(&ResidentTextSession, &BoundInvocation)],
+        phase: InvocationPhase,
+    ) -> Result<ResidentTextCohortPreparation> {
         if !matches!(self.cohort_width, 4 | 8)
             || !matches!(rows.len(), 2 | 4 | 8)
             || rows.len() > self.cohort_width
             || self.contract != NumericalContract::TorchCpuAvx2Bf16MixedV1
         {
             return Err(Error::Unsupported(
-                "source HIP decode cohort requires an admitted width".into(),
+                "source HIP cohort requires an admitted width".into(),
             ));
         }
         let mut requests = Vec::with_capacity(rows.len());
         let mut scopes = Vec::with_capacity(rows.len());
         let mut sessions = Vec::with_capacity(rows.len());
         let frontier = rows[0].0.binding().frontier();
+        let tokens = rows[0].1.input().token_count();
+        let emit_logits = rows[0].1.input().emit_logits();
+        if !(1..=64).contains(&tokens)
+            || phase == InvocationPhase::Prefill && tokens == 1
+            || phase == InvocationPhase::Decode && (tokens != 1 || !emit_logits)
+        {
+            return Err(Error::Unsupported("HIP cohort invocation shape".into()));
+        }
         for (session, invocation) in rows {
             if !Arc::ptr_eq(&session.model, self)
-                || !invocation.input().emit_logits()
-                || invocation.input().token_count() != 1
+                || invocation.input().emit_logits() != emit_logits
+                || invocation.input().token_count() != tokens
                 || invocation.input().base() as u64 != frontier
                 || session.binding().frontier() != frontier
             {
-                return Err(Error::State(
-                    "source HIP decode cohort row/root differs".into(),
-                ));
+                return Err(Error::State("source HIP cohort row/root differs".into()));
             }
             scopes.push(self.reader_scope(CALL_HOST_BYTES)?);
-            requests.push(invocation.materialize(InvocationPhase::Decode)?);
+            requests.push(invocation.materialize(phase)?);
             sessions.push(&session.inner);
         }
         let Some(inner) = self
             .inner
-            .prepare_text_execution_decode_cohort(&sessions, &requests, &scopes)
+            .prepare_text_execution_cohort(&sessions, &requests, &scopes, emit_logits)
             .await?
         else {
             return Ok(ResidentTextCohortPreparation::Capacity);
@@ -51,11 +66,12 @@ impl ResidentTextModel {
 }
 
 impl ResidentModel {
-    async fn prepare_text_execution_decode_cohort(
+    async fn prepare_text_execution_cohort(
         self: &Arc<Self>,
         sessions: &[&ResidentSession],
         requests: &[ForwardPlan],
         scopes: &[Arc<ReaderScope>],
+        emit_logits: bool,
     ) -> Result<Option<PreparedResidentCohort>> {
         let width = sessions.len();
         if !matches!(width, 2 | 4 | 8) || requests.len() != width || scopes.len() != width {
@@ -69,61 +85,60 @@ impl ResidentModel {
             .map(|session| session.binding())
             .collect::<Vec<_>>();
         let roots = ResidentBatchRows::new(&bases, 1)?;
-        let frontier = roots.frontier().ok_or_else(|| {
-            Error::Unsupported("HIP decode cohort requires an aligned frontier".into())
-        })?;
+        let frontier = roots
+            .frontier()
+            .ok_or_else(|| Error::Unsupported("HIP cohort requires an aligned frontier".into()))?;
         if roots.source() != self.service.source_identity()
             || sessions
                 .iter()
                 .any(|session| !Arc::ptr_eq(&session.model, self))
         {
-            return Err(Error::State(
-                "HIP decode cohort model/source differs".into(),
-            ));
+            return Err(Error::State("HIP cohort model/source differs".into()));
         }
         let calls = requests
             .iter()
             .map(|request| {
-                request.text_invocation().ok_or_else(|| {
-                    Error::State("HIP decode cohort materialized call absent".into())
-                })
+                request
+                    .text_invocation()
+                    .ok_or_else(|| Error::State("HIP cohort materialized call absent".into()))
             })
             .collect::<Result<Vec<_>>>()?;
-        if calls.iter().zip(&bases).any(|(call, base)| {
-            call.phase() != InvocationPhase::Decode
-                || call.tokens().len() != 1
-                || call.tokens().base() as u64 != frontier
-                || base.frontier() != frontier
-                || call.source() != base.source()
-                || call.tokens().capacity() != self.capacity
-                || call.tokens().vocabulary() as u64 != self.vocab
-        }) {
+        let tokens = calls[0].tokens().len();
+        let phase = calls[0].phase();
+        if !(1..=64).contains(&tokens)
+            || phase == InvocationPhase::Prefill && tokens == 1
+            || phase == InvocationPhase::Decode && (tokens != 1 || !emit_logits)
+            || calls.iter().zip(&bases).any(|(call, base)| {
+                call.phase() != phase
+                    || call.tokens().len() != tokens
+                    || call.tokens().base() as u64 != frontier
+                    || base.frontier() != frontier
+                    || call.source() != base.source()
+                    || call.tokens().capacity() != self.capacity
+                    || call.tokens().vocabulary() as u64 != self.vocab
+            })
+        {
             return Err(Error::Unsupported(
-                "HIP decode cohort requires aligned cached rows".into(),
+                "HIP cohort requires aligned invocation rows".into(),
             ));
         }
 
         let mut attempts = Vec::with_capacity(width);
         for session in sessions {
             self.validate_domains(&session.domains, true)?;
-            attempts.push(session.authority.begin_advance(1)?);
+            attempts.push(session.authority.begin_advance(tokens as u64)?);
         }
         let staging_bytes = self
             .state_bytes
             .checked_mul(width)
-            .ok_or_else(|| Error::Limit("HIP decode cohort staging bytes".into()))?;
-        let logits_bytes = (self.vocab as usize)
-            .checked_mul(width)
-            .and_then(|words| words.checked_mul(4))
-            .ok_or_else(|| Error::Limit("HIP decode cohort logit bytes".into()))?;
-
+            .ok_or_else(|| Error::Limit("HIP cohort staging bytes".into()))?;
         let allocation = self.allocation.lock().await;
         let mut candidates = Vec::with_capacity(width);
         for session in sessions {
             let position = usize::try_from(session.binding().frontier())
-                .map_err(|_| Error::Limit("HIP decode cohort frontier".into()))?;
+                .map_err(|_| Error::Limit("HIP cohort frontier".into()))?;
             match self
-                .forward_candidate_state(&session.domains, 1, position)
+                .forward_candidate_state(&session.domains, tokens, position)
                 .await
             {
                 Ok(candidate) => candidates.push(candidate),
@@ -142,43 +157,26 @@ impl ResidentModel {
             .iter()
             .map(|candidate| candidate.bindings().to_vec())
             .collect::<Vec<_>>();
-        let projection_bytes = {
+        let buffers = {
             let workspace = self.workspace.lock().await;
             if !workspace.program.is_forward_source() {
                 return Err(Error::State(
-                    "HIP decode cohort reached another resident model".into(),
+                    "HIP cohort reached another resident model".into(),
                 ));
             }
-            workspace
+            let Some(buffers) = workspace
                 .program
-                .text_execution_decode_cohort_projection_bytes(width)?
+                .text_execution_cohort_buffers(requests, emit_logits)?
+            else {
+                return Ok(None);
+            };
+            buffers
         };
-        let transient_bytes = projection_bytes
-            .checked_mul(3)
-            .and_then(|bytes| bytes.checked_add(logits_bytes))
-            .ok_or_else(|| Error::Limit("HIP decode cohort transient bytes".into()))?;
-        if transient_bytes > self.service.remaining_capacity()? {
-            return Ok(None);
-        }
-        let logits = self
-            .service
-            .allocate_uninitialized(logits_bytes, BufferRole::Output)?;
-        // Multi-row projection scratch is transient. The ordinary model retains
-        // its compact singleton arena when no cohort is live.
-        let projection = [
-            self.service
-                .allocate_uninitialized(projection_bytes, BufferRole::Activation)?,
-            self.service
-                .allocate_uninitialized(projection_bytes, BufferRole::Scratch)?,
-            self.service
-                .allocate_uninitialized(projection_bytes, BufferRole::Scratch)?,
-        ];
-
         let ticket = self.service.queue().submit(
             self.service.budget(),
             ResourceOwner {
                 model: self.service.owner().model.clone(),
-                session: format!("text-decode-cohort-{}", bases[0].session().get()),
+                session: format!("text-cohort-{}", bases[0].session().get()),
             },
             &[AllocationRequest {
                 kind: AllocationClass::Scratch,
@@ -190,7 +188,7 @@ impl ResidentModel {
         let workspace = self.workspace.lock().await;
         if !workspace.program.is_forward_source() {
             return Err(Error::State(
-                "HIP decode cohort reached another resident model".into(),
+                "HIP cohort reached another resident model".into(),
             ));
         }
         for (request, binding) in requests.iter().zip(&bindings) {
@@ -199,14 +197,12 @@ impl ResidentModel {
                 .program
                 .validate_text_execution_states(request, binding)?;
         }
-        let mut accesses = workspace.logit_accesses.clone();
-        accesses.push((logits.clone(), DeviceAccess::Write));
-        accesses.extend(
-            projection
-                .iter()
-                .cloned()
-                .map(|lease| (lease, DeviceAccess::Write)),
-        );
+        let mut accesses = if emit_logits {
+            workspace.logit_accesses.clone()
+        } else {
+            workspace.state_accesses.clone()
+        };
+        accesses.extend(buffers.accesses());
         for (session, candidate) in sessions.iter().zip(&candidates) {
             accesses.extend(candidate.state_accesses(&session.domains)?);
         }
@@ -220,24 +216,18 @@ impl ResidentModel {
         }
         let submitted = workspace
             .program
-            .launch_text_execution_decode_cohort(
-                &mut flight,
-                requests,
-                &bindings,
-                [&projection[0], &projection[1], &projection[2]],
-                &logits,
-            )
+            .launch_text_execution_cohort(&mut flight, requests, &bindings, &buffers)
             .await?;
         if submitted.fused_dispatches == 0 {
             return Err(Error::State(
-                "HIP decode cohort produced no shared projection work".into(),
+                "HIP cohort produced no shared projection work".into(),
             ));
         }
 
-        let reads = vec![
-            lease_for(&accesses, &submitted.status)?.readback(0, 4)?,
-            logits.readback(0, logits_bytes)?,
-        ];
+        let mut reads = vec![lease_for(&accesses, &submitted.status)?.readback(0, 4)?];
+        if let Some(logits) = &buffers.logits {
+            reads.push(logits.readback(0, logits.bytes())?);
+        }
         let outputs = bases
             .iter()
             .copied()
@@ -247,17 +237,21 @@ impl ResidentModel {
         let (ready, read) = flight
             .complete_cohort_with_readback(&outputs, &reads, |data| {
                 if !all_zero(&data[0]) {
-                    return Err(Error::State("HIP decode cohort status refused".into()));
+                    return Err(Error::State("HIP cohort status refused".into()));
                 }
-                if words(&data[1])?.iter().any(|value| !value.is_finite()) {
-                    return Err(Error::State("HIP decode cohort nonfinite logits".into()));
+                if emit_logits && words(&data[1])?.iter().any(|value| !value.is_finite()) {
+                    return Err(Error::State("HIP cohort nonfinite logits".into()));
                 }
                 Ok(())
             })
             .await?;
         slot.finish()?;
 
-        let logits = words(&read[1])?;
+        let logits = if emit_logits {
+            words(&read[1])?
+        } else {
+            Vec::new()
+        };
         let row_words = self.vocab as usize;
         let mut prepared = Vec::with_capacity(width);
         for (row, ((attempt, candidate), ready)) in
@@ -271,12 +265,17 @@ impl ResidentModel {
                 derived: Vec::new(),
                 ready,
                 readback: InferenceReadback {
-                    logits: logits[row * row_words..(row + 1) * row_words].to_vec(),
+                    logits: if emit_logits {
+                        logits[row * row_words..(row + 1) * row_words].to_vec()
+                    } else {
+                        Vec::new()
+                    },
                     dispatches: usize::from(row == 0) * submitted.dispatches,
-                    bytes: row_words * 4 + usize::from(row == 0) * 4,
-                    chunk_bytes: row_words * 4 + usize::from(row == 0) * 4,
-                    state_only_steps: 0,
-                    logit_steps: 1,
+                    bytes: usize::from(emit_logits) * row_words * 4 + usize::from(row == 0) * 4,
+                    chunk_bytes: usize::from(emit_logits) * row_words * 4
+                        + usize::from(row == 0) * 4,
+                    state_only_steps: usize::from(!emit_logits),
+                    logit_steps: usize::from(emit_logits),
                     ..Default::default()
                 },
             });

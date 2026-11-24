@@ -573,8 +573,11 @@ fn row_destination(
         .ok_or_else(|| Error::Limit("BF16 projection strided output extent".into()))?;
     Ok(first..end)
 }
+// One bounded cohort can flatten eight independent 64-row invocations.
+// The weight tile, arithmetic tree and exact output view are unchanged.
+pub(crate) const MAX_PROJECTION_INPUT_ROWS: usize = 8 * 64;
 fn row_extents(input_rows: usize, columns: usize, outputs: usize) -> Result<(usize, usize)> {
-    if !(1..=64).contains(&input_rows) || columns == 0 || outputs == 0 {
+    if !(1..=MAX_PROJECTION_INPUT_ROWS).contains(&input_rows) || columns == 0 || outputs == 0 {
         return Err(Error::Limit("BF16 projection source row geometry".into()));
     }
     let elements = |width: usize| {
@@ -706,7 +709,7 @@ mod row_tests {
 
     #[test]
     fn whole_and_partial_weight_windows_group_all_rows() {
-        for input_rows in [1, 17, 47, 62, 64] {
+        for input_rows in [1, 17, 47, 62, 64, 376, 512] {
             for outputs in [1, 128, 6144, 248320] {
                 assert_eq!(
                     row_tile(input_rows, outputs, outputs).unwrap(),
@@ -722,7 +725,7 @@ mod row_tests {
         }
         for (inputs, outputs, tile) in [
             (0, 64, 64),
-            (65, 64, 64),
+            (513, 64, 64),
             (64, 0, 1),
             (64, 64, 0),
             (64, 64, 65),
@@ -734,7 +737,7 @@ mod row_tests {
 
     #[test]
     fn every_partial_window_fits_the_complete_output_owner() {
-        for inputs in [1, 17, 47, 62, 64] {
+        for inputs in [1, 17, 47, 62, 64, 376, 512] {
             for outputs in [1usize, 128, 6144, 248320] {
                 for tile in [1, outputs.div_ceil(3), outputs] {
                     for first in (0..outputs).step_by(tile) {
@@ -754,7 +757,7 @@ mod row_tests {
         }
         for (inputs, outputs, first, rows) in [
             (0, 64, 0, 64),
-            (65, 64, 0, 64),
+            (513, 64, 0, 64),
             (1, 0, 0, 1),
             (1, 64, 0, 0),
             (1, 64, 64, 1),
@@ -780,7 +783,7 @@ mod row_tests {
     fn invalid_or_overflowing_complete_row_extents_refuse() {
         for (rows, columns, outputs) in [
             (0, 64, 64),
-            (65, 64, 64),
+            (513, 64, 64),
             (1, 0, 64),
             (1, 64, 0),
             (64, usize::MAX, 64),

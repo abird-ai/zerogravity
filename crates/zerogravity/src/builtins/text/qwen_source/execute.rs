@@ -277,10 +277,14 @@ impl Executor for SourceText {
     fn cohort_eligible(row: &Active<Self>) -> bool {
         let device_greedy = row.state.session.supports_device_greedy();
         if row.cursor < row.prompt.len() {
-            if !device_greedy {
+            let rows = row.prefill_count();
+            if !row
+                .model
+                .resident()
+                .is_ok_and(|model| model.prefill_rows_compatible(rows, rows))
+            {
                 return false;
             }
-            let rows = row.prefill_count();
             let frontier = row.state.session.binding().frontier() as usize;
             rows != 0
                 && rows <= row.model.source.plan.max_chunk_rows()
@@ -321,7 +325,6 @@ impl Executor for SourceText {
             return first.state.session.binding().frontier()
                 == row.state.session.binding().frontier();
         }
-        #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
         let rows_compatible = match (first_prefill, row_prefill) {
             (Some((_, left)), Some((_, right))) => first
                 .model
@@ -329,8 +332,6 @@ impl Executor for SourceText {
                 .is_ok_and(|model| model.prefill_rows_compatible(left, right)),
             _ => false,
         };
-        #[cfg(not(all(feature = "model-qwen35", feature = "cuda")))]
-        let rows_compatible = false;
         native_phase_compatible(first_prefill, row_prefill, rows_compatible)
     }
     #[cfg(any(
@@ -387,53 +388,33 @@ impl Executor for SourceText {
         let model = rows[0].model.resident()?;
         let ready = match work.phase {
             Phase::Prefill => {
-                #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
+                let invocations = rows
+                    .iter()
+                    .map(|row| {
+                        let end = row.cursor.checked_add(row.prefill_count()).ok_or_else(|| {
+                            crate::Error::Limit("source cohort prefill cursor".into())
+                        })?;
+                        row.model.source.plan.bind_invocation(
+                            InvocationPhase::Prefill,
+                            Self::frontier(&row.state),
+                            Arc::from(&row.prompt[row.cursor..end]),
+                            !work.state_only,
+                        )
+                    })
+                    .collect::<crate::Result<Vec<_>>>()
+                    .map_err(ServiceError::inference)?;
+                let inputs = rows
+                    .iter()
+                    .zip(&invocations)
+                    .map(|(row, invocation)| (&row.state.session, invocation.bound_invocation()))
+                    .collect::<Vec<_>>();
+                match block_on(model.prepare_prefill_cohort_admitted(&inputs))
+                    .map_err(ServiceError::inference)?
                 {
-                    if !rows[0].state.session.supports_device_greedy() {
-                        return Err(ServiceError::new(
-                            500,
-                            "source_cohort",
-                            "HIP cohorts intentionally keep prefill on the singleton path",
-                        ));
+                    ResidentTextCohortPreparation::Capacity => {
+                        return Ok(Preparation::Capacity);
                     }
-                    let invocations =
-                        rows.iter()
-                            .map(|row| {
-                                let end = row.cursor.checked_add(row.prefill_count()).ok_or_else(
-                                    || crate::Error::Limit("source cohort prefill cursor".into()),
-                                )?;
-                                row.model.source.plan.bind_invocation(
-                                    InvocationPhase::Prefill,
-                                    Self::frontier(&row.state),
-                                    Arc::from(&row.prompt[row.cursor..end]),
-                                    !work.state_only,
-                                )
-                            })
-                            .collect::<crate::Result<Vec<_>>>()
-                            .map_err(ServiceError::inference)?;
-                    let inputs = rows
-                        .iter()
-                        .zip(&invocations)
-                        .map(|(row, invocation)| {
-                            (&row.state.session, invocation.bound_invocation())
-                        })
-                        .collect::<Vec<_>>();
-                    match block_on(model.prepare_prefill_cohort_admitted(&inputs))
-                        .map_err(ServiceError::inference)?
-                    {
-                        ResidentTextCohortPreparation::Capacity => {
-                            return Ok(Preparation::Capacity);
-                        }
-                        ResidentTextCohortPreparation::Ready(ready) => ready,
-                    }
-                }
-                #[cfg(not(all(feature = "model-qwen35", feature = "cuda")))]
-                {
-                    return Err(ServiceError::new(
-                        500,
-                        "source_cohort",
-                        "HIP cohorts intentionally keep prefill on the singleton path",
-                    ));
+                    ResidentTextCohortPreparation::Ready(ready) => ready,
                 }
             }
             Phase::Decode => {

@@ -97,34 +97,33 @@ impl ResidentProgram {
     }
 
     #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
-    pub(crate) fn text_execution_decode_cohort_projection_bytes(
+    pub(crate) fn text_execution_cohort_buffers(
         &self,
-        width: usize,
-    ) -> Result<usize> {
+        requests: &[ForwardPlan],
+        emit_logits: bool,
+    ) -> Result<Option<super::text_execution::CohortBuffers>> {
         match &self.body {
-            ResidentProgramBody::TextExecution(body) => body.decode_cohort_projection_bytes(width),
+            ResidentProgramBody::TextExecution(body) => body.cohort_buffers(requests, emit_logits),
             _ => Err(Error::Unsupported(
-                "decode cohort requires HIP text execution".into(),
+                "cohort requires HIP text execution".into(),
             )),
         }
     }
 
     #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
-    pub(crate) async fn launch_text_execution_decode_cohort(
+    pub(crate) async fn launch_text_execution_cohort(
         &self,
         flight: &mut Flight<'_>,
         requests: &[ForwardPlan],
         states: &[Vec<StateBinding>],
-        projection: [&crate::resident_leases::ResidentLease; 3],
-        logits: &crate::resident_leases::ResidentLease,
-    ) -> Result<super::text_execution::DecodeCohortSubmission> {
+        buffers: &super::text_execution::CohortBuffers,
+    ) -> Result<super::text_execution::CohortSubmission> {
         match &self.body {
             ResidentProgramBody::TextExecution(body) => {
-                body.execute_decode_cohort(flight, requests, states, projection, logits)
-                    .await
+                body.execute_cohort(flight, requests, states, buffers).await
             }
             _ => Err(Error::Unsupported(
-                "decode cohort requires HIP text execution".into(),
+                "cohort requires HIP text execution".into(),
             )),
         }
     }

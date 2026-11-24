@@ -101,6 +101,26 @@ pub(super) fn kernels(
         match d.kind() {
             SourceOperatorKind::Projection { .. } => {
                 let width = d.matrices().iter().map(|m| m.rows).sum::<usize>();
+                if d.row_selection()
+                    == zerogravity_core::accelerator::program::SourceRowSelection::LastActive
+                {
+                    for members in [2usize, 4, 8] {
+                        add!(
+                            crate::program_kernels::copy_strided_words::CopyStridedWords,
+                            32,
+                            b(),
+                            b(),
+                            b(),
+                            (),
+                            (),
+                            (),
+                            (),
+                            members,
+                            d.matrices()[0].columns,
+                            false
+                        );
+                    }
+                }
                 for m in d.matrices() {
                     add!(
                         super::kernels::columns::Columns,

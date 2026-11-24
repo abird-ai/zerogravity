@@ -1,4 +1,4 @@
-//! Independent cached-decode rows sharing one text-execution activation traversal.
+//! Independent invocations sharing one text-execution activation traversal.
 //! Projections use their existing multi-row primitive; stateful operators retain
 //! each session's private state and position.
 use super::{
@@ -13,57 +13,237 @@ use crate::{
 use cubecl::{bytes::Bytes, server::Handle};
 use zerogravity_core::{
     accelerator::program::{InvocationPhase, PlanNode, SourceOperator, SourceOperatorKind},
-    device_events::DeviceAccess,
+    device_events::{BufferRole, DeviceAccess},
 };
 
-pub(crate) struct DecodeCohortSubmission {
+pub(crate) struct CohortSubmission {
     pub status: Handle,
     pub dispatches: usize,
     pub fused_dispatches: usize,
 }
 
+/// Transient activation/scratch extensions of the original cold arena.
+/// Reuse slots that already fit the flattened independent invocations.
+pub(crate) struct CohortBuffers {
+    slots: Vec<ResidentLease>,
+    packed: ResidentLease,
+    projection: [ResidentLease; 3],
+    selected: Option<ResidentLease>,
+    pub(crate) logits: Option<ResidentLease>,
+    extra: Vec<ResidentLease>,
+}
+impl CohortBuffers {
+    pub(crate) fn accesses(&self) -> impl Iterator<Item = (ResidentLease, DeviceAccess)> + '_ {
+        self.extra
+            .iter()
+            .cloned()
+            .map(|lease| (lease, DeviceAccess::Write))
+    }
+    fn value(
+        &self,
+        cold: &Cold,
+        id: zerogravity_core::accelerator::program::ValueId,
+        words: usize,
+    ) -> Result<Handle> {
+        view(cold.value_lease_in(&self.slots, id)?, 0, bytes(words)?)
+    }
+}
+
+fn bytes(words: usize) -> Result<usize> {
+    words
+        .checked_mul(4)
+        .ok_or_else(|| Error::Limit("text cohort word extent".into()))
+}
+
 impl Cold {
-    pub(crate) fn decode_cohort_projection_bytes(&self, width: usize) -> Result<usize> {
-        if !matches!(width, 2 | 4 | 8) {
+    fn cohort_calls<'a>(
+        &self,
+        requests: &'a [ForwardPlan],
+    ) -> Result<Vec<&'a zerogravity_core::accelerator::program::TextInvocation>> {
+        if !matches!(requests.len(), 2 | 4 | 8) {
+            return Err(Error::Unsupported("text cohort width".into()));
+        }
+        let calls = requests
+            .iter()
+            .map(|r| self.validate_request(r))
+            .collect::<Result<Vec<_>>>()?;
+        let first = calls[0];
+        if calls.iter().any(|call| {
+            call.phase() != first.phase()
+                || call.tokens().len() != first.tokens().len()
+                || call.tokens().base() != first.tokens().base()
+        }) {
             return Err(Error::Unsupported(
-                "text-execution decode cohort requires two, four or eight rows".into(),
+                "text cohort requires equal aligned invocations".into(),
             ));
         }
-        self.layout
-            .projection_scratch_words
-            .checked_mul(width)
-            .and_then(|words| words.checked_mul(4))
-            .ok_or_else(|| Error::Limit("text-execution decode cohort projection scratch".into()))
+        Ok(calls)
     }
 
-    pub(crate) async fn execute_decode_cohort(
+    pub(crate) fn cohort_buffers(
+        &self,
+        requests: &[ForwardPlan],
+        emit_logits: bool,
+    ) -> Result<Option<CohortBuffers>> {
+        let calls = self.cohort_calls(requests)?;
+        let width = calls.len();
+        let rows = calls[0].tokens().len();
+        let nodes = if emit_logits {
+            requests[0].nodes()
+        } else {
+            requests[0].state_nodes()
+        };
+        let mut slots = vec![0usize; self.slots.len()];
+        let mut projection = 0usize;
+        let mut packed = 0usize;
+        let mut selected = 0usize;
+        for node in nodes {
+            let PlanOperation::SourceOperator { descriptor: d, .. } = &node.operation else {
+                return Err(Error::State("text cohort materialization absent".into()));
+            };
+            for (ids, words) in [
+                (&node.inputs, d.input_elements()?),
+                (&node.outputs, d.output_elements()?),
+            ] {
+                if ids.len() != words.len() {
+                    return Err(Error::State("text cohort operand count".into()));
+                }
+                for (&id, words) in ids.iter().zip(words) {
+                    let i = id.0 as usize;
+                    if words > self.layout.plan.values()[i].capacity_elements()? {
+                        return Err(Error::State("text cohort logical value extent".into()));
+                    }
+                    // Terminal logits are a separate readback owner.
+                    if Some(id) != self.layout.plan.logits() {
+                        let slot = self.layout.bindings[i].slot;
+                        slots[slot] = slots[slot].max(bytes(words * width)?);
+                    }
+                }
+            }
+            if let SourceOperatorKind::Projection { selected_row } = d.kind() {
+                let active = if selected_row.is_some() {
+                    width
+                } else {
+                    width * rows
+                };
+                for m in d.matrices() {
+                    let words = active
+                        .checked_mul(m.rows)
+                        .ok_or_else(|| Error::Limit("text cohort projection extent".into()))?;
+                    if active * self.operands[&m.name].max_launch_rows()
+                        > self.service.client().properties().hardware.max_cube_count.0 as usize
+                    {
+                        return Ok(None);
+                    }
+                    projection = projection.max(bytes(words)?);
+                    packed = packed.max(bytes(active * m.columns)? / 2);
+                    if selected_row.is_some() && rows > 1 {
+                        selected = selected.max(bytes(active * m.columns)?);
+                    }
+                }
+            }
+        }
+        if projection == 0 || packed == 0 {
+            return Err(Error::State("text cohort projection absent".into()));
+        }
+        let logits_bytes = if emit_logits {
+            bytes(width * self.layout.vocabulary)?
+        } else {
+            0
+        };
+        let extra_bytes = layout::sum(
+            slots
+                .iter()
+                .zip(&self.slots)
+                .map(|(&n, lease)| if n > lease.bytes() { n } else { 0 })
+                .chain([
+                    if packed > self.packed.bytes() {
+                        packed
+                    } else {
+                        0
+                    },
+                    if projection > self.scratch[layout::PROJECT].bytes() {
+                        projection
+                    } else {
+                        0
+                    },
+                    if projection > self.accumulation.bytes() {
+                        projection
+                    } else {
+                        0
+                    },
+                    if projection > self.flags.bytes() {
+                        projection
+                    } else {
+                        0
+                    },
+                    selected,
+                    logits_bytes,
+                ]),
+        )?;
+        if extra_bytes > self.service.remaining_capacity()? {
+            return Ok(None);
+        }
+        let mut extra = Vec::new();
+        let mut allocate = |n, role| {
+            let lease = self.service.allocate_uninitialized(n, role)?;
+            extra.push(lease.clone());
+            Ok::<_, Error>(lease)
+        };
+        let mut extend = |lease: &ResidentLease, n, role| {
+            if n <= lease.bytes() {
+                Ok(lease.clone())
+            } else {
+                allocate(n, role)
+            }
+        };
+        let slots = slots
+            .into_iter()
+            .zip(&self.slots)
+            .map(|(n, lease)| extend(lease, n, BufferRole::Activation))
+            .collect::<Result<Vec<_>>>()?;
+        let packed = extend(&self.packed, packed, BufferRole::Scratch)?;
+        let projection = [
+            extend(
+                &self.scratch[layout::PROJECT],
+                projection,
+                BufferRole::Activation,
+            )?,
+            extend(&self.accumulation, projection, BufferRole::Scratch)?,
+            extend(&self.flags, projection, BufferRole::Scratch)?,
+        ];
+        let selected = (selected != 0)
+            .then(|| allocate(selected, BufferRole::Activation))
+            .transpose()?;
+        let logits = (logits_bytes != 0)
+            .then(|| allocate(logits_bytes, BufferRole::Output))
+            .transpose()?;
+        Ok(Some(CohortBuffers {
+            slots,
+            packed,
+            projection,
+            selected,
+            logits,
+            extra,
+        }))
+    }
+
+    pub(crate) async fn execute_cohort(
         self: &Arc<Self>,
         flight: &mut Flight<'_>,
         requests: &[ForwardPlan],
         states: &[Vec<StateBinding>],
-        projection: [&ResidentLease; 3],
-        logits: &ResidentLease,
-    ) -> Result<DecodeCohortSubmission> {
-        let width = requests.len();
-        if !matches!(width, 2 | 4 | 8) || states.len() != width {
-            return Err(Error::Unsupported(
-                "text-execution decode cohort requires two, four or eight rows".into(),
-            ));
+        buffers: &CohortBuffers,
+    ) -> Result<CohortSubmission> {
+        let calls = self.cohort_calls(requests)?;
+        let width = calls.len();
+        if states.len() != width {
+            return Err(Error::State("text cohort state count".into()));
         }
-        let calls = requests
-            .iter()
-            .map(|request| self.validate_request(request))
-            .collect::<Result<Vec<_>>>()?;
         let base = calls[0].tokens().base();
-        if calls.iter().any(|call| {
-            call.phase() != InvocationPhase::Decode
-                || call.tokens().len() != 1
-                || call.tokens().base() != base
-        }) {
-            return Err(Error::Unsupported(
-                "text-execution decode cohort requires aligned cached rows".into(),
-            ));
-        }
+        let rows = calls[0].tokens().len();
+        let decode = calls[0].phase() == InvocationPhase::Decode;
+        let emit_logits = buffers.logits.is_some();
         let maps = calls
             .iter()
             .zip(states)
@@ -72,7 +252,7 @@ impl Cold {
 
         // Each row was validated against the resident workspace above. Also prove
         // that roots from different rows do not alias one another.
-        let mut roots = Vec::new();
+        let mut roots = buffers.extra.clone();
         for row in states {
             for binding in row {
                 for buffers in [&binding.prior, &binding.candidate] {
@@ -92,7 +272,7 @@ impl Cold {
             .pairwise_disjoint_extension(&workspace, &roots)?
         {
             return Err(Error::State(
-                "text-execution decode cohort physical roots overlap".into(),
+                "text-execution cohort physical roots overlap".into(),
             ));
         }
 
@@ -107,12 +287,12 @@ impl Cold {
                 }
             }
         }
-        flight.require_accesses([
-            (projection[0], DeviceAccess::Write),
-            (projection[1], DeviceAccess::Write),
-            (projection[2], DeviceAccess::Write),
-            (logits, DeviceAccess::Write),
-        ])?;
+        flight.require_accesses(
+            buffers
+                .extra
+                .iter()
+                .map(|lease| (lease, DeviceAccess::Write)),
+        )?;
         flight.retain_completion_owner(self.clone())?;
         self.native
             .require_live(self.service.client(), self.source.source_identity())?;
@@ -120,30 +300,37 @@ impl Cold {
             .client()
             .write(&self.status_view()?, Bytes::from_bytes_vec(vec![0; 4]));
 
-        let nodes = requests[0].nodes();
-        if requests
+        let node_lists = requests
             .iter()
-            .any(|request| request.nodes().len() != nodes.len())
-        {
+            .map(|request| {
+                if emit_logits {
+                    request.nodes()
+                } else {
+                    request.state_nodes()
+                }
+            })
+            .collect::<Vec<_>>();
+        let nodes = node_lists[0];
+        if node_lists.iter().any(|peer| peer.len() != nodes.len()) {
             return Err(Error::State(
-                "text-execution decode cohort node coverage differs".into(),
+                "text-execution cohort node coverage differs".into(),
             ));
         }
         let mut dispatches = 0usize;
         let mut fused_dispatches = 0usize;
         for (index, node) in nodes.iter().enumerate() {
-            let descriptors = requests
+            let descriptors = node_lists
                 .iter()
-                .map(|request| {
-                    let peer = &request.nodes()[index];
+                .map(|nodes| {
+                    let peer = &nodes[index];
                     if peer.inputs != node.inputs || peer.outputs != node.outputs {
                         return Err(Error::State(
-                            "text-execution decode cohort topology differs".into(),
+                            "text-execution cohort topology differs".into(),
                         ));
                     }
                     let PlanOperation::SourceOperator { descriptor, .. } = &peer.operation else {
                         return Err(Error::State(
-                            "text-execution decode cohort materialization differs".into(),
+                            "text-execution cohort materialization differs".into(),
                         ));
                     };
                     Ok(descriptor)
@@ -157,43 +344,47 @@ impl Cold {
                     || first.parameters() != descriptor.parameters()
             }) {
                 return Err(Error::State(
-                    "text-execution decode cohort operator semantics differ".into(),
+                    "text-execution cohort operator semantics differ".into(),
                 ));
             }
             if matches!(first.kind(), SourceOperatorKind::Projection { .. }) {
                 let (actual, fused) = self
-                    .projection_decode_cohort(flight, node, first, width, projection, logits)
+                    .projection_cohort(flight, node, first, width, buffers)
                     .await?;
                 dispatches = dispatches
                     .checked_add(actual)
-                    .ok_or_else(|| Error::Limit("decode cohort dispatch count".into()))?;
+                    .ok_or_else(|| Error::Limit("text cohort dispatch count".into()))?;
                 fused_dispatches = fused_dispatches
                     .checked_add(fused)
-                    .ok_or_else(|| Error::Limit("decode cohort fused count".into()))?;
+                    .ok_or_else(|| Error::Limit("text cohort fused count".into()))?;
                 continue;
             }
-            if matches!(first.kind(), SourceOperatorKind::CausalConvSplit { .. }) {
+            if decode && matches!(first.kind(), SourceOperatorKind::CausalConvSplit { .. }) {
                 dispatches = dispatches
-                    .checked_add(self.convolution_decode_cohort(node, first, &maps, width, base)?)
-                    .ok_or_else(|| Error::Limit("decode cohort dispatch count".into()))?;
+                    .checked_add(
+                        self.convolution_decode_cohort(node, first, &maps, width, base, buffers)?,
+                    )
+                    .ok_or_else(|| Error::Limit("text cohort dispatch count".into()))?;
                 continue;
             }
-            if matches!(
-                first.kind(),
-                SourceOperatorKind::Rms(_)
-                    | SourceOperatorKind::ResidualRms(_)
-                    | SourceOperatorKind::QkRmsRotaryGated(_)
-                    | SourceOperatorKind::Sigmoid { .. }
-                    | SourceOperatorKind::Multiply { .. }
-                    | SourceOperatorKind::SiluAndMul { .. }
-            ) {
+            if decode
+                && matches!(
+                    first.kind(),
+                    SourceOperatorKind::Rms(_)
+                        | SourceOperatorKind::ResidualRms(_)
+                        | SourceOperatorKind::QkRmsRotaryGated(_)
+                        | SourceOperatorKind::Sigmoid { .. }
+                        | SourceOperatorKind::Multiply { .. }
+                        | SourceOperatorKind::SiluAndMul { .. }
+                )
+            {
                 let input_lengths = first.input_elements()?;
                 let output_lengths = first.output_elements()?;
                 if node.inputs.len() != input_lengths.len()
                     || node.outputs.len() != output_lengths.len()
                 {
                     return Err(Error::State(
-                        "text-execution decode cohort row-wise operand count".into(),
+                        "text-execution cohort row-wise operand count".into(),
                     ));
                 }
                 let inputs = node
@@ -201,7 +392,8 @@ impl Cold {
                     .iter()
                     .zip(&input_lengths)
                     .map(|(id, elements)| {
-                        self.value(
+                        buffers.value(
+                            self,
                             *id,
                             elements.checked_mul(width).ok_or_else(|| {
                                 Error::Limit("decode cohort row-wise input extent".into())
@@ -214,7 +406,8 @@ impl Cold {
                     .iter()
                     .zip(&output_lengths)
                     .map(|(id, elements)| {
-                        self.value(
+                        buffers.value(
+                            self,
                             *id,
                             elements.checked_mul(width).ok_or_else(|| {
                                 Error::Limit("decode cohort row-wise output extent".into())
@@ -225,11 +418,19 @@ impl Cold {
                 dispatches = dispatches
                     .checked_add(
                         self.node_views(
-                            flight, node, first, &maps[0], width, base, &inputs, &outputs,
+                            flight,
+                            node,
+                            first,
+                            &maps[0],
+                            width,
+                            base,
+                            &buffers.slots,
+                            &inputs,
+                            &outputs,
                         )
                         .await?,
                     )
-                    .ok_or_else(|| Error::Limit("decode cohort dispatch count".into()))?;
+                    .ok_or_else(|| Error::Limit("text cohort dispatch count".into()))?;
                 continue;
             }
 
@@ -240,16 +441,15 @@ impl Cold {
                 if node.inputs.len() != input_lengths.len()
                     || node.outputs.len() != output_lengths.len()
                 {
-                    return Err(Error::State(
-                        "text-execution decode cohort operand count".into(),
-                    ));
+                    return Err(Error::State("text-execution cohort operand count".into()));
                 }
                 let inputs = node
                     .inputs
                     .iter()
                     .zip(&input_lengths)
                     .map(|(id, elements)| {
-                        let all = self.value(
+                        let all = buffers.value(
+                            self,
                             *id,
                             elements
                                 .checked_mul(width)
@@ -271,7 +471,8 @@ impl Cold {
                     .iter()
                     .zip(&output_lengths)
                     .map(|(id, elements)| {
-                        let all = self.value(
+                        let all = buffers.value(
+                            self,
                             *id,
                             elements.checked_mul(width).ok_or_else(|| {
                                 Error::Limit("decode cohort output extent".into())
@@ -293,20 +494,28 @@ impl Cold {
                 dispatches = dispatches
                     .checked_add(
                         self.node_views(
-                            flight, node, descriptor, &maps[row], 1, base, &inputs, &outputs,
+                            flight,
+                            node,
+                            descriptor,
+                            &maps[row],
+                            rows,
+                            base,
+                            &buffers.slots,
+                            &inputs,
+                            &outputs,
                         )
                         .await?,
                     )
-                    .ok_or_else(|| Error::Limit("decode cohort dispatch count".into()))?;
+                    .ok_or_else(|| Error::Limit("text cohort dispatch count".into()))?;
             }
         }
         self.page.finish()?;
         if fused_dispatches == 0 {
             return Err(Error::State(
-                "text-execution decode cohort produced no shared projection".into(),
+                "text-execution cohort produced no shared projection".into(),
             ));
         }
-        Ok(DecodeCohortSubmission {
+        Ok(CohortSubmission {
             status: self.status.handle(),
             dispatches,
             fused_dispatches,
@@ -320,6 +529,7 @@ impl Cold {
         states: &[BTreeMap<StateSlot, &StateBinding>],
         width: usize,
         base: usize,
+        buffers: &CohortBuffers,
     ) -> Result<usize> {
         let SourceOperatorKind::CausalConvSplit {
             domain,
@@ -350,19 +560,22 @@ impl Cold {
                 "decode cohort convolution one-row geometry".into(),
             ));
         }
-        let packed = self.value(
+        let packed = buffers.value(
+            self,
             node.inputs[0],
             packed_elements
                 .checked_mul(width)
                 .ok_or_else(|| Error::Limit("decode cohort convolution input".into()))?,
         )?;
-        let activated = self.value(
+        let activated = buffers.value(
+            self,
             node.outputs[0],
             activated_elements
                 .checked_mul(width)
                 .ok_or_else(|| Error::Limit("decode cohort convolution activated".into()))?,
         )?;
-        let gate = self.value(
+        let gate = buffers.value(
+            self,
             node.outputs[1],
             gate_elements
                 .checked_mul(width)
@@ -434,73 +647,92 @@ impl Cold {
         Ok(1)
     }
 
-    async fn projection_decode_cohort(
+    async fn projection_cohort(
         &self,
         flight: &mut Flight<'_>,
         node: &PlanNode,
         descriptor: &SourceOperator,
         width: usize,
-        projection: [&ResidentLease; 3],
-        logits: &ResidentLease,
+        buffers: &CohortBuffers,
     ) -> Result<(usize, usize)> {
         let SourceOperatorKind::Projection { selected_row } = descriptor.kind() else {
             unreachable!("validated projection")
         };
-        let input_lengths = descriptor.input_elements()?;
-        let output_lengths = descriptor.output_elements()?;
-        let [input_elements] = input_lengths.as_slice() else {
-            return Err(Error::State("decode cohort projection input arity".into()));
-        };
-        let [output_elements] = output_lengths.as_slice() else {
-            return Err(Error::State("decode cohort projection output arity".into()));
-        };
+        let rows = descriptor.invocation().tokens().len();
         let columns = descriptor.matrices()[0].columns;
-        if *input_elements != columns {
-            return Err(Error::State(
-                "decode cohort projection one-row input geometry".into(),
-            ));
+        let combined = descriptor.matrices().iter().map(|m| m.rows).sum::<usize>();
+        if node.inputs.len() != 1
+            || node.outputs.len() != 1
+            || descriptor.input_elements()? != [rows * columns]
+            || descriptor.output_elements()?
+                != [if selected_row.is_some() {
+                    combined
+                } else {
+                    rows * combined
+                }]
+        {
+            return Err(Error::State("text cohort projection geometry".into()));
         }
-        let input = self.value(
-            node.inputs[0],
-            input_elements
-                .checked_mul(width)
-                .ok_or_else(|| Error::Limit("decode cohort projection input".into()))?,
-        )?;
-        let combined = descriptor
-            .matrices()
-            .iter()
-            .map(|matrix| matrix.rows)
-            .sum::<usize>();
-        let expected_output = output_elements
-            .checked_mul(width)
-            .ok_or_else(|| Error::Limit("decode cohort projection output".into()))?;
-        if expected_output != width * combined {
-            return Err(Error::State(
-                "decode cohort projection output geometry".into(),
-            ));
-        }
-        let output = if selected_row.is_some() {
-            if node.outputs.len() != 1 || Some(node.outputs[0]) != requests_logits(node, self) {
+        let active = if selected_row.is_some() {
+            width
+        } else {
+            width * rows
+        };
+        let input_words = width * rows * columns;
+        let input = buffers.value(self, node.inputs[0], input_words)?;
+        let input_lease = self.value_lease_in(&buffers.slots, node.inputs[0])?;
+        let status = self.status_view()?;
+        let client = self.service.client();
+        let mut dispatches = 0usize;
+        let (input, input_lease) = if let Some(row) = selected_row.filter(|_| rows > 1) {
+            let lease = buffers
+                .selected
+                .as_ref()
+                .ok_or_else(|| Error::State("text cohort selected input absent".into()))?;
+            let target = view(lease, 0, bytes(active * columns)?)?;
+            crate::program_kernels::checked_copy_words(width, columns, rows * columns, columns)?;
+            unsafe {
+                crate::program_kernels::copy_strided_words::launch_unchecked(
+                    client,
+                    grid(width * columns),
+                    dim(),
+                    arg(&input, input_words),
+                    arg(&target, active * columns),
+                    arg(&status, 1),
+                    (row * columns) as u32,
+                    0u32,
+                    (rows * columns) as u32,
+                    columns as u32,
+                    width,
+                    columns,
+                    false,
+                );
+            }
+            dispatches += 1;
+            (target, lease)
+        } else {
+            (input, input_lease)
+        };
+        let expected_output = active * combined;
+        let output_lease = if selected_row.is_some() {
+            if Some(node.outputs[0]) != self.layout.plan.logits() {
                 return Err(Error::State(
-                    "decode cohort selected projection is not logits".into(),
+                    "text cohort selected projection is not logits".into(),
                 ));
             }
-            view(logits, 0, expected_output * 4)?
+            buffers
+                .logits
+                .as_ref()
+                .ok_or_else(|| Error::State("text cohort logits absent".into()))?
         } else {
-            self.value(node.outputs[0], expected_output)?
+            self.value_lease_in(&buffers.slots, node.outputs[0])?
         };
-        let output_lease = if selected_row.is_some() {
-            logits
-        } else {
-            self.value_lease(node.outputs[0])?
-        };
-        let client = self.service.client();
-        let status = self.status_view()?;
+        let output = view(output_lease, 0, bytes(expected_output)?)?;
         let mut offset = 0usize;
-        let mut dispatches = 0usize;
         let mut fused = 0usize;
         for matrix in descriptor.matrices() {
-            let temporary = view(projection[0], 0, width * matrix.rows * 4)?;
+            let elements = active * matrix.rows;
+            let temporary = view(&buffers.projection[0], 0, bytes(elements)?)?;
             dispatches = dispatches
                 .checked_add(
                     self.operands[&matrix.name]
@@ -509,30 +741,31 @@ impl Cold {
                             &self.page,
                             Bf16ProjectionBindings {
                                 input: &input,
-                                input_lease: self.value_lease(node.inputs[0])?,
+                                input_lease,
                                 output: &temporary,
-                                output_lease: projection[0],
-                                packed: &self.packed,
-                                accumulation: projection[1],
-                                flags: projection[2],
+                                output_lease: &buffers.projection[0],
+                                packed: &buffers.packed,
+                                accumulation: &buffers.projection[1],
+                                flags: &buffers.projection[2],
                                 status: &self.status,
                                 zero: &self.zero,
                             },
-                            width,
+                            active,
                             None,
                         )
                         .await?,
                 )
-                .ok_or_else(|| Error::Limit("decode cohort projection dispatches".into()))?;
+                .ok_or_else(|| Error::Limit("text cohort projection dispatches".into()))?;
+            flight.require_accesses([(output_lease, DeviceAccess::Write)])?;
             unsafe {
                 super::kernels::columns::launch_unchecked(
                     client,
-                    grid(width * matrix.rows),
+                    grid(elements),
                     dim(),
-                    arg(&temporary, width * matrix.rows),
+                    arg(&temporary, elements),
                     arg(&output, expected_output),
                     arg(&status, 1),
-                    width as u32,
+                    active as u32,
                     0u32,
                     offset as u32,
                     matrix.rows,
@@ -540,21 +773,10 @@ impl Cold {
                     combined,
                 );
             }
-            flight.require_accesses([(output_lease, DeviceAccess::Write)])?;
             dispatches += 1;
             fused += 1;
             offset += matrix.rows;
         }
         Ok((dispatches, fused))
     }
-}
-
-fn requests_logits(
-    node: &PlanNode,
-    cold: &Cold,
-) -> Option<zerogravity_core::accelerator::program::ValueId> {
-    cold.layout
-        .plan
-        .logits()
-        .filter(|id| node.outputs.as_slice() == [*id])
 }

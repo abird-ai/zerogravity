@@ -516,13 +516,44 @@ impl ResidentTextModel {
         matches!(self.state_policy, CudaSourceStatePolicy::Paged { .. })
     }
 
-    #[cfg(feature = "cuda-cublas")]
+    #[cfg(any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip")))]
     pub fn prefill_rows_compatible(&self, left: usize, right: usize) -> bool {
-        self.cohort_width != 0
-            && self
+        if self.cohort_width == 0 {
+            return false;
+        }
+        #[cfg(all(feature = "hip-source", feature = "hip"))]
+        if self.contract == NumericalContract::TorchCpuAvx2Bf16MixedV1 {
+            // A one-token prompt tail uses singleton decode arithmetic.
+            return left == right && (2..=64).contains(&left);
+        }
+        #[cfg(feature = "cuda-cublas")]
+        {
+            return self
                 .prefill_projection_classes
                 .as_ref()
-                .is_some_and(|classes| classes.compatible(left, right))
+                .is_some_and(|classes| classes.compatible(left, right));
+        }
+        #[allow(unreachable_code)]
+        false
+    }
+
+    #[cfg(any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip")))]
+    pub async fn prepare_prefill_cohort_admitted(
+        self: &Arc<Self>,
+        rows: &[(&ResidentTextSession, &BoundInvocation)],
+    ) -> Result<ResidentTextCohortPreparation> {
+        #[cfg(all(feature = "hip-source", feature = "hip"))]
+        if self.contract == NumericalContract::TorchCpuAvx2Bf16MixedV1 {
+            return self
+                .prepare_hip_cohort_admitted(rows, InvocationPhase::Prefill)
+                .await;
+        }
+        #[cfg(feature = "cuda-cublas")]
+        {
+            return self.prepare_cuda_prefill_cohort_admitted(rows).await;
+        }
+        #[allow(unreachable_code)]
+        Err(Error::Unsupported("source prefill cohort backend".into()))
     }
 
     fn reader_scope(self: &Arc<Self>, bytes: usize) -> Result<Arc<ReaderScope>> {
