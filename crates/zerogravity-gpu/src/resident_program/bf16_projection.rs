@@ -257,8 +257,10 @@ impl PreparedBf16Projection {
             .await
     }
 
-    /// Production-friendly sibling: keep exact projection arithmetic while
-    /// certifying validity directly into the shared flight status.
+    /// Retained alternate: keep exact projection arithmetic while certifying
+    /// validity directly into the shared flight status. Current Qwen HIP does
+    /// not select it because the lower launch count loses the decode-heavy A/B.
+    #[allow(dead_code)]
     pub(crate) async fn enqueue_rows_certified(
         &self,
         flight: &mut Flight<'_>,

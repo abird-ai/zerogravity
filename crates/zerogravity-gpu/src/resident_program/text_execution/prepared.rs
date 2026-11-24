@@ -84,19 +84,6 @@ pub(super) fn kernels(
                 p.matrix().columns(),
                 p.matrix().rows()
             );
-            add!(
-                crate::bf16_projection_kernel::project_cpu_bf16_certified::ProjectCpuBf16Certified,
-                64,
-                b(),
-                b(),
-                b(),
-                b(),
-                b(),
-                b(),
-                rows,
-                p.matrix().columns(),
-                p.matrix().rows()
-            );
         }
     }
     for node in l.plan.nodes() {
