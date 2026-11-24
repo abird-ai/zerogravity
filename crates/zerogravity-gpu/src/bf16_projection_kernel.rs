@@ -747,6 +747,136 @@ pub(crate) fn project_cpu_bf16_rows4(
     }
 }
 
+/// Full-K64 projection of independent input rows sharing one weight row.
+/// Each of `tile` requests keeps its own original 64 FMA partials, status
+/// and exact reduction tree. The last tile can be partial; it never reads or
+/// writes beyond the actual request count. No global scratch beyond the
+/// canonical compact accumulation/status and strided rounded output.
+#[allow(dead_code)]
+#[cube(launch_unchecked)]
+pub(crate) fn project_cpu_bf16_requests(
+    weights: &[u32],
+    input: &[u32],
+    zero: &[f32],
+    accumulation: &mut [f32],
+    rounded: &mut [f32],
+    status: &mut [u32],
+    #[comptime] rows: usize,
+    #[comptime] columns: usize,
+    #[comptime] output_row_stride: usize,
+    #[comptime] tile: usize,
+) {
+    let requests = accumulation.len() / rows;
+    let tiles = (requests + tile - 1usize) / tile;
+    let group = usize::cast_from(CUBE_POS_X);
+    let row = group / tiles;
+    let first = (group % tiles) * tile;
+    let lane = usize::cast_from(UNIT_POS);
+    let z = zero[0];
+    let mut weight_flags = 0u32;
+    if u32::reinterpret(z) != 0u32 {
+        weight_flags |= 4u32;
+    }
+    let mut partial = Array::<f32>::new(tile);
+    let mut invalid = Array::<u32>::new(tile);
+    #[unroll]
+    for local in 0..tile {
+        partial[local] = z;
+        invalid[local] = 0u32;
+    }
+    let weight_base = row * (columns / 2usize) + lane / 2usize;
+    let shift = u32::cast_from(lane % 2usize) * 16u32;
+    for chunk in 0..columns / 64usize {
+        let offset = chunk * 32usize;
+        let wb = (weights[weight_base + offset] >> shift) & 0xffffu32;
+        let w = f32::reinterpret(wb << 16u32);
+        if (wb & 0x7f80u32) == 0x7f80u32 {
+            weight_flags |= 1u32;
+        }
+        #[unroll]
+        for local in 0..tile {
+            let request = first + local;
+            if request < requests {
+                let xi = request * (columns / 2usize) + lane / 2usize + offset;
+                let xb = (input[xi] >> shift) & 0xffffu32;
+                if (xb & 0x7f80u32) == 0x7f80u32 {
+                    invalid[local] |= 2u32;
+                }
+                partial[local] = fma(w, f32::reinterpret(xb << 16u32), partial[local]);
+            }
+        }
+    }
+
+    let mut sums = Shared::<[f32]>::new_slice(tile * 64usize);
+    let mut flags = Shared::<[u32]>::new_slice(tile * 64usize);
+    #[unroll]
+    for local in 0..tile {
+        let at = local * 64usize + lane;
+        sums[at] = partial[local];
+        flags[at] = invalid[local] | weight_flags;
+    }
+    sync_cube();
+    if lane < 32usize {
+        #[unroll]
+        for local in 0..tile {
+            let at = local * 64usize + lane;
+            sums[at] = sums[at] + sums[at + 32usize];
+            flags[at] = flags[at] | flags[at + 32usize];
+        }
+    }
+    sync_cube();
+    if lane < 16usize {
+        #[unroll]
+        for local in 0..tile {
+            let at = local * 64usize + lane;
+            sums[at] = sums[at] + sums[at + 16usize];
+            flags[at] = flags[at] | flags[at + 16usize];
+        }
+    }
+    sync_cube();
+    if lane < 8usize {
+        #[unroll]
+        for local in 0..tile {
+            let at = local * 64usize + lane;
+            sums[at] = sums[at] + sums[at + 8usize];
+            flags[at] = flags[at] | flags[at + 8usize];
+        }
+    }
+    sync_cube();
+
+    if lane == 0usize {
+        #[unroll]
+        for local in 0..tile {
+            let request = first + local;
+            if request < requests {
+                let at = local * 64usize;
+                let r0 = sums[at] + sums[at + 4usize];
+                let r1 = sums[at + 1usize] + sums[at + 5usize];
+                let r2 = sums[at + 2usize] + sums[at + 6usize];
+                let r3 = sums[at + 3usize] + sums[at + 7usize];
+                let result = ((r0 + r2) + (r1 + r3)) + z;
+                let bits = u32::reinterpret(result);
+                let rounded_bits = (bits + (0x7fffu32 + ((bits >> 16u32) & 1u32))) & 0xffff0000u32;
+                let mut combined = 0u32;
+                for lane_flag in 0..8usize {
+                    combined |= flags[at + lane_flag];
+                }
+                if (bits & 0x7f800000u32) == 0x7f800000u32 {
+                    combined |= 8u32;
+                }
+                if (rounded_bits & 0x7f800000u32) == 0x7f800000u32 {
+                    combined |= 16u32;
+                }
+                let output = request * rows + row;
+                accumulation[output] = result;
+                rounded[rounded_index(output, rows, output_row_stride)] =
+                    f32::reinterpret(rounded_bits);
+                status[output] = combined;
+            }
+        }
+    }
+}
+
 /// Production sibling: preserve the exact projection arithmetic while certifying
 /// validity directly into the shared flight status instead of a per-output vector.
 #[cube(launch_unchecked)]
