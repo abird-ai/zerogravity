@@ -140,6 +140,27 @@ pub(crate) fn scalar_cascade(
         }
     }
 }
+#[cube]
+fn normalize_value(input: f32, inverse: f32) -> f32 {
+    mul(input, inverse)
+}
+
+#[cube]
+fn weight_value(input: f32, raw: f32, #[comptime] mode: u32) -> f32 {
+    let mut y = input;
+    if comptime!(mode != 0u32) {
+        let mut g = raw;
+        if comptime!(mode == 2u32) {
+            g = add(1.0f32, raw);
+        }
+        if comptime!(mode == 3u32) {
+            y = bf16(y);
+        }
+        y = mul(y, g);
+    }
+    y
+}
+
 #[cube(launch_unchecked)]
 pub(crate) fn normalize(
     input: &[f32],
@@ -150,7 +171,7 @@ pub(crate) fn normalize(
 ) {
     let i = ABSOLUTE_POS;
     if i < output.len() {
-        let y = mul(input[i], inverse[i / width]);
+        let y = normalize_value(input[i], inverse[i / width]);
         output[i] = y;
         if !finite(y) {
             status[0].fetch_or(NONFINITE_VALUE);
@@ -168,21 +189,14 @@ pub(crate) fn weight(
 ) {
     let i = ABSOLUTE_POS;
     if i < output.len() {
-        let mut y = input[i];
+        let mut raw = 0.0f32;
         if comptime!(mode != 0u32) {
-            let raw = gamma[i % width];
-            let mut g = raw;
-            if comptime!(mode == 2u32) {
-                g = add(1.0f32, raw);
-            }
-            if comptime!(mode == 3u32) {
-                y = bf16(y);
-            }
-            y = mul(y, g);
+            raw = gamma[i % width];
             if !finite(raw) || (mode == 1u32 && !source_bf16(raw)) {
                 status[0].fetch_or(NONFINITE_VALUE);
             }
         }
+        let y = weight_value(input[i], raw, mode);
         output[i] = y;
         if !finite(y) {
             status[0].fetch_or(NONFINITE_VALUE);
@@ -196,6 +210,47 @@ pub(crate) fn store(input: &[f32], output: &mut [f32], status: &[Atomic<u32>]) {
         let y = bf16(input[i]);
         output[i] = y;
         if !finite(y) {
+            status[0].fetch_or(NONFINITE_VALUE);
+        }
+    }
+}
+
+/// Alternate RMS vector tail with the same normalize, gamma and store sequence.
+#[cube(launch_unchecked)]
+pub(crate) fn normalize_weight_store(
+    input: &[f32],
+    inverse: &[f32],
+    gamma: &[f32],
+    output: &mut [f32],
+    status: &[Atomic<u32>],
+    #[comptime] width: usize,
+    #[comptime] mode: u32,
+) {
+    let i = ABSOLUTE_POS;
+    if i < output.len() {
+        let normalized = normalize_value(input[i], inverse[i / width]);
+        if !finite(normalized) {
+            status[0].fetch_or(NONFINITE_VALUE);
+        }
+
+        let mut raw = 0.0f32;
+        if comptime!(mode != 0u32) {
+            raw = gamma[i % width];
+            if !finite(raw) || (mode == 1u32 && !source_bf16(raw)) {
+                status[0].fetch_or(NONFINITE_VALUE);
+            }
+        }
+        let weighted = weight_value(normalized, raw, mode);
+        if !finite(weighted) {
+            status[0].fetch_or(NONFINITE_VALUE);
+        }
+
+        let mut stored = weighted;
+        if comptime!(mode != 3u32) {
+            stored = bf16(weighted);
+        }
+        output[i] = stored;
+        if !finite(stored) {
             status[0].fetch_or(NONFINITE_VALUE);
         }
     }

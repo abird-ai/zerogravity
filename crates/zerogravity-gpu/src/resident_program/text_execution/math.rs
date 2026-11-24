@@ -122,7 +122,7 @@ impl Cold {
             let input = subview(input, offset, bytes)?;
             let output = subview(output, offset, bytes)?;
             count += if let Some((prior, residual)) = residual {
-                crate::source_rms::launch_residual(
+                crate::source_rms::launch_residual_fused_tail(
                     self.service.client(),
                     &scratch,
                     &input,
@@ -137,7 +137,7 @@ impl Cold {
                     mode,
                 )?
             } else {
-                crate::source_rms::launch(
+                crate::source_rms::launch_fused_tail(
                     self.service.client(),
                     &scratch,
                     &input,

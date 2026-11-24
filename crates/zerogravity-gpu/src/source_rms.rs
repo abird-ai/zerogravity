@@ -74,7 +74,7 @@ impl<'a> RmsInput<'a> {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(dead_code, clippy::too_many_arguments)]
 pub(crate) fn launch(
     client: &Client,
     scratch: &[Handle],
@@ -98,10 +98,11 @@ pub(crate) fn launch(
         width,
         groups,
         mode,
+        false,
     )
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(dead_code, clippy::too_many_arguments)]
 pub(crate) fn launch_residual(
     client: &Client,
     scratch: &[Handle],
@@ -131,6 +132,69 @@ pub(crate) fn launch_residual(
         width,
         groups,
         mode,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn launch_fused_tail(
+    client: &Client,
+    scratch: &[Handle],
+    input: &Handle,
+    gamma: Option<&Handle>,
+    output: &Handle,
+    status: &Handle,
+    zero: &Handle,
+    width: usize,
+    groups: usize,
+    mode: Gamma,
+) -> Result<usize> {
+    launch_input(
+        client,
+        scratch,
+        RmsInput::Direct(input),
+        gamma,
+        output,
+        status,
+        zero,
+        width,
+        groups,
+        mode,
+        true,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn launch_residual_fused_tail(
+    client: &Client,
+    scratch: &[Handle],
+    input: &Handle,
+    prior: &Handle,
+    residual: &Handle,
+    gamma: Option<&Handle>,
+    output: &Handle,
+    status: &Handle,
+    zero: &Handle,
+    width: usize,
+    groups: usize,
+    mode: Gamma,
+) -> Result<usize> {
+    launch_input(
+        client,
+        scratch,
+        RmsInput::Residual {
+            input,
+            prior,
+            residual,
+        },
+        gamma,
+        output,
+        status,
+        zero,
+        width,
+        groups,
+        mode,
+        true,
     )
 }
 
@@ -146,6 +210,7 @@ fn launch_input(
     width: usize,
     groups: usize,
     mode: Gamma,
+    fused_tail: bool,
 ) -> Result<usize> {
     let extents = scratch_words(width, groups)?;
     let count = extents[0];
@@ -262,47 +327,67 @@ fn launch_input(
                 width,
             );
         }
-        kernels::normalize::launch_unchecked(
-            client,
-            grid(count),
-            dim,
-            arg(normalized, count),
-            arg(&scratch[5], groups),
-            arg(&scratch[6], count),
-            arg(status, 1),
-            width,
-        );
-        let weighted = if mode == Gamma::DirectF32AfterBf16 {
-            output
-        } else {
-            &scratch[7]
-        };
-        kernels::weight::launch_unchecked(
-            client,
-            grid(count),
-            dim,
-            arg(&scratch[6], count),
-            arg(
-                gamma.unwrap_or(zero),
-                if gamma.is_some() { width } else { 1 },
-            ),
-            arg(weighted, count),
-            arg(status, 1),
-            width,
-            mode.mode(),
-        );
-        if mode != Gamma::DirectF32AfterBf16 {
-            kernels::store::launch_unchecked(
+        if fused_tail {
+            kernels::normalize_weight_store::launch_unchecked(
                 client,
                 grid(count),
                 dim,
-                arg(&scratch[7], count),
+                arg(normalized, count),
+                arg(&scratch[5], groups),
+                arg(
+                    gamma.unwrap_or(zero),
+                    if gamma.is_some() { width } else { 1 },
+                ),
                 arg(output, count),
                 arg(status, 1),
+                width,
+                mode.mode(),
             );
+        } else {
+            kernels::normalize::launch_unchecked(
+                client,
+                grid(count),
+                dim,
+                arg(normalized, count),
+                arg(&scratch[5], groups),
+                arg(&scratch[6], count),
+                arg(status, 1),
+                width,
+            );
+            let weighted = if mode == Gamma::DirectF32AfterBf16 {
+                output
+            } else {
+                &scratch[7]
+            };
+            kernels::weight::launch_unchecked(
+                client,
+                grid(count),
+                dim,
+                arg(&scratch[6], count),
+                arg(
+                    gamma.unwrap_or(zero),
+                    if gamma.is_some() { width } else { 1 },
+                ),
+                arg(weighted, count),
+                arg(status, 1),
+                width,
+                mode.mode(),
+            );
+            if mode != Gamma::DirectF32AfterBf16 {
+                kernels::store::launch_unchecked(
+                    client,
+                    grid(count),
+                    dim,
+                    arg(&scratch[7], count),
+                    arg(output, count),
+                    arg(status, 1),
+                );
+            }
         }
     }
-    Ok(if mode == Gamma::DirectF32AfterBf16 {
+    Ok(if fused_tail {
+        7
+    } else if mode == Gamma::DirectF32AfterBf16 {
         8
     } else {
         9

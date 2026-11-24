@@ -36,15 +36,8 @@ pub(crate) fn kernels(
         add!(super::kernels::scalar::Scalar, b(), b(), b(), stage, width);
     }
     add!(
-        super::kernels::normalize::Normalize,
+        super::kernels::normalize_weight_store::NormalizeWeightStore,
         b(),
-        b(),
-        b(),
-        b(),
-        width
-    );
-    add!(
-        super::kernels::weight::Weight,
         b(),
         b(),
         b(),
@@ -52,8 +45,5 @@ pub(crate) fn kernels(
         width,
         mode.mode()
     );
-    if mode != Gamma::DirectF32AfterBf16 {
-        add!(super::kernels::store::Store, b(), b(), b());
-    }
     Ok(out)
 }
