@@ -134,9 +134,10 @@ impl HipSourceNativePolicy {
         matches!(self, Self::Gfx1150 | Self::Gfx1151)
     }
 
+    /// Exact guarded FP32 triangular arithmetic wins on qualified gfx1151.
     #[cfg(feature = "hip-source")]
     pub(crate) fn prefers_guarded_triangular(self) -> bool {
-        self == Self::Gfx1151 && std::env::var_os("ZG_TMP_X2_GUARDED_TRIANGULAR").is_some()
+        self == Self::Gfx1151
     }
 
     #[cfg(feature = "hip-source")]
