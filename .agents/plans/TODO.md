@@ -9,14 +9,15 @@ Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md).
 The foundations pack links the complete dated history, source checkpoint, original design and plan/open-work/Git inventories. Live source and owning TODOs remain authoritative.
 
-**24 Nov Phase 1 checkpoint:** `262712f1` accepted stateful-region effects,
-original-layout provisional handoff and shared native state preflight/
-binding. Physical native/exact/continuation and CUDA contiguous/paged
-state consistency and full isolated workspace gate pass.
-Continue explicit private-buffer transfer and foreign-stream completion
-bridges, then remaining whole-model/region preparation boundaries in
-[pipeline composition](pipeline-composition/TODO.md) and the full plan;
-not a backend-tuning checkpoint.
+**24 Nov Phase 1 checkpoint:** `6eae81c6` accepted explicit managed-private
+CUDA copies and same-context secondary-stream completion under original
+physical flights. Physical certified GEMM/copy/interrupt and event lifecycle,
+native CUDA C1 and HIP C1/C8 canaries, and full isolated workspace gate pass.
+Continue remaining implicit region token/position/observation ports and
+whole-model prepared execution boundaries in
+[pipeline composition](pipeline-composition/TODO.md) and the full plan.
+Extend general external interop only with real consumers; not a backend-tuning
+checkpoint.
 
 **20 Nov authoritative refresh:** pushed/tracked `origin/main` is `f0f0640`; local signed
 source lineage above it includes `1222f8a` (multi-token GDN prefill), `60ba956` (matched

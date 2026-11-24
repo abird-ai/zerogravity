@@ -5,6 +5,15 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 24 Nov — private provider transport acceptance
+
+`6eae81c6` shares original CUDA copy/stream/event ownership with an internal
+managed-private provider scope. Physical certified GEMM, explicit copies,
+return event, post-enqueue quarantine and existing completion lifecycle
+pass. L5 Qwen 0.8B CUDA C1 and X2 native V2 C1/C8 pass expected tokens/replay
+with original retirement; full isolated gate passes. No production selection
+or new performance baseline; general external interop remains unsupported.
+
 ## 24 Nov — source state-region acceptance
 
 `262712f1` shares source-template state geometry and version/attempt

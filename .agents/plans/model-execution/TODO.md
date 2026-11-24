@@ -148,7 +148,10 @@ any external compiler. All phases retain the original resource/state owners.
   exact same-layout device copies and two-way event dependencies through the
   original physical submission; captured attention's exact copy shares the
   driver transport. No public provider selection or new numerical contract.
-  Focused and assembled validation pending (composition TODO).
+  Accepted `6eae81c6`: physical certified GEMM/private copies and interrupted
+  enqueue quarantine, event lifecycle, L5 native C1 and X2 native V2 C1/C8
+  pass; full isolated gate passes (composition TODO). Internal bridge only,
+  no wider provider eligibility.
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

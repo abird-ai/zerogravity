@@ -273,8 +273,12 @@ their existing numeric/source/physical acceptance gates.
   native write-taint, checked physical copy and quarantine; no host wait
   or state publication at the bridge. Existing captured attention copy
   shares transport without changing its set policy.
-- [ ] Focused physical certified GEMM/private-copy/interrupt and assembled
-  gate validation pending.
+- [x] Accepted `6eae81c6`: physical certified GEMM/private copy/interrupt
+  and original event-flight lifecycle pass. L5 native CUDA C1 and X2 native
+  HIP V2 C1/C8 Qwen 0.8B pass expected tokens/replay and original retirement.
+  Full isolated gate passes: 2382 Rust test executions, zero failures,
+  101 explicit skips, release/installer and script checks. Internal
+  same-context CUDA managed staging only; no new provider selection.
 
 ## Uncommitted
 
@@ -283,18 +287,19 @@ their existing numeric/source/physical acceptance gates.
 Contract: [closed regions](REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering)
 and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
 
-- [ ] Extend the bounded same-context CUDA managed-private/secondary-stream
+- [ ] Close remaining implicit region token/position/observation ports and
+  whole-model prepared execution boundaries for real consumers. Keep selected
+  shape bands and typed ports; no naked scope or implicit retry. Extend
+  stateful regions only with actual qualified state layouts/bridges:
+  independent partial execution, committed-frontier conversion/recompute and
+  arbitrary state schemas remain open. Native and captured consumers retain
+  original source/numerical/state authority. Graph-only preparation may
+  lower supported native semantic regions directly, without ONNX.
+  Extend the bounded same-context CUDA managed-private/secondary-stream
   bridge only for real consumers: opaque external allocations, cross-device
   or cross-runtime transfers, other-backend completion and capture remain
-  unsupported. No implicit copy/synchronization or independent publisher.
-  Extend stateful regions only with actual qualified state layouts/bridges:
-  independent partial execution, committed-frontier conversion/recompute,
-  complete implicit token/position/observation coverage and arbitrary state
-  schemas remain open. Keep selected shape bands and typed ports; no naked
-  scope or implicit retry. Native and captured consumers retain
-  original source/numerical/state authority. Graph-only preparation may
-  lower supported native semantic regions directly, without ONNX. No
-  additional IR, allocator, scheduler or compiler framework.
+  unsupported. No implicit copy/synchronization or independent publisher;
+  no additional IR, allocator, scheduler or compiler framework.
 - [ ] Keep external compiler integration and ONNX import out of the foundation
   dependency graph. The concrete MIGraphX/TensorRT direct-lowering adapters
   and optional graph import are tracked in

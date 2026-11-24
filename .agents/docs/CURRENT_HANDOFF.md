@@ -20,7 +20,8 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
-**New source slice — explicit private provider transport/completion.**
+**Accepted source checkpoint `6eae81c68c24c58c85e707baebacbccbda523208` —
+explicit private provider transport/completion.**
 A bounded CUDA provider scope consumes the original armed ResidentSubmission,
 checks actual scratch Write leases and distinct opaque charges, binds the
 exact original or same-context secondary queue/client and retains its owner.
@@ -33,7 +34,21 @@ enqueue consumes the original flight and quarantines retained owners; no
 independent allocation, scheduler, ledger or publisher. Same-context CUDA
 managed staging only; opaque external-pointer imports, cross-device/runtime
 transfers, other-backend completion and capture integration remain open.
-Physical focused validation and full isolated gate pending.
+Physical L5 certified BF16 GEMM with private input/output copies and actual
+secondary-stream event ordering passes, including exact readback/status,
+no early Ready and interruption after accepted enqueue retaining original
+owners in quarantine. Existing event-flight completion/cancellation/unknown
+retirement passes. Ordinary Qwen 0.8B L5 CUDA C1 and X2 HIP native V2 C1/C8
+pass expected tokens/replay; HIP lane invariance and zero failed GPU quanta.
+Original resource retirement passes; L5 37 MiB, X2 259768320 B, no compute
+owners. X2 executes the exact signed source via verified bundle; A1 unchanged.
+Full isolated gate passes (2382 Rust test executions, zero failures, 101
+explicit skips), including release/installer and script checks.
+The bridge is internal and not selected by ordinary serving. No new finite
+captured-attention qualification, external-runtime support or performance
+baseline. Next: remaining implicit region token/position/observation ports
+and whole-model prepared execution boundaries; extend concrete interop only
+for real consumers, not an additional generic transport framework.
 
 Prior accepted stateful region checkpoint:
 
