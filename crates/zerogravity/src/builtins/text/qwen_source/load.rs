@@ -836,7 +836,7 @@ mod tests {
             "source-prefill",
             CacheOptions::new(root, 96 * 1024 * 1024 * 1024),
             &snapshot,
-            128,
+            512,
             &host,
             NumericalContract::TorchCpuAvx2Bf16MixedV1,
         )
