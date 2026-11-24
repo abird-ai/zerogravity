@@ -46,10 +46,76 @@ only persistent context envelope remains, and the process returns VRAM to
 ~187 MB context-resident cache after destruction, stable across two cycles.
 No extra stream/allocator or inferred memory reclamation.
 
-Next: wire the real native projection profile/consumer, measure actual
-0.8B/2B C1/C8 with quality, replay and lifecycle checks. Treat the numbers as
-a provider ceiling and target end-to-end improvement, not a claimed 20x model
-speedup. Preserve the exact CPU-reference path and custom WMMA alternative.
+The provider ceiling is not a whole-model speedup. The following native
+execution measurement supersedes this standalone opportunity as the active
+optimization baseline.
+
+## 24 Nov — native HIP model execution
+
+`312bbccd` wires owned rocBLAS BF16/FP32 GEMM through the original resident
+source and cohort executor; `58a10d3c` uses whole aligned cohort GEMM instead
+of the scalar 128-row tile cap. Explicit `HipRocBlasBf16MixedV1` numerical
+identity, SDK `ModelLoadRequest::qwen_hip_native`, CLI
+`zerogravity run-rocm MODEL --numerical native`. Native selection requires
+qualified gfx1151 and admitted resident finite weights. Default exact
+CPU-reference profile and all alternate primitives remain available. The
+64 MiB vendor scratch is priced once in the same resident envelope; no
+second scheduler, stream or state-root owner.
+
+Actual X2 public SDK, resident source, 47+3 workload, one warmup/two timed
+waves, 24 GiB small-model/68 GiB large-model envelopes. Projection-only
+checkpoints (warm mean):
+
+| Model / offered | Previous exact ms | Native projection ms | Native tok/s | Retained vLLM tok/s |
+| --- | ---: | ---: | ---: | ---: |
+| 0.8B C1 | 191.113 | 149.064 | 20.126 | 51.966 |
+| 0.8B C8 | 1283.333 | 774.749 | 30.978 | 219.612 |
+| 2B C1 | 370.777 | 305.329 | 9.825 | 36.054 |
+| 2B C8 | 2531.391 | 1011.093 | 23.737 | 140.847 |
+| 27B C1 | 5301.120 | 1516.150 | 1.979 | 3.803 |
+
+C1 small-model rows are from the first native projection commit; whole-cohort
+recheck C1 was noisy (200.234/464.148 ms), no new C1 improvement inferred.
+C8 is the whole-cohort projection selection. All three return expected greedy
+IDs, repeat/lane invariant, no failed quanta, and return to 259768320 B idle
+VRAM/no KFD owner. Distinct aligned multichunk prompts match native singleton
+outputs. This establishes actual serving execution, not CPU bitwise parity or
+unrestricted model-quality equivalence. No fresh matched vLLM run.
+
+Transient C8 0.8B profiling after whole-cohort GEMM: 47+1 prefill summed
+observed CubeCL device time 702.277 ms / 44774 launches; 47+3 814.568 ms /
+53742 launches. Does not include external BLAS timing; observer inflates wall.
+Four GDN chunk product stages (Gram, prior, core, state) sum 205.493 ms;
+triangular solve 92.199 ms. Other leading costs: gated activation 62.165 ms,
+RMS scalar 54.133 ms, convolution 42.196 ms. Prioritize replacing complete
+dense products and solve with mature native primitives and amortizing large
+dispatch sequences; no scalar-only tuning campaign.
+
+`6c31363d` replaces the four GDN chunk dense product stages with six native
+FP32 strided-batched GEMMs and the original pointwise math in four epilogues.
+Same actor, source leases, 64 MiB workspace, independent head state and
+publication. `HipRocBlasF32ChunkV1` explicitly identifies the changed GDN
+arithmetic within the opt-in native mixed profile. Exact source kernels and
+the reusable WMMA alternative remain intact. The physical owned-provider
+qualifier checks non-square NN/NT/TN layouts across three independent batches.
+
+| Model / offered | Native projection ms | Native projection + GDN ms | Native tok/s |
+| --- | ---: | ---: | ---: |
+| 0.8B C1 | 149.064 | 130.158 | 23.049 |
+| 0.8B C8 | 774.749 | 603.350 | 39.778 |
+| 2B C1 | 305.329 | 285.147 | 10.521 |
+| 2B C8 | 1011.093 | 825.072 | 29.088 |
+| 27B C1 | 1516.150 | 1362.961 | 2.201 |
+
+Retained same-workload checkpoint comparisons, not fresh paired A/B.
+Expected IDs, replay/lane invariance, zero failed quanta, and distinct
+aligned multichunk native-vs-native singleton comparison all pass. All
+three models retire native ownership; final physical observation returns to
+259768320 B idle VRAM, zero busy and no KFD owner. GPU feature boundaries
+and CPU Clippy pass; the full gate stops at the pre-existing CPU admission
+assertion in cache_prepare.rs:142.
+These are the new native performance cells; exact-reference performance
+remains separate.
 
 ## Workload
 

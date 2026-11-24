@@ -40,22 +40,36 @@ integration seam, not another scalar microkernel campaign.
   Physical unscoped original-actor qualifier passed four cycles, mean
   .094436 ms on 6144x1024, 128 input rows versus 1.934770 ms scalar
   (~20.5x kernel-level opportunity). No model-level speedup yet.
-- Build/execute the new native profile on X2 next. Keep the exact historical
-  TorchCpuAvx2Bf16MixedV1 route, and give native BF16/FP32 projection its own
-  explicit numerical identity. Use original resident source authentication,
-  certify finite weights at cold upload, reuse activation conversion/status
-  kernels and admitted scratch, verify the scoped actor path. Avoid another
-  engine or duplicated scheduler/root protocol. Get real C1/C8 0.8B/2B
-  results early; then use whole-model localization to target the next major gap.
+- `312bbccd` / `58a10d3c`: real native source/cohort integration, finite
+  upload certification, once-admitted resident scratch, explicit
+  `HipRocBlasBf16MixedV1` identity. SDK `ModelLoadRequest::qwen_hip_native`,
+  CLI `run-rocm MODEL --numerical native`; default exact source preserved.
+  Actual projection-only X2 C8 0.8B/2B 30.978/23.737 tok/s; 27B C1 1.979
+  tok/s. Resident qualified gfx1151 only; no streamed fallback or new engine.
+- `6c31363d`: six strided-batched FP32 GEMMs for four dense GDN chunk
+  products, original pointwise epilogues and solve retained. Native GDN
+  numerical contract explicit, same original actor, scratch and state roots.
+  Physical NN/NT/TN batched layout qualifier, 0.8B/2B C1/C8, distinct
+  multichunk continuation and 27B C1 pass. Final C8 39.778/29.088 tok/s,
+  27B C1 2.201 tok/s; physical idle baseline restored. See current measurements in CURRENT_BASELINE.
+  Next larger gaps: native triangular solve, mature fused attention and
+  graph/dispatch amortization; benchmark real end-to-end execution early.
+  Standard optimized libraries first: production cuBLAS/cuBLASLt integration
+  on NVIDIA (existing owned diagnostic provider), cooperative-matrix
+  GEMM via mature ggml Vulkan shaders where capability and licensing allow.
+  Preserve all custom and exact-reference primitives; avoid duplicating
+  the execution fabric or silently changing precision.
 - X2's existing rocBLAS 7.2.4 closure
   /nix/store/ngf5gxxijv293l72lb1jdc77b7y2zjrd-rocblas-7.2.4/lib
   matches the already recovered HIP/glibc runtime. Use the existing local loader
   recipe (see X2 runtime recovery below), adding this lib directory to its
   library path; no SDK acquisition. Physical qualifier:
   `hip::qualification::actual_native_rocblas_lifecycle` with hip,qualification.
-  Production selection remains unimplemented; no profile or model permission
-  is inferred from synthetic matrix results. Full phase gate reached the
-  existing CPU cache-admission assertion after GPU feature gates/CPU Clippy.
+  Native selection is explicitly opt-in on the qualified resident route;
+  real-model checks above supersede synthetic-only evidence. The workspace
+  gate passes formatting, architecture, combined GPU feature checks and CPU
+  Clippy; it still stops at the pre-existing cache_prepare.rs:142 CPU
+  admission assertion. No new CUDA or Vulkan physical performance claim.
 - The missing pinned vLLM closure remains a blocker for a fresh paired
   comparison. CURRENT_BASELINE records the retained comparison and native
   provider opportunity separately.

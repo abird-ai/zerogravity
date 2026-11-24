@@ -2,15 +2,18 @@
 
 ## Current priority — correctness and hardware-native throughput
 
-24 Nov: the C8 throughput gap remains ~12–15x on X2 after accepted shared
-prefill. The next major serving unit is native BF16 matrix execution through the
-same admitted model/cohort owner under a distinct numerical profile. See the
+24 Nov: explicit rocBLAS native resident execution now runs real source
+models through the existing shared scheduler/root owner. Projection-only
+C8 throughput improves to 30.978/23.737 tok/s for 0.8B/2B; 27B C1 1.979 tok/s.
+The retained vLLM comparison still leaves a substantial gap; no new paired
+vLLM result. Native GDN dense products now also use the owned rocBLAS provider, reaching
+39.778/29.088 tok/s at C8. Next: native triangular solve (92 ms in the
+projection-only profile), activation/RMS/dispatch overhead. Prefer mature tuned standard operators wherever their
+contract fits; specialize model-specific hot paths. See
 [model execution priority reset](../model-execution/TODO.md#priority-reset--24-nov-native-matrix-execution)
-and CURRENT_BASELINE for the measured provider ceiling. No further marginal
-scalar or launch-count optimization campaign before a real native-model run.
-Keep existing exact-reference serving, and all correct reusable primitives.
-Measure C1/C8 early; then prioritize the largest remaining model-level gap.
-CUDA fused lane correctness remains a separate outstanding unit.
+and CURRENT_BASELINE. Preserve exact-reference serving and reusable kernels.
+CUDA fused lane correctness and production cuBLAS integration are outstanding;
+Vulkan cooperative-matrix provider reuse is a separate measured work item.
 
 ## Prior context — correctness, HIP batching, measured hot paths
 

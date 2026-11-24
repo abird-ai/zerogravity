@@ -41,17 +41,35 @@ the source, physical owner, state/root, completion or cancellation contracts.
   0.094436 ms versus 1.934770 ms scalar (~20.5x); all 786432 outputs verified per
   cycle. Provider caches persist in the HIP context after handle destruction;
   original persistent context envelope remains charged until process exit.
-- [ ] **Next major implementation:** explicit opt-in native HIP numerical profile,
-  existing shared model/cohort execution with a native projection consumer.
-  Reuse authenticated resident matrices, certify finite weights during the original
-  cold upload, use existing activation pack/widen/status, admit provider workspace
-  once, keep provider handle/cache on the original actor. Verify scoped stream and
-  actual source model correctness/replay, compare 0.8B/2B C1/C8 immediately.
-  Do not create a second inference engine, test-driven production selectors, or
-  prematurely choose the custom WMMA over tuned BLAS. Keep scalar/GEMV for shapes
-  where native GEMM loses; choose after the real-model result. Continue larger
-  stateful math, device-resident sampling and graph/dispatch amortization from
-  the new whole-model profile, not from obsolete scalar microbenchmark rankings.
+- [x] Explicit native HIP source/cohort execution: `312bbccd`, `58a10d3c`.
+  Authenticated finite upload, once-admitted workspace, existing actor and
+  publication authority; complete resident GEMM, shared source/cohort consumer.
+  Actual 0.8B/2B C8 30.978/23.737 tok/s and 27B C1 1.979 tok/s, all expected
+  IDs/replay/lane invariant and clean retirement. Native CLI and SDK opt-in,
+  exact reference route preserved. See CURRENT_BASELINE.
+- [x] Native GDN dense products: `6c31363d`, six strided-batched FP32
+  GEMMs, existing epilogue semantics, shared original provider workspace.
+  Physical batched layout qualifier and actual 0.8B/2B C1/C8, distinct
+  continuation and 27B C1 pass; C8 reaches 39.778/29.088 tok/s and 27B C1
+  reaches 2.201 tok/s with clean retirement. Original exact
+  source kernels remain reusable.
+- [ ] Continue native GDN solve and dense/stateful execution after the measured
+  FP32 product unit. Use rocBLAS batched products and triangular solve where
+  supported, with explicit arithmetic identity; retain specialized recurrent
+  and attention kernels for where a mature native library does not fit.
+  Prioritize meaningful model-level speedups, device-resident sampling and
+  graph/dispatch amortization from the new profile.
+- [ ] NVIDIA: connect existing owned cuBLAS/cuBLASLt provider to ordinary
+  resident projection/compatible dense products, not just reference diagnostics.
+  Preserve existing native tensor-core/CUTLASS primitives; resolve fused lane
+  divergence, and use FlashAttention/FlashInfer where appropriate. Benchmark
+  actual correctness and C1/C8 on physical CUDA before wider selection.
+- [ ] Vulkan: evaluate reusable mature ggml Vulkan cooperative-matrix GEMM
+  kernels (`VK_KHR_cooperative_matrix`, vendor cooperative-matrix2 where
+  supported) under existing owned command/buffer lifecycle. There is no single
+  portable cuBLAS-equivalent library; inspect actual BF16/FP32 capability,
+  licensing, layouts and integration cost before selecting. Keep scalar and
+  existing shader primitives. Do not silently cast or adopt a second engine.
 - [ ] Restore a current matched vLLM comparison when its pinned local closure is
   available. No new download or unrelated dependency repin just for evidence.
 
