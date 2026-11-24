@@ -44,3 +44,8 @@ mod tests {
     cubecl_core::testgen_profiling!();
     cubecl_core::testgen_profiling_nested!();
 }
+
+#[cfg(target_os = "linux")]
+mod rocblas;
+#[cfg(target_os = "linux")]
+pub use rocblas::{ROCBLAS_WORKSPACE_BYTES, RocBlasGemm};

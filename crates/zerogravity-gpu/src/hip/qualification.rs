@@ -235,7 +235,7 @@ fn observe(stage: &str, service: &Arc<ResidentService>) -> Result<()> {
     Ok(())
 }
 
-async fn run(unknown: bool, sealed_miss: bool) -> Result<()> {
+async fn run(unknown: bool, sealed_miss: bool, rocblas: bool) -> Result<()> {
     use cubecl_runtime::config::{CubeClRuntimeConfig, RuntimeConfig};
     let mut config = CubeClRuntimeConfig::default();
     config.streaming.max_streams = 1;
@@ -474,6 +474,95 @@ async fn run(unknown: bool, sealed_miss: bool) -> Result<()> {
             )?;
         }
         drop(output);
+        if rocblas {
+            // Context caches are covered by the original persistent envelope;
+            // the GEMM workspace is a regular, exclusive resident lease.
+            unsafe { native.prepare_rocblas(service.client()) }
+                .map_err(|e| Error::State(format!("rocBLAS prepare: {e}")))?;
+            let (rows, columns, requests) = (6144, 1024, 128);
+            let op = cubecl::hip::RocBlasGemm::new(rows, columns, requests)
+                .map_err(|e| Error::State(e.to_string()))?;
+            let [wb, xb, yb, sb] = op.extents().map_err(|e| Error::State(e.to_string()))?;
+            let _host = host((2 * (wb + xb + yb)) as u64, "gemm-fixture")?;
+            let bf16 = |row: usize| [0xbf80u16, 0, 0x3f80][row % 3].to_le_bytes();
+            let matrix = |n: usize| {
+                (0..n)
+                    .flat_map(|r| (0..columns).flat_map(move |_| bf16(r)))
+                    .collect::<Vec<u8>>()
+            };
+            let mut init = service.begin_initialization(0)?;
+            init.retain_completion_owner(native.clone())?;
+            let w = init.upload_bytes(&matrix(rows), BufferRole::ImmutableWeights)?;
+            let x = init.upload_bytes(&matrix(requests), BufferRole::Activation)?;
+            drop(init.complete_sync().await?);
+            let y = service.allocate_uninitialized(yb, BufferRole::Output)?;
+            let scratch = service.allocate_uninitialized(sb, BufferRole::Scratch)?;
+            let mut flight = service.submit(
+                0,
+                &[
+                    (w.clone(), DeviceAccess::Read),
+                    (x.clone(), DeviceAccess::Read),
+                    (y.clone(), DeviceAccess::Write),
+                    (scratch.clone(), DeviceAccess::Write),
+                ],
+            )?;
+            flight.retain_completion_owner(native.clone())?;
+            let handles = || [w.handle(), x.handle(), y.handle(), scratch.handle()];
+            // SAFETY: leases and persistent context proof retained by the
+            // original flight and sealed native set, on its original stream.
+            unsafe { native.enqueue_rocblas(service.client(), op, handles()) }
+                .map_err(|e| Error::State(format!("rocBLAS launch: {e}")))?;
+            let window = service
+                .client()
+                .profile_start()
+                .map_err(|e| Error::State(e.to_string()))?;
+            for _ in 0..16 {
+                unsafe { native.enqueue_rocblas(service.client(), op, handles()) }
+                    .map_err(|e| Error::State(format!("rocBLAS launch: {e}")))?;
+            }
+            let timing = service
+                .client()
+                .profile_end(window)
+                .map_err(|e| Error::State(e.to_string()))?;
+            assert_eq!(
+                timing.timing_method(),
+                cubecl_common::profile::TimingMethod::Device
+            );
+            let time = timing
+                .resolve()
+                .await
+                .map_err(|e| Error::State(e.to_string()))?
+                .duration()
+                .as_secs_f64()
+                * 1000.0
+                / 16.0;
+            let result = flight
+                .complete_with_readback(
+                    &[y.clone(), scratch.clone()],
+                    &[y.readback(0, yb)?],
+                    |raw| {
+                        for (i, bytes) in raw[0].chunks_exact(2).enumerate() {
+                            let expected = ((i / rows % 3) as f32 - 1.)
+                                * ((i % rows % 3) as f32 - 1.)
+                                * columns as f32;
+                            let actual = f32::from_bits(
+                                (u16::from_le_bytes(bytes.try_into().unwrap()) as u32) << 16,
+                            );
+                            if actual != expected {
+                                return Err(Error::State(format!(
+                                    "rocBLAS result {i}: {actual} != {expected}"
+                                )));
+                            }
+                        }
+                        Ok(())
+                    },
+                )
+                .await?;
+            eprintln!(
+                "ROCBLAS_OWNED cycle={cycle} rows={rows} columns={columns} requests={requests} time_ms={time:.6}"
+            );
+            drop((result, w, x, y, scratch));
+        }
         native
             .retire()
             .map_err(|e| Error::State(format!("actual native unload: {e}")))?;
@@ -504,15 +593,21 @@ async fn run(unknown: bool, sealed_miss: bool) -> Result<()> {
 #[test]
 #[ignore = "owned remote gfx1151 process; original cache and fixed policy only"]
 fn actual_native_prepared_lifecycle() {
-    futures_lite::future::block_on(run(false, false)).unwrap();
+    futures_lite::future::block_on(run(false, false, false)).unwrap();
 }
 #[test]
 #[ignore = "owned remote gfx1151 process; actual launch unknown retains/fences"]
 fn actual_native_prepared_unknown() {
-    futures_lite::future::block_on(run(true, false)).unwrap();
+    futures_lite::future::block_on(run(true, false, false)).unwrap();
 }
 #[test]
 #[ignore = "owned remote gfx1151 process; sealed missing variant must not compile"]
 fn actual_native_prepared_sealed_miss() {
-    futures_lite::future::block_on(run(false, true)).unwrap();
+    futures_lite::future::block_on(run(false, true, false)).unwrap();
+}
+
+#[test]
+#[ignore = "owned remote gfx1151 process; native rocBLAS provider and leased workspace"]
+fn actual_native_rocblas_lifecycle() {
+    futures_lite::future::block_on(run(false, false, true)).unwrap();
 }

@@ -123,6 +123,8 @@ impl HipServer {
                 retired: false,
                 _preparation: preparation,
                 _scoped_metadata: scoped_metadata,
+                #[cfg(target_os = "linux")]
+                rocblas: None,
             },
             &originals,
             &routed,
@@ -192,6 +194,13 @@ impl HipServer {
         if let Err(error) = completion {
             self.ctx.native.fence_all();
             return Err(error.into());
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(provider) = prepared.rocblas.as_mut() {
+            if let Err(error) = provider.retire() {
+                self.ctx.native.fence_all();
+                return Err(error);
+            }
         }
         for kernel in prepared.kernels.values_mut() {
             if kernel.module.is_null() {

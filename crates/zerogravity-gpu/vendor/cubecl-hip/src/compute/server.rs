@@ -448,6 +448,9 @@ impl WriteScoped for HipServer {
 
 #[path = "server/prepared_native.rs"]
 mod prepared_native;
+#[cfg(target_os = "linux")]
+#[path = "server/rocblas.rs"]
+mod rocblas;
 
 #[path = "server/source_page.rs"]
 pub(crate) mod source_page;

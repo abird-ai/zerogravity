@@ -46,19 +46,6 @@ fn native_bf16_wmma_projection() {
     let actual = f32::from_bytes(&actual);
     assert_eq!(u32::from_bytes(&client.read_one(status).unwrap()), &[0]);
     for i in 0..g.requests {
-        println!(
-            "MAPPING row={i} actual={:?} expected={:?}",
-            &actual[i * g.output_stride..i * g.output_stride + 4],
-            (0..4)
-                .map(|j| x[i * g.columns..(i + 1) * g.columns]
-                    .iter()
-                    .zip(&w[j * g.columns..(j + 1) * g.columns])
-                    .map(|(a, b)| a * b)
-                    .sum::<f32>())
-                .collect::<Vec<_>>()
-        );
-    }
-    for i in 0..g.requests {
         for j in 0..g.rows {
             let sum = x[i * g.columns..(i + 1) * g.columns]
                 .iter()

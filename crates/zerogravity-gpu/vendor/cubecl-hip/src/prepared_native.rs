@@ -292,6 +292,52 @@ impl PreparedHipNative {
     pub fn inventory(&self) -> HipNativeInventory {
         self.inventory
     }
+    /// Attach rocBLAS to the original prepared set. The caller's persistent
+    /// context admission must already cover library caches/opaque memory.
+    ///
+    /// # Safety
+    /// Only the trusted context owner may authorize this additional native
+    /// provider. It must retain the complete context envelope until process
+    /// retirement, including any rocBLAS caches surviving handle destruction.
+    #[cfg(target_os = "linux")]
+    pub unsafe fn prepare_rocblas(&self, client: &Client) -> Result<(), ServerError> {
+        self.require_live(client)?;
+        let key = self.key;
+        self.actor
+            .submit_blocking(move |server| server.prepare_rocblas(key))
+            .map_err(|e| failure(format!("HIP rocBLAS preparation actor: {e:?}")))?
+    }
+
+    /// Enqueue BF16 output on the original prepared logical stream.
+    ///
+    /// # Safety
+    /// The original flight owns all four buffers through actual completion;
+    /// workspace is an explicitly admitted exclusive scratch allocation.
+    #[cfg(target_os = "linux")]
+    pub unsafe fn enqueue_rocblas(
+        &self,
+        client: &Client,
+        op: crate::RocBlasGemm,
+        handles: [cubecl_core::server::Handle; 4],
+    ) -> Result<(), ServerError> {
+        if self.retired.load(Ordering::Acquire)
+            || client.service_id() != self.service_id()
+            || self
+                .view
+                .as_ref()
+                .is_some_and(|view| !std::ptr::eq(view.as_ptr(), client))
+        {
+            return Err(failure("HIP rocBLAS retired/foreign service"));
+        }
+        let key = self.key;
+        let stream = cubecl_environment::stream::StreamId {
+            value: self.scoped_logical_stream().unwrap_or(0),
+        };
+        self.actor
+            .submit_blocking(move |server| server.enqueue_rocblas(key, stream, op, handles))
+            .map_err(|e| failure(format!("HIP rocBLAS enqueue actor: {e:?}")))?
+    }
+
     pub fn require_live(&self, client: &Client) -> Result<(), ServerError> {
         if self.retired.load(Ordering::Acquire)
             || client.service_id() != self.service_id()
@@ -329,6 +375,8 @@ pub(crate) struct PreparedModules {
     pub retired: bool,
     pub _preparation: NativeRetention,
     pub _scoped_metadata: Option<NativeRetention>,
+    #[cfg(target_os = "linux")]
+    pub(crate) rocblas: Option<crate::rocblas::Provider>,
 }
 impl std::fmt::Debug for PreparedModules {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
