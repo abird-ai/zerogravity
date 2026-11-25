@@ -113,8 +113,12 @@ recorded. Current21 repairs it within the finite accepted scope above.
   3b5a520d/fc38db03/e1decff5 close bounded explicit named Linux Vulkan
   registry reuse and physical admission: actual peer refusal/raced/warm
   reuse, independent envelope retirement and portable healthy/unknown.
-  Non-Linux, general host-visible GPU backing aliasing and
-  OS hard-memory guarantees remain open.
+  14bbbd48/5d952364/5a7535e7 qualify actual coherent mapped Vulkan
+  producer on the original range and charge. No implicit zero-copy from
+  colocated placement. Non-Linux, general host-visible GPU backing
+  aliasing and OS hard-memory guarantees remain open.
+  Minimum shared foundation exit review in the full plan; next shared
+  CLI presentation (UX-1), preserving the original runtime/selector.
 
 ### Review and authorization
 

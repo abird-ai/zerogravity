@@ -89,6 +89,10 @@ arbitrary model, hardware or numerical support.
 
 ## 1. Foundations
 
+**Minimum shared foundation exit accepted — 25 Nov 2026.**
+See the bounded exit audit below and CURRENT_HANDOFF for accepted scope.
+The broader checkboxes remain the expansion queue; Phase 2 is next.
+
 Accepted foundation slice: `8c34c472` makes source-owned preparation generic
 over actual borrowed/window-backed source owners and routes production Qwen
 HIP/CUDA through the shared whole-program seam. Physical X2 source/replay/
@@ -246,7 +250,8 @@ no inter-domain transfer plan; other domains explicitly refuse. Actual
 portable shared HIP and Vulkan healthy/unknown and peer refusal/retry pass.
 Real HF HIP V2 C1/C8 replay and retirement pass. Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
 Named Linux Vulkan registry reuse is closed below at 3b5a520d/fc38db03/
-e1decff5. Non-Linux and actual host-visible GPU backing remain open.
+e1decff5; bounded actual coherent mapped producer at 14bbbd48.
+Non-Linux and general host-visible GPU/UMA backing remain open.
 Signed 1d5c4ada: optional production native GGUF CPU committed persistence
 (state-checkpoint). Actual immutable source/geometry/numerical compatibility,
 original v1 numerical body plus separate v2 SHA256/extent/private atomic IO,
@@ -307,19 +312,40 @@ native or compiled selection. Actual GGUF CUDA B2 fullV/all42 equality,
 direct/cache graph observations, native fallback, retirement/replacement
 and unknown retention/fence; native HF HIP V2 C1/C8 pass. No new graph
 selection policy. Full assembled isolated gate: 2398 Rust test executions (2396 workspace gate + 2 focused graph tests), zero failures, 106 explicit skips; release/installer/scripts pass.
-Next close minimum shared backing/interop eligibility
-and audit Phase 1 exits, keep general UMA aliasing, foreign buffers/
-streams, non-Linux and unqualified backend/family/codec/task explicit.
-No duplicate catalog, estimator, allocator or runtime.
-General DAG/media/context authority, multi-source HF and mixed-backend
-pipeline loading, CLI/API transport activation, generalized persistent
-session storage and cross-provider restore remain unsupported.
-None of these slices closes Phase 1.
+Signed 14bbbd48/5d952364/5a7535e7: actual original Vulkan coherent
+device-local mapped producer through exact backing/managed resource,
+original range Write/queue and actual prior barrier. Fresh private
+scratch/activation only; synchronous borrowed host copy, no staging
+fallback or duplicate charge. Actual RADV full/subrange GPU consumption,
+original accounting/retirement and refusal; portable Vulkan healthy/
+unknown and HIP healthy pass. No new learned/performance or generalized
+UMA/foreign buffer claim. Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
+Final accounting correction revalidated on actual RADV and Vulkan-only/
+combined qualification compile.
 
-Complete the engineering contracts and their real consumers, including every
-foundation below. This is not a requirement to finish every backend optimization,
-model family or optional provider before UX. Close the minimum useful shared
-implementation of each seam; defer concrete specializations to their phases.
+### Phase 1 bounded exit audit — 25 Nov
+
+The minimum shared foundation is implemented for the existing qualified
+local text/native and portable execution scope. See CURRENT_HANDOFF for
+the final verification and qualification boundaries.
+
+| Seam | Exit coverage |
+| --- | --- |
+| 1.1 Semantic composition | Original source-bound ModelProgram/ForwardPlan, typed closed-region/whole-text binding, original model/task/pipeline identity and explicit prepared selection. |
+| 1.2 Operators/providers | Real native typed math/ports/state, managed private CUDA buffers/secondary queue, actual graph observation, bounded coherent Vulkan mapped backing; SDK-free compiled provider scaffold, explicit refusal. |
+| 1.3 Source/lifecycle | Authenticated original HF and held local/verified cached GGUF, shared declared SDK/pipeline/CLI source eligibility, cache/source/alias/last-reader authority and original physical admission. |
+| 1.4 State/memory/control | Original backing/range/lease, completion/quarantine, independent state and sole publication, paged/streamed/prefix/persistence and cohort/queue/task/pipeline paths, typed media/clock/placement contracts. |
+| 1.5 SDK/verification | Actual public source-authenticated native SDK and real CLI local/cache runs, original runtime/catalog/control/poll and selected plan/region/capture facts, feature/architecture and full gate. |
+
+The broader engineering work listed below remains the durable expansion
+queue, not additional mandatory Phase 1 exit gates. No second catalog,
+allocator, publisher or execution IR. General UMA/foreign/context
+interop, non-Linux fit, general DAG/media/context, multi-source HF/mixed
+backends, generalized persistence/async SSD and unqualified model/
+device/codec/quality paths remain explicitly open. Native parity
+requirements belong to their backend phases; concrete graph SDKs Phase 6.
+The full gate and affected final physical/feature checks pass.
+**Proceed to Phase 2.1 UX-1.**
 
 ### 1.1 Semantic model and execution composition
 

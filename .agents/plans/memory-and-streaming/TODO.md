@@ -228,8 +228,8 @@ The following extends existing owners; source-byte qualification is not inferenc
   Qualified HIP intersects driver/local VRAM without summing host/GTT.
   Real CUDA and HIP source regressions pass; initial lifetime-upper-as-growth
   check corrected without weakening logical bound. Remaining direct/legacy
-  unadmitted owners, actual host-visible GPU/UMA backing alias mapping and
-  non-Linux/OS hard limits still need qualified consumers. a6548863 shares
+  unadmitted owners, general UMA backing alias mapping and non-Linux/OS
+  hard limits still need qualified consumers. a6548863 shares
   original Linux HIP preadmission with the ordinary portable owner and
   guarded exact-adapter Vulkan local fit; same declared physical placement
   does not establish common backing or zero-copy. Actual portable HIP/Vulkan
@@ -239,6 +239,12 @@ The following extends existing owners; source-byte qualification is not inferenc
   and independent envelope retirement. ce83cc18 exposes actual retained
   capture/cache/pin/accepted replay facts without another backing owner;
   original retirement/unknown retention remains authoritative.
+  14bbbd48/5d952364/5a7535e7 qualify exact coherent Vulkan host producer
+  on original managed backing/range; synchronous borrowed copy under
+  exclusive Write and actual prior barrier, original Ready, no second
+  charge. Actual GPU full/subrange/neighbor consumption and retirement,
+  foreign/extent/duplicate/HIP refusal. General device-write host reads,
+  foreign imports and aggregate UMA capacity remain unqualified.
 - [ ] **Paged hybrid state allocator:** extend original leases/StateRoot with
   finite page pools/block tables, generations, valid tails, charged metadata
   and peak COW/candidate memory. Retain a qualified contiguous policy and typed

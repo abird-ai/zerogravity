@@ -483,8 +483,14 @@ and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
   Qwen GGUF CUDA B2 fullV/all42, fallback and trusted retirement/replacement,
   unknown retention/fence and native HIP V2 C1/C8 pass. No new graph
   eligibility or production selector.
-- [ ] Remaining qualified physical interop; extend other qualified
-  resident formats and actual shared host-visible GPU backing. General
+- [x] Bounded coherent host-mapped producer (14bbbd48/5d952364/5a7535e7):
+  exact original Vulkan mapped backing/view, original range Write/queue/
+  actual prior completion and Ready, no staging fallback. Actual GPU
+  full/subrange/neighbor equality, one backing charge and retirement;
+  wrong/foreign/duplicate/HIP refusal, portable healthy/unknown pass.
+- [ ] Extend qualified physical interop, other resident formats and
+  broader shared host-visible GPU backing (device-write host read,
+  foreign buffers/streams, aggregate UMA fit). General
   DAG/media/context authority, mixed backend/multi-source HF loading and
   pipeline transport activation remain unsupported. Continue source lifecycle/placement only through real
   consumers. Keep selected shape

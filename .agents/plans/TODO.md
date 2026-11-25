@@ -102,9 +102,17 @@ Signed ce83cc18: actual captured profile/source/stream/receipt/cache/
 pin/service and prepared cohort mode; actual CUDA GGUF B2 fullV/all42,
 graph/native fallback and retirement/unknown retention, native HF
 HIP V2 C1/C8 pass. Full assembled isolated gate: 2398 Rust test executions (2396 workspace gate + 2 focused graph tests), zero failures, 106 explicit skips; release/installer/scripts pass.
-Next close minimum physical backing/interop eligibility
-and review Phase 1 exits; unqualified general UMA/foreign views remain
-explicit. Historical
+Signed 14bbbd48/5d952364/5a7535e7: original coherent Vulkan mapped
+fresh private producer over exact backing/range/Write/queue/Ready.
+Actual RADV full/subrange GPU consumption, original charge/retirement
+and refusal; portable Vulkan healthy/unknown and HIP healthy pass.
+Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
+Final mapped accounting revision revalidated physically and by feature checks.
+Minimum Phase 1 exit accepted; audit in FULL_IMPLEMENTATION_PLAN/
+CURRENT_HANDOFF. Next Phase 2.1 UX-1 shared presentation, then typed
+command tree/resolver.
+General UMA/foreign backing, device-write host read, unqualified model/
+backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.
 Continue [full plan](FULL_IMPLEMENTATION_PLAN.md). No second cache
 hierarchy, allocator or publisher; mixed backend/multi-source HF pipeline,

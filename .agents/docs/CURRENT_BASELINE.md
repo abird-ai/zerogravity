@@ -5,6 +5,21 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — exact coherent mapped resident backing
+
+14bbbd48/5d952364/5a7535e7: original Vulkan managed coherent mapping,
+exact fresh private view, existing backing/range/queue/Write and actual
+prior barrier, synchronous borrowed host write and original Ready.
+Actual RADV full/subrange GPU consumption including neighbours, one
+backing charge and known host/device retirement; foreign/extent/duplicate
+and HIP mapping refusal. Existing portable Vulkan healthy/unknown and
+HIP healthy pass. No second allocation/staging fallback, no CPU read of
+GPU-written bytes or aggregate UMA fit claim. Ordinary mapped uploads
+reuse the checked copy, no new selector or numerical/performance claim.
+Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
+Final accounting-only revision revalidated on actual RADV and Vulkan-only/
+combined qualification compile. Minimum Phase 1 exit accepted.
+
 ## 25 Nov — actual captured execution observations
 
 ce83cc18: original captured profile/source/stream/receipt and accepted

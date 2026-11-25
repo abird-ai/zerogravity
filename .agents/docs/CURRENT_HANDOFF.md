@@ -23,7 +23,96 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current Phase 1 checkpoint
+### Current foundation exit checkpoint
+
+**Signed exact coherent mapped resident producer: 14bbbd489bae8cfa79beae0ceffc07d7a0f8817c.**
+Qualification boundary correction: 5d952364.
+Original logical upload accounting: 5a7535e7.
+
+- Reuse the existing WgpuResource coherent device-local mapping, allocated
+  only by the original Vulkan allocator for the qualified integrated
+  memory type. WgpuResource::host_visible checks the actual mapping and
+  byte range; the existing nonblocking mapped-write path uses the same
+  checked copy primitive. No new allocator, foreign pointer import or
+  staging fallback in the explicit producer.
+- ResidentService::initialize_host_visible borrows exact caller bytes for
+  a fresh private scratch/activation lease. Cold source/service/extent/
+  layout/initialization checks; original fair queue selection; actual
+  ManagedResource pins the exact backing against relocation. Mapping
+  absence refuses before a submitted Write; use original
+  DeviceBufferIdentity/BackingRange and existing exclusive Write event.
+  Actual sync_buffers precedes the synchronous host copy; original
+  finish_ready retires the event and marks the lease initialized.
+  No mapped pointer or host slice escapes, no device-write CPU read,
+  no alternate event, source/root publisher or host allocation charge.
+  Existing logical upload accounting counts the payload, not DMA bytes.
+  Cancellation/unknown prior barrier uses the original armed flight
+  quarantine; no new asynchronous host work remains after the copy.
+- Actual X2 RADV integrated Vulkan: one charged 4096-byte backing and
+  1024-byte view at offset512; initialize full and subrange through
+  actual coherent mapping, same original physical allocation identity.
+  Original GPU copy operator sees every changed and untouched byte;
+  checked status zero. Foreign-source, wrong-length, duplicate-write
+  and HIP unsupported mapping refusals occur without fence or event.
+  Host metadata/source, output/status and shared backing retire to
+  original baseline. Existing shared Vulkan healthy/unknown and HIP
+  healthy physical fixtures pass; final accounting correction rebuild
+  and mapped healthy test pass. X2 idle 259768320 bytes.
+  This is a real physical backing consumer, not learned-model parity,
+  new Vulkan performance selection or device-write host-read proof.
+- Initial combined compile found the mapped test helper excluded from
+  the non-test qualifier; 5d952364 gates its test-only invocation.
+  Final Vulkan-only and combined HIP/Vulkan qualification compile pass.
+  Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
+  The gate began before the accounting-only correction; final Vulkan-only
+  and combined HIP/Vulkan compile and actual mapped healthy rerun pass.
+  Prior learned CUDA/HIP source evidence applies unchanged (no math or
+  serving selector changes).
+- Scope: exact original coherent device-local host mapping, synchronous
+  CPU producer for a fresh private scratch/activation view under original
+  queue/event/lifetime; ordinary uploads keep their nonblocking policy.
+  No arbitrary host imports, foreign backend/context/stream or
+  untracked aliases, coherent CPU reads of GPU writes, general mutable
+  state/weights mapping, noncoherent flush/invalidate, aggregate UMA
+  heap/RAM alias capacity or OS-hard memory guarantee. Such capabilities
+  require explicit new physical consumers; placement equality grants no
+  storage identity.
+
+**Phase 1 minimum exit audit:** the existing qualified local text/native
+and portable consumers satisfy the ordered plan's common foundation
+contracts, including the completed isolated gate above.
+**Minimum Phase 1 exit accepted; Phase 2 is next.** This bounded exit
+is not completion of every broader checkbox in owning plans.
+
+| Foundation | Bounded accepted implementation |
+| --- | --- |
+| 1.1 Semantic composition | Original source-bound ModelProgram/ForwardPlan, ModelRegion, typed state/invocation ports, exact RegionSource and prepared executable/selection. Actual native source text and closed projection/region consumers; SDK-free direct compiled-provider scaffold. |
+| 1.2 Provider/operator | Shared typed math and physical layout/profile, actual CUDA managed-private copy and secondary-stream completion, graph/native observation, native HIP/CUDA and bounded portable Vulkan. Explicit provider/shape/interop refusal; no graph SDK dependency or implied compiled execution. |
+| 1.3 Source/lifecycle | Authenticated original HF, local/cache GGUF held and exact snapshots, verified tensor windows, common declared loader and eligibility, transactional acquisition/cache and original last-reader/alias/catalog lifecycle; explicit backend and actual pre-Client physical fit. |
+| 1.4 Memory/state/control | Original range backing/leases, ResourceArbiter/queue, actual coherent mapped producer and completion/quarantine; complete-domain StateRoot, resident/paged/streamed and scoped prefix, bounded CPU/HIP persistence, original native cohorts/chunked calls and serial language pipeline. Typed media clock/port/placement contracts remain descriptive; unsupported work refuses. |
+| 1.5 SDK/build/observability | Actual public SDK original HF native HIP/CUDA and CPU/CUDA GGUF, original CLI unified local/cache real runs, standalone router, task/poll/cancel and selected owner/effective configuration/plan/region/capture observations. Existing independent feature/architecture gates; no frontend-owned runtime. |
+
+Remaining general foreign/UMA backing and multi-domain transfers,
+non-Linux/OS-hard fit, generalized checkpoint/async SSD, family/codec/
+media/DAG, wider learned Vulkan and CUDA quality/parity, production
+capture selection and concrete external graph SDKs remain explicit in
+their owning plans. They do not block the minimum shared foundation
+exit for already-qualified local paths. No new model/performance claim.
+
+**Next coherent unit (Phase 2.1, UX-1):** inspect actual
+zerogravity-cli and existing facade command/output/control owners, read
+the canonical cli-ux/NEXT_ITERATION_CLI_UX_AND_MODEL_LIFECYCLE.md and
+the owning cli-device-routing and serving TODOs. Implement the shared
+presentation foundation (terminal capability, rich/plain/color/NO_COLOR,
+quiet/verbose, typed reporter/events, unified error/hint and stdout/stderr
+contract) through existing commands, without duplicating the runtime,
+catalog, resolver or scheduling. Retain direct APIs and structured
+diagnostics. Then UX-2 typed command tree, UX-3 shared model resolver/
+inspect/list and subsequent UX sequence. Native TUI and embedded Web
+follow the same presentation/control contracts; no ROCm/CUDA performance
+campaign before Phase 2 closes.
+
+### Previous accepted captured execution observation checkpoint
 
 **Signed actual captured-owner and prepared cohort observations: ce83cc18574ab3998d7a1dec84aba6cb300b5fac.**
 
@@ -75,20 +164,9 @@ reusable work and measured history, not precedence over this order.
   259768320 bytes. No new learned model/profile or public graph claim.
 - Full assembled isolated gate: 2398 Rust test executions (2396 workspace gate + 2 focused graph tests), zero failures, 106 explicit skips; release/installer/scripts pass. Combined CUDA/HIP SDK all-targets compile passed.
 
-**Next coherent unit:** close the minimum remaining shared physical
-backing/interop eligibility seam and finish the Phase 1 exit audit.
-Use the existing DeviceEventLedger/DeviceBackingId/BackingRange,
-ResidentLease and ResourceArbiter host/device owners for any actual
-qualified host-visible backing; a same-PCI or UMA addressability
-observation alone is not proof of shared storage. Admit only exact
-physical range/lifetime and actual completion where supported; otherwise
-refuse without a second allocator, invented identity or implicit copy.
-Keep general foreign/context/backend transfer, non-Linux fit, additional
-resident formats, media/DAG and unqualified backend/model/codec
-specializations explicit. Assess the minimum ordered-plan exit against
-live source and accepted consumers rather than demanding every optional
-backend optimization before UX. Do not start the frontend phase until
-the remaining applicable common contracts are closed.
+The bounded exact coherent host producer and foundation exit audit
+are implemented at 14bbbd48/5d952364/5a7535e7 above. General foreign/
+UMA backing and interop remain explicit.
 
 ### Previous accepted named Vulkan registry checkpoint
 

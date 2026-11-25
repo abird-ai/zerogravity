@@ -630,7 +630,10 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   (ce83cc18); source/profile/stream/receipt/pin/service facts, no new
   owner/selector. Actual CUDA GGUF B2 fullV/all42, native fallback and
   retirement/replacement/unknown fence and HIP V2 C1/C8 pass.
-- [ ] Remaining qualified physical interop; general DAG/media/context,
+- [x] Bounded exact Vulkan coherent mapped producer
+  (14bbbd48/5d952364/5a7535e7), original range/Write/queue/completion/
+  Ready, no new backing; real full/subrange GPU consumption/retirement.
+- [ ] Broader qualified physical interop; general DAG/media/context,
   mixed backend/multi-source HF and pipeline CLI/API activation only
   through original qualified owners.
 
@@ -702,7 +705,9 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   Client, actual PCI/local fit and original lease. Real cold pressure,
   raced/warm reuse, independent envelope retirement and actual portable
   healthy/unknown pass. No second registry.
-- [ ] Non-Linux bootstrap and actual host-visible GPU/UMA backing aliasing. Broader family/codec/task
+- [ ] Non-Linux bootstrap and general host-visible GPU/UMA backing
+  aliasing beyond the qualified original coherent mapped producer.
+  Broader family/codec/task
   registration, other resident formats, generalized persistent session storage, cross-provider restore and
   additional backend prefix eligibility remain open.
 
