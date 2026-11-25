@@ -311,10 +311,12 @@ impl ResidentPhysical {
         })
     }
     #[cfg(all(
-        feature = "qwen-source-qualification",
         feature = "gemma-bf16-qualification",
-        feature = "hip",
-        target_os = "linux"
+        target_os = "linux",
+        any(
+            feature = "vulkan",
+            all(feature = "qwen-source-qualification", feature = "hip")
+        )
     ))]
     pub(crate) fn client(&self) -> &Client {
         &self.client
