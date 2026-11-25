@@ -178,10 +178,19 @@ publication, and charges retained cache/snapshot backing. State-only reuse
 leaves final-token feedback work. L5 physical fork/restore, B1 contiguous/
 paged exact, scoped reuse/exact-length replay/eviction/HTTP and X2 native
 HIP V2 C1/C8 plus alias chain pass. Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-Next reconcile resident/window-streamed tensor materialization and transfer
-retirement through existing verified windows and native consumers; keep
-fully resident access direct, use the same reader leases/admission/copy
-completion/quarantine. No additional cache hierarchy, allocator or publisher.
+Signed `7b36a879` shares original authenticated matrix-window validation
+among resident packing/matrices and source pages, uses the existing owned
+CUDA transfer for cold packing, and merges singleton/cohort projection
+transport while retaining direct resident access and numerical selection.
+`0342e103` fixes CUDA-only device selection; `fdfb467f` compares physical
+resident/streamed fits in fresh admitted contexts. L5 B1 full logits/all42,
+native B4 token/score/all42, streamed cancellation/retry, ordinary CUDA C1
+and X2 native HIP V2 C1/C8 plus alias chain pass. Full isolated gate:
+2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Next reconcile complete parameter materialization/conversion staging and
+transfer retirement, separating retained authenticated descriptors from
+transient admitted backing at actual initialization completion. No
+additional cache hierarchy, allocator or publisher.
 General DAG/media/context authority, pipeline source loading, transport
 activation, portable snapshot persistence and cross-provider restore remain
 unsupported. None of these slices closes Phase 1.

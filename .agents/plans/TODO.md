@@ -9,14 +9,15 @@ Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md).
 The foundations pack links the complete dated history, source checkpoint, original design and plan/open-work/Git inventories. Live source and owning TODOs remain authoritative.
 
-**25 Nov Phase 1 checkpoint:** `2df8cbb3` binds scoped prefix cache to
-the original prepared resident state, with typed compatibility, shared
-complete-domain restore/fork, charged backing and final-token feedback
-preservation. L5 CUDA fork/restore, B1 paged/contiguous, scope/eviction/
-exact-length replay/HTTP; X2 native HIP V2 C1/C8 plus alias chain pass.
+**25 Nov Phase 1 checkpoint:** `7b36a879`/`0342e103`/`fdfb467f`
+share authenticated matrix-window and resident/streamed CUDA transport.
+L5 Qwen 0.8B resident/streamed B1 full logits/all42, native B4 token/score/
+all42, known-completed cancellation/retry and CUDA SDK C1 pass; X2 native
+HIP V2 C1/C8 plus alias chain pass. Fresh contexts compare actual outputs
+without increasing the cumulative compiler budget.
 Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-Next reconcile resident/window-streamed tensor materialization and transfer
-retirement using existing verified windows and actual native consumers.
+Next reconcile complete parameter materialization, conversion staging and
+actual transfer-retirement using existing source/initialization owners.
 Continue foundations in the [full plan](FULL_IMPLEMENTATION_PLAN.md).
 No second cache hierarchy, allocator or publisher; portable persistence,
 cross-provider restore and general media/DAG/context remain open.

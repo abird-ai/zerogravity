@@ -107,6 +107,19 @@ The following extends existing owners; source-byte qualification is not inferenc
   requires streamed weights. No benchmark fixture/evidence pin was added. Direct/async source
   IO remains future work only if it composes with the verified cache/miss policy instead of
   bypassing it.
+- [~] **25 Nov matrix window/transfer follow-up:** `7b36a879` and
+  `0342e103` share authenticated window row validation, original owned CUDA
+  H2D for cold packing, and the existing streamed pending/reuse checkpoint;
+  resident access is direct, HIP retains its actual event retirement ring.
+  Portable serial staging has an admitted copy/bounce bound. No new page
+  allocator or cache. `fdfb467f` real Qwen 0.8B resident/streamed exact
+  B1 full logits/all42 and native B4 tokens/scores/all42, streamed
+  cancel/discard/retry, SDK C1 and native HIP regressions pass. Fresh
+  compiler contexts avoid the cumulative PTX limit hit in the first
+  combined comparison; do not raise the budget. Next distinguish retained
+  authenticated parameter descriptors from transient source/conversion
+  backing and retire that backing on actual initialization completion.
+  Broader IO/cache/eviction and unknown-work recovery remain open.
 - [~] Canonical physical buffer identity now exists in the model-neutral device
   ledger. `DeviceBufferIdentity` is an opaque process-local **ledger namespace +
   allocation owner + exact byte range**: direct allocations are owned by their original

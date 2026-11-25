@@ -20,6 +20,54 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed source checkpoint `fdfb467f7ec86ddb891f78f562698675875a3565` —
+shared authenticated resident/streamed matrix transport.**
+`7b36a879` shares the original `TensorWindow::require_rows` exact
+issuer/member/expert-plane/row-range/byte-extent check among resident matrices,
+CUDA packing and source pages. The immutable CUDA pack authenticates its
+members once during preparation; invocation still compares the exact original
+descriptors. Resident calls borrow device leases directly, without a source
+lookup or cache dispatch. Singleton, native decode and independent-prefill
+cohort projection consumers share one resident/streamed transport; selection
+of arithmetic/reduction and row layout stays with the original operation.
+No new allocator, worker, numerical profile or publisher.
+
+Cold CUDA packing uses the existing owned-window actor upload instead of a
+host payload copy. The initialization's retained pending owner holds the
+actual admitted window until the original physical barrier, or quarantine on
+unknown completion. The streamed page uses the same window type and its
+existing flight/reuse checkpoint; HIP event retirement remains unchanged.
+Portable serial staging retains the charged copy and shared Bytes; native
+CUDA is selected by the actual physical device (`0342e103` fixes the
+CUDA-only feature boundary). Existing transfer rings and dormant alternatives
+remain reusable. Packed row geometry stays within the existing bounded page.
+
+Focused source binding and strict artifact Clippy, combined SDK compilation,
+L5 actual Qwen 0.8B resident/streamed fit, singleton full vocabulary/all42
+and native B4 prefill/decode token/score/all42 match; known-completed streamed
+cancel discards and the next execution succeeds. `fdfb467f` isolates the
+two physical preparations in fresh processes and compares actual bit-content
+digests, not a pinned reference. The earlier same-process combined comparison
+exhausted the existing cumulative PTX budget; no cap was raised. Ordinary
+CUDA C1 three waves and X2 native HIP V2 C1/C8 six waves match expected
+IDs/replay; X2 two-stage alias chain and original retirement pass. The HIP
+run predates the CUDA-only correction and test-only isolation, which do not
+change its build. Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+No performance claim, new async SSD IO, unknown cold-upload fault injection
+or broader Vulkan physical/combined-context eligibility.
+
+Next: reconcile complete parameter materialization/conversion staging
+and transfer retirement through actual source consumers. Inspect
+`resident_leases::{forward_parameter_upload,source_parameters}` and
+`ParameterWindow`: distinguish retained authenticated descriptor/source
+authority from transient source/conversion backing. Release only after
+actual initialization completion, retain on uncertainty, preserve original
+codecs/RNE/finite checks and direct resident access. Reuse existing
+admission and completion owners; no second cache/allocator or generic IO
+framework. Phase 1 remains open; prior deferred scopes remain deferred.
+
+Prior accepted resident state identity checkpoint:
+
 **Signed source checkpoint `2df8cbb3f11ba698278b3537fc4fd16ca52908b5` —
 prepared resident state identity and scoped prefix compatibility.**
 `PrefixCache<U,T,K>` compares the original owner's exact typed key with an
@@ -60,17 +108,10 @@ format, arbitrary positions, cross-provider restore or context authorization
 extension. Host backing charges cover the retained production cache/snapshot
 owners, not all OS/driver RAM or all legacy transient clones.
 
-Next: reconcile shared resident/window-streamed tensor materialization and
-transfer-retirement through actual source consumers. Start with existing
-verified windows and native resident/streamed preparation (including CUDA's
-current streamed path). Inspect `resident_leases::{resident_matrix,source_page,
-forward_projection_upload}` and the existing prepared projection consumers;
-preserve original reader leases, cancellation, copy completion/quarantine
-and device admission. Resident access must remain
-direct, with no mandatory cache-miss dispatch. No new allocator/cache hierarchy
-or speculative async IO architecture. General media/DAG/context authority,
+The matrix window/transfer-retirement slice is implemented in
+`7b36a879` and its follow-ups above. General media/DAG/context authority,
 pipeline source loading and transport activation remain outside the serial
-language subset. Phase 1 remains open.
+language subset.
 
 Prior accepted source-bound language pipeline checkpoint:
 

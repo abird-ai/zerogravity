@@ -622,9 +622,19 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   compile; physical CUDA fork/restore, B1 paged/contiguous, scoped cache
   reuse, exact-length replay, eviction and HTTP; native HIP C1/C8 and
   language pipeline pass. Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-- [ ] Continue materialization/transfer-retirement through real native
-  consumers; portable snapshot persistence, cross-provider restore and
-  additional backend prefix eligibility remain deferred.
+## Shared authenticated matrix transport — 25 Nov
+
+- [x] `7b36a879`/`0342e103`: original window binding, CUDA packed
+  resident/streamed transfer and shared singleton/cohort projection
+  transport; original completion/retirement and arithmetic retained.
+- [x] `fdfb467f`: physical CUDA resident/streamed exact B1 logits/all42,
+  native B4 token/score/all42, cancel/discard/retry and SDK C1; HIP native
+  V2 C1/C8 and alias chain. Fresh compiler contexts, unchanged budget.
+  Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+- [ ] Reconcile transient parameter/conversion staging retirement through
+  existing source/initialization owners; portable snapshot persistence,
+  cross-provider restore and additional backend prefix eligibility remain
+  deferred.
 
 ## Handoff and documentation maintenance
 

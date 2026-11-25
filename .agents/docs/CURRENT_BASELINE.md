@@ -5,6 +5,19 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — shared authenticated matrix transport
+
+`7b36a879`, CUDA-only fix `0342e103`, fresh-context test `fdfb467f`:
+resident cold packing reuses the owned-window actor upload; shared exact
+window validation and CUDA singleton/cohort transport, unchanged arithmetic
+and direct resident access. L5 actual Qwen 0.8B resident/streamed singleton
+full logits/all42 and native B4 token/score/all42 match, streamed
+cancel/discard/retry and ordinary CUDA C1 pass. X2 native HIP V2 C1/C8 and
+alias chain pass with retirement. Same-process comparison exhausted existing
+PTX budget; fresh-context comparison passes without raising it.
+Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+No new performance baseline or cross-provider/async IO claim.
+
 ## 25 Nov — prepared resident state identity and scoped prefix compatibility
 
 `2df8cbb3`: typed original resident owner key and explicit scope, exact

@@ -378,6 +378,18 @@ their existing numeric/source/physical acceptance gates.
   X2 HIP V2 C1/C8 plus alias chain and original retirement pass.
   Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
 
+## Shared authenticated matrix transport — 25 Nov
+
+- [x] `7b36a879`/`0342e103`: one exact window binding and original
+  owned CUDA upload for cold packing and streamed pages. Immutable
+  prepared matrix descriptors; direct resident lease use; shared
+  singleton/cohort transport with existing arithmetic/layout choices.
+- [x] `fdfb467f`: actual L5 Qwen 0.8B resident/streamed B1 full logits/
+  all42 and native B4 token/score/all42 match in fresh contexts, known
+  completion cancel/discard/retry and SDK C1 pass; HIP V2 C1/C8 and alias
+  chain pass. Compiler budgets unchanged. No new allocator or performance
+  claim. Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+
 ## Uncommitted
 
 ### Phase 1 — source, semantics and executable lowering
@@ -385,8 +397,10 @@ their existing numeric/source/physical acceptance gates.
 Contract: [closed regions](REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering)
 and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
 
-- [ ] Reconcile resident/window-streamed materialization and transfer
-  retirement through actual verified-source/native consumers. Preserve
+- [ ] Reconcile complete parameter materialization/conversion staging
+  and transfer retirement through actual verified-source/native consumers.
+  Distinguish retained source/descriptor from transient admitted backing,
+  releasing only after known initialization completion. Preserve
   source/lease/queue/completion authority and direct resident access;
   no additional cache hierarchy or allocator. General DAG/media/context
   authority, source loading and pipeline transport activation remain

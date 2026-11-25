@@ -167,6 +167,15 @@ any external compiler. All phases retain the original resource/state owners.
   pass with original retirement; full isolated gate passes. No hot math
   change, post-submit fallback or new numerical profile. CUDA actual actor
   reservation remains post-Client.
+- Accepted `7b36a879`/`0342e103`/`fdfb467f`: original authenticated
+  window check and owned CUDA transfer shared by cold resident packing
+  and streamed pages; immutable member binding once cold. CUDA singleton,
+  decode and independent-prefill cohort projection transport unified,
+  preserving original arithmetic/layout and direct resident leases.
+  Real 0.8B B1 full logits/all42 and native B4 token/score/all42 match
+  between resident/streamed fits in fresh contexts; known-completed
+  cancel/discard/retry, SDK C1 and native HIP regressions pass. No new
+  arithmetic/throughput claim or compiler-cap change (composition TODO).
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.
