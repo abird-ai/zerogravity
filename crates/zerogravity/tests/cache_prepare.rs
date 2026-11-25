@@ -23,7 +23,7 @@ use zerogravity::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, Resource
 const ABC: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 fn admission(bytes: u64) -> TransferAdmission {
     let arbiter = ResourceArbiter::new();
-    let resource = PhysicalDeviceKey::new("test-host", "cache-prepare").unwrap();
+    let resource = PhysicalDeviceKey::new("host", "cache-prepare").unwrap();
     arbiter.register(resource.clone(), bytes).unwrap();
     TransferAdmission {
         arbiter,
