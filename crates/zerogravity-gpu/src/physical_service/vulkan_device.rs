@@ -1,46 +1,72 @@
-//! Exact selected adapter for the existing guarded cold Vulkan bootstrap.
+//! Exact named Vulkan adapter or its already registered service.
 use super::*;
-use cubecl::{Device, wgpu::WgpuAdapterPreflight};
+use cubecl::{
+    Device,
+    device::{WgpuBackend, WgpuDevice, WgpuDeviceKind},
+    wgpu::WgpuAdapterPreflight,
+};
 
-/// Owns the selected adapter, before a device or queue exists.
+enum Selected {
+    Existing(Client),
+    Cold(WgpuAdapterPreflight),
+}
+
+/// No second registry. Hold the exact original Client or uninitialized adapter.
 pub(crate) struct VulkanDevicePreflight {
     key: PhysicalDeviceKey,
     max_memory: u64,
-    setup: WgpuAdapterPreflight,
+    selector: WgpuDevice,
+    selected: Selected,
+}
+
+fn named(device: &Device) -> Result<&WgpuDevice> {
+    match device {
+        Device::Wgpu(wgpu)
+            if wgpu.backend == WgpuBackend::Vulkan
+                && !matches!(wgpu.kind, WgpuDeviceKind::Existing(_)) =>
+        {
+            Ok(wgpu)
+        }
+        _ => Err(Error::Unsupported(
+            "Vulkan physical selection requires explicit named adapter".into(),
+        )),
+    }
 }
 
 impl VulkanDevicePreflight {
     pub(crate) fn select(device: &Device) -> Result<Self> {
-        let Device::Wgpu(wgpu) = device else {
-            return Err(Error::Unsupported(
-                "Vulkan physical selection requires Vulkan".into(),
-            ));
+        let selector = named(device)?;
+        let (physical, max_memory, selected) = if let Some(client) =
+            cubecl::wgpu::existing_client(selector)
+        {
+            (
+                client.properties().identity.physical.clone(),
+                client.properties().memory.max_memory(),
+                Selected::Existing(client),
+            )
+        } else {
+            let setup = cubecl::wgpu::try_preflight_adapter::<cubecl::wgpu::Vulkan>(selector)
+                .map_err(|error| Error::State(format!("Vulkan adapter preflight: {error}")))?;
+            if setup.backend() != cubecl::wgpu::wgpu::Backend::Vulkan {
+                return Err(Error::State(
+                    "Vulkan preflight selected another backend".into(),
+                ));
+            }
+            (setup.physical(), setup.max_memory(), Selected::Cold(setup))
         };
-        if wgpu.backend != cubecl::device::WgpuBackend::Vulkan {
-            return Err(Error::Unsupported(
-                "Vulkan physical selection requires explicit Vulkan backend".into(),
-            ));
-        }
-        let setup = cubecl::wgpu::try_preflight_adapter::<cubecl::wgpu::Vulkan>(wgpu)
-            .map_err(|error| Error::State(format!("Vulkan adapter preflight: {error}")))?;
-        if setup.backend() != cubecl::wgpu::wgpu::Backend::Vulkan {
-            return Err(Error::State(
-                "Vulkan adapter preflight selected another backend".into(),
-            ));
-        }
-        let key = physical_key(setup.physical().as_ref())?;
+        let key = physical_key(physical.as_ref())?;
         if key.backend != "pci" {
             return Err(Error::Unsupported(
                 "Vulkan local VRAM observation requires exact PCI identity".into(),
             ));
         }
-        let max_memory = setup.max_memory().ok_or_else(|| {
-            Error::State("Vulkan adapter preflight has no device-local capacity".into())
-        })?;
+        let max_memory = max_memory
+            .ok_or_else(|| Error::State("Vulkan adapter has no device-local capacity".into()))?;
         Ok(Self {
             key,
             max_memory,
-            setup,
+            selector: selector.clone(),
+            selected,
         })
     }
 
@@ -70,26 +96,22 @@ impl VulkanDevicePreflight {
         )
     }
 
-    /// Register this exact adapter once on the guarded cold path. Do not
-    /// call this for an already initialized selector; subsequent model
-    /// admissions share its original ResidentPhysical.
-    pub(crate) fn register(self, device: &Device) -> Result<()> {
-        let Device::Wgpu(wgpu) = device else {
-            return Err(Error::State(
-                "Vulkan preflighted context device kind differs".into(),
-            ));
-        };
-        if wgpu.backend != cubecl::device::WgpuBackend::Vulkan {
-            return Err(Error::State(
-                "Vulkan preflighted context backend differs".into(),
-            ));
+    /// Return the actual registered service, constructing only on the original
+    /// registry miss. A racing initializer is checked by the admission owner.
+    pub(crate) fn client(self, device: &Device, before_create: impl FnOnce()) -> Result<Client> {
+        let selector = named(device)?;
+        if selector != &self.selector {
+            return Err(Error::State("Vulkan preflighted selector differs".into()));
         }
-        cubecl::wgpu::try_init_preflight::<cubecl::wgpu::Vulkan>(
-            wgpu,
-            self.setup,
-            cubecl::wgpu::RuntimeOptions::default(),
-        )
-        .map(|_| ())
-        .map_err(|error| Error::State(format!("Vulkan preflighted context: {error}")))
+        match self.selected {
+            Selected::Existing(client) => Ok(client),
+            Selected::Cold(setup) => cubecl::wgpu::try_client_preflight::<cubecl::wgpu::Vulkan>(
+                selector,
+                setup,
+                cubecl::wgpu::RuntimeOptions::default(),
+                before_create,
+            )
+            .map_err(|error| Error::State(format!("Vulkan preflighted context: {error}"))),
+        }
     }
 }

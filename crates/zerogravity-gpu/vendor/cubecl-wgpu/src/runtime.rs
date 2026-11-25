@@ -575,6 +575,7 @@ pub fn try_init_setup<G: GraphicsApi>(
 /// A selected adapter whose device/queue have not been requested yet. The
 /// physical identity and capacity can be admitted before the context exists.
 pub struct WgpuAdapterPreflight {
+    selector: DeviceId,
     instance: wgpu::Instance,
     adapter: wgpu::Adapter,
     backend: wgpu::Backend,
@@ -621,6 +622,7 @@ pub async fn try_preflight_adapter_async<G: GraphicsApi>(
     }
     let mut selected = device.clone();
     selected.backend = requested_backend;
+    let selected = resolve_adapter_selector(&selected)?;
     let backend = if requested_backend == WgpuBackend::Auto {
         resolve_backend(requested_backend)
     } else {
@@ -638,6 +640,7 @@ pub async fn try_preflight_adapter_async<G: GraphicsApi>(
         });
     }
     Ok(WgpuAdapterPreflight {
+        selector: device.to_id(),
         instance,
         adapter,
         backend,
@@ -651,6 +654,29 @@ pub async fn try_init_preflight_async<G: GraphicsApi>(
     options: RuntimeOptions,
 ) -> Result<WgpuSetup, WgpuInitError> {
     options.validate()?;
+    let requested_backend = validate_preflight::<G>(device, &preflight)?;
+    let setup = create_preflight_setup(preflight).await?;
+    let server = try_create_server::<AutoCompiler>(
+        setup.clone(),
+        options,
+        device.to_id(),
+        requested_backend,
+    )?;
+    Client::try_init(device.to_id(), server).map_err(|err| WgpuInitError::Registration {
+        message: format!("{device:?}: {err:?}"),
+    })?;
+    Ok(setup)
+}
+
+fn validate_preflight<G: GraphicsApi>(
+    device: &WgpuDevice,
+    preflight: &WgpuAdapterPreflight,
+) -> Result<WgpuBackend, WgpuInitError> {
+    if preflight.selector != device.to_id() {
+        return Err(WgpuInitError::InvalidConfiguration {
+            message: "preflighted adapter belongs to another selector".into(),
+        });
+    }
     if matches!(device.kind, WgpuDeviceKind::Existing(_)) {
         return Err(WgpuInitError::InvalidConfiguration {
             message:
@@ -671,24 +697,53 @@ pub async fn try_init_preflight_async<G: GraphicsApi>(
             message: "preflighted adapter belongs to another graphics API".into(),
         });
     }
+    Ok(requested_backend)
+}
+
+async fn create_preflight_setup(
+    preflight: WgpuAdapterPreflight,
+) -> Result<WgpuSetup, WgpuInitError> {
     let (wgpu_device, queue) = backend::try_request_device(&preflight.adapter).await?;
-    let setup = WgpuSetup {
+    Ok(WgpuSetup {
         instance: preflight.instance,
         adapter: preflight.adapter,
         device: wgpu_device,
         queue,
         backend: preflight.backend,
-    };
-    let server = try_create_server::<AutoCompiler>(
-        setup.clone(),
-        options,
-        device.to_id(),
-        requested_backend,
-    )?;
-    Client::try_init(device.to_id(), server).map_err(|err| WgpuInitError::Registration {
+    })
+}
+
+/// Read the original exact registered selector without creating a device.
+pub fn existing_client(device: &WgpuDevice) -> Option<Client> {
+    validate_named_selector(device).ok()?;
+    Client::get_existing::<WgpuServer<AutoCompiler>>(device.to_id())
+}
+
+/// Reuse the exact named registration or construct the preflighted adapter
+/// once under the original registry lock. The callback marks actual physical
+/// bootstrap, never runs on reuse, and must not reenter the registry.
+/// Existing explicit setup-registration APIs keep their strict insert semantics.
+#[cfg(not(target_family = "wasm"))]
+pub fn try_client_preflight<G: GraphicsApi>(
+    device: &WgpuDevice,
+    preflight: WgpuAdapterPreflight,
+    options: RuntimeOptions,
+    before_create: impl FnOnce(),
+) -> Result<Client, WgpuInitError> {
+    options.validate()?;
+    let requested_backend = validate_preflight::<G>(device, &preflight)?;
+    let device_id = device.to_id();
+    Client::get_or_try_init_with::<WgpuServer<AutoCompiler>>(device_id, || {
+        before_create();
+        future::block_on(create_preflight_setup(preflight))
+            .and_then(|setup| {
+                try_create_server::<AutoCompiler>(setup, options, device_id, requested_backend)
+            })
+            .map_err(|err| cubecl_common::device_handle::ServiceCreationError::new(err.to_string()))
+    })
+    .map_err(|err| WgpuInitError::Registration {
         message: format!("{device:?}: {err:?}"),
-    })?;
-    Ok(setup)
+    })
 }
 
 /// Synchronous preflight for native callers.
@@ -912,8 +967,7 @@ fn try_create_server<C: WgpuCompiler>(
     ))
 }
 
-/// Acquire an adapter and device without blocking the caller's executor.
-async fn try_create_setup(device: &WgpuDevice) -> Result<WgpuSetup, WgpuInitError> {
+fn resolve_adapter_selector(device: &WgpuDevice) -> Result<WgpuDevice, WgpuInitError> {
     // Validate overrides before touching the graphics APIs. They choose hardware, not
     // the graphics API or the registration key the caller selected.
     let override_device = match device.kind {
@@ -923,7 +977,12 @@ async fn try_create_setup(device: &WgpuDevice) -> Result<WgpuSetup, WgpuInitErro
         }),
         _ => None,
     };
-    let device = override_device.as_ref().unwrap_or(device);
+    let device = override_device.unwrap_or_else(|| device.clone());
+    validate_named_selector(&device)?;
+    Ok(device)
+}
+
+fn validate_named_selector(device: &WgpuDevice) -> Result<(), WgpuInitError> {
     match device.kind {
         WgpuDeviceKind::DiscreteGpu(index)
         | WgpuDeviceKind::IntegratedGpu(index)
@@ -945,6 +1004,13 @@ async fn try_create_setup(device: &WgpuDevice) -> Result<WgpuSetup, WgpuInitErro
         }
         _ => {}
     }
+    Ok(())
+}
+
+/// Acquire an adapter and device without blocking the caller's executor.
+async fn try_create_setup(device: &WgpuDevice) -> Result<WgpuSetup, WgpuInitError> {
+    let selected = resolve_adapter_selector(device)?;
+    let device = &selected;
     let candidates = backend_candidates(device.backend);
     if !candidates
         .iter()

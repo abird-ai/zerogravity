@@ -27,13 +27,25 @@ impl PreAdmittedDevice {
 
     /// Any error or unwind after a bootstrap starts retains the original
     /// envelope. A refusal before this point drops only unused admission.
-    pub(crate) fn bootstrap<T>(mut self, construct: impl FnOnce(&Self) -> Result<T>) -> Result<T> {
-        self.armed = true;
-        let result = construct(&self);
+    pub(crate) fn bootstrap<T>(self, construct: impl FnOnce(&Self) -> Result<T>) -> Result<T> {
+        self.adopt(|pre| {
+            pre.begin_bootstrap();
+            construct(pre)
+        })
+    }
+
+    /// A known reuse needs no armed bootstrap; a new context arms the same
+    /// guard immediately before construction. Disarm only on successful adoption.
+    pub(crate) fn adopt<T>(mut self, construct: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
+        let result = construct(&mut self);
         if result.is_ok() {
             self.armed = false;
         }
         result
+    }
+
+    pub(crate) fn begin_bootstrap(&mut self) {
+        self.armed = true;
     }
 }
 
@@ -80,10 +92,7 @@ impl PhysicalServiceBudget {
 
     /// The selected device's observed local capacity and live availability
     /// constrain the same original reservation. Neither is another pool.
-    #[cfg(any(
-        feature = "hip",
-        all(feature = "vulkan", feature = "gemma-bf16-qualification")
-    ))]
+    #[cfg(any(feature = "hip", feature = "vulkan"))]
     pub(crate) fn preadmit_available_device(
         key: PhysicalDeviceKey,
         ceiling: u64,
@@ -115,8 +124,9 @@ impl PhysicalServiceBudget {
     ) -> Result<Self> {
         let properties = client.properties();
         let key = physical_key(properties.identity.physical.as_ref())?;
-        if !pre.armed
-            || key != pre.key
+        // The actual registered client must agree with the admitted key and
+        // capacity, whether newly constructed or an already existing service.
+        if key != pre.key
             || operator_device_cap != pre.operator_limit
             || provider_cap != pre.lease.reserved_bytes()?
             || properties

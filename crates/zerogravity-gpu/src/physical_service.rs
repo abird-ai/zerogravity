@@ -115,23 +115,9 @@ mod cuda_device;
 #[cfg(all(feature = "cuda", target_os = "linux"))]
 pub(crate) use cuda_device::ObservedCudaDevice;
 
-#[cfg(all(
-    feature = "vulkan",
-    any(
-        feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification"
-    ),
-    target_os = "linux"
-))]
+#[cfg(all(feature = "vulkan", target_os = "linux"))]
 mod vulkan_device;
-#[cfg(all(
-    feature = "vulkan",
-    any(
-        feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification"
-    ),
-    target_os = "linux"
-))]
+#[cfg(all(feature = "vulkan", target_os = "linux"))]
 pub(crate) use vulkan_device::VulkanDevicePreflight;
 
 pub struct PhysicalServiceBudget {
@@ -150,20 +136,12 @@ pub struct PhysicalServiceBudget {
 
 #[cfg(all(
     target_os = "linux",
-    any(
-        feature = "cuda",
-        feature = "hip",
-        all(feature = "vulkan", feature = "gemma-bf16-qualification")
-    )
+    any(feature = "cuda", feature = "hip", feature = "vulkan")
 ))]
 mod preadmit;
 #[cfg(all(
     target_os = "linux",
-    any(
-        feature = "cuda",
-        feature = "hip",
-        all(feature = "vulkan", feature = "gemma-bf16-qualification")
-    )
+    any(feature = "cuda", feature = "hip", feature = "vulkan")
 ))]
 pub(crate) use preadmit::PreAdmittedDevice;
 
@@ -443,6 +421,55 @@ pub fn initialize_cuda_physical_identity(device: &cubecl::Device) -> Result<Phys
 mod tests {
     use super::*;
     use cubecl::ir::{AdapterLuid, PciAddress, RegistryEntryId};
+
+    #[test]
+    fn fallible_factory_reuses_original_service() {
+        use cubecl_common::{
+            device::{DeviceId, DeviceService, ServerUtilitiesHandle},
+            device_handle::{DeviceHandle, ServiceCreationError},
+        };
+        use std::sync::atomic::AtomicUsize;
+        struct Service(usize);
+        impl DeviceService for Service {
+            fn init(_: DeviceId) -> Self {
+                panic!("unexpected lazy construction")
+            }
+            fn utilities(&self) -> ServerUtilitiesHandle {
+                Arc::new(())
+            }
+        }
+        type Handle = DeviceHandle<Service>;
+        // Synthetic test-only ID, not a real GPU selector.
+        let id = DeviceId::new(u16::MAX, u16::MAX);
+        assert!(Handle::get_existing(id).is_none());
+        assert!(
+            Handle::get_or_try_insert_with(id, || Err(ServiceCreationError::new("refused".into())))
+                .is_err()
+        );
+        assert!(Handle::get_existing(id).is_none());
+        let created = AtomicUsize::new(0);
+        std::thread::scope(|scope| {
+            for _ in 0..4 {
+                let created = &created;
+                scope.spawn(move || {
+                    let handle = Handle::get_or_try_insert_with(id, || {
+                        created.fetch_add(1, Ordering::Relaxed);
+                        Ok(Service(7))
+                    })
+                    .unwrap();
+                    handle.submit_blocking(|service| service.0 += 1).unwrap();
+                });
+            }
+        });
+        assert_eq!(created.load(Ordering::Relaxed), 1);
+        let actual = Handle::get_existing(id).unwrap();
+        let lazy = Handle::new(id);
+        assert_eq!(actual.submit_blocking(|s| s.0).unwrap(), 11);
+        assert_eq!(lazy.submit_blocking(|s| s.0).unwrap(), 11);
+        assert!(Handle::insert(id, Service(0)).is_err());
+        drop((actual, lazy));
+        Handle::shutdown(id);
+    }
 
     #[test]
     fn backend_reported_physical_identity_is_stable_across_service_names() {

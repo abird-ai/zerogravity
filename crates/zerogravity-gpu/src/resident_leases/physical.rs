@@ -210,6 +210,12 @@ impl ResidentPhysical {
                 Self::from_client_preadmitted(device, provider_cap, device_cap, pre).map(Arc::new)
             });
         }
+        #[cfg(all(feature = "vulkan", target_os = "linux"))]
+        if matches!(device, Device::Wgpu(_)) {
+            let observed = crate::physical_service::VulkanDevicePreflight::select(&device)?;
+            let pre = observed.preadmit(provider_cap, device_cap)?;
+            return Self::bootstrap_vulkan(device, provider_cap, device_cap, observed, pre);
+        }
         let provider = crate::backend::Provider::selected(&device)?;
         let client = device.client();
         Self::from_client(device, client, provider_cap, device_cap, provider).map(Arc::new)
@@ -234,11 +240,7 @@ impl ResidentPhysical {
     }
     #[cfg(all(
         target_os = "linux",
-        any(
-            feature = "cuda",
-            feature = "hip",
-            all(feature = "vulkan", feature = "gemma-bf16-qualification")
-        )
+        any(feature = "cuda", feature = "hip", feature = "vulkan")
     ))]
     fn from_client_preadmitted(
         device: Device,
@@ -556,16 +558,9 @@ impl ResidentPhysical {
         Self::new(device, provider_cap, device_cap)
     }
 
-    /// Exact adapter bootstrap for the guarded cold Vulkan owner. The
-    /// original selector must be cold; callers hold the pre-admitted lease.
-    #[cfg(all(
-        target_os = "linux",
-        feature = "vulkan",
-        any(
-            feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification"
-        )
-    ))]
+    /// Exact named Vulkan service; a registered client does not rebootstrap.
+    /// Callers hold the original pre-admitted physical lease.
+    #[cfg(all(target_os = "linux", feature = "vulkan"))]
     pub(crate) fn bootstrap_vulkan(
         device: Device,
         provider_cap: usize,
@@ -573,9 +568,16 @@ impl ResidentPhysical {
         observed: crate::physical_service::VulkanDevicePreflight,
         pre: crate::physical_service::PreAdmittedDevice,
     ) -> Result<Arc<Self>> {
-        pre.bootstrap(|pre| {
-            observed.register(&device)?;
-            Self::from_client_preadmitted(device, provider_cap, device_cap, pre).map(Arc::new)
+        pre.adopt(|pre| {
+            let provider = crate::backend::Provider::selected(&device)?;
+            let client = observed.client(&device, || pre.begin_bootstrap())?;
+            let budget = PhysicalServiceBudget::attach_preadmitted(
+                &client,
+                pre,
+                device_cap,
+                provider_cap as u64,
+            )?;
+            Self::from_budget(device, client, provider, budget).map(Arc::new)
         })
     }
 

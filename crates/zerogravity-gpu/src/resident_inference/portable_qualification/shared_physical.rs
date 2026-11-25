@@ -37,7 +37,8 @@ async fn load_pair(
                     }
                 }
                 #[cfg(feature = "vulkan")]
-                Device::Wgpu(_) => {
+                Device::Wgpu(selector) => {
+                    assert!(cubecl::wgpu::existing_client(selector).is_none());
                     let observed = crate::physical_service::VulkanDevicePreflight::select(&device)?;
                     if observed.key() != &expected {
                         return Err(Error::Unsupported(
@@ -60,7 +61,11 @@ async fn load_pair(
             let refusal = match &device {
                 Device::Hip(_) => ResidentPhysical::new(device.clone(), PROVIDER, DEVICE).err(),
                 #[cfg(feature = "vulkan")]
-                Device::Wgpu(_) => vulkan.as_ref().unwrap().preadmit(PROVIDER, DEVICE).err(),
+                Device::Wgpu(selector) => {
+                    let error = ResidentPhysical::new(device.clone(), PROVIDER, DEVICE).err();
+                    assert!(cubecl::wgpu::existing_client(selector).is_none());
+                    error
+                }
                 _ => unreachable!(),
             };
             let refused = arbiter.snapshot(&expected)?;
@@ -77,16 +82,36 @@ async fn load_pair(
             let physical = match &device {
                 Device::Hip(_) => ResidentPhysical::new(device.clone(), PROVIDER, DEVICE)?,
                 #[cfg(feature = "vulkan")]
-                Device::Wgpu(_) => {
+                Device::Wgpu(selector) => {
                     let observed = vulkan.take().expect("selected cold Vulkan adapter");
                     let pre = observed.preadmit(PROVIDER, DEVICE)?;
-                    ResidentPhysical::bootstrap_vulkan(
+                    // A second ordinary initializer registers first. The
+                    // earlier exact adapter must reuse it, not create again.
+                    let physical = ResidentPhysical::new(device.clone(), PROVIDER, DEVICE)?;
+                    let raced = ResidentPhysical::bootstrap_vulkan(
                         device.clone(),
                         PROVIDER,
                         DEVICE,
                         observed,
                         pre,
-                    )?
+                    )?;
+                    let warm = ResidentPhysical::new(device.clone(), PROVIDER, DEVICE)?;
+                    let registered = cubecl::wgpu::existing_client(selector).unwrap();
+                    let properties = physical.client().properties_shared();
+                    for client in [raced.client(), warm.client(), &registered] {
+                        assert!(Arc::ptr_eq(&properties, &client.properties_shared()));
+                        assert_eq!(physical.client().service_id(), client.service_id());
+                    }
+                    let reserved = arbiter.snapshot(&expected)?;
+                    assert_eq!(reserved.reserved, 3 * PROVIDER as u64);
+                    assert_eq!(reserved.reservations, 3);
+                    drop((raced, warm, registered));
+                    let reserved = arbiter.snapshot(&expected)?;
+                    assert_eq!(reserved.reserved, PROVIDER as u64);
+                    assert_eq!(reserved.reservations, 1);
+                    assert!(!reserved.fenced);
+                    eprintln!("VULKAN_ORIGINAL_REGISTRY_REUSE_PASS");
+                    physical
                 }
                 _ => unreachable!(),
             };
