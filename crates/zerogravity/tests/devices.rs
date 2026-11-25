@@ -206,7 +206,40 @@ fn runtime_handle_checks_open_before_inventory_or_selector_io() {
     let inventory = inventory();
     let selected = runtime.devices().allowed(&policy, &inventory).unwrap();
     assert_eq!(selected[0].id, "pci:0000:02:00.0");
+    use devices::{PlacementRequest, PlacementTarget};
+    use zerogravity::resource_arbiter::PhysicalDeviceKey;
+    let target = PlacementTarget::Physical(PhysicalDeviceKey::new("pci", "0000:02:00.0").unwrap());
+    let mut placement = PlacementRequest {
+        compute: target.clone(),
+        parameters: target.clone(),
+        mutable_state: target.clone(),
+        reusable_cache: target.clone(),
+    };
+    let before = runtime.snapshot().unwrap();
+    assert!(runtime.devices().plan(&placement).unwrap().is_empty());
+    for different in [
+        PlacementTarget::Storage,
+        PlacementTarget::Remote,
+        PlacementTarget::Physical(PhysicalDeviceKey::new("host", "system-ram").unwrap()),
+    ] {
+        placement.reusable_cache = different;
+        assert!(matches!(
+            runtime.devices().plan(&placement),
+            Err(Error::Unsupported(_))
+        ));
+    }
+    placement.reusable_cache = target;
+    let after = runtime.snapshot().unwrap();
+    assert_eq!(
+        serde_json::to_value(&before.resources).unwrap(),
+        serde_json::to_value(&after.resources).unwrap()
+    );
+    assert_eq!(before.host_backing, after.host_backing);
     runtime.shutdown().unwrap();
+    assert!(matches!(
+        runtime.devices().plan(&placement),
+        Err(Error::State(_))
+    ));
     // No call to live inventory on an open runtime: shutdown must refuse first.
     assert!(matches!(
         runtime.devices().inventory(),

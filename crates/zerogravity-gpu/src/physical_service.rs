@@ -115,6 +115,25 @@ mod cuda_device;
 #[cfg(all(feature = "cuda", target_os = "linux"))]
 pub(crate) use cuda_device::ObservedCudaDevice;
 
+#[cfg(all(
+    feature = "vulkan",
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    target_os = "linux"
+))]
+mod vulkan_device;
+#[cfg(all(
+    feature = "vulkan",
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    target_os = "linux"
+))]
+pub(crate) use vulkan_device::VulkanDevicePreflight;
+
 pub struct PhysicalServiceBudget {
     client: Client,
     key: PhysicalDeviceKey,
@@ -133,14 +152,8 @@ pub struct PhysicalServiceBudget {
     target_os = "linux",
     any(
         feature = "cuda",
-        all(
-            any(feature = "hip", feature = "vulkan"),
-            any(
-                feature = "gemma-bf16-qualification",
-                feature = "hip-source",
-                all(test, feature = "qualification", feature = "hip")
-            )
-        )
+        feature = "hip",
+        all(feature = "vulkan", feature = "gemma-bf16-qualification")
     )
 ))]
 mod preadmit;
@@ -148,14 +161,8 @@ mod preadmit;
     target_os = "linux",
     any(
         feature = "cuda",
-        all(
-            any(feature = "hip", feature = "vulkan"),
-            any(
-                feature = "gemma-bf16-qualification",
-                feature = "hip-source",
-                all(test, feature = "qualification", feature = "hip")
-            )
-        )
+        feature = "hip",
+        all(feature = "vulkan", feature = "gemma-bf16-qualification")
     )
 ))]
 pub(crate) use preadmit::PreAdmittedDevice;

@@ -9,8 +9,8 @@ use crate::resident_leases::{
 };
 use cubecl::client::Client;
 use cubecl::wgpu::{
-    PreparedWgpuNative, WgpuAdapterPreflight, WgpuKernelRecipe, WgpuNativeAdmission,
-    WgpuNativeInventory, WgpuNativeRetention,
+    PreparedWgpuNative, WgpuKernelRecipe, WgpuNativeAdmission, WgpuNativeInventory,
+    WgpuNativeRetention,
 };
 use cubecl::{Device, server::ServerError};
 use cubecl_common::device::ServiceId;
@@ -80,79 +80,6 @@ fn native(error: impl std::fmt::Display) -> Error {
     Error::State(format!("original Vulkan native owner: {error}"))
 }
 
-/// Selected adapter admitted before any Vulkan device/context exists.
-#[cfg(all(feature = "vulkan", target_os = "linux"))]
-pub(crate) struct VulkanDevicePreflight {
-    key: PhysicalDeviceKey,
-    max_memory: u64,
-    setup: WgpuAdapterPreflight,
-}
-
-#[cfg(all(feature = "vulkan", target_os = "linux"))]
-impl VulkanDevicePreflight {
-    pub(crate) fn key(&self) -> &PhysicalDeviceKey {
-        &self.key
-    }
-    pub(crate) fn max_memory(&self) -> u64 {
-        self.max_memory
-    }
-    /// Register this exact adapter and create the one original client. The
-    /// physical lease is already in the arbiter, so no second charge is made.
-    pub(crate) fn register(self, device: &Device) -> Result<()> {
-        let Device::Wgpu(wgpu) = device else {
-            return Err(Error::State(
-                "Vulkan preflighted context device kind differs".into(),
-            ));
-        };
-        if wgpu.backend != cubecl::device::WgpuBackend::Vulkan {
-            return Err(Error::State(
-                "Vulkan preflighted context backend differs".into(),
-            ));
-        }
-        cubecl::wgpu::try_init_preflight::<cubecl::wgpu::Vulkan>(
-            wgpu,
-            self.setup,
-            cubecl::wgpu::RuntimeOptions::default(),
-        )
-        .map(|_| ())
-        .map_err(|error| Error::State(format!("Vulkan preflighted context: {error}")))
-    }
-}
-
-/// Select the actual adapter without a device or queue, so its PCI identity
-/// and driver-reported capacity can be admitted first.
-#[cfg(all(feature = "vulkan", target_os = "linux"))]
-pub(crate) fn preflight_vulkan_device(device: &Device) -> Result<VulkanDevicePreflight> {
-    let Device::Wgpu(wgpu) = device else {
-        return Err(Error::State(
-            "Vulkan adapter preflight requires a wgpu device".into(),
-        ));
-    };
-    if wgpu.backend != cubecl::device::WgpuBackend::Vulkan {
-        return Err(Error::State(
-            "Vulkan adapter preflight backend differs".into(),
-        ));
-    }
-    let setup = cubecl::wgpu::try_preflight_adapter::<cubecl::wgpu::Vulkan>(wgpu)
-        .map_err(|error| Error::State(format!("Vulkan adapter preflight: {error}")))?;
-    if setup.backend() != cubecl::wgpu::wgpu::Backend::Vulkan {
-        return Err(Error::State(
-            "Vulkan adapter preflight selected another backend".into(),
-        ));
-    }
-    let physical = setup.physical().ok_or_else(|| {
-        Error::State("Vulkan adapter preflight has no physical PCI identity".into())
-    })?;
-    let key = crate::physical_service::physical_key(Some(&physical))?;
-    let max_memory = setup.max_memory().ok_or_else(|| {
-        Error::State("Vulkan adapter preflight has no device-local capacity".into())
-    })?;
-    Ok(VulkanDevicePreflight {
-        key,
-        max_memory,
-        setup,
-    })
-}
 fn server(error: Error) -> ServerError {
     ServerError::graph_state(error.to_string())
 }

@@ -78,6 +78,32 @@ impl PhysicalServiceBudget {
         })
     }
 
+    /// The selected device's observed local capacity and live availability
+    /// constrain the same original reservation. Neither is another pool.
+    #[cfg(any(
+        feature = "hip",
+        all(feature = "vulkan", feature = "gemma-bf16-qualification")
+    ))]
+    pub(crate) fn preadmit_available_device(
+        key: PhysicalDeviceKey,
+        ceiling: u64,
+        available: u64,
+        operator_device_cap: u64,
+        provider_cap: u64,
+        owner: ResourceOwner,
+    ) -> Result<PreAdmittedDevice> {
+        checked_caps(Some(ceiling), operator_device_cap, provider_cap)?;
+        if provider_cap > available {
+            return Err(Error::resource(
+                "device-local VRAM",
+                "cold provider envelope",
+                provider_cap,
+                available,
+            ));
+        }
+        Self::preadmit_device(key, ceiling, operator_device_cap, provider_cap, owner)
+    }
+
     /// Attach the already-admitted physical charge to the actual client. The
     /// client's selected identity and capacity must match the preflight; no
     /// second arbiter admission is made.

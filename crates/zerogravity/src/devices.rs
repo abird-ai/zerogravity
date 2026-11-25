@@ -44,7 +44,9 @@ impl<'a> Devices<'a> {
         allowed(request, inventory)
     }
 
-    /// Existing placement/transfer planning remains explicitly unsupported.
+    /// Same-domain placement requires no inter-domain transfer plan.
+    /// Cross-domain transports remain unqualified. Not an admission or an
+    /// allocation/stream compatibility proof.
     pub fn plan(&self, request: &PlacementRequest) -> Result<Vec<TransferRequest>> {
         self.runtime.require_open()?;
         zerogravity_engine::placement::plan(request)

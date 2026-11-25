@@ -12,8 +12,94 @@ async fn load_pair(
     Arc<ResidentModel>,
 )> {
     let device = backend.device();
-    backend.validate(&device)?;
-    let physical = ResidentPhysical::new(device, PROVIDER, DEVICE)?;
+    let physical = {
+        #[cfg(target_os = "linux")]
+        {
+            crate::backend::validate_provider(&device)?;
+            let expected = PhysicalDeviceKey::new("pci", PCI)?;
+            let arbiter = ResourceArbiter::process_shared();
+            // Enforce the original X2-only physical hold before any Client.
+            #[cfg(feature = "vulkan")]
+            let mut vulkan = None;
+            match &device {
+                Device::Hip(selected) => {
+                    let observed =
+                        cubecl::hip::observe_device(selected.clone()).ok_or_else(|| {
+                            Error::Unsupported("portable HIP cold observation unavailable".into())
+                        })?;
+                    if crate::physical_service::physical_key(Some(&observed.physical))? != expected
+                        || observed.arch_name.split(':').next() != Some("gfx1151")
+                        || observed.total_memory < DEVICE
+                    {
+                        return Err(Error::Unsupported(
+                            "portable probe requires attested X2 HIP before Client".into(),
+                        ));
+                    }
+                }
+                #[cfg(feature = "vulkan")]
+                Device::Wgpu(_) => {
+                    let observed = crate::physical_service::VulkanDevicePreflight::select(&device)?;
+                    if observed.key() != &expected {
+                        return Err(Error::Unsupported(
+                            "portable probe requires attested X2 Vulkan before Client".into(),
+                        ));
+                    }
+                    vulkan = Some(observed);
+                }
+                _ => return Err(Error::Unsupported("portable shared-owner backend".into())),
+            }
+            arbiter.register_matching(expected.clone(), DEVICE)?;
+            let peer = arbiter.admit(
+                &expected,
+                ResourceOwner::new("portable-peer", "cold-pressure")?,
+                &[AllocationRequest {
+                    kind: AllocationClass::ProviderEnvelope,
+                    bytes: DEVICE - PROVIDER as u64 + 1,
+                }],
+            )?;
+            let refusal = match &device {
+                Device::Hip(_) => ResidentPhysical::new(device.clone(), PROVIDER, DEVICE).err(),
+                #[cfg(feature = "vulkan")]
+                Device::Wgpu(_) => vulkan.as_ref().unwrap().preadmit(PROVIDER, DEVICE).err(),
+                _ => unreachable!(),
+            };
+            let refused = arbiter.snapshot(&expected)?;
+            if !matches!(refusal, Some(Error::Resource(r)) if r.requested == PROVIDER as u64 && r.available == PROVIDER as u64 - 1)
+                || refused.reserved != DEVICE - PROVIDER as u64 + 1
+                || refused.reservations != 1
+                || refused.fenced
+            {
+                return Err(Error::State(
+                    "portable pre-Client peer refusal changed original ledger".into(),
+                ));
+            }
+            drop(peer);
+            let physical = match &device {
+                Device::Hip(_) => ResidentPhysical::new(device.clone(), PROVIDER, DEVICE)?,
+                #[cfg(feature = "vulkan")]
+                Device::Wgpu(_) => {
+                    let observed = vulkan.take().expect("selected cold Vulkan adapter");
+                    let pre = observed.preadmit(PROVIDER, DEVICE)?;
+                    ResidentPhysical::bootstrap_vulkan(
+                        device.clone(),
+                        PROVIDER,
+                        DEVICE,
+                        observed,
+                        pre,
+                    )?
+                }
+                _ => unreachable!(),
+            };
+            backend.validate(&device)?;
+            eprintln!("PORTABLE_PREADMISSION_RETRY_PASS backend={backend:?}");
+            physical
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            backend.validate(&device)?;
+            ResidentPhysical::new(device, PROVIDER, DEVICE)?
+        }
+    };
     let a = Source::new()?;
     let b = Source::new_with_salt(5)?;
     if a.identity == b.identity || a.sha256 == b.sha256 {

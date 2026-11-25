@@ -15,6 +15,35 @@ pub struct PlacementRequest {
     pub mutable_state: PlacementTarget,
     pub reusable_cache: PlacementTarget,
 }
+impl PlacementRequest {
+    /// All four roles reside in one declared physical domain. This does not
+    /// prove common allocation backing, stream compatibility or execution fit.
+    pub fn colocated_device(&self) -> crate::Result<&PhysicalDeviceKey> {
+        let PlacementTarget::Physical(compute) = &self.compute else {
+            return Err(crate::Error::Unsupported(
+                "compute placement requires a physical device".into(),
+            ));
+        };
+        if compute.backend.trim().is_empty() || compute.device.trim().is_empty() {
+            return Err(crate::Error::Malformed(
+                "empty physical placement identity".into(),
+            ));
+        }
+        for (role, target) in [
+            ("parameters", &self.parameters),
+            ("mutable state", &self.mutable_state),
+            ("reusable cache", &self.reusable_cache),
+        ] {
+            if !matches!(target, PlacementTarget::Physical(key) if key == compute) {
+                return Err(crate::Error::Unsupported(format!(
+                    "{role} placement requires an unqualified cross-domain transfer"
+                )));
+            }
+        }
+        Ok(compute)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TransferRequest {
     pub from: PlacementTarget,

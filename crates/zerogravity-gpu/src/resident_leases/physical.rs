@@ -203,6 +203,13 @@ impl ResidentPhysical {
                 Self::from_client_preadmitted(device, provider_cap, device_cap, pre).map(Arc::new)
             });
         }
+        #[cfg(all(feature = "hip", target_os = "linux"))]
+        if matches!(device, Device::Hip(_)) {
+            let pre = Self::preadmit_hip_device(&device, provider_cap, device_cap)?;
+            return pre.bootstrap(|pre| {
+                Self::from_client_preadmitted(device, provider_cap, device_cap, pre).map(Arc::new)
+            });
+        }
         let provider = crate::backend::Provider::selected(&device)?;
         let client = device.client();
         Self::from_client(device, client, provider_cap, device_cap, provider).map(Arc::new)
@@ -229,14 +236,8 @@ impl ResidentPhysical {
         target_os = "linux",
         any(
             feature = "cuda",
-            all(
-                any(feature = "hip", feature = "vulkan"),
-                any(
-                    feature = "gemma-bf16-qualification",
-                    feature = "hip-source",
-                    all(test, feature = "qualification", feature = "hip")
-                )
-            )
+            feature = "hip",
+            all(feature = "vulkan", feature = "gemma-bf16-qualification")
         )
     ))]
     fn from_client_preadmitted(
@@ -410,11 +411,7 @@ impl ResidentPhysical {
     pub fn generation(&self) -> u64 {
         self.generation
     }
-    #[cfg(all(
-        target_os = "linux",
-        feature = "hip",
-        any(feature = "gemma-bf16-qualification", feature = "hip-source")
-    ))]
+    #[cfg(all(target_os = "linux", feature = "hip"))]
     pub(crate) fn preadmit_hip_device(
         device: &Device,
         provider_cap: usize,
@@ -422,13 +419,13 @@ impl ResidentPhysical {
     ) -> Result<crate::physical_service::PreAdmittedDevice> {
         let Device::Hip(selected) = device else {
             return Err(Error::Unsupported(
-                "HIP source requires a HIP device".into(),
+                "HIP physical admission requires a HIP device".into(),
             ));
         };
         crate::backend::validate_provider(device)?;
         // Driver observation, not a Client or an independent free-memory estimate.
         let observed = cubecl::hip::observe_device(selected.clone()).ok_or_else(|| {
-            Error::Unsupported("HIP source physical device observation unavailable".into())
+            Error::Unsupported("HIP physical device observation unavailable".into())
         })?;
         let key = crate::physical_service::physical_key(Some(&observed.physical))?;
         // These are local VRAM constraints, not additional host RAM or GTT.
@@ -440,17 +437,10 @@ impl ResidentPhysical {
             observed.free_memory,
             observed.integrated,
         )?;
-        if provider_cap as u64 > available {
-            return Err(Error::resource(
-                "device-local VRAM",
-                "HIP cold provider envelope",
-                provider_cap as u64,
-                available,
-            ));
-        }
-        PhysicalServiceBudget::preadmit_device(
+        PhysicalServiceBudget::preadmit_available_device(
             key,
             ceiling,
+            available,
             device_cap,
             provider_cap as u64,
             ResourceOwner::new("backend/physical", "original-owner")?,
@@ -532,6 +522,15 @@ impl ResidentPhysical {
                 })
         };
 
+        #[cfg(feature = "hip")]
+        let pre = match pre {
+            None if matches!(device, Device::Hip(_)) => Some(Self::preadmit_hip_device(
+                &device,
+                provider_cap,
+                device_cap,
+            )?),
+            other => other,
+        };
         if let Some(pre) = pre {
             claim()?;
             return pre.bootstrap(|pre| {
@@ -548,22 +547,36 @@ impl ResidentPhysical {
         ))]
         if matches!(&device, Device::Wgpu(wgpu) if wgpu.backend == cubecl::device::WgpuBackend::Vulkan)
         {
-            let observed = crate::vulkan::native::preflight_vulkan_device(&device)?;
-            let pre = PhysicalServiceBudget::preadmit_device(
-                observed.key().clone(),
-                observed.max_memory(),
-                device_cap,
-                provider_cap as u64,
-                ResourceOwner::new("backend/physical", "original-owner")?,
-            )?;
+            let observed = crate::physical_service::VulkanDevicePreflight::select(&device)?;
+            let pre = observed.preadmit(provider_cap, device_cap)?;
             claim()?;
-            return pre.bootstrap(|pre| {
-                observed.register(&device)?;
-                Self::from_client_preadmitted(device, provider_cap, device_cap, pre).map(Arc::new)
-            });
+            return Self::bootstrap_vulkan(device, provider_cap, device_cap, observed, pre);
         }
         claim()?;
         Self::new(device, provider_cap, device_cap)
+    }
+
+    /// Exact adapter bootstrap for the guarded cold Vulkan owner. The
+    /// original selector must be cold; callers hold the pre-admitted lease.
+    #[cfg(all(
+        target_os = "linux",
+        feature = "vulkan",
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification"
+        )
+    ))]
+    pub(crate) fn bootstrap_vulkan(
+        device: Device,
+        provider_cap: usize,
+        device_cap: u64,
+        observed: crate::physical_service::VulkanDevicePreflight,
+        pre: crate::physical_service::PreAdmittedDevice,
+    ) -> Result<Arc<Self>> {
+        pre.bootstrap(|pre| {
+            observed.register(&device)?;
+            Self::from_client_preadmitted(device, provider_cap, device_cap, pre).map(Arc::new)
+        })
     }
 
     #[cfg(all(
