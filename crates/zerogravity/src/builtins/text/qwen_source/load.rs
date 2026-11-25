@@ -1408,6 +1408,138 @@ mod cuda_paged_tests {
     }
 
     #[test]
+    #[ignore = "approved original HF cache; actual resident/streamed CUDA source transport"]
+    fn original_source_resident_and_streamed_transport_match() {
+        use crate::gpu::CudaForwardWeightStorage;
+
+        let (parts, page_tokens, _, tokens) =
+            paged_source_fixture("resident-streamed-source-transport");
+        // Same source, plan, math, state policy and row limits. Use the
+        // actual complete admission to choose a genuine streamed fit.
+        let policy = CudaSourceStatePolicy::Contiguous;
+        let fit = |cap| {
+            ResidentModel::cuda_forward_source_preflight_for_state_policy(
+                parts.source.plan.plan().clone(),
+                4,
+                4,
+                cap,
+                policy,
+            )
+            .unwrap()
+        };
+        let resident = fit(PROVIDER_BYTES);
+        assert_eq!(resident.weight_storage, CudaForwardWeightStorage::Resident);
+        let streamed_cap = resident.total_admission_bytes - 1;
+        let streamed = fit(streamed_cap);
+        assert_eq!(streamed.weight_storage, CudaForwardWeightStorage::Streamed);
+        assert_eq!(streamed.resident_weight_bytes, 0);
+        let run = |cap, resident_bytes| {
+            block_on(async {
+                let model = ResidentModel::load_cuda_forward_source_with_state_policy(
+                    Device::Cuda(Default::default()),
+                    parts.source.plan.source().clone(),
+                    parts.source.clone(),
+                    parts.source.plan.plan().clone(),
+                    4,
+                    4,
+                    cap,
+                    DEVICE_BYTES,
+                    policy,
+                    None,
+                )
+                .await
+                .unwrap();
+                assert_eq!(model.admission().resident_weight_bytes, resident_bytes);
+                let singleton = trajectory(&model, &parts.source.plan, &tokens, page_tokens)
+                    .await
+                    .unwrap();
+                let cohort = native_trajectory(&model, &parts.source.plan, &tokens, 4)
+                    .await
+                    .unwrap();
+                if resident_bytes == 0 {
+                    // Known physical completion but cancelled publication.
+                    // The same streamed page/model remains reusable.
+                    let mut session = model.session().await.unwrap();
+                    let initial = session.binding();
+                    let call = parts
+                        .source
+                        .plan
+                        .bind_invocation(InvocationPhase::Prefill, 0, Arc::from(&tokens[..1]), true)
+                        .unwrap();
+                    let cancelled = Arc::new(AtomicBool::new(false));
+                    let ResidentTextPreparation::Ready(pending) = session
+                        .prepare(
+                            call.bound_invocation(),
+                            InvocationPhase::Prefill,
+                            ResidentOutput::Logits,
+                            Some(cancelled.clone()),
+                        )
+                        .await
+                        .unwrap()
+                    else {
+                        panic!("streamed cancellation admission");
+                    };
+                    cancelled.store(true, Ordering::Release);
+                    assert!(matches!(
+                        session.commit(pending).unwrap(),
+                        ResidentTextPublication::Discarded(_)
+                    ));
+                    assert_eq!(session.binding(), initial);
+                    let ResidentTextPreparation::Ready(pending) = session
+                        .prepare(
+                            call.bound_invocation(),
+                            InvocationPhase::Prefill,
+                            ResidentOutput::Logits,
+                            None,
+                        )
+                        .await
+                        .unwrap()
+                    else {
+                        panic!("streamed retry admission");
+                    };
+                    assert!(matches!(
+                        session.commit(pending).unwrap(),
+                        ResidentTextPublication::Committed(_)
+                    ));
+                    assert_eq!(session.binding().frontier(), 1);
+                }
+                model.shutdown().await.unwrap();
+                (singleton, cohort)
+            })
+        };
+        let (expected, expected_cohort) = run(PROVIDER_BYTES, resident.resident_weight_bytes);
+        let (actual, actual_cohort) = run(streamed_cap, 0);
+        assert_eq!(actual.len(), expected.len());
+        for (index, (expected, actual)) in expected.iter().zip(&actual).enumerate() {
+            exact_checkpoint(
+                expected,
+                actual,
+                &format!("streamed singleton checkpoint {index}"),
+            );
+        }
+        assert_eq!(actual_cohort.len(), expected_cohort.len());
+        for (row, ((expected_prefill, expected_decode), (actual_prefill, actual_decode))) in
+            expected_cohort.iter().zip(&actual_cohort).enumerate()
+        {
+            assert_eq!(actual_prefill.token, expected_prefill.token);
+            assert_eq!(actual_decode.token, expected_decode.token);
+            exact_domains(
+                &expected_prefill.domains,
+                &actual_prefill.domains,
+                &format!("streamed cohort prefill row{row}"),
+            );
+            exact_domains(
+                &expected_decode.domains,
+                &actual_decode.domains,
+                &format!("streamed cohort decode row{row}"),
+            );
+        }
+        println!(
+            "SOURCE_RESIDENT_STREAMED_TRANSPORT_PASS singleton=exact cohort4=exact full_logits=exact all_domains=exact actual_streamed_weights=true final_shutdown=true"
+        );
+    }
+
+    #[test]
     #[ignore = "approved original HF cache; complete-domain paged prefix fork/COW"]
     fn original_source_paged_complete_prefix_fork_matches_replay() {
         let (parts, page_tokens, max_append_tokens, tokens) =

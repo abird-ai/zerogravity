@@ -6,7 +6,7 @@
 //! actual completion or quarantine.
 #![allow(dead_code)] // Private unselected implementation until the full body lands.
 
-use crate::cuda::bf16_gemm::{Bf16GemmInputLayout, Bf16GemmShape};
+use crate::cuda::bf16_gemm::{Bf16GemmInputLayout, Bf16GemmReduction, Bf16GemmShape};
 use crate::resident_leases::{
     ResidentInitialization, ResidentLease, ResidentService, ResidentSubmission,
     forward_projection_upload::BoundSourceMatrices,
@@ -305,11 +305,44 @@ impl CudaForwardProjection {
         let (operation, input_offset) = self.operation(descriptor)?;
         // The reduction is selected for the full projection, never for a transport page.
         let reduction = self.arithmetic.reduction(operation);
+        self.enqueue_operation(
+            gemm,
+            flight,
+            operation,
+            reduction,
+            Bf16GemmInputLayout::RowMajor,
+            input,
+            input_offset,
+            output,
+            status,
+            page,
+        )
+        .await
+    }
+
+    /// One full mathematical projection, with its reduction/layout already
+    /// selected by the original singleton or independent-call owner.
+    /// The resident branch has no source-page dispatch or host lookup.
+    #[allow(clippy::too_many_arguments)]
+    async fn enqueue_operation(
+        &self,
+        gemm: &CudaForwardGemm,
+        flight: &mut ResidentSubmission<'_>,
+        operation: Bf16GemmShape,
+        reduction: Bf16GemmReduction,
+        input_layout: Bf16GemmInputLayout,
+        input: &ResidentLease,
+        input_offset: usize,
+        output: &ResidentLease,
+        status: &ResidentLease,
+        page: Option<&Arc<crate::resident_leases::source_page::ResidentSourcePage>>,
+    ) -> Result<usize> {
         if let Some(weights) = self.weights.lease() {
-            gemm.enqueue(
+            gemm.enqueue_with_input_layout(
                 flight,
                 operation,
                 reduction,
+                input_layout,
                 weights,
                 input,
                 input_offset,
@@ -356,9 +389,10 @@ impl CudaForwardProjection {
                     {
                         return Err(Error::State("CUDA streamed GEMM page geometry".into()));
                     }
-                    gemm.enqueue_page(
+                    gemm.enqueue_page_with_input_layout(
                         shape,
                         reduction,
+                        input_layout,
                         view.handle().clone(),
                         input.clone(),
                         target,
@@ -408,67 +442,19 @@ impl CudaForwardProjection {
             ));
         }
         let reduction = self.arithmetic.reduction(operation);
-        if let Some(weights) = self.weights.lease() {
-            gemm.enqueue_with_input_layout(
-                flight,
-                operation,
-                reduction,
-                input_layout,
-                weights,
-                input,
-                0,
-                output,
-                0,
-                status,
-            )?;
-            return Ok(1);
-        }
-        let page = page.ok_or_else(|| {
-            Error::State("CUDA forward streamed decode projection has no page".into())
-        })?;
-        flight.require_accesses([
-            (input, DeviceAccess::Read),
-            (output, DeviceAccess::Write),
-            (status, DeviceAccess::Write),
-        ])?;
-        let input = exact_view(input, 0, operation.input_bytes(), "decode GEMM input")?;
-        let mut base = 0;
-        let mut launches = 0;
-        for matrix in self.weights.matrices() {
-            let geometry = crate::resident_leases::source_page::PageGeometry::new(
-                matrix.rows(),
-                matrix.columns(),
-            )?;
-            for first in (0..geometry.rows).step_by(geometry.rows_per_page) {
-                let source_rows =
-                    first..first + (geometry.rows - first).min(geometry.rows_per_page);
-                let shape = Bf16GemmShape::new(source_rows.len(), rows, operation.inner)?;
-                let offset = (base + source_rows.start) * 2;
-                let extent = crate::cuda::bf16_gemm::output_span(
-                    shape.columns,
-                    shape.rows,
-                    operation.columns,
-                )?;
-                let target = exact_view(output, offset, extent, "streamed decode GEMM output")?;
-                page.with_rows(flight, matrix, source_rows, None, |view| {
-                    gemm.enqueue_page_with_input_layout(
-                        shape,
-                        reduction,
-                        input_layout,
-                        view.handle().clone(),
-                        input.clone(),
-                        target,
-                        operation.columns,
-                        status.handle(),
-                    )?;
-                    Ok(vec![output.clone()])
-                })
-                .await?;
-                launches += 1;
-            }
-            base += matrix.rows();
-        }
-        Ok(launches)
+        self.enqueue_operation(
+            gemm,
+            flight,
+            operation,
+            reduction,
+            input_layout,
+            input,
+            0,
+            output,
+            status,
+            page,
+        )
+        .await
     }
 }
 

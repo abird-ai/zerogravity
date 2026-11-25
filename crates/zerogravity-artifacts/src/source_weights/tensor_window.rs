@@ -1017,7 +1017,44 @@ impl VerifiedMatrix {
         self.rows
     }
 }
+impl AsRef<[u8]> for TensorWindow {
+    fn as_ref(&self) -> &[u8] {
+        self.as_slice()
+    }
+}
 impl TensorWindow {
+    /// Exact retained source and row extent, not a physical completion witness.
+    pub fn require_rows(&self, matrix: &VerifiedMatrix, rows: Range<usize>) -> Result<()> {
+        if rows.is_empty()
+            || rows.end > matrix.rows
+            || !self.matrix.same_binding(matrix)
+            || self.rows != rows
+        {
+            return Err(Error::State(
+                "tensor window original matrix/rows differ".into(),
+            ));
+        }
+        let start = matrix.byte_range()?.start;
+        let offset = rows
+            .start
+            .checked_mul(matrix.row_bytes)
+            .and_then(|n| start.checked_add(n as u64))
+            .ok_or_else(|| Error::Limit("tensor window original row offset".into()))?;
+        let bytes = rows
+            .len()
+            .checked_mul(matrix.row_bytes)
+            .ok_or_else(|| Error::Limit("tensor window original row extent".into()))?;
+        if self.source_offset() != offset
+            || self.as_slice().len() != bytes
+            || self.charged_staging_bytes() < bytes
+        {
+            return Err(Error::State(
+                "tensor window original byte extent differs".into(),
+            ));
+        }
+        Ok(())
+    }
+
     pub fn matrix(&self) -> &VerifiedMatrix {
         &self.matrix
     }

@@ -3,23 +3,19 @@
 //! never chooses model operations or launch eligibility.
 
 use super::{ResidentInitialization, ResidentLease, ResidentService};
-use cubecl::bytes::Bytes;
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-use zerogravity_artifacts::source_weights::{VerifiedMatrix, VerifiedTensorSource};
+use zerogravity_artifacts::source_weights::{TensorWindow, VerifiedMatrix, VerifiedTensorSource};
 use zerogravity_core::{
     Error, Result,
-    accelerator::{
-        SourceIdentity,
-        program::{MatrixAxes, SourceTensor},
-    },
+    accelerator::program::{MatrixAxes, SourceTensor},
     device_events::BufferRole,
     encoding::StoredTensorEncoding,
 };
 
-const WINDOW_BYTES: usize = 1024 * 1024;
+use super::source_page::{PAGE_BYTES, PageGeometry};
 
 #[derive(Clone)]
 struct PackedSourceOwner {
@@ -37,9 +33,6 @@ pub(crate) struct BoundSourceMatrices {
     columns: usize,
 }
 impl BoundSourceMatrices {
-    pub(crate) fn source_identity(&self) -> SourceIdentity {
-        self.owner.source.source_identity()
-    }
     pub(crate) fn same_source(&self, source: &VerifiedTensorSource) -> bool {
         self.owner.source.same_issuer(source)
     }
@@ -56,29 +49,13 @@ impl BoundSourceMatrices {
         &self.owner.matrices
     }
 
+    /// Every member was authenticated once against the exact immutable source
+    /// owner before binding. Request descriptors must remain exactly equal.
     pub(crate) fn require_members(&self, members: &[SourceTensor]) -> Result<()> {
         if members != self.owner.members.as_ref() || members.len() != self.owner.matrices.len() {
             return Err(Error::State(
                 "CUDA forward source matrix members changed".into(),
             ));
-        }
-        for (member, matrix) in members.iter().zip(self.owner.matrices.iter()) {
-            if member.source != self.source_identity()
-                || member.kind
-                    != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
-                || member.axes != MatrixAxes::OutputInput
-                || member.rows != matrix.rows()
-                || member.columns != matrix.columns()
-                || !self
-                    .owner
-                    .source
-                    .matrix(&member.name, member.axes)?
-                    .same_binding(matrix)
-            {
-                return Err(Error::State(
-                    "CUDA forward source matrix authenticated member differs".into(),
-                ));
-            }
         }
         Ok(())
     }
@@ -110,6 +87,7 @@ impl ResidentInitialization<'_> {
         if members.is_empty()
             || members.len() > 3
             || source.source_identity() != service.source_identity()
+            || service.client().is_capturing()
         {
             return Err(Error::State(
                 "CUDA forward source matrix/member ownership differs".into(),
@@ -141,6 +119,8 @@ impl ResidentInitialization<'_> {
             {
                 return Err(Error::State("CUDA forward source matrix differs".into()));
             }
+            source.require_matrix_binding(&matrix)?;
+            PageGeometry::new(matrix.rows(), matrix.columns())?;
             if columns
                 .replace(member.columns)
                 .is_some_and(|value| value != member.columns)
@@ -171,14 +151,11 @@ impl ResidentInitialization<'_> {
             .ok_or_else(|| Error::State("CUDA forward source matrix columns absent".into()))?;
         let owner = Arc::new(PackedSourceOwner {
             source: source.clone(),
-            matrices: matrices.clone().into(),
+            matrices: matrices.into(),
             members: members.to_vec().into(),
         });
         self.retain_completion_owner(owner.clone())?;
         if !resident {
-            for matrix in &matrices {
-                super::source_page::PageGeometry::new(matrix.rows(), matrix.columns())?;
-            }
             return Ok(Arc::new(BoundSourceMatrices {
                 owner,
                 lease: None,
@@ -191,84 +168,70 @@ impl ResidentInitialization<'_> {
                 "packed source matrix exceeds device allocation page".into(),
             ));
         }
+        let queue = service.pinned_cuda_queue()?;
         let lease = self.allocate_empty(total_bytes, BufferRole::ImmutableWeights)?;
+        let pending = Arc::new(Mutex::new(None::<Arc<TensorWindow>>));
+        self.retain_completion_owner(pending.clone())?;
 
         let mut destination_offset = 0usize;
-        for matrix in &matrices {
-            let row_bytes = matrix
-                .columns()
-                .checked_mul(2)
-                .ok_or_else(|| Error::Limit("CUDA forward source row bytes overflow".into()))?;
-            let rows_per_window = (WINDOW_BYTES / row_bytes).max(1);
-            let mut first = 0usize;
-            while first < matrix.rows() {
+        for matrix in owner.matrices.iter() {
+            let geometry = PageGeometry::new(matrix.rows(), matrix.columns())?;
+            for first in (0..geometry.rows).step_by(geometry.rows_per_page) {
                 not_cancelled(cancelled)?;
-                let end = matrix.rows().min(first.saturating_add(rows_per_window));
-                let window = if let Some(cancelled) = cancelled {
-                    source.read_rows_cancellable(matrix, first..end, cancelled)?
-                } else {
-                    source.read_rows(matrix, first..end)?
+                let end = first + (geometry.rows - first).min(geometry.rows_per_page);
+                let window = match cancelled {
+                    Some(flag) => source.read_rows_cancellable(matrix, first..end, flag)?,
+                    None => source.read_rows(matrix, first..end)?,
                 };
-                if !window.matrix().same_binding(matrix) || window.row_range() != (first..end) {
+                window.require_rows(matrix, first..end)?;
+                let window = Arc::new(window);
+                let bytes = window.as_slice().len();
+                if bytes > PAGE_BYTES {
                     return Err(Error::State(
-                        "CUDA forward source matrix window differs".into(),
-                    ));
-                }
-                let payload = window.as_slice();
-                let expected = (end - first).checked_mul(row_bytes).ok_or_else(|| {
-                    Error::Limit("CUDA forward source window bytes overflow".into())
-                })?;
-                if payload.len() != expected {
-                    return Err(Error::State(
-                        "CUDA forward source matrix window extent differs".into(),
+                        "packed source exceeds bounded transfer".into(),
                     ));
                 }
                 let start = destination_offset
-                    .checked_add(first.checked_mul(row_bytes).ok_or_else(|| {
-                        Error::Limit(
-                            "CUDA forward source matrix destination offset overflow".into(),
-                        )
-                    })?)
-                    .ok_or_else(|| {
-                        Error::Limit(
-                            "CUDA forward source matrix destination offset overflow".into(),
-                        )
-                    })?;
-                let finish = start
-                    .checked_add(payload.len())
-                    .filter(|finish| *finish <= total_bytes)
-                    .ok_or_else(|| {
-                        Error::Limit("CUDA forward source matrix destination exceeds lease".into())
-                    })?;
-                let view = lease
-                    .handle()
-                    .offset_start(start as u64)
-                    .offset_end((total_bytes - finish) as u64);
-                service
-                    .client()
-                    .write(&view, Bytes::from_bytes_vec(payload.to_vec()));
-                service.record_value_upload(payload.len());
-                // Bound the copied payload lifetime before dropping its source
-                // window. This is the same physical client, not a new queue.
+                    .checked_add(first * geometry.row_bytes)
+                    .ok_or_else(|| Error::Limit("packed source destination offset".into()))?;
+                let view = lease.view(start, bytes)?;
+                {
+                    let mut held = pending
+                        .lock()
+                        .map_err(|_| Error::State("packed source pending owner poisoned".into()))?;
+                    if held.is_some() {
+                        return Err(Error::State("packed source window not retired".into()));
+                    }
+                    *held = Some(window.clone());
+                }
+                not_cancelled(cancelled)?;
+                // SAFETY: the original initialization owns the complete write
+                // lease and the exact pending source through its real barrier
+                // or unknown-completion quarantine. No uncharged host copy.
+                unsafe {
+                    queue.enqueue_owned_source_window(lease.handle(), total_bytes, start, window)
+                }
+                .map_err(|error| Error::State(format!("packed original source H2D: {error}")))?;
+                service.record_value_upload(bytes);
                 service
                     .client()
                     .sync_buffers([&view])
                     .await
                     .map_err(|error| {
-                        Error::State(format!(
-                            "CUDA forward source matrix upload completion: {error}"
-                        ))
+                        Error::State(format!("packed source upload barrier: {error}"))
                     })?;
-                first = end;
+                service.ensure_usable()?;
+                let retired = pending
+                    .lock()
+                    .map_err(|_| Error::State("packed source pending owner poisoned".into()))?
+                    .take();
+                drop(retired);
             }
             destination_offset = destination_offset
-                .checked_add(matrix.rows().checked_mul(row_bytes).ok_or_else(|| {
-                    Error::Limit("CUDA forward source matrix bytes overflow".into())
-                })?)
-                .ok_or_else(|| {
-                    Error::Limit("CUDA forward source matrix destination overflow".into())
-                })?;
+                .checked_add(geometry.rows * geometry.row_bytes)
+                .ok_or_else(|| Error::Limit("packed source destination overflow".into()))?;
         }
+        not_cancelled(cancelled)?;
         if destination_offset != total_bytes {
             return Err(Error::State(
                 "CUDA forward source matrix packed byte coverage incomplete".into(),

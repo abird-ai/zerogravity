@@ -168,6 +168,18 @@ fn resident_operand_rejects_same_source_same_shape_wrong_member_or_range() {
     assert_eq!(a.tensor().name, foreign_a.tensor().name);
     assert_eq!(a.tensor().byte_offset, foreign_a.tensor().byte_offset);
     assert!(!a.same_binding(&foreign_a));
+    // The byte owner checks exact original member/plane and actual rows.
+    let window = source.read_rows(&first, 0..1).unwrap();
+    window.require_rows(&first, 0..1).unwrap();
+    assert!(window.require_rows(&second, 0..1).is_err());
+    assert!(window.require_rows(&first, 1..2).is_err());
+    assert!(window.require_rows(&first, 0..2).is_err());
+    drop(window);
+    let window = source.read_rows(&a, 0..1).unwrap();
+    assert!(window.require_rows(&foreign_a, 0..1).is_err());
+    window.require_rows(&a, 0..1).unwrap();
+    drop(window);
+
     assert!(source.matrix("matrix_a", MatrixAxes::InputOutput).is_err());
     drop((a, same, b, first, second, foreign_a, foreign, source));
     assert_eq!(

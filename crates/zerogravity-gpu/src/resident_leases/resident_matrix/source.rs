@@ -12,8 +12,6 @@ pub(crate) struct Bf16MatrixSource {
 impl Bf16MatrixSource {
     pub(crate) fn new(source: VerifiedTensorSource, matrix: VerifiedMatrix) -> Result<Self> {
         let geometry = ResidentMatrix::authenticate(&source, &matrix)?;
-        // Retain the exact authentic member/range, including expert planes.
-        source.require_matrix_binding(&matrix)?;
         Ok(Self {
             source,
             matrix,
@@ -80,33 +78,10 @@ impl Bf16MatrixSource {
         window: &TensorWindow,
         region: Region,
     ) -> Result<()> {
-        let actual = window.matrix().tensor();
-        let expected = self.matrix.tensor();
-        let offset = self
-            .matrix
-            .byte_range()?
-            .start
-            .checked_add(region.offset as u64)
-            .ok_or_else(|| Error::Limit("BF16 source window byte offset overflow".into()))?;
-        if self.geometry.region(region.first)? != Some(region)
-            || window.row_range() != (region.first..region.end)
-            || window.as_slice().len() != region.bytes
-            || window.source_offset() != offset
-            || window.matrix().source_identity() != self.source.source_identity()
-            || window.matrix().rows() != self.rows()
-            || window.matrix().columns() != self.columns()
-            || window.matrix().axes() != self.matrix.axes()
-            || actual.name != expected.name
-            || actual.kind != expected.kind
-            || actual.shape != expected.shape
-            || actual.byte_offset != expected.byte_offset
-            || actual.byte_len != expected.byte_len
-        {
-            return Err(Error::State(
-                "BF16 exact authenticated source window".into(),
-            ));
+        if self.geometry.region(region.first)? != Some(region) {
+            return Err(Error::State("BF16 upload region differs".into()));
         }
-        Ok(())
+        window.require_rows(&self.matrix, region.first..region.end)
     }
     /// Arithmetic consumers opt into finite BF16; byte transport alone does not.
     #[cfg(feature = "cuda-native-qualification")]

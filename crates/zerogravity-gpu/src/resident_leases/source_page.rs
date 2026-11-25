@@ -113,7 +113,7 @@ fn transport_host_charge(chunk: usize, cache: usize) -> Result<usize> {
         .checked_mul(std::mem::size_of::<cubecl::server::BufferBinding>())
         .ok_or_else(|| Error::Limit("source page retained host bindings".into()))?;
     let owner_run = probe_arc_bytes::<PageRunOwner>()?;
-    let owner_window = probe_arc_bytes::<WindowBytes>()?;
+    let owner_window = probe_arc_bytes::<TensorWindow>()?;
     let ring_owner = std::mem::size_of::<Arc<PageRunOwner>>();
     let pending = mark
         .checked_add(bindings)
@@ -231,20 +231,15 @@ impl PageGeometry {
     }
 }
 
-#[cfg(feature = "cuda-cublas")]
-type SerialWindow = Arc<WindowBytes>;
-#[cfg(not(feature = "cuda-cublas"))]
-type SerialWindow = TensorWindow;
 struct PendingPage {
-    _window: Option<SerialWindow>,
+    _window: Option<Arc<TensorWindow>>,
     _bytes: Option<Bytes>,
-    _staging: Option<(WindowWorkspace, Option<WindowWorkspace>)>,
+    _staging: Option<WindowWorkspace>,
     serial: u64,
 }
 enum PageTransfer {
     #[cfg(feature = "cuda-cublas")]
-    Owned(Arc<WindowBytes>),
-    #[cfg(not(feature = "cuda-cublas"))]
+    Owned(Arc<TensorWindow>),
     Bytes(Bytes),
 }
 #[derive(Default)]
@@ -275,17 +270,9 @@ impl RetirementMark for PageMark {
             .map_err(|e| Error::State(format!("source page HIP event wait: {e}")))
     }
 }
-/// Retains the exact source-owned window bytes until the original actor proves
-/// the recorded write plus consumers completed.
-struct WindowBytes(TensorWindow);
-impl AsRef<[u8]> for WindowBytes {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_slice()
-    }
-}
 #[cfg(feature = "hip")]
 struct PageRunOwner {
-    _window: Option<Arc<WindowBytes>>,
+    _window: Option<Arc<TensorWindow>>,
     outputs: Mutex<Vec<ResidentLease>>,
 }
 #[cfg(all(
@@ -352,7 +339,7 @@ struct ProbeSlot {
     event: u64,
     serial: u64,
     run: Weak<PageRunOwner>,
-    window: Option<Weak<WindowBytes>>,
+    window: Option<Weak<TensorWindow>>,
 }
 /// Weak-only diagnostic witnesses. The slots never own a run or window, so a
 /// probe cannot extend the original ring/consumer retirement lifetime.
@@ -435,9 +422,9 @@ impl SourcePageProbeWitness {
         let run = slot.run.upgrade().is_some();
         let window = match slot.window.as_ref().and_then(|window| window.upgrade()) {
             Some(window) => {
-                if window.0.matrix().source_identity() != self.source
-                    || window.as_ref().as_ref().len() as u64 != payload
-                    || window.0.charged_staging_bytes() as u64 != charge
+                if window.matrix().source_identity() != self.source
+                    || window.as_slice().len() as u64 != payload
+                    || window.charged_staging_bytes() as u64 != charge
                 {
                     return Err(Error::State(
                         "source page probe selected window extent differs".into(),
@@ -492,7 +479,7 @@ pub(crate) fn source_page_event_probe_control_bytes() -> Result<usize> {
     let state = probe_arc_bytes::<cubecl::hip::SourcePageEventProbeState>()?;
     let witness = probe_arc_bytes::<SourcePageProbeWitness>()?;
     let weak_run = probe_arc_bytes::<PageRunOwner>()?;
-    let weak_window = probe_arc_bytes::<WindowBytes>()?;
+    let weak_window = probe_arc_bytes::<TensorWindow>()?;
     let weak_slots = weak_run
         .checked_add(weak_window)
         .and_then(|n| n.checked_mul(RETIRED_PAGE_TRANSFERS))
@@ -734,7 +721,7 @@ impl ResidentSourcePage {
         source: &VerifiedTensorSource,
         service: &Arc<ResidentService>,
         matrix: &VerifiedMatrix,
-    ) -> Result<()> {
+    ) -> Result<PageGeometry> {
         service.ensure_usable()?;
         #[cfg(feature = "hip")]
         self.make_room()?;
@@ -745,7 +732,7 @@ impl ResidentSourcePage {
         source: &VerifiedTensorSource,
         service: &Arc<ResidentService>,
         matrix: &VerifiedMatrix,
-    ) -> Result<()> {
+    ) -> Result<PageGeometry> {
         service.ensure_usable()?;
         source.require_matrix_binding(matrix)?;
         let geometry = PageGeometry::new(matrix.rows(), matrix.columns())?;
@@ -771,7 +758,7 @@ impl ResidentSourcePage {
                 "source page actual issuer/service/range/retirement differs".into(),
             ));
         }
-        Ok(())
+        Ok(geometry)
     }
     /// Retire the oldest retained forward window before the next read or host
     /// owner is allocated.
@@ -999,7 +986,7 @@ impl ResidentSourcePage {
         enqueue: impl FnOnce(&SourcePageView<'_>) -> Result<Vec<ResidentLease>>,
     ) -> Result<()> {
         cancelled(flag)?;
-        self.require_operand_current(&self.source, &self.service, matrix)?;
+        let geometry = self.require_operand_current(&self.source, &self.service, matrix)?;
         if reuse {
             self.source.require_current_matrix(matrix)?;
             self.drain()?;
@@ -1036,20 +1023,7 @@ impl ResidentSourcePage {
                 "source page run belongs to another flight".into(),
             ));
         }
-        let geometry = PageGeometry::new(matrix.rows(), matrix.columns())?;
         let n = geometry.bytes(&rows)?;
-        let tensor = matrix.tensor();
-        if matrix.source_identity() != self.source.source_identity()
-            || matrix.axes() != MatrixAxes::OutputInput
-            || tensor.kind
-                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
-            || matrix.byte_range()?.end - matrix.byte_range()?.start
-                != (geometry.rows * geometry.row_bytes) as u64
-        {
-            return Err(Error::State(
-                "source page authentic full matrix issuer/geometry".into(),
-            ));
-        }
         let placement = {
             let p = self
                 .progress
@@ -1069,29 +1043,8 @@ impl ResidentSourcePage {
                 Some(c) => self.source.read_rows_cancellable(matrix, rows.clone(), c)?,
                 None => self.source.read_rows(matrix, rows.clone())?,
             };
-            let expected_offset = matrix
-                .byte_range()?
-                .start
-                .checked_add((rows.start * geometry.row_bytes) as u64)
-                .ok_or_else(|| Error::Limit("source page authentic offset".into()))?;
-            let actual = window.matrix().tensor();
-            if !window.matrix().same_binding(matrix)
-                || window.matrix().source_identity() != matrix.source_identity()
-                || actual.name != tensor.name
-                || actual.kind != tensor.kind
-                || actual.shape != tensor.shape
-                || actual.byte_offset != tensor.byte_offset
-                || actual.byte_len != tensor.byte_len
-                || window.row_range() != rows
-                || window.source_offset() != expected_offset
-                || window.as_slice().len() != n
-                || window.charged_staging_bytes() < n
-            {
-                return Err(Error::State(
-                    "source page authentic original window differs".into(),
-                ));
-            }
-            Some(Arc::new(WindowBytes(window)))
+            window.require_rows(matrix, rows.clone())?;
+            Some(Arc::new(window))
         };
         let (serial, offset) = {
             let mut p = self
@@ -1279,8 +1232,8 @@ impl ResidentSourcePage {
             .as_ref()
             .map(|window| {
                 (
-                    window.as_ref().as_ref().len() as u64,
-                    window.0.charged_staging_bytes() as u64,
+                    window.as_slice().len() as u64,
+                    window.charged_staging_bytes() as u64,
                 )
             })
             .unwrap_or((0, 0));
@@ -1588,7 +1541,7 @@ impl ResidentSourcePage {
             self.drain()?;
         }
         cancelled(flag)?;
-        self.require_operand(&self.source, &self.service, matrix)?;
+        let geometry = self.require_operand(&self.source, &self.service, matrix)?;
         if reuse {
             self.source.require_current_matrix(matrix)?;
         }
@@ -1603,20 +1556,7 @@ impl ResidentSourcePage {
                 p.registered_event = Some(flight.event);
             }
         }
-        let geometry = PageGeometry::new(matrix.rows(), matrix.columns())?;
         let n = geometry.bytes(&rows)?;
-        let tensor = matrix.tensor();
-        if matrix.source_identity() != self.source.source_identity()
-            || matrix.axes() != MatrixAxes::OutputInput
-            || tensor.kind
-                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
-            || matrix.byte_range()?.end - matrix.byte_range()?.start
-                != (geometry.rows * geometry.row_bytes) as u64
-        {
-            return Err(Error::State(
-                "source page authentic full matrix issuer/geometry".into(),
-            ));
-        }
         let (previous, placement) = {
             let p = self
                 .progress
@@ -1644,50 +1584,26 @@ impl ResidentSourcePage {
                 Some(c) => self.source.read_rows_cancellable(matrix, rows.clone(), c)?,
                 None => self.source.read_rows(matrix, rows.clone())?,
             };
-            let expected_offset = matrix
-                .byte_range()?
-                .start
-                .checked_add((rows.start * geometry.row_bytes) as u64)
-                .ok_or_else(|| Error::Limit("source page authentic offset".into()))?;
-            let actual = window.matrix().tensor();
-            if !window.matrix().same_binding(matrix)
-                || window.matrix().source_identity() != matrix.source_identity()
-                || actual.name != tensor.name
-                || actual.kind != tensor.kind
-                || actual.shape != tensor.shape
-                || actual.byte_offset != tensor.byte_offset
-                || actual.byte_len != tensor.byte_len
-                || window.row_range() != rows
-                || window.source_offset() != expected_offset
-                || window.as_slice().len() != n
-            {
-                return Err(Error::State(
-                    "source page authentic original window differs".into(),
-                ));
-            }
+            window.require_rows(matrix, rows.clone())?;
+            let window = Arc::new(window);
             #[cfg(feature = "cuda-cublas")]
-            let window = Arc::new(WindowBytes(window));
-            #[cfg(feature = "cuda-cublas")]
-            let (bytes, staging): (
-                Option<Bytes>,
-                Option<(WindowWorkspace, Option<WindowWorkspace>)>,
-            ) = (None, None);
+            let native_cuda = self.service.provider == crate::backend::Provider::Cuda;
             #[cfg(not(feature = "cuda-cublas"))]
-            let (bytes, staging) = {
-                let staging = self.source.reserve_workspace(n)?;
-                let bounce = self.source.reserve_workspace(n)?;
+            let native_cuda = false;
+            let (bytes, staging) = if native_cuda {
+                (None, None)
+            } else {
+                let staging = self.source.reserve_workspace(2 * n)?;
                 let copy = window.as_slice().to_vec();
                 if copy.capacity() != n {
                     return Err(Error::Limit("source page copy capacity".into()));
                 }
-                (
-                    Some(Bytes::from_bytes_vec(copy)),
-                    Some((staging, Some(bounce))),
-                )
+                let bytes = Bytes::from_bytes_vec(copy);
+                if bytes.capacity() > n {
+                    return Err(Error::Limit("source page aligned staging capacity".into()));
+                }
+                (Some(bytes.shared()), Some(staging))
             };
-            if bytes.as_ref().is_some_and(|bytes| bytes.capacity() > n) {
-                return Err(Error::Limit("source page aligned staging capacity".into()));
-            }
             Some((window, bytes, staging))
         };
         let (serial, transfer) = {
@@ -1711,10 +1627,18 @@ impl ResidentSourcePage {
             }
             let (window, bytes, staging, transfer) = match upload {
                 Some((window, bytes, staging)) => {
-                    #[cfg(feature = "cuda-cublas")]
-                    let transfer = Some(PageTransfer::Owned(window.clone()));
-                    #[cfg(not(feature = "cuda-cublas"))]
-                    let transfer = bytes.clone().map(PageTransfer::Bytes);
+                    let transfer = match &bytes {
+                        Some(bytes) => PageTransfer::Bytes(bytes.clone()),
+                        #[cfg(feature = "cuda-cublas")]
+                        None => PageTransfer::Owned(window.clone()),
+                        #[cfg(not(feature = "cuda-cublas"))]
+                        None => {
+                            return Err(Error::State(
+                                "source page portable transfer absent".into(),
+                            ));
+                        }
+                    };
+                    let transfer = Some(transfer);
                     (Some(window), bytes, staging, transfer)
                 }
                 None => (None, None, None, None),
@@ -1755,7 +1679,6 @@ impl ResidentSourcePage {
                         Error::State(format!("source page CUDA owned H2D: {error}"))
                     })?;
                 }
-                #[cfg(not(feature = "cuda-cublas"))]
                 PageTransfer::Bytes(bytes) => self.service.client().write(&handle, bytes),
             }
             self.service.record_value_upload(n);
@@ -2119,7 +2042,7 @@ mod real_owner_tests {
         let source = fixture.plan(&admission).open().unwrap();
         let matrix = source.matrix("m", MatrixAxes::OutputInput).unwrap();
         let window = source.read_rows(&matrix, 0..1).unwrap();
-        let window = Arc::new(WindowBytes(window));
+        let window = Arc::new(window);
         let weak = Arc::downgrade(&window);
         let owner = Arc::new(PageRunOwner {
             _window: Some(window),
@@ -2190,8 +2113,8 @@ mod real_owner_tests {
         source: &VerifiedTensorSource,
         matrix: &VerifiedMatrix,
         row: usize,
-    ) -> Arc<WindowBytes> {
-        Arc::new(WindowBytes(source.read_rows(matrix, row..row + 1).unwrap()))
+    ) -> Arc<TensorWindow> {
+        Arc::new(source.read_rows(matrix, row..row + 1).unwrap())
     }
     fn run_with_ring(
         ring: TransferRetirementRing<HostMark, Arc<PageRunOwner>>,
@@ -2359,7 +2282,7 @@ mod real_owner_tests {
         let source = fixture.plan(&admission).open().unwrap();
         let matrix = source.matrix("m", MatrixAxes::OutputInput).unwrap();
         let window = source.read_rows(&matrix, 0..1).unwrap();
-        let window = Arc::new(WindowBytes(window));
+        let window = Arc::new(window);
         let weak = Arc::downgrade(&window);
         let retained = Arc::new(Mutex::new(Vec::new()));
         let captured = retained.clone();
