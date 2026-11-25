@@ -271,7 +271,7 @@ build or general model/backend grant. Historical failures keep their source scop
   pass/0 fail/109 skips; actual optimized release PTY, installer/scripts
   pass. Nix cross-target builds not run. No new inference authority.
 
-### Phase 2.1 UX-8B — native model/listener actions (this checkpoint, 26 Nov)
+### Phase 2.1 UX-8B — native model/listener actions (26 Nov; 0c7ad87a)
 
 - [x] Shared resident planner used by standalone canonical serve and TUI:
   original exact source selection/device/host/native route policy and
@@ -291,13 +291,32 @@ build or general model/backend grant. Historical failures keep their source scop
   shell PTY pass. Full isolated gate passes (2,479 passed, zero failed,
   109 ignored), release PTY/installer/scripts pass. UX-8B accepted.
 
+### Phase 2.1 UX-8C — native model/download/device management (26 Nov)
+
+- [x] Exact cached snapshot actions (inspect/verify/load/run/serve/
+  non-replacing alias/preview/confirmed reclaim), static intent catalog,
+  partial observations and same pinned intent for resume. Original cache
+  owner preserves busy/referenced/durable/incomplete semantics.
+- [x] Physical device observations, exact selected device cold planner
+  check or explicit load; one coalesced read worker off presentation
+  loop, existing effect worker. No duplicate cache/registry.
+- [x] Explicit full commit HF/GitHub file or quant intent, approved Qwen
+  recipe, scrollable consent, no auto load/quota increase; bare offline
+  preserved. Original hub/recipe transfer shared with CLI; same runtime
+  download operation, live observed progress/phase, exact id pause/
+  resume/cancel and terminal durability. Advanced providers remain CLI.
+- [x] Focused reducers 4/0, native intent 1/0, actual controlled transfer
+  PTY range pause/resume/durable and cancel pass, strict minimal/combined
+  lint pass. Actual cached Qwen lifecycle and remaining release tests pass;
+  full isolated gate 2,481/0/109, release PTY/installer/scripts pass.
+  UX-8C accepted.
+
 ## Uncommitted
 
-- [ ] UX-8C TUI Models / Downloads / Devices: exact cold model/cache/
-  operation identity, shared verification/reclaim, explicit acquisition
-  consent/control and responsive inventory. Reuse resident plan/action
-  worker, no duplicate owners. UX-8D follows; logs transient notifications
-  only. Dynamic completions,
+- [ ] UX-8D TUI Profiles / Config / Logs: shared validated atomic
+  ConfigFile editor, profile actions and real operational log view.
+  Current Logs is transient control notifications only; config/profile
+  observations currently synchronous. Dynamic completions,
   Web and control-wire validation/auth remain ordered. Rich searchable
   config/profile surfaces belong to UX-8D; no duplicate editor/validator.
   Broader catalog presets, conversation history and unsupported routes

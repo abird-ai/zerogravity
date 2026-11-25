@@ -24,7 +24,81 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-8B (26 Nov)
+### Current checkpoint — Phase 2.1 UX-8C (26 Nov)
+
+Models / Downloads / Devices are active native clients of the same
+Runtime, cache/artifact/device owners, and original DownloadOperation.
+No separate acquisition runtime, scheduler, cache, source grant or
+production test transport override.
+
+- Cached, Catalog (static MODEL_TARGETS intent/metadata/holds), Partial
+  shelves. Selection anchored to exact digest/slug/checkpoint key, not
+  a mutable row position or provider alias. Responsive contextual
+  list/detail split; move, inspect, verify, exact-digest load/run or
+  load for Serve, alias, removal preview/confirmed apply. Alias is an
+  additive non-replacing ControlAction/ControlPlane operation on original
+  CacheStore owner; no hidden reference mutation. Removal preserves
+  original Busy/Referenced/Durable/Incomplete outcomes. No inferred
+  remote freshness or execution qualification. Partial records only
+  observations: resume by re-entering original pinned pull intent.
+- Models/device inventories use one coalesced read-only worker separate
+  from existing single effect worker; no extra effect queue. Latest
+  observation and exact selection survive navigation; terminal cache
+  owner events/resync/explicit refresh invalidate, no scan on every
+  download progress event. Reader joined before foreground retirement.
+  Profiles/Config cold reads remain synchronous for UX-8D.
+- Device rows show observed physical id, class/vendor, memory, backend
+  availability, provenance and exclusions. Check selected source +
+  exact device by same canonical resident planner (metadata/host policy,
+  no execution grant), or explicit load on selected device using
+  original admission and one cold route-set policy. No persisted
+  preference change from selecting a row.
+- Explicit native pull accepts approved Qwen recipe (original exact
+  digest/member closure) or HF/GitHub full lowercase 40-character commit
+  and explicit file paths or quant tag; no implicit source/tag/quant,
+  arbitrary URL or payload on catalog hold. Scrollable consent shows
+  exact intent. Re-enter same pinned intent for checkpoint resume;
+  original resume validation remains authoritative. --offline on bare
+  TTY is retained and refuses acquisition before transport/credentials.
+  Existing cache quota or 16 GiB default for new root, no automatic
+  quota increase; original transfer memory/admission bounds.
+- Extract original hub client/resolver/publisher sequence shared with
+  CLI, and original approved-recipe transfer helper (same expected
+  manifest digest, no extra ref). TUI executes directly via its runtime
+  ControlPlane on owned action worker; no nested CLI terminal monitor.
+  Download view shows exact operation id, phase/status, current file,
+  totals/maxima, cached/resumed/checkpoint bytes, logical accepted-byte
+  rate and approximate remaining transfer ETA only when observed;
+  publication/terminal durability distinct. p/s/c target observed exact
+  id and run even with transfer worker busy. Cancel flag shared; quit
+  restores terminal, joins worker and then reader/listener/runtime.
+- Focused TUI selection/render/form reducers 4/0 and native pinned-intent
+  test 1/0 pass. Real native PTY over existing controlled strong-validator
+  transfer fixture: original safe mid-file pause (acknowledged), exact
+  range reopen, durable original publication, cancel; no secret URL in
+  presentation. Strict minimal TUI and combined acquisition/serve lint
+  pass. Actual cached Qwen 0.8B GGUF lifecycle passes: cold selected
+  physical CPU policy, inspect/verify, additive alias, declined removal,
+  exact-digest run, repeated invoke, original HTTP equality, listener
+  stop/unload/reload/quit, reclaim preview and durable removal (21.80s).
+  Other five release tests pass; corrected offline shell PTY passes.
+  Final full isolated gate passes (2,481 passed, zero failed, 109
+  ignored), release PTY, installer and script contracts pass. UX-8C
+  accepted. Initial PTY assertions missed
+  differential ANSI cells; corrected to stable new rows/tokens without
+  relaxing owner outcomes.
+- No actual remote model download, physical GPU execution or new model
+  performance claim. Native hub scope explicit files/quant and approved
+  recipe only; advanced provider/aggregate/filter/Xet flows remain direct
+  CLI, no automatic partial eviction or alias/reference retargeting.
+
+**Next: UX-8D — TUI Profiles / Config / Logs
+(§46A.28).** Use shared ConfigFile, cold profile operations and original
+validated atomic edit path, real contextual settings search/editor;
+operational logs separate from model output, no duplicate settings DB.
+Then UX-9A native Web shell through existing ControlPlane.
+
+### Previous checkpoint — Phase 2.1 UX-8B (26 Nov; 0c7ad87a)
 
 Home, Running and Serve are now active over the original shared runtime.
 No second scheduler/registry/model loader or network grant.
@@ -89,12 +163,8 @@ No second scheduler/registry/model loader or network grant.
   109 ignored; release PTY, offline installer and script contracts pass).
   UX-8B accepted.
 
-**Next: UX-8C — TUI Models / Downloads / Devices
-(§46A.28).** Reuse resident plan/control worker, original shared cache and
-download operations, exact source/digest/operation identity, explicit
-consent and cold eligibility. Keep long inventory/verification/acquisition
-off rendering loop; UX-8D profiles/config/logs and embedded Web follow.
-No new runtime or settings authority.
+Historical next UX-8C is implemented in the current checkpoint; UX-8D
+profiles/config/logs and embedded Web follow the live order.
 
 ### Previous checkpoint — Phase 2.1 UX-8A (26 Nov; 08e7e9d3)
 

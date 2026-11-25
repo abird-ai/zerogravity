@@ -132,6 +132,12 @@ pub enum ControlAction<'a> {
         cancel: &'a std::sync::atomic::AtomicBool,
     },
     #[cfg(all(feature = "cache", target_os = "linux"))]
+    AliasCached {
+        root: &'a Path,
+        digest: &'a str,
+        name: &'a str,
+    },
+    #[cfg(all(feature = "cache", target_os = "linux"))]
     ReclaimCached {
         root: &'a Path,
         digest: &'a str,
@@ -159,6 +165,8 @@ pub enum ControlReply {
     CachedPartials(Vec<crate::cache::PartialSummary>),
     #[cfg(all(feature = "cache", target_os = "linux"))]
     CachedModel(CachedModelDetail),
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    Alias(crate::cache::ByNameUpdate),
     #[cfg(all(feature = "cache", target_os = "linux"))]
     Reclamation(crate::cache::ReclaimOutcome),
     #[cfg(feature = "serve")]
@@ -369,6 +377,10 @@ impl<'a> ControlPlane<'a> {
                 pin,
                 cancel,
             } => R::CachedModel(self.verify_cached(root, selector, pin, cancel)?),
+            #[cfg(all(feature = "cache", target_os = "linux"))]
+            A::AliasCached { root, digest, name } => {
+                R::Alias(self.alias_cached(root, digest, name)?)
+            }
             #[cfg(all(feature = "cache", target_os = "linux"))]
             A::ReclaimCached {
                 root,

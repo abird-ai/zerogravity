@@ -12,6 +12,9 @@ mod components;
 mod gcs;
 #[path = "pull_modelscope.rs"]
 mod modelscope;
+#[cfg(feature = "tui")]
+#[path = "pull_native.rs"]
+pub(crate) mod native;
 #[path = "pull_object.rs"]
 mod object;
 #[path = "pull_oci.rs"]
@@ -558,27 +561,7 @@ pub(super) fn acquire_for_run(
         .begin_download(cancel.clone())?
         .expect_snapshot(recipe.snapshot())?;
     let receipt = monitor::drive(control, operation, terminal, |operation| {
-        let result = (|| {
-            let prepared = hub.resolve(&client, &admission, &cancel, PullMode::Transfer)?;
-            recipe.validate_plan(prepared.plan())?;
-            let store = CacheStore::open(CacheOptions::new(Some(root.to_owned()), disk))?;
-            Ok((prepared, store))
-        })();
-        let (prepared, store) = match result {
-            Ok(pair) => pair,
-            Err(error) => {
-                operation.fail(&error);
-                return Err(error);
-            }
-        };
-        operation.execute_plan(
-            &store,
-            prepared.plan(),
-            &client,
-            &admission,
-            None,
-            &mut |_| {},
-        )
+        transfer_recipe(operation, &hub, &client, &admission, recipe, root, disk)
     })?;
     match receipt.outcome() {
         CommitOutcome::Durable(snapshot) if snapshot.digest() == recipe.snapshot() => {
@@ -593,6 +576,89 @@ pub(super) fn acquire_for_run(
             "acquisition did not publish the required exact snapshot".into(),
         )),
     }
+}
+
+#[cfg(all(
+    feature = "model-qwen35",
+    any(
+        feature = "tui",
+        all(feature = "text", any(feature = "cuda", feature = "hip"))
+    )
+))]
+fn transfer_recipe(
+    operation: zerogravity::control::DownloadOperation<'_>,
+    hub: &zerogravity::artifacts::HubPull<'_>,
+    client: &impl acquisition::http::HttpTransport,
+    admission: &zerogravity::cache::TransferAdmission,
+    recipe: &zerogravity::models::QwenPullRecipe,
+    root: &std::path::Path,
+    disk: u64,
+) -> Result<acquisition::PullReceipt> {
+    let cancel = operation.cancel_flag().clone();
+    let result = (|| {
+        let prepared = hub.resolve(client, admission, &cancel, PullMode::Transfer)?;
+        recipe.validate_plan(prepared.plan())?;
+        let store = CacheStore::open(CacheOptions::new(Some(root.to_owned()), disk))?;
+        Ok((prepared, store))
+    })();
+    let (prepared, store) = match result {
+        Ok(pair) => pair,
+        Err(error) => {
+            operation.fail(&error);
+            return Err(error);
+        }
+    };
+    operation.execute_plan(
+        &store,
+        prepared.plan(),
+        client,
+        admission,
+        None,
+        &mut |_| {},
+    )
+}
+
+fn hub_client(provider: Provider, timeout: Option<u64>) -> Result<HttpsClient> {
+    let (origin, token) = match provider {
+        Provider::HuggingFace => ("https://huggingface.co", "HF_TOKEN"),
+        Provider::GitHub => ("https://api.github.com", "GITHUB_TOKEN"),
+    };
+    let mut http_options = HttpOptions::default();
+    if let Some(seconds) = timeout {
+        http_options.total_timeout = std::time::Duration::from_secs(seconds);
+    }
+    let mut client = HttpsClient::from_env(origin, provider.label(), Some(token), http_options)?;
+    if provider == Provider::GitHub {
+        client = client.with_credential_origin("https://raw.githubusercontent.com")?;
+    }
+    Ok(client)
+}
+
+/// Original controlled hub resolver and publisher, independent of terminal
+/// presentation. Both frontends own their one operation and worker.
+fn transfer_hub(
+    operation: zerogravity::control::DownloadOperation<'_>,
+    hub: &zerogravity::artifacts::HubPull<'_>,
+    client: &impl acquisition::http::HttpTransport,
+    admission: &zerogravity::cache::TransferAdmission,
+    open: impl FnOnce() -> Result<CacheStore>,
+    observe_plan: impl FnOnce(&acquisition::ResolvedPullPlan) -> Result<()>,
+) -> Result<acquisition::PullReceipt> {
+    let cancel = operation.cancel_flag().clone();
+    let result = (|| {
+        let prepared = hub.resolve(client, admission, &cancel, PullMode::Transfer)?;
+        observe_plan(prepared.plan())?;
+        let store = open()?;
+        Ok((prepared, store))
+    })();
+    let (prepared, store) = match result {
+        Ok(pair) => pair,
+        Err(error) => {
+            operation.fail(&error);
+            return Err(error);
+        }
+    };
+    operation.execute_prepared(&prepared, &store, client, admission, &mut |_| {})
 }
 
 /// One shared fetch/publish path. Native Xet changes only cold resolution and
@@ -655,23 +721,7 @@ fn run_fetch(
         }
         return describe(&lease);
     }
-    let (origin, token) = match request.provider() {
-        Provider::HuggingFace => ("https://huggingface.co", "HF_TOKEN"),
-        Provider::GitHub => ("https://api.github.com", "GITHUB_TOKEN"),
-    };
-    let mut http_options = HttpOptions::default();
-    if let Some(seconds) = options.timeout {
-        http_options.total_timeout = std::time::Duration::from_secs(seconds);
-    }
-    let mut client = HttpsClient::from_env(
-        origin,
-        request.provider().label(),
-        Some(token),
-        http_options,
-    )?;
-    if request.provider() == Provider::GitHub {
-        client = client.with_credential_origin("https://raw.githubusercontent.com")?;
-    }
+    let client = hub_client(request.provider(), options.timeout)?;
     let admission = admission(options.memory)?;
     let cancel = Arc::new(AtomicBool::new(false));
     let _signals = signals::CancellationSignals::register(cancel.clone())?;
@@ -735,22 +785,17 @@ fn run_fetch(
     let control = runtime.control();
     let operation = control.begin_download(cancel.clone())?;
     let receipt = monitor::drive(control, operation, terminal, |operation| {
-        let prepared = match hub.resolve(&client, &admission, &cancel, PullMode::Transfer) {
-            Ok(prepared) => prepared,
-            Err(error) => {
-                operation.fail(&error);
-                return Err(error);
-            }
-        };
-        report_plan(prepared.plan());
-        let store = match open(options) {
-            Ok(store) => store,
-            Err(error) => {
-                operation.fail(&error);
-                return Err(error);
-            }
-        };
-        operation.execute_prepared(&prepared, &store, &client, &admission, &mut |_| {})
+        transfer_hub(
+            operation,
+            &hub,
+            &client,
+            &admission,
+            || open(options),
+            |plan| {
+                report_plan(plan);
+                Ok(())
+            },
+        )
     })?;
     if presentation.download_jsonl() {
         monitor::jsonl_receipt(&receipt, reference)?;

@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (26 Nov): **Phase 2.1 UX-1 through bounded UX-8B accepted; UX-8C Models / Downloads / Devices next (§46A.28).**
+Status (26 Nov): **Phase 2.1 UX-1 through bounded UX-8C accepted; UX-8D Profiles / Config / Logs next (§46A.28).**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
@@ -3582,6 +3582,21 @@ with existing 60s bound; no relaxed admission or expected output.
 Full isolated gate passes (2,479 passed, zero failed, 109 ignored);
 release PTY, installer and script contracts pass. UX-8B accepted.
 UX-8C/D then Web.
+
+UX-8C implementation (26 Nov): typed exact cached digest/catalog/partial
+rows, contextual list/detail, inspect/verify/load/run/serve, non-replacing
+alias and original preview/confirmed reclaim. Physical device observation,
+cold selected-source/device policy check or load; one coalesced inventory
+reader and original action worker. Explicit immutable HF/GitHub file/
+quant intent or approved Qwen recipe, scrollable consent, bare offline,
+same runtime original controlled transfer, observed bytes/rate/phase/
+durability and exact operation pause/resume/cancel. No automatic quota
+increase, alias retarget, resume from opaque checkpoint key or advanced
+provider auto-selection. Focused reducers/intent and actual original
+controlled-transfer native PTY pass, strict lint pass; actual cached lifecycle
+and remaining release tests pass, offline shell PTY passes. Full isolated
+gate passes (2,481/0/109), release PTY/installer/scripts pass. UX-8C
+accepted. UX-8D config/profile/logs then Web.
 
 Build TUI before Web so the shared control surface proves it is not browser-shaped.
 

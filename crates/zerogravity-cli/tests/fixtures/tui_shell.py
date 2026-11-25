@@ -111,6 +111,8 @@ def shell(root):
                   (b"\x7flog\r", b"received."),
                   (60, b"ZeroGravity"), (b"\t", b"Navigation")])
     exercise([], [], terminate=True)
+    exercise(["--offline"], [(b"4", b"Cached"), (b"m", b"qwen3.5-plus"),
+                              (b"d", b"prohibits"), (b"5", b"Download")])
     exercise(["--help"], [], interactive=False)
     exercise(["--interactive", "never"], [], interactive=False)
     plain = subprocess.run([binary], cwd=root, env=environment(root),
@@ -153,8 +155,25 @@ def lifecycle(root, expected):
 
     with Terminal(root, ["--profile", "local"], width=150, height=40) as terminal:
         terminal.check_started()
-        terminal.send(b"\r", b"MODEL")
-        terminal.send(b"served-fixture\r", b"Prompt")
+        terminal.send(b"6", b"cpu:0", 30)
+        # Original inventory ordering ends in host memory. Use the original
+        # read-only CLI observation to select that exact physical row.
+        observation = subprocess.run([binary, "device", "list", "--format=json"], cwd=root,
+                                     env=environment(root), capture_output=True, check=True)
+        devices = json.loads(observation.stdout)["devices"]
+        cpu_index = next(i for i, device in enumerate(devices) if device["id"] == "cpu:0")
+        if cpu_index:
+            os.write(terminal.master, b"j" * cpu_index)
+        terminal.send(b"e", b"MODEL")
+        terminal.send(b"\r", b"accepted", 60)
+        terminal.send(b"4", b"fixture/serve")
+        terminal.send(b"\r", b"checked;")
+        terminal.send(b"v", b"verified", 60)
+        terminal.send(b"a", b"replacement.")
+        terminal.send(b"tui-fixture\r", b"created", 30)
+        terminal.send(b"x", b"confirm")
+        os.write(terminal.master, b"n")
+        terminal.send(b"p", b"Prompt")
         # Original profile raw=true. TUI completion must be actual output.
         terminal.send(b"\x1b[200~" + prompt.encode() + b"\x1b[201~\r", b"length", 90)
         assert b"Response" in terminal.transcript
@@ -165,8 +184,10 @@ def lifecycle(root, expected):
         terminal.send(b"s", b"IP:PORT")
         terminal.send(address.encode() + b"\r", b"Listening:", 30)
         models = http("/models")
-        assert [model["id"] for model in models["data"]] == ["served-fixture"], models
-        result = http("/completions", {"model": "served-fixture", "prompt": prompt,
+        assert len(models["data"]) == 1, models
+        loaded_alias = models["data"][0]["id"]
+        assert len(loaded_alias) == 64 and all(c in "0123456789abcdef" for c in loaded_alias), models
+        result = http("/completions", {"model": loaded_alias, "prompt": prompt,
                                        "max_tokens": 2, "stream": False})
         assert result["choices"][0]["text"] == expected, result
         assert result["usage"]["completion_tokens"] > 0
@@ -193,11 +214,53 @@ def lifecycle(root, expected):
         os.write(terminal.master, b"y")
         terminal.finish()
         closed()
-    print("TUI cached lifecycle: quick run, repeated invoke, HTTP equality, navigation, decline quit, stop, unload/reload, owned listener/process retirement")
+    alias = subprocess.run([binary, "model", "inspect", "by-name:tui-fixture", "--format=json"],
+                           cwd=root, env=environment(root), capture_output=True, check=True)
+    assert json.loads(alias.stdout)["snapshot"] == loaded_alias
+    with Terminal(root, ["--profile", "local"], width=150, height=40) as terminal:
+        terminal.check_started()
+        terminal.send(b"4", b"fixture/serve")
+        terminal.send(b"X", b"preview;", 30)
+        terminal.send(b"x", b"confirm")
+        terminal.send(b"y", b"durable", 60)
+        os.write(terminal.master, b"q")
+        terminal.finish()
+    listing = subprocess.run([binary, "model", "list", "--format=json"], cwd=root,
+                             env=environment(root), capture_output=True, check=True)
+    assert json.loads(listing.stdout) == []
+    print("TUI cached lifecycle: inspect/verify, alias, declined removal, exact-digest run, repeated invoke, HTTP equality, stop/unload/reload/quit, preview and durable removal")
 
 
 if len(sys.argv) == 2:
     with tempfile.TemporaryDirectory(prefix="zg-tui-") as tmp:
         shell(Path(tmp))
+elif sys.argv[2] == "--download-fixture":
+    for mode in ("tui", "tui-cancel"):
+        with tempfile.TemporaryDirectory(prefix="zg-tui-download-") as tmp:
+            root = Path(tmp)
+            os.environ["ZG_MONITOR_FIXTURE"] = str(root / "owned-cache")
+            os.environ["ZG_MONITOR_MODE"] = mode
+            with Terminal(root, ["--ignored", "--exact", "pull::monitor::tests::monitor_child", "--nocapture"], width=150, height=40) as terminal:
+                terminal.check_started()
+                terminal.send(b"5", b"Paused", 15)
+                terminal.send(b"s", b"Running", 15)
+                terminal.send(b"p", b"Pause", 15)
+                # Ratatui may emit only the final changed cell of "Paused".
+                # Change views after the safe body boundary to read a newly
+                # painted status, not the raw differential transition bytes.
+                time.sleep(0.5)
+                terminal.send(b"1", b"Quick", 15)
+                terminal.send(b"5", b"Paused", 15)
+                if mode == "tui":
+                    terminal.send(b"s", b"Snapshot:", 20)
+                else:
+                    terminal.send(b"c", b"Cancel", 20)
+                    time.sleep(0.5)
+                    terminal.send(b"1", b"Quick", 15)
+                    terminal.send(b"5", b"Cancelled", 15)
+                os.write(terminal.master, b"q")
+                terminal.finish()
+                assert b"NOT_IN_OUTPUT" not in terminal.transcript
+    print("Native download PTY: actual safe pause, resume/durable and cancel outcomes over one shared owner")
 else:
     lifecycle(Path(sys.argv[2]), sys.argv[3])

@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — native model / download / device management (UX-8C)
+
+Exact model/digest/physical-device selections and shared resident/cache
+actions, static catalog and partial checkpoint observations, coalesced
+read worker, same-runtime original controlled transfer with explicit
+pinned intent, original pause/resume/cancel and durability. TUI reducers
+4/0, native intent 1/0, actual controlled-transfer PTY, strict minimal and
+combined lint pass. Actual cached Qwen lifecycle and remaining release
+tests pass; offline shell PTY passes. Final full isolated gate passes
+(2,481 passed, zero failed, 109 ignored; release PTY/installer/scripts).
+UX-8C accepted. No remote download, new physical GPU qualification or performance change.
+
 ## 26 Nov — native model and listener actions (UX-8B)
 
 Shared canonical resident planner for CLI serve and native UI; original

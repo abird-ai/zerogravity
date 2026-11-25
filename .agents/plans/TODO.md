@@ -161,7 +161,14 @@ First real cached GGUF TUI/HTTP lifecycle and combined release 6/0/0,
 strict lint/combined feature compile pass. Final repeat-invoke/paste
 real PTY/HTTP and remaining release tests pass; full isolated gate passes
 (2,479 passed, zero failed, 109 ignored), release PTY/installer/scripts
-pass. UX-8B accepted. Next: UX-8C Models / Downloads / Devices.
+pass. UX-8B accepted. UX-8C native model/cache/download/device actions implemented:
+exact cached digest and physical device, coalesced read worker, original
+cache/reclaim/alias and resident admission, explicit pinned hub/recipe
+intent on same runtime, observed progress and exact pause/resume/cancel.
+Focused reducers/intent, actual controlled-transfer PTY and strict lint
+pass; actual cached lifecycle and remaining release tests pass. Full isolated
+gate 2,481/0/109, release PTY/installer/scripts pass. UX-8C accepted. Next UX-8D
+Profiles / Config / Logs.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

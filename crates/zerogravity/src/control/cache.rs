@@ -112,6 +112,30 @@ impl ControlPlane<'_> {
         result
     }
 
+    /// Add a human alias for the exact snapshot. Never silently retarget an
+    /// existing alias; the original publisher/projection owner validates.
+    pub fn alias_cached(
+        &self,
+        root: &Path,
+        digest: &str,
+        name: &str,
+    ) -> Result<crate::cache::ByNameUpdate> {
+        let result = (|| {
+            self.runtime.engine.require_open()?;
+            crate::cache::paths::validate_digest(digest)?;
+            let metadata = CacheMetadata::open(root)?;
+            let store = CacheStore::open_existing(CacheOptions::new(
+                Some(root.to_owned()),
+                metadata.disk_limit_bytes()?,
+            ))?;
+            store.set_by_name_alias(name, digest, false)
+        })();
+        self.emit(ControlEventKind::CacheAliasFinished {
+            success: result.is_ok(),
+        });
+        result
+    }
+
     /// A mutation targets an exact digest selected/confirmed by the caller.
     /// Preserve all original Busy/Referenced/Incomplete/Durable outcomes.
     pub fn reclaim_cached(

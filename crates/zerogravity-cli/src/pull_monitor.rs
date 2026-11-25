@@ -325,16 +325,16 @@ mod tests {
             ..Default::default()
         });
         const SIZE: usize = 8192;
-        struct Body(std::io::Cursor<Vec<u8>>);
+        struct Body(std::io::Cursor<Vec<u8>>, bool);
         impl Read for Body {
             fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
-                std::thread::sleep(Duration::from_millis(12));
+                std::thread::sleep(Duration::from_millis(if self.1 { 40 } else { 12 }));
                 let n = out.len().min(128);
                 self.0.read(&mut out[..n])
             }
         }
         #[derive(Default)]
-        struct Transport(AtomicUsize);
+        struct Transport(AtomicUsize, bool);
         impl HttpTransport for Transport {
             fn get(&self, request: &HttpRequest, _: &AtomicBool) -> Result<HttpResponse> {
                 self.0.fetch_add(1, Ordering::Relaxed);
@@ -357,7 +357,7 @@ mod tests {
                 Ok(HttpResponse {
                     status: if start == 0 { 200 } else { 206 },
                     headers,
-                    body: Box::new(Body(std::io::Cursor::new(vec![b'a'; SIZE - start]))),
+                    body: Box::new(Body(std::io::Cursor::new(vec![b'a'; SIZE - start]), self.1)),
                 })
             }
         }
@@ -382,11 +382,63 @@ mod tests {
         let admission = zerogravity::artifacts::transfer_admission(128 * 1024 * 1024).unwrap();
         let cancel = Arc::new(AtomicBool::new(false));
         let _signals = crate::signals::CancellationSignals::register(cancel.clone()).unwrap();
-        let terminal = TerminalInput::enter(TerminalInput::prepare().unwrap()).unwrap();
         let runtime = Runtime::builder().build().unwrap();
         let control = runtime.control();
-        let operation = control.begin_resolved_download(cancel).unwrap();
-        let transport = Transport::default();
+        let operation = control.begin_resolved_download(cancel.clone()).unwrap();
+        let transport = Transport(AtomicUsize::new(0), mode.starts_with("tui"));
+        #[cfg(feature = "tui")]
+        if matches!(mode.as_str(), "tui" | "tui-cancel") {
+            use zerogravity::control::DownloadCommand;
+            // Park at the original safe boundary before attaching the
+            // terminal. The fixture cannot finish before the first input.
+            control
+                .control_download(operation.id(), DownloadCommand::Pause)
+                .unwrap();
+            let result = std::thread::scope(|scope| {
+                let worker = scope.spawn(|| {
+                    operation.execute_plan(
+                        &store,
+                        &plan,
+                        &transport,
+                        &admission,
+                        Some("fixture"),
+                        &mut |_| {},
+                    )
+                });
+                let ui = crate::tui::download_fixture_session(&runtime, &root);
+                cancel.store(true, Ordering::Release);
+                let result = worker.join().unwrap();
+                ui.unwrap();
+                result
+            });
+            if mode == "tui-cancel" {
+                assert!(result.is_err());
+                assert_eq!(
+                    control.download().unwrap().status,
+                    DownloadStatus::Cancelled
+                );
+                assert!(store.resolve_ref("fixture").is_err());
+            } else {
+                assert!(result.is_ok());
+                assert_eq!(control.download().unwrap().status, DownloadStatus::Durable);
+                assert_eq!(
+                    transport.0.load(Ordering::Relaxed),
+                    2,
+                    "same-operation safe range reopen"
+                );
+                assert_eq!(
+                    store
+                        .resolve_ref("fixture")
+                        .unwrap()
+                        .manifest()
+                        .total_bytes(),
+                    SIZE as u64
+                );
+            }
+            runtime.shutdown().unwrap();
+            return;
+        }
+        let terminal = TerminalInput::enter(TerminalInput::prepare().unwrap()).unwrap();
         let result = drive(control, operation, terminal, |operation| {
             operation.execute_plan(
                 &store,

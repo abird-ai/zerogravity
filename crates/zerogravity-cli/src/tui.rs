@@ -1,17 +1,19 @@
 //! Native client shell. Runtime lifetime belongs to the outer host; view
 //! selection owns no model, task, listener or download.
+mod library;
 mod terminal;
 mod view;
 mod work;
 
 use crate::output;
 use crossterm::event::{self, Event, KeyEventKind};
+use library::{Key, Kind, Library};
 use std::{
     collections::VecDeque,
     path::PathBuf,
     time::{Duration, Instant},
 };
-use view::{Action, Form, FormKind, Navigation, RunTarget, View};
+use view::{Action, DownloadAction, Form, FormKind, LibraryAction, Navigation, RunTarget, View};
 use work::{Document, Job, Owner, Prompt, Request, Response};
 use zerogravity::{
     Result, Runtime,
@@ -20,7 +22,7 @@ use zerogravity::{
     models::ModelLifecycle,
 };
 
-pub(super) fn launch(selection: Option<(&str, &str)>) -> Result<()> {
+pub(super) fn launch(selection: Option<(&str, &str)>, offline: bool) -> Result<()> {
     if !output::launch_interaction()? {
         output::usage();
         return Ok(());
@@ -31,7 +33,7 @@ pub(super) fn launch(selection: Option<(&str, &str)>) -> Result<()> {
         return Ok(());
     }
     let config = crate::config_cli::selected_path(selection)?;
-    let document = Document::new(selection)?;
+    let document = Document::new(selection, offline)?;
     // Per-load worker and queue bounds remain the admitted plan's bounds.
     // The host permits the entire existing finite worker range and original
     // host-credit-backed pending policy, including explicit count ceilings.
@@ -51,6 +53,18 @@ pub(super) fn launch(selection: Option<(&str, &str)>) -> Result<()> {
         &stop,
     );
     work::combine(result, work::retire(&runtime))
+}
+
+#[cfg(all(test, feature = "acquisition", target_os = "linux"))]
+pub(crate) fn download_fixture_session(runtime: &Runtime, root: &std::path::Path) -> Result<()> {
+    let stop = terminal::Stop::install()?;
+    session(
+        runtime,
+        Document::test_default(),
+        root.join("config.yaml"),
+        false,
+        &stop,
+    )
 }
 
 /// Client-local session over the caller's runtime; effectful actions have
@@ -77,6 +91,7 @@ fn session(
         job: None,
         selected: None,
         response: None,
+        library: Library::default(),
     };
     app.reconcile_owner();
     let mut terminal = terminal::Session::enter()?;
@@ -85,7 +100,12 @@ fn session(
         let mut sampled = Instant::now();
         while !stop.requested() {
             dirty |= app.poll_job(control);
+            dirty |= app.library.poll(runtime);
             let mut changed = false;
+            let mut cache_changed = false;
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            let mut download_changed = false;
+            let mut resync = false;
             // Bounded transient invalidations, not a second runtime history.
             for _ in 0..64 {
                 match events.poll(Duration::ZERO) {
@@ -93,6 +113,17 @@ fn session(
                     ControlPoll::Event(event) => {
                         if app.events.len() == 64 {
                             app.events.pop_front();
+                        }
+                        use zerogravity::control::ControlEventKind;
+                        cache_changed |= matches!(
+                            event.kind,
+                            ControlEventKind::CacheAliasFinished { .. }
+                                | ControlEventKind::CacheReclamationFinished { .. }
+                        );
+                        #[cfg(all(feature = "acquisition", target_os = "linux"))]
+                        {
+                            download_changed |=
+                                matches!(event.kind, ControlEventKind::DownloadChanged { .. });
                         }
                         app.events.push_back(event);
                         changed = true;
@@ -102,6 +133,7 @@ fn session(
                         app.notice =
                             Some(format!("Missed {missed} events; reloaded owner snapshot"));
                         changed = true;
+                        resync = true;
                     }
                 }
             }
@@ -109,7 +141,19 @@ fn session(
                 || ((app.live() || app.job.is_some())
                     && sampled.elapsed() >= Duration::from_secs(1))
             {
-                app.refresh(control, changed);
+                app.refresh(control);
+                #[cfg(all(feature = "acquisition", target_os = "linux"))]
+                {
+                    cache_changed |= download_changed
+                        && app
+                            .snapshot
+                            .download
+                            .as_ref()
+                            .is_some_and(|download| download.status.terminal());
+                }
+                if resync || (cache_changed && app.navigation.view() == View::Models) {
+                    app.refresh_cold(runtime, control);
+                }
                 sampled = Instant::now();
                 dirty = true;
             }
@@ -174,7 +218,11 @@ fn session(
     } else {
         Ok(())
     };
-    work::combine(work::combine(result, restored), joined)
+    let observed = app.library.join();
+    work::combine(
+        work::combine(work::combine(result, restored), joined),
+        observed,
+    )
 }
 
 struct App {
@@ -189,6 +237,7 @@ struct App {
     job: Option<Job>,
     selected: Option<Owner>,
     response: Option<Response>,
+    library: Library,
 }
 
 impl App {
@@ -288,11 +337,15 @@ impl App {
         if let Some(response) = job.sample(revision) {
             self.response = Some(response);
         }
-        self.notice = Some(match result {
+        let message = match result {
             Ok(message) => message,
             Err(error) => format!("{} failed: {error}", job.title()),
-        });
-        self.refresh(control, false);
+        };
+        self.notice = Some(message.lines().next().unwrap_or("").to_owned());
+        if let Some(key) = job.detail_key.take() {
+            self.library.detail = Some((key, message));
+        }
+        self.refresh(control);
         true
     }
 
@@ -303,8 +356,13 @@ impl App {
                 view::Confirmation::Quit,
             ),
             Action::Quit | Action::Confirmed(view::Confirmation::Quit) => return true,
-            Action::Open => self.refresh_cold(control),
-            Action::Refresh => self.refresh(control, true),
+            Action::Open => self.refresh_cold(runtime, control),
+            Action::Refresh => {
+                self.refresh(control);
+                self.refresh_cold(runtime, control);
+            }
+            Action::Library(action) => self.library_action(runtime, control, action),
+            Action::Download(action) => self.download_action(control, action),
             Action::Redraw => {},
             Action::Cancel => self.cancel(),
             Action::MoveOwner(delta) => self.move_owner(delta),
@@ -362,21 +420,226 @@ impl App {
                 }
             }
             Action::Submit(Form { kind, value }) => match kind {
-                FormKind::Source { run: false } => self.start(runtime, Request::Load { source: value, prompt: None }),
+                FormKind::Source { run: false } => self.start(runtime, Request::Load { source: value, prompt: None, device: None }),
                 FormKind::Source { run: true } => self.navigation.form(FormKind::Prompt { target: RunTarget::Source(value), chat: self.document.chat }),
                 FormKind::Prompt { target, chat } => {
+                    if self.navigation.view() == View::Models {
+                        self.navigation.open(View::Home);
+                    }
                     let prompt = Prompt { text: value, chat };
                     let request = match target {
                         RunTarget::Owner(owner) => Request::Invoke { owner, prompt },
-                        RunTarget::Source(source) => Request::Load { source, prompt: Some(prompt) },
+                        RunTarget::Source(source) => Request::Load { source, prompt: Some(prompt), device: None },
                     };
                     self.start(runtime, request);
                 }
                 FormKind::Listen => self.start(runtime, Request::Start(value)),
+                FormKind::PullSource => self.pull_source(value),
+                FormKind::PullSelection { source } => self.confirm_pull(&source, &value),
+                FormKind::Alias { digest } => self.start(runtime, Request::Alias { digest, name: value }),
+                FormKind::DeviceSource { device, load } => {
+                    if load {
+                        self.start(runtime, Request::Load { source: value, prompt: None, device: Some(device) });
+                    } else {
+                        self.start(runtime, Request::CheckFit { source: value, device });
+                    }
+                }
+
             },
-            Action::Confirmed(view::Confirmation::Request(request)) => self.start(runtime, request),
+            Action::Confirmed(view::Confirmation::Request(request)) => {
+                #[cfg(all(feature = "acquisition", target_os = "linux"))]
+                if matches!(&request, Request::Pull(_)) {
+                    self.navigation.open(View::Downloads);
+                }
+                self.start(runtime, request);
+            }
         }
         false
+    }
+
+    fn library_action(
+        &mut self,
+        runtime: &Runtime,
+        control: ControlPlane<'_>,
+        action: LibraryAction,
+    ) {
+        let kind = if self.navigation.view() == View::Devices {
+            Kind::Devices
+        } else {
+            Kind::Models
+        };
+        match action {
+            LibraryAction::Cycle => {
+                self.library.shelf = self.library.shelf.next();
+                self.navigation
+                    .reveal_library(self.library.rows(kind).index());
+                return;
+            }
+            LibraryAction::Move(delta) => {
+                let index = self.library.rows_mut(kind).move_selection(delta);
+                self.navigation.reveal_library(index);
+                return;
+            }
+            LibraryAction::Inspect if kind == Kind::Devices => {
+                self.refresh_cold(runtime, control);
+                return;
+            }
+            _ => {}
+        }
+        if self.job.is_some() {
+            self.notice =
+                Some("An action is already in progress; wait or request cancellation".into());
+            return;
+        }
+        if action == LibraryAction::Pull {
+            if self.document.offline {
+                self.notice = Some("Offline mode prohibits acquisition".into());
+                return;
+            }
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            {
+                if self.navigation.view() == View::Models
+                    && let Some(Key::Target(target)) = self.library.rows(kind).selected.clone()
+                    && let Ok(intent) = crate::pull::native::Intent::parse(&target, "")
+                {
+                    self.confirm_intent(intent);
+                    return;
+                }
+                self.navigation.form(FormKind::PullSource);
+            }
+            #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
+            {
+                self.notice =
+                    Some("Acquisition requires the optional Linux acquisition feature".into());
+            }
+            return;
+        }
+        let Some(key) = self.library.rows(kind).selected.clone() else {
+            self.notice = Some("No observed selection".into());
+            return;
+        };
+        match (key, action) {
+            (Key::Snapshot(digest), LibraryAction::Inspect) => self.start(runtime, Request::Inspect(digest)),
+            (Key::Snapshot(digest), LibraryAction::Verify) => self.start(runtime, Request::Verify(digest)),
+            (Key::Snapshot(digest), LibraryAction::Alias) => self.navigation.form(FormKind::Alias { digest }),
+            (Key::Snapshot(digest), LibraryAction::Reclaim(false)) => self.start(runtime, Request::Reclaim { digest, apply: false }),
+            (Key::Snapshot(digest), LibraryAction::Reclaim(true)) => self.navigation.confirm(
+                format!("Remove exact cached snapshot sha256:{digest}? Active readers or references refuse removal. No references are deleted; original owner revalidates."),
+                view::Confirmation::Request(Request::Reclaim { digest, apply: true }),
+            ),
+            (Key::Snapshot(digest), LibraryAction::Run) => {
+                if self.snapshot.runtime.status.phase != RuntimePhase::Empty {
+                    self.notice = Some("Retire the current route set before loading another, or invoke its owner from Running".into());
+                } else {
+                    self.navigation.form(FormKind::Prompt { target: RunTarget::Source(format!("sha256:{digest}")), chat: self.document.chat });
+                }
+            }
+            (Key::Snapshot(digest), LibraryAction::Load(serve)) => {
+                if self.snapshot.runtime.status.phase != RuntimePhase::Empty {
+                    self.notice = Some("Retire the current route set before loading another".into());
+                } else {
+                    if serve { self.navigation.open(View::Serve); }
+                    self.start(runtime, Request::Load { source: format!("sha256:{digest}"), prompt: None, device: None });
+                }
+            }
+            (Key::Device(device), LibraryAction::Fit) => self.navigation.form(FormKind::DeviceSource { device, load: false }),
+            (Key::Device(device), LibraryAction::Load(false)) => {
+                if self.snapshot.runtime.status.phase != RuntimePhase::Empty {
+                    self.notice = Some("Retire the current route set before loading another".into());
+                } else {
+                    self.navigation.form(FormKind::DeviceSource { device, load: true });
+                }
+            }
+            (Key::Target(_) | Key::Partial(_), LibraryAction::Inspect) => {
+                self.notice = Some("Selected observation shown; not an execution or resume grant".into());
+            }
+            _ => self.notice = Some("Action requires a compatible observed selection".into()),
+        }
+    }
+
+    fn pull_source(&mut self, source: String) {
+        #[cfg(all(feature = "acquisition", target_os = "linux"))]
+        {
+            if self.document.offline {
+                self.notice = Some("Offline mode prohibits acquisition".into());
+            } else if source.trim().starts_with("hf:") || source.trim().starts_with("gh:") {
+                self.navigation.form(FormKind::PullSelection { source });
+            } else {
+                self.confirm_pull(&source, "");
+            }
+        }
+        #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
+        {
+            let _ = source;
+            self.notice =
+                Some("Acquisition requires the optional Linux acquisition feature".into());
+        }
+    }
+    fn confirm_pull(&mut self, source: &str, selection: &str) {
+        #[cfg(all(feature = "acquisition", target_os = "linux"))]
+        {
+            match crate::pull::native::Intent::parse(source, selection) {
+                Ok(intent) => self.confirm_intent(intent),
+                Err(error) => self.notice = Some(error.to_string()),
+            }
+        }
+        #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
+        {
+            let _ = (source, selection);
+            self.notice = Some("Acquisition unavailable".into());
+        }
+    }
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    fn confirm_intent(&mut self, intent: crate::pull::native::Intent) {
+        match intent.confirmation() {
+            Ok(question) => self
+                .navigation
+                .confirm(question, view::Confirmation::Request(Request::Pull(intent))),
+            Err(error) => self.notice = Some(error.to_string()),
+        }
+    }
+
+    fn download_action(&mut self, control: ControlPlane<'_>, action: DownloadAction) {
+        #[cfg(all(feature = "acquisition", target_os = "linux"))]
+        {
+            use zerogravity::control::DownloadCommand;
+            // Exact observed id, never resolve "latest" at action time.
+            let Some(download) = self
+                .snapshot
+                .download
+                .as_ref()
+                .filter(|download| !download.status.terminal())
+            else {
+                if action == DownloadAction::Cancel {
+                    self.cancel();
+                } else {
+                    self.notice = Some("No observed active download".into());
+                }
+                return;
+            };
+            let command = match action {
+                DownloadAction::Pause => DownloadCommand::Pause,
+                DownloadAction::Resume => DownloadCommand::Resume,
+                DownloadAction::Cancel => DownloadCommand::Cancel,
+            };
+            self.notice = Some(match control.control_download(download.id, command) {
+                Ok(()) => format!(
+                    "{:?} requested for operation {}; awaiting owner observation",
+                    command, download.id
+                ),
+                Err(error) => error.to_string(),
+            });
+            self.refresh(control);
+        }
+        #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
+        {
+            let _ = control;
+            if action == DownloadAction::Cancel {
+                self.cancel();
+            } else {
+                self.notice = Some("Acquisition unavailable".into());
+            }
+        }
     }
 
     fn live(&self) -> bool {
@@ -401,7 +664,7 @@ impl App {
         false
     }
 
-    fn refresh(&mut self, control: ControlPlane<'_>, cold: bool) {
+    fn refresh(&mut self, control: ControlPlane<'_>) {
         match control.snapshot() {
             Ok(snapshot) => {
                 self.snapshot = snapshot;
@@ -409,53 +672,29 @@ impl App {
             }
             Err(error) => self.notice = Some(format!("Observation failed: {error}")),
         }
-        if cold {
-            self.refresh_cold(control);
-        }
     }
 
-    fn refresh_cold(&mut self, control: ControlPlane<'_>) {
+    fn refresh_cold(&mut self, runtime: &Runtime, control: ControlPlane<'_>) {
+        match self.navigation.view() {
+            View::Models => {
+                self.library.request(runtime, Kind::Models);
+                return;
+            }
+            View::Devices => {
+                self.library.request(runtime, Kind::Devices);
+                return;
+            }
+            _ => {}
+        }
         self.cold = match self.cold_rows(control) {
             Ok(rows) => rows,
             Err(error) => vec![format!("Observation unavailable: {error}")],
         };
     }
 
-    fn cold_rows(&self, control: ControlPlane<'_>) -> Result<Vec<String>> {
+    fn cold_rows(&self, _control: ControlPlane<'_>) -> Result<Vec<String>> {
         let mut rows = Vec::new();
         match self.navigation.view() {
-            View::Models => {
-                #[cfg(all(feature = "cache", target_os = "linux"))]
-                {
-                    let root = zerogravity::cache::paths::resolve_root(
-                        None,
-                        std::env::var_os("XDG_CACHE_HOME").as_deref(),
-                        std::env::var_os("HOME").as_deref(),
-                    )?;
-                    let cached = control.cached_models(&root)?;
-                    rows.push(format!("{} cached snapshots (metadata only)", cached.len()));
-                    for model in cached {
-                        rows.push(format!(
-                            "{} / {}  ·  {} bytes",
-                            model.provider, model.repository, model.bytes
-                        ));
-                        rows.push(format!("  sha256:{}", model.snapshot));
-                    }
-                }
-                #[cfg(not(all(feature = "cache", target_os = "linux")))]
-                rows.push("Cache inspection is unavailable in this build.".into());
-            }
-            View::Devices => {
-                let inventory = control.devices()?;
-                rows.push("Observed hardware; model eligibility is checked separately.".into());
-                for device in inventory.devices {
-                    rows.push(format!(
-                        "{} · {} · {}",
-                        device.id, device.class, device.vendor
-                    ));
-                    rows.push(format!("  Backends: {}", device.backends.join(", ")));
-                }
-            }
             View::Profiles => {
                 let default = crate::config_cli::selected_path(None)?;
                 if let Some(root) = default.parent() {

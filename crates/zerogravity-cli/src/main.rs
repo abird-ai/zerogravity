@@ -345,7 +345,13 @@ mod tests {
 
     #[test]
     fn empty_and_help() {
-        assert_eq!(parse([] as [&str; 0]), Command::Home(None));
+        assert_eq!(
+            parse([] as [&str; 0]),
+            Command::Home {
+                selection: None,
+                offline: false
+            }
+        );
         assert_eq!(parse(["--help"]), Command::Help);
         assert_eq!(parse(["-h"]), Command::Help);
     }

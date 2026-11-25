@@ -1,6 +1,7 @@
 //! Cell-native navigation and rendering. No execution or filesystem effects.
 use super::{
     App,
+    library::Kind,
     work::{Owner, Request},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -78,9 +79,33 @@ pub(super) enum RunTarget {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum FormKind {
-    Source { run: bool },
-    Prompt { target: RunTarget, chat: bool },
+    Source {
+        run: bool,
+    },
+    Prompt {
+        target: RunTarget,
+        chat: bool,
+    },
     Listen,
+    #[cfg_attr(
+        not(all(feature = "acquisition", target_os = "linux")),
+        allow(dead_code, reason = "acquisition forms are optional")
+    )]
+    PullSource,
+    #[cfg_attr(
+        not(all(feature = "acquisition", target_os = "linux")),
+        allow(dead_code, reason = "acquisition forms are optional")
+    )]
+    PullSelection {
+        source: String,
+    },
+    Alias {
+        digest: String,
+    },
+    DeviceSource {
+        device: String,
+        load: bool,
+    },
 }
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Form {
@@ -102,6 +127,7 @@ enum Modal {
     Confirm {
         question: String,
         action: Confirmation,
+        scroll: u16,
     },
 }
 #[derive(Debug, Default)]
@@ -112,6 +138,26 @@ pub(super) struct Navigation {
     scroll: [u16; 9],
     modal: Modal,
 }
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum LibraryAction {
+    Cycle,
+    Move(i8),
+    Inspect,
+    Verify,
+    Reclaim(bool),
+    Alias,
+    Load(bool),
+    Run,
+    Pull,
+    Fit,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum DownloadAction {
+    Pause,
+    Resume,
+    Cancel,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Action {
     Redraw,
@@ -125,6 +171,8 @@ pub(super) enum Action {
     Stop,
     Cancel,
     MoveOwner(i8),
+    Library(LibraryAction),
+    Download(DownloadAction),
     Submit(Form),
     Confirmed(Confirmation),
 }
@@ -140,11 +188,18 @@ impl Navigation {
         });
     }
     pub fn confirm(&mut self, question: String, action: Confirmation) {
-        self.modal = Modal::Confirm { question, action };
+        self.modal = Modal::Confirm {
+            question,
+            action,
+            scroll: 0,
+        };
     }
     pub fn reveal_owner(&mut self, index: usize) {
         // One row per registration; keep selection on screen when moving.
         self.scroll[View::Running.index()] = index.saturating_sub(1) as u16;
+    }
+    pub fn reveal_library(&mut self, _: usize) {
+        self.scroll[self.view.index()] = 0;
     }
     /// Paste is data only. A pasted newline or shortcut never activates a
     /// command. Prompt text can be multiline; source/listener fields cannot.
@@ -153,7 +208,10 @@ impl Navigation {
             Modal::Form(form) => (
                 &mut form.value,
                 32 * 1024,
-                matches!(form.kind, FormKind::Prompt { .. }),
+                matches!(
+                    form.kind,
+                    FormKind::Prompt { .. } | FormKind::PullSelection { .. }
+                ),
             ),
             Modal::Palette(palette) => (&mut palette.query, 128, false),
             _ => return false,
@@ -172,7 +230,7 @@ impl Navigation {
         true
     }
 
-    fn open(&mut self, view: View) -> Action {
+    pub fn open(&mut self, view: View) -> Action {
         self.view = view;
         self.cursor = view.index();
         self.rail = false;
@@ -234,6 +292,13 @@ impl Navigation {
                     Backspace => {
                         form.value.pop();
                     }
+                    Char('j')
+                        if key.modifiers.contains(KeyModifiers::CONTROL)
+                            && matches!(form.kind, FormKind::PullSelection { .. })
+                            && form.value.len() < 32 * 1024 =>
+                    {
+                        form.value.push('\n')
+                    }
                     Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         if let FormKind::Prompt { chat, .. } = &mut form.kind {
                             *chat = !*chat;
@@ -252,8 +317,14 @@ impl Navigation {
                 }
                 return Action::Redraw;
             }
-            Modal::Confirm { .. } => {
+            Modal::Confirm { scroll, .. } => {
                 match key.code {
+                    Up | PageUp => {
+                        *scroll = scroll.saturating_sub(if key.code == PageUp { 8 } else { 1 })
+                    }
+                    Down | PageDown => {
+                        *scroll = scroll.saturating_add(if key.code == PageDown { 8 } else { 1 })
+                    }
                     Char('y' | 'Y') => {
                         let Modal::Confirm { action, .. } = std::mem::take(&mut self.modal) else {
                             unreachable!()
@@ -276,6 +347,50 @@ impl Navigation {
             Char('?') => {
                 self.modal = Modal::Help;
                 Action::Redraw
+            }
+            Char('d') if !self.rail && matches!(self.view, View::Models | View::Downloads) => {
+                Action::Library(LibraryAction::Pull)
+            }
+            Char('p') if !self.rail && self.view == View::Downloads => {
+                Action::Download(DownloadAction::Pause)
+            }
+            Char('s') if !self.rail && self.view == View::Downloads => {
+                Action::Download(DownloadAction::Resume)
+            }
+            Char('c') if !self.rail && self.view == View::Downloads => {
+                Action::Download(DownloadAction::Cancel)
+            }
+            Char('m') if !self.rail && self.view == View::Models => {
+                Action::Library(LibraryAction::Cycle)
+            }
+            Enter | Char('i')
+                if !self.rail && matches!(self.view, View::Models | View::Devices) =>
+            {
+                Action::Library(LibraryAction::Inspect)
+            }
+            Char('v') if !self.rail && self.view == View::Models => {
+                Action::Library(LibraryAction::Verify)
+            }
+            Char('a') if !self.rail && self.view == View::Models => {
+                Action::Library(LibraryAction::Alias)
+            }
+            Char('x') if !self.rail && self.view == View::Models => {
+                Action::Library(LibraryAction::Reclaim(true))
+            }
+            Char('X') if !self.rail && self.view == View::Models => {
+                Action::Library(LibraryAction::Reclaim(false))
+            }
+            Char('l') if !self.rail && matches!(self.view, View::Models | View::Devices) => {
+                Action::Library(LibraryAction::Load(false))
+            }
+            Char('s') if !self.rail && self.view == View::Models => {
+                Action::Library(LibraryAction::Load(true))
+            }
+            Char('p') if !self.rail && self.view == View::Models => {
+                Action::Library(LibraryAction::Run)
+            }
+            Char('e') if !self.rail && self.view == View::Devices => {
+                Action::Library(LibraryAction::Fit)
             }
             Char('r') => Action::Refresh,
             Char('c') => Action::Cancel,
@@ -309,6 +424,12 @@ impl Navigation {
             Down | Char('j') if self.rail => {
                 self.cursor = (self.cursor + 1).min(View::ALL.len() - 1);
                 Action::Redraw
+            }
+            Up | Char('k') if matches!(self.view, View::Models | View::Devices) => {
+                Action::Library(LibraryAction::Move(-1))
+            }
+            Down | Char('j') if matches!(self.view, View::Models | View::Devices) => {
+                Action::Library(LibraryAction::Move(1))
             }
             Up | Char('k') if self.view == View::Running => Action::MoveOwner(-1),
             Down | Char('j') if self.view == View::Running => Action::MoveOwner(1),
@@ -392,6 +513,86 @@ fn downloads(app: &App) -> String {
         let _ = app;
         "Acquisition not compiled".into()
     }
+}
+
+fn download_rows(rows: &mut Vec<Line<'static>>, app: &App) {
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    if let Some(download) = &app.snapshot.download {
+        use zerogravity::control::DownloadStatus;
+        if let Some(source) = &download.source {
+            rows.push(text(format!(
+                "{}:{}@{}",
+                source.provider(),
+                source.repository(),
+                source.revision()
+            )));
+        }
+        rows.push(text(format!(
+            "Files: {} / {}",
+            download.completed_files, download.selected_files
+        )));
+        let bytes = |current: u64, exact: Option<u64>, maximum: u64| {
+            exact.map_or_else(
+                || format!("{current} bytes · total unknown (maximum {maximum})"),
+                |total| format!("{current} / {total} bytes"),
+            )
+        };
+        rows.push(text(format!(
+            "Total: {}",
+            bytes(
+                download.total_bytes,
+                download.total_expected_bytes,
+                download.total_maximum_bytes
+            )
+        )));
+        if let Some(path) = &download.path {
+            rows.push(text(format!("File: {path}")));
+            rows.push(text(bytes(
+                download.file_bytes,
+                download.file_expected_bytes,
+                download.file_maximum_bytes,
+            )));
+        }
+        rows.push(text(format!(
+            "Cached: {} bytes · resumed: {} bytes",
+            download.cached_bytes, download.resumed_bytes
+        )));
+        rows.push(text(format!(
+            "Last observed checkpoint: {} bytes",
+            download.checkpoint_bytes
+        )));
+        if let Some(total) = download.total_expected_bytes.filter(|total| *total != 0) {
+            let percent = (download.total_bytes as u128 * 100 / total as u128).min(100);
+            rows.push(text(format!("Progress: {percent}%")));
+        }
+        if download.status == DownloadStatus::Running
+            && !download.cancel_requested
+            && let Some(rate) = download.logical_bytes_per_second.filter(|rate| *rate > 0)
+        {
+            rows.push(text(format!("Accepted logical bytes/s: {rate}")));
+            if let Some(total) = download.total_expected_bytes {
+                rows.push(text(format!(
+                    "Approximate transfer ETA: {}s (not publication)",
+                    total.saturating_sub(download.total_bytes).div_ceil(rate)
+                )));
+            }
+        }
+        if download.cancel_requested && !download.status.terminal() {
+            rows.push(text(
+                "Cancellation requested; awaiting original executor outcome.",
+            ));
+        }
+        if let Some(snapshot) = &download.snapshot {
+            rows.push(text(format!("Snapshot: {snapshot}")));
+        }
+        if download.status == DownloadStatus::DurabilityUnknown {
+            rows.push(text(
+                "Publication durability unknown; inspect before retrying.",
+            ));
+        }
+    }
+    #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
+    let _ = (rows, app);
 }
 
 fn content(app: &App) -> Vec<Line<'static>> {
@@ -534,7 +735,18 @@ fn content(app: &App) -> Vec<Line<'static>> {
                 }
             }
         }
-        View::Downloads => rows.push(text(downloads(app))),
+        View::Models | View::Devices => {
+            unreachable!("library views render their own selected row and detail")
+        }
+        View::Downloads => {
+            rows.push(label("Download operation", app.color));
+            rows.push(text(downloads(app)));
+            rows.push(text("d new pull · p pause · s resume · c cancel"));
+            if app.document.offline {
+                rows.push(text("Offline · new acquisition disabled"));
+            }
+            download_rows(&mut rows, app);
+        }
         View::Logs => {
             rows.push(text(
                 "Transient control notifications in this client (not model output).",
@@ -686,6 +898,30 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     "Numeric loopback IP:PORT; blank uses selected document/default.",
                     "",
                 ),
+                FormKind::PullSource => (
+                    " Pull source ",
+                    "Approved catalog target, or hf:/gh:OWNER/REPO@40-character commit SHA.",
+                    "",
+                ),
+                FormKind::PullSelection { .. } => (
+                    " Pull selection ",
+                    "Exact relative files, one per line (Ctrl-J/paste), or quant:TAG. Explicit confirmation follows.",
+                    "",
+                ),
+                FormKind::Alias { .. } => (
+                    " Create alias ",
+                    "New lowercase alias for this exact snapshot. No replacement.",
+                    "",
+                ),
+                FormKind::DeviceSource { load, .. } => (
+                    if *load {
+                        " Load on device "
+                    } else {
+                        " Check device policy "
+                    },
+                    "MODEL or ID=MODEL; blank uses selected document. Exact selected physical device overrides device list.",
+                    "",
+                ),
             };
             // Show the tail while typing long input; keep full value in form.
             let tail: String = form
@@ -715,18 +951,25 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 popup,
             );
         }
-        Modal::Confirm { question, .. } => {
-            let popup = center(body, 72, 8);
+        Modal::Confirm {
+            question, scroll, ..
+        } => {
+            let popup = center(body, 86, 15);
             frame.render_widget(Clear, popup);
+            let block = Block::bordered().title(" Confirm ");
+            let inner = block.inner(popup);
+            frame.render_widget(block, popup);
+            let [question_area, controls] =
+                Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
             frame.render_widget(
-                Paragraph::new(vec![
-                    text(question),
-                    Line::default(),
-                    label("y confirm · n/Esc cancel", app.color),
-                ])
-                .wrap(Wrap { trim: false })
-                .block(Block::bordered().title(" Confirm ")),
-                popup,
+                Paragraph::new(question.lines().map(text).collect::<Vec<_>>())
+                    .wrap(Wrap { trim: false })
+                    .scroll((*scroll, 0)),
+                question_area,
+            );
+            frame.render_widget(
+                Paragraph::new(label("y confirm · n/Esc cancel · arrows scroll", app.color)),
+                controls,
             );
         }
         Modal::Palette(palette) => {
@@ -802,7 +1045,106 @@ fn render_rail(frame: &mut Frame<'_>, area: Rect, app: &App) {
         area,
     );
 }
+fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind) {
+    let title = match kind {
+        Kind::Models => format!(" Models · {:?} ", app.library.shelf),
+        Kind::Devices => " Devices ".into(),
+    };
+    let block = Block::bordered().title(title);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let collection = app.library.rows(kind);
+    let mut header = match kind {
+        Kind::Models => vec![
+            text("m Cached/Catalog/Partial · j/k select · Enter inspect"),
+            text("l load · p run · s load for Serve · d pull · v verify"),
+            text("a alias · X preview · x remove"),
+        ],
+        Kind::Devices => vec![
+            text("j/k select · Enter refresh · e check model policy"),
+            text("l load on selected physical device · no inferred model eligibility"),
+        ],
+    };
+    if app.document.offline && kind == Kind::Models {
+        header.push(text("Offline · acquisition disabled"));
+    }
+    let status = app.library.notice(kind).unwrap_or("Owner observations");
+    header.push(text(format!(
+        "{} entries · {status}",
+        collection.rows.len()
+    )));
+    let height = (header.len() as u16).min(inner.height.saturating_sub(2));
+    let [head, body] =
+        Layout::vertical([Constraint::Length(height), Constraint::Min(1)]).areas(inner);
+    frame.render_widget(Paragraph::new(header), head);
+    let [list, detail] = if body.width >= 100 {
+        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).areas(body)
+    } else {
+        Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)]).areas(body)
+    };
+    let lines: Vec<_> = collection
+        .rows
+        .iter()
+        .map(|row| {
+            let selected = collection.selected.as_ref() == Some(&row.key);
+            let line = text(format!(
+                "{} {}",
+                if selected { ">" } else { " " },
+                row.title
+            ));
+            if selected {
+                line.style(accent(app.color))
+            } else {
+                line
+            }
+        })
+        .collect();
+    let list_offset = collection
+        .index()
+        .saturating_sub(list.height.saturating_sub(3) as usize)
+        .min(u16::MAX as usize) as u16;
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(Block::bordered().title(" Entries "))
+            .scroll((list_offset, 0)),
+        list,
+    );
+    let mut details = Vec::new();
+    if let Some(row) = collection.selected() {
+        details.push(label(&row.title, app.color));
+        details.extend(row.details.iter().map(text));
+        if let Some((key, result)) = &app.library.detail
+            && key == &row.key
+        {
+            details.push(Line::default());
+            details.extend(result.lines().map(text));
+        }
+    } else {
+        details.push(text("No observed selection"));
+    }
+    let scroll = &mut app.navigation.scroll[app.navigation.view.index()];
+    *scroll = (*scroll).min(details.len().saturating_sub(1).min(u16::MAX as usize) as u16);
+    frame.render_widget(
+        Paragraph::new(details)
+            .block(Block::bordered().title(" Selected · PgUp/PgDn "))
+            .wrap(Wrap { trim: false })
+            .scroll((*scroll, 0)),
+        detail,
+    );
+}
+
 fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App) {
+    match app.navigation.view {
+        View::Models => {
+            render_library(frame, area, app, Kind::Models);
+            return;
+        }
+        View::Devices => {
+            render_library(frame, area, app, Kind::Devices);
+            return;
+        }
+        _ => {}
+    }
     let rows = content(app);
     let scroll = &mut app.navigation.scroll[app.navigation.view.index()];
     *scroll = (*scroll).min(rows.len().saturating_sub(1).min(u16::MAX as usize) as u16);
@@ -837,20 +1179,20 @@ mod tests {
     #[test]
     fn navigation_preserves_scroll_and_palette_owns_typing() {
         let mut nav = Navigation::default();
-        assert_eq!(nav.key(key(KeyCode::Char('4'))), Action::Open);
-        assert_eq!(nav.view(), View::Models);
+        assert_eq!(nav.key(key(KeyCode::Char('8'))), Action::Open);
+        assert_eq!(nav.view(), View::Config);
         nav.key(key(KeyCode::Down));
         nav.key(key(KeyCode::Char(':')));
         assert_eq!(nav.key(key(KeyCode::Char('q'))), Action::Redraw);
         assert!(matches!(&nav.modal, Modal::Palette(p) if p.query=="q"));
         nav.key(key(KeyCode::Backspace));
-        for c in "config".chars() {
+        for c in "logs".chars() {
             nav.key(key(KeyCode::Char(c)));
         }
         assert_eq!(nav.key(key(KeyCode::Enter)), Action::Open);
-        assert_eq!(nav.view(), View::Config);
-        nav.key(key(KeyCode::Char('4')));
-        assert_eq!(nav.scroll[View::Models.index()], 1);
+        assert_eq!(nav.view(), View::Logs);
+        nav.key(key(KeyCode::Char('8')));
+        assert_eq!(nav.scroll[View::Config.index()], 1);
         assert_eq!(nav.key(key(KeyCode::Char('q'))), Action::Quit);
     }
     #[test]
@@ -911,6 +1253,7 @@ mod tests {
             job: None,
             selected: None,
             response: None,
+            library: super::super::library::Library::default(),
         };
         for width in [60, 90, 150] {
             let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();

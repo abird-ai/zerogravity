@@ -44,7 +44,7 @@ pub(super) fn run(command: Command) -> ExitCode {
         return finish("config", Err(error));
     }
     match command {
-        Command::Home(selection) => {
+        Command::Home { selection, offline } => {
             #[cfg(feature = "tui")]
             return finish(
                 "tui",
@@ -52,11 +52,12 @@ pub(super) fn run(command: Command) -> ExitCode {
                     selection
                         .as_ref()
                         .map(|(flag, value)| (*flag, value.as_str())),
+                    offline,
                 ),
             );
             #[cfg(not(feature = "tui"))]
             {
-                let _ = selection;
+                let _ = (selection, offline);
                 usage();
                 ExitCode::SUCCESS
             }

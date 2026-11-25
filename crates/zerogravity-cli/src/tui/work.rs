@@ -1,5 +1,6 @@
 //! One scoped, client-owned action worker. All effects go through the original
 //! resident loader and ControlPlane; closing a view does not own retirement.
+use super::library::Key;
 use crate::resident;
 use std::{
     num::NonZeroUsize,
@@ -46,6 +47,7 @@ pub(super) enum Request {
     Load {
         source: String,
         prompt: Option<Prompt>,
+        device: Option<String>,
     },
     Invoke {
         owner: Owner,
@@ -54,6 +56,22 @@ pub(super) enum Request {
     Unload(Owner),
     Start(String),
     Stop(u64),
+    Inspect(String),
+    Verify(String),
+    Reclaim {
+        digest: String,
+        apply: bool,
+    },
+    Alias {
+        digest: String,
+        name: String,
+    },
+    CheckFit {
+        source: String,
+        device: String,
+    },
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    Pull(crate::pull::native::Intent),
 }
 impl Request {
     pub fn title(&self) -> &'static str {
@@ -66,6 +84,24 @@ impl Request {
             Self::Unload(_) => "Unload",
             Self::Start(_) => "Start listener",
             Self::Stop(_) => "Stop listener",
+            Self::Inspect(_) => "Inspect snapshot",
+            Self::Verify(_) => "Verify snapshot",
+            Self::Reclaim { apply: false, .. } => "Removal preview",
+            Self::Reclaim { apply: true, .. } => "Remove snapshot",
+            Self::Alias { .. } => "Create alias",
+            Self::CheckFit { .. } => "Check device policy",
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            Self::Pull(_) => "Pull model",
+        }
+    }
+    pub fn detail_key(&self) -> Option<Key> {
+        match self {
+            Self::Inspect(digest)
+            | Self::Verify(digest)
+            | Self::Reclaim { digest, .. }
+            | Self::Alias { digest, .. } => Some(Key::Snapshot(digest.clone())),
+            Self::CheckFit { device, .. } => Some(Key::Device(device.clone())),
+            _ => None,
         }
     }
     pub fn generates(&self) -> bool {
@@ -84,6 +120,7 @@ impl Request {
 pub(super) struct Document {
     selection: Option<(String, String)>,
     pub chat: bool,
+    pub offline: bool,
 }
 impl Document {
     #[cfg(test)]
@@ -91,16 +128,18 @@ impl Document {
         Self {
             selection: None,
             chat: true,
+            offline: false,
         }
     }
 
-    pub fn new(selection: Option<(&str, &str)>) -> Result<Self> {
+    pub fn new(selection: Option<(&str, &str)>, offline: bool) -> Result<Self> {
         let chat = crate::config_cli::read_selected_document(selection)?
             .and_then(|(_, doc)| doc.run?.task?.raw)
             != Some(true);
         Ok(Self {
             selection: selection.map(|(flag, value)| (flag.to_owned(), value.to_owned())),
             chat,
+            offline,
         })
     }
     fn read(
@@ -154,11 +193,13 @@ pub(super) struct Job {
     cancel: Arc<AtomicBool>,
     response: Arc<Mutex<Response>>,
     generates: bool,
+    pub detail_key: Option<Key>,
 }
 impl Job {
     pub fn start(runtime: &Runtime, document: &Document, request: Request) -> Result<Self> {
         let title = request.title();
         let generates = request.generates();
+        let detail_key = request.detail_key();
         let runtime = runtime.clone();
         let document = document.clone();
         let cancel = Arc::new(AtomicBool::new(false));
@@ -174,6 +215,7 @@ impl Job {
             cancel,
             response,
             generates,
+            detail_key,
         })
     }
     pub fn title(&self) -> &'static str {
@@ -217,6 +259,41 @@ impl Drop for Job {
     }
 }
 
+fn resolve_request(
+    document: &Document,
+    source: &str,
+    device: Option<&str>,
+) -> Result<(
+    zerogravity::run_policy::Request,
+    zerogravity::pipelines::ServeDoc,
+)> {
+    let models = if source.trim().is_empty() {
+        Vec::new()
+    } else {
+        // One exact selector, or ID=MODEL. URLs containing '=' remain
+        // opaque when passed as the source after a valid alias.
+        let source = source.trim();
+        let explicit = source
+            .split_once('=')
+            .filter(|(id, _)| zerogravity::runtime::text::validate_alias(id).is_ok());
+        let route = if let Some((id, source)) = explicit {
+            resident::route(Some(id), source)
+        } else {
+            resident::route(None, source)
+        };
+        vec![route.map_err(|e| e.into_core())?]
+    };
+    resolve_serving(
+        document.read()?,
+        RunOverrides {
+            devices: device.map(|id| vec![id.to_owned()]),
+            ..Default::default()
+        },
+        models,
+        &std::env::current_dir()?,
+    )
+}
+
 fn execute(
     runtime: &Runtime,
     document: &Document,
@@ -229,34 +306,48 @@ fn execute(
     }
     let control = runtime.control();
     match request {
-        Request::Load { source, prompt } => {
+        Request::Inspect(digest) => cache_action(control, CacheAction::Inspect, &digest, cancel),
+        Request::Verify(digest) => cache_action(control, CacheAction::Verify, &digest, cancel),
+        Request::Reclaim { digest, apply } => {
+            cache_action(control, CacheAction::Reclaim(apply), &digest, cancel)
+        }
+        Request::Alias { digest, name } => {
+            cache_action(control, CacheAction::Alias(name), &digest, cancel)
+        }
+        Request::CheckFit { source, device } => {
+            let (request, settings) = resolve_request(document, &source, Some(&device))?;
+            let plan = resident::prepare(
+                request,
+                settings,
+                None,
+                resident::Acquisition {
+                    offer: false,
+                    pull: false,
+                    cancel: Arc::clone(cancel),
+                },
+            )
+            .map_err(|error| error.into_core())?;
+            if plan.is_some() {
+                Ok(format!(
+                    "Cold source/device policy accepted for {device}.\nMetadata and budget observation only; actual load must revalidate and admit."
+                ))
+            } else {
+                Ok("Cancelled before device policy check completed".into())
+            }
+        }
+        #[cfg(all(feature = "acquisition", target_os = "linux"))]
+        Request::Pull(intent) => intent.execute(runtime, cancel, document.offline),
+        Request::Load {
+            source,
+            prompt,
+            device,
+        } => {
             if runtime.status().phase != RuntimePhase::Empty {
                 return Err(Error::State(
                     "Retire the current route set before loading another".into(),
                 ));
             }
-            let models = if source.trim().is_empty() {
-                Vec::new()
-            } else {
-                // One exact selector, or ID=MODEL. URLs containing '=' remain
-                // opaque when passed as the source after a valid alias.
-                let source = source.trim();
-                let explicit = source
-                    .split_once('=')
-                    .filter(|(id, _)| zerogravity::runtime::text::validate_alias(id).is_ok());
-                let route = if let Some((id, source)) = explicit {
-                    resident::route(Some(id), source)
-                } else {
-                    resident::route(None, source)
-                };
-                vec![route.map_err(|e| e.into_core())?]
-            };
-            let (request, settings) = resolve_serving(
-                document.read()?,
-                RunOverrides::default(),
-                models,
-                &std::env::current_dir()?,
-            )?;
+            let (request, settings) = resolve_request(document, &source, device.as_deref())?;
             if prompt.is_some() && request.graph.models.len() != 1 {
                 return Err(Error::Malformed("Quick run requires one source; load the configured route set and select an owner".into()));
             }
@@ -367,6 +458,126 @@ fn execute(
                 ))
             }
         }
+    }
+}
+
+enum CacheAction {
+    Inspect,
+    Verify,
+    Reclaim(bool),
+    Alias(String),
+}
+fn cache_action(
+    control: zerogravity::control::ControlPlane<'_>,
+    action: CacheAction,
+    digest: &str,
+    cancel: &AtomicBool,
+) -> Result<String> {
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    {
+        use zerogravity::{
+            cache::{ReclaimMode, ReclaimOutcome},
+            run_policy::SourceSelector,
+        };
+        let root = super::library::cache_root()?;
+        let selector = SourceSelector::Snapshot(digest.to_owned());
+        match action {
+            CacheAction::Inspect | CacheAction::Verify => {
+                let detail = if matches!(action, CacheAction::Verify) {
+                    control.verify_cached(&root, &selector, None, cancel)?
+                } else {
+                    control.inspect_cached(&root, &selector, None)?
+                };
+                let manifest = detail.manifest;
+                let source = manifest.source();
+                Ok(format!(
+                    "{}\nSnapshot: {}\n{}:{}@{}\n{} files · {} bytes\nNo execution or remote freshness qualification.",
+                    if detail.payload_verified {
+                        "Payloads verified"
+                    } else {
+                        "Manifest identity checked; payloads not verified"
+                    },
+                    detail.snapshot,
+                    source.provider(),
+                    source.repository(),
+                    source.revision(),
+                    manifest.entries().len(),
+                    manifest.total_bytes()
+                ))
+            }
+            CacheAction::Alias(name) => {
+                let result = control.alias_cached(&root, digest, &name)?;
+                Ok(format!(
+                    "Alias by-name:{} {}\nSnapshot: {}{}",
+                    result.name(),
+                    if result.changed() {
+                        "created"
+                    } else {
+                        "already bound"
+                    },
+                    digest,
+                    if result.projection_warning().is_some() {
+                        "\nBy-name projection needs refresh"
+                    } else {
+                        ""
+                    }
+                ))
+            }
+            CacheAction::Reclaim(apply) => {
+                let result = control.reclaim_cached(
+                    &root,
+                    digest,
+                    if apply {
+                        ReclaimMode::Apply
+                    } else {
+                        ReclaimMode::DryRun
+                    },
+                    cancel,
+                )?;
+                match result {
+                    ReclaimOutcome::DryRun(report) => Ok(format!(
+                        "Removal preview; no mutation\n{} candidate files · {} candidate directories\nApply revalidates exact target.",
+                        report.candidate_files(),
+                        report.candidate_directories()
+                    )),
+                    ReclaimOutcome::Durable(report) => Ok(format!(
+                        "Removal durable\n{} removed files · {} removed directories{}",
+                        report.removed_files(),
+                        report.removed_directories(),
+                        if report.by_name_warning().is_some() {
+                            "\nBy-name projection needs refresh"
+                        } else {
+                            ""
+                        }
+                    )),
+                    ReclaimOutcome::Busy => Err(Error::State(
+                        "Cache removal busy; retry after active readers close".into(),
+                    )),
+                    ReclaimOutcome::Referenced { references } => Err(Error::State(format!(
+                        "Snapshot retained by {references} references; none removed"
+                    ))),
+                    ReclaimOutcome::Incomplete { cause, .. } => Err(Error::State(format!(
+                        "Removal incomplete; inspect and retry the same digest. Completed changes were not rolled back: {cause}"
+                    ))),
+                }
+            }
+        }
+    }
+    #[cfg(not(all(feature = "cache", target_os = "linux")))]
+    {
+        match action {
+            CacheAction::Reclaim(apply) => {
+                let _ = apply;
+            }
+            CacheAction::Alias(name) => {
+                let _ = name;
+            }
+            _ => {}
+        }
+        let _ = (control, digest, cancel);
+        Err(Error::Unsupported(
+            "Cache operations require Linux and cache feature".into(),
+        ))
     }
 }
 

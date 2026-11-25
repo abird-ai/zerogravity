@@ -38,6 +38,9 @@ pub enum ControlEventKind {
     RequestAccepted {
         registration_id: u64,
     },
+    CacheAliasFinished {
+        success: bool,
+    },
     CacheVerificationFinished {
         success: bool,
     },

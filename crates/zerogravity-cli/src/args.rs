@@ -318,7 +318,10 @@ pub(super) enum ModelCommand {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Command {
-    Home(Option<(&'static str, String)>),
+    Home {
+        selection: Option<(&'static str, String)>,
+        offline: bool,
+    },
     Help,
     HelpTopic(Topic, Option<String>),
     Version,
@@ -390,7 +393,10 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
             return Err("--yes requires an explicit removal command");
         }
         unsupported_format(g.format)?;
-        return Ok(Command::Home(g.document.take()));
+        return Ok(Command::Home {
+            selection: g.document.take(),
+            offline: g.offline,
+        });
     };
     let name = first.as_str();
     let rest = g.prefix(&args[1..], false)?;

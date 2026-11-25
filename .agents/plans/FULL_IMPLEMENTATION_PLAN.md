@@ -604,7 +604,17 @@ demand. Preserve the existing detailed
   rerun and remaining release tests pass; full isolated gate passes
   (2,479 passed, zero failed, 109 ignored), release PTY/installer/scripts
   pass. UX-8B accepted.
-  **Next: UX-8C Models / Downloads / Devices (§46A.28).**
+- [x] UX-8C native Models / Downloads / Devices: exact cached digest
+  actions, static model catalog/partial observations, non-replacing
+  alias and original reclaim outcomes, physical device source-policy
+  check/load, coalesced inventory reader off presentation loop. Same
+  runtime original hub/recipe acquisition, explicit pinned file/quant
+  consent, bare offline, exact operation pause/resume/cancel and observed
+  progress. Reducers/intent, real controlled-transfer PTY, strict lint
+  pass; actual cached lifecycle and remaining release tests pass; full
+  isolated gate 2,481/0/109, release PTY/installer/scripts pass. UX-8C
+  accepted.
+  **Next: UX-8D Profiles / Config / Logs (§46A.28).**
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,
