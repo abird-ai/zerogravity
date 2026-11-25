@@ -69,8 +69,8 @@ pub(crate) struct Reporter {
     verbosity: Verbosity,
     #[cfg(all(feature = "acquisition", target_os = "linux"))]
     jsonl: bool,
-    #[cfg(all(feature = "acquisition", target_os = "linux"))]
     interactive: Switch,
+    terminal_input: bool,
 }
 
 // Human presentation only. Explicit machine diagnostics and primary stdout
@@ -100,13 +100,28 @@ impl Reporter {
             verbosity: options.verbosity,
             #[cfg(all(feature = "acquisition", target_os = "linux"))]
             jsonl: options.jsonl,
-            #[cfg(all(feature = "acquisition", target_os = "linux"))]
             interactive: options.interactive,
+            terminal_input: terminal.input && terminal.diagnostics && !terminal.dumb,
         }
     }
 
     pub(crate) fn progress(self) -> bool {
         self.progress && self.verbosity != Verbosity::Quiet
+    }
+
+    /// Interactive prompts require terminal input and human-visible output.
+    /// Auto keeps explicit plain/quiet operation noninteractive.
+    pub(crate) fn run_interaction(self) -> zerogravity::Result<bool> {
+        let capable =
+            self.terminal_input && io::stdout().is_terminal() && self.verbosity != Verbosity::Quiet;
+        match self.interactive {
+            Switch::Never => Ok(false),
+            Switch::Auto => Ok(capable && self.rich),
+            Switch::Always if capable => Ok(true),
+            Switch::Always => Err(zerogravity::Error::Unsupported(
+                "interactive run requires a capable terminal".into(),
+            )),
+        }
     }
 
     #[cfg(all(feature = "acquisition", target_os = "linux"))]

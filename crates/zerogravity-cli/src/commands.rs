@@ -17,7 +17,7 @@ fn finish(command: &'static str, result: Result<()>) -> ExitCode {
         Err(error) => {
             fail(Failure::core(command, &error));
             #[cfg(all(feature = "acquisition", target_os = "linux"))]
-            if matches!(command, "pull" | "model pull")
+            if matches!(command, "pull" | "model pull" | "run")
                 && zerogravity::control::DownloadStatus::from_error(&error)
                     == zerogravity::control::DownloadStatus::Cancelled
             {

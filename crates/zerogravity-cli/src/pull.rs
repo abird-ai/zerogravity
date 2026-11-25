@@ -500,6 +500,88 @@ fn execute_plan(
     })
 }
 
+#[cfg(all(
+    feature = "model-qwen35",
+    feature = "text",
+    any(feature = "cuda", feature = "hip")
+))]
+pub(super) fn default_disk_limit() -> u64 {
+    DISK_DEFAULT
+}
+
+/// Exact catalog acquisition requested by run. Reuse the same hub resolver,
+/// bounded monitor, original transaction and cancel flag. No stdout manifest,
+/// reference retargeting, fallback source or implicit disk-quota expansion.
+#[cfg(all(
+    feature = "model-qwen35",
+    feature = "text",
+    any(feature = "cuda", feature = "hip")
+))]
+pub(super) fn acquire_for_run(
+    recipe: &zerogravity::models::QwenPullRecipe,
+    root: &std::path::Path,
+    disk: u64,
+) -> Result<()> {
+    let runtime = zerogravity::Runtime::builder().build()?;
+    let request = recipe.request();
+    let mut bounds = PullLimits::default();
+    bounds.cache.max_snapshot_bytes = recipe.bytes();
+    let hub = runtime
+        .artifacts()
+        .hub(HubSelection::Files(&request), bounds, None, None)?;
+    let terminal = monitor::TerminalInput::prepare()?;
+    let client = HttpsClient::from_env(
+        "https://huggingface.co",
+        "huggingface",
+        Some("HF_TOKEN"),
+        HttpOptions::default(),
+    )?;
+    let admission = admission(MEMORY_DEFAULT)?;
+    let cancel = Arc::new(AtomicBool::new(false));
+    let _signals = signals::CancellationSignals::register(cancel.clone())?;
+    let terminal = monitor::TerminalInput::enter(terminal)?;
+    let control = runtime.control();
+    let operation = control
+        .begin_download(cancel.clone())?
+        .expect_snapshot(recipe.snapshot())?;
+    let receipt = monitor::drive(control, operation, terminal, |operation| {
+        let result = (|| {
+            let prepared = hub.resolve(&client, &admission, &cancel, PullMode::Transfer)?;
+            recipe.validate_plan(prepared.plan())?;
+            let store = CacheStore::open(CacheOptions::new(Some(root.to_owned()), disk))?;
+            Ok((prepared, store))
+        })();
+        let (prepared, store) = match result {
+            Ok(pair) => pair,
+            Err(error) => {
+                operation.fail(&error);
+                return Err(error);
+            }
+        };
+        operation.execute_plan(
+            &store,
+            prepared.plan(),
+            &client,
+            &admission,
+            None,
+            &mut |_| {},
+        )
+    })?;
+    match receipt.outcome() {
+        CommitOutcome::Durable(snapshot) if snapshot.digest() == recipe.snapshot() => {
+            crate::output::emit!(Status, "Verified durable snapshot {}", snapshot.digest());
+            report_publication(snapshot);
+            Ok(())
+        }
+        CommitOutcome::DurabilityUnknown { .. } => Err(Error::State(
+            "cache publication durability unknown; inspect before retrying".into(),
+        )),
+        _ => Err(Error::State(
+            "acquisition did not publish the required exact snapshot".into(),
+        )),
+    }
+}
+
 /// One shared fetch/publish path. Native Xet changes only cold resolution and
 /// offline eligibility; ordinary None retains its original branch/owners.
 fn run_fetch(

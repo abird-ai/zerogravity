@@ -76,7 +76,7 @@ impl ControlPlane<'_> {
         pin: Option<&str>,
     ) -> Result<CachedModelDetail> {
         self.runtime.engine.require_open()?;
-        let selected = CacheMetadata::open(root)?.select(selector, pin)?;
+        let selected = crate::models::select_cached(&CacheMetadata::open(root)?, selector, pin)?;
         Ok(CachedModelDetail {
             snapshot: selected.digest,
             manifest: selected.manifest,
@@ -94,7 +94,7 @@ impl ControlPlane<'_> {
         let result = (|| {
             self.runtime.engine.require_open()?;
             let metadata = CacheMetadata::open(root)?;
-            let selected = metadata.select(selector, pin)?;
+            let selected = crate::models::select_cached(&metadata, selector, pin)?;
             let store = CacheStore::open_existing(CacheOptions::new(
                 Some(root.to_owned()),
                 metadata.disk_limit_bytes()?,

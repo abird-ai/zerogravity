@@ -5,6 +5,22 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — canonical one-line run (UX-5)
+
+Exact shared cached model name/source selection and conflict refusal.
+Positional/file/stdin/config prompts, retained prepared CPU/native Qwen owner
+for independent TTY requests, actual source/backend/device summary.
+Consent-only immutable 2B/27B catalog acquisition through existing shared
+download operation, with required final digest checked before original
+commit. 0.8B legacy manifest recreation and unqualified routes refuse.
+Synthetic CPU output equality, exact recipe and publication-guard fixture
+pass; combined strict acquisition/serve lint and CUDA/HIP/acquisition
+compile pass. Full gate 2465 pass/0 fail/109 skips; release/installer/scripts
+pass. Existing real Qwen 0.8B GGUF CPU PTY two independent outputs match
+quiet one-shot, one startup, /model, /exit and no cache creation.
+No new package, lockfile, remote transfer, physical GPU, numerical or
+throughput claim.
+
 ## 25 Nov — shared download lifecycle (UX-4)
 
 Canonical HF/GH/Xet single-plan operation through shared ControlPlane and

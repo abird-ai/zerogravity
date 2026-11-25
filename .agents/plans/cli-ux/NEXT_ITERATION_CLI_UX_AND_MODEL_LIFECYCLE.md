@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (25 Nov): **Phase 2.1 UX-1/UX-2/UX-3 and bounded canonical UX-4 accepted; UX-5 is the next implementation slice (§46A.28).**
+Status (25 Nov): **Phase 2.1 UX-1 through bounded canonical UX-5 accepted; UX-6 stable serve CLI is next (§46A.28).**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
@@ -2548,6 +2548,20 @@ Implement:
 - model/backend/device summary.
 
 Retire the need for normal \`run-cache\`.
+
+Accepted 25 Nov: exact durable name selection with conflict refusal and
+approved original Qwen default only if absent; one quoted positional
+prompt, prompt file, config prompt or bounded stdin; independent interactive
+requests reuse one prepared owner, not persistent chat history. Canonical
+run does not need legacy run-cache for supported cached GGUF. --pull and an
+affirmative eligible terminal offer use exact 2B/27B source recipes and the
+original download operation; require the final snapshot digest before commit.
+Legacy 0.8B manifest recreation, arbitrary unregistered/floating sources and
+unsupported routes refuse; no live remote acquisition or new backend
+qualification. Full isolated gate 2465 pass, 0 fail, 109 skips; release,
+installer, scripts, final combined lint/feature compilation and exact-recipe
+fixture pass. Real Qwen 0.8B GGUF CPU release PTY two-prompt equality and
+clean exit pass with no cache creation.
 
 ### UX-6 — serve UX and stable interface
 

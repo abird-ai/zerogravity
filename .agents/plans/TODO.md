@@ -130,7 +130,14 @@ checkpoint/range pause/resume, exact operation control, cancellation,
 cold partial records and PTY/plain/quiet/JSONL receipts. Full isolated gate
 2459 pass/0 fail/109 skips; separate SDK integration and five monitor
 fixture runs pass. Advanced provider forced modes and component aggregate
-control remain open. Next UX-5 one-line run per §46A.28.
+control remain open. UX-5 one-line run implemented: exact shared cached
+name/source selection, positional/file/stdin/config prompts, independent
+TTY requests retain one model owner, explicit eligible immutable 2B/27B
+acquisition consent and precommit digest guard. Full gate 2465 Rust
+executions pass/0 fail/109 skips; combined acquisition/serve lint and
+CUDA/HIP/acquisition compile, release/installer/scripts and real Qwen
+0.8B GGUF CPU PTY two-prompt equality/exit pass. No new remote or GPU
+execution evidence. Next UX-6 stable serve CLI per §46A.28.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

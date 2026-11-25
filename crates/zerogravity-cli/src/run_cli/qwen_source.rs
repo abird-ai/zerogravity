@@ -1,11 +1,10 @@
-//! One-shot CLI adapter onto the same source-bound Qwen Runtime used by serving.
+//! CLI adapter onto the same source-bound Qwen Runtime used by serving.
 use super::*;
 use zerogravity::cache::{CacheMetadata, CacheOptions};
 use zerogravity::models::{ModelLoadRequest, QwenServingProfile};
 use zerogravity::runtime::text::{Request as TextRequest, ResponseEvent};
 
 const GIB: u64 = 1024 * 1024 * 1024;
-const QWEN_TARGETS: &[&str] = &["qwen3.5-0.8b", "qwen3.5-2b", "qwen3.8-27b"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SelectedBackend {
@@ -49,6 +48,7 @@ pub(super) fn run(
     request: Request,
     inventory: devices::Inventory,
     backend: SelectedBackend,
+    interactive: bool,
 ) -> Result<()> {
     let Entrypoint::Model(id) = &request.entrypoint else {
         return Err(bad(
@@ -123,7 +123,6 @@ pub(super) fn run(
         );
     }
 
-    let prompt = prompt(request.task.prompt.clone())?;
     let runtime = zerogravity::Runtime::builder().build()?;
     let result = (|| -> Result<()> {
         let profile = QwenServingProfile {
@@ -150,21 +149,61 @@ pub(super) fn run(
             )?,
         };
         runtime
-            .models()
+            .control()
             .load(load)
             .map_err(|error| error.into_core())?;
-
-        let receipt = runtime
-            .request_text(TextRequest {
-                model: resolved.alias.clone(),
-                input: prompt,
-                chat: !request.task.raw,
-                max_tokens: request.task.max_tokens,
-                stream: false,
-                token_metrics: None,
-            })
-            .map_err(|error| error.into_core())?;
-        receive(receipt)
+        let device = runtime.models().snapshot().ok().and_then(|models| {
+            let owner = models
+                .iter()
+                .find(|owner| owner.aliases.contains(&resolved.alias))?;
+            let memory = owner.capabilities.as_ref()?.details.memory.as_ref()?;
+            match memory {
+                zerogravity::models::ModelMemory::Resident(memory) => {
+                    Some(memory.device.device.clone())
+                }
+                zerogravity::models::ModelMemory::ResidentText { admission, .. } => {
+                    Some(admission.device.device.clone())
+                }
+                _ => None,
+            }
+        });
+        let backend_name = match backend {
+            SelectedBackend::Cuda => "CUDA",
+            SelectedBackend::Hip => "ROCm",
+        };
+        if let Some(device) = device {
+            crate::output::emit!(
+                Status,
+                "{} · {backend_name} · {device} · context {}",
+                resolved.target,
+                request.task.context
+            );
+        } else {
+            crate::output::emit!(
+                Status,
+                "{} · {backend_name} · context {}",
+                resolved.target,
+                request.task.context
+            );
+        }
+        let invoke = |prompt| {
+            let receipt = runtime
+                .request_text(TextRequest {
+                    model: resolved.alias.clone(),
+                    input: prompt,
+                    chat: !request.task.raw,
+                    max_tokens: request.task.max_tokens,
+                    stream: false,
+                    token_metrics: None,
+                })
+                .map_err(|error| error.into_core())?;
+            receive(receipt)
+        };
+        if interactive {
+            super::input::session(&resolved.target, invoke)
+        } else {
+            invoke(prompt(request.task.prompt.clone())?)
+        }
     })();
     let shutdown = runtime.shutdown();
     match (result, shutdown) {
@@ -175,12 +214,16 @@ pub(super) fn run(
 }
 
 fn target(model: &zerogravity::pipeline::ModelInstance) -> Option<String> {
-    if QWEN_TARGETS.contains(&model.target.as_str()) {
-        return Some(model.target.clone());
-    }
     let source = SourceSelector::parse(model.source.as_deref()?).ok()?;
     match source {
-        SourceSelector::Catalog(name) if QWEN_TARGETS.contains(&name.as_str()) => Some(name),
+        SourceSelector::Snapshot(digest) => {
+            zerogravity::models::qwen_target_for_snapshot(&digest).map(str::to_owned)
+        }
+        SourceSelector::Name(name)
+            if zerogravity::models::qwen_source_snapshot(&name).is_some() =>
+        {
+            Some(name)
+        }
         _ => None,
     }
 }
@@ -205,27 +248,18 @@ fn resolve(model: &zerogravity::pipeline::ModelInstance, alias: &str) -> Result<
         std::env::var_os("HOME").as_deref(),
     )?;
     let metadata = CacheMetadata::open(&root)?;
-    let snapshot = if matches!(&selector, SourceSelector::Catalog(name) if name == &target) {
-        let digest = model
-            .snapshot
-            .as_deref()
-            .or_else(|| zerogravity::models::qwen_source_snapshot(&target))
-            .ok_or_else(|| {
-                Error::Unsupported("Qwen target has no compiled canonical source".into())
-            })?;
-        if model.snapshot.is_some() {
-            metadata.snapshot(digest)?
-        } else {
-            metadata.snapshot(digest).map_err(|error| match error {
-                Error::Io(ref io) if io.kind() == std::io::ErrorKind::NotFound => Error::Unsupported(format!(
-                    "{target} is not acquired; use model pull with an explicit source and selection"
-                )),
-                other => other,
-            })?
-        }
-    } else {
-        metadata.select(&selector, model.snapshot.as_deref())?
-    };
+    let snapshot =
+        zerogravity::models::select_cached(&metadata, &selector, model.snapshot.as_deref())?;
+    if zerogravity::models::qwen_target_for_snapshot(&snapshot.digest) != Some(target.as_str()) {
+        return Err(Error::Unsupported(
+            "source-bound GPU run requires an exact approved Qwen snapshot".into(),
+        ));
+    }
+    if model.model_config.is_some() || model.tokenizer.is_some() {
+        return Err(bad(
+            "cached source-bound run requires original role-bound sidecars",
+        ));
+    }
     let disk_limit = metadata.disk_limit_bytes()?;
     Ok(Resolved {
         alias: alias.to_owned(),
@@ -235,7 +269,7 @@ fn resolve(model: &zerogravity::pipeline::ModelInstance, alias: &str) -> Result<
     })
 }
 
-fn select_backend(
+pub(super) fn select_backend(
     request: &Request,
     inventory: &devices::Inventory,
     target: &str,
@@ -261,6 +295,35 @@ fn select_backend(
         }
         Backend::Cpu | Backend::Vulkan => Ok(None),
     }
+}
+
+#[cfg(feature = "acquisition")]
+pub(super) fn preflight_acquisition(
+    request: &Request,
+    inventory: &devices::Inventory,
+    backend: SelectedBackend,
+) -> Result<()> {
+    zerogravity::devices::fresh(inventory)?;
+    if request.numerical.as_deref() == Some("native") && backend != SelectedBackend::Hip {
+        return Err(Error::Unsupported(
+            "native numerical profile requires ROCm".into(),
+        ));
+    }
+    if request.task.teacher_ids.is_some()
+        || request.diagnostics.audit_logits_jsonl.is_some()
+        || request.diagnostics.audit_layers_jsonl.is_some()
+        || request.graph.models.iter().any(|model| {
+            model.model_config.is_some()
+                || model.tokenizer.is_some()
+                || model.native_artifacts.is_some()
+        })
+    {
+        return Err(Error::Unsupported("automatic original-source acquisition requires ordinary role-bound source execution without diagnostic overrides".into()));
+    }
+    if backend == SelectedBackend::Hip {
+        let _budget = hip_budget(request, inventory)?;
+    }
+    Ok(())
 }
 
 fn cuda_candidate(devices: &[devices::Observation], target: &str) -> bool {

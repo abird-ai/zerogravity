@@ -964,3 +964,75 @@ fn cooperative_pause_revalidates_the_held_prefix_and_original_range() {
     assert!(pause.metadata.partials().unwrap().is_empty());
     assert_no_host_reservation(&admission);
 }
+
+#[test]
+fn exact_required_snapshot_refuses_mismatch_before_publication() {
+    use zerogravity_artifacts::acquisition::{PullControl, PullObservation, execute_controlled};
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    let admission = admission(128 * 1024 * 1024);
+    let body = bytes();
+    let plan = plan(&body);
+    struct Required<'a>(&'a str);
+    impl PullControl for Required<'_> {
+        fn expected_snapshot(&self) -> Option<&str> {
+            Some(self.0)
+        }
+    }
+    // Derive the expected canonical manifest from the actual trusted member,
+    // not an independently invented digest or alternate publisher.
+    let expected = zerogravity_artifacts::cache::Manifest::new(
+        plan.source().clone(),
+        vec![
+            zerogravity_artifacts::cache::ManifestEntry::new(
+                PAYLOAD_PATH,
+                digest(&body),
+                body.len() as u64,
+                FileRole::Auxiliary,
+            )
+            .unwrap()
+            .with_digest_provenance(zerogravity_artifacts::cache::DigestProvenance::TrustedSha256),
+        ],
+        &PullLimits::default().cache,
+    )
+    .unwrap()
+    .digest()
+    .unwrap();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let acquire = |required: &str, transport: &Script| {
+        execute_controlled(
+            &store,
+            &plan,
+            transport,
+            &admission,
+            &cancel,
+            Some("fixture"),
+            PullObservation {
+                control: &Required(required),
+                progress: &mut |_: &zerogravity_artifacts::acquisition::PullProgress<'_>| {},
+            },
+        )
+    };
+    let original = acquire(&expected, &Script::new(vec![initial(&body)])).unwrap();
+    assert_eq!(original.manifest().digest().unwrap(), expected);
+    // The same data may be cached, but a different requested identity must
+    // never retarget the durable reference or create a new manifest.
+    assert!(matches!(
+        acquire(&"0".repeat(64), &Script::new(vec![])),
+        Err(Error::Malformed(_))
+    ));
+    assert_eq!(
+        store.list_snapshots().unwrap(),
+        std::slice::from_ref(&expected)
+    );
+    assert_eq!(
+        store
+            .resolve_ref("fixture")
+            .unwrap()
+            .manifest()
+            .digest()
+            .unwrap(),
+        expected
+    );
+    assert_no_host_reservation(&admission);
+}

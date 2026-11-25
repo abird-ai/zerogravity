@@ -195,6 +195,7 @@ impl ControlPlane<'_> {
             id,
             cancel,
             finished: false,
+            expected_snapshot: None,
         })
     }
 
@@ -248,6 +249,7 @@ pub struct DownloadOperation<'a> {
     id: u64,
     cancel: Arc<AtomicBool>,
     finished: bool,
+    expected_snapshot: Option<String>,
 }
 impl DownloadOperation<'_> {
     pub fn id(&self) -> u64 {
@@ -255,6 +257,14 @@ impl DownloadOperation<'_> {
     }
     pub fn cancel_flag(&self) -> &Arc<AtomicBool> {
         &self.cancel
+    }
+
+    /// Refuse any other manifest before publication. This is an additional
+    /// caller restriction, never a source or model execution grant.
+    pub fn expect_snapshot(mut self, digest: &str) -> Result<Self> {
+        crate::cache::paths::validate_digest(digest)?;
+        self.expected_snapshot = Some(digest.into());
+        Ok(self)
     }
 
     fn update(&self, update: impl FnOnce(&mut Active) -> bool) {
@@ -442,6 +452,9 @@ impl DownloadStatus {
 }
 
 impl PullControl for DownloadOperation<'_> {
+    fn expected_snapshot(&self) -> Option<&str> {
+        self.expected_snapshot.as_deref()
+    }
     fn phase(&self, phase: PullPhase) {
         self.update(|active| {
             active.summary.phase = match phase {

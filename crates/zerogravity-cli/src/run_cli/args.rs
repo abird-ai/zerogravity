@@ -4,7 +4,14 @@ pub(crate) fn takes_value(raw: &str) -> bool {
         && !raw.contains('=')
         && !matches!(
             raw,
-            "-h" | "--help" | "--raw" | "--dry-run" | "--explain" | "--realtime"
+            "-h" | "--help"
+                | "--raw"
+                | "--dry-run"
+                | "--explain"
+                | "--realtime"
+                | "--pull"
+                | "--offline"
+                | "--"
         )
 }
 pub(super) fn parse(args: &[String], alias: Option<&str>) -> Result<Arguments> {
@@ -33,23 +40,46 @@ pub(super) fn parse(args: &[String], alias: Option<&str>) -> Result<Arguments> {
         };
     }
     let mut seen = std::collections::BTreeSet::new();
+    let mut literal = false;
+    let mut positional_prompt = None;
     while let Some(raw) = rest.next() {
-        let (flag, inline) = if raw.starts_with('-') {
+        if !literal && raw == "--" {
+            literal = true;
+            continue;
+        }
+        let (flag, inline) = if !literal && raw.starts_with('-') {
             raw.split_once('=')
                 .map_or((raw.as_str(), None), |(a, b)| (a, Some(b)))
         } else {
             (raw.as_str(), None)
         };
-        if matches!(flag, "-h" | "--help") {
+        if !literal && matches!(flag, "-h" | "--help") {
             if args.len() != 1 {
                 return Err(bad("run help must stand alone"));
             }
             a.help = true;
             continue;
         }
-        if !flag.starts_with('-') {
-            if inline.is_some() || a.positional.replace(raw.clone()).is_some() {
-                return Err(bad("at most one run positional selector"));
+        if literal || !flag.starts_with('-') {
+            if a.positional.is_none() {
+                a.positional = Some(raw.clone());
+            } else if positional_prompt.replace(raw.clone()).is_some() {
+                return Err(bad(
+                    "run accepts one selector and one quoted positional prompt",
+                ));
+            }
+            continue;
+        }
+        if matches!(flag, "--pull" | "--offline") {
+            if inline.is_some() || !seen.insert(flag.into()) {
+                return Err(bad(
+                    "run pull/offline flags take no value and cannot repeat",
+                ));
+            }
+            if flag == "--pull" {
+                a.pull = true;
+            } else {
+                a.offline = true;
             }
             continue;
         }
@@ -121,6 +151,7 @@ pub(super) fn parse(args: &[String], alias: Option<&str>) -> Result<Arguments> {
             "--numerical" => a.numerical = Some(v),
             "--speculation" => a.speculation = Some(Speculation::parse(&v)?),
             "--prompt" => a.task.prompt = Some(v),
+            "--prompt-file" => a.prompt_file = Some(v),
             "--context" => {
                 a.task.context = Some(
                     v.parse()
@@ -171,6 +202,21 @@ pub(super) fn parse(args: &[String], alias: Option<&str>) -> Result<Arguments> {
             // operator policy in a later qualified adapter, never free-memory.
             _ => return Err(bad("unknown run option; use run --help")),
         }
+    }
+    if usize::from(positional_prompt.is_some())
+        + usize::from(a.task.prompt.is_some())
+        + usize::from(a.prompt_file.is_some())
+        > 1
+    {
+        return Err(bad(
+            "select one positional prompt, --prompt or --prompt-file",
+        ));
+    }
+    if let Some(prompt) = positional_prompt {
+        a.task.prompt = Some(prompt);
+    }
+    if a.pull && a.offline {
+        return Err(bad("--offline conflicts with --pull"));
     }
     if a.positional.is_some() && (a.config.is_some() || a.model.is_some()) {
         return Err(bad(

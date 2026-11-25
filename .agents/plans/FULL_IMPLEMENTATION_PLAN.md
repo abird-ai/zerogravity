@@ -557,7 +557,18 @@ demand. Preserve the existing detailed
   component controls remain open. Full isolated gate 2459 pass/0 fail/109
   skips; separate SDK acquisition integration and five PTY/JSONL fixture
   runs pass. No duplicate transfer owner or new provider grant.
-  **Next: UX-5 one-line run (§46A.28).**
+- [x] UX-5 bounded canonical one-line run: shared durable name/approved
+  catalog selection, exact provider/snapshot pin, positional/file/stdin
+  prompts, original CPU/native Qwen owner retained across independent
+  TTY requests, actual selected model/backend/device status. Explicit
+  consented 2B/27B exact-source recipes, original shared acquisition
+  operation and precommit digest guard. Legacy 0.8B manifest recreation
+  and unsupported routes refuse. Synthetic CPU equality and acquisition
+  guard, final combined lint/feature build pass; full gate 2465 Rust
+  executions pass/0 fail/109 skips, release/installer/scripts pass; real
+  Qwen 0.8B GGUF CPU PTY two-prompt one-shot equality and clean exit pass.
+  No remote transfer or physical GPU requalification.
+  **Next: UX-6 stable serve CLI (§46A.28).**
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,

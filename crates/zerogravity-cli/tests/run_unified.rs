@@ -143,6 +143,63 @@ fn actual_same_cpu_inference_local_alias_config_xdg_and_cached_provider_forms() 
     );
     assert!(!normal_stderr.contains('\x1b'), "{normal_stderr}");
     let baseline = passed(normal);
+    // Every normal prompt spelling feeds the same original CPU owner.
+    let no_prompt = &common[2..];
+    assert_eq!(
+        passed(run(
+            &f.0,
+            &[&["run", "./model.gguf", "a"][..], no_prompt].concat()
+        )),
+        baseline
+    );
+    std::fs::write(f.0.join("prompt.txt"), "a").unwrap();
+    assert_eq!(
+        passed(run(
+            &f.0,
+            &[
+                &["run", "./model.gguf", "--prompt-file", "prompt.txt"][..],
+                no_prompt
+            ]
+            .concat()
+        )),
+        baseline
+    );
+    let mut child = Command::new(env!("CARGO_BIN_EXE_zerogravity"))
+        .args([&["run", "./model.gguf"][..], no_prompt].concat())
+        .current_dir(&f.0)
+        .env("HOME", &f.0)
+        .env("XDG_CACHE_HOME", f.0.join("cache"))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    use std::io::Write as _;
+    child.stdin.take().unwrap().write_all(b"a").unwrap();
+    assert_eq!(passed(child.wait_with_output().unwrap()), baseline);
+    assert_eq!(
+        passed(run(
+            &f.0,
+            &[&["run", "./model.gguf", "a", "--pull"][..], no_prompt].concat()
+        )),
+        baseline
+    );
+    for invalid in [
+        vec!["--offline", "run", "./model.gguf", "a", "--pull"],
+        vec!["run", "./model.gguf", "--pull", "--dry-run"],
+        vec!["run", "./model.gguf", "a", "--prompt-file", "missing.txt"],
+        vec!["run", "qwen3.5-2b", "a", "--backend", "cpu", "--pull"],
+    ] {
+        let output = run(&f.0, &invalid);
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{invalid:?}: {:?}",
+            output.stderr
+        );
+        assert!(output.stdout.is_empty());
+        assert!(!f.0.join("cache").exists());
+    }
     let quiet = run(
         &f.0,
         &[&["-q", "run", "./model.gguf"][..], &common].concat(),
@@ -409,6 +466,7 @@ fn cached(root: &Path, common: &[&str], baseline: &[u8]) {
                 &digest,
                 &explicit_digest,
                 &"by-name:local-fixture".to_owned(),
+                &"local-fixture".to_owned(),
             ] {
                 assert_eq!(
                     passed(run(root, &[&["run", selector][..], common].concat())),
@@ -420,6 +478,13 @@ fn cached(root: &Path, common: &[&str], baseline: &[u8]) {
                 assert_eq!(report["snapshot"], digest);
                 assert_eq!(report["payload_verified"], false);
             }
+            assert_eq!(
+                passed(run(
+                    root,
+                    &[&["run", "local-fixture", "--pull"][..], common].concat()
+                )),
+                baseline
+            );
             let verified = run(
                 root,
                 &["model", "verify", &explicit_digest, "--format=json"],
@@ -769,9 +834,36 @@ fn provider_variant_ambiguity_refuses_exactly_without_silent_pick() {
         &memory,
         source,
         &[("index.bin", zerogravity::cache::FileRole::Index)],
-        None,
+        Some("conflicting-name"),
     );
     assert_ne!(first, second);
+    store
+        .set_by_name_alias("conflicting-name", &first, false)
+        .unwrap();
+    let metadata = zerogravity::cache::CacheMetadata::open(&cache).unwrap();
+    assert!(matches!(
+        metadata.named("conflicting-name"),
+        Err(zerogravity::Error::Malformed(_))
+    ));
+    let conflict = run(
+        &f.0,
+        &[&["run", "conflicting-name", "--pull"][..], &COMMON].concat(),
+    );
+    assert_eq!(conflict.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&conflict.stderr).contains("ambiguous bare model name"));
+    for selector in ["catalog:conflicting-name", "by-name:conflicting-name"] {
+        let inspected = run(&f.0, &["model", "inspect", selector, "--format=json"]);
+        assert!(inspected.status.success(), "{:?}", inspected.stderr);
+        let report: serde_json::Value = serde_json::from_slice(&inspected.stdout).unwrap();
+        assert_eq!(
+            report["snapshot"],
+            if selector.starts_with("catalog:") {
+                second.as_str()
+            } else {
+                first.as_str()
+            }
+        );
+    }
     let tree = cache_tree(&cache);
     let refused = run(
         &f.0,

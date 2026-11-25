@@ -117,12 +117,26 @@ impl CacheMetadata {
     /// Explicit human name -> exact canonical manifest. Never follow the
     /// disposable symlink projection or repair state during cold selection.
     pub(super) fn human_reference(&self, name: &str) -> Result<SnapshotMetadata> {
+        self.human_reference_optional(name)?.ok_or_else(|| {
+            Error::Unsupported("human model name is not acquired; use model list".into())
+        })
+    }
+
+    pub(super) fn human_reference_optional(&self, name: &str) -> Result<Option<SnapshotMetadata>> {
         validate_name(name)?;
         let optional = |path: &str, limit| match self.read(path, limit) {
             Ok(bytes) => Ok(Some(bytes)),
             Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(error),
         };
+        if optional(STATE_SCHEMA_PATH, STATE_SCHEMA.len())?.is_none()
+            && optional(INIT_MARKER, 64)?.is_none()
+            && optional(LEGACY_STATE, 4 * 1024 * 1024)?.is_none()
+            && self.directory_absent(STATE_DIR)?
+            && self.directory_absent(STATE_NEXT)?
+        {
+            return Ok(None);
+        }
         let clean = || -> Result<()> {
             if optional(STATE_SCHEMA_PATH, STATE_SCHEMA.len())?.as_deref() != Some(STATE_SCHEMA) {
                 return Err(Error::Unsupported(
@@ -143,11 +157,7 @@ impl CacheMetadata {
         clean()?;
         let bytes = match (automatic, alias) {
             (Some(bytes), None) | (None, Some(bytes)) => bytes,
-            (None, None) => {
-                return Err(Error::Unsupported(
-                    "human model name is not acquired; use model list".into(),
-                ));
-            }
+            (None, None) => return Ok(None),
             (Some(_), Some(_)) => {
                 return Err(Error::Malformed(
                     "ambiguous human model name; use an exact digest".into(),
@@ -156,7 +166,7 @@ impl CacheMetadata {
         };
         let digest = std::str::from_utf8(&bytes)
             .map_err(|_| Error::Malformed("invalid human name claim".into()))?;
-        self.snapshot(digest)
+        self.snapshot(digest).map(Some)
     }
 }
 

@@ -36,6 +36,8 @@ impl Backend {
 pub enum SourceSelector {
     Local(PathBuf),
     Catalog(String),
+    /// Bare flat name: resolve existing canonical and human claims, never a URL.
+    Name(String),
     Snapshot(String),
     ByName(String),
     HuggingFace(String),
@@ -114,6 +116,8 @@ impl SourceSelector {
             })
         {
             Ok(Self::Local(p.into()))
+        } else if Self::is_human_name(s) {
+            Ok(Self::Name(s.into()))
         } else {
             Ok(Self::Catalog(s.into()))
         }

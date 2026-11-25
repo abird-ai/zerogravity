@@ -6,7 +6,6 @@ pub(crate) use presentation::{
 
 use super::VERSION;
 use crate::args::{TREE, Topic, node};
-#[cfg(all(feature = "acquisition", target_os = "linux"))]
 pub(crate) use presentation::reporter;
 
 pub(super) fn usage() {
@@ -21,7 +20,7 @@ pub(super) fn usage() {
         println!("    {:12} {description}", n.name);
     }
     println!(
-        "\nGLOBAL OPTIONS:\n    -q, --quiet | -v, --verbose | -vv\n    --format auto|text|json|jsonl  (structured formats where supported)\n    --color auto|always|never --progress auto|always|never\n    --interactive auto|never|always (online hub/Xet pull)\n    --config FILE | --profile NAME (where supported)\n    --offline  --yes (model remove only)\n\nRun 'zerogravity help <command>' for details. No implicit acquisition."
+        "\nGLOBAL OPTIONS:\n    -q, --quiet | -v, --verbose | -vv\n    --format auto|text|json|jsonl  (structured formats where supported)\n    --color auto|always|never --progress auto|always|never\n    --interactive auto|never|always (run and online hub/Xet pull)\n    --config FILE | --profile NAME (where supported)\n    --offline  --yes (model remove only)\n\nRun 'zerogravity help <command>' for details. No implicit acquisition."
     );
 }
 

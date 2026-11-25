@@ -57,6 +57,78 @@ pub fn qwen_source_snapshot(target: &str) -> Option<&'static str> {
     qwen_source_inventory::snapshot_for_target(target)
 }
 
+/// Original source identity for the finite approved Qwen inventory. A match
+/// identifies the source only; actual model and device admission remains later.
+#[cfg(feature = "model-qwen35")]
+pub fn qwen_target_for_snapshot(snapshot: &str) -> Option<&'static str> {
+    qwen_source_inventory::for_snapshot(snapshot).map(|spec| spec.target)
+}
+
+/// Only an already approved immutable repository/revision is a catalog
+/// default. Floating or unregistered locators never become acquisition recipes.
+#[cfg(all(feature = "model-qwen35", feature = "cache", target_os = "linux"))]
+pub fn qwen_target_for_locator(locator: &str) -> crate::Result<Option<&'static str>> {
+    let locator = crate::cache::provenance::ProviderLocator::parse("huggingface", locator)?;
+    Ok(locator
+        .revision
+        .as_deref()
+        .and_then(|revision| qwen_source_inventory::for_locator(&locator.repository, revision))
+        .map(|spec| spec.target))
+}
+
+/// Common cache-name resolution for model management and execution. Existing
+/// explicit claims take precedence over a built-in default, never over an
+/// explicit snapshot pin. A known catalog default is only an exact approved
+/// snapshot, not an arbitrary repo/quantization guess.
+#[cfg(all(feature = "cache", target_os = "linux"))]
+pub fn select_cached(
+    metadata: &crate::cache::CacheMetadata,
+    selector: &crate::run_policy::SourceSelector,
+    pin: Option<&str>,
+) -> crate::Result<crate::cache::SnapshotMetadata> {
+    use crate::{Error, run_policy::SourceSelector};
+    if let SourceSelector::Name(name) = selector {
+        return find_named_cached(metadata, name, pin)?.ok_or_else(|| {
+            Error::Unsupported(
+                "model name is not acquired; use model list or an explicit model pull".into(),
+            )
+        });
+    }
+    metadata.select(selector, pin)
+}
+
+/// Missing name/default is distinct from invalid, ambiguous or dangling state.
+#[cfg(all(feature = "cache", target_os = "linux"))]
+pub fn find_named_cached(
+    metadata: &crate::cache::CacheMetadata,
+    name: &str,
+    pin: Option<&str>,
+) -> crate::Result<Option<crate::cache::SnapshotMetadata>> {
+    use crate::Error;
+    if let Some(selected) = metadata.named(name)? {
+        if pin.is_some_and(|pin| pin != selected.digest) {
+            return Err(Error::Malformed(
+                "explicit snapshot does not match requested model name".into(),
+            ));
+        }
+        return Ok(Some(selected));
+    }
+    #[cfg(feature = "model-qwen35")]
+    if let Some(digest) = qwen_source_snapshot(name) {
+        if pin.is_some_and(|pin| pin != digest) {
+            return Err(Error::Malformed("explicit snapshot does not match the approved catalog default; select the desired digest directly".into()));
+        }
+        return metadata.snapshot_optional(digest);
+    }
+    Ok(None)
+}
+
+#[cfg(all(feature = "model-qwen35", feature = "acquisition", target_os = "linux"))]
+#[path = "qwen35_source/pull_recipe.rs"]
+mod pull_recipe;
+#[cfg(all(feature = "model-qwen35", feature = "acquisition", target_os = "linux"))]
+pub use pull_recipe::QwenPullRecipe;
+
 pub use crate::model::DeclaredModel;
 pub use zerogravity_core::model::{
     ModelAssembly, ModelDefinition, ModelProgram, ModelRegion, ProgramRequest, SourceRegionOperator,

@@ -87,20 +87,27 @@ static SPECS: &[Spec] = &[
     },
 ];
 
-pub(crate) fn snapshot_for_target(target: &str) -> Option<&'static str> {
+pub(crate) fn for_target(target: &str) -> Option<&'static Spec> {
+    SPECS.iter().find(|spec| spec.target == target)
+}
+pub(crate) fn for_snapshot(snapshot: &str) -> Option<&'static Spec> {
+    SPECS.iter().find(|spec| spec.snapshot_sha == snapshot)
+}
+#[cfg(all(feature = "cache", target_os = "linux"))]
+pub(crate) fn for_locator(repository: &str, revision: &str) -> Option<&'static Spec> {
     SPECS
         .iter()
-        .find(|spec| spec.target == target)
-        .map(|spec| spec.snapshot_sha)
+        .find(|spec| spec.repository == repository && spec.revision == revision)
+}
+pub(crate) fn snapshot_for_target(target: &str) -> Option<&'static str> {
+    for_target(target).map(|spec| spec.snapshot_sha)
 }
 
 /// Resolve an exact allowed source before touching the cache or a device.
 #[cfg(all(target_os = "linux", any(feature = "cuda", feature = "hip")))]
 pub(crate) fn select_snapshot(snapshot: &str) -> Result<&'static Spec> {
     crate::cache::paths::validate_digest(snapshot)?;
-    SPECS
-        .iter()
-        .find(|spec| spec.snapshot_sha == snapshot)
+    for_snapshot(snapshot)
         .ok_or_else(|| Error::Unsupported("Qwen exact approved snapshot required".into()))
 }
 

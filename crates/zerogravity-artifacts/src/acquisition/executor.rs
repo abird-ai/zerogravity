@@ -132,6 +132,11 @@ pub enum PullPhase {
 pub trait PullControl {
     fn phase(&self, _phase: PullPhase) {}
     fn checkpoint(&self, _bytes: u64) {}
+    /// Optional caller-selected immutable publication identity. A mismatch
+    /// refuses before the original commit; no reference is retargeted.
+    fn expected_snapshot(&self) -> Option<&str> {
+        None
+    }
     fn pause_requested(&self) -> bool {
         false
     }
@@ -216,6 +221,10 @@ pub fn execute_controlled(
 ) -> Result<PullReceipt> {
     let PullObservation { control, progress } = observation;
     control.phase(PullPhase::Planning);
+    let expected_snapshot = control.expected_snapshot();
+    if let Some(expected) = expected_snapshot {
+        crate::cache::paths::validate_digest(expected)?;
+    }
     pause_boundary(control, cancel)?;
     validate_split_closure(plan)?;
     let mut native = super::xet::Invocation::new(plan, admission, cancel)?;
@@ -320,6 +329,13 @@ pub fn execute_controlled(
         // total_size is tensor payload, never a claim about shard file lengths.
     }
     let manifest = transaction.manifest()?;
+    if let Some(expected) = expected_snapshot
+        && manifest.digest()? != expected
+    {
+        return Err(Error::Malformed(
+            "acquired manifest differs from required exact snapshot; no publication".into(),
+        ));
+    }
     pause_boundary(control, cancel)?;
     control.phase(PullPhase::Publishing);
     let outcome = transaction.commit(reference)?;

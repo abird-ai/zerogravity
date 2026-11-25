@@ -154,7 +154,7 @@ build or general model/backend grant. Historical failures keep their source scop
   architecture/feature/strict lint/release/installer/scripts pass.
   No new dependency, physical GPU qualification or numerical/performance claim.
 
-### Phase 2.1 UX-4 — shared download lifecycle (this checkpoint, 25 Nov)
+### Phase 2.1 UX-4 — shared download lifecycle (25 Nov; da2385c7)
 
 - [x] Shared per-runtime single-operation view, exact ID actions and
   invalidation events. Original synchronous prepared-plan executor,
@@ -174,16 +174,47 @@ build or general model/backend grant. Historical failures keep their source scop
   restoration) pass. No network download, new qualification or
   numerical/performance claim.
 
+### Phase 2.1 UX-5 — one-line run (this checkpoint, 25 Nov)
+
+- [x] Shared exact cached model selection: flat lowercase name resolves
+  canonical/human durable claims (different digests refuse), then approved
+  catalog default only if absent. Explicit pin/selector and provider
+  ambiguity retained; no broken-binding repair or symlink following.
+  Model management and CPU preparation reuse this SDK resolution.
+  Direct run binds digest before execution; original native Qwen route
+  identifies approved source by digest, not alias.
+- [x] One quoted positional prompt, --prompt-file, stdin and explicit/config
+  prompts. Preserve option-shaped values via --, precedence and refusal;
+  dry-run avoids stdin. Actual model/backend/device status on stderr.
+  TTY no-prompt reuses one prepared CPU model/native Qwen runtime for
+  independent requests; /help, /model, /new, /exit, EOF. No conversation
+  history/persistence; finite diagnostic and repeated audit modes refuse.
+- [x] Explicit --pull or affirmative eligible TTY offer for exact original
+  2B/27B catalog recipes (or matching immutable HF locator). Original
+  inventory members, existing disk/admission policy, shared download
+  operation and required final manifest digest before original publisher.
+  Legacy 0.8B manifest recreation, unsupported routes, floating/unregistered
+  sources and incompatible overrides refuse; no implicit quota increase.
+  Offline and dry-run never acquire; cached/local source no-op.
+- [x] Full isolated gate 2465 pass/0 fail/109 skips; strict Clippy, feature
+  boundaries, release/installer/scripts pass. Final combined acquisition/
+  serve lint and CUDA/HIP/acquisition build pass; synthetic CPU prompt/
+  cached alias equality and conflict refusal, exact recipe and expected
+  digest guard pass. Real existing Qwen 0.8B GGUF release PTY two prompts
+  equal quiet one-shot output, one startup, /model, /exit, no cache
+  creation. First full gate test-only clone lint fixed and rerun passes.
+  No new package/lockfile, remote acquisition, physical GPU, numerical or
+  performance qualification.
+
 ## Uncommitted
 
-- [ ] UX-5 next: one-line run through original model/config/run owners.
-  Explicit acquisition consent; positional prompt/stdin/interactive no-prompt
-  behavior, source/backend/device summary and factual refusal.
-  Stable serve (UX-6), ConfigDocument/profile management (UX-7),
-  dynamic completions, unified serving selection and later TUI/Web remain open.
-  Explicit by-name: lookup only; bare references stay canonical. Preserve
-  explicit acquisition and unsupported-backend refusal. Direct SDK/external
-  changes need fresh snapshots; general control-wire validation/auth is later.
+- [ ] UX-6 next: stable one-line serve MODEL... through same source/config/
+  device selection, consent, original serving/load/listener owners. Compact
+  actual startup, status and shutdown without protocol rewrite.
+  ConfigDocument/profile management (UX-7), dynamic completions,
+  TUI/Web and control-wire validation/auth remain ordered follow-up.
+  Broader catalog presets, conversation history and unsupported routes
+  remain explicit; preserve exact acquisition and factual refusal.
 - [ ] Extend advanced direct provider forced interactive/JSONL presentation
   and aggregate component download control without changing independently
   published receipts; existing direct provider progress and legacy sequential

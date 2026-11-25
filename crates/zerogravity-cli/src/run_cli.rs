@@ -6,6 +6,7 @@ mod args;
 mod config;
 mod devices;
 mod execute;
+mod input;
 mod qwen35_cuda;
 #[cfg(all(
     feature = "model-qwen35",
@@ -15,10 +16,14 @@ mod qwen35_cuda;
     any(feature = "cuda", feature = "hip")
 ))]
 mod qwen_source;
+mod source;
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct Arguments {
     positional: Option<String>,
+    prompt_file: Option<String>,
+    pull: bool,
+    offline: bool,
     config: Option<String>,
     profile: Option<String>,
     model: Option<String>,
@@ -46,12 +51,17 @@ pub(super) fn run(
     alias: Option<&str>,
     format: crate::args::Format,
 ) -> Result<()> {
-    let parsed = parse(&args, alias)?;
+    let mut parsed = parse(&args, alias)?;
     if parsed.help {
         help();
         return Ok(());
     }
-    let request = config::resolve(
+    let pull = parsed.pull;
+    let offline = parsed.offline;
+    if let Some(file) = parsed.prompt_file.take() {
+        parsed.task.prompt = Some(input::prompt_file(Path::new(&file))?);
+    }
+    let mut request = config::resolve(
         parsed,
         &std::env::current_dir()?,
         std::env::var_os("XDG_CONFIG_HOME"),
@@ -62,7 +72,20 @@ pub(super) fn run(
             "run --format json requires a dry-run plan; generated text remains stdout",
         ));
     }
-    execute::run(request)
+    if pull && request.diagnostics.dry_run {
+        return Err(bad("--pull cannot be combined with dry-run"));
+    }
+    zerogravity::run::validate_source_request(&request)?;
+    let interaction = input::interaction()?;
+    let interactive = input::prepare(&mut request, interaction)?;
+    execute::run(
+        request,
+        execute::Mode {
+            interactive,
+            offer: interaction && !offline,
+            pull,
+        },
+    )
 }
 pub(super) fn devices(args: &[String]) -> Result<()> {
     if !args.is_empty()
@@ -107,7 +130,7 @@ fn bad(s: impl Into<String>) -> Error {
 }
 pub(super) fn help() {
     println!(
-        "RUN A MODEL\n    zerogravity run MODEL [--prompt TEXT] [-d auto|cpu|gpu:N|pci:ID|/dev/dri/renderDN|/dev/nvidiaN]\n    zerogravity run CONFIG.yaml [--explain|--dry-run]\n    zerogravity device list [--format json]\n\nADVANCED: zerogravity run [MODEL|CONFIG.yaml] [--config FILE] [--model SOURCE]\n    --model-config FILE --tokenizer FILE --snapshot SHA --native-artifacts DIR --prompt TEXT --max-tokens N --context N\n    --raw[=true|false] --teacher-ids IDS --prefill-chunk N\n    --backend auto|cpu|cuda|rocm|vulkan --device auto|cpu|DEVICE|/dev/NODE[,DEVICE...]\n    --headroom PERCENT|BYTES --numerical source|native --speculation auto|off|mtp|draft:MODEL\n    --draft-device DEVICE --entrypoint model:ID|pipeline:NAME\n    --explain[=true|false] --dry-run[=true|false] --profile NAME\n    --audit-logits-jsonl FILE --audit-layers-jsonl FILE\n    --define-model ID=TARGET[@SOURCE] --name NAME --input TYPE --output TYPE\n    --step ID=KIND[:MODEL] --link FROM=TO --route PATH=PROTOCOL\nLinux -d /dev: DRM card/render nodes or /dev/nvidiaN; /dev/kfd is shared and refused.\nAliases: run-cpu/run-cuda/run-rocm/run-vulkan (same options).\nNative numerical profile: explicit ROCm canonical Qwen source, qualified gfx1151 with resident weights and rocBLAS; source remains the default.\nSources: exact local files, SHA256 snapshots, catalog:/by-name: references, hf:/gh:/http:/https: locators. No implicit network or download.\nCatalogue references: catalog:REF or a pull-shaped huggingface/..., huggingface-bundle/..., github/..., github-bundle/... name.\nAbsolute and ./ ../ paths stay local; use ./huggingface/... to name such a local directory.\nOnly local .yaml/.yml implies run config; provider/catalog/URL schemes take precedence.\nSelector-free run loads XDG_CONFIG_HOME/abird/zerogravity/config.yaml (absolute HOME fallback).\nGraph/split/NPU/remote/speculative execution requires independently qualified adapters; parsing grants none."
+        "RUN A MODEL\n    zerogravity run MODEL [PROMPT] [--pull] [-d auto|cpu|gpu:N|pci:ID|/dev/dri/renderDN|/dev/nvidiaN]\n    zerogravity run CONFIG.yaml [--explain|--dry-run]\n    zerogravity device list [--format json]\n\nADVANCED: zerogravity run [MODEL|CONFIG.yaml] [--config FILE] [--model SOURCE]\n    --model-config FILE --tokenizer FILE --snapshot SHA --native-artifacts DIR --prompt TEXT | --prompt-file FILE --max-tokens N --context N\n    --raw[=true|false] --teacher-ids IDS --prefill-chunk N\n    --backend auto|cpu|cuda|rocm|vulkan --device auto|cpu|DEVICE|/dev/NODE[,DEVICE...]\n    --headroom PERCENT|BYTES --numerical source|native --speculation auto|off|mtp|draft:MODEL\n    --draft-device DEVICE --entrypoint model:ID|pipeline:NAME\n    --explain[=true|false] --dry-run[=true|false] --profile NAME\n    --audit-logits-jsonl FILE --audit-layers-jsonl FILE\n    --define-model ID=TARGET[@SOURCE] --name NAME --input TYPE --output TYPE\n    --step ID=KIND[:MODEL] --link FROM=TO --route PATH=PROTOCOL\nLinux -d /dev: DRM card/render nodes or /dev/nvidiaN; /dev/kfd is shared and refused.\nAliases: run-cpu/run-cuda/run-rocm/run-vulkan (same options).\nNative numerical profile: explicit ROCm canonical Qwen source, qualified gfx1151 with resident weights and rocBLAS; source remains the default.\nSources: exact local files, SHA256 snapshots, catalog:/by-name: references, hf:/gh:/http:/https: locators. Bare lowercase names resolve existing durable names or exact approved catalog defaults.\nPrompt: one positional prompt, --prompt, --prompt-file, configured prompt, or piped stdin. No prompt on a capable TTY opens repeated independent requests.\n--pull explicitly consents to a supported exact catalog download; offline and dry-run never acquire.\nCatalogue references: catalog:REF or a pull-shaped huggingface/..., huggingface-bundle/..., github/..., github-bundle/... name.\nAbsolute and ./ ../ paths stay local; use ./huggingface/... to name such a local directory.\nOnly local .yaml/.yml implies run config; provider/catalog/URL schemes take precedence.\nSelector-free run loads XDG_CONFIG_HOME/abird/zerogravity/config.yaml (absolute HOME fallback).\nGraph/split/NPU/remote/speculative execution requires independently qualified adapters; parsing grants none."
     );
     let mut compiled = vec!["auto"];
     if cfg!(all(

@@ -132,6 +132,10 @@ impl Globals {
     ) -> Result<Vec<String>, &'static str> {
         let mut result = Vec::new();
         while let Some(raw) = args.first() {
+            if raw == "--" {
+                result.extend_from_slice(args);
+                break;
+            }
             let used = self.take(args, false)?;
             if used != 0 {
                 args = &args[used..];
@@ -405,6 +409,9 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
                 args.splice(..0, [flag.into(), value]);
             }
             no_jsonl(g.format)?;
+            if g.offline && !help(&args) {
+                args.insert(0, "--offline".into());
+            }
             Command::Run {
                 args,
                 alias: (name != "run").then(|| name.into()),
@@ -562,14 +569,16 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
                     && (provider.starts_with("hf:") || provider.starts_with("gh:")))
         });
     if g.interactive == Switch::Always
-        && (!controlled_pull
+        && (!(controlled_pull || matches!(command, Command::Run { .. }))
             || g.format == Format::Jsonl
             || g.format == Format::Json
-            || g.offline
+            || (g.offline && controlled_pull)
             || g.presentation.verbosity == Verbosity::Quiet
-            || g.presentation.progress == Switch::Never)
+            || (controlled_pull && g.presentation.progress == Switch::Never))
     {
-        return Err("forced interaction requires an online hub/Xet pull with terminal progress");
+        return Err(
+            "forced interaction requires run or an online hub/Xet pull with terminal output",
+        );
     }
     if g.format == Format::Jsonl && (!controlled_pull || g.offline) {
         return Err("JSONL requires an online hub/Xet pull");

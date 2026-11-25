@@ -152,7 +152,7 @@ fn source_and_alias_policy_before_effects() {
     }
     assert!(matches!(
         SourceSelector::parse("qwen3.5-2b").unwrap(),
-        SourceSelector::Catalog(_)
+        SourceSelector::Name(_)
     ));
     assert!(parse(&words(&["x.gguf", "--model", "y.gguf"]), None).is_err());
     assert!(parse(&words(&["x.gguf", "--backend", "auto"]), Some("run-cpu")).is_err());
@@ -167,6 +167,29 @@ fn source_and_alias_policy_before_effects() {
     assert_eq!(a.task.prompt.as_deref(), Some(""));
     assert_eq!(a.headroom, Some(Headroom::Bytes(0)));
 }
+#[test]
+fn one_line_prompt_and_pull_grammar_preserve_exact_values() {
+    let parsed = parse(&words(&["model.gguf", "one quoted prompt", "--pull"]), None).unwrap();
+    assert_eq!(parsed.model.as_deref(), Some("model.gguf"));
+    assert_eq!(parsed.task.prompt.as_deref(), Some("one quoted prompt"));
+    assert!(parsed.pull);
+    let parsed = parse(&words(&["model.gguf", "--", "--quiet"]), None).unwrap();
+    assert_eq!(parsed.task.prompt.as_deref(), Some("--quiet"));
+    let parsed = parse(&words(&["run.yaml", "--prompt-file", "prompt.txt"]), None).unwrap();
+    assert_eq!(parsed.config.as_deref(), Some("run.yaml"));
+    assert_eq!(parsed.prompt_file.as_deref(), Some("prompt.txt"));
+    for invalid in [
+        vec!["model.gguf", "prompt", "--prompt", "other"],
+        vec!["model.gguf", "prompt", "--prompt-file", "prompt.txt"],
+        vec!["model.gguf", "--prompt", "a", "--prompt-file", "prompt.txt"],
+        vec!["model.gguf", "--pull", "--offline"],
+        vec!["model.gguf", "--pull=false"],
+        vec!["model.gguf", "a", "b"],
+    ] {
+        assert!(parse(&words(&invalid), None).is_err(), "{invalid:?}");
+    }
+}
+
 #[test]
 fn full_physical_identity_and_shared_domain() {
     assert_eq!(

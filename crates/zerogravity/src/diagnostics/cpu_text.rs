@@ -102,8 +102,8 @@ impl TextOptions {
 pub fn generate(
     input: impl Into<Input>,
     options: TextOptions,
-    mut diagnostics: Diagnostics<'_>,
-    mut observe: impl FnMut(Observation<'_>) -> Result<()>,
+    diagnostics: Diagnostics<'_>,
+    observe: impl FnMut(Observation<'_>) -> Result<()>,
 ) -> Result<TextOutput> {
     options.validate(diagnostics.logits.is_some())?;
     // Bind credit first so source owners drop before it on early return.
@@ -118,6 +118,37 @@ pub fn generate(
             (Some(prepared.envelope), prepared.prepared)
         }
     };
+    let mut output = generate_inner(&prepared, options, diagnostics, observe)?;
+    output._envelope = _envelope;
+    Ok(output)
+}
+
+/// Reuse the same admitted CPU model for independent sequential requests.
+/// The mutable borrow excludes overlapping request state. Presentation
+/// happens while the original envelope remains live, with no second loader.
+pub fn generate_repeated(
+    prepared: &mut crate::prepare::selection::PreparedCpu,
+    options: TextOptions,
+    diagnostics: Diagnostics<'_>,
+    observe: impl FnMut(Observation<'_>) -> Result<()>,
+    present: impl FnOnce(&TextOutput) -> Result<()>,
+) -> Result<()> {
+    options.validate(diagnostics.logits.is_some())?;
+    if options.context > prepared.context {
+        return Err(Error::Limit(
+            "CPU execution exceeds its admitted planning context".into(),
+        ));
+    }
+    let output = generate_inner(&prepared.prepared, options, diagnostics, observe)?;
+    present(&output)
+}
+
+fn generate_inner(
+    prepared: &PreparedQwen,
+    options: TextOptions,
+    mut diagnostics: Diagnostics<'_>,
+    mut observe: impl FnMut(Observation<'_>) -> Result<()>,
+) -> Result<TextOutput> {
     let TextOptions {
         prompt,
         context,
@@ -126,7 +157,8 @@ pub fn generate(
         prefill_chunk,
         teacher_ids,
     } = options;
-    let (model_source, tokenizer) = prepared.into_parts();
+    let model_source = prepared.model();
+    let tokenizer = prepared.tokenizer();
     if teacher_ids.as_ref().is_some_and(|ids| {
         ids.iter()
             .any(|&id| u64::from(id) >= model_source.geometry().vocab_size)
@@ -266,7 +298,7 @@ pub fn generate(
         text: tokenizer.decode(&generated, true)?,
         generated,
         consumed: engine.position(),
-        _envelope,
+        _envelope: None,
     })
 }
 

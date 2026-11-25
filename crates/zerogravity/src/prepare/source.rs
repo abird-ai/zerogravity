@@ -207,7 +207,8 @@ impl CachedGguf {
             std::env::var_os("HOME").as_deref(),
         )?;
         let metadata = CacheMetadata::open(&root)?;
-        let snapshot = metadata.select(&selector, model.snapshot.as_deref())?;
+        let snapshot =
+            crate::models::select_cached(&metadata, &selector, model.snapshot.as_deref())?;
         let unique = |role| -> Result<crate::cache::ManifestEntry> {
             let mut entries = snapshot
                 .manifest

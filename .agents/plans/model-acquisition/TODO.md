@@ -342,6 +342,19 @@ Git history; current source and this TODO supersede their archived checklists.
   retain original sequential execution. No live source acquisition,
   new provider qualification, extra cache or implicit pull.
 
+### Phase 2.1 UX-5 — exact consent and snapshot publication guard (25 Nov)
+
+- [x] Bare durable claims and approved catalog defaults share SDK selection;
+  absence distinct from malformed/dangling/ambiguous binding. No repair or
+  arbitrary repository/quantization default.
+- [x] Exact run acquisition recipes derive original approved 2B/27B inventory,
+  require eligible compiled route and explicit consent, validate resolved
+  source/member set and final manifest digest before original publication.
+  Shared operation/monitor, existing disk policy and source verification;
+  no second publisher or reference retargeting. 0.8B legacy manifest
+  recreation refuses. Recipe and synthetic expected-digest mismatch tests
+  pass; no live remote acquisition or new provider qualification.
+
 ## Uncommitted
 
 - [ ] Extend advanced forced interactive/JSONL and aggregate component

@@ -24,7 +24,65 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-4 (25 Nov)
+### Current checkpoint — Phase 2.1 UX-5 (25 Nov)
+
+One-line run joins existing cold cache identity, selected config, source
+admission and original text execution owners. No parallel loader, cache,
+runtime, device authority or new model/backend/numerical qualification.
+
+- Bare lowercase names select a durable canonical ref or clean durable
+  human claim. Different digests refuse ambiguity; explicit catalog: and
+  by-name: remain independent. A missing name can bind an exact approved
+  Qwen catalog snapshot, never an arbitrary repository/quantization.
+  Distinguish absent directory/claim from malformed, dirty or dangling state.
+  Provider selectors retain exact pin and ambiguity checks; HTTP locators
+  retain the compiled cache contract and explicit snapshot requirement.
+  Model inspect/verify, cache selection and run use the same SDK selector;
+  run binds the chosen digest before original preparation and derives native
+  Qwen routing from the approved digest, not the requested alias.
+- One quoted positional prompt, --prompt, --prompt-file, configured prompt
+  or bounded piped stdin. Conflicting explicit inputs refuse; -- preserves
+  literal flag-shaped prompt values. Config/profile and device/headroom
+  policies remain original; dry-run does not read stdin. Normal output is
+  stdout, actual model/backend/device/context status is stderr, quiet output
+  unchanged. Explicit backend/source mismatches refuse.
+- Capable foreground terminal with no prompt enters a repeated independent
+  request session (/help, /model, /new, /exit, EOF). CPU retains one admitted
+  PreparedCpu and borrows original generator; native Qwen retains one runtime
+  registration, invokes original request_text. No accumulated conversation
+  history, persisted session or automatic repeated teacher/audit diagnostics.
+  Finite CUDA diagnostics remain explicit one-shot.
+- --pull is explicit consent; eligible interactive missing-model offer
+  shows exact repository/revision/bytes/backend and asks y/N. Offline and
+  dry-run never acquire, existing local/cached source does not transfer.
+  Only original immutable 2B/27B Qwen inventories provide automatic recipes;
+  0.8B legacy digest-provenance manifest recreation, floating/unregistered
+  locators, unsupported backend and insufficient cache policy refuse.
+  The original resolver checks exact member set, lengths and supplied hashes;
+  original executor checks required final snapshot digest before commit.
+  ControlPlane download operation, original cache publisher and progress/
+  cancellation shared; no reference retargeting, implicit quota increase,
+  or fallback. Explicit acquisition remains available separately for other
+  source selections. Recipe tests and mismatched-publication test pass;
+  real remote acquisition and physical GPU execution not performed.
+- Full mandatory-private-network workspace gate passes: 2465 Rust test
+  executions, zero failures, 109 explicit skips. Strict lint, architecture,
+  feature boundaries, release/installer/scripts pass. Final combined
+  acquisition/serve Clippy and CUDA/HIP/acquisition compile pass; exact
+  inventory recipe and required-snapshot publication guard fixtures pass.
+  Initial full gate stopped on test-only unnecessary clone lint; corrected,
+  complete rerun passes. Real existing Qwen 0.8B GGUF CPU release PTY:
+  two independent prompts match their quiet one-shot stdout, one startup,
+  /model and /exit, no cache creation. No new package/lockfile or performance
+  evidence; no actual remote transfer or physical GPU execution.
+
+**Next coherent unit: UX-6 — stable serve CLI (§46A.28).**
+Use the same exact source and config/device resolver for serve MODEL...,
+explicit eligible acquisition consent and original serving/load/listener
+owners; compact actual startup/status/shutdown. No HTTP rewrite. UX-7
+ConfigDocument/profile management, then native TUI and Web remain ordered.
+
+### Previous checkpoint — Phase 2.1 UX-4 (25 Nov; da2385c7)
 
 The canonical single-plan download lifecycle shares the existing native
 ControlPlane, original resolver, acquisition executor, admission and cache
@@ -75,7 +133,7 @@ transaction. No parallel downloader, daemon, source grant or backend change.
   scope, unused imports and boolean predicates). No new physical, provider,
   model or numerical qualification.
 
-**Next coherent unit: UX-5 — one-line run (§46A.28).**
+**Historical next unit (implemented above): UX-5 — one-line run (§46A.28).**
 Complete canonical model/config/prompt resolution and direct execution through
 the original owners, with explicit acquisition consent and factual backend
 selection/refusal. UX-6 stable serve, UX-7 ConfigDocument/profile management,

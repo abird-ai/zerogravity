@@ -34,6 +34,9 @@ impl CacheMetadata {
                 SourceSelector::Catalog(name) => {
                     Ok(self.reference(name)?.digest == snapshot.digest)
                 }
+                SourceSelector::Name(name) => Ok(self
+                    .named(name)?
+                    .is_some_and(|selected| selected.digest == snapshot.digest)),
                 SourceSelector::Snapshot(digest) => Ok(digest == &snapshot.digest),
                 SourceSelector::ByName(name) => {
                     Ok(self.human_reference(name)?.digest == snapshot.digest)
@@ -93,6 +96,12 @@ impl CacheMetadata {
         } else {
             match selector {
                 SourceSelector::Catalog(name) => self.reference(name)?,
+                SourceSelector::Name(name) => self.named(name)?.ok_or_else(|| {
+                    Error::Unsupported(
+                        "model name is not acquired; use model list or an explicit model pull"
+                            .into(),
+                    )
+                })?,
                 SourceSelector::Snapshot(digest) => self.snapshot(digest)?,
                 SourceSelector::ByName(name) => self.human_reference(name)?,
                 SourceSelector::Local(_) => {
@@ -105,35 +114,39 @@ impl CacheMetadata {
                     "HTTP locator requires an explicit snapshot binding an exact cached content contract".into(),
                 ));
                 }
-                _ => {
-                    let mut candidates = self
-                        .snapshots()?
-                        .into_iter()
-                        .filter_map(|s| match matches(&s) {
-                            Ok(true) => Some(Ok(s)),
-                            Ok(false) => None,
-                            Err(e) => Some(Err(e)),
-                        })
-                        .collect::<Result<Vec<_>>>()?;
-                    match candidates.len() {
-                        0 => {
-                            return Err(Error::Unsupported(
-                                "provider source is not acquired; use models/pull then an explicit --snapshot or catalog reference".into(),
-                            ));
-                        }
-                        1 => {}
-                        n => {
-                            return Err(Error::Unsupported(format!(
-                                "provider source matches {n} acquired snapshots; an explicit --snapshot or catalog reference is required"
-                            )));
-                        }
-                    }
-                    candidates.remove(0)
-                }
+                SourceSelector::HuggingFace(_) | SourceSelector::GitHub(_) => self.provider_optional(selector)?.ok_or_else(|| Error::Unsupported(
+                    "provider source is not acquired; use models/pull then an explicit --snapshot or catalog reference".into()))?,
             }
         };
         Ok(snapshot)
     }
+    /// Exact provider candidate lookup, with absence distinct from
+    /// ambiguity and invalid metadata. Never performs a remote lookup.
+    pub fn provider_optional(
+        &self,
+        selector: &zerogravity_core::run_policy::SourceSelector,
+    ) -> Result<Option<SnapshotMetadata>> {
+        use zerogravity_core::run_policy::SourceSelector;
+        let (provider, value) = match selector {
+            SourceSelector::HuggingFace(value) => ("huggingface", value),
+            SourceSelector::GitHub(value) => ("github", value),
+            _ => return Err(Error::Malformed("expected provider source selector".into())),
+        };
+        let locator = crate::cache::provenance::ProviderLocator::parse(provider, value)?;
+        let mut candidates = self
+            .snapshots()?
+            .into_iter()
+            .filter(|s| locator.matches(s.manifest.source()))
+            .collect::<Vec<_>>();
+        match candidates.len() {
+            0 => Ok(None),
+            1 => Ok(candidates.pop()),
+            n => Err(Error::Unsupported(format!(
+                "provider source matches {n} acquired snapshots; an explicit --snapshot or catalog reference is required"
+            ))),
+        }
+    }
+
     pub fn root(&self) -> &Path {
         &self.path
     }
@@ -162,6 +175,25 @@ impl CacheMetadata {
         }
         Ok(raw)
     }
+    pub(super) fn directory_absent(&self, path: &str) -> Result<bool> {
+        match self.root.open_dir(path, false) {
+            Ok(_) => Ok(false),
+            Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Only an absent snapshot directory is missing. A dangling or corrupt
+    /// manifest in a present directory must not authorize acquisition.
+    pub fn snapshot_optional(&self, digest: &str) -> Result<Option<SnapshotMetadata>> {
+        validate_digest(digest)?;
+        match self.root.open_dir(&format!("snapshots/{digest}"), false) {
+            Ok(_) => self.snapshot(digest).map(Some),
+            Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
     pub fn snapshot(&self, digest: &str) -> Result<SnapshotMetadata> {
         validate_digest(digest)?;
         let manifest = Manifest::from_json(
@@ -180,14 +212,17 @@ impl CacheMetadata {
         })
     }
     pub fn reference(&self, name: &str) -> Result<SnapshotMetadata> {
+        self.reference_optional(name)?.ok_or_else(|| Error::Unsupported(format!(
+            "catalog reference {name} is not acquired; use models/pull then run the printed reference"
+        )))
+    }
+
+    fn reference_optional(&self, name: &str) -> Result<Option<SnapshotMetadata>> {
         let raw = match self.read(&reference_key(name)?, CONTROL_LIMIT * 2) {
             Ok(raw) => raw,
-            // Only a missing reference record is absent-acquisition guidance;
-            // every other read failure stays an original I/O error.
+            // Only missing reference records are absence, never broken bindings.
             Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Err(Error::Unsupported(format!(
-                    "catalog reference {name} is not acquired; use models/pull then run the printed reference"
-                )));
+                return Ok(None);
             }
             Err(error) => return Err(error),
         };
@@ -198,8 +233,28 @@ impl CacheMetadata {
                 "cache selection reference identity".into(),
             ));
         }
-        self.snapshot(&reference.snapshot)
+        self.snapshot(&reference.snapshot).map(Some)
     }
+
+    /// A bare name may denote either existing durable claim. If both are
+    /// present they must agree. No projection following, repair or provider
+    /// lookup. Explicit catalog:/by-name: remain independently selectable.
+    pub fn named(&self, name: &str) -> Result<Option<SnapshotMetadata>> {
+        if !zerogravity_core::run_policy::SourceSelector::is_human_name(name) {
+            return Err(Error::Malformed("invalid bare model name".into()));
+        }
+        let canonical = self.reference_optional(name)?;
+        let human = self.human_reference_optional(name)?;
+        match (canonical, human) {
+            (Some(a), Some(b)) if a.digest != b.digest => Err(Error::Malformed(
+                "ambiguous bare model name; use catalog:, by-name: or an exact snapshot digest"
+                    .into(),
+            )),
+            (Some(a), _) | (_, Some(a)) => Ok(Some(a)),
+            (None, None) => Ok(None),
+        }
+    }
+
     /// Bounded cold inventory of existing checkpoint records. No lock
     /// creation, prefix authentication, active/dead determination or repair.
     pub fn partials(&self) -> Result<Vec<PartialSummary>> {
