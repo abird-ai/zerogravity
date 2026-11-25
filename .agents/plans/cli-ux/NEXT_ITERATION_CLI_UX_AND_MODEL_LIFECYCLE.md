@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (25 Nov): **Phase 2.1 UX-1/UX-2/UX-3 accepted; UX-4 is the next implementation slice (§46A.28).**
+Status (25 Nov): **Phase 2.1 UX-1/UX-2/UX-3 and bounded canonical UX-4 accepted; UX-5 is the next implementation slice (§46A.28).**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
@@ -17,9 +17,12 @@ static completions, exact cold source/config selection and the shared native
 ControlPlane are implemented. Original machine outputs preserved; selected
 metadata/dry-run JSON supported. Native snapshots and typed actions reuse
 original owners; bounded event cursors resync on lag. Direct SDK/independent
-HTTP/external cache activity requires fresh observations. General JSONL
-events, interactive transfer lifecycle, unified serving/profile management
-and frontend surfaces remain ordered work.
+HTTP/external cache activity requires fresh observations. Canonical explicit
+single-plan HF/GH/Xet online transfers now share progress and cooperative
+pause/resume/cancel, cold partial records, PTY/plain/quiet/JSONL receipt
+presentation. Advanced provider forced modes and aggregate component control
+remain open. General JSONL events, unified serving/profile management and
+frontend surfaces remain ordered work.
 
 This iteration runs before the OpenAI-compatible serving and backend-parity
 campaigns. It changes no backend qualification or execution authority.
@@ -2523,6 +2526,14 @@ Implement:
 - quiet/plain/JSONL modes.
 
 Use existing hardened acquisition/cache transaction code.
+
+Accepted 25 Nov for canonical explicit single-plan HF/GH/Xet. Original
+strong-validator proper-prefix checkpoint/range continuation; other bodies
+park at safe boundaries. Cold partial metadata is not authenticated or
+necessarily inactive. Exact operation IDs and bounded invalidation events;
+actual durable/uncertain receipts. Direct provider progress shared, advanced
+forced modes and aggregate component controls open. Full gate 2459 pass,
+0 fail, 109 skips; separate SDK acquisition and five monitor fixture runs pass.
 
 ### UX-5 — one-line run
 

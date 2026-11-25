@@ -151,9 +151,9 @@ impl Globals {
 
     fn finish(&mut self) -> Options {
         self.presentation.plain = self.format != Format::Auto;
-        if matches!(self.format, Format::Json | Format::Jsonl)
-            && self.presentation.progress == Switch::Auto
-        {
+        self.presentation.jsonl = self.format == Format::Jsonl;
+        self.presentation.interactive = self.interactive;
+        if self.format == Format::Json && self.presentation.progress == Switch::Auto {
             self.presentation.progress = Switch::Never;
         }
         self.presentation
@@ -548,8 +548,31 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
     if g.document.is_some() {
         return Err("--config/--profile selection is unavailable for this command");
     }
-    if g.interactive == Switch::Always {
-        return Err("forced interactive mode is not implemented yet");
+    // Only the explicit single-plan hub/Xet transfer grammar has event
+    // output and keyboard control. Do not scan opaque provider values.
+    let pull_args = match &command {
+        Command::Pull(args) | Command::Model(ModelCommand::Pull(args)) => Some(args),
+        _ => None,
+    };
+    let controlled_pull = pull_args
+        .and_then(|args| args.first())
+        .is_some_and(|provider| {
+            matches!(provider.as_str(), "hf" | "github" | "xet")
+                || (matches!(command, Command::Model(ModelCommand::Pull(_)))
+                    && (provider.starts_with("hf:") || provider.starts_with("gh:")))
+        });
+    if g.interactive == Switch::Always
+        && (!controlled_pull
+            || g.format == Format::Jsonl
+            || g.format == Format::Json
+            || g.offline
+            || g.presentation.verbosity == Verbosity::Quiet
+            || g.presentation.progress == Switch::Never)
+    {
+        return Err("forced interaction requires an online hub/Xet pull with terminal progress");
+    }
+    if g.format == Format::Jsonl && (!controlled_pull || g.offline) {
+        return Err("JSONL requires an online hub/Xet pull");
     }
     if g.yes
         && !matches!(
@@ -562,13 +585,14 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
     {
         return Err("--yes is only supported for model remove");
     }
-    if !matches!(
+    if !(matches!(
         command,
         Command::Devices(_)
             | Command::DeviceInspect { .. }
             | Command::Run { .. }
             | Command::Model(ModelCommand::Read { .. })
-    ) {
+    ) || controlled_pull && g.format == Format::Jsonl)
+    {
         unsupported_format(g.format)?;
     }
     // Forward a restriction at the owner's first option boundary, not

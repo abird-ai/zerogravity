@@ -2,12 +2,18 @@
 //! transport owners remain authoritative; no frontend-owned execution state.
 #[cfg(all(feature = "cache", target_os = "linux"))]
 mod cache;
+#[cfg(all(feature = "acquisition", target_os = "linux"))]
+mod downloads;
 mod events;
 #[cfg(feature = "serve")]
 mod serving;
 
 #[cfg(all(feature = "cache", target_os = "linux"))]
 pub use cache::{CachedModelDetail, CachedModelSummary};
+#[cfg(all(feature = "acquisition", target_os = "linux"))]
+pub use downloads::{
+    DownloadCommand, DownloadOperation, DownloadPhase, DownloadStatus, DownloadSummary,
+};
 pub use events::{ControlEvent, ControlEventKind, ControlEvents, ControlPoll, ReclaimStatus};
 #[cfg(feature = "serve")]
 pub use serving::ServeOptions;
@@ -27,6 +33,8 @@ use std::{net::SocketAddr, path::Path};
 #[derive(Default)]
 pub(crate) struct ControlState {
     events: events::Events,
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    downloads: downloads::Downloads,
     #[cfg(feature = "serve")]
     serving: serving::ServeState,
 }
@@ -77,6 +85,8 @@ pub enum ServeSummary {
 pub struct ControlSnapshot {
     pub runtime: RuntimeSnapshot,
     pub serving: ServeSummary,
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    pub download: Option<DownloadSummary>,
 }
 
 /// Trusted native actions use the existing typed SDK requests, not raw argv.
@@ -99,8 +109,15 @@ pub enum ControlAction<'a> {
     Devices,
     InspectDevice(&'a DeviceRef),
     CheckConfig(&'a Path),
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    Download {
+        id: u64,
+        command: DownloadCommand,
+    },
     #[cfg(all(feature = "cache", target_os = "linux"))]
     CachedModels(&'a Path),
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    CachedPartials(&'a Path),
     #[cfg(all(feature = "cache", target_os = "linux"))]
     InspectCached {
         root: &'a Path,
@@ -138,6 +155,8 @@ pub enum ControlReply {
     Config(Box<CheckedDocument>),
     #[cfg(all(feature = "cache", target_os = "linux"))]
     CachedModels(Vec<CachedModelSummary>),
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    CachedPartials(Vec<crate::cache::PartialSummary>),
     #[cfg(all(feature = "cache", target_os = "linux"))]
     CachedModel(CachedModelDetail),
     #[cfg(all(feature = "cache", target_os = "linux"))]
@@ -187,6 +206,8 @@ impl<'a> ControlPlane<'a> {
     pub fn snapshot(&self) -> Result<ControlSnapshot> {
         Ok(ControlSnapshot {
             runtime: self.runtime.snapshot()?,
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            download: self.download(),
             #[cfg(feature = "serve")]
             serving: self.state.serving.observe()?,
             #[cfg(not(feature = "serve"))]
@@ -319,8 +340,15 @@ impl<'a> ControlPlane<'a> {
             A::Devices => R::Devices(self.devices()?),
             A::InspectDevice(device) => R::Device(self.inspect_device(device)?),
             A::CheckConfig(path) => R::Config(Box::new(self.check_config(path)?)),
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            A::Download { id, command } => {
+                self.control_download(id, command)?;
+                R::Done
+            }
             #[cfg(all(feature = "cache", target_os = "linux"))]
             A::CachedModels(root) => R::CachedModels(self.cached_models(root)?),
+            #[cfg(all(feature = "cache", target_os = "linux"))]
+            A::CachedPartials(root) => R::CachedPartials(self.cached_partials(root)?),
             #[cfg(all(feature = "cache", target_os = "linux"))]
             A::InspectCached {
                 root,

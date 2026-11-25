@@ -131,7 +131,7 @@ build or general model/backend grant. Historical failures keep their source scop
   refusal tests pass. Actual release Bash/Fish completion and cold JSON
   smoke pass; Zsh/PowerShell generation only. No new physical/numerical claim.
 
-### Phase 2.1 UX-3 — shared ControlPlane (this checkpoint, 25 Nov)
+### Phase 2.1 UX-3 — shared ControlPlane (3cf1bb2d, 25 Nov)
 
 - [x] Shared public SDK control state per Runtime clone family. Original
   RuntimeSnapshot, cold device/cache/config views, native typed actions
@@ -154,16 +154,41 @@ build or general model/backend grant. Historical failures keep their source scop
   architecture/feature/strict lint/release/installer/scripts pass.
   No new dependency, physical GPU qualification or numerical/performance claim.
 
+### Phase 2.1 UX-4 — shared download lifecycle (this checkpoint, 25 Nov)
+
+- [x] Shared per-runtime single-operation view, exact ID actions and
+  invalidation events. Original synchronous prepared-plan executor,
+  cancellation, resource/cache owners and typed publication result.
+  Pause-request/paused/cancel-request/terminal status distinguished.
+- [x] Exact proper-prefix strong-validator HTTP checkpoint/drop-response/
+  park/rehash/range reopen; native Xet and unsuitable prefixes defer to
+  safe file/pre-publication boundaries. Cold partial records text/JSON.
+- [x] Canonical explicit online HF/GH/Xet pulls share plain/rich/quiet/JSONL
+  progress and receipts; Linux foreground TTY Space/C/Ctrl-C with
+  restoration. One scoped worker when needed, no extra quiet worker.
+  Confirmed cancellation exit 130. Offline/dry-run/unsupported forced
+  modes refuse before credential/cache IO. Existing rustix features only.
+- [x] Full isolated gate 2459 pass/0 fail/109 skips; exact range recovery,
+  separate two-client SDK control integration, five actual isolated
+  monitor fixture runs (normal/quiet JSONL, PTY resume/C/Ctrl-C and
+  restoration) pass. No network download, new qualification or
+  numerical/performance claim.
+
 ## Uncommitted
 
-- [ ] UX-4 next: shared download lifecycle and progress, cooperative
-  pause/resume/cancel, retained-partial reporting, quiet/plain/JSONL and
-  interactive control over original hardened acquisition/cache transactions.
-  One-line run and serve (UX-5/6), ConfigDocument/profile management (UX-7),
+- [ ] UX-5 next: one-line run through original model/config/run owners.
+  Explicit acquisition consent; positional prompt/stdin/interactive no-prompt
+  behavior, source/backend/device summary and factual refusal.
+  Stable serve (UX-6), ConfigDocument/profile management (UX-7),
   dynamic completions, unified serving selection and later TUI/Web remain open.
   Explicit by-name: lookup only; bare references stay canonical. Preserve
   explicit acquisition and unsupported-backend refusal. Direct SDK/external
   changes need fresh snapshots; general control-wire validation/auth is later.
+- [ ] Extend advanced direct provider forced interactive/JSONL presentation
+  and aggregate component download control without changing independently
+  published receipts; existing direct provider progress and legacy sequential
+  component executor remain valid. No general concurrent download scheduler,
+  persistent event history or automatic partial deletion introduced.
 
 ### Reviewed source checkpoint — 24 Oct
 

@@ -33,7 +33,7 @@ const CONTROL_LIMIT: usize = 4096;
 
 #[path = "partials.rs"]
 mod partials;
-pub use partials::{DiscoveredObject, PartialObject};
+pub use partials::{DiscoveredObject, PartialObject, PartialSummary};
 #[path = "maintenance.rs"]
 mod maintenance;
 

@@ -549,7 +549,15 @@ demand. Preserve the existing detailed
   consumer; real approved Qwen 0.8B GGUF two-client lifecycle and loopback
   integration pass. Full gate 2457 pass/0 fail/108 skips (+1 focused
   model integration); no duplicate execution or transport owner.
-  **Next: UX-4 model lifecycle + downloads (§46A.28).**
+- [x] UX-4 bounded canonical single-plan lifecycle: shared download
+  observation/actions with exact operation IDs, original strong-validator
+  checkpoint/range pause/resume and safe-boundary fallback, cancellation,
+  cold partial inventory, interactive/plain/quiet/JSONL and actual receipt.
+  Direct provider plans share progress; advanced forced modes and aggregate
+  component controls remain open. Full isolated gate 2459 pass/0 fail/109
+  skips; separate SDK acquisition integration and five PTY/JSONL fixture
+  runs pass. No duplicate transfer owner or new provider grant.
+  **Next: UX-5 one-line run (§46A.28).**
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,

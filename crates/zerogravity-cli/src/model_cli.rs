@@ -88,6 +88,7 @@ struct Query {
     cache: Option<std::path::PathBuf>,
     snapshot: Option<String>,
     dry_run: bool,
+    partial: bool,
 }
 
 fn parse(operation: ModelRead, args: &[String], yes: bool) -> Result<Query> {
@@ -97,6 +98,7 @@ fn parse(operation: ModelRead, args: &[String], yes: bool) -> Result<Query> {
         cache: None,
         snapshot: None,
         dry_run: false,
+        partial: false,
     };
     let mut rest = args.iter();
     while let Some(raw) = rest.next() {
@@ -115,6 +117,7 @@ fn parse(operation: ModelRead, args: &[String], yes: bool) -> Result<Query> {
                 }
                 query.snapshot = Some(value.clone());
             }
+            "--partial" if operation == ModelRead::List && !query.partial => query.partial = true,
             "--dry-run" if operation == ModelRead::Remove && !query.dry_run => query.dry_run = true,
             raw if !raw.starts_with('-')
                 && operation != ModelRead::List
@@ -159,6 +162,17 @@ fn cached(operation: ModelRead, query: Query, format: Format) -> Result<()> {
     let runtime = Runtime::builder().build()?;
     let control = runtime.control();
     if operation == ModelRead::List {
+        if query.partial {
+            let partials = control.cached_partials(&root)?;
+            if format == Format::Json {
+                return crate::output::json(&partials);
+            }
+            println!("Checkpoint records (may include active attempts; resume must revalidate):");
+            for partial in partials {
+                println!("{}  {}/{} bytes", partial.key, partial.bytes, partial.total);
+            }
+            return Ok(());
+        }
         let snapshots = control.cached_models(&root)?;
         if format == Format::Json {
             return crate::output::json(&snapshots);

@@ -883,3 +883,84 @@ mod crash {
 fn cache_child_worker() {
     crash::child();
 }
+
+#[test]
+fn cooperative_pause_revalidates_the_held_prefix_and_original_range() {
+    use zerogravity_artifacts::acquisition::{
+        PullControl, PullObservation, PullPhase, execute_controlled,
+    };
+    use zerogravity_artifacts::cache::CacheMetadata;
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    let body = bytes();
+    let admission = admission(128 * 1024 * 1024);
+    let cancel = Arc::new(AtomicBool::new(false));
+    let script = Script::new(vec![initial(&body), continuation(&body)]);
+    struct Pause<'a> {
+        requested: AtomicBool,
+        paused: AtomicUsize,
+        script: &'a Script,
+        metadata: CacheMetadata,
+        phases: Mutex<Vec<PullPhase>>,
+    }
+    impl PullControl for Pause<'_> {
+        fn phase(&self, phase: PullPhase) {
+            self.phases.lock().unwrap().push(phase);
+        }
+        fn pause_requested(&self) -> bool {
+            self.requested.load(Ordering::Acquire)
+        }
+        fn wait_paused(&self, _: &AtomicBool) -> Result<()> {
+            assert_eq!(self.script.calls.load(Ordering::Relaxed), 1);
+            assert_eq!(self.script.reads.load(Ordering::Relaxed), PREFIX as usize);
+            let rows = self.metadata.partials()?;
+            assert_eq!(rows.len(), 1);
+            assert_eq!((rows[0].bytes, rows[0].total), (PREFIX, 1024));
+            let encoded = serde_json::to_string(&rows).unwrap();
+            assert!(!encoded.contains(SECRET) && !encoded.contains(VALIDATOR));
+            self.paused.fetch_add(1, Ordering::Relaxed);
+            self.requested.store(false, Ordering::Release);
+            Ok(())
+        }
+    }
+    let pause = Pause {
+        requested: AtomicBool::new(false),
+        paused: AtomicUsize::new(0),
+        script: &script,
+        metadata: CacheMetadata::open(&fixture.root).unwrap(),
+        phases: Mutex::new(Vec::new()),
+    };
+    let receipt = execute_controlled(
+        &store,
+        &plan(&body),
+        &script,
+        &admission,
+        &cancel,
+        Some("fixture"),
+        PullObservation {
+            control: &pause,
+            progress: &mut |event: &zerogravity_artifacts::acquisition::PullProgress<'_>| {
+                if event.file_bytes() == PREFIX {
+                    pause.requested.store(true, Ordering::Release);
+                }
+            },
+        },
+    )
+    .unwrap();
+    assert_eq!(pause.paused.load(Ordering::Relaxed), 1);
+    assert_eq!(script.calls.load(Ordering::Relaxed), 2);
+    assert_eq!(script.reads.load(Ordering::Relaxed), body.len());
+    assert_eq!(
+        *pause.phases.lock().unwrap(),
+        [
+            PullPhase::Planning,
+            PullPhase::Transferring,
+            PullPhase::Verifying,
+            PullPhase::Publishing
+        ]
+    );
+    assert_eq!(receipt.manifest().entries()[0].digest(), digest(&body));
+    assert_payload(&store.resolve_ref("fixture").unwrap(), &body);
+    assert!(pause.metadata.partials().unwrap().is_empty());
+    assert_no_host_reservation(&admission);
+}

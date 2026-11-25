@@ -21,7 +21,7 @@ pub use manifest::{
 };
 pub use store::{
     CacheMetadata, CacheStore, CacheTransaction, DiscoveredEntry, DiscoveredObject,
-    DiscoveredTransaction, PartialObject, SnapshotMetadata,
+    DiscoveredTransaction, PartialObject, PartialSummary, SnapshotMetadata,
 };
 
 /// An established length or an explicit reservation bound. A bound is never

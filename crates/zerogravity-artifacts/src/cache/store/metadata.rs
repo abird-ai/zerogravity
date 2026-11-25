@@ -200,6 +200,26 @@ impl CacheMetadata {
         }
         self.snapshot(&reference.snapshot)
     }
+    /// Bounded cold inventory of existing checkpoint records. No lock
+    /// creation, prefix authentication, active/dead determination or repair.
+    pub fn partials(&self) -> Result<Vec<PartialSummary>> {
+        use super::partials::{PARTIAL_LIMIT, partial_record_path, summarize_record};
+        let mut result = Vec::new();
+        for node in self.root.walk_canonical_tree(MAX_NODES)? {
+            if !node.is_directory && partial_record_path(&node.path) {
+                if result.len() == self.limits.max_files {
+                    return Err(Error::Limit("partial checkpoint record count".into()));
+                }
+                result.push(summarize_record(
+                    &self.read(&node.path, PARTIAL_LIMIT)?,
+                    &node.path,
+                )?);
+            }
+        }
+        result.sort_unstable_by(|a, b| a.key.cmp(&b.key).then(a.bytes.cmp(&b.bytes)));
+        Ok(result)
+    }
+
     pub fn snapshots(&self) -> Result<Vec<SnapshotMetadata>> {
         let mut result = Vec::new();
         let mut bytes = 0usize;

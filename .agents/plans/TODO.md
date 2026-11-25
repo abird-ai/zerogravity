@@ -125,7 +125,12 @@ listener generation guards, original output/cancellation and cache outcomes.
 Actual local Qwen 0.8B GGUF two-client lifecycle/loopback and direct output
 equality pass. Full isolated gate 2457 pass/0 fail/108 skips (+1 focused
 model integration); architecture, feature and release checks pass.
-Next UX-4 model lifecycle + downloads per §46A.28.
+UX-4 bounded canonical single-plan download lifecycle accepted: original
+checkpoint/range pause/resume, exact operation control, cancellation,
+cold partial records and PTY/plain/quiet/JSONL receipts. Full isolated gate
+2459 pass/0 fail/109 skips; separate SDK integration and five monitor
+fixture runs pass. Advanced provider forced modes and component aggregate
+control remain open. Next UX-5 one-line run per §46A.28.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

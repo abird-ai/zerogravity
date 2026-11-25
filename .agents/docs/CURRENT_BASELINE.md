@@ -5,6 +5,19 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — shared download lifecycle (UX-4)
+
+Canonical HF/GH/Xet single-plan operation through shared ControlPlane and
+original executor/transaction. Strong-validator exact-prefix pause parks
+the same admitted transaction, rehashes and reopens validated range; other
+routes pause at safe boundaries. Typed progress, cancellation, cold partial
+records, foreground PTY and JSONL/quiet receipts. Original cache/provider
+authority retained. Full isolated gate 2459 pass/0 fail/109 skips; separate
+two-client SDK acquisition integration and five explicit monitor fixture
+runs pass (JSONL, quiet JSONL, PTY resume/C/Ctrl-C and restoration).
+No new package, lockfile, physical GPU, real remote transfer, numerical or
+throughput evidence. Advanced aggregate component presentation remains open.
+
 ## 25 Nov — shared native ControlPlane (UX-3)
 
 Shared runtime-clone control state, original owner observations/actions,

@@ -59,6 +59,16 @@ impl ControlPlane<'_> {
         Ok(metadata.snapshots()?.into_iter().map(Into::into).collect())
     }
 
+    /// Existing checkpoint records, not verified or guaranteed resumable.
+    pub fn cached_partials(&self, root: &Path) -> Result<Vec<crate::cache::PartialSummary>> {
+        self.runtime.engine.require_open()?;
+        match CacheMetadata::open(root) {
+            Ok(metadata) => metadata.partials(),
+            Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(error) => Err(error),
+        }
+    }
+
     pub fn inspect_cached(
         &self,
         root: &Path,

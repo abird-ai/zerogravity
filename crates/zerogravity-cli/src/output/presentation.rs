@@ -38,6 +38,8 @@ pub(crate) struct Options {
     pub(crate) color: Switch,
     pub(crate) progress: Switch,
     pub(crate) verbosity: Verbosity,
+    pub(crate) jsonl: bool,
+    pub(crate) interactive: Switch,
 }
 
 #[derive(Clone, Copy)]
@@ -65,6 +67,10 @@ pub(crate) struct Reporter {
     color: bool,
     progress: bool,
     verbosity: Verbosity,
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    jsonl: bool,
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    interactive: Switch,
 }
 
 // Human presentation only. Explicit machine diagnostics and primary stdout
@@ -92,11 +98,30 @@ impl Reporter {
             },
             progress: options.progress != Switch::Never,
             verbosity: options.verbosity,
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            jsonl: options.jsonl,
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            interactive: options.interactive,
         }
     }
 
     pub(crate) fn progress(self) -> bool {
         self.progress && self.verbosity != Verbosity::Quiet
+    }
+
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    pub(crate) fn download_jsonl(self) -> bool {
+        self.jsonl
+    }
+
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    pub(crate) fn download_interaction(self) -> Switch {
+        self.interactive
+    }
+
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    pub(crate) fn download_auto_input(self) -> bool {
+        self.rich && self.progress() && !self.jsonl && io::stdout().is_terminal()
     }
 
     fn allows(self, event: Event<'_>) -> bool {

@@ -289,3 +289,138 @@ fn repeated_sdk_transfer_clients_share_the_original_fixed_budget() {
         128 * 1024 * 1024
     );
 }
+
+#[test]
+fn two_control_clients_share_pause_resume_cancel_and_durable_outcome() {
+    use std::time::{Duration, Instant};
+    use zerogravity::control::{
+        ControlAction, ControlEventKind, ControlPoll, ControlReply, DownloadCommand, DownloadStatus,
+    };
+    let fixture = Fixture::new();
+    let store = fixture.store();
+    let runtime = Runtime::builder().build().unwrap();
+    let peer = runtime.clone();
+    let control = runtime.control();
+    let other = peer.control();
+    let mut events = other.subscribe();
+    let request = request();
+    let transport = Transport::default();
+    let admission = admission();
+    let hub = runtime
+        .artifacts()
+        .hub(
+            HubSelection::Files(&request),
+            PullLimits::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let prepared = hub
+        .resolve(&transport, &admission, &cancel, PullMode::Transfer)
+        .unwrap();
+    let mut previous = None;
+    for cancel_while_paused in [false, true] {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let operation = control.begin_resolved_download(cancel.clone()).unwrap();
+        let id = operation.id();
+        assert!(
+            other
+                .begin_download(Arc::new(AtomicBool::new(false)))
+                .is_err()
+        );
+        if let Some(old) = previous {
+            assert!(
+                other
+                    .control_download(old, DownloadCommand::Cancel)
+                    .is_err()
+            );
+        }
+        // Request pause after a real file has completed; this fixture has
+        // no strong validator and therefore cannot park within the response.
+        let result = std::thread::scope(|scope| {
+            let worker = scope.spawn(|| {
+                operation.execute_prepared(
+                    &prepared,
+                    &store,
+                    &transport,
+                    &admission,
+                    &mut |event| {
+                        if event.file_complete() {
+                            other.control_download(id, DownloadCommand::Pause).unwrap();
+                        }
+                    },
+                )
+            });
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let row = other.download().unwrap();
+                assert_eq!(row.id, id);
+                if row.status == DownloadStatus::Paused {
+                    break;
+                }
+                if worker.is_finished() || Instant::now() >= deadline {
+                    let _ = other.control_download(id, DownloadCommand::Cancel);
+                    panic!("worker did not acknowledge a safe pause: {row:?}");
+                }
+                if let ControlPoll::Event(event) = events.poll(Duration::from_millis(20)) {
+                    assert_eq!(event.kind, ControlEventKind::DownloadChanged { id: row.id });
+                }
+            }
+            // A request alone did not publish. The first completed ref, if
+            // present, stays the same until a later durable commit.
+            let paused = control.download().unwrap();
+            assert_eq!(paused.total_bytes, 3);
+            assert_eq!(paused.completed_files, 1);
+            assert_eq!(paused.checkpoint_bytes, 0);
+            assert!(matches!(
+                other
+                    .dispatch(ControlAction::Download {
+                        id,
+                        command: if cancel_while_paused {
+                            DownloadCommand::Cancel
+                        } else {
+                            DownloadCommand::Resume
+                        },
+                    })
+                    .unwrap(),
+                ControlReply::Done
+            ));
+            worker.join().unwrap()
+        });
+        let terminal = other.snapshot().unwrap().download.unwrap();
+        if cancel_while_paused {
+            assert!(result.is_err());
+            assert_eq!(terminal.status, DownloadStatus::Cancelled);
+            assert!(terminal.cancel_requested);
+        } else {
+            let receipt = result.unwrap();
+            assert!(matches!(receipt.outcome(), CommitOutcome::Durable(_)));
+            assert_eq!(terminal.status, DownloadStatus::Durable);
+            assert_eq!(
+                terminal.snapshot.as_deref(),
+                Some(receipt.manifest().digest().unwrap().as_str())
+            );
+        }
+        assert_eq!(
+            store
+                .resolve_ref(hub.reference())
+                .unwrap()
+                .manifest()
+                .total_bytes(),
+            3
+        );
+        assert_eq!(
+            admission
+                .arbiter
+                .snapshot(&admission.resource)
+                .unwrap()
+                .reserved,
+            0
+        );
+        previous = Some(id);
+        // Subscribe afresh so the next operation never confuses prior events.
+        events = other.subscribe();
+    }
+    runtime.shutdown().unwrap();
+}

@@ -19,6 +19,8 @@ mod oci;
 #[path = "pull_s3.rs"]
 mod s3;
 use crate::signals;
+#[path = "pull_monitor.rs"]
+mod monitor;
 #[path = "pull_xet.rs"]
 mod xet;
 use zerogravity::acquisition::http::{HttpOptions, HttpsClient};
@@ -482,6 +484,22 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         Action::Filters(request) => run_fetch(&options, HubSelection::Filters(request), None),
     }
 }
+/// Already-resolved direct-provider plans share the same control view.
+fn execute_plan(
+    store: &CacheStore,
+    plan: &acquisition::ResolvedPullPlan,
+    transport: &impl acquisition::http::HttpTransport,
+    admission: &zerogravity::cache::TransferAdmission,
+    cancel: &Arc<AtomicBool>,
+) -> Result<acquisition::PullReceipt> {
+    let runtime = zerogravity::Runtime::builder().build()?;
+    let control = runtime.control();
+    let operation = control.begin_resolved_download(cancel.clone())?;
+    monitor::drive(control, operation, None, |operation| {
+        operation.execute_plan(store, plan, transport, admission, None, &mut |_| {})
+    })
+}
+
 /// One shared fetch/publish path. Native Xet changes only cold resolution and
 /// offline eligibility; ordinary None retains its original branch/owners.
 fn run_fetch(
@@ -489,6 +507,20 @@ fn run_fetch(
     request: HubSelection<'_>,
     native: Option<&acquisition::xet::XetOptions>,
 ) -> Result<()> {
+    let presentation = crate::output::reporter();
+    if (options.offline || options.dry_run)
+        && (presentation.download_jsonl()
+            || presentation.download_interaction() == crate::output::Switch::Always)
+    {
+        return Err(Error::Unsupported(
+            "JSONL/forced interaction require an online payload transfer".into(),
+        ));
+    }
+    let terminal = if options.offline || options.dry_run {
+        None
+    } else {
+        monitor::TerminalInput::prepare()?
+    };
     let runtime = zerogravity::Runtime::builder().build()?;
     let hub = runtime.artifacts().hub(
         request,
@@ -548,43 +580,37 @@ fn run_fetch(
     let admission = admission(options.memory)?;
     let cancel = Arc::new(AtomicBool::new(false));
     let _signals = signals::CancellationSignals::register(cancel.clone())?;
-    let prepared = hub.resolve(
-        &client,
-        &admission,
-        &cancel,
-        if options.dry_run {
-            PullMode::Inspect
-        } else {
-            PullMode::Transfer
-        },
-    )?;
-    let plan = prepared.plan();
-    crate::output::emit!(
-        Verbose,
-        "Resolved {}: {} selected file(s)",
-        plan.source().provider(),
-        plan.files().len()
-    );
-    crate::output::emit!(Diagnostic, "Pinned revision: {}", plan.source().revision());
-    if let HubSelection::Quant(request) = request {
+    let report_plan = |plan: &acquisition::ResolvedPullPlan| {
         crate::output::emit!(
-            Status,
-            "Requested GGUF filename tag: {}; not tensor encoding eligibility.",
-            request.quant()
+            Verbose,
+            "Resolved {}: {} selected file(s)",
+            plan.source().provider(),
+            plan.files().len()
         );
-    }
-    if let HubSelection::Filters(r) = request {
-        crate::output::emit!(
-            Status,
-            "{}: bounded Unicode full-path selection; no model fallback, auto-assembly, runtime or codec eligibility.",
-            if r.is_bundle() {
-                "Opaque Auxiliary-only source bundle"
-            } else {
-                "Closed model filters"
-            }
-        );
-    }
+        crate::output::emit!(Diagnostic, "Pinned revision: {}", plan.source().revision());
+        if let HubSelection::Quant(request) = request {
+            crate::output::emit!(
+                Status,
+                "Requested GGUF filename tag: {}; not tensor encoding eligibility.",
+                request.quant()
+            );
+        }
+        if let HubSelection::Filters(r) = request {
+            crate::output::emit!(
+                Status,
+                "{}: bounded Unicode full-path selection; no model fallback, auto-assembly, runtime or codec eligibility.",
+                if r.is_bundle() {
+                    "Opaque Auxiliary-only source bundle"
+                } else {
+                    "Closed model filters"
+                }
+            );
+        }
+    };
     if options.dry_run {
+        let prepared = hub.resolve(&client, &admission, &cancel, PullMode::Inspect)?;
+        let plan = prepared.plan();
+        report_plan(plan);
         if native.is_some() {
             println!(
                 "Explicit native Xet: Hub metadata/discovery only; no CAS grants or signed range payloads. No silent compatibility fallback."
@@ -610,20 +636,40 @@ fn run_fetch(
         );
         return Ok(());
     }
-    let mut display = ProgressDisplay::default();
-    let mut progress = |event: &acquisition::PullProgress<'_>| {
-        // Progress output is best-effort; it cannot certify publication.
-        let _ = display.report(event, &mut std::io::stderr());
-    };
-    let receipt = prepared.execute(&open(options)?, &client, &admission, &cancel, &mut progress)?;
+    let terminal = monitor::TerminalInput::enter(terminal)?;
+    let control = runtime.control();
+    let operation = control.begin_download(cancel.clone())?;
+    let receipt = monitor::drive(control, operation, terminal, |operation| {
+        let prepared = match hub.resolve(&client, &admission, &cancel, PullMode::Transfer) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                operation.fail(&error);
+                return Err(error);
+            }
+        };
+        report_plan(prepared.plan());
+        let store = match open(options) {
+            Ok(store) => store,
+            Err(error) => {
+                operation.fail(&error);
+                return Err(error);
+            }
+        };
+        operation.execute_prepared(&prepared, &store, &client, &admission, &mut |_| {})
+    })?;
+    if presentation.download_jsonl() {
+        monitor::jsonl_receipt(&receipt, reference)?;
+    }
     match receipt.outcome() {
         CommitOutcome::Durable(snapshot) => {
-            println!(
-                "Snapshot: {}\nReference: {reference}\nVerified data only; no inference eligibility implied.",
-                snapshot.digest()
-            );
-            use std::io::Write;
-            std::io::stdout().write_all(&receipt.manifest().canonical_bytes()?)?;
+            if !presentation.download_jsonl() {
+                println!(
+                    "Snapshot: {}\nReference: {reference}\nVerified data only; no inference eligibility implied.",
+                    snapshot.digest()
+                );
+                use std::io::Write;
+                std::io::stdout().write_all(&receipt.manifest().canonical_bytes()?)?;
+            }
             report_publication(snapshot);
             crate::output::emit!(
                 Status,

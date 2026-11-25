@@ -323,7 +323,30 @@ Git history; current source and this TODO supersede their archived checklists.
   implicit network, provider qualification or verification authority.
   UX-4 attaches original transfer lifecycle and progress to this plane.
 
+### Phase 2.1 UX-4 — controlled original executor (25 Nov)
+
+- [x] Cooperative pause at exact-length HTTP proper prefix with strong
+  validator: original durable checkpoint, drop body, park same admitted
+  transaction, rehash held prefix and reopen qualified exact range. Preserve
+  original retry/native invocation budgets and cancellation/publication
+  authority. Native Xet and unsuitable HTTP bodies pause only at safe
+  completed-file/pre-publication boundaries.
+- [x] Bounded cold checkpoint record inventory (not payload authentication
+  or active/dead determination); original recovery revalidates all bytes.
+  Shared exact operation actions and progress with original receipt,
+  previous durable reference and resource cleanup. Two-client control
+  fixture, exact held-prefix continuation and five monitor smoke scenarios
+  pass. Full isolated gate 2459 pass/0 fail/109 skips.
+- [x] Canonical explicit hub/Xet online single-plan CLI quiet/plain/PTY/JSONL.
+  Direct provider plans share per-plan progress; legacy aggregate components
+  retain original sequential execution. No live source acquisition,
+  new provider qualification, extra cache or implicit pull.
+
 ## Uncommitted
+
+- [ ] Extend advanced forced interactive/JSONL and aggregate component
+  control over independently published original receipts; keep exact
+  provider refusal and cancellation semantics.
 
 - [ ] Canonical source-pull execution order (18 Oct decision): Qwen3.5 .8B/
   2B, Qwen3.8 27B; Gemma4 E2B/26B-A4B/31B, each exact chosen GGUF

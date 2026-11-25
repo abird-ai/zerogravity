@@ -117,6 +117,47 @@ impl PullProgress<'_> {
     }
 }
 
+/// Actual executor phase; object digest checks occur inline during transfer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PullPhase {
+    Planning,
+    Transferring,
+    Verifying,
+    Publishing,
+}
+
+/// Optional caller-side cooperative control. Only the executor decides where
+/// it is safe to park. No source, checkpoint or publication authority is issued.
+pub trait PullControl {
+    fn phase(&self, _phase: PullPhase) {}
+    fn checkpoint(&self, _bytes: u64) {}
+    fn pause_requested(&self) -> bool {
+        false
+    }
+    fn wait_paused(&self, cancel: &AtomicBool) -> Result<()> {
+        super::http::check_cancel(cancel)
+    }
+}
+
+struct Uncontrolled;
+impl PullControl for Uncontrolled {}
+
+/// Preserve the existing borrowed progress callback alongside optional
+/// control. Legacy execution monomorphizes the no-op control.
+pub struct PullObservation<'a, C, F> {
+    pub control: &'a C,
+    pub progress: &'a mut F,
+}
+
+fn pause_boundary(control: &impl PullControl, cancel: &AtomicBool) -> Result<()> {
+    super::http::check_cancel(cancel)?;
+    if control.pause_requested() {
+        control.wait_paused(cancel)?;
+    }
+    super::http::check_cancel(cancel)
+}
+
 /// The cache admits complete listed lengths before any HTTP body is requested.
 pub fn execute(
     store: &CacheStore,
@@ -148,6 +189,34 @@ pub fn execute_with_progress(
     reference: Option<&str>,
     progress: &mut impl FnMut(&PullProgress<'_>),
 ) -> Result<PullReceipt> {
+    execute_controlled(
+        store,
+        plan,
+        transport,
+        admission,
+        cancel,
+        reference,
+        PullObservation {
+            control: &Uncontrolled,
+            progress,
+        },
+    )
+}
+
+/// Execute one admitted immutable plan with cooperative pause and observed
+/// phase boundaries. Pausing never resets provider invocation/HTTP retry budgets.
+pub fn execute_controlled(
+    store: &CacheStore,
+    plan: &ResolvedPullPlan,
+    transport: &impl HttpTransport,
+    admission: &TransferAdmission,
+    cancel: &Arc<AtomicBool>,
+    reference: Option<&str>,
+    observation: PullObservation<'_, impl PullControl, impl FnMut(&PullProgress<'_>)>,
+) -> Result<PullReceipt> {
+    let PullObservation { control, progress } = observation;
+    control.phase(PullPhase::Planning);
+    pause_boundary(control, cancel)?;
     validate_split_closure(plan)?;
     let mut native = super::xet::Invocation::new(plan, admission, cancel)?;
     let entries = plan
@@ -164,11 +233,13 @@ pub fn execute_with_progress(
         .collect::<Result<Vec<_>>>()?;
     let mut transaction =
         store.begin_discovered(plan.source().clone(), entries, admission, cancel.clone())?;
+    control.phase(PullPhase::Transferring);
     let mut files = Vec::new();
     let mut completed_bytes = 0;
     let mut cached_bytes = 0;
     let mut resumed_bytes = 0;
     for file in plan.files() {
+        pause_boundary(control, cancel)?;
         let mut event = PullProgress {
             source: plan.source(),
             file,
@@ -209,6 +280,7 @@ pub fn execute_with_progress(
                 cancel,
                 &mut report,
                 native.as_mut(),
+                control,
             )?;
             resumed_bytes += resumed;
             cached_bytes += cached;
@@ -224,6 +296,8 @@ pub fn execute_with_progress(
         files.push(acquired(file, &actual));
         completed_bytes += actual.bytes();
     }
+    pause_boundary(control, cancel)?;
+    control.phase(PullPhase::Verifying);
     let paths: BTreeSet<_> = plan.files().iter().map(ResolvedFile::path).collect();
     for file in plan
         .files()
@@ -246,6 +320,8 @@ pub fn execute_with_progress(
         // total_size is tensor payload, never a claim about shard file lengths.
     }
     let manifest = transaction.manifest()?;
+    pause_boundary(control, cancel)?;
+    control.phase(PullPhase::Publishing);
     let outcome = transaction.commit(reference)?;
     Ok(PullReceipt {
         manifest,
@@ -261,6 +337,7 @@ fn transfer_object(
     cancel: &AtomicBool,
     report: &mut impl FnMut(u64, u64, u64),
     native: Option<&mut super::xet::Invocation>,
+    control: &impl PullControl,
 ) -> Result<(ManifestEntry, u64, u64)> {
     let object = if file.xet.is_some() {
         transaction.cached_or_ephemeral_object(file.path(), file.identity())?
@@ -285,8 +362,9 @@ fn transfer_object(
     reject_pointer(&prefix[..saved_prefix])?;
     if resumed != 0 {
         report(resumed, resumed, 0);
+        control.checkpoint(resumed);
         if let Err(cause) = super::http::check_cancel(cancel) {
-            checkpoint_if_exact(&mut partial, file)?;
+            checkpoint_if_exact(&mut partial, file, control)?;
             return Err(cause);
         }
     }
@@ -340,30 +418,33 @@ fn transfer_object(
                 }
                 Ok(count) => prefix_count += count,
                 Err(_) => {
-                    checkpoint_if_exact(&mut partial, file)?;
+                    checkpoint_if_exact(&mut partial, file, control)?;
+                    super::http::check_cancel(cancel)?;
                     return Err(Error::State("HTTP object prefix read failed".into()));
                 }
             }
         }
         reject_pointer(&prefix[..prefix_count])?;
         if let Err(cause) = partial.write_chunk(&prefix[saved_prefix..prefix_count]) {
-            checkpoint_if_exact(&mut partial, file)?;
+            checkpoint_if_exact(&mut partial, file, control)?;
             return Err(cause);
         }
         report(partial.bytes(), resumed, 0);
     }
+    reader.pause_if_requested(&mut partial, control)?;
     let mut checkpoint_bytes = partial.bytes();
     let mut checkpoint_time = Instant::now();
     let mut buffer = [0u8; 64 * 1024];
     while !eof {
         if let Err(cause) = super::http::check_cancel(cancel) {
-            checkpoint_if_exact(&mut partial, file)?;
+            checkpoint_if_exact(&mut partial, file, control)?;
             return Err(cause);
         }
         let read = match reader.read(&mut buffer) {
             Ok(read) => read,
             Err(_) => {
-                checkpoint_if_exact(&mut partial, file)?;
+                checkpoint_if_exact(&mut partial, file, control)?;
+                super::http::check_cancel(cancel)?;
                 return Err(Error::State("HTTP object read failed".into()));
             }
         };
@@ -372,24 +453,30 @@ fn transfer_object(
             continue;
         }
         if let Err(cause) = partial.write_chunk(&buffer[..read]) {
-            checkpoint_if_exact(&mut partial, file)?;
+            checkpoint_if_exact(&mut partial, file, control)?;
             return Err(cause);
         }
         if partial.bytes() - checkpoint_bytes >= 8 * 1024 * 1024
             || checkpoint_time.elapsed() >= Duration::from_secs(1)
         {
-            checkpoint_if_exact(&mut partial, file)?;
+            checkpoint_if_exact(&mut partial, file, control)?;
             checkpoint_bytes = partial.bytes();
             checkpoint_time = Instant::now();
         }
         report(partial.bytes(), resumed, 0);
+        reader.pause_if_requested(&mut partial, control)?;
     }
     Ok((partial.finish_after_eof()?, resumed, 0))
 }
 
-fn checkpoint_if_exact(partial: &mut PartialObject<'_>, file: &ResolvedFile) -> Result<()> {
+fn checkpoint_if_exact(
+    partial: &mut PartialObject<'_>,
+    file: &ResolvedFile,
+    control: &impl PullControl,
+) -> Result<()> {
     if file.bytes().is_some() && file.xet.is_none() {
         partial.checkpoint()?;
+        control.checkpoint(partial.checkpointed_bytes());
     }
     Ok(())
 }
@@ -406,6 +493,51 @@ impl<T> SourceReader<'_, T> {
         }
     }
 }
+impl<T: HttpTransport> SourceReader<'_, T> {
+    fn pause_if_requested(
+        &mut self,
+        partial: &mut PartialObject<'_>,
+        control: &impl PullControl,
+    ) -> Result<()> {
+        if !control.pause_requested() {
+            return Ok(());
+        }
+        // Native Xet/capped/weak-validator/full-prefix bodies cannot be
+        // reopened mid-object under the qualified range contract. Defer to
+        // the next completed-file boundary without resetting their budgets.
+        let Self::Http(reader) = self else {
+            return Ok(());
+        };
+        let Some(total) = reader.file.bytes() else {
+            return Ok(());
+        };
+        if partial.bytes() == 0 || partial.bytes() >= total || reader.count != partial.bytes() {
+            return Ok(());
+        }
+        let Some(validator) = partial.validator().map(str::to_owned) else {
+            return Ok(());
+        };
+        checkpoint_if_exact(partial, reader.file, control)?;
+        // Release the live response before parking. No reader, signed range
+        // or deadline is kept active while paused. Keep original transaction,
+        // lock, quota and source authority (never restart the invocation).
+        reader.body = Box::new(io::empty());
+        control.wait_paused(reader.cancel)?;
+        super::http::check_cancel(reader.cancel)?;
+        partial.revalidate_checkpoint()?;
+        let range = ResumeRequest {
+            start: partial.bytes(),
+            total,
+            validator,
+        };
+        let resumed = RetryReader::open(reader.transport, reader.file, reader.cancel, Some(range))?;
+        // Preserve the original automatic retry budget; the explicit resume
+        // is a new validated range on the SAME transaction and pinned file.
+        reader.body = resumed.body;
+        Ok(())
+    }
+}
+
 impl<T: HttpTransport> Read for SourceReader<'_, T> {
     fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
         match self {
@@ -853,6 +985,7 @@ mod cached_start_tests {
             &cancel,
             &mut |bytes, resumed, cached| progress.push((bytes, resumed, cached)),
             None,
+            &Uncontrolled,
         )
         .unwrap();
         assert_eq!(entry.digest(), fixture.file.sha256().unwrap());
@@ -892,6 +1025,7 @@ mod cached_start_tests {
                 cancel.store(true, Ordering::Release);
             },
             None,
+            &Uncontrolled,
         )
         .unwrap_err();
         assert!(matches!(error, Error::State(_)));
@@ -912,6 +1046,7 @@ mod cached_start_tests {
             &cancel,
             &mut |_, _, _| panic!("pointer cannot be reported as accepted progress"),
             None,
+            &Uncontrolled,
         )
         .unwrap_err();
         assert!(matches!(error, Error::Unsupported(_)));

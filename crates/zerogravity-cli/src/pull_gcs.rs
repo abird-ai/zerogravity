@@ -1,10 +1,9 @@
 //! Native GCS JSON object/prefix frontend, sharing the original transfer owner.
-use super::{Action, Options, ProgressDisplay, admission, limits, signals};
+use super::{Action, Options, admission, limits, signals};
 use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::Path;
 use std::sync::{Arc, atomic::AtomicBool};
-use zerogravity::acquisition;
 use zerogravity::acquisition::gcs::{GcsObjectPin, GcsObjectRequest, GcsPrefixRequest};
 use zerogravity::acquisition::http::{HttpOptions, HttpsClient};
 use zerogravity::cache::{CacheOptions, CacheStore, CommitOutcome, FileRole};
@@ -328,18 +327,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             index + 1,
             plans.len()
         );
-        let mut display = ProgressDisplay::default();
-        let receipt = acquisition::execute_with_progress(
-            &store,
-            plan,
-            &client,
-            &admission,
-            &cancel,
-            None,
-            &mut |event| {
-                let _ = display.report(event, &mut std::io::stderr());
-            },
-        )?;
+        let receipt = super::execute_plan(&store, plan, &client, &admission, &cancel)?;
         match receipt.outcome() {
             CommitOutcome::Durable(snapshot) => {
                 println!("Snapshot: {}", snapshot.digest());

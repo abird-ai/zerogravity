@@ -362,3 +362,61 @@ fn unsupported_globals_fail_before_effects() {
         assert!(String::from_utf8_lossy(&result.stderr).contains("error[invalid_usage]"));
     }
 }
+
+#[cfg(all(feature = "acquisition", target_os = "linux"))]
+#[test]
+fn download_modes_refuse_before_provider_or_cache_io() {
+    let root = std::env::temp_dir().join(format!("zg-download-modes-{}", std::process::id()));
+    assert!(!root.exists());
+    for args in [
+        vec![
+            "--format=jsonl",
+            "model",
+            "pull",
+            "hf:fixture/repo@main",
+            "--file",
+            "LICENSE",
+            "--dry-run",
+        ],
+        vec![
+            "--format=jsonl",
+            "model",
+            "pull",
+            "hf:fixture/repo@main",
+            "--file",
+            "LICENSE",
+            "--offline",
+        ],
+        vec![
+            "--interactive=always",
+            "model",
+            "pull",
+            "hf:fixture/repo@main",
+            "--file",
+            "LICENSE",
+        ],
+    ] {
+        let output = binary()
+            .args(args)
+            .arg("--cache")
+            .arg(&root)
+            .env("HF_TOKEN", "not-a-valid\nsecret")
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("not-a-valid"));
+        assert!(!root.exists());
+    }
+    let output = binary()
+        .args(["model", "list", "--partial", "--format=json", "--cache"])
+        .arg(&root)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        serde_json::json!([])
+    );
+    assert!(!root.exists());
+}

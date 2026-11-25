@@ -21,7 +21,7 @@ pub(super) fn usage() {
         println!("    {:12} {description}", n.name);
     }
     println!(
-        "\nGLOBAL OPTIONS:\n    -q, --quiet | -v, --verbose | -vv\n    --format auto|text|json|jsonl  (structured formats where supported)\n    --color auto|always|never --progress auto|always|never\n    --interactive auto|never|always (forced interaction pending)\n    --config FILE | --profile NAME (where supported)\n    --offline  --yes (model remove only)\n\nRun 'zerogravity help <command>' for details. No implicit acquisition."
+        "\nGLOBAL OPTIONS:\n    -q, --quiet | -v, --verbose | -vv\n    --format auto|text|json|jsonl  (structured formats where supported)\n    --color auto|always|never --progress auto|always|never\n    --interactive auto|never|always (online hub/Xet pull)\n    --config FILE | --profile NAME (where supported)\n    --offline  --yes (model remove only)\n\nRun 'zerogravity help <command>' for details. No implicit acquisition."
     );
 }
 
@@ -39,7 +39,7 @@ pub(super) fn topic_usage(topic: Topic, child: Option<&str>) -> zerogravity::Res
         Topic::Model => match child {
             Some("pull") => {
                 println!(
-                    "USAGE: zerogravity model pull hf:REPO@REV --file PATH [--file PATH ...]\n       zerogravity model pull gh:OWNER/REPO@REV --file PATH\nAdvanced provider forms retain the existing pull grammar. Acquisition is explicit."
+                    "USAGE: zerogravity model pull hf:REPO@REV --file PATH [--file PATH ...]\n       zerogravity model pull gh:OWNER/REPO@REV --file PATH\nAdvanced provider forms retain the existing pull grammar. Acquisition is explicit.\nOnline hub/Xet transfers: --format jsonl, --interactive auto|always|never.\nSpace requests pause/resume; c/Ctrl-C requests cancellation."
                 );
                 #[cfg(all(feature = "acquisition", target_os = "linux"))]
                 crate::pull::help();
@@ -47,7 +47,7 @@ pub(super) fn topic_usage(topic: Topic, child: Option<&str>) -> zerogravity::Res
                 println!("Requires the optional acquisition feature on Linux.");
             }
             Some("list") => println!(
-                "USAGE: zerogravity model list [--cache ABS_PATH] [--format json]\nRead-only canonical manifest metadata; no payload or execution qualification."
+                "USAGE: zerogravity model list [--partial] [--cache ABS_PATH] [--format json]\nRead-only manifest metadata or recorded checkpoints; no payload or execution qualification."
             ),
             Some("inspect") | Some("verify") => {
                 let operation = child.expect("known operation");

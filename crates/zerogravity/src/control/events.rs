@@ -24,13 +24,33 @@ pub enum ReclaimStatus {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ControlEventKind {
-    ModelLoadFinished { success: bool },
-    ModelUnloadFinished { registration_id: u64, success: bool },
-    RequestAccepted { registration_id: u64 },
-    CacheVerificationFinished { success: bool },
-    CacheReclamationFinished { outcome: ReclaimStatus },
-    ServeStartFinished { success: bool },
-    ServeStopFinished { generation: u64, success: bool },
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    DownloadChanged {
+        id: u64,
+    },
+    ModelLoadFinished {
+        success: bool,
+    },
+    ModelUnloadFinished {
+        registration_id: u64,
+        success: bool,
+    },
+    RequestAccepted {
+        registration_id: u64,
+    },
+    CacheVerificationFinished {
+        success: bool,
+    },
+    CacheReclamationFinished {
+        outcome: ReclaimStatus,
+    },
+    ServeStartFinished {
+        success: bool,
+    },
+    ServeStopFinished {
+        generation: u64,
+        success: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]

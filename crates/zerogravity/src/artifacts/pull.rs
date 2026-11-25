@@ -236,12 +236,7 @@ impl PreparedHubPull<'_> {
         cancel: &Arc<AtomicBool>,
         progress: &mut impl FnMut(&acquisition::PullProgress<'_>),
     ) -> Result<acquisition::PullReceipt> {
-        self.runtime.require_open()?;
-        if self.mode != PullMode::Transfer {
-            return Err(Error::Unsupported(
-                "inspection plan cannot transfer source payloads".into(),
-            ));
-        }
+        self.require_transfer()?;
         acquisition::execute_with_progress(
             store,
             &self.plan,
@@ -251,6 +246,40 @@ impl PreparedHubPull<'_> {
             Some(&self.reference),
             progress,
         )
+    }
+
+    pub fn execute_controlled(
+        &self,
+        store: &cache::CacheStore,
+        transport: &impl acquisition::http::HttpTransport,
+        admission: &cache::TransferAdmission,
+        cancel: &Arc<AtomicBool>,
+        observation: acquisition::PullObservation<
+            '_,
+            impl acquisition::PullControl,
+            impl FnMut(&acquisition::PullProgress<'_>),
+        >,
+    ) -> Result<acquisition::PullReceipt> {
+        self.require_transfer()?;
+        acquisition::execute_controlled(
+            store,
+            &self.plan,
+            transport,
+            admission,
+            cancel,
+            Some(&self.reference),
+            observation,
+        )
+    }
+
+    fn require_transfer(&self) -> Result<()> {
+        self.runtime.require_open()?;
+        if self.mode != PullMode::Transfer {
+            return Err(Error::Unsupported(
+                "inspection plan cannot transfer source payloads".into(),
+            ));
+        }
+        Ok(())
     }
 }
 fn check_cancel(cancel: &AtomicBool) -> Result<()> {

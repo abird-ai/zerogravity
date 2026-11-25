@@ -1,11 +1,11 @@
 //! Native ModelScope explicit-commit acquisition through the shared cold owner.
-use super::{Action, Options, ProgressDisplay, admission, limits, signals};
+use super::{Action, Options, admission, limits, signals};
 use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::Path;
 use std::sync::{Arc, atomic::AtomicBool};
 use zerogravity::acquisition::http::{HttpOptions, HttpsClient};
-use zerogravity::acquisition::{self, modelscope::ModelScopeRequest};
+use zerogravity::acquisition::modelscope::ModelScopeRequest;
 use zerogravity::cache::{CacheOptions, CacheStore, CommitOutcome};
 use zerogravity::{Error, Result};
 struct ModelScopeOptions {
@@ -209,18 +209,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         return Ok(());
     }
     let store = CacheStore::open(cache_options(&options.common)?)?;
-    let mut display = ProgressDisplay::default();
-    let receipt = acquisition::execute_with_progress(
-        &store,
-        &plan,
-        &client,
-        &admission,
-        &cancel,
-        None,
-        &mut |event| {
-            let _ = display.report(event, &mut std::io::stderr());
-        },
-    )?;
+    let receipt = super::execute_plan(&store, &plan, &client, &admission, &cancel)?;
     match receipt.outcome() {
         CommitOutcome::Durable(snapshot) => {
             println!("Snapshot: {}\nVerified during acquisition; pinned repository data only, no model readiness or license approval.", snapshot.digest());

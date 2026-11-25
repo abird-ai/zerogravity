@@ -1,11 +1,10 @@
 //! Explicit content-bound HTTPS input; signed object URLs are never argv/output.
-use super::{Action, Options, ProgressDisplay, admission, limits, signals};
+use super::{Action, Options, admission, limits, signals};
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::{Arc, atomic::AtomicBool};
-use zerogravity::acquisition;
 use zerogravity::acquisition::http::{HttpOptions, HttpsClient};
 use zerogravity::acquisition::object::HttpsObjectSpec;
 use zerogravity::cache::{CacheOptions, CacheStore, CommitOutcome, FileRole};
@@ -272,18 +271,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     )?;
     let _signals = signals::CancellationSignals::register(cancel.clone())?;
     let store = CacheStore::open(cache_options(&options.common)?)?;
-    let mut display = ProgressDisplay::default();
-    let receipt = acquisition::execute_with_progress(
-        &store,
-        &plan,
-        &client,
-        &admission,
-        &cancel,
-        None,
-        &mut |event| {
-            let _ = display.report(event, &mut std::io::stderr());
-        },
-    )?;
+    let receipt = super::execute_plan(&store, &plan, &client, &admission, &cancel)?;
     match receipt.outcome() {
         CommitOutcome::Durable(snapshot) => {
             println!(

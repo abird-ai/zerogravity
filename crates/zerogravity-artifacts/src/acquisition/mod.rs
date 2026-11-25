@@ -34,7 +34,10 @@ pub use components::{
     execute_components, execute_components_with_progress, open_components, resolve_components,
     validate_cached_selection,
 };
-pub use executor::{AcquiredFile, PullProgress, PullReceipt, execute, execute_with_progress};
+pub use executor::{
+    AcquiredFile, PullControl, PullObservation, PullPhase, PullProgress, PullReceipt, execute,
+    execute_controlled, execute_with_progress,
+};
 pub use quant::GgufQuantRequest;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};

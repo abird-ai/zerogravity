@@ -7,7 +7,7 @@ use super::*;
 use std::os::unix::fs::FileExt;
 
 const PARTIAL_SCHEMA: &str = "zerogravity.cache.partial.v1";
-const PARTIAL_LIMIT: usize = 4096;
+pub(super) const PARTIAL_LIMIT: usize = 4096;
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -21,6 +21,47 @@ struct PartialRecord {
     validator: String,
     device: u64,
     inode: u64,
+}
+
+/// Cold checkpoint-record observation, not a verified prefix or proof that
+/// an attempt is inactive. The actual recovery path must revalidate everything.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PartialSummary {
+    pub key: String,
+    pub bytes: u64,
+    pub total: u64,
+}
+
+pub(super) fn partial_record_path(path: &str) -> bool {
+    let mut parts = path.split('/');
+    parts.next() == Some("staging")
+        && parts.next().is_some()
+        && parts
+            .next()
+            .is_some_and(|leaf| leaf.starts_with("partial-") && leaf.ends_with(".json"))
+        && parts.next().is_none()
+}
+pub(super) fn summarize_record(raw: &[u8], path: &str) -> Result<PartialSummary> {
+    let record: PartialRecord = serde_json::from_slice(raw)
+        .map_err(|_| Error::Malformed("invalid partial checkpoint".into()))?;
+    if record.schema != PARTIAL_SCHEMA
+        || record.bytes == 0
+        || record.bytes >= record.total
+        || record.ordinal >= super::super::CacheLimits::default().max_files
+        || !path.ends_with(&format!("/partial-{}.json", record.ordinal))
+    {
+        return Err(Error::Malformed(
+            "partial checkpoint binding mismatch".into(),
+        ));
+    }
+    validate_digest(&record.key)?;
+    validate_digest(&record.sha256)?;
+    strong_validator(&record.validator)?;
+    Ok(PartialSummary {
+        key: record.key,
+        bytes: record.bytes,
+        total: record.total,
+    })
 }
 
 // Keep the payload descriptor before its dead-attempt owner guard. Rust drops
@@ -357,6 +398,58 @@ impl PartialObject<'_> {
 
     pub fn bytes(&self) -> u64 {
         self.bytes
+    }
+
+    /// Last authenticated recovered prefix or successful durable checkpoint.
+    /// Does not attest later crash-tail bytes or snapshot publication.
+    #[cfg(feature = "acquisition")]
+    pub(crate) fn checkpointed_bytes(&self) -> u64 {
+        self.checkpointed
+    }
+
+    /// Rehash the already admitted, held prefix before reopening a response.
+    /// The original writer offset is unchanged; no new buffer or path owner.
+    #[cfg(feature = "acquisition")]
+    pub(crate) fn revalidate_checkpoint(&mut self) -> Result<()> {
+        self.ensure_owner()?;
+        if self.write_failed || self.bytes == 0 || self.checkpointed != self.bytes {
+            return Err(Error::State(
+                "paused prefix lacks a complete checkpoint".into(),
+            ));
+        }
+        let before = self.target.metadata()?;
+        if before.len() != self.bytes {
+            return Err(Error::Malformed("paused prefix extent changed".into()));
+        }
+        let mut offset = 0;
+        let mut digest = Sha256::new();
+        while offset < self.bytes {
+            self.ensure_owner()?;
+            let buffer = &mut self.transaction.inner.buffer;
+            let count = buffer
+                .len()
+                .min((self.bytes - offset).min(usize::MAX as u64) as usize);
+            let read = self.target.read_at(&mut buffer[..count], offset)?;
+            if read == 0 {
+                return Err(Error::Malformed("paused prefix truncated".into()));
+            }
+            digest.update(&buffer[..read]);
+            offset += read as u64;
+        }
+        self.ensure_owner()?;
+        let after = self.target.metadata()?;
+        if before.dev() != after.dev()
+            || before.ino() != after.ino()
+            || before.len() != after.len()
+            || before.mtime() != after.mtime()
+            || before.mtime_nsec() != after.mtime_nsec()
+            || before.ctime() != after.ctime()
+            || before.ctime_nsec() != after.ctime_nsec()
+            || digest.finalize() != self.hasher.clone().finalize()
+        {
+            return Err(Error::Malformed("paused prefix changed".into()));
+        }
+        Ok(())
     }
 
     pub fn validator(&self) -> Option<&str> {

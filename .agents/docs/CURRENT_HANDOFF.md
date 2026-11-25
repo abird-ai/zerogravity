@@ -24,7 +24,65 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-3 (25 Nov)
+### Current checkpoint — Phase 2.1 UX-4 (25 Nov)
+
+The canonical single-plan download lifecycle shares the existing native
+ControlPlane, original resolver, acquisition executor, admission and cache
+transaction. No parallel downloader, daemon, source grant or backend change.
+
+- One control-owned operation view per runtime clone family, exact operation
+  ID, typed phase/status/counters, cancel-request distinction and original
+  durable/uncertain publication outcome. Caller owns the synchronous
+  transfer; bounded events invalidate the latest snapshot. Rate is newly
+  accepted logical bytes, not network throughput. Direct SDK/external cache
+  activity is not a complete operation history.
+- Ordinary HTTP with exact length, strong validator and a proper prefix can
+  pause within a file. Original checkpoint, drop response, park the same
+  admitted transaction, rehash held descriptor, reopen the exact validated
+  range. No retry-budget reset or new cache owner. Native Xet, capped,
+  weak-validator and unsuitable prefixes park at a safe completed-file or
+  pre-publication boundary. Pause is a request until acknowledged; cancellation
+  remains cooperative, never implies rollback of a durable/uncertain commit.
+- Cold `model list --partial` (text/JSON) reports bounded checkpoint records
+  by key and lengths, not authenticated or guaranteed resumable payloads;
+  records may include active attempts. Existing recovery still validates
+  identity, prefix, extent and validator before reuse. No implicit deletion.
+- Canonical explicit HF/GH and native Xet online single-plan pull supports
+  plain/rich progress, quiet, JSONL observations and final typed receipt;
+  foreground Linux TTY Space toggles pause/resume, C/Ctrl-C cancels.
+  RAII terminal restoration on normal return/unwind; one scoped CLI worker
+  only when presentation/input needs it; quiet path synchronous.
+  Confirmed cancellation exits 130, other failures preserve original errors.
+  JSONL is latest observations, not durable event replay. Dry-run/offline and
+  unsupported forced interaction/JSONL refuse before credentials/cache IO.
+- Direct object/cloud/provider plans use the same operation/progress view per
+  independently published plan; advanced forced interaction/JSONL and
+  multi-component aggregate control remain explicit follow-up, components
+  retain their original sequential executor/progress. No inferred catalog
+  acquisition or provider fallback. Existing locked rustix termios/process
+  features enabled; no added package or lockfile change.
+- Original exact checkpoint/range continuation and cold partial inventory
+  pass; two SDK clients pause/resume/cancel the same operation, reject stale
+  and duplicate controls and preserve previous ref/resource accounting.
+  Real isolated PTY fixture passes resume, C cancel and Ctrl-C cancel with
+  restored modes. Normal JSONL and quiet JSONL pass (terminal durable state
+  and one receipt, no URL/validator leakage). Full mandatory-private-network
+  workspace gate exits 0: 2459 Rust test executions pass, 0 fail, 109 explicit
+  skips; separate SDK acquisition test and five explicitly run monitor-child
+  scenarios pass. Architecture/feature boundaries, strict artifact and
+  combined acquisition/serve lint, release/installer/scripts pass.
+  Development compile/lint issues fixed (closure annotation, CacheLimits
+  scope, unused imports and boolean predicates). No new physical, provider,
+  model or numerical qualification.
+
+**Next coherent unit: UX-5 — one-line run (§46A.28).**
+Complete canonical model/config/prompt resolution and direct execution through
+the original owners, with explicit acquisition consent and factual backend
+selection/refusal. UX-6 stable serve, UX-7 ConfigDocument/profile management,
+native TUI then Web remain ordered. Keep advanced provider presentation
+extension and aggregate component controls as bounded later lifecycle work.
+
+### Previous checkpoint — Phase 2.1 UX-3 (25 Nov; 3cf1bb2d)
 
 One shared native SDK ControlPlane over the existing Runtime and original
 cache/device/config/transport owners. No frontend runtime, scheduler, catalog,
@@ -78,7 +136,7 @@ cache hierarchy, dependency or backend policy change.
   Initial nonminimal-bool and test drop-non-drop lint refusals corrected;
   no physical GPU qualification claimed.
 
-**Next coherent unit: UX-4 — model lifecycle + downloads (§46A.28).**
+**Historical next unit (now implemented above): UX-4 — model lifecycle + downloads (§46A.28).**
 Attach original acquisition/cache transactions to the shared control
 state; typed progress, cooperative pause/resume/cancel, retained partial
 reporting and quiet/plain/JSONL/interactive presentation. No second
