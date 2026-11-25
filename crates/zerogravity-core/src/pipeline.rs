@@ -471,10 +471,32 @@ impl Config {
             }
         }
     }
-    /// Select the existing structurally verified serial language path.
-    /// No target lookup can establish execution eligibility. The caller must
-    /// explicitly bind its model IDs to the original loaded owners.
+    /// Existing manually loaded bindings cannot silently ignore source pins.
     pub fn language_chain(&self, name: &str) -> Result<Vec<&PipelineNode>> {
+        let chain = self.language_chain_structure(name)?;
+        for stage in &chain {
+            let model = self
+                .models
+                .iter()
+                .find(|m| Some(m.id.as_str()) == stage.model.as_deref())
+                .ok_or_else(invalid)?;
+            if model.source.is_some()
+                || model.model_config.is_some()
+                || model.tokenizer.is_some()
+                || model.snapshot.is_some()
+                || model.native_artifacts.is_some()
+            {
+                return Err(Error::Unsupported(
+                    "pipeline source pins must be resolved before binding loaded owners".into(),
+                ));
+            }
+        }
+        Ok(chain)
+    }
+
+    /// Select the structurally verified serial language path, including
+    /// unresolved source declarations. No source or execution eligibility.
+    pub fn language_chain_structure(&self, name: &str) -> Result<Vec<&PipelineNode>> {
         let shape = self.validate()?;
         let pipeline = self
             .pipelines
@@ -507,22 +529,6 @@ impl Config {
                     .iter()
                     .find(|stage| stage.id == *id)
                     .ok_or_else(invalid)?;
-                let model = self
-                    .models
-                    .iter()
-                    .find(|m| Some(m.id.as_str()) == stage.model.as_deref())
-                    .ok_or_else(invalid)?;
-                if model.source.is_some()
-                    || model.model_config.is_some()
-                    || model.tokenizer.is_some()
-                    || model.snapshot.is_some()
-                    || model.native_artifacts.is_some()
-                {
-                    // Do not silently ignore an unresolved acquisition/source pin.
-                    return Err(Error::Unsupported(
-                        "pipeline source pins must be resolved before binding loaded owners".into(),
-                    ));
-                }
                 Ok(stage)
             })
             .collect()

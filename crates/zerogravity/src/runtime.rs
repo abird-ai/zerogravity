@@ -52,6 +52,18 @@ impl Runtime {
     ) -> Result<crate::pipelines::PreparedLanguagePipeline> {
         self.engine.prepare_pipeline(config, name, bindings)
     }
+    /// Cold-load only the selected serial language chain's declared sources,
+    /// with explicit execution policy. Empty runtime only. All exact aliases
+    /// and the admitted plan publish together, or the private router retires.
+    pub fn load_pipeline(
+        &self,
+        config: &crate::pipelines::Config,
+        name: &str,
+        policy: crate::pipelines::LanguageLoadPolicy,
+    ) -> std::result::Result<crate::pipelines::PreparedLanguagePipeline, text::ServiceError> {
+        crate::pipelines::load_language(&self.engine, config, name, policy)
+    }
+
     /// Execute through the original scheduler, with a finite per-stage limit.
     pub fn run_pipeline(
         &self,

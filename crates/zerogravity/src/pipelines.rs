@@ -1,9 +1,12 @@
 //! Bounded v1/v2 pipeline YAML and typed structural checking.
 //!
 //! Successful checking is not execution eligibility: no models, context store,
-//! devices or APIs are started. Explicit loaded language binding is separate.
+//! devices or APIs are started. Explicit cold load/bind and loaded language
+//! binding both use the original runtime lifecycle and task scheduler.
 pub use zerogravity_engine::pipeline::{LanguageBinding, LanguageStage, PreparedLanguagePipeline};
 mod document;
+mod load;
+pub use load::LanguageLoadPolicy;
 mod patch;
 pub use patch::{ChatContextPatch, PipelinePatch};
 mod yaml;
@@ -28,6 +31,18 @@ pub struct CheckedDocument {
     pub shape: VerifiedShape,
 }
 
+/// Resolve selected declarations only inside the original runtime load slot.
+/// The engine commits the router and admitted plan together.
+pub(crate) fn load_language(
+    runtime: &zerogravity_engine::Runtime,
+    config: &Config,
+    name: &str,
+    policy: LanguageLoadPolicy,
+) -> std::result::Result<PreparedLanguagePipeline, crate::runtime::text::ServiceError> {
+    runtime
+        .configure_language_pipeline(config, name, |models| policy.load(models, runtime.limits()))
+}
+
 pub fn check(config: &Config) -> crate::Result<VerifiedShape> {
     config.validate()
 }
@@ -40,8 +55,8 @@ pub fn check_entrypoint(
 }
 
 /// Context-free compatibility entrypoint. Execution requires an explicit
-/// loaded runtime and bindings via Runtime::prepare_pipeline/run_pipeline.
-/// No automatic source loading, device selection, listener or terminal IO.
+/// runtime and policy via Runtime::load_pipeline or explicit loaded bindings
+/// via prepare_pipeline, then run_pipeline. No implicit device/source selection.
 pub fn run(_config: &Config) -> crate::Result<()> {
     Err(crate::Error::Unsupported(
         "compiled multi-model pipeline execution NOT IMPLEMENTED; no source or device was opened"

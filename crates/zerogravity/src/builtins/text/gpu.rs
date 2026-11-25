@@ -24,6 +24,7 @@ use zerogravity_engine::router::{
 const GPU_CAPACITY: usize = 512;
 mod load;
 pub use load::load_gpu_router;
+pub(crate) use load::load_gpu_router_declared;
 #[cfg(any(
     all(test, feature = "cuda", feature = "cpu"),
     all(feature = "qwen35-cuda-qualification", target_os = "linux")

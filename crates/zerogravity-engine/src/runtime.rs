@@ -235,6 +235,17 @@ impl Runtime {
         &self,
         load: impl FnOnce() -> std::result::Result<Router, ServiceError>,
     ) -> std::result::Result<(), ServiceError> {
+        self.configure_text_with(load, |_| Ok(()))
+    }
+
+    /// Prepare another bounded cold owner against the unpublished router.
+    /// Both owners become available only after the same load slot commits.
+    /// Finalization must not expose the private router or run request work.
+    pub(crate) fn configure_text_with<T>(
+        &self,
+        load: impl FnOnce() -> std::result::Result<Router, ServiceError>,
+        finalize: impl FnOnce(&Router) -> std::result::Result<T, ServiceError>,
+    ) -> std::result::Result<T, ServiceError> {
         {
             let mut text = self.inner.text.lock().map_err(|_| runtime_lock_error())?;
             if self.inner.closed.load(Ordering::Acquire) {
@@ -267,21 +278,39 @@ impl Runtime {
                 .inner
                 .limits
                 .allows_pending(router.queue_snapshot().limit);
-        {
-            let mut text = self
-                .inner
-                .text
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if valid && !self.inner.closed.load(Ordering::Acquire) {
-                text.phase = TextPhase::Ready(router);
-                operation.armed = false;
-                self.inner.changed.notify_all();
-                return Ok(());
+        let prepared = if !valid {
+            Err(ServiceError::new(
+                400,
+                "invalid_config",
+                "text scheduler exceeds runtime limits",
+            ))
+        } else if self.inner.closed.load(Ordering::Acquire) {
+            Err(runtime_closed())
+        } else {
+            finalize(&router)
+        };
+        let refusal = match prepared {
+            Ok(prepared) => {
+                let mut text = self
+                    .inner
+                    .text
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if !self.inner.closed.load(Ordering::Acquire) {
+                    text.phase = TextPhase::Ready(router);
+                    operation.armed = false;
+                    self.inner.changed.notify_all();
+                    return Ok(prepared);
+                }
+                drop(text);
+                // The private result may retain admitted plan metadata.
+                drop(prepared);
+                runtime_closed()
             }
-        }
-        // Invalid/raced loads still own real workers. Keep Loading until both
-        // joins and source destruction complete; no router is dropped under lock.
+            Err(error) => error,
+        };
+        // Keep Loading until original workers, source readers and charges
+        // retire. No router or private result is destroyed under the lock.
         let failure = self.retire_text_router(router);
         operation.finish();
         if let Some(message) = failure {
@@ -289,13 +318,10 @@ impl Runtime {
         } else if self.inner.closed.load(Ordering::Acquire) {
             Err(runtime_closed())
         } else {
-            Err(ServiceError::new(
-                400,
-                "invalid_config",
-                "text scheduler exceeds runtime limits",
-            ))
+            Err(refusal)
         }
     }
+
     /// Short snapshot/admission callback on the actual scheduler. Never hold
     /// this lock across transport IO or re-enter the runtime from the callback.
     pub fn with_text_router<T>(

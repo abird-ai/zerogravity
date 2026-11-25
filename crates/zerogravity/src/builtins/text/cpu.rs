@@ -106,6 +106,32 @@ pub fn load_router(
     host_mib: usize,
     max_pending: Option<usize>,
 ) -> Result<Router, ServiceError> {
+    load_router_declared(
+        declared,
+        crate::runtime::TextConfig {
+            workers,
+            active_per_worker,
+            max_context,
+            max_output,
+            host_mib,
+            max_pending,
+        },
+        &BTreeMap::new(),
+    )
+}
+pub(crate) fn load_router_declared(
+    declared: Vec<(String, PathBuf)>,
+    config: crate::runtime::TextConfig,
+    targets: &BTreeMap<String, String>,
+) -> Result<Router, ServiceError> {
+    let crate::runtime::TextConfig {
+        workers,
+        active_per_worker,
+        max_context,
+        max_output,
+        host_mib,
+        max_pending,
+    } = config;
     validate_config(
         declared.len(),
         workers,
@@ -115,8 +141,9 @@ pub fn load_router(
         max_pending,
     )?;
     let declared = LocalRoutes::resolve(declared)?;
+    declared.require_targets(targets)?;
     let host = ServingHost::new(host_mib)?;
-    let models = load::load_models(declared, &host, max_context)?;
+    let models = load::load_models(declared, &host, max_context, targets)?;
     // The same process-lifetime Rayon owner is admitted before any worker.
     let alias = models
         .keys()

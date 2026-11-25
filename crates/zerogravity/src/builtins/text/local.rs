@@ -26,6 +26,41 @@ impl LocalRoutes {
         Ok(Self(declared))
     }
 
+    /// Optional declared targets constrain the same canonical route groups.
+    /// All aliases of one source must agree before any model is materialized.
+    pub(super) fn require_targets(
+        &self,
+        targets: &BTreeMap<String, String>,
+    ) -> Result<(), ServiceError> {
+        if targets.is_empty() {
+            return Ok(());
+        }
+        if targets.len() != self.0.len() {
+            return Err(ServiceError::new(
+                400,
+                "invalid_model",
+                "declared target coverage differs",
+            ));
+        }
+        let mut groups = BTreeMap::new();
+        for (alias, path) in &self.0 {
+            let target = targets.get(alias).ok_or_else(|| {
+                ServiceError::new(400, "invalid_model", "declared model target absent")
+            })?;
+            if groups
+                .insert(path, target)
+                .is_some_and(|prior| prior != target)
+            {
+                return Err(ServiceError::new(
+                    400,
+                    "invalid_model",
+                    "aliases of one canonical source disagree on target",
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn prepare<M: ?Sized>(
         self,
         mut prepare: impl FnMut(&str, &Path, usize) -> Result<Arc<M>, ServiceError>,
@@ -102,6 +137,7 @@ pub(super) fn load(
     alias: &str,
     path: &Path,
     host: &ServingHost,
+    expected_target: Option<&str>,
 ) -> Result<LocalModel, ServiceError> {
     let parent = path.parent().unwrap_or(Path::new("."));
     // Hold the actual regular-file descriptor across all cold work.
@@ -177,6 +213,17 @@ pub(super) fn load(
         .map_err(ServiceError::inference)?;
     let geometry = crate::qwen35::config::ModelGeometry::from_json(&config)
         .map_err(ServiceError::inference)?;
+    if let Some(target) = expected_target {
+        let actual = crate::prepare::PreparedQwen::routing_target(&geometry)
+            .map_err(ServiceError::inference)?;
+        if actual != target {
+            return Err(ServiceError::new(
+                400,
+                "invalid_model",
+                "declared model target differs from actual source geometry",
+            ));
+        }
+    }
     let artifact = inspect_admitted_weights(file, path, input_len)?;
     let model = LoadedQwenModel::from_inspected_gguf(artifact, geometry)
         .map_err(ServiceError::inference)?;

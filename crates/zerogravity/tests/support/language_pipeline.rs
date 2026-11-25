@@ -10,6 +10,46 @@ use zerogravity::{
     runtime::text::{Request, ResponseEvent},
 };
 
+pub fn graph(models: Vec<ModelInstance>) -> Config {
+    let steps: Vec<_> = models
+        .iter()
+        .enumerate()
+        .map(|(index, model)| PipelineNode {
+            id: format!("stage{index}"),
+            kind: "llm".into(),
+            model: Some(model.id.clone()),
+        })
+        .collect();
+    let mut links = Vec::new();
+    let mut from = "input.value".to_string();
+    for stage in &steps {
+        let endpoint = format!("{}.text", stage.id);
+        links.push(PipelineEdge {
+            from,
+            to: endpoint.clone(),
+        });
+        from = endpoint;
+    }
+    links.push(PipelineEdge {
+        from,
+        to: "output.value".into(),
+    });
+    Config {
+        models,
+        pipelines: vec![Pipeline {
+            name: "chain".into(),
+            input: ValueKind::Text,
+            output: ValueKind::Text,
+            realtime: false,
+            chat_context: None,
+            steps,
+            links,
+        }],
+        routes: vec![],
+    }
+}
+
+#[allow(dead_code)]
 pub fn compare(
     runtime: &Runtime,
     target: &str,
@@ -34,30 +74,9 @@ pub fn compare(
             native_artifacts: None,
         })
         .collect();
-    let steps: Vec<_> = models
-        .iter()
-        .enumerate()
-        .map(|(index, model)| PipelineNode {
-            id: format!("stage{index}"),
-            kind: "llm".into(),
-            model: Some(model.id.clone()),
-        })
-        .collect();
-    let mut links = Vec::new();
-    let mut from = "input.value".to_string();
-    for stage in &steps {
-        let endpoint = format!("{}.text", stage.id);
-        links.push(PipelineEdge {
-            from,
-            to: endpoint.clone(),
-        });
-        from = endpoint;
-    }
-    links.push(PipelineEdge {
-        from,
-        to: "output.value".into(),
-    });
-    let bindings: Vec<_> = models
+    let graph = graph(models);
+    let bindings: Vec<_> = graph
+        .models
         .iter()
         .zip(aliases)
         .zip(&owners)
@@ -67,32 +86,29 @@ pub fn compare(
             owner,
         })
         .collect();
-    let graph = Config {
-        models: models.clone(),
-        pipelines: vec![Pipeline {
-            name: "chain".into(),
-            input: ValueKind::Text,
-            output: ValueKind::Text,
-            realtime: false,
-            chat_context: None,
-            steps,
-            links,
-        }],
-        routes: vec![],
-    };
     let plan = runtime
         .prepare_pipeline(&graph, "chain", &bindings)
         .unwrap();
+    compare_prepared(runtime, &plan, prompt, limit);
+    plan
+}
+
+pub fn compare_prepared(
+    runtime: &Runtime,
+    plan: &PreparedLanguagePipeline,
+    prompt: &str,
+    limit: usize,
+) {
     let mut input = prompt.to_owned();
     let mut expected = None;
-    for alias in aliases {
+    for stage in plan.stages() {
         assert!(
             !input.is_empty(),
             "physical chain needs nonempty intermediate text"
         );
         let events = runtime
             .request_text(Request {
-                model: (*alias).into(),
+                model: stage.alias().into(),
                 input,
                 chat: false,
                 max_tokens: limit,
@@ -121,7 +137,7 @@ pub fn compare(
         input = output;
     }
     let mut stream = runtime
-        .run_pipeline(&plan, prompt, NonZeroUsize::new(limit).unwrap())
+        .run_pipeline(plan, prompt, NonZeroUsize::new(limit).unwrap())
         .unwrap();
     let mut deltas = String::new();
     let mut terminal = None;
@@ -141,6 +157,5 @@ pub fn compare(
     }
     assert_eq!(terminal, expected);
     assert_eq!(deltas, terminal.unwrap().0);
-    println!("LANGUAGE_PIPELINE_SDK_PASS stages={}", aliases.len());
-    plan
+    println!("LANGUAGE_PIPELINE_SDK_PASS stages={}", plan.stages().len());
 }

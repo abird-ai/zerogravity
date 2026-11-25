@@ -88,6 +88,8 @@ impl<T: Send + Sync> TextTokenizer for TokenizerOwner<T> {
 mod cpu;
 #[cfg(all(feature = "cpu", feature = "cache"))]
 pub use cpu::load_router;
+#[cfg(all(feature = "cpu", feature = "cache"))]
+pub(crate) use cpu::load_router_declared;
 
 #[cfg(all(test, feature = "cpu", feature = "cache"))]
 mod tests;

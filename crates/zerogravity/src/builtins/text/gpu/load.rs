@@ -84,6 +84,14 @@ pub fn load_gpu_router(
     backend: GpuBackend,
     profile: GpuProfile,
 ) -> Result<Router, ServiceError> {
+    load_gpu_router_declared(declared, backend, profile, &BTreeMap::new())
+}
+pub(crate) fn load_gpu_router_declared(
+    declared: Vec<(String, PathBuf)>,
+    backend: GpuBackend,
+    profile: GpuProfile,
+    targets: &BTreeMap<String, String>,
+) -> Result<Router, ServiceError> {
     let GpuProfile {
         workers,
         active,
@@ -130,6 +138,7 @@ pub fn load_gpu_router(
     }
     preflight_cuda_toolkit(backend)?;
     let declared = local::LocalRoutes::resolve(declared)?;
+    declared.require_targets(targets)?;
     // CPU fallback is forbidden: unlinked or absent provider must refuse
     // before a resident model is constructed or HTTP announces readiness.
     let provider_cap = provider_mib
@@ -145,7 +154,7 @@ pub fn load_gpu_router(
             weights: source,
             tokenizer,
             max_token_bytes,
-        } = local::load(alias, path, &host)?;
+        } = local::load(alias, path, &host, targets.get(alias).map(String::as_str))?;
         let hidden_width =
             usize::try_from(source.model().geometry().hidden_size).map_err(|_| {
                 ServiceError::new(400, "source_hidden", "invalid Qwen source hidden width")

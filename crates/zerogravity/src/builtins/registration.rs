@@ -9,6 +9,33 @@ pub(crate) fn load_text(
     request: ModelLoadRequest,
     limits: SchedulerLimits,
 ) -> Result<Router, ServiceError> {
+    load_text_declared(request, limits, &std::collections::BTreeMap::new())
+}
+
+pub(crate) fn load_text_declared(
+    request: ModelLoadRequest,
+    limits: SchedulerLimits,
+    targets: &std::collections::BTreeMap<String, String>,
+) -> Result<Router, ServiceError> {
+    // Declared target assertions apply to local source preparation. No other
+    // request may silently ignore them.
+    let local = match &request {
+        ModelLoadRequest::CpuText { .. } => true,
+        #[cfg(all(
+            feature = "text",
+            any(feature = "vulkan", feature = "cuda", feature = "hip")
+        ))]
+        ModelLoadRequest::GpuText { .. } => true,
+        #[allow(unreachable_patterns)]
+        _ => false,
+    };
+    if !local && !targets.is_empty() {
+        return Err(ServiceError::new(
+            400,
+            "invalid_model",
+            "unexpected local source target assertions",
+        ));
+    }
     match request {
         #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
         ModelLoadRequest::QwenCuda {
@@ -142,15 +169,7 @@ pub(crate) fn load_text(
             )?;
             #[cfg(all(feature = "cpu", feature = "text", feature = "cache"))]
             {
-                super::text::load_router(
-                    declared,
-                    config.workers,
-                    config.active_per_worker,
-                    config.max_context,
-                    config.max_output,
-                    config.host_mib,
-                    config.max_pending,
-                )
+                super::text::load_router_declared(declared, config, targets)
             }
             #[cfg(not(all(feature = "cpu", feature = "text", feature = "cache")))]
             {
@@ -172,7 +191,7 @@ pub(crate) fn load_text(
             profile,
         } => {
             validate_limits(profile.workers, profile.active, profile.max_pending, limits)?;
-            super::text::load_gpu_router(declared, backend, profile)
+            super::text::gpu::load_gpu_router_declared(declared, backend, profile, targets)
         }
     }
 }

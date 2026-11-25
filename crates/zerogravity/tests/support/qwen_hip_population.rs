@@ -8,6 +8,7 @@ use zerogravity::{models::ModelInstance, runtime::text::pending::ServingHost};
 pub(super) struct Harness {
     pub runtime: Runtime,
     pub budget: zerogravity::models::HipSourceBudget,
+    plan: Option<zerogravity::pipelines::PreparedLanguagePipeline>,
     model: ModelInstance,
     alias: ModelInstance,
     pub tokenizer: Arc<dyn TextTokenizer>,
@@ -108,25 +109,64 @@ impl Harness {
         };
         let aliases = vec!["source".into(), "alias".into()];
         let cache = CacheOptions::new(None, 96 * 1024 * 1024 * 1024);
-        let request = if std::env::var_os("ZG_QWEN_HIP_NATIVE_GEMM").is_some() {
-            ModelLoadRequest::qwen_hip_native(aliases, cache, snapshot.into(), profile, budget)
-        } else if let Some(budget) = explicit {
-            ModelLoadRequest::QwenHipWithBudget {
-                aliases,
-                cache,
-                snapshot: snapshot.into(),
-                profile,
-                budget,
-            }
+        let native = std::env::var_os("ZG_QWEN_HIP_NATIVE_GEMM").is_some();
+        let plan = if native && !with_reference {
+            use zerogravity::pipelines::{LanguageLoadPolicy, ModelInstance as Declaration};
+            let target = match label {
+                "08" => "qwen3.5-0.8b",
+                "2b" => "qwen3.5-2b",
+                "27b" => "qwen3.8-27b",
+                _ => unreachable!(),
+            };
+            let graph = super::language_pipeline::graph(
+                aliases
+                    .into_iter()
+                    .map(|id| Declaration {
+                        id,
+                        target: target.into(),
+                        source: None,
+                        snapshot: Some(snapshot.into()),
+                        model_config: None,
+                        tokenizer: None,
+                        native_artifacts: None,
+                    })
+                    .collect(),
+            );
+            Some(
+                runtime
+                    .load_pipeline(
+                        &graph,
+                        "chain",
+                        LanguageLoadPolicy::QwenHipNative {
+                            cache,
+                            profile,
+                            budget,
+                        },
+                    )
+                    .unwrap(),
+            )
         } else {
-            ModelLoadRequest::QwenHip {
-                aliases,
-                cache,
-                snapshot: snapshot.into(),
-                profile,
-            }
+            let request = if native {
+                ModelLoadRequest::qwen_hip_native(aliases, cache, snapshot.into(), profile, budget)
+            } else if let Some(budget) = explicit {
+                ModelLoadRequest::QwenHipWithBudget {
+                    aliases,
+                    cache,
+                    snapshot: snapshot.into(),
+                    profile,
+                    budget,
+                }
+            } else {
+                ModelLoadRequest::QwenHip {
+                    aliases,
+                    cache,
+                    snapshot: snapshot.into(),
+                    profile,
+                }
+            };
+            runtime.models().load(request).unwrap();
+            None
         };
-        runtime.models().load(request).unwrap();
         let physical = arbiter.snapshot(&device).unwrap();
         assert_eq!(physical.reserved, budget.total_device_bytes() as u64);
         assert_eq!(physical.limit, budget.physical_admission_bytes());
@@ -138,6 +178,7 @@ impl Harness {
         Self {
             runtime,
             budget,
+            plan,
             model,
             alias,
             tokenizer,
@@ -444,7 +485,7 @@ fn public_source_population_benchmark() {
         .map(|value| value.parse::<usize>().unwrap())
         .unwrap_or(0);
     let load = Instant::now();
-    let h = Harness::open_benchmark(&label, 8, 1024, 3, 65);
+    let mut h = Harness::open_benchmark(&label, 8, 1024, 3, 65);
     println!(
         "HIP_BENCH_LOAD {}",
         serde_json::json!({"model":label,"load_ms":load.elapsed().as_secs_f64()*1000.0,
@@ -514,8 +555,16 @@ fn public_source_population_benchmark() {
         "27b" => "qwen3.8-27b",
         _ => unreachable!(),
     };
-    let plan =
-        super::language_pipeline::compare(&h.runtime, target, &["source", "alias"], prompt, 3);
+    let plan = if let Some(plan) = h.plan.take() {
+        super::language_pipeline::compare_prepared(&h.runtime, &plan, prompt, 3);
+        println!(
+            "DECLARED_HF_PIPELINE_PASS snapshot={}",
+            source_snapshot(&label)
+        );
+        plan
+    } else {
+        super::language_pipeline::compare(&h.runtime, target, &["source", "alias"], prompt, 3)
+    };
     assert_eq!(plan.stages()[0].source(), plan.stages()[1].source());
     drop(plan);
     h.retire();

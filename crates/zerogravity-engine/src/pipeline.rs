@@ -5,14 +5,16 @@ use crate::{
     model_instance::ModelInstance,
     output::{OutputStream, ResponseEvent, recv_event},
     router::{
-        RegisteredOwner, RequestEvents, Router,
+        RegisteredOwner, RequestEvents, Router, ServiceError,
         pending::{ServingCharge, checked_sum, vec_bytes},
     },
     runtime::{service_error, submit_text},
 };
 use std::{borrow::Cow, num::NonZeroUsize, sync::Arc};
 use zerogravity_core::{
-    identity::SourceIdentity, pipeline::Config, resource_arbiter::AllocationClass,
+    identity::SourceIdentity,
+    pipeline::{Config, ModelInstance as DeclaredModel, PipelineNode},
+    resource_arbiter::AllocationClass,
 };
 
 /// Explicitly associate a declared model ID with an exact loaded handle and
@@ -104,13 +106,8 @@ impl Runtime {
                 })
         };
         self.with_ready_text(|router| {
-            let mut bytes = checked_sum(&[
-                std::mem::size_of::<PreparedChain>() as u64 + 64,
-                vec_bytes::<LanguageStage>(chain.len()).map_err(service_error)?,
-                name.len() as u64,
-            ])
-            .map_err(service_error)?;
-            for stage in &chain {
+            let mut stages = Vec::with_capacity(chain.len());
+            for stage in chain {
                 let binding = binding_for(stage.model.as_deref())?;
                 if !router
                     .model(binding.alias)
@@ -121,31 +118,59 @@ impl Runtime {
                         stage.id
                     )));
                 }
-                bytes = checked_sum(&[bytes, stage.id.len() as u64, binding.alias.len() as u64])
-                    .map_err(service_error)?;
+                stages.push((stage, binding.alias));
             }
-            let charge = router
-                .host()
-                .charge(name, "pipeline-plan", AllocationClass::Scratch, bytes)
-                .map_err(service_error)?;
-            let mut stages = Vec::with_capacity(chain.len());
-            for stage in chain {
-                let binding = binding_for(stage.model.as_deref())?;
-                let registration = router
-                    .registration(binding.alias)
-                    .ok_or_else(|| Error::State("pipeline model admission closed".into()))?;
-                stages.push(LanguageStage {
-                    id: stage.id.clone(),
-                    alias: binding.alias.to_owned(),
-                    registration,
-                });
-            }
-            Ok(PreparedLanguagePipeline(Arc::new(PreparedChain {
-                name: name.to_owned(),
-                stages,
-                _charge: charge,
-            })))
+            bind_chain(router, name, &stages).map_err(service_error)
         })
+    }
+
+    /// Cold source-declared language graph. The trusted embedding loader
+    /// resolves the selected declarations through its actual source/provider
+    /// owners, registering exactly their IDs as aliases in one private router.
+    /// No source authorization is inferred from the graph. The original
+    /// runtime load slot atomically publishes the router and admitted plan.
+    pub fn configure_language_pipeline(
+        &self,
+        config: &Config,
+        name: &str,
+        load: impl FnOnce(&[&DeclaredModel]) -> std::result::Result<Router, ServiceError>,
+    ) -> std::result::Result<PreparedLanguagePipeline, ServiceError> {
+        self.require_open()
+            .map_err(|_| ServiceError::new(503, "runtime_closed", "Fabric runtime is shut down"))?;
+        let chain = config
+            .language_chain_structure(name)
+            .map_err(ServiceError::inference)?;
+        let mut models: Vec<&DeclaredModel> = Vec::new();
+        let mut stages = Vec::with_capacity(chain.len());
+        for stage in chain {
+            let model = config
+                .models
+                .iter()
+                .find(|m| Some(m.id.as_str()) == stage.model.as_deref())
+                .ok_or_else(|| {
+                    ServiceError::new(400, "invalid_model", "pipeline declaration absent")
+                })?;
+            if !models.iter().any(|prior| prior.id == model.id) {
+                models.push(model);
+            }
+            stages.push((stage, model.id.as_str()));
+        }
+        crate::router::validate_aliases(models.iter().map(|m| m.id.as_str()))?;
+        self.configure_text_with(
+            || load(&models),
+            |router| {
+                if router.model_ids().count() != models.len()
+                    || models.iter().any(|m| router.registration(&m.id).is_none())
+                {
+                    return Err(ServiceError::new(
+                        400,
+                        "pipeline_binding",
+                        "loaded aliases differ from selected pipeline declarations",
+                    ));
+                }
+                bind_chain(router, name, &stages)
+            },
+        )
     }
 
     /// Each stage receives the same finite output-token ceiling. Only the
@@ -210,6 +235,47 @@ impl Runtime {
         }
         Ok(())
     }
+}
+
+fn bind_chain(
+    router: &Router,
+    name: &str,
+    selected: &[(&PipelineNode, &str)],
+) -> std::result::Result<PreparedLanguagePipeline, ServiceError> {
+    let mut bytes = checked_sum(&[
+        std::mem::size_of::<PreparedChain>() as u64 + 64,
+        vec_bytes::<LanguageStage>(selected.len())?,
+        name.len() as u64,
+    ])?;
+    for (stage, alias) in selected {
+        if router.registration(alias).is_none() {
+            return Err(ServiceError::new(
+                503,
+                "model_retired",
+                "pipeline model admission closed",
+            ));
+        }
+        bytes = checked_sum(&[bytes, stage.id.len() as u64, alias.len() as u64])?;
+    }
+    let charge = router
+        .host()
+        .charge(name, "pipeline-plan", AllocationClass::Scratch, bytes)?;
+    let mut stages = Vec::with_capacity(selected.len());
+    for (stage, alias) in selected {
+        let registration = router.registration(alias).ok_or_else(|| {
+            ServiceError::new(503, "model_retired", "pipeline model admission closed")
+        })?;
+        stages.push(LanguageStage {
+            id: stage.id.clone(),
+            alias: (*alias).to_owned(),
+            registration,
+        });
+    }
+    Ok(PreparedLanguagePipeline(Arc::new(PreparedChain {
+        name: name.to_owned(),
+        stages,
+        _charge: charge,
+    })))
 }
 
 struct LanguageStream {

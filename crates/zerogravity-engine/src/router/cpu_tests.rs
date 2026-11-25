@@ -678,6 +678,139 @@ fn language_chain() -> zerogravity_core::pipeline::Config {
 }
 
 #[test]
+fn declared_pipeline_load_publishes_only_after_exact_admitted_binding() {
+    use crate::{Runtime, diagnostics::RuntimePhase};
+    let host = HostPool::isolated(256).unwrap();
+    let runtime = Runtime::builder()
+        .limits(crate::scheduler::SchedulerLimits {
+            max_active: 2,
+            ..Default::default()
+        })
+        .build()
+        .unwrap();
+    let mut graph = language_chain();
+    graph.models[0].source = Some("/explicit/first.gguf".into());
+    graph.models[1].source = Some("/explicit/second.gguf".into());
+    let mut unused = graph.models[0].clone();
+    unused.id = "unused".into();
+    unused.source = Some("/not-opened/unused.gguf".into());
+    graph.models.push(unused);
+    assert!(graph.language_chain("chain").is_err());
+    let create = |models: &[&zerogravity_core::pipeline::ModelInstance]| {
+        assert_eq!(
+            models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            ["first", "second"]
+        );
+        assert_eq!(runtime.status().phase, RuntimePhase::Loading);
+        assert!(runtime.models().list().unwrap().is_empty());
+        assert!(runtime.request_text(request("never submitted")).is_err());
+        let owner: Arc<dyn LogitModel> = MockModel::new(&host, None);
+        Router::new(
+            models
+                .iter()
+                .map(|m| (m.id.clone(), owner.clone()))
+                .collect(),
+            1,
+            1,
+            128,
+            16,
+            host.clone(),
+            Some(16),
+        )
+    };
+    let error = runtime
+        .configure_language_pipeline(&graph, "chain", |_| {
+            Ok(router(&host, &MockModel::new(&host, None)))
+        })
+        .err()
+        .unwrap();
+    assert_eq!(error.code, "pipeline_binding");
+    assert_eq!(runtime.status().phase, RuntimePhase::Empty);
+    assert_eq!(host.snapshot().unwrap().1, 0);
+
+    // The router is fully prepared, but the original host ledger cannot
+    // admit its retained pipeline metadata. The private router must retire.
+    let mut pressure = None;
+    let error = runtime
+        .configure_language_pipeline(&graph, "chain", |models| {
+            let router = create(models)?;
+            let admission = host.transfer_admission("pressure", "pipeline").unwrap();
+            let remaining = admission
+                .arbiter
+                .snapshot(&admission.resource)
+                .unwrap()
+                .remaining;
+            pressure = Some(
+                admission
+                    .arbiter
+                    .admit(
+                        &admission.resource,
+                        admission.owner,
+                        &[zerogravity_core::resource_arbiter::AllocationRequest {
+                            kind: AllocationClass::Scratch,
+                            bytes: remaining,
+                        }],
+                    )
+                    .unwrap(),
+            );
+            Ok(router)
+        })
+        .err()
+        .unwrap();
+    assert_eq!(error.status, 503);
+    assert_eq!(runtime.status().phase, RuntimePhase::Empty);
+    drop(pressure);
+    assert_eq!(host.snapshot().unwrap().1, 0);
+
+    let plan = runtime
+        .configure_language_pipeline(&graph, "chain", create)
+        .unwrap();
+    assert_eq!(runtime.status().phase, RuntimePhase::Ready);
+    assert_eq!(
+        (
+            runtime.status().loaded_models,
+            runtime.status().loaded_owners
+        ),
+        (2, 1)
+    );
+    assert_eq!(
+        plan.stages().iter().map(|s| s.alias()).collect::<Vec<_>>(),
+        ["first", "second"]
+    );
+    assert_eq!(plan.stages()[0].source(), plan.stages()[1].source());
+    assert!(runtime.models().resolve("unused").is_err());
+    assert_eq!(
+        runtime
+            .configure_language_pipeline(&graph, "chain", |_| panic!("already configured"))
+            .err()
+            .unwrap()
+            .code,
+        "runtime_configured"
+    );
+    let mut output = runtime
+        .run_pipeline(&plan, "x", 2.try_into().unwrap())
+        .unwrap();
+    let mut terminal = false;
+    while let Some(event) = output.next().unwrap() {
+        if let ResponseEvent::Done {
+            output,
+            prompt_tokens,
+            ..
+        } = event
+        {
+            assert_eq!(output, "AB");
+            assert_eq!(prompt_tokens, 2);
+            terminal = true;
+        }
+    }
+    assert!(terminal);
+    drop(output);
+    runtime.shutdown().unwrap();
+    drop(plan);
+    assert_eq!(host.snapshot().unwrap().1, 0);
+}
+
+#[test]
 fn serial_pipeline_uses_exact_registrations_and_original_text_stream() {
     use crate::{Runtime, pipeline::LanguageBinding};
     let host = HostPool::isolated(256).unwrap();

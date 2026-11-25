@@ -3,7 +3,10 @@ use zerogravity::{
     Error, Runtime,
     run::{TaskInput, TaskRequest},
 };
-#[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+#[cfg(any(
+    all(feature = "cpu", feature = "text", feature = "cache"),
+    all(feature = "qwen35-cuda-serving", target_os = "linux")
+))]
 #[path = "support/language_pipeline.rs"]
 mod language_pipeline;
 
@@ -1148,7 +1151,7 @@ fn qwen_gguf_cuda_sdk_unloads_with_retained_handle() {
     use zerogravity::{
         builtins::text::GpuProfile,
         devices::{GpuBackend, normalize_pci},
-        models::ModelLoadRequest,
+        pipelines::{LanguageLoadPolicy, ModelInstance},
         resource_arbiter::{PhysicalDeviceKey, ResourceArbiter},
         runtime::text::{Request, ResponseEvent},
     };
@@ -1197,27 +1200,43 @@ fn qwen_gguf_cuda_sdk_unloads_with_retained_handle() {
         })
         .build()
         .unwrap();
-    runtime
-        .models()
-        .load(ModelLoadRequest::GpuText {
-            declared: vec![
-                ("source".into(), path.clone()),
-                ("alias".into(), path),
-                ("other".into(), other_path),
-            ],
-            backend: GpuBackend::Cuda,
-            profile: GpuProfile {
-                workers: 1,
-                active: 2,
-                context: 512,
-                output: 3,
-                host_mib: 8192,
-                provider_mib: 2048,
-                device_mib: 5120,
-                cohort_width: 0,
-                max_pending: Some(4),
-            },
+    let graph = language_pipeline::graph(
+        [
+            ("alias", path.clone()),
+            ("other", other_path),
+            ("source", path),
+        ]
+        .into_iter()
+        .map(|(id, path)| ModelInstance {
+            id: id.into(),
+            target: "qwen3.5-0.8b".into(),
+            source: Some(path.to_str().unwrap().into()),
+            model_config: None,
+            tokenizer: None,
+            snapshot: None,
+            native_artifacts: None,
         })
+        .collect(),
+    );
+    let plan = runtime
+        .load_pipeline(
+            &graph,
+            "chain",
+            LanguageLoadPolicy::Gpu {
+                backend: GpuBackend::Cuda,
+                profile: GpuProfile {
+                    workers: 1,
+                    active: 2,
+                    context: 512,
+                    output: 3,
+                    host_mib: 8192,
+                    provider_mib: 2048,
+                    device_mib: 5120,
+                    cohort_width: 0,
+                    max_pending: Some(4),
+                },
+            },
+        )
         .unwrap();
     let handle = runtime.models().resolve("alias").unwrap();
     assert_eq!(
@@ -1307,8 +1326,7 @@ fn qwen_gguf_cuda_sdk_unloads_with_retained_handle() {
     let expected = complete(submit("source"));
     assert_eq!(complete(submit("alias")), expected);
     assert_eq!(complete(submit("other")), expected);
-    let plan =
-        language_pipeline::compare(&runtime, "qwen3.5-0.8b", &["alias", "other"], "1, 2, 3,", 3);
+    language_pipeline::compare_prepared(&runtime, &plan, "1, 2, 3,", 3);
     assert_ne!(plan.stages()[0].source(), plan.stages()[1].source());
     let before = arbiter.snapshot(&host).unwrap().reserved;
     let before_device = arbiter.snapshot(&device).unwrap();
@@ -1358,4 +1376,85 @@ fn qwen_gguf_cuda_sdk_unloads_with_retained_handle() {
     drop((handle, tokenizer, other));
     runtime.shutdown().unwrap();
     println!("GGUF_CUDA_SELECTIVE_CATALOG_UNLOAD_PASS");
+}
+
+#[cfg(all(feature = "cpu", feature = "text", feature = "cache"))]
+#[test]
+#[ignore = "actual approved local 0.8B/2B GGUF and sidecars; no download"]
+fn declared_cpu_pipeline_loads_exact_sources_and_retries_after_refusal() {
+    use zerogravity::{
+        pipelines::{LanguageLoadPolicy, ModelInstance},
+        runtime::TextConfig,
+    };
+    let root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/models"));
+    let models = [
+        ("first", "qwen3.5-0.8b", "qwen35-0.8b"),
+        ("second", "qwen3.5-2b", "qwen35-2b"),
+    ];
+    let mut graph = language_pipeline::graph(
+        models
+            .into_iter()
+            .map(|(id, target, folder)| ModelInstance {
+                id: id.into(),
+                target: target.into(),
+                source: Some(
+                    root.join(folder)
+                        .join("model.gguf")
+                        .to_str()
+                        .unwrap()
+                        .into(),
+                ),
+                model_config: None,
+                tokenizer: None,
+                snapshot: None,
+                native_artifacts: None,
+            })
+            .collect(),
+    );
+    let mut unused = graph.models[0].clone();
+    unused.id = "unused".into();
+    unused.source = Some("/not-opened/unused.gguf".into());
+    graph.models.push(unused);
+    let runtime = Runtime::builder().build().unwrap();
+    let config = TextConfig {
+        max_context: 128,
+        max_output: 3,
+        host_mib: 8192,
+        ..Default::default()
+    };
+    graph.models[1].target = "qwen3.5-0.8b".into();
+    let error = runtime
+        .load_pipeline(&graph, "chain", LanguageLoadPolicy::Cpu(config))
+        .err()
+        .unwrap();
+    assert_eq!(error.code, "invalid_model");
+    assert_eq!(
+        runtime.status().phase,
+        zerogravity::diagnostics::RuntimePhase::Empty
+    );
+    assert!(runtime.models().list().unwrap().is_empty());
+    graph.models[1].target = "qwen3.5-2b".into();
+    let plan = runtime
+        .load_pipeline(&graph, "chain", LanguageLoadPolicy::Cpu(config))
+        .unwrap();
+    assert_eq!(
+        (
+            runtime.status().loaded_models,
+            runtime.status().loaded_owners
+        ),
+        (2, 2)
+    );
+    assert_ne!(plan.stages()[0].source(), plan.stages()[1].source());
+    assert!(runtime.models().resolve("unused").is_err());
+    language_pipeline::compare_prepared(&runtime, &plan, "1, 2, 3,", 3);
+    let owner = runtime.models().resolve("second").unwrap();
+    // CPU supports selective retirement using the original worker.
+    runtime.models().unload(&owner).unwrap();
+    assert!(
+        runtime
+            .run_pipeline(&plan, "1, 2, 3,", 1.try_into().unwrap())
+            .is_err()
+    );
+    drop((owner, plan));
+    runtime.shutdown().unwrap();
 }
