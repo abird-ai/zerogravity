@@ -265,16 +265,23 @@ admitted native plane uploads/root pool. Actual HF 0.8B same/fresh-process
 exact full-vocab continuation/all-domain replay, corrupt/stale refusal,
 known retirement and actual unknown H2D retention/fence pass; HF V2 C1/C8
 replay/retirement with persistence enabled pass. Full isolated gate: 2395 Rust test executions, zero failures, 102 explicit skips; release/installer/scripts pass.
-Other GPU
-formats/contexts/profile conversion remain unsupported. Next close the
-minimum source-declared pipeline/task preparation, lifecycle/control and
-SDK seams through existing model/source registry, graph and router;
-general DAG/media/context and unqualified transport remain explicit.
+Other GPU formats/contexts/profile conversion remain unsupported.
+Signed ebda04c4: bounded source-declared language preparation with explicit
+execution policy, selected graph models only, actual local source geometry
+or exact single approved HF snapshot, original loader/alias ownership.
+Admit exact plan and router together before Ready; failed binding/pressure
+rolls back original router. Actual CPU 0.8B/2B mismatch/retry and chain,
+CUDA GGUF three stages/two owners/retirement, native HIP V2 HF alias chain
+and C1/C8 replay/retirement pass. Full isolated gate: 2396 Rust test executions, zero failures, 104 explicit skips; release/installer/scripts pass.
+Next close minimum common SDK/task
+intent/control and effective configuration/plan observation seams through
+the original runtime and output stream. Audit Phase 1 exit requirements.
 Broader family/codec/task and unqualified backend routes remain open.
 No duplicate catalog, estimator, allocator or runtime.
-General DAG/media/context authority, pipeline source loading, transport
-activation, generalized persistent session storage and cross-provider restore
-remain unsupported. None of these slices closes Phase 1.
+General DAG/media/context authority, multi-source HF and mixed-backend
+pipeline loading, CLI/API transport activation, generalized persistent
+session storage and cross-provider restore remain unsupported.
+None of these slices closes Phase 1.
 
 Complete the engineering contracts and their real consumers, including every
 foundation below. This is not a requirement to finish every backend optimization,

@@ -221,6 +221,11 @@ any external compiler. All phases retain the original resource/state owners.
   through exact prepared compatibility and original root pool/Ready.
   Actual HF 0.8B full-domain/full-vocab same/fresh-process continuation
   and unknown upload retention/fence pass; no kernel/cross-provider change.
+- ebda04c4: graph-declared local/HF language loading reuses original
+  source/target eligibility and registration, private router plus admitted
+  exact plan before Ready. Real CPU 0.8B/2B mismatch/retry, CUDA GGUF
+  distinct-owner chain and native HIP HF same-snapshot alias chain/C1/C8
+  pass; no new family, codec or kernel.
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

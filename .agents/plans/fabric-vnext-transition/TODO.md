@@ -607,7 +607,10 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   combined SDK compile, CPU fixture SDK/HTTP, actual CUDA GGUF distinct-owner
   chain and retirement, native CUDA C1 and HIP V2 C1/C8 + alias chain pass.
   Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-- [ ] General DAG/media/context execution, graph-declared source resolution,
+- [x] Bounded graph-declared serial language source resolution and atomic
+  original router/plan publication (ebda04c4); actual local CPU/CUDA GGUF,
+  native HIP HF alias chain and rollback/retirement pass.
+- [ ] General DAG/media/context execution, mixed backend/multi-source HF,
   pipeline CLI/API activation and richer task controls only through original
   qualified owners.
 

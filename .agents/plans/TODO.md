@@ -70,11 +70,18 @@ original snapshot/root pool/upload/completion and shared bounded IO.
 Actual HF 0.8B same/fresh-process full-domain/full-vocab exact restore,
 corruption/stale refusal, clean retirement and unknown upload retention/fence.
 Full isolated gate: 2395 Rust test executions, zero failures, 102 explicit skips; release/installer/scripts pass.
-Next advance bounded source-declared pipeline/task preparation and control
-through original catalog, graph, model owners and router. Continue
-[full plan](FULL_IMPLEMENTATION_PLAN.md). No second cache hierarchy,
-allocator or publisher; other persisted GPU formats, cross-provider restore,
-scheduler-managed persistent sessions and media/DAG/context remain open.
+Signed ebda04c4: bounded source-declared language preparation, exact
+selected graph model IDs, explicit local/HF policy and original loaders;
+router + admitted plan publish atomically, binding/pressure rollback.
+Actual CPU 0.8B/2B mismatch/retry/chain, CUDA GGUF two-owner three-stage
+chain/selective unload, native HIP HF alias chain/C1/C8 and retirement.
+Full isolated gate: 2396 Rust test executions, zero failures, 104 explicit skips; release/installer/scripts pass.
+Next close minimum common SDK/task/control and effective-config/plan
+observation through original owners, audit Phase 1 exit requirements.
+Continue [full plan](FULL_IMPLEMENTATION_PLAN.md). No second cache
+hierarchy, allocator or publisher; mixed backend/multi-source HF pipeline,
+other persisted GPU formats, cross-provider restore, scheduler-managed
+persistent sessions and media/DAG/context remain open.
 
 **20 Nov authoritative refresh:** pushed/tracked `origin/main` is `f0f0640`; local signed
 source lineage above it includes `1222f8a` (multi-token GDN prefill), `60ba956` (matched

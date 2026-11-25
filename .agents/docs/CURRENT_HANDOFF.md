@@ -25,6 +25,77 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed source-declared language preparation: ebda04c43d6b3f619cad01500edde1869eae8673.**
+
+- Runtime::load_pipeline(Config, name, LanguageLoadPolicy) resolves only
+  the selected existing serial language graph's unique model declarations.
+  Original model IDs are the exact registered aliases. Other declarations
+  are not opened. Structural validation still grants no execution/source
+  permission; existing manually loaded binding API still refuses unresolved
+  pins. The core chain structure and engine exact-registration plan binder
+  are shared, not a second graph/runtime.
+- The existing lifecycle load slot owns both private router and admitted
+  immutable plan. Finalize outside the lifecycle mutex; no catalog or task
+  admission while Loading. Exact alias coverage and plan host charge must
+  succeed before the single Ready publication. Failed preparation/binding,
+  pressure or racing shutdown retire original workers/source owners before
+  releasing waiters. Preserve original sticky retirement failure, physical
+  unknown-completion retention and process-lifetime context rules. No
+  independent pipeline catalog, worker, model reader or state publisher.
+- Explicit CPU/GPU local policy uses the original GGUF loader, original
+  tokenizer/config siblings and canonical path alias groups. Actual family
+  geometry must match declared Qwen 0.8B/2B target before weight
+  materialization/device preparation; all aliases of one canonical path
+  agree. Source eligibility still comes from the held artifact and model
+  preparation. Explicit native HIP / CUDA original-HF policy requires one
+  exact approved snapshot across selected declarations, target matching
+  original inventory and optional exact hf:repository selector. Original
+  HF authentication, admission and smart/backend policy unchanged.
+- Unsupported explicit sidecar/native artifact overrides, local snapshot
+  pins, remote acquisition/catalog refs for local GGUF, multiple distinct
+  HF snapshots and conflicting source/target constraints refuse. No implicit
+  download, remote code, backend selection/fallback or graph-as-permit.
+  Local paths are caller-resolved or relative to process working directory.
+  Mixed backend profiles, generalized DAG/media/context, HTTP/CLI pipeline
+  activation and incremental load into an already configured runtime remain
+  open. Original preloaded binding/run/retirement behavior preserved.
+- Existing engine fixture actual Router/host ledger: mismatched private
+  aliases and plan admission under full host pressure retire the router;
+  no source exposure while Loading, empty/retry succeeds, unused model
+  unregistered; existing stage order and terminal stream. Initial fixture
+  default max_active was too small for its intentional wrong-alias router;
+  fixed test limit, production unchanged. Focused regression and strict
+  core/engine/facade Clippy pass; minimal and combined CUDA/HIP SDK compile.
+- L5 actual local GGUF 0.8B -> 2B CPU chain, actual wrong second target
+  refuses and retires first prepared owner before corrected retry on same
+  runtime, unused path not opened, distinct owners, exact sequential
+  outputs/final usage and selective retirement/stale-plan refusal pass.
+  Actual CUDA local GGUF three stages, two independent source allocations
+  with canonical alias reuse, sequential chain equality, selective unload
+  and retained tokenizer/owner lifetime pass. CUDA idle baseline 37MiB.
+- X2 actual native HIP V2 original HF 0.8B same-snapshot aliases loaded from
+  graph declarations with persistence enabled: C1/C8 all six replay waves
+  [248068,198,90700], width8, zero failed GPU quanta, lane invariant.
+  Existing two-stage functional chain matches separate sequential calls,
+  original native/tokenizer retirement, unfenced; idle 259768320 bytes.
+  CUDA original-HF declared policy compile-checked; actual new CUDA graph
+  qualification is local GGUF, not HF. No new numerical/performance claim.
+- Full isolated gate: 2396 Rust test executions, zero failures, 104 explicit skips; release/installer/scripts pass.
+
+**Next coherent unit:** finish the minimum public SDK/task/control and
+effective-configuration observation seam using original typed request,
+prepared language plan, Runtime/ModelCatalog, OutputStream/ResponseEvent and
+RuntimeSnapshot. Join explicit model vs prepared pipeline execution intent,
+bounded request controls/cancellation and selected-source/provider/plan
+observations without changing established admission or introducing a
+frontend-owned registry/scheduler. Preserve existing direct APIs and
+unsupported capabilities; no network/media or new model numerical profile.
+Audit remaining Phase 1 exit requirements against live code/tests and owner
+TODOs before starting the CLI/TUI/Web phase. Other backend/layout/codec/task
+specializations remain explicit planned work.
+
+### Previous accepted native HIP resident persistence checkpoint
+
 **Signed committed native HIP resident persistence: 804d488200ea12b82e487f9e590f90f0d3055672.**
 Actual upload unknown-completion qualification: d9b252057ef76cc56bb0ecb37f9fc653a24061f4.
 
@@ -89,17 +160,9 @@ Actual upload unknown-completion qualification: d9b252057ef76cc56bb0ecb37f9fc653
   asynchronous file IO. Integrity is not authenticity. The model/backend
   revisions must be advanced on incompatible math/layout changes.
 
-**Next coherent unit:** finish the minimum source-declared pipeline/task
-preparation and control seam through the existing typed pipeline Config,
-Runtime catalog/load coordinator, model registry and original task router.
-Use actual already qualified language chain consumers for graph-declared
-source resolution, atomic bounded model/pipeline ownership and lifecycle
-rollback; keep source/model/task/codec eligibility separate from graph
-metadata. Do not introduce a second graph scheduler, catalog or root
-publisher; general DAG/media/context execution and unqualified cross-model
-transport remain explicit. Finish remaining SDK/control/observability
-foundations before Phase 2; preserve native performance primitives and
-defer new backend/profile/codec specializations to their planned phases.
+Bounded source-declared language preparation and atomic pipeline load/bind
+are implemented at ebda04c4 above. General task/pipeline controls and
+unqualified transport remain explicit.
 
 ### Previous accepted CPU checkpoint
 

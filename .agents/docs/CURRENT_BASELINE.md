@@ -5,6 +5,17 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — source-declared language preparation
+
+ebda04c4: original Config serial graph selects explicit model declarations,
+actual local target geometry or exact original HF snapshot, canonical
+aliases and original loaders. Router/plan admitted and published together
+through the existing Loading/Ready lifecycle; binding/pressure rollback.
+Actual CPU 0.8B/2B mismatch/retry/chain, CUDA GGUF three-stage two-owner
+chain/selective unload, native HIP HF 0.8B graph-declared alias chain and
+C1/C8 replay/retirement pass. No new arithmetic or performance claim.
+Full isolated gate: 2396 Rust test executions, zero failures, 104 explicit skips; release/installer/scripts pass.
+
 ## 25 Nov — committed native HIP resident persistence
 
 804d4882/d9b25205: source-owned stable semantic revision, verified

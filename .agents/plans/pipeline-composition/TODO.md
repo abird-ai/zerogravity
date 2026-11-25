@@ -449,11 +449,18 @@ and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
   layouts, admitted snapshot/typed native-plane transfer/root pool/Ready
   and sole publication; real HF 0.8B fresh-process exact replay and unknown
   upload retention/fence. Other layouts/providers remain unqualified.
-- [ ] Complete qualified source-declared pipeline/task preparation and
-  control; extend other qualified resident formats and generic named Vulkan
-  registry reuse and actual shared host-visible GPU backing. General DAG/media/context
-  authority, source loading and pipeline transport activation remain
-  unsupported. Continue source lifecycle/placement only through real
+- [x] Bounded source-declared serial language preparation (ebda04c4):
+  actual graph-selected local GGUF geometry or single approved HF snapshot,
+  explicit policy, exact original registered aliases, canonical source
+  reuse and atomic original router/plan publication. Binding/pressure
+  rollback, unused source exclusion, actual CPU 0.8B/2B mismatch/retry/chain,
+  CUDA three-stage two-owner GGUF and native HIP HF alias chain/C1/C8
+  plus retirement pass. Manual loaded binding remains distinct.
+- [ ] Finish shared task/control and effective configuration observation;
+  extend other qualified resident formats and generic named Vulkan
+  registry reuse and actual shared host-visible GPU backing. General
+  DAG/media/context authority, mixed backend/multi-source HF loading and
+  pipeline transport activation remain unsupported. Continue source lifecycle/placement only through real
   consumers. Keep selected shape
   bands and typed ports, no naked
   scope or implicit retry. Contiguous text invocation/producer ports and the
