@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (25 Nov): **Phase 2.1 UX-1 through bounded canonical UX-6 accepted; UX-7 configuration/profile management implemented, full gate pending (§46A.28).**
+Status (26 Nov): **Phase 2.1 UX-1 through bounded UX-7 accepted; UX-8A native TUI shell is next (§46A.28).**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
@@ -2619,11 +2619,12 @@ profile copy/create/remove, JSON read/explain; no inherited profiles or
 secret fields. Typed edits normalize YAML. Same-base copy retains bytes,
 cross-base copy anchors relative paths. Basic line managers share actions;
 rich TUI UX-8D remains. Focused SDK/CLI/actual PTY and combined strict lint/
-feature compile pass. Workspace gate reached CPU pipeline tests after
-GPU boundaries and CPU Clippy; corrected invalid-source error-category
-regression passes minimal SDK/CLI suites (36/0). Full rerun and serial real
-cached-serving regression remain acceptance gates (initial real serving
-attempt refused the unchanged 8 GiB budget during competing compilation).
+feature compile pass. Corrected complete isolated gate 2473 pass/0 fail/
+109 skips; release/installer/scripts pass. Serial combined release
+run_unified 6/0/0, including real cached Qwen 0.8B GGUF serving at the
+unchanged 8 GiB admission bound. Earlier invalid-source error-category
+regression corrected and build-pressure refusal resolved by serial execution.
+UX-7 accepted; UX-8A next.
 
 ### UX-8 — interactive home/model manager
 

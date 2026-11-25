@@ -13,11 +13,12 @@ cold validation/provenance and atomic ConfigFile editor, config/profile
 commands and basic terminal managers. No settings DB, inheritance, new
 source or execution qualification. Focused SDK/CLI atomic/refusal/copy
 and PTY set/get/profile consent pass; combined strict acquisition/serve lint
-and CUDA/HIP/acquisition/serve compile pass. Workspace GPU boundaries and
-CPU Clippy pass before a pipeline error-contract regression; corrected
-minimal SDK/CLI suites 36/0. Full rerun pending. Real cached-serving test
-refused its unchanged 8 GiB host budget during concurrent builds;
-serial rerun pending. No change to measured performance.
+and CUDA/HIP/acquisition/serve compile pass. Corrected final strict combined
+Clippy and full isolated gate 2473/0/109 pass; release/installer/scripts pass.
+Serial combined release run_unified 6/0/0 (14.43s) including real cached
+0.8B GGUF serving with unchanged 8 GiB host envelope. Earlier pipeline
+error-contract regression corrected; build-pressure admission refusal
+resolved by serial validation. No change to measured performance.
 
 ## 25 Nov — canonical stable serve (UX-6)
 

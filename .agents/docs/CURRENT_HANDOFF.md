@@ -76,20 +76,18 @@ preferences. No settings database, profile inheritance or second schema.
   pass; actual terminal PTY set/get/invalid refusal/create/copy/decline/
   confirm remove/exit pass with no cache effects. Combined strict
   acquisition/serve Clippy and CUDA/HIP/acquisition/serve compile pass.
-  The isolated workspace gate passed GPU feature boundaries and CPU Clippy,
-  then exposed an invalid-source error-category regression in pipelines.
-  Preserved the existing parser's error contract; corrected minimal SDK
-  configuration/fabric/pipelines and CLI/config_cli suites pass (36/0).
-  The full gate requires a clean rerun on the corrected source. A separate
-  real cached-serving test refused the original 8 GiB host envelope under
-  concurrent compilation (about 2.5 GiB available); no lowered bound or
-  new serving qualification. Rerun it without competing builds. Keep both
-  acceptance checks open before UX-8A. Corrected combined run_unified
-  passed four shorter tests; the longer CPU equivalence test and following
-  lint were not completed before the checkpoint time bound. Resume those
-  within the full gate, rather than assuming completion.
+  Earlier full gate exposed an invalid-source error-category regression;
+  preserved the existing parser contract at 7f5fc4eb. Real cached serving
+  initially refused its original 8 GiB envelope during competing builds.
+  Serial corrected release run_unified with acquisition/serve, including
+  the real Qwen 0.8B GGUF test, passes all 6 tests (14.43s); no lowered
+  budget, remote transfer or physical GPU run. Corrected combined strict
+  Clippy and full mandatory-private-network workspace gate pass: 2473
+  Rust test executions, 0 failures, 109 explicit skips. Architecture,
+  GPU feature boundaries, release, installer and script checks pass.
+  UX-7 accepted at this scope.
 
-**Next coherent unit after acceptance: UX-8A — native TUI shell (§46A.28).**
+**Next coherent unit: UX-8A — native TUI shell (§46A.28).**
 Read the TUI architecture and UX-8A–D design; native shell/navigation and
 shared lifecycle first, then Home/Running/Serve, Models/Downloads/Devices,
 Profiles/Config/Logs. Reuse original ControlPlane and ConfigFile; no

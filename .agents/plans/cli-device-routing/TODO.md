@@ -250,9 +250,11 @@ build or general model/backend grant. Historical failures keep their source scop
   CUDA/HIP/acquisition/serve compile pass. Workspace gate GPU boundaries
   and CPU Clippy passed before a pipeline error-category regression;
   corrected minimal SDK/CLI tests 36/0.
-- [ ] UX-7 acceptance: rerun complete isolated scripts/check.sh on corrected
-  source; serial real cached-serving regression (initial attempt refused
-  unchanged 8 GiB budget under build pressure). Do not infer a pass.
+- [x] UX-7 acceptance: corrected full isolated gate 2473 pass/0 fail/
+  109 skips, architecture/feature/release/installer/scripts pass; combined
+  strict acquisition/serve Clippy. Serial combined release run_unified
+  6/0/0 (14.43s), real cached Qwen 0.8B GGUF serving passes unchanged
+  8 GiB budget after earlier build-pressure refusal.
 
 ## Uncommitted
 

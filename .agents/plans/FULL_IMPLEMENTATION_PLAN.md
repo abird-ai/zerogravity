@@ -578,17 +578,16 @@ demand. Preserve the existing detailed
   cold refusal pass; combined lint and GPU feature compile pass. No protocol
   rewrite or physical/remote acquisition evidence. Full isolated gate
   2466 pass/0 fail/109 skips; release/installer/scripts pass.
-- [~] UX-7 unified configuration/profile management: existing v2 Document
+- [x] UX-7 unified configuration/profile management: existing v2 Document
   is ConfigDocument, one selected document with implicit default fallback
   and CLI precedence. Typed UI/offer preferences, cold validation/
   provenance, atomic ConfigFile replacement, profile copy/create/remove
   and temporary validated editor, basic inline managers. Focused SDK/CLI,
-  PTY and combined lint/feature builds pass. Full gate stopped at a pipeline
-  error-category regression, corrected with 36/0 minimal SDK/CLI tests.
-  Full rerun and serial real cached-serving regression pending (previous
-  attempt refused unchanged 8 GiB admission under compile pressure).
-  No new source, network or execution authority.
-  **Next after acceptance: UX-8A native TUI shell (§46A.28).**
+  PTY and combined lint/feature builds pass. Corrected full isolated gate
+  2473 pass/0 fail/109 skips; release/installer/scripts pass. Serial
+  combined release run_unified 6/0/0 including real cached GGUF serving
+  with unchanged admission bound. No new source, network or execution authority.
+  **Next: UX-8A native TUI shell (§46A.28).**
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,

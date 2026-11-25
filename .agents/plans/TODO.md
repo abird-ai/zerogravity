@@ -146,10 +146,10 @@ isolated gate 2466 pass/0 fail/109 skips; release/installer/scripts pass.
 UX-7 unified configuration/profile implementation: one typed document,
 default/named/explicit selection, typed UI/offer preferences, atomic
 validated edit/copy/create/remove, provenance and inline managers.
-Focused SDK/CLI/PTY and combined lint/feature build pass. Full gate stopped
-at an error-category regression; corrected minimal SDK/CLI 36/0 pass.
-Complete full rerun and real cached-serving regression without concurrent
-build pressure before UX-8A native TUI shell.
+Focused SDK/CLI/PTY and combined lint/feature build pass. Corrected full
+isolated gate 2473 pass/0 fail/109 skips, release/installer/scripts pass;
+serial real cached-serving and combined release run_unified 6/0/0.
+UX-7 accepted; next UX-8A native TUI shell.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.
