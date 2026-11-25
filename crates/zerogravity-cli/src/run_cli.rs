@@ -1,5 +1,5 @@
 //! One typed run frontend; graph/source/device validation precedes effects.
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use zerogravity::pipelines::{DiagnosticDoc, TaskDoc};
 use zerogravity::{Error, Result, run_policy::*};
 mod args;
@@ -20,6 +20,7 @@ mod qwen_source;
 pub(super) struct Arguments {
     positional: Option<String>,
     config: Option<String>,
+    profile: Option<String>,
     model: Option<String>,
     model_config: Option<String>,
     tokenizer: Option<String>,
@@ -39,7 +40,12 @@ pub(super) struct Arguments {
     help: bool,
 }
 use args::parse;
-pub(super) fn run(args: Vec<String>, alias: Option<&str>) -> Result<()> {
+pub(crate) use args::takes_value;
+pub(super) fn run(
+    args: Vec<String>,
+    alias: Option<&str>,
+    format: crate::args::Format,
+) -> Result<()> {
     let parsed = parse(&args, alias)?;
     if parsed.help {
         help();
@@ -51,6 +57,11 @@ pub(super) fn run(args: Vec<String>, alias: Option<&str>) -> Result<()> {
         std::env::var_os("XDG_CONFIG_HOME"),
         std::env::var_os("HOME"),
     )?;
+    if format == crate::args::Format::Json && !request.diagnostics.dry_run {
+        return Err(bad(
+            "run --format json requires a dry-run plan; generated text remains stdout",
+        ));
+    }
     execute::run(request)
 }
 pub(super) fn devices(args: &[String]) -> Result<()> {
@@ -74,20 +85,61 @@ pub(super) fn devices(args: &[String]) -> Result<()> {
     }
     Ok(())
 }
-fn absolute(base: &Path, s: &str) -> PathBuf {
-    let p = Path::new(s);
-    if p.is_absolute() {
-        p.into()
+pub(super) fn device_inspect(selector: &str, format: crate::args::Format) -> Result<()> {
+    let inventory = devices::discover()?;
+    let selector = DeviceRef::parse(selector)?;
+    let device = zerogravity::devices::observe_selected(&inventory, &selector)?;
+    if format == crate::args::Format::Json {
+        crate::output::json(device)
     } else {
-        base.join(p)
+        println!(
+            "Observed hardware only; no model admission.\n{}\nObservation: {}",
+            devices::display(device),
+            device.provenance
+        );
+        Ok(())
     }
 }
+
 fn bad(s: impl Into<String>) -> Error {
     Error::Malformed(s.into())
 }
-fn help() {
+pub(super) fn help() {
     println!(
-        "RUN A MODEL\n    zerogravity run MODEL [--prompt TEXT] [-d auto|cpu|gpu:N|pci:ID|/dev/dri/renderDN|/dev/nvidiaN]\n    zerogravity run CONFIG.yaml [--explain|--dry-run]\n    zerogravity devices list [--json]\n\nADVANCED: zerogravity run [MODEL|CONFIG.yaml] [--config FILE] [--model SOURCE]\n    --model-config FILE --tokenizer FILE --snapshot SHA --native-artifacts DIR --prompt TEXT --max-tokens N --context N\n    --raw[=true|false] --teacher-ids IDS --prefill-chunk N\n    --backend auto|cpu|cuda|rocm|vulkan --device auto|cpu|DEVICE|/dev/NODE[,DEVICE...]\n    --headroom PERCENT|BYTES --numerical source|native --speculation auto|off|mtp|draft:MODEL\n    --draft-device DEVICE --entrypoint model:ID|pipeline:NAME\n    --explain[=true|false] --dry-run[=true|false]\n    --audit-logits-jsonl FILE --audit-layers-jsonl FILE\n    --define-model ID=TARGET[@SOURCE] --name NAME --input TYPE --output TYPE\n    --step ID=KIND[:MODEL] --link FROM=TO --route PATH=PROTOCOL\nLinux -d /dev: DRM card/render nodes or /dev/nvidiaN; /dev/kfd is shared and refused.\nAliases: run-cpu/run-cuda/run-rocm/run-vulkan (same options).\nNative numerical profile: explicit ROCm canonical Qwen source, qualified gfx1151 with resident weights and rocBLAS; source remains the default.\nSources: exact local files, acquired cache references, hf:/gh:/http:/https: locators. No implicit network or download.\nCatalogue references: catalog:REF or a pull-shaped huggingface/..., huggingface-bundle/..., github/..., github-bundle/... name.\nAbsolute and ./ ../ paths stay local; use ./huggingface/... to name such a local directory.\nOnly local .yaml/.yml implies run config; provider/catalog/URL schemes take precedence.\nSelector-free run loads XDG_CONFIG_HOME/abird/zerogravity/config.yaml (absolute HOME fallback).\nGraph/split/NPU/remote/speculative execution requires independently qualified adapters; parsing grants none."
+        "RUN A MODEL\n    zerogravity run MODEL [--prompt TEXT] [-d auto|cpu|gpu:N|pci:ID|/dev/dri/renderDN|/dev/nvidiaN]\n    zerogravity run CONFIG.yaml [--explain|--dry-run]\n    zerogravity device list [--format json]\n\nADVANCED: zerogravity run [MODEL|CONFIG.yaml] [--config FILE] [--model SOURCE]\n    --model-config FILE --tokenizer FILE --snapshot SHA --native-artifacts DIR --prompt TEXT --max-tokens N --context N\n    --raw[=true|false] --teacher-ids IDS --prefill-chunk N\n    --backend auto|cpu|cuda|rocm|vulkan --device auto|cpu|DEVICE|/dev/NODE[,DEVICE...]\n    --headroom PERCENT|BYTES --numerical source|native --speculation auto|off|mtp|draft:MODEL\n    --draft-device DEVICE --entrypoint model:ID|pipeline:NAME\n    --explain[=true|false] --dry-run[=true|false] --profile NAME\n    --audit-logits-jsonl FILE --audit-layers-jsonl FILE\n    --define-model ID=TARGET[@SOURCE] --name NAME --input TYPE --output TYPE\n    --step ID=KIND[:MODEL] --link FROM=TO --route PATH=PROTOCOL\nLinux -d /dev: DRM card/render nodes or /dev/nvidiaN; /dev/kfd is shared and refused.\nAliases: run-cpu/run-cuda/run-rocm/run-vulkan (same options).\nNative numerical profile: explicit ROCm canonical Qwen source, qualified gfx1151 with resident weights and rocBLAS; source remains the default.\nSources: exact local files, SHA256 snapshots, catalog:/by-name: references, hf:/gh:/http:/https: locators. No implicit network or download.\nCatalogue references: catalog:REF or a pull-shaped huggingface/..., huggingface-bundle/..., github/..., github-bundle/... name.\nAbsolute and ./ ../ paths stay local; use ./huggingface/... to name such a local directory.\nOnly local .yaml/.yml implies run config; provider/catalog/URL schemes take precedence.\nSelector-free run loads XDG_CONFIG_HOME/abird/zerogravity/config.yaml (absolute HOME fallback).\nGraph/split/NPU/remote/speculative execution requires independently qualified adapters; parsing grants none."
+    );
+    let mut compiled = vec!["auto"];
+    if cfg!(all(
+        feature = "cpu",
+        feature = "model-qwen35",
+        feature = "text"
+    )) {
+        compiled.push("cpu");
+    }
+    if cfg!(all(
+        feature = "cuda",
+        feature = "model-qwen35",
+        feature = "text"
+    )) {
+        compiled.push("cuda");
+    }
+    if cfg!(all(
+        feature = "hip",
+        feature = "model-qwen35",
+        feature = "text"
+    )) {
+        compiled.push("rocm");
+    }
+    if cfg!(all(
+        feature = "vulkan",
+        feature = "model-qwen35",
+        feature = "text"
+    )) {
+        compiled.push("vulkan");
+    }
+    println!(
+        "Compiled run choices: {} (source/device eligibility checked separately)",
+        compiled.join(", ")
     );
 }
 #[cfg(test)]

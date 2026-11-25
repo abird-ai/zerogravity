@@ -45,14 +45,7 @@ fn slug(value: &str, maximum: usize) -> String {
 }
 
 pub(super) fn validate_name(name: &str) -> Result<()> {
-    if name.is_empty()
-        || name.len() > MAX_ALIAS_BYTES
-        || name.starts_with(['-', '.'])
-        || name.ends_with(['-', '.'])
-        || !name.bytes().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'.')
-        })
-    {
+    if !zerogravity_core::run_policy::SourceSelector::is_human_name(name) {
         return Err(Error::Malformed(
             "invalid lowercase flat by-name alias".into(),
         ));

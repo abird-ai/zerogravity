@@ -14,7 +14,7 @@ use crate::{Error, Result};
 pub use inventory::{Inventory, Observation, discover, normalize_pci};
 #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
 pub use policy::host_available;
-pub use policy::{allowed, fresh};
+pub use policy::{allowed, fresh, observe_selected};
 pub use zerogravity_core::placement::{PlacementRequest, PlacementTarget, TransferRequest};
 pub use zerogravity_core::run_policy::{Backend, DeviceRef};
 

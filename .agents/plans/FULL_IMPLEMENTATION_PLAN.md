@@ -534,8 +534,15 @@ demand. Preserve the existing detailed
   gate 2431 pass/0 fail/106 skips, release PTY/device JSON and existing
   CPU run equivalence. No source/backend/runtime policy change.
   [CLI owning checkpoint](cli-device-routing/TODO.md).
-  **Next: UX-2 typed command tree + unified model/config resolver
-  (§46A.28), then UX-3 shared ControlPlane.**
+- [x] UX-2 typed command tree + shared cold model/config resolver accepted:
+  canonical hierarchy and compatibility dispatch, shared globals/help/static
+  completion, exact digest and explicit by-name selector through original
+  cache metadata/leases, one selected run document/profile and original
+  overrides, model/device reads and explicit lifecycle forwarding.
+  Full isolated gate 2451 pass/0 fail/106 skips; synthetic CPU equivalence
+  and release completion/JSON smoke pass. No new runtime, acquisition,
+  physical or numerical qualification.
+  **Next: UX-3 shared ControlPlane snapshot/action/event model (§46A.28).**
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,

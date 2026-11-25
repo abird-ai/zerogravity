@@ -114,8 +114,12 @@ Minimum Phase 1 exit accepted; audit in FULL_IMPLEMENTATION_PLAN/
 CURRENT_HANDOFF. Phase 2.1 UX-1 shared CLI presentation accepted:
 2431 Rust executions pass, zero failures, 106 explicit skips; release PTY,
 machine JSON and original CPU output equality pass. No execution policy
-change. Next UX-2 typed command tree + unified model/config resolver,
-then UX-3 shared ControlPlane per §46A.28.
+change. UX-2 typed command tree and shared cold model/config resolution:
+canonical commands/globals/compatibility/help/completion, exact digest and
+explicit by-name, one selected profile/document, original model/device/cache
+owners. Isolated full gate 2451 pass/0 fail/106 skips; synthetic CPU output
+equivalence and release completion/cold JSON smoke pass. No new execution
+claim. Next UX-3 shared ControlPlane per §46A.28.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

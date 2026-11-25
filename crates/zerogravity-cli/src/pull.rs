@@ -638,7 +638,7 @@ fn run_fetch(
     }
 }
 
-fn help() {
+pub(super) fn help() {
     println!(
         "USAGE:
     zerogravity pull hf REPO --revision REV --file PATH [--file PATH ...]

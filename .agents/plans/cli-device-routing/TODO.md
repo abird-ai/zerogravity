@@ -85,7 +85,7 @@ build or general model/backend grant. Historical failures keep their source scop
 - [x] Coordinator schedules a Sol HIGH isolated lane and adds this active plan;
   ongoing2B/HIP/model work proceeds independently.
 
-### Phase 2.1 UX-1 — shared presentation (this checkpoint, 25 Nov)
+### Phase 2.1 UX-1 — shared presentation (e6211608, 25 Nov)
 
 - [x] Single dependency-free terminal policy and rich/plain stderr renderer,
   color auto/always/never and NO_COLOR, quiet/verbose/diagnostic events,
@@ -107,13 +107,39 @@ build or general model/backend grant. Historical failures keep their source scop
   106 explicit skips; architecture/feature/Clippy/release/installer/scripts
   pass. No execution/physical/performance scope change.
 
+### Phase 2.1 UX-2 — typed command tree and shared resolution (this checkpoint, 25 Nov)
+
+- [x] Typed canonical hierarchy, global grammar, concise help/command help,
+  compatibility routes, generated static Bash/Zsh/Fish/PowerShell completion.
+  Globals at known grammar boundaries, original provider argv opaque, offline
+  restriction forwarded before owner option values. No new dependency.
+- [x] Shared core SourceSelector exact digest and explicit by-name reference;
+  original CacheMetadata resolves exact canonical identity, no projection
+  following, no implicit network. Existing source/device/lease checks intact.
+  SDK DocumentSelection and original typed YAML overrides select one
+  default/explicit/profile document (no layers). Observed-device inspect
+  and run use the same resolver.
+- [x] Canonical model list/inspect metadata-only, verify full original lease,
+  exact removal requires dry-run or yes; static family intent search; explicit
+  acquisition and advanced alias/import forward original owner grammar.
+  JSON for model reads, device reads and run dry-run; unsupported structured/
+  interactive operations refuse. Existing machine outputs unchanged.
+- [x] Isolated full gate 2451 Rust executions pass, 0 failures, 106 explicit
+  skips; original source/feature boundaries, strict Clippy, release/installer
+  and script checks pass. Synthetic CPU profile/digest/alias output equivalence,
+  cache verification/metadata immutability, corrupt-projection selection and
+  refusal tests pass. Actual release Bash/Fish completion and cold JSON
+  smoke pass; Zsh/PowerShell generation only. No new physical/numerical claim.
+
 ## Uncommitted
 
-- [ ] UX-2 next: typed command tree, global grammar, concise help/aliases/
-  completion and unified model/config resolver through original owners
-  (§46A.28). Global structured format selection and interactive progress
-  expansion remain open; shared ControlPlane snapshot/action/event ownership
-  follows in UX-3. Preserve explicit pull and unsupported-backend refusal.
+- [ ] UX-3 next: shared ControlPlane snapshot/action/event model over original
+  runtime/catalog/acquisition/cache/serving/config/device authorities (§46A.28).
+  General JSONL events and interactive transfer control (UX-4), one-line run
+  and serve (UX-5/6), ConfigDocument/profile management (UX-7), dynamic
+  completions, unified serving selection and later TUI/Web remain open.
+  Explicit by-name: lookup only; bare references stay canonical. Preserve
+  explicit acquisition and unsupported-backend refusal.
 
 ### Reviewed source checkpoint — 24 Oct
 

@@ -105,11 +105,7 @@ pub fn validate_relative_path(path: &str) -> Result<()> {
 }
 
 pub fn validate_digest(digest: &str) -> Result<()> {
-    if digest.len() != 64
-        || !digest
-            .bytes()
-            .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
-    {
+    if !zerogravity_core::run_policy::SourceSelector::is_snapshot_digest(digest) {
         return Err(Error::Malformed("expected lowercase SHA256 digest".into()));
     }
     Ok(())

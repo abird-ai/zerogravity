@@ -5,6 +5,19 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — typed command tree and cold model/config selection (UX-2)
+
+Canonical command/global/help/completion grammar with original compatibility
+routes. One shared source selector and original cache metadata/verified lease,
+exact digest and explicit by-name selection, one selected run document/profile
+and original overrides. Read-only model list/inspect, verified model verify,
+confirmed removal through original owner; no implicit network or new execution
+grant. Full isolated gate: 2451 Rust test executions, zero failures, 106
+explicit skips; architecture/feature isolation/release/installer/scripts pass.
+Synthetic GGUF profile/digest/alias equality and cache invariants pass;
+release Bash/Fish completion and cold JSON smoke pass. No new numerical,
+physical GPU or throughput evidence; previous measurements remain unchanged.
+
 ## 25 Nov — shared CLI presentation (UX-1)
 
 Presentation-only checkpoint: shared rich/plain reporter, typed errors/hints,

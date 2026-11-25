@@ -20,15 +20,24 @@ fn help_is_available_offline() {
     assert!(output.status.success());
     let text = String::from_utf8(output.stdout).expect("utf8");
     assert!(text.contains("USAGE:"));
-    assert!(text.contains("NOT IMPLEMENTED"));
-    assert_eq!(
-        text.contains("GPU OPTIONS:"),
-        cfg!(all(
-            feature = "model-qwen35",
-            feature = "text",
-            any(feature = "vulkan", feature = "cuda", feature = "hip")
-        ))
-    );
+    for command in [
+        "run",
+        "serve",
+        "model",
+        "device",
+        "pipeline",
+        "profile",
+        "config",
+        "doctor",
+        "completion",
+    ] {
+        assert!(text.contains(command), "{command}: {text}");
+    }
+    assert!(text.contains("pending"));
+    assert!(text.lines().count() < 35, "{text}");
+    assert!(!text.contains("Phase 1:"));
+    assert!(!text.contains("run-cuda"));
+    assert!(!text.contains("COMPILED CAPABILITIES:"));
 }
 
 #[test]
@@ -163,25 +172,26 @@ fn cpu_run_without_its_capabilities_refuses_before_source_io() {
     assert!(!error.contains("I/O error"));
 }
 
-#[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
 #[test]
-fn feature_aware_help_lists_only_executable_gpu_commands() {
-    let output = binary().arg("--help").output().expect("help");
+fn detailed_run_help_distinguishes_compiled_backends() {
+    let output = binary().args(["help", "run"]).output().expect("help");
     assert!(output.status.success());
     let text = String::from_utf8_lossy(&output.stdout);
-    for (name, compiled) in [
-        ("run-vulkan-amd", cfg!(feature = "vulkan")),
-        ("run-vulkan-nvidia", cfg!(feature = "vulkan")),
-        ("run-cuda", cfg!(feature = "cuda")),
-        ("run-rocm", cfg!(feature = "hip")),
+    let compiled = text
+        .lines()
+        .find(|line| line.starts_with("Compiled run choices:"))
+        .unwrap();
+    for (name, enabled) in [
+        ("cuda", cfg!(feature = "cuda")),
+        ("rocm", cfg!(feature = "hip")),
+        ("vulkan", cfg!(feature = "vulkan")),
     ] {
         assert_eq!(
-            text.contains(name),
-            compiled && cfg!(all(feature = "model-qwen35", feature = "text")),
-            "{name}: {text}"
+            compiled.contains(name),
+            enabled && cfg!(all(feature = "model-qwen35", feature = "text")),
+            "{compiled}"
         );
     }
-    assert!(!text.contains("GPU, and HTTP are NOT IMPLEMENTED"));
 }
 
 #[cfg(all(
@@ -271,5 +281,84 @@ fn presentation_rejects_unknown_values_without_echoing_secrets() {
         let stderr = String::from_utf8(output.stderr).unwrap();
         assert!(stderr.contains("error["));
         assert!(!stderr.contains("NEVER_ECHO_SECRET"));
+    }
+}
+
+#[test]
+fn canonical_help_completions_and_device_output_are_offline() {
+    let help = binary()
+        .args(["help", "model", "inspect"])
+        .output()
+        .unwrap();
+    assert!(help.status.success());
+    assert!(String::from_utf8_lossy(&help.stdout).contains("sha256:DIGEST"));
+    assert!(help.stderr.is_empty());
+    for shell in ["bash", "zsh", "fish", "powershell"] {
+        let result = binary().args(["completion", shell]).output().unwrap();
+        assert!(result.status.success(), "{shell}: {:?}", result.stderr);
+        let script = String::from_utf8_lossy(&result.stdout);
+        for name in [
+            "zerogravity",
+            "zg",
+            "model",
+            "device",
+            "profile",
+            "completion",
+        ] {
+            assert!(script.contains(name), "{shell}: {name}");
+        }
+        assert!(result.stderr.is_empty());
+    }
+    for args in [
+        vec!["device", "list", "--format", "json"],
+        vec!["--format=json", "devices", "list"],
+        vec![
+            "--color",
+            "always",
+            "device",
+            "--quiet",
+            "list",
+            "--format=json",
+        ],
+    ] {
+        let result = binary().args(args).output().unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let value: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert!(value["devices"].is_array());
+        assert!(result.stderr.is_empty());
+    }
+    let result = binary()
+        .args(["device", "inspect", "cpu", "--format", "json"])
+        .output()
+        .unwrap();
+    assert!(result.status.success(), "{:?}", result.stderr);
+    let value: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(value["id"], "cpu:0");
+    assert!(result.stderr.is_empty());
+}
+
+#[test]
+fn unsupported_globals_fail_before_effects() {
+    for args in [
+        vec!["--format=jsonl", "run", "/missing.gguf"],
+        vec!["--interactive=always", "serve"],
+        vec!["--yes", "run", "/missing.gguf"],
+        vec![
+            "--format=json",
+            "model",
+            "pull",
+            "hf:org/repo@main",
+            "--file",
+            "model.gguf",
+        ],
+    ] {
+        let result = binary().args(args).output().unwrap();
+        assert_eq!(result.status.code(), Some(2));
+        assert!(result.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&result.stderr).contains("error[invalid_usage]"));
     }
 }

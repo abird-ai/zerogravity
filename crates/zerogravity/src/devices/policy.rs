@@ -1,45 +1,47 @@
 //! Ordered selector resolution and current-observation refusal policy.
 use super::{Inventory, Observation, bad, device_node_identity, normalize_pci, now_ms};
-use crate::run_policy::{Backend, Devices, Request};
+use crate::run_policy::{Backend, DeviceRef, Devices, Request};
 use crate::{Error, Result};
+
+/// Resolve one observed physical identity, without backend or model admission.
+pub fn observe_selected<'a>(
+    inventory: &'a Inventory,
+    device: &DeviceRef,
+) -> Result<&'a Observation> {
+    if !matches!(device.host.as_str(), "local" | "localhost") {
+        return Err(Error::Unsupported(
+            "remote compute transport is not qualified".into(),
+        ));
+    }
+    let found = if let Some(n) = device.selector.strip_prefix("gpu:") {
+        n.parse::<usize>()
+            .ok()
+            .and_then(|n| inventory.devices.iter().filter(|d| d.class == "gpu").nth(n))
+    } else if let Some(pci) = device.selector.strip_prefix("pci:") {
+        let id = format!("pci:{}", normalize_pci(pci)?);
+        inventory.devices.iter().find(|d| d.id == id)
+    } else if device.selector.starts_with("/dev/") {
+        let id = device_node_identity(&device.selector)?;
+        inventory.devices.iter().find(|d| d.id == id)
+    } else {
+        inventory.devices.iter().find(|d| d.id == device.selector)
+    };
+    found.ok_or_else(|| {
+        Error::Unsupported(format!("explicit device {} is unavailable", device.label()))
+    })
+}
 
 /// Select observations in caller order, preserving exclusions and unknown
 /// capacity. This is not a source/profile fit check or execution eligibility.
 /// `/dev` selectors perform read-only node/sysfs/proc identity inspection.
 pub fn allowed(request: &Request, inventory: &Inventory) -> Result<Vec<Observation>> {
     let mut result = Vec::new();
-    let gpu = inventory
-        .devices
-        .iter()
-        .filter(|d| d.class == "gpu")
-        .collect::<Vec<_>>();
     let selected = match &request.devices {
         Devices::Auto => inventory.devices.iter().collect(),
         Devices::Ordered(devices) => {
             let mut list = Vec::new();
             for d in devices {
-                if !matches!(d.host.as_str(), "local" | "localhost") {
-                    return Err(Error::Unsupported(
-                        "remote compute transport is not qualified".into(),
-                    ));
-                }
-                let found = if let Some(n) = d.selector.strip_prefix("gpu:") {
-                    n.parse::<usize>().ok().and_then(|n| gpu.get(n).copied())
-                } else if let Some(pci) = d.selector.strip_prefix("pci:") {
-                    let id = format!("pci:{}", normalize_pci(pci)?);
-                    inventory.devices.iter().find(|d| d.id == id)
-                } else if d.selector.starts_with("/dev/") {
-                    // A char device is a selector, never a new allocator/route.
-                    // Resolve through kernel metadata and reuse the original PCI
-                    // observation, exclusion, device hold and backend checks.
-                    let id = device_node_identity(&d.selector)?;
-                    inventory.devices.iter().find(|item| item.id == id)
-                } else {
-                    inventory.devices.iter().find(|item| item.id == d.selector)
-                }
-                .ok_or_else(|| {
-                    Error::Unsupported(format!("explicit device {} is unavailable", d.label()))
-                })?;
+                let found = observe_selected(inventory, d)?;
                 if !list.iter().any(|old: &&Observation| old.id == found.id) {
                     list.push(found);
                 }

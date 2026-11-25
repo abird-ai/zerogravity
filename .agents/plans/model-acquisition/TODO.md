@@ -297,6 +297,23 @@ Git history; current source and this TODO supersede their archived checklists.
   umask0022/0077; isolated assembled repository gate passes. This changes only
   synthetic test metadata, not cache ownership, migration or recovery behavior.
 
+### Phase 2.1 UX-2 — cold canonical model references (25 Nov)
+
+- [x] Shared exact digest and explicit by-name: selection through original
+  CacheMetadata. Read durable clean name claims; missing/dirty/ambiguous
+  names refuse; never follow human projection symlinks or repair on selection.
+  Resolve canonical manifest identity; actual payload verification and
+  reclamation remain original independent authorities. Existing bare machine
+  references preserved (catalog: escapes digest-shaped names).
+- [x] Canonical model list/inspect read bounded metadata only; verify opens
+  original full verified lease; remove delegates original exact reclamation
+  and requires dry-run or yes. Explicit HF/GH source locator pull adapts to
+  the existing provider grammar; other provider forms stay opaque. Global
+  offline restriction inserted before owner flags, no implicit acquisition.
+  Original transaction/regression gate and synthetic cold selection/CLI
+  tests pass (2451 full-gate executions, 0 failures, 106 explicit skips).
+  No real network acquisition, provider qualification or new loading grant.
+
 ## Uncommitted
 
 - [ ] Canonical source-pull execution order (18 Oct decision): Qwen3.5 .8B/

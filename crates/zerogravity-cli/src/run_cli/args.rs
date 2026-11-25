@@ -1,4 +1,12 @@
 use super::*;
+pub(crate) fn takes_value(raw: &str) -> bool {
+    raw.starts_with('-')
+        && !raw.contains('=')
+        && !matches!(
+            raw,
+            "-h" | "--help" | "--raw" | "--dry-run" | "--explain" | "--realtime"
+        )
+}
 pub(super) fn parse(args: &[String], alias: Option<&str>) -> Result<Arguments> {
     if args.len() > 2048
         || args
@@ -95,6 +103,7 @@ pub(super) fn parse(args: &[String], alias: Option<&str>) -> Result<Arguments> {
             "--native-artifacts" => a.native_artifacts = Some(v),
             "--snapshot" => a.snapshot = Some(v),
             "--config" => a.config = Some(v),
+            "--profile" => a.profile = Some(v),
             "--model" => a.model = Some(v),
             "--model-config" => a.model_config = Some(v),
             "--tokenizer" => a.tokenizer = Some(v),
@@ -160,7 +169,7 @@ pub(super) fn parse(args: &[String], alias: Option<&str>) -> Result<Arguments> {
             }
             // Existing explicit resource flags remain available only as typed
             // operator policy in a later qualified adapter, never free-memory.
-            _ => return Err(bad(format!("unknown run option {canonical}"))),
+            _ => return Err(bad("unknown run option; use run --help")),
         }
     }
     if a.positional.is_some() && (a.config.is_some() || a.model.is_some()) {
@@ -174,6 +183,9 @@ pub(super) fn parse(args: &[String], alias: Option<&str>) -> Result<Arguments> {
         } else {
             a.model = Some(v)
         }
+    }
+    if a.config.is_some() && a.profile.is_some() {
+        return Err(bad("--config and --profile are mutually exclusive"));
     }
     if let Some(devices) = &a.devices {
         Devices::parse(devices)?.validate_backend(a.backend.as_ref().unwrap_or(&Backend::Auto))?;

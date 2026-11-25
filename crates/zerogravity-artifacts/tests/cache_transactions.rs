@@ -100,6 +100,15 @@ fn by_name_is_flat_lowercase_rebuildable_and_never_snapshot_authority() {
     fs::write(&by_name, b"human projection corruption").unwrap();
     assert_payload(&store.open_snapshot(&snapshot).unwrap(), NEW);
     assert_payload(&store.resolve_ref("Team/Primary_Model").unwrap(), NEW);
+    // The new explicit human lookup reads claims, not the projection, and
+    // resolves only canonical manifest identity (not payload authorization).
+    let metadata = zerogravity_artifacts::cache::CacheMetadata::open(&fixture.root).unwrap();
+    use zerogravity_core::run_policy::SourceSelector;
+    let name = SourceSelector::parse("by-name:team-primary-model").unwrap();
+    assert_eq!(metadata.select(&name, None).unwrap().digest, snapshot);
+    let digest = SourceSelector::parse(&format!("sha256:{snapshot}")).unwrap();
+    assert_eq!(metadata.select(&digest, None).unwrap().digest, snapshot);
+    assert!(metadata.select(&name, Some(&"0".repeat(64))).is_err());
     assert_eq!(store.list_snapshots().unwrap(), vec![snapshot.clone()]);
     assert_eq!(store.usage().unwrap().reserved_bytes, 0);
 

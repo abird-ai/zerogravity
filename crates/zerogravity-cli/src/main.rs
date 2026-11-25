@@ -4,10 +4,14 @@
 use std::env;
 mod args;
 mod commands;
+mod completion;
+mod model_cli;
 mod output;
 #[cfg(all(feature = "acquisition", target_os = "linux"))]
 mod signals;
-use args::{Command, parse};
+use args::Command;
+#[cfg(test)]
+use args::parse;
 use commands::run;
 #[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
 use std::io::{self, Read};
@@ -40,8 +44,6 @@ mod run_cli;
 
 #[cfg(feature = "serve")]
 mod serve;
-
-use zerogravity::devices::GpuBackend;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -86,6 +88,38 @@ fn inspect(path: &Path) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// Canonical local inspection shares the original artifact/config readers.
+fn inspect_with_format(path: &Path, format: args::Format) -> Result<()> {
+    if format != args::Format::Json {
+        return inspect(path);
+    }
+    if path.extension().is_some_and(|v| v == "json") {
+        let model = DeclaredModel::from_file(path)?;
+        return output::json(&serde_json::json!({
+            "kind": "config", "geometry": model.to_string(),
+            "execution_qualified": false,
+        }));
+    }
+    let artifact = Artifact::open(path)?;
+    let info = artifact.info;
+    let tensors = info
+        .tensors
+        .iter()
+        .take(12)
+        .map(|tensor| {
+            serde_json::json!({
+                "name": tensor.name, "shape": tensor.shape, "encoding": tensor.kind.name(),
+                "byte_offset": tensor.byte_offset, "byte_len": tensor.byte_len,
+            })
+        })
+        .collect::<Vec<_>>();
+    output::json(&serde_json::json!({
+        "kind": "artifact", "format": info.format, "bytes": info.file_len,
+        "architecture": info.architecture, "tensor_count": info.tensors.len(),
+        "tensor_preview": tensors, "payload_verified": false, "execution_qualified": false,
+    }))
 }
 
 #[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
@@ -295,21 +329,9 @@ fn main() -> ExitCode {
         .skip(1)
         .map(|value| value.to_string_lossy().into_owned());
     let args = args.collect::<Vec<_>>();
-    match args::presentation(&args) {
-        Ok((options, command)) => {
-            output::install(options);
-            run(parse(command))
-        }
-        Err(detail) => {
-            output::fail(output::Failure::new(
-                "",
-                "invalid_usage",
-                &detail,
-                Some("Run zerogravity --help."),
-            ));
-            ExitCode::from(2)
-        }
-    }
+    let (options, command) = args::invocation(&args);
+    output::install(options);
+    run(command)
 }
 
 #[cfg(test)]
@@ -339,7 +361,8 @@ mod tests {
             parse(["run", "model.gguf"]),
             Command::Run {
                 args: vec!["model.gguf".into()],
-                alias: None
+                alias: None,
+                format: crate::args::Format::Auto
             }
         );
     }
@@ -356,9 +379,6 @@ mod tests {
 
     #[test]
     fn unknown_is_not_accepted() {
-        assert_eq!(
-            parse(["--some-unimplemented-option"]),
-            Command::Unknown("--some-unimplemented-option".into())
-        );
+        assert_eq!(parse(["--some-unimplemented-option"]), Command::Unknown);
     }
 }

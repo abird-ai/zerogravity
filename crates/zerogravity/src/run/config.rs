@@ -31,6 +31,60 @@ pub struct RunOverrides {
     pub vendor: Option<String>,
 }
 
+/// Select exactly one existing run-document namespace. This only resolves
+/// paths; the existing typed document reader owns loading/validation/overrides.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DocumentSelection<'a> {
+    None,
+    Default,
+    File(&'a Path),
+    Profile(&'a str),
+}
+
+pub fn select_document(
+    selection: DocumentSelection<'_>,
+    cwd: &Path,
+    xdg: Option<&std::ffi::OsStr>,
+    home: Option<&std::ffi::OsStr>,
+) -> Result<Option<PathBuf>> {
+    let root =
+        || -> Result<PathBuf> {
+            let base =
+                if let Some(path) = xdg.map(Path::new).filter(|p| p.is_absolute()) {
+                    path.to_path_buf()
+                } else {
+                    let home = home.map(Path::new).filter(|p| p.is_absolute()).ok_or_else(
+                        || bad("absolute HOME required when XDG_CONFIG_HOME is unset/nonabsolute"),
+                    )?;
+                    home.join(".config")
+                };
+            Ok(base.join("abird/zerogravity"))
+        };
+    Ok(match selection {
+        DocumentSelection::None => None,
+        DocumentSelection::Default => Some(root()?.join("config.yaml")),
+        DocumentSelection::File(path) => Some(if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            cwd.join(path)
+        }),
+        DocumentSelection::Profile(name) => {
+            if name.is_empty()
+                || name.len() > 128
+                || matches!(name, "." | "..")
+                || !name
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"._-".contains(&b))
+            {
+                return Err(bad(
+                    "profile requires a bounded lowercase identifier (not a path)",
+                ));
+            }
+            Some(root()?.join("profiles").join(format!("{name}.yaml")))
+        }
+    })
+}
+
 /// Resolve an explicitly selected bounded YAML file and typed overrides.
 /// No implicit default-file discovery: callers supply their own XDG policy.
 /// Provenance is descriptive, never source authentication or execution authority.

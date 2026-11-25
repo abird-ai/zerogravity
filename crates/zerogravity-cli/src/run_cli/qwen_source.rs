@@ -205,19 +205,26 @@ fn resolve(model: &zerogravity::pipeline::ModelInstance, alias: &str) -> Result<
         std::env::var_os("HOME").as_deref(),
     )?;
     let metadata = CacheMetadata::open(&root)?;
-    let snapshot = if let Some(requested) = model.snapshot.as_deref() {
-        metadata.snapshot(requested)?
-    } else if matches!(&selector, SourceSelector::Catalog(name) if name == &target) {
-        let digest = zerogravity::models::qwen_source_snapshot(&target).ok_or_else(|| {
-            Error::Unsupported("Qwen target has no compiled canonical source".into())
-        })?;
-        metadata.snapshot(digest).map_err(|_| {
-            Error::Unsupported(format!(
-                "{target} is not acquired; run `zerogravity pull {target}` first"
-            ))
-        })?
+    let snapshot = if matches!(&selector, SourceSelector::Catalog(name) if name == &target) {
+        let digest = model
+            .snapshot
+            .as_deref()
+            .or_else(|| zerogravity::models::qwen_source_snapshot(&target))
+            .ok_or_else(|| {
+                Error::Unsupported("Qwen target has no compiled canonical source".into())
+            })?;
+        if model.snapshot.is_some() {
+            metadata.snapshot(digest)?
+        } else {
+            metadata.snapshot(digest).map_err(|error| match error {
+                Error::Io(ref io) if io.kind() == std::io::ErrorKind::NotFound => Error::Unsupported(format!(
+                    "{target} is not acquired; use model pull with an explicit source and selection"
+                )),
+                other => other,
+            })?
+        }
     } else {
-        metadata.select(&selector, None)?
+        metadata.select(&selector, model.snapshot.as_deref())?
     };
     let disk_limit = metadata.disk_limit_bytes()?;
     Ok(Resolved {

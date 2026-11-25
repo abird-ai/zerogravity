@@ -36,6 +36,8 @@ impl Backend {
 pub enum SourceSelector {
     Local(PathBuf),
     Catalog(String),
+    Snapshot(String),
+    ByName(String),
     HuggingFace(String),
     GitHub(String),
     Http(String),
@@ -62,6 +64,20 @@ impl SourceSelector {
         if let Some(reference) = s.strip_prefix("catalog:") {
             return catalog_reference(reference);
         }
+        if let Some(digest) = s.strip_prefix("sha256:") {
+            if !Self::is_snapshot_digest(digest) {
+                return Err(Error::Malformed("expected lowercase SHA256 digest".into()));
+            }
+            return Ok(Self::Snapshot(digest.into()));
+        }
+        if let Some(name) = s.strip_prefix("by-name:") {
+            if !Self::is_human_name(name) {
+                return Err(Error::Malformed(
+                    "invalid lowercase flat by-name alias".into(),
+                ));
+            }
+            return Ok(Self::ByName(name.into()));
+        }
         if s.starts_with("http:") || s.starts_with("https:") {
             return Ok(Self::Http(s.into()));
         }
@@ -75,6 +91,9 @@ impl SourceSelector {
         // a local directory named like a provider catalogue namespace.
         if p.is_absolute() || s.starts_with('.') {
             return Ok(Self::Local(p.into()));
+        }
+        if Self::is_snapshot_digest(s) {
+            return Ok(Self::Snapshot(s.into()));
         }
         // `models pull` default references are <namespace>/REPOSITORY/REVISION.
         if let Some((namespace, reference)) = s.split_once('/')
@@ -99,6 +118,25 @@ impl SourceSelector {
             Ok(Self::Catalog(s.into()))
         }
     }
+    /// Exact lowercase cache identity, not a prefix or a human alias.
+    pub fn is_snapshot_digest(value: &str) -> bool {
+        value.len() == 64
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    }
+
+    /// Exact human-facing name spelling (no normalization during lookup).
+    pub fn is_human_name(name: &str) -> bool {
+        !name.is_empty()
+            && name.len() <= 240
+            && !name.starts_with(['-', '.'])
+            && !name.ends_with(['-', '.'])
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'-' | b'.'))
+    }
+
     /// Positional run-document classification shared by the run frontend.
     /// Only a local filesystem path whose final component is .yaml/.yml
     /// selects a run document; provider/catalog/URL schemes are sources
@@ -117,9 +155,11 @@ impl SourceSelector {
     /// pull-shaped catalog namespaces and unavailable schemes never load
     /// as run documents.
     pub fn has_provider_scheme(s: &str) -> bool {
-        ["hf:", "gh:", "catalog:", "http:", "https:"]
-            .iter()
-            .any(|prefix| s.starts_with(prefix))
+        [
+            "hf:", "gh:", "catalog:", "sha256:", "by-name:", "http:", "https:",
+        ]
+        .iter()
+        .any(|prefix| s.starts_with(prefix))
     }
 }
 /// Same bounded name rules as an existing cache reference; no filesystem or

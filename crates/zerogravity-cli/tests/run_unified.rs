@@ -182,8 +182,35 @@ fn actual_same_cpu_inference_local_alias_config_xdg_and_cached_provider_forms() 
     assert_eq!(passed(run(&f.0, &["run", "run.yaml"])), baseline);
     std::fs::create_dir_all(f.0.join("config/abird/zerogravity")).unwrap();
     let absolute = yaml.replace("./model.gguf", f.0.join("model.gguf").to_str().unwrap());
-    std::fs::write(f.0.join("config/abird/zerogravity/config.yaml"), absolute).unwrap();
+    std::fs::write(f.0.join("config/abird/zerogravity/config.yaml"), &absolute).unwrap();
     assert_eq!(passed(run(&f.0, &["run"])), baseline);
+    let profiles = f.0.join("config/abird/zerogravity/profiles");
+    std::fs::create_dir(&profiles).unwrap();
+    // Selected profile replaces the default and retains its own relative base.
+    let profile = absolute.replace("max_tokens: 1", "max_tokens: 2");
+    std::fs::write(profiles.join("laptop.yaml"), profile).unwrap();
+    assert_eq!(
+        passed(run(
+            &f.0,
+            &["--profile", "laptop", "run", "--max-tokens", "1", "--quiet"]
+        )),
+        baseline
+    );
+    let profile_dry = run(
+        &f.0,
+        &["run", "--profile", "laptop", "--dry-run", "--format=json"],
+    );
+    assert!(profile_dry.status.success(), "{:?}", profile_dry.stderr);
+    let decision: serde_json::Value = serde_json::from_slice(&profile_dry.stdout).unwrap();
+    assert_eq!(decision["max_tokens"], 2);
+    for args in [
+        vec!["--profile", "../escape", "run"],
+        vec!["--profile", "laptop", "run", "--config", "run.yaml"],
+    ] {
+        let failed = run(&f.0, &args);
+        assert_eq!(failed.status.code(), Some(2));
+    }
+
     let dry = run(
         &f.0,
         &[
@@ -374,6 +401,48 @@ fn cached(root: &Path, common: &[&str], baseline: &[u8]) {
             baseline
         );
         if index == 0 {
+            let explicit_digest = format!("sha256:{digest}");
+            store
+                .set_by_name_alias("local-fixture", &digest, false)
+                .unwrap();
+            for selector in [
+                &digest,
+                &explicit_digest,
+                &"by-name:local-fixture".to_owned(),
+            ] {
+                assert_eq!(
+                    passed(run(root, &[&["run", selector][..], common].concat())),
+                    baseline
+                );
+                let inspected = run(root, &["model", "inspect", selector, "--format=json"]);
+                assert!(inspected.status.success(), "{:?}", inspected.stderr);
+                let report: serde_json::Value = serde_json::from_slice(&inspected.stdout).unwrap();
+                assert_eq!(report["snapshot"], digest);
+                assert_eq!(report["payload_verified"], false);
+            }
+            let verified = run(
+                root,
+                &["model", "verify", &explicit_digest, "--format=json"],
+            );
+            assert!(verified.status.success(), "{:?}", verified.stderr);
+            let report: serde_json::Value = serde_json::from_slice(&verified.stdout).unwrap();
+            assert_eq!(report["snapshot"], digest);
+            assert_eq!(report["payload_verified"], true);
+            let tree = cache_tree(&cache);
+            let listed = run(root, &["model", "list", "--format=json"]);
+            assert!(listed.status.success(), "{:?}", listed.stderr);
+            let reports: serde_json::Value = serde_json::from_slice(&listed.stdout).unwrap();
+            assert!(
+                reports
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|row| row["snapshot"] == digest)
+            );
+            assert_eq!(cache_tree(&cache), tree);
+            let refused = run(root, &["model", "remove", &explicit_digest]);
+            assert_eq!(refused.status.code(), Some(2));
+            assert!(String::from_utf8_lossy(&refused.stderr).contains("--dry-run or --yes"));
             // The default pull shape is a catalogue reference, and the explicit
             // spelling selects the same immutable snapshot.
             let explicit = format!("catalog:{reference}");

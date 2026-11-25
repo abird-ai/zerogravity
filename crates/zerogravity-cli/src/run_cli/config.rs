@@ -8,24 +8,15 @@ pub(super) fn resolve(
     xdg: Option<OsString>,
     home: Option<OsString>,
 ) -> Result<Request> {
-    let selector_free = a.config.is_none() && a.model.is_none() && a.graph.is_empty();
-    let selected = if selector_free {
-        let base = if let Some(p) = xdg.map(PathBuf::from).filter(|p| p.is_absolute()) {
-            p
-        } else {
-            let h =
-                PathBuf::from(home.ok_or_else(|| {
-                    bad("HOME required when XDG_CONFIG_HOME is unset/nonabsolute")
-                })?);
-            if !h.is_absolute() {
-                return Err(bad("HOME must be absolute"));
-            }
-            h.join(".config")
-        };
-        Some(base.join("abird/zerogravity/config.yaml"))
-    } else {
-        a.config.as_deref().map(|s| absolute(cwd, s))
+    use sdk::DocumentSelection;
+    let selection = match (&a.config, &a.profile) {
+        (Some(_), Some(_)) => return Err(bad("--config and --profile are mutually exclusive")),
+        (Some(file), None) => DocumentSelection::File(Path::new(file)),
+        (None, Some(profile)) => DocumentSelection::Profile(profile),
+        (None, None) if a.model.is_none() && a.graph.is_empty() => DocumentSelection::Default,
+        (None, None) => DocumentSelection::None,
     };
+    let selected = sdk::select_document(selection, cwd, xdg.as_deref(), home.as_deref())?;
     let graph = if a.graph.is_empty() {
         None
     } else {

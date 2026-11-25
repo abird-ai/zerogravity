@@ -113,6 +113,53 @@ use naming::{AutoCandidates, MAX_ALIAS_BYTES, normalize_alias, target, validate_
 #[cfg(test)]
 use naming::{MAX_ALIAS_INPUT_BYTES, auto_name};
 
+impl CacheMetadata {
+    /// Explicit human name -> exact canonical manifest. Never follow the
+    /// disposable symlink projection or repair state during cold selection.
+    pub(super) fn human_reference(&self, name: &str) -> Result<SnapshotMetadata> {
+        validate_name(name)?;
+        let optional = |path: &str, limit| match self.read(path, limit) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error),
+        };
+        let clean = || -> Result<()> {
+            if optional(STATE_SCHEMA_PATH, STATE_SCHEMA.len())?.as_deref() != Some(STATE_SCHEMA) {
+                return Err(Error::Unsupported(
+                    "human name state unavailable; use a canonical reference or snapshot digest"
+                        .into(),
+                ));
+            }
+            if optional(DIRTY_PATH, MAX_DIRTY_BYTES)?.is_some() {
+                return Err(Error::State(
+                    "human name state needs refresh; use an exact snapshot digest".into(),
+                ));
+            }
+            Ok(())
+        };
+        clean()?;
+        let automatic = optional(&format!("{AUTO_DIR}/{name}"), 64)?;
+        let alias = optional(&format!("{ALIAS_DIR}/{name}"), 64)?;
+        clean()?;
+        let bytes = match (automatic, alias) {
+            (Some(bytes), None) | (None, Some(bytes)) => bytes,
+            (None, None) => {
+                return Err(Error::Unsupported(
+                    "human model name is not acquired; use model list".into(),
+                ));
+            }
+            (Some(_), Some(_)) => {
+                return Err(Error::Malformed(
+                    "ambiguous human model name; use an exact digest".into(),
+                ));
+            }
+        };
+        let digest = std::str::from_utf8(&bytes)
+            .map_err(|_| Error::Malformed("invalid human name claim".into()))?;
+        self.snapshot(digest)
+    }
+}
+
 impl CacheStore {
     #[cfg(feature = "diagnostic-cache")]
     fn by_name_point(&self, operation: CacheOperation, moment: CacheMoment) -> Result<()> {

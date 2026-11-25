@@ -307,9 +307,13 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     }
     let options = parse(args)?;
     let store = CacheStore::open_existing(CacheOptions::new(Some(options.root), options.disk))?;
+    reclaim(&store, &options.digest, options.mode)
+}
+
+pub(super) fn reclaim(store: &CacheStore, digest: &str, mode: ReclaimMode) -> Result<()> {
     // Local maintenance has no credential/client/provider or online signal setup,
     // even in a binary that also has acquisition enabled.
-    match store.reclaim_snapshot(&options.digest, options.mode, &AtomicBool::new(false))? {
+    match store.reclaim_snapshot(digest, mode, &AtomicBool::new(false))? {
         ReclaimOutcome::DryRun(report) => {
             describe(&report);
             println!("DRY RUN: observation only; apply revalidates. No target entries removed.");
@@ -339,7 +343,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     }
 }
 
-fn help() {
+pub(super) fn help() {
     println!(
         "USAGE:
     zerogravity cache remove DIGEST --dry-run|--apply --cache ABS_PATH
@@ -369,8 +373,10 @@ Explicit aliases are stored separately from runtime refs. Automatic collisions
 preserve the existing primary name and suffix only the newcomer. Reset is
 deliberately destructive only to explicit human aliases and requires
 --discard-aliases. Every symlink
-targets ../snapshots/DIGEST. Runtime selection, provenance, quota and reclamation
-authority never read by-name or its human metadata.
+targets ../snapshots/DIGEST. Canonical references, provenance, quota and
+reclamation remain independent of human names. An explicit by-name:NAME
+selector resolves the durable name claim to an exact canonical digest,
+never follows the disposable symlink and grants no execution authority.
 
 Linux cache-only operation: no network, credentials, provider or signal handlers.
 import-hf explicitly copies selected local HF snapshot data; see its own help.

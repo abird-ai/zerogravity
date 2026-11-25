@@ -24,7 +24,60 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-1 accepted (25 Nov)
+### Current checkpoint — Phase 2.1 UX-2 (25 Nov)
+
+Typed CLI command tree and unified cold model/config selection through the
+existing SDK and artifact owners. No new dependency, runtime, cache, numerical
+profile, backend admission, or implicit download. UX-1 presentation remains
+shared; the Phase 1 minimum foundation exit remains accepted.
+
+- `zerogravity-cli/src/args.rs` owns the typed command hierarchy, global options
+  and compatibility dispatch. Concise help and static shell completion derive
+  from the same command tree; legacy run aliases, devices, models, inspect,
+  pull, run-cache and cache retain their original execution owners.
+  Consume globals only at grammar/argument boundaries, preserving flag-like
+  prompts and opaque legacy provider values. Global offline is inserted before
+  owner options, never appended as a possibly missing value.
+- The core `SourceSelector` and artifact `CacheMetadata::select` remain the
+  common cold selector. Exact SHA-256 (bare or sha256:), explicit by-name:,
+  canonical reference and acquired provider identities bind exact manifests.
+  Explicit by-name reads clean durable claims, not disposable symlinks; dirty,
+  ambiguous or missing names refuse. Existing canonical refs remain independent
+  of names; catalog: escapes names that look like a digest. All actual loads
+  still authenticate source through their original leases and model owners.
+  No inferred GPU eligibility from an alias or digest.
+- SDK `run::config::select_document` chooses one explicit file, named profile
+  under XDG profiles/, default config.yaml, or no file; existing typed YAML
+  resolution and CLI override provenance remain authoritative. No profile
+  layering, editing, or new serving-document grammar.
+- Canonical model list/inspect are bounded metadata-only (missing cache list
+  empty without creation); verify uses original full verified lease. Remove
+  requires exactly one of --dry-run/--yes and original exact reclamation.
+  Search exposes static family intent only. Model pull forwards explicit
+  provider selections/locators; advanced alias/import use original cache
+  owners. Device inspect uses the same original observed-device resolution
+  as run. JSON supported for model list/inspect/verify, device list/inspect,
+  run dry-run; unsupported structured/interactive requests refuse before
+  effects. General JSONL events, rich transfers, dynamic completions,
+  bare human-name lookup, one-line run/serve and profile management stay open.
+- Full mandatory-private-network workspace gate: **2451 passing Rust test
+  executions, zero failures, 106 explicit skips**; feature isolation,
+  architecture, strict Clippy, release/installer/scripts pass. Real synthetic
+  GGUF CLI equality covers profile/override, digest and explicit alias with
+  metadata/verify/list and unchanged cold cache. Existing cache transaction
+  tests exercise durable name selection despite a corrupt projection.
+  Release Bash/Fish syntax and actual completion pass, absent-cache JSON
+  list creates nothing, observed CPU JSON passes. All four shell outputs
+  generated/tested; Zsh/PowerShell not locally installed. No learned-model
+  or physical GPU requalification; prior evidence stands.
+
+**Next coherent unit: UX-3 — shared ControlPlane snapshots, actions and
+events** (CLI UX §46A.28), over the original Runtime/model catalog,
+acquisition/cache, serving and config/device owners. No duplicated frontend
+authority; lifecycle/download work (UX-4) follows. Keep TUI before Web and
+the subsequent performance campaign in canonical order.
+
+### Previous checkpoint — Phase 2.1 UX-1 accepted (25 Nov; e6211608)
 
 The shared CLI presentation foundation is implemented and accepted in this
 signed checkpoint on L5. The Phase 1 exit remains `d5030ad4`, with last
@@ -64,7 +117,7 @@ qualification changed.
   unstyled with empty stderr. No new learned-model or physical GPU
   qualification required or claimed for this CLI-only change.
 
-**Next coherent unit: UX-2 (typed command tree + unified model/config
+**Historical next unit (completed above): UX-2 (typed command tree + unified model/config
 resolver)** under CLI UX §46A.28. Preserve the compatibility grammar and
 machine output contracts while expanding global options/command grammar,
 concise help/completion, and resolution through the original authorities.

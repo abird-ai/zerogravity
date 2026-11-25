@@ -4,152 +4,110 @@ pub(crate) use presentation::{
     Event, Failure, Options, Switch, Verbosity, emit, fail, install, report,
 };
 
-use super::{GpuBackend, VERSION};
+use super::VERSION;
+use crate::args::{TREE, Topic, node};
 #[cfg(all(feature = "acquisition", target_os = "linux"))]
 pub(crate) use presentation::reporter;
 
 pub(super) fn usage() {
-    if !cfg!(all(
-        feature = "cpu",
-        feature = "model-qwen35",
-        feature = "text"
-    )) || cfg!(any(
-        feature = "vulkan",
-        feature = "cuda",
-        feature = "hip",
-        feature = "acquisition",
-        feature = "cache",
-        feature = "serve"
-    )) {
-        composed_usage();
-        presentation_usage();
-        return;
-    }
-
     println!(
-        "zerogravity v{VERSION}
-
-A composable, high-performance AI execution fabric.
-Phase 1: real Qwen3.5 0.8B/2B CPU text inference and source inspection.
-
-USAGE:
-    zerogravity [--help | --version]
-    zerogravity inspect <local-config.json|model.safetensors|model.gguf>
-    zerogravity run <model.gguf> --prompt Hello --max-tokens 16
-    zerogravity run <model.gguf> --prompt Hello --raw -n 8
-    zerogravity run <model.gguf> --raw -p Hello --prefill-chunk 128
-    zerogravity run <model.gguf> --raw -p Hello --audit-logits-jsonl ./target/logits.jsonl
-    zerogravity run <model.gguf> --raw -p Hello --audit-layers-jsonl ./target/layers.jsonl
-
-IMPLEMENTED:
-    inspect     Validate bounded source tensor directory or model config geometry
-    run         Qwen3.5 0.8B/2B CPU text inference (no server, first reference path)
-
-FUTURE COMMANDS (NOT IMPLEMENTED):
-    serve       Run the shared model router and OpenAI-compatible API
-    models      Manage registered and resident models
-    config      View and update model/runtime configuration
-
-Only qualified text-only dense Qwen3.5 is implemented; CPU is the first
-reference backend. Trained MTP, vision, Gemma, GPU, and HTTP are NOT IMPLEMENTED.
-Use --model-config and --tokenizer for colocated sidecars; --config selects pipeline YAML. See docs/ENGINEERING_SPECIFICATION.md."
+        "zerogravity v{VERSION} — AI execution fabric\n\nUSAGE:\n    zerogravity [global options] <command> [options]\n\nCOMMANDS:"
     );
-    presentation_usage();
-}
-
-fn presentation_usage() {
+    for n in TREE {
+        let description = match n.topic {
+            Topic::Serve if !cfg!(feature = "serve") => "Local API (requires serve feature)",
+            _ => n.description,
+        };
+        println!("    {:12} {description}", n.name);
+    }
     println!(
-        "\nPRESENTATION OPTIONS (before command):\n    -q, --quiet | -v, --verbose | -vv\n    --format auto|text   (text selects plain presentation)\n    --color auto|always|never\n    --progress auto|always|never\nExisting command-specific JSON, JSONL and audit options are unchanged."
+        "\nGLOBAL OPTIONS:\n    -q, --quiet | -v, --verbose | -vv\n    --format auto|text|json|jsonl  (structured formats where supported)\n    --color auto|always|never --progress auto|always|never\n    --interactive auto|never|always (forced interaction pending)\n    --config FILE | --profile NAME (where supported)\n    --offline  --yes (model remove only)\n\nRun 'zerogravity help <command>' for details. No implicit acquisition."
     );
 }
 
-/// Keep the existing default CPU command help; other feature sets name
-/// only their compiled command capabilities without initializing a device.
-fn composed_usage() {
-    println!(
-        "zerogravity v{VERSION}\n\nA composable, high-performance AI execution fabric.\n\nUSAGE:\n    zerogravity [--help | --version]\n    zerogravity inspect <local-config.json|model.safetensors|model.gguf>"
-    );
-    if cfg!(all(
-        feature = "cpu",
-        feature = "model-qwen35",
-        feature = "text"
-    )) {
-        println!("    zerogravity run <model.gguf> --prompt Hello --max-tokens 16");
-    }
-    if cfg!(all(feature = "model-qwen35", feature = "text")) {
-        for backend in [
-            GpuBackend::VulkanAmd,
-            GpuBackend::VulkanNvidia,
-            GpuBackend::Cuda,
-            GpuBackend::Hip,
-        ] {
-            if backend.compiled() {
+pub(super) fn topic_usage(topic: Topic, child: Option<&str>) -> zerogravity::Result<()> {
+    match topic {
+        Topic::Run => crate::run_cli::help(),
+        Topic::Serve => {
+            #[cfg(feature = "serve")]
+            crate::serve::help();
+            #[cfg(not(feature = "serve"))]
+            println!(
+                "USAGE: zerogravity serve --model ID=PATH | --config FILE\nRequires the optional serve feature."
+            );
+        }
+        Topic::Model => match child {
+            Some("pull") => {
                 println!(
-                    "    zerogravity {} <model.gguf> --prompt Hello --max-tokens 16",
-                    backend.command()
+                    "USAGE: zerogravity model pull hf:REPO@REV --file PATH [--file PATH ...]\n       zerogravity model pull gh:OWNER/REPO@REV --file PATH\nAdvanced provider forms retain the existing pull grammar. Acquisition is explicit."
+                );
+                #[cfg(all(feature = "acquisition", target_os = "linux"))]
+                crate::pull::help();
+                #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
+                println!("Requires the optional acquisition feature on Linux.");
+            }
+            Some("list") => println!(
+                "USAGE: zerogravity model list [--cache ABS_PATH] [--format json]\nRead-only canonical manifest metadata; no payload or execution qualification."
+            ),
+            Some("inspect") | Some("verify") => {
+                let operation = child.expect("known operation");
+                println!(
+                    "USAGE: zerogravity model {operation} REF [--snapshot DIGEST] [--cache ABS_PATH] [--format json]\nREF: explicit local file (inspect only), canonical reference, sha256:DIGEST, full digest, by-name:NAME, or acquired hf:/gh:/http(s): locator. No remote lookup."
                 );
             }
+            Some("remove") => println!(
+                "USAGE: zerogravity model remove REF [--cache ABS_PATH] --dry-run | --yes\nExact canonical snapshot reclamation; referenced or busy data refuses."
+            ),
+            Some("search") => println!(
+                "USAGE: zerogravity model search [QUERY]\nOffline family intent catalog, not a model readiness or remote search claim."
+            ),
+            Some("import") => println!(
+                "USAGE: zerogravity model import --source PATH --repository REPO --commit SHA --file ROLE:PATH ...\nExisting cache import-hf grammar; see cache import-hf --help."
+            ),
+            Some("alias") => println!(
+                "USAGE: zerogravity model alias list|set|remove [arguments]\nExisting cache by-name grammar; see cache --help."
+            ),
+            _ => {
+                println!("USAGE: zerogravity model <command> [options]\n\nCOMMANDS:");
+                for child in node(Topic::Model).children {
+                    println!("    {child}");
+                }
+                println!(
+                    "\nRun 'zerogravity help model <command>' for details. Cached source operations require Linux and the cache feature."
+                );
+            }
+        },
+        Topic::Device => println!(
+            "USAGE: zerogravity device list [--format json]\n       zerogravity device inspect ID [--format json]\nObserved hardware only; use exact PCI, gpu:N, cpu:0 or supported device-node selectors."
+        ),
+        Topic::Pipeline => crate::pipeline::run(&["--help".into()])?,
+        Topic::Cache => {
+            #[cfg(all(feature = "cache", target_os = "linux"))]
+            crate::cache_manage::help();
+            #[cfg(not(all(feature = "cache", target_os = "linux")))]
+            println!("Advanced cache maintenance requires Linux and the cache feature.");
         }
+        Topic::Completion => println!("USAGE: zerogravity completion bash|zsh|fish|powershell"),
+        Topic::Profile => println!(
+            "USAGE: zerogravity --profile NAME run [options]\nNamed profile selection uses the existing run YAML schema; profile management is not implemented yet."
+        ),
+        Topic::Config => println!(
+            "USAGE: zerogravity --config FILE run [options]\nConfiguration editing and unified serving documents are not implemented yet."
+        ),
+        Topic::Doctor | Topic::Web => println!("{} is not implemented yet.", node(topic).name),
+        Topic::Version => println!("USAGE: zerogravity version"),
+        Topic::Help => usage(),
     }
-    if cfg!(all(feature = "cache", target_os = "linux")) {
-        println!("    zerogravity cache --help  (explicit offline exact-snapshot removal)");
-    }
-    if cfg!(all(feature = "acquisition", target_os = "linux")) {
-        println!(
-            "    zerogravity pull --help  (explicit data acquisition and offline cache inspection)"
-        );
-    }
-    if cfg!(all(
-        feature = "cache",
-        feature = "cpu",
-        feature = "model-qwen35",
-        feature = "text",
-        target_os = "linux"
-    )) {
-        println!("    zerogravity run-cache --help  (explicit offline verified cache model)");
-    }
-    if cfg!(feature = "serve") {
-        println!("    zerogravity serve --help  (loopback OpenAI-compatible inference router)");
-    }
-    println!("\nCOMPILED CAPABILITIES:");
-    println!("    source inspection: enabled");
-    for (name, enabled) in [
-        ("CPU", cfg!(feature = "cpu")),
-        ("Qwen3.5", cfg!(feature = "model-qwen35")),
-        ("text tokenizer", cfg!(feature = "text")),
-        ("OpenAI HTTP frontend", cfg!(feature = "serve")),
-        ("Vulkan", cfg!(feature = "vulkan")),
-        ("CUDA", cfg!(feature = "cuda")),
-        ("HIP/ROCm", cfg!(feature = "hip")),
-    ] {
-        println!(
-            "    {name}: {}",
-            if enabled { "enabled" } else { "disabled" }
-        );
-    }
-    if cfg!(all(
-        feature = "model-qwen35",
-        feature = "text",
-        any(feature = "vulkan", feature = "cuda", feature = "hip")
-    )) {
-        println!(
-            "\nGPU OPTIONS:\n    --prompt TEXT | stdin (at most 1 MiB)\n    --max-tokens N  (1..=512, default 16)\n    --raw\n    --provider-mib N  (default 2048)\n    --device-mib N  (default 4096)\n\nResident GPU prompt plus generation admits at most 512 consumed tokens.\nOriginal model.gguf, config.json and tokenizer.json must be colocated."
-        );
-    }
-    println!("\nMODEL MATRIX: zerogravity models [list|inspect SLUG] (offline)");
-    println!(
-        "PIPELINES: zerogravity pipeline [check|run] --config FILE.yaml (run NOT IMPLEMENTED)"
-    );
-    if cfg!(feature = "serve") {
-        println!("\nFUTURE COMMANDS (NOT IMPLEMENTED):\n    config      Runtime configuration");
-    } else {
-        println!(
-            "\nFUTURE COMMANDS (NOT IMPLEMENTED):\n    serve       HTTP router (requires serve feature)\n    config      Runtime configuration"
-        );
-    }
-    println!(
-        "\nRun routing: zerogravity run --help; inventory: zerogravity devices list [--json].\nForced backends never fall back. Generic GPU routing refuses missing cold costs/physical binding."
-    );
+    Ok(())
+}
+
+pub(super) fn json(value: &impl serde::Serialize) -> zerogravity::Result<()> {
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    serde_json::to_writer_pretty(&mut out, value)
+        .map_err(|error| zerogravity::Error::State(error.to_string()))?;
+    writeln!(out)?;
+    Ok(())
 }
 
 #[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]

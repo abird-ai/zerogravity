@@ -266,10 +266,9 @@ impl YamlConfig {
     }
 }
 
-pub fn run(args: &[String]) -> Result<(), ServiceError> {
-    if args.len() == 1 && args[0] == "--help" {
-        println!(
-            "USAGE: zerogravity serve --config config.yaml | \
+pub(super) fn help() {
+    println!(
+        "USAGE: zerogravity serve --config config.yaml | \
              --model ID=MODEL.gguf [--listen 127.0.0.1:8000] \
              [--backend cpu|cuda|vulkan-nvidia|vulkan-amd|rocm] \
              [--source-profile gguf|fixed-prompt-bf16|qwen35-cuda-bf16] [--native-artifacts DIR] \
@@ -290,7 +289,12 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
              Opt-in metrics permit return_token_ids=true with bounded token IDs, \
              publication-observed times and separate HTTP delivery observations. \
              Loopback only; optional ZEROGRAVITY_API_KEY."
-        );
+    );
+}
+
+pub fn run(args: &[String]) -> Result<(), ServiceError> {
+    if args.len() == 1 && args[0] == "--help" {
+        help();
         return Ok(());
     }
 

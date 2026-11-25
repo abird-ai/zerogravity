@@ -34,6 +34,10 @@ impl CacheMetadata {
                 SourceSelector::Catalog(name) => {
                     Ok(self.reference(name)?.digest == snapshot.digest)
                 }
+                SourceSelector::Snapshot(digest) => Ok(digest == &snapshot.digest),
+                SourceSelector::ByName(name) => {
+                    Ok(self.human_reference(name)?.digest == snapshot.digest)
+                }
                 SourceSelector::HuggingFace(value) | SourceSelector::GitHub(value) => {
                     let provider = if matches!(selector, SourceSelector::HuggingFace(_)) {
                         "huggingface"
@@ -89,6 +93,13 @@ impl CacheMetadata {
         } else {
             match selector {
                 SourceSelector::Catalog(name) => self.reference(name)?,
+                SourceSelector::Snapshot(digest) => self.snapshot(digest)?,
+                SourceSelector::ByName(name) => self.human_reference(name)?,
+                SourceSelector::Local(_) => {
+                    return Err(Error::Malformed(
+                        "local path is not a cached selector".into(),
+                    ));
+                }
                 SourceSelector::Http(_) => {
                     return Err(Error::Malformed(
                     "HTTP locator requires an explicit snapshot binding an exact cached content contract".into(),
@@ -126,7 +137,7 @@ impl CacheMetadata {
     pub fn root(&self) -> &Path {
         &self.path
     }
-    fn read(&self, path: &str, limit: usize) -> Result<Vec<u8>> {
+    pub(super) fn read(&self, path: &str, limit: usize) -> Result<Vec<u8>> {
         let mut file = self.root.open_file(path, OFlags::RDONLY, Mode::empty())?;
         let before = file.metadata()?;
         if before.len() > limit as u64 {
