@@ -312,16 +312,8 @@ impl ResidentPhysical {
     pub(crate) fn client(&self) -> &Client {
         &self.client
     }
-    #[cfg(any(
-        all(feature = "cuda-cublas", target_os = "linux"),
-        all(
-            feature = "qwen-source-qualification",
-            feature = "gemma-bf16-qualification",
-            feature = "hip",
-            target_os = "linux"
-        )
-    ))]
-    pub(crate) fn physical_key(&self) -> PhysicalDeviceKey {
+    /// Original admitted physical identity. No new reservation or execution permit.
+    pub fn physical_key(&self) -> PhysicalDeviceKey {
         self.budget.physical_key()
     }
     pub(crate) fn device(&self) -> Device {
