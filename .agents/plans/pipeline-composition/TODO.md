@@ -460,8 +460,14 @@ and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
   original router/receiver, polling/cancel and final-stage observations,
   structured refusal and selected owner/config projection; actual CPU,
   CUDA and native HIP language consumers pass.
-- [ ] Converge ordinary cold source selection/eligibility and remaining
-  original semantic-region observations;
+- [x] Bounded shared ordinary cold GGUF source selection (7987f70a):
+  direct CPU and SDK/pipeline local/immutable-cache selection, held
+  descriptor, actual family/target/context, original admitted source and
+  exact snapshot observation; actual cached CPU/CUDA SDK/reload/chain
+  and mutable-ref refusal, direct selected digest, local CPU/CUDA and
+  native HF HIP V2 C1/C8 pass.
+- [ ] Close remaining original semantic-region observations and qualified
+  provider buffer/stream compatibility;
   extend other qualified resident formats and generic named Vulkan
   registry reuse and actual shared host-visible GPU backing. General
   DAG/media/context authority, mixed backend/multi-source HF loading and

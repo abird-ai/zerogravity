@@ -226,6 +226,11 @@ any external compiler. All phases retain the original resource/state owners.
   exact plan before Ready. Real CPU 0.8B/2B mismatch/retry, CUDA GGUF
   distinct-owner chain and native HIP HF same-snapshot alias chain/C1/C8
   pass; no new family, codec or kernel.
+- 7987f70a: ordinary local/cache GGUF cold location and held-source/
+  family/target/context checks shared by direct CPU and SDK/graph
+  preparation; exact cache digest and original verified raw ownership.
+  Actual cached CPU/CUDA, existing local CPU/CUDA and native HF HIP V2
+  C1/C8 pass. No new model/codec or kernel.
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

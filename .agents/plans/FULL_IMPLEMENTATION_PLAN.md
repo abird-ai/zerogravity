@@ -279,12 +279,18 @@ registration/config observations and structured service refusal. Actual CPU
 0.8B/2B chain + direct framed nonstream task, CUDA GGUF three-stage/two-owner
 chain, HIP V2 HF same-owner chain/C1/C8 final token observations and retirement
 pass. Legacy APIs and original scheduler/transport retained. Full isolated gate: 2396 Rust test executions, zero failures, 104 explicit skips; release/installer/scripts pass.
-Phase 1 exit
-review in CURRENT_HANDOFF: next reconcile minimum cold source selector
-and family/format/task eligibility for actual ordinary SDK/CLI/pipeline
-consumers through original local/cache/HF source owners and preparation.
-Remaining semantic-region observations and physical ownership seams stay
-explicit. Broader family/codec/task and unqualified backend routes remain open.
+Signed 7987f70a: common selected GGUF local/cache location, held
+descriptor and family/target/context checks through direct CPU and
+SDK/pipeline; TextLoadPolicy and original catalog/graph lifecycle,
+exact cache digest and verified raw lease (no duplicate charge).
+Actual cached 0.8B CPU/CUDA SDK/reload/chain, ref retarget refusal and
+earlier selected direct materialization; existing local CPU/CUDA GGUF
+and native HF HIP C1/C8 pass. 2ec06026 preserves selector refusal diagnostics.
+Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
+Next close minimum original semantic-plan/
+region observations and provider buffer/stream compatibility seam through
+existing prepared and completion owners. Broader family/codec/task,
+general UMA backing and unqualified backend routes remain explicit.
 No duplicate catalog, estimator, allocator or runtime.
 General DAG/media/context authority, multi-source HF and mixed-backend
 pipeline loading, CLI/API transport activation, generalized persistent

@@ -616,8 +616,13 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   refusal, read-only selected original registration/config. Actual CPU
   direct framed nonstream/0.8B->2B chain, CUDA GGUF two-owner chain and
   native HIP HF alias chain/C1/C8 replay/retirement pass.
-- [ ] Converge ordinary cold source selector/eligibility and remaining
-  shared SDK/semantic-region observations; general DAG/media/context,
+- [x] Shared bounded local/cache GGUF cold source selection (7987f70a),
+  TextLoadPolicy and declared SDK/pipeline load, actual held source/
+  family/target/context and original raw lease, exact digest observation.
+  Real cached CPU/CUDA SDK/chain/reload/refusal and selected direct
+  materialization; original local CPU/CUDA and native HF HIP C1/C8 pass.
+- [ ] Close remaining shared SDK/semantic-region observations and qualified
+  provider buffer/stream compatibility; general DAG/media/context,
   mixed backend/multi-source HF and pipeline CLI/API activation only
   through original qualified owners.
 

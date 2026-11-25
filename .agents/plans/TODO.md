@@ -81,10 +81,15 @@ bounded receiver polling/cancel, structured refusal and selected original
 registration/owner/config observation. Actual CPU 0.8B/2B and framed
 nonstream task, CUDA GGUF distinct-owner chain and HIP HF alias chain/C1/C8
 final observations/retirement pass. Full isolated gate: 2396 Rust test executions, zero failures, 104 explicit skips; release/installer/scripts pass.
-Phase 1 exit review in CURRENT_HANDOFF;
-next reconcile minimum cold source selector/family/format/task eligibility
-across ordinary SDK/CLI/pipeline consumers using original local/cache/HF
-source owners. Historical CPU cache gate corrected at 00f57e7a/9374e0ca.
+Signed 7987f70a: shared local/cache GGUF resolution and held source/
+family/target/context checks, TextLoadPolicy and declared SDK/pipeline,
+exact snapshot observation and original verified raw lease.
+Actual cached CPU/CUDA SDK and pipeline/reload/retarget refusal and
+direct selected digest; local CPU/CUDA chain and native HF HIP V2 C1/C8
+pass. 2ec06026 preserves selector refusal diagnostics. Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
+Next close minimum original semantic-plan/region observations and
+provider buffer/stream compatibility through existing owners. Historical
+CPU cache gate corrected at 00f57e7a/9374e0ca.
 Continue [full plan](FULL_IMPLEMENTATION_PLAN.md). No second cache
 hierarchy, allocator or publisher; mixed backend/multi-source HF pipeline,
 other persisted GPU formats, cross-provider restore, scheduler-managed

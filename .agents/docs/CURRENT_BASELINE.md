@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — shared GGUF source selection
+
+7987f70a: common local/immutable-cache location and held descriptor/
+family/target/context checks through direct CPU and original SDK loading.
+TextLoadPolicy, declared catalog and pipeline with explicit existing cache
+root, canonical alias/snapshot ownership and verified raw-source lease,
+exact cache digest observation. Actual approved cached 0.8B CPU/CUDA
+SDK/reload/chain, ref retarget refusal and earlier exact direct selection;
+local CPU 0.8B/2B and CUDA GGUF chains and native HIP HF V2 C1/C8
+replay/retirement pass. No new arithmetic or acquisition claim.
+2ec06026 preserves selector refusal diagnostics. Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
+
 ## 25 Nov — shared SDK text-task controls
 
 b25b5c02: borrowed model/plan TextTask and explicit controls over original

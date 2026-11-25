@@ -25,6 +25,88 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed shared selected GGUF source preparation: 7987f70a566bfb7a5519b8f1a1013f138881de07.**
+Refusal diagnostic compatibility correction: 2ec06026853b019876b753f50e38134ea202bee7.
+
+- Shared prepare/source.rs resolves explicit existing GGUF locations:
+  original local paths/sidecars, held regular weight descriptor and extent;
+  cached provider/catalog selection resolves once to the exact immutable
+  manifest, unique weights/config/tokenizer roles and bounded sidecars.
+  Direct CPU Selection uses the same location and actual family/target/
+  context validation. Read-only cache metadata grants no source authority;
+  actual preparation opens the exact selected digest, never its mutable ref.
+  Retain original source verification and actual model/codec validation.
+- Original local CPU/GPU loader keeps its tokenizer bootstrap, retained
+  inventory, approved tokenizer bytes/constructor and original weight
+  admission order. Local materialization uses the same held descriptor
+  that was sized; source extent changes refuse. Cached serving uses the
+  original verified SnapshotLease for actual sidecars and weights, same
+  approved tokenizer and family checks, original SourceWeights verified
+  owned copy. Its raw byte lease remains with the actual immutable source;
+  the serving wrapper reserves only the remaining conservative envelope.
+  No duplicate raw-weight charge or new allocator. Direct CPU planning
+  and serving retain their separate existing memory policies.
+- TextLoadPolicy in models.rs is the existing pipeline policy generalized
+  to cold declarations. ModelCatalog::load_declared and
+  Runtime::load_pipeline_with_cache use the same builtins registration
+  and original router lifecycle. Existing LanguageLoadPolicy name is a
+  reexport; existing load_pipeline and legacy path/approved HF requests
+  remain. Canonical local paths or exact (cache root, snapshot digest)
+  aliases share the same prepared owner; conflicting declared targets
+  refuse. Exact verified cache snapshot is exposed on GGUF artifact
+  observation, not claimed as an authenticated remote revision.
+  Original HF policy uses its existing approved inventory and explicit
+  CacheOptions, one distinct snapshot; no change to source binding/math.
+- Explicit cache root optional; default follows original cache policy.
+  No automatic acquisition or remote execution. Local SDK sidecar/native
+  artifact overrides remain unqualified (direct CPU local config/tokenizer
+  overrides remain explicit); cached roles must come from the selected
+  snapshot. Unsupported formats/families/target/context/sidecar and mixed
+  backend/HF source policies remain explicit.
+- Initial compile found unused Read import and stale test expecting the
+  SDK-specific error fields from the shared HeldWeights core error; fixed.
+  Minimal, model-only, strict CPU facade Clippy, combined CUDA/HIP SDK
+  all-targets and three held-source/grouping tests pass.
+- Actual L5 imported approved local Qwen 0.8B GGUF: declared SDK load,
+  two aliases/one exact snapshot owner and task equality, unload/reload
+  as graph-declared chain, selected artifact digest, original sequential
+  chain equality and final observations. Retarget the mutable ref to
+  config-only manifest while loaded, existing owner unchanged; later
+  source declaration/pin refuses, no partial catalog. Earlier direct
+  CPU Selection materializes the original exact digest after ref
+  retarget, original envelope retires. Separate real CPU and CUDA runs
+  pass. Existing local CPU 0.8B -> 2B target mismatch/retry/chain and
+  direct framed task; CUDA GGUF three-stage two-owner chain/selective
+  unload also pass. L5 idle 37MiB. X2 actual original HF native HIP V2
+  C1/C8 all six waves [248068,198,90700], lane invariance, width8, zero
+  failed GPU quanta, declared alias chain/final observations and original
+  retirement pass; idle 259768320 bytes. No new kernel/profile or
+  performance claim. Cached physical qualification is CPU/CUDA; other
+  compiled local GPU policies are not new physical cache qualification.
+- First full isolated gate passed feature/Clippy and reached the CPU CLI
+  unified real-source fixture; its missing-acquisition diagnostic assertion
+  caught wording changed during extraction. 2ec06026 restores the original
+  HTTP missing-feature and sidecar diagnostic wording, and original SDK
+  model_source_changed status/code for held extent changes. Healthy
+  source/materialization behavior unchanged. Both unified CLI source-selection
+  variants pass on the full corrected rerun. Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
+
+**Next coherent unit:** close the minimum original semantic-plan/closed-region
+observation and borrowed provider buffer/stream compatibility seam using
+core ModelProgram/ModelRegion, PreparedExecutable/PreparedRegion and the
+existing ExecutionDescription, RegionExecutionProvider and typed original
+physical completion/transport owners. Expose actual selected plan/region
+facts for qualified native/captured consumers without a second plan ID,
+IR, registry or execution permission. Reuse the original CUDA
+managed-private/secondary-stream transport where a qualified consumer
+needs it; do not promise general cross-context/backend transfer or new
+compiled-provider execution. Review remaining minimum Phase 1 exit
+requirements against source and accepted real runs, keep non-Linux/generic
+Vulkan registry, complete UMA backing and other unqualified specializations
+explicit. Continue CLI/TUI/Web only after shared foundations close.
+
+### Previous accepted SDK text-task controls checkpoint
+
 **Signed shared SDK text-task controls and selected-owner observations: b25b5c02347e15980c082719d18a2685e687af3c.**
 
 - Borrowed TextTask/TaskTarget::Model or ::Pipeline, TextControls and
@@ -106,18 +188,9 @@ reusable work and measured history, not precedence over this order.
   Continue remaining applicable architecture/feature and selected
   semantic-region observation debt; no new frontend registry or scheduler.
 
-**Next coherent unit:** reconcile the minimum common cold source selector
-and family/format/task eligibility seam for ordinary SDK/CLI/pipeline
-consumers. Start at facade prepare/selection.rs, models.rs,
-builtins/registration.rs, builtins/text/local.rs and pipelines/load.rs;
-reuse the original held local/cached source, approved HF inventory,
-source/model eligibility and explicit execution policy. Resolve selected
-existing local/cache sources through the same bounded typed preparation
-where qualified, without reopening an independently mutable path,
-duplicating source catalog or inventing generic provider fallback.
-Keep unsupported formats/families/tasks and mixed HF/backend routes
-explicit. Close the remaining minimum shared foundations before Phase 2;
-do not make every optional provider/model specialization a Phase 1 gate.
+The bounded shared GGUF local/cache source resolution and SDK/pipeline
+declaration seam is implemented at 7987f70a above. Broader family/codec/
+task eligibility remains explicit.
 
 ### Previous accepted source-declared language preparation checkpoint
 
