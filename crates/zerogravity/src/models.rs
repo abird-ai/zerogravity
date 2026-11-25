@@ -81,8 +81,8 @@ const QWEN_CUDA_PROVIDER_BYTES: usize = 4608 * MIB;
 const QWEN_CUDA_DEVICE_BYTES: u64 = 5120 * MIB as u64;
 
 /// Explicit execution policy for one selected text route set.
-/// Source paths, model IDs and snapshot pins come from the graph, never
-/// from a parallel alias/source table. No automatic acquisition or fallback.
+/// Source selectors, model IDs and snapshot pins come from explicit
+/// declarations, optionally selected by a graph. No acquisition or fallback.
 pub enum TextLoadPolicy {
     Cpu(crate::runtime::TextConfig),
     #[cfg(all(

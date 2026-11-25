@@ -352,10 +352,15 @@ pub(super) fn load(
     })?;
     let model = match source {
         GgufSource::Local(_) => {
-            let artifact = held
-                .expect("held local source")
-                .inspect()
-                .map_err(ServiceError::inference)?;
+            let artifact =
+                held.expect("held local source")
+                    .inspect()
+                    .map_err(|error| match error {
+                        crate::Error::State(message) => {
+                            ServiceError::new(400, "model_source_changed", message)
+                        }
+                        other => ServiceError::inference(other),
+                    })?;
             LoadedQwenModel::from_inspected_gguf(artifact, geometry)
                 .map_err(ServiceError::inference)?
         }

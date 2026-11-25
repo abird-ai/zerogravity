@@ -178,7 +178,7 @@ impl CachedGguf {
     ) -> Result<Self> {
         use crate::cache::{CacheMetadata, FileRole};
         if model.model_config.is_some() || model.tokenizer.is_some() {
-            return Err(Error::Malformed("cached GGUF requires role-bound config/tokenizer in the immutable snapshot; no local sidecar overrides".into()));
+            return Err(Error::Malformed("cached run requires role-bound config/tokenizer in the selected immutable snapshot; local sidecar overrides would break provenance".into()));
         }
         // Validate provider locator even when the cache root is absent.
         match &selector {
@@ -196,7 +196,7 @@ impl CachedGguf {
                 #[cfg(not(feature = "acquisition"))]
                 {
                     let _ = url;
-                    return Err(Error::Unsupported("HTTP source requires the compiled acquisition locator contract; no request is performed".into()));
+                    return Err(Error::Unsupported("HTTP source form requires compiled acquisition contract parser; no request is performed".into()));
                 }
             }
             _ => {}
