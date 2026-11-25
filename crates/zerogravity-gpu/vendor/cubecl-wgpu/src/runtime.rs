@@ -672,6 +672,7 @@ fn validate_preflight<G: GraphicsApi>(
     device: &WgpuDevice,
     preflight: &WgpuAdapterPreflight,
 ) -> Result<WgpuBackend, WgpuInitError> {
+    validate_named_selector(device)?;
     if preflight.selector != device.to_id() {
         return Err(WgpuInitError::InvalidConfiguration {
             message: "preflighted adapter belongs to another selector".into(),
@@ -731,6 +732,13 @@ pub fn try_client_preflight<G: GraphicsApi>(
     before_create: impl FnOnce(),
 ) -> Result<Client, WgpuInitError> {
     options.validate()?;
+    // Auto can resolve to a different API at another time; its registry
+    // key does not establish the caller's requested graphics API.
+    if device.backend == WgpuBackend::Auto {
+        return Err(WgpuInitError::InvalidConfiguration {
+            message: "preflight reuse requires an explicit graphics API".into(),
+        });
+    }
     let requested_backend = validate_preflight::<G>(device, &preflight)?;
     let device_id = device.to_id();
     Client::get_or_try_init_with::<WgpuServer<AutoCompiler>>(device_id, || {

@@ -240,7 +240,11 @@ impl ResidentPhysical {
     }
     #[cfg(all(
         target_os = "linux",
-        any(feature = "cuda", feature = "hip", feature = "vulkan")
+        any(
+            feature = "cuda",
+            feature = "hip",
+            all(feature = "vulkan", feature = "gemma-bf16-qualification")
+        )
     ))]
     fn from_client_preadmitted(
         device: Device,
