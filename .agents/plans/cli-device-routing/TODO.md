@@ -110,8 +110,10 @@ recorded. Current21 repairs it within the finite accepted scope above.
   and guarded native HIP; guarded exact-adapter Vulkan intersects local VRAM
   total/current use before original registration. Equal declared physical
   roles return no inter-domain transfer; distinct domains explicitly refuse.
-  Generic repeated Vulkan named-selector bootstrap needs safe original
-  registry reuse. Non-Linux, general host-visible GPU backing aliasing and
+  3b5a520d/fc38db03/e1decff5 close bounded explicit named Linux Vulkan
+  registry reuse and physical admission: actual peer refusal/raced/warm
+  reuse, independent envelope retirement and portable healthy/unknown.
+  Non-Linux, general host-visible GPU backing aliasing and
   OS hard-memory guarantees remain open.
 
 ### Review and authorization

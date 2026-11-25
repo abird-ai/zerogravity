@@ -626,7 +626,11 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   typed physical/state ports, cold queue/lease/resource and dense copy;
   actual CUDA resident/streamed B1/C4 exact, GGUF, HIP V2 C1/C8,
   private bridge refusal/interrupt and retirement pass.
-- [ ] Remaining live capture observations and qualified physical interop; general DAG/media/context,
+- [x] Actual original capture/cache and prepared cohort mode observations
+  (ce83cc18); source/profile/stream/receipt/pin/service facts, no new
+  owner/selector. Actual CUDA GGUF B2 fullV/all42, native fallback and
+  retirement/replacement/unknown fence and HIP V2 C1/C8 pass.
+- [ ] Remaining qualified physical interop; general DAG/media/context,
   mixed backend/multi-source HF and pipeline CLI/API activation only
   through original qualified owners.
 

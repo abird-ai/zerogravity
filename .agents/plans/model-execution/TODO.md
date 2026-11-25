@@ -240,6 +240,10 @@ any external compiler. All phases retain the original resource/state owners.
   service reuse and actual local VRAM preadmission; original exact
   Client and physical lease, actual peer refusal/race/warm and portable
   healthy/unknown. No kernel/profile or new learned model support.
+- ce83cc18: actual captured source/profile/stream/receipt, cache/pin/
+  service and successful cohort mode, no new owner/selector. Actual CUDA
+  GGUF B2 fullV/all42, fallback, retirement/unknown fence and HIP V2
+  C1/C8 pass; no new arithmetic or learned capture selection.
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

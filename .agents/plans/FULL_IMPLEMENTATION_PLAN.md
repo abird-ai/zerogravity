@@ -245,9 +245,8 @@ before original registration. Same declared physical-domain placement has
 no inter-domain transfer plan; other domains explicitly refuse. Actual
 portable shared HIP and Vulkan healthy/unknown and peer refusal/retry pass.
 Real HF HIP V2 C1/C8 replay and retirement pass. Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-Generic
-named Vulkan repeated initialization needs original registry support;
-non-Linux and actual host-visible GPU backing remain open.
+Named Linux Vulkan registry reuse is closed below at 3b5a520d/fc38db03/
+e1decff5. Non-Linux and actual host-visible GPU backing remain open.
 Signed 1d5c4ada: optional production native GGUF CPU committed persistence
 (state-checkpoint). Actual immutable source/geometry/numerical compatibility,
 original v1 numerical body plus separate v2 SHA256/extent/private atomic IO,
@@ -302,8 +301,14 @@ reuse and independent envelope retirement, portable healthy/unknown and
 HIP healthy and real HF HIP V2 C1/C8 replay/retirement pass. Locked
 common/runtime sources; no dependency version
 change. Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
-Next reconcile actual captured-owner observations and minimum
-Phase 1 exit requirements; keep general UMA aliasing, foreign buffers/
+Signed ce83cc18: actual original captured profile/source/stream/receipt,
+cache/pin/service observation and successful cohort mode, distinct from
+native or compiled selection. Actual GGUF CUDA B2 fullV/all42 equality,
+direct/cache graph observations, native fallback, retirement/replacement
+and unknown retention/fence; native HF HIP V2 C1/C8 pass. No new graph
+selection policy. Full assembled isolated gate: 2398 Rust test executions (2396 workspace gate + 2 focused graph tests), zero failures, 106 explicit skips; release/installer/scripts pass.
+Next close minimum shared backing/interop eligibility
+and audit Phase 1 exits, keep general UMA aliasing, foreign buffers/
 streams, non-Linux and unqualified backend/family/codec/task explicit.
 No duplicate catalog, estimator, allocator or runtime.
 General DAG/media/context authority, multi-source HF and mixed-backend

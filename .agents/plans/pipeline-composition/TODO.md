@@ -477,9 +477,14 @@ and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
   factory, PCI/local fit and lease adoption; actual RADV cold peer
   refusal/raced/warm reuse/retirement and healthy/unknown shared
   physical tests pass. No second registry or foreign device import.
-- [ ] Remaining live capture observation and qualified physical interop;
-  extend other qualified resident formats and actual shared
-  host-visible GPU backing. General
+- [x] Bounded actual captured-owner observation (ce83cc18): original
+  profile, source/stream/receipt and accepted replay count, actual cache/
+  pin/service facts and successful native/graph cohort selection. Actual
+  Qwen GGUF CUDA B2 fullV/all42, fallback and trusted retirement/replacement,
+  unknown retention/fence and native HIP V2 C1/C8 pass. No new graph
+  eligibility or production selector.
+- [ ] Remaining qualified physical interop; extend other qualified
+  resident formats and actual shared host-visible GPU backing. General
   DAG/media/context authority, mixed backend/multi-source HF loading and
   pipeline transport activation remain unsupported. Continue source lifecycle/placement only through real
   consumers. Keep selected shape

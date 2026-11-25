@@ -234,6 +234,11 @@ The following extends existing owners; source-byte qualification is not inferenc
   guarded exact-adapter Vulkan local fit; same declared physical placement
   does not establish common backing or zero-copy. Actual portable HIP/Vulkan
   two-source healthy/unknown and peer refusal/retry pass.
+  3b5a520d/fc38db03/e1decff5 close bounded named Linux Vulkan original
+  service reuse and local fit; actual cold peer refusal/raced/warm reuse
+  and independent envelope retirement. ce83cc18 exposes actual retained
+  capture/cache/pin/accepted replay facts without another backing owner;
+  original retirement/unknown retention remains authoritative.
 - [ ] **Paged hybrid state allocator:** extend original leases/StateRoot with
   finite page pools/block tables, generations, valid tails, charged metadata
   and peak COW/candidate memory. Retain a qualified contiguous policy and typed

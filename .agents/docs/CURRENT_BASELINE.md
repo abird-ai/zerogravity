@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — actual captured execution observations
+
+ce83cc18: original captured profile/source/stream/receipt and accepted
+replay count, actual cache/workspace pin/service facts and successful
+cohort selected mode. No second graph owner, no new selector. Actual
+original Qwen 0.8B GGUF CUDA B2 fullV/all42 CPU/B1/native equality,
+cache selection/native fallback, explicit and replacement retirement,
+actual unknown graph retention/fence; native HF HIP V2 C1/C8 replay and
+retirement pass. Graph selection remains qualification-only. No new
+numerical/performance claim.
+Full assembled isolated gate: 2398 Rust test executions (2396 workspace gate + 2 focused graph tests), zero failures, 106 explicit skips; release/installer/scripts pass.
+
 ## 25 Nov — original named Vulkan service reuse
 
 3b5a520d/fc38db03/e1decff5: original CubeCL registry non-creating

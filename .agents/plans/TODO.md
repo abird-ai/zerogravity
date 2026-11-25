@@ -98,8 +98,13 @@ preadmission. Actual RADV cold peer refusal, raced/warm reuse and
 independent envelope retirement, portable healthy/unknown and HIP
 healthy and real HF HIP V2 C1/C8 replay/retirement pass.
 Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
-Next reconcile actual captured-owner observations and
-review remaining UMA/interop holds and minimum Phase 1 exit requirements. Historical
+Signed ce83cc18: actual captured profile/source/stream/receipt/cache/
+pin/service and prepared cohort mode; actual CUDA GGUF B2 fullV/all42,
+graph/native fallback and retirement/unknown retention, native HF
+HIP V2 C1/C8 pass. Full assembled isolated gate: 2398 Rust test executions (2396 workspace gate + 2 focused graph tests), zero failures, 106 explicit skips; release/installer/scripts pass.
+Next close minimum physical backing/interop eligibility
+and review Phase 1 exits; unqualified general UMA/foreign views remain
+explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.
 Continue [full plan](FULL_IMPLEMENTATION_PLAN.md). No second cache
 hierarchy, allocator or publisher; mixed backend/multi-source HF pipeline,

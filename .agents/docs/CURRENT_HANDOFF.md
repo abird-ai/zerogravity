@@ -25,6 +25,73 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed actual captured-owner and prepared cohort observations: ce83cc18574ab3998d7a1dec84aba6cb300b5fac.**
+
+- Recovered interrupted previous full gate (exit 0, 2396 Rust executions,
+  0 failures, 106 skips) and already-written Vulkan handoff. Signed
+  9017af17 and synchronized; original hardware results preserved.
+- Existing CapturedResidentGraph::observation copies actual source,
+  service generation, logical stream, BatchGraphProfile, original capture
+  receipt and accepted replay enqueues. Uses core SelectedMode::Graph
+  (CUDA), not Compiled. Original profile is now public descriptive
+  metadata; no duplicate plan/shape identity, owner or graph pin. Replay
+  counts are enqueue facts, not completion or root publication.
+- ResidentModel::describe_graph_cache returns None for no batch, otherwise
+  actual rows, workspace pin, original service admission/fence snapshot,
+  and typed Cold/Capturing/Live/Spent projection. Live contains the real
+  cached capture observation; an externally owned graph may pin a Cold
+  cache. Spent includes failed/removed attempts, not proof of retirement;
+  original terminal barriers, pin and opaque charge remain authoritative.
+  The legacy qualification state/count methods use the same projection.
+  No new registry, telemetry state, device work or capture authority.
+- PreparedResidentCohort::selected_mode reports original provider and
+  actual successful body dispatch mode. The existing launch branch
+  records Native or Graph; all native/serial/source cohorts stay Native.
+  One small mode value, no graph handle or observation copy in the hot
+  path, no new allocation, state publication or selection policy.
+  Public capture observation types compile under the original native
+  graph substrate; actual capture/replay remains qualification-only.
+- Existing CUDA graph owner qualification uses direct and cache
+  observations, actual selected Graph vs Native fallback, exact source/
+  shape/charge, external pin and explicit retirement/replacement; no new
+  fixture or acceptance machinery. Native CUDA and HIP-only compile,
+  qualifier compile, two graph cache/resource tests pass. Initial release
+  build succeeded but executable was named zerogravity-gpu-probe rather
+  than zerogravity-gpu-qualify; corrected invocation, no source failure.
+- Actual L5 original Qwen 0.8B GGUF B2: independent frontiers, swapped
+  rows, full 248320 vocabulary and all42 state domains exact against
+  original CPU/B1/native B2, four committed steps and six real replays.
+  Direct/cached observation, graph-compatible selection, native mismatch
+  fallback without replay, explicit retirement and B2->B4 replacement
+  pass. Opaque conservative policy charge 15651152 bytes retires to zero;
+  no driver internal memory/graph-node-count claim. Existing timing probe
+  remains diagnostic, no new performance selection. Actual graph-abort
+  case: one accepted enqueue, unknown completion, original roots
+  unchanged, graph/handles/envelope retained, fence visible and pin
+  preserved; old native Ready still cannot publish. GPU idle 37MiB.
+  Actual X2 original HF Qwen 0.8B HIP V2 C1/C8 all six waves
+  [248068,198,90700], lane invariant, width8, zero failed GPU quanta,
+  selected-owner chain and native/tokenizer retirement unfenced; idle
+  259768320 bytes. No new learned model/profile or public graph claim.
+- Full assembled isolated gate: 2398 Rust test executions (2396 workspace gate + 2 focused graph tests), zero failures, 106 explicit skips; release/installer/scripts pass. Combined CUDA/HIP SDK all-targets compile passed.
+
+**Next coherent unit:** close the minimum remaining shared physical
+backing/interop eligibility seam and finish the Phase 1 exit audit.
+Use the existing DeviceEventLedger/DeviceBackingId/BackingRange,
+ResidentLease and ResourceArbiter host/device owners for any actual
+qualified host-visible backing; a same-PCI or UMA addressability
+observation alone is not proof of shared storage. Admit only exact
+physical range/lifetime and actual completion where supported; otherwise
+refuse without a second allocator, invented identity or implicit copy.
+Keep general foreign/context/backend transfer, non-Linux fit, additional
+resident formats, media/DAG and unqualified backend/model/codec
+specializations explicit. Assess the minimum ordered-plan exit against
+live source and accepted consumers rather than demanding every optional
+backend optimization before UX. Do not start the frontend phase until
+the remaining applicable common contracts are closed.
+
+### Previous accepted named Vulkan registry checkpoint
+
 **Signed named Vulkan physical admission and original service reuse: 3b5a520d748bd5e353baea00dcaacd30e83d6793.**
 Explicit backend guard: fc38db0371804a46d189a23fb83f531f3f240651.
 Vulkan-only qualification accessor: e1decff57e98b55ee0cb09697015c8e8d998cba4.
@@ -92,16 +159,9 @@ Vulkan-only qualification accessor: e1decff57e98b55ee0cb09697015c8e8d998cba4.
   guarantee for callers bypassing original named service preparation.
   No new capture, compiled-provider, kernel or learned Vulkan claim.
 
-**Next coherent unit:** reconcile the live captured-owner observation seam
-through existing CapturedResidentGraph, ProductionGraphCache and actual
-qualified native/captured consumers. Expose actual prepared/captured
-selection, replay and retirement facts on demand without another graph
-IR, registry, plan ID or implied capture/provider eligibility. Keep
-unknown completion and external interop/host-visible GPU/UMA alias gaps
-explicit; audit minimum Phase 1 exits against the ordered plan and real
-consumers, distinguishing remaining shared contracts from later backend
-specializations. Do not start CLI/TUI/Web or concrete compiler SDK
-integration before the minimum shared foundations are closed.
+The bounded live capture observation continuation is implemented at
+ce83cc18 above. Actual graph selection remains qualification-only;
+general host-visible backing/interop remains open.
 
 ### Previous accepted prepared-plan/provider checkpoint
 
