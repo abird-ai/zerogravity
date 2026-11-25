@@ -176,13 +176,6 @@ struct ParameterUpload {
     _staging: WindowWorkspace,
 }
 
-#[cfg(feature = "cuda-cublas")]
-impl AsRef<[u8]> for ParameterUpload {
-    fn as_ref(&self) -> &[u8] {
-        &self.bytes
-    }
-}
-
 fn not_cancelled(cancelled: Option<&AtomicBool>) -> Result<()> {
     if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
         return Err(Error::State("source parameter upload cancelled".into()));
@@ -224,40 +217,13 @@ impl ResidentInitialization<'_> {
             ));
         }
 
-        // Native owned H2D has a bounded original-window ABI. Other physical
-        // devices, unpinned clients and larger parameters retain the portable
-        // transfer rather than changing their supported layout.
-        #[cfg(feature = "cuda-cublas")]
-        let queue = if bytes <= super::source_page::PAGE_BYTES
-            && matches!(
-                self.service.physical_owner().device(),
-                cubecl::Device::Cuda(_)
-            ) {
-            self.service.physical_owner().pinned_cuda_queue.clone()
-        } else {
-            None
-        };
-        #[cfg(feature = "cuda-cublas")]
-        if let Some(queue) = &queue
-            && kind == descriptor.kind
-            && bytes == logical_bytes
-        {
-            if storage == ParameterStorage::F32Exact {
-                require_finite_f32(window.as_slice())?;
-            }
-            let lease = self.upload_owned_parameter(queue, Arc::new(window), cancelled)?;
-            return Ok((lease, binding));
-        }
-
-        // The actual output allocation and (portable) alignment/bounce are
-        // admitted before conversion. A shared Bytes clone is not a payload copy.
-        #[cfg(feature = "cuda-cublas")]
-        let native = queue.is_some();
-        #[cfg(not(feature = "cuda-cublas"))]
-        let native = false;
+        // Parameters may occupy an exact logical view of a padded physical
+        // allocation. Use the original portable Write for both providers;
+        // the shared backing removes the redundant payload clone without
+        // relaxing the native full-allocation source-window contract.
         let staging = source.reserve_workspace(
             bytes
-                .checked_mul(if native { 1 } else { 2 })
+                .checked_mul(2)
                 .ok_or_else(|| Error::Limit("source parameter staging charge".into()))?,
         )?;
         let payload = materialize(
@@ -267,11 +233,7 @@ impl ResidentInitialization<'_> {
             logical_bytes,
             bytes,
         )?;
-        let payload = if native {
-            Bytes::from_elems(payload)
-        } else {
-            Bytes::from_bytes_vec(payload)
-        };
+        let payload = Bytes::from_bytes_vec(payload);
         if payload.len() != bytes || payload.capacity() > bytes {
             return Err(Error::Limit(
                 "source parameter aligned staging capacity".into(),
@@ -279,43 +241,18 @@ impl ResidentInitialization<'_> {
         }
         let owner = Arc::new(ParameterUpload {
             _window: window,
-            bytes: if native { payload } else { payload.shared() },
+            bytes: payload.shared(),
             _staging: staging,
         });
-        #[cfg(feature = "cuda-cublas")]
-        if let Some(queue) = &queue {
-            let lease = self.upload_owned_parameter(queue, owner, cancelled)?;
-            return Ok((lease, binding));
-        }
+        not_cancelled(cancelled)?;
         self.retain_completion_owner(owner.clone())?;
         let lease = self.allocate_empty(bytes, BufferRole::ImmutableWeights)?;
-        not_cancelled(cancelled)?;
         self.service
             .client()
             .write(&lease.handle(), owner.bytes.clone());
         self.service.record_value_upload(bytes);
         self.uploaded.insert(lease.id());
         Ok((lease, binding))
-    }
-
-    #[cfg(feature = "cuda-cublas")]
-    fn upload_owned_parameter<T: AsRef<[u8]> + Send + Sync + 'static>(
-        &mut self,
-        queue: &cubecl::cuda::OwnedCudaQueue,
-        owner: Arc<T>,
-        cancelled: Option<&AtomicBool>,
-    ) -> Result<ResidentLease> {
-        let bytes = owner.as_ref().as_ref().len();
-        self.retain_completion_owner(owner.clone())?;
-        let lease = self.allocate_empty(bytes, BufferRole::ImmutableWeights)?;
-        not_cancelled(cancelled)?;
-        // SAFETY: the original initialization owns the complete allocation
-        // Write and source backing through physical completion/quarantine.
-        unsafe { queue.enqueue_owned_source_window(lease.handle(), bytes, 0, owner) }
-            .map_err(|error| Error::State(format!("original parameter H2D: {error}")))?;
-        self.service.record_value_upload(bytes);
-        self.uploaded.insert(lease.id());
-        Ok(lease)
     }
 }
 

@@ -40,6 +40,11 @@ impl ForwardParameter {
         self.binding.elements()
     }
     pub(crate) fn require_descriptor(&self, descriptor: &SourceParameter) -> Result<()> {
+        if descriptor != &self.descriptor || descriptor.source != self.source_identity() {
+            return Err(zerogravity_core::Error::State(
+                "CUDA forward parameter authenticated descriptor changed".into(),
+            ));
+        }
         self.binding.validate_source_parameter(descriptor)
     }
 }

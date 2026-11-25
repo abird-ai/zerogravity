@@ -1484,6 +1484,17 @@ mod cuda_paged_tests {
         assert_eq!(streamed.resident_weight_bytes, 0);
         let run = |cap, resident_bytes| {
             block_on(async {
+                let host_key = PhysicalDeviceKey::new("host", "system-ram").unwrap();
+                let staging = || {
+                    ResourceArbiter::process_shared()
+                        .snapshot(&host_key)
+                        .unwrap()
+                        .per_class
+                        .get(&AllocationClass::TransferStaging)
+                        .copied()
+                        .unwrap_or(0)
+                };
+                let before = staging();
                 let model = ResidentModel::load_cuda_forward_source_with_state_policy(
                     Device::Cuda(Default::default()),
                     parts.source.plan.source().clone(),
@@ -1499,6 +1510,7 @@ mod cuda_paged_tests {
                 .await
                 .unwrap();
                 assert_eq!(model.admission().resident_weight_bytes, resident_bytes);
+                assert_eq!(staging(), before, "cold source transfer backing retired");
                 let singleton = trajectory(&model, &parts.source.plan, &tokens, page_tokens)
                     .await
                     .unwrap();
@@ -1553,6 +1565,8 @@ mod cuda_paged_tests {
                     assert_eq!(session.binding().frontier(), 1);
                 }
                 model.shutdown().await.unwrap();
+                drop(model);
+                assert_eq!(staging(), before, "source transfer backing after shutdown");
                 (singleton, cohort)
             })
         };
