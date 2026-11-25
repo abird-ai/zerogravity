@@ -2,17 +2,16 @@
 use super::*;
 
 pub(super) fn load_models(
-    declared: super::super::local::LocalRoutes,
+    declared: super::super::local::GgufRoutes,
     host: &ServingHost,
     max_context: usize,
-    targets: &BTreeMap<String, String>,
 ) -> Result<BTreeMap<String, Arc<dyn LogitModel>>, ServiceError> {
-    declared.prepare(|id, path, _| {
-        let super::super::local::LocalModel {
+    declared.prepare(|id, source, target, _| {
+        let super::super::local::GgufModel {
             weights,
             tokenizer,
             max_token_bytes,
-        } = super::super::local::load(id, path, host, targets.get(id).map(String::as_str))?;
+        } = super::super::local::load(id, source, host, target, max_context)?;
         let max_session_bytes = session_budget(weights.model(), max_context)?;
         Ok(Arc::new(Model {
             weights,

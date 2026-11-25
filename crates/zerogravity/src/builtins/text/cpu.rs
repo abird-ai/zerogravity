@@ -1,6 +1,6 @@
 use super::{
     TextTokenizer,
-    local::{AdmittedGguf, LocalRoutes},
+    local::{AdmittedGguf, SourceDeclarations},
 };
 use crate::qwen35::{LoadedQwenModel, QwenDenseCpu, StateSpec};
 use std::collections::BTreeMap;
@@ -61,7 +61,9 @@ impl PreparedModel for Model {
         };
         use zerogravity_engine::diagnostics::ModelDetails;
         Ok(ModelDetails {
-            artifact: Some(super::local::artifact_description()),
+            artifact: Some(super::local::artifact_description(
+                self.weights.cache_snapshot().map(str::to_owned),
+            )),
             execution: Some(ExecutionDescription {
                 selected: SelectedMode {
                     provider: ProviderKind::Cpu,
@@ -107,7 +109,7 @@ pub fn load_router(
     max_pending: Option<usize>,
 ) -> Result<Router, ServiceError> {
     load_router_declared(
-        declared,
+        SourceDeclarations::Paths(declared),
         crate::runtime::TextConfig {
             workers,
             active_per_worker,
@@ -116,13 +118,11 @@ pub fn load_router(
             host_mib,
             max_pending,
         },
-        &BTreeMap::new(),
     )
 }
 pub(crate) fn load_router_declared(
-    declared: Vec<(String, PathBuf)>,
+    declared: SourceDeclarations<'_>,
     config: crate::runtime::TextConfig,
-    targets: &BTreeMap<String, String>,
 ) -> Result<Router, ServiceError> {
     let crate::runtime::TextConfig {
         workers,
@@ -140,10 +140,9 @@ pub(crate) fn load_router_declared(
         max_output,
         max_pending,
     )?;
-    let declared = LocalRoutes::resolve(declared)?;
-    declared.require_targets(targets)?;
+    let declared = declared.resolve()?;
     let host = ServingHost::new(host_mib)?;
-    let models = load::load_models(declared, &host, max_context, targets)?;
+    let models = load::load_models(declared, &host, max_context)?;
     // The same process-lifetime Rayon owner is admitted before any worker.
     let alias = models
         .keys()

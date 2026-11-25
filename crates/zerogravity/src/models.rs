@@ -80,6 +80,34 @@ const QWEN_CUDA_PROVIDER_BYTES: usize = 4608 * MIB;
 #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
 const QWEN_CUDA_DEVICE_BYTES: u64 = 5120 * MIB as u64;
 
+/// Explicit execution policy for one selected text route set.
+/// Source paths, model IDs and snapshot pins come from the graph, never
+/// from a parallel alias/source table. No automatic acquisition or fallback.
+pub enum TextLoadPolicy {
+    Cpu(crate::runtime::TextConfig),
+    #[cfg(all(
+        feature = "text",
+        any(feature = "vulkan", feature = "cuda", feature = "hip")
+    ))]
+    Gpu {
+        backend: crate::devices::GpuBackend,
+        profile: crate::builtins::text::GpuProfile,
+    },
+    /// All used declarations must resolve to the SAME approved HF snapshot.
+    #[cfg(all(feature = "model-qwen35", feature = "hip", target_os = "linux"))]
+    QwenHipNative {
+        cache: crate::cache::CacheOptions,
+        profile: crate::models::QwenServingProfile,
+        budget: crate::models::HipSourceBudget,
+    },
+    /// Same-snapshot aliases; existing smart startup and device envelopes.
+    #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
+    QwenCuda {
+        cache: crate::cache::CacheOptions,
+        profile: crate::models::QwenServingProfile,
+    },
+}
+
 /// One complete cold route set. Aliases share the original source.
 /// A configured runtime refuses a new load until its last owner is retired.
 pub enum ModelLoadRequest {
@@ -249,6 +277,27 @@ impl<'a> ModelCatalog<'a> {
             .engine
             .configure_text(|| crate::builtins::load_text(request, self.runtime.engine.limits()))
     }
+    /// Resolve explicit existing source declarations through the same cold
+    /// route preparation as graph-selected models. None uses the default
+    /// cache root; original-HF policies own their explicit CacheOptions.
+    pub fn load_declared(
+        &self,
+        declared: &[crate::pipeline::ModelInstance],
+        policy: TextLoadPolicy,
+        cache_root: Option<&std::path::Path>,
+    ) -> std::result::Result<(), crate::runtime::text::ServiceError> {
+        self.runtime.engine.configure_text(|| {
+            zerogravity_engine::router::validate_aliases(declared.iter().map(|m| m.id.as_str()))?;
+            let models = declared.iter().collect::<Vec<_>>();
+            crate::builtins::load_declared_text(
+                &models,
+                policy,
+                cache_root,
+                self.runtime.engine.limits(),
+            )
+        })
+    }
+
     /// Current aliases of the exact registered prepared owner.
     pub fn aliases(&self, model: &ModelInstance) -> crate::Result<Vec<String>> {
         self.runtime.engine.models().aliases(model)

@@ -143,6 +143,7 @@ impl Fixture {
             source: source.source_identity(),
             execution,
             source_host_reserved_bytes: None,
+            cache_snapshot: None,
             tokenizer: crate::builtins::text::tokenizer_owner(
                 (tokenizer, retained),
                 |owner| &owner.0,

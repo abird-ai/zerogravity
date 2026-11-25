@@ -50,6 +50,7 @@ struct Model {
     source: SourceIdentity,
     execution: zerogravity_core::provider::ExecutionDescription,
     source_host_reserved_bytes: Option<u64>,
+    cache_snapshot: Option<String>,
     tokenizer: Arc<dyn TextTokenizer>,
     group: usize,
     hidden_width: usize,
@@ -89,7 +90,7 @@ impl PreparedModel for Model {
         use zerogravity_engine::diagnostics::{ModelDetails, ModelMemory};
         let resident = self.resident().map_err(ServiceError::into_core)?;
         Ok(ModelDetails {
-            artifact: Some(local::artifact_description()),
+            artifact: Some(local::artifact_description(self.cache_snapshot.clone())),
             execution: Some(self.execution.clone()),
             state_policy: Some(zerogravity_core::provider::ResidentStatePolicy::Contiguous),
             prefix_sharing: Some(false),

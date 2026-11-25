@@ -58,6 +58,9 @@ pub struct SourceRevision {
 pub struct ArtifactDescription {
     pub family: String,
     pub format: ArtifactFormat,
+    /// Exact verified cache snapshot, where this source was opened from one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_snapshot: Option<String>,
     /// Authenticated remote revision, only when known by the source owner.
     pub revision: Option<SourceRevision>,
 }

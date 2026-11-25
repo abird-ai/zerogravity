@@ -625,3 +625,210 @@ fn qualify_approved_models(route: ImportRoute) {
         );
     }
 }
+
+// Reuse the approved real import and the existing public language-chain
+// comparison. The environment selects only which already-qualified backend
+// executes this ignored test, never an automatic runtime fallback.
+#[path = "support/language_pipeline.rs"]
+mod language_pipeline;
+
+#[test]
+#[ignore = "actual approved Qwen 0.8B GGUF cache import; explicit CPU or CUDA policy"]
+fn declared_cached_sources_reuse_exact_snapshot_and_refuse_retargeted_pin() {
+    use zerogravity::{
+        Runtime,
+        models::TextLoadPolicy,
+        pipelines::ModelInstance,
+        run::{ResponseEvent, TaskTarget, TextControls, TextTask},
+        runtime::TextConfig,
+    };
+    let original = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/models/qwen35-0.8b");
+    let fixture = Fixture::new();
+    let store = fixture.store();
+    let memory = admission(5 * 1024 * 1024 * 1024);
+    let hashes = [
+        "57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf",
+        "b90b86f35c8e6925ef74ee04d0e758f0a845c83a42089ad82bbaa948de9b4204",
+        "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42",
+    ];
+    let digest = import_real(&store, &original, hashes, &memory);
+    let declarations = [
+        ModelInstance {
+            id: "first".into(),
+            target: "qwen3.5-0.8b".into(),
+            source: Some("catalog:model".into()),
+            snapshot: None,
+            model_config: None,
+            tokenizer: None,
+            native_artifacts: None,
+        },
+        ModelInstance {
+            id: "alias".into(),
+            target: "qwen3.5-0.8b".into(),
+            source: Some("catalog:model".into()),
+            snapshot: Some(digest.clone()),
+            model_config: None,
+            tokenizer: None,
+            native_artifacts: None,
+        },
+    ];
+    let policy = || {
+        if std::env::var_os("ZG_CACHED_DECLARED_CUDA").is_some() {
+            #[cfg(feature = "qwen35-cuda-serving")]
+            {
+                return TextLoadPolicy::Gpu {
+                    backend: zerogravity::devices::GpuBackend::Cuda,
+                    profile: zerogravity::builtins::text::GpuProfile {
+                        workers: 1,
+                        active: 1,
+                        context: 512,
+                        output: 3,
+                        host_mib: 8192,
+                        provider_mib: 2048,
+                        device_mib: 5120,
+                        cohort_width: 0,
+                        max_pending: Some(16),
+                    },
+                };
+            }
+            #[cfg(not(feature = "qwen35-cuda-serving"))]
+            panic!("explicit CUDA qualification feature required");
+        }
+        TextLoadPolicy::Cpu(TextConfig {
+            max_context: 128,
+            max_output: 3,
+            host_mib: 8192,
+            ..Default::default()
+        })
+    };
+    // Direct CLI selection uses the very same immutable snapshot and actual
+    // target metadata. Keep this selection across a later reference change.
+    let selected =
+        zerogravity::prepare::selection::Selection::resolve(&declarations[0], 32, Some(&fixture.0))
+            .unwrap();
+    assert_eq!(selected.model_target(), "qwen3.5-0.8b");
+    assert!(selected.source_label().contains(&digest));
+    let runtime = Runtime::builder().build().unwrap();
+    let snapshot_owner = || {
+        let snapshot = runtime.snapshot().unwrap();
+        assert_eq!(
+            (snapshot.status.loaded_models, snapshot.status.loaded_owners),
+            (2, 1)
+        );
+        let owner = &snapshot.catalog[0];
+        assert_eq!(owner.aliases, ["alias", "first"]);
+        let details = &owner.capabilities.as_ref().unwrap().details;
+        assert_eq!(
+            details.artifact.as_ref().unwrap().cache_snapshot.as_deref(),
+            Some(digest.as_str())
+        );
+        assert!(
+            details.source_host_reserved_bytes.unwrap()
+                >= std::fs::metadata(original.join("model.gguf"))
+                    .unwrap()
+                    .len()
+        );
+        (owner.registration_id, owner.source)
+    };
+    let run = |alias| {
+        let mut stream = runtime
+            .submit_task(TextTask {
+                target: TaskTarget::Model(alias),
+                input: "1, 2, 3,",
+                controls: TextControls::new(3.try_into().unwrap()),
+            })
+            .unwrap();
+        loop {
+            match stream.next().unwrap().expect("terminal event") {
+                ResponseEvent::Done { output, .. } => return output,
+                ResponseEvent::Error(error) => panic!("{error}"),
+                _ => {}
+            }
+        }
+    };
+    runtime
+        .models()
+        .load_declared(&declarations, policy(), Some(&fixture.0))
+        .unwrap();
+    let first = snapshot_owner();
+    let output = run("first");
+    assert_eq!(run("alias"), output);
+    let owner = runtime.models().resolve("first").unwrap();
+    runtime.models().unload(&owner).unwrap();
+    drop(owner);
+    assert_eq!(
+        runtime.status().phase,
+        zerogravity::diagnostics::RuntimePhase::Empty
+    );
+
+    let graph = language_pipeline::graph(declarations.to_vec());
+    let plan = runtime
+        .load_pipeline_with_cache(&graph, "chain", policy(), Some(&fixture.0))
+        .unwrap();
+    let second = snapshot_owner();
+    assert_ne!(first, second);
+    assert_eq!(
+        plan.stages()[0].registration_id(),
+        plan.stages()[1].registration_id()
+    );
+    // Retarget the mutable ref while the already prepared owner is live.
+    let lease = store.open_snapshot(&digest).unwrap();
+    let entry = lease
+        .manifest()
+        .entries()
+        .iter()
+        .find(|e| e.path() == "config.json")
+        .unwrap()
+        .clone();
+    let sidecar = Manifest::new(
+        ManifestSource::new("local", "approved/sidecar", entry.digest()).unwrap(),
+        vec![entry],
+        &CacheLimits::default(),
+    )
+    .unwrap();
+    let mut update = store
+        .begin(sidecar, &memory, Arc::new(AtomicBool::new(false)))
+        .unwrap();
+    update
+        .import_object(
+            "config.json",
+            &mut File::open(original.join("config.json")).unwrap(),
+        )
+        .unwrap();
+    update.commit(Some("model")).unwrap();
+    drop(lease);
+    assert_eq!(snapshot_owner(), second);
+    assert_eq!(run("first"), output);
+    language_pipeline::compare_prepared(&runtime, &plan, "1, 2, 3,", 3);
+    let owner = runtime.models().resolve("alias").unwrap();
+    runtime.models().unload(&owner).unwrap();
+    drop((owner, plan));
+    assert!(
+        runtime
+            .models()
+            .load_declared(&declarations, policy(), Some(&fixture.0))
+            .is_err()
+    );
+    assert_eq!(
+        runtime.status().phase,
+        zerogravity::diagnostics::RuntimePhase::Empty
+    );
+    runtime.shutdown().unwrap();
+
+    // No new ref lookup: the earlier dry-run's exact selected snapshot can
+    // still materialize under its original bounded direct-CPU envelope.
+    // Avoid a redundant CPU model materialization in the physical CUDA run.
+    if std::env::var_os("ZG_CACHED_DECLARED_CUDA").is_none() {
+        let direct = admission(selected.planning_bytes());
+        let prepared = selected.prepare(&direct).unwrap();
+        drop(prepared);
+        assert_eq!(
+            direct.arbiter.snapshot(&direct.resource).unwrap().reserved,
+            0
+        );
+    }
+    println!(
+        "DECLARED_CACHED_SOURCE_PASS snapshot={digest} cuda={}",
+        std::env::var_os("ZG_CACHED_DECLARED_CUDA").is_some()
+    );
+}

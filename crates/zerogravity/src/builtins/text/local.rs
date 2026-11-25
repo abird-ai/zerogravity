@@ -1,7 +1,10 @@
 //! Shared local GGUF source selection and retained host admission.
 //! Family math and source identity remain with the original model.
 use super::*;
-use crate::qwen35::LoadedQwenModel;
+use crate::{
+    prepare::source::{GgufSource, LocalGguf, require_geometry},
+    qwen35::LoadedQwenModel,
+};
 use std::{collections::BTreeMap, path::PathBuf};
 use zerogravity_core::{
     model::{ModelDefinition, ProgramRequest},
@@ -10,73 +13,148 @@ use zerogravity_core::{
     task::TaskKind,
 };
 
-/// Canonical source paths are resolved once for this cold route set. Aliases
-/// reuse its exact prepared owner, never another file opened by alias name.
-pub(super) struct LocalRoutes(Vec<(String, PathBuf)>);
-impl LocalRoutes {
-    pub(super) fn resolve(mut declared: Vec<(String, PathBuf)>) -> Result<Self, ServiceError> {
+/// The legacy path requests and selected graph/SDK declarations use one
+/// original cold preparation. Explicit execution policy checks run first.
+pub(crate) enum SourceDeclarations<'a> {
+    Paths(Vec<(String, PathBuf)>),
+    Models(&'a [&'a crate::pipeline::ModelInstance], Option<&'a Path>),
+}
+impl SourceDeclarations<'_> {
+    #[cfg(all(feature = "cpu", feature = "cache"))]
+    pub(crate) fn len(&self) -> usize {
+        match self {
+            Self::Paths(paths) => paths.len(),
+            Self::Models(models, _) => models.len(),
+        }
+    }
+    pub(super) fn resolve(self) -> Result<GgufRoutes, ServiceError> {
+        match self {
+            Self::Paths(paths) => GgufRoutes::resolve(paths),
+            Self::Models(models, cache_root) => GgufRoutes::resolve_models(models, cache_root),
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum SourceKey {
+    Local(PathBuf),
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    Cached(PathBuf, String),
+}
+fn key(source: &GgufSource) -> SourceKey {
+    match source {
+        GgufSource::Local(source) => SourceKey::Local(source.weights.clone()),
+        #[cfg(all(feature = "cache", target_os = "linux"))]
+        GgufSource::Cached(source) => {
+            SourceKey::Cached(source.root.clone(), source.digest().to_owned())
+        }
+    }
+}
+struct RouteSource {
+    alias: String,
+    target: Option<String>,
+    source: GgufSource,
+}
+/// Canonical paths or exact immutable cache snapshots share one prepared
+/// owner. A cached ref cannot be re-resolved at materialization.
+pub(super) struct GgufRoutes(Vec<RouteSource>);
+impl GgufRoutes {
+    fn canonical(path: &Path) -> Result<PathBuf, ServiceError> {
+        std::fs::canonicalize(path)
+            .map_err(|_| ServiceError::new(400, "missing_model", "cannot resolve model source"))
+    }
+    pub(super) fn resolve(declared: Vec<(String, PathBuf)>) -> Result<Self, ServiceError> {
         zerogravity_engine::router::validate_aliases(
             declared.iter().map(|(alias, _)| alias.as_str()),
         )?;
-        for (_, path) in &mut declared {
-            *path = std::fs::canonicalize(&path).map_err(|_| {
-                ServiceError::new(400, "missing_model", "cannot resolve model source")
-            })?;
+        let mut routes = Vec::with_capacity(declared.len());
+        for (alias, path) in declared {
+            routes.push(RouteSource {
+                alias,
+                target: None,
+                source: GgufSource::Local(LocalGguf::new(Self::canonical(&path)?, None, None)),
+            });
         }
-        Ok(Self(declared))
+        Ok(Self(routes))
     }
-
-    /// Optional declared targets constrain the same canonical route groups.
-    /// All aliases of one source must agree before any model is materialized.
-    pub(super) fn require_targets(
-        &self,
-        targets: &BTreeMap<String, String>,
-    ) -> Result<(), ServiceError> {
-        if targets.is_empty() {
-            return Ok(());
+    fn resolve_models(
+        models: &[&crate::pipeline::ModelInstance],
+        cache_root: Option<&Path>,
+    ) -> Result<Self, ServiceError> {
+        zerogravity_engine::router::validate_aliases(models.iter().map(|model| model.id.as_str()))?;
+        for model in models {
+            if model.model_config.is_some()
+                || model.tokenizer.is_some()
+                || model.native_artifacts.is_some()
+            {
+                return Err(ServiceError::new(
+                    400,
+                    "unsupported",
+                    "served GGUF requires original role-bound config/tokenizer; sidecar overrides are not qualified",
+                ));
+            }
+            if !matches!(model.target.as_str(), "qwen3.5-0.8b" | "qwen3.5-2b") {
+                return Err(ServiceError::new(
+                    400,
+                    "unsupported",
+                    "declared target is not a qualified GGUF family",
+                ));
+            }
         }
-        if targets.len() != self.0.len() {
-            return Err(ServiceError::new(
-                400,
-                "invalid_model",
-                "declared target coverage differs",
-            ));
-        }
+        let mut routes = Vec::with_capacity(models.len());
         let mut groups = BTreeMap::new();
-        for (alias, path) in &self.0 {
-            let target = targets.get(alias).ok_or_else(|| {
-                ServiceError::new(400, "invalid_model", "declared model target absent")
-            })?;
+        for model in models {
+            let source = GgufSource::resolve(model, cache_root).map_err(ServiceError::inference)?;
+            let source = match source {
+                GgufSource::Local(source) => GgufSource::Local(LocalGguf::new(
+                    Self::canonical(&source.weights)?,
+                    None,
+                    None,
+                )),
+                #[cfg(all(feature = "cache", target_os = "linux"))]
+                other => other,
+            };
             if groups
-                .insert(path, target)
-                .is_some_and(|prior| prior != target)
+                .insert(key(&source), model.target.as_str())
+                .is_some_and(|prior| prior != model.target)
             {
                 return Err(ServiceError::new(
                     400,
                     "invalid_model",
-                    "aliases of one canonical source disagree on target",
+                    "aliases of one source disagree on target",
                 ));
             }
+            routes.push(RouteSource {
+                alias: model.id.clone(),
+                target: Some(model.target.clone()),
+                source,
+            });
         }
-        Ok(())
+        Ok(Self(routes))
     }
 
     pub(super) fn prepare<M: ?Sized>(
         self,
-        mut prepare: impl FnMut(&str, &Path, usize) -> Result<Arc<M>, ServiceError>,
+        mut prepare: impl FnMut(&str, &GgufSource, Option<&str>, usize) -> Result<Arc<M>, ServiceError>,
     ) -> Result<BTreeMap<String, Arc<M>>, ServiceError> {
         let mut models = BTreeMap::new();
-        let mut unique = BTreeMap::<PathBuf, Arc<M>>::new();
-        for (alias, path) in self.0 {
-            let model = match unique.get(&path) {
+        let mut unique = BTreeMap::<SourceKey, Arc<M>>::new();
+        for route in self.0 {
+            let key = key(&route.source);
+            let model = match unique.get(&key) {
                 Some(model) => model.clone(),
                 None => {
-                    let model = prepare(&alias, &path, unique.len())?;
-                    unique.insert(path, model.clone());
+                    let model = prepare(
+                        &route.alias,
+                        &route.source,
+                        route.target.as_deref(),
+                        unique.len(),
+                    )?;
+                    unique.insert(key, model.clone());
                     model
                 }
             };
-            models.insert(alias, model);
+            models.insert(route.alias, model);
         }
         Ok(models)
     }
@@ -87,19 +165,31 @@ impl LocalRoutes {
 pub(super) struct AdmittedGguf {
     model: Arc<LoadedQwenModel>,
     _weight_charge: GlobalResourceLease,
+    // Cached SourceWeights owns its original exact raw-byte lease itself.
+    cached_raw_bytes: u64,
+    cache_snapshot: Option<String>,
 }
 impl AdmittedGguf {
     pub(super) fn model(&self) -> &Arc<LoadedQwenModel> {
         &self.model
     }
+    pub(super) fn cache_snapshot(&self) -> Option<&str> {
+        self.cache_snapshot.as_deref()
+    }
     pub(super) fn host_reserved_bytes(&self) -> crate::Result<u64> {
-        self._weight_charge.reserved_bytes()
+        self._weight_charge
+            .reserved_bytes()?
+            .checked_add(self.cached_raw_bytes)
+            .ok_or_else(|| crate::Error::Limit("source reservation extent overflow".into()))
     }
 }
-pub(super) fn artifact_description() -> zerogravity_engine::diagnostics::ArtifactDescription {
+pub(super) fn artifact_description(
+    cache_snapshot: Option<String>,
+) -> zerogravity_engine::diagnostics::ArtifactDescription {
     zerogravity_engine::diagnostics::ArtifactDescription {
         family: "qwen35".into(),
         format: zerogravity_artifacts::artifact::ArtifactFormat::Gguf,
+        cache_snapshot,
         revision: None,
     }
 }
@@ -123,7 +213,7 @@ impl ModelDefinition for AdmittedGguf {
     }
 }
 
-pub(super) struct LocalModel {
+pub(super) struct GgufModel {
     pub(super) weights: Arc<AdmittedGguf>,
     pub(super) tokenizer: Arc<dyn TextTokenizer>,
     pub(super) max_token_bytes: usize,
@@ -135,28 +225,34 @@ struct AdmittedTokenizer {
 
 pub(super) fn load(
     alias: &str,
-    path: &Path,
+    source: &GgufSource,
     host: &ServingHost,
     expected_target: Option<&str>,
-) -> Result<LocalModel, ServiceError> {
-    let parent = path.parent().unwrap_or(Path::new("."));
-    // Hold the actual regular-file descriptor across all cold work.
-    let file = std::fs::File::open(path)
-        .map_err(|_| ServiceError::new(400, "missing_model", "model file unavailable"))?;
-    let metadata = file
-        .metadata()
-        .map_err(|error| ServiceError::inference(error.into()))?;
-    if !metadata.is_file() {
-        return Err(ServiceError::new(
-            400,
-            "invalid_artifact",
-            "model source is not a regular file",
-        ));
-    }
-    let input_len = metadata.len();
+    context: usize,
+) -> Result<GgufModel, ServiceError> {
+    // Preserve the held regular descriptor and the original tokenizer-first
+    // retained-inventory/constructor admission ordering.
+    let held = match source {
+        GgufSource::Local(source) => Some(source.open_weights().map_err(|error| match error {
+            crate::Error::Io(_) => {
+                ServiceError::new(400, "missing_model", "model file unavailable")
+            }
+            other => ServiceError::inference(other),
+        })?),
+        #[cfg(all(feature = "cache", target_os = "linux"))]
+        GgufSource::Cached(_) => None,
+    };
+    let (input_len, cached_raw_bytes) = match source {
+        GgufSource::Local(_) => (held.as_ref().expect("held local source").bytes, 0),
+        #[cfg(all(feature = "cache", target_os = "linux"))]
+        GgufSource::Cached(source) => (source.weights.bytes(), source.weights.bytes()),
+    };
     let tokenizer_bytes = crate::tokenize::APPROVED_TOKENIZER_BYTES;
+    // The cached raw bytes are charged by the original verified source
+    // owner, not twice through the wrapper's conservative source envelope.
     let charged = input_len
-        .checked_add(tokenizer_bytes.saturating_mul(2))
+        .checked_sub(cached_raw_bytes)
+        .and_then(|n| n.checked_add(tokenizer_bytes.saturating_mul(2)))
         .and_then(|n| n.checked_add(128 * 1024 * 1024))
         .ok_or_else(|| ServiceError::new(400, "model_budget", "model source size overflow"))?;
 
@@ -179,7 +275,32 @@ pub(super) fn load(
         AllocationClass::Scratch,
         tokenizer_bytes,
     )?;
-    let tokenizer_bytes = read_approved_tokenizer(&parent.join("tokenizer.json"))?;
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    let cached = match source {
+        GgufSource::Cached(source) => Some(source.open().map_err(ServiceError::inference)?),
+        GgufSource::Local(_) => None,
+    };
+    let tokenizer_bytes = match source {
+        GgufSource::Local(source) => read_approved_tokenizer(&source.tokenizer)?,
+        #[cfg(all(feature = "cache", target_os = "linux"))]
+        GgufSource::Cached(source) => {
+            if source.tokenizer.bytes() != crate::tokenize::APPROVED_TOKENIZER_BYTES {
+                return Err(ServiceError::new(
+                    400,
+                    "tokenizer_inventory",
+                    "approved tokenizer extent mismatch",
+                ));
+            }
+            cached
+                .as_ref()
+                .expect("opened cached source")
+                .read_verified(
+                    source.tokenizer.path(),
+                    crate::tokenize::APPROVED_TOKENIZER_BYTES,
+                )
+                .map_err(ServiceError::inference)?
+        }
+    };
     let tokenizer = {
         let _constructor = bootstrap.constructor_of_arbiter(
             &tokenizer_admission,
@@ -209,27 +330,75 @@ pub(super) fn load(
                 ),
             )
         })?;
-    let config = zerogravity_artifacts::config::read(&parent.join("config.json"), 1024 * 1024)
-        .map_err(ServiceError::inference)?;
-    let geometry = crate::qwen35::config::ModelGeometry::from_json(&config)
-        .map_err(ServiceError::inference)?;
-    if let Some(target) = expected_target {
-        let actual = crate::prepare::PreparedQwen::routing_target(&geometry)
-            .map_err(ServiceError::inference)?;
-        if actual != target {
-            return Err(ServiceError::new(
-                400,
-                "invalid_model",
-                "declared model target differs from actual source geometry",
-            ));
+    let (config, geometry) = match source {
+        GgufSource::Local(source) => source.read_config().map_err(ServiceError::inference)?,
+        #[cfg(all(feature = "cache", target_os = "linux"))]
+        GgufSource::Cached(source) => {
+            let bytes = cached
+                .as_ref()
+                .expect("opened cached source")
+                .read_verified(source.config.path(), 1024 * 1024)
+                .map_err(ServiceError::inference)?;
+            let geometry = crate::qwen35::config::ModelGeometry::from_json(&bytes)
+                .map_err(ServiceError::inference)?;
+            (bytes, geometry)
         }
-    }
-    let artifact = inspect_admitted_weights(file, path, input_len)?;
-    let model = LoadedQwenModel::from_inspected_gguf(artifact, geometry)
-        .map_err(ServiceError::inference)?;
+    };
+    require_geometry(&geometry, expected_target, context).map_err(|error| match error {
+        crate::Error::Malformed(message) if expected_target.is_some() => {
+            ServiceError::new(400, "invalid_model", message)
+        }
+        other => ServiceError::inference(other),
+    })?;
+    let model = match source {
+        GgufSource::Local(_) => {
+            let artifact = held
+                .expect("held local source")
+                .inspect()
+                .map_err(ServiceError::inference)?;
+            LoadedQwenModel::from_inspected_gguf(artifact, geometry)
+                .map_err(ServiceError::inference)?
+        }
+        #[cfg(all(feature = "cache", target_os = "linux"))]
+        GgufSource::Cached(source) => {
+            let lease = cached.as_ref().expect("opened cached source");
+            let artifact = zerogravity_artifacts::artifact::Artifact::from_file(
+                lease
+                    .file(source.weights.path())
+                    .map_err(ServiceError::inference)?
+                    .try_clone()
+                    .map_err(|e| ServiceError::inference(e.into()))?,
+                Path::new(source.weights.path()),
+            )
+            .map_err(ServiceError::inference)?;
+            LoadedQwenModel::validate_gguf_info(&artifact.info, &geometry)
+                .map_err(ServiceError::inference)?;
+            let admission = host.transfer_admission(alias, "immutable-cached-source")?;
+            admission
+                .arbiter
+                .check_host_cold_allocation(cached_raw_bytes)
+                .map_err(ServiceError::inference)?;
+            let weights = zerogravity_artifacts::SourceWeights::from_verified_artifact(
+                artifact,
+                source.weights.bytes(),
+                source.weights.digest(),
+                &admission,
+            )
+            .map_err(ServiceError::inference)?;
+            LoadedQwenModel::from_source(weights, &config).map_err(ServiceError::inference)?
+        }
+    };
+    drop(config);
+    let cache_snapshot = match source {
+        GgufSource::Local(_) => None,
+        #[cfg(all(feature = "cache", target_os = "linux"))]
+        GgufSource::Cached(source) => Some(source.digest().to_owned()),
+    };
     let weights = Arc::new(AdmittedGguf {
         model,
         _weight_charge: weight_charge,
+        cached_raw_bytes,
+        cache_snapshot,
     });
     let max_token_bytes = tokenizer
         .max_token_bytes()
@@ -243,30 +412,11 @@ pub(super) fn load(
         host,
         alias,
     )?;
-    Ok(LocalModel {
+    Ok(GgufModel {
         weights,
         tokenizer,
         max_token_bytes,
     })
-}
-
-// Metadata inspection and the owned copy use the descriptor whose extent was
-// admitted; pathname replacement must not change either source or allocation.
-fn inspect_admitted_weights(
-    file: std::fs::File,
-    path: &Path,
-    admitted_bytes: u64,
-) -> Result<zerogravity_artifacts::artifact::Artifact, ServiceError> {
-    let artifact = zerogravity_artifacts::artifact::Artifact::from_file(file, path)
-        .map_err(ServiceError::inference)?;
-    if artifact.info.file_len != admitted_bytes {
-        return Err(ServiceError::new(
-            400,
-            "model_source_changed",
-            "model extent changed after admission",
-        ));
-    }
-    Ok(artifact)
 }
 
 #[cfg(test)]
@@ -310,7 +460,7 @@ mod tests {
         let fixture = Fixture::new("routes");
         let path = fixture.path();
         let missing = fixture.0.join("missing.gguf");
-        let error = LocalRoutes::resolve(vec![
+        let error = GgufRoutes::resolve(vec![
             ("same".into(), missing),
             ("same".into(), path.clone()),
         ])
@@ -318,14 +468,14 @@ mod tests {
         .unwrap();
         assert_eq!(error.code, "invalid_model");
         std::fs::write(&path, empty_gguf("qwen35")).unwrap();
-        let routes = LocalRoutes::resolve(vec![
+        let routes = GgufRoutes::resolve(vec![
             ("model".into(), path),
             ("alias".into(), fixture.0.join("./source.gguf")),
         ])
         .unwrap();
         let mut count = 0;
         let models = routes
-            .prepare(|_, _, group| {
+            .prepare(|_, _, _, group| {
                 count += 1;
                 assert_eq!(group, 0);
                 Ok(Arc::new(()))
@@ -345,7 +495,10 @@ mod tests {
         let mut replacement = empty_gguf("gemma4");
         replacement.resize(replacement.len() + 32, 0);
         std::fs::write(&path, replacement).unwrap();
-        let artifact = inspect_admitted_weights(file, &path, original.len() as u64).unwrap();
+        let artifact = crate::prepare::source::HeldWeights::new(file, path.clone())
+            .unwrap()
+            .inspect()
+            .unwrap();
         let source =
             zerogravity_artifacts::SourceWeights::from_inspected_artifact(artifact).unwrap();
         assert_eq!(source.architecture(), "qwen35");
@@ -357,16 +510,18 @@ mod tests {
         let path = fixture.path();
         let original = empty_gguf("qwen35");
         std::fs::write(&path, &original).unwrap();
-        let file = std::fs::File::open(&path).unwrap();
+        let held = crate::prepare::source::HeldWeights::new(
+            std::fs::File::open(&path).unwrap(),
+            path.clone(),
+        )
+        .unwrap();
         std::fs::OpenOptions::new()
             .append(true)
             .open(&path)
             .unwrap()
             .write_all(&[0; 32])
             .unwrap();
-        let error = inspect_admitted_weights(file, &path, original.len() as u64)
-            .err()
-            .unwrap();
-        assert_eq!((error.status, error.code), (400, "model_source_changed"));
+        let error = held.inspect().err().unwrap();
+        assert!(matches!(error, crate::Error::State(_)));
     }
 }

@@ -9,33 +9,6 @@ pub(crate) fn load_text(
     request: ModelLoadRequest,
     limits: SchedulerLimits,
 ) -> Result<Router, ServiceError> {
-    load_text_declared(request, limits, &std::collections::BTreeMap::new())
-}
-
-pub(crate) fn load_text_declared(
-    request: ModelLoadRequest,
-    limits: SchedulerLimits,
-    targets: &std::collections::BTreeMap<String, String>,
-) -> Result<Router, ServiceError> {
-    // Declared target assertions apply to local source preparation. No other
-    // request may silently ignore them.
-    let local = match &request {
-        ModelLoadRequest::CpuText { .. } => true,
-        #[cfg(all(
-            feature = "text",
-            any(feature = "vulkan", feature = "cuda", feature = "hip")
-        ))]
-        ModelLoadRequest::GpuText { .. } => true,
-        #[allow(unreachable_patterns)]
-        _ => false,
-    };
-    if !local && !targets.is_empty() {
-        return Err(ServiceError::new(
-            400,
-            "invalid_model",
-            "unexpected local source target assertions",
-        ));
-    }
     match request {
         #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
         ModelLoadRequest::QwenCuda {
@@ -169,7 +142,10 @@ pub(crate) fn load_text_declared(
             )?;
             #[cfg(all(feature = "cpu", feature = "text", feature = "cache"))]
             {
-                super::text::load_router_declared(declared, config, targets)
+                super::text::load_router_declared(
+                    super::text::SourceDeclarations::Paths(declared),
+                    config,
+                )
             }
             #[cfg(not(all(feature = "cpu", feature = "text", feature = "cache")))]
             {
@@ -191,7 +167,11 @@ pub(crate) fn load_text_declared(
             profile,
         } => {
             validate_limits(profile.workers, profile.active, profile.max_pending, limits)?;
-            super::text::gpu::load_gpu_router_declared(declared, backend, profile, targets)
+            super::text::gpu::load_gpu_router_declared(
+                super::text::SourceDeclarations::Paths(declared),
+                backend,
+                profile,
+            )
         }
     }
 }
@@ -426,4 +406,156 @@ fn unapproved_snapshot_refuses_before_cache_or_physical_preparation() {
         assert_eq!((error.status, error.code), (400, "unsupported"));
         assert!(error.message.contains("exact approved snapshot"));
     }
+}
+
+/// Shared declarations for SDK and selected graph consumers. Resolve only
+/// after the original lifecycle slot and the explicit policy's bounds.
+pub(crate) fn load_declared_text(
+    models: &[&crate::pipeline::ModelInstance],
+    policy: crate::models::TextLoadPolicy,
+    cache_root: Option<&std::path::Path>,
+    limits: SchedulerLimits,
+) -> Result<Router, ServiceError> {
+    use crate::models::TextLoadPolicy;
+    zerogravity_engine::router::validate_aliases(models.iter().map(|m| m.id.as_str()))?;
+    match policy {
+        TextLoadPolicy::Cpu(config) => {
+            validate_limits(
+                config.workers,
+                config.active_per_worker,
+                config.max_pending,
+                limits,
+            )?;
+            #[cfg(all(feature = "cpu", feature = "text", feature = "cache"))]
+            {
+                super::text::load_router_declared(
+                    super::text::SourceDeclarations::Models(models, cache_root),
+                    config,
+                )
+            }
+            #[cfg(not(all(feature = "cpu", feature = "text", feature = "cache")))]
+            {
+                let _ = cache_root;
+                Err(ServiceError::new(
+                    400,
+                    "backend_not_compiled",
+                    "CPU text loading requires the cpu, text and cache features",
+                ))
+            }
+        }
+        #[cfg(all(
+            feature = "text",
+            any(feature = "vulkan", feature = "cuda", feature = "hip")
+        ))]
+        TextLoadPolicy::Gpu { backend, profile } => {
+            validate_limits(profile.workers, profile.active, profile.max_pending, limits)?;
+            super::text::gpu::load_gpu_router_declared(
+                super::text::SourceDeclarations::Models(models, cache_root),
+                backend,
+                profile,
+            )
+        }
+        #[cfg(all(feature = "model-qwen35", feature = "hip", target_os = "linux"))]
+        TextLoadPolicy::QwenHipNative {
+            cache,
+            profile,
+            budget,
+        } => {
+            if cache_root.is_some() {
+                return Err(ServiceError::new(
+                    400,
+                    "invalid_config",
+                    "original HF policy owns its cache options",
+                ));
+            }
+            let (aliases, snapshot) = original_snapshot(models)?;
+            load_text(
+                ModelLoadRequest::qwen_hip_native(aliases, cache, snapshot, profile, budget),
+                limits,
+            )
+        }
+        #[cfg(all(feature = "model-qwen35", feature = "cuda", target_os = "linux"))]
+        TextLoadPolicy::QwenCuda { cache, profile } => {
+            if cache_root.is_some() {
+                return Err(ServiceError::new(
+                    400,
+                    "invalid_config",
+                    "original HF policy owns its cache options",
+                ));
+            }
+            let (aliases, snapshot) = original_snapshot(models)?;
+            load_text(
+                ModelLoadRequest::qwen_cuda(aliases, cache, snapshot, profile),
+                limits,
+            )
+        }
+    }
+}
+
+#[cfg(all(
+    feature = "model-qwen35",
+    any(feature = "cuda", feature = "hip"),
+    target_os = "linux"
+))]
+fn original_snapshot(
+    models: &[&crate::pipeline::ModelInstance],
+) -> Result<(Vec<String>, String), ServiceError> {
+    use crate::{models::qwen_source_inventory::select_snapshot, run_policy::SourceSelector};
+    let mut selected = None;
+    let mut aliases = Vec::with_capacity(models.len());
+    for model in models {
+        if model.model_config.is_some()
+            || model.tokenizer.is_some()
+            || model.native_artifacts.is_some()
+        {
+            return Err(ServiceError::new(
+                400,
+                "unsupported",
+                "original HF requires its pinned role-bound sidecars",
+            ));
+        }
+        let pin = model.snapshot.as_deref().ok_or_else(|| {
+            ServiceError::new(
+                400,
+                "invalid_model",
+                "original HF pipeline requires an exact snapshot pin",
+            )
+        })?;
+        let spec = select_snapshot(pin).map_err(ServiceError::inference)?;
+        if spec.target != model.target {
+            return Err(ServiceError::new(
+                400,
+                "invalid_model",
+                "declared target differs from approved snapshot",
+            ));
+        }
+        if let Some(source) = &model.source {
+            if !matches!(SourceSelector::parse(source).map_err(ServiceError::inference)?,
+                SourceSelector::HuggingFace(repository) if repository == spec.repository)
+            {
+                return Err(ServiceError::new(
+                    400,
+                    "unsupported",
+                    "HF source selector must match the pinned approved repository",
+                ));
+            }
+        }
+        if selected.is_some_and(|prior| prior != spec.snapshot_sha) {
+            return Err(ServiceError::new(
+                400,
+                "unsupported",
+                "original HF supports one distinct source per runtime",
+            ));
+        }
+        selected = Some(spec.snapshot_sha);
+        aliases.push(model.id.clone());
+    }
+    Ok((
+        aliases,
+        selected
+            .ok_or_else(|| {
+                ServiceError::new(400, "invalid_model", "empty pipeline source selection")
+            })?
+            .into(),
+    ))
 }

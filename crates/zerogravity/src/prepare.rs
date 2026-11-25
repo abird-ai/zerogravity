@@ -300,6 +300,9 @@ impl PreparedQwen {
     }
 }
 
+#[cfg(any(feature = "cpu", feature = "cuda", feature = "hip", feature = "vulkan"))]
+pub(crate) mod source;
+
 /// Cold source selection and owner-retaining CPU materialization.
 #[cfg(feature = "cpu")]
 pub mod selection;

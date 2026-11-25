@@ -84,13 +84,12 @@ pub fn load_gpu_router(
     backend: GpuBackend,
     profile: GpuProfile,
 ) -> Result<Router, ServiceError> {
-    load_gpu_router_declared(declared, backend, profile, &BTreeMap::new())
+    load_gpu_router_declared(local::SourceDeclarations::Paths(declared), backend, profile)
 }
 pub(crate) fn load_gpu_router_declared(
-    declared: Vec<(String, PathBuf)>,
+    declared: local::SourceDeclarations<'_>,
     backend: GpuBackend,
     profile: GpuProfile,
-    targets: &BTreeMap<String, String>,
 ) -> Result<Router, ServiceError> {
     let GpuProfile {
         workers,
@@ -137,8 +136,7 @@ pub(crate) fn load_gpu_router_declared(
         ));
     }
     preflight_cuda_toolkit(backend)?;
-    let declared = local::LocalRoutes::resolve(declared)?;
-    declared.require_targets(targets)?;
+    let declared = declared.resolve()?;
     // CPU fallback is forbidden: unlinked or absent provider must refuse
     // before a resident model is constructed or HTTP announces readiness.
     let provider_cap = provider_mib
@@ -149,18 +147,19 @@ pub(crate) fn load_gpu_router_declared(
     // process-global tokenizer bootstrap, the retained inventory and the
     // cold constructor are admitted ahead of the work they price.
     let host = ServingHost::new(host_mib)?;
-    let models = declared.prepare(|alias, path, group| {
-        let local::LocalModel {
+    let models = declared.prepare(|alias, selected, target, group| {
+        let local::GgufModel {
             weights: source,
             tokenizer,
             max_token_bytes,
-        } = local::load(alias, path, &host, targets.get(alias).map(String::as_str))?;
+        } = local::load(alias, selected, &host, target, GPU_CAPACITY)?;
         let hidden_width =
             usize::try_from(source.model().geometry().hidden_size).map_err(|_| {
                 ServiceError::new(400, "source_hidden", "invalid Qwen source hidden width")
             })?;
         let vocabulary_size = source.model().geometry().vocab_size;
         let source_identity = source.model().source_identity();
+        let cache_snapshot = source.cache_snapshot().map(str::to_owned);
         let source_host_reserved_bytes = source
             .host_reserved_bytes()
             .map_err(ServiceError::inference)?;
@@ -189,6 +188,7 @@ pub(crate) fn load_gpu_router_declared(
             source: source_identity,
             execution,
             source_host_reserved_bytes: Some(source_host_reserved_bytes),
+            cache_snapshot,
             tokenizer,
             group,
             hidden_width,

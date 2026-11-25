@@ -17,6 +17,13 @@ pub use source::read_approved_tokenizer;
     feature = "hip"
 ))]
 mod local;
+#[cfg(any(
+    all(feature = "cpu", feature = "cache"),
+    feature = "vulkan",
+    feature = "cuda",
+    feature = "hip"
+))]
+pub(crate) use local::SourceDeclarations;
 
 /// Retain the actual tokenizer/source owner, including its original admission.
 /// Admit the new wrapper in the same host domain before allocating its Arc.

@@ -5,8 +5,7 @@
 //! binding both use the original runtime lifecycle and task scheduler.
 pub use zerogravity_engine::pipeline::{LanguageBinding, LanguageStage, PreparedLanguagePipeline};
 mod document;
-mod load;
-pub use load::LanguageLoadPolicy;
+pub use crate::models::TextLoadPolicy as LanguageLoadPolicy;
 mod patch;
 pub use patch::{ChatContextPatch, PipelinePatch};
 mod yaml;
@@ -38,9 +37,11 @@ pub(crate) fn load_language(
     config: &Config,
     name: &str,
     policy: LanguageLoadPolicy,
+    cache_root: Option<&std::path::Path>,
 ) -> std::result::Result<PreparedLanguagePipeline, crate::runtime::text::ServiceError> {
-    runtime
-        .configure_language_pipeline(config, name, |models| policy.load(models, runtime.limits()))
+    runtime.configure_language_pipeline(config, name, |models| {
+        crate::builtins::load_declared_text(models, policy, cache_root, runtime.limits())
+    })
 }
 
 pub fn check(config: &Config) -> crate::Result<VerifiedShape> {

@@ -1,7 +1,7 @@
 //! Cold composition inventory and source-bound execution adapters.
 use crate::diagnostics::{BuiltinStatus, MigrationStatus};
 mod registration;
-pub(crate) use registration::{load_text, load_text_declared};
+pub(crate) use registration::{load_declared_text, load_text};
 
 #[cfg(feature = "text")]
 pub mod text;

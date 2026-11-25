@@ -1,12 +1,12 @@
 //! Selection metadata has no SourceIdentity or execution eligibility. Runtime
 //! reopens exact immutable snapshots through the existing verified bridge.
+use super::source::{GgufSource, require_geometry};
 use crate::artifact::Artifact;
 #[cfg(all(feature = "cache", target_os = "linux"))]
 use crate::artifact::ArtifactInfo;
 use crate::qwen35::config::ModelGeometry;
-use crate::{Error, Result, run_policy::SourceSelector};
-use std::io::Read;
-use std::path::{Path, PathBuf};
+use crate::{Error, Result};
+use std::path::Path;
 enum Resolved {
     Local {
         weights: Artifact,
@@ -16,12 +16,7 @@ enum Resolved {
     },
     #[cfg(all(feature = "cache", target_os = "linux"))]
     Cached {
-        root: PathBuf,
-        disk: u64,
-        snapshot: String,
-        weights: String,
-        config: String,
-        tokenizer: String,
+        source: Box<super::source::CachedGguf>,
         layout: ArtifactInfo,
     },
 }
@@ -34,19 +29,6 @@ pub struct Selection {
     source_label: String,
     raw_ticket_peak: u64,
 }
-fn bounded(path: &Path, limit: u64) -> Result<Vec<u8>> {
-    let f = std::fs::File::open(path)?;
-    let m = f.metadata()?;
-    if !m.is_file() || m.len() > limit {
-        return Err(Error::Limit("source routing metadata size".into()));
-    }
-    let mut bytes = Vec::with_capacity(m.len() as usize);
-    f.take(limit + 1).read_to_end(&mut bytes)?;
-    if bytes.len() as u64 != m.len() {
-        return Err(Error::State("source metadata changed while reading".into()));
-    }
-    Ok(bytes)
-}
 fn resolve(
     model: &crate::pipeline::ModelInstance,
     context: usize,
@@ -55,66 +37,18 @@ fn resolve(
     if !(1..=32768).contains(&context) {
         return Err(Error::Limit("CPU source planning context1..32768".into()));
     }
-    let selector = SourceSelector::parse(model.source.as_deref().ok_or_else(|| {
-        Error::Malformed("selected model requires an explicit acquired source".into())
-    })?)?;
-    match &selector {
-        SourceSelector::HuggingFace(value) | SourceSelector::GitHub(value) => {
-            #[cfg(all(feature = "cache", target_os = "linux"))]
-            {
-                let provider = if matches!(selector, SourceSelector::HuggingFace(_)) {
-                    "huggingface"
-                } else {
-                    "github"
-                };
-                crate::cache::provenance::ProviderLocator::parse(provider, value)?;
-            }
-            #[cfg(not(all(feature = "cache", target_os = "linux")))]
-            {
-                let _ = value;
-                return Err(Error::Unsupported("provider cache selection requires Linux and cache; no acquisition is performed".into()));
-            }
-        }
-        SourceSelector::Http(url) => {
-            #[cfg(feature = "acquisition")]
-            crate::acquisition::object::HttpsObjectSpec::validate_cached_locator(url)?;
-            #[cfg(not(feature = "acquisition"))]
-            {
-                let _ = url;
-                return Err(Error::Unsupported("HTTP source form requires compiled acquisition contract parser; no request is performed".into()));
-            }
-        }
-        _ => {}
-    }
-    match selector {
-        SourceSelector::Local(weights) => {
-            if model.snapshot.is_some() {
-                return Err(Error::Malformed(
-                    "snapshot is for cached provider/catalog sources".into(),
-                ));
-            }
-            let parent = weights.parent().unwrap_or(Path::new("."));
-            let config = model
-                .model_config
-                .as_deref()
-                .map(PathBuf::from)
-                .unwrap_or_else(|| parent.join("config.json"));
-            let tokenizer = model
-                .tokenizer
-                .as_deref()
-                .map(PathBuf::from)
-                .unwrap_or_else(|| parent.join("tokenizer.json"));
-            let config = bounded(&config, 1024 * 1024)?;
-            let geometry = ModelGeometry::from_json(&config)?;
-            let model_target = crate::prepare::PreparedQwen::routing_target(&geometry)?;
-            let weights = Artifact::open(&weights)?;
-            let tokenizer = std::fs::File::open(tokenizer)?;
+    match GgufSource::resolve(model, cache_root)? {
+        GgufSource::Local(source) => {
+            let (config, geometry) = source.read_config()?;
+            let model_target = require_geometry(&geometry, Some(&model.target), context)?;
+            let weights = source.open_weights()?.inspect()?;
+            let tokenizer = std::fs::File::open(&source.tokenizer)?;
             let stamp = tokenizer.metadata()?;
             let tokenizer_bytes = stamp.len();
             if !stamp.is_file() || tokenizer_bytes > 64 * 1024 * 1024 {
                 return Err(Error::Limit("regular tokenizer64MiB required".into()));
             }
-            let planning_bytes = crate::prepare::PreparedQwen::routing_bytes(
+            let planning_bytes = super::PreparedQwen::routing_bytes(
                 &weights.info,
                 &geometry,
                 tokenizer_bytes,
@@ -137,102 +71,37 @@ fn resolve(
                 raw_ticket_peak: 0,
             })
         }
-        other => cached(model, other, context, cache_root),
-    }
-}
-#[cfg(not(all(feature = "cache", target_os = "linux")))]
-fn cached(
-    _: &crate::pipeline::ModelInstance,
-    _: SourceSelector,
-    _: usize,
-    _: Option<&Path>,
-) -> Result<Selection> {
-    Err(Error::Unsupported("cached provider/catalog run requires Linux and the cache feature; acquire an exact source explicitly using models/pull".into()))
-}
-#[cfg(all(feature = "cache", target_os = "linux"))]
-fn cached(
-    model: &crate::pipeline::ModelInstance,
-    selector: SourceSelector,
-    context: usize,
-    cache_root: Option<&Path>,
-) -> Result<Selection> {
-    use crate::cache::{CacheMetadata, FileRole};
-    if model.model_config.is_some() || model.tokenizer.is_some() {
-        return Err(Error::Malformed(
-            "cached run requires role-bound config/tokenizer in the selected immutable snapshot; local sidecar overrides would break provenance".into(),
-        ));
-    }
-    let root = crate::cache::paths::resolve_root(
-        cache_root,
-        std::env::var_os("XDG_CACHE_HOME").as_deref(),
-        std::env::var_os("HOME").as_deref(),
-    )?;
-    let metadata = CacheMetadata::open(&root)?;
-    let snapshot = metadata.select(&selector, model.snapshot.as_deref())?;
-    let unique = |role| -> Result<String> {
-        let entries = snapshot
-            .manifest
-            .entries()
-            .iter()
-            .filter(|e| e.role() == role)
-            .collect::<Vec<_>>();
-        if entries.len() != 1 {
-            return Err(Error::Malformed(
-                "selected snapshot needs exactly one weights/config/tokenizer role; select a complete unambiguous acquired snapshot".into(),
-            ));
+        #[cfg(all(feature = "cache", target_os = "linux"))]
+        GgufSource::Cached(source) => {
+            let (geometry, info) = source.inspect()?;
+            let model_target = require_geometry(&geometry, Some(&model.target), context)?;
+            let planning_bytes = super::PreparedQwen::routing_bytes(
+                &info,
+                &geometry,
+                source.tokenizer.bytes(),
+                context,
+            )?;
+            let raw_ticket_peak = info
+                .file_len
+                .checked_add(source.config.bytes())
+                .and_then(|n| n.checked_add(source.tokenizer.bytes()))
+                .and_then(|n| n.checked_add(64 * 1024))
+                .ok_or_else(|| Error::Limit("raw source ticket planning overflow".into()))?;
+            let source_label = format!("immutable cached snapshot {}", source.digest());
+            Ok(Selection {
+                context,
+                resolved: Resolved::Cached {
+                    source,
+                    layout: info,
+                },
+                geometry,
+                planning_bytes,
+                model_target,
+                source_label,
+                raw_ticket_peak,
+            })
         }
-        Ok(entries[0].path().into())
-    };
-    let weights = unique(FileRole::Weights)?;
-    let config = unique(FileRole::Config)?;
-    let tokenizer = unique(FileRole::Tokenizer)?;
-    let geometry = ModelGeometry::from_json(&metadata.config(&snapshot, &config)?)?;
-    let model_target = crate::prepare::PreparedQwen::routing_target(&geometry)?;
-    let info = metadata.inspect_weights(&snapshot, &weights)?;
-    let tokenizer_bytes = snapshot
-        .manifest
-        .entries()
-        .iter()
-        .find(|e| e.path() == tokenizer)
-        .expect("unique role")
-        .bytes();
-    if tokenizer_bytes > 64 * 1024 * 1024 {
-        return Err(Error::Limit("tokenizer64MiB".into()));
     }
-    let planning_bytes =
-        crate::prepare::PreparedQwen::routing_bytes(&info, &geometry, tokenizer_bytes, context)?;
-    let raw_ticket_peak = info
-        .file_len
-        .checked_add(
-            snapshot
-                .manifest
-                .entries()
-                .iter()
-                .find(|e| e.path() == config)
-                .expect("unique config")
-                .bytes(),
-        )
-        .and_then(|n| n.checked_add(tokenizer_bytes))
-        .and_then(|n| n.checked_add(64 * 1024))
-        .ok_or_else(|| Error::Limit("raw source ticket planning overflow".into()))?;
-    let disk = metadata.disk_limit_bytes()?;
-    Ok(Selection {
-        context,
-        resolved: Resolved::Cached {
-            root,
-            disk,
-            snapshot: snapshot.digest.clone(),
-            weights,
-            config,
-            tokenizer,
-            layout: info,
-        },
-        geometry,
-        planning_bytes,
-        model_target,
-        source_label: format!("immutable cached snapshot {}", snapshot.digest),
-        raw_ticket_peak,
-    })
 }
 
 /// Materialized source plus the original full CPU planning envelope. The source
@@ -249,18 +118,7 @@ impl Selection {
         context: usize,
         cache_root: Option<&Path>,
     ) -> Result<Self> {
-        let selection = resolve(model, context, cache_root)?;
-        if !model.target.is_empty() && model.target != selection.model_target {
-            return Err(Error::Malformed(
-                "declared model target differs from actual source geometry".into(),
-            ));
-        }
-        if context as u64 > selection.geometry.max_position_embeddings {
-            return Err(Error::Limit(
-                "requested context exceeds actual model geometry".into(),
-            ));
-        }
-        Ok(selection)
+        resolve(model, context, cache_root)
     }
     /// Fresh host availability gates the original process-shared fixed domain;
     /// free memory/headroom never become a replacement operator ceiling.
@@ -371,26 +229,15 @@ impl Selection {
                 crate::prepare::PreparedQwen::from_inspected_gguf(weights, &config, &bytes)?
             }
             #[cfg(all(feature = "cache", target_os = "linux"))]
-            Resolved::Cached {
-                root,
-                disk,
-                snapshot,
-                weights,
-                config,
-                tokenizer,
-                layout,
-            } => {
-                let store = crate::cache::CacheStore::open_existing(
-                    crate::cache::CacheOptions::new(Some(root), disk),
-                )?;
-                let lease = store.open_snapshot(&snapshot)?;
+            Resolved::Cached { source, layout } => {
+                let lease = source.open()?;
                 crate::prepare::PreparedQwen::from_snapshots_with_layout(
                     &lease,
-                    &weights,
+                    source.weights.path(),
                     &lease,
-                    &config,
+                    source.config.path(),
                     &lease,
-                    &tokenizer,
+                    source.tokenizer.path(),
                     admission,
                     Some(&layout),
                 )?

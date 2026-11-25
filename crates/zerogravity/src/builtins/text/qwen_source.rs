@@ -143,6 +143,7 @@ impl PreparedModel for Model {
             artifact: Some(ArtifactDescription {
                 family: metadata.family.into(),
                 format: zerogravity_artifacts::artifact::ArtifactFormat::Safetensors,
+                cache_snapshot: None,
                 revision: Some(SourceRevision {
                     repository: metadata.repository.into(),
                     revision: metadata.revision.into(),

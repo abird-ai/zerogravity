@@ -76,7 +76,19 @@ impl Runtime {
         name: &str,
         policy: crate::pipelines::LanguageLoadPolicy,
     ) -> std::result::Result<crate::pipelines::PreparedLanguagePipeline, text::ServiceError> {
-        crate::pipelines::load_language(&self.engine, config, name, policy)
+        self.load_pipeline_with_cache(config, name, policy, None)
+    }
+
+    /// Same selected chain, with an optional explicit existing GGUF cache
+    /// root. Original-HF policies carry their own CacheOptions.
+    pub fn load_pipeline_with_cache(
+        &self,
+        config: &crate::pipelines::Config,
+        name: &str,
+        policy: crate::pipelines::LanguageLoadPolicy,
+        cache_root: Option<&std::path::Path>,
+    ) -> std::result::Result<crate::pipelines::PreparedLanguagePipeline, text::ServiceError> {
+        crate::pipelines::load_language(&self.engine, config, name, policy, cache_root)
     }
 
     /// Execute through the original scheduler, with a finite per-stage limit.
