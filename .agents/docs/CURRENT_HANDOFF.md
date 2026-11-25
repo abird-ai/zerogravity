@@ -25,6 +25,86 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed named Vulkan physical admission and original service reuse: 3b5a520d748bd5e353baea00dcaacd30e83d6793.**
+Explicit backend guard: fc38db0371804a46d189a23fb83f531f3f240651.
+Vulkan-only qualification accessor: e1decff57e98b55ee0cb09697015c8e8d998cba4.
+
+- Resume from live 1462687e; previous semantic/region observations and
+  CUDA typed bridge already accepted. No duplicate implementation.
+- CubeCL's original DeviceHandle registry now supports non-creating
+  get_existing and atomic fallible get_or_try_insert_with, under the same
+  service initialization lock as ordinary lazy creation/explicit insert.
+  Client returns the actual registered handle and utilities (no subsequent
+  selector lookup). Channel, mutex and reentrant transports retain their
+  original registries. Existing lazy and explicit registration semantics
+  remain; factory must not reenter the registry. No new cache/registry.
+  The two newly vendored 0.11.0 common/runtime crates are the exact local
+  locked archive sources plus these narrow patches; license files retained,
+  Cargo.lock changes only their source paths, no dependency version changes
+  or external downloads. The original WgpuServer creation remains the one
+  factory. Explicit named backend required for preflight reuse; preserve
+  cold default override and ordinal validation. Existing explicit
+  setup-registration APIs keep their original strict insert semantics.
+- Ordinary and guarded Linux ResidentPhysical Vulkan share one cold
+  selection/admission/adoption path: hold the original registered Client
+  if present, otherwise exact uninitialized adapter. Require driver PCI
+  and actual local total/used VRAM, intersect capacity and current fit,
+  reserve original ResourceArbiter provider envelope before device/queue.
+  Atomic registration can reuse a racing initializer; actual key/capacity
+  must agree before adopting. Only actual factory invocation arms the
+  existing bootstrap uncertainty guard; known reuse failure releases its
+  unused charge; uncertain new bootstrap retains/fences as before.
+  No separate service generation allocator, physical quota, or new
+  provider/model eligibility. Different physical wrappers may share the
+  actual service but still each admit their own envelope; model readers
+  attached to one wrapper share its original quota/queue.
+- Grouped original registry regression (workspace GPU test): absent lookup,
+  fallible factory refusal without registration, four competing callers
+  invoke factory once and reach same service state, ordinary lazy lookup
+  reuses it and strict insert refuses. Pass. Vendor packages excluded from
+  workspace tests; use this existing workspace owner rather than separate
+  vendor test harness. Bare Vulkan and combined HIP/Vulkan qualification
+  compile passed. Initial full gate found a client accessor still gated
+  on HIP; e1decff5 widens it for Vulkan-only qualification.
+- Actual X2 RADV named integrated Vulkan on attested PCI: cold peer-only
+  refusal no Client, retry, earlier selected adapter whose registration
+  is won by another initializer, warm ordinary load. Original client
+  properties Arc/service identity shared across three admitted envelopes;
+  dropping extras leaves exactly original 64MiB unfenced. Existing
+  portable Q8/conv two-source healthy and unknown cases pass; original
+  independent close/reload and last-reader retirement, unknown retained
+  handles/both source owners and sibling fencing with unchanged roots.
+  Final explicit-backend guard rebuilt and actual Vulkan cases pass.
+  Actual portable HIP two-source healthy/refusal/retry and retirement
+  pass too. This fixture is actual hardware, not learned-model Vulkan
+  numerical/performance qualification. Final learned HF Qwen 0.8B HIP V2
+  C1/C8 all six waves pass [248068,198,90700], replay/lane invariant,
+  width8 and zero failed GPU quanta, native/tokenizer retirement unfenced.
+  X2 returned to idle 259768320 bytes. Prior real CUDA evidence retained;
+  no fresh physical CUDA execution claim in this slice.
+- Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
+- Scope: exact same named explicit Vulkan selector on Linux with attested
+  local counters. No merging of different selector aliases into one
+  context, imported/Existing/foreign device, non-Linux physical observation,
+  Nvidia Vulkan without actual local counters, generic cross-context/
+  cross-backend import or total UMA backing/OS-hard reservation guarantee.
+  Legacy external setup registration may construct its own device; no
+  guarantee for callers bypassing original named service preparation.
+  No new capture, compiled-provider, kernel or learned Vulkan claim.
+
+**Next coherent unit:** reconcile the live captured-owner observation seam
+through existing CapturedResidentGraph, ProductionGraphCache and actual
+qualified native/captured consumers. Expose actual prepared/captured
+selection, replay and retirement facts on demand without another graph
+IR, registry, plan ID or implied capture/provider eligibility. Keep
+unknown completion and external interop/host-visible GPU/UMA alias gaps
+explicit; audit minimum Phase 1 exits against the ordered plan and real
+consumers, distinguishing remaining shared contracts from later backend
+specializations. Do not start CLI/TUI/Web or concrete compiler SDK
+integration before the minimum shared foundations are closed.
+
+### Previous accepted prepared-plan/provider checkpoint
+
 **Signed original prepared-program/region observations and CUDA provider compatibility: 8e3b8993b189beb80216e8b5a10fd8a5e484f7db.**
 Layout tightening: 33118f162eca2618d97ff2b7fe6885ecae6da69f.
 
@@ -91,16 +171,9 @@ Layout tightening: 33118f162eca2618d97ff2b7fe6885ecae6da69f.
   context/other-backend stream import and arbitrary partial state
   conversion remain unqualified.
 
-**Next coherent unit:** close the remaining bounded physical owner seam:
-safe reuse of exact named Vulkan adapters in the original CubeCL service
-registry, using the existing guarded preflight/admitted lease and actual
-local VRAM observation. Avoid second registry, repeated temporary device
-creation, implicit CPU/GTT fit or invented shared-backing identities.
-Reconcile live captured-owner observation through its original owner
-if a qualified existing consumer requires it; preserve explicit holds
-on unqualified capture/interop and general host-visible GPU/UMA alias
-backing. Then audit minimum Phase 1 exit requirements before CLI/TUI/Web.
-No concrete compiler SDK integration before ordered native phases.
+The bounded named Linux Vulkan registry/admission continuation is
+implemented at 3b5a520d/fc38db03/e1decff5 above. Actual live capture
+observation and general shared-backing/interop boundaries remain open.
 
 ### Previous accepted shared GGUF source checkpoint
 

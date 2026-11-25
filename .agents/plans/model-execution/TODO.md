@@ -236,6 +236,10 @@ any external compiler. All phases retain the original resource/state owners.
   provider compatibility, shared typed resident/streamed GEMM layout.
   Actual CUDA resident/streamed B1/C4 exact full logits/all domains,
   HIP V2 C1/C8 and private secondary-stream interruption pass.
+- 3b5a520d/fc38db03/e1decff5: named Linux Vulkan original CubeCL
+  service reuse and actual local VRAM preadmission; original exact
+  Client and physical lease, actual peer refusal/race/warm and portable
+  healthy/unknown. No kernel/profile or new learned model support.
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

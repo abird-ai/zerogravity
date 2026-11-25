@@ -92,9 +92,14 @@ actual retained CUDA projection, cold same-context queue/resource and
 dense identical-layout copy compatibility; original completion/retention.
 Actual CUDA resident/streamed B1/C4 exact, GGUF chain, HIP V2 C1/C8 and
 private bridge refusal/interrupt pass. Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
-Next bounded named Vulkan original
-registry reuse/physical admission; review remaining captured/UMA/interop
-holds and Phase 1 exit requirements. Historical
+Signed 3b5a520d/fc38db03/e1decff5: original named Vulkan service
+lookup/atomic factory/exact Client, Linux PCI/local fit and original
+preadmission. Actual RADV cold peer refusal, raced/warm reuse and
+independent envelope retirement, portable healthy/unknown and HIP
+healthy and real HF HIP V2 C1/C8 replay/retirement pass.
+Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
+Next reconcile actual captured-owner observations and
+review remaining UMA/interop holds and minimum Phase 1 exit requirements. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.
 Continue [full plan](FULL_IMPLEMENTATION_PLAN.md). No second cache
 hierarchy, allocator or publisher; mixed backend/multi-source HF pipeline,

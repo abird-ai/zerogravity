@@ -294,10 +294,17 @@ and identical dense view compatibility; original completion/retention,
 shared actual GEMM orientation. Actual CUDA resident/streamed B1/C4
 full-domain/full-logit equality, GGUF chain, native HIP V2 C1/C8 and
 physical private bridge interruption/refusal pass. Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
-Next close bounded
-named Vulkan original-registry reuse/physical admission; keep actual
-captured-owner observation, general UMA aliasing, foreign buffers/streams
-and other unqualified backend/family/codec/task routes explicit.
+Signed 3b5a520d/fc38db03/e1decff5: original CubeCL registry noncreating
+lookup/atomic fallible factory and exact Client; ordinary/guarded Linux
+Vulkan selected PCI/current local fit and original lease. Known reuse
+does not arm new bootstrap. Actual RADV peer refusal, raced/warm service
+reuse and independent envelope retirement, portable healthy/unknown and
+HIP healthy and real HF HIP V2 C1/C8 replay/retirement pass. Locked
+common/runtime sources; no dependency version
+change. Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
+Next reconcile actual captured-owner observations and minimum
+Phase 1 exit requirements; keep general UMA aliasing, foreign buffers/
+streams, non-Linux and unqualified backend/family/codec/task explicit.
 No duplicate catalog, estimator, allocator or runtime.
 General DAG/media/context authority, multi-source HF and mixed-backend
 pipeline loading, CLI/API transport activation, generalized persistent

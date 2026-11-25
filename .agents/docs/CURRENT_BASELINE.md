@@ -5,6 +5,20 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — original named Vulkan service reuse
+
+3b5a520d/fc38db03/e1decff5: original CubeCL registry non-creating
+lookup and atomic fallible factory, exact registered Client adoption.
+Ordinary/guarded Linux Vulkan uses existing PCI/local VRAM observation
+and original preadmission; known reuse does not arm new bootstrap.
+Actual RADV cold peer refusal, raced/warm reuse, three independent
+envelopes over same service and extra retirement; portable two-source
+healthy/unknown and HIP shared-owner healthy pass. Real HF HIP V2 C1/C8
+exact replay and retirement pass. No new model/profile
+or Vulkan parity claim. Locked CubeCL common/runtime source patches,
+no dependency version changes. General foreign/UMA/non-Linux holds.
+Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
+
 ## 25 Nov — prepared-plan and provider compatibility
 
 8e3b8993/33118f16: original recorded/selected region descriptions,

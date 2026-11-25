@@ -472,9 +472,14 @@ and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
   and dense copy compatibility; existing original flight completion and
   quarantine. Actual CUDA resident/streamed B1/C4 exact, GGUF chain,
   HIP V2 C1/C8 and physical bridge refusal/interrupt pass.
+- [x] Bounded named Linux Vulkan original registry reuse/admission
+  (3b5a520d/fc38db03/e1decff5): exact existing Client or atomic original
+  factory, PCI/local fit and lease adoption; actual RADV cold peer
+  refusal/raced/warm reuse/retirement and healthy/unknown shared
+  physical tests pass. No second registry or foreign device import.
 - [ ] Remaining live capture observation and qualified physical interop;
-  extend other qualified resident formats and generic named Vulkan
-  registry reuse and actual shared host-visible GPU backing. General
+  extend other qualified resident formats and actual shared
+  host-visible GPU backing. General
   DAG/media/context authority, mixed backend/multi-source HF loading and
   pipeline transport activation remain unsupported. Continue source lifecycle/placement only through real
   consumers. Keep selected shape

@@ -693,8 +693,12 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   admitted snapshot/file/typed planes/root pool/completion, sole publication.
   Actual HF 0.8B same/fresh-process complete state/full-vocab continuation
   exact, corruption/stale refusal, known retirement and unknown upload fence.
-- [ ] Close qualified generic named Vulkan registry reuse, non-Linux
-  bootstrap and actual host-visible GPU/UMA backing aliasing. Broader family/codec/task
+- [x] Bounded explicit named Linux Vulkan original registry reuse
+  (3b5a520d/fc38db03/e1decff5): atomic fallible factory and exact
+  Client, actual PCI/local fit and original lease. Real cold pressure,
+  raced/warm reuse, independent envelope retirement and actual portable
+  healthy/unknown pass. No second registry.
+- [ ] Non-Linux bootstrap and actual host-visible GPU/UMA backing aliasing. Broader family/codec/task
   registration, other resident formats, generalized persistent session storage, cross-provider restore and
   additional backend prefix eligibility remain open.
 
