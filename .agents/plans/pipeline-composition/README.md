@@ -222,6 +222,26 @@ zerogravity pipeline check --name chat --input text --output text \
 zerogravity pipeline run --config examples/pipelines/voice-assistant.yaml
 ```
 
+### Loaded language SDK
+
+A checked serial, non-realtime text-to-text `llm` chain can be bound to
+the existing runtime by `Runtime::prepare_pipeline(config, name, bindings)`.
+Each `LanguageBinding { model, alias, owner }` names one declaration and its
+exact already-loaded catalog owner. Target metadata is structural intent,
+not automatic model selection; source-loading pins must be resolved outside
+this subset. The plan retains admitted metadata, not an executable reader.
+`Runtime::run_pipeline(plan, input, max_output)` admits the first original
+text request, then moves each committed intermediate terminal text into
+the next original request as the output stream is consumed. Only the final
+stage's stream and usage are returned; the token ceiling applies per stage.
+A retired/replaced registration refuses, including a same-source reload.
+Future stages are not pre-admitted, so cancellation/drop or intervening
+retirement can prevent later submission without rolling back committed
+earlier work. No new pipeline worker, queue, model loader or state publisher.
+Context-free CLI run, graph source loading, media/general DAG execution,
+context grants, realtime lanes and pipeline API activation remain explicit
+unsupported boundaries.
+
 The YAML `model:` entries identify one shared instance per model ID;
 `pipeline[].step` references those IDs, and `route:` declares an endpoint
 bound to one pipeline. Validation is bounded (256 KiB file, 128 model

@@ -352,6 +352,19 @@ their existing numeric/source/physical acceptance gates.
   contiguous/paged C8, HIP V2 C1/C8 pass with original retirement.
   Full isolated gate: 2389 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
 
+## Source-bound serial language pipelines — 25 Nov
+
+- [x] `4477f20c`: actual SDK loaded-owner chain with explicit bindings
+  (target is structural intent), verified order, exact registration checks,
+  bounded plan metadata and original request admission. Unsupported pins,
+  media, context and realtime graphs refuse.
+- [x] Pull-driven handoff of committed intermediate terminal text; final
+  original events and usage; current request cancel/drop and no later
+  submission. No retained model in prepared plan, new worker or publisher.
+- [x] Engine/Clippy/SDK compile, CPU fixture serial/mixed/reload, L5 physical
+  CUDA GGUF distinct-owner chain + native C1 and X2 HIP V2 C1/C8 + alias chain
+  pass. Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+
 ## Uncommitted
 
 ### Phase 1 — source, semantics and executable lowering
@@ -359,11 +372,14 @@ their existing numeric/source/physical acceptance gates.
 Contract: [closed regions](REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering)
 and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
 
-- [ ] Bind existing typed task/pipeline structure to exact loaded model
-  owners and actual bounded language request/stream execution. Preserve
-  explicit refusals for unsupported media, context authority, placement
-  and backend modes. Continue remaining source lifecycle/placement
-  only through real consumers. Keep selected shape bands and typed ports, no naked
+- [ ] Reconcile typed complete-domain committed-state snapshot/prefix
+  compatibility and original scoped cache through actual resident owners.
+  Preserve exact source/plan/input/position/state compatibility and original
+  restore/fork publication/leases; no generic fingerprint framework or
+  second cache/publisher. General DAG/media/context authority, source loading
+  and pipeline transport activation remain unsupported. Continue remaining
+  source lifecycle/placement only through real consumers. Keep selected shape
+  bands and typed ports, no naked
   scope or implicit retry. Contiguous text invocation/producer ports and the
   whole-text prepared boundary are implemented above; arbitrary explicit
   position tensors and host/IO effects remain unsupported. Extend

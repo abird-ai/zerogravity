@@ -20,6 +20,63 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed source checkpoint `4477f20ce7de60d722eb6967e1f33b5e565cb154` —
+source-bound serial language pipelines.**
+The existing structural `Config::language_chain` selects a verified
+non-realtime text-to-text llm chain in topological order. No second graph
+representation or generic interpreter. The SDK's `prepare_pipeline` requires
+one explicit `LanguageBinding` per referenced model declaration: config ID,
+registered alias and exact loaded ModelInstance. The target registry remains
+structural task intent, not proof of model identity. Source-loading pins on
+selected declarations refuse rather than being silently ignored; resolve
+source selection separately before supplying a loaded binding. No automatic
+acquisition, model/device selection or transport startup.
+
+A small issued registration ID on the original typed Route distinguishes
+a new registration from the same source ID/Arc, shares across aliases and
+never wraps. The immutable PreparedLanguagePipeline owns only ordered stage
+metadata and its original host admission, not models or runtime handles.
+`run_pipeline` checks every exact registration and output ceiling before
+starting the first original text request. Each next stage checks its own
+registration under the existing lifecycle mutex; future stages are not
+pre-admitted and do not block unload. Earlier completed state is not rolled
+back on later refusal. Intermediate stages are ordinary non-streaming
+requests; their actual terminal text is moved into the next request under
+the existing ingress charge while the predecessor's output transport is
+still retained. Only final-stage deltas, terminal output and usage are
+exposed; per-stage output limit is common, not an aggregate usage claim.
+Cancellation/drop cancels only the current original request and never
+submits another stage. The existing blocking OutputStream is pull-driven,
+not a new asynchronous cancellation API. Direct SDK text shares the same
+admitted-copy and event-receive helpers; no new hot-path work or device math.
+
+Focused engine tests pass topology, exact registered ownership, final
+usage/text, cancellation, selective retirement and same-Arc re-registration
+refusal; source-free pipeline tests pass unsupported pins, media and cold
+runtime refusal. Strict CPU Clippy and combined HIP/CUDA SDK compile pass.
+Real CPU GGUF fixture SDK/HTTP executes serial aliases and distinct owners,
+refuses stale plans after cold reload and unloads without retained models.
+L5 actual two-owner CUDA GGUF chain matches ordinary sequential requests,
+then selective unload preserves the surviving owner; native CUDA C1
+passes all three replay waves. X2 native HIP V2 Qwen 0.8B C1/C8 passes all
+six waves with `[248068,198,90700]`, replay/lane equality and zero failed
+quanta; outside timing, two-stage alias chain matches ordinary sequential
+requests and original retirement passes. Both hosts idle at their prior
+memory levels; A1 untouched. Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+No new numerical or performance baseline claim.
+
+Next: close typed committed-state snapshot/prefix compatibility through
+actual resident owners and the existing scoped prefix cache. Inspect the
+current model-local numeric compatibility placeholders and real plan,
+input/position/state representation; keep complete-domain restore/fork
+authority in the original StateRoot, leases and native completion.
+No second cache, state publisher or generalized restore/transfer eligibility.
+General DAG/media execution, context authority, cross-backend placement,
+automatic loading from pipeline declarations and CLI/API route activation
+remain outside the serial language subset.
+
+Prior accepted runtime-observation checkpoint:
+
 **Signed source checkpoint `bffad06a9c11efd497b659cff7b735c00e08e718` —
 typed loaded-owner and runtime observations.**
 `Runtime::snapshot()` and `models().snapshot()` read the original catalog,

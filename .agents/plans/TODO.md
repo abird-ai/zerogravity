@@ -9,17 +9,17 @@ Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md).
 The foundations pack links the complete dated history, source checkpoint, original design and plan/open-work/Git inventories. Live source and owning TODOs remain authoritative.
 
-**25 Nov Phase 1 checkpoint:** `bffad06a` signed typed runtime and
-catalog snapshots from actual loaded-owner lifecycle, execution, scheduler
-and physical resource ledger. Exact aliases share one description; unknown
-capabilities remain absent. Existing HTTP diagnostics have additive typed
-catalog/scheduler fields. CPU SDK/HTTP, CUDA mixed-owner GGUF and native
-contiguous/paged C8, X2 native HIP V2 C1/C8 pass. Full isolated gate:
-2389 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-Next bind existing typed task/pipeline structure to exact loaded owners
-and actual bounded language request/stream execution; continue remaining
-source/state/placement seams in the [full plan](FULL_IMPLEMENTATION_PLAN.md).
-No second registry/worker or new media/backend eligibility.
+**25 Nov Phase 1 checkpoint:** `4477f20c` signed serial language
+pipelines bind explicitly selected exact loaded registrations, move
+committed terminal text through original request admission and expose only
+the final stream/usage. No retained model in the plan or new worker.
+CPU fixture, CUDA GGUF two-owner chain/selective retirement and native C1,
+X2 HIP V2 C1/C8 and alias chain pass. Full isolated gate:
+2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Next reconcile typed committed-state snapshot/prefix compatibility through
+the existing native owners and scoped cache; continue remaining foundations
+in the [full plan](FULL_IMPLEMENTATION_PLAN.md). General media/DAG/context
+authority, source auto-loading and pipeline transport activation remain open.
 
 **20 Nov authoritative refresh:** pushed/tracked `origin/main` is `f0f0640`; local signed
 source lineage above it includes `1222f8a` (multi-token GDN prefill), `60ba956` (matched

@@ -593,6 +593,24 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   contiguous/paged C8, HIP V2 C1/C8 and original retirement pass.
   Full isolated gate: 2389 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
 
+## Loaded serial language pipelines — 25 Nov
+
+- [x] `4477f20c`: select verified serial text chain, bind exact registered
+  owners with explicit SDK bindings. Registration distinct from source
+  identity; stale same-Arc reload/foreign/retired owners refuse. Plan retains
+  only bounded metadata/host admission. No automatic source/device selection.
+- [x] Original request/event stream and scheduler; move committed terminal
+  text under successor ingress admission, retain predecessor transport until
+  handoff. Final-stage output/usage, current request cancellation, no
+  pre-admission of future stages or pipeline worker.
+- [x] Engine lifecycle/chain tests, structural refusals, strict Clippy,
+  combined SDK compile, CPU fixture SDK/HTTP, actual CUDA GGUF distinct-owner
+  chain and retirement, native CUDA C1 and HIP V2 C1/C8 + alias chain pass.
+  Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+- [ ] General DAG/media/context execution, graph-declared source resolution,
+  pipeline CLI/API activation and richer task controls only through original
+  qualified owners.
+
 ## Handoff and documentation maintenance
 
 - [x] Keep every transition document UTF-8, internally linked and consistent with the canonical current handoff plus the four maintained planning/status files.

@@ -163,11 +163,21 @@ HTTP diagnostics remain with additive typed catalog/scheduler fields.
 CPU SDK/HTTP, CUDA mixed-owner GGUF and contiguous/paged native C8, HIP V2
 C1/C8 and original retirement pass. Full isolated gate:
 2389 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-Next bind existing typed task/pipeline structure to exact loaded owners
-and actual bounded language request/stream execution; no second runtime
-or fabricated media/placement eligibility. Continue remaining source,
-state, placement and provider interop only through actual consumers.
-None of these slices closes Phase 1.
+Signed `4477f20c` binds the existing serial language graph to explicitly
+selected loaded registrations and executes through the original runtime.
+Committed intermediate text moves into the next original admitted request;
+only the final stream/usage is exposed. Stale plans refuse, current request
+cancellation and selective retirement are preserved, future stages are not
+pre-admitted. CPU fixture SDK/HTTP, CUDA GGUF distinct-owner chain/retirement,
+native CUDA C1 and HIP V2 C1/C8 plus alias chain pass. Full isolated gate:
+2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Next reconcile typed committed-state snapshot/prefix compatibility through
+real resident owners and the existing scoped prefix cache. Preserve exact
+original plan, source, state layout, input/position, completion and root
+authority; no second cache/publisher. General DAG/media/context authority,
+pipeline source loading and transport activation remain unsupported.
+Continue remaining source/state/placement/provider interop through actual
+consumers. None of these slices closes Phase 1.
 
 Complete the engineering contracts and their real consumers, including every
 foundation below. This is not a requirement to finish every backend optimization,

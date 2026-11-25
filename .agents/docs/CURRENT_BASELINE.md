@@ -5,6 +5,16 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — source-bound serial language execution
+
+`4477f20c`: explicit loaded-owner registration binding and bounded serial
+text chains over original requests/streams; intermediate terminal text is
+moved with existing admission and final usage is unchanged. CPU fixture
+SDK/HTTP, L5 physical CUDA GGUF distinct-owner chain/selective retirement
+and native C1, X2 HIP V2 C1/C8 plus two-stage alias chain all pass.
+No new kernel, numerical parity or performance measurement. Full isolated
+gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+
 ## 25 Nov — typed runtime and model observations
 
 `bffad06a`: actual loaded-owner lifecycle/alias groups, selected execution,

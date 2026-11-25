@@ -53,7 +53,13 @@ must be present together. Existing source/format/host-budget refusals still appl
   short router callbacks remain non-reentrant, implicit self-drop unsupported.
 - `run::config::{RunOverrides,resolve}` and `pipelines::{PipelinePatch,ChatContextPatch}`:
   shared typed precedence/path/graph policy; callers choose default files/env.
-- `pipelines::Document`: bounded YAML/schema/entrypoint checking, not execution.
+- `pipelines::Document`: bounded YAML/schema/entrypoint checking, not admission.
+- `Runtime::prepare_pipeline` / `run_pipeline`: explicit model-ID to exact
+  loaded alias/owner bindings for non-realtime serial llm stages, with no
+  source loading or route activation. Plan retains metadata/host admission,
+  not models. Original request admission moves committed terminal text to
+  the next stage; final output and usage retain the original stream contract.
+  General DAG/media/context and context-free CLI execution remain unsupported.
 - `Runtime::devices`: inventory/policy; placement execution remains Unsupported.
 - `artifacts::{HubPull,ComponentDocument,ComponentClients}` and original provider/
   cache APIs: caller-owned transports/credentials, original publication/leases.
