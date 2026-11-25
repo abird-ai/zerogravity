@@ -1412,6 +1412,55 @@ mod cuda_paged_tests {
     fn original_source_resident_and_streamed_transport_match() {
         use crate::gpu::CudaForwardWeightStorage;
 
+        use sha2::{Digest, Sha256};
+
+        // The original CUDA actor retains cumulative compiled code for its
+        // process lifetime. Compare fresh admitted contexts without raising
+        // that budget or storing a pinned numerical reference.
+        const MODE: &str = "ZG_CUDA_SOURCE_TRANSPORT_CHILD";
+        const RESULT: &str = "SOURCE_TRANSPORT_RESULT ";
+        let mode = match std::env::var(MODE) {
+            Ok(mode) => mode,
+            Err(std::env::VarError::NotPresent) => {
+                let run = |mode| {
+                    let child = std::process::Command::new(std::env::current_exe().unwrap())
+                        .args([
+                            "--exact",
+                            "builtins::text::qwen_source::load::cuda_paged_tests::original_source_resident_and_streamed_transport_match",
+                            "--ignored",
+                            "--nocapture",
+                            "--test-threads=1",
+                        ])
+                        .env(MODE, mode)
+                        .output()
+                        .unwrap();
+                    let stdout = String::from_utf8(child.stdout).unwrap();
+                    assert!(
+                        child.status.success(),
+                        "{mode} child: {stdout}\n{}",
+                        String::from_utf8_lossy(&child.stderr)
+                    );
+                    stdout
+                        .lines()
+                        .filter_map(|line| line.strip_prefix(RESULT))
+                        .map(str::to_owned)
+                        .collect::<Vec<_>>()
+                };
+                let resident = run("resident");
+                let streamed = run("streamed");
+                assert_eq!(resident.len(), 2);
+                assert_eq!(
+                    resident, streamed,
+                    "exact singleton/cohort full output and domain bits"
+                );
+                println!(
+                    "SOURCE_RESIDENT_STREAMED_TRANSPORT_PASS singleton=exact cohort4=exact full_logits=exact all_domains=exact actual_streamed_weights=true final_shutdown=true"
+                );
+                return;
+            }
+            Err(error) => panic!("{MODE}: {error}"),
+        };
+        assert!(matches!(mode.as_str(), "resident" | "streamed"));
         let (parts, page_tokens, _, tokens) =
             paged_source_fixture("resident-streamed-source-transport");
         // Same source, plan, math, state policy and row limits. Use the
@@ -1507,36 +1556,45 @@ mod cuda_paged_tests {
                 (singleton, cohort)
             })
         };
-        let (expected, expected_cohort) = run(PROVIDER_BYTES, resident.resident_weight_bytes);
-        let (actual, actual_cohort) = run(streamed_cap, 0);
-        assert_eq!(actual.len(), expected.len());
-        for (index, (expected, actual)) in expected.iter().zip(&actual).enumerate() {
-            exact_checkpoint(
-                expected,
-                actual,
-                &format!("streamed singleton checkpoint {index}"),
-            );
+        let (singletons, cohorts) = if mode == "resident" {
+            run(PROVIDER_BYTES, resident.resident_weight_bytes)
+        } else {
+            run(streamed_cap, 0)
+        };
+        let hash_words = |hash: &mut Sha256, words: &[f32]| {
+            hash.update((words.len() as u64).to_le_bytes());
+            for word in words {
+                hash.update(word.to_bits().to_le_bytes());
+            }
+        };
+        let hash_domains =
+            |hash: &mut Sha256, domains: &[(crate::accelerator::program::StateSlot, Vec<f32>)]| {
+                assert_eq!(domains.len(), 42);
+                let mut ordered = domains.iter().collect::<Vec<_>>();
+                ordered.sort_unstable_by_key(|(slot, _)| *slot);
+                for (slot, words) in ordered {
+                    hash.update(format!("{slot:?}").as_bytes());
+                    hash_words(hash, words);
+                }
+            };
+        assert_eq!(singletons.len(), 4);
+        let mut singleton = Sha256::new();
+        for checkpoint in &singletons {
+            singleton.update(checkpoint.frontier.to_le_bytes());
+            hash_words(&mut singleton, &checkpoint.logits);
+            hash_domains(&mut singleton, &checkpoint.domains);
         }
-        assert_eq!(actual_cohort.len(), expected_cohort.len());
-        for (row, ((expected_prefill, expected_decode), (actual_prefill, actual_decode))) in
-            expected_cohort.iter().zip(&actual_cohort).enumerate()
-        {
-            assert_eq!(actual_prefill.token, expected_prefill.token);
-            assert_eq!(actual_decode.token, expected_decode.token);
-            exact_domains(
-                &expected_prefill.domains,
-                &actual_prefill.domains,
-                &format!("streamed cohort prefill row{row}"),
-            );
-            exact_domains(
-                &expected_decode.domains,
-                &actual_decode.domains,
-                &format!("streamed cohort decode row{row}"),
-            );
+        assert_eq!(cohorts.len(), 4);
+        let mut cohort = Sha256::new();
+        for (prefill, decode) in &cohorts {
+            for checkpoint in [prefill, decode] {
+                cohort.update(checkpoint.token.0.to_le_bytes());
+                cohort.update(checkpoint.token.1.to_le_bytes());
+                hash_domains(&mut cohort, &checkpoint.domains);
+            }
         }
-        println!(
-            "SOURCE_RESIDENT_STREAMED_TRANSPORT_PASS singleton=exact cohort4=exact full_logits=exact all_domains=exact actual_streamed_weights=true final_shutdown=true"
-        );
+        println!("\n{RESULT}singleton {:x}", singleton.finalize());
+        println!("{RESULT}cohort {:x}", cohort.finalize());
     }
 
     #[test]
