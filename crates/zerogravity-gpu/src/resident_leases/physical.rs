@@ -431,9 +431,26 @@ impl ResidentPhysical {
             Error::Unsupported("HIP source physical device observation unavailable".into())
         })?;
         let key = crate::physical_service::physical_key(Some(&observed.physical))?;
+        // These are local VRAM constraints, not additional host RAM or GTT.
+        let local = zerogravity_core::placement::LocalVramObservation::observe(
+            &std::path::Path::new("/sys/bus/pci/devices").join(&key.device),
+        );
+        let (ceiling, available) = local.intersect_driver(
+            observed.total_memory,
+            observed.free_memory,
+            observed.integrated,
+        )?;
+        if provider_cap as u64 > available {
+            return Err(Error::resource(
+                "device-local VRAM",
+                "HIP cold provider envelope",
+                provider_cap as u64,
+                available,
+            ));
+        }
         PhysicalServiceBudget::preadmit_device(
             key,
-            observed.total_memory,
+            ceiling,
             device_cap,
             provider_cap as u64,
             ResourceOwner::new("backend/physical", "original-owner")?,

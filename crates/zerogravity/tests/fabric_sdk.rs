@@ -1236,6 +1236,16 @@ fn qwen_gguf_cuda_sdk_unloads_with_retained_handle() {
         (3, 2)
     );
     assert_eq!(loaded.catalog.len(), 2);
+    assert_eq!(
+        loaded.host_backing.reserved,
+        loaded
+            .resources
+            .iter()
+            .filter(|row| row.key.backend == "host")
+            .map(|row| row.budget.reserved)
+            .sum::<u64>(),
+    );
+    assert!(loaded.host_backing.ceiling.is_some());
     for model in &loaded.catalog {
         assert_eq!(model.lifecycle, ModelLifecycle::Ready);
         assert!(model.independent_retirement);

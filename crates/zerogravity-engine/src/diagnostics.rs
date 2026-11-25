@@ -10,7 +10,7 @@ use zerogravity_core::{
     provider::{
         ExecutionDescription, ResidentModelMemory, ResidentStatePolicy, ResidentTextAdmission,
     },
-    resource_arbiter::ResourceSnapshot,
+    resource_arbiter::{HostBackingSnapshot, ResourceSnapshot},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -129,4 +129,6 @@ pub struct RuntimeSnapshot {
     pub catalog: Vec<ModelSnapshot>,
     /// Includes other runtimes and retained/fenced owners, not OS telemetry.
     pub resources: Vec<ResourceSnapshot>,
+    /// Aggregate constraint over those host scopes, not an additional pool.
+    pub host_backing: HostBackingSnapshot,
 }

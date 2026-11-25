@@ -275,38 +275,40 @@ impl Selection {
         };
         let arbiter = ResourceArbiter::process_shared();
         let key = PhysicalDeviceKey::new("host", "system-ram")?;
-        let refreshed = crate::devices::discover()?;
-        crate::devices::fresh(&refreshed)?;
-        let host = refreshed
-            .devices
-            .iter()
-            .find(|d| d.id == "cpu:0")
-            .ok_or_else(|| Error::State("fresh host observation unavailable".into()))?;
-        // Bootstrap only from the intersected fixed source-free capacity view;
-        // current free bytes/margin never become an operator ceiling.
-        if arbiter.snapshot(&key).is_err() {
-            arbiter.register(
-                key.clone(),
-                fixed_ceiling.min(
-                    host.ceiling
-                        .ok_or_else(|| Error::State("fresh HOST ceiling unavailable".into()))?,
-                ),
-            )?;
+        let host = arbiter.observe_host_backing()?;
+        let (ceiling, available) = host.ceiling.zip(host.available).ok_or_else(|| {
+            Error::State("fresh HOST capacity/current availability unavailable".into())
+        })?;
+        let fixed_ceiling = fixed_ceiling.min(ceiling);
+        let backing = arbiter.host_backing()?;
+        let margin = headroom.bytes(ceiling, true)?;
+        // The old proposal constrains the new observation. Never grow a cap
+        // from free memory or add available bytes to logical reservations.
+        let usable = backing
+            .conservative_available(fixed_ceiling, available, margin)
+            .min(available_after_margin.saturating_sub(backing.reserved));
+        if self.planning_bytes() > usable {
+            return Err(Error::resource(
+                "host memory",
+                "direct CPU cold fit",
+                self.planning_bytes(),
+                usable,
+            ));
         }
-        let fresh_available = host
-            .available
-            .zip(host.ceiling)
-            .and_then(|(a, c)| a.checked_sub(headroom.bytes(c, true).ok()?))
-            .ok_or_else(|| {
-                Error::Limit("fresh host availability after headroom unavailable".into())
-            })?;
+        // Only now establish the scoped operator limit for an actual load.
+        if arbiter.snapshot(&key).is_err() {
+            arbiter.register(key.clone(), fixed_ceiling)?;
+        }
         let budget = arbiter.snapshot(&key)?;
-        let available_after_margin = available_after_margin
-            .min(fresh_available)
-            .saturating_sub(budget.reserved);
-        if budget.fenced || self.planning_bytes() > available_after_margin.min(budget.remaining) {
-            return Err(Error::Limit(
-                "existing HOST budget/current availability refuses CPU planning".into(),
+        if budget.fenced {
+            return Err(Error::State("original HOST admission is fenced".into()));
+        }
+        if self.planning_bytes() > budget.remaining {
+            return Err(Error::resource(
+                "host memory",
+                "direct CPU scoped admission",
+                self.planning_bytes(),
+                budget.remaining,
             ));
         }
 

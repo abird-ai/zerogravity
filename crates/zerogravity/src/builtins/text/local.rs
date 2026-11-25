@@ -157,7 +157,7 @@ pub(super) fn load(
     bootstrap.verify(&tokenizer)?;
 
     let weight_charge = host
-        .admit(
+        .admit_cold(
             alias,
             "immutable-source",
             AllocationClass::ImmutableWeights,

@@ -66,6 +66,7 @@ impl Plan {
         let candidates = devices::allowed(&request, &inventory)?;
         let mut decision = None;
         let mut exclusions = Vec::new();
+        let backing = crate::resource_arbiter::ResourceArbiter::process_shared().host_backing()?;
         for d in &candidates {
             if d.class != "host-memory" {
                 exclusions.push(format!(
@@ -90,18 +91,16 @@ impl Plan {
                 continue;
             };
             let margin = request.headroom.bytes(ceiling, true)?;
-            if available
-                .checked_sub(margin)
-                .is_some_and(|n| n >= selected.planning_bytes())
-            {
-                decision = Some((d.id.clone(), ceiling, available - margin));
+            let usable = backing.conservative_available(ceiling, available, margin);
+            if usable >= selected.planning_bytes() {
+                decision = Some((d.id.clone(), ceiling, available.saturating_sub(margin)));
                 break;
             }
             exclusions.push(
                 "cpu:0: insufficient currently observed memory after routing headroom".into(),
             );
         }
-        let mut explanation = serde_json::json!({"schema":"zerogravity.run.decision.v1","source":selected.source_label(),"target":selected.model_target(),"backend":request.backend.label(),"selected":decision.as_ref().map(|d|&d.0),"context":request.task.context,"resolved_device_policy":format!("{:?}",request.devices),"resolved_headroom":format!("{:?}",request.headroom),"numerical":request.numerical,"max_tokens":request.task.max_tokens,"raw":request.task.raw,"prompt_bytes":request.task.prompt.as_ref().map(String::len),"prefill_chunk":request.task.prefill_chunk,"planning_bytes":selected.planning_bytes(),"planning_scope":"conservative CPU source/state/temporary planning; original source and logical-state admissions remain independent; no OS hard RAM guarantee","availability_observed_unix_ms":inventory.observed_unix_ms,"excluded":exclusions,"speculation":"off (no qualified measured speculative route)","source_verified":false,"model_execution_qualified_by_metadata":false,"provenance":request.provenance.iter().map(|(k,v)|(k,format!("{v:?}"))).collect::<BTreeMap<_,_>>()});
+        let mut explanation = serde_json::json!({"schema":"zerogravity.run.decision.v1","source":selected.source_label(),"target":selected.model_target(),"backend":request.backend.label(),"selected":decision.as_ref().map(|d|&d.0),"context":request.task.context,"resolved_device_policy":format!("{:?}",request.devices),"resolved_headroom":format!("{:?}",request.headroom),"numerical":request.numerical,"max_tokens":request.task.max_tokens,"raw":request.task.raw,"prompt_bytes":request.task.prompt.as_ref().map(String::len),"prefill_chunk":request.task.prefill_chunk,"planning_bytes":selected.planning_bytes(),"planning_scope":"conservative CPU source/state/temporary planning; protect all existing host commitments as potential growth; no OS hard RAM guarantee","host_backing":backing,"availability_observed_unix_ms":inventory.observed_unix_ms,"excluded":exclusions,"speculation":"off (no qualified measured speculative route)","source_verified":false,"model_execution_qualified_by_metadata":false,"provenance":request.provenance.iter().map(|(k,v)|(k,format!("{v:?}"))).collect::<BTreeMap<_,_>>()});
 
         if request.diagnostics.dry_run {
             explanation["dry_run"] = serde_json::json!(true);

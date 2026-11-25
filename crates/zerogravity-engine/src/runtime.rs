@@ -197,13 +197,15 @@ impl Runtime {
                     .unwrap_or_default(),
             )
         };
+        let (resources, host_backing) = self.inner.resources.snapshots_with_host()?;
         Ok(RuntimeSnapshot {
             status,
             failure,
             limits: self.inner.limits,
             scheduler,
             catalog,
-            resources: self.inner.resources.snapshots()?,
+            resources,
+            host_backing,
         })
     }
     pub(crate) fn catalog_snapshot(&self) -> Result<Vec<ModelSnapshot>> {

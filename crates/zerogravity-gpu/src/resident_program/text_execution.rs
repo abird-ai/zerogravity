@@ -80,6 +80,14 @@ pub(crate) async fn prepare(
     };
     check()?;
     let inventory = admission.inventory().clone();
+    let arbiter = zerogravity_core::resource_arbiter::ResourceArbiter::process_shared();
+    let observed = arbiter.observe_host_backing()?;
+    if observed.ceiling.is_some() && observed.available.is_some() {
+        let additional = (inventory.host_upper_bytes as u64)
+            .checked_sub(admission.source.metadata_reserved_bytes())
+            .ok_or_else(|| Error::State("HIP source metadata exceeds host preflight".into()))?;
+        observed.require_fit(arbiter.host_backing()?, additional, 0)?;
+    }
     let native = crate::hip::native::begin_resident_source_with_budget(
         device,
         &admission.source,

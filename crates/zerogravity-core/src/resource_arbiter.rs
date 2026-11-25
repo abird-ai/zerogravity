@@ -15,6 +15,8 @@ use crate::{Error, ResourceLimit, Result};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, OnceLock};
 
+mod host_memory;
+pub use host_memory::{HostBackingSnapshot, HostMemoryObservation};
 mod host_workspace;
 mod partition;
 pub use host_workspace::HostWorkspace;
@@ -116,6 +118,19 @@ struct DeviceBudget {
 struct ArbiterState {
     next_id: u64,
     budgets: BTreeMap<PhysicalDeviceKey, DeviceBudget>,
+    // All host scopes constrain the same OS-visible RAM, not independent pools.
+    host_ceiling: Option<u64>,
+    host_observed_ceiling: Option<u64>,
+    host_committed: u64,
+}
+impl ArbiterState {
+    fn host_backing(&self) -> HostBackingSnapshot {
+        HostBackingSnapshot {
+            ceiling: self.host_ceiling,
+            observed_ceiling: self.host_observed_ceiling,
+            reserved: self.host_committed,
+        }
+    }
 }
 
 /// One `BTreeMap<u64, Reservation>` node upper bound from the actual std
@@ -559,6 +574,9 @@ impl ResourceArbiter {
             shared: Arc::new(Mutex::new(ArbiterState {
                 next_id: 1,
                 budgets: BTreeMap::new(),
+                host_ceiling: None,
+                host_observed_ceiling: None,
+                host_committed: 0,
             })),
         }
     }
@@ -678,11 +696,33 @@ impl ResourceArbiter {
                 ));
             }
         }
+        let host_committed = if key.backend == "host" {
+            let total = state
+                .host_committed
+                .checked_add(total)
+                .ok_or_else(|| Error::Limit("host backing reservation sum overflow".into()))?;
+            if let Some(ceiling) = state.host_backing().limit()
+                && total > ceiling
+            {
+                return Err(Error::resource(
+                    "host memory",
+                    "shared host backing admission",
+                    total - state.host_committed,
+                    ceiling.saturating_sub(state.host_committed),
+                ));
+            }
+            Some(total)
+        } else {
+            None
+        };
         let id = state.next_id;
         state.next_id = state
             .next_id
             .checked_add(1)
             .ok_or_else(|| Error::Limit("resource reservation ID exhausted".into()))?;
+        if let Some(total) = host_committed {
+            state.host_committed = total;
+        }
         let budget = state
             .budgets
             .get_mut(key)
@@ -769,18 +809,24 @@ impl ResourceArbiter {
     /// Process/domain-wide accounting, including retained and fenced owners
     /// not currently in a model catalog. Not OS/device memory telemetry.
     pub fn snapshots(&self) -> Result<Vec<ResourceSnapshot>> {
+        self.snapshots_with_host().map(|(resources, _)| resources)
+    }
+
+    /// Coherent scoped rows and their original shared host backing constraint.
+    pub fn snapshots_with_host(&self) -> Result<(Vec<ResourceSnapshot>, HostBackingSnapshot)> {
         let state = self
             .shared
             .lock()
             .map_err(|_| Error::State("resource arbiter mutex poisoned".into()))?;
-        Ok(state
+        let resources = state
             .budgets
             .iter()
             .map(|(key, budget)| ResourceSnapshot {
                 key: key.clone(),
                 budget: budget.snapshot(),
             })
-            .collect())
+            .collect();
+        Ok((resources, state.host_backing()))
     }
 
     /// Reusable resident leases need one atomic Ready/Reserved→Submitted
@@ -892,6 +938,9 @@ impl ResourceArbiter {
         let size = reservation.bytes;
         device.reservations.remove(&id);
         device.committed -= size;
+        if key.backend == "host" {
+            state.host_committed -= size;
+        }
         Ok(())
     }
 }
@@ -1049,6 +1098,56 @@ mod tests {
         drop(lease);
         assert_eq!(a.snapshot(&first).unwrap().reserved, 0);
     }
+    #[test]
+    fn host_scopes_share_one_backing_limit_and_original_retirement() {
+        let arbiter = ResourceArbiter::new();
+        let a = PhysicalDeviceKey::new("host", "source").unwrap();
+        let b = PhysicalDeviceKey::new("host", "serving").unwrap();
+        for key in [&a, &b] {
+            arbiter.register(key.clone(), 100).unwrap();
+        }
+        let mut source = arbiter
+            .admit(
+                &a,
+                owner("source"),
+                &[req(AllocationClass::ProviderEnvelope, 60)],
+            )
+            .unwrap();
+        assert_eq!(arbiter.establish_host_backing(100).unwrap().reserved, 60);
+        assert_eq!(
+            arbiter.establish_host_backing(200).unwrap().ceiling,
+            Some(100)
+        );
+        assert!(
+            matches!(arbiter.admit(&b, owner("other"), &[req(AllocationClass::Scratch, 41)]),
+            Err(Error::Resource(limit)) if limit.requested == 41 && limit.available == 40)
+        );
+        let child = source
+            .partition_reserved(
+                owner("child"),
+                &[req(AllocationClass::ProviderEnvelope, 20)],
+            )
+            .unwrap();
+        assert_eq!(arbiter.host_backing().unwrap().reserved, 60);
+        drop(source);
+        let other = arbiter
+            .admit(&b, owner("other"), &[req(AllocationClass::Scratch, 80)])
+            .unwrap();
+        assert_eq!(arbiter.host_backing().unwrap().remaining(), Some(0));
+        assert!(arbiter.establish_host_backing(90).is_err());
+        child.fence_unknown();
+        drop(child);
+        drop(other);
+        assert_eq!(arbiter.host_backing().unwrap().reserved, 20);
+        assert_eq!(arbiter.host_backing().unwrap().remaining(), Some(70));
+        assert_eq!(arbiter.snapshot(&a).unwrap().reserved, 20);
+        assert_eq!(
+            arbiter.establish_host_backing(200).unwrap().remaining(),
+            Some(80)
+        );
+        assert_eq!(arbiter.host_backing().unwrap().ceiling, Some(100));
+    }
+
     #[test]
     fn physical_budget_enforces_cross_model_shared_admission() {
         let a = ResourceArbiter::new();

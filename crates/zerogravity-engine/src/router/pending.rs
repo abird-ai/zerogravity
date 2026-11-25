@@ -99,6 +99,11 @@ impl ServingHost {
                 "serving requires the original process host arbiter",
             ));
         }
+        // All actual host scopes share the OS-visible backing ceiling.
+        // A missing OS observation leaves only the explicit logical cap.
+        host.arbiter
+            .observe_host_backing()
+            .map_err(ServiceError::inference)?;
         let limit = host
             .arbiter
             .snapshot(&host.resource)
@@ -175,6 +180,37 @@ impl ServingHost {
         let total = checked_sum(&[bytes, self.lease_envelope(alias, session)?])?;
         self.reserve_lease(alias, session, kind, total)
     }
+    /// Known cold allocations additionally intersect current host availability.
+    /// No OS polling on scheduler/serving hot admissions. Unknown observation
+    /// on an explicit operator route retains only its configured logical bound.
+    pub fn admit_cold(
+        &self,
+        alias: &str,
+        session: &str,
+        kind: AllocationClass,
+        bytes: u64,
+    ) -> Result<GlobalResourceLease, ServiceError> {
+        let total = checked_sum(&[bytes, self.lease_envelope(alias, session)?])?;
+        if self.arbiter.is_process_shared() {
+            let observed = self
+                .arbiter
+                .observe_host_backing()
+                .map_err(ServiceError::inference)?;
+            if observed.ceiling.is_some() && observed.available.is_some() {
+                observed
+                    .require_fit(
+                        self.arbiter
+                            .host_backing()
+                            .map_err(ServiceError::inference)?,
+                        total,
+                        0,
+                    )
+                    .map_err(ServiceError::inference)?;
+            }
+        }
+        self.reserve_lease(alias, session, kind, total)
+    }
+
     /// Serving ingress/queue/event/output/transport storage.
     pub fn charge(
         &self,

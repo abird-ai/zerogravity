@@ -95,7 +95,8 @@ pub fn allowed(request: &Request, inventory: &Inventory) -> Result<Vec<Observati
 /// Reuses the same `/proc`/cgroup observation; no GPU discovery or second pool.
 #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
 pub fn host_available(host_bytes: u64, headroom: &crate::run_policy::Headroom) -> Result<()> {
-    check_host_available(&super::inventory::host(), host_bytes, headroom)
+    let backing = crate::resource_arbiter::ResourceArbiter::process_shared().host_backing()?;
+    check_host_available(&super::inventory::host(), host_bytes, headroom, backing)
 }
 
 #[cfg(any(test, all(feature = "qwen35-cuda-qualification", target_os = "linux")))]
@@ -103,23 +104,23 @@ fn check_host_available(
     host: &Observation,
     host_bytes: u64,
     headroom: &crate::run_policy::Headroom,
+    backing: crate::resource_arbiter::HostBackingSnapshot,
 ) -> Result<()> {
     let ceiling = host
         .ceiling
         .ok_or_else(|| Error::State("HOST ceiling unknown".into()))?;
     let available = host
         .available
-        .ok_or_else(|| Error::Limit("HOST current availability unavailable".into()))?;
+        .ok_or_else(|| Error::State("HOST current availability unavailable".into()))?;
     let margin = headroom.bytes(ceiling, true)?;
-    let usable = available
-        .checked_sub(margin)
-        .ok_or_else(|| Error::Limit("HOST availability below configured headroom".into()))?;
-    if usable < host_bytes {
-        return Err(Error::Limit(format!(
-            "Qwen CUDA HOST{}MiB plus {} bytes headroom exceeds current {usable} usable bytes",
-            host_bytes / (1024 * 1024),
-            margin
-        )));
+    let usable = backing.conservative_available(ceiling, available, margin);
+    if host_bytes > usable {
+        return Err(Error::resource(
+            "host memory",
+            "cold host fit after headroom and protected commitments",
+            host_bytes,
+            usable,
+        ));
     }
     Ok(())
 }
@@ -177,23 +178,28 @@ mod tests {
             cuda_cc: None,
         };
         let headroom = Headroom::Bytes(20);
+        let backing = crate::resource_arbiter::HostBackingSnapshot {
+            ceiling: None,
+            observed_ceiling: None,
+            reserved: 0,
+        };
         assert!(
-            matches!(check_host_available(&host, 1, &headroom), Err(Error::State(m)) if m == "HOST ceiling unknown")
+            matches!(check_host_available(&host, 1, &headroom, backing), Err(Error::State(m)) if m == "HOST ceiling unknown")
         );
         host.ceiling = Some(100);
         assert!(
-            matches!(check_host_available(&host, 1, &headroom), Err(Error::Limit(m)) if m == "HOST current availability unavailable")
+            matches!(check_host_available(&host, 1, &headroom, backing), Err(Error::State(m)) if m == "HOST current availability unavailable")
         );
         host.available = Some(19);
         assert!(
-            matches!(check_host_available(&host, 1, &headroom), Err(Error::Limit(m)) if m == "HOST availability below configured headroom")
+            matches!(check_host_available(&host, 1, &headroom, backing), Err(Error::Resource(r)) if r.requested == 1 && r.available == 0)
         );
         host.available = Some(50);
-        assert!(check_host_available(&host, 30, &headroom).is_ok());
+        assert!(check_host_available(&host, 30, &headroom, backing).is_ok());
         assert!(
-            matches!(check_host_available(&host, 31, &headroom), Err(Error::Limit(m)) if m == "Qwen CUDA HOST0MiB plus 20 bytes headroom exceeds current 30 usable bytes")
+            matches!(check_host_available(&host, 31, &headroom, backing), Err(Error::Resource(r)) if r.requested == 31 && r.available == 30)
         );
-        assert!(check_host_available(&host, 40, &Headroom::Percent(10)).is_ok());
+        assert!(check_host_available(&host, 40, &Headroom::Percent(10), backing).is_ok());
         assert_eq!(
             Headroom::Percent(99).bytes(u64::MAX, false).unwrap(),
             u64::MAX / 100 * 99 + (u64::MAX % 100) * 99 / 100

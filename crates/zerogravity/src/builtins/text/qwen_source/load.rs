@@ -645,7 +645,7 @@ fn open_source(
     // A smaller caller cap remains smaller; never broaden cache authority.
     cache.limits.max_manifest_bytes = cache.limits.max_manifest_bytes.min(1024 * 1024);
     cache.limits.max_files = cache.limits.max_files.min(64);
-    let control = host.admit(
+    let control = host.admit_cold(
         alias,
         "source-and-plan",
         AllocationClass::ImmutableWeights,

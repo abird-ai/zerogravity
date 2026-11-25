@@ -36,9 +36,6 @@ pub(super) fn read(path: &Path, limit: u64) -> Option<String> {
     f.take(limit + 1).read_to_string(&mut s).ok()?;
     (s.len() as u64 <= limit).then_some(s)
 }
-fn number(path: &Path) -> Option<u64> {
-    read(path, 128)?.trim().parse().ok()
-}
 
 pub fn normalize_pci(s: &str) -> Result<String> {
     let (domain, tail) = s
@@ -70,104 +67,23 @@ pub fn normalize_pci(s: &str) -> Result<String> {
 }
 
 pub(super) fn host() -> Observation {
-    host_from(
-        Path::new("/proc/meminfo"),
-        Path::new("/proc/self/cgroup"),
-        Path::new("/sys/fs/cgroup"),
-    )
-}
-
-fn host_from(meminfo: &Path, membership: &Path, cgroup_root: &Path) -> Observation {
-    let memory = read(meminfo, 64 * 1024).unwrap_or_default();
-    let field = |name: &str| {
-        memory
-            .lines()
-            .find_map(|l| l.strip_prefix(name))
-            .and_then(|l| l.split_whitespace().next())
-            .and_then(|s| s.parse::<u64>().ok())
-            .and_then(|n| n.checked_mul(1024))
-    };
-    let mut total = field("MemTotal:");
-    let mut available = field("MemAvailable:");
-    let mut provenance = "/proc/meminfo MemAvailable".to_string();
-    if let Some(cgroups) = read(membership, 64 * 1024) {
-        if let Some(relative) = cgroups.lines().find_map(|l| l.strip_prefix("0::")) {
-            let p = Path::new(relative);
-            if p.components().all(|c| {
-                matches!(
-                    c,
-                    std::path::Component::RootDir | std::path::Component::Normal(_)
-                )
-            }) {
-                // Every ancestor's cgroup ceiling applies to this process.
-                let mut group = cgroup_root.join(p.strip_prefix("/").unwrap_or(p));
-                loop {
-                    let max_text = read(&group.join("memory.max"), 128);
-                    let max = max_text
-                        .as_deref()
-                        .and_then(|s| s.trim().parse::<u64>().ok());
-                    let used = number(&group.join("memory.current"));
-                    match max_text.as_deref() {
-                        Some(s) if s.trim() == "max" => {
-                            if used.is_none() {
-                                available = None;
-                            }
-                        }
-                        Some(s) if s.trim().parse::<u64>().is_ok() => {
-                            if used.is_none() {
-                                available = None;
-                            }
-                        }
-                        None if group == cgroup_root => {}
-                        None => {
-                            let enabled = group
-                                .parent()
-                                .and_then(|p| read(&p.join("cgroup.subtree_control"), 4096));
-                            if enabled
-                                .as_deref()
-                                .is_none_or(|s| s.split_whitespace().any(|c| c == "memory"))
-                            {
-                                available = None;
-                            }
-                        }
-                        _ => available = None,
-                    }
-                    if let Some(max) = max {
-                        total = total.map(|n| n.min(max));
-                        available = match (available, used) {
-                            (Some(a), Some(u)) => max.checked_sub(u).map(|r| a.min(r)),
-                            _ => None,
-                        };
-                        provenance.push_str("; cgroup-v2 memory.max/current");
-                    }
-                    if group == cgroup_root || !group.pop() {
-                        break;
-                    }
-                }
-            } else {
-                available = None;
-            }
-        } else {
-            available = None;
-        }
-    } else {
-        available = None;
-    }
+    let observed = zerogravity_core::resource_arbiter::HostMemoryObservation::observe();
     Observation {
         id: "cpu:0".into(),
         class: "host-memory".into(),
         vendor: "cpu".into(),
-        ceiling: total,
-        available,
+        ceiling: observed.ceiling,
+        available: observed.available,
         backends: if cfg!(feature = "cpu") {
             vec!["cpu".into()]
         } else {
             vec![]
         },
-        exclusion: available
+        exclusion: observed
+            .available
             .is_none()
             .then(|| "current host availability unavailable".into()),
-        provenance,
+        provenance: observed.provenance,
         cuda_ordinal: None,
         cuda_cc: None,
     }
@@ -207,7 +123,7 @@ fn record_drm(
     d.cuda_ordinal = None;
     d.cuda_cc = None;
     d.ceiling = total;
-    d.available = total.zip(used).and_then(|(t, u)| t.checked_sub(u));
+    d.available = zerogravity_core::placement::LocalVramObservation { total, used }.available();
     d.backends.clear();
     if vendor == "nvidia" && cfg!(feature = "cuda") {
         d.backends.push("cuda:binding-unverified".into());
@@ -220,7 +136,7 @@ fn record_drm(
     }
     d.exclusion = Some("source-qualified cold/compiler cost and runtime physical binding unavailable in generic run".into());
     d.provenance =
-        "DRM full PCI identity; sysfs VRAM total/used if exposed; GTT is not another pool".into();
+        "DRM full PCI identity; local VRAM total/used only; host overlap unresolved, GTT is not another pool".into();
     Ok(())
 }
 
@@ -305,9 +221,8 @@ pub fn discover() -> Result<Inventory> {
                 Some("0x1002") => "amd",
                 _ => "other",
             };
-            let total = number(&device.join("mem_info_vram_total"));
-            let used = number(&device.join("mem_info_vram_used"));
-            record_drm(&mut cards, &id, vendor, total, used)?;
+            let memory = zerogravity_core::placement::LocalVramObservation::observe(&device);
+            record_drm(&mut cards, &id, vendor, memory.total, memory.used)?;
         }
     }
     #[cfg(all(feature = "cuda", target_os = "linux"))]

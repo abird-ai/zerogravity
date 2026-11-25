@@ -312,6 +312,7 @@ pub fn cached_source_admission(memory: u64) -> Result<crate::resource_arbiter::T
     };
     let arbiter = ResourceArbiter::process_shared();
     let resource = PhysicalDeviceKey::new("host", "cache-model-source")?;
+    arbiter.observe_host_backing()?;
     arbiter.register_matching(resource.clone(), memory)?;
     Ok(TransferAdmission {
         arbiter,
