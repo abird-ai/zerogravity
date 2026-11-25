@@ -566,6 +566,14 @@ impl ResidentPagedKvDomain {
         self.page_tokens
     }
 
+    pub(crate) fn cloned_page_bytes(&self) -> Result<usize> {
+        self.keys
+            .table
+            .cloned_page_bytes()
+            .checked_add(self.values.table.cloned_page_bytes())
+            .ok_or_else(|| Error::Limit("resident snapshot page metadata overflow".into()))
+    }
+
     pub(crate) fn tokens(&self) -> Result<usize> {
         let key_bytes = self.keys.logical_bytes();
         if key_bytes != self.values.logical_bytes() || !key_bytes.is_multiple_of(self.row_bytes) {

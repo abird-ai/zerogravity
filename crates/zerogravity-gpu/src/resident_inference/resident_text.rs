@@ -7,11 +7,16 @@ pub use program::ResidentTextInventory;
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 use zerogravity_core::{
-    accelerator::program::{BoundInvocation, InvocationPhase, NumericalContract},
+    accelerator::program::{
+        BoundInvocation, InvocationPhase, NumericalContract, SourcePlanGeometry,
+    },
+    identity::SourceIdentity,
     model::ModelProgram,
+    numerics::NumericalProfile,
     provider::{
         ExecutionMode, ObservationSupport, PreparedTextProgram, ProviderKind, SelectedMode,
     },
+    semantic::InvocationPorts,
 };
 
 #[cfg(feature = "cuda-cublas")]
@@ -60,6 +65,41 @@ pub struct ResidentTextPagedPoolSnapshot {
 #[cfg(all(feature = "hardware-abort-probe", feature = "cuda-cublas"))]
 pub struct ResidentTextPagedPressure {
     _pages: Vec<ResidentLease>,
+}
+
+/// Exact process-local compatibility of one resident text state. The original
+/// service generation binds the immutable prepared program and physical state
+/// schema. The geometry/ports describe actual token IDs and contiguous absolute
+/// positions; tokenizer and chat framing precede this token-space boundary.
+/// Equality never grants restore, cross-service transfer or publication.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ResidentTextStateIdentity {
+    service_generation: u64,
+    geometry: SourcePlanGeometry,
+    selected: SelectedMode,
+    numerical_profile: NumericalProfile,
+    ports: InvocationPorts,
+    storage: ResidentStatePolicy,
+}
+impl ResidentTextStateIdentity {
+    pub fn source(self) -> SourceIdentity {
+        self.geometry.source()
+    }
+    pub fn geometry(self) -> SourcePlanGeometry {
+        self.geometry
+    }
+    pub fn selected(self) -> SelectedMode {
+        self.selected
+    }
+    pub fn numerical_profile(self) -> NumericalProfile {
+        self.numerical_profile
+    }
+    pub fn invocation_ports(self) -> InvocationPorts {
+        self.ports
+    }
+    pub fn state_policy(self) -> ResidentStatePolicy {
+        self.storage
+    }
 }
 
 /// No exposed inner model/session: detached readers must retain these owners.
@@ -192,6 +232,11 @@ impl ResidentTextSnapshot {
     pub fn binding(&self) -> RootBinding {
         self.0.inner.binding
     }
+    /// Derived from this snapshot's retained prepared owner, not a caller key.
+    pub fn state_identity(&self) -> Result<ResidentTextStateIdentity> {
+        self.0.scope.model.state_identity()
+    }
+
     pub async fn read_domains(&self) -> Result<ResidentTextReadback<Vec<(StateSlot, Vec<f32>)>>> {
         let model = &self.0.scope.model;
         let bytes = model
@@ -632,6 +677,31 @@ impl ResidentTextModel {
     pub fn state_policy(&self) -> ResidentStatePolicy {
         self.state_policy
     }
+    /// Allocation-free observation of the original prepared state contract.
+    /// The loader proves exact plan/source binding with require_prepared_text.
+    pub fn state_identity(&self) -> Result<ResidentTextStateIdentity> {
+        let plan = self.prepared.model().program();
+        let geometry = plan
+            .source_plan_geometry()
+            .ok_or_else(|| Error::State("resident text state has no original template".into()))?;
+        if geometry.source() != self.inner.service.source_identity()
+            || geometry.context_capacity() != self.inner.capacity
+            || geometry.vocabulary() as u64 != self.inner.vocab
+            || plan.numerical_profile() != self.contract.program_profile()
+        {
+            return Err(Error::State(
+                "resident text state differs from prepared program".into(),
+            ));
+        }
+        Ok(ResidentTextStateIdentity {
+            service_generation: self.inner.service.generation(),
+            geometry,
+            selected: self.prepared.selected(),
+            numerical_profile: plan.numerical_profile(),
+            ports: self.prepared.invocation_ports(),
+            storage: self.state_policy,
+        })
+    }
 
     fn bind_invocation<'a>(
         &self,
@@ -888,8 +958,20 @@ impl ResidentTextSession {
     pub fn binding(&self) -> RootBinding {
         self.inner.binding()
     }
+    pub fn state_identity(&self) -> Result<ResidentTextStateIdentity> {
+        self.model.state_identity()
+    }
+    #[cfg(feature = "cuda-cublas")]
+    pub fn supports_shared_prefix(&self) -> bool {
+        self.model.supports_shared_prefix()
+    }
     pub fn snapshot(&self) -> Result<ResidentTextSnapshot> {
-        let scope = self.model.reader_scope(CONTROL_BYTES)?;
+        // Keep the original control allowance and admit the actual variable
+        // backing copied by a complete-domain snapshot. No new device pages.
+        let bytes = CONTROL_BYTES
+            .checked_add(self.inner.snapshot_backing_bytes()?)
+            .ok_or_else(|| Error::Limit("source snapshot metadata overflow".into()))?;
+        let scope = self.model.reader_scope(bytes)?;
         Ok(ResidentTextSnapshot(Arc::new(SnapshotOwner {
             inner: self.inner.snapshot(),
             scope,

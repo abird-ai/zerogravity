@@ -2931,6 +2931,26 @@ impl ResidentSession {
     pub fn binding(&self) -> RootBinding {
         self.authority.binding()
     }
+    /// Variable backing copied by a complete-domain snapshot (including
+    /// page tables and lease/generation vectors). Excludes fixed owner
+    /// controls, allocator rounding and the shared physical allocations.
+    pub fn snapshot_backing_bytes(&self) -> Result<usize> {
+        let mut bytes = std::mem::size_of_val(self.domains.as_slice());
+        for domain in &self.domains {
+            let pages = domain
+                .paged_kv
+                .as_ref()
+                .map(|kv| kv.cloned_page_bytes())
+                .transpose()?
+                .unwrap_or(0);
+            bytes = bytes
+                .checked_add(std::mem::size_of_val(domain.leases.as_slice()))
+                .and_then(|n| n.checked_add(std::mem::size_of_val(domain.generations.as_slice())))
+                .and_then(|n| n.checked_add(pages))
+                .ok_or_else(|| Error::Limit("resident snapshot backing overflow".into()))?;
+        }
+        Ok(bytes)
+    }
     pub fn snapshot(&self) -> ResidentSnapshot {
         ResidentSnapshot {
             binding: self.binding(),
@@ -3461,17 +3481,35 @@ impl ResidentSession {
             readback,
         })
     }
-    pub fn restore(&mut self, snapshot: &ResidentSnapshot) -> Result<()> {
+    fn validate_snapshot(&self, snapshot: &ResidentSnapshot) -> Result<()> {
         if snapshot.service_generation != self.model.service.generation()
-            || snapshot.domains.len() != self.model.states.len()
+            || snapshot.capacity != self.model.capacity
+            || snapshot.binding.source() != self.model.service.source_identity()
+            || snapshot.binding.frontier() > self.model.capacity as u64
         {
             return Err(Error::State(
-                "foreign resident snapshot service/domains".into(),
+                "foreign resident snapshot source/service/capacity".into(),
             ));
         }
         self.model.service.ensure_usable()?;
         self.model.validate_domains(&snapshot.domains, true)?;
-        let attempt = self.authority.begin_restore(snapshot.binding)?;
+        for domain in &snapshot.domains {
+            if matches!(domain.buffers, StateBuffers::PagedKv)
+                && domain.paged_kv()?.tokens()? as u64 != snapshot.binding.frontier()
+            {
+                return Err(Error::State(
+                    "resident snapshot paged domain frontier differs".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn install_snapshot(
+        &mut self,
+        snapshot: &ResidentSnapshot,
+        attempt: RootAttempt,
+    ) -> Result<()> {
         let mut displaced = snapshot.domains.clone();
         let _ = publish_domain_swap(
             &self.model.service,
@@ -3484,6 +3522,12 @@ impl ResidentSession {
         drop(displaced);
         Ok(())
     }
+
+    pub fn restore(&mut self, snapshot: &ResidentSnapshot) -> Result<()> {
+        self.validate_snapshot(snapshot)?;
+        let attempt = self.authority.begin_restore(snapshot.binding)?;
+        self.install_snapshot(snapshot, attempt)
+    }
     /// Seed a fresh session from an immutable complete-domain snapshot while
     /// preserving the destination session as the sole root authority.
     pub fn fork_shared_prefix(&mut self, snapshot: &ResidentSnapshot) -> Result<()> {
@@ -3492,32 +3536,16 @@ impl ResidentSession {
             || current.session_epoch() != 0
             || current.frontier() != 0
             || snapshot.binding.frontier() == 0
-            || snapshot.binding.frontier() > self.model.capacity as u64
-            || snapshot.service_generation != self.model.service.generation()
-            || snapshot.capacity != self.model.capacity
-            || snapshot.binding.source() != self.model.service.source_identity()
-            || snapshot.domains.len() != self.model.states.len()
         {
             return Err(Error::State(
                 "resident shared prefix destination/snapshot differs".into(),
             ));
         }
-        self.model.service.ensure_usable()?;
-        self.model.validate_domains(&snapshot.domains, true)?;
+        self.validate_snapshot(snapshot)?;
         let attempt = self
             .authority
             .begin_validated_replacement(snapshot.binding.frontier())?;
-        let mut displaced = snapshot.domains.clone();
-        let _ = publish_domain_swap(
-            &self.model.service,
-            &mut self.authority,
-            &mut self.domains,
-            attempt,
-            &mut displaced,
-        )?;
-        self.derived.invalidate();
-        drop(displaced);
-        Ok(())
+        self.install_snapshot(snapshot, attempt)
     }
     pub async fn reset(&mut self) -> Result<()> {
         self.reset_retaining(|_| Ok(())).await
@@ -3872,6 +3900,7 @@ pub use resident_text::ResidentTextPagedPoolSnapshot;
 pub use resident_text::{
     ResidentTextAdmission, ResidentTextModel, ResidentTextPending, ResidentTextPreparation,
     ResidentTextPublication, ResidentTextReadback, ResidentTextSession, ResidentTextSnapshot,
+    ResidentTextStateIdentity,
 };
 #[cfg(all(
     target_os = "linux",

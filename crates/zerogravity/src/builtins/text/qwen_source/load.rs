@@ -517,6 +517,35 @@ pub(crate) fn load_router(
             },
         ),
     };
+    #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
+    let prefix_cache = if matches!(
+        &policy,
+        ResidentTextPolicy::Cuda {
+            state: crate::gpu::CudaSourceStatePolicy::Paged { .. },
+            ..
+        }
+    ) {
+        // Existing validated profile bounds active <= 8 and context <= 32768.
+        // Include one incoming token array before FIFO eviction. Snapshot
+        // payloads separately retain their original resident reader credits.
+        let max_entries = profile.active * 2;
+        let max_weight = profile.context * profile.active;
+        let bytes = TextPrefixCache::storage_bytes(max_entries, max_weight + profile.context)
+            .map_err(ServiceError::inference)?;
+        let storage = host.admit(
+            &aliases[0],
+            "prefix-cache-storage",
+            AllocationClass::RecurrentState,
+            bytes as u64,
+        )?;
+        Some(CachedPrefixes {
+            cache: TextPrefixCache::new(max_entries, max_weight)
+                .map_err(ServiceError::inference)?,
+            _storage: storage,
+        })
+    } else {
+        None
+    };
     let provider = ResidentTextProvider {
         device,
         policy,
@@ -533,17 +562,15 @@ pub(crate) fn load_router(
         .map_err(ServiceError::inference)?
         .into_prepared();
     #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
-    let prefix_cache = if resident.supports_shared_prefix() {
-        Some(
-            zerogravity_engine::state_cache::PrefixCache::new(
-                profile.active * 2,
-                profile.context * profile.active,
-            )
-            .map_err(ServiceError::inference)?,
-        )
-    } else {
-        None
-    };
+    if resident.supports_shared_prefix() != prefix_cache.is_some() {
+        // No new cache allocation after the physical owner is prepared.
+        block_on(resident.shutdown()).map_err(ServiceError::inference)?;
+        return Err(ServiceError::new(
+            500,
+            "source_owner",
+            "prepared prefix policy differs",
+        ));
+    }
     let model = Arc::new(Model {
         resident: Mutex::new(Some(resident)),
         #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
@@ -1428,6 +1455,33 @@ mod cuda_paged_tests {
             };
             drop(read);
             let cached = producer.snapshot().unwrap();
+            let state_identity = model.state_identity().unwrap();
+            assert_eq!(cached.state_identity().unwrap(), state_identity);
+            assert_eq!(producer.state_identity().unwrap(), state_identity);
+            assert_eq!(
+                state_identity.source(),
+                parts.source.plan.source_seal().source_identity()
+            );
+            assert_eq!(state_identity.geometry().context_capacity(), 512);
+            assert_eq!(
+                state_identity.selected().provider,
+                zerogravity_core::provider::ProviderKind::Cuda
+            );
+            assert_eq!(
+                state_identity.numerical_profile(),
+                NumericalContract::CudaSm86Bf16ReferenceV1.program_profile()
+            );
+            assert_eq!(
+                state_identity.state_policy(),
+                CudaSourceStatePolicy::Paged {
+                    page_tokens,
+                    max_append_tokens
+                }
+            );
+            assert!(
+                state_identity.invocation_ports().token_ids
+                    && state_identity.invocation_ports().positions
+            );
             let cached_binding = cached.binding();
             let cached_domains = cached.read_domains().await.unwrap().to_vec();
             assert_eq!(cached_binding.frontier(), prefix as u64);
@@ -1438,6 +1492,12 @@ mod cuda_paged_tests {
                 (fresh.root(), fresh.session_epoch(), fresh.frontier()),
                 (0, 0, 0)
             );
+            assert_eq!(fork.state_identity().unwrap(), state_identity);
+            assert!(
+                fork.restore(&cached).is_err(),
+                "same-session restore must reject a foreign root"
+            );
+            assert_eq!(fork.binding(), fresh);
             fork.fork_shared_prefix(&cached).unwrap();
             let forked = fork.binding();
             assert_eq!(forked.session(), fresh.session());
@@ -1537,6 +1597,21 @@ mod cuda_paged_tests {
                 "shared prefix cached snapshot immutable",
             );
             drop((fork_read, replay_read, fork_domains, replay_domains));
+            let own = fork.snapshot().unwrap();
+            let before = fork.binding();
+            fork.restore(&own).unwrap();
+            exact_restore_publication(
+                before,
+                fork.binding(),
+                own.binding(),
+                "same-session complete snapshot",
+            );
+            assert_eq!(
+                own.state_identity().unwrap(),
+                fork.state_identity().unwrap()
+            );
+            drop(own);
+
             drop((cached, producer, fork, replay));
             model.shutdown().await.unwrap();
         });
@@ -1602,12 +1677,12 @@ mod cuda_paged_tests {
                 .as_u64()
                 .unwrap()
         };
-        let run = |router: &Router, scope: PrefixSharingScope| {
+        let run = |router: &Router, scope: PrefixSharingScope, prompt: &str, prompt_len: usize| {
             let events = router
                 .request_scoped(
                     Request {
                         model: "source".into(),
-                        input: prompt.clone(),
+                        input: prompt.into(),
                         chat: false,
                         max_tokens: 1,
                         stream: true,
@@ -1632,7 +1707,7 @@ mod cuda_paged_tests {
                         completion_tokens,
                         ..
                     } => {
-                        assert_eq!((prompt_tokens, completion_tokens), (65, 1));
+                        assert_eq!((prompt_tokens, completion_tokens), (prompt_len, 1));
                         break;
                     }
                     ResponseEvent::Error(error) => panic!("scoped prefix worker: {error}"),
@@ -1646,11 +1721,11 @@ mod cuda_paged_tests {
         let scope_a = PrefixSharingScope::new(7).unwrap();
         let scope_b = PrefixSharingScope::new(8).unwrap();
         let before = model_tokens(&router);
-        let warm = run(&router, scope_a);
+        let warm = run(&router, scope_a, &prompt, 65);
         let after_warm = model_tokens(&router);
-        let hit = run(&router, scope_a);
+        let hit = run(&router, scope_a, &prompt, 65);
         let after_hit = model_tokens(&router);
-        let miss = run(&router, scope_b);
+        let miss = run(&router, scope_b, &prompt, 65);
         let after_miss = model_tokens(&router);
 
         assert_eq!(warm, hit);
@@ -1658,9 +1733,21 @@ mod cuda_paged_tests {
         assert_eq!(after_warm - before, 65);
         assert_eq!(after_hit - after_warm, 1);
         assert_eq!(after_miss - after_hit, 65);
+        // Both scopes have a state-only prefix of length 64. A complete
+        // match must leave final logit work, not restore a feedback-less root.
+        let short = " a".repeat(64);
+        let tokenizer = router.model("source").unwrap().prepared().tokenizer();
+        assert_eq!(tokenizer.prompt_tokens(&short, false).unwrap().len(), 64);
+        drop(tokenizer);
+        let exact_length = run(&router, scope_a, &short, 64);
+        let after_short = model_tokens(&router);
+        let uncached = run(&router, PrefixSharingScope::new(9).unwrap(), &short, 64);
+        assert_eq!(exact_length, uncached);
+        assert_eq!(after_short - after_miss, 64);
+        assert_eq!(model_tokens(&router) - after_short, 64);
         router.shutdown().unwrap();
         println!(
-            "P12_SOURCE_PAGED_PREFIX_CACHE_PASS prompt_tokens=65 cached_prefix=64 warm_model_tokens=65 same_scope_model_tokens=1 different_scope_model_tokens=65 output_id_exact=true scoped=true final_shutdown=true"
+            "P12_SOURCE_PAGED_PREFIX_CACHE_PASS prompt_tokens=65 cached_prefix=64 warm_model_tokens=65 same_scope_model_tokens=1 different_scope_model_tokens=65 output_id_exact=true exact_length_replay=64 scoped=true final_shutdown=true"
         );
     }
 
@@ -1863,15 +1950,16 @@ mod cuda_paged_tests {
                 None,
             )
         };
-        let expected = block_on(async {
+        let (expected, contiguous_identity) = block_on(async {
             let model = run(CudaSourceStatePolicy::Contiguous).await.unwrap();
             let checkpoints = trajectory(&model, &parts.source.plan, &tokens, page_tokens)
                 .await
                 .unwrap();
+            let identity = model.state_identity().unwrap();
             model.shutdown().await.unwrap();
-            checkpoints
+            (checkpoints, identity)
         });
-        let actual = block_on(async {
+        let (actual, paged_identity) = block_on(async {
             let model = run(CudaSourceStatePolicy::Paged {
                 page_tokens,
                 max_append_tokens,
@@ -1881,9 +1969,13 @@ mod cuda_paged_tests {
             let checkpoints = trajectory(&model, &parts.source.plan, &tokens, page_tokens)
                 .await
                 .unwrap();
+            let identity = model.state_identity().unwrap();
             model.shutdown().await.unwrap();
-            checkpoints
+            (checkpoints, identity)
         });
+        assert_eq!(contiguous_identity.source(), paged_identity.source());
+        assert_eq!(contiguous_identity.geometry(), paged_identity.geometry());
+        assert_ne!(contiguous_identity, paged_identity);
         assert_eq!(expected.len(), 4);
         assert_eq!(actual.len(), 4);
         for (index, (expected, actual)) in expected.iter().zip(&actual).enumerate() {

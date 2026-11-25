@@ -208,6 +208,10 @@ impl<H> PagedBlockTable<H> {
     pub const fn compatibility(&self) -> PageCompatibility {
         self.compatibility
     }
+    /// Backing of a cloned table's entries, excluding allocations owned by H.
+    pub fn cloned_page_bytes(&self) -> usize {
+        std::mem::size_of_val(self.pages.as_slice())
+    }
 
     pub const fn page_bytes(&self) -> usize {
         self.geometry.page_bytes

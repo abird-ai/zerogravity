@@ -270,6 +270,7 @@ pub use resident_inference::ResidentTextPagedPoolSnapshot;
 pub use resident_inference::{
     ResidentTextAdmission, ResidentTextModel, ResidentTextPending, ResidentTextPreparation,
     ResidentTextPublication, ResidentTextReadback, ResidentTextSession, ResidentTextSnapshot,
+    ResidentTextStateIdentity,
 };
 #[cfg(all(
     target_os = "linux",

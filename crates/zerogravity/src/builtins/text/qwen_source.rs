@@ -75,10 +75,18 @@ struct Source {
     // Source/canonical metadata and plan allocation, not device/root storage.
     _control: GlobalResourceLease,
 }
+#[cfg(all(feature = "model-qwen35", feature = "cuda"))]
+type TextPrefixCache =
+    PrefixCache<u32, crate::gpu::ResidentTextSnapshot, crate::gpu::ResidentTextStateIdentity>;
+#[cfg(all(feature = "model-qwen35", feature = "cuda"))]
+struct CachedPrefixes {
+    cache: TextPrefixCache,
+    _storage: GlobalResourceLease,
+}
 struct Model {
     resident: Mutex<Option<Arc<ResidentTextModel>>>,
     #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
-    prefix_cache: Mutex<Option<PrefixCache<u32, crate::gpu::ResidentTextSnapshot>>>,
+    prefix_cache: Mutex<Option<CachedPrefixes>>,
     source: Arc<Source>,
     tokenizer: Arc<dyn TextTokenizer>,
     max_token_bytes: usize,

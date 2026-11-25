@@ -25,9 +25,7 @@ use std::{
 ))]
 use zerogravity_engine::router::waves::Phase;
 #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
-use zerogravity_engine::state_cache::{
-    PrefixCacheEviction, PrefixCompatibility, PrefixSharingScope,
-};
+use zerogravity_engine::state_cache::{PrefixCacheEviction, PrefixCompatibility};
 use zerogravity_engine::{
     model_instance::execution::*,
     router::{
@@ -101,24 +99,6 @@ fn completion(read: &InferenceReadback, consumed: usize, readout: bool) -> Compl
         ..Completion::default()
     }
 }
-#[cfg(all(feature = "model-qwen35", feature = "cuda"))]
-fn prefix_compatibility(
-    model: &Model,
-    sharing: PrefixSharingScope,
-) -> Result<PrefixCompatibility, ServiceError> {
-    // This cache is owned by one exact loaded Model. Loader/numerical,
-    // tokenizer/input policy, position policy and state schema cannot cross
-    // model instances; sharing is the request-varying authorization boundary.
-    PrefixCompatibility::new(
-        model.source.plan.source_seal().source_identity(),
-        1,
-        2,
-        3,
-        4,
-        sharing,
-    )
-    .map_err(ServiceError::inference)
-}
 impl Executor for SourceText {
     type Model = Arc<Model>;
     type State = State;
@@ -179,18 +159,41 @@ impl Executor for SourceText {
             let Some(sharing) = sharing else {
                 return Ok(0);
             };
-            let resident = model.resident()?;
-            if !resident.supports_shared_prefix() {
+            if !state.session.supports_shared_prefix() {
                 return Ok(0);
             }
-            let compatibility = prefix_compatibility(model, sharing)?;
+            // Cached state-only checkpoints have no logit feedback. At least
+            // the final prompt token must execute on the destination session.
+            let Some((_, prior)) = prompt.split_last() else {
+                return Ok(0);
+            };
+            let compatibility = PrefixCompatibility::new(
+                state
+                    .session
+                    .state_identity()
+                    .map_err(ServiceError::inference)?,
+                sharing,
+            );
             let hit = {
                 let cache = model.prefix_cache.lock().map_err(|_| poison())?;
                 cache
                     .as_ref()
-                    .and_then(|cache| cache.lookup(compatibility, prompt))
+                    .and_then(|cache| cache.cache.lookup(&compatibility, prior))
             };
             if let Some(hit) = hit {
+                if hit.payload.binding().frontier() != hit.frontier as u64
+                    || hit
+                        .payload
+                        .state_identity()
+                        .map_err(ServiceError::inference)?
+                        != *compatibility.state()
+                {
+                    return Err(ServiceError::new(
+                        500,
+                        "prefix_cache",
+                        "cached snapshot differs from original key/frontier",
+                    ));
+                }
                 state
                     .session
                     .fork_shared_prefix(&hit.payload)
@@ -212,8 +215,7 @@ impl Executor for SourceText {
             let Some(sharing) = sharing else {
                 return Ok(());
             };
-            let resident = model.resident()?;
-            if !resident.supports_shared_prefix() {
+            if !state.session.supports_shared_prefix() {
                 return Ok(());
             }
             if prefix.is_empty() || state.session.binding().frontier() as usize != prefix.len() {
@@ -223,13 +225,17 @@ impl Executor for SourceText {
                     "committed prefix differs from source session frontier",
                 ));
             }
-            let compatibility = prefix_compatibility(model, sharing)?;
             let snapshot = state.session.snapshot().map_err(ServiceError::inference)?;
+            let compatibility = PrefixCompatibility::new(
+                snapshot.state_identity().map_err(ServiceError::inference)?,
+                sharing,
+            );
             let mut cache = model.prefix_cache.lock().map_err(|_| poison())?;
             let cache = cache.as_mut().ok_or_else(|| {
                 ServiceError::new(500, "prefix_cache", "paged prefix cache is unavailable")
             })?;
             cache
+                .cache
                 .insert(
                     compatibility,
                     Arc::from(prefix),
@@ -255,7 +261,7 @@ impl Executor for SourceText {
                 seen.push(model.clone());
                 let mut cache = model.prefix_cache.lock().map_err(|_| poison())?;
                 if let Some(cache) = cache.as_mut() {
-                    let evicted = cache.invalidate_scope(sharing);
+                    let evicted = cache.cache.invalidate_scope(sharing);
                     total.entries =
                         total.entries.checked_add(evicted.entries).ok_or_else(|| {
                             ServiceError::new(500, "prefix_cache", "eviction entry count overflow")
@@ -742,8 +748,10 @@ impl Executor for SourceText {
     fn retire(models: &BTreeMap<String, Self::Model>) -> Result<(), ServiceError> {
         for model in models.values() {
             #[cfg(all(feature = "model-qwen35", feature = "cuda"))]
-            if let Some(cache) = model.prefix_cache.lock().map_err(|_| poison())?.as_mut() {
-                cache.clear();
+            {
+                let cache = model.prefix_cache.lock().map_err(|_| poison())?.take();
+                // Retire cached readers and their host backing before the resident.
+                drop(cache);
             }
             let resident = model.resident.lock().map_err(|_| poison())?.take();
             if let Some(resident) = resident {
@@ -778,7 +786,7 @@ impl Executor for SourceText {
                 .lock()
                 .map_err(|_| poison())?
                 .as_ref()
-                .map(|cache| cache.snapshot());
+                .map(|cache| cache.cache.snapshot());
             // Snapshot the actual prepared owner, not the earlier smart
             // candidate estimate. Alias rows describe shared ownership; they
             // must not be summed as separate reservations.

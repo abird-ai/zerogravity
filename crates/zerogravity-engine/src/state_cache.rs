@@ -1,7 +1,7 @@
 //! Bounded semantic prefix lookup for complete-domain state snapshots.
 //!
 //! This module never decides that a payload is physically restorable. Callers
-//! supply an exact semantic compatibility fingerprint and retain the payload's
+//! supply an exact typed compatibility key and retain the payload's
 //! source/schema/completion authority. A cache hit is therefore only a candidate
 //! for the caller's existing full-domain validation/restore path.
 
@@ -11,7 +11,6 @@ use std::{
     num::{NonZeroU64, NonZeroUsize},
     sync::Arc,
 };
-use zerogravity_core::accelerator::SourceIdentity;
 
 /// Explicit authorization domain for cross-request prefix reuse.
 ///
@@ -32,52 +31,25 @@ impl PrefixSharingScope {
     }
 }
 
-/// Exact process-local compatibility required before a cached prefix may be tried.
-///
-/// Grouped fingerprints keep the engine model-neutral while forcing callers to
-/// bind every relevant semantic class. They are opaque issued/fingerprinted values,
-/// never physical pointers or user-controlled hashes accepted without validation.
+/// Original owner's exact state compatibility and explicit sharing scope.
+/// The cache never interprets the key or grants restore/publication authority.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PrefixCompatibility {
-    source: SourceIdentity,
-    execution: u64,
-    input: u64,
-    position: u64,
-    state: u64,
+pub struct PrefixCompatibility<K> {
+    state: K,
     sharing: PrefixSharingScope,
 }
 
-impl PrefixCompatibility {
-    pub fn new(
-        source: SourceIdentity,
-        execution: u64,
-        input: u64,
-        position: u64,
-        state: u64,
-        sharing: PrefixSharingScope,
-    ) -> Result<Self> {
-        if !source.is_bound() || execution == 0 || input == 0 || position == 0 || state == 0 {
-            return Err(Error::State(
-                "prefix cache requires bound nonzero semantic identities".into(),
-            ));
-        }
-        Ok(Self {
-            source,
-            execution,
-            input,
-            position,
-            state,
-            sharing,
-        })
+impl<K> PrefixCompatibility<K> {
+    pub fn new(state: K, sharing: PrefixSharingScope) -> Self {
+        Self { state, sharing }
     }
-
-    pub const fn source(self) -> SourceIdentity {
-        self.source
+    pub fn state(&self) -> &K {
+        &self.state
     }
 }
 
-struct PrefixEntry<U, T> {
-    compatibility: PrefixCompatibility,
+struct PrefixEntry<U, T, K> {
+    compatibility: PrefixCompatibility<K>,
     units: Arc<[U]>,
     payload: Arc<T>,
     weight: usize,
@@ -187,14 +159,35 @@ fn gcd(mut left: usize, mut right: usize) -> usize {
 /// allocation; the longest exact prefix wins and the newest entry wins an equal
 /// frontier. This keeps the first implementation simple and predictable while the
 /// physical payload remains owned and validated by the backend.
-pub struct PrefixCache<U, T> {
-    entries: VecDeque<PrefixEntry<U, T>>,
+pub struct PrefixCache<U, T, K> {
+    entries: VecDeque<PrefixEntry<U, T, K>>,
     max_entries: usize,
     max_weight: usize,
     weight: usize,
 }
 
-impl<U: Eq, T> PrefixCache<U, T> {
+impl<U: Eq, T, K: Eq> PrefixCache<U, T, K> {
+    /// Cache-owned backing and semantic unit arrays, excluding payload owners.
+    /// The caller bounds total retained units plus an incoming insertion.
+    /// Arc/control and allocator rounding have a conservative small allowance.
+    pub fn storage_bytes(max_entries: usize, peak_units: usize) -> Result<usize> {
+        max_entries
+            .checked_mul(std::mem::size_of::<PrefixEntry<U, T, K>>())
+            .and_then(|slots| {
+                max_entries
+                    .checked_add(1)?
+                    .checked_mul(64)?
+                    .checked_add(slots)
+            })
+            .and_then(|bytes| {
+                peak_units
+                    .checked_mul(std::mem::size_of::<U>())?
+                    .checked_add(bytes)
+            })
+            .and_then(|bytes| bytes.checked_add(64))
+            .ok_or_else(|| Error::Limit("prefix cache storage overflow".into()))
+    }
+
     pub fn new(max_entries: usize, max_weight: usize) -> Result<Self> {
         if max_entries == 0 || max_weight == 0 {
             return Err(Error::Limit(
@@ -232,7 +225,7 @@ impl<U: Eq, T> PrefixCache<U, T> {
 
     pub fn insert(
         &mut self,
-        compatibility: PrefixCompatibility,
+        compatibility: PrefixCompatibility<K>,
         units: Arc<[U]>,
         payload: Arc<T>,
         weight: usize,
@@ -289,12 +282,12 @@ impl<U: Eq, T> PrefixCache<U, T> {
 
     pub fn lookup(
         &self,
-        compatibility: PrefixCompatibility,
+        compatibility: &PrefixCompatibility<K>,
         request: &[U],
     ) -> Option<PrefixHit<T>> {
-        let mut best = None::<&PrefixEntry<U, T>>;
+        let mut best = None::<&PrefixEntry<U, T, K>>;
         for entry in self.entries.iter().rev() {
-            if entry.compatibility != compatibility
+            if &entry.compatibility != compatibility
                 || entry.units.len() > request.len()
                 || !request.starts_with(&entry.units)
             {
@@ -338,16 +331,10 @@ impl<U: Eq, T> PrefixCache<U, T> {
 mod tests {
     use super::*;
 
-    fn compatibility(source: SourceIdentity, sharing: u64) -> PrefixCompatibility {
-        PrefixCompatibility::new(
-            source,
-            11,
-            12,
-            13,
-            14,
-            PrefixSharingScope::new(sharing).unwrap(),
-        )
-        .unwrap()
+    use zerogravity_core::identity::SourceIdentity;
+
+    fn compatibility(source: SourceIdentity, sharing: u64) -> PrefixCompatibility<SourceIdentity> {
+        PrefixCompatibility::new(source, PrefixSharingScope::new(sharing).unwrap())
     }
 
     #[test]
@@ -355,7 +342,7 @@ mod tests {
         let source = SourceIdentity::for_new_allocation().unwrap();
         let exact = compatibility(source, 20);
         let foreign = compatibility(source, 21);
-        let mut cache = PrefixCache::<u32, &'static str>::new(8, 64).unwrap();
+        let mut cache = PrefixCache::<u32, &'static str, SourceIdentity>::new(8, 64).unwrap();
         cache
             .insert(exact, Arc::from([1, 2]), Arc::new("two"), 8)
             .unwrap();
@@ -366,12 +353,16 @@ mod tests {
             .insert(foreign, Arc::from([1, 2, 3, 4]), Arc::new("foreign"), 8)
             .unwrap();
 
-        let hit = cache.lookup(exact, &[1, 2, 3, 9]).unwrap();
+        let hit = cache.lookup(&exact, &[1, 2, 3, 9]).unwrap();
         assert_eq!(hit.frontier, 3);
         assert_eq!(*hit.payload, "three");
-        assert!(cache.lookup(exact, &[1, 8, 3]).is_none());
+        assert!(cache.lookup(&exact, &[1, 8, 3]).is_none());
+        // Matching semantic units and sharing scope do not establish owner equality.
+        let unrelated = compatibility(SourceIdentity::for_new_allocation().unwrap(), 20);
+        assert!(cache.lookup(&unrelated, &[1, 2, 3, 4]).is_none());
+
         assert_eq!(
-            *cache.lookup(foreign, &[1, 2, 3, 4]).unwrap().payload,
+            *cache.lookup(&foreign, &[1, 2, 3, 4]).unwrap().payload,
             "foreign"
         );
     }
@@ -379,7 +370,7 @@ mod tests {
     #[test]
     fn duplicate_refresh_and_fifo_bounds_are_exact() {
         let scope = compatibility(SourceIdentity::for_new_allocation().unwrap(), 20);
-        let mut cache = PrefixCache::<u32, &'static str>::new(2, 10).unwrap();
+        let mut cache = PrefixCache::<u32, &'static str, SourceIdentity>::new(2, 10).unwrap();
         cache
             .insert(scope, Arc::from([1]), Arc::new("old"), 4)
             .unwrap();
@@ -387,7 +378,7 @@ mod tests {
             .insert(scope, Arc::from([1]), Arc::new("new"), 5)
             .unwrap();
         assert_eq!((cache.len(), cache.weight()), (1, 5));
-        assert_eq!(*cache.lookup(scope, &[1]).unwrap().payload, "new");
+        assert_eq!(*cache.lookup(&scope, &[1]).unwrap().payload, "new");
 
         cache
             .insert(scope, Arc::from([2]), Arc::new("two"), 5)
@@ -405,9 +396,9 @@ mod tests {
                 max_weight: 10,
             }
         );
-        assert!(cache.lookup(scope, &[1]).is_none());
-        assert_eq!(*cache.lookup(scope, &[2]).unwrap().payload, "two");
-        assert_eq!(*cache.lookup(scope, &[3]).unwrap().payload, "three");
+        assert!(cache.lookup(&scope, &[1]).is_none());
+        assert_eq!(*cache.lookup(&scope, &[2]).unwrap().payload, "two");
+        assert_eq!(*cache.lookup(&scope, &[3]).unwrap().payload, "three");
         assert!(
             cache
                 .insert(scope, Arc::from([4]), Arc::new("too-heavy"), 11)
