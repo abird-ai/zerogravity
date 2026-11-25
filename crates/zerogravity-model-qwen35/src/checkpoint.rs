@@ -481,6 +481,7 @@ impl QwenDenseCpu {
 #[cfg(all(test, feature = "diagnostic-cpu-checkpoint"))]
 mod tests {
     use super::*;
+    #[cfg(feature = "cpu")]
     use std::fs;
 
     fn fixture() -> QwenCheckpoint {
