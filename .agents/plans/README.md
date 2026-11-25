@@ -13,10 +13,12 @@ Repository naming follows the short canonical vocabulary in
 concept rather than historical qualification shorthand.
 
 Cross-window continuation starts at [the canonical current handoff](../docs/CURRENT_HANDOFF.md).
-For the complete original architecture, current accepted source checkpoint,
+For the complete original architecture, Phase 1 exit, Phase 2 takeover,
 historical chain and open-work/commit inventories, read the
-[25 Nov foundations takeover](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md).
-The [24 Nov foundations pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md) remains historical authority for its accepted scope.
+[25 Nov Phase 1 exit takeover](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md).
+The [25 Nov foundations pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md)
+and [24 Nov foundations pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md)
+remain historical authority for their accepted scope.
 Read the main body first and use the appendices and earlier packs as needed.
 The live ordered [full implementation plan](FULL_IMPLEMENTATION_PLAN.md),
 source, tests and owner TODOs remain authoritative; the takeover is a

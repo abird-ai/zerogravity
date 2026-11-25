@@ -2,10 +2,11 @@
 
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
-**Full takeover (25 Nov):** [FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md).
-Read the main body first; §13 preserves the takeover prompt at the dated
-matrix checkpoint. Resume from the newer live checkpoint below and the
-ordered full plan; older continuation text is historical.
+**Full takeover (25 Nov, Phase 1 exit):** [FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md).
+Read §§0–13 first; §13 is the current Phase 2.1 UX-1 takeover prompt.
+The [previous foundations pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md)
+retains the earlier dated matrix checkpoint and all historical detail.
+Resume from the latest live checkpoint below and the ordered full plan.
 
 **24 Nov priority decision:** start with the
 [full implementation plan](../plans/FULL_IMPLEMENTATION_PLAN.md). Complete
