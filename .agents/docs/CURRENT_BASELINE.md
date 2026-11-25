@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — native configuration/profile/log management (UX-8D)
+
+Shared ConfigFile optimistic atomic owner, observed typed setting editor
+and bounded raw YAML, explicit process-local profile activation, protected
+and confirmed removal, coalesced cold reads, bounded operational action/
+owner event log and filters. Focused reducer/ring 5/0, strict minimal and
+combined lint, actual settings PTY and serial cached release lifecycle/
+profile-switch pass (22.95s); other five release tests passed. Full isolated
+gate 2,483/0/109, release PTY/installer/scripts pass. UX-8D accepted.
+No new dependencies, model admission, remote acquisition, physical GPU
+qualification or measured performance change.
+
 ## 26 Nov — native model / download / device management (UX-8C)
 
 Exact model/digest/physical-device selections and shared resident/cache

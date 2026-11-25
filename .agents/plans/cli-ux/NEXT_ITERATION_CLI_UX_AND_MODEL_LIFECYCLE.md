@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (26 Nov): **Phase 2.1 UX-1 through bounded UX-8C accepted; UX-8D Profiles / Config / Logs next (§46A.28).**
+Status (26 Nov): **Phase 2.1 UX-1 through UX-8D accepted; UX-9A embedded SolidJS Web shell next (§46A.28).**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
@@ -3597,6 +3597,20 @@ controlled-transfer native PTY pass, strict lint pass; actual cached lifecycle
 and remaining release tests pass, offline shell PTY passes. Full isolated
 gate passes (2,481/0/109), release PTY/installer/scripts pass. UX-8C
 accepted. UX-8D config/profile/logs then Web.
+
+UX-8D implementation (26 Nov): shared ConfigFile/ConfigDocument typed
+search/provenance/help and raw editor, exact snapshot writes and removal,
+native profile create/open/copy/activate/confirmed remove. Process-local
+explicit activation applies to future actions, not admitted owners.
+One existing coalesced read worker for all cold inventories, one action
+worker, shared resolved-path read and CLI color precedence. Bounded
+operational action/control-event ring, level/component/search,
+pause/follow and actual registration/generation/download correlation;
+no prompt/model output/credential/raw draft history. No new owner or
+dependencies. Focused TUI 5/0, strict lint, real settings PTY pass;
+serial cached release lifecycle/profile-switch passes (22.95s); remaining
+release tests pass. Full isolated gate 2,483/0/109, release PTY/installer/
+scripts pass. UX-8D accepted; UX-9A next.
 
 Build TUI before Web so the shared control surface proves it is not browser-shaped.
 

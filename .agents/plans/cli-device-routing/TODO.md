@@ -311,16 +311,31 @@ build or general model/backend grant. Historical failures keep their source scop
   full isolated gate 2,481/0/109, release PTY/installer/scripts pass.
   UX-8C accepted.
 
+### Phase 2.1 UX-8D — native configuration/profile/log management (26 Nov)
+
+- [x] Native profile create/open/copy/activate/remove and searchable grouped
+  settings with provenance/help, typed edits/unset/validate and raw YAML
+  view/editor. Exact observed ConfigFile snapshot across editing/
+  confirmation, original validation and stale/atomic owner. No implicit
+  activate, delete default/portable/active profile or mutate admitted owners.
+- [x] One coalesced read worker for all cold views; original action worker
+  handles settings mutations. Shared resolved-path read, process-local
+  active selection, preserve offline and CLI color precedence. Bounded
+  local operational action/event ring with level/component/search and
+  pause/follow, original correlation ids, no model output or raw drafts.
+- [x] Focused TUI 5/0, strict minimal/combined lint, actual settings PTY
+  invalid/stale refusal/raw repair/activate/copy/delete/log filters pass.
+  Serial release cached listener/profile-switch passes (22.95s), remaining
+  release tests pass. Full isolated gate 2,483/0/109, release PTY/installer/
+  scripts pass. UX-8D accepted.
+
 ## Uncommitted
 
-- [ ] UX-8D TUI Profiles / Config / Logs: shared validated atomic
-  ConfigFile editor, profile actions and real operational log view.
-  Current Logs is transient control notifications only; config/profile
-  observations currently synchronous. Dynamic completions,
-  Web and control-wire validation/auth remain ordered. Rich searchable
-  config/profile surfaces belong to UX-8D; no duplicate editor/validator.
-  Broader catalog presets, conversation history and unsupported routes
-  remain explicit; preserve exact acquisition and factual refusal.
+- [ ] UX-9A embedded SolidJS Web shell: same host and typed ControlPlane,
+  distinct loopback control transport/auth; UX-9B–E follow. Dynamic
+  completions and UX-10 remain ordered. Broader catalog presets,
+  conversation history and unsupported routes remain explicit;
+  preserve exact acquisition and factual refusal.
 - [ ] Extend advanced direct provider forced interactive/JSONL presentation
   and aggregate component download control without changing independently
   published receipts; existing direct provider progress and legacy sequential

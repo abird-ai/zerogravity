@@ -614,7 +614,16 @@ demand. Preserve the existing detailed
   pass; actual cached lifecycle and remaining release tests pass; full
   isolated gate 2,481/0/109, release PTY/installer/scripts pass. UX-8C
   accepted.
-  **Next: UX-8D Profiles / Config / Logs (§46A.28).**
+- [x] UX-8D native Profiles / Config / Logs: shared ConfigFile atomic
+  snapshot-based editor, typed search/provenance and raw repair,
+  create/copy/activate/confirmed remove, all cold reads on original
+  observation worker, bounded operational action/control-event log with
+  search/level/component/follow. Profile activation is process-local
+  for future actions, no new runtime or settings owner. Focused reducers,
+  strict lint and actual settings PTY pass; serial cached release lifecycle/
+  profile-switch passes (22.95s), remaining release tests pass. Full isolated
+  gate 2,483/0/109, release PTY/installer/scripts pass. UX-8D accepted.
+  **Next: UX-9A embedded SolidJS Web shell (§46A.28).**
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,

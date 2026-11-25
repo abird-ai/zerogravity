@@ -7,7 +7,7 @@ pub(crate) use presentation::{
 use super::VERSION;
 use crate::args::{TREE, Topic, node};
 #[cfg(feature = "tui")]
-pub(crate) use presentation::launch_interaction;
+pub(crate) use presentation::{document_color, launch_interaction};
 pub(crate) use presentation::{install_document, reporter};
 
 pub(super) fn usage() {

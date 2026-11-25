@@ -44,6 +44,18 @@ pub fn load_selected(
     let Some(path) = config::select_document(selection, cwd, xdg, home)? else {
         return Ok(None);
     };
+    load_path(path, selection == DocumentSelection::Default)
+}
+
+/// Read a previously resolved absolute document path using the same policy.
+/// Only a caller's implicit-default selection may allow a missing file.
+pub fn load_path(
+    path: PathBuf,
+    allow_missing_default: bool,
+) -> Result<Option<(PathBuf, ConfigDocument)>> {
+    if !path.is_absolute() {
+        return Err(bad("configuration path must be absolute"));
+    }
     if path.extension().is_some_and(|ext| ext == "json") {
         return Err(bad(
             "--config selects pipeline YAML; model metadata uses --model-config",
@@ -52,7 +64,7 @@ pub fn load_selected(
     match pipelines::load_document(&path) {
         Ok(doc) => Ok(Some((path, doc))),
         Err(Error::Io(error))
-            if selection == DocumentSelection::Default
+            if allow_missing_default
                 && error.kind() == std::io::ErrorKind::NotFound
                 && matches!(std::fs::symlink_metadata(&path), Err(e) if e.kind() == std::io::ErrorKind::NotFound) =>
         {

@@ -1,7 +1,8 @@
 //! Cell-native navigation and rendering. No execution or filesystem effects.
 use super::{
     App,
-    library::Kind,
+    library::{Key, Kind},
+    settings::Snapshot,
     work::{Owner, Request},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -106,12 +107,91 @@ pub(super) enum FormKind {
         device: String,
         load: bool,
     },
+    ProfileCreate,
+    ProfileCopy {
+        source: Snapshot,
+    },
+    ConfigValue {
+        file: Snapshot,
+        key: String,
+    },
+    RawYaml {
+        file: Snapshot,
+    },
+    Search {
+        view: View,
+    },
 }
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Form {
     pub kind: FormKind,
     pub value: String,
 }
+impl Form {
+    fn multiline(&self) -> bool {
+        matches!(
+            self.kind,
+            FormKind::Prompt { .. }
+                | FormKind::PullSelection { .. }
+                | FormKind::ConfigValue { .. }
+                | FormKind::RawYaml { .. }
+        )
+    }
+    fn limit(&self) -> usize {
+        match self.kind {
+            FormKind::ConfigValue { .. } | FormKind::RawYaml { .. } => {
+                zerogravity::pipelines::MAX_CONFIG_BYTES
+            }
+            FormKind::Search { .. } => 256,
+            _ => 32 * 1024,
+        }
+    }
+    fn insert(&mut self, cursor: &mut usize, c: char) {
+        if self.value.len().saturating_add(c.len_utf8()) <= self.limit() {
+            self.value.insert(*cursor, c);
+            *cursor += c.len_utf8();
+        }
+    }
+}
+fn previous_char(value: &str, cursor: usize) -> usize {
+    value[..cursor]
+        .char_indices()
+        .next_back()
+        .map_or(0, |(i, _)| i)
+}
+fn next_char(value: &str, cursor: usize) -> usize {
+    cursor + value[cursor..].chars().next().map_or(0, char::len_utf8)
+}
+fn line_start(value: &str, cursor: usize) -> usize {
+    value[..cursor].rfind('\n').map_or(0, |i| i + 1)
+}
+fn line_end(value: &str, cursor: usize) -> usize {
+    value[cursor..]
+        .find('\n')
+        .map_or(value.len(), |i| cursor + i)
+}
+fn vertical(value: &str, cursor: usize, down: bool) -> usize {
+    let start = line_start(value, cursor);
+    let column = value[start..cursor].chars().count();
+    let target = if down {
+        let end = line_end(value, cursor);
+        if end == value.len() {
+            return cursor;
+        }
+        end + 1
+    } else {
+        if start == 0 {
+            return cursor;
+        }
+        line_start(value, start - 1)
+    };
+    let end = line_end(value, target);
+    value[target..end]
+        .char_indices()
+        .nth(column)
+        .map_or(end, |(i, _)| target + i)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Confirmation {
     Quit,
@@ -123,7 +203,10 @@ enum Modal {
     None,
     Palette(Palette),
     Help,
-    Form(Form),
+    Form {
+        form: Form,
+        cursor: usize,
+    },
     Confirm {
         question: String,
         action: Confirmation,
@@ -158,6 +241,28 @@ pub(super) enum DownloadAction {
     Cancel,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SettingsAction {
+    Move(i8),
+    Open,
+    Create,
+    Copy,
+    Remove,
+    Activate,
+    Validate,
+    Unset,
+    RawView,
+    RawEdit,
+    Search,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum LogAction {
+    Follow,
+    Level,
+    Component,
+    Search,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Action {
     Redraw,
@@ -173,6 +278,8 @@ pub(super) enum Action {
     MoveOwner(i8),
     Library(LibraryAction),
     Download(DownloadAction),
+    Settings(SettingsAction),
+    Logs(LogAction),
     Submit(Form),
     Confirmed(Confirmation),
 }
@@ -182,10 +289,21 @@ impl Navigation {
         self.view
     }
     pub fn form(&mut self, kind: FormKind) {
-        self.modal = Modal::Form(Form {
-            kind,
-            value: String::new(),
-        });
+        self.form_value(kind, String::new());
+    }
+    pub fn form_value(&mut self, kind: FormKind, value: String) {
+        let cursor = if matches!(kind, FormKind::ConfigValue { .. }) && value.ends_with('\n') {
+            value.len() - 1
+        } else {
+            value.len()
+        };
+        self.modal = Modal::Form {
+            form: Form { kind, value },
+            cursor,
+        };
+    }
+    pub fn idle(&self) -> bool {
+        matches!(self.modal, Modal::None)
     }
     pub fn confirm(&mut self, question: String, action: Confirmation) {
         self.modal = Modal::Confirm {
@@ -201,33 +319,33 @@ impl Navigation {
     pub fn reveal_library(&mut self, _: usize) {
         self.scroll[self.view.index()] = 0;
     }
-    /// Paste is data only. A pasted newline or shortcut never activates a
-    /// command. Prompt text can be multiline; source/listener fields cannot.
+    /// Paste is data only, never a shortcut or submit.
     pub fn paste(&mut self, value: &str) -> bool {
-        let (buffer, limit, multiline) = match &mut self.modal {
-            Modal::Form(form) => (
-                &mut form.value,
-                32 * 1024,
-                matches!(
-                    form.kind,
-                    FormKind::Prompt { .. } | FormKind::PullSelection { .. }
-                ),
-            ),
-            Modal::Palette(palette) => (&mut palette.query, 128, false),
-            _ => return false,
-        };
-        if buffer.len().saturating_add(value.len()) > limit
-            || value
-                .chars()
-                .any(|c| c.is_control() && !(multiline && matches!(c, '\n' | '\r' | '\t')))
-        {
-            return false;
+        match &mut self.modal {
+            Modal::Form { form, cursor } => {
+                if form.value.len().saturating_add(value.len()) > form.limit()
+                    || value.chars().any(|c| {
+                        c.is_control() && !(form.multiline() && matches!(c, '\n' | '\r' | '\t'))
+                    })
+                {
+                    return false;
+                }
+                form.value.insert_str(*cursor, value);
+                *cursor += value.len();
+                true
+            }
+            Modal::Palette(palette) => {
+                if palette.query.len().saturating_add(value.len()) > 128
+                    || value.chars().any(char::is_control)
+                {
+                    return false;
+                }
+                palette.query.push_str(value);
+                palette.cursor = 0;
+                true
+            }
+            _ => false,
         }
-        buffer.push_str(value);
-        if let Modal::Palette(palette) = &mut self.modal {
-            palette.cursor = 0;
-        }
-        true
     }
 
     pub fn open(&mut self, view: View) -> Action {
@@ -240,6 +358,10 @@ impl Navigation {
     pub fn key(&mut self, key: KeyEvent) -> Action {
         use KeyCode::*;
         if key.code == Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            if !self.idle() {
+                self.modal = Modal::None;
+                return Action::Redraw;
+            }
             return Action::Quit;
         }
         match &mut self.modal {
@@ -280,38 +402,56 @@ impl Navigation {
                 }
                 return Action::Redraw;
             }
-            Modal::Form(form) => {
+            Modal::Form { form, cursor } => {
+                let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+                let raw = matches!(form.kind, FormKind::RawYaml { .. });
+                if (key.code == Enter && !raw) || (ctrl && key.code == Char('s') && raw) {
+                    let Modal::Form { form, .. } = std::mem::take(&mut self.modal) else {
+                        unreachable!()
+                    };
+                    return Action::Submit(form);
+                }
                 match key.code {
                     Esc => self.modal = Modal::None,
-                    Enter => {
-                        let Modal::Form(form) = std::mem::take(&mut self.modal) else {
-                            unreachable!()
-                        };
-                        return Action::Submit(form);
+                    Backspace if *cursor > 0 => {
+                        let previous = previous_char(&form.value, *cursor);
+                        form.value.drain(previous..*cursor);
+                        *cursor = previous;
                     }
-                    Backspace => {
-                        form.value.pop();
+                    Delete if *cursor < form.value.len() => {
+                        let next = next_char(&form.value, *cursor);
+                        form.value.drain(*cursor..next);
                     }
-                    Char('j')
-                        if key.modifiers.contains(KeyModifiers::CONTROL)
-                            && matches!(form.kind, FormKind::PullSelection { .. })
-                            && form.value.len() < 32 * 1024 =>
-                    {
-                        form.value.push('\n')
+                    Left => *cursor = previous_char(&form.value, *cursor),
+                    Right => *cursor = next_char(&form.value, *cursor),
+                    Home => *cursor = line_start(&form.value, *cursor),
+                    End => *cursor = line_end(&form.value, *cursor),
+                    Up if form.multiline() => *cursor = vertical(&form.value, *cursor, false),
+                    Down if form.multiline() => *cursor = vertical(&form.value, *cursor, true),
+                    Char('u') if ctrl => {
+                        form.value.clear();
+                        *cursor = 0;
                     }
-                    Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    Char('a') if ctrl => *cursor = 0,
+                    Char('e') if ctrl => *cursor = form.value.len(),
+                    Char('r') if ctrl => {
                         if let FormKind::Prompt { chat, .. } = &mut form.kind {
                             *chat = !*chat;
                         }
+                    }
+                    Enter if raw => form.insert(cursor, '\n'),
+                    Char('j') if ctrl && form.multiline() => form.insert(cursor, '\n'),
+                    Tab if raw => {
+                        form.insert(cursor, ' ');
+                        form.insert(cursor, ' ');
                     }
                     Char(c)
                         if !c.is_control()
                             && !key
                                 .modifiers
-                                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
-                            && form.value.len() + c.len_utf8() <= 32 * 1024 =>
+                                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
                     {
-                        form.value.push(c);
+                        form.insert(cursor, c)
                     }
                     _ => {}
                 }
@@ -347,6 +487,42 @@ impl Navigation {
             Char('?') => {
                 self.modal = Modal::Help;
                 Action::Redraw
+            }
+            Enter if !self.rail && matches!(self.view, View::Profiles | View::Config) => {
+                Action::Settings(SettingsAction::Open)
+            }
+            Char('c') if !self.rail && self.view == View::Profiles => {
+                Action::Settings(SettingsAction::Create)
+            }
+            Char('a') if !self.rail && self.view == View::Config => {
+                Action::Settings(SettingsAction::Activate)
+            }
+            Char('y') if !self.rail && self.view == View::Config => {
+                Action::Settings(SettingsAction::Copy)
+            }
+            Char('x') if !self.rail && self.view == View::Config => {
+                Action::Settings(SettingsAction::Remove)
+            }
+            Char('z') if !self.rail && self.view == View::Config => {
+                Action::Settings(SettingsAction::Unset)
+            }
+            Char('t') if !self.rail && self.view == View::Config => {
+                Action::Settings(SettingsAction::Validate)
+            }
+            Char('v') if !self.rail && self.view == View::Config => {
+                Action::Settings(SettingsAction::RawView)
+            }
+            Char('w') if !self.rail && self.view == View::Config => {
+                Action::Settings(SettingsAction::RawEdit)
+            }
+            Char('/') if !self.rail && self.view == View::Config => {
+                Action::Settings(SettingsAction::Search)
+            }
+            Char('/') if !self.rail && self.view == View::Logs => Action::Logs(LogAction::Search),
+            Char('p') if !self.rail && self.view == View::Logs => Action::Logs(LogAction::Follow),
+            Char('l') if !self.rail && self.view == View::Logs => Action::Logs(LogAction::Level),
+            Char('f') if !self.rail && self.view == View::Logs => {
+                Action::Logs(LogAction::Component)
             }
             Char('d') if !self.rail && matches!(self.view, View::Models | View::Downloads) => {
                 Action::Library(LibraryAction::Pull)
@@ -430,6 +606,12 @@ impl Navigation {
             }
             Down | Char('j') if matches!(self.view, View::Models | View::Devices) => {
                 Action::Library(LibraryAction::Move(1))
+            }
+            Up | Char('k') if matches!(self.view, View::Profiles | View::Config) => {
+                Action::Settings(SettingsAction::Move(-1))
+            }
+            Down | Char('j') if matches!(self.view, View::Profiles | View::Config) => {
+                Action::Settings(SettingsAction::Move(1))
             }
             Up | Char('k') if self.view == View::Running => Action::MoveOwner(-1),
             Down | Char('j') if self.view == View::Running => Action::MoveOwner(1),
@@ -619,6 +801,10 @@ fn content(app: &App) -> Vec<Line<'static>> {
                 rows.push(text("No scheduler installed"));
             }
             rows.push(Line::default());
+            rows.push(text(format!(
+                "Active configuration: {}",
+                app.document.target.label()
+            )));
             rows.push(label("Quick run", app.color));
             rows.push(text(match &app.selected {
                 Some(owner) => format!("Enter: prompt for {}", owner.alias),
@@ -747,25 +933,7 @@ fn content(app: &App) -> Vec<Line<'static>> {
             }
             download_rows(&mut rows, app);
         }
-        View::Logs => {
-            rows.push(text(
-                "Transient control notifications in this client (not model output).",
-            ));
-            for event in &app.events {
-                rows.push(text(format!("{}  {:?}", event.sequence, event.kind)));
-            }
-            if app.events.is_empty() {
-                rows.push(text("No notifications received."));
-            }
-        }
-        _ => {
-            rows.extend(app.cold.iter().map(text));
-            if rows.is_empty() {
-                rows.push(text("No entries."));
-            }
-            rows.push(Line::default());
-            rows.push(text("Observation only · r refresh"));
-        }
+        View::Profiles | View::Config | View::Logs => unreachable!("dedicated workspace renderer"),
     }
     if matches!(app.navigation.view, View::Home | View::Running)
         && let Some(response) = &app.response
@@ -875,8 +1043,9 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 popup,
             );
         }
-        Modal::Form(form) => {
-            let popup = center(body, 76, 12);
+        Modal::Form { form, cursor } => {
+            let raw = matches!(form.kind, FormKind::RawYaml { .. });
+            let popup = if raw { body } else { center(body, 76, 14) };
             frame.render_widget(Clear, popup);
             let (title, hint, mode) = match &form.kind {
                 FormKind::Source { run } => (
@@ -922,33 +1091,82 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     "MODEL or ID=MODEL; blank uses selected document. Exact selected physical device overrides device list.",
                     "",
                 ),
+                FormKind::ProfileCreate => (
+                    " Create profile ",
+                    "New bounded lowercase name; no overwrite or activation.",
+                    "",
+                ),
+                FormKind::ProfileCopy { .. } => (
+                    " Copy profile ",
+                    "New name; relative paths preserved by the shared copy owner.",
+                    "",
+                ),
+                FormKind::ConfigValue { .. } => (
+                    " Edit setting ",
+                    "One YAML value (Ctrl-J/paste for multiple lines). Ctrl-U clears input.",
+                    "",
+                ),
+                FormKind::RawYaml { .. } => (
+                    " Raw YAML editor ",
+                    "Ctrl-S validates and saves; Enter newline, Tab two spaces, Ctrl-U clear, Esc discard.",
+                    "",
+                ),
+                FormKind::Search { .. } => (
+                    " Search ",
+                    "Search visible rows by text. Empty clears the filter.",
+                    "",
+                ),
             };
-            // Show the tail while typing long input; keep full value in form.
-            let tail: String = form
-                .value
+            let block = Block::bordered().title(title);
+            let inner = block.inner(popup);
+            frame.render_widget(block, popup);
+            let header = match &form.kind {
+                FormKind::ConfigValue { key, .. } => format!("{key} · {hint}"),
+                _ if !mode.is_empty() => format!("{hint} · {mode}"),
+                _ => hint.to_owned(),
+            };
+            let [head, input, controls] = Layout::vertical([
+                Constraint::Length(if inner.width < 60 { 3 } else { 2 }),
+                Constraint::Min(1),
+                Constraint::Length(1),
+            ])
+            .areas(inner);
+            frame.render_widget(
+                Paragraph::new(text(header)).wrap(Wrap { trim: false }),
+                head,
+            );
+            let before = &form.value[..*cursor];
+            let after = &form.value[*cursor..];
+            let mut prefix = before.rsplit('\n');
+            let current = prefix.next().unwrap_or("");
+            let keep = (input.height.saturating_sub(2) as usize / 2).max(1);
+            let previous: Vec<_> = prefix.take(keep).collect();
+            let mut rows: Vec<Line<'static>> = previous.into_iter().rev().map(text).collect();
+            let left: String = current
                 .chars()
                 .rev()
-                .take(320)
+                .take(input.width.saturating_sub(2) as usize)
                 .collect::<Vec<_>>()
                 .into_iter()
                 .rev()
                 .collect();
-            let mut lines = vec![
-                text(hint),
-                text(mode),
-                Line::default(),
-                label(format!("› {tail}▏"), app.color),
-                Line::default(),
-                text("Enter accept · Esc cancel"),
-            ];
-            if form.value.chars().count() > 320 {
-                lines.insert(3, text("… earlier input retained"));
-            }
+            let mut suffix = after.split('\n');
+            let right: String = suffix
+                .next()
+                .unwrap_or("")
+                .chars()
+                .take(input.width as usize)
+                .collect();
+            rows.push(label(format!("{left}▏{right}"), app.color));
+            rows.extend(suffix.take(input.height as usize).map(text));
+            frame.render_widget(Paragraph::new(rows).wrap(Wrap { trim: false }), input);
             frame.render_widget(
-                Paragraph::new(lines)
-                    .wrap(Wrap { trim: false })
-                    .block(Block::bordered().title(title)),
-                popup,
+                Paragraph::new(text(if raw {
+                    "Ctrl-S save · Esc discard"
+                } else {
+                    "Enter accept · Esc cancel"
+                })),
+                controls,
             );
         }
         Modal::Confirm {
@@ -1049,6 +1267,8 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind) 
     let title = match kind {
         Kind::Models => format!(" Models · {:?} ", app.library.shelf),
         Kind::Devices => " Devices ".into(),
+        Kind::Profiles => " Profiles ".into(),
+        Kind::Config => format!(" Config · {} ", app.library.editor.label()),
     };
     let block = Block::bordered().title(title);
     let inner = block.inner(area);
@@ -1064,9 +1284,44 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind) 
             text("j/k select · Enter refresh · e check model policy"),
             text("l load on selected physical device · no inferred model eligibility"),
         ],
+        Kind::Profiles => vec![
+            text(format!("Active: {}", app.document.target.label())),
+            text("j/k select · Enter open/editor · c create"),
+            text("Open is inert; activate, copy or remove in Config."),
+        ],
+        Kind::Config => vec![
+            text(format!(
+                "Active: {} · Editing: {}",
+                app.document.target.label(),
+                app.library.editor.path.display()
+            )),
+            text("j/k select · / search · Enter edit · z unset · t validate"),
+            text("a activate · y copy · x remove · v raw view · w raw edit"),
+            text(format!(
+                "Search: {} · {}",
+                if app.library.query.is_empty() {
+                    "all"
+                } else {
+                    &app.library.query
+                },
+                if app.library.raw {
+                    "Raw YAML view"
+                } else {
+                    "Typed settings"
+                }
+            )),
+        ],
     };
     if app.document.offline && kind == Kind::Models {
         header.push(text("Offline · acquisition disabled"));
+    }
+    if kind == Kind::Config
+        && app
+            .library
+            .observed()
+            .is_some_and(|obs| !obs.snapshot.exists())
+    {
+        header.push(text("Built-in defaults (no document created)"));
     }
     let status = app.library.notice(kind).unwrap_or("Owner observations");
     header.push(text(format!(
@@ -1082,25 +1337,33 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind) 
     } else {
         Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)]).areas(body)
     };
-    let lines: Vec<_> = collection
-        .rows
-        .iter()
-        .map(|row| {
-            let selected = collection.selected.as_ref() == Some(&row.key);
-            let line = text(format!(
-                "{} {}",
-                if selected { ">" } else { " " },
-                row.title
-            ));
-            if selected {
-                line.style(accent(app.color))
-            } else {
-                line
+    let mut lines = Vec::new();
+    let mut group = "";
+    let mut selected_line = 0;
+    for row in &collection.rows {
+        if let Key::Setting(key) = &row.key {
+            let next = super::settings::group(key);
+            if next != group {
+                group = next;
+                lines.push(label(group, app.color));
             }
-        })
-        .collect();
-    let list_offset = collection
-        .index()
+        }
+        let selected = collection.selected.as_ref() == Some(&row.key);
+        if selected {
+            selected_line = lines.len();
+        }
+        let line = text(format!(
+            "{} {}",
+            if selected { ">" } else { " " },
+            row.title
+        ));
+        lines.push(if selected {
+            line.style(accent(app.color))
+        } else {
+            line
+        });
+    }
+    let list_offset = selected_line
         .saturating_sub(list.height.saturating_sub(3) as usize)
         .min(u16::MAX as usize) as u16;
     frame.render_widget(
@@ -1110,7 +1373,14 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind) 
         list,
     );
     let mut details = Vec::new();
-    if let Some(row) = collection.selected() {
+    if kind == Kind::Config && app.library.raw {
+        if let Some(observed) = app.library.observed() {
+            match observed.snapshot.raw() {
+                Ok(yaml) => details.extend(yaml.lines().map(text)),
+                Err(error) => details.push(text(error.to_string())),
+            }
+        }
+    } else if let Some(row) = collection.selected() {
         details.push(label(&row.title, app.color));
         details.extend(row.details.iter().map(text));
         if let Some((key, result)) = &app.library.detail
@@ -1120,7 +1390,11 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind) 
             details.extend(result.lines().map(text));
         }
     } else {
-        details.push(text("No observed selection"));
+        details.push(text(if kind == Kind::Config {
+            "No typed selection; w raw edit, v raw view"
+        } else {
+            "No observed selection"
+        }));
     }
     let scroll = &mut app.navigation.scroll[app.navigation.view.index()];
     *scroll = (*scroll).min(details.len().saturating_sub(1).min(u16::MAX as usize) as u16);
@@ -1133,6 +1407,42 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind) 
     );
 }
 
+fn render_logs(frame: &mut Frame<'_>, area: Rect, app: &mut App) {
+    let block = Block::bordered().title(" Operational logs ");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let [head, body] =
+        Layout::vertical([Constraint::Length(3.min(inner.height)), Constraint::Min(0)])
+            .areas(inner);
+    frame.render_widget(
+        Paragraph::new(vec![
+            text(app.logs.heading()),
+            text("/ search · l level · f component · p pause/follow · PgUp/PgDn scroll"),
+            text(format!(
+                "Local operational observations; {} older entries dropped. No model output.",
+                app.logs.dropped()
+            )),
+        ]),
+        head,
+    );
+    let rows = app.logs.lines();
+    let count = rows.len();
+    let scroll = &mut app.navigation.scroll[View::Logs.index()];
+    let max = count
+        .saturating_sub(body.height as usize)
+        .min(u16::MAX as usize) as u16;
+    if app.logs.following() {
+        *scroll = max;
+    } else {
+        *scroll = (*scroll).min(max);
+    }
+    let lines = if rows.is_empty() {
+        vec![text("No notifications received.")]
+    } else {
+        rows.iter().map(text).collect()
+    };
+    frame.render_widget(Paragraph::new(lines).scroll((*scroll, 0)), body);
+}
 fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App) {
     match app.navigation.view {
         View::Models => {
@@ -1143,6 +1453,19 @@ fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App) {
             render_library(frame, area, app, Kind::Devices);
             return;
         }
+        View::Profiles => {
+            render_library(frame, area, app, Kind::Profiles);
+            return;
+        }
+        View::Config => {
+            render_library(frame, area, app, Kind::Config);
+            return;
+        }
+        View::Logs => {
+            render_logs(frame, area, app);
+            return;
+        }
+
         _ => {}
     }
     let rows = content(app);
@@ -1179,8 +1502,8 @@ mod tests {
     #[test]
     fn navigation_preserves_scroll_and_palette_owns_typing() {
         let mut nav = Navigation::default();
-        assert_eq!(nav.key(key(KeyCode::Char('8'))), Action::Open);
-        assert_eq!(nav.view(), View::Config);
+        assert_eq!(nav.key(key(KeyCode::Char('5'))), Action::Open);
+        assert_eq!(nav.view(), View::Downloads);
         nav.key(key(KeyCode::Down));
         nav.key(key(KeyCode::Char(':')));
         assert_eq!(nav.key(key(KeyCode::Char('q'))), Action::Redraw);
@@ -1191,8 +1514,8 @@ mod tests {
         }
         assert_eq!(nav.key(key(KeyCode::Enter)), Action::Open);
         assert_eq!(nav.view(), View::Logs);
-        nav.key(key(KeyCode::Char('8')));
-        assert_eq!(nav.scroll[View::Config.index()], 1);
+        nav.key(key(KeyCode::Char('5')));
+        assert_eq!(nav.scroll[View::Downloads.index()], 1);
         assert_eq!(nav.key(key(KeyCode::Char('q'))), Action::Quit);
     }
     #[test]
@@ -1208,7 +1531,7 @@ mod tests {
         });
         assert!(nav.paste("q123\n"));
         assert!(!nav.paste("\u{1b}[200~"));
-        assert!(matches!(&nav.modal, Modal::Form(_)));
+        assert!(matches!(&nav.modal, Modal::Form { .. }));
         assert_eq!(
             nav.key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
             Action::Redraw
@@ -1244,16 +1567,16 @@ mod tests {
         let mut app = App {
             navigation: Navigation::default(),
             snapshot: runtime.control().snapshot().unwrap(),
-            config: "/nonexistent/config.yaml".into(),
-            cold: Vec::new(),
-            events: Default::default(),
+            logs: super::super::logs::Logs::default(),
             notice: None,
             color: false,
             document: super::super::work::Document::test_default(),
             job: None,
             selected: None,
             response: None,
-            library: super::super::library::Library::default(),
+            library: super::super::library::Library::new(
+                super::super::work::Document::test_default().target,
+            ),
         };
         for width in [60, 90, 150] {
             let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();

@@ -29,6 +29,7 @@ class Terminal:
     def __init__(self, root, args, width=100, height=28):
         self.master, self.slave = pty.openpty()
         self.height = height
+        self.repaint_on_wait = False
         self.resize(width)
         self.initial = termios.tcgetattr(self.slave)
         self.proc = subprocess.Popen([binary, *args], cwd=root, env=environment(root),
@@ -38,15 +39,24 @@ class Terminal:
         self.transcript = bytearray()
 
     def resize(self, width):
+        self.width = width
         fcntl.ioctl(self.slave, termios.TIOCSWINSZ,
                     struct.pack("HHHH", self.height, width, 0, 0))
 
     def until(self, needle, seconds=10):
         deadline = time.monotonic() + seconds
+        next_repaint = time.monotonic() + 0.8
         while needle not in self.pending:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise AssertionError(f"missing {needle!r}: {self.transcript[-4000:]!r}")
+            # ANSI differential updates need not repeat the entire expected
+            # word. A real resize forces a fresh cell paint without assuming
+            # that an unchanged screen cell was emitted again.
+            if self.repaint_on_wait and time.monotonic() >= next_repaint and self.proc.poll() is None and not needle.startswith(b"\x1b"):
+                self.resize(149 if self.width == 150 else 150)
+                os.kill(self.proc.pid, signal.SIGWINCH)
+                next_repaint = time.monotonic() + 0.8
             if select.select([self.master], [], [], min(remaining, 0.1))[0]:
                 data = os.read(self.master, 65536)
                 self.pending.extend(data)
@@ -131,6 +141,83 @@ def shell(root):
     print("TUI shell PTY: navigation, palette, resize, quit/SIGTERM restoration, plain fallback; no cache/config effects")
 
 
+def settings_lifecycle(root):
+    root.mkdir()
+    profiles = root / "config/abird/zerogravity/profiles"
+    profiles.mkdir(parents=True)
+    desk = profiles / "desk.yaml"
+    copied = profiles / "copy.yaml"
+    broken = profiles / "broken.yaml"
+    broken.write_text("schema: zerogravity.pipeline.v2\nunknown_field: true\n")
+    valid = "schema: zerogravity.pipeline.v2\nrun:\n  backend: cpu\n  task: {context: 128, max_tokens: 8}\nui: {color: never}\n"
+    paste = lambda text: b"\x1b[200~" + text.encode() + b"\x1b[201~"
+
+    with Terminal(root, [], width=150, height=40) as terminal:
+        terminal.repaint_on_wait = True
+        terminal.check_started()
+        terminal.send(b"7", b"broken")
+        terminal.send(b"c", b"lowercase")
+        terminal.send(b"desk\r", b"Created")
+        assert desk.is_file()
+        terminal.until(b"run.backend", 10)
+        terminal.send(b"/", b"visible")
+        terminal.send(paste("run.backend") + b"\r", b"run.backend")
+        terminal.send(b"\r", b"Ctrl-U")
+        terminal.send(b"cpu\r", b"Saved", 10)
+        assert "backend: cpu" in desk.read_text()
+        # Validation refusal retains the old document and reopens the draft.
+        original = desk.read_bytes()
+        terminal.until(b"run.backend", 10)
+        terminal.send(b"\r", b"Ctrl-U")
+        terminal.send(b"\x15invalid-backend\r", b"failed", 10)
+        assert desk.read_bytes() == original
+        os.write(terminal.master, b"\x1b")
+        time.sleep(0.2)  # allow standalone Escape to be decoded before the next key
+        # The exact observed file is captured before editing, not reopened at
+        # submit time; a cooperating external change must not be overwritten.
+        terminal.send(b"\r", b"Ctrl-U")
+        desk.write_text(valid.replace("backend: cpu", "backend: rocm"))
+        terminal.send(b"\x15cpu\r", b"changed", 10)
+        assert desk.read_text() == valid.replace("backend: cpu", "backend: rocm")
+        os.write(terminal.master, b"\x1b")
+        time.sleep(0.2)  # allow standalone Escape to be decoded before the next key
+        terminal.send(b"r", b"rocm", 10)
+        terminal.send(b"w", b"Ctrl-S")
+        terminal.send(b"\x15" + paste(valid) + b"\x13", b"Saved", 10)
+        assert desk.read_text() == valid
+        terminal.until(b"run.backend", 10)
+        terminal.send(b"a", b"Activated", 10)
+        terminal.send(b"x", b"another", 10)
+        assert desk.is_file()
+        terminal.send(b"y", b"preserved")
+        terminal.send(b"copy\r", b"Created", 10)
+        assert copied.read_text() == valid
+        terminal.until(b"run.backend", 10)
+        terminal.send(b"x", b"confirm")
+        os.write(terminal.master, b"n")
+        assert copied.exists()
+        terminal.send(b"x", b"confirm")
+        terminal.send(b"y", b"Removed", 10)
+        assert not copied.exists() and desk.exists()
+        # Repair an invalid named document using the same full raw YAML owner.
+        terminal.send(b"7", b"broken")
+        terminal.send(b"j\r", b"Invalid", 10)
+        terminal.send(b"w", b"Ctrl-S")
+        terminal.send(b"\x15" + paste(valid) + b"\x13", b"Saved", 10)
+        assert broken.read_text() == valid
+        # The Logs surface records actions/owner outcomes, not draft contents.
+        terminal.send(b"9", b"Operational")
+        terminal.send(b"p", b"Paused")
+        terminal.send(b"/", b"visible")
+        terminal.send(paste("Save config") + b"\r", b"Save")
+        terminal.send(b"p", b"Following")
+        os.write(terminal.master, b"q")
+        terminal.finish()
+    assert not (root / "cache").exists()
+    assert not (profiles.parent / "config.yaml").exists()
+    print("TUI settings PTY: create, search/edit, invalid/stale refusal, raw repair, activate/protect, copy, declined/confirmed remove, operational log filters")
+
+
 def lifecycle(root, expected):
     # Caller prepared the immutable approved GGUF cache and profile. Use one
     # process for quick run, reused invocation, listener, retirement/reload.
@@ -191,6 +278,19 @@ def lifecycle(root, expected):
                                        "max_tokens": 2, "stream": False})
         assert result["choices"][0]["text"] == expected, result
         assert result["usage"]["completion_tokens"] > 0
+        # Activate a different startup profile without reconfiguring the
+        # existing listener/scheduler. Restore the original for later load.
+        terminal.repaint_on_wait = True
+        terminal.send(b"9", b"accepted")
+        terminal.send(b"7", b"default")
+        terminal.send(b"\r", b"defaults")
+        terminal.send(b"a", b"Activated")
+        assert http("/models") == models
+        terminal.send(b"7", b"local.yaml")
+        terminal.send(b"j\r", b"run.backend")
+        terminal.send(b"a", b"Activated")
+        assert http("/models") == models
+        terminal.repaint_on_wait = False
         # Navigation and a declined quit leave the same listener alive.
         terminal.send(b"1", b"Quick")
         terminal.send(b"q", b"confirm")
@@ -228,12 +328,16 @@ def lifecycle(root, expected):
     listing = subprocess.run([binary, "model", "list", "--format=json"], cwd=root,
                              env=environment(root), capture_output=True, check=True)
     assert json.loads(listing.stdout) == []
-    print("TUI cached lifecycle: inspect/verify, alias, declined removal, exact-digest run, repeated invoke, HTTP equality, stop/unload/reload/quit, preview and durable removal")
+    print("TUI cached lifecycle: inspect/verify, alias, declined removal, exact-digest run, repeated invoke, HTTP equality, active profile switching retains listener, stop/unload/reload/quit, preview and durable removal")
 
 
 if len(sys.argv) == 2:
     with tempfile.TemporaryDirectory(prefix="zg-tui-") as tmp:
         shell(Path(tmp))
+        settings_lifecycle(Path(tmp) / "settings")
+elif sys.argv[2] == "--settings-fixture":
+    with tempfile.TemporaryDirectory(prefix="zg-tui-settings-") as tmp:
+        settings_lifecycle(Path(tmp) / "settings")
 elif sys.argv[2] == "--download-fixture":
     for mode in ("tui", "tui-cancel"):
         with tempfile.TemporaryDirectory(prefix="zg-tui-download-") as tmp:

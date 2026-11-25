@@ -1,6 +1,6 @@
 //! One scoped, client-owned action worker. All effects go through the original
 //! resident loader and ControlPlane; closing a view does not own retirement.
-use super::library::Key;
+use super::{library::Key, settings};
 use crate::resident;
 use std::{
     num::NonZeroUsize,
@@ -56,6 +56,7 @@ pub(super) enum Request {
     Unload(Owner),
     Start(String),
     Stop(u64),
+    Settings(settings::Action),
     Inspect(String),
     Verify(String),
     Reclaim {
@@ -84,6 +85,7 @@ impl Request {
             Self::Unload(_) => "Unload",
             Self::Start(_) => "Start listener",
             Self::Stop(_) => "Stop listener",
+            Self::Settings(action) => action.title(),
             Self::Inspect(_) => "Inspect snapshot",
             Self::Verify(_) => "Verify snapshot",
             Self::Reclaim { apply: false, .. } => "Removal preview",
@@ -92,6 +94,20 @@ impl Request {
             Self::CheckFit { .. } => "Check device policy",
             #[cfg(all(feature = "acquisition", target_os = "linux"))]
             Self::Pull(_) => "Pull model",
+        }
+    }
+    pub fn correlation(&self) -> String {
+        match self {
+            Self::Invoke { owner, .. } | Self::Unload(owner) => {
+                format!("registration {}", owner.registration)
+            }
+            Self::Stop(generation) => format!("generation {generation}"),
+            Self::Inspect(digest)
+            | Self::Verify(digest)
+            | Self::Reclaim { digest, .. }
+            | Self::Alias { digest, .. } => format!("sha256:{digest}"),
+            Self::Settings(_) => "configuration".into(),
+            _ => "local".into(),
         }
     }
     pub fn detail_key(&self) -> Option<Key> {
@@ -118,7 +134,8 @@ impl Request {
 
 #[derive(Clone)]
 pub(super) struct Document {
-    selection: Option<(String, String)>,
+    pub target: settings::Target,
+    pub ui: zerogravity::configuration::UiDoc,
     pub chat: bool,
     pub offline: bool,
 }
@@ -126,21 +143,34 @@ impl Document {
     #[cfg(test)]
     pub fn test_default() -> Self {
         Self {
-            selection: None,
+            target: settings::Target {
+                path: "/nonexistent/config.yaml".into(),
+                profile: Some("default".into()),
+                allow_missing: true,
+            },
             chat: true,
             offline: false,
+            ui: Default::default(),
         }
     }
 
     pub fn new(selection: Option<(&str, &str)>, offline: bool) -> Result<Self> {
-        let chat = crate::config_cli::read_selected_document(selection)?
-            .and_then(|(_, doc)| doc.run?.task?.raw)
-            != Some(true);
-        Ok(Self {
-            selection: selection.map(|(flag, value)| (flag.to_owned(), value.to_owned())),
+        let target = settings::Target::selected(selection)?;
+        let doc = target.read()?.map(|(_, doc)| doc).unwrap_or_default();
+        Ok(Self::from_config(target, doc, offline))
+    }
+    pub fn from_config(
+        target: settings::Target,
+        doc: zerogravity::configuration::ConfigDocument,
+        offline: bool,
+    ) -> Self {
+        let chat = doc.run.and_then(|run| run.task).and_then(|task| task.raw) != Some(true);
+        Self {
+            target,
             chat,
             offline,
-        })
+            ui: doc.ui.unwrap_or_default(),
+        }
     }
     fn read(
         &self,
@@ -150,11 +180,7 @@ impl Document {
             zerogravity::configuration::ConfigDocument,
         )>,
     > {
-        crate::config_cli::read_selected_document(
-            self.selection
-                .as_ref()
-                .map(|(flag, value)| (flag.as_str(), value.as_str())),
-        )
+        self.target.read()
     }
 }
 
@@ -187,19 +213,37 @@ impl Response {
     }
 }
 
+pub(super) enum Completed {
+    Message(String),
+    Settings(Box<settings::Outcome>),
+}
+
 pub(super) struct Job {
     title: &'static str,
-    worker: Option<JoinHandle<Result<String>>>,
+    worker: Option<JoinHandle<Result<Completed>>>,
     cancel: Arc<AtomicBool>,
     response: Arc<Mutex<Response>>,
     generates: bool,
     pub detail_key: Option<Key>,
+    pub log_id: u64,
+    pub retry: Option<settings::Action>,
 }
 impl Job {
-    pub fn start(runtime: &Runtime, document: &Document, request: Request) -> Result<Self> {
+    pub fn start(
+        runtime: &Runtime,
+        document: &Document,
+        request: Request,
+        log_id: u64,
+    ) -> Result<Self> {
         let title = request.title();
         let generates = request.generates();
         let detail_key = request.detail_key();
+        let retry = match &request {
+            Request::Settings(
+                action @ (settings::Action::Set { .. } | settings::Action::Replace { .. }),
+            ) => Some(action.clone()),
+            _ => None,
+        };
         let runtime = runtime.clone();
         let document = document.clone();
         let cancel = Arc::new(AtomicBool::new(false));
@@ -208,7 +252,16 @@ impl Job {
         let output = Arc::clone(&response);
         let worker = thread::Builder::new()
             .name("zg-control-action".into())
-            .spawn(move || execute(&runtime, &document, request, &flag, &output))?;
+            .spawn(move || match request {
+                Request::Settings(action) if !flag.load(Ordering::Acquire) => {
+                    settings::perform(action, &document.target)
+                        .map(|outcome| Completed::Settings(Box::new(outcome)))
+                }
+                Request::Settings(_) => Ok(Completed::Message("Cancelled before starting".into())),
+                request => {
+                    execute(&runtime, &document, request, &flag, &output).map(Completed::Message)
+                }
+            })?;
         Ok(Self {
             title,
             worker: Some(worker),
@@ -216,6 +269,8 @@ impl Job {
             response,
             generates,
             detail_key,
+            log_id,
+            retry,
         })
     }
     pub fn title(&self) -> &'static str {
@@ -242,7 +297,7 @@ impl Job {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         (response.revision != revision).then(|| response.clone())
     }
-    pub fn join(&mut self) -> Result<String> {
+    pub fn join(&mut self) -> Result<Completed> {
         self.worker
             .take()
             .expect("one owned action worker")
@@ -306,6 +361,7 @@ fn execute(
     }
     let control = runtime.control();
     match request {
+        Request::Settings(_) => unreachable!("settings worker dispatch"),
         Request::Inspect(digest) => cache_action(control, CacheAction::Inspect, &digest, cancel),
         Request::Verify(digest) => cache_action(control, CacheAction::Verify, &digest, cancel),
         Request::Reclaim { digest, apply } => {

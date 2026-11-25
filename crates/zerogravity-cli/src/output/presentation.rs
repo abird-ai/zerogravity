@@ -255,7 +255,7 @@ pub(crate) fn install(options: Options) {
     let _ = CLI_OPTIONS.set(options);
 }
 
-pub(crate) fn install_document(ui: zerogravity::configuration::UiDoc) {
+fn document_reporter(ui: zerogravity::configuration::UiDoc) -> Reporter {
     let mut options = CLI_OPTIONS.get().copied().unwrap_or_default();
     if !options.color_explicit && !options.plain {
         options.color = ui.color.unwrap_or(options.color);
@@ -271,7 +271,16 @@ pub(crate) fn install_document(ui: zerogravity::configuration::UiDoc) {
             options.interactive = Switch::Auto;
         }
     }
-    let _ = REPORTER.set(Reporter::new(options, Terminal::detect()));
+    Reporter::new(options, Terminal::detect())
+}
+
+pub(crate) fn install_document(ui: zerogravity::configuration::UiDoc) {
+    let _ = REPORTER.set(document_reporter(ui));
+}
+
+#[cfg(feature = "tui")]
+pub(crate) fn document_color(ui: zerogravity::configuration::UiDoc) -> bool {
+    document_reporter(ui).color_enabled()
 }
 
 /// CLI terminal eligibility before loading document preferences. No global

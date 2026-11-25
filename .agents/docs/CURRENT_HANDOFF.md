@@ -24,7 +24,70 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-8C (26 Nov)
+### Current checkpoint — Phase 2.1 UX-8D (26 Nov)
+
+Native profile/configuration/log surfaces complete the bounded TUI design.
+The existing ConfigFile/ConfigDocument and action/observation workers remain
+the only owners; no new dependencies, settings store, runtime or policy.
+
+- Profiles lists default/named documents without creating anything. Enter
+  opens an editor target, not activation. Create/copy no overwrite; copy
+  uses the shared relative-source anchoring. Activate explicitly selects
+  future action settings within this process, never persists a selection
+  pointer or changes already admitted model/worker/listener state.
+  Default/portable files and the active named profile are protected from
+  removal; other named removal captures exact observed bytes and confirms.
+- Settings observer reads exact ConfigFile snapshots on the existing single
+  coalesced read worker (now all cold inventory views). Shared explain/
+  document_value supplies typed current values and provenance; optional
+  unset schema fields are visible without invented defaults. Grouped
+  contextual rows, / search, Enter value editor, z confirmed unset,
+  t validate, v raw view, w raw edit, a activate, y copy, x remove.
+  Captured snapshot is retained across form/confirmation, original
+  ConfigFile.compare/replace/remove enforce stale refusal. Invalid save
+  keeps original bytes and reopens the draft if still in its editor.
+  Raw YAML uses the existing bounded UTF-8 input owner, arrows/Home/End,
+  Ctrl-U clear, Enter newline, Tab two spaces, Ctrl-S save, Esc discard.
+  Invalid other-profile documents support raw repair; malformed startup
+  selection still refuses and direct config edit can repair it.
+- SDK resolved-path read shares the original default/explicit selection
+  policy, including missing-default-only fallback. Active config changes
+  update future prompt default and TUI color using original CLI UI
+  precedence; interactive/progress startup policy stays startup-scoped.
+  Bare offline retained across activation. No model, device, network or
+  graph permission derived from validation, editing or selection.
+- Operational log ring (128 local entries): actual local action starts/
+  terminal results/cancel requests and original transient control events,
+  download phase/status transitions (not per-byte spam), missed-event
+  notices. Search/level/component filtering and paused-view cutoff /
+  follow; ring keeps collecting and bounds retention even when paused.
+  Correlate original registration/generation/download ids and local
+  action sequence; not a fabricated scheduler request id. No prompt/
+  output/credential/raw config text, persistent trace or complete backend
+  diagnostic capture. Future Web can consume same owner event/action
+  model; this client ring is presentation only.
+- Focused strict minimal and combined lint, TUI reducer/render/ring tests
+  5/0, real settings PTY create/search/edit, invalid/stale refusal, raw
+  repair, activation/protected removal, copy, declined/confirmed removal,
+  log filter/pause/follow pass. Initial PTY assertions missed ANSI
+  differential cells and adjacent Escape decoding; corrected fixture
+  with actual resize repaint and standalone Escape boundary, no weakened
+  write/refusal requirements. Initial combined release lifecycle exposed
+  clipped absolute-path profile labels; relative labels with absolute detail
+  fixed it. Serial release cached Qwen lifecycle/profile-switch passed
+  (22.95s), preserving the live listener and scheduler; other five release
+  tests passed. Full isolated gate 2,483/0/109 and release PTY/installer/scripts
+  pass. UX-8D accepted. No new physical GPU/remote acquisition or measured
+  performance claim.
+
+**Next: UX-9A — embedded SolidJS Web shell (§46A.28).**
+Read 46A Web/control architecture and existing ControlPlane. Build one
+same-process native host and browser presentation, separate loopback
+control transport/auth from original OpenAI inference transport. Keep
+the SDK/CLI/TUI owners, no second scheduler/model/cache/config runtime.
+Then UX-9B–E, UX-10 and public serving acceptance.
+
+### Previous checkpoint — Phase 2.1 UX-8C (26 Nov; 9bf7829a)
 
 Models / Downloads / Devices are active native clients of the same
 Runtime, cache/artifact/device owners, and original DownloadOperation.
@@ -92,11 +155,8 @@ production test transport override.
   recipe only; advanced provider/aggregate/filter/Xet flows remain direct
   CLI, no automatic partial eviction or alias/reference retargeting.
 
-**Next: UX-8D — TUI Profiles / Config / Logs
-(§46A.28).** Use shared ConfigFile, cold profile operations and original
-validated atomic edit path, real contextual settings search/editor;
-operational logs separate from model output, no duplicate settings DB.
-Then UX-9A native Web shell through existing ControlPlane.
+Historical next UX-8D is implemented at the current checkpoint.
+Embedded Web follows the live order.
 
 ### Previous checkpoint — Phase 2.1 UX-8B (26 Nov; 0c7ad87a)
 

@@ -167,8 +167,14 @@ cache/reclaim/alias and resident admission, explicit pinned hub/recipe
 intent on same runtime, observed progress and exact pause/resume/cancel.
 Focused reducers/intent, actual controlled-transfer PTY and strict lint
 pass; actual cached lifecycle and remaining release tests pass. Full isolated
-gate 2,481/0/109, release PTY/installer/scripts pass. UX-8C accepted. Next UX-8D
-Profiles / Config / Logs.
+gate 2,481/0/109, release PTY/installer/scripts pass. UX-8C accepted.
+UX-8D native Profiles / Config / Logs implemented: shared atomic typed/
+raw editor, exact snapshot profile actions, process-local activation,
+coalesced read worker and bounded operational log with filters. Focused
+reducers/strict lint and actual settings PTY pass; cached release lifecycle/
+profile-switch and remaining release tests pass. Full isolated gate
+2,483/0/109, release PTY/installer/scripts pass. UX-8D accepted. Next UX-9A
+embedded SolidJS Web shell.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

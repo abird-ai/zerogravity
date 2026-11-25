@@ -1,5 +1,6 @@
 //! Presentation-only model/device rows and a single coalesced read worker.
 //! Selection is an exact observed identity, not a cache lease or admission.
+use super::settings::{self, Observed, Snapshot, Target};
 use std::thread::{self, JoinHandle};
 use zerogravity::{Error, Result, Runtime, control::ControlPlane};
 
@@ -13,6 +14,8 @@ pub(super) enum Key {
     )]
     Partial(String),
     Device(String),
+    Profile(String),
+    Setting(String),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -36,8 +39,11 @@ impl Shelf {
 pub(super) enum Kind {
     Models,
     Devices,
+    Profiles,
+    Config,
 }
 
+#[derive(Clone)]
 pub(super) struct Row {
     pub key: Key,
     pub title: String,
@@ -92,15 +98,19 @@ struct Models {
 enum Observation {
     Models(Models),
     Devices(Vec<Row>),
+    Profiles(Vec<Row>),
+    Config(Observed),
 }
 
 struct Reader {
     kind: Kind,
+    target: Target,
     thread: Option<JoinHandle<Result<Observation>>>,
 }
 impl Reader {
-    fn start(runtime: &Runtime, kind: Kind) -> Result<Self> {
+    fn start(runtime: &Runtime, kind: Kind, target: Target) -> Result<Self> {
         let runtime = runtime.clone();
+        let editor = target.clone();
         let worker = thread::Builder::new()
             .name("zg-control-observe".into())
             .spawn(move || {
@@ -108,10 +118,13 @@ impl Reader {
                 match kind {
                     Kind::Models => Ok(Observation::Models(models(control))),
                     Kind::Devices => devices(control).map(Observation::Devices),
+                    Kind::Profiles => settings::profiles().map(Observation::Profiles),
+                    Kind::Config => settings::observe(editor).map(Observation::Config),
                 }
             })?;
         Ok(Self {
             kind,
+            target,
             thread: Some(worker),
         })
     }
@@ -142,6 +155,14 @@ pub(super) struct Library {
     catalog: Rows,
     partial: Rows,
     devices: Rows,
+    profiles: Rows,
+    config: Rows,
+    pub editor: Target,
+    observed: Option<Observed>,
+    pub query: String,
+    pub raw: bool,
+    profile_notice: Option<String>,
+    config_notice: Option<String>,
     model_notice: Option<String>,
     device_notice: Option<String>,
     pub detail: Option<(Key, String)>,
@@ -149,8 +170,8 @@ pub(super) struct Library {
     pending: Option<Kind>,
 }
 
-impl Default for Library {
-    fn default() -> Self {
+impl Library {
+    pub fn new(editor: Target) -> Self {
         let mut catalog = Rows::default();
         catalog.replace(
             zerogravity::targets::MODEL_TARGETS
@@ -182,6 +203,14 @@ impl Default for Library {
             catalog,
             partial: Rows::default(),
             devices: Rows::default(),
+            profiles: Rows::default(),
+            config: Rows::default(),
+            editor,
+            observed: None,
+            query: String::new(),
+            raw: false,
+            profile_notice: None,
+            config_notice: None,
             model_notice: None,
             device_notice: None,
             detail: None,
@@ -191,12 +220,57 @@ impl Default for Library {
     }
 }
 impl Library {
+    pub fn set_editor(&mut self, target: Target) {
+        self.editor = target;
+        self.observed = None;
+        self.config.replace(Vec::new());
+        self.config_notice = None;
+        self.query.clear();
+        self.raw = false;
+    }
+    pub fn invalidate_config(&mut self) {
+        self.observed = None;
+        self.config.rows.clear();
+        self.config_notice = None;
+    }
+    pub fn snapshot(&self) -> Option<Snapshot> {
+        self.observed
+            .as_ref()
+            .map(|observed| observed.snapshot.clone())
+    }
+    pub fn observed(&self) -> Option<&Observed> {
+        self.observed.as_ref()
+    }
+    pub fn value(&self, key: &str) -> Option<&str> {
+        self.observed.as_ref()?.values.get(key).map(String::as_str)
+    }
+    pub fn filter_config(&mut self) {
+        let query = self.query.to_ascii_lowercase();
+        self.config
+            .replace(self.observed.as_ref().map_or_else(Vec::new, |observed| {
+                observed
+                    .rows
+                    .iter()
+                    .filter(|row| {
+                        query.is_empty()
+                            || row.title.to_ascii_lowercase().contains(&query)
+                            || row
+                                .details
+                                .iter()
+                                .any(|detail| detail.to_ascii_lowercase().contains(&query))
+                    })
+                    .cloned()
+                    .collect()
+            }));
+    }
     pub fn rows(&self, kind: Kind) -> &Rows {
         match (kind, self.shelf) {
             (Kind::Models, Shelf::Cached) => &self.cached,
             (Kind::Models, Shelf::Catalog) => &self.catalog,
             (Kind::Models, Shelf::Partial) => &self.partial,
             (Kind::Devices, _) => &self.devices,
+            (Kind::Profiles, _) => &self.profiles,
+            (Kind::Config, _) => &self.config,
         }
     }
     pub fn rows_mut(&mut self, kind: Kind) -> &mut Rows {
@@ -205,6 +279,8 @@ impl Library {
             (Kind::Models, Shelf::Catalog) => &mut self.catalog,
             (Kind::Models, Shelf::Partial) => &mut self.partial,
             (Kind::Devices, _) => &mut self.devices,
+            (Kind::Profiles, _) => &mut self.profiles,
+            (Kind::Config, _) => &mut self.config,
         }
     }
     pub fn notice(&self, kind: Kind) -> Option<&str> {
@@ -219,6 +295,8 @@ impl Library {
         match kind {
             Kind::Models => self.model_notice.as_deref(),
             Kind::Devices => self.device_notice.as_deref(),
+            Kind::Profiles => self.profile_notice.as_deref(),
+            Kind::Config => self.config_notice.as_deref(),
         }
     }
     /// Coalesce observation invalidation; never queue an effect or open a
@@ -227,7 +305,7 @@ impl Library {
         if self.reader.is_some() {
             self.pending = Some(kind);
         } else {
-            match Reader::start(runtime, kind) {
+            match Reader::start(runtime, kind, self.editor.clone()) {
                 Ok(reader) => self.reader = Some(reader),
                 Err(error) => self.error(kind, error),
             }
@@ -238,6 +316,12 @@ impl Library {
         match kind {
             Kind::Models => self.model_notice = notice,
             Kind::Devices => self.device_notice = notice,
+            Kind::Profiles => self.profile_notice = notice,
+            Kind::Config => {
+                self.config_notice = notice;
+                self.observed = None;
+                self.config.replace(Vec::new());
+            }
         }
     }
     pub fn poll(&mut self, runtime: &Runtime) -> bool {
@@ -255,7 +339,21 @@ impl Library {
                 self.devices.replace(rows);
                 self.device_notice = None;
             }
-            Err(error) => self.error(reader.kind, error),
+            Ok(Observation::Profiles(rows)) => {
+                self.profiles.replace(rows);
+                self.profile_notice = None;
+            }
+            Ok(Observation::Config(observed)) => {
+                if observed.snapshot.target == self.editor {
+                    self.config_notice = observed.warning.clone();
+                    self.observed = Some(observed);
+                    self.filter_config();
+                }
+            }
+            Err(error) if reader.kind != Kind::Config || reader.target == self.editor => {
+                self.error(reader.kind, error)
+            }
+            Err(_) => {}
         }
         if let Some(kind) = self.pending.take() {
             self.request(runtime, kind);

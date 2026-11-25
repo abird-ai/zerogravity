@@ -1,6 +1,8 @@
 //! Native client shell. Runtime lifetime belongs to the outer host; view
 //! selection owns no model, task, listener or download.
 mod library;
+mod logs;
+mod settings;
 mod terminal;
 mod view;
 mod work;
@@ -8,16 +10,15 @@ mod work;
 use crate::output;
 use crossterm::event::{self, Event, KeyEventKind};
 use library::{Key, Kind, Library};
-use std::{
-    collections::VecDeque,
-    path::PathBuf,
-    time::{Duration, Instant},
+use std::time::{Duration, Instant};
+use view::{
+    Action, DownloadAction, Form, FormKind, LibraryAction, LogAction, Navigation, RunTarget,
+    SettingsAction, View,
 };
-use view::{Action, DownloadAction, Form, FormKind, LibraryAction, Navigation, RunTarget, View};
-use work::{Document, Job, Owner, Prompt, Request, Response};
+use work::{Completed, Document, Job, Owner, Prompt, Request, Response};
 use zerogravity::{
     Result, Runtime,
-    control::{ControlEvent, ControlPlane, ControlPoll, ControlSnapshot, ServeSummary},
+    control::{ControlPlane, ControlPoll, ControlSnapshot, ServeSummary},
     diagnostics::RuntimePhase,
     models::ModelLifecycle,
 };
@@ -32,7 +33,6 @@ pub(super) fn launch(selection: Option<(&str, &str)>, offline: bool) -> Result<(
         output::usage();
         return Ok(());
     }
-    let config = crate::config_cli::selected_path(selection)?;
     let document = Document::new(selection, offline)?;
     // Per-load worker and queue bounds remain the admitted plan's bounds.
     // The host permits the entire existing finite worker range and original
@@ -48,7 +48,6 @@ pub(super) fn launch(selection: Option<(&str, &str)>, offline: bool) -> Result<(
     let result = session(
         &runtime,
         document,
-        config,
         output::reporter().color_enabled(),
         &stop,
     );
@@ -58,13 +57,9 @@ pub(super) fn launch(selection: Option<(&str, &str)>, offline: bool) -> Result<(
 #[cfg(all(test, feature = "acquisition", target_os = "linux"))]
 pub(crate) fn download_fixture_session(runtime: &Runtime, root: &std::path::Path) -> Result<()> {
     let stop = terminal::Stop::install()?;
-    session(
-        runtime,
-        Document::test_default(),
-        root.join("config.yaml"),
-        false,
-        &stop,
-    )
+    let mut document = Document::test_default();
+    document.target.path = root.join("config.yaml");
+    session(runtime, document, false, &stop)
 }
 
 /// Client-local session over the caller's runtime; effectful actions have
@@ -72,7 +67,6 @@ pub(crate) fn download_fixture_session(runtime: &Runtime, root: &std::path::Path
 fn session(
     runtime: &Runtime,
     document: Document,
-    config: PathBuf,
     color: bool,
     stop: &terminal::Stop,
 ) -> Result<()> {
@@ -82,24 +76,24 @@ fn session(
     let mut app = App {
         navigation: Navigation::default(),
         snapshot,
-        config,
-        cold: Vec::new(),
-        events: VecDeque::new(),
+        logs: logs::Logs::default(),
+        library: Library::new(document.target.clone()),
         notice: None,
         color,
         document,
         job: None,
         selected: None,
         response: None,
-        library: Library::default(),
     };
     app.reconcile_owner();
+    #[cfg(all(feature = "acquisition", target_os = "linux"))]
+    app.logs.observe_download(app.snapshot.download.as_ref());
     let mut terminal = terminal::Session::enter()?;
     let result = (|| {
         let mut dirty = true;
         let mut sampled = Instant::now();
         while !stop.requested() {
-            dirty |= app.poll_job(control);
+            dirty |= app.poll_job(runtime, control);
             dirty |= app.library.poll(runtime);
             let mut changed = false;
             let mut cache_changed = false;
@@ -111,9 +105,6 @@ fn session(
                 match events.poll(Duration::ZERO) {
                     ControlPoll::Pending => break,
                     ControlPoll::Event(event) => {
-                        if app.events.len() == 64 {
-                            app.events.pop_front();
-                        }
                         use zerogravity::control::ControlEventKind;
                         cache_changed |= matches!(
                             event.kind,
@@ -125,11 +116,11 @@ fn session(
                             download_changed |=
                                 matches!(event.kind, ControlEventKind::DownloadChanged { .. });
                         }
-                        app.events.push_back(event);
+                        app.logs.event(event);
                         changed = true;
                     }
                     ControlPoll::Resync { missed } => {
-                        app.events.clear();
+                        app.logs.gap(missed);
                         app.notice =
                             Some(format!("Missed {missed} events; reloaded owner snapshot"));
                         changed = true;
@@ -228,9 +219,7 @@ fn session(
 struct App {
     navigation: Navigation,
     snapshot: ControlSnapshot,
-    config: PathBuf,
-    cold: Vec<String>,
-    events: VecDeque<ControlEvent>,
+    logs: logs::Logs,
     notice: Option<String>,
     color: bool,
     document: Document,
@@ -285,6 +274,9 @@ impl App {
 
     fn cancel(&mut self) {
         if let Some(job) = &self.job {
+            if !job.requested() {
+                self.logs.cancel(job.log_id);
+            }
             job.cancel();
             self.notice = Some("Cancellation requested; waiting for the action owner".into());
         }
@@ -297,7 +289,9 @@ impl App {
             return;
         }
         let generates = request.generates();
-        match Job::start(runtime, &self.document, request) {
+        let title = request.title();
+        let log_id = self.logs.start(title, request.correlation());
+        match Job::start(runtime, &self.document, request, log_id) {
             Ok(job) => {
                 if generates {
                     self.response = Some(Response::default());
@@ -305,11 +299,14 @@ impl App {
                 self.notice = None;
                 self.job = Some(job);
             }
-            Err(error) => self.notice = Some(error.to_string()),
+            Err(error) => {
+                self.logs.finish(log_id, title, false);
+                self.notice = Some(error.to_string());
+            }
         }
     }
 
-    fn poll_job(&mut self, control: ControlPlane<'_>) -> bool {
+    fn poll_job(&mut self, runtime: &Runtime, control: ControlPlane<'_>) -> bool {
         let Some(job) = &self.job else {
             return false;
         };
@@ -337,9 +334,45 @@ impl App {
         if let Some(response) = job.sample(revision) {
             self.response = Some(response);
         }
+        self.logs.finish(job.log_id, job.title(), result.is_ok());
         let message = match result {
-            Ok(message) => message,
-            Err(error) => format!("{} failed: {error}", job.title()),
+            Ok(Completed::Message(message)) => message,
+            Ok(Completed::Settings(outcome)) => {
+                if let Some((target, doc)) = outcome.active {
+                    self.document = Document::from_config(target, doc, self.document.offline);
+                    self.color = output::document_color(self.document.ui);
+                }
+                if let Some(editor) = outcome.editor {
+                    self.library.set_editor(editor);
+                    if matches!(self.navigation.view(), View::Config | View::Profiles) {
+                        self.navigation.open(View::Config);
+                    }
+                } else {
+                    self.library.invalidate_config();
+                }
+                self.refresh_cold(runtime, control);
+                outcome.message
+            }
+            Err(error) => {
+                if let Some(retry) = job.retry.take()
+                    && self.navigation.view() == View::Config
+                    && self.navigation.idle()
+                {
+                    match retry {
+                        settings::Action::Set { file, key, value }
+                            if file.target == self.library.editor =>
+                        {
+                            self.navigation
+                                .form_value(FormKind::ConfigValue { file, key }, value)
+                        }
+                        settings::Action::Replace { file, yaml } => {
+                            self.navigation.form_value(FormKind::RawYaml { file }, yaml)
+                        }
+                        _ => {}
+                    }
+                }
+                format!("{} failed: {error}", job.title())
+            }
         };
         self.notice = Some(message.lines().next().unwrap_or("").to_owned());
         if let Some(key) = job.detail_key.take() {
@@ -363,6 +396,20 @@ impl App {
             }
             Action::Library(action) => self.library_action(runtime, control, action),
             Action::Download(action) => self.download_action(control, action),
+            Action::Settings(action) => self.settings_action(runtime, action),
+            Action::Logs(action) => self.log_action(action),
+            Action::Submit(Form { kind: FormKind::Search { view }, value }) => {
+                match view {
+                    View::Config => {
+                        self.library.query = value;
+                        self.library.raw = false;
+                        self.library.filter_config();
+                    }
+                    View::Logs => self.logs.query = value,
+                    _ => {}
+                }
+                self.navigation.reveal_library(0);
+            }
             Action::Redraw => {},
             Action::Cancel => self.cancel(),
             Action::MoveOwner(delta) => self.move_owner(delta),
@@ -434,6 +481,12 @@ impl App {
                     self.start(runtime, request);
                 }
                 FormKind::Listen => self.start(runtime, Request::Start(value)),
+                FormKind::ProfileCreate => self.start(runtime, Request::Settings(settings::Action::Create(value))),
+                FormKind::ProfileCopy { source } => self.start(runtime, Request::Settings(settings::Action::Copy { source, name: value })),
+                FormKind::ConfigValue { file, key } => self.start(runtime, Request::Settings(settings::Action::Set { file, key, value })),
+                FormKind::RawYaml { file } => self.start(runtime, Request::Settings(settings::Action::Replace { file, yaml: value })),
+                FormKind::Search { .. } => unreachable!("search handled before effect guard"),
+
                 FormKind::PullSource => self.pull_source(value),
                 FormKind::PullSelection { source } => self.confirm_pull(&source, &value),
                 FormKind::Alias { digest } => self.start(runtime, Request::Alias { digest, name: value }),
@@ -668,63 +721,156 @@ impl App {
         match control.snapshot() {
             Ok(snapshot) => {
                 self.snapshot = snapshot;
+                #[cfg(all(feature = "acquisition", target_os = "linux"))]
+                self.logs.observe_download(self.snapshot.download.as_ref());
                 self.reconcile_owner();
             }
             Err(error) => self.notice = Some(format!("Observation failed: {error}")),
         }
     }
 
-    fn refresh_cold(&mut self, runtime: &Runtime, control: ControlPlane<'_>) {
-        match self.navigation.view() {
-            View::Models => {
-                self.library.request(runtime, Kind::Models);
-                return;
-            }
-            View::Devices => {
-                self.library.request(runtime, Kind::Devices);
-                return;
-            }
-            _ => {}
-        }
-        self.cold = match self.cold_rows(control) {
-            Ok(rows) => rows,
-            Err(error) => vec![format!("Observation unavailable: {error}")],
+    fn refresh_cold(&mut self, runtime: &Runtime, _control: ControlPlane<'_>) {
+        let kind = match self.navigation.view() {
+            View::Models => Kind::Models,
+            View::Devices => Kind::Devices,
+            View::Profiles => Kind::Profiles,
+            View::Config => Kind::Config,
+            _ => return,
         };
+        self.library.request(runtime, kind);
     }
 
-    fn cold_rows(&self, _control: ControlPlane<'_>) -> Result<Vec<String>> {
-        let mut rows = Vec::new();
-        match self.navigation.view() {
-            View::Profiles => {
-                let default = crate::config_cli::selected_path(None)?;
-                if let Some(root) = default.parent() {
-                    for name in zerogravity::configuration::profiles(root)? {
-                        rows.push(name);
+    fn settings_action(&mut self, runtime: &Runtime, action: SettingsAction) {
+        let kind = if self.navigation.view() == View::Profiles {
+            Kind::Profiles
+        } else {
+            Kind::Config
+        };
+        match action {
+            SettingsAction::Move(delta) => {
+                let index = self.library.rows_mut(kind).move_selection(delta);
+                self.navigation.reveal_library(index);
+                return;
+            }
+            SettingsAction::Search => {
+                self.navigation.form_value(
+                    FormKind::Search { view: View::Config },
+                    self.library.query.clone(),
+                );
+                return;
+            }
+            SettingsAction::RawView => {
+                self.library.raw = !self.library.raw;
+                self.navigation.reveal_library(0);
+                return;
+            }
+            SettingsAction::Open if kind == Kind::Profiles => {
+                if let Some(Key::Profile(name)) = self.library.rows(kind).selected.as_ref() {
+                    match settings::Target::profile(name) {
+                        Ok(target) => {
+                            self.library.set_editor(target);
+                            self.navigation.open(View::Config);
+                            self.library.request(runtime, Kind::Config);
+                        }
+                        Err(error) => self.notice = Some(error.to_string()),
                     }
                 }
+                return;
             }
-            View::Config => {
-                let file = zerogravity::configuration::ConfigFile::open(self.config.clone())?;
-                rows.push(if file.exists() {
-                    self.config.display().to_string()
-                } else {
-                    "Built-in defaults (no document created)".into()
-                });
-                for (key, setting) in
-                    zerogravity::configuration::explain(file.path(), file.bytes())?
+            _ => {}
+        }
+        if self.job.is_some() {
+            self.notice =
+                Some("An action is already in progress; wait or request cancellation".into());
+            return;
+        }
+        if action == SettingsAction::Create {
+            self.navigation.form(FormKind::ProfileCreate);
+            return;
+        }
+        let Some(file) = self.library.snapshot() else {
+            self.notice = Some("Open a configuration document and wait for its observation".into());
+            return;
+        };
+        match action {
+            SettingsAction::Open => {
+                if let Some(Key::Setting(key)) = self.library.rows(kind).selected.as_ref() {
+                    let value = self.library.value(key).unwrap_or("").to_owned();
+                    self.navigation.form_value(
+                        FormKind::ConfigValue {
+                            file,
+                            key: key.clone(),
+                        },
+                        value,
+                    );
+                }
+            }
+            SettingsAction::RawEdit => match file.raw() {
+                Ok(yaml) => self
+                    .navigation
+                    .form_value(FormKind::RawYaml { file: file.clone() }, yaml.to_owned()),
+                Err(error) => self.notice = Some(error.to_string()),
+            },
+            SettingsAction::Activate => {
+                self.start(runtime, Request::Settings(settings::Action::Activate(file)))
+            }
+            SettingsAction::Validate => {
+                self.start(runtime, Request::Settings(settings::Action::Validate(file)))
+            }
+            SettingsAction::Copy => self.navigation.form(FormKind::ProfileCopy { source: file }),
+            SettingsAction::Remove => {
+                if file
+                    .target
+                    .profile
+                    .as_deref()
+                    .is_none_or(|name| name == "default")
+                    || file.target.path == self.document.target.path
                 {
-                    if matches!(key.as_str(), "model" | "pipeline" | "route") {
-                        continue;
+                    self.notice = Some("Activate another profile first; default and portable files cannot be removed here".into());
+                } else {
+                    self.navigation.confirm(
+                        format!(
+                            "Remove profile {} at {}? Existing runtime owners remain unchanged.",
+                            file.target.label(),
+                            file.target.path.display()
+                        ),
+                        view::Confirmation::Request(Request::Settings(settings::Action::Remove(
+                            file,
+                        ))),
+                    );
+                }
+            }
+            SettingsAction::Unset => {
+                if let Some(Key::Setting(key)) = self.library.rows(kind).selected.as_ref() {
+                    if self.library.value(key).is_some() {
+                        self.navigation.confirm(
+                            format!("Unset {key}? Future actions inherit the configured default."),
+                            view::Confirmation::Request(Request::Settings(
+                                settings::Action::Unset {
+                                    file,
+                                    key: key.clone(),
+                                },
+                            )),
+                        );
+                    } else {
+                        self.notice = Some("Setting is already inherited or unset".into());
                     }
-                    rows.push(format!(
-                        "{key}  ·  {}",
-                        serde_json::to_string(&setting.value)
-                            .unwrap_or_else(|_| "unavailable".into())
-                    ));
                 }
             }
             _ => {}
         }
-        Ok(rows)
+    }
+
+    fn log_action(&mut self, action: LogAction) {
+        match action {
+            LogAction::Follow => self.logs.toggle_follow(),
+            LogAction::Level => self.logs.cycle_level(),
+            LogAction::Component => self.logs.cycle_component(),
+            LogAction::Search => self.navigation.form_value(
+                FormKind::Search { view: View::Logs },
+                self.logs.query.clone(),
+            ),
+        }
+        self.navigation.reveal_library(0);
     }
 }
