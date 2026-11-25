@@ -71,7 +71,8 @@ pub(super) fn devices(args: &[String]) -> Result<()> {
     {
         return Err(Error::Malformed("devices list [--json]".into()));
     }
-    let inventory = devices::discover()?;
+    let runtime = zerogravity::Runtime::builder().build()?;
+    let inventory = runtime.control().devices()?;
     if args.iter().any(|s| s == "--json") {
         println!(
             "{}",
@@ -86,15 +87,15 @@ pub(super) fn devices(args: &[String]) -> Result<()> {
     Ok(())
 }
 pub(super) fn device_inspect(selector: &str, format: crate::args::Format) -> Result<()> {
-    let inventory = devices::discover()?;
     let selector = DeviceRef::parse(selector)?;
-    let device = zerogravity::devices::observe_selected(&inventory, &selector)?;
+    let runtime = zerogravity::Runtime::builder().build()?;
+    let device = runtime.control().inspect_device(&selector)?;
     if format == crate::args::Format::Json {
-        crate::output::json(device)
+        crate::output::json(&device)
     } else {
         println!(
             "Observed hardware only; no model admission.\n{}\nObservation: {}",
-            devices::display(device),
+            devices::display(&device),
             device.provenance
         );
         Ok(())

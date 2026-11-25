@@ -149,84 +149,69 @@ pub(super) fn read(operation: ModelRead, args: &[String], format: Format, yes: b
 
 #[cfg(all(feature = "cache", target_os = "linux"))]
 fn cached(operation: ModelRead, query: Query, format: Format) -> Result<()> {
-    use zerogravity::cache::{CacheMetadata, CacheOptions, CacheStore, ReclaimMode};
+    use std::sync::atomic::AtomicBool;
+    use zerogravity::{Runtime, cache::ReclaimMode};
     let root = zerogravity::cache::paths::resolve_root(
         query.cache.as_deref(),
         std::env::var_os("XDG_CACHE_HOME").as_deref(),
         std::env::var_os("HOME").as_deref(),
     )?;
-    let metadata = match CacheMetadata::open(&root) {
-        Ok(metadata) => metadata,
-        Err(Error::Io(error))
-            if error.kind() == std::io::ErrorKind::NotFound && operation == ModelRead::List =>
-        {
-            if format == Format::Json {
-                println!("[]");
-            } else {
-                println!("No acquired snapshots.");
-            }
-            return Ok(());
-        }
-        Err(error) => return Err(error),
-    };
+    let runtime = Runtime::builder().build()?;
+    let control = runtime.control();
     if operation == ModelRead::List {
-        let snapshots = metadata.snapshots()?;
+        let snapshots = control.cached_models(&root)?;
         if format == Format::Json {
-            let summaries = snapshots
-                .iter()
-                .map(|s| {
-                    serde_json::json!({
-                        "snapshot": s.digest,
-                        "provider": s.manifest.source().provider(),
-                        "repository": s.manifest.source().repository(),
-                        "revision": s.manifest.source().revision(),
-                        "bytes": s.manifest.total_bytes(),
-                        "files": s.manifest.entries().len(),
-                        "payload_verified": false,
-                    })
-                })
-                .collect::<Vec<_>>();
-            return crate::output::json(&summaries);
+            return crate::output::json(&snapshots);
+        }
+        if snapshots.is_empty() {
+            println!("No acquired snapshots.");
+            return Ok(());
         }
         println!("Cached snapshot metadata (payloads and execution not verified):");
         for snapshot in snapshots {
-            let source = snapshot.manifest.source();
             println!(
                 "{}  {}:{}@{}  {} bytes",
-                snapshot.digest,
-                source.provider(),
-                source.repository(),
-                source.revision(),
-                snapshot.manifest.total_bytes()
+                snapshot.snapshot,
+                snapshot.provider,
+                snapshot.repository,
+                snapshot.revision,
+                snapshot.bytes,
             );
         }
         return Ok(());
     }
-    let selected = metadata.select(
-        query.selector.as_ref().expect("validated selector"),
-        query.snapshot.as_deref(),
-    )?;
-    let digest = selected.digest;
-    if operation == ModelRead::Inspect {
-        return describe(&digest, &selected.manifest, false, format);
-    }
-    let store =
-        CacheStore::open_existing(CacheOptions::new(Some(root), metadata.disk_limit_bytes()?))?;
+    let selector = query.selector.as_ref().expect("validated selector");
+    let pin = query.snapshot.as_deref();
+    let cancel = AtomicBool::new(false);
     match operation {
-        ModelRead::Verify => {
-            let lease = store.open_snapshot(&digest)?;
-            describe(&digest, lease.manifest(), true, format)
-        }
-        ModelRead::Remove => crate::cache_manage::reclaim(
-            &store,
-            &digest,
-            if query.dry_run {
-                ReclaimMode::DryRun
+        ModelRead::Inspect | ModelRead::Verify => {
+            let detail = if operation == ModelRead::Inspect {
+                control.inspect_cached(&root, selector, pin)?
             } else {
-                ReclaimMode::Apply
-            },
-        ),
-        _ => unreachable!(),
+                control.verify_cached(&root, selector, pin, &cancel)?
+            };
+            describe(
+                &detail.snapshot,
+                &detail.manifest,
+                detail.payload_verified,
+                format,
+            )
+        }
+        ModelRead::Remove => {
+            let selected = control.inspect_cached(&root, selector, pin)?;
+            let outcome = control.reclaim_cached(
+                &root,
+                &selected.snapshot,
+                if query.dry_run {
+                    ReclaimMode::DryRun
+                } else {
+                    ReclaimMode::Apply
+                },
+                &cancel,
+            )?;
+            crate::cache_manage::describe_reclaim(outcome)
+        }
+        ModelRead::List => unreachable!(),
     }
 }
 

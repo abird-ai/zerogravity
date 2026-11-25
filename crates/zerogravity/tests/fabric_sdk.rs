@@ -1521,3 +1521,318 @@ fn declared_cpu_pipeline_loads_exact_sources_and_retries_after_refusal() {
     drop((owner, plan));
     runtime.shutdown().unwrap();
 }
+
+#[test]
+fn control_clients_share_cold_observations_and_original_refusals() {
+    use std::time::Duration;
+    use zerogravity::{
+        control::{ControlAction, ControlError, ControlEventKind, ControlPoll, ServeSummary},
+        models::ModelLoadRequest,
+        runtime::TextConfig,
+    };
+    let runtime = Runtime::builder().build().unwrap();
+    let peer = runtime.clone();
+    let first = runtime.control();
+    let second = peer.control();
+    let mut a = first.subscribe();
+    let mut b = second.subscribe();
+    let snapshot = first.snapshot().unwrap();
+    assert_eq!(snapshot.runtime.status, runtime.status());
+    assert!(snapshot.runtime.catalog.is_empty());
+    #[cfg(feature = "serve")]
+    assert_eq!(snapshot.serving, ServeSummary::Idle);
+    #[cfg(not(feature = "serve"))]
+    assert_eq!(snapshot.serving, ServeSummary::Unavailable);
+    assert_eq!(a.poll(Duration::ZERO), ControlPoll::Pending);
+
+    let refused = second.dispatch(ControlAction::Load(ModelLoadRequest::CpuText {
+        declared: vec![("never-opened".into(), "/fabric-source-not-opened".into())],
+        config: TextConfig {
+            active_per_worker: 2,
+            ..Default::default()
+        },
+    }));
+    assert!(matches!(refused, Err(ControlError::Service(error)) if error.code == "invalid_config"));
+    let event = a.poll(Duration::ZERO);
+    assert!(
+        matches!(event, ControlPoll::Event(event) if event.kind == ControlEventKind::ModelLoadFinished { success: false })
+    );
+    assert_eq!(event, b.poll(Duration::ZERO));
+    assert_eq!(
+        second.snapshot().unwrap().runtime.status.execution_adapters,
+        0
+    );
+    // Independent snapshots do not create or close owners.
+    runtime.shutdown().unwrap();
+    assert!(first.snapshot().unwrap().runtime.status.closed);
+    assert!(matches!(
+        second.dispatch(ControlAction::Devices),
+        Err(ControlError::Core(Error::State(_)))
+    ));
+}
+
+#[cfg(all(feature = "cpu", feature = "text", feature = "cache"))]
+#[test]
+#[ignore = "existing approved local Qwen 0.8B GGUF; no download"]
+fn control_clients_share_exact_model_and_listener_lifecycle() {
+    use std::{
+        path::Path,
+        time::{Duration, Instant},
+    };
+    use zerogravity::{
+        control::{
+            ControlAction, ControlError, ControlEventKind, ControlPoll, ControlReply,
+            RegisteredModel,
+        },
+        models::ModelLoadRequest,
+        run::{OutputPoll, ResponseEvent, TaskTarget, TextControls, TextTask},
+        runtime::TextConfig,
+    };
+    let source = Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../target/models/qwen35-0.8b/model.gguf"
+    ));
+    let runtime = Runtime::builder().build().unwrap();
+    let peer = runtime.clone();
+    let first = runtime.control();
+    let second = peer.control();
+    let mut observer = first.subscribe();
+    let mut other_observer = second.subscribe();
+    let load = || ModelLoadRequest::CpuText {
+        declared: vec![
+            ("primary".into(), source.into()),
+            ("alias".into(), source.into()),
+        ],
+        config: TextConfig {
+            max_context: 64,
+            max_output: 3,
+            host_mib: 8192,
+            ..Default::default()
+        },
+    };
+    let expect_event = |a: &mut zerogravity::control::ControlEvents<'_>,
+                        b: &mut zerogravity::control::ControlEvents<'_>,
+                        kind| {
+        let event = a.poll(Duration::ZERO);
+        assert!(
+            matches!(event, ControlPoll::Event(e) if e.kind == kind),
+            "{event:?}"
+        );
+        assert_eq!(b.poll(Duration::ZERO), event);
+    };
+    assert!(matches!(
+        first.dispatch(ControlAction::Load(load())).unwrap(),
+        ControlReply::Done
+    ));
+    expect_event(
+        &mut observer,
+        &mut other_observer,
+        ControlEventKind::ModelLoadFinished { success: true },
+    );
+    let snapshot = second.snapshot().unwrap();
+    assert_eq!(snapshot.runtime.status.loaded_models, 2);
+    assert_eq!(snapshot.runtime.status.loaded_owners, 1);
+    assert_eq!(snapshot.runtime.catalog.len(), 1);
+    let registration_id = snapshot.runtime.catalog[0].registration_id;
+    let selected = RegisteredModel {
+        alias: "alias",
+        registration_id,
+    };
+    let controls = TextControls {
+        stream: false,
+        ..TextControls::new(2.try_into().unwrap())
+    };
+    let input = "Continue: 1, 2, 3,";
+    let task = TextTask {
+        target: TaskTarget::Model("alias"),
+        input,
+        controls,
+    };
+    let drain = |mut stream: Box<dyn zerogravity::run::OutputStream>| {
+        let deadline = Instant::now() + Duration::from_secs(90);
+        loop {
+            assert!(Instant::now() < deadline, "task deadline");
+            match stream.poll_next(Duration::from_millis(100)).unwrap() {
+                OutputPoll::Pending => (),
+                OutputPoll::Event(ResponseEvent::Done {
+                    output,
+                    prompt_tokens,
+                    completion_tokens,
+                    ..
+                }) => {
+                    assert!(prompt_tokens > 0 && completion_tokens <= 2);
+                    assert!(matches!(
+                        stream.poll_next(Duration::ZERO).unwrap(),
+                        OutputPoll::Finished
+                    ));
+                    break (output, prompt_tokens, completion_tokens);
+                }
+                OutputPoll::Event(ResponseEvent::Error(error)) => panic!("{error}"),
+                _ => panic!("unexpected non-streaming output"),
+            }
+        }
+    };
+    let direct = drain(runtime.submit_task(task).unwrap());
+    let ControlReply::Output(output) = second
+        .dispatch(ControlAction::Invoke {
+            model: selected,
+            input,
+            controls,
+        })
+        .unwrap()
+    else {
+        panic!("original output stream")
+    };
+    expect_event(
+        &mut observer,
+        &mut other_observer,
+        ControlEventKind::RequestAccepted { registration_id },
+    );
+    assert_eq!(drain(output), direct);
+
+    #[cfg(feature = "serve")]
+    {
+        use std::{
+            io::{Read, Write},
+            net::TcpStream,
+        };
+        use zerogravity::control::{ServeOptions, ServeSummary};
+        let options = || ServeOptions {
+            address: "127.0.0.1:0".parse().unwrap(),
+            limits: Default::default(),
+            api_key: None,
+            enable_per_request_metrics: false,
+            prefix_sharing_scope: None,
+        };
+        let ControlReply::Serving(binding) = first
+            .dispatch(ControlAction::StartServing(options()))
+            .unwrap()
+        else {
+            panic!("server binding")
+        };
+        expect_event(
+            &mut observer,
+            &mut other_observer,
+            ControlEventKind::ServeStartFinished { success: true },
+        );
+        assert!(
+            matches!(second.snapshot().unwrap().serving, ServeSummary::Listening { binding: observed, .. } if observed == binding)
+        );
+        assert!(second.start_serving(options()).is_err());
+        expect_event(
+            &mut observer,
+            &mut other_observer,
+            ControlEventKind::ServeStartFinished { success: false },
+        );
+        let mut connection = TcpStream::connect(binding.address).unwrap();
+        connection
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        connection
+            .write_all(b"GET /v1/models HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .unwrap();
+        let mut response = String::new();
+        connection.read_to_string(&mut response).unwrap();
+        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+        assert!(
+            response.contains("\"primary\"") && response.contains("\"alias\""),
+            "{response}"
+        );
+        drop(connection);
+        second
+            .dispatch(ControlAction::StopServing {
+                generation: binding.generation,
+            })
+            .unwrap();
+        expect_event(
+            &mut observer,
+            &mut other_observer,
+            ControlEventKind::ServeStopFinished {
+                generation: binding.generation,
+                success: true,
+            },
+        );
+        assert_eq!(first.snapshot().unwrap().serving, ServeSummary::Idle);
+        let next = second.start_serving(options()).unwrap();
+        assert_ne!(next.generation, binding.generation);
+        expect_event(
+            &mut observer,
+            &mut other_observer,
+            ControlEventKind::ServeStartFinished { success: true },
+        );
+        assert!(first.stop_serving(binding.generation).is_err());
+        expect_event(
+            &mut observer,
+            &mut other_observer,
+            ControlEventKind::ServeStopFinished {
+                generation: binding.generation,
+                success: false,
+            },
+        );
+        assert!(
+            matches!(first.snapshot().unwrap().serving, ServeSummary::Listening { binding, .. } if binding == next)
+        );
+        first.stop_serving(next.generation).unwrap();
+        expect_event(
+            &mut observer,
+            &mut other_observer,
+            ControlEventKind::ServeStopFinished {
+                generation: next.generation,
+                success: true,
+            },
+        );
+        // Stopping HTTP did not unload or close the existing scheduler.
+        assert_eq!(runtime.status().loaded_owners, 1);
+    }
+
+    second.dispatch(ControlAction::Unload(selected)).unwrap();
+    expect_event(
+        &mut observer,
+        &mut other_observer,
+        ControlEventKind::ModelUnloadFinished {
+            registration_id,
+            success: true,
+        },
+    );
+    assert!(first.snapshot().unwrap().runtime.catalog.is_empty());
+    assert!(!runtime.status().closed);
+    first.load(load()).unwrap();
+    expect_event(
+        &mut observer,
+        &mut other_observer,
+        ControlEventKind::ModelLoadFinished { success: true },
+    );
+    let replacement = second.snapshot().unwrap().runtime.catalog[0].registration_id;
+    assert_ne!(replacement, registration_id);
+    assert!(
+        matches!(second.dispatch(ControlAction::Invoke { model: selected, input, controls }), Err(ControlError::Service(error)) if error.code == "stale_registration" && error.status == 409)
+    );
+    assert_eq!(observer.poll(Duration::ZERO), ControlPoll::Pending);
+    assert!(second.unload(selected).is_err());
+    expect_event(
+        &mut observer,
+        &mut other_observer,
+        ControlEventKind::ModelUnloadFinished {
+            registration_id,
+            success: false,
+        },
+    );
+    assert_eq!(runtime.status().loaded_owners, 1);
+    assert_eq!(drain(runtime.submit_task(task).unwrap()), direct);
+    first
+        .unload(RegisteredModel {
+            alias: "primary",
+            registration_id: replacement,
+        })
+        .unwrap();
+    expect_event(
+        &mut observer,
+        &mut other_observer,
+        ControlEventKind::ModelUnloadFinished {
+            registration_id: replacement,
+            success: true,
+        },
+    );
+    runtime.shutdown().unwrap();
+    assert!(second.snapshot().unwrap().runtime.status.closed);
+}

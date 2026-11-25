@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — shared native ControlPlane (UX-3)
+
+Shared runtime-clone control state, original owner observations/actions,
+bounded transient invalidation cursors with resync, exact model registration
+and serving generation guards, original cancellable task streams and
+cache lease/reclamation outcomes. Canonical model/device CLI routes use
+the shared methods. Actual approved Qwen 0.8B GGUF release integration
+passes (8.80s; direct/control output equality, shared aliases, loopback
+listener restart and stale-action refusal). Full isolated workspace gate
+2457 pass/0 fail/108 explicit skips; 2458 pass with separate integration.
+No new source, numerical, physical GPU or throughput qualification. Previous measurements unchanged.
+
 ## 25 Nov — typed command tree and cold model/config selection (UX-2)
 
 Canonical command/global/help/completion grammar with original compatibility

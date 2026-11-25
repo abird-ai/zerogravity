@@ -542,7 +542,14 @@ demand. Preserve the existing detailed
   Full isolated gate 2451 pass/0 fail/106 skips; synthetic CPU equivalence
   and release completion/JSON smoke pass. No new runtime, acquisition,
   physical or numerical qualification.
-  **Next: UX-3 shared ControlPlane snapshot/action/event model (§46A.28).**
+- [x] UX-3 shared native ControlPlane: one facade control state, original
+  runtime/cache/device/config/serving observations and typed actions,
+  bounded transient event cursors with resync, exact registration/generation
+  guards and original task output/cancellation. Canonical model/device CLI
+  consumer; real approved Qwen 0.8B GGUF two-client lifecycle and loopback
+  integration pass. Full gate 2457 pass/0 fail/108 skips (+1 focused
+  model integration); no duplicate execution or transport owner.
+  **Next: UX-4 model lifecycle + downloads (§46A.28).**
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,

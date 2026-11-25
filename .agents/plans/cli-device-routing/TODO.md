@@ -107,7 +107,7 @@ build or general model/backend grant. Historical failures keep their source scop
   106 explicit skips; architecture/feature/Clippy/release/installer/scripts
   pass. No execution/physical/performance scope change.
 
-### Phase 2.1 UX-2 — typed command tree and shared resolution (this checkpoint, 25 Nov)
+### Phase 2.1 UX-2 — typed command tree and shared resolution (25 Nov; bcdb46a8)
 
 - [x] Typed canonical hierarchy, global grammar, concise help/command help,
   compatibility routes, generated static Bash/Zsh/Fish/PowerShell completion.
@@ -131,15 +131,39 @@ build or general model/backend grant. Historical failures keep their source scop
   refusal tests pass. Actual release Bash/Fish completion and cold JSON
   smoke pass; Zsh/PowerShell generation only. No new physical/numerical claim.
 
+### Phase 2.1 UX-3 — shared ControlPlane (this checkpoint, 25 Nov)
+
+- [x] Shared public SDK control state per Runtime clone family. Original
+  RuntimeSnapshot, cold device/cache/config views, native typed actions
+  and original core/service errors; no new owner or runtime.
+- [x] Model load/load-declared, exact-registration invoke/unload under
+  original lifecycle lock, task inspection and original cancellable output.
+  Bounded 64-entry transient event ring, independent subscriber cursors
+  and explicit resync. Notifications invalidate observations, not authoritative
+  history; no prompt/output/credential retention.
+- [x] One optional control-owned ServerHandle slot with original observed
+  bind/metrics and exact-generation stop/restart; independent SDK serving
+  remains independent. Canonical model/cache and device CLI operations
+  use shared methods; retain JSON and original verified/reclaim contracts.
+- [x] Actual approved local Qwen 0.8B GGUF release integration (8.80s):
+  two control views, one alias-shared owner, equal direct/control output,
+  loopback /v1/models, duplicate start/stale stop refusal, stop preserves
+  loaded model, unload/reload and stale registration refusal. Cold SDK
+  refusal and subscriber overflow/resync tests pass. Full isolated gate
+  2457 pass/0 fail/108 explicit skips (+1 focused model integration);
+  architecture/feature/strict lint/release/installer/scripts pass.
+  No new dependency, physical GPU qualification or numerical/performance claim.
+
 ## Uncommitted
 
-- [ ] UX-3 next: shared ControlPlane snapshot/action/event model over original
-  runtime/catalog/acquisition/cache/serving/config/device authorities (§46A.28).
-  General JSONL events and interactive transfer control (UX-4), one-line run
-  and serve (UX-5/6), ConfigDocument/profile management (UX-7), dynamic
-  completions, unified serving selection and later TUI/Web remain open.
+- [ ] UX-4 next: shared download lifecycle and progress, cooperative
+  pause/resume/cancel, retained-partial reporting, quiet/plain/JSONL and
+  interactive control over original hardened acquisition/cache transactions.
+  One-line run and serve (UX-5/6), ConfigDocument/profile management (UX-7),
+  dynamic completions, unified serving selection and later TUI/Web remain open.
   Explicit by-name: lookup only; bare references stay canonical. Preserve
-  explicit acquisition and unsupported-backend refusal.
+  explicit acquisition and unsupported-backend refusal. Direct SDK/external
+  changes need fresh snapshots; general control-wire validation/auth is later.
 
 ### Reviewed source checkpoint — 24 Oct
 

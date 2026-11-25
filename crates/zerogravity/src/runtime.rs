@@ -11,6 +11,7 @@ use crate::{
 #[derive(Clone)]
 pub struct Runtime {
     pub(crate) engine: zerogravity_engine::Runtime,
+    control: std::sync::Arc<std::sync::OnceLock<crate::control::ControlState>>,
 }
 #[derive(Default)]
 pub struct RuntimeBuilder {
@@ -24,10 +25,16 @@ impl RuntimeBuilder {
     pub fn build(self) -> Result<Runtime> {
         Ok(Runtime {
             engine: self.engine.build()?,
+            control: Default::default(),
         })
     }
 }
 impl Runtime {
+    /// Every facade clone observes the same control state. Initialization is
+    /// cold: no listener, worker, source, cache or device is opened.
+    pub fn control(&self) -> crate::control::ControlPlane<'_> {
+        crate::control::ControlPlane::new(self, self.control.get_or_init(Default::default))
+    }
     pub fn builder() -> RuntimeBuilder {
         RuntimeBuilder::default()
     }

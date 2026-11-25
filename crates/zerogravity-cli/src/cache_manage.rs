@@ -313,7 +313,11 @@ pub(super) fn run(args: &[String]) -> Result<()> {
 pub(super) fn reclaim(store: &CacheStore, digest: &str, mode: ReclaimMode) -> Result<()> {
     // Local maintenance has no credential/client/provider or online signal setup,
     // even in a binary that also has acquisition enabled.
-    match store.reclaim_snapshot(digest, mode, &AtomicBool::new(false))? {
+    describe_reclaim(store.reclaim_snapshot(digest, mode, &AtomicBool::new(false))?)
+}
+
+pub(super) fn describe_reclaim(outcome: ReclaimOutcome) -> Result<()> {
+    match outcome {
         ReclaimOutcome::DryRun(report) => {
             describe(&report);
             println!("DRY RUN: observation only; apply revalidates. No target entries removed.");

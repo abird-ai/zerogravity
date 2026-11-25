@@ -82,6 +82,14 @@ impl TextControl {
     }
 }
 
+enum UnloadTarget<'a> {
+    Handle(&'a ModelInstance),
+    Registration {
+        alias: &'a str,
+        registration_id: u64,
+    },
+}
+
 /// A load/retirement owns the busy phase, not the mutex. On unwind its local
 /// router retires first; then this guard releases waiters with a sticky failure.
 struct LifecycleOperation<'a> {
@@ -414,9 +422,46 @@ impl Runtime {
         &self,
         task: TextTask<'_>,
     ) -> std::result::Result<Box<dyn OutputStream>, ServiceError> {
+        self.submit_task_checked(task, None)
+    }
+
+    /// Submit against the exact registration selected by a control client.
+    /// Alias replacement cannot retarget the request between check and admission.
+    pub fn submit_registered_task(
+        &self,
+        alias: &str,
+        registration_id: u64,
+        input: &str,
+        controls: TextControls,
+    ) -> std::result::Result<Box<dyn OutputStream>, ServiceError> {
+        self.submit_task_checked(
+            TextTask {
+                target: TaskTarget::Model(alias),
+                input,
+                controls,
+            },
+            Some(registration_id),
+        )
+    }
+
+    fn submit_task_checked(
+        &self,
+        task: TextTask<'_>,
+        expected_registration: Option<u64>,
+    ) -> std::result::Result<Box<dyn OutputStream>, ServiceError> {
         self.require_open().map_err(|_| runtime_closed())?;
         task.validate(self.inner.limits.max_input_bytes)?;
         self.with_text_router(|router| {
+            if let Some(expected) = expected_registration
+                && !matches!(task.target, TaskTarget::Model(alias)
+                    if router.registration(alias).is_some_and(|owner| owner.id == expected))
+            {
+                return Err(ServiceError::new(
+                    409,
+                    "stale_registration",
+                    "selected model registration is no longer ready",
+                ));
+            }
             task.require(router)?;
             match task.target {
                 TaskTarget::Model(alias) => {
@@ -547,6 +592,19 @@ impl Runtime {
     /// Close only the selected owner's admission, drain its accepted readers
     /// unlocked, then retire it. The last owner uses the existing whole join.
     pub(crate) fn unload_text_model(&self, model: &ModelInstance) -> Result<()> {
+        self.unload_text_target(UnloadTarget::Handle(model))
+    }
+
+    /// Retire exactly the observed registration, under the original lifecycle
+    /// lock. A stale UI row cannot unload a new owner that reused its alias.
+    pub fn unload_registration(&self, alias: &str, registration_id: u64) -> Result<()> {
+        self.unload_text_target(UnloadTarget::Registration {
+            alias,
+            registration_id,
+        })
+    }
+
+    fn unload_text_target(&self, target: UnloadTarget<'_>) -> Result<()> {
         if crate::router::on_worker_thread() {
             return Err(Error::State(
                 "blocking model unload from an engine worker is unsupported".into(),
@@ -564,7 +622,27 @@ impl Runtime {
                 "no ready text adapter for model retirement".into(),
             ));
         };
-        let selected = router.begin_unload(model)?;
+        let selected = match target {
+            UnloadTarget::Handle(model) => router.begin_unload(model)?,
+            UnloadTarget::Registration {
+                alias,
+                registration_id,
+            } => {
+                if router
+                    .registration(alias)
+                    .is_none_or(|owner| owner.id != registration_id)
+                {
+                    return Err(Error::State(
+                        "selected model registration is no longer ready".into(),
+                    ));
+                }
+                let model = router.model(alias).ok_or_else(|| {
+                    Error::State("selected model registration is no longer ready".into())
+                })?;
+                router.begin_unload(&model)?
+                // The temporary model handle drops before the original retirement.
+            }
+        };
         if selected.is_none() {
             router.close_admission();
         }

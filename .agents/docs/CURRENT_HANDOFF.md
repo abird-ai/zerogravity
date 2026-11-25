@@ -24,7 +24,70 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-2 (25 Nov)
+### Current checkpoint — Phase 2.1 UX-3 (25 Nov)
+
+One shared native SDK ControlPlane over the existing Runtime and original
+cache/device/config/transport owners. No frontend runtime, scheduler, catalog,
+cache hierarchy, dependency or backend policy change.
+
+- `Runtime::control()` borrows a lazily initialized control state shared by
+  facade clones. `ControlSnapshot` reads the original runtime/catalog and
+  optional control-owned serving observations; cold device, cache and
+  document queries are separate. These are bounded observations, not a
+  globally atomic transaction or an execution permit.
+- `ControlAction`/`ControlReply` and typed methods delegate to original
+  model load/load-declared, text invocation, unload, task inspection,
+  devices, config checking, cache inspect/list/verify/reclaim and optional
+  serving. Preserve core errors and original service status/code. Native
+  inputs are trusted caller data; future remote transport must validate
+  and authenticate them independently.
+- Model invoke/unload binds exact observed registration under the existing
+  engine lifecycle/admission lock. Alias replacement cannot retarget a
+  stale action; no extra model handle remains through retirement. Inference
+  output and cancellation stay with the original OutputStream.
+- Independent subscriber cursors share a bounded 64-entry transient event
+  ring, with explicit Resync on lag. Subscribe before snapshot; refresh
+  owner state after invalidation. Notifications describe actual outcomes
+  or accepted requests (not fabricated start/completion); no prompt,
+  output, credential, source handle or durable event replay. Direct SDK,
+  independent HTTP and external cache activity are visible via fresh
+  snapshots, not a complete control event history.
+- Optional serving slot owns one original ServerHandle, observed address,
+  generation and live metrics. Exact-generation stop joins that handle,
+  leaves runtime/models open, rejects replacement-targeted stale stop and
+  duplicate start. Transition observations do not wait for joins. Direct
+  SDK servers retain their independent lifecycle; explicitly stop the
+  control-owned listener before process/runtime shutdown. Inference key
+  is not control auth; no Web/control listener added.
+- Canonical CLI cached model list/inspect/verify/remove and device
+  list/inspect use the shared methods. Existing JSON schema, exact verified
+  lease/reclaim outcomes and compatibility execution routes remain intact.
+  Empty existing-cache text now matches absent-cache text.
+- Approved local Qwen 0.8B GGUF release integration with two clients:
+  two aliases/one model owner; direct and control output equal; actual
+  loopback /v1/models, duplicate start refusal, stop/restart with distinct
+  generations, stale stop refusal, model retained across listener stop,
+  unload/reload and stale invoke/unload refusal. Passed in 8.80s with
+  no download. Cold SDK shared refusal and bounded-cursor/resync tests
+  pass. Full mandatory-private-network workspace gate exits 0: 2457
+  passing Rust test executions, zero failures, 108 explicit skips.
+  Including the separately executed real-model integration: 2458 pass,
+  0 fail (one source-backed test executed explicitly). Architecture,
+  feature boundaries, strict CPU and combined acquisition/serve lint,
+  release/installer/scripts pass.
+  Initial nonminimal-bool and test drop-non-drop lint refusals corrected;
+  no physical GPU qualification claimed.
+
+**Next coherent unit: UX-4 — model lifecycle + downloads (§46A.28).**
+Attach original acquisition/cache transactions to the shared control
+state; typed progress, cooperative pause/resume/cancel, retained partial
+reporting and quiet/plain/JSONL/interactive presentation. No second
+download owner, implicit acquisition or expanded provider qualification.
+UX-5 one-line run, UX-6 stable serve, UX-7 unified ConfigDocument/profile
+management, native TUI then Web remain ordered. Preserve explicit source
+and backend authority.
+
+### Previous checkpoint — Phase 2.1 UX-2 (25 Nov; bcdb46a8)
 
 Typed CLI command tree and unified cold model/config selection through the
 existing SDK and artifact owners. No new dependency, runtime, cache, numerical
@@ -71,7 +134,7 @@ shared; the Phase 1 minimum foundation exit remains accepted.
   generated/tested; Zsh/PowerShell not locally installed. No learned-model
   or physical GPU requalification; prior evidence stands.
 
-**Next coherent unit: UX-3 — shared ControlPlane snapshots, actions and
+**Historical next unit (completed above): UX-3 — shared ControlPlane snapshots, actions and
 events** (CLI UX §46A.28), over the original Runtime/model catalog,
 acquisition/cache, serving and config/device owners. No duplicated frontend
 authority; lifecycle/download work (UX-4) follows. Keep TUI before Web and

@@ -119,7 +119,13 @@ canonical commands/globals/compatibility/help/completion, exact digest and
 explicit by-name, one selected profile/document, original model/device/cache
 owners. Isolated full gate 2451 pass/0 fail/106 skips; synthetic CPU output
 equivalence and release completion/cold JSON smoke pass. No new execution
-claim. Next UX-3 shared ControlPlane per §46A.28.
+claim. UX-3 shared native ControlPlane: original owner snapshots/actions,
+bounded transient notifications and resync, exact model registration and
+listener generation guards, original output/cancellation and cache outcomes.
+Actual local Qwen 0.8B GGUF two-client lifecycle/loopback and direct output
+equality pass. Full isolated gate 2457 pass/0 fail/108 skips (+1 focused
+model integration); architecture, feature and release checks pass.
+Next UX-4 model lifecycle + downloads per §46A.28.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

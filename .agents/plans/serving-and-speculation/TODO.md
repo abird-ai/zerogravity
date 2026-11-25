@@ -1402,6 +1402,17 @@ or a change to the active correctness/benchmark/27B order.
 
 ## Committed
 
+### Phase 2.1 UX-3 — shared control-owned listener (25 Nov)
+
+- [x] Optional ControlPlane slot owns an original ServerHandle; observes
+  actual address/metrics, refuses duplicate start and stale generation stop,
+  joins exact listener without retiring models/runtime. Real approved Qwen
+  0.8B GGUF private-loopback /v1/models two-alias lifecycle and restart pass;
+  original task stream/registration, HTTP and inference authentication
+  remain authoritative. Independent SDK servers stay independent.
+  UX-6 stable serve, later control transport/auth and public serving
+  qualification remain open; no new protocol or GPU qualification.
+
 ### Phase 2.1 UX-1 — CLI presentation (25 Nov)
 
 - [x] CLI serving startup/shutdown and failure rendering share the terminal
@@ -1409,8 +1420,9 @@ or a change to the active correctness/benchmark/27B order.
   CLI failure exit status, signal/stop owners, HTTP protocol and authentication
   are unchanged. Full isolated workspace gate (2431 pass/0 fail/106 skips)
   includes existing serving shutdown and feature boundaries.
-  UX-6 stable serve surface, UX-3 shared ControlPlane and broader serving
-  contracts remain in canonical §46A.28 order; no new serving capability.
+  UX-3 shared ControlPlane is accepted above; UX-6 stable serve surface
+  and broader serving contracts remain in canonical §46A.28 order;
+  no new serving capability from presentation alone.
 
 
 ### `63ee14e` — private production CUDA graph lifecycle/cache

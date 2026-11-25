@@ -314,6 +314,15 @@ Git history; current source and this TODO supersede their archived checklists.
   tests pass (2451 full-gate executions, 0 failures, 106 explicit skips).
   No real network acquisition, provider qualification or new loading grant.
 
+### Phase 2.1 UX-3 — shared cache control observations/actions (25 Nov)
+
+- [x] ControlPlane canonical list/inspect delegates cold CacheMetadata;
+  verify delegates original cancellable authenticated lease; exact-digest
+  reclaim preserves dry-run/busy/referenced/incomplete/durable outcomes.
+  CLI uses these shared methods; no extra cache, acquisition owner,
+  implicit network, provider qualification or verification authority.
+  UX-4 attaches original transfer lifecycle and progress to this plane.
+
 ## Uncommitted
 
 - [ ] Canonical source-pull execution order (18 Oct decision): Qwen3.5 .8B/
