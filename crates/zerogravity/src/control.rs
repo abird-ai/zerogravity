@@ -215,6 +215,13 @@ impl<'a> ControlPlane<'a> {
         })
     }
 
+    /// Cheap transport-only observation; do not traverse model/resource
+    /// diagnostics when a foreground listener is polling for completion.
+    #[cfg(feature = "serve")]
+    pub fn serving(&self) -> Result<ServeSummary> {
+        self.state.serving.observe()
+    }
+
     /// Transient events of actions invoked through this plane. Direct SDK,
     /// HTTP requests and external cache changes remain visible on fresh owner
     /// observations, not an invented complete activity history.

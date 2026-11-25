@@ -419,26 +419,29 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
             }
         }
         "serve" => {
-            let args = g.flat(rest, |raw| {
-                !matches!(
-                    raw,
-                    "--enable-per-request-metrics" | "-h" | "--help" | "help"
-                )
+            let mut args = g.flat(rest, |raw| {
+                raw.starts_with('-')
+                    && !raw.contains('=')
+                    && !matches!(
+                        raw,
+                        "--enable-per-request-metrics"
+                            | "--pull"
+                            | "--offline"
+                            | "-h"
+                            | "--help"
+                            | "--"
+                    )
             })?;
             if help(&args) {
                 Command::HelpTopic(Topic::Serve, None)
             } else {
                 if let Some((flag, value)) = g.document.take() {
-                    if flag != "--config" {
-                        return Err("serve named profiles await shared serving configuration");
-                    }
-                    if !args.is_empty() {
-                        return Err("serving --config must stand alone");
-                    }
-                    Command::Serve(vec![flag.into(), value])
-                } else {
-                    Command::Serve(args)
+                    args.splice(..0, [flag.into(), value]);
                 }
+                if g.offline {
+                    args.insert(0, "--offline".into());
+                }
+                Command::Serve(args)
             }
         }
         "device" | "devices" => {
@@ -569,7 +572,7 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
                     && (provider.starts_with("hf:") || provider.starts_with("gh:")))
         });
     if g.interactive == Switch::Always
-        && (!(controlled_pull || matches!(command, Command::Run { .. }))
+        && (!(controlled_pull || matches!(command, Command::Run { .. } | Command::Serve(_)))
             || g.format == Format::Jsonl
             || g.format == Format::Json
             || (g.offline && controlled_pull)
@@ -577,7 +580,7 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
             || (controlled_pull && g.presentation.progress == Switch::Never))
     {
         return Err(
-            "forced interaction requires run or an online hub/Xet pull with terminal output",
+            "forced interaction requires run, serve or an online hub/Xet pull with terminal output",
         );
     }
     if g.format == Format::Jsonl && (!controlled_pull || g.offline) {

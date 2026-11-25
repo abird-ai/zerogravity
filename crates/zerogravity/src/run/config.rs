@@ -1,7 +1,8 @@
 //! Shared run-document precedence and source-path policy. No environment,
 //! stdin, credentials, model/device loading, admission or output-file creation.
 use crate::pipelines::{
-    Config, DiagnosticDoc, EntryDoc, ModelInstance, PipelinePatch, RunDoc, TaskDoc,
+    Config, DiagnosticDoc, Document, EntryDoc, ModelInstance, PipelinePatch, RunDoc, ServeDoc,
+    TaskDoc,
 };
 use crate::{Error, Result, run_policy::*};
 use std::{
@@ -91,31 +92,58 @@ pub fn select_document(
 /// Only the configuration file is read; every model/source/device stays cold.
 pub fn resolve(
     config: Option<&Path>,
-    mut a: RunOverrides,
+    a: RunOverrides,
     cwd: &Path,
     override_origin: Origin,
 ) -> Result<Request> {
     if !cwd.is_absolute() {
         return Err(bad("run base directory must be absolute"));
     }
-    let selected = config.map(|path| {
-        if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            cwd.join(path)
-        }
-    });
+    let document = config
+        .map(|path| {
+            let path = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                cwd.join(path)
+            };
+            if path.extension().is_some_and(|e| e == "json") {
+                return Err(bad(
+                    "--config selects pipeline YAML; old model metadata moved to --model-config",
+                ));
+            }
+            let doc = crate::pipelines::load_document(&path)?;
+            Ok((path, doc))
+        })
+        .transpose()?;
+    resolve_document(document, a, cwd, override_origin, None).map(|(request, _)| request)
+}
+
+/// Canonical direct-model serving. Explicit route list replaces the selected
+/// document's model table; otherwise serve its declared models. No graph route
+/// or execution authority is synthesized. All common settings share resolve.
+pub fn resolve_serving(
+    document: Option<(PathBuf, Document)>,
+    overrides: RunOverrides,
+    models: Vec<ModelInstance>,
+    cwd: &Path,
+) -> Result<(Request, ServeDoc)> {
+    resolve_document(document, overrides, cwd, Origin::Cli, Some(models))
+}
+
+fn resolve_document(
+    document: Option<(PathBuf, Document)>,
+    mut a: RunOverrides,
+    cwd: &Path,
+    override_origin: Origin,
+    served: Option<Vec<ModelInstance>>,
+) -> Result<(Request, ServeDoc)> {
+    if !cwd.is_absolute() {
+        return Err(bad("run base directory must be absolute"));
+    }
+    let serving = served.is_some();
+    let selected = document.as_ref().map(|(path, _)| path.clone());
     let mut provenance = BTreeMap::new();
-    let (mut graph, run) = if let Some(path) = &selected {
-        if path.extension().is_some_and(|e| e == "json") {
-            return Err(bad(
-                "--config selects pipeline YAML; old model metadata moved to --model-config",
-            ));
-        }
-        let mut doc = crate::pipelines::load_document(
-            path.to_str()
-                .ok_or_else(|| bad("config path must be UTF-8"))?,
-        )?;
+    let (mut graph, run, serve) = if let Some((path, mut doc)) = document {
         let base = path
             .parent()
             .ok_or_else(|| bad("config parent unavailable"))?;
@@ -144,7 +172,8 @@ pub fn resolve(
                 *p = absolute(base, p).to_string_lossy().into_owned();
             }
         }
-        (doc.compile()?, run)
+        let serve = doc.serve.clone().unwrap_or_default();
+        (doc.compile()?, run, serve)
     } else {
         (
             Config {
@@ -153,6 +182,7 @@ pub fn resolve(
                 routes: Vec::new(),
             },
             RunDoc::default(),
+            ServeDoc::default(),
         )
     };
     let origin = selected
@@ -246,6 +276,53 @@ pub fn resolve(
         .entrypoint
         .clone()
         .or_else(|| run.entrypoint.as_ref().map(EntryDoc::typed));
+    if let Some(models) = served {
+        if !graph.pipelines.is_empty()
+            || !graph.routes.is_empty()
+            || matches!(entrypoint, Some(Entrypoint::Pipeline(_)))
+        {
+            return Err(Error::Unsupported("canonical serve supports direct model routes only; pipeline serving is not qualified".into()));
+        }
+        if !models.is_empty() {
+            graph.models = models;
+            provenance.retain(|key, _| !key.starts_with("model."));
+            for model in &mut graph.models {
+                if let Some(source) = &mut model.source {
+                    anchor_source(source, cwd)?;
+                }
+                provenance.insert(
+                    format!("model.{}.source", model.id),
+                    override_origin.clone(),
+                );
+            }
+        } else {
+            if let Some(entry) = &entrypoint {
+                graph.validate_entrypoint(entry)?;
+            }
+            for model in &graph.models {
+                graph.validate_entrypoint(&Entrypoint::Model(model.id.clone()))?;
+            }
+        }
+        entrypoint = graph
+            .models
+            .first()
+            .map(|model| Entrypoint::Model(model.id.clone()));
+        if entrypoint.is_none() {
+            return Err(bad("serve requires one or more direct model sources"));
+        }
+        if a.model.is_some()
+            || a.graph.is_some()
+            || a.entrypoint.is_some()
+            || a.model_config.is_some()
+            || a.tokenizer.is_some()
+            || a.snapshot.is_some()
+            || a.native_artifacts.is_some()
+        {
+            return Err(bad(
+                "serve model routes use the selected document or explicit route declarations",
+            ));
+        }
+    }
     let mut inferred_target: Option<String> = None;
     if let Some(source) = a.model.take() {
         let id = match &entrypoint {
@@ -366,8 +443,23 @@ pub fn resolve(
             provenance.insert(format!("model.{id}.snapshot"), override_origin.clone());
         }
     }
-    let config_task = run.task.unwrap_or_default();
+    let mut config_task = run.task.unwrap_or_default();
+    if serving {
+        config_task.context = serve.max_context.or(config_task.context);
+        config_task.max_tokens = serve.max_output.or(config_task.max_tokens);
+        // HTTP requests supply their own prompt and text mode, never a run
+        // document's example prompt or teacher/audit controls.
+        config_task.prompt = None;
+        config_task.raw = None;
+        config_task.teacher_ids = None;
+    }
     let mut task = Task::default();
+    if serving {
+        task.context = 1024;
+        task.max_tokens = 128;
+        // Serve-specific overrides take precedence over shared run defaults;
+        // CLI overrides still win through the same typed merge below.
+    }
     macro_rules! merge {
         ($field:ident) => {{
             task.$field = match a.task.$field.take() {
@@ -499,6 +591,10 @@ pub fn resolve(
         provenance,
         vendor_filter: a.vendor,
     };
+    if serving {
+        request.validate_serving_policy()?;
+        return Ok((request, serve));
+    }
     request.validate_policy()?;
     // A direct synthetic source acquires its target only from parsed source
     // geometry. Every declared model target validates now.
@@ -516,7 +612,7 @@ pub fn resolve(
         [id] if Some(*id) == inferred_target.as_deref() => {}
         _ => return Err(bad("declared model target must be nonempty")),
     }
-    Ok(request)
+    Ok((request, serve))
 }
 fn anchor_source(s: &mut String, base: &Path) -> Result<()> {
     if let SourceSelector::Local(p) = SourceSelector::parse(s)? {

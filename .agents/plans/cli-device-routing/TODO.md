@@ -174,7 +174,7 @@ build or general model/backend grant. Historical failures keep their source scop
   restoration) pass. No network download, new qualification or
   numerical/performance claim.
 
-### Phase 2.1 UX-5 — one-line run (this checkpoint, 25 Nov)
+### Phase 2.1 UX-5 — one-line run (25 Nov; 8e382947)
 
 - [x] Shared exact cached model selection: flat lowercase name resolves
   canonical/human durable claims (different digests refuse), then approved
@@ -206,13 +206,35 @@ build or general model/backend grant. Historical failures keep their source scop
   No new package/lockfile, remote acquisition, physical GPU, numerical or
   performance qualification.
 
+### Phase 2.1 UX-6 — stable serve (this checkpoint, 25 Nov)
+
+- [x] Canonical positional/explicit aliases and selected document/profile
+  use shared run/source/config resolver. Typed serve section overrides
+  shared defaults, CLI overrides first; explicit routes replace model
+  table. Legacy explicit local flags/YAML retain original profile semantics.
+- [x] Resolve all routes before acquisition; CPU GGUF and single approved
+  original HF source alias sets use original model owners, exact cache pins,
+  admission and eligible consent recipe. No mixed/distinct original HF or
+  canonical GPU GGUF grant; legacy GPU forms unchanged. Common CUDA
+  preflight requires ordinal 0 and observed availability after headroom.
+- [x] Original control-owned listener, actual startup/status and exact
+  listener-then-worker shutdown; active acquisition shares shutdown flag.
+  No HTTP rewrite or new authentication policy.
+- [x] Focused release tests pass (2/0/0, 8.39s): actual approved Qwen
+  0.8B GGUF cached aliases share one owner and identical completions,
+  SIGTERM joins and closes listener; incompatible routes refuse cold.
+  Combined strict acquisition/serve lint and CUDA/HIP/acquisition/serve
+  compile pass. No live remote transfer or physical GPU run.
+- [x] Full isolated workspace gate 2466 pass/0 fail/109 skips;
+  release/installer/scripts pass. Two stale CLI test expectations adjusted
+  for supported serve interaction and missing default XDG document;
+  full rerun passes.
+
 ## Uncommitted
 
-- [ ] UX-6 next: stable one-line serve MODEL... through same source/config/
-  device selection, consent, original serving/load/listener owners. Compact
-  actual startup, status and shutdown without protocol rewrite.
-  ConfigDocument/profile management (UX-7), dynamic completions,
-  TUI/Web and control-wire validation/auth remain ordered follow-up.
+- [ ] UX-7 next: ConfigDocument/profile management through one typed
+  validator and atomic edit path. No profile inheritance. Dynamic
+  completions, TUI/Web and control-wire validation/auth remain ordered.
   Broader catalog presets, conversation history and unsupported routes
   remain explicit; preserve exact acquisition and factual refusal.
 - [ ] Extend advanced direct provider forced interactive/JSONL presentation

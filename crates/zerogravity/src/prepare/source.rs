@@ -162,7 +162,6 @@ impl GgufSource {
 pub(crate) struct CachedGguf {
     pub root: PathBuf,
     disk: u64,
-    #[cfg(feature = "cpu")]
     metadata: crate::cache::CacheMetadata,
     snapshot: crate::cache::SnapshotMetadata,
     pub weights: crate::cache::ManifestEntry,
@@ -237,7 +236,6 @@ impl CachedGguf {
         Ok(Self {
             root,
             disk,
-            #[cfg(feature = "cpu")]
             metadata,
             snapshot,
             weights,
@@ -250,12 +248,15 @@ impl CachedGguf {
         &self.snapshot.digest
     }
 
+    pub(crate) fn geometry(&self) -> Result<ModelGeometry> {
+        ModelGeometry::from_json(&self.metadata.config(&self.snapshot, self.config.path())?)
+    }
+
     /// Read-only routing metadata. The actual prepared owner must authenticate
     /// and validate the selected snapshot again through its held descriptors.
     #[cfg(feature = "cpu")]
     pub(crate) fn inspect(&self) -> Result<(ModelGeometry, crate::artifact::ArtifactInfo)> {
-        let geometry =
-            ModelGeometry::from_json(&self.metadata.config(&self.snapshot, self.config.path())?)?;
+        let geometry = self.geometry()?;
         let info = self
             .metadata
             .inspect_weights(&self.snapshot, self.weights.path())?;

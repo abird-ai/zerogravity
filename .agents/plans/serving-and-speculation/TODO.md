@@ -1402,6 +1402,22 @@ or a change to the active correctness/benchmark/27B order.
 
 ## Committed
 
+### Phase 2.1 UX-6 — stable serve CLI (25 Nov)
+
+- [x] Canonical direct CPU GGUF and single approved original GPU snapshot
+  aliases share run's exact source/device/config policy and acquisition
+  consent. Shared document serve settings; legacy qualified diagnostic/
+  GPU GGUF profiles remain explicit. CLI uses ControlPlane load/start/
+  exact-generation stop and original runtime retirement. Actual startup
+  facts and coarse sampled scheduler/listener counters; no protocol changes.
+- [x] Focused real cached Qwen 0.8B CPU release test: two alias completions
+  identical, one owner, joined SIGTERM shutdown and closed socket. Cold
+  incompatible route refusal, strict combined acquisition/serve lint and
+  CUDA/HIP/acquisition/serve compile pass. Full isolated gate 2466 pass/
+  0 fail/109 skips; release/installer/scripts pass. No new HTTP/backend
+  qualification. Public serving contracts and control transport/auth
+  remain later work.
+
 ### Phase 2.1 UX-3 — shared control-owned listener (25 Nov)
 
 - [x] Optional ControlPlane slot owns an original ServerHandle; observes

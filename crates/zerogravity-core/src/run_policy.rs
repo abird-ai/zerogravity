@@ -441,6 +441,16 @@ pub struct Request {
 }
 impl Request {
     pub fn validate_policy(&self) -> Result<()> {
+        self.validate_text_policy(128)
+    }
+
+    /// Serving reuses the same source/device policy, with the original
+    /// serving adapter's output bound rather than the one-shot CPU bound.
+    pub fn validate_serving_policy(&self) -> Result<()> {
+        self.validate_text_policy(512)
+    }
+
+    fn validate_text_policy(&self, max_output: usize) -> Result<()> {
         self.devices.validate_backend(&self.backend)?;
         for m in &self.graph.models {
             for path in [&m.model_config, &m.tokenizer, &m.native_artifacts]
@@ -467,7 +477,7 @@ impl Request {
         if self.task.context == 0
             || self.task.context > 32768
             || self.task.max_tokens == 0
-            || self.task.max_tokens > 128
+            || self.task.max_tokens > max_output
             || self.task.prefill_chunk == 0
             || self.task.prefill_chunk > 32768
             || self

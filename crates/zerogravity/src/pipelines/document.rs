@@ -30,6 +30,8 @@ pub struct Document {
     pub route: Vec<RouteDoc>,
     #[serde(default)]
     pub run: Option<RunDoc>,
+    #[serde(default)]
+    pub serve: Option<ServeDoc>,
 }
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -168,6 +170,21 @@ pub struct RunDoc {
     pub draft_device: Option<Vec<String>>,
     pub diagnostics: Option<DiagnosticDoc>,
 }
+/// Listener and worker policy in the same v2 document as model and run
+/// declarations. Shared backend/device/headroom/context defaults live in run.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ServeDoc {
+    pub listen: Option<String>,
+    pub workers: Option<usize>,
+    pub active_per_worker: Option<usize>,
+    pub max_context: Option<usize>,
+    pub max_output: Option<usize>,
+    pub host_mib: Option<usize>,
+    pub max_pending_requests: Option<usize>,
+    pub enable_per_request_metrics: Option<bool>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
 pub enum EntryDoc {
@@ -222,6 +239,7 @@ impl Document {
         }
         if self.schema == SCHEMA
             && (self.run.is_some()
+                || self.serve.is_some()
                 || self.model.iter().any(|m| {
                     m.model_config.is_some()
                         || m.tokenizer.is_some()
@@ -303,11 +321,29 @@ impl Document {
     pub fn check(self) -> Result<super::CheckedDocument> {
         // Preserve the v1 run-field refusal in compile before extracting run.
         let run = self.run.clone();
+        let serve = self.serve.clone();
         let config = self.compile()?;
         let shape = match run.as_ref().and_then(|r| r.entrypoint.as_ref()) {
             Some(entry) => super::check_entrypoint(&config, &entry.typed())?,
+            None if serve.is_some() && config.pipelines.is_empty() && config.routes.is_empty() => {
+                let mut shape = None;
+                for model in &config.models {
+                    shape = Some(super::check_entrypoint(
+                        &config,
+                        &Entrypoint::Model(model.id.clone()),
+                    )?);
+                }
+                shape.ok_or_else(|| {
+                    Error::Malformed("serve document requires a model declaration".into())
+                })?
+            }
             None => super::check(&config)?,
         };
-        Ok(super::CheckedDocument { config, run, shape })
+        Ok(super::CheckedDocument {
+            config,
+            run,
+            serve,
+            shape,
+        })
     }
 }

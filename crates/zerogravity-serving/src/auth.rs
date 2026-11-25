@@ -11,7 +11,8 @@ pub fn require_loopback(address: SocketAddr) -> Result<()> {
     }
 }
 
-pub(crate) fn validate_key(key: Option<&str>) -> Result<()> {
+/// Validate optional inference bearer syntax before listener or source effects.
+pub fn validate_key(key: Option<&str>) -> Result<()> {
     if key.is_some_and(|key| {
         key.is_empty() || key.len() > 1024 || !key.bytes().all(|b| b.is_ascii_graphic())
     }) {

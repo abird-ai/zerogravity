@@ -24,7 +24,57 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-5 (25 Nov)
+### Current checkpoint — Phase 2.1 UX-6 (25 Nov)
+
+Canonical serve uses the original runtime, source preparation, model registry
+and HTTP owner; run and serve share cold source selection, configuration and
+device policy. No duplicate transport/scheduler, dependency or model grant.
+
+- `serve MODEL...` or `--model ID=MODEL`; exact cached names/locators/digests,
+  local GGUF, selected v2 document or named profile. Explicit routes replace
+  the document model table. Shared run settings and optional typed `serve:`
+  listen/worker/context/output/host/pending/metrics settings, CLI overrides
+  first; no run prompt/teacher IDs carried into HTTP. Old explicit local
+  flags and standalone legacy YAML retain their existing profile loader.
+- Cold selection completes across the route set before acquisition. CPU
+  GGUF direct models/aliases use the original role-bound preparation and
+  host envelope; original HF uses one approved snapshot shared by aliases
+  with the original CUDA/ROCm source loader. Mixed GGUF/HF and distinct
+  original HF sources, graph serving and canonical GPU GGUF refuse; legacy
+  qualified GPU GGUF/diagnostic serving remains explicit. Common CUDA route
+  preflight requires actual ordinal 0, observed SM86 and available VRAM
+  after headroom. No new physical qualification or silent fallback.
+- Same explicit eligible 2B/27B acquisition recipe/consent/digest guard
+  as run; offline never transfers. Shared shutdown flag cancels active
+  transfer; reobserve device before load, require same selected backend.
+  No transfer or GPU execution performed in this checkpoint. Foreground
+  consent still uses existing blocking line input before any acquisition.
+- Original ControlPlane owns exact listener generation. Startup reports
+  admitted aliases, actual backend/device, bound endpoint and effective
+  worker bounds; rich live counter samples at two-second intervals only
+  when changed, without model/resource enumeration in the poll loop.
+  Stop listener and join HTTP handlers before retiring inference workers;
+  preserve original startup and retirement errors. Loopback and original
+  optional inference bearer policy retained. No protocol rewrite.
+- Focused release integration (8.39s, two passed): existing approved local
+  Qwen 0.8B GGUF/cache import, named profile and two aliases share one owner
+  and identical actual HTTP output, SIGTERM joins and closes socket.
+  Cold incompatible routes refuse without cache creation. Synthetic
+  tokenizer correctly refused by original inventory guard; real fixture
+  retains that guard. Direct model document validation uses original
+  direct-entrypoint check. Strict combined acquisition/serve lint and
+  CUDA/HIP/acquisition/serve compile pass. Full isolated workspace gate
+  2466 Rust executions pass/0 fail/109 skips, release/installer/scripts
+  pass. Two outdated CLI expectations (forced serve interaction and
+  missing default document) corrected; complete rerun passes.
+
+**Next coherent unit: UX-7 — ConfigDocument/profile
+management (§46A.28).** Shared typed document/precedence already supports run
+and serve. Add cold get/set/unset/edit and profile create/copy/edit/remove
+through one validation/atomic edit path; no inheritance or new model grant.
+Native TUI and Web follow in order.
+
+### Previous checkpoint — Phase 2.1 UX-5 (25 Nov; 8e382947)
 
 One-line run joins existing cold cache identity, selected config, source
 admission and original text execution owners. No parallel loader, cache,
@@ -76,11 +126,8 @@ runtime, device authority or new model/backend/numerical qualification.
   /model and /exit, no cache creation. No new package/lockfile or performance
   evidence; no actual remote transfer or physical GPU execution.
 
-**Next coherent unit: UX-6 — stable serve CLI (§46A.28).**
-Use the same exact source and config/device resolver for serve MODEL...,
-explicit eligible acquisition consent and original serving/load/listener
-owners; compact actual startup/status/shutdown. No HTTP rewrite. UX-7
-ConfigDocument/profile management, then native TUI and Web remain ordered.
+Historical next unit UX-6 is implemented in the current checkpoint above.
+UX-7 ConfigDocument/profile management, then native TUI and Web remain ordered.
 
 ### Previous checkpoint — Phase 2.1 UX-4 (25 Nov; da2385c7)
 

@@ -6,7 +6,7 @@ mod args;
 mod config;
 mod devices;
 mod execute;
-mod input;
+pub(crate) mod input;
 mod qwen35_cuda;
 #[cfg(all(
     feature = "model-qwen35",
@@ -15,8 +15,8 @@ mod qwen35_cuda;
     target_os = "linux",
     any(feature = "cuda", feature = "hip")
 ))]
-mod qwen_source;
-mod source;
+pub(crate) mod qwen_source;
+pub(crate) mod source;
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct Arguments {

@@ -20,7 +20,7 @@ pub(super) fn usage() {
         println!("    {:12} {description}", n.name);
     }
     println!(
-        "\nGLOBAL OPTIONS:\n    -q, --quiet | -v, --verbose | -vv\n    --format auto|text|json|jsonl  (structured formats where supported)\n    --color auto|always|never --progress auto|always|never\n    --interactive auto|never|always (run and online hub/Xet pull)\n    --config FILE | --profile NAME (where supported)\n    --offline  --yes (model remove only)\n\nRun 'zerogravity help <command>' for details. No implicit acquisition."
+        "\nGLOBAL OPTIONS:\n    -q, --quiet | -v, --verbose | -vv\n    --format auto|text|json|jsonl  (structured formats where supported)\n    --color auto|always|never --progress auto|always|never\n    --interactive auto|never|always (run, serve and online hub/Xet pull)\n    --config FILE | --profile NAME (where supported)\n    --offline  --yes (model remove only)\n\nRun 'zerogravity help <command>' for details. No implicit acquisition."
     );
 }
 
@@ -32,7 +32,7 @@ pub(super) fn topic_usage(topic: Topic, child: Option<&str>) -> zerogravity::Res
             crate::serve::help();
             #[cfg(not(feature = "serve"))]
             println!(
-                "USAGE: zerogravity serve --model ID=PATH | --config FILE\nRequires the optional serve feature."
+                "USAGE: zerogravity serve MODEL... | --model ID=MODEL | --config FILE | --profile NAME\nRequires the optional serve feature."
             );
         }
         Topic::Model => match child {

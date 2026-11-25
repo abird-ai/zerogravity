@@ -7,11 +7,20 @@ pub use zerogravity_engine::{TaskInput, TaskRequest, TaskTarget, TextControls, T
 
 /// Cold source-request policy, not source or physical execution authority.
 pub fn validate_source_request(request: &crate::run_policy::Request) -> crate::Result<()> {
+    request.validate_policy()?;
+    validate_backend_policy(request)
+}
+
+pub fn validate_serving_source_request(request: &crate::run_policy::Request) -> crate::Result<()> {
+    request.validate_serving_policy()?;
+    validate_backend_policy(request)
+}
+
+fn validate_backend_policy(request: &crate::run_policy::Request) -> crate::Result<()> {
     use crate::{
         Error,
         run_policy::{Backend, Speculation},
     };
-    request.validate_policy()?;
     if !matches!(request.speculation, Speculation::Auto | Speculation::Off) {
         return Err(Error::Unsupported(
             "required speculative execution has no qualified local adapter; use auto/off".into(),

@@ -8,7 +8,6 @@ pub(super) fn resolve(
     inventory: &devices::Inventory,
     mode: Mode,
 ) -> Result<()> {
-    use zerogravity::cache::{CacheMetadata, paths};
     let Entrypoint::Model(id) = &request.entrypoint else {
         return Ok(());
     };
@@ -18,9 +17,7 @@ pub(super) fn resolve(
         .iter()
         .position(|model| &model.id == id)
         .ok_or_else(|| bad("direct entrypoint model absent"))?;
-    let model = &request.graph.models[i];
-    // Explicit finite diagnostic retains its existing source/native-artifact contract.
-    if model.native_artifacts.is_some() {
+    if request.graph.models[i].native_artifacts.is_some() {
         if mode.pull {
             return Err(bad(
                 "--pull cannot acquire finite native diagnostic artifacts",
@@ -28,12 +25,56 @@ pub(super) fn resolve(
         }
         return Ok(());
     }
+    if let Some(missing) = select_model(&mut request.graph.models[i])? {
+        let digest = acquire_missing(request, inventory, mode.offer, mode.pull, &missing, None)?;
+        bind(&mut request.graph.models[i], digest)?;
+    }
+    Ok(())
+}
+
+/// Cold unresolved catalog source. No credentials, transfer admission or
+/// cache initialization occurs until every serving route has been checked.
+#[cfg(all(feature = "cache", target_os = "linux"))]
+pub(crate) struct MissingSource {
+    pub target: String,
+    root: std::path::PathBuf,
+    disk: Option<u64>,
+}
+#[cfg(all(feature = "cache", target_os = "linux"))]
+impl MissingSource {
+    #[cfg(all(feature = "serve", feature = "model-qwen35", feature = "text"))]
+    pub fn expected_snapshot(&self) -> Result<&'static str> {
+        #[cfg(feature = "model-qwen35")]
+        if let Some(digest) = zerogravity::models::qwen_source_snapshot(&self.target) {
+            return Ok(digest);
+        }
+        Err(self.not_cached())
+    }
+
+    pub(crate) fn not_cached(&self) -> Error {
+        let name = &self.target;
+        Error::Unsupported(format!(
+            "model {name} is not cached; use model list or explicit model pull{}",
+            if zerogravity::targets::find(name).is_some() {
+                "; --pull requires a supported exact catalog recipe"
+            } else {
+                ""
+            }
+        ))
+    }
+}
+
+#[cfg(all(feature = "cache", target_os = "linux"))]
+pub(crate) fn select_model(
+    model: &mut zerogravity::pipeline::ModelInstance,
+) -> Result<Option<MissingSource>> {
+    use zerogravity::cache::{CacheMetadata, paths};
     let Some(source) = model.source.as_deref() else {
-        return Ok(());
+        return Ok(None);
     };
     let selector = SourceSelector::parse(source)?;
     if matches!(selector, SourceSelector::Local(_)) {
-        return Ok(());
+        return Ok(None);
     }
     match &selector {
         SourceSelector::HuggingFace(value) => {
@@ -87,7 +128,14 @@ pub(super) fn resolve(
                     "declared model target differs from requested missing catalog name",
                 ));
             }
-            acquire_missing(request, inventory, mode, name, &root, metadata.as_ref())?
+            return Ok(Some(MissingSource {
+                target: name.clone(),
+                root,
+                disk: metadata
+                    .as_ref()
+                    .map(CacheMetadata::disk_limit_bytes)
+                    .transpose()?,
+            }));
         }
     } else if matches!(
         selector,
@@ -111,9 +159,14 @@ pub(super) fn resolve(
                         "declared model target differs from requested exact catalog source",
                     ));
                 }
-                let digest =
-                    acquire_missing(request, inventory, mode, target, &root, metadata.as_ref())?;
-                return bind(request, i, digest);
+                return Ok(Some(MissingSource {
+                    target: target.into(),
+                    root,
+                    disk: metadata
+                        .as_ref()
+                        .map(CacheMetadata::disk_limit_bytes)
+                        .transpose()?,
+                }));
             }
             return Err(Error::Unsupported("provider source is not acquired; use models/pull then an explicit --snapshot or catalog reference".into()));
         }
@@ -125,12 +178,12 @@ pub(super) fn resolve(
         })?;
         zerogravity::models::select_cached(&metadata, &selector, model.snapshot.as_deref())?.digest
     };
-    bind(request, i, digest)
+    bind(model, digest)?;
+    Ok(None)
 }
 
 #[cfg(all(feature = "cache", target_os = "linux"))]
-fn bind(request: &mut Request, i: usize, digest: String) -> Result<()> {
-    let model = &mut request.graph.models[i];
+pub(crate) fn bind(model: &mut zerogravity::pipeline::ModelInstance, digest: String) -> Result<()> {
     #[cfg(feature = "model-qwen35")]
     if let Some(target) = zerogravity::models::qwen_target_for_snapshot(&digest) {
         if !model.target.is_empty() && model.target != target {
@@ -158,26 +211,16 @@ pub(super) fn resolve(_: &mut Request, _: &devices::Inventory, mode: Mode) -> Re
 }
 
 #[cfg(all(feature = "cache", target_os = "linux"))]
-fn acquire_missing(
+pub(crate) fn acquire_missing(
     request: &Request,
     inventory: &devices::Inventory,
-    mode: Mode,
-    name: &str,
-    root: &Path,
-    metadata: Option<&zerogravity::cache::CacheMetadata>,
+    offer: bool,
+    pull: bool,
+    missing: &MissingSource,
+    cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 ) -> Result<String> {
-    let missing = || {
-        Error::Unsupported(format!(
-            "model {name} is not cached; use model list or explicit model pull{}",
-            if zerogravity::targets::find(name).is_some() {
-                "; --pull requires a supported exact catalog recipe"
-            } else {
-                ""
-            }
-        ))
-    };
-    if request.diagnostics.dry_run || !(mode.offer || mode.pull) {
-        return Err(missing());
+    if request.diagnostics.dry_run || !(offer || pull) {
+        return Err(missing.not_cached());
     }
     #[cfg(all(
         feature = "acquisition",
@@ -186,16 +229,14 @@ fn acquire_missing(
         any(feature = "cuda", feature = "hip")
     ))]
     {
+        let name = &missing.target;
         let recipe = zerogravity::models::QwenPullRecipe::for_target(name)?;
         let backend = super::qwen_source::select_backend(request, inventory, recipe.target())?
             .ok_or_else(|| Error::Unsupported("approved original HF source has no eligible compiled GPU route; choose an explicitly acquired GGUF for CPU".into()))?;
         // Preserve selected device/profile and source-geometry refusal BEFORE
         // any network intent. The original loader remains final admission.
         super::qwen_source::preflight_acquisition(request, inventory, backend)?;
-        let disk = metadata
-            .map(zerogravity::cache::CacheMetadata::disk_limit_bytes)
-            .transpose()?
-            .unwrap_or(crate::pull::default_disk_limit());
+        let disk = missing.disk.unwrap_or(crate::pull::default_disk_limit());
         if recipe.bytes() > disk {
             return Err(Error::Limit("approved source exceeds existing cache disk policy; acquire explicitly with sufficient disk limit".into()));
         }
@@ -207,12 +248,12 @@ fn acquire_missing(
             recipe.bytes() as f64 / (1024.0 * 1024.0 * 1024.0),
             backend
         );
-        if !mode.pull && !super::input::confirm_download()? {
+        if !pull && !super::input::confirm_download()? {
             return Err(Error::Unsupported(
                 "download declined; no acquisition performed".into(),
             ));
         }
-        crate::pull::acquire_for_run(&recipe, root, disk)?;
+        crate::pull::acquire_for_run(&recipe, &missing.root, disk, cancel)?;
         Ok(recipe.snapshot().into())
     }
     #[cfg(not(all(
@@ -222,11 +263,11 @@ fn acquire_missing(
         any(feature = "cuda", feature = "hip")
     )))]
     {
-        let _ = (inventory, root, metadata);
-        if mode.pull {
+        let _ = (inventory, &missing.root, missing.disk, cancel);
+        if pull {
             Err(Error::Unsupported("automatic catalog acquisition requires the optional acquisition and qualified source-bound GPU features; use explicit model pull".into()))
         } else {
-            Err(missing())
+            Err(missing.not_cached())
         }
     }
 }

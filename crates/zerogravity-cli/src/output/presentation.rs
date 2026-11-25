@@ -109,6 +109,11 @@ impl Reporter {
         self.progress && self.verbosity != Verbosity::Quiet
     }
 
+    #[cfg(feature = "serve")]
+    pub(crate) fn serve_status(self) -> bool {
+        self.rich && self.progress()
+    }
+
     /// Interactive prompts require terminal input and human-visible output.
     /// Auto keeps explicit plain/quiet operation noninteractive.
     pub(crate) fn run_interaction(self) -> zerogravity::Result<bool> {

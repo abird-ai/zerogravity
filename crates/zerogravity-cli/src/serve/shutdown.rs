@@ -55,6 +55,69 @@ impl Shutdown {
         Ok(())
     }
 
+    pub(super) fn wait_control(
+        &self,
+        control: zerogravity::control::ControlPlane<'_>,
+        runtime: &zerogravity::Runtime,
+        binding: zerogravity::control::ServeBinding,
+    ) -> Result<(), super::ServiceError> {
+        use std::time::{Duration, Instant};
+        use zerogravity::control::ServeSummary;
+        let live = crate::output::reporter().serve_status();
+        let mut sampled = Instant::now();
+        let mut previous = None;
+        while !self.is_requested() {
+            match control.serving().map_err(super::ServiceError::inference)? {
+                ServeSummary::Listening {
+                    binding: current,
+                    accepted_requests,
+                    active_connections,
+                } if current == binding => {
+                    if live && sampled.elapsed() >= Duration::from_secs(2) {
+                        if let Some(scheduler) = runtime
+                            .scheduler_snapshot()
+                            .map_err(super::ServiceError::inference)?
+                        {
+                            let state = (
+                                accepted_requests,
+                                active_connections,
+                                scheduler.counters.active,
+                                scheduler.queue.pending,
+                                scheduler.counters.output_tokens,
+                            );
+                            // No idle spam; only emit when observed counters changed.
+                            if previous != Some(state) {
+                                crate::output::emit!(
+                                    Progress,
+                                    "Serving · HTTP {} · connections {} · active {}/{} · queued {} · output tokens {}",
+                                    state.0,
+                                    state.1,
+                                    state.2,
+                                    scheduler.active_limit,
+                                    state.3,
+                                    state.4
+                                );
+                                previous = Some(state);
+                            }
+                        }
+                        sampled = Instant::now();
+                    }
+                }
+                ServeSummary::Finished { binding: current } if current == binding => break,
+                _ => {
+                    return Err(super::ServiceError::new(
+                        500,
+                        "listener_changed",
+                        "owned serving listener is no longer present",
+                    ));
+                }
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
     pub(super) fn wait(&self, server: zerogravity::serving::ServerHandle) -> std::io::Result<()> {
         while !self.is_requested() && !server.is_finished() {
             std::thread::sleep(std::time::Duration::from_millis(20));

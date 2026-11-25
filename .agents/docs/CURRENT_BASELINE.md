@@ -5,6 +5,19 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — canonical stable serve (UX-6)
+
+Shared run/source/config/device resolver and typed serve policy, original
+CPU GGUF and single approved original GPU snapshot aliases; legacy explicit
+advanced serving retained. Same eligible acquisition consent and exact digest
+guard. Original ControlPlane listener with observed startup/status and
+listener-before-runtime retirement. Real approved Qwen 0.8B GGUF CPU release
+cache alias equality/one owner/SIGTERM and cold route refusal pass (2/0/0,
+8.39s); combined acquisition/serve lint and CUDA/HIP/acquisition/serve compile
+pass. Full isolated gate 2466 pass/0 fail/109 skips; release/installer/scripts
+pass. No protocol change, live remote transfer,
+physical GPU, new numerical or throughput claim.
+
 ## 25 Nov — canonical one-line run (UX-5)
 
 Exact shared cached model name/source selection and conflict refusal.

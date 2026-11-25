@@ -1,5 +1,5 @@
-//! Synthetic genuine GGUF/tokenizer input to the original CPU engine. No
-//! learned checkpoint, device, download or foreign inference runtime.
+//! Synthetic genuine GGUF/tokenizer input to the original CPU engine. The
+//! explicit ignored serving integration uses an already acquired approved model.
 #![cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
 use serde_json::json;
 use std::{
@@ -942,4 +942,219 @@ fn provider_variant_ambiguity_refuses_exactly_without_silent_pick() {
         "{}",
         String::from_utf8_lossy(&refused.stderr)
     );
+}
+
+#[cfg(all(feature = "serve", feature = "cache", target_os = "linux"))]
+#[test]
+fn canonical_serve_refuses_incompatible_routes_before_cache_effects() {
+    let f = fixture_named("serve-preflight");
+    // Preflight refuses remote bind, duplicate aliases, and conflicting
+    // acquisition policy without initializing a cache or touching the source.
+    let cache = f.0.join("cache/abird/zerogravity/models");
+    for args in [
+        vec!["serve", "not-cached", "--pull", "--listen", "0.0.0.0:8000"],
+        vec![
+            "serve",
+            "served-fixture",
+            "--model",
+            "served-fixture=by-name:served-fixture",
+        ],
+        vec!["serve", "qwen3.5-2b", "qwen3.8-27b", "--pull"],
+        vec!["serve", "./model.gguf", "qwen3.5-2b", "--pull"],
+        vec!["--offline", "serve", "served-fixture", "--pull"],
+        vec![
+            "serve",
+            "./model.gguf",
+            "-d",
+            "gpu:9999",
+            "--backend",
+            "cpu",
+        ],
+    ] {
+        let output = run(&f.0, &args);
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{args:?}: {:?}",
+            output.stderr
+        );
+        assert!(!cache.exists());
+    }
+}
+
+#[cfg(all(feature = "serve", feature = "cache", target_os = "linux"))]
+#[test]
+#[ignore = "existing approved local Qwen 0.8B GGUF and tokenizer; no download"]
+fn canonical_serve_profile_and_cached_aliases_use_one_listener_owner() {
+    use std::{
+        io::{Read, Write},
+        net::{SocketAddr, TcpStream},
+        process::{Child, Stdio},
+        time::{Duration, Instant},
+    };
+    let root = std::env::temp_dir().join(format!("zg-unified-serve-{}", std::process::id()));
+    std::fs::create_dir(&root).unwrap();
+    let f = Fixture(root);
+    let original = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/models/qwen35-0.8b");
+    let (store, memory) = cache_store(&f.0);
+    let digest = commit_snapshot(
+        &original,
+        &store,
+        &memory,
+        zerogravity::cache::ManifestSource::new("huggingface", "fixture/serve", "v1").unwrap(),
+        &[],
+        None,
+    );
+    store
+        .set_by_name_alias("served-fixture", &digest, false)
+        .unwrap();
+    drop(store);
+    let profiles = f.0.join("config/abird/zerogravity/profiles");
+    std::fs::create_dir_all(&profiles).unwrap();
+    std::fs::write(
+        profiles.join("local.yaml"),
+        r#"schema: zerogravity.pipeline.v2
+model:
+  - id: configured
+    target: qwen3.5-0.8b
+    source: by-name:served-fixture
+run:
+  backend: cpu
+  device: [cpu:0]
+  headroom: '0'
+  task: {context: 64, max_tokens: 2}
+serve:
+  listen: 127.0.0.1:0
+  workers: 1
+  active_per_worker: 1
+  max_pending_requests: 4
+  host_mib: 8192
+"#,
+    )
+    .unwrap();
+
+    struct Owned(Child);
+    impl Drop for Owned {
+        fn drop(&mut self) {
+            if self.0.try_wait().ok().flatten().is_none() {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+    }
+    let log = f.0.join("serve.log");
+    let mut child = Owned(
+        Command::new(env!("CARGO_BIN_EXE_zerogravity"))
+            .args([
+                "--profile",
+                "local",
+                "serve",
+                "served-fixture",
+                "--model",
+                &format!("fast=sha256:{digest}"),
+                "--pull",
+            ])
+            .current_dir(&f.0)
+            .env("HOME", &f.0)
+            .env("XDG_CONFIG_HOME", f.0.join("config"))
+            .env("XDG_CACHE_HOME", f.0.join("cache"))
+            .env("HF_TOKEN", "invalid\nnever-used")
+            .env_remove("ZEROGRAVITY_API_KEY")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(std::fs::File::create(&log).unwrap())
+            .spawn()
+            .unwrap(),
+    );
+    let deadline = Instant::now() + Duration::from_secs(90);
+    let address: SocketAddr = loop {
+        let text = std::fs::read_to_string(&log).unwrap_or_default();
+        if let Some(address) = text.lines().find_map(|line| {
+            line.split_once("API http://")
+                .and_then(|(_, v)| v.strip_suffix("/v1"))
+        }) {
+            break address.parse().unwrap();
+        }
+        assert!(
+            child.0.try_wait().unwrap().is_none() && Instant::now() < deadline,
+            "server did not start: {text}"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let http = |path: &str, body: Option<&str>| {
+        let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(5)).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(60)))
+            .unwrap();
+        let request = if let Some(body) = body {
+            format!(
+                "POST {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+        } else {
+            format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        };
+        stream.write_all(request.as_bytes()).unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        let (header, body) = response.split_once("\r\n\r\n").unwrap();
+        assert!(header.starts_with("HTTP/1.1 200"), "{response}");
+        serde_json::from_str::<serde_json::Value>(body).unwrap()
+    };
+    let models = http("/v1/models", None);
+    let mut ids = models["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["id"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    ids.sort_unstable();
+    assert_eq!(ids, ["fast", "served-fixture"]);
+    let outputs = ids.into_iter().map(|alias| {
+        let request = serde_json::json!({"model":alias,"prompt":"Continue: 1, 2, 3,","max_tokens":2,"stream":false}).to_string();
+        let response = http("/v1/completions", Some(&request));
+        assert!(response["choices"][0]["text"].is_string(), "{response}");
+        assert!(response["usage"]["completion_tokens"].as_u64().unwrap() > 0);
+        response["choices"][0]["text"].clone()
+    }).collect::<Vec<_>>();
+    assert_eq!(outputs[0], outputs[1]);
+    // Aliases sharing the original snapshot must appear in one startup row.
+    let text = std::fs::read_to_string(&log).unwrap();
+    assert_eq!(
+        text.lines()
+            .filter(|line| line.contains("Model ")
+                && line.contains("fast")
+                && line.contains("served-fixture"))
+            .count(),
+        1,
+        "{text}"
+    );
+    let signal = Command::new("python3")
+        .args([
+            "-c",
+            "import os,signal,sys; os.kill(int(sys.argv[1]), signal.SIGTERM)",
+            &child.0.id().to_string(),
+        ])
+        .status()
+        .unwrap();
+    assert!(signal.success());
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        if let Some(status) = child.0.try_wait().unwrap() {
+            assert!(
+                status.success(),
+                "{}",
+                std::fs::read_to_string(&log).unwrap()
+            );
+            break;
+        }
+        assert!(Instant::now() < deadline, "server shutdown timed out");
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let text = std::fs::read_to_string(&log).unwrap();
+    assert!(
+        text.contains("shutdown complete; HTTP handlers and inference workers joined"),
+        "{text}"
+    );
+    assert!(TcpStream::connect_timeout(&address, Duration::from_millis(200)).is_err());
 }

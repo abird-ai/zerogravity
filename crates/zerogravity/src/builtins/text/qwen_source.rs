@@ -31,7 +31,7 @@ pub struct QwenServingProfile {
     pub cohort_width: usize,
 }
 impl QwenServingProfile {
-    pub(crate) fn validate_base(self) -> Result<(), ServiceError> {
+    pub fn validate_base(self) -> Result<(), ServiceError> {
         use crate::qwen35::plan::{FORWARD_SOURCE_MAX_CONTEXT, FORWARD_SOURCE_MIN_CONTEXT};
         if !(1..=zerogravity_engine::router::MAX_ACTIVE_PER_WORKER).contains(&self.active)
             || !(FORWARD_SOURCE_MIN_CONTEXT..=FORWARD_SOURCE_MAX_CONTEXT).contains(&self.context)

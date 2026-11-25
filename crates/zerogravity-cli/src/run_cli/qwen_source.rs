@@ -7,7 +7,7 @@ use zerogravity::runtime::text::{Request as TextRequest, ResponseEvent};
 const GIB: u64 = 1024 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum SelectedBackend {
+pub(crate) enum SelectedBackend {
     Cuda,
     Hip,
 }
@@ -132,22 +132,15 @@ pub(super) fn run(
             max_pending: Some(1),
             cohort_width: 0,
         };
-        let load = match backend {
-            SelectedBackend::Cuda => cuda_load(
-                vec![resolved.alias.clone()],
-                resolved.cache.clone(),
-                resolved.snapshot.clone(),
-                profile,
-            )?,
-            SelectedBackend::Hip => hip_load(
-                vec![resolved.alias.clone()],
-                resolved.cache.clone(),
-                resolved.snapshot.clone(),
-                profile,
-                hip_budget(&request, &inventory)?,
-                native,
-            )?,
-        };
+        let load = load_request(
+            &request,
+            &inventory,
+            backend,
+            vec![resolved.alias.clone()],
+            resolved.cache.clone(),
+            resolved.snapshot.clone(),
+            profile,
+        )?;
         runtime
             .control()
             .load(load)
@@ -213,6 +206,29 @@ pub(super) fn run(
     }
 }
 
+pub(crate) fn load_request(
+    request: &Request,
+    inventory: &devices::Inventory,
+    backend: SelectedBackend,
+    aliases: Vec<String>,
+    cache: CacheOptions,
+    snapshot: String,
+    profile: QwenServingProfile,
+) -> Result<ModelLoadRequest> {
+    zerogravity::devices::fresh(inventory)?;
+    match backend {
+        SelectedBackend::Cuda => cuda_load(aliases, cache, snapshot, profile),
+        SelectedBackend::Hip => hip_load(
+            aliases,
+            cache,
+            snapshot,
+            profile,
+            hip_budget(request, inventory)?,
+            request.numerical.as_deref() == Some("native"),
+        ),
+    }
+}
+
 fn target(model: &zerogravity::pipeline::ModelInstance) -> Option<String> {
     let source = SourceSelector::parse(model.source.as_deref()?).ok()?;
     match source {
@@ -269,7 +285,7 @@ fn resolve(model: &zerogravity::pipeline::ModelInstance, alias: &str) -> Result<
     })
 }
 
-pub(super) fn select_backend(
+pub(crate) fn select_backend(
     request: &Request,
     inventory: &devices::Inventory,
     target: &str,
@@ -277,7 +293,7 @@ pub(super) fn select_backend(
     let allowed = zerogravity::devices::allowed(request, inventory)?;
     match request.backend {
         Backend::Cuda => {
-            require_cuda(&allowed, target)?;
+            require_cuda(&allowed, target, &request.headroom)?;
             Ok(Some(SelectedBackend::Cuda))
         }
         Backend::Rocm => {
@@ -285,7 +301,7 @@ pub(super) fn select_backend(
             Ok(Some(SelectedBackend::Hip))
         }
         Backend::Auto => {
-            if cuda_candidate(&allowed, target) {
+            if cuda_candidate(&allowed, target, &request.headroom) {
                 Ok(Some(SelectedBackend::Cuda))
             } else if hip_candidate(&allowed) {
                 Ok(Some(SelectedBackend::Hip))
@@ -326,14 +342,15 @@ pub(super) fn preflight_acquisition(
     Ok(())
 }
 
-fn cuda_candidate(devices: &[devices::Observation], target: &str) -> bool {
+fn cuda_candidate(devices: &[devices::Observation], target: &str, headroom: &Headroom) -> bool {
     cfg!(feature = "cuda")
         && target != "qwen3.8-27b"
         && devices.iter().any(|device| {
             device.class == "gpu"
                 && device.vendor == "nvidia"
+                && device.cuda_ordinal == Some(0)
                 && device.cuda_cc == Some((8, 6))
-                && device.available.is_some_and(|bytes| bytes >= 5 * GIB)
+                && cuda_fit(device, headroom).is_ok_and(|bytes| bytes >= 5 * GIB)
         })
 }
 
@@ -344,10 +361,22 @@ fn hip_candidate(devices: &[devices::Observation]) -> bool {
             .any(|device| device.class == "gpu" && device.vendor == "amd")
 }
 
-fn require_cuda(devices: &[devices::Observation], target: &str) -> Result<()> {
+fn cuda_fit(device: &devices::Observation, headroom: &Headroom) -> Result<u64> {
+    let ceiling = device
+        .ceiling
+        .ok_or_else(|| Error::State("CUDA capacity unknown".into()))?;
+    let available = device
+        .available
+        .ok_or_else(|| Error::State("CUDA availability unknown".into()))?;
+    Ok(available
+        .min(ceiling)
+        .saturating_sub(headroom.bytes(ceiling, false)?))
+}
+
+fn require_cuda(devices: &[devices::Observation], target: &str, headroom: &Headroom) -> Result<()> {
     #[cfg(not(feature = "cuda"))]
     {
-        let _ = (devices, target);
+        let _ = (devices, target, headroom);
         return Err(Error::Unsupported("CUDA backend is not compiled".into()));
     }
     #[cfg(feature = "cuda")]
@@ -359,8 +388,14 @@ fn require_cuda(devices: &[devices::Observation], target: &str) -> Result<()> {
         }
         let device = devices
             .iter()
-            .find(|device| device.class == "gpu" && device.vendor == "nvidia")
-            .ok_or_else(|| Error::Unsupported("no selected NVIDIA CUDA device".into()))?;
+            .find(|device| {
+                device.class == "gpu" && device.vendor == "nvidia" && device.cuda_ordinal == Some(0)
+            })
+            .ok_or_else(|| {
+                Error::Unsupported(
+                    "selected devices do not include the original CUDA device 0".into(),
+                )
+            })?;
         if device.cuda_cc != Some((8, 6)) {
             return Err(Error::Unsupported(format!(
                 "current Qwen CUDA source kernels are SM86-qualified; selected device reports compute capability {}",
@@ -370,9 +405,9 @@ fn require_cuda(devices: &[devices::Observation], target: &str) -> Result<()> {
                     .unwrap_or_else(|| "unknown".into())
             )));
         }
-        if device.available.is_some_and(|bytes| bytes < 5 * GIB) {
+        if cuda_fit(device, headroom)? < 5 * GIB {
             return Err(Error::Limit(
-                "current Qwen CUDA source path requires at least 5 GiB available VRAM".into(),
+                "current Qwen CUDA source path requires 5 GiB available VRAM after headroom".into(),
             ));
         }
         Ok(())

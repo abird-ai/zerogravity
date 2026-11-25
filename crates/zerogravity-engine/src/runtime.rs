@@ -216,6 +216,16 @@ impl Runtime {
             host_backing,
         })
     }
+    /// Current original worker/queue counters without model or resource
+    /// inventory. Presentation callers may sample this at a coarse cadence.
+    pub fn scheduler_snapshot(&self) -> Result<Option<crate::router::worker::SchedulerSnapshot>> {
+        let text = self
+            .inner
+            .text
+            .lock()
+            .map_err(|_| Error::State("runtime lock poisoned".into()))?;
+        Ok(text.router().map(Router::scheduler_snapshot))
+    }
     pub(crate) fn catalog_snapshot(&self) -> Result<Vec<ModelSnapshot>> {
         let text = self
             .inner

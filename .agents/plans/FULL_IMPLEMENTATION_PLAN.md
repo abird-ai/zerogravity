@@ -568,7 +568,17 @@ demand. Preserve the existing detailed
   executions pass/0 fail/109 skips, release/installer/scripts pass; real
   Qwen 0.8B GGUF CPU PTY two-prompt one-shot equality and clean exit pass.
   No remote transfer or physical GPU requalification.
-  **Next: UX-6 stable serve CLI (§46A.28).**
+- [x] UX-6 stable canonical serve: positional/explicit aliases and shared
+  run/source/config/device policy; typed serve settings and named profiles.
+  CPU GGUF and single approved original HF snapshot alias sets, same
+  eligible acquisition consent and original loader. Legacy serving profiles
+  retained; incompatible route sets refuse cold. Original ControlPlane
+  listener with actual startup, sampled status and joined shutdown. Real
+  cached Qwen 0.8B GGUF release alias equality/one-owner/SIGTERM test and
+  cold refusal pass; combined lint and GPU feature compile pass. No protocol
+  rewrite or physical/remote acquisition evidence. Full isolated gate
+  2466 pass/0 fail/109 skips; release/installer/scripts pass.
+  **Next: UX-7 ConfigDocument/profile management (§46A.28).**
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,

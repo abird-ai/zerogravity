@@ -521,7 +521,14 @@ pub(super) fn acquire_for_run(
     recipe: &zerogravity::models::QwenPullRecipe,
     root: &std::path::Path,
     disk: u64,
+    cancellation: Option<Arc<AtomicBool>>,
 ) -> Result<()> {
+    if cancellation
+        .as_ref()
+        .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire))
+    {
+        return Err(Error::State("acquisition canceled".into()));
+    }
     let runtime = zerogravity::Runtime::builder().build()?;
     let request = recipe.request();
     let mut bounds = PullLimits::default();
@@ -537,8 +544,14 @@ pub(super) fn acquire_for_run(
         HttpOptions::default(),
     )?;
     let admission = admission(MEMORY_DEFAULT)?;
-    let cancel = Arc::new(AtomicBool::new(false));
-    let _signals = signals::CancellationSignals::register(cancel.clone())?;
+    let (cancel, _signals) = match cancellation {
+        Some(cancel) => (cancel, None),
+        None => {
+            let cancel = Arc::new(AtomicBool::new(false));
+            let signals = signals::CancellationSignals::register(cancel.clone())?;
+            (cancel, Some(signals))
+        }
+    };
     let terminal = monitor::TerminalInput::enter(terminal)?;
     let control = runtime.control();
     let operation = control

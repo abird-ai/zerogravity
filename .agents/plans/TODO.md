@@ -137,7 +137,13 @@ acquisition consent and precommit digest guard. Full gate 2465 Rust
 executions pass/0 fail/109 skips; combined acquisition/serve lint and
 CUDA/HIP/acquisition compile, release/installer/scripts and real Qwen
 0.8B GGUF CPU PTY two-prompt equality/exit pass. No new remote or GPU
-execution evidence. Next UX-6 stable serve CLI per §46A.28.
+execution evidence. UX-6 canonical serve implemented: shared config/source/
+device selection and explicit acquisition consent, typed serve settings,
+original control-owned listener, actual startup/status and exact retirement.
+Real cached Qwen 0.8B CPU release two-alias HTTP equality/one-owner/SIGTERM
+and cold refusal pass; combined strict lint/feature compile pass. Full
+isolated gate 2466 pass/0 fail/109 skips; release/installer/scripts pass.
+Next UX-7 ConfigDocument/profile management.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

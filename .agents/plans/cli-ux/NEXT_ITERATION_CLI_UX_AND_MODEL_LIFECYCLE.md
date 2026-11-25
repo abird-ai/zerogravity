@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (25 Nov): **Phase 2.1 UX-1 through bounded canonical UX-5 accepted; UX-6 stable serve CLI is next (§46A.28).**
+Status (25 Nov): **Phase 2.1 UX-1 through bounded canonical UX-6 accepted; UX-7 ConfigDocument/profile management is next (§46A.28).**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
@@ -2578,9 +2578,18 @@ Implement:
 
 Do not rewrite the HTTP protocol in this slice.
 
-Close UX-6 once the user-facing serve command is stable enough that the following
-OpenAI-serving iteration can replace/extend the protocol transport without
-changing normal CLI semantics.
+UX-6 implementation (25 Nov): positional models, explicit IDs, shared selected
+document/profile and typed serve section; CLI overrides first and explicit
+route lists replace document model table. CPU GGUF and one approved original
+GPU snapshot shared by aliases; other route sets refuse, legacy advanced
+serving retained. Cold route-set selection before eligible original acquisition;
+same operation and exact commit guard, shared shutdown flag. Original
+ControlPlane listener, actual startup and coarse changed-counter status,
+listener retirement before runtime join. Focused real cached 0.8B GGUF
+release alias equality/one owner/SIGTERM and cold refusal pass; combined
+lint/feature compile pass. Full isolated gate 2466 pass/0 fail/109 skips,
+release/installer/scripts pass. No new protocol, physical GPU
+qualification or live remote transfer. UX-7 follows before native TUI/Web.
 
 ### UX-7 — unified config/profile documents
 

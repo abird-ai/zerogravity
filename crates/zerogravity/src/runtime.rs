@@ -166,6 +166,9 @@ impl Runtime {
     pub fn snapshot(&self) -> Result<RuntimeSnapshot> {
         self.engine.snapshot()
     }
+    pub fn scheduler_snapshot(&self) -> Result<Option<text::worker::SchedulerSnapshot>> {
+        self.engine.scheduler_snapshot()
+    }
     /// Close admission and join workers. Engine-worker and same-runtime loader/
     /// retirement callbacks return an error rather than synchronously self-joining.
     pub fn shutdown(&self) -> Result<()> {

@@ -98,6 +98,12 @@ pub fn parse_document(bytes: &[u8]) -> Result<Document> {
 /// bounds. As in the CLI, config-file symlinks are followed; source paths inside
 /// the document are neither resolved nor opened. No environment is consulted.
 pub fn load_document(path: impl AsRef<Path>) -> Result<Document> {
+    parse_document(&read_document_bytes(path)?)
+}
+
+/// Read once so compatibility classification and canonical parsing share
+/// the same bounded bytes, rather than reopening a selected document.
+pub fn read_document_bytes(path: impl AsRef<Path>) -> Result<Vec<u8>> {
     let path = path.as_ref();
     let bytes = fs::metadata(path)?.len();
     if bytes == 0 || bytes > MAX_CONFIG_BYTES as u64 {
@@ -113,5 +119,5 @@ pub fn load_document(path: impl AsRef<Path>) -> Result<Document> {
             "pipeline config changed or exceeds size".into(),
         ));
     }
-    parse_document(&bytes)
+    Ok(bytes)
 }

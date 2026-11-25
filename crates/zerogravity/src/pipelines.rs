@@ -12,9 +12,9 @@ mod yaml;
 
 pub use document::{
     ChatContextDoc, ContextFilterDoc, DiagnosticDoc, Document, EntryDoc, LinkDoc, ModelDoc,
-    ModelEntry, PipelineDoc, PipelineEntry, RouteDoc, RunDoc, StepDoc, TaskDoc,
+    ModelEntry, PipelineDoc, PipelineEntry, RouteDoc, RunDoc, ServeDoc, StepDoc, TaskDoc,
 };
-pub use yaml::{MAX_CONFIG_BYTES, load_document, parse_document};
+pub use yaml::{MAX_CONFIG_BYTES, load_document, parse_document, read_document_bytes};
 pub use zerogravity_core::pipeline::{
     ApiRoute, ChatContextPolicy, ComponentContract, ComponentRegistry, Config, ModelInstance,
     Pipeline, PipelineEdge, PipelineNode, Port, TaskBinding, ValueKind, VerifiedShape,
@@ -27,6 +27,7 @@ pub struct CheckedDocument {
     /// Parsed v2 options; pipeline checking does not resolve run precedence or
     /// validate execution settings such as backend/device/task eligibility.
     pub run: Option<RunDoc>,
+    pub serve: Option<ServeDoc>,
     pub shape: VerifiedShape,
 }
 

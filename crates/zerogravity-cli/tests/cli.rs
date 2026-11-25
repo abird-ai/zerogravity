@@ -42,14 +42,22 @@ fn help_is_available_offline() {
 
 #[test]
 fn serve_requires_an_explicit_feature_and_registered_model() {
-    let output = binary().arg("serve").output().expect("run CLI");
+    let root = std::env::temp_dir().join(format!("zg-serve-no-document-{}", std::process::id()));
+    assert!(!root.exists());
+    let output = binary()
+        .arg("serve")
+        .env("XDG_CONFIG_HOME", &root)
+        .output()
+        .expect("run CLI");
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8(output.stderr).expect("utf8");
     if cfg!(feature = "serve") {
-        assert!(stderr.contains("invalid_config"), "{stderr}");
+        // Bare serve selects the same default XDG document as run.
+        assert!(stderr.contains("io_error"), "{stderr}");
     } else {
         assert!(stderr.contains("requires --features serve"), "{stderr}");
     }
+    assert!(!root.exists());
 }
 
 #[test]
@@ -345,7 +353,7 @@ fn canonical_help_completions_and_device_output_are_offline() {
 fn unsupported_globals_fail_before_effects() {
     for args in [
         vec!["--format=jsonl", "run", "/missing.gguf"],
-        vec!["--interactive=always", "serve"],
+        vec!["--interactive=always", "device", "list"],
         vec!["--yes", "run", "/missing.gguf"],
         vec![
             "--format=json",

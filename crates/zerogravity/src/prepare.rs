@@ -8,6 +8,19 @@ use crate::{Error, Result};
 use std::path::Path;
 use std::sync::Arc;
 
+/// Cold source-geometry target inference for explicit direct GGUF routes.
+/// Declared sidecars and exact snapshot selection use the original reader;
+/// actual loading independently validates all source bytes and admission.
+pub fn gguf_target(model: &crate::pipeline::ModelInstance, context: usize) -> Result<String> {
+    use source::{GgufSource, require_geometry};
+    let geometry = match GgufSource::resolve(model, None)? {
+        GgufSource::Local(source) => source.read_config()?.1,
+        #[cfg(all(feature = "cache", target_os = "linux"))]
+        GgufSource::Cached(source) => source.geometry()?,
+    };
+    require_geometry(&geometry, Some(&model.target), context)
+}
+
 pub struct PreparedQwen {
     model: Arc<LoadedQwenModel>,
     tokenizer: QwenTokenizer,

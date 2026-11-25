@@ -35,7 +35,7 @@ pub(super) fn prompt_file(path: &Path) -> Result<String> {
     read_prompt(file)
 }
 
-pub(super) fn interaction() -> Result<bool> {
+pub(crate) fn interaction() -> Result<bool> {
     crate::output::reporter().run_interaction()
 }
 
@@ -71,8 +71,8 @@ pub(super) fn prepare(request: &mut Request, interactive: bool) -> Result<bool> 
     target_os = "linux",
     any(feature = "cuda", feature = "hip")
 ))]
-pub(super) fn confirm_download() -> Result<bool> {
-    eprint!("Download and run this exact source? [y/N] ");
+pub(crate) fn confirm_download() -> Result<bool> {
+    eprint!("Download and use this exact source? [y/N] ");
     io::stderr().flush()?;
     let line = read_line(&mut io::stdin().lock())?;
     Ok(line.is_some_and(|line| matches!(line.trim(), "y" | "Y" | "yes" | "YES")))

@@ -6,6 +6,7 @@ use engine::Router;
 use engine::ServiceError;
 use zerogravity::runtime::text as engine;
 use zerogravity::runtime::text::pending;
+mod canonical;
 mod shutdown;
 
 use serde::{Deserialize, Deserializer};
@@ -121,6 +122,36 @@ fn default_batch_mode() -> String {
 }
 
 impl YamlConfig {
+    fn from_yaml(path: &Path, raw: &[u8]) -> Result<Self, ServiceError> {
+        if raw.is_empty() || raw.len() > 64 * 1024 {
+            return Err(ServiceError::new(
+                400,
+                "config_limit",
+                "serving YAML exceeds 64 KiB",
+            ));
+        }
+        let mut parsed: Self = serde_yaml::from_slice(raw)
+            .map_err(|_| ServiceError::new(400, "config_invalid", "invalid typed serving YAML"))?;
+        let base = path.parent().unwrap_or(Path::new("."));
+        for model in &mut parsed.models {
+            if model.path.is_relative() {
+                model.path = base.join(&model.path);
+            }
+        }
+        if let Some(native) = &mut parsed.native_artifacts
+            && native.is_relative()
+        {
+            *native = std::fs::canonicalize(base.join(&*native)).map_err(|_| {
+                ServiceError::new(
+                    400,
+                    "native_artifacts_missing",
+                    "cannot resolve native artifacts directory",
+                )
+            })?;
+        }
+        Ok(parsed)
+    }
+
     fn cli(args: &[String]) -> Result<Self, ServiceError> {
         let mut config = Self {
             listen: default_listen(),
@@ -150,37 +181,10 @@ impl YamlConfig {
                 ));
             }
             let path = Path::new(&args[1]);
-            let raw = std::fs::read(path).map_err(|_| {
-                ServiceError::new(400, "config_unreadable", "cannot read serving YAML")
+            let raw = zerogravity::pipelines::read_document_bytes(path).map_err(|_| {
+                ServiceError::new(400, "config_unreadable", "cannot read bounded serving YAML")
             })?;
-            if raw.is_empty() || raw.len() > 64 * 1024 {
-                return Err(ServiceError::new(
-                    400,
-                    "config_limit",
-                    "serving YAML exceeds 64 KiB",
-                ));
-            }
-            let mut parsed: Self = serde_yaml::from_slice(&raw).map_err(|_| {
-                ServiceError::new(400, "config_invalid", "invalid typed serving YAML")
-            })?;
-            let base = path.parent().unwrap_or(Path::new("."));
-            for model in &mut parsed.models {
-                if model.path.is_relative() {
-                    model.path = base.join(&model.path);
-                }
-            }
-            if let Some(native) = &mut parsed.native_artifacts
-                && native.is_relative()
-            {
-                *native = std::fs::canonicalize(base.join(&*native)).map_err(|_| {
-                    ServiceError::new(
-                        400,
-                        "native_artifacts_missing",
-                        "cannot resolve native artifacts directory",
-                    )
-                })?;
-            }
-            return Ok(parsed);
+            return Self::from_yaml(path, &raw);
         }
         let mut it = args.iter();
         while let Some(flag) = it.next() {
@@ -268,8 +272,12 @@ impl YamlConfig {
 
 pub(super) fn help() {
     println!(
-        "USAGE: zerogravity serve --config config.yaml | \
-             --model ID=MODEL.gguf [--listen 127.0.0.1:8000] \
+        "USAGE: zerogravity serve MODEL... | --model ID=MODEL [--model ID=MODEL ...]\n\
+             zerogravity serve [--config FILE | --profile NAME] [MODEL...]\n\
+             Canonical routes: local GGUF or cached model names/digests/provider locators.\n\
+             --backend auto|cpu|cuda|rocm|vulkan, --device ID, --headroom LIMIT, --pull, --offline.\n\
+             Direct GGUF CPU or one approved original GPU source shared by aliases.\n\
+             Legacy explicit local/diagnostic serving: --model ID=MODEL.gguf [--listen 127.0.0.1:8000] \
              [--backend cpu|cuda|vulkan-nvidia|vulkan-amd|rocm] \
              [--source-profile gguf|fixed-prompt-bf16|qwen35-cuda-bf16] [--native-artifacts DIR] \
              [--workers 2] [--active-per-worker 2] \
@@ -302,26 +310,44 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
     // Keep the guard alive until all HTTP and inference workers have joined.
     let mut shutdown = shutdown::Shutdown::install()
         .map_err(|error| ServiceError::new(500, "signal_handler", error.to_string()))?;
-    let options = YamlConfig::cli(args)?;
-    if shutdown.is_requested() {
-        return Ok(());
+    match canonical::Invocation::parse(args)? {
+        canonical::Invocation::Legacy(options) => legacy(*options, &mut shutdown),
+        canonical::Invocation::Canonical(options) => canonical::run(options, &mut shutdown),
     }
-    let address: SocketAddr = options.listen.parse().map_err(|_| {
-        ServiceError::new(400, "invalid_listen", "--listen requires numeric IP:PORT")
-    })?;
-    let key = std::env::var("ZEROGRAVITY_API_KEY")
-        .ok()
-        .filter(|v| !v.is_empty());
-    // No native TLS; a Bearer token over unencrypted non-loopback
-    // sockets must not be mistaken for secure remote authentication.
-    // Use a trusted TLS reverse proxy forwarding to local loopback.
-    if !address.ip().is_loopback() {
-        return Err(ServiceError::new(
-            403,
-            "remote_bind_unsupported",
-            "HTTP service is loopback-only; expose through a TLS/auth reverse proxy",
-        ));
+}
+
+struct Listener {
+    address: SocketAddr,
+    key: Option<String>,
+    metrics: bool,
+}
+impl Listener {
+    fn new(listen: &str, metrics: bool) -> Result<Self, ServiceError> {
+        let address: SocketAddr = listen.parse().map_err(|_| {
+            ServiceError::new(400, "invalid_listen", "--listen requires numeric IP:PORT")
+        })?;
+        if !address.ip().is_loopback() {
+            return Err(ServiceError::new(
+                403,
+                "remote_bind_unsupported",
+                "HTTP service is loopback-only; expose through a TLS/auth reverse proxy",
+            ));
+        }
+        let key = std::env::var("ZEROGRAVITY_API_KEY")
+            .ok()
+            .filter(|v| !v.is_empty());
+        zerogravity::serving::auth::validate_key(key.as_deref())
+            .map_err(ServiceError::inference)?;
+        Ok(Self {
+            address,
+            key,
+            metrics,
+        })
     }
+}
+
+fn legacy(options: YamlConfig, shutdown: &mut shutdown::Shutdown) -> Result<(), ServiceError> {
+    let listener = Listener::new(&options.listen, options.enable_per_request_metrics)?;
     let profile = options.profile();
     profile.validate()?;
     let max_active = options
@@ -334,69 +360,140 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
                 "text scheduler exceeds runtime limits",
             )
         })?;
+    launch(
+        shutdown,
+        listener,
+        max_active,
+        options.max_pending_requests,
+        |control| {
+            control.load(zerogravity::models::ModelLoadRequest::ServingText {
+                declared: options.models.into_iter().map(|m| (m.id, m.path)).collect(),
+                profile,
+            })
+        },
+    )
+}
+
+/// Foreground ownership is shared by canonical and legacy commands. Stop
+/// ingress and join handlers before retiring original inference workers.
+fn launch(
+    shutdown: &mut shutdown::Shutdown,
+    listener: Listener,
+    max_active: usize,
+    max_pending: Option<usize>,
+    load: impl FnOnce(zerogravity::control::ControlPlane<'_>) -> Result<(), ServiceError>,
+) -> Result<(), ServiceError> {
+    if shutdown.is_requested() {
+        return Ok(());
+    }
     let runtime = zerogravity::Runtime::builder()
         .limits(zerogravity::runtime::SchedulerLimits {
             max_active,
-            max_queued: options.max_pending_requests,
+            max_queued: max_pending,
             ..Default::default()
         })
         .build()
         .map_err(|error| ServiceError::new(400, "invalid_config", error.to_string()))?;
+    let control = runtime.control();
     let result = (|| {
-        runtime
-            .models()
-            .load(zerogravity::models::ModelLoadRequest::ServingText {
-                declared: options.models.into_iter().map(|m| (m.id, m.path)).collect(),
-                profile,
-            })?;
+        crate::output::emit!(Status, "zerogravity: loading selected model routes");
+        load(control)?;
         shutdown.admit(&runtime)?;
         if shutdown.is_requested() {
             return Ok(());
         }
-        let server = runtime
-            .server()
-            .bind(address)
-            .api_key(key)
-            .limits(zerogravity::serving::ingress::IngressLimits {
-                connections: 64,
-                ..Default::default()
+        // Get actual original model/worker facts before announcing listener readiness.
+        let snapshot = control.snapshot().map_err(ServiceError::inference)?;
+        let binding = control
+            .start_serving(zerogravity::control::ServeOptions {
+                address: listener.address,
+                api_key: listener.key,
+                limits: zerogravity::serving::ingress::IngressLimits {
+                    connections: 64,
+                    ..Default::default()
+                },
+                enable_per_request_metrics: listener.metrics,
+                prefix_sharing_scope: None,
             })
-            .enable_per_request_metrics(options.enable_per_request_metrics)
-            .build()
-            .and_then(|server| server.start())
             .map_err(|error| ServiceError::new(500, "bind_failed", error.to_string()))?;
-        if !shutdown.is_requested() {
-            crate::output::emit!(
-                Status,
-                "zerogravity: serving {:?} Qwen on {}, {} worker(s); max-context {}, max-output {}",
-                options.backend,
-                server.local_addr(),
-                options.workers,
-                options.max_context,
-                options.max_output
-            );
-        }
-        shutdown
-            .wait(server)
-            .map_err(|error| ServiceError::new(500, "http_error", error.to_string()))
+        // A monitoring/presentation error must still stop the exact listener.
+        let waited = {
+            if !shutdown.is_requested() {
+                for model in &snapshot.runtime.catalog {
+                    let details = model.capabilities.as_ref().map(|caps| &caps.details);
+                    let backend = details
+                        .and_then(|d| d.execution.as_ref())
+                        .map(|e| format!("{:?}", e.selected.provider))
+                        .unwrap_or_else(|| "unreported".into());
+                    let device = details.and_then(|d| d.memory.as_ref()).and_then(|memory| {
+                        use zerogravity::models::ModelMemory;
+                        match memory {
+                            ModelMemory::Resident(memory) => Some(memory.device.device.as_str()),
+                            ModelMemory::ResidentText { admission, .. } => {
+                                Some(admission.device.device.as_str())
+                            }
+                            _ => None,
+                        }
+                    });
+                    let device = device.or((backend == "Cpu").then_some("cpu:0"));
+                    crate::output::emit!(
+                        Status,
+                        "Model {} · {}{}",
+                        model.aliases.join(", "),
+                        backend,
+                        device.map_or_else(String::new, |device| format!(" · {device}"))
+                    );
+                }
+                crate::output::emit!(Status, "API http://{}/v1", binding.address);
+                if let Some(scheduler) = &snapshot.runtime.scheduler {
+                    crate::output::emit!(
+                        Status,
+                        "zerogravity: serving on {}; max-context {}, max-output {}, active {}, Ctrl-C to stop",
+                        binding.address,
+                        scheduler.config.context,
+                        scheduler.config.output,
+                        scheduler.active_limit
+                    );
+                } else {
+                    crate::output::emit!(
+                        Status,
+                        "zerogravity: serving on {}; Ctrl-C to stop",
+                        binding.address
+                    );
+                }
+            }
+            shutdown.wait_control(control, &runtime, binding)
+        };
+        let stopped = control
+            .stop_serving(binding.generation)
+            .map_err(|error| ServiceError::new(500, "http_error", error.to_string()));
+        combine(waited, stopped, "listener retirement")
     })();
-    // Transport stops first; retain source-retirement errors even after startup failure.
     let joined = runtime
         .shutdown()
         .map_err(|error| ServiceError::new(500, "shutdown_failed", error.to_string()));
-    match (result, joined) {
-        (Ok(()), Ok(())) => {
-            crate::output::emit!(
-                Status,
-                "zerogravity: shutdown complete; HTTP handlers and inference workers joined"
-            );
-            Ok(())
-        }
+    let result = combine(result, joined, "source retirement");
+    if result.is_ok() {
+        crate::output::emit!(
+            Status,
+            "zerogravity: shutdown complete; HTTP handlers and inference workers joined"
+        );
+    }
+    result
+}
+
+fn combine(
+    first: Result<(), ServiceError>,
+    second: Result<(), ServiceError>,
+    phase: &str,
+) -> Result<(), ServiceError> {
+    match (first, second) {
+        (Ok(()), Ok(())) => Ok(()),
         (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
         (Err(error), Err(close)) => Err(ServiceError::new(
             error.status,
             error.code,
-            format!("{}; source retirement: {}", error.message, close.message),
+            format!("{}; {phase}: {}", error.message, close.message),
         )),
     }
 }
