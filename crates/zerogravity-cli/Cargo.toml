@@ -9,9 +9,11 @@ license = "MIT"
 default-run = "zerogravity"
 
 [features]
-default = ["cpu", "model-qwen35", "text", "tui"]
+default = ["cpu", "model-qwen35", "text", "tui", "web"]
 # Native terminal presentation only; no runtime or backend feature grant.
 tui = ["dep:ratatui", "dep:crossterm", "dep:signal-hook"]
+# Embedded control frontend; no inference serving or backend grant.
+web = ["dep:httparse", "dep:getrandom", "dep:signal-hook"]
 # Protocol/frontend capability only. Models and execution backends are selected
 # independently and contribute the routes this server can actually load.
 serve = ["zerogravity/serve", "dep:signal-hook"]
@@ -42,7 +44,7 @@ hip = ["zerogravity/hip"]
 all-models = ["model-qwen35", "model-gemma4"]
 all-backends = ["cpu", "vulkan", "cuda", "hip"]
 # Normal production superset. Diagnostics/qualification remain explicit.
-all = ["all-models", "all-backends", "acquisition", "serve", "tui"]
+all = ["all-models", "all-backends", "acquisition", "serve", "tui", "web"]
 diagnostic-gdn-trace = ["zerogravity/diagnostic-gdn-trace"]
 diagnostic-cpu-checkpoint = ["zerogravity/diagnostic-cpu-checkpoint"]
 
@@ -53,6 +55,8 @@ serde = { version = "=1.0.229", features = ["derive"] }
 serde_yaml = "=0.9.34"
 ratatui = { version = "=0.30.0", default-features = false, features = ["crossterm_0_29"], optional = true }
 crossterm = { version = "=0.29.0", optional = true }
+httparse = { version = "=1.10.1", optional = true }
+getrandom = { version = "=0.4.3", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 signal-hook = { version = "=0.3.18", default-features = false, optional = true }

@@ -203,6 +203,8 @@ enum Modal {
     None,
     Palette(Palette),
     Help,
+    #[cfg(feature = "web")]
+    WebUrl(String),
     Form {
         form: Form,
         cursor: usize,
@@ -280,6 +282,7 @@ pub(super) enum Action {
     Download(DownloadAction),
     Settings(SettingsAction),
     Logs(LogAction),
+    OpenWeb,
     Submit(Form),
     Confirmed(Confirmation),
 }
@@ -304,6 +307,10 @@ impl Navigation {
     }
     pub fn idle(&self) -> bool {
         matches!(self.modal, Modal::None)
+    }
+    #[cfg(feature = "web")]
+    pub fn web_url(&mut self, url: String) {
+        self.modal = Modal::WebUrl(url);
     }
     pub fn confirm(&mut self, question: String, action: Confirmation) {
         self.modal = Modal::Confirm {
@@ -393,6 +400,13 @@ impl Navigation {
                         palette.cursor = 0;
                     }
                     _ => {}
+                }
+                return Action::Redraw;
+            }
+            #[cfg(feature = "web")]
+            Modal::WebUrl(_) => {
+                if matches!(key.code, Esc | Enter) {
+                    self.modal = Modal::None;
                 }
                 return Action::Redraw;
             }
@@ -523,6 +537,9 @@ impl Navigation {
             Char('l') if !self.rail && self.view == View::Logs => Action::Logs(LogAction::Level),
             Char('f') if !self.rail && self.view == View::Logs => {
                 Action::Logs(LogAction::Component)
+            }
+            Char('b') if !self.rail && matches!(self.view, View::Home | View::Serve) => {
+                Action::OpenWeb
             }
             Char('d') if !self.rail && matches!(self.view, View::Models | View::Downloads) => {
                 Action::Library(LibraryAction::Pull)
@@ -803,8 +820,10 @@ fn content(app: &App) -> Vec<Line<'static>> {
             rows.push(Line::default());
             rows.push(text(format!(
                 "Active configuration: {}",
-                app.document.target.label()
+                app.document.snapshot().target.label()
             )));
+            #[cfg(feature = "web")]
+            rows.push(text("b open private Web control URL"));
             rows.push(label("Quick run", app.color));
             rows.push(text(match &app.selected {
                 Some(owner) => format!("Enter: prompt for {}", owner.alias),
@@ -902,6 +921,8 @@ fn content(app: &App) -> Vec<Line<'static>> {
             rows.push(label("OpenAI-compatible inference API", app.color));
             rows.push(text(serve(app.snapshot.serving)));
             rows.push(text("This process only · s start · t stop · l load"));
+            #[cfg(feature = "web")]
+            rows.push(text("b open private Web control URL"));
             if let Some(scheduler) = &runtime.scheduler {
                 rows.push(text(format!(
                     "Context {} · output {} · active {}/{} · queued {}",
@@ -928,7 +949,7 @@ fn content(app: &App) -> Vec<Line<'static>> {
             rows.push(label("Download operation", app.color));
             rows.push(text(downloads(app)));
             rows.push(text("d new pull · p pause · s resume · c cancel"));
-            if app.document.offline {
+            if app.document.snapshot().offline {
                 rows.push(text("Offline · new acquisition disabled"));
             }
             download_rows(&mut rows, app);
@@ -1019,6 +1040,25 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
     );
     match &app.navigation.modal {
         Modal::None => {}
+        #[cfg(feature = "web")]
+        Modal::WebUrl(url) => {
+            let popup = center(body, 110, 11);
+            frame.render_widget(Clear, popup);
+            frame.render_widget(
+                Paragraph::new(vec![
+                    label("Open this private URL in a browser", app.color),
+                    text(url),
+                    Line::default(),
+                    text("Same process and runtime. Keep the control credential private."),
+                    text(
+                        "Esc / Enter closes this view; the listener remains owned by this process.",
+                    ),
+                ])
+                .wrap(Wrap { trim: false })
+                .block(Block::bordered().title(" Embedded Web ")),
+                popup,
+            );
+        }
         Modal::Help => {
             let popup = center(body, 68, 16);
             frame.render_widget(Clear, popup);
@@ -1032,6 +1072,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     text("l       Load on Home / Running / Serve"),
                     text("u       Retire selected Running registration"),
                     text("s / t   Start / stop listener on Serve"),
+                    text("b       Web control URL on Home / Serve"),
                     text("c       Request cancellation"),
                     text(":       Destination palette"),
                     text("r       Refresh observations"),
@@ -1285,14 +1326,17 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind) 
             text("l load on selected physical device · no inferred model eligibility"),
         ],
         Kind::Profiles => vec![
-            text(format!("Active: {}", app.document.target.label())),
+            text(format!(
+                "Active: {}",
+                app.document.snapshot().target.label()
+            )),
             text("j/k select · Enter open/editor · c create"),
             text("Open is inert; activate, copy or remove in Config."),
         ],
         Kind::Config => vec![
             text(format!(
                 "Active: {} · Editing: {}",
-                app.document.target.label(),
+                app.document.snapshot().target.label(),
                 app.library.editor.path.display()
             )),
             text("j/k select · / search · Enter edit · z unset · t validate"),
@@ -1312,7 +1356,7 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind) 
             )),
         ],
     };
-    if app.document.offline && kind == Kind::Models {
+    if app.document.snapshot().offline && kind == Kind::Models {
         header.push(text("Offline · acquisition disabled"));
     }
     if kind == Kind::Config
@@ -1568,9 +1612,13 @@ mod tests {
             navigation: Navigation::default(),
             snapshot: runtime.control().snapshot().unwrap(),
             logs: super::super::logs::Logs::default(),
+            #[cfg(feature = "web")]
+            web: None,
             notice: None,
             color: false,
-            document: super::super::work::Document::test_default(),
+            document: crate::control_host::Selection::new(
+                super::super::work::Document::test_default(),
+            ),
             job: None,
             selected: None,
             response: None,

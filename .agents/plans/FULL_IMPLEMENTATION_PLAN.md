@@ -623,7 +623,16 @@ demand. Preserve the existing detailed
   strict lint and actual settings PTY pass; serial cached release lifecycle/
   profile-switch passes (22.95s), remaining release tests pass. Full isolated
   gate 2,483/0/109, release PTY/installer/scripts pass. UX-8D accepted.
-  **Next: UX-9A embedded SolidJS Web shell (§46A.28).**
+- [x] UX-9A embedded SolidJS/Vite Web shell: committed locally reproducible
+  assets/license, optional frontend-only feature, shared foreground
+  Runtime/Selection/retirement, loopback independent random bearer,
+  numeric Host/origin boundary, bounded read-only snapshot/SSE, responsive
+  shell and singular palette. CLI web and TUI same-process private URL,
+  exact owner identities, no new model/cache/inference owner or actions.
+  Actual HTTP/Firefox responsive smoke, JS tests/strict lint and serial
+  cached TUI/HTTP/Web shared-owner release 6/0/0 pass. Complete isolated
+  rerun 2,485/0/109, release Web/TUI/installer/scripts pass. UX-9A accepted.
+  **Next: UX-9B Web Home / Running / Serve (§46A.28).**
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,

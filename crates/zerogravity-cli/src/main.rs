@@ -6,6 +6,8 @@ mod args;
 mod commands;
 mod completion;
 mod config_cli;
+#[cfg(any(feature = "tui", feature = "web"))]
+mod control_host;
 mod model_cli;
 mod output;
 #[cfg(all(feature = "acquisition", target_os = "linux"))]
@@ -46,6 +48,8 @@ mod resident;
 mod run_cli;
 #[cfg(feature = "tui")]
 mod tui;
+#[cfg(feature = "web")]
+mod web;
 
 #[cfg(feature = "serve")]
 mod serve;

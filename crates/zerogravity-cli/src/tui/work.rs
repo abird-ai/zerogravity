@@ -13,7 +13,7 @@ use std::{
 };
 use zerogravity::{
     Error, Result, Runtime,
-    control::{RegisteredModel, ServeSummary},
+    control::RegisteredModel,
     diagnostics::RuntimePhase,
     models::ModelLifecycle,
     run::{
@@ -132,57 +132,7 @@ impl Request {
     }
 }
 
-#[derive(Clone)]
-pub(super) struct Document {
-    pub target: settings::Target,
-    pub ui: zerogravity::configuration::UiDoc,
-    pub chat: bool,
-    pub offline: bool,
-}
-impl Document {
-    #[cfg(test)]
-    pub fn test_default() -> Self {
-        Self {
-            target: settings::Target {
-                path: "/nonexistent/config.yaml".into(),
-                profile: Some("default".into()),
-                allow_missing: true,
-            },
-            chat: true,
-            offline: false,
-            ui: Default::default(),
-        }
-    }
-
-    pub fn new(selection: Option<(&str, &str)>, offline: bool) -> Result<Self> {
-        let target = settings::Target::selected(selection)?;
-        let doc = target.read()?.map(|(_, doc)| doc).unwrap_or_default();
-        Ok(Self::from_config(target, doc, offline))
-    }
-    pub fn from_config(
-        target: settings::Target,
-        doc: zerogravity::configuration::ConfigDocument,
-        offline: bool,
-    ) -> Self {
-        let chat = doc.run.and_then(|run| run.task).and_then(|task| task.raw) != Some(true);
-        Self {
-            target,
-            chat,
-            offline,
-            ui: doc.ui.unwrap_or_default(),
-        }
-    }
-    fn read(
-        &self,
-    ) -> Result<
-        Option<(
-            std::path::PathBuf,
-            zerogravity::configuration::ConfigDocument,
-        )>,
-    > {
-        self.target.read()
-    }
-}
+pub(super) use crate::control_host::Document;
 
 /// Bounded presentation copy only, independent of the original output stream.
 const MAX_DISPLAY_BYTES: usize = 64 * 1024;
@@ -707,30 +657,4 @@ fn invoke(
     }
 }
 
-/// Foreground process exit, not a client navigation operation. The worker is
-/// joined by the caller first; no concurrent start/stop remains in this UI.
-pub(super) fn retire(runtime: &Runtime) -> Result<()> {
-    #[cfg(feature = "serve")]
-    let stopped = (|| match runtime.control().serving()? {
-        ServeSummary::Listening { binding, .. } | ServeSummary::Finished { binding } => {
-            runtime.control().stop_serving(binding.generation)
-        }
-        ServeSummary::Idle | ServeSummary::Unavailable => Ok(()),
-        ServeSummary::Transitioning => {
-            Err(Error::State("Listener transition still in progress".into()))
-        }
-    })();
-    #[cfg(not(feature = "serve"))]
-    let stopped = {
-        let _ = ServeSummary::Unavailable;
-        Ok(())
-    };
-    combine(stopped, runtime.shutdown())
-}
-
-pub(super) fn combine(primary: Result<()>, cleanup: Result<()>) -> Result<()> {
-    match (primary, cleanup) {
-        (Ok(()), result) | (result, Ok(())) => result,
-        (Err(primary), Err(cleanup)) => Err(Error::State(format!("{primary}; cleanup: {cleanup}"))),
-    }
-}
+pub(super) use crate::control_host::{combine, retire};

@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (26 Nov): **Phase 2.1 UX-1 through UX-8D accepted; UX-9A embedded SolidJS Web shell next (§46A.28).**
+Status (26 Nov): **Phase 2.1 UX-1 through UX-9A accepted; UX-9B Web Home / Running / Serve next (§46A.28).**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
@@ -3611,6 +3611,22 @@ dependencies. Focused TUI 5/0, strict lint, real settings PTY pass;
 serial cached release lifecycle/profile-switch passes (22.95s); remaining
 release tests pass. Full isolated gate 2,483/0/109, release PTY/installer/
 scripts pass. UX-8D accepted; UX-9A next.
+
+UX-9A implementation (26 Nov): pinned offline SolidJS 1.9.15/Vite
+8.3.2 assets/license embedded by optional default CLI web feature.
+Extract original foreground host/runtime/active Selection/retirement.
+CLI web and native Home/Serve b launch same-process private URL;
+separate numeric loopback HTTP bearer capability, no inference bearer,
+Host/origin/Fetch-Site/body/method/referrer/CSP bounds, allowlisted
+read-only owner snapshot with exact string IDs, SSE refresh/resync and
+selection invalidations. Responsive Solid shell/palette, real live
+observations, no fake actions, tab-local fragment credential and lock.
+Actual HTTP/Firefox/JS/strict lint and serial cached same-owner
+TUI/Web/inference release 6/0/0 (32.71s) pass; final asset/license
+refinement HTTP/Firefox pass. Complete isolated rerun 2,485/0/109 and
+release Web/TUI/installer/scripts pass after TCP status-line fixture
+correction. UX-9A accepted. No physical GPU or public exposure/new
+inference qualification. UX-9B next.
 
 Build TUI before Web so the shared control surface proves it is not browser-shaped.
 

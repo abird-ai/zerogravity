@@ -7,13 +7,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{DefaultTerminal, Terminal, backend::CrosstermBackend};
-use std::{
-    io::{self, stdout},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::io::{self, stdout};
 use zerogravity::Result;
 
 pub(super) struct Session {
@@ -58,42 +52,4 @@ fn restore() -> io::Result<()> {
     raw.and(screen)
 }
 
-pub(super) struct Stop {
-    flag: Arc<AtomicBool>,
-    #[cfg(unix)]
-    signals: Vec<signal_hook::SigId>,
-}
-impl Stop {
-    pub fn install() -> Result<Self> {
-        let flag = Arc::new(AtomicBool::new(false));
-        #[cfg(unix)]
-        {
-            let mut stop = Self {
-                flag,
-                signals: Vec::new(),
-            };
-            for signal in [
-                signal_hook::consts::SIGINT,
-                signal_hook::consts::SIGTERM,
-                signal_hook::consts::SIGHUP,
-            ] {
-                stop.signals
-                    .push(signal_hook::flag::register(signal, stop.flag.clone())?);
-            }
-            Ok(stop)
-        }
-        #[cfg(not(unix))]
-        Ok(Self { flag })
-    }
-    pub fn requested(&self) -> bool {
-        self.flag.load(Ordering::Acquire)
-    }
-}
-#[cfg(unix)]
-impl Drop for Stop {
-    fn drop(&mut self) {
-        for id in self.signals.drain(..) {
-            signal_hook::low_level::unregister(id);
-        }
-    }
-}
+pub(super) use crate::control_host::Stop;

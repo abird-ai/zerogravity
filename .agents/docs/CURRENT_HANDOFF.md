@@ -24,7 +24,92 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-8D (26 Nov)
+### Current checkpoint — Phase 2.1 UX-9A (26 Nov)
+
+Embedded SolidJS/Vite Web shell over the original Runtime/ControlPlane.
+UX-9A is intentionally read-only; real Web effect routes and the remaining
+management views are UX-9B–E, not fake actions or another runtime.
+
+- Product CLI optional web feature (default/all, CPU release/Nix) embeds
+  committed Vite dist/index.html, app.js, style.css and bundled license.
+  SolidJS 1.9.15, Vite 8.3.2, plugin-solid 2.11.14, esbuild 0.28.2;
+  exact locally cached AW versions, pruned lock, npm ci --offline.
+  Two consecutive production builds byte-identical; no Node runtime or
+  network assets. Existing Rust getrandom 0.4.3 and httparse 1.10.1
+  become optional direct frontend dependencies, no newly resolved Cargo
+  packages. Minimal tui/web/CPU isolation retained; Nix source includes
+  embedded dist and fixture, excludes node_modules. Cross builds not run.
+- CLI web [--listen numeric-IP:PORT] default 127.0.0.1:0, --profile/
+  --config and --offline as existing global selection. Validates selected
+  document, starts original foreground runtime with same host limits,
+  prints private URL. Native Home/Serve b starts/reuses that listener on
+  the same Runtime and shows private URL to open manually; no subprocess,
+  browser auto-launch, automatic load or inference listener. Closing a
+  modal/tab never retires owners; confirmed process quit/Unix signals
+  stop/join Web connections then original worker/listener/runtime.
+- control_host.rs extracts original TUI Target/Document, runtime builder,
+  Stop and retirement/combine. One Arc/RwLock process-local Selection
+  shared by TUI and Web; cold worker snapshots settings at action start,
+  selection updates invalidate browser observation (atomic revision);
+  original runtime/load owners and ConfigFile stay authoritative.
+- Separate bounded loopback HTTP control host (CLI frontend only),
+  independent from inference server. OS-generated 32-byte random key,
+  explicit private URL fragment, scrub on initial/same-document launch,
+  tab sessionStorage (lock clears it); never query/header echo, raw
+  diagnostics, provider token or inference bearer. Numeric bound Host
+  including port, reject duplicate/invalid security headers, nonzero body,
+  transfer encoding, non-GET and non-allowlisted paths; API requires bearer
+  and same-origin/Fetch-Site policy, no CORS. CSP/no-store/no-referrer/
+  frame denial. Static assets public but no owner data. No remote bind.
+  8 bounded connections, 4 SSE slots, 8 KiB headers/32 fields, finite
+  read/write timeout and 60s SSE connection lifetime; stop joins workers.
+- GET /zg/control/snapshot: allowlisted projection of existing owner
+  snapshot, original aliases/lifecycle/caps/counters, exact registration/
+  generation/download IDs as opaque decimal strings, actual download
+  bytes/phase, active profile label/offline, feature flags. No full
+  runtime diagnostic graph, arbitrary paths or raw configuration.
+  GET /zg/events authenticated SSE refresh/resync only, subscribe before
+  initial invalidation, coalesced original ControlPlane events + shared
+  selection revision; no invented durable event history. Browser one
+  in-flight snapshot, coalesced refresh, reconnect, 2s visible/live
+  counters (idle follows events), stale indication, abort on lock.
+- Solid responsive rail/compact/mobile overlay, Home/Running/Serve/
+  Downloads actual observations, Config/Profiles selection label and
+  explicit unavailable/pending cold surfaces, no fake mutation buttons.
+  One Ctrl-Shift-P/F1 palette, dark/light, keyboard/focus, exact selected
+  registration, responsive detail, tab-local credential. MIT notice
+  included/served at /ui/licenses.txt. web/README.md documents build
+  and browser smoke; usual Rust gate needs no Node/browser.
+- Focused strict terminal-only/web-only/combined lint pass; Web parser
+  test 1/0 and JS 2/0. Real embedded HTTP fixture passes independent
+  inference-key refusal, host/origin/CSRF checks, static/license routes,
+  exact owner projection, SSE capacity/active stream/slow-header join.
+  Actual installed Firefox BiDi smoke passes 1440/900/390 widths,
+  authenticated Home, navigation/palette, reload/lock/reopen, independent
+  browser lifetime; initially caught same-document fragment relaunch,
+  fixed hashchange consumption and reran. Optimized combined run_unified
+  6/0/0 (32.71s) incl actual cached Qwen 0.8B original 8 GiB envelope:
+  TUI attaches Web to exact existing registration and inference generation,
+  real profile/stop invalidations, no new runtime, final joins. Final
+  packaging-only asset/license refinement requalified HTTP/Firefox/lint.
+  Initial full gate passed all Rust tests but the duplicate-Host PTY/HTTP
+  fixture used one TCP recv instead of the whole status line; corrected
+  the fixture without changing auth. Complete isolated rerun passes
+  2,485/0/109, release Web/TUI, installer and scripts. UX-9A accepted.
+  No physical GPU/remote transfer, performance or public exposure claim.
+
+**Next: UX-9B — Web Home / Running / Serve (§46A.28).**
+Promote the existing resident plan and TUI action-worker operations into
+a shared host/client-neutral action seam, not a second execution path.
+Authenticated bounded typed JSON actions, exact registration/generation,
+explicit input/consent, original OutputStream and listener ownership;
+do not expose arbitrary paths/argv, credentials or unvalidated wire
+fields. Browser changes affect the original Runtime/Selection and
+native observation events. Reuse current fixture and SSE/HTTP auth.
+Then UX-9C model/download/device, UX-9D config/profile/logs, UX-9E
+simultaneous mutation acceptance, UX-10 and public serving.
+
+### Previous checkpoint — Phase 2.1 UX-8D (26 Nov; 71e36933)
 
 Native profile/configuration/log surfaces complete the bounded TUI design.
 The existing ConfigFile/ConfigDocument and action/observation workers remain
@@ -80,12 +165,8 @@ the only owners; no new dependencies, settings store, runtime or policy.
   pass. UX-8D accepted. No new physical GPU/remote acquisition or measured
   performance claim.
 
-**Next: UX-9A — embedded SolidJS Web shell (§46A.28).**
-Read 46A Web/control architecture and existing ControlPlane. Build one
-same-process native host and browser presentation, separate loopback
-control transport/auth from original OpenAI inference transport. Keep
-the SDK/CLI/TUI owners, no second scheduler/model/cache/config runtime.
-Then UX-9B–E, UX-10 and public serving acceptance.
+Historical next UX-9A is implemented at the current checkpoint.
+UX-9B–E follow the live order.
 
 ### Previous checkpoint — Phase 2.1 UX-8C (26 Nov; 9bf7829a)
 

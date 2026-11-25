@@ -14,6 +14,7 @@ import termios
 import time
 import urllib.request
 import json
+import re
 
 binary = str(Path(sys.argv[1]).resolve())
 
@@ -69,6 +70,23 @@ class Terminal:
             self.transcript.extend(os.read(self.master, 65536))
         os.write(self.master, value)
         self.until(expected, seconds)
+
+    def private_web_url(self):
+        # The exact private capability is intentionally not retained in
+        # ordinary PTY assertion transcripts.
+        self.pending.clear()
+        while select.select([self.master], [], [], 0)[0]:
+            os.read(self.master, 65536)
+        os.write(self.master, b"b")
+        deadline = time.monotonic() + 10
+        data = b""
+        while time.monotonic() < deadline:
+            if select.select([self.master], [], [], 0.2)[0]:
+                data = (data + os.read(self.master, 65536))[-65536:]
+                match = re.search(rb"http://127\.0\.0\.1:\d+/ui/#control=[a-f0-9]{64}", data)
+                if match:
+                    return match.group().decode()
+        raise AssertionError("TUI did not present a complete private Web URL")
 
     def check_started(self):
         self.until(b"\x1b[?1049h")
@@ -278,18 +296,46 @@ def lifecycle(root, expected):
                                        "max_tokens": 2, "stream": False})
         assert result["choices"][0]["text"] == expected, result
         assert result["usage"]["completion_tokens"] > 0
+        client = None
+        if os.environ.get("ZG_TEST_WEB") == "1":
+            from web_shell import Client
+            client = Client(terminal.private_web_url())
+            observed = client.snapshot()
+            registered = observed["runtime"]["models"]
+            assert len(registered) == 1
+            assert registered[0]["aliases"] == [loaded_alias]
+            assert isinstance(registered[0]["registration_id"], str)
+            registration = registered[0]["registration_id"]
+            generation = observed["serving"]["generation"]
+            assert observed["serving"]["address"] == address
+            assert observed["configuration"]["profile"] == "local"
+            # Control capability does not authorize inference or start a new
+            # runtime. Closing the URL modal is only presentation.
+            assert client.request("/v1/models")[0] == 404
+            os.write(terminal.master, b"\r")
         # Activate a different startup profile without reconfiguring the
         # existing listener/scheduler. Restore the original for later load.
         terminal.repaint_on_wait = True
         terminal.send(b"9", b"accepted")
         terminal.send(b"7", b"default")
         terminal.send(b"\r", b"defaults")
-        terminal.send(b"a", b"Activated")
+        if client:
+            with client.events() as events:
+                terminal.send(b"a", b"Activated")
+                assert events.readline() == b"event: refresh\n"
+                assert client.snapshot()["configuration"]["profile"] == "default"
+        else:
+            terminal.send(b"a", b"Activated")
         assert http("/models") == models
         terminal.send(b"7", b"local.yaml")
         terminal.send(b"j\r", b"run.backend")
         terminal.send(b"a", b"Activated")
         assert http("/models") == models
+        if client:
+            observed = client.snapshot()
+            assert observed["configuration"]["profile"] == "local"
+            assert observed["runtime"]["models"][0]["registration_id"] == registration
+            assert observed["serving"]["generation"] == generation
         terminal.repaint_on_wait = False
         # Navigation and a declined quit leave the same listener alive.
         terminal.send(b"1", b"Quick")
@@ -298,11 +344,21 @@ def lifecycle(root, expected):
         assert http("/models") == models
         terminal.send(b"3", b"OpenAI-compatible")
         terminal.send(b"t", b"confirm")
-        terminal.send(b"y", b"retained")
+        if client:
+            with client.events() as events:
+                terminal.send(b"y", b"retained")
+                assert events.readline() == b"event: refresh\n"
+                observed = client.snapshot()
+                assert observed["serving"]["state"] == "idle"
+                assert observed["runtime"]["models"][0]["registration_id"] == registration
+        else:
+            terminal.send(b"y", b"retained")
         closed()
         terminal.send(b"2", b"registered")
         terminal.send(b"u", b"confirm")
         terminal.send(b"y", b"retired", 60)
+        if client:
+            assert client.snapshot()["runtime"]["status"]["loaded_owners"] == 0
         # The last retirement makes the same runtime available for a new load.
         terminal.send(b"l", b"MODEL")
         terminal.send(b"\r", b"loaded", 90)
@@ -314,6 +370,9 @@ def lifecycle(root, expected):
         os.write(terminal.master, b"y")
         terminal.finish()
         closed()
+        if client:
+            client.closed()
+            print("TUI-attached Web: same registration/listener, live profile and owner invalidations, independent client lifetime, joined process retirement")
     alias = subprocess.run([binary, "model", "inspect", "by-name:tui-fixture", "--format=json"],
                            cwd=root, env=environment(root), capture_output=True, check=True)
     assert json.loads(alias.stdout)["snapshot"] == loaded_alias

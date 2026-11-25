@@ -329,10 +329,26 @@ build or general model/backend grant. Historical failures keep their source scop
   release tests pass. Full isolated gate 2,483/0/109, release PTY/installer/
   scripts pass. UX-8D accepted.
 
+### Phase 2.1 UX-9A — embedded Web shell (26 Nov)
+
+- [x] Pinned locally cached SolidJS/Vite build, committed assets/license,
+  frontend-only optional web feature in default/release/Nix. No Node
+  runtime or newly resolved Cargo packages.
+- [x] Shared native foreground host/runtime/active Selection. Explicit
+  web command or native Home/Serve b private URL; no duplicate runtime
+  or owner, client closure inert, process retirement joins.
+- [x] Bounded independent loopback control bearer/Host/origin boundary,
+  read-only allowlisted snapshot and SSE invalidations, exact wire IDs,
+  no raw diagnostics/credentials/config paths; responsive shell/palette/
+  auth/reconnect. Real HTTP/Firefox/JS and strict lint pass; serial
+  cached TUI-attached Web release 6/0/0 (32.71s). Full isolated rerun
+  2,485/0/109 and release Web/TUI/installer/scripts pass. UX-9A accepted.
+
 ## Uncommitted
 
-- [ ] UX-9A embedded SolidJS Web shell: same host and typed ControlPlane,
-  distinct loopback control transport/auth; UX-9B–E follow. Dynamic
+- [ ] UX-9B Web Home / Running / Serve: shared resident/action worker
+  seam, typed authenticated bounded action routes and original
+  invocation/registration/listener ownership. UX-9C–E follow; dynamic
   completions and UX-10 remain ordered. Broader catalog presets,
   conversation history and unsupported routes remain explicit;
   preserve exact acquisition and factual refusal.

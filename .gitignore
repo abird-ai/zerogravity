@@ -40,3 +40,7 @@ crash.log
 
 # Python developer test caches
 *.py[cod]
+
+# Embedded control assets are reviewed production inputs, not local build cache.
+!crates/zerogravity-cli/web/dist/
+!crates/zerogravity-cli/web/dist/**

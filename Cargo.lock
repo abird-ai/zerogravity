@@ -5874,6 +5874,8 @@ name = "zerogravity-cli"
 version = "0.1.0"
 dependencies = [
  "crossterm",
+ "getrandom 0.4.3",
+ "httparse",
  "ratatui",
  "rustix 1.1.5",
  "serde",

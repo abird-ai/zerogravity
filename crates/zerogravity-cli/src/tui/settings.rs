@@ -1,57 +1,12 @@
 //! Native presentation of the shared cold configuration owner.
 use super::library::{Key, Row};
-use std::{
-    collections::BTreeMap,
-    fmt,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{collections::BTreeMap, fmt, path::Path, sync::Arc};
 use zerogravity::{
     Error, Result,
     configuration::{self as cfg, Change, ConfigDocument, ConfigFile, INITIAL},
 };
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct Target {
-    pub path: PathBuf,
-    pub profile: Option<String>,
-    pub allow_missing: bool,
-}
-impl Target {
-    pub fn selected(selection: Option<(&str, &str)>) -> Result<Self> {
-        Ok(Self {
-            path: crate::config_cli::selected_path(selection)?,
-            profile: match selection {
-                None => Some("default".into()),
-                Some(("--profile", name)) => Some(name.into()),
-                _ => None,
-            },
-            allow_missing: selection.is_none(),
-        })
-    }
-    pub fn profile(name: &str) -> Result<Self> {
-        Self::selected(if name == "default" {
-            None
-        } else {
-            Some(("--profile", name))
-        })
-    }
-    pub fn label(&self) -> String {
-        self.profile
-            .clone()
-            .unwrap_or_else(|| self.path.display().to_string())
-    }
-    fn open(&self) -> Result<ConfigFile> {
-        let file = ConfigFile::open(self.path.clone())?;
-        if !self.allow_missing {
-            file.require_existing()?;
-        }
-        Ok(file)
-    }
-    pub fn read(&self) -> Result<Option<(PathBuf, ConfigDocument)>> {
-        cfg::load_path(self.path.clone(), self.allow_missing)
-    }
-}
+pub(super) use crate::control_host::Target;
 
 #[derive(Clone)]
 pub(super) struct Snapshot {

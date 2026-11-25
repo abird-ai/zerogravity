@@ -7,7 +7,10 @@ mod terminal;
 mod view;
 mod work;
 
-use crate::output;
+use crate::{
+    control_host::{self, Selection},
+    output,
+};
 use crossterm::event::{self, Event, KeyEventKind};
 use library::{Key, Kind, Library};
 use std::time::{Duration, Instant};
@@ -34,20 +37,11 @@ pub(super) fn launch(selection: Option<(&str, &str)>, offline: bool) -> Result<(
         return Ok(());
     }
     let document = Document::new(selection, offline)?;
-    // Per-load worker and queue bounds remain the admitted plan's bounds.
-    // The host permits the entire existing finite worker range and original
-    // host-credit-backed pending policy, including explicit count ceilings.
-    let runtime = Runtime::builder()
-        .limits(zerogravity::runtime::SchedulerLimits {
-            max_active: 32 * zerogravity::runtime::text::MAX_ACTIVE_PER_WORKER,
-            max_queued: None,
-            ..Default::default()
-        })
-        .build()?;
+    let runtime = control_host::runtime()?;
     let stop = terminal::Stop::install()?;
     let result = session(
         &runtime,
-        document,
+        Selection::new(document),
         output::reporter().color_enabled(),
         &stop,
     );
@@ -59,14 +53,14 @@ pub(crate) fn download_fixture_session(runtime: &Runtime, root: &std::path::Path
     let stop = terminal::Stop::install()?;
     let mut document = Document::test_default();
     document.target.path = root.join("config.yaml");
-    session(runtime, document, false, &stop)
+    session(runtime, Selection::new(document), false, &stop)
 }
 
 /// Client-local session over the caller's runtime; effectful actions have
 /// explicit ownership, and view changes never retire shared owners.
 fn session(
     runtime: &Runtime,
-    document: Document,
+    document: Selection,
     color: bool,
     stop: &terminal::Stop,
 ) -> Result<()> {
@@ -77,7 +71,9 @@ fn session(
         navigation: Navigation::default(),
         snapshot,
         logs: logs::Logs::default(),
-        library: Library::new(document.target.clone()),
+        #[cfg(feature = "web")]
+        web: None,
+        library: Library::new(document.snapshot().target),
         notice: None,
         color,
         document,
@@ -202,6 +198,11 @@ fn session(
         Ok(())
     })();
     let restored = terminal.restore();
+    #[cfg(feature = "web")]
+    let restored = work::combine(
+        restored,
+        app.web.take().map_or(Ok(()), crate::web::Host::close),
+    );
     // Never hold raw terminal state over a synchronous load/retirement join.
     let joined = if let Some(mut job) = app.job.take() {
         job.cancel();
@@ -220,9 +221,11 @@ struct App {
     navigation: Navigation,
     snapshot: ControlSnapshot,
     logs: logs::Logs,
+    #[cfg(feature = "web")]
+    web: Option<crate::web::Host>,
     notice: Option<String>,
     color: bool,
-    document: Document,
+    document: Selection,
     job: Option<Job>,
     selected: Option<Owner>,
     response: Option<Response>,
@@ -291,7 +294,7 @@ impl App {
         let generates = request.generates();
         let title = request.title();
         let log_id = self.logs.start(title, request.correlation());
-        match Job::start(runtime, &self.document, request, log_id) {
+        match Job::start(runtime, &self.document.snapshot(), request, log_id) {
             Ok(job) => {
                 if generates {
                     self.response = Some(Response::default());
@@ -339,8 +342,10 @@ impl App {
             Ok(Completed::Message(message)) => message,
             Ok(Completed::Settings(outcome)) => {
                 if let Some((target, doc)) = outcome.active {
-                    self.document = Document::from_config(target, doc, self.document.offline);
-                    self.color = output::document_color(self.document.ui);
+                    let document =
+                        Document::from_config(target, doc, self.document.snapshot().offline);
+                    self.color = output::document_color(document.ui);
+                    self.document.update(document);
                 }
                 if let Some(editor) = outcome.editor {
                     self.library.set_editor(editor);
@@ -384,8 +389,8 @@ impl App {
 
     fn handle(&mut self, runtime: &Runtime, control: ControlPlane<'_>, action: Action) -> bool {
         match action {
-            Action::Quit if self.live() || self.job.is_some() => self.navigation.confirm(
-                "Quit this process? Its listener and loaded models will be retired after owned work joins.".into(),
+            Action::Quit if self.live() || self.job.is_some() || self.web_owned() => self.navigation.confirm(
+                "Quit this process? Its Web/inference listeners and loaded models will be retired after owned work joins.".into(),
                 view::Confirmation::Quit,
             ),
             Action::Quit | Action::Confirmed(view::Confirmation::Quit) => return true,
@@ -398,6 +403,7 @@ impl App {
             Action::Download(action) => self.download_action(control, action),
             Action::Settings(action) => self.settings_action(runtime, action),
             Action::Logs(action) => self.log_action(action),
+            Action::OpenWeb => self.open_web(runtime),
             Action::Submit(Form { kind: FormKind::Search { view }, value }) => {
                 match view {
                     View::Config => {
@@ -428,7 +434,7 @@ impl App {
                 if let Some(owner) = self.selected.clone() {
                     self.navigation.form(FormKind::Prompt {
                         target: RunTarget::Owner(owner),
-                        chat: self.document.chat,
+                        chat: self.document.snapshot().chat,
                     });
                 } else if self.snapshot.runtime.status.phase == RuntimePhase::Empty {
                     self.navigation.form(FormKind::Source { run: true });
@@ -468,7 +474,7 @@ impl App {
             }
             Action::Submit(Form { kind, value }) => match kind {
                 FormKind::Source { run: false } => self.start(runtime, Request::Load { source: value, prompt: None, device: None }),
-                FormKind::Source { run: true } => self.navigation.form(FormKind::Prompt { target: RunTarget::Source(value), chat: self.document.chat }),
+                FormKind::Source { run: true } => self.navigation.form(FormKind::Prompt { target: RunTarget::Source(value), chat: self.document.snapshot().chat }),
                 FormKind::Prompt { target, chat } => {
                     if self.navigation.view() == View::Models {
                         self.navigation.open(View::Home);
@@ -545,7 +551,7 @@ impl App {
             return;
         }
         if action == LibraryAction::Pull {
-            if self.document.offline {
+            if self.document.snapshot().offline {
                 self.notice = Some("Offline mode prohibits acquisition".into());
                 return;
             }
@@ -584,7 +590,7 @@ impl App {
                 if self.snapshot.runtime.status.phase != RuntimePhase::Empty {
                     self.notice = Some("Retire the current route set before loading another, or invoke its owner from Running".into());
                 } else {
-                    self.navigation.form(FormKind::Prompt { target: RunTarget::Source(format!("sha256:{digest}")), chat: self.document.chat });
+                    self.navigation.form(FormKind::Prompt { target: RunTarget::Source(format!("sha256:{digest}")), chat: self.document.snapshot().chat });
                 }
             }
             (Key::Snapshot(digest), LibraryAction::Load(serve)) => {
@@ -613,7 +619,7 @@ impl App {
     fn pull_source(&mut self, source: String) {
         #[cfg(all(feature = "acquisition", target_os = "linux"))]
         {
-            if self.document.offline {
+            if self.document.snapshot().offline {
                 self.notice = Some("Offline mode prohibits acquisition".into());
             } else if source.trim().starts_with("hf:") || source.trim().starts_with("gh:") {
                 self.navigation.form(FormKind::PullSelection { source });
@@ -824,7 +830,7 @@ impl App {
                     .profile
                     .as_deref()
                     .is_none_or(|name| name == "default")
-                    || file.target.path == self.document.target.path
+                    || file.target.path == self.document.snapshot().target.path
                 {
                     self.notice = Some("Activate another profile first; default and portable files cannot be removed here".into());
                 } else {
@@ -858,6 +864,49 @@ impl App {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn web_owned(&self) -> bool {
+        #[cfg(feature = "web")]
+        {
+            self.web.is_some()
+        }
+        #[cfg(not(feature = "web"))]
+        {
+            false
+        }
+    }
+
+    fn open_web(&mut self, runtime: &Runtime) {
+        #[cfg(feature = "web")]
+        {
+            if self.web.as_ref().is_some_and(crate::web::Host::finished)
+                && let Err(error) = self.web.take().expect("finished host").close()
+            {
+                self.notice = Some(format!("Web host stopped: {error}"));
+                return;
+            }
+            if self.web.is_none() {
+                match crate::web::Host::start(
+                    runtime,
+                    "127.0.0.1:0".parse().expect("loopback default"),
+                    self.document.clone(),
+                ) {
+                    Ok(host) => self.web = Some(host),
+                    Err(error) => {
+                        self.notice = Some(format!("Web host failed: {error}"));
+                        return;
+                    }
+                }
+            }
+            self.navigation
+                .web_url(self.web.as_ref().expect("owned host").private_url());
+        }
+        #[cfg(not(feature = "web"))]
+        {
+            let _ = runtime;
+            self.notice = Some("Embedded Web control requires the optional web feature".into());
         }
     }
 

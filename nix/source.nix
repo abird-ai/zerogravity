@@ -23,6 +23,8 @@ in
       top = builtins.head parts;
       base = baseNameOf path;
       sourceTree = builtins.elem top ["crates" "tools" "src" "examples" "tests" ".cargo"];
+      webTree = lib.hasPrefix "crates/zerogravity-cli/web/dist/" relative || relative == "crates/zerogravity-cli/web/dist";
+      webNodeModules = lib.hasPrefix "crates/zerogravity-cli/web/node_modules/" relative || relative == "crates/zerogravity-cli/web/node_modules";
       vendorTree = lib.hasPrefix "crates/zerogravity-gpu/vendor/" relative;
       buildOutput = builtins.any (root: relative == root || lib.hasPrefix "${root}/" relative) excluded;
       packageNotice = builtins.elem base ["README.md" "LICENSE" "LICENSE-MIT" "LICENSE-APACHE" "LICENSE-ARM-MATH" "NOTICE"];
@@ -33,6 +35,7 @@ in
       testFixture = builtins.elem relative [
         "crates/zerogravity-cli/tests/fixtures/serve_shutdown.py"
         "crates/zerogravity-cli/tests/fixtures/tui_shell.py"
+        "crates/zerogravity-cli/tests/fixtures/web_shell.py"
         "crates/zerogravity-artifacts/tests/fixtures/azure_wire.py"
         "crates/zerogravity-artifacts/tests/fixtures/acquisition/ca.pem"
         "crates/zerogravity-artifacts/tests/fixtures/acquisition/server.pem"
@@ -41,5 +44,6 @@ in
       rootInput = builtins.elem relative ["Cargo.toml" "Cargo.lock" "rust-toolchain.toml" "README.md" "LICENSE" "LICENSE-MIT" "LICENSE-APACHE"];
     in
       !buildOutput
-      && (rootInput || (sourceTree && (craneLib.filterCargoSources path type || vendorTree || packageNotice || modelFixture || testFixture)));
+      && !webNodeModules
+      && (rootInput || (sourceTree && (craneLib.filterCargoSources path type || vendorTree || webTree || packageNotice || modelFixture || testFixture)));
   }

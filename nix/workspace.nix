@@ -9,7 +9,7 @@
     "zerogravity"
     "zerogravity-cli"
   ];
-  cpuFeatures = ["cpu" "model-qwen35" "text" "tui"];
+  cpuFeatures = ["cpu" "model-qwen35" "text" "tui" "web"];
   diagnosticFeatures = cpuFeatures ++ ["diagnostic-cpu-checkpoint" "diagnostic-gdn-trace"];
   qualityFeatures = (map (name: "zerogravity-cli/${name}") diagnosticFeatures) ++ ["zerogravity/model-gemma4" "zerogravity-artifacts/diagnostic-cache"];
 in {

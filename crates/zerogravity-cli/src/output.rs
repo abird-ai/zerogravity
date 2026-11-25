@@ -90,7 +90,10 @@ pub(super) fn topic_usage(topic: Topic, child: Option<&str>) -> zerogravity::Res
             println!("Advanced cache maintenance requires Linux and the cache feature.");
         }
         Topic::Completion => println!("USAGE: zerogravity completion bash|zsh|fish|powershell"),
-        Topic::Doctor | Topic::Web => println!("{} is not implemented yet.", node(topic).name),
+        Topic::Web => println!(
+            "USAGE: zerogravity [--profile NAME | --config FILE] [--offline] web [--listen IP:PORT]\nStarts the embedded local control UI (default 127.0.0.1:0). Open the printed private URL in your browser. Control authentication is independent of inference API authentication. Ctrl-C stops the foreground host."
+        ),
+        Topic::Doctor => println!("{} is not implemented yet.", node(topic).name),
         Topic::Version => println!("USAGE: zerogravity version"),
         Topic::Help => usage(),
     }

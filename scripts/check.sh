@@ -26,7 +26,7 @@ cpu_packages=(
   -p zerogravity-model-qwen35 -p zerogravity-model-gemma4
   -p zerogravity-engine -p zerogravity-serving -p zerogravity -p zerogravity-cli
 )
-cpu_features='zerogravity-cli/cpu,zerogravity-cli/model-qwen35,zerogravity-cli/text,zerogravity-cli/tui,zerogravity-cli/diagnostic-cpu-checkpoint,zerogravity/state-checkpoint,zerogravity-cli/diagnostic-gdn-trace,zerogravity-model-qwen35/source-binding,zerogravity/model-gemma4-text-reference,zerogravity-model-gemma4/text-tokenizer,zerogravity-cli/gemma4-cpu-candidate'
+cpu_features='zerogravity-cli/cpu,zerogravity-cli/model-qwen35,zerogravity-cli/text,zerogravity-cli/tui,zerogravity-cli/web,zerogravity-cli/diagnostic-cpu-checkpoint,zerogravity/state-checkpoint,zerogravity-cli/diagnostic-gdn-trace,zerogravity-model-qwen35/source-binding,zerogravity/model-gemma4-text-reference,zerogravity-model-gemma4/text-tokenizer,zerogravity-cli/gemma4-cpu-candidate'
 cpu_args=(--locked --offline --no-default-features "${cpu_packages[@]}" --features "$cpu_features")
 
 echo "Checking workspace owners and default CPU dependency isolation..."
@@ -148,11 +148,12 @@ if [[ "$(uname -s)" == Linux ]]; then
 fi
 
 echo "Building the default CPU release CLI..."
-cargo build --locked --offline --release --no-default-features -p zerogravity-cli --bin zerogravity --features cpu,model-qwen35,text,tui
+cargo build --locked --offline --release --no-default-features -p zerogravity-cli --bin zerogravity --features cpu,model-qwen35,text,tui,web
 ./target/release/zerogravity --version
 
 if [[ "$(uname -s)" == Linux ]]; then
   python3 -B crates/zerogravity-cli/tests/fixtures/tui_shell.py ./target/release/zerogravity
+  python3 -B crates/zerogravity-cli/tests/fixtures/web_shell.py ./target/release/zerogravity
 fi
 
 printf 'Running offline installer integrity fixture...\n'

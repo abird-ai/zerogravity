@@ -132,6 +132,28 @@ pub(super) fn run(command: Command) -> ExitCode {
         Command::Profile { args, format, yes } => {
             finish("profile", crate::config_cli::profile(&args, format, yes))
         }
+        Command::Web {
+            args,
+            selection,
+            offline,
+        } => {
+            #[cfg(feature = "web")]
+            let result = crate::web::run(
+                &args,
+                selection
+                    .as_ref()
+                    .map(|(flag, value)| (*flag, value.as_str())),
+                offline,
+            );
+            #[cfg(not(feature = "web"))]
+            let result = {
+                let _ = (args, selection, offline);
+                Err(Error::Unsupported(
+                    "embedded control UI requires --features web".into(),
+                ))
+            };
+            finish("web", result)
+        }
         Command::Serve(args) => {
             #[cfg(feature = "serve")]
             {

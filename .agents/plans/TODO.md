@@ -173,8 +173,13 @@ raw editor, exact snapshot profile actions, process-local activation,
 coalesced read worker and bounded operational log with filters. Focused
 reducers/strict lint and actual settings PTY pass; cached release lifecycle/
 profile-switch and remaining release tests pass. Full isolated gate
-2,483/0/109, release PTY/installer/scripts pass. UX-8D accepted. Next UX-9A
-embedded SolidJS Web shell.
+2,483/0/109, release PTY/installer/scripts pass. UX-8D accepted.
+UX-9A embedded SolidJS Web shell implemented: offline-reproducible assets,
+shared native host/Selection, independent loopback bearer/auth boundary,
+bounded read-only snapshot/SSE and responsive shell. Actual HTTP/Firefox,
+JS tests/strict lint, cached shared-owner release 6/0/0 pass. Full isolated
+rerun 2,485/0/109 and release Web/TUI/installer/scripts pass. UX-9A accepted.
+Next UX-9B Web Home / Running / Serve.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

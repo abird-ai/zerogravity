@@ -5,6 +5,20 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — embedded SolidJS Web shell (UX-9A)
+
+Committed offline-built Vite assets, one shared foreground Runtime and
+active Selection, loopback numeric Host/origin/bearer boundary separate
+from inference, bounded read-only snapshot/SSE transport. Actual HTTP/
+Firefox responsive smoke and strict minimal/combined lint pass, JS 2/0.
+Serial optimized combined run_unified 6/0/0 (32.71s), actual cached Qwen
+TUI-attached Web same registration/generation/selection/stop joins.
+Final asset/license refinement passes HTTP/Firefox; complete isolated
+rerun 2,485/0/109 and release Web/TUI/installer/scripts pass after TCP
+status-line fixture correction. UX-9A accepted.
+No new inference or acquisition grant, physical GPU run or performance
+change. Cargo reuses two existing packages, no newly resolved versions.
+
 ## 26 Nov — native configuration/profile/log management (UX-8D)
 
 Shared ConfigFile optimistic atomic owner, observed typed setting editor

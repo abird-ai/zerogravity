@@ -1200,6 +1200,7 @@ serve:
             .arg(env!("CARGO_BIN_EXE_zerogravity"))
             .arg(&f.0)
             .arg(outputs[0].as_str().unwrap())
+            .env("ZG_TEST_WEB", if cfg!(feature = "web") { "1" } else { "0" })
             .status()
             .unwrap();
         assert!(status.success(), "cached native control lifecycle failed");

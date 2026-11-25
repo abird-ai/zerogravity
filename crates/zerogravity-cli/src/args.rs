@@ -247,7 +247,7 @@ pub(super) const TREE: &[Node] = &[
     Node {
         topic: Topic::Web,
         name: "web",
-        description: "Local control UI (pending)",
+        description: "Start the embedded local control UI",
         children: &[],
     },
     Node {
@@ -342,6 +342,11 @@ pub(super) enum Command {
     Models(Vec<String>),
     Pipeline(Vec<String>),
     Serve(Vec<String>),
+    Web {
+        args: Vec<String>,
+        selection: Option<(&'static str, String)>,
+        offline: bool,
+    },
     Config {
         args: Vec<String>,
         document: Option<(&'static str, String)>,
@@ -617,7 +622,19 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
                 }
             }
         }
-        "doctor" | "web" => {
+        "web" => {
+            let args = g.flat(rest, |raw| raw == "--listen")?;
+            if help(&args) {
+                Command::HelpTopic(Topic::Web, None)
+            } else {
+                Command::Web {
+                    args,
+                    selection: g.document.take(),
+                    offline: g.offline,
+                }
+            }
+        }
+        "doctor" => {
             if help(rest) {
                 Command::HelpTopic(topic(name).expect("known command"), None)
             } else {
