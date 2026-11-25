@@ -30,6 +30,8 @@ mod enqueue;
 ))]
 pub(crate) mod final_owner_probe;
 mod foreign_provider;
+#[cfg(all(feature = "vulkan", target_os = "linux"))]
+pub(crate) mod host_visible;
 #[cfg(any(
     test,
     feature = "cuda-native",

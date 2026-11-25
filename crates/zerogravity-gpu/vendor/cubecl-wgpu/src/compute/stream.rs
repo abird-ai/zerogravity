@@ -730,11 +730,7 @@ impl WgpuStream {
     /// Not ordered by the queue, so call it only after a submit, never for uniforms.
     #[cfg(not(target_family = "wasm"))]
     fn write_mapped(&mut self, resource: &WgpuResource, data: &[u8]) -> bool {
-        let Some(host_ptr) = resource.host_ptr else {
-            return false;
-        };
-        // The copy below is unchecked; the queue path validates.
-        if data.len() as u64 > resource.size {
+        if !resource.host_visible() || data.len() as u64 > resource.size {
             return false;
         }
 
@@ -753,12 +749,8 @@ impl WgpuStream {
             }
         }
 
-        // SAFETY: The range is in bounds and the queue is idle.
-        unsafe {
-            let dst = host_ptr.0.as_ptr().add(resource.offset as usize);
-            core::ptr::copy_nonoverlapping(data.as_ptr(), dst, data.len());
-        }
-        true
+        // SAFETY: original scheduler owns the range and the queue is idle.
+        unsafe { resource.copy_to_host_mapping(data) }
     }
 
     #[cfg(target_family = "wasm")]

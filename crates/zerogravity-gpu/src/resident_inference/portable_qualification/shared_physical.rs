@@ -195,6 +195,33 @@ async fn load_pair(
 }
 async fn healthy(backend: Backend) -> Result<()> {
     let (physical, source_a, model_a, source_b, model_b) = load_pair(backend).await?;
+    #[cfg(all(feature = "vulkan", target_os = "linux"))]
+    match backend {
+        Backend::Vulkan => {
+            crate::resident_leases::backing_pool::qualify_host_visible(
+                &model_a.service,
+                &model_b.service,
+                &source_a.host_key,
+                source_a.clone(),
+            )
+            .await?;
+        }
+        Backend::Hip => {
+            let lease = model_a
+                .service
+                .allocate_uninitialized(512, BufferRole::Scratch)?;
+            assert!(matches!(
+                model_a
+                    .service
+                    .initialize_host_visible(&lease, &[0; 512], 0)
+                    .await,
+                Err(Error::Unsupported(_))
+            ));
+            drop(lease);
+            assert_eq!(model_a.service.pending_events()?, 0);
+            model_a.service.ensure_usable()?;
+        }
+    }
     let host_key = source_a.host_key.clone();
     let key = model_a.service.physical_key();
     let source_weak = Arc::downgrade(&source_a);

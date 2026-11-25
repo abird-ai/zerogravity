@@ -750,6 +750,30 @@ impl ResidentWorkspace {
     }
 }
 
+#[cfg(all(
+    test,
+    target_os = "linux",
+    feature = "vulkan",
+    feature = "hip",
+    feature = "hardware-abort-probe",
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    )
+))]
+mod mapped_qualification;
+#[cfg(all(
+    test,
+    target_os = "linux",
+    feature = "vulkan",
+    feature = "hip",
+    feature = "hardware-abort-probe",
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    )
+))]
+pub(crate) use mapped_qualification::qualify_host_visible;
 #[cfg(test)]
 mod tests;
 

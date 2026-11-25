@@ -69,6 +69,41 @@ pub struct WgpuMemory {
 }
 
 impl WgpuResource {
+    /// This exact resource has the original coherent device-local host mapping.
+    /// A mapping alone is not permission to access the allocation concurrently.
+    pub fn host_visible(&self) -> bool {
+        self.host_ptr.is_some()
+            && self
+                .offset
+                .checked_add(self.size)
+                .is_some_and(|end| end <= self.buffer.size() && end <= isize::MAX as u64)
+    }
+
+    /// Copy directly into the original host mapping, without queue staging.
+    /// False means no bytes were written (mapping/range unavailable).
+    ///
+    /// # Safety
+    /// Keep the actual managed resource/binding alive and unchanged. All GPU
+    /// uses of this range must have completed, and no CPU/GPU access to it may
+    /// conflict until this synchronous copy returns; data must not overlap
+    /// the destination mapping. The mapping was created
+    /// only for coherent device-local storage; a subsequent queue submission
+    /// orders these host writes. This does not authorize reading GPU writes.
+    pub unsafe fn copy_to_host_mapping(&self, data: &[u8]) -> bool {
+        if !self.host_visible() || data.len() as u64 > self.size {
+            return false;
+        }
+        let Some(host_ptr) = self.host_ptr else {
+            return false;
+        };
+        // SAFETY: mapping bounds checked above; caller owns actual exclusivity.
+        unsafe {
+            let dst = host_ptr.0.as_ptr().add(self.offset as usize);
+            core::ptr::copy_nonoverlapping(data.as_ptr(), dst, data.len());
+        }
+        true
+    }
+
     /// Return the binding view of the buffer.
     pub fn as_wgpu_bind_resource(&self) -> wgpu::BindingResource<'_> {
         // wgpu enforces 4-byte alignment for buffer binding sizes per the WebGPU spec.
