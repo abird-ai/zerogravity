@@ -195,7 +195,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             &cancel,
         )?;
         std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
-        eprintln!(
+        crate::output::emit!(
+            Status,
             "Verified cached OCI request/data; no independent remote descriptor membership, tag freshness, signature or inference claim."
         );
         return Ok(());

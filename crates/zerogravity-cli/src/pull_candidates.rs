@@ -147,7 +147,8 @@ fn display(result: &RepositoryCandidates) -> Result<()> {
         )?;
     }
     out.write_all(b"],\"discovery_only\":true}\n")?;
-    eprintln!(
+    crate::output::emit!(
+        Status,
         "File discovery only; paths are repository-relative. No payload/HEAD/index transfer or cache publication; no quant, model-family completeness or inference qualification. Cached coverage is only retained data, not remote freshness or current access."
     );
     Ok(())

@@ -5,6 +5,17 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — shared CLI presentation (UX-1)
+
+Presentation-only checkpoint: shared rich/plain reporter, typed errors/hints,
+color/NO_COLOR, quiet/verbose/progress, original machine stdout and explicit
+diagnostics retained. Full mandatory-private-network workspace gate:
+2431 Rust test executions, zero failures, 106 explicit skips; architecture,
+feature isolation, release/installer/scripts pass. Release PTY and device
+JSON smoke plus existing equal-output CPU CLI inference cases pass.
+No new numerical, physical GPU, model, source or performance claim;
+the accepted foundation and earlier measurements below are unchanged.
+
 ## 25 Nov — exact coherent mapped resident backing
 
 14bbbd48/5d952364/5a7535e7: original Vulkan managed coherent mapping,

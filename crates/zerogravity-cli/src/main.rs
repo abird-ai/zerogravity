@@ -144,17 +144,23 @@ fn infer_prepared(
     let output = cpu_text::generate(prepared, options_text, diagnostics, |event| {
         match event {
             Observation::Prefill { done: 0, total } => {
-                eprintln!("zerogravity: CPU prefill {total} tokens on {model}")
+                crate::output::emit!(
+                    Progress,
+                    "zerogravity: CPU prefill {total} tokens on {model}"
+                )
             }
             Observation::Prefill { done, total } => {
-                eprintln!("zerogravity: prefill {done}/{total}")
+                crate::output::emit!(Progress, "zerogravity: prefill {done}/{total}")
             }
-            Observation::Logits { step, values } => eprintln!("ZG_LOGITS step={step} {values:?}"),
+            Observation::Logits { step, values } => {
+                crate::output::emit!(Explicit, "ZG_LOGITS step={step} {values:?}")
+            }
         }
         Ok(())
     })?;
     println!("{}", output.text());
-    eprintln!(
+    crate::output::emit!(
+        Status,
         "zerogravity: {} generated tokens, {} total consumed (CPU)",
         output.generated().len(),
         output.consumed()
@@ -289,7 +295,21 @@ fn main() -> ExitCode {
         .skip(1)
         .map(|value| value.to_string_lossy().into_owned());
     let args = args.collect::<Vec<_>>();
-    run(parse(args))
+    match args::presentation(&args) {
+        Ok((options, command)) => {
+            output::install(options);
+            run(parse(command))
+        }
+        Err(detail) => {
+            output::fail(output::Failure::new(
+                "",
+                "invalid_usage",
+                &detail,
+                Some("Run zerogravity --help."),
+            ));
+            ExitCode::from(2)
+        }
+    }
 }
 
 #[cfg(test)]

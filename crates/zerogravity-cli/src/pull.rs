@@ -39,11 +39,12 @@ const MEMORY_DEFAULT: u64 = 128 * 1024 * 1024;
 
 pub(super) fn report_publication(snapshot: &PublishedSnapshot) {
     for name in snapshot.by_name() {
-        eprintln!("By-name: by-name/{name}");
+        crate::output::emit!(Status, "By-name: by-name/{name}");
     }
     if let Some(warning) = snapshot.by_name_warning() {
-        eprintln!(
-            "WARNING: canonical snapshot is durable but by-name projection needs refresh: {warning}"
+        crate::output::emit!(
+            Warning,
+            "canonical snapshot is durable but by-name projection needs refresh: {warning}"
         );
     }
 }
@@ -382,7 +383,10 @@ fn open(options: &Options) -> Result<CacheStore> {
 fn describe(lease: &SnapshotLease) -> Result<()> {
     use std::io::Write;
     std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
-    eprintln!("Verified cached data; no model execution support or remote freshness inferred.");
+    crate::output::emit!(
+        Status,
+        "Verified cached data; no model execution support or remote freshness inferred."
+    );
     Ok(())
 }
 fn selected_bytes(exact: Option<u64>, maximum: u64) -> String {
@@ -403,6 +407,10 @@ impl ProgressDisplay {
         event: &acquisition::PullProgress<'_>,
         output: &mut impl std::io::Write,
     ) -> std::io::Result<()> {
+        let reporter = crate::output::reporter();
+        if !reporter.progress() {
+            return Ok(());
+        }
         let now = std::time::Instant::now();
         if self.last_path != event.path()
             || event.file_complete()
@@ -410,15 +418,17 @@ impl ProgressDisplay {
                 now.duration_since(last) >= std::time::Duration::from_millis(200)
             })
         {
-            writeln!(
+            reporter.write(
+                crate::output::Event::Progress(format_args!(
+                    "Pull bytes: {}/{} (file {}/{}, cached {}, resumed {})",
+                    event.total_bytes(),
+                    selected_bytes(event.total_expected_bytes(), event.total_maximum_bytes()),
+                    event.file_bytes(),
+                    selected_bytes(event.file_total_bytes(), event.file_maximum_bytes()),
+                    event.cached_bytes(),
+                    event.resumed_bytes()
+                )),
                 output,
-                "Pull bytes: {}/{} (file {}/{}, cached {}, resumed {})",
-                event.total_bytes(),
-                selected_bytes(event.total_expected_bytes(), event.total_maximum_bytes()),
-                event.file_bytes(),
-                selected_bytes(event.file_total_bytes(), event.file_maximum_bytes()),
-                event.cached_bytes(),
-                event.resumed_bytes()
             )?;
             self.last_report = Some(now);
             self.last_path.clear();
@@ -498,16 +508,20 @@ fn run_fetch(
         };
         let lease = hub.cached(&store, &AtomicBool::new(false))?;
         match request {
-            HubSelection::Filters(filters) if filters.is_bundle() => eprintln!(
+            HubSelection::Filters(filters) if filters.is_bundle() => crate::output::emit!(
+                Status,
                 "Exact pinned opaque Auxiliary-only bundle verified; no filtered copy, model closure, remote uniqueness or execution qualification."
             ),
-            HubSelection::Filters(_) => eprintln!(
+            HubSelection::Filters(_) => crate::output::emit!(
+                Status,
                 "Full-path filters validated against the exact closed cached snapshot; no filtered copy or remote uniqueness/native execution claim."
             ),
-            HubSelection::Quant(_) => eprintln!(
+            HubSelection::Quant(_) => crate::output::emit!(
+                Status,
                 "Explicit quant over verified cache subset only; not remote uniqueness, native Xet execution, current freshness/access or inference qualification."
             ),
-            HubSelection::Files(_) if native.is_some() => eprintln!(
+            HubSelection::Files(_) if native.is_some() => crate::output::emit!(
+                Status,
                 "Offline verified HF data only; cached bytes do not attest native Xet protocol execution, remote freshness or current authorization."
             ),
             HubSelection::Files(_) => {}
@@ -545,14 +559,23 @@ fn run_fetch(
         },
     )?;
     let plan = prepared.plan();
+    crate::output::emit!(
+        Verbose,
+        "Resolved {}: {} selected file(s)",
+        plan.source().provider(),
+        plan.files().len()
+    );
+    crate::output::emit!(Diagnostic, "Pinned revision: {}", plan.source().revision());
     if let HubSelection::Quant(request) = request {
-        eprintln!(
+        crate::output::emit!(
+            Status,
             "Requested GGUF filename tag: {}; not tensor encoding eligibility.",
             request.quant()
         );
     }
     if let HubSelection::Filters(r) = request {
-        eprintln!(
+        crate::output::emit!(
+            Status,
             "{}: bounded Unicode full-path selection; no model fallback, auto-assembly, runtime or codec eligibility.",
             if r.is_bundle() {
                 "Opaque Auxiliary-only source bundle"
@@ -602,7 +625,8 @@ fn run_fetch(
             use std::io::Write;
             std::io::stdout().write_all(&receipt.manifest().canonical_bytes()?)?;
             report_publication(snapshot);
-            eprintln!(
+            crate::output::emit!(
+                Status,
                 "Verified during acquisition; data only, not immutable against arbitrary same-UID writers or executable model readiness."
             );
             Ok(())

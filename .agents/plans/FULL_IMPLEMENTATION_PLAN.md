@@ -345,7 +345,7 @@ backends, generalized persistence/async SSD and unqualified model/
 device/codec/quality paths remain explicitly open. Native parity
 requirements belong to their backend phases; concrete graph SDKs Phase 6.
 The full gate and affected final physical/feature checks pass.
-**Proceed to Phase 2.1 UX-1.**
+**Phase 1 exited into Phase 2.1 UX-1; UX-1 is now accepted (see Phase 2.1).**
 
 ### 1.1 Semantic model and execution composition
 
@@ -527,6 +527,15 @@ demand. Preserve the existing detailed
 (including UX-1 through UX-10 and §46A).
 
 ### 2.1 Shared SDK, control plane and CLI
+
+- [x] UX-1 shared presentation foundation accepted: terminal detection,
+  rich/plain, color/NO_COLOR, quiet/verbose/progress, typed reporting and
+  failures/hints, original machine stdout/stderr contracts. Full isolated
+  gate 2431 pass/0 fail/106 skips, release PTY/device JSON and existing
+  CPU run equivalence. No source/backend/runtime policy change.
+  [CLI owning checkpoint](cli-device-routing/TODO.md).
+  **Next: UX-2 typed command tree + unified model/config resolver
+  (§46A.28), then UX-3 shared ControlPlane.**
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,

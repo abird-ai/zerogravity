@@ -221,3 +221,55 @@ fn gpu_request_argument_errors_do_not_open_the_source_or_initialize_a_device() {
         }
     }
 }
+
+#[test]
+fn presentation_flags_preserve_primary_output_and_typed_failures() {
+    let version = binary()
+        .args(["-q", "--color", "always", "--version"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        version.stdout,
+        format!("zerogravity v{}\n", env!("CARGO_PKG_VERSION")).as_bytes()
+    );
+    assert!(version.stderr.is_empty());
+
+    let plain = binary()
+        .args(["-q", "--format", "text", "inspect"])
+        .output()
+        .unwrap();
+    assert_eq!(plain.status.code(), Some(2));
+    assert!(plain.stdout.is_empty());
+    let stderr = String::from_utf8(plain.stderr).unwrap();
+    assert!(stderr.starts_with("error[invalid_usage]:"));
+    assert!(stderr.contains("hint:"));
+    assert!(!stderr.contains('\x1b'));
+
+    let colored = binary()
+        .env("NO_COLOR", "1")
+        .args(["--color=always", "inspect"])
+        .output()
+        .unwrap();
+    assert_eq!(colored.status.code(), Some(2));
+    assert!(colored.stdout.is_empty());
+    assert!(
+        String::from_utf8(colored.stderr)
+            .unwrap()
+            .starts_with("\x1b[31merror[invalid_usage]")
+    );
+}
+
+#[test]
+fn presentation_rejects_unknown_values_without_echoing_secrets() {
+    for args in [
+        vec!["--color", "NEVER_ECHO_SECRET", "pull"],
+        vec!["NEVER_ECHO_SECRET"],
+    ] {
+        let output = binary().args(args).output().unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains("error["));
+        assert!(!stderr.contains("NEVER_ECHO_SECRET"));
+    }
+}

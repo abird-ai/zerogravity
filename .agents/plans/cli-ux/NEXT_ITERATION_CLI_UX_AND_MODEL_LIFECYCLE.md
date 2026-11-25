@@ -6,12 +6,16 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (25 Nov): **Phase 2.1 ready; UX-1 is the next implementation slice.**
+Status (25 Nov): **Phase 2.1 UX-1 accepted; UX-2 is the next implementation slice (§46A.28).**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
 remains authoritative for UX scope; reconcile historical prerequisite wording
-against live source. No UX slice is accepted by this status update.
+against live source. See the [UX-1 checkpoint](../cli-device-routing/TODO.md)
+for validated scope. Leading flags, line-oriented progress and existing
+machine outputs are the initial compatible foundation; the full global
+grammar and structured format selection, interactive transfer lifecycle,
+shared ControlPlane and frontend surfaces remain ordered work.
 
 This iteration runs before the OpenAI-compatible serving and backend-parity
 campaigns. It changes no backend qualification or execution authority.

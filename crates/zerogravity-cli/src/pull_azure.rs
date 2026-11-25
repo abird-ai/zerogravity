@@ -396,7 +396,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         let lease = pin.open_cached(&store, snapshot, &bounds, &cancel)?;
         describe(pin);
         std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
-        eprintln!(
+        crate::output::emit!(
+            Status,
             "Verified cached Azure pin/data only; no present remote membership, freshness or inferred checksum trust."
         );
         return Ok(());
@@ -410,7 +411,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         let lease = spec.open_cached(&store, snapshot, &bounds, &cancel)?;
         describe_content(spec.bytes(), spec.sha256());
         std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
-        eprintln!(
+        crate::output::emit!(
+            Status,
             "Verified cached Azure caller content contract; no remote version or freshness assertion."
         );
         return Ok(());
@@ -420,7 +422,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         let lease = pin.open_cached(&store, snapshot, &bounds, &cancel)?;
         describe_conditional(pin.bytes(), pin.etag());
         std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
-        eprintln!(
+        crate::output::emit!(
+            Status,
             "Verified cached FirstSeen conditional observation; no present remote version/freshness or caller-authorized raw SHA assertion."
         );
         return Ok(());
@@ -524,7 +527,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     }
     let store = CacheStore::open(cache_options(&options.common)?)?;
     for (index, (pin, plan)) in plans.iter().enumerate() {
-        eprintln!(
+        crate::output::emit!(
+            Progress,
             "Azure object {}/{}; independent publication",
             index + 1,
             plans.len()
@@ -556,7 +560,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             }
         }
     }
-    eprintln!(
+    crate::output::emit!(
+        Status,
         "Verified independent Azure data only; earlier data may survive later failure. No atomic prefix, model closure, license or inference eligibility claim."
     );
     Ok(())

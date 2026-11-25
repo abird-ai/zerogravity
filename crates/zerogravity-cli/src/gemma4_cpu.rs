@@ -149,7 +149,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                     calls,
                     frontier,
                     first_root: Some(root),
-                } => eprintln!(
+                } => crate::output::emit!(
+                    Explicit,
                     "Gemma CPU candidate: {emitted} emitted, {calls} calls, frontier{frontier}, first root{root}; trained/chat/native/HTTP unqualified"
                 ),
                 #[cfg(feature = "gemma4-hip-resident-candidate")]
@@ -159,7 +160,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                     calls,
                     frontier,
                     ..
-                } => eprintln!(
+                } => crate::output::emit!(
+                    Explicit,
                     "Gemma HIP resident candidate: {emitted} emitted, {calls} calls, frontier{frontier}; observer=none private_feedback=true trained/HTTP/performance unqualified"
                 ),
                 _ => {

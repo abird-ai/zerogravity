@@ -27,7 +27,8 @@ pub(super) fn run(path: &str, options: &Options) -> Result<()> {
                 component.lease().manifest().digest()?
             );
         }
-        eprintln!(
+        crate::output::emit!(
+            Status,
             "Verified independent cached data; no remote freshness, token revocation or executable-model eligibility inferred."
         );
         return Ok(());
@@ -94,7 +95,7 @@ pub(super) fn run(path: &str, options: &Options) -> Result<()> {
         &cancel,
         &mut |label, event| {
             if current != label {
-                eprintln!("Component: {label}");
+                crate::output::emit!(Progress, "Component: {label}");
                 current = label.to_string();
                 display = ProgressDisplay::default();
             }
@@ -108,7 +109,8 @@ pub(super) fn run(path: &str, options: &Options) -> Result<()> {
             component.lease().manifest().digest()?
         );
     }
-    eprintln!(
+    crate::output::emit!(
+        Status,
         "Independent component snapshots verified; no cross-source atomic ref or model-readiness claim. Earlier snapshots may remain after a later component failure."
     );
     Ok(())

@@ -109,8 +109,9 @@ fn describe(report: &ReclaimReport) {
         None => println!("Charged cache bytes after: unknown"),
     }
     if let Some(warning) = report.by_name_warning() {
-        eprintln!(
-            "WARNING: canonical cache maintenance completed but by-name refresh needs repair: {warning}"
+        crate::output::emit!(
+            Warning,
+            "canonical cache maintenance completed but by-name refresh needs repair: {warning}"
         );
     }
 }
@@ -183,19 +184,21 @@ fn print_by_name_update(update: &zerogravity::cache::ByNameUpdate) {
         );
     }
     if let Some(warning) = update.projection_warning() {
-        eprintln!(
-            "WARNING: human alias metadata is saved but by-name projection needs refresh: {warning}"
+        crate::output::emit!(
+            Warning,
+            "human alias metadata is saved but by-name projection needs refresh: {warning}"
         );
     }
 }
 
 pub(super) fn report_publication(snapshot: &PublishedSnapshot) {
     for name in snapshot.by_name() {
-        eprintln!("By-name: by-name/{name}");
+        crate::output::emit!(Status, "By-name: by-name/{name}");
     }
     if let Some(warning) = snapshot.by_name_warning() {
-        eprintln!(
-            "WARNING: canonical snapshot is durable but by-name projection needs refresh: {warning}"
+        crate::output::emit!(
+            Warning,
+            "canonical snapshot is durable but by-name projection needs refresh: {warning}"
         );
     }
 }
@@ -327,7 +330,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         ))),
         ReclaimOutcome::Incomplete { report, cause } => {
             describe(&report);
-            eprintln!(
+            crate::output::emit!(
+                Warning,
                 "INCOMPLETE: target may be retired; retry the same digest after inspection. Completed changes were not rolled back."
             );
             Err(cause)

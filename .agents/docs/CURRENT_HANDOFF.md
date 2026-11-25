@@ -3,7 +3,7 @@
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
 **Full takeover (25 Nov, Phase 1 exit):** [FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md).
-Read §§0–13 first; §13 is the current Phase 2.1 UX-1 takeover prompt.
+Read §§0–13 first for the complete foundation context; §13 is the historical Phase 2.1 UX-1 entry prompt. Resume at the live UX checkpoint below.
 The [previous foundations pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md)
 retains the earlier dated matrix checkpoint and all historical detail.
 Resume from the latest live checkpoint below and the ordered full plan.
@@ -24,7 +24,56 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current foundation exit checkpoint
+### Current checkpoint — Phase 2.1 UX-1 accepted (25 Nov)
+
+The shared CLI presentation foundation is implemented and accepted in this
+signed checkpoint on L5. The Phase 1 exit remains `d5030ad4`, with last
+accepted foundation implementation `5a7535e7`; no execution or numerical
+qualification changed.
+
+- `zerogravity-cli/src/output/presentation.rs` owns the dependency-free
+  terminal capability, options, borrowed typed events, reporter and failure
+  renderer. Detect stdin/stderr TTYs, TERM=dumb and nonempty NO_COLOR once;
+  explicit color always/never overrides auto. Default pipes remain plain.
+  Typed core error categories and original serving status/code survive;
+  hints follow the category, causes are diagnostic-only and existing
+  process failure status 2 is retained.
+- The existing command tree accepts a leading presentation prefix:
+  `-q/--quiet`, `-v/--verbose`, `-vv`, `--format auto|text`,
+  `--color auto|always|never`, `--progress auto|always|never`.
+  Subcommand argv is left intact; unknown global values are not echoed.
+  Rich symbols/colors are only human stderr presentation; quiet suppresses
+  ordinary status/progress, not errors, actionable partial/durability
+  warnings or explicitly requested machine diagnostics. The progress
+  policy uses existing line-oriented updates/throttling for auto/always,
+  and never disables them. No interactive prompts or cursor rewriting yet.
+- Run/pull/cache/serve status and failures now share the reporter. Primary
+  stdout, existing JSON/JSONL/explain/audit/logit outputs, source selection,
+  acquisition semantics, existing cancellation, HTTP contracts and feature
+  dependencies remain unchanged. No frontend runtime, new dependency or
+  second domain event owner. Reporter events are presentation-level, not
+  the future ControlPlane event model.
+- Assembled mandatory-private-network workspace gate exited 0:
+  **2431 passing Rust test executions, zero failures, 106 explicit skips**;
+  format/architecture, backend feature isolation/qualification compilation,
+  strict Clippy, release, installer and script checks passed. Existing
+  synthetic GGUF CPU inference/local/alias/config/cache cases prove equal
+  normal/quiet/diagnostic stdout. Release binary PTY checks passed for
+  capable terminal, NO_COLOR, TERM=dumb, text mode and explicit color
+  override; forced-color quiet device JSON remained parseable and
+  unstyled with empty stderr. No new learned-model or physical GPU
+  qualification required or claimed for this CLI-only change.
+
+**Next coherent unit: UX-2 (typed command tree + unified model/config
+resolver)** under CLI UX §46A.28. Preserve the compatibility grammar and
+machine output contracts while expanding global options/command grammar,
+concise help/completion, and resolution through the original authorities.
+Full global JSON/JSONL selection, richer interactive transfer lifecycle,
+ConfigDocument management, shared ControlPlane snapshots/actions/events
+(UX-3), TUI then Web and public serving remain ordered work. Do not begin
+backend performance tuning.
+
+### Previous foundation exit checkpoint
 
 **Signed exact coherent mapped resident producer: 14bbbd489bae8cfa79beae0ceffc07d7a0f8817c.**
 Qualification boundary correction: 5d952364.
@@ -100,7 +149,7 @@ capture selection and concrete external graph SDKs remain explicit in
 their owning plans. They do not block the minimum shared foundation
 exit for already-qualified local paths. No new model/performance claim.
 
-**Next coherent unit (Phase 2.1, UX-1):** inspect actual
+**Historical entry instruction (Phase 2.1, UX-1; completed above):** inspect actual
 zerogravity-cli and existing facade command/output/control owners, read
 the canonical cli-ux/NEXT_ITERATION_CLI_UX_AND_MODEL_LIFECYCLE.md and
 the owning cli-device-routing and serving TODOs. Implement the shared
@@ -108,8 +157,8 @@ presentation foundation (terminal capability, rich/plain/color/NO_COLOR,
 quiet/verbose, typed reporter/events, unified error/hint and stdout/stderr
 contract) through existing commands, without duplicating the runtime,
 catalog, resolver or scheduling. Retain direct APIs and structured
-diagnostics. Then UX-2 typed command tree, UX-3 shared model resolver/
-inspect/list and subsequent UX sequence. Native TUI and embedded Web
+diagnostics. Then follow the superseding §46A.28 ordering: UX-2 typed command tree and
+unified model/config resolver, UX-3 shared ControlPlane and subsequent UX sequence. Native TUI and embedded Web
 follow the same presentation/control contracts; no ROCm/CUDA performance
 campaign before Phase 2 closes.
 

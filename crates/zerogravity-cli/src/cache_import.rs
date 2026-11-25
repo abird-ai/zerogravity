@@ -198,7 +198,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         CommitOutcome::DurabilityUnknown {
             snapshot, cause, ..
         } => {
-            eprintln!(
+            crate::output::emit!(
+                Warning,
                 "Snapshot {} may be installed but durability is unknown; inspect before retrying.",
                 snapshot.digest()
             );

@@ -1,5 +1,12 @@
 //! CLI presentation.
+mod presentation;
+pub(crate) use presentation::{
+    Event, Failure, Options, Switch, Verbosity, emit, fail, install, report,
+};
+
 use super::{GpuBackend, VERSION};
+#[cfg(all(feature = "acquisition", target_os = "linux"))]
+pub(crate) use presentation::reporter;
 
 pub(super) fn usage() {
     if !cfg!(all(
@@ -15,6 +22,7 @@ pub(super) fn usage() {
         feature = "serve"
     )) {
         composed_usage();
+        presentation_usage();
         return;
     }
 
@@ -46,9 +54,16 @@ Only qualified text-only dense Qwen3.5 is implemented; CPU is the first
 reference backend. Trained MTP, vision, Gemma, GPU, and HTTP are NOT IMPLEMENTED.
 Use --model-config and --tokenizer for colocated sidecars; --config selects pipeline YAML. See docs/ENGINEERING_SPECIFICATION.md."
     );
+    presentation_usage();
 }
 
-/// Keep the existing default CPU help byte-for-byte; other feature sets name
+fn presentation_usage() {
+    println!(
+        "\nPRESENTATION OPTIONS (before command):\n    -q, --quiet | -v, --verbose | -vv\n    --format auto|text   (text selects plain presentation)\n    --color auto|always|never\n    --progress auto|always|never\nExisting command-specific JSON, JSONL and audit options are unchanged."
+    );
+}
+
+/// Keep the existing default CPU command help; other feature sets name
 /// only their compiled command capabilities without initializing a device.
 fn composed_usage() {
     println!(

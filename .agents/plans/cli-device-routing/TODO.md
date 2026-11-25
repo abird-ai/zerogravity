@@ -85,7 +85,35 @@ build or general model/backend grant. Historical failures keep their source scop
 - [x] Coordinator schedules a Sol HIGH isolated lane and adds this active plan;
   ongoing2B/HIP/model work proceeds independently.
 
+### Phase 2.1 UX-1 — shared presentation (this checkpoint, 25 Nov)
+
+- [x] Single dependency-free terminal policy and rich/plain stderr renderer,
+  color auto/always/never and NO_COLOR, quiet/verbose/diagnostic events,
+  line-oriented progress auto/always/never and typed failure codes/hints.
+  Borrowed formatting; skip the stderr lock on suppressed events.
+- [x] Route existing run, pull/cache, serve and diagnostic presentation
+  through the same reporter. Preserve primary stdout, explicit machine
+  diagnostics, original error detail/code/status, exit 2 on command
+  failures and independent CLI feature sets. Actionable partial/durability
+  warnings remain visible even in quiet mode.
+- [x] Leading presentation flags only before the existing subcommand;
+  never scan or rewrite subcommand values. Global format auto/text only,
+  existing explicit JSON/JSONL/explain/audit unaffected; invalid values
+  and unknown top-level commands do not echo raw argv.
+- [x] Focused parser/renderer/subprocess tests and existing synthetic GGUF
+  CPU run output equality. Actual release PTY (rich, NO_COLOR, dumb,
+  plain, forced color) and quiet device JSON pass. Full mandatory-private-
+  network workspace gate exits 0: 2431 Rust executions pass, 0 failures,
+  106 explicit skips; architecture/feature/Clippy/release/installer/scripts
+  pass. No execution/physical/performance scope change.
+
 ## Uncommitted
+
+- [ ] UX-2 next: typed command tree, global grammar, concise help/aliases/
+  completion and unified model/config resolver through original owners
+  (§46A.28). Global structured format selection and interactive progress
+  expansion remain open; shared ControlPlane snapshot/action/event ownership
+  follows in UX-3. Preserve explicit pull and unsupported-backend refusal.
 
 ### Reviewed source checkpoint — 24 Oct
 
@@ -117,8 +145,8 @@ recorded. Current21 repairs it within the finite accepted scope above.
   producer on the original range and charge. No implicit zero-copy from
   colocated placement. Non-Linux, general host-visible GPU backing
   aliasing and OS hard-memory guarantees remain open.
-  Minimum shared foundation exit review in the full plan; next shared
-  CLI presentation (UX-1), preserving the original runtime/selector.
+  Minimum shared foundation exit review in the full plan; shared CLI
+  presentation (UX-1) now accepted above, preserving the original runtime/selector.
 
 ### Review and authorization
 

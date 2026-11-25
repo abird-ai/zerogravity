@@ -166,7 +166,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             &cancel,
         )?;
         std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
-        eprintln!(
+        crate::output::emit!(
+            Status,
             "Verified cached ModelScope commit/data only; no remote freshness, account authorization or inference claim."
         );
         return Ok(());

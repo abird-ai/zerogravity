@@ -22,7 +22,19 @@ pub(super) fn run_with_discovery(
         .iter()
         .position(|m| &m.id == id)
         .ok_or_else(|| bad("direct entrypoint model absent"))?;
+    crate::output::emit!(
+        Verbose,
+        "Requested backend: {}; context {}; max output {}",
+        request.backend.label(),
+        request.task.context,
+        request.task.max_tokens
+    );
     let inventory = discover()?;
+    crate::output::emit!(
+        Diagnostic,
+        "Observed {} device(s) for routing",
+        inventory.devices.len()
+    );
     #[cfg(all(
         feature = "model-qwen35",
         feature = "cache",
@@ -64,13 +76,15 @@ fn gguf(request: Request, inventory: devices::Inventory) -> Result<()> {
         return plan.require_proposal();
     }
     if plan.explain() {
-        eprintln!(
+        crate::output::emit!(
+            Explicit,
             "{}",
             serde_json::to_string(plan.decision())
                 .map_err(|error| Error::State(error.to_string()))?
         );
     }
     let prepared = plan.prepare()?;
+    crate::output::emit!(Verbose, "Selected CPU source: {}", prepared.source_label);
     let options = crate::InferenceOptions {
         prompt: prepared.task.prompt,
         max_tokens: prepared.task.max_tokens,

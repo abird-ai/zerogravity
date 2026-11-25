@@ -134,7 +134,42 @@ fn actual_same_cpu_inference_local_alias_config_xdg_and_cached_provider_forms() 
         "--device",
         "cpu:0",
     ];
-    let baseline = passed(run(&f.0, &[&["run", "./model.gguf"][..], &common].concat()));
+    let normal = run(&f.0, &[&["run", "./model.gguf"][..], &common].concat());
+    let normal_stderr = String::from_utf8_lossy(&normal.stderr);
+    assert!(normal_stderr.contains("prefill"), "{normal_stderr}");
+    assert!(
+        normal_stderr.contains("generated tokens"),
+        "{normal_stderr}"
+    );
+    assert!(!normal_stderr.contains('\x1b'), "{normal_stderr}");
+    let baseline = passed(normal);
+    let quiet = run(
+        &f.0,
+        &[&["-q", "run", "./model.gguf"][..], &common].concat(),
+    );
+    assert!(
+        quiet.stderr.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&quiet.stderr)
+    );
+    assert_eq!(passed(quiet), baseline);
+    let verbose = run(
+        &f.0,
+        &[
+            &["-vv", "--progress", "never", "run", "./model.gguf"][..],
+            &common,
+        ]
+        .concat(),
+    );
+    let stderr = String::from_utf8_lossy(&verbose.stderr);
+    assert!(stderr.contains("Selected CPU source:"), "{stderr}");
+    assert!(
+        stderr.contains("Observed ") && stderr.contains("device(s) for routing"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("generated tokens"), "{stderr}");
+    assert!(!stderr.contains("prefill"), "{stderr}");
+    assert_eq!(passed(verbose), baseline);
     assert_eq!(
         passed(run(
             &f.0,

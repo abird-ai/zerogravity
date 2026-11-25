@@ -30,7 +30,8 @@ pub(super) fn run_route(request: Request, inventory: devices::Inventory) -> Resu
                 Report::Decision {
                     value,
                     pretty: false,
-                } => eprintln!(
+                } => crate::output::emit!(
+                    Explicit,
                     "{}",
                     serde_json::to_string(value)
                         .map_err(|error| Error::State(error.to_string()))?

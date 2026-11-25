@@ -465,7 +465,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         let lease = pin.open_cached(&store, snapshot, &bounds, &cancel)?;
         describe_pin(pin);
         std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
-        eprintln!(
+        crate::output::emit!(
+            Status,
             "Verified cached S3 version/data; no remote membership, freshness, SDK credential discovery or inferred checksum trust."
         );
         return Ok(());
@@ -479,7 +480,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         let lease = spec.open_cached(&store, snapshot, &bounds, &cancel)?;
         describe_content(spec.bytes(), spec.sha256());
         std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
-        eprintln!(
+        crate::output::emit!(
+            Status,
             "Verified cached S3 caller content contract; no remote version or freshness assertion."
         );
         return Ok(());
@@ -489,7 +491,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         let lease = pin.open_cached(&store, snapshot, &bounds, &cancel)?;
         describe_conditional(pin.bytes(), pin.etag());
         std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
-        eprintln!(
+        crate::output::emit!(
+            Status,
             "Verified cached FirstSeen conditional observation; no present remote version/freshness or caller-authorized raw SHA assertion."
         );
         return Ok(());
@@ -581,7 +584,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     }
     let store = CacheStore::open(cache_options(&options.common)?)?;
     for (index, (pin, plan)) in plans.iter().enumerate() {
-        eprintln!(
+        crate::output::emit!(
+            Progress,
             "S3 object {}/{}; independent publication",
             index + 1,
             plans.len()
@@ -608,7 +612,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             CommitOutcome::DurabilityUnknown { .. } => return Err(Error::State("complete S3 object data is visible but durability is unknown; earlier independent snapshots may remain".into())),
         }
     }
-    eprintln!(
+    crate::output::emit!(
+        Status,
         "Verified independent S3 data only; later failure may retain earlier objects. No atomic prefix, model closure, signature, licensing or inference eligibility claim."
     );
     Ok(())

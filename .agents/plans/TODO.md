@@ -7,8 +7,8 @@ The historical queue narratives and P-level labels below preserve owner scopes, 
 Current source, tests, and this queue are authoritative; Git retains retired history.
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md).
-The Phase 1 exit pack links the complete dated history, current Phase 2.1
-UX-1 start, original design and plan/open-work/Git inventories. The previous
+The Phase 1 exit pack links the complete dated history, Phase 2.1
+UX-1 entry, original design and plan/open-work/Git inventories. The previous
 foundations pack remains historical; live source and owning TODOs are authoritative.
 
 **25 Nov Phase 1 checkpoint:** `7b36a879`/`0342e103`/`fdfb467f`
@@ -111,8 +111,11 @@ and refusal; portable Vulkan healthy/unknown and HIP healthy pass.
 Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
 Final mapped accounting revision revalidated physically and by feature checks.
 Minimum Phase 1 exit accepted; audit in FULL_IMPLEMENTATION_PLAN/
-CURRENT_HANDOFF. Next Phase 2.1 UX-1 shared presentation, then typed
-command tree/resolver.
+CURRENT_HANDOFF. Phase 2.1 UX-1 shared CLI presentation accepted:
+2431 Rust executions pass, zero failures, 106 explicit skips; release PTY,
+machine JSON and original CPU output equality pass. No execution policy
+change. Next UX-2 typed command tree + unified model/config resolver,
+then UX-3 shared ControlPlane per §46A.28.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

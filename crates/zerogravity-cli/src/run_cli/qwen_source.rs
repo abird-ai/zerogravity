@@ -63,6 +63,14 @@ pub(super) fn run(
         .ok_or_else(|| bad("direct entrypoint model absent"))?;
     let resolved = resolve(model, id)?;
     let native = request.numerical.as_deref() == Some("native");
+    crate::output::emit!(
+        Verbose,
+        "Resolved {} on {:?}; numerical: {}",
+        resolved.target,
+        backend,
+        if native { "native" } else { "source" }
+    );
+    crate::output::emit!(Diagnostic, "Snapshot: {}", resolved.snapshot);
     if native && backend != SelectedBackend::Hip {
         return Err(Error::Unsupported(
             "native numerical profile requires ROCm".into(),
@@ -99,7 +107,7 @@ pub(super) fn run(
     }
 
     if request.diagnostics.explain {
-        eprintln!(
+        crate::output::emit!(Explicit,
             "{}",
             serde_json::to_string(&serde_json::json!({
                 "schema": "zerogravity.run.decision.v1",
@@ -435,7 +443,7 @@ fn receive(receipt: zerogravity::runtime::text::RequestEvents) -> Result<()> {
                 ..
             } => {
                 println!("{output}");
-                eprintln!("zerogravity: {completion_tokens} generated tokens");
+                crate::output::emit!(Status, "zerogravity: {completion_tokens} generated tokens");
                 return Ok(());
             }
             ResponseEvent::Error(error) => return Err(error.into_core()),

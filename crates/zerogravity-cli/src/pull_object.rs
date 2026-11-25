@@ -238,7 +238,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             &cancel,
         )?;
         std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
-        eprintln!(
+        crate::output::emit!(
+            Status,
             "Verified cached object contract; no URL read, remote freshness or model-readiness claim."
         );
         return Ok(());

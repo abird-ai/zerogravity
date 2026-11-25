@@ -362,7 +362,8 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
             .and_then(|server| server.start())
             .map_err(|error| ServiceError::new(500, "bind_failed", error.to_string()))?;
         if !shutdown.is_requested() {
-            eprintln!(
+            crate::output::emit!(
+                Status,
                 "zerogravity: serving {:?} Qwen on {}, {} worker(s); max-context {}, max-output {}",
                 options.backend,
                 server.local_addr(),
@@ -381,7 +382,10 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
         .map_err(|error| ServiceError::new(500, "shutdown_failed", error.to_string()));
     match (result, joined) {
         (Ok(()), Ok(())) => {
-            eprintln!("zerogravity: shutdown complete; HTTP handlers and inference workers joined");
+            crate::output::emit!(
+                Status,
+                "zerogravity: shutdown complete; HTTP handlers and inference workers joined"
+            );
             Ok(())
         }
         (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),

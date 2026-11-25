@@ -1402,6 +1402,17 @@ or a change to the active correctness/benchmark/27B order.
 
 ## Committed
 
+### Phase 2.1 UX-1 — CLI presentation (25 Nov)
+
+- [x] CLI serving startup/shutdown and failure rendering share the terminal
+  reporter with run/cache/acquisition. Original serving status/code/detail,
+  CLI failure exit status, signal/stop owners, HTTP protocol and authentication
+  are unchanged. Full isolated workspace gate (2431 pass/0 fail/106 skips)
+  includes existing serving shutdown and feature boundaries.
+  UX-6 stable serve surface, UX-3 shared ControlPlane and broader serving
+  contracts remain in canonical §46A.28 order; no new serving capability.
+
+
 ### `63ee14e` — private production CUDA graph lifecycle/cache
 
 - [x] Private production graph lifecycle/cache is now workspace-owned and

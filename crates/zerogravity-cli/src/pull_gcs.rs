@@ -263,7 +263,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         let lease = pin.open_cached(&store, snapshot, &bounds, &cancel)?;
         describe_pin(pin);
         std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
-        eprintln!(
+        crate::output::emit!(
+            Status,
             "Verified cached GCS pin/data; no present remote membership, freshness or inferred checksum trust."
         );
         return Ok(());
@@ -321,7 +322,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     }
     let store = CacheStore::open(cache_options(&options.common)?)?;
     for (index, (pin, plan)) in plans.iter().enumerate() {
-        eprintln!(
+        crate::output::emit!(
+            Progress,
             "GCS object {}/{}; independent publication",
             index + 1,
             plans.len()
@@ -348,7 +350,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             CommitOutcome::DurabilityUnknown { .. } => return Err(Error::State("complete GCS object data is visible but durability is unknown; earlier independent snapshots may remain".into())),
         }
     }
-    eprintln!(
+    crate::output::emit!(
+        Status,
         "Verified independent GCS data only; later-member failure may retain earlier data. No atomic prefix, model closure, signature, licensing or inference eligibility claim."
     );
     Ok(())
