@@ -210,10 +210,18 @@ combined SDK check and actual Qwen 0.8B CUDA C1/HIP V2 C1/C8 replay and
 retirement pass. No fresh captured or legacy GGUF physical qualification;
 capture code unchanged. No external compiler execution or new IR.
 Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-Next reconcile backend-independent source/model/format/task registration
-and cold source eligibility through original SDK HF/local loaders and
-registry; retain exact source authority and explicit numerical/device
-policy, with no second catalog or runtime.
+Signed 8eb17bc2 separates authenticated Qwen HF source from task/arithmetic
+selection, makes approved snapshot metadata backend-independent, shares HF
+cold registration and GGUF format/family/geometry checks over held descriptors.
+Original request variants, source authority, numerical/device policy and
+registry retained. Real CPU 0.8B/2B cached/direct and HF-import comparisons
+match full vocabulary/all42 and source retirement (test-only 00f57e7a/9374e0ca).
+CUDA HF C1/GGUF pipeline+unload and HIP V2 C1/C8 pass. No new performance claim.
+Full isolated gate: 2396 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Next consolidate pre-Client physical fit/admission and stable identity, closing
+the ordinary CUDA bootstrap gap through the existing f4746c23 physical owner
+and shared source-shaped preflight. General family/codec/task extension remains
+separately open; no duplicate catalog, estimator, allocator or runtime.
 General DAG/media/context authority, pipeline source loading, transport
 activation, portable snapshot persistence and cross-provider restore remain
 unsupported. None of these slices closes Phase 1.

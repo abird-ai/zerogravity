@@ -25,6 +25,52 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed source/model eligibility: 8eb17bc2125ed73260240db9cda47312c501ac39.**
+Test-only corrections: 00f57e7a, 9374e0ca.
+
+- Qwen ForwardSource authenticates the original HF source, roles and geometry
+  independently of task/numerical lowering. ForwardSourceSeal binds an explicit
+  supported language task and arithmetic contract over the same owner, without
+  a new source, allocation or metadata reservation. Legacy binding wrappers
+  and SDK load request variants remain available.
+- The single approved HF inventory supports backend-free snapshot discovery.
+  HF registration shares cold preflight, refuses unapproved digests before
+  host/cache/device preparation and carries the selected spec into actual
+  descriptor/config/member verification. Existing integrity/provenance pins and
+  explicit backend policy are unchanged.
+- GGUF routing, direct preparation and local CPU/GPU SDK loading share bounded
+  format/family/embedding checks and consume the original held descriptor.
+  Verified cached preparation retains its existing lease and layout checks.
+  No second catalog or new codec, task, model-family or numerical support.
+- L5 real CPU original/cache and private HF-imported GGUF comparisons for Qwen
+  0.8B/2B: full vocabulary and all42 state domains bit-identical at two positions,
+  isolated sessions/mutation/reclamation and final raw-lease retirement. Initial
+  stale Limit assertion and synthetic host identity corrected in tests only;
+  all four cache-preparation tests pass. Combined GPU SDK compilation, focused
+  pre-cache source refusal, model-only inventory, original seal ownership and
+  unsupported task/arithmetic tests, strict CPU/model Clippy pass.
+- L5 actual HF CUDA C1 and local GGUF two-stage pipeline/selective unload;
+  X2 actual HF HIP V2 C1/C8 all pass. Original HF expected IDs/replay and native
+  retirement unchanged. Both devices return to prior idle usage. No new
+  performance or cross-backend numerical claim. Capture code unchanged.
+- Full mandatory-private-network gate: 2396 Rust test executions, zero
+  failures, 101 explicit skips; architecture, feature isolation, release,
+  installer and scripts pass. Gate started on unchanged production 8eb17bc2;
+  the two test-only corrections landed during it, with all four corrected
+  cache-preparation tests run separately against real sources.
+
+**Next coherent unit:** consolidate pre-Client physical fit/admission and stable
+identity through the existing physical owner, particularly the ordinary CUDA
+source bootstrap gap. Start at `physical_service.rs`, `resident_leases/physical.rs`,
+`resident_inference.rs::load_cuda_forward_roots` and the HIP pre-admission seam
+accepted in f4746c23. Preserve live downward fit clamp, exact source-shaped
+preflight, provider/headroom accounting, original service/lease ownership and
+clean refusal/retry. Do not duplicate estimators, infer available memory from
+capacity, or add fallback. Keep general UMA overlap, new backend/codec/family
+support and unsupported task/pipeline extensions explicitly open.
+
+### Previous accepted compiled-region checkpoint
+
 **Signed SDK-free compiled-region foundation: 3ca16abd538fe8a4ffa0fc07b472865756392bf2.**
 Public SDK reexports: a53a3446dc271c1081ea0e850a851907435e7c74.
 
@@ -59,15 +105,9 @@ Public SDK reexports: a53a3446dc271c1081ea0e850a851907435e7c74.
   installer and scripts pass. SDK reexports landed before the CPU/minimal
   SDK checks; the native runs cover unchanged 3ca16abd production code.
 
-**Next coherent unit:** reconcile backend-independent model/source/format/task
-registration and cold source eligibility across the existing SDK loaders.
-Start at models.rs ModelLoadRequest, qwen35_source/source_inventory.rs and
-builtins/text/qwen_source/load.rs, and the ordinary local GGUF/CPU/GPU loaders
-and existing engine registry. Preserve exact snapshot or held descriptor
-authority, family/task capability validation, explicit device and numerical
-policy, and existing compatibility routes. Separate eligibility from lowering
-without a second catalog, runtime or new source format. Continue remaining
-placement, state/task and SDK/control foundations before Phase 2.
+The bounded source-registration continuation is closed by 8eb17bc2 above.
+Broader family/codec/task registration and remaining placement, state/task and
+SDK/control foundations remain open before Phase 2.
 
 ### Previous accepted parameter-retirement checkpoint
 

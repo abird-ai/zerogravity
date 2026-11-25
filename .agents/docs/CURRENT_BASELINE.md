@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — authenticated source eligibility
+
+8eb17bc2: backend-independent HF inventory and authenticated ForwardSource,
+explicit task/numerical seal over the same owner, shared HF registration and
+GGUF held-descriptor eligibility. Test-only 00f57e7a/9374e0ca correct the stale
+capacity assertion and host fixture identity. L5 CPU Qwen 0.8B/2B original/cache
+and HF-imported GGUF comparisons match full vocabulary/all42 at two positions,
+with original source retirement. L5 actual CUDA HF C1 and GGUF SDK two-stage
+pipeline/selective unload, X2 HIP V2 C1/C8 expected IDs/replay/retirement pass.
+No new performance baseline or cross-provider numerical qualification.
+Full isolated gate: 2396 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+
 ## 25 Nov — direct source-region provider binding
 
 3ca16abd (SDK reexports a53a3446): borrowed encoded references and verified

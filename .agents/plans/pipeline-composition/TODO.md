@@ -417,9 +417,15 @@ and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
   cold matrix binding and actual C1/C8 replay/retirement pass; no SDK/ONNX
   or second IR. Capture code unchanged, no new capture/GGUF physical run.
   Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-- [ ] Reconcile backend-independent model/source/format/task registration
-  and cold eligibility through existing SDK HF/local loaders and registry.
-  General DAG/media/context
+- [x] Bounded Qwen source/format/task eligibility through existing SDK HF/local
+  registration (8eb17bc2). Authenticate original HF source before selecting
+  task/arithmetic; share owner and reservation. Shared approved snapshot and
+  GGUF format/family/geometry checks retain actual descriptor authority. Real
+  CPU 0.8B/2B cached/direct/HF-import exact comparison, CUDA HF C1/GGUF SDK and
+  HIP V2 C1/C8 pass with original retirement. Broader family/codec/task support
+  remains open.
+- [ ] Continue physical pre-Client fit/admission and stable identity through
+  the original owner, including ordinary CUDA bootstrap. General DAG/media/context
   authority, source loading and pipeline transport activation remain
   unsupported. Continue source lifecycle/placement only through real
   consumers. Keep selected shape

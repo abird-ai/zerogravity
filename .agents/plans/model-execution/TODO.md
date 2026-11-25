@@ -193,6 +193,12 @@ any external compiler. All phases retain the original resource/state owners.
   preparation reuse the exact check. Explicit compiled selection differs
   from native capture; original invocation, state and completion authority
   remain. Actual CUDA C1/HIP V2 C1/C8 pass; no new kernel or parity claim.
+- 8eb17bc2: Qwen authenticated HF ForwardSource owns exact source/roles/geometry;
+  selecting task/arithmetic retains the same owner and reservation. Common
+  source metadata, GGUF family/format/geometry checks and actual HF/GGUF SDK
+  registration preserve original source/physical ownership. Real CPU cache and
+  HF-import/direct 0.8B/2B full vocabulary/all42, CUDA HF C1/GGUF and HIP V2
+  C1/C8 pass. No kernel, codec or numerical-contract expansion.
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

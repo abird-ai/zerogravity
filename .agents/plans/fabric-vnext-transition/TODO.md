@@ -645,10 +645,16 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   exact prepared binding and original completion authority. Graph-only
   preparation and actual CUDA C1/HIP V2 C1/C8 replay/retirement pass.
   Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-- [ ] Reconcile model/source/format/task registration and cold eligibility
-  through original HF/local loaders and registry. Portable snapshot
-  persistence, cross-provider restore and additional backend prefix
-  eligibility remain deferred.
+- [x] Bounded Qwen model/source/format/task registration and cold eligibility
+  through original HF/local loaders and registry (8eb17bc2): authenticated
+  owner independent of selected numerical contract, shared preflight, exact
+  held descriptor/snapshot. Existing request variants preserved. Actual CPU
+  0.8B/2B cache and HF-import/direct comparison, CUDA HF C1/GGUF pipeline and
+  selective unload, HIP V2 C1/C8 pass with original retirement.
+- [ ] Consolidate remaining pre-Client physical fit/admission and stable
+  identity through original physical owner. Broader family/codec/task
+  registration, portable snapshot persistence, cross-provider restore and
+  additional backend prefix eligibility remain open.
 
 ## Handoff and documentation maintenance
 

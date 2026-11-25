@@ -34,8 +34,14 @@ admission and completion preserved. Engine preparation 9/9, windows 30/30,
 strict Clippy/combined SDK and actual CUDA C1/HIP V2 C1/C8 replay/retirement
 pass. No external SDK execution or new captured/GGUF physical claim.
 Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-Next reconcile source/model/format/task registration and cold eligibility
-across the existing SDK HF/local routes and original registry.
+Signed 8eb17bc2: authenticated Qwen HF source independent of task/arithmetic,
+backend-free approved snapshot discovery and common HF/GGUF cold eligibility.
+Real CPU 0.8B/2B cached/direct and HF-import full vocabulary/all42 comparisons,
+CUDA HF C1/GGUF pipeline+unload and HIP V2 C1/C8 pass with original retirement.
+Test-only capacity/host fixture corrections 00f57e7a/9374e0ca.
+Full isolated gate: 2396 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Next consolidate pre-Client physical fit/admission and stable identity, in
+particular ordinary CUDA bootstrap, via original physical owner (f4746c23).
 Continue foundations in the [full plan](FULL_IMPLEMENTATION_PLAN.md).
 No second cache hierarchy, allocator or publisher; portable persistence,
 cross-provider restore and general media/DAG/context remain open.
