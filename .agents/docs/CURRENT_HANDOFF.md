@@ -25,6 +25,69 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed host backing / local VRAM observation: cbd2c1198a49ad800945b33ed01ba45ba15dafcc.**
+Actual HIP cold-allocation correction: 197c2e26f58e27064d9b574ae8050ac41ab5919f.
+
+- Original ResourceArbiter counts all host-scoped reservations against one
+  shared backing constraint. Keep each configured operator scope and its
+  exact leases; first attested host ceiling is immutable, newest known hard
+  OS/cgroup ceiling may tighten current admission without resizing the
+  original cap. Partition preserves aggregate credit; known retirement
+  releases, unknown work retains. No new resource row/owner or allocator.
+  RuntimeSnapshot reports coherent host_backing and scoped rows.
+- Move bounded Linux host observation into the shared owner. MemTotal and
+  MemAvailable intersect the visible cgroup-v2 ancestor hard limits/current
+  use. Unknown/incomplete hierarchy does not become a capacity guess.
+  Known over-limit use is zero available. No OS polling in hot admissions.
+- Existing serving/raw-cache/direct CPU routes establish shared host backing
+  before cold allocations; direct proposal and revalidation use the same
+  conservative fit. Actual GGUF weight, HF source control and HIP context
+  reservations use the same cold host check. Existing outstanding charges
+  without exact backing mapping are conservatively protected as possible
+  growth, not claimed physically unbacked. Explicit SDK routes retain their
+  scoped logical bounds on unknown live observation; no automatic fit claim.
+- LocalVramObservation is shared by DRM inventory and actual qualified HIP
+  device preadmission. Intersect HIP driver total/free with local VRAM
+  total/used; integrated devices require both local counters. Never add
+  OS-visible host RAM, VRAM and GTT or treat GPU addressability as capacity.
+  X2's 96GiB local VRAM aperture and OS-visible RAM remain separate constraints,
+  not evidence of independently additive pools. Host-visible GPU allocations
+  and arbitrary UMA alias backing still need real backing/ownership mapping.
+- Initial real HIP run refused because its conservative lifetime HOST upper
+  (including existing backing and possible scratch) was treated as wholly
+  incremental. 197c2e26 keeps the original source-shaped logical bound and
+  checks actual upcoming 2GiB context reservation instead. Real X2 native
+  HF 0.8B V2 C1/C8 six waves pass with [248068,198,90700], replay, no failed
+  quanta, original reader retirement and no fence. Existing 32k capacity
+  refusal before native context creation passes. L5 HF CUDA peer refusal/retry,
+  C1 replay and local GGUF two-owner pipeline/selective unload with coherent
+  aggregate host snapshot pass. Both devices return to idle baseline.
+  Initial core 190/190, strict core/engine Clippy and combined SDK checks pass.
+- Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+  Gate began at cbd2c119; 197c2e26 landed during it before CPU checks.
+  Final combined CUDA/HIP SDK and strict core/engine Clippy pass; actual
+  HIP runs cover the correction and CUDA cold-check behavior is unchanged.
+  Fresh release CLI real local Qwen3.5 0.8B GGUF direct CPU run (context32,
+  eight prompt tokens, one generated token) passes under the same isolation.
+- Scope: logical aggregate host admission and observed cold availability,
+  not an OS-wide memory reservation or precise RSS/backing attribution.
+  Visible cgroup-v2 only; unobserved ancestors, external allocation races and
+  later changes require fresh observation. No generic portable HIP/Vulkan
+  pre-Client adoption yet; HIP driver observation itself may initialize the
+  runtime. No new source support, physical Vulkan or performance claim.
+
+**Next coherent unit:** close the remaining bounded portable physical
+admission/placement seams using original ResidentPhysical, PreAdmittedDevice,
+device inventory and LocalVramObservation. Start with actual portable HIP
+physical owner; guarded Vulkan only where identity/total/current local
+memory are established. Reuse typed same-domain placement and transfer
+refusal; no automatic cross-domain fit or unqualified execution. Keep
+general UMA backing aliasing, non-Linux observation gaps, general async
+SSD/remote placement and unqualified family/codec/task support explicit.
+Then continue remaining state/task and SDK/control foundations before Phase 2.
+
+### Previous accepted CUDA pre-Client checkpoint
+
 **Signed CUDA pre-Client physical admission: 9ae6dd1eb3c7bdd8c8ffb30479bd7775686a9c2c.**
 Public admitted physical identity accessor: e06213a517e1a88732fc5ceadac8fd1b9a97b354.
 
@@ -67,15 +130,8 @@ Public admitted physical identity accessor: e06213a517e1a88732fc5ceadac8fd1b9a97
   accessor e06213a5 landed during it. Final combined CUDA/HIP SDK all-targets
   compilation passes; actual native runs cover unchanged execution code.
 
-**Next coherent unit:** finish the minimum shared cold placement/physical
-resource observation contract through existing devices/inventory, core
-placement/provider/resource_arbiter and actual qualified load/admission
-consumers. Reconcile host/cgroup and overlapping UMA domain constraints,
-explicit capacity versus live availability, and remaining portable device
-bootstrap gaps where real supported routes permit. Preserve source-shaped
-fit, exact identity, typed resource refusal and actual admission authority;
-no generic layer spilling, automatic fallback or unqualified Vulkan execution.
-Continue remaining state/task and SDK/control foundations before Phase 2.
+The bounded host/VRAM observation continuation is closed by cbd2c119/197c2e26
+above. Portable bootstrap and general shared-backing placement remain open.
 
 ### Previous accepted source/model eligibility checkpoint
 

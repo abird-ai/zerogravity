@@ -656,8 +656,13 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   live downward clamp releases unused cold credit, no new resource owner.
   Real peer refusal without a new compute owner, same-runtime retry, pinned
   live-fit/retirement, HF C1/GGUF pipeline/selective unload and HIP V2 C1/C8 pass.
-- [ ] Reconcile remaining cold placement/resource observations, generic
-  portable bootstrap and host/UMA constraints. Broader family/codec/task
+- [x] Bounded shared host backing and local VRAM observations
+  (cbd2c119/197c2e26): original scoped leases, fixed first ceiling and latest
+  visible cgroup constraint, cold source/control/context fit, real HIP
+  driver/local VRAM intersection. Original logical upper preserved; actual
+  CUDA/HIP source and lifetime/refusal regressions pass.
+- [ ] Close remaining portable bootstrap, same-domain placement and actual
+  host-visible GPU/UMA backing aliasing. Broader family/codec/task
   registration, portable snapshot persistence, cross-provider restore and
   additional backend prefix eligibility remain open.
 

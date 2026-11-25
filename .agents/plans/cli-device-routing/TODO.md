@@ -102,8 +102,12 @@ recorded. Current21 repairs it within the finite accepted scope above.
   GGUF pipeline/selective unload and HIP V2 C1/C8 pass. Existing Vulkan
   diagnostic attachment compiles. Logical pre-admission is conservative;
   current free memory still observed on actor after bootstrap when
-  necessary. Remaining generic portable/non-Linux bootstrap, host/UMA
-  overlap and OS hard-memory guarantees are not implied.
+  necessary. cbd2c119/197c2e26 add original shared host-backing constraint,
+  immutable scoped caps, latest visible cgroup-v2 hard constraint, shared
+  cold fit and real HIP local VRAM/driver intersection (no host/GTT sum).
+  Original host lifetime upper remains logical; check actual next cold
+  allocations. Remaining generic portable/non-Linux bootstrap, general
+  host-visible GPU backing aliasing and OS hard-memory guarantees are open.
 
 ### Review and authorization
 

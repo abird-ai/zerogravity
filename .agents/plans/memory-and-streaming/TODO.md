@@ -221,7 +221,15 @@ The following extends existing owners; source-byte qualification is not inferenc
   physical/cancel/error gates; live audio's soft deadline may
   demand resident codecs and refuse cold SSD layouts.
 
-- [ ] Route legacy/new model allocations, CPU state/scratch/staging and APU/GPU shared backing into the same configured physical pools with OS/cgroup headroom; never sum overlapping UMA/VRAM/GTT counters.
+- [~] Host scopes share one original physical backing constraint
+  (cbd2c119/197c2e26); all host lease admissions/retirements/partitions use
+  the same arbiter. First observed ceiling and later known cgroup constraint
+  separate; actual source/control/context cold fit, no hot OS polling.
+  Qualified HIP intersects driver/local VRAM without summing host/GTT.
+  Real CUDA and HIP source regressions pass; initial lifetime-upper-as-growth
+  check corrected without weakening logical bound. Remaining direct/legacy
+  unadmitted owners, actual host-visible GPU/UMA backing alias mapping and
+  non-Linux/OS hard limits still need qualified consumers.
 - [ ] **Paged hybrid state allocator:** extend original leases/StateRoot with
   finite page pools/block tables, generations, valid tails, charged metadata
   and peak COW/candidate memory. Retain a qualified contiguous policy and typed

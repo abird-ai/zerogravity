@@ -203,6 +203,10 @@ any external compiler. All phases retain the original resource/state owners.
   adopts the original physical charge; exact PCI and actual live fit narrow
   unused credit without duplicate admission or kernel changes. Actual HF
   peer refusal/retry and pinned live fit, HF C1/GGUF and HIP V2 C1/C8 pass.
+- cbd2c119/197c2e26: shared host scope backing and cold observation, actual
+  HIP local VRAM intersection; lifetime source upper remains logical and
+  actual next context reservation uses cold current fit. HF CUDA pressure/
+  retry/C1/GGUF and HIP V2 C1/C8 + 32k refusal pass; no kernel changes.
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

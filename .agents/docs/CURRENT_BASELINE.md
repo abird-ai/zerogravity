@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — shared host backing and local VRAM observation
+
+cbd2c119/197c2e26: one aggregate host constraint over original scoped leases;
+visible cgroup-v2 hard limits, immutable first ceiling, current known hard
+constraint and conservative live fit. Actual SDK source/control/context
+checks and qualified HIP driver/local VRAM intersection. Initial lifetime
+HOST upper-as-incremental check over-refused on X2; retain original logical
+bound and check actual next context credit instead. Real CUDA HF refusal/
+retry/C1 and GGUF pipeline/selective retirement; HIP V2 C1/C8 and original
+32k capacity refusal pass. No kernel/performance or full UMA backing claim.
+Fresh release real GGUF CPU direct run passes. Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+
 ## 25 Nov — CUDA physical pre-admission
 
 9ae6dd1e (physical identity accessor e06213a5): shared existing pre-Client

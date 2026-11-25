@@ -429,8 +429,13 @@ and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
   releases only unused cold credit, no duplicate resource authority. Actual HF
   peer refusal/retry, pinned live fit, CUDA HF C1/GGUF pipeline+unload
   and HIP V2 C1/C8 pass; general portable/bootstrap and UMA gaps remain.
-- [ ] Reconcile remaining cold placement/resource observation and host/UMA
-  constraints through original qualified consumers. General DAG/media/context
+- [x] Bounded host/local-VRAM cold observation through original arbiter
+  (cbd2c119/197c2e26): shared host backing across existing scopes, visible
+  cgroup-v2 and current cold fit, actual HIP local aperture/driver constraint.
+  Real HF/GGUF CUDA and native HIP C1/C8 and 32k refusal pass. No additive
+  UMA/VRAM/GTT or new lifetime/physical guarantee.
+- [ ] Close remaining portable physical admission and same-domain placement/
+  transfer seams, actual shared host-visible GPU backing. General DAG/media/context
   authority, source loading and pipeline transport activation remain
   unsupported. Continue source lifecycle/placement only through real
   consumers. Keep selected shape

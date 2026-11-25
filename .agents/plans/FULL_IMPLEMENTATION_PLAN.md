@@ -229,10 +229,19 @@ GGUF pipeline/selective unload and HIP V2 C1/C8 pass. Logical admission is
 not an OS-wide VRAM guarantee; live observation is post-bootstrap and
 configured-cap conflicts may refuse conservatively.
 Full isolated gate: 2396 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-Next close remaining bounded cold placement/physical resource observations:
-host/cgroup/UMA overlap, truthful live availability and remaining portable
-bootstrap gaps through existing owners and qualified consumers. Broader
-family/codec/task extension and unqualified backend routes remain open.
+Signed cbd2c119/197c2e26: shared aggregate host backing over original scopes,
+immutable first ceiling plus latest known cgroup hard constraint, common
+cold host fit and actual driver/local VRAM intersection on qualified HIP.
+Keep lifetime source-shaped logical upper separate from incremental live
+checks; initial over-refusal corrected to actual context reservation.
+CUDA HF peer refusal/retry/C1 and GGUF pipeline+unload; HIP V2 C1/C8 and
+32k capacity refusal before native context pass. Fresh release real GGUF CPU
+direct run passes. Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+No additive UMA/VRAM/GTT
+or hard OS memory claim. Next close remaining bounded portable physical
+admission and same-domain placement/transfer seams through original owners.
+General host-visible GPU alias backing, non-Linux/Vulkan observation,
+broader family/codec/task and unqualified backend routes remain open.
 No duplicate catalog, estimator, allocator or runtime.
 General DAG/media/context authority, pipeline source loading, transport
 activation, portable snapshot persistence and cross-provider restore remain

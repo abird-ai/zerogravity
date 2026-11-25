@@ -45,8 +45,13 @@ envelope, exact PCI adoption, post-bootstrap live clamp releases unused
 credit. Real HF peer refusal/no new compute owner/retry, actual pinned live
 fit, CUDA HF C1/contiguous-paged C8/GGUF pipeline+unload and HIP V2 C1/C8 pass.
 Full isolated gate: 2396 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-Next reconcile remaining cold placement/resource observation and portable
-bootstrap gaps, explicit host/cgroup/UMA overlap, through original owners.
+Signed cbd2c119/197c2e26: aggregate host backing, common visible cgroup-v2
+observation and cold fit, HIP driver/local VRAM intersection. Actual context
+reservation replaces overconservative lifetime HOST upper-as-growth check;
+CUDA HF pressure/retry/C1/GGUF and HIP V2 C1/C8 + 32k refusal pass.
+Fresh release real GGUF CPU direct run passes. Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Next close remaining portable physical bootstrap and same-domain placement
+seams. General UMA backing aliases remain explicitly unresolved.
 Continue foundations in the [full plan](FULL_IMPLEMENTATION_PLAN.md).
 No second cache hierarchy, allocator or publisher; portable persistence,
 cross-provider restore and general media/DAG/context remain open.
