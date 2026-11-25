@@ -1565,7 +1565,6 @@ mod cuda_paged_tests {
                     assert_eq!(session.binding().frontier(), 1);
                 }
                 model.shutdown().await.unwrap();
-                drop(model);
                 assert_eq!(staging(), before, "source transfer backing after shutdown");
                 (singleton, cohort)
             })
