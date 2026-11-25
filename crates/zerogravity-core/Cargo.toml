@@ -9,6 +9,7 @@ license = "MIT"
 
 [features]
 diagnostic-cpu-checkpoint = []
+state-checkpoint = []
 serde = ["dep:serde"]
 
 [dependencies]

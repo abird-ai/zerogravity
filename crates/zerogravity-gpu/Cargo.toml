@@ -21,6 +21,8 @@ gemma-bf16-qualification = ["qualification", "dep:sha2"]
 hip-source = ["hip", "zerogravity-artifacts/cache"]
 qwen-source-qualification = ["qualification", "hip-source", "dep:sha2"]
 portable-checkpoint = ["zerogravity-core/diagnostic-cpu-checkpoint"]
+# Durable state IO is separate from legacy diagnostic state injection.
+state-checkpoint = ["zerogravity-core/state-checkpoint", "zerogravity-artifacts/state-checkpoint", "dep:sha2"]
 # Production CUDA transport/compiler ownership only; no captured cases or
 # qualification API surface.
 cuda-native = ["cuda", "zerogravity-artifacts/cache", "dep:cubecl-cuda", "cubecl-cuda/owned-cubin", "cubecl-cuda/precompiled-shared"]

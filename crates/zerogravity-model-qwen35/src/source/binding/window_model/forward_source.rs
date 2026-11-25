@@ -87,6 +87,19 @@ impl ForwardSourceSeal {
     pub fn source(&self) -> &VerifiedTensorSource {
         self.source.source()
     }
+    /// Version of the actual authenticated source and recorded family math.
+    /// Bump the explicit semantic revision when persisted state compatibility
+    /// changes. Numerical/provider/layout compatibility is checked separately.
+    #[cfg(feature = "state-checkpoint")]
+    pub(crate) fn checkpoint_revision(&self) -> zerogravity_core::identity::ArtifactDigest {
+        use sha2::{Digest, Sha256};
+        let mut hash = Sha256::new();
+        hash.update(b"qwen35/original-hf/text-state-v1");
+        hash.update(self.source.0.model.owner().config_sha256().as_bytes());
+        hash.update(self.source().verified_bundle_sha256().as_bytes());
+        zerogravity_core::identity::ArtifactDigest(hash.finalize().into())
+    }
+
     pub fn build_plan(&self, context_capacity_tokens: usize) -> Result<QwenForwardPlan> {
         let model = &self.source.0.model;
         build_forward_plan(

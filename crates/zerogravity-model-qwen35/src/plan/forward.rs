@@ -195,10 +195,19 @@ pub(crate) fn build_forward_plan(
         matrix,
         parameter,
     )?;
+    let plan = recorded.plan;
+    #[cfg(feature = "state-checkpoint")]
+    let plan = {
+        let mut plan = plan;
+        Arc::get_mut(&mut plan)
+            .ok_or_else(|| Error::State("original recorded checkpoint template is shared".into()))?
+            .declare_checkpoint_revision(source.checkpoint_revision())?;
+        plan
+    };
     Ok(QwenForwardPlan {
         owner: Arc::new(QwenForwardPlanOwner {
             source: source.clone(),
-            plan: recorded.plan,
+            plan,
         }),
         profile,
         boundaries: recorded.boundaries,

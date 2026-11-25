@@ -99,32 +99,7 @@ impl ResidentSession {
         }
         let ready = initialization.complete_sync().await?;
         slot.finish()?;
-        self.model.validate_domains(&domains, true)?;
-        let leases = domains
-            .iter()
-            .flat_map(|domain| &domain.leases)
-            .collect::<Vec<_>>();
-        if ready.expected_root() != attempt.base().root()
-            || !Arc::ptr_eq(ready.service(), &self.model.service)
-            || leases.len() != ready.outputs().len()
-            || leases
-                .iter()
-                .zip(ready.outputs())
-                .any(|(a, b)| a.id() != b.id())
-        {
-            return Err(Error::State("checkpoint actual Ready coverage".into()));
-        }
-        // Only the infallible payload swap and logical commit occur under the
-        // physical fence lock. Displaced handles/leases drop AFTER unlocking.
-        let mut displaced = domains;
-        self.model.service.publish_if_usable(|| {
-            let transition = self.authority.prepare_publish(attempt)?;
-            std::mem::swap(&mut self.domains, &mut displaced);
-            transition.commit();
-            Ok(())
-        })?;
-        drop(displaced);
-        Ok(())
+        self.publish_initialized_replacement(domains, attempt, ready)
     }
 }
 

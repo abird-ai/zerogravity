@@ -1689,17 +1689,45 @@ impl ResidentInitialization<'_> {
     }
     /// Fresh leases retain their allocation Write; pooled leases register one.
     pub(crate) fn upload_zeroed_into(&mut self, lease: &ResidentLease) -> Result<()> {
+        self.write_initializing(lease, || Bytes::from_bytes_vec(vec![0u8; lease.bytes()]))
+    }
+
+    /// One admitted owned payload, moved into the existing H2D path. The
+    /// original caller retains its host workspace through actual completion.
+    #[cfg(all(
+        feature = "state-checkpoint",
+        feature = "hip-source",
+        target_os = "linux"
+    ))]
+    pub(crate) fn upload_owned_into(
+        &mut self,
+        lease: &ResidentLease,
+        bytes: Vec<u8>,
+    ) -> Result<()> {
+        if bytes.len() != lease.bytes() {
+            return Err(Error::State(
+                "resident initialization upload extent differs".into(),
+            ));
+        }
+        self.write_initializing(lease, || Bytes::from_bytes_vec(bytes))
+    }
+
+    fn write_initializing(
+        &mut self,
+        lease: &ResidentLease,
+        data: impl FnOnce() -> Bytes,
+    ) -> Result<()> {
         self.service.ensure_usable()?;
         self.service.check_lease(lease)?;
         if lease.is_initialized() || self.uploaded.contains(&lease.id()) {
             return Err(Error::State(
-                "resident zero destination already written".into(),
+                "resident initialization destination already written".into(),
             ));
         }
         if let Some(held) = self.leases.iter().find(|held| held.id() == lease.id()) {
             if !Arc::ptr_eq(&held.0, &lease.0) {
                 return Err(Error::State(
-                    "resident zero destination alias differs".into(),
+                    "resident initialization destination alias differs".into(),
                 ));
             }
         } else {
@@ -1716,10 +1744,7 @@ impl ResidentInitialization<'_> {
             self.leases.push(lease.clone());
         }
         // Both the exact event and destination owner precede allocation/H2D.
-        self.service.client.write(
-            &lease.handle(),
-            Bytes::from_bytes_vec(vec![0u8; lease.bytes()]),
-        );
+        self.service.client.write(&lease.handle(), data());
         self.service
             .uploaded_value_bytes
             .fetch_add(lease.bytes() as u64, Ordering::AcqRel);
@@ -1728,7 +1753,6 @@ impl ResidentInitialization<'_> {
     }
     pub fn upload_bytes(&mut self, bytes: &[u8], role: BufferRole) -> Result<ResidentLease> {
         let lease = self.allocate_empty(bytes.len(), role)?;
-        // The original handle is already retained by this guard BEFORE H2D.
         self.service
             .client
             .write(&lease.handle(), Bytes::from_bytes_vec(bytes.to_vec()));

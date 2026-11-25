@@ -40,6 +40,12 @@ mod probe;
 pub use probe::{ResidentTextFinalReader, ResidentTextReaderObservation};
 
 mod admission;
+#[cfg(all(
+    feature = "state-checkpoint",
+    feature = "hip-source",
+    target_os = "linux"
+))]
+mod checkpoint;
 pub use zerogravity_core::provider::ResidentTextAdmission;
 
 const CONTROL_BYTES: usize = 64 * 1024;

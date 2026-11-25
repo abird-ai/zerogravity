@@ -69,7 +69,7 @@ all-backends = ["cpu", "vulkan", "cuda", "hip"]
 # Normal production superset. Qualification/fault-injection features remain
 # explicit and are deliberately excluded.
 all = ["all-models", "all-backends", "acquisition", "serve", "state-checkpoint"]
-state-checkpoint = ["zerogravity-artifacts/state-checkpoint", "zerogravity-model-qwen35?/state-checkpoint"]
+state-checkpoint = ["zerogravity-artifacts/state-checkpoint", "zerogravity-model-qwen35?/state-checkpoint", "zerogravity-gpu?/state-checkpoint"]
 diagnostic-gdn-trace = ["model-qwen35", "zerogravity-model-qwen35/diagnostic-gdn-trace"]
 diagnostic-cpu-checkpoint = ["model-qwen35", "zerogravity-model-qwen35/diagnostic-cpu-checkpoint"]
 

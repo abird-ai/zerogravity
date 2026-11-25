@@ -21,7 +21,7 @@ source-binding = ["cache", "zerogravity-cpu?/cache"]
 cuda = ["source-binding"]
 hip = ["source-binding"]
 # Optional cold persistence, independent of diagnostic/cross-provider adapters.
-state-checkpoint = ["dep:sha2", "zerogravity-artifacts/state-checkpoint"]
+state-checkpoint = ["dep:sha2", "zerogravity-artifacts/state-checkpoint", "zerogravity-core/state-checkpoint"]
 diagnostic-cpu-checkpoint = ["zerogravity-core/diagnostic-cpu-checkpoint", "zerogravity-artifacts/state-checkpoint"]
 
 [dependencies]

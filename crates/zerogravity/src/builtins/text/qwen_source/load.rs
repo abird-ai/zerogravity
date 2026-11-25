@@ -1027,6 +1027,220 @@ mod tests {
         assert!(!device.fenced);
     }
 
+    #[cfg(feature = "state-checkpoint")]
+    #[test]
+    #[ignore = "approved original HF source, actual native HIP V2, fresh isolated process"]
+    fn committed_hip_checkpoint_exact_restore() {
+        use crate::{
+            accelerator::program::InvocationPhase,
+            gpu::{ResidentOutput, ResidentTextPreparation, ResidentTextPublication},
+        };
+        use std::io::{Read, Seek, SeekFrom, Write};
+        let snapshot = std::env::var("ZG_QWEN_SOURCE_SNAPSHOT").expect("approved snapshot");
+        let cache_root = std::env::var_os("ZG_QWEN_CACHE_ROOT").map(std::path::PathBuf::from);
+        // Optional explicitly owned file for a second fresh-process replay.
+        let explicit_path =
+            std::env::var_os("ZG_RESIDENT_CHECKPOINT_PATH").map(std::path::PathBuf::from);
+        let replay = std::env::var_os("ZG_RESIDENT_CHECKPOINT_REPLAY").is_some();
+        assert!(!replay || explicit_path.is_some());
+        let path = explicit_path.clone().unwrap_or_else(|| {
+            std::env::temp_dir().join(format!("zg-resident-state-{}.bin", std::process::id()))
+        });
+        struct Cleanup(Option<std::path::PathBuf>);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                if let Some(p) = &self.0 {
+                    let _ = std::fs::remove_file(p);
+                }
+            }
+        }
+        let _cleanup = Cleanup(explicit_path.is_none().then(|| path.clone()));
+        let arbiter = ResourceArbiter::process_shared();
+        let resource = PhysicalDeviceKey::new("host", "system-ram").unwrap();
+        arbiter
+            .register_matching(resource.clone(), 16 * 1024 * 1024 * 1024)
+            .unwrap();
+        let admission = TransferAdmission {
+            arbiter: arbiter.clone(),
+            resource: resource.clone(),
+            owner: ResourceOwner::new("resident-checkpoint", "original-source").unwrap(),
+        };
+        let host = ServingHost::from_process_admission(&admission).unwrap();
+        let _bootstrap =
+            crate::tokenize_admission::approve_arbiter(&admission, "bootstrap").unwrap();
+        let parts = open_source(
+            "resident-checkpoint",
+            CacheOptions::new(cache_root, 96 * 1024 * 1024 * 1024),
+            select_snapshot(&snapshot).unwrap(),
+            512,
+            &host,
+            NumericalContract::HipRocBlasBf16MixedV2,
+        )
+        .unwrap();
+        let plan = &parts.source.plan;
+        assert!(plan.plan().checkpoint_revision().is_some());
+        let tokens = parts
+            .tokenizer
+            .prompt_tokens("A red bird follows the river.", false)
+            .unwrap();
+        assert!(!tokens.is_empty() && tokens.len() < 64);
+        let same = |a: &[(crate::accelerator::program::StateSlot, Vec<f32>)],
+                    b: &[(crate::accelerator::program::StateSlot, Vec<f32>)]| {
+            assert_eq!(a.len(), b.len());
+            for ((slot, a), (other, b)) in a.iter().zip(b) {
+                assert_eq!(slot, other);
+                assert_eq!(a.len(), b.len());
+                assert!(
+                    a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits()),
+                    "state {slot:?}"
+                );
+            }
+        };
+        block_on(async {
+            let model = ResidentModel::load_hip_forward_source_with_budget_and_cohort(
+                Device::Hip(Default::default()),
+                plan.source().clone(),
+                parts.source.clone(),
+                plan.plan().clone(),
+                2,
+                0,
+                crate::gpu::HipSourceBudget::default(),
+                None,
+            )
+            .await
+            .unwrap();
+            let mut original = model.session().await.unwrap();
+            let mut receiving = model.session().await.unwrap();
+            let prefill = plan
+                .bind_invocation(
+                    InvocationPhase::Prefill,
+                    0,
+                    Arc::from(tokens.clone()),
+                    false,
+                )
+                .unwrap();
+            let ResidentTextPreparation::Ready(pending) = original
+                .prepare(
+                    prefill.bound_invocation(),
+                    InvocationPhase::Prefill,
+                    ResidentOutput::StateOnly,
+                    None,
+                )
+                .await
+                .unwrap()
+            else {
+                panic!("original prefill refused")
+            };
+            let ResidentTextPublication::Committed(read) = original.commit(pending).unwrap() else {
+                panic!("original prefill discarded")
+            };
+            drop(read);
+            let source_root = original.binding();
+            let prefix = original.snapshot().unwrap();
+            let expected = prefix.read_domains().await.unwrap();
+            // An outstanding destination draft must not be promoted after import.
+            let first = plan
+                .bind_invocation(InvocationPhase::Prefill, 0, Arc::from([17]), false)
+                .unwrap();
+            let ResidentTextPreparation::Ready(stale) = receiving
+                .prepare(
+                    first.bound_invocation(),
+                    InvocationPhase::Prefill,
+                    ResidentOutput::StateOnly,
+                    None,
+                )
+                .await
+                .unwrap()
+            else {
+                panic!("destination draft refused")
+            };
+            let before = receiving.binding();
+            if !replay {
+                prefix.save_committed_checkpoint(&path).await.unwrap();
+                let saved_host = arbiter.snapshot(&resource).unwrap().reserved;
+                // Refuse a complete corrupted file before root pool checkout/H2D.
+                let mut file = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(&path)
+                    .unwrap();
+                file.seek(SeekFrom::End(-1)).unwrap();
+                let mut last = [0; 1];
+                file.read_exact(&mut last).unwrap();
+                file.seek(SeekFrom::End(-1)).unwrap();
+                file.write_all(&[last[0] ^ 1]).unwrap();
+                drop(file);
+                assert!(receiving.restore_committed_checkpoint(&path).await.is_err());
+                assert_eq!(receiving.binding(), before);
+                assert_eq!(arbiter.snapshot(&resource).unwrap().reserved, saved_host);
+                prefix.save_committed_checkpoint(&path).await.unwrap();
+            }
+            let host_before = arbiter.snapshot(&resource).unwrap().reserved;
+            receiving.restore_committed_checkpoint(&path).await.unwrap();
+            assert_eq!(receiving.binding().session(), before.session());
+            assert_eq!(receiving.binding().root(), before.root() + 1);
+            assert_eq!(
+                receiving.binding().session_epoch(),
+                before.session_epoch() + 1
+            );
+            assert_eq!(receiving.binding().frontier(), source_root.frontier());
+            assert_eq!(arbiter.snapshot(&resource).unwrap().reserved, host_before);
+            assert!(receiving.commit(stale).is_err());
+            same(
+                &expected,
+                &receiving.snapshot().unwrap().read_domains().await.unwrap(),
+            );
+            drop((expected, prefix));
+            let continuation = plan
+                .bind_invocation(InvocationPhase::Decode, tokens.len(), Arc::from([17]), true)
+                .unwrap();
+            let mut logits = Vec::new();
+            for session in [&mut original, &mut receiving] {
+                let ResidentTextPreparation::Ready(pending) = session
+                    .prepare(
+                        continuation.bound_invocation(),
+                        InvocationPhase::Decode,
+                        ResidentOutput::Logits,
+                        None,
+                    )
+                    .await
+                    .unwrap()
+                else {
+                    panic!("continuation refused")
+                };
+                let ResidentTextPublication::Committed(read) = session.commit(pending).unwrap()
+                else {
+                    panic!("continuation discarded")
+                };
+                logits.push(read);
+            }
+            assert_eq!(logits[0].logits.len(), 248320);
+            assert_eq!(logits[0].logits.len(), logits[1].logits.len());
+            assert!(
+                logits[0]
+                    .logits
+                    .iter()
+                    .zip(&logits[1].logits)
+                    .all(|(a, b)| a.to_bits() == b.to_bits())
+            );
+            same(
+                &original.snapshot().unwrap().read_domains().await.unwrap(),
+                &receiving.snapshot().unwrap().read_domains().await.unwrap(),
+            );
+            drop((logits, original, receiving));
+            model.shutdown().await.unwrap();
+        });
+        drop(parts);
+        let physical = arbiter
+            .snapshot(&PhysicalDeviceKey::new("pci", "0000:c6:00.0").unwrap())
+            .unwrap();
+        assert_eq!(physical.reserved, 4 * 1024 * 1024 * 1024);
+        assert!(!physical.fenced);
+        eprintln!(
+            "RESIDENT_CHECKPOINT_PASS replay={replay} native_hip_v2=true complete_state=true full_vocab=true"
+        );
+    }
+
     #[test]
     fn aliases_refuse_before_cache_or_device_access() {
         assert!(validate_aliases(&["a".into(), "b".into()]).is_ok());

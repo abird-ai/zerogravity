@@ -3475,6 +3475,46 @@ impl ResidentSession {
         Ok(())
     }
 
+    #[cfg(any(
+        feature = "portable-checkpoint",
+        all(
+            feature = "state-checkpoint",
+            feature = "hip-source",
+            target_os = "linux"
+        )
+    ))]
+    fn publish_initialized_replacement(
+        &mut self,
+        mut candidate: Vec<Domain>,
+        attempt: RootAttempt,
+        ready: ResidentReady,
+    ) -> Result<()> {
+        self.model.validate_domains(&candidate, true)?;
+        let leases = candidate
+            .iter()
+            .flat_map(|domain| domain.leases.iter())
+            .collect::<Vec<_>>();
+        if ready.expected_root() != attempt.base().root()
+            || !Arc::ptr_eq(ready.service(), &self.model.service)
+            || leases.len() != ready.outputs().len()
+            || leases.iter().zip(ready.outputs()).any(|(a, b)| {
+                a.id() != b.id() || a.allocation_generation() != b.allocation_generation()
+            })
+        {
+            return Err(Error::State("checkpoint actual Ready coverage".into()));
+        }
+        publish_domain_swap(
+            &self.model.service,
+            &mut self.authority,
+            &mut self.domains,
+            attempt,
+            &mut candidate,
+        )?;
+        self.derived.invalidate();
+        drop(candidate);
+        Ok(())
+    }
+
     fn install_snapshot(
         &mut self,
         snapshot: &ResidentSnapshot,

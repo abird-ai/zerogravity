@@ -829,6 +829,9 @@ pub struct ForwardPlan {
 #[derive(Clone, Debug)]
 pub struct ForwardPlanSemantics {
     metadata: Option<Arc<PreparedPlanMetadata>>,
+    // Stable declared source/semantic revision for explicit cold persistence.
+    #[cfg(feature = "state-checkpoint")]
+    checkpoint_revision: Option<crate::identity::ArtifactDigest>,
     source_template: Option<SourcePlanGeometry>,
     source: SourceIdentity,
     profile: NumericalProfile,
@@ -1463,6 +1466,8 @@ impl PlanBuilder {
                 nodes: self.nodes,
                 semantics: Arc::new(ForwardPlanSemantics {
                     metadata: None,
+                    #[cfg(feature = "state-checkpoint")]
+                    checkpoint_revision: None,
                     source_template: self.source_template,
                     source: self.source,
                     profile: self.profile,
@@ -1510,6 +1515,8 @@ impl PlanBuilder {
             nodes: self.nodes,
             semantics: Arc::new(ForwardPlanSemantics {
                 metadata: None,
+                #[cfg(feature = "state-checkpoint")]
+                checkpoint_revision: None,
                 source_template: self.source_template,
                 source: self.source,
                 profile: self.profile,

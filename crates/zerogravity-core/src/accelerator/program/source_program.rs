@@ -1376,6 +1376,8 @@ impl PlanBuilder {
             nodes: self.nodes,
             semantics: Arc::new(ForwardPlanSemantics {
                 metadata: None,
+                #[cfg(feature = "state-checkpoint")]
+                checkpoint_revision: None,
                 source_template: self.source_template,
                 source: self.source,
                 profile: self.profile,
@@ -1416,6 +1418,8 @@ impl PlanBuilder {
             nodes: self.nodes,
             semantics: Arc::new(ForwardPlanSemantics {
                 metadata: None,
+                #[cfg(feature = "state-checkpoint")]
+                checkpoint_revision: None,
                 source_template: self.source_template,
                 source: self.source,
                 profile: self.profile,
@@ -1439,6 +1443,37 @@ impl ForwardPlan {
     pub fn source_plan_geometry(&self) -> Option<SourcePlanGeometry> {
         self.source_template
     }
+
+    /// Source model's explicit stable semantic revision. Not authentication,
+    /// a provider permit, a buffer import receipt or a local source identity.
+    /// Declare once on the original completed template, before it is shared.
+    #[cfg(feature = "state-checkpoint")]
+    pub fn declare_checkpoint_revision(
+        &mut self,
+        revision: crate::identity::ArtifactDigest,
+    ) -> Result<()> {
+        if self.source_plan_geometry().is_none()
+            || self.text_invocation.is_some()
+            || self.is_operator_slice()
+        {
+            return Err(Error::State(
+                "checkpoint revision requires original source template".into(),
+            ));
+        }
+        let semantics = Arc::get_mut(&mut self.semantics)
+            .ok_or_else(|| Error::State("checkpoint revision must precede sharing".into()))?;
+        if semantics.checkpoint_revision.is_some() {
+            return Err(Error::State("checkpoint revision already declared".into()));
+        }
+        semantics.checkpoint_revision = Some(revision);
+        Ok(())
+    }
+
+    #[cfg(feature = "state-checkpoint")]
+    pub fn checkpoint_revision(&self) -> Option<crate::identity::ArtifactDigest> {
+        self.checkpoint_revision
+    }
+
     pub fn bind_invocation(self: &Arc<Self>, input: InvocationInput) -> Result<BoundInvocation> {
         let geometry = self
             .source_template
