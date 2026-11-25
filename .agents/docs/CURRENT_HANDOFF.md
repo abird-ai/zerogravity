@@ -25,6 +25,68 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed portable HIP / guarded Vulkan admission and same-domain placement: a654886341e6ae3831ab28675fbf8daddbbf605f.**
+
+- Ordinary Linux HIP ResidentPhysical and guarded HIP native bootstrap
+  (including callers without an already supplied reservation) adopt the
+  original PreAdmittedDevice lease before Client creation. Use the previous
+  selected PCI, driver total/current free and local VRAM intersection.
+  Typed current-fit and peer-pressure refusals do not construct a Client;
+  HIP driver metadata/memory queries themselves may initialize the runtime.
+  Preserve original source/physical owner, shared quotas, completion/fences
+  and native context lifetime. No new device/provider eligibility.
+- Extract the existing exact guarded Vulkan adapter selection/registration
+  to the physical owner. Require its reported PCI identity, actual local
+  VRAM total/used and intersection with its driver-reported local heap
+  before registration. Reuse the same original preadmitted lease and exact
+  adapter (no re-selection or second charge). Cold-only explicit guarded
+  path, not automatic general Vulkan initialization.
+- PlacementRequest::colocated_device and the original SDK Devices::plan
+  accept the four equal declared physical domains with an empty inter-domain
+  transfer plan. Unknown/nonphysical compute and distinct role domains
+  refuse; no bytes, allocation reuse, external buffer/stream compatibility
+  or execution fit inferred. Read-only and requires open runtime.
+- Actual X2 portable Q8/conv two-source shared-owner HIP and Vulkan healthy
+  and unknown-completion cases pass with cold competing-envelope refusal/
+  retry. Vulkan uses the exact preflighted RADV adapter and original shared
+  physical owner. Both use one Client/envelope and independent close/reload;
+  unknown retains actual handles/source owners, unchanged roots and sibling
+  fence. No learned-model or performance qualification from this fixture.
+  Public device/placement tests 6/6, strict core/engine Clippy, bare HIP,
+  combined HIP/Vulkan qualification and CUDA/HIP SDK compilation pass.
+  X2 initial offline Vulkan build lacked seven locked crate archives;
+  transferred the existing L5 cached archives verified against Cargo.lock.
+  No external downloads, SDK or privilege changes.
+- X2 actual original HF Qwen 0.8B HIP V2 C1/C8 all six replay waves
+  match [248068,198,90700], lane invariance, zero failed GPU quanta, clean
+  native and final tokenizer reader retirement. X2 idle 259768320 bytes;
+  no active compute owners. CUDA execution unchanged, accepted real-source
+  evidence retained; no new CUDA performance or numerical claim.
+- Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+- Scope: same declared physical key is not common backing or zero-copy.
+  Generic repeated named Vulkan initialization still lacks a non-creating
+  existing-service lookup / atomic selected-adapter initialization in the
+  CubeCL registry. Do not call its cold-only try_init_preflight on every load
+  or invent a second registry. Keep this gap for the qualified portable
+  Vulkan consumer; no new runtime/context registry, generic Vulkan route,
+  non-Linux fit, or complete host-visible GPU/UMA alias accounting.
+
+**Next coherent unit:** advance the minimum shared independent session-state
+and portable snapshot/restore contract in Phase 1 through the original
+SessionAuthority/StateRoot (core session_root.rs, state.rs), model checkpoint
+(zerogravity-model-qwen35/src/checkpoint.rs), engine state_cache.rs and
+resident_text.rs / resident_state_transport.rs owners. Keep the distinct
+context_snapshot retrieval/filter authority separate. Review committed-only
+snapshot eligibility, bounded persisted
+representation and restore compatibility/publication; reuse existing
+checkpoint/lease/completion primitives, refuse unsupported layout/provider
+conversion before submission, no second state publisher. Keep arbitrary
+cross-provider restore, generalized media/DAG, broader family/codec/task
+support, unqualified placement/transport and general UMA backing explicit.
+Continue SDK/control foundations before Phase 2.
+
+### Previous accepted host backing checkpoint
+
 **Signed host backing / local VRAM observation: cbd2c1198a49ad800945b33ed01ba45ba15dafcc.**
 Actual HIP cold-allocation correction: 197c2e26f58e27064d9b574ae8050ac41ab5919f.
 
@@ -76,15 +138,9 @@ Actual HIP cold-allocation correction: 197c2e26f58e27064d9b574ae8050ac41ab5919f.
   pre-Client adoption yet; HIP driver observation itself may initialize the
   runtime. No new source support, physical Vulkan or performance claim.
 
-**Next coherent unit:** close the remaining bounded portable physical
-admission/placement seams using original ResidentPhysical, PreAdmittedDevice,
-device inventory and LocalVramObservation. Start with actual portable HIP
-physical owner; guarded Vulkan only where identity/total/current local
-memory are established. Reuse typed same-domain placement and transfer
-refusal; no automatic cross-domain fit or unqualified execution. Keep
-general UMA backing aliasing, non-Linux observation gaps, general async
-SSD/remote placement and unqualified family/codec/task support explicit.
-Then continue remaining state/task and SDK/control foundations before Phase 2.
+The bounded ordinary HIP/guarded Vulkan admission and same-domain placement
+continuation is addressed by a6548863 above. The general named Vulkan,
+non-Linux and shared-backing/transport gaps remain explicit.
 
 ### Previous accepted CUDA pre-Client checkpoint
 

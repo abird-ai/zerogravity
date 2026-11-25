@@ -238,10 +238,20 @@ CUDA HF peer refusal/retry/C1 and GGUF pipeline+unload; HIP V2 C1/C8 and
 32k capacity refusal before native context pass. Fresh release real GGUF CPU
 direct run passes. Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
 No additive UMA/VRAM/GTT
-or hard OS memory claim. Next close remaining bounded portable physical
-admission and same-domain placement/transfer seams through original owners.
-General host-visible GPU alias backing, non-Linux/Vulkan observation,
-broader family/codec/task and unqualified backend routes remain open.
+or hard OS memory claim.
+Signed a6548863: ordinary Linux HIP pre-Client physical envelope adoption,
+same shared driver/local VRAM fit; guarded Vulkan exact adapter/local fit
+before original registration. Same declared physical-domain placement has
+no inter-domain transfer plan; other domains explicitly refuse. Actual
+portable shared HIP and Vulkan healthy/unknown and peer refusal/retry pass.
+Real HF HIP V2 C1/C8 replay and retirement pass. Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Generic
+named Vulkan repeated initialization needs original registry support;
+non-Linux and actual host-visible GPU backing remain open. Next advance
+bounded independent session-state and committed snapshot/restore foundation
+through original SessionAuthority/StateRoot, model checkpoint and physical
+state-transport owners.
+Broader family/codec/task and unqualified backend routes remain open.
 No duplicate catalog, estimator, allocator or runtime.
 General DAG/media/context authority, pipeline source loading, transport
 activation, portable snapshot persistence and cross-provider restore remain

@@ -106,8 +106,13 @@ recorded. Current21 repairs it within the finite accepted scope above.
   immutable scoped caps, latest visible cgroup-v2 hard constraint, shared
   cold fit and real HIP local VRAM/driver intersection (no host/GTT sum).
   Original host lifetime upper remains logical; check actual next cold
-  allocations. Remaining generic portable/non-Linux bootstrap, general
-  host-visible GPU backing aliasing and OS hard-memory guarantees are open.
+  allocations. a6548863 extends original preadmission to ordinary Linux HIP
+  and guarded native HIP; guarded exact-adapter Vulkan intersects local VRAM
+  total/current use before original registration. Equal declared physical
+  roles return no inter-domain transfer; distinct domains explicitly refuse.
+  Generic repeated Vulkan named-selector bootstrap needs safe original
+  registry reuse. Non-Linux, general host-visible GPU backing aliasing and
+  OS hard-memory guarantees remain open.
 
 ### Review and authorization
 

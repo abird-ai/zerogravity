@@ -229,7 +229,11 @@ The following extends existing owners; source-byte qualification is not inferenc
   Real CUDA and HIP source regressions pass; initial lifetime-upper-as-growth
   check corrected without weakening logical bound. Remaining direct/legacy
   unadmitted owners, actual host-visible GPU/UMA backing alias mapping and
-  non-Linux/OS hard limits still need qualified consumers.
+  non-Linux/OS hard limits still need qualified consumers. a6548863 shares
+  original Linux HIP preadmission with the ordinary portable owner and
+  guarded exact-adapter Vulkan local fit; same declared physical placement
+  does not establish common backing or zero-copy. Actual portable HIP/Vulkan
+  two-source healthy/unknown and peer refusal/retry pass.
 - [ ] **Paged hybrid state allocator:** extend original leases/StateRoot with
   finite page pools/block tables, generations, valid tails, charged metadata
   and peak COW/candidate memory. Retain a qualified contiguous policy and typed

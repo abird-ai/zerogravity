@@ -434,8 +434,13 @@ and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
   cgroup-v2 and current cold fit, actual HIP local aperture/driver constraint.
   Real HF/GGUF CUDA and native HIP C1/C8 and 32k refusal pass. No additive
   UMA/VRAM/GTT or new lifetime/physical guarantee.
-- [ ] Close remaining portable physical admission and same-domain placement/
-  transfer seams, actual shared host-visible GPU backing. General DAG/media/context
+- [x] Bounded ordinary Linux HIP / guarded native Vulkan admission and
+  same-domain placement (a6548863): actual PCI/local fit and original
+  lease adoption, exact guarded Vulkan adapter, no inter-domain transfer
+  for equal declared roles. Actual shared HIP/Vulkan healthy/unknown and peer
+  refusal/retry; no cross-context import or transfer permission.
+- [ ] Complete qualified generic named Vulkan registry reuse and actual
+  shared host-visible GPU backing. General DAG/media/context
   authority, source loading and pipeline transport activation remain
   unsupported. Continue source lifecycle/placement only through real
   consumers. Keep selected shape

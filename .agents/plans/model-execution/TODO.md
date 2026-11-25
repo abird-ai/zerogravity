@@ -207,6 +207,10 @@ any external compiler. All phases retain the original resource/state owners.
   HIP local VRAM intersection; lifetime source upper remains logical and
   actual next context reservation uses cold current fit. HF CUDA pressure/
   retry/C1/GGUF and HIP V2 C1/C8 + 32k refusal pass; no kernel changes.
+- a6548863: ordinary/guarded Linux HIP adopts original pre-Client physical
+  charge; guarded Vulkan exact selected adapter/local fit, same-domain
+  placement with no cross-domain transfer. Actual shared portable HIP/Vulkan
+  two-source healthy/unknown and peer refusal/retry; no kernel change.
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

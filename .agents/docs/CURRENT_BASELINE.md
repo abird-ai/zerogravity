@@ -5,6 +5,20 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — portable physical admission and same-domain placement
+
+a6548863: ordinary Linux HIP and guarded native HIP share the original
+pre-Client admission, selected PCI/driver/local memory fit and lease
+adoption. Guarded Vulkan uses the same exact adapter preflight and real
+local VRAM counters. Equal physical placement roles require no inter-domain
+transfer; cross-domain/remote/storage remain unsupported, no backing or
+stream proof. X2 actual portable HIP and Vulkan two-owner healthy/unknown
+and cold peer refusal/retry pass. Real HF Qwen 0.8B HIP V2 C1/C8 replay
+and retirement pass. Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Generic repeated named Vulkan initialization
+needs safe original service-registry reuse; non-Linux and full UMA
+alias accounting remain open.
+
 ## 25 Nov — shared host backing and local VRAM observation
 
 cbd2c119/197c2e26: one aggregate host constraint over original scoped leases;

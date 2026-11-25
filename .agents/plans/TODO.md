@@ -50,8 +50,15 @@ observation and cold fit, HIP driver/local VRAM intersection. Actual context
 reservation replaces overconservative lifetime HOST upper-as-growth check;
 CUDA HF pressure/retry/C1/GGUF and HIP V2 C1/C8 + 32k refusal pass.
 Fresh release real GGUF CPU direct run passes. Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-Next close remaining portable physical bootstrap and same-domain placement
-seams. General UMA backing aliases remain explicitly unresolved.
+Signed a6548863: ordinary Linux HIP pre-Client original owner/adoption,
+guarded exact-adapter Vulkan local fit, same physical-domain placement
+without inter-domain transfer. Actual portable HIP/Vulkan two-owner healthy/
+unknown and peer refusal/retry pass; real HF HIP V2 C1/C8 replay/retirement.
+Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Generic repeated Vulkan initializer,
+non-Linux, general UMA backing and cross-domain transport remain open.
+Next advance bounded committed portable snapshot/restore through original
+SessionAuthority/StateRoot, model checkpoint and resident state transport.
 Continue foundations in the [full plan](FULL_IMPLEMENTATION_PLAN.md).
 No second cache hierarchy, allocator or publisher; portable persistence,
 cross-provider restore and general media/DAG/context remain open.

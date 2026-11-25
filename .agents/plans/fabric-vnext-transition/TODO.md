@@ -661,8 +661,11 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   visible cgroup constraint, cold source/control/context fit, real HIP
   driver/local VRAM intersection. Original logical upper preserved; actual
   CUDA/HIP source and lifetime/refusal regressions pass.
-- [ ] Close remaining portable bootstrap, same-domain placement and actual
-  host-visible GPU/UMA backing aliasing. Broader family/codec/task
+- [x] Bounded ordinary Linux HIP pre-Client and guarded exact Vulkan
+  preadmission, local VRAM fit and same-domain placement (a6548863).
+  Actual portable HIP/Vulkan two-source healthy/unknown with peer refusal/retry.
+- [ ] Close qualified generic named Vulkan registry reuse, non-Linux
+  bootstrap and actual host-visible GPU/UMA backing aliasing. Broader family/codec/task
   registration, portable snapshot persistence, cross-provider restore and
   additional backend prefix eligibility remain open.
 
