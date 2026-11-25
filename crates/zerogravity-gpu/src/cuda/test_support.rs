@@ -313,6 +313,10 @@ fn resident_private_provider_bridge_is_ordered_and_retained() -> Result<()> {
         ValueStorageFormat::Bf16,
     )?;
     assert!(input_view.require_copy_to(wrong_rows).is_err());
+    let padded = PreparedTensorLayout::strided(2, inner, inner * 2, rows)?;
+    let padded_input = ProviderView::new(&input, 0, padded, ValueStorageFormat::Bf16)?;
+    let padded_private = ProviderView::new(&private_input, 0, padded, ValueStorageFormat::Bf16)?;
+    assert!(padded_input.require_copy_to(padded_private).is_err());
     assert!(ProviderView::new(&input, 1, input_layout, ValueStorageFormat::Bf16).is_err());
     assert!(
         service

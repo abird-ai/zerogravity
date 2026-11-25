@@ -359,11 +359,7 @@ impl CudaForwardProjection {
             (output, DeviceAccess::Write),
             (status, DeviceAccess::Write),
         ])?;
-        let input_storage = zerogravity_core::placement::PreparedTensorLayout::dense(
-            2,
-            operation.inner * 2,
-            operation.rows,
-        )?;
+        let input_storage = gemm::input_storage(operation, input_layout)?;
         let input = input.typed_view(input_offset, input_storage)?;
         let mut base = 0;
         let mut launches = 0;

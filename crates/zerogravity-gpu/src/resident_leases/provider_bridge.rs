@@ -112,9 +112,14 @@ impl<'a> ProviderView<'a> {
         self,
         destination: Self,
     ) -> Result<(cubecl::server::Handle, cubecl::server::Handle)> {
-        if self.layout != destination.layout || self.format != destination.format {
+        if self.layout != destination.layout
+            || self.format != destination.format
+            || self.layout.row_stride_bytes() != self.layout.row_bytes()
+        {
+            // This bridge issues one contiguous copy, not a row-wise scatter.
+            // Strided views may contain other logical columns in their gaps.
             return Err(Error::Unsupported(
-                "provider copy requires identical physical layout/encoding".into(),
+                "provider copy requires identical dense physical layout/encoding".into(),
             ));
         }
         if !Arc::ptr_eq(self.lease.service(), destination.lease.service()) {

@@ -14,6 +14,21 @@ use zerogravity_core::{
     provider::ProviderRequirements,
 };
 
+/// Original physical input orientation, for resident and streamed GEMM.
+pub(super) fn input_storage(
+    shape: Bf16GemmShape,
+    layout: Bf16GemmInputLayout,
+) -> Result<PreparedTensorLayout> {
+    match layout {
+        Bf16GemmInputLayout::RowMajor => {
+            PreparedTensorLayout::dense(2, shape.inner * 2, shape.rows)
+        }
+        Bf16GemmInputLayout::InnerMajor => {
+            PreparedTensorLayout::dense(2, shape.rows * 2, shape.inner)
+        }
+    }
+}
+
 pub(super) struct CudaForwardGemm {
     service: Arc<ResidentService>,
     context: Arc<CudaCompilerContextBudget>,
@@ -229,14 +244,7 @@ impl CudaForwardGemm {
             (output, DeviceAccess::Write),
             (status, DeviceAccess::Write),
         ])?;
-        let input_storage = match input_layout {
-            Bf16GemmInputLayout::RowMajor => {
-                PreparedTensorLayout::dense(2, shape.inner * 2, shape.rows)?
-            }
-            Bf16GemmInputLayout::InnerMajor => {
-                PreparedTensorLayout::dense(2, shape.rows * 2, shape.inner)?
-            }
-        };
+        let input_storage = input_storage(shape, input_layout)?;
         let output_storage = PreparedTensorLayout::dense(2, shape.columns * 2, shape.rows)?;
         let launch = Bf16Gemm::with_reduction_input_layout_certified(
             shape.columns,
