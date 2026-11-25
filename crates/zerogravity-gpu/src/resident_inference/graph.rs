@@ -192,13 +192,14 @@ impl ProductionGraphCache {
         Ok(Some((graph, retirement_root)))
     }
 
-    #[cfg(any(feature = "qualification", test))]
-    fn witness(&self) -> &'static str {
-        match self.state {
-            ProductionGraphState::Cold => "cold",
-            ProductionGraphState::Capturing => "capturing",
-            ProductionGraphState::Live { .. } => "live",
-            ProductionGraphState::Spent => "spent",
+    fn observation(&self) -> GraphCacheObservation {
+        match &self.state {
+            ProductionGraphState::Cold => GraphCacheObservation::Cold,
+            ProductionGraphState::Capturing => GraphCacheObservation::Capturing,
+            ProductionGraphState::Live { graph, .. } => {
+                GraphCacheObservation::Live(graph.observation())
+            }
+            ProductionGraphState::Spent => GraphCacheObservation::Spent,
         }
     }
 }
@@ -295,7 +296,7 @@ impl GraphResourceAdmission {
 }
 
 /// A source launch-site count, not a driver graph-node enumeration or timing.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GraphCaptureReceipt {
     pub warm_dispatches: [usize; 2],
     pub captured_kernels: usize,
@@ -305,6 +306,41 @@ pub struct GraphCaptureReceipt {
     pub owned_lease_vector_bytes: usize,
     /// Conservative policy reserve, not measured CUDA driver memory.
     pub resource_charge_bytes: usize,
+}
+
+/// Actual retained capture, not a request to enable graph execution.
+/// Replay enqueues count accepted dispatches, not completed/published roots.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CapturedGraphObservation {
+    pub selected: zerogravity_core::provider::SelectedMode,
+    pub source: SourceIdentity,
+    pub service_generation: u64,
+    pub logical_stream: u64,
+    pub profile: BatchGraphProfile,
+    pub receipt: GraphCaptureReceipt,
+    pub replay_enqueues: usize,
+}
+
+/// Observation of the original cache, not another lifecycle authority.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GraphCacheObservation {
+    Cold,
+    Capturing,
+    Live(CapturedGraphObservation),
+    /// A failed or removed capture attempt. Not proof of retirement.
+    Spent,
+}
+
+/// None from the model accessor means there is no batch workspace.
+/// A pinned band can outlive removal of a cached graph or be externally
+/// owned. Only the original terminal barriers authorize reclamation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GraphWorkspaceObservation {
+    pub rows: usize,
+    pub workspace_pinned: bool,
+    /// Snapshot of original service admission/fence checks, not eligibility.
+    pub service_usable: bool,
+    pub cache: GraphCacheObservation,
 }
 
 pub struct CapturedResidentGraph {
@@ -504,6 +540,24 @@ impl CapturedResidentGraph {
             },
         )
     }
+    /// Read the actual original capture without retaining a graph, lease
+    /// or workspace pin, and without submitting device work.
+    pub fn observation(&self) -> CapturedGraphObservation {
+        use zerogravity_core::provider::{ExecutionMode, ProviderKind, SelectedMode};
+        CapturedGraphObservation {
+            selected: SelectedMode {
+                provider: ProviderKind::Cuda,
+                mode: ExecutionMode::Graph,
+            },
+            source: self.service.source_identity(),
+            service_generation: self.service.generation(),
+            logical_stream: self.stream,
+            profile: self.profile,
+            receipt: self.receipt(),
+            replay_enqueues: self.replay_enqueues(),
+        }
+    }
+
     pub fn receipt(&self) -> GraphCaptureReceipt {
         self.receipt
     }
@@ -1110,28 +1164,49 @@ impl ResidentModel {
         self.capture_production_graph_cached(rows, output).await
     }
 
+    /// On-demand observation of the actual current batch and cache. Does
+    /// not capture, select, retain, retire or submit. A fenced cache can
+    /// still be inspected without implying replay eligibility.
+    pub async fn describe_graph_cache(&self) -> Option<GraphWorkspaceObservation> {
+        let workspace = self.workspace.lock().await;
+        let batch = workspace.batch.as_ref()?;
+        Some(GraphWorkspaceObservation {
+            rows: batch.rows,
+            workspace_pinned: batch.program.graph_pinned(),
+            service_usable: self.service.ensure_usable().is_ok(),
+            cache: batch.graph_cache.observation(),
+        })
+    }
+
     #[cfg(feature = "qualification")]
     pub async fn qualification_production_graph_cache_state(&self) -> Result<&'static str> {
-        let workspace = self.workspace.lock().await;
-        Ok(workspace
-            .batch
-            .as_ref()
-            .map(|batch| batch.graph_cache.witness())
-            .unwrap_or("absent"))
+        Ok(
+            match self
+                .describe_graph_cache()
+                .await
+                .map(|observation| observation.cache)
+            {
+                None => "absent",
+                Some(GraphCacheObservation::Cold) => "cold",
+                Some(GraphCacheObservation::Capturing) => "capturing",
+                Some(GraphCacheObservation::Live(_)) => "live",
+                Some(GraphCacheObservation::Spent) => "spent",
+            },
+        )
     }
 
     #[cfg(feature = "qualification")]
     pub async fn qualification_production_graph_replay_enqueues(&self) -> Result<Option<usize>> {
-        let workspace = self.workspace.lock().await;
-        let Some(batch) = workspace.batch.as_ref() else {
-            return Ok(None);
-        };
-        Ok(match &batch.graph_cache.state {
-            ProductionGraphState::Live { graph, .. } => Some(graph.replay_enqueues()),
-            ProductionGraphState::Cold
-            | ProductionGraphState::Capturing
-            | ProductionGraphState::Spent => None,
-        })
+        Ok(
+            match self
+                .describe_graph_cache()
+                .await
+                .map(|observation| observation.cache)
+            {
+                Some(GraphCacheObservation::Live(graph)) => Some(graph.replay_enqueues),
+                _ => None,
+            },
+        )
     }
 
     #[cfg(feature = "qualification")]
@@ -1250,19 +1325,19 @@ mod resource_policy_tests {
         let mut cache = ProductionGraphCache::cold();
         assert!(cache.take_for_retirement().unwrap().is_none());
         assert!(cache.can_begin());
-        assert_eq!(cache.witness(), "cold");
+        assert_eq!(cache.observation(), GraphCacheObservation::Cold);
         cache.begin().unwrap();
         assert!(!cache.can_begin());
         assert!(cache.is_capturing());
-        assert_eq!(cache.witness(), "capturing");
+        assert_eq!(cache.observation(), GraphCacheObservation::Capturing);
         assert!(cache.take_for_retirement().is_err());
         cache.capture_failed();
         assert!(!cache.can_begin());
         assert!(!cache.is_capturing());
         assert!(!cache.is_live());
-        assert_eq!(cache.witness(), "spent");
+        assert_eq!(cache.observation(), GraphCacheObservation::Spent);
         assert!(cache.take_for_retirement().unwrap().is_none());
-        assert_eq!(cache.witness(), "spent");
+        assert_eq!(cache.observation(), GraphCacheObservation::Spent);
         assert!(cache.begin().is_err());
     }
 }

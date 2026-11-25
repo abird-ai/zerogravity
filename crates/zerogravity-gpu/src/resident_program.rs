@@ -60,7 +60,12 @@ pub(crate) mod typed_slice;
     feature = "cuda",
     any(feature = "qualification", feature = "cuda-native")
 ))]
-pub(crate) use batch::{BatchBodyReceipt, BatchGraphProfile, BatchGraphReplay};
+pub use batch::BatchGraphProfile;
+#[cfg(all(
+    feature = "cuda",
+    any(feature = "qualification", feature = "cuda-native")
+))]
+pub(crate) use batch::{BatchBodyReceipt, BatchGraphReplay};
 
 #[cfg(feature = "qualification")]
 #[path = "resident_projection_qualification.rs"]

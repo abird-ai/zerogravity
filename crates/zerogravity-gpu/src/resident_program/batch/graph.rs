@@ -16,8 +16,10 @@ pub(super) fn next_generation() -> Result<u64> {
         .map_err(|_| Error::Limit("batch graph workspace generation exhausted".into()))
 }
 
+/// Captured body geometry and original process-local workspace generation.
+/// A copy is descriptive, not a workspace binding or replay permit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct BatchGraphProfile {
+pub struct BatchGraphProfile {
     pub generation: u64,
     pub output: ResidentOutput,
     pub rows: usize,

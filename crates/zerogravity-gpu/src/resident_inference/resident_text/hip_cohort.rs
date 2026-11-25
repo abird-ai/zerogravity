@@ -290,6 +290,7 @@ impl ResidentModel {
             dispatches: submitted.dispatches,
             fused_dispatches: submitted.fused_dispatches,
             native_greedy_dispatches: 0,
+            execution_mode: zerogravity_core::provider::ExecutionMode::Native,
         }))
     }
 }

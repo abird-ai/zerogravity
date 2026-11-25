@@ -60,6 +60,13 @@ pub(crate) mod gdn_state;
     any(feature = "qualification", feature = "cuda-native")
 ))]
 mod graph;
+#[cfg(all(
+    feature = "cuda",
+    any(feature = "qualification", feature = "cuda-native")
+))]
+pub use graph::{
+    CapturedGraphObservation, GraphCacheObservation, GraphCaptureReceipt, GraphWorkspaceObservation,
+};
 #[allow(
     dead_code,
     reason = "paged physical adapter is retained for the next resident KV integration slice"
@@ -308,8 +315,18 @@ pub struct PreparedResidentCohort {
     dispatches: usize,
     fused_dispatches: usize,
     native_greedy_dispatches: usize,
+    execution_mode: zerogravity_core::provider::ExecutionMode,
 }
 impl PreparedResidentCohort {
+    /// Actual selected body on successful preparation. Native fallback
+    /// remains Native even while a graph is retained by the model.
+    pub fn selected_mode(&self) -> Result<zerogravity_core::provider::SelectedMode> {
+        let mut selected =
+            zerogravity_core::provider::PreparedExecutable::selected(self.model.as_ref())?;
+        selected.mode = self.execution_mode;
+        Ok(selected)
+    }
+
     /// Actual physical launches for the complete cohort, counted once.
     pub fn dispatches(&self) -> usize {
         self.dispatches
@@ -1301,6 +1318,7 @@ impl ResidentModel {
             dispatches: prepared.iter().map(|p| p.readback.dispatches).sum(),
             fused_dispatches: 0,
             native_greedy_dispatches: 0,
+            execution_mode: zerogravity_core::provider::ExecutionMode::Native,
             prepared,
         })
     }

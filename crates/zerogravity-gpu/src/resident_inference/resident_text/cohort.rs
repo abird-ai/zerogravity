@@ -545,6 +545,7 @@ impl ResidentModel {
             dispatches,
             fused_dispatches,
             native_greedy_dispatches: 0,
+            execution_mode: zerogravity_core::provider::ExecutionMode::Native,
         }))
     }
 
@@ -851,6 +852,7 @@ impl ResidentModel {
             dispatches,
             fused_dispatches,
             native_greedy_dispatches: 0,
+            execution_mode: zerogravity_core::provider::ExecutionMode::Native,
         }))
     }
 }

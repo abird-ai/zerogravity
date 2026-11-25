@@ -71,7 +71,12 @@ mod graph;
     feature = "cuda",
     any(feature = "qualification", feature = "cuda-native")
 ))]
-pub(crate) use graph::{BatchGraphProfile, BatchGraphReplay};
+pub use graph::BatchGraphProfile;
+#[cfg(all(
+    feature = "cuda",
+    any(feature = "qualification", feature = "cuda-native")
+))]
+pub(crate) use graph::BatchGraphReplay;
 #[cfg(all(test, feature = "qualification", feature = "cuda"))]
 mod state_transport_qualification;
 

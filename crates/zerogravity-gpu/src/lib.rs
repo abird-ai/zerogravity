@@ -156,10 +156,22 @@ pub use attention_provider::{AttentionProvider, AttentionProviderPlan};
 #[cfg(feature = "cuda")]
 pub use cubecl::cuda::{CudaDeviceMetadata, observe_cuda_devices};
 pub use cubecl::{Device, device::WgpuDeviceKind};
+#[cfg(all(
+    feature = "cuda",
+    any(feature = "qualification", feature = "cuda-native")
+))]
+pub use resident_inference::{
+    CapturedGraphObservation, GraphCacheObservation, GraphCaptureReceipt, GraphWorkspaceObservation,
+};
 pub use resident_inference::{
     InferenceReadback, PreparedInference, PreparedResidentCohort, ResidentModel, ResidentSession,
     ResidentSnapshot, ResidentToken,
 };
+#[cfg(all(
+    feature = "cuda",
+    any(feature = "qualification", feature = "cuda-native")
+))]
+pub use resident_program::BatchGraphProfile;
 pub use resident_provider::CubeResidentProvider;
 
 #[cfg(feature = "cuda")]
@@ -285,9 +297,15 @@ pub use resident_inference::{ResidentTextCohortPending, ResidentTextCohortPrepar
     target_os = "linux"
 ))]
 pub use resident_inference::{ResidentTextFinalReader, ResidentTextReaderObservation};
-#[cfg(all(
-    target_os = "linux",
-    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+#[cfg(any(
+    all(
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-native")
+    ),
+    all(
+        target_os = "linux",
+        any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+    )
 ))]
 pub use resident_program::ResidentOutput;
 

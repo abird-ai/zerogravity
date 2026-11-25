@@ -930,8 +930,9 @@ impl ResidentModel {
                 program.launch(self.service.client(), &parameters, &bindings, output)
             }
         };
-        let mut submitted = match &execution {
-            FusedExecution::Native => launch_native(program)?,
+        use zerogravity_core::provider::ExecutionMode;
+        let (mut submitted, execution_mode) = match &execution {
+            FusedExecution::Native => (launch_native(program)?, ExecutionMode::Native),
             #[cfg(all(
                 feature = "cuda",
                 any(feature = "qualification", feature = "cuda-native")
@@ -945,14 +946,15 @@ impl ResidentModel {
                 feature = "cuda",
                 any(feature = "qualification", feature = "cuda-native")
             ))]
-            FusedExecution::CaptureWarm => launch_native(program)?,
+            FusedExecution::CaptureWarm => (launch_native(program)?, ExecutionMode::Native),
             #[cfg(all(
                 feature = "cuda",
                 any(feature = "qualification", feature = "cuda-native")
             ))]
-            FusedExecution::Graph(graph) => {
-                graph.launch(&mut flight, program, &parameters, &bindings)?
-            }
+            FusedExecution::Graph(graph) => (
+                graph.launch(&mut flight, program, &parameters, &bindings)?,
+                ExecutionMode::Graph,
+            ),
         };
         let expected = workspace.program.plan().proposed_domains();
         if submitted.proposals.len() != expected.len() * rows.len()
@@ -1127,6 +1129,7 @@ impl ResidentModel {
             dispatches: submitted.dispatches,
             fused_dispatches: submitted.fused_dispatches,
             native_greedy_dispatches,
+            execution_mode,
         }))
     }
 }

@@ -1,6 +1,7 @@
 //! Qwen host/reference driver over the original physical probes.
 use super::*;
-use zerogravity_gpu::qualification::resident::graph::*;
+use zerogravity_core::provider::{ExecutionMode, ProviderKind, SelectedMode};
+use zerogravity_gpu::{GraphCacheObservation, qualification::resident::graph::*};
 
 fn idle_at(model: &ResidentModel, bytes: usize, stage: &str) -> Result<()> {
     idle(model, bytes).map_err(|error| Error::State(format!("{stage}: {error}")))
@@ -43,6 +44,33 @@ pub async fn qualify(
         .await?;
     unchanged(&sessions, &prior_roots, &prior).await?;
     let receipt = graph.receipt();
+    let capture = graph.observation();
+    let workspace = resident
+        .describe_graph_cache()
+        .await
+        .ok_or_else(|| Error::State("captured workspace absent".into()))?;
+    if capture.selected
+        != (SelectedMode {
+            provider: ProviderKind::Cuda,
+            mode: ExecutionMode::Graph,
+        })
+        || capture.source != source.source_identity()
+        || capture.profile.rows != 2
+        || capture.profile.capacity != 512
+        || capture.profile.av_padding != 256
+        || capture.profile.output != ResidentOutput::Logits
+        || capture.profile.body_nodes != receipt.body_nodes
+        || capture.receipt != receipt
+        || capture.replay_enqueues != 0
+        || workspace.rows != 2
+        || !workspace.workspace_pinned
+        || !workspace.service_usable
+        || workspace.cache != GraphCacheObservation::Cold
+    {
+        return Err(Error::State(
+            "actual external capture observation differs".into(),
+        ));
+    }
     if receipt.warm_dispatches.contains(&0)
         || receipt.captured_kernels == 0
         || receipt.projection_dots == 0
@@ -305,6 +333,18 @@ pub async fn qualify(
         .checked_sub(receipt.resource_charge_bytes)
         .ok_or_else(|| Error::State("graph policy charge exceeds warm resident bytes".into()))?;
     graph.retire(sessions[0].binding().root()).await?;
+    let retired = resident
+        .describe_graph_cache()
+        .await
+        .ok_or_else(|| Error::State("retired external band absent".into()))?;
+    if retired.workspace_pinned
+        || !retired.service_usable
+        || retired.cache != GraphCacheObservation::Cold
+    {
+        return Err(Error::State(
+            "external capture retirement observation differs".into(),
+        ));
+    }
     let retired_foreign = resident.qualification().foreign_bytes()?;
     if retired_foreign != 0 {
         return Err(Error::State(format!(
@@ -349,6 +389,26 @@ pub async fn qualify(
             "production graph cache live identity/profile witness failed".into(),
         ));
     }
+    let actual = resident
+        .describe_graph_cache()
+        .await
+        .ok_or_else(|| Error::State("cached capture workspace absent".into()))?;
+    let GraphCacheObservation::Live(capture) = actual.cache else {
+        return Err(Error::State("cached capture observation absent".into()));
+    };
+    if !actual.workspace_pinned
+        || !actual.service_usable
+        || actual.rows != 2
+        || capture.selected.mode != ExecutionMode::Graph
+        || capture.source != source.source_identity()
+        || capture.receipt != production_receipt
+        || capture.profile.rows != 2
+        || capture.replay_enqueues != 0
+    {
+        return Err(Error::State(
+            "cached capture actual owner observation differs".into(),
+        ));
+    }
     let production_live_bytes = resident.qualification().resident_bytes()?;
     let selector_roots = roots(&sessions);
     let selector_states = states(&sessions).await?;
@@ -359,7 +419,10 @@ pub async fn qualify(
     let selected = resident
         .qualification_prepare_production_selected(&production_rows, Readout::Logits)
         .await?;
-    if selected.len() != 2 || selected.fused_dispatches() != production_receipt.projection_dots {
+    if selected.len() != 2
+        || selected.fused_dispatches() != production_receipt.projection_dots
+        || selected.selected_mode()? != capture.selected
+    {
         return Err(Error::State(
             "production selector graph receipt changed".into(),
         ));
@@ -377,16 +440,23 @@ pub async fn qualify(
     let fallback = resident
         .qualification_prepare_production_selected(&production_rows, Readout::None)
         .await?;
-    if fallback.len() != 2 || fallback.fused_dispatches() == 0 {
+    if fallback.len() != 2
+        || fallback.fused_dispatches() == 0
+        || fallback.selected_mode()?.mode != ExecutionMode::Native
+    {
         return Err(Error::State(
             "production selector native fallback receipt incomplete".into(),
         ));
     }
     drop(fallback);
-    if resident
-        .qualification_production_graph_replay_enqueues()
-        .await?
-        != Some(selector_after)
+    let mut expected_capture = capture;
+    expected_capture.replay_enqueues = selector_after;
+    if resident.describe_graph_cache().await.map(|o| o.cache)
+        != Some(GraphCacheObservation::Live(expected_capture))
+        || resident
+            .qualification_production_graph_replay_enqueues()
+            .await?
+            != Some(selector_after)
         || resident
             .qualification_production_graph_cache_state()
             .await?
@@ -515,7 +585,24 @@ pub async fn qualify(
             "explicit production graph retirement retained stale cache/charge".into(),
         ));
     }
+    let retired = resident
+        .describe_graph_cache()
+        .await
+        .ok_or_else(|| Error::State("retired cached band absent".into()))?;
+    if retired.workspace_pinned
+        || !retired.service_usable
+        || retired.cache != GraphCacheObservation::Spent
+    {
+        return Err(Error::State(
+            "trusted cache retirement observation differs".into(),
+        ));
+    }
     resident.qualification_release_graph_band().await?;
+    if resident.describe_graph_cache().await.is_some() {
+        return Err(Error::State(
+            "released graph workspace still observed".into(),
+        ));
+    }
 
     // A new live batch workspace may capture once again. Replacing that band
     // must retire the second cached graph before any new batch storage is built.
@@ -540,7 +627,23 @@ pub async fn qualify(
             (&singles[1], 31),
         ])
         .await?;
+    if replacement.selected_mode()?.mode != ExecutionMode::Native {
+        return Err(Error::State(
+            "replacement native selection observation differs".into(),
+        ));
+    }
     drop(replacement);
+    let replacement = resident
+        .describe_graph_cache()
+        .await
+        .ok_or_else(|| Error::State("new native band absent".into()))?;
+    if replacement.rows != 4
+        || replacement.workspace_pinned
+        || !replacement.service_usable
+        || replacement.cache != GraphCacheObservation::Cold
+    {
+        return Err(Error::State("new native band observation differs".into()));
+    }
     if resident
         .qualification_production_graph_cache_state()
         .await?
@@ -552,6 +655,9 @@ pub async fn qualify(
         ));
     }
     resident.qualification_release_graph_band().await?;
+    println!(
+        "CAPTURE_OBSERVATION_PASS external=true cached=true selected_graph=true native_fallback=true trusted_retirement=true"
+    );
 
     drop(cpus);
     drop(native);
@@ -649,6 +755,19 @@ pub async fn qualify_abort(
         ));
     }
     drop(future);
+    let observed = resident
+        .describe_graph_cache()
+        .await
+        .ok_or_else(|| Error::State("unknown capture workspace observation absent".into()))?;
+    if observed.service_usable
+        || !observed.workspace_pinned
+        || graph.observation().replay_enqueues != 1
+        || old_ready.selected_mode()?.mode != ExecutionMode::Native
+    {
+        return Err(Error::State(
+            "unknown capture observation lost fence/pin".into(),
+        ));
+    }
     let handles = resident.qualification_launch_seen();
     let retained = quarantined_handles_for(&client)?;
     if handles == 0
