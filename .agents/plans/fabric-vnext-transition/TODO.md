@@ -610,9 +610,16 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
 - [x] Bounded graph-declared serial language source resolution and atomic
   original router/plan publication (ebda04c4); actual local CPU/CUDA GGUF,
   native HIP HF alias chain and rollback/retirement pass.
-- [ ] General DAG/media/context execution, mixed backend/multi-source HF,
-  pipeline CLI/API activation and richer task controls only through original
-  qualified owners.
+- [x] Common borrowed SDK text-task controls and selected owner observations
+  (b25b5c02): exact model alias or prepared serial plan, original bounded
+  receiver polling/cancel, final-stage token observations, structured
+  refusal, read-only selected original registration/config. Actual CPU
+  direct framed nonstream/0.8B->2B chain, CUDA GGUF two-owner chain and
+  native HIP HF alias chain/C1/C8 replay/retirement pass.
+- [ ] Converge ordinary cold source selector/eligibility and remaining
+  shared SDK/semantic-region observations; general DAG/media/context,
+  mixed backend/multi-source HF and pipeline CLI/API activation only
+  through original qualified owners.
 
 ## Prepared resident state identity — 25 Nov
 

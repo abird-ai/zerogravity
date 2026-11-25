@@ -25,6 +25,102 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed shared SDK text-task controls and selected-owner observations: b25b5c02347e15980c082719d18a2685e687af3c.**
+
+- Borrowed TextTask/TaskTarget::Model or ::Pipeline, TextControls and
+  Runtime::submit_task use the original loaded alias/exact prepared plan,
+  scheduler, source admission and event transport. Existing run,
+  run_pipeline and direct request APIs retained. Explicit bounded output,
+  raw/chat for models, streaming and optional original token observations;
+  serial pipelines remain raw committed-text handoff, per-stage token
+  ceiling, presentation and observations only on the final stage. No
+  extra text copy, worker, model reader, queue, sampler or root authority.
+- OutputStream::poll_next uses the original bounded receiver: Event,
+  Pending or Finished; zero timeout nonblocking with respect to receiver
+  wait, capped individual wait. At an intermediate terminal, admit the
+  moved committed String before retiring its original transport and return
+  Pending. Cancellation between polls cancels only the accepted request,
+  never submits a future stage. Terminal/disconnection/stale-owner
+  behavior retained; no hard wall-clock admission guarantee or concurrent
+  cross-thread cancellation handle. Original next/cancel APIs retained,
+  external stream implementations may explicitly refuse polling.
+- submit_task and poll_next preserve structured ServiceError codes; errors
+  from actual execution remain original ResponseEvent::Error. Legacy
+  wrappers preserve the applicable core error categories. Read-only
+  Runtime::inspect_task checks the same selected registrations, bounds
+  and framing policy; reports selected stages, requested/effective text
+  controls, actual scheduler limits/config/counters, input limit, and
+  one original ModelSnapshot per selected owner. Process-local registration
+  ID is shared by aliases and renewed on re-registration; no second plan
+  identity generator or registry. Do not infer unreported numerical profile,
+  region/external-buffer eligibility or actual context/resource fit from
+  inspection. No source acquisition, tokenization, reader or admission.
+- Existing grouped engine chain tests cover read-only host/worker
+  observations, exact registration/stale same-owner reload, missing model,
+  output bound, unsupported chat pipeline, final-stage observed tokens,
+  cancellation between polls and structured next-stage retirement refusal.
+  All engine tests, minimal facade and strict core/engine/facade Clippy
+  pass; final focused three pipeline tests pass.
+- Actual L5 CPU GGUF 0.8B -> 2B source-declared chain and direct framed,
+  nonstreaming model task: selected owner identity, exact sequential
+  terminal output/usage, three final token observations; direct task uses
+  actual framed prompt length, three token observations with no text
+  before terminal. Actual CUDA GGUF three-stage/two-owner chain, exact
+  sequential output/usage, selected owner observations and three final
+  tokens, selective unload/stale plan and final reader retirement pass.
+  X2 actual native HIP V2 original HF 0.8B graph-declared two-stage shared
+  owner chain, selected owner and three final observations, C1/C8 all
+  six replay waves [248068,198,90700], lane invariance, width8, zero failed
+  GPU quanta, native/tokenizer retirement and unfenced. L5 idle 37MiB,
+  X2 idle 259768320 bytes. No new math/profile/performance claim.
+- Full isolated gate: 2396 Rust test executions, zero failures, 104 explicit skips; release/installer/scripts pass.
+
+**Phase 1 exit review (bounded foundations, not all backend specializations):**
+- 1.1–1.2: original ModelProgram/ForwardPlan, typed source binding and
+  closed-region prepared executable, native/capture distinction and
+  SDK-free compiled-region preparation are established on actual consumers.
+  Generic family/format/task source selection and remaining original
+  plan/region observation and external stream/buffer compatibility seams
+  are not wholly closed. Concrete compiler SDKs remain Phase 6.
+- 1.3: authenticated HF and GGUF source eligibility, held descriptor/cache
+  admission, original lifecycle, pre-Client qualified CUDA/HIP and guarded
+  Vulkan local fit/host-backing constraints are established. Direct CPU
+  selection can resolve an existing cached GGUF source; the SDK graph
+  local route currently takes local paths and original-HF policy has
+  its own exact snapshot resolution. Shared cold selector/adapter
+  resolution still needs convergence without weakening source provenance.
+  General named Vulkan registry reuse and exact shared GPU/UMA backing
+  remain explicit unqualified gaps.
+- 1.4: original independent state authority, paged/contiguous roots,
+  completion/quarantine, admitted matrix/parameter streaming and bounded
+  committed CPU/HIP persistence, same-domain placement, shared worker
+  and bounded serial language composition/control have actual consumers.
+  Other persistence/layout/provider combinations, heterogeneous transport,
+  async SSD IO and media/realtime/general DAG are not qualified; keep
+  the common contracts and defer unneeded specialization to native phases.
+- 1.5: public SDK/standalone serving/catalog observations and common text
+  task submission/poll/cancel/selected facts now share the original router.
+  The historical CPU cache-admission failure was corrected by 00f57e7a
+  and 9374e0ca (typed resource refusal and correct host test key);
+  four actual cache comparison tests and subsequent complete gates passed.
+  Continue remaining applicable architecture/feature and selected
+  semantic-region observation debt; no new frontend registry or scheduler.
+
+**Next coherent unit:** reconcile the minimum common cold source selector
+and family/format/task eligibility seam for ordinary SDK/CLI/pipeline
+consumers. Start at facade prepare/selection.rs, models.rs,
+builtins/registration.rs, builtins/text/local.rs and pipelines/load.rs;
+reuse the original held local/cached source, approved HF inventory,
+source/model eligibility and explicit execution policy. Resolve selected
+existing local/cache sources through the same bounded typed preparation
+where qualified, without reopening an independently mutable path,
+duplicating source catalog or inventing generic provider fallback.
+Keep unsupported formats/families/tasks and mixed HF/backend routes
+explicit. Close the remaining minimum shared foundations before Phase 2;
+do not make every optional provider/model specialization a Phase 1 gate.
+
+### Previous accepted source-declared language preparation checkpoint
+
 **Signed source-declared language preparation: ebda04c43d6b3f619cad01500edde1869eae8673.**
 
 - Runtime::load_pipeline(Config, name, LanguageLoadPolicy) resolves only
@@ -82,17 +178,9 @@ reusable work and measured history, not precedence over this order.
   qualification is local GGUF, not HF. No new numerical/performance claim.
 - Full isolated gate: 2396 Rust test executions, zero failures, 104 explicit skips; release/installer/scripts pass.
 
-**Next coherent unit:** finish the minimum public SDK/task/control and
-effective-configuration observation seam using original typed request,
-prepared language plan, Runtime/ModelCatalog, OutputStream/ResponseEvent and
-RuntimeSnapshot. Join explicit model vs prepared pipeline execution intent,
-bounded request controls/cancellation and selected-source/provider/plan
-observations without changing established admission or introducing a
-frontend-owned registry/scheduler. Preserve existing direct APIs and
-unsupported capabilities; no network/media or new model numerical profile.
-Audit remaining Phase 1 exit requirements against live code/tests and owner
-TODOs before starting the CLI/TUI/Web phase. Other backend/layout/codec/task
-specializations remain explicit planned work.
+The bounded shared SDK text-task controls and selected observations
+continuation is implemented at b25b5c02 above. Other task controls and
+unqualified transport remain explicit.
 
 ### Previous accepted native HIP resident persistence checkpoint
 

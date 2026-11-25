@@ -456,7 +456,12 @@ and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
   rollback, unused source exclusion, actual CPU 0.8B/2B mismatch/retry/chain,
   CUDA three-stage two-owner GGUF and native HIP HF alias chain/C1/C8
   plus retirement pass. Manual loaded binding remains distinct.
-- [ ] Finish shared task/control and effective configuration observation;
+- [x] Bounded common model/plan SDK task and controls (b25b5c02):
+  original router/receiver, polling/cancel and final-stage observations,
+  structured refusal and selected owner/config projection; actual CPU,
+  CUDA and native HIP language consumers pass.
+- [ ] Converge ordinary cold source selection/eligibility and remaining
+  original semantic-region observations;
   extend other qualified resident formats and generic named Vulkan
   registry reuse and actual shared host-visible GPU backing. General
   DAG/media/context authority, mixed backend/multi-source HF loading and

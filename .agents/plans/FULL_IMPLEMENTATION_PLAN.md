@@ -273,10 +273,18 @@ Admit exact plan and router together before Ready; failed binding/pressure
 rolls back original router. Actual CPU 0.8B/2B mismatch/retry and chain,
 CUDA GGUF three stages/two owners/retirement, native HIP V2 HF alias chain
 and C1/C8 replay/retirement pass. Full isolated gate: 2396 Rust test executions, zero failures, 104 explicit skips; release/installer/scripts pass.
-Next close minimum common SDK/task
-intent/control and effective configuration/plan observation seams through
-the original runtime and output stream. Audit Phase 1 exit requirements.
-Broader family/codec/task and unqualified backend routes remain open.
+Signed b25b5c02: common borrowed model/prepared-pipeline TextTask,
+explicit controls, original bounded receiver poll/cancel, selected exact
+registration/config observations and structured service refusal. Actual CPU
+0.8B/2B chain + direct framed nonstream task, CUDA GGUF three-stage/two-owner
+chain, HIP V2 HF same-owner chain/C1/C8 final token observations and retirement
+pass. Legacy APIs and original scheduler/transport retained. Full isolated gate: 2396 Rust test executions, zero failures, 104 explicit skips; release/installer/scripts pass.
+Phase 1 exit
+review in CURRENT_HANDOFF: next reconcile minimum cold source selector
+and family/format/task eligibility for actual ordinary SDK/CLI/pipeline
+consumers through original local/cache/HF source owners and preparation.
+Remaining semantic-region observations and physical ownership seams stay
+explicit. Broader family/codec/task and unqualified backend routes remain open.
 No duplicate catalog, estimator, allocator or runtime.
 General DAG/media/context authority, multi-source HF and mixed-backend
 pipeline loading, CLI/API transport activation, generalized persistent
@@ -430,8 +438,11 @@ a Python runtime is mandatory.
   backend-only/model-only/serve-only dependency isolation and mixed GPU
   development shell. Integrate provider capabilities without requiring
   optional SDKs in default CPU builds.
-- [ ] Resolve the current CPU cache admission gate and remaining applicable
-  architecture/feature/test-boundary debt. Keep source, model arithmetic,
+- [x] Resolve the historical CPU cache-admission assertion (00f57e7a,
+  9374e0ca): typed host capacity refusal and original host test key;
+  real cache comparisons and subsequent full gates pass.
+- [ ] Close remaining applicable architecture/feature/test-boundary debt.
+  Keep source, model arithmetic,
   quality, cancellation, physical readiness, state/root and real execution
   checks distinct. Qualify the existing working native paths; CUDA unresolved
   parity is an explicit gate before CUDA performance, not a pretext for

@@ -5,6 +5,17 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — shared SDK text-task controls
+
+b25b5c02: borrowed model/plan TextTask and explicit controls over original
+router; original bounded receiver Event/Pending/Finished and cancel,
+final-stage observations only, structured refusal, cold selected original
+registration/owner/config facts, no new scheduler/catalog. Actual CPU
+0.8B/2B and direct framed nonstream task, CUDA GGUF three-stage/two-owner,
+native HIP V2 HF chain and C1/C8 replay/retirement pass. No new math or
+performance claim.
+Full isolated gate: 2396 Rust test executions, zero failures, 104 explicit skips; release/installer/scripts pass.
+
 ## 25 Nov — source-declared language preparation
 
 ebda04c4: original Config serial graph selects explicit model declarations,

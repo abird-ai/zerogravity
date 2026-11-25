@@ -76,8 +76,15 @@ router + admitted plan publish atomically, binding/pressure rollback.
 Actual CPU 0.8B/2B mismatch/retry/chain, CUDA GGUF two-owner three-stage
 chain/selective unload, native HIP HF alias chain/C1/C8 and retirement.
 Full isolated gate: 2396 Rust test executions, zero failures, 104 explicit skips; release/installer/scripts pass.
-Next close minimum common SDK/task/control and effective-config/plan
-observation through original owners, audit Phase 1 exit requirements.
+Signed b25b5c02: common borrowed model/plan text task, controls,
+bounded receiver polling/cancel, structured refusal and selected original
+registration/owner/config observation. Actual CPU 0.8B/2B and framed
+nonstream task, CUDA GGUF distinct-owner chain and HIP HF alias chain/C1/C8
+final observations/retirement pass. Full isolated gate: 2396 Rust test executions, zero failures, 104 explicit skips; release/installer/scripts pass.
+Phase 1 exit review in CURRENT_HANDOFF;
+next reconcile minimum cold source selector/family/format/task eligibility
+across ordinary SDK/CLI/pipeline consumers using original local/cache/HF
+source owners. Historical CPU cache gate corrected at 00f57e7a/9374e0ca.
 Continue [full plan](FULL_IMPLEMENTATION_PLAN.md). No second cache
 hierarchy, allocator or publisher; mixed backend/multi-source HF pipeline,
 other persisted GPU formats, cross-provider restore, scheduler-managed
