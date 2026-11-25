@@ -43,6 +43,24 @@ impl Runtime {
     pub fn run(&self, request: &TaskRequest) -> Result<Box<dyn OutputStream>> {
         self.engine.run(request)
     }
+    /// Bind a structurally checked serial language graph to exact loaded models.
+    pub fn prepare_pipeline(
+        &self,
+        config: &crate::pipelines::Config,
+        name: &str,
+        bindings: &[crate::pipelines::LanguageBinding<'_>],
+    ) -> Result<crate::pipelines::PreparedLanguagePipeline> {
+        self.engine.prepare_pipeline(config, name, bindings)
+    }
+    /// Execute through the original scheduler, with a finite per-stage limit.
+    pub fn run_pipeline(
+        &self,
+        plan: &crate::pipelines::PreparedLanguagePipeline,
+        input: &str,
+        max_output: std::num::NonZeroUsize,
+    ) -> Result<Box<dyn OutputStream>> {
+        self.engine.run_pipeline(plan, input, max_output)
+    }
     /// Load admitted CPU text sources into this runtime's one scheduler.
     /// Aliases of one canonical path share the original source/tokenizer owner.
     #[cfg(all(feature = "cpu", feature = "text", feature = "cache"))]

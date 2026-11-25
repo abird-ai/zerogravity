@@ -6,6 +6,8 @@ mod contexts;
 #[cfg(feature = "serve")]
 #[path = "support/qwen_hip_http.rs"]
 mod http;
+#[path = "support/language_pipeline.rs"]
+mod language_pipeline;
 #[path = "support/qwen_hip_population.rs"]
 mod population;
 

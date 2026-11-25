@@ -347,7 +347,7 @@ pub struct Config {
 }
 #[derive(Clone, Debug)]
 pub struct VerifiedShape {
-    /// Deterministic topological order; per-stage execution is NOT implemented.
+    /// Deterministic structural order, not an executable binding.
     pub ordered: Vec<(String, Vec<String>)>,
     pub shared_model_refs: usize,
     pub route_count: usize,
@@ -471,6 +471,63 @@ impl Config {
             }
         }
     }
+    /// Select the existing structurally verified serial language path.
+    /// No target lookup can establish execution eligibility. The caller must
+    /// explicitly bind its model IDs to the original loaded owners.
+    pub fn language_chain(&self, name: &str) -> Result<Vec<&PipelineNode>> {
+        let shape = self.validate()?;
+        let pipeline = self
+            .pipelines
+            .iter()
+            .find(|p| p.name == name)
+            .ok_or_else(|| Error::Malformed("selected pipeline entrypoint is absent".into()))?;
+        if pipeline.input != ValueKind::Text
+            || pipeline.output != ValueKind::Text
+            || pipeline.realtime
+            || pipeline.chat_context.is_some()
+            || pipeline.steps.iter().any(|stage| stage.kind != "llm")
+            || pipeline.links.len() != pipeline.steps.len() + 1
+        {
+            return Err(Error::Unsupported(
+                "only serial text-to-text language stages are executable".into(),
+            ));
+        }
+        // All llm ports are single-input/single-output text. Productive DAG
+        // validation plus unique input producers proves a single chain.
+        let (_, order) = shape
+            .ordered
+            .iter()
+            .find(|(id, _)| id == name)
+            .ok_or_else(invalid)?;
+        order
+            .iter()
+            .map(|id| {
+                let stage = pipeline
+                    .steps
+                    .iter()
+                    .find(|stage| stage.id == *id)
+                    .ok_or_else(invalid)?;
+                let model = self
+                    .models
+                    .iter()
+                    .find(|m| Some(m.id.as_str()) == stage.model.as_deref())
+                    .ok_or_else(invalid)?;
+                if model.source.is_some()
+                    || model.model_config.is_some()
+                    || model.tokenizer.is_some()
+                    || model.snapshot.is_some()
+                    || model.native_artifacts.is_some()
+                {
+                    // Do not silently ignore an unresolved acquisition/source pin.
+                    return Err(Error::Unsupported(
+                        "pipeline source pins must be resolved before binding loaded owners".into(),
+                    ));
+                }
+                Ok(stage)
+            })
+            .collect()
+    }
+
     /// No network, disk or resource allocator access, no model admission and no
     /// runtime/API binding. Successful validation NEVER means executable.
     pub fn validate(&self) -> Result<VerifiedShape> {

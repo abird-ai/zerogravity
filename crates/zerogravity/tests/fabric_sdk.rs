@@ -4,6 +4,10 @@ use zerogravity::{
     run::{TaskInput, TaskRequest},
 };
 #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+#[path = "support/language_pipeline.rs"]
+mod language_pipeline;
+
+#[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
 #[allow(dead_code)]
 #[path = "support/qwen_source_http.rs"]
 mod qwen_source_http;
@@ -1094,7 +1098,7 @@ fn qwen_gguf_cuda_sdk_unloads_with_retained_handle() {
                 workers: 1,
                 active: 2,
                 context: 512,
-                output: 1,
+                output: 3,
                 host_mib: 8192,
                 provider_mib: 2048,
                 device_mib: 5120,
@@ -1181,6 +1185,9 @@ fn qwen_gguf_cuda_sdk_unloads_with_retained_handle() {
     let expected = complete(submit("source"));
     assert_eq!(complete(submit("alias")), expected);
     assert_eq!(complete(submit("other")), expected);
+    let plan =
+        language_pipeline::compare(&runtime, "qwen3.5-0.8b", &["alias", "other"], "1, 2, 3,", 3);
+    assert_ne!(plan.stages()[0].source(), plan.stages()[1].source());
     let before = arbiter.snapshot(&host).unwrap().reserved;
     let before_device = arbiter.snapshot(&device).unwrap();
     assert_eq!(before_device.reserved, 4096 * 1024 * 1024);
@@ -1191,6 +1198,12 @@ fn qwen_gguf_cuda_sdk_unloads_with_retained_handle() {
     assert_eq!(complete(accepted_other), expected);
     assert!(!runtime.status().closed);
     assert_eq!(runtime.status().loaded_models, 1);
+    assert!(
+        runtime
+            .run_pipeline(&plan, prompt, 1.try_into().unwrap())
+            .is_err()
+    );
+    drop(plan);
     assert!(runtime.models().resolve("source").is_err());
     assert!(runtime.models().resolve("alias").is_err());
     assert!(

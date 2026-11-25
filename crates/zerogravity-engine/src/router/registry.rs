@@ -12,7 +12,10 @@ use crate::{
 };
 use std::{
     collections::BTreeMap,
-    sync::{Arc, Condvar, Mutex, MutexGuard},
+    sync::{
+        Arc, Condvar, Mutex, MutexGuard,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 use zerogravity_core::identity::SourceIdentity;
 
@@ -24,16 +27,33 @@ struct OwnerState<M> {
     readers: usize,
 }
 
+/// Process-local registration, distinct from the source identity. Aliases
+/// share it; even registering the same Arc in a new route set issues a new one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct RegisteredOwner {
+    id: u64,
+    pub(crate) source: SourceIdentity,
+}
+static NEXT_REGISTRATION: AtomicU64 = AtomicU64::new(1);
+
 pub(super) struct Route<A: Executor> {
-    source: SourceIdentity,
+    registration: RegisteredOwner,
     state: Mutex<OwnerState<A::Model>>,
     drained: Condvar,
     retire: Option<ModelRetirement<A::Model>>,
 }
 impl<A: Executor> Route<A> {
-    fn new(model: A::Model) -> Self {
-        Self {
-            source: model.model().source(),
+    fn new(model: A::Model) -> Result<Self> {
+        let id = NEXT_REGISTRATION
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+                next.checked_add(1)
+            })
+            .map_err(|_| Error::Limit("model registration identity exhausted".into()))?;
+        Ok(Self {
+            registration: RegisteredOwner {
+                id,
+                source: model.model().source(),
+            },
             state: Mutex::new(OwnerState {
                 model: Some(model),
                 lifecycle: ModelLifecycle::Ready,
@@ -41,7 +61,7 @@ impl<A: Executor> Route<A> {
             }),
             drained: Condvar::new(),
             retire: A::selective_retirement(),
-        }
+        })
     }
     fn state(&self) -> MutexGuard<'_, OwnerState<A::Model>> {
         // No executor work or destructors run in this critical section.
@@ -173,18 +193,17 @@ pub(crate) struct Registry<A: Executor> {
     routes: BTreeMap<String, Arc<Route<A>>>,
 }
 impl<A: Executor> Registry<A> {
-    pub(super) fn new(models: BTreeMap<String, A::Model>) -> Self {
+    pub(super) fn new(models: BTreeMap<String, A::Model>) -> Result<Self> {
         let mut routes = BTreeMap::<String, Arc<Route<A>>>::new();
         for (alias, model) in models {
             let identity = model.erased();
-            let route = routes
-                .values()
-                .find(|route| route.matches(&identity))
-                .cloned()
-                .unwrap_or_else(|| Arc::new(Route::new(model)));
+            let route = match routes.values().find(|route| route.matches(&identity)) {
+                Some(route) => route.clone(),
+                None => Arc::new(Route::new(model)?),
+            };
             routes.insert(alias, route);
         }
-        Self { routes }
+        Ok(Self { routes })
     }
 
     pub(super) fn model_for_job(
@@ -225,6 +244,7 @@ fn missing_model() -> ServiceError {
 }
 pub(crate) trait Models: Send + Sync {
     fn model(&self, alias: &str) -> Option<Arc<dyn PreparedModel>>;
+    fn registration(&self, alias: &str) -> Option<RegisteredOwner>;
     fn acquire(
         &self,
         alias: &str,
@@ -248,6 +268,11 @@ impl<A: Executor> Models for Registry<A> {
     fn model(&self, alias: &str) -> Option<Arc<dyn PreparedModel>> {
         self.routes.get(alias)?.model().map(|model| model.erased())
     }
+    fn registration(&self, alias: &str) -> Option<RegisteredOwner> {
+        let route = self.routes.get(alias)?;
+        route.accepting().then_some(route.registration)
+    }
+
     fn acquire(
         &self,
         alias: &str,
@@ -312,7 +337,7 @@ impl<A: Executor> Models for Registry<A> {
                 })
                 .transpose()?;
             entries.push(ModelSnapshot {
-                source: route.source,
+                source: route.registration.source,
                 aliases: self
                     .routes
                     .iter()

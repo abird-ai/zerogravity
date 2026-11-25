@@ -83,6 +83,37 @@ fn examples_check_through_the_facade_without_becoming_runnable() {
 }
 
 #[test]
+fn language_selection_refuses_unresolved_pins_media_and_cold_execution() {
+    let mut graph = checked(&text_example("text-model.yaml")).unwrap().config;
+    assert_eq!(graph.language_chain("chat").unwrap()[0].id, "generate");
+    assert!(matches!(
+        zerogravity::Runtime::builder()
+            .build()
+            .unwrap()
+            .prepare_pipeline(&graph, "chat", &[]),
+        Err(Error::Unsupported(_))
+    ));
+    graph.models[0].source = Some("/not-opened/model.gguf".into());
+    assert!(matches!(
+        graph.language_chain("chat"),
+        Err(Error::Unsupported(_))
+    ));
+    graph.models[0].source = None;
+    graph.pipelines[0].realtime = true;
+    assert!(matches!(
+        graph.language_chain("chat"),
+        Err(Error::Unsupported(_))
+    ));
+    let media = checked(&text_example("voice-assistant.yaml"))
+        .unwrap()
+        .config;
+    assert!(matches!(
+        media.language_chain(&media.pipelines[0].name),
+        Err(Error::Unsupported(_))
+    ));
+}
+
+#[test]
 fn schemas_ports_cycles_models_and_route_validation_are_not_cli_policy() {
     let baseline = text_example("text-model.yaml");
     for text in [

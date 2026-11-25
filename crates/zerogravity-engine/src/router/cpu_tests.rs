@@ -634,3 +634,235 @@ fn selective_catalog_retirement_preserves_other_workers_and_shutdown_order() {
         assert_eq!(host.snapshot().unwrap().1, 0);
     }
 }
+
+fn language_chain() -> zerogravity_core::pipeline::Config {
+    use zerogravity_core::pipeline::{
+        Config, ModelInstance, Pipeline, PipelineEdge, PipelineNode, ValueKind,
+    };
+    let declaration = |id: &str| ModelInstance {
+        id: id.into(),
+        target: "qwen3.5-2b".into(),
+        source: None,
+        model_config: None,
+        tokenizer: None,
+        snapshot: None,
+        native_artifacts: None,
+    };
+    let stage = |id: &str, model: &str| PipelineNode {
+        id: id.into(),
+        kind: "llm".into(),
+        model: Some(model.into()),
+    };
+    let edge = |from: &str, to: &str| PipelineEdge {
+        from: from.into(),
+        to: to.into(),
+    };
+    Config {
+        models: vec![declaration("first"), declaration("second")],
+        pipelines: vec![Pipeline {
+            name: "chain".into(),
+            input: ValueKind::Text,
+            output: ValueKind::Text,
+            realtime: false,
+            chat_context: None,
+            // Declaration order is deliberately different from edge order.
+            steps: vec![stage("finish", "second"), stage("start", "first")],
+            links: vec![
+                edge("finish.text", "output.value"),
+                edge("input.value", "start.text"),
+                edge("start.text", "finish.text"),
+            ],
+        }],
+        routes: vec![],
+    }
+}
+
+#[test]
+fn serial_pipeline_uses_exact_registrations_and_original_text_stream() {
+    use crate::{Runtime, pipeline::LanguageBinding};
+    let host = HostPool::isolated(256).unwrap();
+    let model = MockModel::new(&host, None);
+    let runtime = Runtime::builder()
+        .limits(crate::scheduler::SchedulerLimits {
+            max_active: 2,
+            ..Default::default()
+        })
+        .build()
+        .unwrap();
+    runtime
+        .configure_text(|| Ok(router(&host, &model)))
+        .unwrap();
+    let graph = language_chain();
+    let owner = runtime.models().resolve("model").unwrap();
+    let other = MockModel::new(&host, None);
+    let wrong = crate::model_instance::ModelInstance::new(other.clone());
+    let bindings = |second| {
+        [
+            LanguageBinding {
+                model: "first",
+                alias: "model",
+                owner: &owner,
+            },
+            LanguageBinding {
+                model: "second",
+                alias: "alias",
+                owner: second,
+            },
+        ]
+    };
+    let before = host.snapshot().unwrap().1;
+    assert!(
+        runtime
+            .prepare_pipeline(&graph, "chain", &bindings(&wrong))
+            .is_err()
+    );
+    assert!(
+        runtime
+            .prepare_pipeline(&graph, "chain", &bindings(&owner)[..1])
+            .is_err()
+    );
+    assert_eq!(host.snapshot().unwrap().1, before);
+    assert_eq!(model.next.load(Ordering::Acquire), 0);
+    let plan = runtime
+        .prepare_pipeline(&graph, "chain", &bindings(&owner))
+        .unwrap();
+    assert_eq!(plan.name(), "chain");
+    assert_eq!(
+        plan.stages().iter().map(|s| s.id()).collect::<Vec<_>>(),
+        ["start", "finish"]
+    );
+    assert_eq!(plan.stages()[0].source(), owner.source());
+    assert_eq!(plan.stages()[1].source(), owner.source());
+    assert_eq!(plan.stages()[1].alias(), "alias");
+    assert!(
+        runtime
+            .run_pipeline(&plan, "x", 17.try_into().unwrap())
+            .is_err()
+    );
+    assert_eq!(model.next.load(Ordering::Acquire), 0);
+    let mut stream = runtime
+        .run_pipeline(&plan, "x", 2.try_into().unwrap())
+        .unwrap();
+    let mut text = String::new();
+    let mut terminal = 0;
+    while let Some(event) = stream.next().unwrap() {
+        match event {
+            ResponseEvent::Text(delta) => text.push_str(&delta),
+            ResponseEvent::Done {
+                output,
+                prompt_tokens,
+                completion_tokens,
+                ..
+            } => {
+                assert_eq!(output, "AB");
+                assert_eq!(
+                    prompt_tokens, 2,
+                    "second stage consumes first terminal text"
+                );
+                assert_eq!(completion_tokens, 2);
+                terminal += 1;
+            }
+            ResponseEvent::Error(error) => panic!("{error}"),
+            _ => panic!("unexpected event"),
+        }
+    }
+    assert_eq!(text, "AB", "only final stage deltas");
+    assert_eq!(terminal, 1);
+    drop(stream);
+    assert_eq!(model.next.load(Ordering::Acquire), 2);
+    {
+        let log = model.log.lock().unwrap();
+        assert!(log.contains(&(0, "last", 1)));
+        assert!(log.contains(&(1, "last", 2)));
+    }
+    runtime.models().unload(&owner).unwrap();
+    // Re-register even the same exact model Arc: the old plan is stale.
+    runtime
+        .configure_text(|| Ok(router(&host, &model)))
+        .unwrap();
+    assert!(matches!(
+        runtime.run_pipeline(&plan, "x", 2.try_into().unwrap()),
+        Err(crate::Error::State(_))
+    ));
+    assert_eq!(model.next.load(Ordering::Acquire), 2);
+    runtime.shutdown().unwrap();
+    drop((plan, owner, wrong, other, runtime, model));
+    assert_eq!(host.snapshot().unwrap().1, 0);
+}
+
+#[test]
+fn pipeline_cancel_and_retirement_never_submit_a_future_stage() {
+    use crate::{Runtime, pipeline::LanguageBinding};
+    let host = HostPool::isolated(256).unwrap();
+    let gate = Arc::new(Gate::default());
+    let first = MockModel::new(&host, Some(gate.clone()));
+    let second = MockModel::new(&host, None);
+    let runtime = Runtime::builder().build().unwrap();
+    runtime
+        .configure_text(|| {
+            let a: Arc<dyn LogitModel> = first.clone();
+            let b: Arc<dyn LogitModel> = second.clone();
+            Router::new(
+                BTreeMap::from([("model".into(), a), ("alias".into(), b)]),
+                1,
+                1,
+                128,
+                16,
+                host.clone(),
+                Some(16),
+            )
+        })
+        .unwrap();
+    let a = runtime.models().resolve("model").unwrap();
+    let b = runtime.models().resolve("alias").unwrap();
+    let plan = runtime
+        .prepare_pipeline(
+            &language_chain(),
+            "chain",
+            &[
+                LanguageBinding {
+                    model: "first",
+                    alias: "model",
+                    owner: &a,
+                },
+                LanguageBinding {
+                    model: "second",
+                    alias: "alias",
+                    owner: &b,
+                },
+            ],
+        )
+        .unwrap();
+    let mut cancelled = runtime
+        .run_pipeline(&plan, "x", 2.try_into().unwrap())
+        .unwrap();
+    gate.entered();
+    cancelled.cancel().unwrap();
+    assert!(cancelled.next().unwrap().is_none());
+    gate.release();
+    drop(cancelled);
+    assert_eq!(second.next.load(Ordering::Acquire), 0);
+    let mut active = runtime
+        .run_pipeline(&plan, "y", 2.try_into().unwrap())
+        .unwrap();
+    // This second owner has no accepted stage yet. Retire it while the
+    // predecessor runs or has a terminal event waiting for its consumer.
+    runtime.models().unload(&b).unwrap();
+    let weak = Arc::downgrade(b.prepared());
+    assert_eq!(second.next.load(Ordering::Acquire), 0);
+    drop((b, second));
+    assert!(
+        weak.upgrade().is_none(),
+        "prepared pipeline retains no model"
+    );
+    assert!(matches!(active.next(), Err(crate::Error::State(_))));
+    assert!(active.next().unwrap().is_none());
+    drop(active);
+    assert_eq!(
+        done(&runtime.request_text(request("survivor")).unwrap()),
+        "AB"
+    );
+    runtime.shutdown().unwrap();
+    drop((plan, a, first, runtime));
+    assert_eq!(host.snapshot().unwrap().1, 0);
+}

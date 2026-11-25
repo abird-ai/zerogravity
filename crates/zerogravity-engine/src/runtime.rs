@@ -8,9 +8,12 @@ use crate::{
     router::{Request, RequestEvents, Router, ServiceError},
     scheduler::SchedulerLimits,
 };
-use std::sync::{
-    Arc, Condvar, Mutex,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    borrow::Cow,
+    sync::{
+        Arc, Condvar, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use zerogravity_core::{physical::ResourceArbiter, resource_arbiter::AllocationClass};
 
@@ -306,6 +309,23 @@ impl Runtime {
         })?;
         callback(router)
     }
+    /// Internal cold/task operation under the same original lifecycle lock.
+    pub(crate) fn with_ready_text<T>(
+        &self,
+        callback: impl FnOnce(&Router) -> Result<T>,
+    ) -> Result<T> {
+        let text = self
+            .inner
+            .text
+            .lock()
+            .map_err(|_| Error::State("runtime lock poisoned".into()))?;
+        self.require_open()?;
+        let router = text
+            .router()
+            .ok_or_else(|| Error::Unsupported("no source-bound text adapter configured".into()))?;
+        callback(router)
+    }
+
     /// Original bounded text events and exact service status/code, without HTTP.
     pub fn request_text(
         &self,
@@ -352,54 +372,26 @@ impl Runtime {
         let TaskInput::Text(input) = &request.input else {
             return Err(Error::Unsupported("Fabric task driver unavailable".into()));
         };
-        let text = self
-            .inner
-            .text
-            .lock()
-            .map_err(|_| Error::State("runtime lock poisoned".into()))?;
-        self.require_open()?;
-        let router = text
-            .router()
-            .ok_or_else(|| Error::Unsupported("no source-bound text adapter configured".into()))?;
-        // Admit the SDK's owned request copy before cloning the borrowed input.
-        let stream_charge = router
-            .host()
-            .charge(
+        self.with_ready_text(|router| {
+            // Admit the SDK's owned request copy before cloning borrowed input.
+            let stream_charge = router
+                .host()
+                .charge(
+                    &request.model,
+                    "sdk-output-stream",
+                    AllocationClass::Output,
+                    (std::mem::size_of::<TextOutputStream>() + 64) as u64,
+                )
+                .map_err(service_error)?;
+            let events = submit_text(
+                router,
                 &request.model,
-                "sdk-output-stream",
-                AllocationClass::Output,
-                (std::mem::size_of::<TextOutputStream>() + 64) as u64,
-            )
-            .map_err(service_error)?;
-        let bytes = request
-            .model
-            .len()
-            .checked_add(input.len())
-            .and_then(|n| u64::try_from(n).ok())
-            .ok_or_else(|| Error::Limit("text request copy overflow".into()))?;
-        let ingress = router
-            .host()
-            .charge(
-                &request.model,
-                "sdk-request-copy",
-                AllocationClass::Scratch,
-                bytes,
-            )
-            .map_err(service_error)?;
-        let events = router
-            .request_admitted(
-                Request {
-                    model: request.model.clone(),
-                    input: input.clone(),
-                    chat: false,
-                    max_tokens: request.max_output.get(),
-                    stream: true,
-                    token_metrics: None,
-                },
-                vec![ingress],
-            )
-            .map_err(service_error)?;
-        Ok(Box::new(TextOutputStream::new(events, stream_charge)))
+                Cow::Borrowed(input),
+                request.max_output.get(),
+                true,
+            )?;
+            Ok(Box::new(TextOutputStream::new(events, stream_charge)) as Box<dyn OutputStream>)
+        })
     }
     pub(crate) fn loaded_text_models(&self) -> Result<Vec<ModelInstance>> {
         let text = self
@@ -607,6 +599,43 @@ fn runtime_lock_error() -> ServiceError {
 fn runtime_closed() -> ServiceError {
     ServiceError::new(503, "runtime_closed", "Fabric runtime is shut down")
 }
-fn service_error(error: ServiceError) -> Error {
+/// Input ownership remains with the caller until the original ingress
+/// reservation takes over. Owned pipeline text is moved, not copied.
+pub(crate) fn submit_text(
+    router: &Router,
+    alias: &str,
+    input: Cow<'_, str>,
+    max_output: usize,
+    stream: bool,
+) -> Result<RequestEvents> {
+    let input_bytes = match &input {
+        Cow::Borrowed(text) => text.len(),
+        Cow::Owned(text) => text.capacity(),
+    };
+    let bytes = alias
+        .len()
+        .checked_add(input_bytes)
+        .and_then(|n| u64::try_from(n).ok())
+        .ok_or_else(|| Error::Limit("text request copy overflow".into()))?;
+    let ingress = router
+        .host()
+        .charge(alias, "sdk-request-copy", AllocationClass::Scratch, bytes)
+        .map_err(service_error)?;
+    router
+        .request_admitted(
+            Request {
+                model: alias.to_owned(),
+                input: input.into_owned(),
+                chat: false,
+                max_tokens: max_output,
+                stream,
+                token_metrics: None,
+            },
+            vec![ingress],
+        )
+        .map_err(service_error)
+}
+
+pub(crate) fn service_error(error: ServiceError) -> Error {
     error.into_core()
 }

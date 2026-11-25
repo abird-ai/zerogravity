@@ -231,6 +231,71 @@ fn source_bound_sdk_http_lifecycle() {
     };
     assert_eq!(streamed(clone.run(&task).unwrap()), expected);
 
+    let graph = crate::pipelines::parse_document(
+        br#"
+schema: zerogravity.pipeline.v1
+model:
+  - id: first
+    target: qwen3.5-0.8b
+  - id: second
+    target: qwen3.5-0.8b
+pipeline:
+  - name: chain
+    input: text
+    output: text
+    step:
+      - id: finish
+        kind: llm
+        model: second
+      - id: start
+        kind: llm
+        model: first
+    link:
+      - from: start.text
+        to: finish.text
+      - from: finish.text
+        to: output.value
+      - from: input.value
+        to: start.text
+"#,
+    )
+    .unwrap()
+    .check()
+    .unwrap()
+    .config;
+    let prepare = |first: &str, second: &str| {
+        let a = clone.models().resolve(first).unwrap();
+        let b = clone.models().resolve(second).unwrap();
+        clone
+            .prepare_pipeline(
+                &graph,
+                "chain",
+                &[
+                    crate::pipelines::LanguageBinding {
+                        model: "first",
+                        alias: first,
+                        owner: &a,
+                    },
+                    crate::pipelines::LanguageBinding {
+                        model: "second",
+                        alias: second,
+                        owner: &b,
+                    },
+                ],
+            )
+            .unwrap()
+    };
+    let plan = prepare("tiny", "alias");
+    assert_eq!(plan.stages()[0].source(), plan.stages()[1].source());
+    assert_eq!(
+        streamed(
+            clone
+                .run_pipeline(&plan, "!", MAX_OUTPUT.try_into().unwrap())
+                .unwrap()
+        ),
+        expected
+    );
+
     // Phase timing is deliberately not claimed: these may be queued, active
     // or already finished. One active slot makes later completion meaningful.
     drop(runtime.request_text(request()).unwrap());
@@ -279,6 +344,21 @@ fn source_bound_sdk_http_lifecycle() {
     let mut declared = declared;
     declared.push(("other".into(), other_path));
     runtime.models().load(load(declared)).unwrap();
+    assert!(matches!(
+        clone.run_pipeline(&plan, "!", MAX_OUTPUT.try_into().unwrap()),
+        Err(crate::Error::State(_))
+    ));
+    drop(plan);
+    let mixed = prepare("tiny", "other");
+    assert_ne!(mixed.stages()[0].source(), mixed.stages()[1].source());
+    assert_eq!(
+        streamed(
+            clone
+                .run_pipeline(&mixed, "!", MAX_OUTPUT.try_into().unwrap())
+                .unwrap()
+        ),
+        expected
+    );
     assert_eq!(direct(&clone, "tiny"), expected);
     let target = runtime.models().resolve("tiny").unwrap();
     let other = runtime.models().resolve("other").unwrap();
@@ -302,6 +382,13 @@ fn source_bound_sdk_http_lifecycle() {
     );
     drop((first, survivor, target));
     assert!(target_weak.upgrade().is_none());
+    assert!(
+        clone
+            .run_pipeline(&mixed, "!", MAX_OUTPUT.try_into().unwrap())
+            .is_err()
+    );
+    drop(mixed);
+
     assert!(runtime.models().resolve("alias").is_err());
     assert!(runtime.models().resolve("tiny").is_err());
     assert_eq!(runtime.status().loaded_models, 1);

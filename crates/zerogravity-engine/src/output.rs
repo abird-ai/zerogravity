@@ -30,20 +30,15 @@ impl OutputStream for TextOutputStream {
         if self.finished {
             return Ok(None);
         }
-        loop {
-            match self.events.events.recv_timeout(Duration::from_secs(30)) {
-                Ok(event) => {
-                    self.finished =
-                        matches!(&event, ResponseEvent::Done { .. } | ResponseEvent::Error(_));
-                    return Ok(Some(event));
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => continue,
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    self.finished = true;
-                    return Err(crate::Error::State(
-                        "text worker disconnected before terminal output".into(),
-                    ));
-                }
+        match recv_event(&self.events) {
+            Ok(event) => {
+                self.finished =
+                    matches!(&event, ResponseEvent::Done { .. } | ResponseEvent::Error(_));
+                Ok(Some(event))
+            }
+            Err(error) => {
+                self.finished = true;
+                Err(error)
             }
         }
     }
@@ -51,5 +46,20 @@ impl OutputStream for TextOutputStream {
         self.events.cancel();
         self.finished = true;
         Ok(())
+    }
+}
+
+/// Shared original event receiver; no second channel or completion receipt.
+pub(crate) fn recv_event(events: &RequestEvents) -> crate::Result<ResponseEvent> {
+    loop {
+        match events.events.recv_timeout(Duration::from_secs(30)) {
+            Ok(event) => return Ok(event),
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(crate::Error::State(
+                    "text worker disconnected before terminal output".into(),
+                ));
+            }
+        }
     }
 }

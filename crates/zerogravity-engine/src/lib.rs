@@ -6,6 +6,7 @@ pub mod diagnostics;
 pub mod executable;
 pub mod model_instance;
 pub mod output;
+pub mod pipeline;
 pub mod placement;
 pub mod prepare;
 pub mod request;

@@ -7,6 +7,7 @@ use super::pending::{
     WorkerQueue,
 };
 pub use super::registry::ModelRead;
+pub(crate) use super::registry::RegisteredOwner;
 use super::{host::HostLogits, registry, statistics::WorkStats, waves, worker};
 pub use crate::model_instance::TextTokenizer;
 use crate::model_instance::execution::*;
@@ -712,7 +713,7 @@ impl Router {
                     })?,
             ])?,
         )?;
-        let models = Arc::new(registry::Registry::<A>::new(models));
+        let models = Arc::new(registry::Registry::<A>::new(models)?);
         let stats = Arc::new(WorkStats::default());
         let queue = PendingQueue::new(host.clone(), config.max_pending)?;
         let rows = vecdeque_backing_bytes::<worker::Active<A>>(config.active)?;
@@ -798,6 +799,12 @@ impl Router {
     pub fn model(&self, alias: &str) -> Option<ModelInstance> {
         registry::instance(self.models.as_ref(), alias)
     }
+    // Called under the original runtime lifecycle lock. Nothing is retained
+    // from the model by the registration token.
+    pub(crate) fn registration(&self, alias: &str) -> Option<RegisteredOwner> {
+        self.models.registration(alias)
+    }
+
     pub(crate) fn aliases<'a>(
         &'a self,
         model: &'a ModelInstance,

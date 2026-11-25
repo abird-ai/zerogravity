@@ -507,6 +507,17 @@ fn public_source_population_benchmark() {
             );
         }
     }
+    // A separate functional check, outside every timed population wave.
+    let target = match label.as_str() {
+        "08" => "qwen3.5-0.8b",
+        "2b" => "qwen3.5-2b",
+        "27b" => "qwen3.8-27b",
+        _ => unreachable!(),
+    };
+    let plan =
+        super::language_pipeline::compare(&h.runtime, target, &["source", "alias"], prompt, 3);
+    assert_eq!(plan.stages()[0].source(), plan.stages()[1].source());
+    drop(plan);
     h.retire();
     println!("HIP_BENCH_CLOSED model={label} closed=true replay_match=true");
 }

@@ -1,7 +1,8 @@
 //! Bounded v1/v2 pipeline YAML and typed structural checking.
 //!
 //! Successful checking is not execution eligibility: no models, context store,
-//! devices or APIs are started. Native pipeline execution remains unsupported.
+//! devices or APIs are started. Explicit loaded language binding is separate.
+pub use zerogravity_engine::pipeline::{LanguageBinding, LanguageStage, PreparedLanguagePipeline};
 mod document;
 mod patch;
 pub use patch::{ChatContextPatch, PipelinePatch};
@@ -38,8 +39,9 @@ pub fn check_entrypoint(
     config.validate_entrypoint(entrypoint)
 }
 
-/// Deliberate refusal even for a structurally valid graph. Does not open any
-/// source or device, install signals, print to a terminal or start a listener.
+/// Context-free compatibility entrypoint. Execution requires an explicit
+/// loaded runtime and bindings via Runtime::prepare_pipeline/run_pipeline.
+/// No automatic source loading, device selection, listener or terminal IO.
 pub fn run(_config: &Config) -> crate::Result<()> {
     Err(crate::Error::Unsupported(
         "compiled multi-model pipeline execution NOT IMPLEMENTED; no source or device was opened"
