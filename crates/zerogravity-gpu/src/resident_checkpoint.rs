@@ -45,7 +45,8 @@ impl ResidentSession {
         }
         let packed = pack(&self.model.states, self.model.capacity, position, domains)?;
         let attempt = self.authority.begin_import(position as u64)?;
-        let _admission = self.model.allocation.lock().await;
+        let model = self.model.clone();
+        let _admission = model.allocation.lock().await;
         let available = self.model.service.remaining_capacity()?;
         if self.model.state_bytes > available {
             return Err(Error::resource(
