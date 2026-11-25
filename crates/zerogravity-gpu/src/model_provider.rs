@@ -5,7 +5,7 @@ use std::sync::Arc;
 use zerogravity_core::{
     Result,
     model::ModelProgram,
-    provider::{ProviderKind, RegionExecutionProvider},
+    provider::{ExecutionMode, RegionExecutionProvider, SelectedMode},
 };
 
 /// Selection is cold; construction grants no source, kernel, placement or
@@ -28,8 +28,11 @@ impl ResidentModelProvider {
 }
 impl RegionExecutionProvider for ResidentModelProvider {
     type Executable = Arc<ResidentModel>;
-    fn kind(&self) -> ProviderKind {
-        self.provider.kind()
+    fn selected(&self) -> SelectedMode {
+        SelectedMode {
+            provider: self.provider.kind(),
+            mode: ExecutionMode::Native,
+        }
     }
     async fn prepare(&self, program: ModelProgram) -> Result<Self::Executable> {
         let (source, plan) = program.into_parts();

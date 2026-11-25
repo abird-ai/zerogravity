@@ -457,7 +457,42 @@ fn private_owners_refuse_foreign_matrix_wrong_axes_and_invalid_rows_before_io() 
     let host = admission(64 * 1024 * 1024, "host");
     let first = fixture.plan(&host).unwrap().open().unwrap();
     let second = fixture.plan(&host).unwrap().open().unwrap();
-    let matrix = first.matrix("matrix", MatrixAxes::OutputInput).unwrap();
+    use zerogravity_core::{
+        accelerator::program::SourceTensor,
+        encoding::{ScalarDType, StoredTensorEncoding},
+        source::RegionSource,
+    };
+    let declaration = SourceTensor {
+        source: first.source_identity(),
+        name: "matrix".into(),
+        kind: StoredTensorEncoding::Scalar(ScalarDType::F32),
+        axes: MatrixAxes::OutputInput,
+        columns: 4,
+        rows: 4,
+    };
+    let matrix = first.bind_matrix(&declaration).unwrap();
+    assert!(matrix.same_binding(&first.matrix("matrix", MatrixAxes::OutputInput).unwrap()));
+    assert!(second.bind_matrix(&declaration).is_err());
+    for invalid in [
+        SourceTensor {
+            rows: 3,
+            ..declaration.clone()
+        },
+        SourceTensor {
+            columns: 2,
+            ..declaration.clone()
+        },
+        SourceTensor {
+            kind: StoredTensorEncoding::Scalar(ScalarDType::Bf16),
+            ..declaration.clone()
+        },
+        SourceTensor {
+            axes: MatrixAxes::InputOutput,
+            ..declaration.clone()
+        },
+    ] {
+        assert!(first.bind_matrix(&invalid).is_err());
+    }
     assert_ne!(first.source_identity(), second.source_identity());
     assert!(matches!(
         second.read_rows(&matrix, 0..1),

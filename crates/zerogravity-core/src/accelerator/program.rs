@@ -201,14 +201,21 @@ impl SourceTensor {
         Ok(())
     }
 
-    /// Revalidate a plan descriptor against the same immutable source owner.
-    pub fn validate_source(&self, source: &dyn TensorSource) -> Result<()> {
+    /// Borrow the exact original encoded matrix, without copying or decoding.
+    pub fn bind_source<'a>(&self, source: &'a dyn TensorSource) -> Result<SourceTensorRef<'a>> {
         self.packed_bytes()?;
         let identity = source.source_identity();
         if self.source != identity {
             return Err(Error::State("forward tensor source mismatch".into()));
         }
-        self.validate_ref(identity, source.tensor(&self.name)?)
+        let actual = source.tensor(&self.name)?;
+        self.validate_ref(identity, actual)?;
+        Ok(actual)
+    }
+
+    /// Revalidate a plan descriptor against the same immutable source owner.
+    pub fn validate_source(&self, source: &dyn TensorSource) -> Result<()> {
+        self.bind_source(source).map(|_| ())
     }
 }
 #[derive(Clone, Copy, Debug)]

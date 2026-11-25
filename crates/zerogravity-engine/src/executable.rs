@@ -2,7 +2,7 @@
 use std::sync::Arc;
 use zerogravity_core::{
     Result,
-    provider::{PreparedExecutable, PreparedRegion, PreparedTextProgram},
+    provider::{PreparedExecutable, PreparedRegion, PreparedTextProgram, SelectedMode},
     semantic::ForwardPlan,
 };
 
@@ -15,6 +15,9 @@ impl<E: PreparedExecutable> ExecutableBundle<E> {
     }
     pub async fn program(&self) -> Result<Arc<ForwardPlan>> {
         self.prepared.program().await
+    }
+    pub fn selected(&self) -> Result<SelectedMode> {
+        self.prepared.selected()
     }
     pub fn prepared_region(&self) -> Option<&PreparedRegion<E::Source>> {
         self.prepared.prepared_region()

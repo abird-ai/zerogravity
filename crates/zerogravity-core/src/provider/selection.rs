@@ -24,8 +24,23 @@ pub enum ExecutionMode {
     Portable,
     Native,
     FusedRegion,
+    /// Native command capture/replay, not external graph compilation.
     Graph,
+    /// Selected compiler/runtime implementation, independently of the device.
+    Compiled(CompiledProvider),
     Remote,
+}
+
+/// Optional implementation identity only. These variants do not imply an
+/// installed SDK, supported model, available device or qualified executable.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CompiledProvider {
+    Migraphx,
+    TensorRt,
+    Iree,
+    OnnxRuntime,
 }
 
 /// Hysteresis and switching constraints for a future finite qualified candidate set.

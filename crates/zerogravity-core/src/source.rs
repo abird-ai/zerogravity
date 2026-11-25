@@ -29,6 +29,44 @@ impl ProgramSource for std::sync::Arc<dyn TensorSource> {
     }
 }
 
+/// Cold operand access for direct native-semantic lowering. The original
+/// source chooses its backing: borrowed encoded bytes or sealed file-window
+/// descriptors. This neither materializes windows nor grants device access.
+pub trait RegionSource: ProgramSource {
+    type Matrix<'a>
+    where
+        Self: 'a;
+    type Parameter<'a>
+    where
+        Self: 'a;
+
+    fn bind_matrix(
+        &self,
+        descriptor: &crate::accelerator::program::SourceTensor,
+    ) -> Result<Self::Matrix<'_>>;
+    fn bind_parameter(
+        &self,
+        descriptor: &crate::accelerator::program::SourceParameter,
+    ) -> Result<Self::Parameter<'_>>;
+}
+impl RegionSource for std::sync::Arc<dyn TensorSource> {
+    type Matrix<'a> = SourceTensorRef<'a>;
+    type Parameter<'a> = SourceTensorRef<'a>;
+
+    fn bind_matrix(
+        &self,
+        descriptor: &crate::accelerator::program::SourceTensor,
+    ) -> Result<Self::Matrix<'_>> {
+        descriptor.bind_source(self.as_ref())
+    }
+    fn bind_parameter(
+        &self,
+        descriptor: &crate::accelerator::program::SourceParameter,
+    ) -> Result<Self::Parameter<'_>> {
+        descriptor.bind_source(self.as_ref())
+    }
+}
+
 /// Exact immutable content equality; shared storage avoids rereading bytes.
 /// Different allocations still compare every byte. This is no source permit.
 pub fn exact_text_eq(left: &str, right: &str) -> bool {

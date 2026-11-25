@@ -1,9 +1,10 @@
 //! Source-owned family recording; a semantic program is never execution or Ready.
 use crate::{
     Error, Result,
+    accelerator::program::{SourceParameter, SourceTensor},
     identity::SourceIdentity,
-    semantic::{ClosedRegion, ForwardPlan},
-    source::{ProgramSource, TensorSource},
+    semantic::{ClosedRegion, ForwardPlan, PlanNode, PlanOperation, SourceOperatorTemplate},
+    source::{ProgramSource, RegionSource, TensorSource},
     task::TaskKind,
 };
 use std::{ops::Range, sync::Arc};
@@ -113,6 +114,68 @@ impl<S: ProgramSource> ModelRegion<S> {
     }
     pub fn program(&self) -> &Arc<ForwardPlan> {
         self.region.program()
+    }
+}
+
+impl<S: RegionSource> ModelRegion<S> {
+    /// Ordered cold lowering view of the original nodes and their learned
+    /// operands. No graph serialization, new IR, cache or byte materialization.
+    pub fn operators(&self) -> impl ExactSizeIterator<Item = SourceRegionOperator<'_, S>> + '_ {
+        let first = self.region.range().start;
+        self.region
+            .nodes()
+            .iter()
+            .enumerate()
+            .map(move |(offset, node)| {
+                let PlanOperation::SourceOperatorTemplate { descriptor, .. } = &node.operation
+                else {
+                    unreachable!("ClosedRegion admits only original source templates")
+                };
+                SourceRegionOperator {
+                    source: &self.source,
+                    index: first + offset,
+                    node,
+                    template: descriptor,
+                }
+            })
+    }
+}
+
+/// Borrowed view of an original closed-region node. Bind operands in their
+/// declared order, preserving duplicates/roles and source-specific backing.
+pub struct SourceRegionOperator<'a, S: RegionSource> {
+    source: &'a S,
+    index: usize,
+    node: &'a PlanNode,
+    template: &'a SourceOperatorTemplate,
+}
+impl<'a, S: RegionSource> SourceRegionOperator<'a, S> {
+    pub fn index(&self) -> usize {
+        self.index
+    }
+    pub fn node(&self) -> &'a PlanNode {
+        self.node
+    }
+    pub fn template(&self) -> &'a SourceOperatorTemplate {
+        self.template
+    }
+    pub fn matrices(
+        &self,
+    ) -> impl ExactSizeIterator<Item = Result<(&'a SourceTensor, S::Matrix<'a>)>> + 'a {
+        let source = self.source;
+        self.template
+            .matrices()
+            .iter()
+            .map(move |descriptor| Ok((descriptor, source.bind_matrix(descriptor)?)))
+    }
+    pub fn parameters(
+        &self,
+    ) -> impl ExactSizeIterator<Item = Result<(&'a SourceParameter, S::Parameter<'a>)>> + 'a {
+        let source = self.source;
+        self.template
+            .parameters()
+            .iter()
+            .map(move |descriptor| Ok((descriptor, source.bind_parameter(descriptor)?)))
     }
 }
 

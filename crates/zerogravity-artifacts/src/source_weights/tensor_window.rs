@@ -14,7 +14,7 @@ use std::ops::Range;
 use std::sync::{Arc, Mutex, atomic::AtomicBool};
 use zerogravity_core::accelerator::{
     SourceIdentity,
-    program::{MatrixAxes, SourceParameter},
+    program::{MatrixAxes, SourceParameter, SourceTensor},
 };
 use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, GlobalResourceLease};
@@ -771,6 +771,26 @@ impl VerifiedTensorSource {
             first_row: 0,
         })
     }
+    /// Bind a full rank-2 declaration to its exact authenticated member.
+    /// No IO, staging or inferred expert plane.
+    pub fn bind_declared_matrix(&self, descriptor: &SourceTensor) -> Result<VerifiedMatrix> {
+        let bytes = descriptor.packed_bytes()?;
+        let matrix = self.matrix(&descriptor.name, descriptor.axes)?;
+        self.require_matrix_binding(&matrix)?;
+        let range = matrix.byte_range()?;
+        if descriptor.source != matrix.source_identity()
+            || descriptor.kind != matrix.tensor().kind
+            || descriptor.rows != matrix.rows()
+            || descriptor.columns != matrix.columns()
+            || bytes != range.end - range.start
+        {
+            return Err(Error::State(
+                "declared matrix differs from original source".into(),
+            ));
+        }
+        Ok(matrix)
+    }
+
     /// One contiguous original [expert,output,input] plane; no axis reinterpretation.
     pub fn expert_matrix(&self, name: &str, expert: usize) -> Result<VerifiedMatrix> {
         let location = self
@@ -894,6 +914,18 @@ impl VerifiedTensorSource {
         })
     }
 }
+impl zerogravity_core::source::RegionSource for VerifiedTensorSource {
+    type Matrix<'a> = VerifiedMatrix;
+    type Parameter<'a> = VerifiedParameter;
+
+    fn bind_matrix(&self, descriptor: &SourceTensor) -> Result<Self::Matrix<'_>> {
+        self.bind_declared_matrix(descriptor)
+    }
+    fn bind_parameter(&self, descriptor: &SourceParameter) -> Result<Self::Parameter<'_>> {
+        self.bind_declared_parameter(descriptor)
+    }
+}
+
 impl VerifiedParameter {
     /// Exact original issuer and member, not just equal metadata.
     pub fn same_binding(&self, other: &Self) -> bool {

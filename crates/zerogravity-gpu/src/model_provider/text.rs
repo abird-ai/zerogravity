@@ -28,12 +28,17 @@ pub struct ResidentTextProvider<'a> {
 impl RegionExecutionProvider for ResidentTextProvider<'_> {
     type Executable = Arc<ResidentTextModel>;
 
-    fn kind(&self) -> ProviderKind {
-        match self.policy {
+    fn selected(&self) -> SelectedMode {
+        use zerogravity_core::provider::ProviderKind;
+        let provider = match self.policy {
             #[cfg(all(feature = "hip-source", feature = "hip"))]
             ResidentTextPolicy::Hip(_) => ProviderKind::Hip,
             #[cfg(feature = "cuda-cublas")]
             ResidentTextPolicy::Cuda { .. } => ProviderKind::Cuda,
+        };
+        SelectedMode {
+            provider,
+            mode: ExecutionMode::Native,
         }
     }
 

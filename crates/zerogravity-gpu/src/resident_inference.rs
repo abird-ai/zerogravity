@@ -598,6 +598,14 @@ impl zerogravity_core::provider::PreparedExecutable for ResidentModel {
     async fn program(&self) -> Result<Arc<ForwardPlan>> {
         Ok(self.workspace.lock().await.program.shared_plan())
     }
+    fn selected(&self) -> Result<zerogravity_core::provider::SelectedMode> {
+        use zerogravity_core::provider::{ExecutionMode, SelectedMode};
+        let provider = crate::backend::Provider::selected(&self.service.physical_owner().device())?;
+        Ok(SelectedMode {
+            provider: provider.kind(),
+            mode: ExecutionMode::Native,
+        })
+    }
 }
 
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
@@ -1038,15 +1046,11 @@ impl ResidentModel {
     pub async fn tensor_source_description(
         &self,
     ) -> Result<zerogravity_core::provider::ExecutionDescription> {
-        use zerogravity_core::provider::{ExecutionDescription, ExecutionMode, SelectedMode};
+        use zerogravity_core::provider::{ExecutionDescription, PreparedExecutable};
         let workspace = self.workspace.lock().await;
         workspace.program.owned_source()?;
-        let provider = crate::backend::Provider::selected(&self.service.physical_owner().device())?;
         Ok(ExecutionDescription {
-            selected: SelectedMode {
-                provider: provider.kind(),
-                mode: ExecutionMode::Native,
-            },
+            selected: self.selected()?,
             numerical_profile: Some(workspace.program.plan().numerical_profile()),
             text_calls: None,
         })

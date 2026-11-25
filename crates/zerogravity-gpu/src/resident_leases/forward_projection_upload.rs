@@ -110,16 +110,7 @@ impl ResidentInitialization<'_> {
                     "CUDA forward source matrix member contract differs".into(),
                 ));
             }
-            let matrix = source.matrix(&member.name, member.axes)?;
-            if matrix.source_identity() != member.source
-                || matrix.tensor().kind
-                    != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
-                || matrix.rows() != member.rows
-                || matrix.columns() != member.columns
-            {
-                return Err(Error::State("CUDA forward source matrix differs".into()));
-            }
-            source.require_matrix_binding(&matrix)?;
+            let matrix = source.bind_declared_matrix(member)?;
             PageGeometry::new(matrix.rows(), matrix.columns())?;
             if columns
                 .replace(member.columns)

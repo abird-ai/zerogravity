@@ -169,16 +169,7 @@ impl Admission {
         let layout = Arc::new(layout);
         let mut operands = BTreeMap::new();
         for d in layout.matrices.values() {
-            let m = source.matrix(&d.name, d.axes)?;
-            if m.source_identity() != d.source
-                || m.rows() != d.rows
-                || m.columns() != d.columns
-                || m.tensor().kind != d.kind
-            {
-                return Err(Error::State(
-                    "text-execution authenticated matrix differs".into(),
-                ));
-            }
+            let m = source.bind_declared_matrix(d)?;
             let operand = if storage == Bf16ProjectionStorage::Resident
                 && native_policy.prefers_hoisted_projection()
             {

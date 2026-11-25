@@ -21,9 +21,9 @@ use zerogravity_core::{
     identity::SourceIdentity,
     model::{ModelDefinition, ModelProgram, ModelRegion, ProgramRequest},
     provider::{
-        ExecutionMode, ObservationSupport, PreparedExecutable, PreparedRegion, PreparedTextProgram,
-        ProviderBufferMode, ProviderCompletionMode, ProviderKind, ProviderRequirements,
-        RegionExecutionProvider, SelectedMode, StateBridge, StateStorage,
+        CompiledProvider, ExecutionMode, ObservationSupport, PreparedExecutable, PreparedRegion,
+        PreparedTextProgram, ProviderBufferMode, ProviderCompletionMode, ProviderKind,
+        ProviderRequirements, RegionExecutionProvider, SelectedMode, StateBridge, StateStorage,
     },
     semantic::{InvocationPorts, RegionStatePort, StateLayout, StateVersion},
     session_root::SessionAuthority,
@@ -56,13 +56,18 @@ impl TensorSource for Definition {
         self.source
     }
     fn tensor(&self, name: &str) -> Result<SourceTensorRef<'_>> {
-        if name != "weights" {
-            return Err(Error::Malformed("unknown tensor".into()));
-        }
+        let (kind, shape, packed_bytes): (_, &[u64], &[u8]) = match name {
+            "weights" => (ScalarDType::F32, &[2, 2], &[0; 16]),
+            "embedding" | "head" => (ScalarDType::Bf16, &[17, 16], &[0; 17 * 16 * 2]),
+            "projection" => (ScalarDType::Bf16, &[16, 16], &[0; 16 * 16 * 2]),
+            "packed_qkv" => (ScalarDType::Bf16, &[64, 16], &[0; 64 * 16 * 2]),
+            "q_norm" | "k_norm" => (ScalarDType::Bf16, &[16], &[0; 16 * 2]),
+            _ => return Err(Error::Malformed("unknown tensor".into())),
+        };
         Ok(SourceTensorRef {
-            kind: StoredTensorEncoding::Scalar(ScalarDType::F32),
-            shape: &[2, 2],
-            packed_bytes: &[0; 16],
+            kind: StoredTensorEncoding::Scalar(kind),
+            shape,
+            packed_bytes,
         })
     }
 }
@@ -134,6 +139,7 @@ fn ready<T>(future: impl Future<Output = T>) -> T {
 struct OwnerProbe {
     source: Arc<dyn TensorSource>,
     plan: Arc<ForwardPlan>,
+    selection: SelectedMode,
     region: Option<PreparedRegion>,
     text: Option<PreparedTextProgram>,
 }
@@ -144,6 +150,9 @@ impl PreparedExecutable for OwnerProbe {
     }
     async fn program(&self) -> Result<Arc<ForwardPlan>> {
         Ok(self.plan.clone())
+    }
+    fn selected(&self) -> Result<SelectedMode> {
+        Ok(self.selection)
     }
     fn prepared_region(&self) -> Option<&PreparedRegion> {
         self.region.as_ref()
@@ -160,6 +169,7 @@ enum Preparation {
     SameIdDifferentOwner,
     MissingTextContract,
     WrongTextProvider,
+    WrongTextMode,
     Refused,
 }
 struct ProviderProbe {
@@ -168,8 +178,11 @@ struct ProviderProbe {
 }
 impl RegionExecutionProvider for ProviderProbe {
     type Executable = OwnerProbe;
-    fn kind(&self) -> ProviderKind {
-        ProviderKind::GraphOnly
+    fn selected(&self) -> SelectedMode {
+        SelectedMode {
+            provider: ProviderKind::GraphOnly,
+            mode: ExecutionMode::Graph,
+        }
     }
     async fn prepare(&self, program: ModelProgram) -> Result<OwnerProbe> {
         let mut pending = self.yield_once;
@@ -199,19 +212,19 @@ impl RegionExecutionProvider for ProviderProbe {
             }
             source = replacement;
         }
+        let mut selection = self.selected();
+        if matches!(self.mode, Preparation::WrongTextProvider) {
+            selection.provider = ProviderKind::Cuda;
+        }
+        if matches!(self.mode, Preparation::WrongTextMode) {
+            selection.mode = ExecutionMode::Native;
+        }
         let text = if plan.source_plan_geometry().is_some()
             && !matches!(self.mode, Preparation::MissingTextContract)
         {
             Some(PreparedTextProgram::new(
                 ModelProgram::from_recorded(source.clone(), plan.clone())?,
-                SelectedMode {
-                    provider: if matches!(self.mode, Preparation::WrongTextProvider) {
-                        ProviderKind::Cuda
-                    } else {
-                        self.kind()
-                    },
-                    mode: ExecutionMode::Graph,
-                },
+                selection,
                 2..=8,
                 ObservationSupport::None,
             )?)
@@ -221,6 +234,7 @@ impl RegionExecutionProvider for ProviderProbe {
         Ok(OwnerProbe {
             source,
             plan,
+            selection,
             region: None,
             text,
         })
@@ -341,7 +355,7 @@ fn copied_program_foreign_source_and_provider_refusal_retire_original_owner() {
     }
 }
 
-// Shape fixture only: no physical source bytes or compiler success claim.
+// Synthetic encoded source and shape fixture; no physical execution or SDK claim.
 fn region_program(source: Arc<Definition>) -> ModelProgram {
     let identity = source.source;
     let geometry = SourcePlanGeometry::new(identity, 17, 512, 64).unwrap();
@@ -952,6 +966,7 @@ fn original_text_controls_observation_sites_and_whole_preparation() {
     for mode in [
         Preparation::MissingTextContract,
         Preparation::WrongTextProvider,
+        Preparation::WrongTextMode,
     ] {
         let program = region_program(definition(Recording::Original));
         assert!(
@@ -978,34 +993,66 @@ fn original_text_controls_observation_sites_and_whole_preparation() {
 
 struct RegionProbe {
     inner: ProviderProbe,
-    selection: Option<ProviderKind>,
+    selection: Option<SelectedMode>,
 }
+const COMPILED_PROBE: SelectedMode = SelectedMode {
+    provider: ProviderKind::GraphOnly,
+    mode: ExecutionMode::Compiled(CompiledProvider::Iree),
+};
 impl RegionExecutionProvider for RegionProbe {
     type Executable = OwnerProbe;
-    fn kind(&self) -> ProviderKind {
-        ProviderKind::GraphOnly
+    fn selected(&self) -> SelectedMode {
+        COMPILED_PROBE
     }
     async fn prepare(&self, program: ModelProgram) -> Result<OwnerProbe> {
         self.inner.prepare(program).await
     }
     async fn prepare_region(&self, region: ModelRegion) -> Result<OwnerProbe> {
+        // Compiler-local lowering consumes the original node and typed encoded
+        // operands directly. Nothing is exported or given execution authority.
+        for op in region.operators() {
+            assert!(std::ptr::eq(
+                op.node(),
+                &region.program().nodes()[op.index()]
+            ));
+            for bound in op.matrices() {
+                let (descriptor, binding) = bound?;
+                assert_eq!(
+                    binding.packed_bytes.len() as u64,
+                    descriptor.packed_bytes()?
+                );
+            }
+            for bound in op.parameters() {
+                let (descriptor, binding) = bound?;
+                assert_eq!(binding.shape, descriptor.shape);
+                assert_eq!(binding.packed_bytes.len(), descriptor.bytes);
+            }
+        }
         let program =
             ModelProgram::from_recorded(region.source().clone(), region.program().clone())?;
         let mut owner = self.inner.prepare(program).await?;
         owner.text = None;
+        owner.selection = self.selection.unwrap_or(COMPILED_PROBE);
         owner.region = self
             .selection
-            .map(|provider| {
+            .map(|selected| {
+                let inputs = vec![ValueStorageFormat::Bf16; region.region().inputs().len()];
+                let outputs = (0..region.region().outputs().len())
+                    .map(|i| {
+                        if i == 1 {
+                            ValueStorageFormat::F32
+                        } else {
+                            ValueStorageFormat::Bf16
+                        }
+                    })
+                    .collect::<Vec<_>>();
                 PreparedRegion::new(
                     region,
-                    SelectedMode {
-                        provider,
-                        mode: ExecutionMode::Graph,
-                    },
+                    selected,
                     ProviderRequirements::original_queue(256, 1024),
                     2..=8,
-                    &[ValueStorageFormat::Bf16],
-                    &[ValueStorageFormat::Bf16, ValueStorageFormat::F32],
+                    &inputs,
+                    &outputs,
                 )
             })
             .transpose()?;
@@ -1016,20 +1063,39 @@ impl RegionExecutionProvider for RegionProbe {
 #[test]
 fn partial_provider_preparation_retains_exact_source_plan_and_scope() {
     for (mode, selection, accepted) in [
-        (Preparation::Original, Some(ProviderKind::GraphOnly), true),
+        (Preparation::Original, Some(COMPILED_PROBE), true),
         (Preparation::Original, None, false),
-        (Preparation::Original, Some(ProviderKind::Cuda), false),
         (
-            Preparation::CopiedProgram,
-            Some(ProviderKind::GraphOnly),
+            Preparation::Original,
+            Some(SelectedMode {
+                provider: ProviderKind::Cuda,
+                ..COMPILED_PROBE
+            }),
             false,
         ),
+        (
+            Preparation::Original,
+            Some(SelectedMode {
+                mode: ExecutionMode::Graph,
+                ..COMPILED_PROBE
+            }),
+            false,
+        ),
+        (
+            Preparation::Original,
+            Some(SelectedMode {
+                mode: ExecutionMode::Compiled(CompiledProvider::OnnxRuntime),
+                ..COMPILED_PROBE
+            }),
+            false,
+        ),
+        (Preparation::CopiedProgram, Some(COMPILED_PROBE), false),
         (
             Preparation::SameIdDifferentOwner,
-            Some(ProviderKind::GraphOnly),
+            Some(COMPILED_PROBE),
             false,
         ),
-        (Preparation::Refused, Some(ProviderKind::GraphOnly), false),
+        (Preparation::Refused, Some(COMPILED_PROBE), false),
     ] {
         let source = definition(Recording::Original);
         let drops = source.drops.clone();
@@ -1050,7 +1116,8 @@ fn partial_provider_preparation_retains_exact_source_plan_and_scope() {
             assert_eq!(bundle.region_nodes(), Some(1..3));
             assert!(Arc::ptr_eq(&ready(bundle.program()).unwrap(), &plan));
             let prepared = bundle.prepared_region().unwrap();
-            assert_eq!(prepared.selected().mode, ExecutionMode::Graph);
+            assert_eq!(bundle.selected().unwrap(), COMPILED_PROBE);
+            assert_eq!(prepared.selected(), COMPILED_PROBE);
             let requirements = prepared.requirements();
             assert_eq!(requirements.device_bytes().unwrap(), 1280);
             requirements.require_original_queue().unwrap();
@@ -1138,4 +1205,66 @@ fn partial_provider_preparation_retains_exact_source_plan_and_scope() {
         ready(prepare_region(region, &whole_only)),
         Err(Error::Unsupported(_))
     ));
+}
+
+#[test]
+fn compiled_region_borrows_original_learned_operands_and_late_call() {
+    let source = definition(Recording::Original);
+    let drops = source.drops.clone();
+    let program = region_program(source);
+    let plan = program.program().clone();
+    let region = program.closed_region(4..6).unwrap();
+    let mut operators = region.operators();
+    let projection = operators.next().unwrap();
+    assert_eq!(projection.index(), 4);
+    let (descriptor, bound) = projection.matrices().next().unwrap().unwrap();
+    assert_eq!(descriptor.name, "packed_qkv");
+    assert_eq!(bound.shape, [64, 16]);
+    assert!(projection.parameters().next().is_none());
+    let rotary = operators.next().unwrap();
+    assert_eq!(rotary.index(), 5);
+    assert!(rotary.matrices().next().is_none());
+    let names = rotary
+        .parameters()
+        .map(|bound| {
+            let (descriptor, bound) = bound.unwrap();
+            assert_eq!(bound.shape, [16]);
+            assert_eq!(bound.packed_bytes.len(), 32);
+            descriptor.name.as_str()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["q_norm", "k_norm"]);
+    assert!(operators.next().is_none());
+    drop(operators);
+    drop(program);
+
+    let provider = RegionProbe {
+        inner: ProviderProbe {
+            mode: Preparation::Original,
+            yield_once: false,
+        },
+        selection: Some(COMPILED_PROBE),
+    };
+    let bundle = ready(prepare_region(region, &provider)).unwrap();
+    let invocation = plan
+        .bind_invocation(
+            InvocationInput::new(
+                TextCallGeometry::new(plan.source(), 17, 512).unwrap(),
+                13,
+                vec![1; 7].into(),
+                true,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    let call = invocation.call(InvocationPhase::Prefill).unwrap();
+    let prepared = bundle.prepared_region().unwrap();
+    let (logical, physical) = prepared.bind_call(call, false).unwrap();
+    assert_eq!(logical.positions(), Some(13..20));
+    assert_eq!(logical.token_ids(), None);
+    assert_eq!(physical.input(0).unwrap().byte_len().unwrap(), 7 * 16 * 2);
+    assert!(prepared.bind_call(call, true).is_err());
+    assert_eq!(drops.load(Ordering::SeqCst), 0);
+    drop(bundle);
+    assert_eq!(drops.load(Ordering::SeqCst), 1);
 }

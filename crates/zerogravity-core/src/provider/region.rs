@@ -8,7 +8,7 @@ use crate::{
     model::ModelRegion,
     numerics::ActivationPrecision,
     placement::PreparedTensorLayout,
-    semantic::{BoundTextCall, RegionPort, StateSlot},
+    semantic::{BoundRegion, BoundTextCall, RegionPort, StateSlot},
     session_root::{RootAttempt, RootBinding},
     source::{ProgramSource, TensorSource},
 };
@@ -211,7 +211,20 @@ impl<S: ProgramSource> PreparedRegion<S> {
             rows: *self.rows.end(),
         }
     }
-    /// Validate the original logical invocation before interpreting its storage.
+    /// Borrow the original logical invocation and selected physical layout
+    /// together. Token/position/producer sites are not reconstructed by the
+    /// lowering. Actual state/lease/flight binding remains with the owner.
+    pub fn bind_call<'a>(
+        &'a self,
+        call: BoundTextCall<'a>,
+        observed: bool,
+    ) -> Result<(BoundRegion<'a>, RegionShape<'a>)> {
+        self.observations.require(observed)?;
+        let logical = self.model.region().bind(call)?;
+        let physical = self.shape(call.input().token_count())?;
+        Ok((logical, physical))
+    }
+    /// Geometry-only convenience for the existing native consumers.
     pub fn bind(&self, call: BoundTextCall<'_>) -> Result<RegionShape<'_>> {
         self.model.region().bind(call)?;
         self.shape(call.input().token_count())

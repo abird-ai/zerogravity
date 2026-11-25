@@ -97,7 +97,11 @@ impl SourceParameter {
             bytes: actual.packed_bytes.len(),
         })
     }
-    pub fn validate_source(&self, source: &dyn TensorSource) -> Result<()> {
+    /// Borrow the complete original parameter; no conversion or allocation.
+    pub fn bind_source<'a>(
+        &self,
+        source: &'a dyn TensorSource,
+    ) -> Result<crate::source::SourceTensorRef<'a>> {
         if !self.source.is_bound()
             || self.source != source.source_identity()
             || self.name.is_empty()
@@ -115,6 +119,10 @@ impl SourceParameter {
                 "source parameter differs from immutable owner".into(),
             ));
         }
-        Ok(())
+        Ok(actual)
+    }
+
+    pub fn validate_source(&self, source: &dyn TensorSource) -> Result<()> {
+        self.bind_source(source).map(|_| ())
     }
 }
