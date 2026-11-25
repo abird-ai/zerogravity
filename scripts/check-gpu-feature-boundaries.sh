@@ -11,7 +11,7 @@ export PYTHONDONTWRITEBYTECODE=1
 
 printf 'Checking HIP-only combined original qualification compilation...\n'
 cargo check --locked --offline -p zerogravity --example hip_shared_models \
-  --features shared-hip-qualification,zerogravity-gpu/hardware-abort-probe
+  --features shared-hip-qualification,zerogravity-gpu/hardware-abort-probe,state-checkpoint
 
 printf 'Checking Vulkan-only complete/final qualification compilation...\n'
 cargo check --locked --offline -p zerogravity \
