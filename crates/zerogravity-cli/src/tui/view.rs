@@ -1,5 +1,8 @@
 //! Cell-native navigation and rendering. No execution or filesystem effects.
-use super::App;
+use super::{
+    App,
+    work::{Owner, Request},
+};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
@@ -67,12 +70,39 @@ impl Palette {
             .collect()
     }
 }
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum RunTarget {
+    Source(String),
+    Owner(Owner),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum FormKind {
+    Source { run: bool },
+    Prompt { target: RunTarget, chat: bool },
+    Listen,
+}
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct Form {
+    pub kind: FormKind,
+    pub value: String,
+}
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Confirmation {
+    Quit,
+    Request(Request),
+}
 #[derive(Debug, Default)]
 enum Modal {
     #[default]
     None,
     Palette(Palette),
     Help,
+    Form(Form),
+    Confirm {
+        question: String,
+        action: Confirmation,
+    },
 }
 #[derive(Debug, Default)]
 pub(super) struct Navigation {
@@ -82,18 +112,66 @@ pub(super) struct Navigation {
     scroll: [u16; 9],
     modal: Modal,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(super) enum Action {
     Redraw,
     Open,
     Refresh,
     Quit,
+    Load,
+    Run,
+    Unload,
+    Start,
+    Stop,
+    Cancel,
+    MoveOwner(i8),
+    Submit(Form),
+    Confirmed(Confirmation),
 }
 
 impl Navigation {
     pub fn view(&self) -> View {
         self.view
     }
+    pub fn form(&mut self, kind: FormKind) {
+        self.modal = Modal::Form(Form {
+            kind,
+            value: String::new(),
+        });
+    }
+    pub fn confirm(&mut self, question: String, action: Confirmation) {
+        self.modal = Modal::Confirm { question, action };
+    }
+    pub fn reveal_owner(&mut self, index: usize) {
+        // One row per registration; keep selection on screen when moving.
+        self.scroll[View::Running.index()] = index.saturating_sub(1) as u16;
+    }
+    /// Paste is data only. A pasted newline or shortcut never activates a
+    /// command. Prompt text can be multiline; source/listener fields cannot.
+    pub fn paste(&mut self, value: &str) -> bool {
+        let (buffer, limit, multiline) = match &mut self.modal {
+            Modal::Form(form) => (
+                &mut form.value,
+                32 * 1024,
+                matches!(form.kind, FormKind::Prompt { .. }),
+            ),
+            Modal::Palette(palette) => (&mut palette.query, 128, false),
+            _ => return false,
+        };
+        if buffer.len().saturating_add(value.len()) > limit
+            || value
+                .chars()
+                .any(|c| c.is_control() && !(multiline && matches!(c, '\n' | '\r' | '\t')))
+        {
+            return false;
+        }
+        buffer.push_str(value);
+        if let Modal::Palette(palette) = &mut self.modal {
+            palette.cursor = 0;
+        }
+        true
+    }
+
     fn open(&mut self, view: View) -> Action {
         self.view = view;
         self.cursor = view.index();
@@ -144,6 +222,49 @@ impl Navigation {
                 }
                 return Action::Redraw;
             }
+            Modal::Form(form) => {
+                match key.code {
+                    Esc => self.modal = Modal::None,
+                    Enter => {
+                        let Modal::Form(form) = std::mem::take(&mut self.modal) else {
+                            unreachable!()
+                        };
+                        return Action::Submit(form);
+                    }
+                    Backspace => {
+                        form.value.pop();
+                    }
+                    Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        if let FormKind::Prompt { chat, .. } = &mut form.kind {
+                            *chat = !*chat;
+                        }
+                    }
+                    Char(c)
+                        if !c.is_control()
+                            && !key
+                                .modifiers
+                                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+                            && form.value.len() + c.len_utf8() <= 32 * 1024 =>
+                    {
+                        form.value.push(c);
+                    }
+                    _ => {}
+                }
+                return Action::Redraw;
+            }
+            Modal::Confirm { .. } => {
+                match key.code {
+                    Char('y' | 'Y') => {
+                        let Modal::Confirm { action, .. } = std::mem::take(&mut self.modal) else {
+                            unreachable!()
+                        };
+                        return Action::Confirmed(action);
+                    }
+                    Esc | Char('n' | 'N') => self.modal = Modal::None,
+                    _ => {}
+                }
+                return Action::Redraw;
+            }
             Modal::None => {}
         }
         match key.code {
@@ -157,6 +278,18 @@ impl Navigation {
                 Action::Redraw
             }
             Char('r') => Action::Refresh,
+            Char('c') => Action::Cancel,
+            Char('l')
+                if !self.rail && matches!(self.view, View::Home | View::Running | View::Serve) =>
+            {
+                Action::Load
+            }
+            Enter | Char('p') if !self.rail && matches!(self.view, View::Home | View::Running) => {
+                Action::Run
+            }
+            Char('u') if !self.rail && self.view == View::Running => Action::Unload,
+            Char('s') if !self.rail && self.view == View::Serve => Action::Start,
+            Char('t') if !self.rail && self.view == View::Serve => Action::Stop,
             Char(c @ '1'..='9') => self.open(View::ALL[c as usize - '1' as usize]),
             Tab | BackTab => {
                 self.rail = !self.rail;
@@ -177,6 +310,8 @@ impl Navigation {
                 self.cursor = (self.cursor + 1).min(View::ALL.len() - 1);
                 Action::Redraw
             }
+            Up | Char('k') if self.view == View::Running => Action::MoveOwner(-1),
+            Down | Char('j') if self.view == View::Running => Action::MoveOwner(1),
             Up | Char('k') => {
                 self.scroll[self.view.index()] = self.scroll[self.view.index()].saturating_sub(1);
                 Action::Redraw
@@ -274,51 +409,130 @@ fn content(app: &App) -> Vec<Line<'static>> {
             }
             if let Some(scheduler) = &runtime.scheduler {
                 rows.push(text(format!(
-                    "Requests: {} active · {} queued",
-                    scheduler.counters.active, scheduler.queue.pending
+                    "Requests: {} active · {} queued · {} output tokens",
+                    scheduler.counters.active,
+                    scheduler.queue.pending,
+                    scheduler.counters.output_tokens
                 )));
             } else {
                 rows.push(text("No scheduler installed"));
             }
             rows.push(Line::default());
+            rows.push(label("Quick run", app.color));
+            rows.push(text(match &app.selected {
+                Some(owner) => format!("Enter: prompt for {}", owner.alias),
+                None => "Enter: choose a source and prompt".into(),
+            }));
+            rows.push(text("l load a cached/local model or configured route set"));
+            rows.push(Line::default());
             rows.push(label("Inference API", app.color));
             rows.push(text(serve(app.snapshot.serving)));
-            rows.push(Line::default());
             rows.push(label("Downloads", app.color));
             rows.push(text(downloads(app)));
-            rows.push(Line::default());
-            rows.push(text(
-                "Read-only shell · use direct commands for execution and management.",
-            ));
         }
         View::Running => {
             rows.push(text(format!(
-                "{} registered model owners",
+                "{} registered model owners · Enter run · u unload · l load",
                 runtime.status.loaded_owners
             )));
             for model in &runtime.catalog {
+                let selected = app
+                    .selected
+                    .as_ref()
+                    .is_some_and(|owner| owner.registration == model.registration_id);
+                let line = text(format!(
+                    "{} {} · {:?} · {} admitted",
+                    if selected { ">" } else { " " },
+                    model.aliases.join(", "),
+                    model.lifecycle,
+                    model.admitted_requests
+                ));
+                rows.push(if selected {
+                    line.style(accent(app.color))
+                } else {
+                    line
+                });
+            }
+            if let Some(selected) = &app.selected
+                && let Some(model) = runtime
+                    .catalog
+                    .iter()
+                    .find(|model| model.registration_id == selected.registration)
+            {
+                rows.push(Line::default());
                 rows.push(label(
-                    format!("{}  ·  {:?}", model.aliases.join(", "), model.lifecycle),
+                    format!(
+                        "{} · registration {}",
+                        selected.alias, selected.registration
+                    ),
                     app.color,
                 ));
-                rows.push(text(format!(
-                    "Registration {} · {} admitted requests",
-                    model.registration_id, model.admitted_requests
-                )));
                 if let Some(capability) = &model.capabilities {
                     rows.push(text(format!(
-                        "Context capacity: {}",
-                        capability.max_context
+                        "Context capacity: {} · vocabulary {}",
+                        capability.max_context, capability.vocabulary_size
                     )));
+                    if let Some(execution) = &capability.details.execution {
+                        rows.push(text(format!("Backend: {:?}", execution.selected.provider)));
+                    }
+                    if let Some(memory) = &capability.details.memory {
+                        use zerogravity::models::ModelMemory;
+                        match memory {
+                            ModelMemory::Host {
+                                session_state_bytes,
+                                session_scratch_bytes,
+                            } => rows.push(text(format!(
+                                "Host session state {} bytes · scratch {} bytes",
+                                session_state_bytes, session_scratch_bytes
+                            ))),
+                            ModelMemory::Resident(memory) => {
+                                rows.push(text(format!("Device: {}", memory.device.device)))
+                            }
+                            ModelMemory::ResidentText {
+                                admission,
+                                resident_bytes,
+                            } => rows.push(text(format!(
+                                "Device: {} · {} resident bytes",
+                                admission.device.device, resident_bytes
+                            ))),
+                        }
+                    }
+                    if let Some(bytes) = capability.details.source_host_reserved_bytes {
+                        rows.push(text(format!("Source host reservation: {bytes} bytes")));
+                    }
                 }
+            }
+            if let Some(scheduler) = &runtime.scheduler {
+                rows.push(text(format!(
+                    "Runtime requests: {} active / {} queued · {} output tokens",
+                    scheduler.counters.active,
+                    scheduler.queue.pending,
+                    scheduler.counters.output_tokens
+                )));
             }
         }
         View::Serve => {
             rows.push(label("OpenAI-compatible inference API", app.color));
             rows.push(text(serve(app.snapshot.serving)));
-            rows.push(text(
-                "This process only. Use the direct serve command for now.",
-            ));
+            rows.push(text("This process only · s start · t stop · l load"));
+            if let Some(scheduler) = &runtime.scheduler {
+                rows.push(text(format!(
+                    "Context {} · output {} · active {}/{} · queued {}",
+                    scheduler.config.context,
+                    scheduler.config.output,
+                    scheduler.counters.active,
+                    scheduler.active_limit,
+                    scheduler.queue.pending
+                )));
+            }
+            for model in &runtime.catalog {
+                if model.capabilities.is_some() {
+                    rows.push(text(format!(
+                        "Registered aliases: {}",
+                        model.aliases.join(", ")
+                    )));
+                }
+            }
         }
         View::Downloads => rows.push(text(downloads(app))),
         View::Logs => {
@@ -339,6 +553,33 @@ fn content(app: &App) -> Vec<Line<'static>> {
             }
             rows.push(Line::default());
             rows.push(text("Observation only · r refresh"));
+        }
+    }
+    if matches!(app.navigation.view, View::Home | View::Running)
+        && let Some(response) = &app.response
+    {
+        rows.push(Line::default());
+        rows.push(label(
+            response.owner.as_ref().map_or_else(
+                || "Response".into(),
+                |owner| {
+                    format!(
+                        "Response · {} · registration {}",
+                        owner.alias, owner.registration
+                    )
+                },
+            ),
+            app.color,
+        ));
+        if response.text.is_empty() {
+            rows.push(text("No output yet"));
+        } else {
+            rows.extend(response.text.lines().map(text));
+        }
+        if response.clipped {
+            rows.push(text(
+                "[Display limit reached; original output was not altered]",
+            ));
         }
     }
     rows
@@ -374,13 +615,24 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
     } else {
         render_workspace(frame, body, app);
     }
-    let footer_text = app
-        .notice
-        .as_deref()
-        .unwrap_or("Read-only observations · no implicit model or network effects");
+    let status = if let Some(job) = &app.job {
+        format!(
+            "{} · {} · c cancel",
+            job.title(),
+            if job.requested() {
+                "cancellation requested; waiting"
+            } else {
+                "in progress"
+            }
+        )
+    } else {
+        app.notice
+            .clone()
+            .unwrap_or_else(|| "Explicit actions only · no implicit acquisition".into())
+    };
     frame.render_widget(
         Paragraph::new(vec![
-            text(footer_text).style(muted(app.color)),
+            text(status).style(muted(app.color)),
             text("1–9 views  Tab nav  : palette  r refresh  ? help  q quit"),
         ]),
         footer,
@@ -388,7 +640,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
     match &app.navigation.modal {
         Modal::None => {}
         Modal::Help => {
-            let popup = center(body, 64, 12);
+            let popup = center(body, 68, 16);
             frame.render_widget(Clear, popup);
             frame.render_widget(
                 Paragraph::new(vec![
@@ -396,14 +648,84 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     text("1–9     Open a view"),
                     text("Tab     Switch navigation/workspace"),
                     text("↑ ↓ j k Move/scroll"),
-                    text("Enter   Open selected view"),
+                    text("Enter   Open view / run"),
+                    text("l       Load on Home / Running / Serve"),
+                    text("u       Retire selected Running registration"),
+                    text("s / t   Start / stop listener on Serve"),
+                    text("c       Request cancellation"),
                     text(":       Destination palette"),
                     text("r       Refresh observations"),
                     text("Esc     Back / close overlay"),
-                    text("q       Quit (Ctrl-C also exits)"),
+                    text("q       Quit · Ctrl-C cancel/quit"),
                 ])
                 .block(Block::bordered().title(" Help "))
                 .wrap(Wrap { trim: false }),
+                popup,
+            );
+        }
+        Modal::Form(form) => {
+            let popup = center(body, 76, 12);
+            frame.render_widget(Clear, popup);
+            let (title, hint, mode) = match &form.kind {
+                FormKind::Source { run } => (
+                    if *run {
+                        " Quick run source "
+                    } else {
+                        " Load model "
+                    },
+                    "MODEL or ID=MODEL; blank uses configured model table. Local/cached only.",
+                    "",
+                ),
+                FormKind::Prompt { target: _, chat } => (
+                    " Prompt ",
+                    "Type a prompt. Ctrl-R switches chat/raw; Enter submits.",
+                    if *chat { "Chat" } else { "Raw" },
+                ),
+                FormKind::Listen => (
+                    " Start inference API ",
+                    "Numeric loopback IP:PORT; blank uses selected document/default.",
+                    "",
+                ),
+            };
+            // Show the tail while typing long input; keep full value in form.
+            let tail: String = form
+                .value
+                .chars()
+                .rev()
+                .take(320)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect();
+            let mut lines = vec![
+                text(hint),
+                text(mode),
+                Line::default(),
+                label(format!("› {tail}▏"), app.color),
+                Line::default(),
+                text("Enter accept · Esc cancel"),
+            ];
+            if form.value.chars().count() > 320 {
+                lines.insert(3, text("… earlier input retained"));
+            }
+            frame.render_widget(
+                Paragraph::new(lines)
+                    .wrap(Wrap { trim: false })
+                    .block(Block::bordered().title(title)),
+                popup,
+            );
+        }
+        Modal::Confirm { question, .. } => {
+            let popup = center(body, 72, 8);
+            frame.render_widget(Clear, popup);
+            frame.render_widget(
+                Paragraph::new(vec![
+                    text(question),
+                    Line::default(),
+                    label("y confirm · n/Esc cancel", app.color),
+                ])
+                .wrap(Wrap { trim: false })
+                .block(Block::bordered().title(" Confirm ")),
                 popup,
             );
         }
@@ -532,6 +854,49 @@ mod tests {
         assert_eq!(nav.key(key(KeyCode::Char('q'))), Action::Quit);
     }
     #[test]
+    fn prompt_and_confirmation_own_keys_and_preserve_registration() {
+        let owner = Owner {
+            alias: "main".into(),
+            registration: 7,
+        };
+        let mut nav = Navigation::default();
+        nav.form(FormKind::Prompt {
+            target: RunTarget::Owner(owner.clone()),
+            chat: true,
+        });
+        assert!(nav.paste("q123\n"));
+        assert!(!nav.paste("\u{1b}[200~"));
+        assert!(matches!(&nav.modal, Modal::Form(_)));
+        assert_eq!(
+            nav.key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
+            Action::Redraw
+        );
+        assert_eq!(
+            nav.key(key(KeyCode::Enter)),
+            Action::Submit(Form {
+                kind: FormKind::Prompt {
+                    target: RunTarget::Owner(owner.clone()),
+                    chat: false
+                },
+                value: "q123\n".into(),
+            })
+        );
+        nav.confirm(
+            "retire exact owner".into(),
+            Confirmation::Request(Request::Unload(owner.clone())),
+        );
+        assert_eq!(nav.key(key(KeyCode::Char('n'))), Action::Redraw);
+        nav.confirm(
+            "retire exact owner".into(),
+            Confirmation::Request(Request::Unload(owner.clone())),
+        );
+        assert_eq!(
+            nav.key(key(KeyCode::Char('y'))),
+            Action::Confirmed(Confirmation::Request(Request::Unload(owner)))
+        );
+    }
+
+    #[test]
     fn actual_owner_snapshot_renders_wide_and_narrow() {
         let runtime = Runtime::builder().build().unwrap();
         let mut app = App {
@@ -542,6 +907,10 @@ mod tests {
             events: Default::default(),
             notice: None,
             color: false,
+            document: super::super::work::Document::test_default(),
+            job: None,
+            selected: None,
+            response: None,
         };
         for width in [60, 90, 150] {
             let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();

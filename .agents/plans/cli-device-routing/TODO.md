@@ -256,7 +256,7 @@ build or general model/backend grant. Historical failures keep their source scop
   6/0/0 (14.43s), real cached Qwen 0.8B GGUF serving passes unchanged
   8 GiB budget after earlier build-pressure refusal.
 
-### Phase 2.1 UX-8A — native terminal shell (this checkpoint, 26 Nov)
+### Phase 2.1 UX-8A — native terminal shell (26 Nov; 08e7e9d3)
 
 - [x] Bare capable TTY launches read-only shell; plain/quiet/non-TTY
   retain help, explicit commands stay direct. Selected ConfigDocument
@@ -271,12 +271,33 @@ build or general model/backend grant. Historical failures keep their source scop
   pass/0 fail/109 skips; actual optimized release PTY, installer/scripts
   pass. Nix cross-target builds not run. No new inference authority.
 
+### Phase 2.1 UX-8B — native model/listener actions (this checkpoint, 26 Nov)
+
+- [x] Shared resident planner used by standalone canonical serve and TUI:
+  original exact source selection/device/host/native route policy and
+  original ControlPlane load. Reuse Listener transport/auth policy. No new
+  inference route, download or implicit fallback.
+- [x] Home load/quick-run, Running exact registration selection/invoke/
+  confirmed unload, Serve actual start/stop exact generation. One runtime,
+  one owned action worker, bounded attributed output copy, original
+  stream cancellation, explicit process quit retires listener then runtime
+  after worker join. Bracketed paste/form input ownership, no second queue.
+- [x] First serial optimized combined run_unified 6/0/0 (24.59s), actual
+  cached Qwen 0.8B TUI/HTTP lifecycle unchanged 8 GiB envelope. Minimal
+  and combined strict lint, CUDA/HIP/acquisition/serve compile pass.
+  Final reducer 3/0, strict lint, five other release tests pass; real
+  repeat-invoke/paste PTY/HTTP rerun passes (35.16s) at existing 60s HTTP
+  read bound after shorter fixture timeout under host contention. Plain
+  shell PTY pass. Full isolated gate passes (2,479 passed, zero failed,
+  109 ignored), release PTY/installer/scripts pass. UX-8B accepted.
+
 ## Uncommitted
 
-- [ ] UX-8B TUI Home / Running / Serve: real original source preparation,
-  load/invoke/serve/stop/unload and responsive task lifecycle over shared
-  Runtime/ControlPlane. UX-8C/D actions follow; cold reads currently
-  synchronous, logs transient notifications only. Dynamic completions,
+- [ ] UX-8C TUI Models / Downloads / Devices: exact cold model/cache/
+  operation identity, shared verification/reclaim, explicit acquisition
+  consent/control and responsive inventory. Reuse resident plan/action
+  worker, no duplicate owners. UX-8D follows; logs transient notifications
+  only. Dynamic completions,
   Web and control-wire validation/auth remain ordered. Rich searchable
   config/profile surfaces belong to UX-8D; no duplicate editor/validator.
   Broader catalog presets, conversation history and unsupported routes

@@ -41,6 +41,8 @@ mod cache_run;
 mod gemma4_cpu;
 
 mod pipeline;
+#[cfg(any(feature = "serve", feature = "tui"))]
+mod resident;
 mod run_cli;
 #[cfg(feature = "tui")]
 mod tui;

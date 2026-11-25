@@ -5,6 +5,22 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — native model and listener actions (UX-8B)
+
+Shared canonical resident planner for CLI serve and native UI; original
+source/device/budget/control ownership. Real load/run, exact registered
+invoke/unload, listener generation start/stop, scoped action worker,
+bounded output copy and cooperative cancellation/foreground retirement.
+First serial optimized combined run_unified 6/0/0 (24.59s), actual cached
+Qwen 0.8B GGUF TUI/HTTP lifecycle at unchanged 8 GiB envelope, strict lint
+and CUDA/HIP combined compile pass. Final combined release other 5 tests
+pass; serial real cached PTY/HTTP rerun passes (35.16s), with repeated
+invoke/paste and original 60s HTTP read bound after shorter timeout under
+host contention. Final full isolated gate passes (2,479 passed, zero
+failed, 109 ignored; release PTY, installer and scripts pass). UX-8B
+accepted. No physical GPU run, remote
+acquisition or measured performance change.
+
 ## 26 Nov — native terminal shell (UX-8A)
 
 Read-only Ratatui/Crossterm shell uses original Runtime/ControlPlane and

@@ -154,7 +154,14 @@ runtime/control/config observations, nine responsive views, palette,
 terminal/signal retirement, default capable-TTY launch and plain fallback.
 Actual PTY, fixed-cell/reducer and strict lint pass; full isolated gate
 2477 pass/0 fail/109 skips, release PTY/installer/scripts pass.
-UX-8A accepted; next UX-8B Home / Running / Serve actions.
+UX-8A accepted. UX-8B native model/listener actions implemented through
+shared canonical resident planner, exact owner selection and generation,
+one owned action worker, bounded output and explicit process retirement.
+First real cached GGUF TUI/HTTP lifecycle and combined release 6/0/0,
+strict lint/combined feature compile pass. Final repeat-invoke/paste
+real PTY/HTTP and remaining release tests pass; full isolated gate passes
+(2,479 passed, zero failed, 109 ignored), release PTY/installer/scripts
+pass. UX-8B accepted. Next: UX-8C Models / Downloads / Devices.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

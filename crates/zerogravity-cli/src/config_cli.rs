@@ -64,20 +64,26 @@ pub(super) fn help(topic: Topic, _: Option<&str>) {
 
 /// Non-execution product commands consume only the selected UI preferences.
 pub(super) fn apply_presentation(document: Option<(&str, &str)>) -> Result<()> {
+    let selected = read_selected_document(document)?;
+    crate::output::install_document(selected.and_then(|(_, doc)| doc.ui).unwrap_or_default());
+    Ok(())
+}
+
+pub(super) fn read_selected_document(
+    document: Option<(&str, &str)>,
+) -> Result<Option<(PathBuf, zerogravity::configuration::ConfigDocument)>> {
     let selection = match document {
         None => DocumentSelection::Default,
         Some(("--config", file)) => DocumentSelection::File(Path::new(file)),
         Some(("--profile", name)) => DocumentSelection::Profile(name),
         _ => return Err(bad("invalid document selector")),
     };
-    let selected = cfg::load_selected(
+    cfg::load_selected(
         selection,
         &std::env::current_dir()?,
         std::env::var_os("XDG_CONFIG_HOME").as_deref(),
         std::env::var_os("HOME").as_deref(),
-    )?;
-    crate::output::install_document(selected.and_then(|(_, doc)| doc.ui).unwrap_or_default());
-    Ok(())
+    )
 }
 
 fn preferences(file: &ConfigFile) {

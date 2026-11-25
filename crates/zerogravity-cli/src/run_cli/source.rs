@@ -42,7 +42,11 @@ pub(crate) struct MissingSource {
 }
 #[cfg(all(feature = "cache", target_os = "linux"))]
 impl MissingSource {
-    #[cfg(all(feature = "serve", feature = "model-qwen35", feature = "text"))]
+    #[cfg(all(
+        any(feature = "serve", feature = "tui"),
+        feature = "model-qwen35",
+        feature = "text"
+    ))]
     pub fn expected_snapshot(&self) -> Result<&'static str> {
         #[cfg(feature = "model-qwen35")]
         if let Some(digest) = zerogravity::models::qwen_source_snapshot(&self.target) {

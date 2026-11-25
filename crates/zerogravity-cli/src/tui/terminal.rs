@@ -2,6 +2,7 @@
 //! unwind. Crossterm handles keys/resizes; external Unix signals request exit.
 use crossterm::{
     cursor::Show,
+    event::{DisableBracketedPaste, EnableBracketedPaste},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -22,7 +23,7 @@ pub(super) struct Session {
 impl Session {
     pub fn enter() -> Result<Self> {
         enable_raw_mode()?;
-        if let Err(error) = execute!(stdout(), EnterAlternateScreen) {
+        if let Err(error) = execute!(stdout(), EnterAlternateScreen, EnableBracketedPaste) {
             let _ = restore();
             return Err(error.into());
         }
@@ -53,7 +54,7 @@ impl Drop for Session {
 }
 fn restore() -> io::Result<()> {
     let raw = disable_raw_mode();
-    let screen = execute!(stdout(), LeaveAlternateScreen, Show);
+    let screen = execute!(stdout(), DisableBracketedPaste, LeaveAlternateScreen, Show);
     raw.and(screen)
 }
 

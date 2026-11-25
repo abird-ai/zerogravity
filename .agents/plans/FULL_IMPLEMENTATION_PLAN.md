@@ -594,7 +594,17 @@ demand. Preserve the existing detailed
   Actual PTY and cell rendering/reducer tests, strict lint pass; full
   isolated gate 2477 pass/0 fail/109 skips, release PTY and installer/
   scripts pass. No implicit execution or new backend qualification.
-  **Next: UX-8B TUI Home / Running / Serve (§46A.28).**
+- [x] UX-8B native Home / Running / Serve: shared canonical resident route
+  planning, original source/device/admission and listener policy, one
+  runtime and owned action worker. Load/quick-run, exact registration
+  invoke/unload, generation start/stop, bounded output and cooperative
+  cancellation; confirmed foreground retirement. First actual cached
+  GGUF TUI/HTTP lifecycle and combined release 6/0/0, strict lint and
+  combined feature compile pass. Final repeat-invoke/paste real PTY/HTTP
+  rerun and remaining release tests pass; full isolated gate passes
+  (2,479 passed, zero failed, 109 ignored), release PTY/installer/scripts
+  pass. UX-8B accepted.
+  **Next: UX-8C Models / Downloads / Devices (§46A.28).**
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,

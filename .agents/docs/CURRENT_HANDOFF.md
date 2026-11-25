@@ -24,7 +24,79 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-8A (26 Nov)
+### Current checkpoint — Phase 2.1 UX-8B (26 Nov)
+
+Home, Running and Serve are now active over the original shared runtime.
+No second scheduler/registry/model loader or network grant.
+
+- CLI canonical serve and TUI share resident.rs: original alias/route
+  construction, typed serving request checks, cold source selection,
+  cache pins, CPU GGUF geometry and host envelope, original CUDA/ROCm
+  Qwen source routing/budget, and original ControlPlane load owner.
+  Standalone serve retains exact per-plan outer scheduler limits and
+  acquisition consent/cancel path; TUI never offers or performs a pull.
+  Same loopback Listener/auth/ingress options used by both. Direct
+  one-shot run and legacy explicit serving retain their original paths.
+- TUI one Runtime with finite outer worker envelope (32*8) and original
+  host-backed pending policy; per-load config remains authoritative.
+  One cold route set at a time; original selective/last retirement
+  precedes replacement. Home Enter opens source then prompt if empty,
+  or prompts for selected ready owner. l loads MODEL / ID=MODEL or
+  selected document's declared set (blank). Quick run requires a single
+  route; explicit load can include configured multiple aliases. Shared
+  serve/run capacity settings and CLI source policy, no sidecar override
+  or graph/unsupported route grants. Chat/raw defaults from selected
+  document at startup, Ctrl-R in prompt toggles per request; no persistent
+  chat history. Invocation uses admitted scheduler output bound.
+- Running selected row targets exact ready alias/registration, first alias
+  of one shared owner. j/k, Enter invoke, u confirms retirement of all
+  owner's aliases. Actual capability/provider/device/memory/request
+  observations; not guessed eligibility or per-owner throughput.
+  Serve s starts numeric loopback address (blank selected document/default)
+  with loaded routes, t confirms exact generation stop; stop retains
+  models. Actual bound endpoint/counters/aliases. Listener feature stays
+  optional; no implicit listener start, no browser/clipboard action yet.
+- One owned action worker, no second execution queue. Navigation/input
+  remains responsive during effectful load/invoke/unload/listener actions.
+  Original stream polled with cooperative cancellation, bounded 64 KiB
+  UTF-8 display copy identified by alias/registration, terminal output
+  count/reason from actual completion. c or Ctrl-C requests cancellation;
+  synchronous load/retirement/start/stop cannot be interrupted inside
+  original owner and are joined truthfully. Bracketed paste is data only;
+  forms own typing, bounded 32 KiB, multiline prompt, explicit Enter.
+- q confirms process retirement if live owners/work; declining/navigation
+  leaves owners alone. Unix stop signal requests normal exit; restore
+  terminal, request cancellation and join owned worker, stop exact owned
+  listener, then runtime shutdown. Combine cleanup failures; no detached
+  worker. Borrowed UI session does not own runtime retirement.
+- Cold views still synchronous; logs remain transient control notifications.
+  Read-only source/cache/device/config views and missing-source refusal,
+  acquisition/model-management actions and rich config/log screens are
+  next UX-8C/D. No remote download, new GPU execution/numerical/perf claim.
+- First serial optimized combined run_unified 6/0/0 (24.59s), reuses actual
+  approved cached Qwen 0.8B GGUF fixture and unchanged 8 GiB host envelope:
+  real PTY quick run, HTTP equality, navigation/declined quit, exact stop,
+  unload/reload, process listener/terminal retirement pass. Minimal TUI
+  reducer/render and strict combined acquisition/serve lint pass;
+  combined CUDA/HIP/acquisition/serve compile pass. Final reducer/render
+  tests 3/0, terminal-only and combined strict lint pass. Final combined
+  release 5/0 other tests; real cached PTY/HTTP initially timed out at the
+  fixture's shorter 15s HTTP read under observed host contention. Align
+  with existing 60s read bound, no changed admission or output expectation:
+  serial focused real test passes (35.16s) with bracketed paste, repeated
+  invoke, original HTTP equality, stop/unload/reload/quit. Plain shell PTY
+  passes. Full isolated workspace gate passes (2,479 passed, zero failed,
+  109 ignored; release PTY, offline installer and script contracts pass).
+  UX-8B accepted.
+
+**Next: UX-8C — TUI Models / Downloads / Devices
+(§46A.28).** Reuse resident plan/control worker, original shared cache and
+download operations, exact source/digest/operation identity, explicit
+consent and cold eligibility. Keep long inventory/verification/acquisition
+off rendering loop; UX-8D profiles/config/logs and embedded Web follow.
+No new runtime or settings authority.
+
+### Previous checkpoint — Phase 2.1 UX-8A (26 Nov; 08e7e9d3)
 
 Native Rust TUI shell, read-only observations over the original Runtime,
 ControlPlane and ConfigFile. No frontend-specific scheduler, registry, cache,
@@ -63,13 +135,8 @@ settings store or execution authority.
   builds not performed. Initial PTY assertion expected contiguous
   whitespace in differential ANSI output; corrected to stable tokens.
 
-**Next coherent unit: UX-8B — TUI Home / Running / Serve
-(§46A.28).** Replace the shell's read-only summaries with real qualified
-run/load/invoke/serve/stop/unload flows using original source resolver,
-admission and control lifecycle. Keep process ownership explicit and
-perform long operations off the presentation loop. Then UX-8C model/
-download/device actions, UX-8D config/profile/logs, then embedded Web.
-No fake or duplicated execution actions.
+Historical next UX-8B is implemented in the current checkpoint.
+UX-8C/D and Web follow the live order.
 
 ### Previous checkpoint — Phase 2.1 UX-7 (25–26 Nov; 7f5fc4eb / abe98b83)
 

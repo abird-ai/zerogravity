@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (26 Nov): **Phase 2.1 UX-1 through bounded UX-8A accepted; UX-8B Home / Running / Serve is next (§46A.28).**
+Status (26 Nov): **Phase 2.1 UX-1 through bounded UX-8B accepted; UX-8C Models / Downloads / Devices next (§46A.28).**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
@@ -3563,6 +3563,25 @@ isolated gate 2477 pass/0 fail/109 skips, optimized release PTY including
 profile/CLI preference and installer/scripts pass. UX-8B–D add actual
 owner actions, background operation presentation,
 rich model/config/log views; no duplicated runtime or settings authority.
+
+UX-8B implementation (26 Nov): shared CLI canonical serve/native UI
+resident planner, exact original cache/local/device/host/native route
+policy and original control-owned registration/listener. Home load/run,
+Running exact owner selection/invoke/unload, Serve start/stop generation,
+same runtime and one owned action worker, cooperative original stream
+cancel and bounded attributed output copy. Confirmed process quit retires
+owned work/listener/runtime; modal input and bracketed paste do not
+activate shortcuts. No implicit acquisition, new execution grant or
+chat history. Existing optional serve feature; configured one cold route
+set at a time, cold inventory sync, Logs only transient notifications.
+First serial real cached GGUF TUI/HTTP lifecycle and combined release
+6/0/0 (24.59s), strict lint and combined CUDA/HIP/acquisition/serve
+compile pass. Final repeat-invoke/paste real PTY/HTTP rerun 35.16s and
+other five release tests pass, after aligning fixture HTTP read timeout
+with existing 60s bound; no relaxed admission or expected output.
+Full isolated gate passes (2,479 passed, zero failed, 109 ignored);
+release PTY, installer and script contracts pass. UX-8B accepted.
+UX-8C/D then Web.
 
 Build TUI before Web so the shared control surface proves it is not browser-shaped.
 

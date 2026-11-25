@@ -88,10 +88,10 @@ fn default_listen() -> String {
     "127.0.0.1:8000".into()
 }
 fn default_workers() -> usize {
-    2
+    crate::resident::DEFAULT_WORKERS
 }
 fn default_active() -> usize {
-    2
+    crate::resident::DEFAULT_ACTIVE
 }
 fn default_context() -> usize {
     1024
@@ -100,7 +100,7 @@ fn default_output() -> usize {
     128
 }
 fn default_host() -> usize {
-    4096
+    crate::resident::DEFAULT_HOST_MIB
 }
 fn default_source_profile() -> String {
     "gguf".into()
@@ -316,13 +316,13 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
     }
 }
 
-struct Listener {
+pub(crate) struct Listener {
     address: SocketAddr,
     key: Option<String>,
     metrics: bool,
 }
 impl Listener {
-    fn new(listen: &str, metrics: bool) -> Result<Self, ServiceError> {
+    pub(crate) fn new(listen: &str, metrics: bool) -> Result<Self, ServiceError> {
         let address: SocketAddr = listen.parse().map_err(|_| {
             ServiceError::new(400, "invalid_listen", "--listen requires numeric IP:PORT")
         })?;
@@ -343,6 +343,18 @@ impl Listener {
             key,
             metrics,
         })
+    }
+    pub(crate) fn options(self) -> zerogravity::control::ServeOptions {
+        zerogravity::control::ServeOptions {
+            address: self.address,
+            api_key: self.key,
+            limits: zerogravity::serving::ingress::IngressLimits {
+                connections: 64,
+                ..Default::default()
+            },
+            enable_per_request_metrics: self.metrics,
+            prefix_sharing_scope: None,
+        }
     }
 }
 
@@ -405,16 +417,7 @@ fn launch(
         // Get actual original model/worker facts before announcing listener readiness.
         let snapshot = control.snapshot().map_err(ServiceError::inference)?;
         let binding = control
-            .start_serving(zerogravity::control::ServeOptions {
-                address: listener.address,
-                api_key: listener.key,
-                limits: zerogravity::serving::ingress::IngressLimits {
-                    connections: 64,
-                    ..Default::default()
-                },
-                enable_per_request_metrics: listener.metrics,
-                prefix_sharing_scope: None,
-            })
+            .start_serving(listener.options())
             .map_err(|error| ServiceError::new(500, "bind_failed", error.to_string()))?;
         // A monitoring/presentation error must still stop the exact listener.
         let waited = {

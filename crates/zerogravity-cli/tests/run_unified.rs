@@ -1182,4 +1182,26 @@ serve:
         "{text}"
     );
     assert!(TcpStream::connect_timeout(&address, Duration::from_millis(200)).is_err());
+
+    #[cfg(feature = "tui")]
+    {
+        // Reuse the exact acquired fixture and original HTTP output. The TUI
+        // owns one foreground runtime through load, serve, stop and reload.
+        let profile = profiles.join("local.yaml");
+        let raw = std::fs::read_to_string(&profile).unwrap().replace(
+            "task: {context: 64, max_tokens: 2}",
+            "task: {context: 64, max_tokens: 2, raw: true}",
+        );
+        std::fs::write(&profile, raw).unwrap();
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/tui_shell.py");
+        let status = Command::new("python3")
+            .args(["-B"])
+            .arg(fixture)
+            .arg(env!("CARGO_BIN_EXE_zerogravity"))
+            .arg(&f.0)
+            .arg(outputs[0].as_str().unwrap())
+            .status()
+            .unwrap();
+        assert!(status.success(), "cached native control lifecycle failed");
+    }
 }
