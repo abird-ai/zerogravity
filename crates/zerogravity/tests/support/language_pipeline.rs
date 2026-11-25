@@ -7,6 +7,7 @@ use zerogravity::{
         Config, LanguageBinding, ModelInstance, Pipeline, PipelineEdge, PipelineNode,
         PreparedLanguagePipeline, ValueKind,
     },
+    run::{OutputPoll, TaskTarget, TextControls, TextTask},
     runtime::text::{Request, ResponseEvent},
 };
 
@@ -136,15 +137,56 @@ pub fn compare_prepared(
         ));
         input = output;
     }
-    let mut stream = runtime
-        .run_pipeline(plan, prompt, NonZeroUsize::new(limit).unwrap())
-        .unwrap();
+    let task = TextTask {
+        target: TaskTarget::Pipeline(plan),
+        input: prompt,
+        controls: TextControls {
+            observe_tokens: true,
+            ..TextControls::new(NonZeroUsize::new(limit).unwrap())
+        },
+    };
+    let selected = runtime.inspect_task(task).unwrap();
+    assert_eq!(selected.pipeline.as_deref(), Some(plan.name()));
+    assert_eq!(selected.stages.len(), plan.stages().len());
+    assert_eq!(selected.controls, task.controls);
+    for (actual, stage) in selected.stages.iter().zip(plan.stages()) {
+        assert_eq!(actual.alias, stage.alias());
+        assert_eq!(actual.registration_id, stage.registration_id());
+        let owner = selected
+            .models
+            .iter()
+            .find(|owner| owner.registration_id == actual.registration_id)
+            .unwrap();
+        assert_eq!(owner.source, stage.source());
+        assert!(
+            owner
+                .capabilities
+                .as_ref()
+                .unwrap()
+                .details
+                .execution
+                .is_some()
+        );
+    }
+    let mut stream = runtime.submit_task(task).unwrap();
     let mut deltas = String::new();
     let mut terminal = None;
-    while let Some(event) = stream.next().unwrap() {
+    let mut observed = 0;
+    let deadline = std::time::Instant::now() + Duration::from_secs(120);
+    loop {
+        assert!(std::time::Instant::now() < deadline);
+        let event = match stream.poll_next(Duration::from_millis(100)).unwrap() {
+            OutputPoll::Pending => continue,
+            OutputPoll::Finished => break,
+            OutputPoll::Event(event) => event,
+        };
         assert!(terminal.is_none());
         match event {
-            ResponseEvent::Text(text) => deltas.push_str(&text),
+            ResponseEvent::TokenText { text, token } => {
+                assert_eq!(token.index, observed);
+                observed += 1;
+                deltas.push_str(&text);
+            }
             ResponseEvent::Done {
                 output,
                 prompt_tokens,
@@ -156,6 +198,16 @@ pub fn compare_prepared(
         }
     }
     assert_eq!(terminal, expected);
-    assert_eq!(deltas, terminal.unwrap().0);
-    println!("LANGUAGE_PIPELINE_SDK_PASS stages={}", plan.stages().len());
+    let (output, _, completion_tokens, _) = terminal.unwrap();
+    assert_eq!(deltas, output);
+    assert_eq!(
+        observed, completion_tokens,
+        "only final stage token observations"
+    );
+    println!(
+        "LANGUAGE_PIPELINE_SDK_PASS stages={} selected_owner_count={} observed_final_tokens={}",
+        plan.stages().len(),
+        selected.models.len(),
+        observed
+    );
 }

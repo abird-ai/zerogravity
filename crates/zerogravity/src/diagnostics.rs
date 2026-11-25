@@ -1,5 +1,7 @@
 //! Migration/capability observations are not execution permits.
-pub use zerogravity_engine::diagnostics::{RuntimePhase, RuntimeSnapshot, RuntimeStatus};
+pub use zerogravity_engine::diagnostics::{
+    RuntimePhase, RuntimeSnapshot, RuntimeStatus, TaskObservation, TaskStageObservation,
+};
 pub use zerogravity_engine::router::{
     pending::{HostBudgetSnapshot, QueueSnapshot},
     statistics::Counters,

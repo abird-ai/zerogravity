@@ -31,7 +31,7 @@ struct OwnerState<M> {
 /// share it; even registering the same Arc in a new route set issues a new one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct RegisteredOwner {
-    id: u64,
+    pub(crate) id: u64,
     pub(crate) source: SourceIdentity,
 }
 static NEXT_REGISTRATION: AtomicU64 = AtomicU64::new(1);
@@ -251,7 +251,7 @@ pub(crate) trait Models: Send + Sync {
     ) -> std::result::Result<(Arc<dyn PreparedModel>, ModelRead), ServiceError>;
     fn alias_slots(&self) -> usize;
     fn ready_counts(&self) -> (usize, usize);
-    fn catalog_snapshot(&self) -> Result<Vec<ModelSnapshot>>;
+    fn catalog_snapshot(&self, registrations: Option<&[u64]>) -> Result<Vec<ModelSnapshot>>;
     fn alias(&self, index: usize) -> Option<&str>;
     fn begin_unload(&self, model: &ModelInstance) -> Result<Option<SelectiveRetirement>>;
     fn admission(
@@ -300,14 +300,15 @@ impl<A: Executor> Models for Registry<A> {
         }
         (aliases, owners)
     }
-    fn catalog_snapshot(&self) -> Result<Vec<ModelSnapshot>> {
+    fn catalog_snapshot(&self, registrations: Option<&[u64]>) -> Result<Vec<ModelSnapshot>> {
         let mut entries = Vec::new();
         for (index, route) in self.routes.values().enumerate() {
-            if self
-                .routes
-                .values()
-                .take(index)
-                .any(|prior| Arc::ptr_eq(prior, route))
+            if registrations.is_some_and(|ids| !ids.contains(&route.registration.id))
+                || self
+                    .routes
+                    .values()
+                    .take(index)
+                    .any(|prior| Arc::ptr_eq(prior, route))
             {
                 continue;
             }
@@ -337,6 +338,7 @@ impl<A: Executor> Models for Registry<A> {
                 })
                 .transpose()?;
             entries.push(ModelSnapshot {
+                registration_id: route.registration.id,
                 source: route.registration.source,
                 aliases: self
                     .routes

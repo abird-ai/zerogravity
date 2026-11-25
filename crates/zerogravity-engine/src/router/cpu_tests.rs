@@ -812,7 +812,9 @@ fn declared_pipeline_load_publishes_only_after_exact_admitted_binding() {
 
 #[test]
 fn serial_pipeline_uses_exact_registrations_and_original_text_stream() {
-    use crate::{Runtime, pipeline::LanguageBinding};
+    use crate::{
+        Runtime, TaskTarget, TextControls, TextTask, output::OutputPoll, pipeline::LanguageBinding,
+    };
     let host = HostPool::isolated(256).unwrap();
     let model = MockModel::new(&host, None);
     let runtime = Runtime::builder()
@@ -873,33 +875,102 @@ fn serial_pipeline_uses_exact_registrations_and_original_text_stream() {
             .is_err()
     );
     assert_eq!(model.next.load(Ordering::Acquire), 0);
-    let mut stream = runtime
-        .run_pipeline(&plan, "x", 2.try_into().unwrap())
-        .unwrap();
+    let task = TextTask {
+        target: TaskTarget::Pipeline(&plan),
+        input: "x",
+        controls: TextControls {
+            observe_tokens: true,
+            ..TextControls::new(2.try_into().unwrap())
+        },
+    };
+    let before = host.snapshot().unwrap();
+    let selected = runtime.inspect_task(task).unwrap();
+    assert_eq!(selected.pipeline.as_deref(), Some("chain"));
+    assert_eq!(selected.controls, task.controls);
+    assert_eq!(selected.input_bytes, 1);
+    assert_eq!(selected.scheduler.config.output, 16);
+    assert_eq!(selected.models.len(), 1);
+    assert_eq!(selected.models[0].source, owner.source());
+    assert_eq!(selected.models[0].aliases, ["alias", "model"]);
+    for (index, stage) in selected.stages.iter().enumerate() {
+        assert_eq!(stage.step.as_deref(), Some(plan.stages()[index].id()));
+        assert_eq!(stage.alias, plan.stages()[index].alias());
+        assert_eq!(stage.registration_id, selected.models[0].registration_id);
+    }
+    let model_task = TextTask {
+        target: TaskTarget::Model("alias"),
+        ..task
+    };
+    let single = runtime.inspect_task(model_task).unwrap();
+    assert!(single.pipeline.is_none() && single.stages[0].step.is_none());
+    assert_eq!(
+        single.stages[0].registration_id,
+        selected.stages[1].registration_id
+    );
+    let bad = TextTask {
+        controls: TextControls {
+            chat: true,
+            ..task.controls
+        },
+        ..task
+    };
+    assert_eq!(runtime.submit_task(bad).err().unwrap().code, "unsupported");
+    let bad = TextTask {
+        target: TaskTarget::Model("missing"),
+        ..task
+    };
+    assert_eq!(
+        runtime.inspect_task(bad).err().unwrap().code,
+        "model_not_found"
+    );
+    let bad = TextTask {
+        controls: TextControls::new(17.try_into().unwrap()),
+        ..task
+    };
+    assert_eq!(
+        runtime.submit_task(bad).err().unwrap().code,
+        "limit_exceeded"
+    );
+    assert_eq!(host.snapshot().unwrap(), before);
+    assert_eq!(model.next.load(Ordering::Acquire), 0);
+
+    let mut stream = runtime.submit_task(task).unwrap();
     let mut text = String::new();
+    let mut observed = Vec::new();
     let mut terminal = 0;
-    while let Some(event) = stream.next().unwrap() {
-        match event {
-            ResponseEvent::Text(delta) => text.push_str(&delta),
-            ResponseEvent::Done {
-                output,
-                prompt_tokens,
-                completion_tokens,
-                ..
-            } => {
-                assert_eq!(output, "AB");
-                assert_eq!(
-                    prompt_tokens, 2,
-                    "second stage consumes first terminal text"
-                );
-                assert_eq!(completion_tokens, 2);
-                terminal += 1;
-            }
-            ResponseEvent::Error(error) => panic!("{error}"),
-            _ => panic!("unexpected event"),
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        assert!(Instant::now() < deadline);
+        match stream.poll_next(Duration::from_millis(100)).unwrap() {
+            OutputPoll::Pending => continue,
+            OutputPoll::Finished => break,
+            OutputPoll::Event(event) => match event {
+                ResponseEvent::TokenText { text: delta, token } => {
+                    assert_eq!(token.index, observed.len());
+                    text.push_str(&delta);
+                    observed.push(token.id);
+                }
+                ResponseEvent::Done {
+                    output,
+                    prompt_tokens,
+                    completion_tokens,
+                    ..
+                } => {
+                    assert_eq!(output, "AB");
+                    assert_eq!(
+                        prompt_tokens, 2,
+                        "second stage consumes committed first text"
+                    );
+                    assert_eq!(completion_tokens, 2);
+                    terminal += 1;
+                }
+                ResponseEvent::Error(error) => panic!("{error}"),
+                _ => panic!("unexpected unobserved delta"),
+            },
         }
     }
-    assert_eq!(text, "AB", "only final stage deltas");
+    assert_eq!(observed, [2, 3], "final stage only");
+    assert_eq!(text, "AB");
     assert_eq!(terminal, 1);
     drop(stream);
     assert_eq!(model.next.load(Ordering::Acquire), 2);
@@ -917,6 +988,14 @@ fn serial_pipeline_uses_exact_registrations_and_original_text_stream() {
         runtime.run_pipeline(&plan, "x", 2.try_into().unwrap()),
         Err(crate::Error::State(_))
     ));
+    assert_eq!(
+        runtime.inspect_task(task).err().unwrap().code,
+        "stale_pipeline"
+    );
+    assert_ne!(
+        runtime.inspect_task(model_task).unwrap().stages[0].registration_id,
+        selected.stages[0].registration_id
+    );
     assert_eq!(model.next.load(Ordering::Acquire), 2);
     runtime.shutdown().unwrap();
     drop((plan, owner, wrong, other, runtime, model));
@@ -925,7 +1004,9 @@ fn serial_pipeline_uses_exact_registrations_and_original_text_stream() {
 
 #[test]
 fn pipeline_cancel_and_retirement_never_submit_a_future_stage() {
-    use crate::{Runtime, pipeline::LanguageBinding};
+    use crate::{
+        Runtime, TaskTarget, TextControls, TextTask, output::OutputPoll, pipeline::LanguageBinding,
+    };
     let host = HostPool::isolated(256).unwrap();
     let gate = Arc::new(Gate::default());
     let first = MockModel::new(&host, Some(gate.clone()));
@@ -967,10 +1048,22 @@ fn pipeline_cancel_and_retirement_never_submit_a_future_stage() {
         )
         .unwrap();
     let mut cancelled = runtime
-        .run_pipeline(&plan, "x", 2.try_into().unwrap())
+        .submit_task(TextTask {
+            target: TaskTarget::Pipeline(&plan),
+            input: "x",
+            controls: TextControls::new(2.try_into().unwrap()),
+        })
         .unwrap();
     gate.entered();
+    assert!(matches!(
+        cancelled.poll_next(Duration::ZERO).unwrap(),
+        OutputPoll::Pending
+    ));
     cancelled.cancel().unwrap();
+    assert!(matches!(
+        cancelled.poll_next(Duration::ZERO).unwrap(),
+        OutputPoll::Finished
+    ));
     assert!(cancelled.next().unwrap().is_none());
     gate.release();
     drop(cancelled);
@@ -988,7 +1081,16 @@ fn pipeline_cancel_and_retirement_never_submit_a_future_stage() {
         weak.upgrade().is_none(),
         "prepared pipeline retains no model"
     );
-    assert!(matches!(active.next(), Err(crate::Error::State(_))));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let error = loop {
+        assert!(Instant::now() < deadline);
+        match active.poll_next(Duration::from_millis(100)) {
+            Ok(OutputPoll::Pending) => continue,
+            Err(error) => break error,
+            Ok(_) => panic!("future retired stage must not emit"),
+        }
+    };
+    assert_eq!(error.code, "stale_pipeline");
     assert!(active.next().unwrap().is_none());
     drop(active);
     assert_eq!(

@@ -106,6 +106,9 @@ pub struct ModelCapabilities {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ModelSnapshot {
+    /// Process-local registration identity, renewed on every registration.
+    /// Aliases share this ID; source identity alone does not imply reuse.
+    pub registration_id: u64,
     pub source: SourceIdentity,
     pub aliases: Vec<String>,
     pub lifecycle: ModelLifecycle,
@@ -131,4 +134,31 @@ pub struct RuntimeSnapshot {
     pub resources: Vec<ResourceSnapshot>,
     /// Aggregate constraint over those host scopes, not an additional pool.
     pub host_backing: HostBackingSnapshot,
+}
+
+/// Selected stage in execution order. Refer to TaskObservation::models by
+/// registration_id; no additional plan ID, model reader or catalog.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct TaskStageObservation {
+    /// None for a single model request.
+    pub step: Option<String>,
+    pub alias: String,
+    pub registration_id: u64,
+}
+
+/// On-demand facts about an explicit task's selected current owners and
+/// effective controls. No tokenization, admission, device work or permit.
+/// The actual request may still refuse under context/resource constraints.
+#[derive(Clone, Debug, Serialize)]
+pub struct TaskObservation {
+    pub pipeline: Option<String>,
+    pub input_bytes: usize,
+    pub input_limit_bytes: usize,
+    pub controls: crate::request::TextControls,
+    pub limits: SchedulerLimits,
+    pub scheduler: SchedulerSnapshot,
+    pub stages: Vec<TaskStageObservation>,
+    /// One original catalog observation per selected owner, including aliases,
+    /// source revision, actual provider/profile and available text-call facts.
+    pub models: Vec<ModelSnapshot>,
 }

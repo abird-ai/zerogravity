@@ -4,7 +4,7 @@ use crate::{
     diagnostics::{ModelSnapshot, RuntimePhase, RuntimeSnapshot, RuntimeStatus},
     model_instance::ModelInstance,
     output::{OutputStream, TextOutputStream},
-    request::{TaskInput, TaskRequest},
+    request::{TaskInput, TaskRequest, TaskTarget, TextControls, TextTask},
     router::{Request, RequestEvents, Router, ServiceError},
     scheduler::SchedulerLimits,
 };
@@ -400,25 +400,105 @@ impl Runtime {
         let TaskInput::Text(input) = &request.input else {
             return Err(Error::Unsupported("Fabric task driver unavailable".into()));
         };
-        self.with_ready_text(|router| {
-            // Admit the SDK's owned request copy before cloning borrowed input.
-            let stream_charge = router
-                .host()
-                .charge(
-                    &request.model,
-                    "sdk-output-stream",
-                    AllocationClass::Output,
-                    (std::mem::size_of::<TextOutputStream>() + 64) as u64,
-                )
-                .map_err(service_error)?;
-            let events = submit_text(
-                router,
-                &request.model,
-                Cow::Borrowed(input),
-                request.max_output.get(),
-                true,
-            )?;
-            Ok(Box::new(TextOutputStream::new(events, stream_charge)) as Box<dyn OutputStream>)
+        self.submit_task(TextTask {
+            target: TaskTarget::Model(&request.model),
+            input,
+            controls: TextControls::new(request.max_output),
+        })
+        .map_err(task_error)
+    }
+
+    /// Same original router for model and pipeline work. Preserve the actual
+    /// structured service refusal rather than flattening it to legacy Error.
+    pub fn submit_task(
+        &self,
+        task: TextTask<'_>,
+    ) -> std::result::Result<Box<dyn OutputStream>, ServiceError> {
+        self.require_open().map_err(|_| runtime_closed())?;
+        task.validate(self.inner.limits.max_input_bytes)?;
+        self.with_text_router(|router| {
+            task.require(router)?;
+            match task.target {
+                TaskTarget::Model(alias) => {
+                    let charge = router.host().charge(
+                        alias,
+                        "sdk-output-stream",
+                        AllocationClass::Output,
+                        (std::mem::size_of::<TextOutputStream>() + 64) as u64,
+                    )?;
+                    let events =
+                        submit_text(router, alias, Cow::Borrowed(task.input), task.controls)?;
+                    Ok(Box::new(TextOutputStream::new(events, charge)) as Box<dyn OutputStream>)
+                }
+                TaskTarget::Pipeline(plan) => {
+                    crate::pipeline::submit_pipeline(self, router, plan, task.input, task.controls)
+                }
+            }
+        })
+    }
+
+    /// Cold selected-owner observation, serialized with original catalog
+    /// admission. Never opens a source, admits a request or retains a reader.
+    pub fn inspect_task(
+        &self,
+        task: TextTask<'_>,
+    ) -> std::result::Result<crate::diagnostics::TaskObservation, ServiceError> {
+        use crate::diagnostics::{TaskObservation, TaskStageObservation};
+        self.require_open().map_err(|_| runtime_closed())?;
+        task.validate(self.inner.limits.max_input_bytes)?;
+        self.with_text_router(|router| {
+            task.require(router)?;
+            let (pipeline, stages) = match task.target {
+                TaskTarget::Model(alias) => {
+                    let registration = router.registration(alias).ok_or_else(|| {
+                        ServiceError::new(404, "model_not_found", "model is not registered")
+                    })?;
+                    (
+                        None,
+                        vec![TaskStageObservation {
+                            step: None,
+                            alias: alias.into(),
+                            registration_id: registration.id,
+                        }],
+                    )
+                }
+                TaskTarget::Pipeline(plan) => (
+                    Some(plan.name().to_owned()),
+                    plan.stages()
+                        .iter()
+                        .map(|stage| TaskStageObservation {
+                            step: Some(stage.id().into()),
+                            alias: stage.alias().into(),
+                            registration_id: stage.registration_id(),
+                        })
+                        .collect(),
+                ),
+            };
+            let registrations: Vec<_> = stages.iter().map(|stage| stage.registration_id).collect();
+            let models = router
+                .selected_catalog_snapshot(&registrations)
+                .map_err(ServiceError::inference)?;
+            if stages.iter().any(|stage| {
+                !models.iter().any(|model| {
+                    model.registration_id == stage.registration_id && model.capabilities.is_some()
+                })
+            }) {
+                return Err(ServiceError::new(
+                    503,
+                    "model_retired",
+                    "task selected owner is unavailable",
+                ));
+            }
+            Ok(TaskObservation {
+                pipeline,
+                input_bytes: task.input.len(),
+                input_limit_bytes: TextTask::input_limit(self.inner.limits.max_input_bytes),
+                controls: task.controls,
+                limits: self.inner.limits,
+                scheduler: router.scheduler_snapshot(),
+                stages,
+                models,
+            })
         })
     }
     pub(crate) fn loaded_text_models(&self) -> Result<Vec<ModelInstance>> {
@@ -633,9 +713,8 @@ pub(crate) fn submit_text(
     router: &Router,
     alias: &str,
     input: Cow<'_, str>,
-    max_output: usize,
-    stream: bool,
-) -> Result<RequestEvents> {
+    controls: TextControls,
+) -> std::result::Result<RequestEvents, ServiceError> {
     let input_bytes = match &input {
         Cow::Borrowed(text) => text.len(),
         Cow::Owned(text) => text.capacity(),
@@ -644,24 +723,39 @@ pub(crate) fn submit_text(
         .len()
         .checked_add(input_bytes)
         .and_then(|n| u64::try_from(n).ok())
-        .ok_or_else(|| Error::Limit("text request copy overflow".into()))?;
-    let ingress = router
-        .host()
-        .charge(alias, "sdk-request-copy", AllocationClass::Scratch, bytes)
-        .map_err(service_error)?;
-    router
-        .request_admitted(
-            Request {
-                model: alias.to_owned(),
-                input: input.into_owned(),
-                chat: false,
-                max_tokens: max_output,
-                stream,
-                token_metrics: None,
-            },
-            vec![ingress],
-        )
-        .map_err(service_error)
+        .ok_or_else(|| ServiceError::new(400, "size_overflow", "text request copy overflow"))?;
+    let ingress =
+        router
+            .host()
+            .charge(alias, "sdk-request-copy", AllocationClass::Scratch, bytes)?;
+    router.request_admitted(
+        Request {
+            model: alias.to_owned(),
+            input: input.into_owned(),
+            chat: controls.chat,
+            max_tokens: controls.max_output.get(),
+            stream: controls.stream,
+            token_metrics: controls
+                .observe_tokens
+                .then(|| crate::router::TokenMetricsRequest {
+                    started: std::time::Instant::now(),
+                    wire_request_id: None,
+                }),
+        },
+        vec![ingress],
+    )
+}
+
+/// Legacy SDK error categories; structured task callers keep the actual code.
+pub(crate) fn task_error(error: ServiceError) -> Error {
+    match error.code {
+        "runtime_unconfigured" => Error::Unsupported(error.message),
+        "runtime_closed" | "runtime_state" | "stale_pipeline" | "model_retired" => {
+            Error::State(error.message)
+        }
+        "limit_exceeded" => Error::Limit(error.message),
+        _ => error.into_core(),
+    }
 }
 
 pub(crate) fn service_error(error: ServiceError) -> Error {

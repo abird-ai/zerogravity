@@ -1,7 +1,9 @@
 //! Shared runtime requests and explicit source planning/diagnostics.
-pub use zerogravity_engine::output::{CommittedOutput, OutputMilestone, OutputStream};
+pub use zerogravity_engine::output::{
+    CommittedOutput, OutputMilestone, OutputPoll, OutputStream, ResponseEvent,
+};
 pub use zerogravity_engine::session::{RootBinding, TaskSession};
-pub use zerogravity_engine::{TaskInput, TaskRequest};
+pub use zerogravity_engine::{TaskInput, TaskRequest, TaskTarget, TextControls, TextTask};
 
 /// Cold source-request policy, not source or physical execution authority.
 pub fn validate_source_request(request: &crate::run_policy::Request) -> crate::Result<()> {

@@ -3,12 +3,13 @@
 use crate::{
     Error, Result, Runtime,
     model_instance::ModelInstance,
-    output::{OutputStream, ResponseEvent, recv_event},
+    output::{OutputPoll, OutputStream, ResponseEvent, next_blocking, poll_event},
+    request::{TaskTarget, TextControls, TextTask},
     router::{
         RegisteredOwner, RequestEvents, Router, ServiceError,
         pending::{ServingCharge, checked_sum, vec_bytes},
     },
-    runtime::{service_error, submit_text},
+    runtime::{service_error, submit_text, task_error},
 };
 use std::{borrow::Cow, num::NonZeroUsize, sync::Arc};
 use zerogravity_core::{
@@ -41,12 +42,19 @@ impl LanguageStage {
     pub fn source(&self) -> SourceIdentity {
         self.registration.source
     }
-    fn require(&self, router: &Router) -> Result<()> {
+    pub fn registration_id(&self) -> u64 {
+        self.registration.id
+    }
+    pub(crate) fn require(&self, router: &Router) -> std::result::Result<(), ServiceError> {
         if router.registration(&self.alias) != Some(self.registration) {
-            return Err(Error::State(format!(
-                "pipeline stage {} no longer has its original registered model",
-                self.id
-            )));
+            return Err(ServiceError::new(
+                409,
+                "stale_pipeline",
+                format!(
+                    "pipeline stage {} no longer has its original registered model",
+                    self.id
+                ),
+            ));
         }
         Ok(())
     }
@@ -184,57 +192,54 @@ impl Runtime {
         input: &str,
         max_output: NonZeroUsize,
     ) -> Result<Box<dyn OutputStream>> {
-        self.validate_pipeline_input(input)?;
-        self.with_ready_text(|router| {
-            let stages = plan.stages();
-            for stage in stages {
-                stage.require(router)?;
-            }
-            if max_output.get() > router.max_output() {
-                return Err(Error::Limit(
-                    "pipeline output exceeds configured text limit".into(),
-                ));
-            }
-            let charge = router
-                .host()
-                .charge(
-                    plan.name(),
-                    "pipeline-stream",
-                    AllocationClass::Output,
-                    std::mem::size_of::<LanguageStream>() as u64 + 64,
-                )
-                .map_err(service_error)?;
-            let active = submit_text(
-                router,
-                stages[0].alias(),
-                Cow::Borrowed(input),
-                max_output.get(),
-                stages.len() == 1,
-            )?;
-            Ok(Box::new(LanguageStream {
-                active: Some(active),
-                plan: plan.clone(),
-                runtime: self.clone(),
-                stage: 0,
-                finished: false,
-                max_output,
-                _charge: charge,
-            }) as Box<dyn OutputStream>)
+        self.submit_task(TextTask {
+            target: TaskTarget::Pipeline(plan),
+            input,
+            controls: TextControls::new(max_output),
         })
+        .map_err(task_error)
     }
+}
 
-    fn validate_pipeline_input(&self, input: &str) -> Result<()> {
-        self.require_open()?;
-        if input.is_empty() {
-            return Err(Error::Malformed("pipeline stage input is empty".into()));
-        }
-        if input.len() > self.limits().max_input_bytes {
-            return Err(Error::Limit(
-                "pipeline stage input exceeds runtime limit".into(),
-            ));
-        }
-        Ok(())
+fn stage_controls(controls: TextControls, final_stage: bool) -> TextControls {
+    TextControls {
+        stream: final_stage && controls.stream,
+        observe_tokens: final_stage && controls.observe_tokens,
+        ..controls
     }
+}
+
+/// Called with the original ready router lock held, after exact selection
+/// and controls have been checked. No second task queue.
+pub(crate) fn submit_pipeline(
+    runtime: &Runtime,
+    router: &Router,
+    plan: &PreparedLanguagePipeline,
+    input: &str,
+    controls: TextControls,
+) -> std::result::Result<Box<dyn OutputStream>, ServiceError> {
+    let charge = router.host().charge(
+        plan.name(),
+        "pipeline-stream",
+        AllocationClass::Output,
+        std::mem::size_of::<LanguageStream>() as u64 + 64,
+    )?;
+    let stages = plan.stages();
+    let active = submit_text(
+        router,
+        stages[0].alias(),
+        Cow::Borrowed(input),
+        stage_controls(controls, stages.len() == 1),
+    )?;
+    Ok(Box::new(LanguageStream {
+        active: Some(active),
+        plan: plan.clone(),
+        runtime: runtime.clone(),
+        stage: 0,
+        finished: false,
+        controls,
+        _charge: charge,
+    }))
 }
 
 fn bind_chain(
@@ -286,24 +291,30 @@ struct LanguageStream {
     runtime: Runtime,
     stage: usize,
     finished: bool,
-    max_output: NonZeroUsize,
+    controls: TextControls,
     _charge: ServingCharge,
 }
 impl LanguageStream {
-    fn advance(&mut self, output: String) -> Result<()> {
-        self.runtime.validate_pipeline_input(&output)?;
+    fn advance(&mut self, output: String) -> std::result::Result<(), ServiceError> {
+        // Check only the next original stage; already accepted work and
+        // unrelated later stages are not revalidated/substituted here.
         let next = self.stage + 1;
         let stages = self.plan.stages();
-        let active = self.runtime.with_ready_text(|router| {
+        TextTask {
+            target: TaskTarget::Model(stages[next].alias()),
+            input: &output,
+            controls: self.controls,
+        }
+        .validate(self.runtime.limits().max_input_bytes)?;
+        let active = self.runtime.with_text_router(|router| {
             stages[next].require(router)?;
-            // The predecessor's original event transport charge remains
-            // live until the successor admits the moved String's capacity.
+            // Predecessor's original transport stays live until the
+            // successor admits the moved String's capacity.
             submit_text(
                 router,
                 stages[next].alias(),
                 Cow::Owned(output),
-                self.max_output.get(),
-                next + 1 == stages.len(),
+                stage_controls(self.controls, next + 1 == stages.len()),
             )
         })?;
         self.active = Some(active);
@@ -313,48 +324,61 @@ impl LanguageStream {
 }
 impl OutputStream for LanguageStream {
     fn next(&mut self) -> Result<Option<ResponseEvent>> {
+        next_blocking(self)
+    }
+    fn poll_next(
+        &mut self,
+        timeout: std::time::Duration,
+    ) -> std::result::Result<OutputPoll, ServiceError> {
         if self.finished {
-            return Ok(None);
+            return Ok(OutputPoll::Finished);
         }
-        while let Some(active) = self.active.as_ref() {
-            let event = match recv_event(active) {
-                Ok(event) => event,
-                Err(error) => {
-                    self.active.take();
+        let Some(active) = self.active.as_ref() else {
+            self.finished = true;
+            return Ok(OutputPoll::Finished);
+        };
+        let event = match poll_event(active, timeout) {
+            Ok(OutputPoll::Event(event)) => event,
+            Ok(other) => return Ok(other),
+            Err(error) => {
+                self.active.take();
+                self.finished = true;
+                return Err(error);
+            }
+        };
+        let intermediate = self.stage + 1 < self.plan.stages().len();
+        match event {
+            ResponseEvent::Done { output, .. } if intermediate => {
+                if let Err(error) = self.advance(output) {
+                    self.finished = true;
                     return Err(error);
                 }
-            };
-            match event {
-                ResponseEvent::Done { output, .. } if self.stage + 1 < self.plan.stages().len() => {
-                    if let Err(error) = self.advance(output) {
-                        self.finished = true;
-                        return Err(error);
-                    }
+                Ok(OutputPoll::Pending)
+            }
+            event => {
+                if matches!(event, ResponseEvent::Done { .. } | ResponseEvent::Error(_)) {
+                    // Keep terminal transport through consumer stream lifetime.
+                    self.finished = true;
+                } else if intermediate {
+                    self.active.take();
+                    self.finished = true;
+                    return Err(ServiceError::new(
+                        500,
+                        "pipeline_output",
+                        "non-streaming pipeline stage emitted a delta",
+                    ));
                 }
-                event => {
-                    // Intermediate stages request only one terminal. Never
-                    // expose their deltas as the final stage's output.
-                    if matches!(event, ResponseEvent::Done { .. } | ResponseEvent::Error(_)) {
-                        // As with TextOutputStream, retain the terminal event
-                        // transport through the consumer stream lifetime.
-                        self.finished = true;
-                    } else if self.stage + 1 < self.plan.stages().len() {
-                        self.active.take();
-                        return Err(Error::State(
-                            "non-streaming pipeline stage emitted a delta".into(),
-                        ));
-                    }
-                    return Ok(Some(event));
-                }
+                Ok(OutputPoll::Event(event))
             }
         }
-        Ok(None)
     }
     fn cancel(&mut self) -> Result<()> {
-        if let Some(active) = &self.active {
-            active.cancel();
+        if !self.finished {
+            if let Some(active) = &self.active {
+                active.cancel();
+            }
+            self.finished = true;
         }
-        self.finished = true;
         Ok(())
     }
 }

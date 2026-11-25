@@ -27,6 +27,7 @@ use zerogravity_core::resource_arbiter::GlobalResourceLease;
 
 pub const EVENTS_PER_REQUEST: usize = 16;
 pub const MAX_TOKEN_OBSERVATIONS: usize = 512;
+pub const MAX_INPUT_BYTES: usize = 1024 * 1024;
 pub const MAX_ACTIVE_PER_WORKER: usize = 8;
 /// Transport bounds only; each prepared source still limits its own context.
 pub const MAX_CONTEXT_TOKENS: usize = 32768;
@@ -52,7 +53,7 @@ pub fn vecdeque_backing_bytes<T>(capacity: usize) -> Result<u64, ServiceError> {
     ])
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ServiceError {
     pub status: u16,
     pub code: &'static str,
@@ -858,7 +859,13 @@ impl Router {
         }
     }
     pub fn catalog_snapshot(&self) -> crate::Result<Vec<crate::diagnostics::ModelSnapshot>> {
-        self.models.catalog_snapshot()
+        self.models.catalog_snapshot(None)
+    }
+    pub(crate) fn selected_catalog_snapshot(
+        &self,
+        registrations: &[u64],
+    ) -> crate::Result<Vec<crate::diagnostics::ModelSnapshot>> {
+        self.models.catalog_snapshot(Some(registrations))
     }
     pub(crate) fn ready_counts(&self) -> (usize, usize) {
         self.models.ready_counts()
@@ -950,7 +957,7 @@ impl Router {
     ) -> Result<RequestEvents, ServiceError> {
         let (model, model_reader) = self.models.acquire(&request.model)?;
         if request.input.is_empty()
-            || request.input.len() > 1024 * 1024
+            || request.input.len() > MAX_INPUT_BYTES
             || request.max_tokens == 0
             || request.max_tokens > self.config.output
         {

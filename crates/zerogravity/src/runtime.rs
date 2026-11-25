@@ -43,6 +43,21 @@ impl Runtime {
     pub fn run(&self, request: &TaskRequest) -> Result<Box<dyn OutputStream>> {
         self.engine.run(request)
     }
+    /// Unified borrowed model or prepared-pipeline text request.
+    /// Retains the original structured service refusal and output events.
+    pub fn submit_task(
+        &self,
+        task: crate::run::TextTask<'_>,
+    ) -> std::result::Result<Box<dyn OutputStream>, text::ServiceError> {
+        self.engine.submit_task(task)
+    }
+    /// On-demand selected owners/controls; no model loading or task admission.
+    pub fn inspect_task(
+        &self,
+        task: crate::run::TextTask<'_>,
+    ) -> std::result::Result<crate::diagnostics::TaskObservation, text::ServiceError> {
+        self.engine.inspect_task(task)
+    }
     /// Bind a structurally checked serial language graph to exact loaded models.
     pub fn prepare_pipeline(
         &self,

@@ -1447,6 +1447,69 @@ fn declared_cpu_pipeline_loads_exact_sources_and_retries_after_refusal() {
     assert_ne!(plan.stages()[0].source(), plan.stages()[1].source());
     assert!(runtime.models().resolve("unused").is_err());
     language_pipeline::compare_prepared(&runtime, &plan, "1, 2, 3,", 3);
+    // Same public task entrypoint for direct framed, non-streaming text.
+    // Token observations are still delivered; text appears only at terminal.
+    {
+        use std::time::{Duration, Instant};
+        use zerogravity::run::{OutputPoll, ResponseEvent, TaskTarget, TextControls, TextTask};
+        let first = runtime.models().resolve("first").unwrap();
+        let task = TextTask {
+            target: TaskTarget::Model("first"),
+            input: "Continue: 1, 2, 3,",
+            controls: TextControls {
+                chat: true,
+                stream: false,
+                observe_tokens: true,
+                ..TextControls::new(3.try_into().unwrap())
+            },
+        };
+        let expected_prompt = first
+            .prepared()
+            .tokenizer()
+            .prompt_tokens(task.input, true)
+            .unwrap()
+            .len();
+        let selected = runtime.inspect_task(task).unwrap();
+        assert!(selected.pipeline.is_none());
+        assert_eq!(selected.models.len(), 1);
+        assert_eq!(selected.models[0].source, first.source());
+        assert_eq!(
+            selected.stages[0].registration_id,
+            plan.stages()[0].registration_id()
+        );
+        let mut stream = runtime.submit_task(task).unwrap();
+        let mut observed = 0;
+        let mut terminal = false;
+        let deadline = Instant::now() + Duration::from_secs(120);
+        loop {
+            assert!(Instant::now() < deadline);
+            match stream.poll_next(Duration::from_millis(100)).unwrap() {
+                OutputPoll::Pending => continue,
+                OutputPoll::Finished => break,
+                OutputPoll::Event(ResponseEvent::TokenText { text, token }) => {
+                    assert!(!terminal && text.is_empty());
+                    assert_eq!(token.index, observed);
+                    observed += 1;
+                }
+                OutputPoll::Event(ResponseEvent::Done {
+                    prompt_tokens,
+                    completion_tokens,
+                    ..
+                }) => {
+                    assert!(!terminal);
+                    assert_eq!(prompt_tokens, expected_prompt);
+                    assert_eq!(completion_tokens, observed);
+                    terminal = true;
+                }
+                OutputPoll::Event(ResponseEvent::Error(error)) => panic!("{error}"),
+                OutputPoll::Event(_) => {
+                    panic!("non-streaming text task emitted text before terminal")
+                }
+            }
+        }
+        assert!(terminal);
+        println!("SDK_MODEL_TASK_CONTROL_PASS observed_tokens={observed}");
+    }
     let owner = runtime.models().resolve("second").unwrap();
     // CPU supports selective retirement using the original worker.
     runtime.models().unload(&owner).unwrap();
