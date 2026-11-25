@@ -366,8 +366,9 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   all42, independent root/session, immutable cached snapshot and clean shutdown in
  179.13s.
 - [x] Model-neutral bounded prefix lookup/eviction is implemented in the engine.
-  `PrefixCompatibility` requires source plus nonzero execution/input/position/state/
-  sharing fingerprints. `PrefixCache<U,T>` stores immutable `Arc` payloads under
+  `2df8cbb3` supersedes the numeric placeholders: `PrefixCompatibility<K>`
+  compares the original typed prepared-state key plus explicit sharing scope.
+  `PrefixCache<U,T,K>` stores immutable `Arc` payloads under
   entry/weight caps, performs allocation-free greatest-exact-prefix lookup, prefers
   newest ties, refreshes duplicates and evicts FIFO. It cannot publish/restore state;
   backend validation remains authoritative. Two focused tests, strict engine Clippy

@@ -788,6 +788,32 @@ One earlier external SIGTERM during startup is incomplete only. This proves fini
 resident page-pool exhaustion/recovery; it still does not claim external host/device
 OOM.
 
+**25 Nov typed prepared-state and prefix compatibility (`2df8cbb3`):**
+The bounded cache above now uses `PrefixCache<U,T,K>` and
+`PrefixCompatibility<K>`, superseding the earlier numeric class/fingerprint
+placeholders. The original resident service generation binds its exact
+immutable prepared plan/source; actual geometry, selected provider/mode,
+numerical profile, token/contiguous-position ports and storage policy form
+`ResidentTextStateIdentity`. A session lookup compares against the actual
+snapshot identity and frontier, alongside exact token units and trusted
+scope. Tokenizer/chat framing precede this token-space boundary; there is
+no portable fingerprint or cross-service restore grant. State-only lookup
+excludes the final prompt token so original logits/feedback are always
+computed. Same-session rewind and pristine-destination fork share validation
+of complete initialized domains, lease generations and paged logical token
+frontiers and the original atomic root swap.
+
+Admit cache entry/token backing before preparation (including one incoming
+prefix); retained snapshot control and actual variable cloned domain/lease/
+generation/page-table metadata use original source workspace admission.
+No new device pages or allocator; drop cache and host backing before
+native teardown. The current production policy remains paged CUDA only.
+L5 real0.8B fork/restore + B1 contiguous/paged frontiers3/4/5/9 exact full
+vocabulary/all domains, scoped cache65/1/65, exact-length prompt64 replay64,
+eviction/revocation and server-scoped HTTP all pass. X2 native HIP C1/C8
+and alias pipeline pass with original retirement. No new performance or
+external memory/persistence eligibility.
+
 **19 Nov fresh overlap review / first prerequisite:** a full re-read of the recent
 prefix/paging/serving changes found no new ownership/scope/cancellation regression,
 but confirmed that the current execution stack cannot honestly overlap resident GPU

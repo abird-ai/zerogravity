@@ -611,6 +611,21 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   pipeline CLI/API activation and richer task controls only through original
   qualified owners.
 
+## Prepared resident state identity — 25 Nov
+
+- [x] `2df8cbb3`: typed original prepared state/geometry/policy key plus
+  explicit sharing scope; snapshot identity/frontier and complete-domain
+  restore/fork validated by existing owners. Allocation-free prefix lookup,
+  final prompt token preserved for feedback. Cache token/entry storage and
+  retained snapshot metadata admitted through original host ledger.
+- [x] 105 engine tests, strict core/engine Clippy, combined HIP/CUDA SDK
+  compile; physical CUDA fork/restore, B1 paged/contiguous, scoped cache
+  reuse, exact-length replay, eviction and HTTP; native HIP C1/C8 and
+  language pipeline pass. Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+- [ ] Continue materialization/transfer-retirement through real native
+  consumers; portable snapshot persistence, cross-provider restore and
+  additional backend prefix eligibility remain deferred.
+
 ## Handoff and documentation maintenance
 
 - [x] Keep every transition document UTF-8, internally linked and consistent with the canonical current handoff plus the four maintained planning/status files.

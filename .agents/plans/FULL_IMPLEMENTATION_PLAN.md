@@ -171,13 +171,20 @@ cancellation and selective retirement are preserved, future stages are not
 pre-admitted. CPU fixture SDK/HTTP, CUDA GGUF distinct-owner chain/retirement,
 native CUDA C1 and HIP V2 C1/C8 plus alias chain pass. Full isolated gate:
 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-Next reconcile typed committed-state snapshot/prefix compatibility through
-real resident owners and the existing scoped prefix cache. Preserve exact
-original plan, source, state layout, input/position, completion and root
-authority; no second cache/publisher. General DAG/media/context authority,
-pipeline source loading and transport activation remain unsupported.
-Continue remaining source/state/placement/provider interop through actual
-consumers. None of these slices closes Phase 1.
+Signed `2df8cbb3` binds scoped prefix lookup to the exact prepared resident
+state identity and snapshot owner, replaces numeric placeholders with typed
+key equality, shares complete-domain restore/fork validation and original
+publication, and charges retained cache/snapshot backing. State-only reuse
+leaves final-token feedback work. L5 physical fork/restore, B1 contiguous/
+paged exact, scoped reuse/exact-length replay/eviction/HTTP and X2 native
+HIP V2 C1/C8 plus alias chain pass. Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Next reconcile resident/window-streamed tensor materialization and transfer
+retirement through existing verified windows and native consumers; keep
+fully resident access direct, use the same reader leases/admission/copy
+completion/quarantine. No additional cache hierarchy, allocator or publisher.
+General DAG/media/context authority, pipeline source loading, transport
+activation, portable snapshot persistence and cross-provider restore remain
+unsupported. None of these slices closes Phase 1.
 
 Complete the engineering contracts and their real consumers, including every
 foundation below. This is not a requirement to finish every backend optimization,

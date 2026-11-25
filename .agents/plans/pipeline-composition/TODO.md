@@ -365,6 +365,19 @@ their existing numeric/source/physical acceptance gates.
   CUDA GGUF distinct-owner chain + native C1 and X2 HIP V2 C1/C8 + alias chain
   pass. Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
 
+## Prepared resident state identity — 25 Nov
+
+- [x] `2df8cbb3`: exact typed prepared owner key plus scope in the original
+  prefix cache; source/service/geometry/numerical/position/storage identity
+  from actual prepared sessions/snapshots, not caller fingerprints.
+- [x] Shared complete-domain restore/fork validation and original root swap;
+  exact payload frontier and final-token feedback; retained cache/snapshot
+  host backing admitted without new device pages or a second cache.
+- [x] Engine/Clippy/combined SDK compile; L5 physical fork/restore,
+  contiguous/paged exact, scoped reuse/eviction/exact-length replay/HTTP;
+  X2 HIP V2 C1/C8 plus alias chain and original retirement pass.
+  Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+
 ## Uncommitted
 
 ### Phase 1 — source, semantics and executable lowering
@@ -372,13 +385,13 @@ their existing numeric/source/physical acceptance gates.
 Contract: [closed regions](REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering)
 and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
 
-- [ ] Reconcile typed complete-domain committed-state snapshot/prefix
-  compatibility and original scoped cache through actual resident owners.
-  Preserve exact source/plan/input/position/state compatibility and original
-  restore/fork publication/leases; no generic fingerprint framework or
-  second cache/publisher. General DAG/media/context authority, source loading
-  and pipeline transport activation remain unsupported. Continue remaining
-  source lifecycle/placement only through real consumers. Keep selected shape
+- [ ] Reconcile resident/window-streamed materialization and transfer
+  retirement through actual verified-source/native consumers. Preserve
+  source/lease/queue/completion authority and direct resident access;
+  no additional cache hierarchy or allocator. General DAG/media/context
+  authority, source loading and pipeline transport activation remain
+  unsupported. Continue source lifecycle/placement only through real
+  consumers. Keep selected shape
   bands and typed ports, no naked
   scope or implicit retry. Contiguous text invocation/producer ports and the
   whole-text prepared boundary are implemented above; arbitrary explicit

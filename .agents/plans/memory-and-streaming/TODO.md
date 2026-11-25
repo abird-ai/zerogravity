@@ -326,8 +326,9 @@ The following extends existing owners; source-byte qualification is not inferenc
   append1 matches independent replay for full logits/all42, keeps the cached snapshot
   immutable and retires cleanly in179.13s. No replay/readback/copy occurs at fork.
   The bounded lookup/eviction substrate is now implemented in the engine:
-  `PrefixCompatibility` groups exact source + execution/input/position/state/sharing
-  identities; `PrefixCache<U,T>` keeps exact units + immutable `Arc` payloads under
+  `2df8cbb3` supersedes numeric compatibility placeholders:
+  `PrefixCompatibility<K>` binds the actual typed prepared state key and sharing
+  scope; `PrefixCache<U,T,K>` keeps exact units + immutable `Arc` payloads under
   entry/weight caps, does allocation-free greatest-prefix/newest-tie lookup, refreshes
   duplicates and evicts FIFO. It creates no restore authority. **Explicit scoped
   worker integration is now accepted:** nonzero `PrefixSharingScope` travels beside
@@ -362,8 +363,19 @@ The following extends existing owners; source-byte qualification is not inferenc
   paged-pool allocated/idle/occupied/max/page-byte values. No cumulative hot-path
   pressure counters were added. External host/device OOM and future multi-checkpoint
   domain sets remain outside this checkpoint.
-  Missing recurrent state still requires an earlier complete checkpoint/recompute,
-  never a KV-only full hit. Exact gates and serving owner:
+  **25 Nov typed compatibility/admission follow-up accepted (`2df8cbb3`):**
+  original resident service/plan/source/geometry/numerical/port/storage identity
+  is shared by snapshots and sessions; independent preparations cannot reuse state.
+  Restore/fork validate source/service/capacity/complete-domain/lease generations
+  and paged logical frontiers and publish through the same root swap. State-only
+  lookup excludes the last token (prompt64 against cached64 replays64, correct
+  output). Admit cache backing before native prep; bound retained token arrays
+  plus one incoming prefix; charge actual variable cloned snapshot metadata
+  alongside existing control allowance. Drop cache and backing before resident
+  retirement. Physical fork/restore, paged/contiguous B1, scoped reuse/eviction/
+  exact-length/HTTP and native HIP regressions pass. No new portable persistence
+  or cross-owner/provider restore. Missing recurrent state still requires an
+  earlier complete checkpoint/recompute, never a KV-only full hit. Exact gates and serving owner:
   [prefix design](../serving-and-speculation/BATCHING_AND_PAGED_STATE.md#complete-domain-prefix-reuse-and-cow--memory-plan).
 - [ ] Qualify committed snapshot persistence/restore, corruption/security/compatibility UX and restore-versus-recompute; diagnostic portable checkpoints are not product persistence.
 - [ ] Add immutable source extents and bounded coalesced IO/materialization with stable logical tensor identity, genuine copy readiness and original IO/device reader leases.

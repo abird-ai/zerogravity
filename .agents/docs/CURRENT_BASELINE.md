@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — prepared resident state identity and scoped prefix compatibility
+
+`2df8cbb3`: typed original resident owner key and explicit scope, exact
+semantic units, shared complete-domain snapshot validation/publication,
+admitted cache backing and variable snapshot metadata. State-only lookup
+leaves the final token for feedback. L5 physical fork/restore, paged B1
+frontiers3/4/5/9 full vocabulary/all state domains, scoped reuse65/1/65,
+exact-length replay64, eviction/purge and scoped HTTP pass. X2 native HIP
+V2 C1/C8 six replay waves and two-stage alias chain pass with retirement.
+Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+No performance measurement or new backend prefix/persistence eligibility.
+
 ## 25 Nov — source-bound serial language execution
 
 `4477f20c`: explicit loaded-owner registration binding and bounded serial

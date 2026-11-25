@@ -20,6 +20,60 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed source checkpoint `2df8cbb3f11ba698278b3537fc4fd16ca52908b5` —
+prepared resident state identity and scoped prefix compatibility.**
+`PrefixCache<U,T,K>` compares the original owner's exact typed key with an
+explicit sharing scope and exact semantic units; it never grants restore.
+`ResidentTextStateIdentity` derives from the original immutable prepared
+source/plan and service generation, selected provider/mode, numerical
+profile, token/contiguous-position geometry/ports and resident state policy.
+No additional identity issuer or portable fingerprint. Snapshot/session keys
+come from their retained owner; even equal source IDs with independently
+prepared services cannot share state. Qwen checks both payload identity and
+frontier before the existing physical fork. Lookup remains bounded,
+allocation-free and longest-exact-prefix/newest-tie; no second cache.
+State-only lookup excludes the final prompt token, including an exactly
+matching cached prefix, so original feedback must still execute.
+
+Same-session restore and pristine-destination fork share source/service/
+capacity/frontier, complete-domain/initialized-lease validation (including
+actual paged logical token frontiers) and the original root/domain swap.
+Neither invents Ready or transfers another service's state. The original
+cache's host entry/token backing is admitted before resident preparation
+with one incoming prefix included; its original immutable snapshot readers
+retain their separate control and actual variable domain/lease/generation/
+page-table metadata charge. `snapshot_backing_bytes` and cloned page-table
+byte counts are reusable, without allocating another physical page.
+Cache retirement drops both payloads and host backing before native teardown.
+No per-token counters, new device allocation policy or duplicate publisher.
+
+105 engine tests, strict core/engine Clippy and combined HIP/CUDA SDK compile
+pass. L5 physical Qwen 0.8B complete-domain fork/replay and same-session
+restore, B1 contiguous/paged exact at frontiers 3/4/5/9, scoped reuse
+(65 warm / 1 hit / 65 foreign), exact-length prefix replay64, bounded
+eviction/purge and scoped HTTP all pass. X2 native HIP V2 C1/C8 six replay
+waves with `[248068,198,90700]`, lane equality, two-stage alias chain and
+original retirement pass. Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+No new performance or broader numerical parity claim. Existing CUDA paged
+prefix sharing only; no HIP/Vulkan prefix qualification, portable snapshot
+format, arbitrary positions, cross-provider restore or context authorization
+extension. Host backing charges cover the retained production cache/snapshot
+owners, not all OS/driver RAM or all legacy transient clones.
+
+Next: reconcile shared resident/window-streamed tensor materialization and
+transfer-retirement through actual source consumers. Start with existing
+verified windows and native resident/streamed preparation (including CUDA's
+current streamed path). Inspect `resident_leases::{resident_matrix,source_page,
+forward_projection_upload}` and the existing prepared projection consumers;
+preserve original reader leases, cancellation, copy completion/quarantine
+and device admission. Resident access must remain
+direct, with no mandatory cache-miss dispatch. No new allocator/cache hierarchy
+or speculative async IO architecture. General media/DAG/context authority,
+pipeline source loading and transport activation remain outside the serial
+language subset. Phase 1 remains open.
+
+Prior accepted source-bound language pipeline checkpoint:
+
 **Signed source checkpoint `4477f20ce7de60d722eb6967e1f33b5e565cb154` —
 source-bound serial language pipelines.**
 The existing structural `Config::language_chain` selects a verified
@@ -65,12 +119,7 @@ requests and original retirement passes. Both hosts idle at their prior
 memory levels; A1 untouched. Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
 No new numerical or performance baseline claim.
 
-Next: close typed committed-state snapshot/prefix compatibility through
-actual resident owners and the existing scoped prefix cache. Inspect the
-current model-local numeric compatibility placeholders and real plan,
-input/position/state representation; keep complete-domain restore/fork
-authority in the original StateRoot, leases and native completion.
-No second cache, state publisher or generalized restore/transfer eligibility.
+The next snapshot/prefix slice is now implemented in `2df8cbb3` above.
 General DAG/media execution, context authority, cross-backend placement,
 automatic loading from pipeline declarations and CLI/API route activation
 remain outside the serial language subset.
@@ -1338,10 +1387,10 @@ Vulkan-only retry passed, so no source failure follows.
   replay: logits/all42 exact, cached snapshot immutable, independent root/session,
   clean shutdown (`P12_SOURCE_PAGED_PREFIX_FORK_PASS`,179.13s). **The bounded
   semantic prefix lookup/eviction layer is now implemented in the model-neutral
-  engine.** `PrefixCompatibility` requires a bound source plus nonzero grouped
-  fingerprints for execution (loader/quant/numerical), input
-  (tokenizer/template/processor/adapter), position, state schema and sharing scope.
-  `PrefixCache<U,T>` keeps immutable `Arc` payloads under explicit entry/weight
+  engine.** The original grouped numeric compatibility placeholders are
+  superseded by `2df8cbb3`: `PrefixCompatibility<K>` compares an exact typed
+  owner key and explicit sharing scope.
+  `PrefixCache<U,T,K>` keeps immutable `Arc` payloads under explicit entry/weight
   bounds, does allocation-free newest-first lookup, returns the greatest exact
   semantic-unit prefix, refreshes exact duplicates and evicts FIFO deterministically.
   It never grants physical restore: the backend must still run the accepted full-
