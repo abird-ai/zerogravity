@@ -1587,7 +1587,10 @@ impl ResidentSourcePage {
             window.require_rows(matrix, rows.clone())?;
             let window = Arc::new(window);
             #[cfg(feature = "cuda-cublas")]
-            let native_cuda = self.service.provider == crate::backend::Provider::Cuda;
+            let native_cuda = matches!(
+                self.service.physical_owner().device(),
+                cubecl::Device::Cuda(_)
+            );
             #[cfg(not(feature = "cuda-cublas"))]
             let native_cuda = false;
             let (bytes, staging) = if native_cuda {
