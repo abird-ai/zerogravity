@@ -91,6 +91,11 @@ impl Reporter {
         }
     }
 
+    #[cfg(feature = "tui")]
+    pub(crate) fn color_enabled(self) -> bool {
+        self.color
+    }
+
     pub(crate) fn progress(self) -> bool {
         self.progress && self.verbosity != Verbosity::Quiet
     }
@@ -267,6 +272,17 @@ pub(crate) fn install_document(ui: zerogravity::configuration::UiDoc) {
         }
     }
     let _ = REPORTER.set(Reporter::new(options, Terminal::detect()));
+}
+
+/// CLI terminal eligibility before loading document preferences. No global
+/// reporter initialization, so selected settings still merge exactly once.
+#[cfg(feature = "tui")]
+pub(crate) fn launch_interaction() -> zerogravity::Result<bool> {
+    Reporter::new(
+        CLI_OPTIONS.get().copied().unwrap_or_default(),
+        Terminal::detect(),
+    )
+    .run_interaction()
 }
 
 pub(crate) fn reporter() -> Reporter {

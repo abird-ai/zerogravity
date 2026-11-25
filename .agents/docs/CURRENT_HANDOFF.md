@@ -24,7 +24,54 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-7 (25 Nov)
+### Current checkpoint — Phase 2.1 UX-8A (26 Nov)
+
+Native Rust TUI shell, read-only observations over the original Runtime,
+ControlPlane and ConfigFile. No frontend-specific scheduler, registry, cache,
+settings store or execution authority.
+
+- Bare command on capable foreground TTY opens the shell; non-TTY,
+  TERM=dumb, quiet/plain/interactive-never retain concise help. Explicit
+  commands remain direct. Existing --config/--profile selects one document
+  and existing UI preference/CLI precedence applies; no implicit creation
+  or acquisition. Optional tui feature in ordinary CLI default/all and Nix
+  product releases; no terminal dependencies in explicitly minimal CPU
+  feature set. Ratatui 0.30.0 + Crossterm 0.29.0 pinned, resolved offline;
+  use one Crossterm version rather than AW's older 0.28 plus 0.29.
+- Nine destinations Home/Running/Serve/Models/Downloads/Devices/Profiles/
+  Config/Logs. Real-cell rail at >=70 cols, narrow nav overlay, persistent
+  view scroll, focused navigation, 1–9, Tab, j/k/arrows, : destination
+  palette, ? help, r refresh, Esc and q/Ctrl-C. Modal owns text entry;
+  no duplicate global command/search system. No empty permanent detail pane.
+- Borrowed session sees original runtime/control snapshots and bounded
+  transient events, resync after gaps; active owners sampled at 1s, idle
+  no snapshot polling, 200ms input/event multiplex. Cold cache/device/
+  profile/config observation only on entry/refresh/invalidation, no model
+  payload verification or device execution. Runtime/serve/download facts
+  are this process only. Logs are bounded client-local notifications, not
+  operational log history. All cold reads currently synchronous.
+- Host owns runtime and joins it on explicit foreground exit; borrowed
+  session does not retire owners when changing views. Scoped Crossterm
+  raw/alternate screen and cursor restoration on exit/error/unwind;
+  Unix INT/TERM/HUP request normal exit, Ctrl-C handled as input.
+  Linux PTY and reducer/real-cell rendering at 60/90/150 cols pass;
+  no new GPU or inference qualification. Focused terminal-only and
+  combined acquisition/serve strict lint pass. Full isolated workspace
+  gate 2477 Rust executions pass/0 fail/109 skips; release PTY including
+  selected profile interactive preference/CLI override, installer and
+  scripts pass. Nix feature wiring/format checked, cross-target release
+  builds not performed. Initial PTY assertion expected contiguous
+  whitespace in differential ANSI output; corrected to stable tokens.
+
+**Next coherent unit: UX-8B — TUI Home / Running / Serve
+(§46A.28).** Replace the shell's read-only summaries with real qualified
+run/load/invoke/serve/stop/unload flows using original source resolver,
+admission and control lifecycle. Keep process ownership explicit and
+perform long operations off the presentation loop. Then UX-8C model/
+download/device actions, UX-8D config/profile/logs, then embedded Web.
+No fake or duplicated execution actions.
+
+### Previous checkpoint — Phase 2.1 UX-7 (25–26 Nov; 7f5fc4eb / abe98b83)
 
 One typed ConfigDocument (the existing pipeline v2 Document, compatibility
 alias) for model/graph/run/serve declarations and actual UI/download
@@ -87,11 +134,8 @@ preferences. No settings database, profile inheritance or second schema.
   GPU feature boundaries, release, installer and script checks pass.
   UX-7 accepted at this scope.
 
-**Next coherent unit: UX-8A — native TUI shell (§46A.28).**
-Read the TUI architecture and UX-8A–D design; native shell/navigation and
-shared lifecycle first, then Home/Running/Serve, Models/Downloads/Devices,
-Profiles/Config/Logs. Reuse original ControlPlane and ConfigFile; no
-separate runtime, configuration or settings owner. Web follows native TUI.
+The historical next unit UX-8A is implemented in the current checkpoint.
+Reuse original ControlPlane and ConfigFile; Web follows native TUI.
 
 ### Previous checkpoint — Phase 2.1 UX-6 (25 Nov; 84e0681c)
 

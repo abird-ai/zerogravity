@@ -230,7 +230,7 @@ build or general model/backend grant. Historical failures keep their source scop
   for supported serve interaction and missing default XDG document;
   full rerun passes.
 
-### Phase 2.1 UX-7 — configuration and profiles (this checkpoint, 25 Nov)
+### Phase 2.1 UX-7 — configuration and profiles (25–26 Nov; 7f5fc4eb / abe98b83)
 
 - [x] Single typed v2 document (ConfigDocument alias), selected default/
   named/explicit file with built-in fallback only for absent implicit default.
@@ -256,10 +256,27 @@ build or general model/backend grant. Historical failures keep their source scop
   6/0/0 (14.43s), real cached Qwen 0.8B GGUF serving passes unchanged
   8 GiB budget after earlier build-pressure refusal.
 
+### Phase 2.1 UX-8A — native terminal shell (this checkpoint, 26 Nov)
+
+- [x] Bare capable TTY launches read-only shell; plain/quiet/non-TTY
+  retain help, explicit commands stay direct. Selected ConfigDocument
+  preference/CLI precedence. Frontend-only optional tui feature default/
+  all and Nix release; single Ratatui/Crossterm stack resolved offline.
+- [x] Nine destinations, responsive rail/narrow nav overlay, per-view
+  scroll/focus, destination palette/help and scoped terminal restoration.
+  Original ControlPlane snapshot/event cursor and cold views, no duplicated
+  owner or implicit effect; bounded local notifications, coarse active
+  observations. PTY quit/SIGTERM/resize/fallback and render/reducer pass.
+  Terminal-only and combined strict lint pass. Full isolated gate 2477
+  pass/0 fail/109 skips; actual optimized release PTY, installer/scripts
+  pass. Nix cross-target builds not run. No new inference authority.
+
 ## Uncommitted
 
-- [ ] UX-8A native TUI shell: shared control/config owners, responsive
-  navigation and coherent lifecycle; UX-8B–D follow. Dynamic completions,
+- [ ] UX-8B TUI Home / Running / Serve: real original source preparation,
+  load/invoke/serve/stop/unload and responsive task lifecycle over shared
+  Runtime/ControlPlane. UX-8C/D actions follow; cold reads currently
+  synchronous, logs transient notifications only. Dynamic completions,
   Web and control-wire validation/auth remain ordered. Rich searchable
   config/profile surfaces belong to UX-8D; no duplicate editor/validator.
   Broader catalog presets, conversation history and unsupported routes

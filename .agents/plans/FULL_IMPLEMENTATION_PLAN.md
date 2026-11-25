@@ -587,7 +587,14 @@ demand. Preserve the existing detailed
   2473 pass/0 fail/109 skips; release/installer/scripts pass. Serial
   combined release run_unified 6/0/0 including real cached GGUF serving
   with unchanged admission bound. No new source, network or execution authority.
-  **Next: UX-8A native TUI shell (§46A.28).**
+- [x] UX-8A native terminal shell: bare capable TTY opens read-only native
+  view over shared Runtime/ControlPlane and cold owner observations.
+  Responsive navigation/palette, scoped terminal/signal lifecycle, optional
+  CLI-only Ratatui/Crossterm (ordinary default/all and product releases).
+  Actual PTY and cell rendering/reducer tests, strict lint pass; full
+  isolated gate 2477 pass/0 fail/109 skips, release PTY and installer/
+  scripts pass. No implicit execution or new backend qualification.
+  **Next: UX-8B TUI Home / Running / Serve (§46A.28).**
 
 - [ ] Close typed command tree, ConfigDocument/profile merge and shared
   presentation/action/snapshot/event model. One resolver for local paths,

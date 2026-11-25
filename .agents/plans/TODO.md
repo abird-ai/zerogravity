@@ -149,7 +149,12 @@ validated edit/copy/create/remove, provenance and inline managers.
 Focused SDK/CLI/PTY and combined lint/feature build pass. Corrected full
 isolated gate 2473 pass/0 fail/109 skips, release/installer/scripts pass;
 serial real cached-serving and combined release run_unified 6/0/0.
-UX-7 accepted; next UX-8A native TUI shell.
+UX-7 accepted. UX-8A native read-only terminal shell implemented: shared
+runtime/control/config observations, nine responsive views, palette,
+terminal/signal retirement, default capable-TTY launch and plain fallback.
+Actual PTY, fixed-cell/reducer and strict lint pass; full isolated gate
+2477 pass/0 fail/109 skips, release PTY/installer/scripts pass.
+UX-8A accepted; next UX-8B Home / Running / Serve actions.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
 CPU cache gate corrected at 00f57e7a/9374e0ca.

@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (26 Nov): **Phase 2.1 UX-1 through bounded UX-7 accepted; UX-8A native TUI shell is next (§46A.28).**
+Status (26 Nov): **Phase 2.1 UX-1 through bounded UX-8A accepted; UX-8B Home / Running / Serve is next (§46A.28).**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
@@ -3547,6 +3547,22 @@ UX-9E  shared control events + simultaneous TUI/Web acceptance
 
 UX-10  doctor/pipeline polish + compatibility cleanup
 ~~~
+
+UX-8A implementation (26 Nov): read-only native shell with Ratatui 0.30.0
+and one Crossterm 0.29.0, optional frontend-only tui feature selected in
+ordinary defaults/all and product release. Bare capable TTY and selected
+document/CLI UI policy, direct commands and non-TTY help unchanged. Nine
+destinations, responsive rail/narrow overlay, destination palette, focus
+and scroll, scoped raw/alternate screen restoration and Unix stop signals.
+Borrow original Runtime/ControlPlane; read-only live snapshot/event cursor
+and cold cache/device/config/profile observations. No implicit load,
+acquisition, listener or task. Cold views synchronous, Logs only bounded
+client-local control notifications. Fixed-cell/reducer and actual Linux PTY
+navigation/resize/quit/SIGTERM/plain fallback, strict lint pass; full
+isolated gate 2477 pass/0 fail/109 skips, optimized release PTY including
+profile/CLI preference and installer/scripts pass. UX-8B–D add actual
+owner actions, background operation presentation,
+rich model/config/log views; no duplicated runtime or settings authority.
 
 Build TUI before Web so the shared control surface proves it is not browser-shaped.
 

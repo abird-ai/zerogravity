@@ -44,6 +44,23 @@ pub(super) fn run(command: Command) -> ExitCode {
         return finish("config", Err(error));
     }
     match command {
+        Command::Home(selection) => {
+            #[cfg(feature = "tui")]
+            return finish(
+                "tui",
+                crate::tui::launch(
+                    selection
+                        .as_ref()
+                        .map(|(flag, value)| (*flag, value.as_str())),
+                ),
+            );
+            #[cfg(not(feature = "tui"))]
+            {
+                let _ = selection;
+                usage();
+                ExitCode::SUCCESS
+            }
+        }
         Command::Help => {
             usage();
             ExitCode::SUCCESS

@@ -6,6 +6,8 @@ pub(crate) use presentation::{
 
 use super::VERSION;
 use crate::args::{TREE, Topic, node};
+#[cfg(feature = "tui")]
+pub(crate) use presentation::launch_interaction;
 pub(crate) use presentation::{install_document, reporter};
 
 pub(super) fn usage() {
@@ -20,7 +22,7 @@ pub(super) fn usage() {
         println!("    {:12} {description}", n.name);
     }
     println!(
-        "\nGLOBAL OPTIONS:\n    -q, --quiet | -v, --verbose | -vv\n    --format auto|text|json|jsonl  (structured formats where supported)\n    --color auto|always|never --progress auto|always|never\n    --interactive auto|never|always (run, serve, config/profile and online hub/Xet pull)\n    --config FILE | --profile NAME (where supported)\n    --offline  --yes (model/profile remove)\n\nRun 'zerogravity help <command>' for details. No implicit acquisition."
+        "\nGLOBAL OPTIONS:\n    -q, --quiet | -v, --verbose | -vv\n    --format auto|text|json|jsonl  (structured formats where supported)\n    --color auto|always|never --progress auto|always|never\n    --interactive auto|never|always (run, serve, config/profile and online hub/Xet pull)\n    --config FILE | --profile NAME (where supported)\n    --offline  --yes (model/profile remove)\n\nRun 'zerogravity help <command>' for details. Bare TTY opens the native UI where compiled. No implicit acquisition."
     );
 }
 

@@ -318,6 +318,7 @@ pub(super) enum ModelCommand {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Command {
+    Home(Option<(&'static str, String)>),
     Help,
     HelpTopic(Topic, Option<String>),
     Version,
@@ -385,10 +386,11 @@ fn with_prefix(prefix: &str, args: &[String]) -> Vec<String> {
 fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static str> {
     let args = g.prefix(args, true)?;
     let Some(first) = args.first() else {
-        if g.document.is_some() {
-            return Err("select a command for --config or --profile");
+        if g.yes {
+            return Err("--yes requires an explicit removal command");
         }
-        return Ok(Command::Help);
+        unsupported_format(g.format)?;
+        return Ok(Command::Home(g.document.take()));
     };
     let name = first.as_str();
     let rest = g.prefix(&args[1..], false)?;

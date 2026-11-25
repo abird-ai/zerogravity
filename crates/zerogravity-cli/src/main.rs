@@ -42,6 +42,8 @@ mod gemma4_cpu;
 
 mod pipeline;
 mod run_cli;
+#[cfg(feature = "tui")]
+mod tui;
 
 #[cfg(feature = "serve")]
 mod serve;
@@ -341,7 +343,7 @@ mod tests {
 
     #[test]
     fn empty_and_help() {
-        assert_eq!(parse([] as [&str; 0]), Command::Help);
+        assert_eq!(parse([] as [&str; 0]), Command::Home(None));
         assert_eq!(parse(["--help"]), Command::Help);
         assert_eq!(parse(["-h"]), Command::Help);
     }

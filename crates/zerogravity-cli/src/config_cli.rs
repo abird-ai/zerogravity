@@ -25,7 +25,7 @@ fn path(selection: DocumentSelection<'_>) -> Result<PathBuf> {
     .ok_or_else(|| bad("configuration selection required"))
 }
 
-fn selected_path(document: Option<(&str, &str)>) -> Result<PathBuf> {
+pub(super) fn selected_path(document: Option<(&str, &str)>) -> Result<PathBuf> {
     let selection = match document {
         None => DocumentSelection::Default,
         Some(("--config", file)) => DocumentSelection::File(Path::new(file)),

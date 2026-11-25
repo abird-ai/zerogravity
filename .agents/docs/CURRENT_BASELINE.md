@@ -5,6 +5,16 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — native terminal shell (UX-8A)
+
+Read-only Ratatui/Crossterm shell uses original Runtime/ControlPlane and
+cold config/cache/device owners. Default capable TTY launch, nine views,
+responsive rail/overlay, palette and scoped terminal/signal retirement.
+Actual Linux PTY and fixed-cell navigation/render tests pass; terminal-only
+and combined lint pass. Full isolated gate 2477/0/109, release PTY,
+installer/scripts pass. No physical execution, source grant or measured
+performance change. TUI dependencies stay in CLI; cross builds not run.
+
 ## 25 Nov — unified configuration and profiles (UX-7)
 
 Existing typed v2 document extended with real UI/download-offer settings,
