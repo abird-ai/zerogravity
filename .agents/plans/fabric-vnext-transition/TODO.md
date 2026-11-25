@@ -640,10 +640,15 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   existing CPU/PyTorch
   references and original retirement (test-only typed refusal correction).
   Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-- [ ] Finish minimum useful SDK-free compiled-provider scaffolding under the
-  original closed-region ownership seam. Portable snapshot persistence,
-  cross-provider restore and additional backend prefix eligibility remain
-  deferred.
+- [x] SDK-free compiled-provider scaffold 3ca16abd/a53a3446: typed original
+  source operands, explicit implementation selection independent of backend,
+  exact prepared binding and original completion authority. Graph-only
+  preparation and actual CUDA C1/HIP V2 C1/C8 replay/retirement pass.
+  Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+- [ ] Reconcile model/source/format/task registration and cold eligibility
+  through original HF/local loaders and registry. Portable snapshot
+  persistence, cross-provider restore and additional backend prefix
+  eligibility remain deferred.
 
 ## Handoff and documentation maintenance
 

@@ -188,6 +188,11 @@ any external compiler. All phases retain the original resource/state owners.
   references and original retirement (test-only typed refusal correction).
   Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
   No new numerical profile or performance claim (composition TODO).
+- 3ca16abd/a53a3446: ordered original region operands bind borrowed encoded
+  references or authenticated window descriptors; CUDA and HIP cold matrix
+  preparation reuse the exact check. Explicit compiled selection differs
+  from native capture; original invocation, state and completion authority
+  remain. Actual CUDA C1/HIP V2 C1/C8 pass; no new kernel or parity claim.
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

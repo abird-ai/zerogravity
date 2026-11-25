@@ -409,10 +409,16 @@ and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
   X2 HIP portable typed slice 1024/2048 matches existing CPU/PyTorch
   references and original retirement (test-only typed refusal correction).
   Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-- [ ] Finish minimum useful SDK-free optional compiled-provider scaffolding
-  on existing region/provider/prepared executable contracts, not a second
-  IR or owner. Inspect graph-only binding and original completion/
-  retirement gaps; reuse native/captured proof, no compiler SDK/ONNX.
+- [x] Bounded SDK-free optional compiled-provider scaffold 3ca16abd/a53a3446:
+  direct ordered original region operands through RegionSource, exact
+  compiled implementation selection and prepared source/plan/scope,
+  combined original call/physical shape. Reuse existing state, admission
+  and completion owners. Graph-only preparation, native CUDA/HIP shared
+  cold matrix binding and actual C1/C8 replay/retirement pass; no SDK/ONNX
+  or second IR. Capture code unchanged, no new capture/GGUF physical run.
+  Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+- [ ] Reconcile backend-independent model/source/format/task registration
+  and cold eligibility through existing SDK HF/local loaders and registry.
   General DAG/media/context
   authority, source loading and pipeline transport activation remain
   unsupported. Continue source lifecycle/placement only through real

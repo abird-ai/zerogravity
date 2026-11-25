@@ -199,12 +199,21 @@ retirement and native HIP V2 C1/C8 replay/retirement pass.
 X2 HIP portable typed slice 1024/2048 matches existing CPU/PyTorch
 references and original retirement (test-only typed refusal correction).
 Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-Next complete the minimum useful SDK-free optional compiled-provider
-scaffolding through the existing closed-region/prepared executable seam.
-Revalidate the already-implemented graph-only bindings, provider
-requirements, native/captured ownership and shape/state contracts; extend
-only the remaining useful direct semantic-region lowering/retirement gap.
-No new IR, external compiler dependency or independent ownership plane.
+Signed 3ca16abd/a53a3446 close the bounded SDK-free compiled-provider
+scaffold: RegionSource binds original encoded references or verified
+window descriptors; ordered ModelRegion operators borrow original nodes.
+Explicit Compiled(provider) is distinct from native Graph capture;
+prepared selection must match cold selection and exact source/plan/scope.
+Combined call/physical-shape binding retains existing state and completion
+owners. Engine preparation 9/9, tensor windows 30/30, strict Clippy,
+combined SDK check and actual Qwen 0.8B CUDA C1/HIP V2 C1/C8 replay and
+retirement pass. No fresh captured or legacy GGUF physical qualification;
+capture code unchanged. No external compiler execution or new IR.
+Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Next reconcile backend-independent source/model/format/task registration
+and cold source eligibility through original SDK HF/local loaders and
+registry; retain exact source authority and explicit numerical/device
+policy, with no second catalog or runtime.
 General DAG/media/context authority, pipeline source loading, transport
 activation, portable snapshot persistence and cross-provider restore remain
 unsupported. None of these slices closes Phase 1.
@@ -280,7 +289,7 @@ a Python runtime is mandatory.
   recurrent, convolution and quantized operators as real consumers require.
   Keep compact row/batch layouts and explicit precision; avoid forcing every
   operator into GEMM or a universal dispatch object.
-- [ ] Complete the optional compiled-provider **scaffolding now**: a closed
+- [x] Complete the bounded optional compiled-provider **SDK-free scaffolding** (3ca16abd/a53a3446): a closed
   semantic region or whole model with explicit source, typed bindings,
   layout/precision/shape/shape-miss, state effects and prepared executable
   ownership. Accept the authoritative native region and verified source

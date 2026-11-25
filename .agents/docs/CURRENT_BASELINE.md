@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — direct source-region provider binding
+
+3ca16abd (SDK reexports a53a3446): borrowed encoded references and verified
+window descriptors bind the same original semantic region; explicit compiled
+implementation identity is distinct from native capture and backend.
+Graph-only preparation, 9 engine preparation and 30 tensor-window tests,
+strict core/engine Clippy, combined CUDA/HIP SDK check pass. Actual Qwen
+0.8B CUDA C1 and HIP V2 C1/C8 expected IDs, replay and retirement pass.
+No new captured/GGUF physical requalification or external SDK execution;
+existing capture code unchanged. No new performance baseline.
+Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+
 ## 25 Nov — initialization-owned parameter materialization/retirement
 
 687d9a24/06df027f (test-only 43928332/f4e09428): shared exact

@@ -28,8 +28,14 @@ retirement pass. No new performance or unknown-fault claim.
 X2 HIP portable typed slice 1024/2048 matches existing CPU/PyTorch
 references and original retirement (test-only typed refusal correction).
 Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-Next complete the remaining minimum useful SDK-free compiled-provider
-scaffolding through the existing closed-region/prepared executable seam.
+Signed 3ca16abd/a53a3446: direct typed source-region operands and explicit
+compiled selection, distinct from native capture; original plan/shape,
+admission and completion preserved. Engine preparation 9/9, windows 30/30,
+strict Clippy/combined SDK and actual CUDA C1/HIP V2 C1/C8 replay/retirement
+pass. No external SDK execution or new captured/GGUF physical claim.
+Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Next reconcile source/model/format/task registration and cold eligibility
+across the existing SDK HF/local routes and original registry.
 Continue foundations in the [full plan](FULL_IMPLEMENTATION_PLAN.md).
 No second cache hierarchy, allocator or publisher; portable persistence,
 cross-provider restore and general media/DAG/context remain open.

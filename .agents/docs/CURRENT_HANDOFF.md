@@ -25,6 +25,52 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed SDK-free compiled-region foundation: 3ca16abd538fe8a4ffa0fc07b472865756392bf2.**
+Public SDK reexports: a53a3446dc271c1081ea0e850a851907435e7c74.
+
+- One cold typed RegionSource binding seam over the original ProgramSource.
+  Borrowed sources return validated encoded references; verified-window
+  sources return authenticated matrix/parameter descriptors without loading
+  payloads. ModelRegion::operators borrows original nodes, ordered operands,
+  and source identity; no export, duplicate IR or second cache. CUDA packed
+  projection and HIP text preparation share the exact matrix check.
+- SelectedMode distinguishes native, captured Graph, and Compiled(provider)
+  independently of the device. Engine preparation verifies the selection
+  captured before await against the prepared executable and original
+  source/plan/scope. Custom provider implementations supply selected();
+  prepared executables report their actual selection. Same-backend wrong
+  modes/compiler identities and missing compiled contracts refuse.
+- PreparedRegion::bind_call couples the original call/positions and typed
+  physical shape; existing state effects, admission, leases and completion
+  stay authoritative. No hot-path allocation, new kernel selector, implicit
+  fallback or independent publisher.
+- Engine preparation 9/9, tensor windows 30/30, strict core/engine Clippy
+  and combined CUDA/HIP SDK all-target checks pass. SDK-free graph-only
+  preparation tests cover direct original operand binding, selected
+  identity, shape/observation refusal and ownership. L5 actual Qwen 0.8B
+  CUDA C1 and X2 native HIP V2 C1/C8 pass three waves each, exact token IDs
+  [248068,198,90700], replay and retirement; devices return to 37 MiB and
+  259768320 bytes respectively, no compute/KFD owners. Prior captured graph
+  proof applies to unchanged capture code; no fresh captured or legacy
+  GGUF physical qualification in this slice. No compiler SDK execution,
+  general stateful dispatch, numerical parity or performance claim.
+  Full mandatory-private-network gate: 2394 Rust test executions, zero
+  failures, 101 explicit skips; architecture, feature isolation, release,
+  installer and scripts pass. SDK reexports landed before the CPU/minimal
+  SDK checks; the native runs cover unchanged 3ca16abd production code.
+
+**Next coherent unit:** reconcile backend-independent model/source/format/task
+registration and cold source eligibility across the existing SDK loaders.
+Start at models.rs ModelLoadRequest, qwen35_source/source_inventory.rs and
+builtins/text/qwen_source/load.rs, and the ordinary local GGUF/CPU/GPU loaders
+and existing engine registry. Preserve exact snapshot or held descriptor
+authority, family/task capability validation, explicit device and numerical
+policy, and existing compatibility routes. Separate eligibility from lowering
+without a second catalog, runtime or new source format. Continue remaining
+placement, state/task and SDK/control foundations before Phase 2.
+
+### Previous accepted parameter-retirement checkpoint
+
 **Signed parameter-retirement checkpoint: f4e09428cd8d1f77302a24e18050687fa8fba6e6.**
 Production commits: 687d9a2467af9479108b6069c12e68545032630b and
 06df027fd126a57368984c668dc7e277d3f442bd; 43928332 is the CUDA
@@ -69,19 +115,9 @@ isolation and script checks pass. Assembled on unchanged production
 with affected physical checks executed separately. No new full rerun of
 unaffected suites or exact-source evidence pinning.
 
-**Next coherent unit:** finish minimum useful optional compiled-provider
-scaffolding in Phase 1. Inspect the original RegionExecutionProvider,
-ModelRegion, PreparedRegion, PreparedExecutable and ExecutableBundle
-contracts and existing graph-only tests. Close the remaining direct
-native-semantic-region to prepared binding/retirement gap using existing
-typed source, shape/layout, state effects, physical admission and original
-completion owners. Exercise an SDK-free graph-only boundary and real
-native/captured consumers where changed; reuse existing proof. No external
-compiler SDK, ONNX requirement, new IR or independent execution owner.
-Do not redo accepted region or transport work. Continue remaining
-source/model registration, placement, state/task and SDK/control foundation
-exits before Phase 2. General asynchronous SSD IO, opaque cross-runtime/
-device interop, unknown cold-upload injection, portable persistence and
+The subsequent SDK-free compiled-region checkpoint above supersedes the
+continuation. General asynchronous SSD IO, opaque cross-runtime/device
+interop, unknown cold-upload injection, portable persistence and
 cross-provider restore remain open.
 
 ### Previous accepted matrix transport checkpoint
