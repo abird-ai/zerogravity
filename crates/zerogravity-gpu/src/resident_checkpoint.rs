@@ -38,6 +38,11 @@ impl ResidentSession {
         if position > self.model.capacity {
             return Err(Error::Limit("checkpoint exceeds resident capacity".into()));
         }
+        if self.domains.iter().any(|domain| domain.paged_kv.is_some()) {
+            return Err(Error::Unsupported(
+                "diagnostic checkpoint import requires contiguous state".into(),
+            ));
+        }
         let packed = pack(&self.model.states, self.model.capacity, position, domains)?;
         let attempt = self.authority.begin_import(position as u64)?;
         let _admission = self.model.allocation.lock().await;
@@ -71,11 +76,11 @@ impl ResidentSession {
         let mut domains = Vec::with_capacity(self.model.states.len());
         for (requirement, buffers) in self.model.states.iter().zip(&packed) {
             let mut data = buffers.iter();
-            let mut allocate = |elements: usize| {
+            let mut allocate = |layout: ResidentBufferLayout| {
                 let bytes = data
                     .next()
                     .ok_or_else(|| Error::State("checkpoint buffer coverage".into()))?;
-                if elements.checked_mul(4) != Some(bytes.len()) {
+                if layout.kind() != ResidentPhysicalType::F32 || layout.bytes()? != bytes.len() {
                     return Err(Error::State("checkpoint physical byte coverage".into()));
                 }
                 initialization.upload_bytes(bytes, BufferRole::RecurrentState)
@@ -129,6 +134,17 @@ fn pack(
     position: usize,
     domain_values: &[(StateSlot, Vec<f32>)],
 ) -> Result<Vec<Vec<Vec<u8>>>> {
+    if position > capacity {
+        return Err(Error::Limit("checkpoint exceeds resident capacity".into()));
+    }
+    for requirement in requirements {
+        let (_, layout) = requirement.plane_layout()?;
+        if layout.kind() != ResidentPhysicalType::F32 {
+            return Err(Error::Unsupported(
+                "diagnostic checkpoint requires F32 state".into(),
+            ));
+        }
+    }
     let domains = domain_values
         .iter()
         .map(|(slot, values)| (*slot, values))
@@ -204,6 +220,7 @@ mod tests {
                     slab: 2,
                     capacity: 4,
                 },
+                physical: ResidentPhysicalType::F32,
                 bytes: 64,
             },
         ]
@@ -247,6 +264,16 @@ mod tests {
     fn state_import_rejects_duplicate_missing_foreign_and_invalid_domains() {
         let requirement = requirements();
         let good = domains();
+        let mut wrong = requirements();
+        wrong[0].physical = ResidentPhysicalType::Bf16;
+        wrong[0].bytes = 4;
+        assert!(matches!(
+            pack(&wrong, 4, 1, &good),
+            Err(Error::Unsupported(_))
+        ));
+        wrong = requirements();
+        wrong[1].bytes += 4;
+        assert!(pack(&wrong, 4, 1, &good).is_err());
         assert!(pack(&requirement, 4, 1, &[good[0].clone(), good[0].clone()]).is_err());
         assert!(pack(&requirement, 4, 1, &good[..1]).is_err());
         let mut foreign = good.clone();

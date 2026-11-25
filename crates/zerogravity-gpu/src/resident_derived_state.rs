@@ -274,7 +274,12 @@ mod root_tests {
     }
 }
 
-#[cfg(all(test, feature = "qualification", feature = "cuda", target_os = "linux"))]
+#[cfg(all(
+    test,
+    feature = "qualification",
+    feature = "cuda-cublas",
+    target_os = "linux"
+))]
 mod tests {
     use super::*;
     use crate::cuda::test_support::CudaDiagnostic;
