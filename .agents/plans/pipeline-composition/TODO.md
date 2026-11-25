@@ -466,8 +466,13 @@ and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
   exact snapshot observation; actual cached CPU/CUDA SDK/reload/chain
   and mutable-ref refusal, direct selected digest, local CPU/CUDA and
   native HF HIP V2 C1/C8 pass.
-- [ ] Close remaining original semantic-region observations and qualified
-  provider buffer/stream compatibility;
+- [x] Bounded original recorded/selected region observation and same-context
+  CUDA compatibility (8e3b8993/33118f16): actual original plan and retained
+  native projection, typed ports/state/requirements, cold queue/resource
+  and dense copy compatibility; existing original flight completion and
+  quarantine. Actual CUDA resident/streamed B1/C4 exact, GGUF chain,
+  HIP V2 C1/C8 and physical bridge refusal/interrupt pass.
+- [ ] Remaining live capture observation and qualified physical interop;
   extend other qualified resident formats and generic named Vulkan
   registry reuse and actual shared host-visible GPU backing. General
   DAG/media/context authority, mixed backend/multi-source HF loading and

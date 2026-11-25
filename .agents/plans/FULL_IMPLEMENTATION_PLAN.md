@@ -287,10 +287,17 @@ Actual cached 0.8B CPU/CUDA SDK/reload/chain, ref retarget refusal and
 earlier selected direct materialization; existing local CPU/CUDA GGUF
 and native HF HIP C1/C8 pass. 2ec06026 preserves selector refusal diagnostics.
 Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
-Next close minimum original semantic-plan/
-region observations and provider buffer/stream compatibility seam through
-existing prepared and completion owners. Broader family/codec/task,
-general UMA backing and unqualified backend routes remain explicit.
+Signed 8e3b8993/33118f16: original recorded and retained selected region
+observations, actual physical/logical ports/state/requirements and exact
+native CUDA projection owner. Cold explicit same-context queue/resources
+and identical dense view compatibility; original completion/retention,
+shared actual GEMM orientation. Actual CUDA resident/streamed B1/C4
+full-domain/full-logit equality, GGUF chain, native HIP V2 C1/C8 and
+physical private bridge interruption/refusal pass. Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
+Next close bounded
+named Vulkan original-registry reuse/physical admission; keep actual
+captured-owner observation, general UMA aliasing, foreign buffers/streams
+and other unqualified backend/family/codec/task routes explicit.
 No duplicate catalog, estimator, allocator or runtime.
 General DAG/media/context authority, multi-source HF and mixed-backend
 pipeline loading, CLI/API transport activation, generalized persistent

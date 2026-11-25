@@ -25,6 +25,85 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed original prepared-program/region observations and CUDA provider compatibility: 8e3b8993b189beb80216e8b5a10fd8a5e484f7db.**
+Layout tightening: 33118f162eca2618d97ff2b7fe6885ecae6da69f.
+
+- Existing ExecutionDescription now contains optional ProgramDescription
+  (original live source issuer, semantic node/value/state counts, context,
+  source-template geometry, logits and frontier delta) and RegionDescription
+  (original node range, prepared row band, actual logical/physical ports,
+  state versions/storage, invocation/observation support and incremental
+  provider requirements). Serialize validated original descriptor types,
+  not a second IR or plan ID. Structural equality is not ownership.
+  PreparedExecutable::description and ExecutableBundle::description use
+  the original retained contract; whole text and ordinary tensor-source
+  adapters report actual plan facts in existing SDK observations. Direct
+  CPU without a recorded plan stays absent. No additional per-token
+  graph/registry/reader or execution permission.
+- ResidentModel/ResidentTextModel::describe_region(node) reads the original
+  retained CUDA projection binding; None for an unretained independent
+  region, invalid node refuses. No reconstructed region or generic
+  partial-execution permit. Whole native selection stays Native; do not
+  infer live graph replay or external compiler support from this metadata.
+- CUDA same-context private/secondary-stream bridge: cold borrowed binding
+  validates exact original service/queue and required stream relationship,
+  scratch identity/extent, distinct opaque charges and capture refusal
+  before submission. Original armed flight still validates exact accesses
+  and resources, retains provider/queue/charge owners, orders before/after
+  events and uses original completion/quarantine. Explicit borrowed views
+  validate declared format/geometry, alignment, bounds, same service and
+  nonoverlap. Copy requires identical dense layout/encoding; no padding
+  overwrite, conversion, general zero-copy or foreign allocation import.
+  Existing native/streamed GEMM share actual row-major/inner-major layout;
+  streamed output uses original typed strided column view, not a copy.
+  Other cohort byte views and alternate native primitives remain intact.
+- Existing nine engine preparation tests with original selected region/
+  source/state observation; strict core/engine/facade Clippy, combined
+  CUDA/HIP compile and CUDA-specific feature compile passed. Actual X2
+  HF HIP V2 C1/C8 all six waves [248068,198,90700], lane invariance,
+  width8, zero failed GPU quanta, selected program observation and original
+  alias chain/retirement passed. X2 idle 259768320 bytes.
+- L5 CUDA original HF 0.8B resident vs actual streamed B1/C4 full logits
+  and all state domains exact, selected retained projection facts,
+  known cancellation/retry and shutdown passed. Actual ordinary CUDA GGUF
+  three-stage two-owner chain selected program observation and selective
+  unload passed. Physical existing certified BF16 GEMM private/secondary
+  stream bridge passed preflight refusal while unfenced, exact transfer/
+  original event return and no early Ready, interruption retention/fence.
+  First physical attempt used obsolete Nix CUDA13.4 paths; use current
+  installed CUDA13.5 runtime/CCCL/NVRTC and cuBLAS13.10, no downloads.
+  First cuda-native-only binary matched zero bridge tests; actual
+  cuda-native,cuda-cublas exact test passed. 33118f16 tightens dense-copy
+  and shared GEMM orientation. Actual final dense/padded/layout/stream
+  preflight, certified GEMM/copy and interruption retention/fence pass.
+  Final learned resident/streamed B1/C4 full logits/all domains and clean
+  shutdown also pass; both GPUs idle, L5 37MiB.
+- Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
+  Gate started at 8e3b8993; the later CUDA-only layout tightening was
+  separately rebuilt and physically revalidated as above.
+- Scope: observations of retained native/compiled-contract metadata, not
+  a new qualified compiled executor. No live captured graph observation
+  projection beyond existing capture-owner receipts yet; capture remains
+  distinct from compiled/native. HIP cold projection validation does not
+  retain an independent region object, so None is truthful. Private
+  bridge remains a reusable bounded CUDA primitive, not automatic
+  selection for learned models. Foreign allocations, cross-device/
+  context/other-backend stream import and arbitrary partial state
+  conversion remain unqualified.
+
+**Next coherent unit:** close the remaining bounded physical owner seam:
+safe reuse of exact named Vulkan adapters in the original CubeCL service
+registry, using the existing guarded preflight/admitted lease and actual
+local VRAM observation. Avoid second registry, repeated temporary device
+creation, implicit CPU/GTT fit or invented shared-backing identities.
+Reconcile live captured-owner observation through its original owner
+if a qualified existing consumer requires it; preserve explicit holds
+on unqualified capture/interop and general host-visible GPU/UMA alias
+backing. Then audit minimum Phase 1 exit requirements before CLI/TUI/Web.
+No concrete compiler SDK integration before ordered native phases.
+
+### Previous accepted shared GGUF source checkpoint
+
 **Signed shared selected GGUF source preparation: 7987f70a566bfb7a5519b8f1a1013f138881de07.**
 Refusal diagnostic compatibility correction: 2ec06026853b019876b753f50e38134ea202bee7.
 
@@ -91,19 +170,8 @@ Refusal diagnostic compatibility correction: 2ec06026853b019876b753f50e38134ea20
   source/materialization behavior unchanged. Both unified CLI source-selection
   variants pass on the full corrected rerun. Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
 
-**Next coherent unit:** close the minimum original semantic-plan/closed-region
-observation and borrowed provider buffer/stream compatibility seam using
-core ModelProgram/ModelRegion, PreparedExecutable/PreparedRegion and the
-existing ExecutionDescription, RegionExecutionProvider and typed original
-physical completion/transport owners. Expose actual selected plan/region
-facts for qualified native/captured consumers without a second plan ID,
-IR, registry or execution permission. Reuse the original CUDA
-managed-private/secondary-stream transport where a qualified consumer
-needs it; do not promise general cross-context/backend transfer or new
-compiled-provider execution. Review remaining minimum Phase 1 exit
-requirements against source and accepted real runs, keep non-Linux/generic
-Vulkan registry, complete UMA backing and other unqualified specializations
-explicit. Continue CLI/TUI/Web only after shared foundations close.
+The bounded original plan/region observation and CUDA compatibility
+continuation is implemented at 8e3b8993/33118f16 above.
 
 ### Previous accepted SDK text-task controls checkpoint
 

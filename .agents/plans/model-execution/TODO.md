@@ -231,6 +231,11 @@ any external compiler. All phases retain the original resource/state owners.
   preparation; exact cache digest and original verified raw ownership.
   Actual cached CPU/CUDA, existing local CPU/CUDA and native HF HIP V2
   C1/C8 pass. No new model/codec or kernel.
+- 8e3b8993/33118f16: original plan and retained CUDA selected projection
+  descriptions, exact physical ports/requirements and cold same-context
+  provider compatibility, shared typed resident/streamed GEMM layout.
+  Actual CUDA resident/streamed B1/C4 exact full logits/all domains,
+  HIP V2 C1/C8 and private secondary-stream interruption pass.
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

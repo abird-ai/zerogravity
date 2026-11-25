@@ -5,6 +5,17 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — prepared-plan and provider compatibility
+
+8e3b8993/33118f16: original recorded/selected region descriptions,
+typed ports/state/requirements, actual retained CUDA projection observation
+and original task/model facts. Cold same-context CUDA queue/resource
+preflight and explicit dense identical-layout copy; original completion/
+quarantine retained. Actual CUDA resident/streamed B1/C4 exact all logits/
+domains, ordinary GGUF chain, native HIP V2 C1/C8 and physical private
+secondary-stream GEMM/interrupt pass. No new arithmetic/provider support.
+Full isolated gate: 2396 Rust test executions, zero failures, 106 explicit skips; release/installer/scripts pass.
+
 ## 25 Nov — shared GGUF source selection
 
 7987f70a: common local/immutable-cache location and held descriptor/

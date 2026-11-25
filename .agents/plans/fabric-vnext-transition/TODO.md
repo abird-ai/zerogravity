@@ -621,8 +621,12 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   family/target/context and original raw lease, exact digest observation.
   Real cached CPU/CUDA SDK/chain/reload/refusal and selected direct
   materialization; original local CPU/CUDA and native HF HIP C1/C8 pass.
-- [ ] Close remaining shared SDK/semantic-region observations and qualified
-  provider buffer/stream compatibility; general DAG/media/context,
+- [x] Bounded original prepared-plan/region descriptions and CUDA
+  same-context compatibility (8e3b8993/33118f16), actual retained projection,
+  typed physical/state ports, cold queue/lease/resource and dense copy;
+  actual CUDA resident/streamed B1/C4 exact, GGUF, HIP V2 C1/C8,
+  private bridge refusal/interrupt and retirement pass.
+- [ ] Remaining live capture observations and qualified physical interop; general DAG/media/context,
   mixed backend/multi-source HF and pipeline CLI/API activation only
   through original qualified owners.
 
