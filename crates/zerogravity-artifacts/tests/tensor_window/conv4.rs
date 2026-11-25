@@ -27,18 +27,23 @@ fn full_original_rank3_and_partial_range_keep_truthful_metadata_and_owner() {
     raw.validate_source_parameter(&descriptor).unwrap();
     let partial = source.read_parameter(&raw, 4..8).unwrap();
     assert!(!partial.is_complete());
+    assert!(partial.require_complete(&raw).is_err());
     assert_eq!(partial.parameter().tensor().shape, [32, 1, 4]);
     assert_eq!(partial.element_range(), 4..8);
     drop(partial);
     assert_eq!(reserved(&host), before);
     let full = source.read_parameter(&raw, 0..128).unwrap();
-    assert!(full.is_complete());
+    full.require_complete(&raw).unwrap();
     assert_eq!(full.as_slice().len(), 256);
     assert!(full.charged_staging_bytes() >= 256);
     assert!(source.read_parameter(&raw, 0..129).is_err());
     assert!(source.read_parameter(&raw, 4..4).is_err());
     let foreign = f.plan(&host).unwrap().open().unwrap();
     assert!(foreign.read_parameter(&raw, 0..128).is_err());
+    assert!(
+        full.require_complete(&foreign.conv4_parameter("conv").unwrap())
+            .is_err()
+    );
     drop(foreign);
     drop(descriptor);
     drop(raw);

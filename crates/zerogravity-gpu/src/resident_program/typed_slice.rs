@@ -6,7 +6,8 @@ use crate::resident_leases::{
 };
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use zerogravity_artifacts::source_weights::{
-    ParameterWindow, TensorWindow, VerifiedTensorSource, WindowWorkspace,
+    ParameterWindow, TensorWindow, VerifiedMatrix, VerifiedParameter, VerifiedTensorSource,
+    WindowWorkspace,
 };
 use zerogravity_core::accelerator::program::RecordedOperatorSlice;
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
@@ -19,10 +20,15 @@ mod rms;
 mod tests;
 use bindings::{Buffer, Shape};
 
-pub(super) struct SourceOwner {
+struct SourceUpload {
     _embedding: TensorWindow,
     _gamma: ParameterWindow,
-    _control_and_upload: WindowWorkspace,
+    control: Arc<WindowWorkspace>,
+}
+struct SourceBinding {
+    _embedding: VerifiedMatrix,
+    _gamma: VerifiedParameter,
+    _control: Arc<WindowWorkspace>,
 }
 pub(crate) struct TypedBody {
     service: Arc<ResidentService>,
@@ -33,7 +39,7 @@ pub(crate) struct TypedBody {
     weights: Arc<ResidentMatrix>,
     leases: BTreeMap<Buffer, ResidentLease>,
     accesses: Vec<(ResidentLease, DeviceAccess)>,
-    _owner: Arc<SourceOwner>,
+    _owner: SourceBinding,
     started: AtomicBool,
     next: AtomicUsize,
     commands: AtomicUsize,
@@ -46,7 +52,7 @@ pub(crate) struct PreparedInputs {
     slice: Arc<RecordedOperatorSlice>,
     shape: Shape,
     token: u32,
-    owner: Arc<SourceOwner>,
+    owner: Arc<SourceUpload>,
 }
 pub(crate) struct PendingBody {
     service: Arc<ResidentService>,
@@ -56,7 +62,7 @@ pub(crate) struct PendingBody {
     token: u32,
     pending: crate::resident_leases::resident_matrix::PendingResidentMatrix,
     leases: BTreeMap<Buffer, ResidentLease>,
-    owner: Arc<SourceOwner>,
+    owner: SourceBinding,
     fault: qualification::SliceFault,
 }
 impl PendingBody {
@@ -231,7 +237,7 @@ impl TypedBody {
             &shape.embedding.name,
             zerogravity_core::accelerator::program::MatrixAxes::OutputInput,
         )?;
-        let gp = source.parameter(&shape.gamma.name)?;
+        let gp = source.bind_declared_parameter(&shape.gamma)?;
         let embedding = match cancelled {
             Some(c) => source.read_rows_cancellable(&em, token as usize..token as usize + 1, c)?,
             None => source.read_rows(&em, token as usize..token as usize + 1)?,
@@ -240,21 +246,20 @@ impl TypedBody {
             Some(c) => source.read_parameter_cancellable(&gp, 0..shape.width, c)?,
             None => source.read_parameter(&gp, 0..shape.width)?,
         };
+        gamma.require_complete(&gp)?;
         if embedding.row_range() != (token as usize..token as usize + 1)
             || embedding.matrix().source_identity() != source.source_identity()
             || embedding.as_slice().len() != 2 * shape.width
-            || gamma.parameter().source_parameter() != shape.gamma
-            || !gamma.is_complete()
             || gamma.as_slice().len() != 2 * shape.width
         {
             return Err(Error::State(
                 "portable typed full original embedding/gamma window".into(),
             ));
         }
-        let owner = Arc::new(SourceOwner {
+        let owner = Arc::new(SourceUpload {
             _embedding: embedding,
             _gamma: gamma,
-            _control_and_upload: control,
+            control: Arc::new(control),
         });
         Ok(PreparedInputs {
             service,
@@ -310,6 +315,13 @@ impl TypedBody {
             };
             leases.insert(role, lease);
         }
+        let owner = SourceBinding {
+            _embedding: owner._embedding.matrix().clone(),
+            _gamma: owner._gamma.parameter().clone(),
+            _control: owner.control.clone(),
+        };
+        // The initialization owns both input windows until physical completion.
+        // Only their authenticated bindings and the control budget remain here.
         // PendingMatrix is retained until complete_sync by the outer preparation.
         Ok(PendingBody {
             service,

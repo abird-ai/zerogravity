@@ -1024,7 +1024,13 @@ fn parameter_window_keeps_raw_bytes_and_metadata_live_after_all_caller_owners_dr
     assert_eq!(window.parameter().source_identity(), identity);
     assert_eq!(window.parameter().source_parameter().shape, [40u64]);
     assert_eq!(window.as_slice(), fixture.norm);
+    let binding = window.parameter().clone();
+    window.require_complete(&binding).unwrap();
+    let descriptor = binding.source_parameter();
     drop(window);
+    assert_eq!(reserved(&host), META);
+    binding.validate_source_parameter(&descriptor).unwrap();
+    drop(binding);
     assert_eq!(reserved(&host), 0);
 }
 

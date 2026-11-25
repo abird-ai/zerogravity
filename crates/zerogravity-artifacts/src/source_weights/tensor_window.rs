@@ -895,6 +895,14 @@ impl VerifiedTensorSource {
     }
 }
 impl VerifiedParameter {
+    /// Exact original issuer and member, not just equal metadata.
+    pub fn same_binding(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.owner, &other.owner)
+            && Arc::ptr_eq(&self.location, &other.location)
+            && self.elements == other.elements
+            && self.element_bytes == other.element_bytes
+            && self.bytes == other.bytes
+    }
     pub fn source_identity(&self) -> SourceIdentity {
         self.owner.identity
     }
@@ -930,7 +938,24 @@ impl VerifiedParameter {
         Ok(())
     }
 }
+impl AsRef<[u8]> for ParameterWindow {
+    fn as_ref(&self) -> &[u8] {
+        self.as_slice()
+    }
+}
 impl ParameterWindow {
+    /// Exact complete authenticated operand; no device readiness is implied.
+    pub fn require_complete(&self, parameter: &VerifiedParameter) -> Result<()> {
+        if !self.parameter.same_binding(parameter)
+            || !self.is_complete()
+            || self.as_slice().len() != parameter.bytes
+        {
+            return Err(Error::State(
+                "complete original parameter window binding differs".into(),
+            ));
+        }
+        Ok(())
+    }
     pub fn parameter(&self) -> &VerifiedParameter {
         &self.parameter
     }

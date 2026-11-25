@@ -1,6 +1,6 @@
 //! One authenticated complete parameter reader for family/native consumers.
 use super::{ParameterWindow, VerifiedParameter, VerifiedTensorSource};
-use crate::{Error, Result};
+use crate::Result;
 use std::sync::atomic::AtomicBool;
 use zerogravity_core::accelerator::program::SourceParameter;
 impl VerifiedTensorSource {
@@ -30,11 +30,7 @@ impl VerifiedTensorSource {
             Some(flag) => self.read_parameter_cancellable(&parameter, range, flag)?,
             None => self.read_parameter(&parameter, range)?,
         };
-        if !window.is_complete() {
-            return Err(Error::State(
-                "complete original declared parameter required".into(),
-            ));
-        }
+        window.require_complete(&parameter)?;
         Ok(window)
     }
 }

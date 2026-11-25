@@ -1921,5 +1921,8 @@ mod qwen2b_projection;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod rms_scratch;
 
-#[cfg(all(feature = "hip-source", target_os = "linux"))]
+#[cfg(all(
+    any(feature = "hip-source", feature = "cuda-cublas"),
+    target_os = "linux"
+))]
 pub(crate) mod source_parameters;
