@@ -82,7 +82,7 @@ impl ResidentService {
             return Err(Error::State("host-visible backing extent differs".into()));
         }
 
-        // Only this actual initialized mapping's original Write event permits
+        // Only this actual mapping's original Write event permits
         // the host copy. Same PCI/UMA addressability is never sufficient.
         slot.begin_submission()?;
         let flight = self.submit(expected_root, &[(lease.clone(), DeviceAccess::Write)])?;
@@ -98,6 +98,10 @@ impl ResidentService {
         if !unsafe { mapped.resource().copy_to_host_mapping(data) } {
             return Err(Error::State("retained host-visible mapping changed".into()));
         }
+        // Same logical payload accounting as ordinary mapped/queued uploads;
+        // not a measurement of DMA or a second memory charge.
+        self.uploaded_value_bytes
+            .fetch_add(data.len() as u64, Ordering::AcqRel);
         // Host writes completed before the next queue submission. No pending
         // provider work and no CPU read of GPU-written bytes. Same Ready as
         // other producers; this cannot publish a session root.

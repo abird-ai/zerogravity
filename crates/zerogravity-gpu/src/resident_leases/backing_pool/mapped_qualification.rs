@@ -13,6 +13,7 @@ pub(crate) async fn qualify_host_visible<T: std::any::Any + Send + Sync>(
     const OFFSET: usize = 512;
     const VIEW: usize = 1024;
     let initial = service.resident_bytes()?;
+    let uploaded = service.uploaded_value_bytes();
     let arbiter = ResourceArbiter::process_shared();
     let host_before = arbiter.snapshot(host_key)?.reserved;
     let metadata_bytes = metadata_bytes(1, 1, 2)?;
@@ -86,6 +87,10 @@ pub(crate) async fn qualify_host_visible<T: std::any::Any + Send + Sync>(
     assert!(full_id.same_allocation(sub_id) && full_id.overlaps(sub_id));
     assert_eq!((sub_id.offset(), sub_id.bytes()), (OFFSET, VIEW));
     assert_eq!(service.resident_bytes()?, initial + BYTES);
+    assert_eq!(
+        service.uploaded_value_bytes(),
+        uploaded + (BYTES + VIEW) as u64
+    );
     assert!(full.is_initialized() && sub.is_initialized());
     assert!(
         service
