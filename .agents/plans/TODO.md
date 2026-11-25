@@ -57,11 +57,19 @@ unknown and peer refusal/retry pass; real HF HIP V2 C1/C8 replay/retirement.
 Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
 Generic repeated Vulkan initializer,
 non-Linux, general UMA backing and cross-domain transport remain open.
-Next advance bounded committed portable snapshot/restore through original
-SessionAuthority/StateRoot, model checkpoint and resident state transport.
-Continue foundations in the [full plan](FULL_IMPLEMENTATION_PLAN.md).
-No second cache hierarchy, allocator or publisher; portable persistence,
-cross-provider restore and general media/DAG/context remain open.
+Signed 1d5c4ada: optional production committed GGUF CPU checkpoint v2,
+actual immutable source/geometry/numerical identity, bounded SHA256 file IO,
+original host charge retained by state readers, original SessionAuthority
+restore. Real 0.8B/2B full-vocab exact continuation after reloading source;
+corrupt/wrong-model/budget/stale refusal and last-reader retirement pass.
+Diagnostic v1 bytes and actual bridge unchanged. Full isolated gate: 2395
+executions, zero failures, 102 explicit skips; release/installer/scripts pass.
+Next advance the bounded
+resident committed state/snapshot/restore seam through original transport/
+completion and artifact IO. Continue foundations in the
+[full plan](FULL_IMPLEMENTATION_PLAN.md). No second cache hierarchy,
+allocator or publisher; general persisted GPU, cross-provider restore,
+scheduler-managed persistent sessions and media/DAG/context remain open.
 
 **20 Nov authoritative refresh:** pushed/tracked `origin/main` is `f0f0640`; local signed
 source lineage above it includes `1222f8a` (multi-token GDN prefill), `60ba956` (matched

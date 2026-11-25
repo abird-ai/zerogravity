@@ -25,6 +25,83 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed committed CPU checkpoint foundation: 1d5c4ada3e224e7278ddd487563073e2d8d7be94.**
+
+- Optional production state-checkpoint feature (weakly forwarded by facade;
+  included in production all) exposes QwenDenseCpu::save_committed_checkpoint
+  and restore_committed_checkpoint on the original native GGUF CPU session.
+  No CLI/router/prefix-cache activation; no diagnostic feature required.
+  Default CPU builds retain the original state layout and no extra clone.
+- The v2 format binds exact immutable owned GGUF content (lazy SHA256 on the
+  held allocation), actual semantic geometry/state specs and the native CPU
+  reference numerical/layout version. No caller-asserted digest, prompt
+  history, sampler state, process-local session/root ID or device handle.
+  Same content can rebind a new loaded allocation; another source/profile
+  or external kernel explicitly refuses. The CPU reference version must
+  change when its persisted numerical/state compatibility changes.
+- Share the original v1 layer body encoder/decoder (bounded chunked f32
+  bit transport); preserve original diagnostic v1 bytes and APIs.
+  New model-neutral artifact checkpoint IO supplies a held regular file,
+  exact bounded streaming payload and SHA256 trailer, private same-directory
+  create_new staging, fsync/rename and Unix directory sync. Linux refuses
+  symlink/FIFO opens. Trusted local directory/files only: SHA256 detects
+  corruption, not malicious recomputed content, authorization or encryption.
+  Pre-publication failure preserves the old file; a directory-sync failure
+  after rename can report an uncertain durable publication.
+- CPU import checks the complete file extent from actual geometry, exact
+  layer/domain counts, all finite numerical words and integrity before
+  publication. Caller borrows the existing host TransferAdmission; cold
+  IO/one-row conversion scratch retires; new retained import envelope
+  stays with the immutable arrays via the original QwenState readers,
+  including diagnostic views when both features enabled. New snapshot/
+  candidate clones retain the same charge; reset drops it only after
+  last reader. This prices imported storage, not future session growth.
+  No new allocator or second state authority. Reserve a local replacement
+  through SessionAuthority, publish once, invalidate stale attempts; no
+  import of a local RootBinding from disk.
+- Actual L5 public SDK feature-only Qwen GGUF 0.8B and 2B: save committed
+  root despite outstanding draft, reload same source into a different
+  allocation, full 248320-vocabulary continuation bits and state
+  fingerprint exact; stale attempt, wrong actual model, typed budget
+  and corrupt-trailer refusal leave the original session untouched.
+  Retained import charge survives advance/reset and final immutable reader,
+  then retires. Original diagnostic golden v1 bytes, complete-domain
+  mapping and real original 0.8B/2B v1 bridge tests all pass. Artifact
+  atomic-write/corruption regression and strict production-only Clippy pass.
+  No new kernel/profile, GPU execution or performance change.
+- Test-only CPU-free diagnostic filesystem import corrected at f9dd5ed6.
+  Explicit portable-checkpoint build exposed pre-existing stale GPU diagnostic
+  import (35629e6c): use the existing ResidentBufferLayout and plane bytes,
+  refuse non-F32/paged state before H2D, retain original completion/publication;
+  correct the existing cublas diagnostic test feature guard. No persisted GPU
+  format or production provider path added. CPU-free and combined feature
+  builds, strict CPU/CPU-free Clippy and both focused diagnostic import tests
+  pass. Full isolated gate: 2395 Rust test executions, zero failures, 102
+  explicit skips; default CPU release/installer/scripts pass. The gate
+  started on the unchanged production implementation; the later diagnostic
+  fixes were separately compile/test checked.
+- Scope: explicit native GGUF CPU numerical checkpoint persistence only.
+  No learned HF resident/CUDA/HIP persisted restore, cross-provider
+  conversion, prompt-prefix authorization, general scheduler-managed
+  persistent sessions, tenant/authenticated store, encryption, disk quota
+  or untrusted directory sandbox. Existing caller-managed host scopes and
+  live state allocation contracts remain authoritative. Other OS/filesystem
+  behavior is not newly qualified.
+
+**Next coherent unit:** extend the existing committed-only resident
+snapshot/restore boundary through actual qualified consumers. Start at
+resident_text.rs, resident_checkpoint.rs,
+resident_state_transport.rs and engine state_cache.rs; separate existing
+same-owner snapshot readers/forks from durable bytes and source/profile/
+layout compatibility. Reuse original completion, admitted transport and
+artifact checkpoint IO; do not coerce HF state into the GGUF CPU format,
+mint a second state publisher or qualify cross-provider restoration from
+matching domain names. Keep unsupported persisted GPU paths explicit.
+Continue remaining shared task/pipeline and SDK/control foundations
+before Phase 2.
+
+### Previous accepted portable admission checkpoint
+
 **Signed portable HIP / guarded Vulkan admission and same-domain placement: a654886341e6ae3831ab28675fbf8daddbbf605f.**
 
 - Ordinary Linux HIP ResidentPhysical and guarded HIP native bootstrap
@@ -71,19 +148,8 @@ reusable work and measured history, not precedence over this order.
   Vulkan consumer; no new runtime/context registry, generic Vulkan route,
   non-Linux fit, or complete host-visible GPU/UMA alias accounting.
 
-**Next coherent unit:** advance the minimum shared independent session-state
-and portable snapshot/restore contract in Phase 1 through the original
-SessionAuthority/StateRoot (core session_root.rs, state.rs), model checkpoint
-(zerogravity-model-qwen35/src/checkpoint.rs), engine state_cache.rs and
-resident_text.rs / resident_state_transport.rs owners. Keep the distinct
-context_snapshot retrieval/filter authority separate. Review committed-only
-snapshot eligibility, bounded persisted
-representation and restore compatibility/publication; reuse existing
-checkpoint/lease/completion primitives, refuse unsupported layout/provider
-conversion before submission, no second state publisher. Keep arbitrary
-cross-provider restore, generalized media/DAG, broader family/codec/task
-support, unqualified placement/transport and general UMA backing explicit.
-Continue SDK/control foundations before Phase 2.
+The bounded CPU committed persistence continuation is implemented at
+1d5c4ada above. General resident persisted restore and transfer remain open.
 
 ### Previous accepted host backing checkpoint
 

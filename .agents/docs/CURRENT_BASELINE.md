@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — committed CPU checkpoint persistence
+
+1d5c4ada: optional production state-checkpoint native CPU v2 file,
+original immutable GGUF/geometry/numerical compatibility identity,
+bounded streamed body and SHA256, atomic private staging, original host
+import charge held through last reader and sole SessionAuthority publication.
+Real 0.8B/2B fresh-model restore matches full vocabulary continuation bits;
+wrong model, budget, corruption and stale-draft refusal and retirement pass.
+Original diagnostic v1 bytes/domain bridge preserved; no kernel/performance
+change or GPU persisted/cross-provider restore claim.
+Full isolated gate: 2395 executions, zero failures, 102 skips; release/installer/scripts pass.
+
 ## 25 Nov — portable physical admission and same-domain placement
 
 a6548863: ordinary Linux HIP and guarded native HIP share the original

@@ -664,9 +664,14 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
 - [x] Bounded ordinary Linux HIP pre-Client and guarded exact Vulkan
   preadmission, local VRAM fit and same-domain placement (a6548863).
   Actual portable HIP/Vulkan two-source healthy/unknown with peer refusal/retry.
+- [x] Bounded committed GGUF CPU persistence (1d5c4ada): actual source/
+  geometry/numerical identity, shared diagnostic body, bounded v2 integrity
+  and atomic IO, imported host backing retained by immutable root readers,
+  original session authority. Real 0.8B/2B exact continuation, budget/
+  source/corruption/stale refusal and last-reader retirement pass.
 - [ ] Close qualified generic named Vulkan registry reuse, non-Linux
   bootstrap and actual host-visible GPU/UMA backing aliasing. Broader family/codec/task
-  registration, portable snapshot persistence, cross-provider restore and
+  registration, generalized resident snapshot persistence, cross-provider restore and
   additional backend prefix eligibility remain open.
 
 ## Handoff and documentation maintenance

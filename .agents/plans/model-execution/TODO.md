@@ -211,6 +211,11 @@ any external compiler. All phases retain the original resource/state owners.
   charge; guarded Vulkan exact selected adapter/local fit, same-domain
   placement with no cross-domain transfer. Actual shared portable HIP/Vulkan
   two-source healthy/unknown and peer refusal/retry; no kernel change.
+- 1d5c4ada: optional production native GGUF CPU committed checkpoint
+  reuses original state body and SessionAuthority; actual immutable
+  source/geometry/numerical compatibility, original imported host backing
+  and bounded atomic SHA256 file IO. Real 0.8B/2B full-vocab continuation
+  exact and legacy diagnostic v1 bytes preserved. No kernel/cross-provider change.
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

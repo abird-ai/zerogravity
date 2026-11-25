@@ -247,15 +247,24 @@ portable shared HIP and Vulkan healthy/unknown and peer refusal/retry pass.
 Real HF HIP V2 C1/C8 replay and retirement pass. Full isolated gate: 2394 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
 Generic
 named Vulkan repeated initialization needs original registry support;
-non-Linux and actual host-visible GPU backing remain open. Next advance
-bounded independent session-state and committed snapshot/restore foundation
-through original SessionAuthority/StateRoot, model checkpoint and physical
-state-transport owners.
+non-Linux and actual host-visible GPU backing remain open.
+Signed 1d5c4ada: optional production native GGUF CPU committed persistence
+(state-checkpoint). Actual immutable source/geometry/numerical compatibility,
+original v1 numerical body plus separate v2 SHA256/extent/private atomic IO,
+original host admission retained by imported state readers, local replacement
+through SessionAuthority. Actual 0.8B/2B fresh-allocation restore and full
+vocabulary exact continuation, corrupt/wrong-model/budget refusal and
+stale-attempt/last-reader behavior pass; original diagnostic v1 wire and
+real domain bridge preserved. Full isolated gate: 2395 executions, zero
+failures, 102 explicit skips; release/installer/scripts pass. No sampler/prompt-prefix/authentication or
+provider-conversion permit. Next extend bounded resident committed state
+snapshot/restore through original completion/transport and artifact IO;
+keep unqualified persisted GPU and cross-provider restoration explicit.
 Broader family/codec/task and unqualified backend routes remain open.
 No duplicate catalog, estimator, allocator or runtime.
 General DAG/media/context authority, pipeline source loading, transport
-activation, portable snapshot persistence and cross-provider restore remain
-unsupported. None of these slices closes Phase 1.
+activation, generalized persistent session storage and cross-provider restore
+remain unsupported. None of these slices closes Phase 1.
 
 Complete the engineering contracts and their real consumers, including every
 foundation below. This is not a requirement to finish every backend optimization,

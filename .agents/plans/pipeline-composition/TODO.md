@@ -439,8 +439,13 @@ and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
   lease adoption, exact guarded Vulkan adapter, no inter-domain transfer
   for equal declared roles. Actual shared HIP/Vulkan healthy/unknown and peer
   refusal/retry; no cross-context import or transfer permission.
-- [ ] Complete qualified generic named Vulkan registry reuse and actual
-  shared host-visible GPU backing. General DAG/media/context
+- [x] Bounded native GGUF CPU committed persistence (1d5c4ada):
+  optional production v2, actual source/geometry/numerical identity,
+  original layer body, admitted imported state and atomic bounded IO;
+  real 0.8B/2B restore/continuation exact, corrupt/source/budget refusal
+  and stale attempt/last reader retirement. No new publisher or prefix grant.
+- [ ] Extend qualified resident persisted state and complete generic named
+  Vulkan registry reuse and actual shared host-visible GPU backing. General DAG/media/context
   authority, source loading and pipeline transport activation remain
   unsupported. Continue source lifecycle/placement only through real
   consumers. Keep selected shape

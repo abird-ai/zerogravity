@@ -412,7 +412,19 @@ The following extends existing owners; source-byte qualification is not inferenc
   or cross-owner/provider restore. Missing recurrent state still requires an
   earlier complete checkpoint/recompute, never a KV-only full hit. Exact gates and serving owner:
   [prefix design](../serving-and-speculation/BATCHING_AND_PAGED_STATE.md#complete-domain-prefix-reuse-and-cow--memory-plan).
-- [ ] Qualify committed snapshot persistence/restore, corruption/security/compatibility UX and restore-versus-recompute; diagnostic portable checkpoints are not product persistence.
+- [x] Bounded explicit native GGUF CPU committed persistence (1d5c4ada):
+  optional state-checkpoint, source-derived compatibility and exact v2
+  extent/SHA256, original diagnostic v1 body, same-directory atomic IO,
+  original host import lease retained until last immutable reader and
+  SessionAuthority replacement. Actual 0.8B/2B fresh-allocation exact
+  continuation, corruption/wrong-model/budget/stale-draft refusal and
+  final reader retirement. No prompt history, sampler or prefix grant.
+  Diagnostic typed F32 contiguous import compile compatibility restored at
+  35629e6c; non-F32/paged import refuses, no new physical qualification.
+- [ ] Extend qualified resident committed snapshot persistence/restore;
+  general compatibility/security/tenant store UX, disk capacity and
+  restore-versus-recompute remain open. Diagnostic portable checkpoints
+  are not product cross-provider persistence.
 - [ ] Add immutable source extents and bounded coalesced IO/materialization with stable logical tensor identity, genuine copy readiness and original IO/device reader leases.
 - [ ] Protect encoded-but-unsubmitted/captured expert reads and generation ABA; support mixed-codec expert size classes under one byte cap, source-exact routing and hot-cache preservation.
 - [ ] Add bounded PLE/Engram lookup rows and separately governed disk state/media tiers; fully resident execution must incur no mandatory IO or host cache dispatch.
