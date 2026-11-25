@@ -115,8 +115,6 @@ use zerogravity_core::accelerator::program::{
 };
 use zerogravity_core::accelerator::program::{PlanOperation, StateSlot};
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
-#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-use zerogravity_core::resource_arbiter::PhysicalDeviceKey;
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
 use zerogravity_core::session_root::{RootAttempt, RootBinding, SessionAuthority};
 use zerogravity_core::source::TensorSource;
@@ -710,46 +708,23 @@ fn observe_cuda_source_device(
     device: &Device,
     provider_cap: usize,
     device_cap: u64,
-) -> Result<PhysicalDeviceKey> {
-    let Device::Cuda(selected) = device else {
-        return Err(Error::Unsupported(
-            "CUDA forward resident model requires CUDA".into(),
-        ));
-    };
+) -> Result<crate::physical_service::ObservedCudaDevice> {
     crate::physical_service::CudaCompilerContextBudget::require_device_envelope(
         provider_cap as u64,
         device_cap,
     )?;
-    let devices = cubecl::cuda::observe_cuda_devices()
-        .map_err(|error| Error::Unsupported(format!("CUDA source device observation: {error}")))?;
-    let actual = devices
-        .iter()
-        .find(|view| view.ordinal == selected.index)
-        .ok_or_else(|| Error::Unsupported("selected CUDA source device unavailable".into()))?;
-    if actual.compute_capability != (8, 6) {
+    let observed = crate::physical_service::ObservedCudaDevice::select(device)?;
+    if observed.compute_capability != (8, 6) {
         return Err(Error::Unsupported(
             "CUDA source requires qualified SM86 device".into(),
         ));
     }
-    let pci = |view: &cubecl::cuda::CudaDeviceMetadata| -> Result<cubecl::ir::PciAddress> {
-        view.pci_bus_id
-            .parse()
-            .map_err(|error| Error::State(format!("CUDA source physical PCI identity: {error}")))
-    };
-    let key = pci(actual)?;
-    for other in &devices {
-        if other.ordinal != actual.ordinal && pci(other)? == key {
-            return Err(Error::Unsupported(
-                "CUDA source physical PCI has ambiguous device views".into(),
-            ));
-        }
-    }
     crate::physical_service::checked_caps(
-        Some(actual.total_bytes),
+        Some(observed.total_bytes),
         device_cap,
         provider_cap as u64,
     )?;
-    PhysicalDeviceKey::new("pci", &key.to_string())
+    Ok(observed)
 }
 
 impl ResidentModel {
@@ -856,7 +831,7 @@ impl ResidentModel {
         cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<(Arc<Self>, CudaForwardSourceInventory)> {
         validate_provider(&device)?;
-        let observed_key = observe_cuda_source_device(&device, provider_cap, device_cap)?;
+        let observed = observe_cuda_source_device(&device, provider_cap, device_cap)?;
 
         // Validate the configured source/plan envelope before touching physical
         // CUDA. A live shared-card observation below may only LOWER this cap;
@@ -876,12 +851,8 @@ impl ResidentModel {
             ));
         }
 
-        let physical = ResidentPhysical::new_pinned_cuda(device, provider_cap, device_cap)?;
-        if physical.physical_key() != observed_key {
-            return Err(Error::State(
-                "CUDA source actor physical identity differs from selected device".into(),
-            ));
-        }
+        let physical =
+            ResidentPhysical::new_pinned_cuda_observed(device, provider_cap, device_cap, observed)?;
         let effective_cap = physical.available_model_capacity()?;
         let (admission, inventory) = if effective_cap == provider_cap {
             (configured_admission, configured_inventory)
@@ -1103,9 +1074,6 @@ impl ResidentModel {
                 provider_cap as u64,
             ));
         }
-        if !pinned_graph {
-            ResidentProgram::ensure_capability(&device.client())?;
-        }
         let owner = ResourceOwner {
             model: format!("qwen-source-{:?}", model.source_identity()),
             session: "resident-program".into(),
@@ -1128,9 +1096,7 @@ impl ResidentModel {
         };
         let service =
             physical.attach_model(ResidentSource::Tensor(model.clone()), owner, provider_cap)?;
-        if pinned_graph {
-            ResidentProgram::ensure_capability(service.client())?;
-        }
+        ResidentProgram::ensure_capability(service.client())?;
         let ticket = service.queue().submit(
             service.budget(),
             service.owner().clone(),

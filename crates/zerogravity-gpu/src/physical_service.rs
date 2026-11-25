@@ -110,6 +110,11 @@ pub(crate) use cuda_compiler_context::CUDA_COMPILER_HOST_BYTES;
 ))]
 pub(crate) use cuda_compiler_context::CudaCompilerContextBudget;
 
+#[cfg(all(feature = "cuda", target_os = "linux"))]
+mod cuda_device;
+#[cfg(all(feature = "cuda", target_os = "linux"))]
+pub(crate) use cuda_device::ObservedCudaDevice;
+
 pub struct PhysicalServiceBudget {
     client: Client,
     key: PhysicalDeviceKey,
@@ -124,168 +129,38 @@ pub struct PhysicalServiceBudget {
     in_flight: Arc<Mutex<usize>>,
 }
 
-/// Physical device admission taken before the CubeCL Client is constructed. It
-/// carries the one original lease into `PhysicalServiceBudget` without a
-/// second charge.
 #[cfg(all(
     target_os = "linux",
-    any(feature = "hip", feature = "vulkan"),
     any(
-        feature = "gemma-bf16-qualification",
-        feature = "hip-source",
-        all(test, feature = "qualification", feature = "hip")
+        feature = "cuda",
+        all(
+            any(feature = "hip", feature = "vulkan"),
+            any(
+                feature = "gemma-bf16-qualification",
+                feature = "hip-source",
+                all(test, feature = "qualification", feature = "hip")
+            )
+        )
     )
 ))]
-pub(crate) struct PreAdmittedDevice {
-    key: PhysicalDeviceKey,
-    reported_max: u64,
-    operator_limit: u64,
-    armed: bool,
-    lease: Arc<GlobalResourceLease>,
-    fence_flag: Arc<AtomicBool>,
-    in_flight: Arc<Mutex<usize>>,
-}
-
+mod preadmit;
 #[cfg(all(
     target_os = "linux",
-    any(feature = "hip", feature = "vulkan"),
     any(
-        feature = "gemma-bf16-qualification",
-        feature = "hip-source",
-        all(test, feature = "qualification", feature = "hip")
+        feature = "cuda",
+        all(
+            any(feature = "hip", feature = "vulkan"),
+            any(
+                feature = "gemma-bf16-qualification",
+                feature = "hip-source",
+                all(test, feature = "qualification", feature = "hip")
+            )
+        )
     )
 ))]
-impl PreAdmittedDevice {
-    /// Bootstrap uncertainty: retain the charge and fence the card instead of
-    /// crediting an admission whose context may have been constructed.
-    fn fence_and_retain(&self) {
-        self.lease.fence_unknown();
-        self.fence_flag.store(true, Ordering::Release);
-        std::mem::forget(self.lease.clone());
-        std::mem::forget(self.fence_flag.clone());
-    }
-
-    /// Any error or unwind after a bootstrap starts retains the original
-    /// envelope. A refusal before this point drops only unused admission.
-    pub(crate) fn bootstrap<T>(mut self, construct: impl FnOnce(&Self) -> Result<T>) -> Result<T> {
-        self.armed = true;
-        let result = construct(&self);
-        if result.is_ok() {
-            self.armed = false;
-        }
-        result
-    }
-}
-
-#[cfg(all(
-    target_os = "linux",
-    any(feature = "hip", feature = "vulkan"),
-    any(
-        feature = "gemma-bf16-qualification",
-        feature = "hip-source",
-        all(test, feature = "qualification", feature = "hip")
-    )
-))]
-impl Drop for PreAdmittedDevice {
-    fn drop(&mut self) {
-        if self.armed {
-            self.fence_and_retain();
-        }
-    }
-}
+pub(crate) use preadmit::PreAdmittedDevice;
 
 impl PhysicalServiceBudget {
-    /// Admit the selected adapter's actual identity/device-local capacity
-    /// before `device.client()` or native context construction.
-    #[cfg(all(
-        target_os = "linux",
-        any(feature = "hip", feature = "vulkan"),
-        any(
-            feature = "gemma-bf16-qualification",
-            feature = "hip-source",
-            all(test, feature = "qualification", feature = "hip")
-        )
-    ))]
-    pub(crate) fn preadmit_device(
-        key: PhysicalDeviceKey,
-        reported_max: u64,
-        operator_device_cap: u64,
-        provider_cap: u64,
-        owner: ResourceOwner,
-    ) -> Result<PreAdmittedDevice> {
-        checked_caps(Some(reported_max), operator_device_cap, provider_cap)?;
-        let arbiter = ResourceArbiter::process_shared();
-        arbiter.register_matching(key.clone(), operator_device_cap)?;
-        let lease = arbiter.admit(
-            &key,
-            owner,
-            &[AllocationRequest {
-                kind: AllocationClass::ProviderEnvelope,
-                bytes: provider_cap,
-            }],
-        )?;
-        Ok(PreAdmittedDevice {
-            key,
-            reported_max,
-            operator_limit: operator_device_cap,
-            armed: false,
-            lease: Arc::new(lease),
-            fence_flag: Arc::new(AtomicBool::new(false)),
-            in_flight: Arc::new(Mutex::new(0)),
-        })
-    }
-
-    /// Attach the already-admitted physical charge to the actual client. The
-    /// client's selected identity and capacity must match the preflight; no
-    /// second arbiter admission is made.
-    #[cfg(all(
-        target_os = "linux",
-        any(feature = "hip", feature = "vulkan"),
-        any(
-            feature = "gemma-bf16-qualification",
-            feature = "hip-source",
-            all(test, feature = "qualification", feature = "hip")
-        )
-    ))]
-    pub(crate) fn attach_preadmitted(
-        client: &Client,
-        pre: &PreAdmittedDevice,
-        operator_device_cap: u64,
-        provider_cap: u64,
-        owner: ResourceOwner,
-    ) -> Result<Self> {
-        let properties = client.properties();
-        let key = physical_key(properties.identity.physical.as_ref())?;
-        if !pre.armed
-            || key != pre.key
-            || operator_device_cap != pre.operator_limit
-            || provider_cap != pre.lease.reserved_bytes()?
-            || properties
-                .memory
-                .max_memory()
-                .is_none_or(|n| n < pre.reported_max || n < operator_device_cap)
-            || operator_device_cap == 0
-            || provider_cap == 0
-            || provider_cap > operator_device_cap
-        {
-            return Err(Error::State(
-                "pre-admitted physical identity/capacity changed before context".into(),
-            ));
-        }
-        crate::physical_quarantine::ensure_service_safe(client)?;
-        Ok(Self {
-            client: client.clone(),
-            key: pre.key.clone(),
-            total_limit: operator_device_cap,
-            provider_cap,
-            owner_model: owner.model.clone(),
-            model_closed: None,
-            lease: pre.lease.clone(),
-            fence_flag: pre.fence_flag.clone(),
-            in_flight: pre.in_flight.clone(),
-        })
-    }
-
     pub fn attach(
         client: &Client,
         operator_device_cap: u64,

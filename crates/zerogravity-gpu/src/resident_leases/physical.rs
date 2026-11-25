@@ -195,6 +195,14 @@ impl ResidentPhysical {
 
     pub fn new(device: Device, provider_cap: usize, device_cap: u64) -> Result<Arc<Self>> {
         crate::backend::validate_provider(&device)?;
+        #[cfg(all(feature = "cuda", target_os = "linux"))]
+        if matches!(device, Device::Cuda(_)) {
+            let observed = crate::physical_service::ObservedCudaDevice::select(&device)?;
+            let pre = observed.preadmit(provider_cap, device_cap)?;
+            return pre.bootstrap(|pre| {
+                Self::from_client_preadmitted(device, provider_cap, device_cap, pre).map(Arc::new)
+            });
+        }
         let provider = crate::backend::Provider::selected(&device)?;
         let client = device.client();
         Self::from_client(device, client, provider_cap, device_cap, provider).map(Arc::new)
@@ -215,15 +223,20 @@ impl ResidentPhysical {
             provider_cap as u64,
             ResourceOwner::new("backend/physical", "original-owner")?,
         )?;
-        Self::from_budget(device, client, provider_cap, provider, budget)
+        Self::from_budget(device, client, provider, budget)
     }
     #[cfg(all(
         target_os = "linux",
-        any(feature = "hip", feature = "vulkan"),
         any(
-            feature = "gemma-bf16-qualification",
-            feature = "hip-source",
-            all(test, feature = "qualification", feature = "hip")
+            feature = "cuda",
+            all(
+                any(feature = "hip", feature = "vulkan"),
+                any(
+                    feature = "gemma-bf16-qualification",
+                    feature = "hip-source",
+                    all(test, feature = "qualification", feature = "hip")
+                )
+            )
         )
     ))]
     fn from_client_preadmitted(
@@ -235,24 +248,20 @@ impl ResidentPhysical {
         crate::backend::validate_provider(&device)?;
         let provider = crate::backend::Provider::selected(&device)?;
         let client = device.client();
-        crate::physical_quarantine::ensure_service_safe(&client)?;
         let budget = PhysicalServiceBudget::attach_preadmitted(
             &client,
             pre,
             device_cap,
             provider_cap as u64,
-            ResourceOwner::new("backend/physical", "original-owner")?,
         )?;
-        Self::from_budget(device, client, provider_cap, provider, budget)
+        Self::from_budget(device, client, provider, budget)
     }
     fn from_budget(
         device: Device,
         client: Client,
-        provider_cap: usize,
         provider: crate::backend::Provider,
         budget: PhysicalServiceBudget,
     ) -> Result<Self> {
-        let _ = provider_cap;
         #[cfg(not(any(feature = "qualification", feature = "hip-source")))]
         let _ = provider;
         #[cfg(not(any(
@@ -552,34 +561,93 @@ impl ResidentPhysical {
         feature = "cuda",
         any(feature = "qualification", feature = "cuda-native")
     ))]
-    #[allow(dead_code)] // Staged CUDA forward constructor; selector remains refused.
     pub(crate) fn new_pinned_cuda(
         device: Device,
         provider_cap: usize,
         device_cap: u64,
     ) -> Result<Arc<Self>> {
-        if !matches!(device, Device::Cuda(_)) {
-            return Err(Error::State("pinned physical owner requires CUDA".into()));
+        #[cfg(target_os = "linux")]
+        {
+            let observed = crate::physical_service::ObservedCudaDevice::select(&device)?;
+            Self::new_pinned_cuda_observed(device, provider_cap, device_cap, observed)
         }
+        #[cfg(not(target_os = "linux"))]
+        {
+            if !matches!(device, Device::Cuda(_)) {
+                return Err(Error::State("pinned physical owner requires CUDA".into()));
+            }
+            crate::backend::validate_provider(&device)?;
+            let provider = crate::backend::Provider::selected(&device)?;
+            let (client, pinned) = Self::pin_cuda(&device)?;
+            let free_bytes = Self::observe_pinned_cuda(&client, &pinned)?;
+            let provider_cap = Self::live_cuda_provider_cap(provider_cap, device_cap, free_bytes)?;
+            let mut physical =
+                Self::from_client(device, client, provider_cap, device_cap, provider)?;
+            physical.pinned_cuda_queue = Some(Arc::new(pinned));
+            Ok(Arc::new(physical))
+        }
+    }
+
+    #[cfg(all(
+        target_os = "linux",
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-native")
+    ))]
+    pub(crate) fn new_pinned_cuda_observed(
+        device: Device,
+        provider_cap: usize,
+        device_cap: u64,
+        observed: crate::physical_service::ObservedCudaDevice,
+    ) -> Result<Arc<Self>> {
         crate::backend::validate_provider(&device)?;
         let provider = crate::backend::Provider::selected(&device)?;
+        let pre = observed.preadmit(provider_cap, device_cap)?;
+        let (client, pinned, free_bytes, mut budget) = pre.bootstrap(|pre| {
+            let (client, pinned) = Self::pin_cuda(&device)?;
+            let budget = PhysicalServiceBudget::attach_preadmitted(
+                &client,
+                pre,
+                device_cap,
+                provider_cap as u64,
+            )?;
+            let free_bytes = Self::observe_pinned_cuda(&client, &pinned)?;
+            Ok((client, pinned, free_bytes, budget))
+        })?;
+        // Bootstrap has completed, but no model allocation was submitted.
+        // A real fit refusal releases unused admission, not a fenced context.
+        let effective = Self::live_cuda_provider_cap(provider_cap, device_cap, free_bytes)?;
+        budget.narrow_unused_provider(effective as u64)?;
+        let mut physical = Self::from_budget(device, client, provider, budget)?;
+        physical.pinned_cuda_queue = Some(Arc::new(pinned));
+        Ok(Arc::new(physical))
+    }
+
+    #[cfg(all(
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-native")
+    ))]
+    fn pin_cuda(device: &Device) -> Result<(Client, cubecl::cuda::OwnedCudaQueue)> {
         // SAFETY: original Client pinned cold before its first own clone/allocation.
-        let (client, pinned) =
-            unsafe { cubecl::cuda::OwnedCudaQueue::pin_cold(device.client()) }
-                .map_err(|e| Error::State(format!("pin original CUDA queue: {e}")))?;
-        // Drop reclaimable cold allocator/cache blocks before observing free
-        // device memory. Otherwise the live-cap query double-counts memory
-        // already owned by this actor but still reusable by the provider.
+        unsafe { cubecl::cuda::OwnedCudaQueue::pin_cold(device.client()) }
+            .map_err(|e| Error::State(format!("pin original CUDA queue: {e}")))
+    }
+
+    #[cfg(all(
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-native")
+    ))]
+    fn observe_pinned_cuda(
+        client: &Client,
+        pinned: &cubecl::cuda::OwnedCudaQueue,
+    ) -> Result<usize> {
+        // Reclaimable actor blocks must not be double-counted against free memory.
         client
             .memory_cleanup()
             .map_err(|e| Error::State(format!("cleanup original CUDA allocator: {e}")))?;
         let (free_bytes, _) = pinned
             .memory_info()
             .map_err(|e| Error::State(format!("query original CUDA free memory: {e}")))?;
-        let provider_cap = Self::live_cuda_provider_cap(provider_cap, device_cap, free_bytes)?;
-        let mut physical = Self::from_client(device, client, provider_cap, device_cap, provider)?;
-        physical.pinned_cuda_queue = Some(Arc::new(pinned));
-        Ok(Arc::new(physical))
+        Ok(free_bytes)
     }
 }
 
@@ -613,6 +681,40 @@ mod tests {
         assert!(ResidentPhysical::live_cuda_provider_cap(provider, device, 512 * MIB).is_err());
         assert!(ResidentPhysical::live_cuda_provider_cap(5121 * MIB, device, 6144 * MIB).is_err());
     }
+    #[cfg(all(
+        feature = "cuda",
+        target_os = "linux",
+        any(feature = "qualification", feature = "cuda-native")
+    ))]
+    #[test]
+    #[ignore = "actual CUDA selected device, fresh process with enough live VRAM"]
+    fn pinned_cuda_live_fit_releases_only_unused_cold_envelope() {
+        const MIB: usize = 1024 * 1024;
+        let device = Device::cuda(0).unwrap();
+        let observed = crate::physical_service::ObservedCudaDevice::select(&device).unwrap();
+        let key = observed.key.clone();
+        let device_cap = observed.total_bytes;
+        let configured = 2048 * MIB;
+        let physical =
+            ResidentPhysical::new_pinned_cuda_observed(device, configured, device_cap, observed)
+                .unwrap();
+        let effective = physical.available_model_capacity().unwrap();
+        let arbiter = ResourceArbiter::process_shared();
+        let snapshot = arbiter.snapshot(&key).unwrap();
+        // The real actor consumes nonzero device memory. No exact free-memory
+        // pin: only the original adopted lease and the live fit must agree.
+        assert!(effective > 0 && effective < configured);
+        assert_eq!(snapshot.reserved, effective as u64);
+        assert_eq!(snapshot.reservations, 1);
+        assert_eq!(physical.budget.provider_capacity(), effective as u64);
+        assert!(!snapshot.fenced);
+        drop(physical);
+        let retired = arbiter.snapshot(&key).unwrap();
+        assert_eq!(retired.reserved, 0);
+        assert!(!retired.fenced);
+        println!("CUDA_COLD_LIVE_FIT_PASS configured={configured} effective={effective}");
+    }
+
     impl TensorSource for Source {
         fn source_identity(&self) -> SourceIdentity {
             self.0

@@ -423,6 +423,118 @@ fn qwen_cuda_public_sdk_population_benchmark() {
 
 #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
 #[test]
+#[ignore = "approved original CUDA source; fresh process, read-only NVML compute-owner observation"]
+fn qwen_cuda_source_preadmission_refuses_peer_then_retries() {
+    use std::{collections::BTreeSet, time::Duration};
+    use zerogravity::{
+        cache::CacheOptions,
+        devices::normalize_pci,
+        models::{ModelLoadRequest, QwenServingProfile},
+        resource_arbiter::{
+            AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
+        },
+        runtime::text::{Request, ResponseEvent},
+    };
+    const MIB: usize = 1024 * 1024;
+    let selected = zerogravity::gpu::observe_cuda_devices()
+        .unwrap()
+        .into_iter()
+        .find(|view| view.ordinal == 0)
+        .unwrap();
+    let key = PhysicalDeviceKey::new("pci", &normalize_pci(&selected.pci_bus_id).unwrap()).unwrap();
+    let nvml = nvml_wrapper::Nvml::init().unwrap();
+    let device = nvml
+        .device_by_pci_bus_id(selected.pci_bus_id.as_str())
+        .unwrap();
+    let compute_owners = || {
+        device
+            .running_compute_processes()
+            .unwrap()
+            .into_iter()
+            .map(|process| process.pid)
+            .collect::<BTreeSet<_>>()
+    };
+    let before = compute_owners();
+    let arbiter = ResourceArbiter::process_shared();
+    arbiter
+        .register_matching(key.clone(), 5120 * MIB as u64)
+        .unwrap();
+    let peer = arbiter
+        .admit(
+            &key,
+            ResourceOwner::new("peer", "pre-client-pressure").unwrap(),
+            &[AllocationRequest {
+                kind: AllocationClass::ProviderEnvelope,
+                bytes: 1024 * MIB as u64,
+            }],
+        )
+        .unwrap();
+    let runtime = Runtime::builder().build().unwrap();
+    let request = || {
+        ModelLoadRequest::qwen_cuda(
+            vec!["source".into()],
+            CacheOptions::new(None, 96 * 1024 * 1024 * 1024),
+            zerogravity::models::qwen_source_snapshot("qwen3.5-0.8b")
+                .unwrap()
+                .into(),
+            QwenServingProfile {
+                active: 1,
+                context: 512,
+                output: 3,
+                max_pending: Some(4),
+                cohort_width: 0,
+            },
+        )
+    };
+    let error = runtime.models().load(request()).unwrap_err();
+    assert_eq!(error.code, "resource_exhausted");
+    assert!(
+        error.message.contains("physical resource admission"),
+        "{error:?}"
+    );
+    assert!(runtime.models().list().unwrap().is_empty());
+    assert_eq!(runtime.status().execution_adapters, 0);
+    let denied = arbiter.snapshot(&key).unwrap();
+    assert_eq!(denied.reserved, 1024 * MIB as u64);
+    assert!(!denied.fenced);
+    assert_eq!(compute_owners(), before, "refusal created a compute owner");
+    drop(peer);
+    assert_eq!(arbiter.snapshot(&key).unwrap().reserved, 0);
+    runtime.models().load(request()).unwrap();
+    let model = runtime.models().resolve("source").unwrap();
+    let events = runtime
+        .request_text(Request {
+            model: "source".into(),
+            input: "1, 2, 3,".into(),
+            chat: false,
+            max_tokens: 3,
+            stream: false,
+            token_metrics: None,
+        })
+        .unwrap();
+    match events
+        .events
+        .recv_timeout(Duration::from_secs(120))
+        .unwrap()
+    {
+        ResponseEvent::Done {
+            completion_tokens, ..
+        } => assert_eq!(completion_tokens, 3),
+        ResponseEvent::Error(error) => panic!("retry source request failed: {error}"),
+        _ => panic!("unexpected retry source response"),
+    }
+    runtime.models().unload(&model).unwrap();
+    drop(model);
+    runtime.shutdown().unwrap();
+    let retired = arbiter.snapshot(&key).unwrap();
+    // Existing actor-owned compiler context survives model retirement.
+    assert_eq!(retired.reserved, 512 * MIB as u64);
+    assert!(!retired.fenced);
+    println!("CUDA_SOURCE_PREADMISSION_RETRY_PASS");
+}
+
+#[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+#[test]
 #[ignore = "approved original CUDA cache; physical public SDK contiguous-vs-paged native cohort; compare timings only under a matched optimized Cargo profile"]
 fn qwen_cuda_paged_native_sdk_matches_contiguous() {
     use std::{
