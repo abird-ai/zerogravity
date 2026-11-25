@@ -9,16 +9,17 @@ Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md).
 The foundations pack links the complete dated history, source checkpoint, original design and plan/open-work/Git inventories. Live source and owning TODOs remain authoritative.
 
-**25 Nov Phase 1 checkpoint:** `2b6656b3` signed selective catalog
-retirement of independent CPU/ordinary GPU owners. All aliases close
-together, accepted readers drain, unrelated models keep the original
-queue/workers, GPU cleanup uses the original physical queue. CPU fixture
-mixed-owner and L5 actual two-owner CUDA GGUF unload/continue pass, along
-with native CUDA C1 and X2 native HIP V2 C1/C8. Full isolated gate passes (2388 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass). Combined CPU/CUDA/HIP all-target compile passes.
-Next reconcile typed catalog/SDK lifecycle, effective capabilities and
-resource reporting; continue source/state/pipeline foundations in the
-[full plan](FULL_IMPLEMENTATION_PLAN.md) and owning plans. No second
-registry/scheduler, live insertion/replacement or new backend eligibility.
+**25 Nov Phase 1 checkpoint:** `bffad06a` signed typed runtime and
+catalog snapshots from actual loaded-owner lifecycle, execution, scheduler
+and physical resource ledger. Exact aliases share one description; unknown
+capabilities remain absent. Existing HTTP diagnostics have additive typed
+catalog/scheduler fields. CPU SDK/HTTP, CUDA mixed-owner GGUF and native
+contiguous/paged C8, X2 native HIP V2 C1/C8 pass. Full isolated gate:
+2389 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Next bind existing typed task/pipeline structure to exact loaded owners
+and actual bounded language request/stream execution; continue remaining
+source/state/placement seams in the [full plan](FULL_IMPLEMENTATION_PLAN.md).
+No second registry/worker or new media/backend eligibility.
 
 **20 Nov authoritative refresh:** pushed/tracked `origin/main` is `f0f0640`; local signed
 source lineage above it includes `1222f8a` (multi-token GDN prefill), `60ba956` (matched

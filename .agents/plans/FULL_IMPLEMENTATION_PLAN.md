@@ -154,11 +154,20 @@ Real CPU GGUF SDK/HTTP, L5 two-owner CUDA GGUF selective unload and native
 CUDA C1, X2 native HIP V2 C1/C8 pass with original retirement.
 Full isolated gate passes (2388 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass). Combined CPU/CUDA/HIP all-target compile passes. Optional adapters without an independent
 retirement hook still refuse mixed-owner unload; no live insertion,
-replacement or backend context reinitialization. Next reconcile typed
-catalog/SDK lifecycle, actual model capabilities and resource reporting,
-then remaining source/state/placement/pipeline seams. Extend physical
-admission and external allocation/runtime/device interop only for real
-consumers. None of these slices closes Phase 1.
+replacement or backend context reinitialization.
+Signed `bffad06a` exposes typed runtime/catalog snapshots from actual loaded
+owners, effective native preparation, scheduler and physical arbiter.
+Retirement states and exact alias groups reuse the lifecycle; resource
+observations do not retain executables or add per-token telemetry. Legacy
+HTTP diagnostics remain with additive typed catalog/scheduler fields.
+CPU SDK/HTTP, CUDA mixed-owner GGUF and contiguous/paged native C8, HIP V2
+C1/C8 and original retirement pass. Full isolated gate:
+2389 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Next bind existing typed task/pipeline structure to exact loaded owners
+and actual bounded language request/stream execution; no second runtime
+or fabricated media/placement eligibility. Continue remaining source,
+state, placement and provider interop only through actual consumers.
+None of these slices closes Phase 1.
 
 Complete the engineering contracts and their real consumers, including every
 foundation below. This is not a requirement to finish every backend optimization,

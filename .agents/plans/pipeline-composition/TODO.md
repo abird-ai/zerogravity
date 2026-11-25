@@ -342,6 +342,16 @@ their existing numeric/source/physical acceptance gates.
   unload with surviving inference and released target host/device admission,
   native CUDA C1 and HIP V2 C1/C8 pass. Full isolated gate passes (2388 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass). Combined CPU/CUDA/HIP all-target compile passes.
 
+## Typed runtime and model observations — 25 Nov
+
+- [x] `bffad06a`: typed effective loaded model execution and memory
+  descriptions, runtime/catalog lifecycle and scheduler configuration;
+  snapshots of original resource ledger. No additional owner or hot-path
+  telemetry. Unknown details absent; legacy HTTP fields retained.
+- [x] Engine/Clippy, CPU SDK/HTTP, CUDA mixed-owner GGUF and native
+  contiguous/paged C8, HIP V2 C1/C8 pass with original retirement.
+  Full isolated gate: 2389 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+
 ## Uncommitted
 
 ### Phase 1 — source, semantics and executable lowering
@@ -349,9 +359,11 @@ their existing numeric/source/physical acceptance gates.
 Contract: [closed regions](REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering)
 and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
 
-- [ ] Reconcile typed catalog/SDK effective capabilities, lifecycle and
-  resource reporting through actual loaded owners; continue remaining
-  source lifecycle/placement only through real consumers. Keep selected shape bands and typed ports, no naked
+- [ ] Bind existing typed task/pipeline structure to exact loaded model
+  owners and actual bounded language request/stream execution. Preserve
+  explicit refusals for unsupported media, context authority, placement
+  and backend modes. Continue remaining source lifecycle/placement
+  only through real consumers. Keep selected shape bands and typed ports, no naked
   scope or implicit retry. Contiguous text invocation/producer ports and the
   whole-text prepared boundary are implemented above; arbitrary explicit
   position tensors and host/IO effects remain unsupported. Extend

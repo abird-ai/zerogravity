@@ -39,6 +39,11 @@ must be present together. Existing source/format/host-budget refusals still appl
   remain separate and arbitrary placement/partial regions are not implemented.
 - `serving::TextProfile`: source/batch/finite-profile policy used by CLI and SDK;
   captured serving still requires its explicit feature and original guards.
+- `Runtime::snapshot` / `Runtime::models().snapshot()`: typed on-demand
+  lifecycle, exact owner/alias groups, actual capabilities, effective worker
+  configuration, counters and resource observations. Runtime snapshot includes
+  the process ledger; catalog descriptions retain no model readers. Legacy
+  HTTP diagnostics include typed catalog/scheduler fields.
 - `Runtime::request_text` / `Runtime::run`: direct bounded events/task streams.
 - `Runtime::server`: independent server sharing the same engine; explicit bind,
   limits and authentication policy. `stop`/`join` do not shut down SDK tasks.

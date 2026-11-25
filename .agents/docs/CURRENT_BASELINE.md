@@ -5,6 +5,15 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — typed runtime and model observations
+
+`bffad06a`: actual loaded-owner lifecycle/alias groups, selected execution,
+effective scheduler and model/physical resource descriptions through the
+existing SDK. CPU fixture SDK/HTTP health, L5 two-owner CUDA GGUF retirement
+and native contiguous/paged C8, X2 native HIP V2 C1/C8 pass with original
+retirement. No new performance or numerical-parity baseline. Full isolated
+gate: 2389 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+
 ## 25 Nov — selective catalog retirement
 
 `2b6656b3`: exact prepared-owner aliases share a request-lifetime reader;

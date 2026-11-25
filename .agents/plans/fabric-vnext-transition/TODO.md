@@ -577,7 +577,21 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   retirement, native CUDA C1 and HIP V2 C1/C8 pass. Full isolated gate passes (2388 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass). Combined CPU/CUDA/HIP all-target compile passes.
 - [ ] Live insertion/replacement, heterogeneous/native shared residency,
   additional independent adapter retirement and context reinitialization.
-  Continue typed loaded-owner status/capability/resource reporting.
+
+## Typed loaded-owner and runtime observations — 25 Nov
+
+- [x] `bffad06a`: typed SDK snapshots of runtime phase/failure, exact
+  prepared-owner alias groups, reader counts, retirement lifecycle,
+  effective configuration and resource observations. No extra registry,
+  retained executable or per-token work. Unknown details stay absent.
+- [x] Existing CPU/GGUF and native HF adapters report actual source,
+  preparation, memory and state policy where available. Legacy HTTP
+  diagnostics share typed catalog/scheduler projections; process-wide
+  resource labels remain local to SDK. No new device/adapter support.
+- [x] Engine 103 tests, strict Clippy, combined SDK compile, real CPU
+  SDK/HTTP health/lifecycle, CUDA mixed-owner GGUF and native
+  contiguous/paged C8, HIP V2 C1/C8 and original retirement pass.
+  Full isolated gate: 2389 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
 
 ## Handoff and documentation maintenance
 

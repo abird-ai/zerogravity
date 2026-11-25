@@ -20,6 +20,49 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed source checkpoint `bffad06a9c11efd497b659cff7b735c00e08e718` —
+typed loaded-owner and runtime observations.**
+`Runtime::snapshot()` and `models().snapshot()` read the original catalog,
+worker configuration/counters and resource ledger on demand. Runtime phase
+and sticky failure are explicit; legacy loaded-model count means aliases,
+while loaded-owner count groups exact prepared owners, not source IDs.
+Selective drain/retirement/failure states and admitted readers use the
+original route lifecycle. Retired alias groups remain bounded until the
+cold route set closes; descriptions retain no execution or source reader.
+Whole-route joining has no available router snapshot. The process ledger
+remains observable after close, including retained or fenced resources.
+
+CPU GGUF describes its actual local source and host admission; ordinary GPU
+GGUF describes the actual prepared program, device and quota/lease bytes.
+Native HF derives its execution description from PreparedTextProgram and
+reuses ResidentTextAdmission and ResidentStatePolicy, including actual
+row/observation and prefix-sharing policy. No duplicate physical accounting;
+model-level limits, reserves, resident bytes and host charges are not
+additive to the process ledger. Unknown adapter details remain absent.
+Direct CPU has no separately recorded numerical profile. The existing
+scheduler configuration is retained once; Router context/output are
+read-only accessors. Existing HTTP diagnostics remain, with additive typed
+catalog/scheduler fields; process-wide resource owner labels stay in the
+local SDK. Snapshots are not a cross-owner atomic transaction or OS memory
+telemetry. No new per-token locks, counters, allocation or device calls.
+
+Focused 103 engine tests, core fenced-resource check, strict Clippy and
+combined SDK compilation pass. Real CPU fixture SDK/HTTP lifecycle and
+health snapshot pass; L5 two-owner CUDA GGUF selective retirement and
+native contiguous/paged C8 exact tokens pass; X2 native HIP V2 C1/C8 exact
+replay/lane consistency, zero failed quanta, typed/legacy admission
+agreement and original retirement pass. Both GPUs idle at original levels.
+Full isolated gate: 2389 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+No new performance, numerical-parity or broader backend support claim.
+
+Next: bind the existing typed task/pipeline structure to exact loaded model
+owners and the real text request/stream path. Start with bounded language
+stages; retain explicit unsupported media, context grants, heterogeneous
+placement and compiled execution until real implementations qualify.
+Do not introduce another catalog, worker, source authority or state publisher.
+
+Prior accepted selective-retirement checkpoint:
+
 **Signed source checkpoint `2b6656b3d427092dea5bcdbb801bc71e59ba000c` —
 selective catalog retirement with the original workers.**
 Recovered the interrupted 24 Nov source edits and completed the assembled
