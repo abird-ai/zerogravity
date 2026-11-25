@@ -195,7 +195,7 @@ async fn load_pair(
 }
 async fn healthy(backend: Backend) -> Result<()> {
     let (physical, source_a, model_a, source_b, model_b) = load_pair(backend).await?;
-    #[cfg(all(feature = "vulkan", target_os = "linux"))]
+    #[cfg(all(test, feature = "vulkan", target_os = "linux"))]
     match backend {
         Backend::Vulkan => {
             crate::resident_leases::backing_pool::qualify_host_visible(
