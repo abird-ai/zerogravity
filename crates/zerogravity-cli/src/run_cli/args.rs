@@ -218,7 +218,7 @@ pub(super) fn parse(args: &[String], alias: Option<&str>) -> Result<Arguments> {
     if a.pull && a.offline {
         return Err(bad("--offline conflicts with --pull"));
     }
-    if a.positional.is_some() && (a.config.is_some() || a.model.is_some()) {
+    if a.positional.is_some() && a.model.is_some() {
         return Err(bad(
             "positional selector conflicts with explicit --config/--model; old model metadata --config migrated to --model-config",
         ));

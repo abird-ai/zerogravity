@@ -5,6 +5,20 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — unified configuration and profiles (UX-7)
+
+Existing typed v2 document extended with real UI/download-offer settings,
+single selected default/named/explicit document and CLI precedence. Shared
+cold validation/provenance and atomic ConfigFile editor, config/profile
+commands and basic terminal managers. No settings DB, inheritance, new
+source or execution qualification. Focused SDK/CLI atomic/refusal/copy
+and PTY set/get/profile consent pass; combined strict acquisition/serve lint
+and CUDA/HIP/acquisition/serve compile pass. Workspace GPU boundaries and
+CPU Clippy pass before a pipeline error-contract regression; corrected
+minimal SDK/CLI suites 36/0. Full rerun pending. Real cached-serving test
+refused its unchanged 8 GiB host budget during concurrent builds;
+serial rerun pending. No change to measured performance.
+
 ## 25 Nov — canonical stable serve (UX-6)
 
 Shared run/source/config/device resolver and typed serve policy, original

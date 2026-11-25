@@ -540,15 +540,14 @@ impl Config {
         self.validate_with_registry(&ComponentRegistry::default())
     }
 
-    /// Validate under a caller-supplied finite component schema registry.
-    /// Validation is still pure; registration is not execution eligibility.
-    pub fn validate_with_registry(&self, registry: &ComponentRegistry) -> Result<VerifiedShape> {
-        if self.models.len() > 128
-            || self.pipelines.is_empty()
-            || self.pipelines.len() > 64
-            || self.routes.len() > 128
-        {
-            return Err(Error::Limit("pipeline model/graph/route count".into()));
+    /// Cold model-table validation, also used by config-only documents.
+    pub fn validate_model_table(&self) -> Result<()> {
+        self.model_table().map(|_| ())
+    }
+
+    fn model_table(&self) -> Result<BTreeMap<&str, &ModelInstance>> {
+        if self.models.len() > 128 {
+            return Err(Error::Limit("pipeline model count".into()));
         }
         let mut models = BTreeMap::new();
         for model in &self.models {
@@ -567,6 +566,20 @@ impl Config {
                 return Err(Error::Unsupported("unregistered model target".into()));
             }
         }
+        Ok(models)
+    }
+
+    /// Validate under a caller-supplied finite component schema registry.
+    /// Validation is still pure; registration is not execution eligibility.
+    pub fn validate_with_registry(&self, registry: &ComponentRegistry) -> Result<VerifiedShape> {
+        if self.models.len() > 128
+            || self.pipelines.is_empty()
+            || self.pipelines.len() > 64
+            || self.routes.len() > 128
+        {
+            return Err(Error::Limit("pipeline model/graph/route count".into()));
+        }
+        let models = self.model_table()?;
         let mut compiled = Vec::new();
         let mut names = BTreeSet::new();
         let mut used_models = BTreeSet::new();

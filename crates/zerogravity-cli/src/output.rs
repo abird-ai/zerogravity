@@ -6,7 +6,7 @@ pub(crate) use presentation::{
 
 use super::VERSION;
 use crate::args::{TREE, Topic, node};
-pub(crate) use presentation::reporter;
+pub(crate) use presentation::{install_document, reporter};
 
 pub(super) fn usage() {
     println!(
@@ -20,7 +20,7 @@ pub(super) fn usage() {
         println!("    {:12} {description}", n.name);
     }
     println!(
-        "\nGLOBAL OPTIONS:\n    -q, --quiet | -v, --verbose | -vv\n    --format auto|text|json|jsonl  (structured formats where supported)\n    --color auto|always|never --progress auto|always|never\n    --interactive auto|never|always (run, serve and online hub/Xet pull)\n    --config FILE | --profile NAME (where supported)\n    --offline  --yes (model remove only)\n\nRun 'zerogravity help <command>' for details. No implicit acquisition."
+        "\nGLOBAL OPTIONS:\n    -q, --quiet | -v, --verbose | -vv\n    --format auto|text|json|jsonl  (structured formats where supported)\n    --color auto|always|never --progress auto|always|never\n    --interactive auto|never|always (run, serve, config/profile and online hub/Xet pull)\n    --config FILE | --profile NAME (where supported)\n    --offline  --yes (model/profile remove)\n\nRun 'zerogravity help <command>' for details. No implicit acquisition."
     );
 }
 
@@ -35,6 +35,7 @@ pub(super) fn topic_usage(topic: Topic, child: Option<&str>) -> zerogravity::Res
                 "USAGE: zerogravity serve MODEL... | --model ID=MODEL | --config FILE | --profile NAME\nRequires the optional serve feature."
             );
         }
+        Topic::Config | Topic::Profile => crate::config_cli::help(topic, child),
         Topic::Model => match child {
             Some("pull") => {
                 println!(
@@ -87,12 +88,6 @@ pub(super) fn topic_usage(topic: Topic, child: Option<&str>) -> zerogravity::Res
             println!("Advanced cache maintenance requires Linux and the cache feature.");
         }
         Topic::Completion => println!("USAGE: zerogravity completion bash|zsh|fish|powershell"),
-        Topic::Profile => println!(
-            "USAGE: zerogravity --profile NAME run [options]\nNamed profile selection uses the existing run YAML schema; profile management is not implemented yet."
-        ),
-        Topic::Config => println!(
-            "USAGE: zerogravity --config FILE run [options]\nConfiguration editing and unified serving documents are not implemented yet."
-        ),
         Topic::Doctor | Topic::Web => println!("{} is not implemented yet.", node(topic).name),
         Topic::Version => println!("USAGE: zerogravity version"),
         Topic::Help => usage(),

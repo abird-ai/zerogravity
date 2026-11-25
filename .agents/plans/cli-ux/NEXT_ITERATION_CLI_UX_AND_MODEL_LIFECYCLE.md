@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status (25 Nov): **Phase 2.1 UX-1 through bounded canonical UX-6 accepted; UX-7 ConfigDocument/profile management is next (§46A.28).**
+Status (25 Nov): **Phase 2.1 UX-1 through bounded canonical UX-6 accepted; UX-7 configuration/profile management implemented, full gate pending (§46A.28).**
 The bounded Phase 1 minimum exit is accepted at `d5030ad4`.
 See the [Phase 1 exit takeover](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
 and [live full plan](../FULL_IMPLEMENTATION_PLAN.md). The original design below
@@ -2604,6 +2604,26 @@ Implement:
 - one parser/validator and atomic typed edits.
 
 Do not add profile inheritance.
+
+Implemented 25 Nov: extend existing typed v2 pipeline Document (ConfigDocument
+alias); keep run.task.context etc. as actual schema paths, no parallel
+flattened settings schema. One implicit/default/named/explicit file, built-in
+fallback only for absent implicit default, CLI overrides. Model/device UI
+preferences and run/serve execution settings share selected file. Typed UI
+color/progress/interactive and download ask_before_pull are real settings;
+false offer is not consent, no unused concurrency/symbol controls. SDK
+ConfigFile validates complete candidate with original parser/model/graph/
+policy and serving bounds, compares original bytes, cooperatively locks
+short commit, atomically publishes. Raw editor draft, typed mapping edits,
+profile copy/create/remove, JSON read/explain; no inherited profiles or
+secret fields. Typed edits normalize YAML. Same-base copy retains bytes,
+cross-base copy anchors relative paths. Basic line managers share actions;
+rich TUI UX-8D remains. Focused SDK/CLI/actual PTY and combined strict lint/
+feature compile pass. Workspace gate reached CPU pipeline tests after
+GPU boundaries and CPU Clippy; corrected invalid-source error-category
+regression passes minimal SDK/CLI suites (36/0). Full rerun and serial real
+cached-serving regression remain acceptance gates (initial real serving
+attempt refused the unchanged 8 GiB budget during competing compilation).
 
 ### UX-8 — interactive home/model manager
 

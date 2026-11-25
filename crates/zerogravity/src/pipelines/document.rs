@@ -32,7 +32,59 @@ pub struct Document {
     pub run: Option<RunDoc>,
     #[serde(default)]
     pub serve: Option<ServeDoc>,
+    #[serde(default)]
+    pub ui: Option<UiDoc>,
+    #[serde(default)]
+    pub downloads: Option<DownloadDoc>,
 }
+impl Default for Document {
+    fn default() -> Self {
+        Self {
+            schema: "zerogravity.pipeline.v2".into(),
+            model: Vec::new(),
+            pipeline: Vec::new(),
+            route: Vec::new(),
+            run: None,
+            serve: None,
+            ui: None,
+            downloads: None,
+        }
+    }
+}
+
+/// Presentation preferences in the same document; never execution grants.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UiSwitch {
+    #[default]
+    Auto,
+    Always,
+    Never,
+}
+impl UiSwitch {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "auto" => Some(Self::Auto),
+            "always" => Some(Self::Always),
+            "never" => Some(Self::Never),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UiDoc {
+    pub color: Option<UiSwitch>,
+    pub progress: Option<UiSwitch>,
+    pub interactive: Option<UiSwitch>,
+}
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DownloadDoc {
+    /// False suppresses a missing-model offer. It NEVER authorizes a pull.
+    pub ask_before_pull: Option<bool>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelDoc {
@@ -240,6 +292,8 @@ impl Document {
         if self.schema == SCHEMA
             && (self.run.is_some()
                 || self.serve.is_some()
+                || self.ui.is_some()
+                || self.downloads.is_some()
                 || self.model.iter().any(|m| {
                     m.model_config.is_some()
                         || m.tokenizer.is_some()
@@ -262,6 +316,18 @@ impl Document {
                         return Err(Error::Malformed(
                             "declared model target must be nonempty".into(),
                         ));
+                    }
+                    // Stored documents cannot carry transient signed URLs or
+                    // embedded authority credentials. Explicit CLI locators
+                    // retain the original transient acquisition contract.
+                    if let Some(source) = &m.source
+                        && let Ok(crate::run_policy::SourceSelector::Http(url)) =
+                            crate::run_policy::SourceSelector::parse(source)
+                    {
+                        let authority = url.split_once("://").map(|(_, tail)| tail.split('/').next().unwrap_or("")).unwrap_or("");
+                        if url.contains(['?', '#']) || authority.contains('@') {
+                            return Err(Error::Malformed("configuration HTTP sources must not contain query, fragment or user information; use an acquired reference".into()));
+                        }
                     }
                     Ok(ModelInstance {
                         id: m.id,

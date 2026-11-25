@@ -4,24 +4,7 @@ use std::{
     sync::OnceLock,
 };
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum Switch {
-    #[default]
-    Auto,
-    Always,
-    Never,
-}
-
-impl Switch {
-    pub(crate) fn parse(value: &str) -> Option<Self> {
-        match value {
-            "auto" => Some(Self::Auto),
-            "always" => Some(Self::Always),
-            "never" => Some(Self::Never),
-            _ => None,
-        }
-    }
-}
+pub(crate) use zerogravity::configuration::UiSwitch as Switch;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Verbosity {
@@ -40,6 +23,9 @@ pub(crate) struct Options {
     pub(crate) verbosity: Verbosity,
     pub(crate) jsonl: bool,
     pub(crate) interactive: Switch,
+    pub(crate) color_explicit: bool,
+    pub(crate) progress_explicit: bool,
+    pub(crate) interactive_explicit: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -256,14 +242,40 @@ impl<'a> Failure<'a> {
 }
 
 static REPORTER: OnceLock<Reporter> = OnceLock::new();
+static CLI_OPTIONS: OnceLock<Options> = OnceLock::new();
 
 pub(crate) fn install(options: Options) {
-    // Set once before dispatch; never consult environment on an event hot path.
+    // CLI overrides are known before the selected document is read. Resolve
+    // presentation once before the first event; no hot-path config access.
+    let _ = CLI_OPTIONS.set(options);
+}
+
+pub(crate) fn install_document(ui: zerogravity::configuration::UiDoc) {
+    let mut options = CLI_OPTIONS.get().copied().unwrap_or_default();
+    if !options.color_explicit && !options.plain {
+        options.color = ui.color.unwrap_or(options.color);
+    }
+    if !options.progress_explicit && !options.plain {
+        options.progress = ui.progress.unwrap_or(options.progress);
+    }
+    if !options.interactive_explicit && !options.plain {
+        options.interactive = ui.interactive.unwrap_or(options.interactive);
+        // A stored preference is best effort, not a forced-terminal
+        // command. Only an explicit CLI Always requires a capable TTY.
+        if options.interactive == Switch::Always {
+            options.interactive = Switch::Auto;
+        }
+    }
     let _ = REPORTER.set(Reporter::new(options, Terminal::detect()));
 }
 
 pub(crate) fn reporter() -> Reporter {
-    *REPORTER.get_or_init(|| Reporter::new(Options::default(), Terminal::detect()))
+    *REPORTER.get_or_init(|| {
+        Reporter::new(
+            CLI_OPTIONS.get().copied().unwrap_or_default(),
+            Terminal::detect(),
+        )
+    })
 }
 
 pub(crate) fn report(event: Event<'_>) {

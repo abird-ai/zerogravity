@@ -206,7 +206,7 @@ build or general model/backend grant. Historical failures keep their source scop
   No new package/lockfile, remote acquisition, physical GPU, numerical or
   performance qualification.
 
-### Phase 2.1 UX-6 — stable serve (this checkpoint, 25 Nov)
+### Phase 2.1 UX-6 — stable serve (25 Nov; 84e0681c)
 
 - [x] Canonical positional/explicit aliases and selected document/profile
   use shared run/source/config resolver. Typed serve section overrides
@@ -230,11 +230,36 @@ build or general model/backend grant. Historical failures keep their source scop
   for supported serve interaction and missing default XDG document;
   full rerun passes.
 
+### Phase 2.1 UX-7 — configuration and profiles (this checkpoint, 25 Nov)
+
+- [x] Single typed v2 document (ConfigDocument alias), selected default/
+  named/explicit file with built-in fallback only for absent implicit default.
+  Actual UI and download offer preferences; CLI overrides including explicit
+  auto. Direct positional source selects fresh route; targeted overrides
+  retain original pin contract. No implicit transfer, inheritance or pointer.
+- [x] SDK cold settings validation, mapping-key edits, provenance, profile
+  inventory and copy preserving relative source meaning. Atomic replacement
+  with validated candidate, original-byte stale compare, cooperative lock,
+  no-clobber create, same-directory publish and Unix sync; temporary editor
+  draft, no symlink mutation. Typed edits normalize YAML; raw edit preserves
+  draft bytes. No dedicated credential fields; stored HTTP query/userinfo/
+  fragment refused.
+- [x] Complete config/profile CLI and static completions, text/JSON reads,
+  basic line-based interactive managers, explicit profile removal consent.
+  New SDK/CLI integration and actual PTY smoke pass; combined lint and
+  CUDA/HIP/acquisition/serve compile pass. Workspace gate GPU boundaries
+  and CPU Clippy passed before a pipeline error-category regression;
+  corrected minimal SDK/CLI tests 36/0.
+- [ ] UX-7 acceptance: rerun complete isolated scripts/check.sh on corrected
+  source; serial real cached-serving regression (initial attempt refused
+  unchanged 8 GiB budget under build pressure). Do not infer a pass.
+
 ## Uncommitted
 
-- [ ] UX-7 next: ConfigDocument/profile management through one typed
-  validator and atomic edit path. No profile inheritance. Dynamic
-  completions, TUI/Web and control-wire validation/auth remain ordered.
+- [ ] UX-8A native TUI shell: shared control/config owners, responsive
+  navigation and coherent lifecycle; UX-8B–D follow. Dynamic completions,
+  Web and control-wire validation/auth remain ordered. Rich searchable
+  config/profile surfaces belong to UX-8D; no duplicate editor/validator.
   Broader catalog presets, conversation history and unsupported routes
   remain explicit; preserve exact acquisition and factual refusal.
 - [ ] Extend advanced direct provider forced interactive/JSONL presentation

@@ -27,6 +27,7 @@ pub(super) struct Options {
     pending_override: Option<Option<usize>>,
     pull: bool,
     offline: bool,
+    ask_before_pull: bool,
 }
 
 #[derive(Default)]
@@ -192,25 +193,33 @@ impl Invocation {
         let selection = match (&p.file, &p.profile) {
             (Some(file), None) => DocumentSelection::File(Path::new(file)),
             (None, Some(profile)) => DocumentSelection::Profile(profile),
-            (None, None) if p.models.is_empty() => DocumentSelection::Default,
-            (None, None) => DocumentSelection::None,
+            (None, None) => DocumentSelection::Default,
             _ => unreachable!(),
         };
         let selected = config::select_document(
-            selection,
+            if selection == DocumentSelection::Default {
+                DocumentSelection::None
+            } else {
+                selection
+            },
             &cwd,
             std::env::var_os("XDG_CONFIG_HOME").as_deref(),
             std::env::var_os("HOME").as_deref(),
         )
         .map_err(core)?;
-        let document = if let Some(path) = selected {
+        let document = if selection == DocumentSelection::Default {
+            zerogravity::configuration::load_selected(
+                selection,
+                &cwd,
+                std::env::var_os("XDG_CONFIG_HOME").as_deref(),
+                std::env::var_os("HOME").as_deref(),
+            )
+            .map_err(core)?
+        } else if let Some(path) = selected {
             let bytes = zerogravity::pipelines::read_document_bytes(&path).map_err(core)?;
             match zerogravity::pipelines::parse_document(&bytes) {
                 Ok(doc) => Some((path, doc)),
                 Err(error) => {
-                    // Legacy YAML is explicitly selected and must stand
-                    // alone. Its deny_unknown_fields cannot accept a schema
-                    // field from a malformed canonical document.
                     if p.file.is_some()
                         && args.len() == 2
                         && p.models.is_empty()
@@ -225,6 +234,15 @@ impl Invocation {
         } else {
             None
         };
+        let preferences = document
+            .as_ref()
+            .map(|(_, doc)| {
+                (
+                    doc.ui.unwrap_or_default(),
+                    doc.downloads.unwrap_or_default(),
+                )
+            })
+            .unwrap_or_default();
         let (request, mut settings) =
             config::resolve_serving(document, p.overrides, p.models, &cwd).map_err(core)?;
         macro_rules! overlay {
@@ -237,12 +255,15 @@ impl Invocation {
             host_mib,
             enable_per_request_metrics
         );
+        #[cfg(not(test))]
+        crate::output::install_document(preferences.0);
         Ok(Self::Canonical(Box::new(Options {
             request,
             settings,
             pending_override: p.pending,
             pull: p.pull,
             offline: p.offline,
+            ask_before_pull: preferences.1.ask_before_pull.unwrap_or(true),
         })))
     }
 }
@@ -291,6 +312,7 @@ pub(super) fn run(
         pending_override,
         pull,
         offline,
+        ask_before_pull,
     } = *options;
     let listener = Listener::new(
         settings.listen.as_deref().unwrap_or("127.0.0.1:8000"),
@@ -325,7 +347,7 @@ pub(super) fn run(
         ));
     }
     zerogravity::run::validate_serving_source_request(&request).map_err(core)?;
-    let offer = crate::run_cli::input::interaction().map_err(core)? && !offline;
+    let offer = crate::run_cli::input::interaction().map_err(core)? && !offline && ask_before_pull;
     if shutdown.is_requested() {
         return Ok(());
     }

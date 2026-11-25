@@ -29,6 +29,20 @@ fn finish(command: &'static str, result: Result<()>) -> ExitCode {
 }
 
 pub(super) fn run(command: Command) -> ExitCode {
+    let (command, selection) = match command {
+        Command::WithDocument { command, selection } => (*command, Some(selection)),
+        command => (command, None),
+    };
+    if matches!(
+        command,
+        Command::Model(_) | Command::Devices(_) | Command::DeviceInspect { .. }
+    ) && let Err(error) = crate::config_cli::apply_presentation(
+        selection
+            .as_ref()
+            .map(|(flag, value)| (*flag, value.as_str())),
+    ) {
+        return finish("config", Err(error));
+    }
     match command {
         Command::Help => {
             usage();
@@ -92,6 +106,14 @@ pub(super) fn run(command: Command) -> ExitCode {
             finish("pull", result)
         }
         Command::Pipeline(args) => finish("pipeline", pipeline::run(&args)),
+        Command::Config {
+            args,
+            document,
+            format,
+        } => finish("config", crate::config_cli::config(&args, document, format)),
+        Command::Profile { args, format, yes } => {
+            finish("profile", crate::config_cli::profile(&args, format, yes))
+        }
         Command::Serve(args) => {
             #[cfg(feature = "serve")]
             {
@@ -117,6 +139,7 @@ pub(super) fn run(command: Command) -> ExitCode {
             }
         }
         Command::Models(args) => finish("models", models(&args)),
+        Command::WithDocument { .. } => unreachable!("document selection already resolved"),
         Command::NotImplemented(name) => finish(
             "",
             Err(Error::Unsupported(format!(

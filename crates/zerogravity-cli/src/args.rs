@@ -71,14 +71,17 @@ impl Globals {
                         }
                     }
                     "--color" => {
+                        self.presentation.color_explicit = true;
                         self.presentation.color =
                             Switch::parse(v).ok_or("color requires auto, always or never")?
                     }
                     "--progress" => {
+                        self.presentation.progress_explicit = true;
                         self.presentation.progress =
                             Switch::parse(v).ok_or("progress requires auto, always or never")?
                     }
                     _ => {
+                        self.presentation.interactive_explicit = true;
                         self.interactive =
                             Switch::parse(v).ok_or("interactive requires auto, always or never")?
                     }
@@ -224,14 +227,16 @@ pub(super) const TREE: &[Node] = &[
     Node {
         topic: Topic::Profile,
         name: "profile",
-        description: "Named run documents (management pending)",
-        children: &[],
+        description: "List and manage named configuration profiles",
+        children: &["list", "show", "create", "copy", "edit", "remove"],
     },
     Node {
         topic: Topic::Config,
         name: "config",
-        description: "Configuration management (pending)",
-        children: &[],
+        description: "View and edit the selected configuration",
+        children: &[
+            "show", "path", "get", "set", "unset", "validate", "edit", "explain", "init",
+        ],
     },
     Node {
         topic: Topic::Doctor,
@@ -333,8 +338,22 @@ pub(super) enum Command {
     Models(Vec<String>),
     Pipeline(Vec<String>),
     Serve(Vec<String>),
+    Config {
+        args: Vec<String>,
+        document: Option<(&'static str, String)>,
+        format: Format,
+    },
+    Profile {
+        args: Vec<String>,
+        format: Format,
+        yes: bool,
+    },
     CacheRun(Vec<String>),
     CacheManage(Vec<String>),
+    WithDocument {
+        command: Box<Command>,
+        selection: (&'static str, String),
+    },
     NotImplemented(String),
     Invalid(String),
     Unknown,
@@ -526,7 +545,71 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
                 Command::Pipeline(Vec::new())
             }
         }
-        "profile" | "config" | "doctor" | "web" => {
+        "config" | "profile" => {
+            let kind = topic(name).expect("known command");
+            if help(rest) {
+                Command::HelpTopic(kind, None)
+            } else {
+                let tail = g.prefix(rest, name == "config")?;
+                // Management values are positional YAML/name/path inputs;
+                // don't scan for global-looking values inside them.
+                if help(tail) {
+                    Command::HelpTopic(kind, None)
+                } else if let Some((op, args)) = tail.split_first() {
+                    let args = g.prefix(args, name == "config")?;
+                    if !node(kind).children.contains(&op.as_str()) {
+                        return Err("unknown configuration management subcommand");
+                    }
+                    if help(args) {
+                        Command::HelpTopic(kind, Some(op.clone()))
+                    } else {
+                        // Consume exact positional operands before trailing
+                        // globals. A YAML value such as "--quiet" is literal.
+                        let count = match (name, op.as_str()) {
+                            ("config", "set") | ("profile", "copy") => 2,
+                            ("config", "get" | "unset")
+                            | ("profile", "show" | "create" | "edit" | "remove") => 1,
+                            ("config", "validate") => usize::from(!args.is_empty()),
+                            _ => 0,
+                        };
+                        if args.len() < count {
+                            return Err("configuration command is missing an operand");
+                        }
+                        let (operands, trailing) = args.split_at(count);
+                        if !g.prefix(trailing, name == "config")?.is_empty() {
+                            return Err("unexpected configuration command argument");
+                        }
+                        let args = with_prefix(op, operands);
+                        if name == "config" {
+                            Command::Config {
+                                args,
+                                document: g.document.take(),
+                                format: g.format,
+                            }
+                        } else {
+                            Command::Profile {
+                                args,
+                                format: g.format,
+                                yes: g.yes,
+                            }
+                        }
+                    }
+                } else if name == "config" {
+                    Command::Config {
+                        args: Vec::new(),
+                        document: g.document.take(),
+                        format: g.format,
+                    }
+                } else {
+                    Command::Profile {
+                        args: Vec::new(),
+                        format: g.format,
+                        yes: g.yes,
+                    }
+                }
+            }
+        }
+        "doctor" | "web" => {
             if help(rest) {
                 Command::HelpTopic(topic(name).expect("known command"), None)
             } else {
@@ -555,7 +638,12 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
         "run-cache" => Command::CacheRun(rest.to_vec()),
         _ => Command::Unknown,
     };
-    if g.document.is_some() {
+    if g.document.is_some()
+        && !matches!(
+            command,
+            Command::Model(_) | Command::Devices(_) | Command::DeviceInspect { .. }
+        )
+    {
         return Err("--config/--profile selection is unavailable for this command");
     }
     // Only the explicit single-plan hub/Xet transfer grammar has event
@@ -572,16 +660,21 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
                     && (provider.starts_with("hf:") || provider.starts_with("gh:")))
         });
     if g.interactive == Switch::Always
-        && (!(controlled_pull || matches!(command, Command::Run { .. } | Command::Serve(_)))
+        && (!(controlled_pull
+            || matches!(
+                command,
+                Command::Run { .. }
+                    | Command::Serve(_)
+                    | Command::Config { .. }
+                    | Command::Profile { .. }
+            ))
             || g.format == Format::Jsonl
             || g.format == Format::Json
             || (g.offline && controlled_pull)
             || g.presentation.verbosity == Verbosity::Quiet
             || (controlled_pull && g.presentation.progress == Switch::Never))
     {
-        return Err(
-            "forced interaction requires run, serve or an online hub/Xet pull with terminal output",
-        );
+        return Err("forced interaction requires a supported terminal command");
     }
     if g.format == Format::Jsonl && (!controlled_pull || g.offline) {
         return Err("JSONL requires an online hub/Xet pull");
@@ -594,14 +687,17 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
                 ..
             })
         )
+        && !matches!(&command, Command::Profile { args, .. } if args.first().is_some_and(|s| s == "remove"))
     {
-        return Err("--yes is only supported for model remove");
+        return Err("--yes is only supported for model/profile remove");
     }
     if !(matches!(
         command,
         Command::Devices(_)
             | Command::DeviceInspect { .. }
             | Command::Run { .. }
+            | Command::Config { .. }
+            | Command::Profile { .. }
             | Command::Model(ModelCommand::Read { .. })
     ) || controlled_pull && g.format == Format::Jsonl)
     {
@@ -609,16 +705,24 @@ fn parse_command(args: &[String], g: &mut Globals) -> Result<Command, &'static s
     }
     // Forward a restriction at the owner's first option boundary, not
     // after a possibly incomplete value-taking argument.
-    if g.offline {
-        return match command {
-            Command::Pull(args) => Ok(Command::Pull(offline_pull(args, false)?)),
-            Command::Model(ModelCommand::Pull(args)) => Ok(Command::Model(ModelCommand::Pull(
-                offline_pull(args, true)?,
-            ))),
-            other => Ok(other),
-        };
-    }
-    Ok(command)
+    let command = if g.offline {
+        match command {
+            Command::Pull(args) => Command::Pull(offline_pull(args, false)?),
+            Command::Model(ModelCommand::Pull(args)) => {
+                Command::Model(ModelCommand::Pull(offline_pull(args, true)?))
+            }
+            other => other,
+        }
+    } else {
+        command
+    };
+    Ok(match g.document.take() {
+        Some(selection) => Command::WithDocument {
+            command: Box::new(command),
+            selection,
+        },
+        None => command,
+    })
 }
 
 fn offline_pull(mut args: Vec<String>, canonical: bool) -> Result<Vec<String>, &'static str> {

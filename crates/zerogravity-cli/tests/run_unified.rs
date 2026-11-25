@@ -238,9 +238,13 @@ fn actual_same_cpu_inference_local_alias_config_xdg_and_cached_provider_forms() 
     std::fs::write(f.0.join("run.yaml"), yaml).unwrap();
     assert_eq!(passed(run(&f.0, &["run", "run.yaml"])), baseline);
     std::fs::create_dir_all(f.0.join("config/abird/zerogravity")).unwrap();
-    let absolute = yaml.replace("./model.gguf", f.0.join("model.gguf").to_str().unwrap());
+    let absolute = yaml.replace("./model.gguf", f.0.join("model.gguf").to_str().unwrap())
+        + "ui:\n  progress: never\n";
+
     std::fs::write(f.0.join("config/abird/zerogravity/config.yaml"), &absolute).unwrap();
-    assert_eq!(passed(run(&f.0, &["run"])), baseline);
+    let implicit = run(&f.0, &["run"]);
+    assert!(!String::from_utf8_lossy(&implicit.stderr).contains("prefill"));
+    assert_eq!(passed(implicit), baseline);
     let profiles = f.0.join("config/abird/zerogravity/profiles");
     std::fs::create_dir(&profiles).unwrap();
     // Selected profile replaces the default and retains its own relative base.
@@ -260,6 +264,27 @@ fn actual_same_cpu_inference_local_alias_config_xdg_and_cached_provider_forms() 
     assert!(profile_dry.status.success(), "{:?}", profile_dry.stderr);
     let decision: serde_json::Value = serde_json::from_slice(&profile_dry.stdout).unwrap();
     assert_eq!(decision["max_tokens"], 2);
+    let direct = run(&f.0, &["run", "./model.gguf", "--dry-run", "--format=json"]);
+    assert!(direct.status.success(), "{:?}", direct.stderr);
+    let decision: serde_json::Value = serde_json::from_slice(&direct.stdout).unwrap();
+    assert_eq!(decision["max_tokens"], 1);
+    let selected = run(
+        &f.0,
+        &[
+            "--profile",
+            "laptop",
+            "run",
+            "./model.gguf",
+            "--max-tokens",
+            "3",
+            "--dry-run",
+            "--format=json",
+        ],
+    );
+    assert!(selected.status.success(), "{:?}", selected.stderr);
+    let decision: serde_json::Value = serde_json::from_slice(&selected.stdout).unwrap();
+    assert_eq!(decision["max_tokens"], 3);
+    assert_eq!(decision["provenance"]["task.max_tokens"], "Cli");
     for args in [
         vec!["--profile", "../escape", "run"],
         vec!["--profile", "laptop", "run", "--config", "run.yaml"],

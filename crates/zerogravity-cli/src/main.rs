@@ -5,6 +5,7 @@ use std::env;
 mod args;
 mod commands;
 mod completion;
+mod config_cli;
 mod model_cli;
 mod output;
 #[cfg(all(feature = "acquisition", target_os = "linux"))]

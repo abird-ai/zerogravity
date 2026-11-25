@@ -52,8 +52,11 @@ fn serve_requires_an_explicit_feature_and_registered_model() {
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8(output.stderr).expect("utf8");
     if cfg!(feature = "serve") {
-        // Bare serve selects the same default XDG document as run.
-        assert!(stderr.contains("io_error"), "{stderr}");
+        // Missing implicit default uses built-ins; no model route selected.
+        assert!(
+            stderr.contains("malformed") && stderr.contains("one or more direct model sources"),
+            "{stderr}"
+        );
     } else {
         assert!(stderr.contains("requires --features serve"), "{stderr}");
     }

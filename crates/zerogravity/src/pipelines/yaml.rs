@@ -60,6 +60,11 @@ fn check_yaml_shape(value: &serde_yaml::Value) -> Result<()> {
 /// custom tags, multiple documents and v2 null fields are refused. Parsing
 /// alone does not validate the graph; call [`Document::check`] afterwards.
 pub fn parse_document(bytes: &[u8]) -> Result<Document> {
+    serde_yaml::from_value(parse_document_node(bytes)?)
+        .map_err(|_| Error::Malformed("invalid typed pipeline YAML schema".into()))
+}
+
+pub(crate) fn parse_document_node(bytes: &[u8]) -> Result<serde_yaml::Value> {
     if bytes.is_empty() || bytes.len() > MAX_CONFIG_BYTES {
         return Err(Error::Limit("pipeline config size limit".into()));
     }
@@ -90,8 +95,7 @@ pub fn parse_document(bytes: &[u8]) -> Result<Document> {
             ));
         }
     }
-    serde_yaml::from_value(node)
-        .map_err(|_| Error::Malformed("invalid typed pipeline YAML schema".into()))
+    Ok(node)
 }
 
 /// Read only the explicitly selected config, with pre-read and post-read size
@@ -105,14 +109,20 @@ pub fn load_document(path: impl AsRef<Path>) -> Result<Document> {
 /// the same bounded bytes, rather than reopening a selected document.
 pub fn read_document_bytes(path: impl AsRef<Path>) -> Result<Vec<u8>> {
     let path = path.as_ref();
-    let bytes = fs::metadata(path)?.len();
-    if bytes == 0 || bytes > MAX_CONFIG_BYTES as u64 {
+    let metadata = fs::metadata(path)?;
+    let bytes = metadata.len();
+    if !metadata.is_file() || bytes == 0 || bytes > MAX_CONFIG_BYTES as u64 {
         return Err(Error::Limit("pipeline config size limit".into()));
     }
     // Recheck after read: the source can change between metadata and read.
     let mut bytes = Vec::new();
-    fs::File::open(path)?
-        .take(MAX_CONFIG_BYTES as u64 + 1)
+    let file = fs::File::open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(Error::Malformed(
+            "configuration must be a regular file".into(),
+        ));
+    }
+    file.take(MAX_CONFIG_BYTES as u64 + 1)
         .read_to_end(&mut bytes)?;
     if bytes.is_empty() || bytes.len() > MAX_CONFIG_BYTES {
         return Err(Error::Limit(

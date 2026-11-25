@@ -69,21 +69,28 @@ pub fn select_document(
         } else {
             cwd.join(path)
         }),
+        DocumentSelection::Profile("default") => Some(root()?.join("config.yaml")),
         DocumentSelection::Profile(name) => {
-            if name.is_empty()
-                || name.len() > 128
-                || matches!(name, "." | "..")
-                || !name
-                    .bytes()
-                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"._-".contains(&b))
-            {
-                return Err(bad(
-                    "profile requires a bounded lowercase identifier (not a path)",
-                ));
-            }
+            validate_profile_name(name)?;
             Some(root()?.join("profiles").join(format!("{name}.yaml")))
         }
     })
+}
+
+pub fn validate_profile_name(name: &str) -> Result<()> {
+    if name.is_empty()
+        || name.len() > 128
+        || matches!(name, "." | "..")
+        || !name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"._-".contains(&b))
+    {
+        Err(bad(
+            "profile requires a bounded lowercase identifier (not a path)",
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 /// Resolve an explicitly selected bounded YAML file and typed overrides.
@@ -115,7 +122,37 @@ pub fn resolve(
             Ok((path, doc))
         })
         .transpose()?;
-    resolve_document(document, a, cwd, override_origin, None).map(|(request, _)| request)
+    resolve_run_document(document, a, cwd, override_origin)
+}
+
+/// Resolve the already read document once for both presentation and startup.
+pub fn resolve_run_document(
+    document: Option<(PathBuf, Document)>,
+    overrides: RunOverrides,
+    cwd: &Path,
+    origin: Origin,
+) -> Result<Request> {
+    resolve_document(document, overrides, cwd, origin, None, false).map(|(request, _)| request)
+}
+
+/// Cold configuration policy inspection. A document need not select a model;
+/// the returned policy's entrypoint is not an execution grant.
+pub(crate) fn inspect_document(
+    path: &Path,
+    document: Document,
+    serving: bool,
+) -> Result<(Request, ServeDoc)> {
+    let base = path
+        .parent()
+        .ok_or_else(|| bad("config parent unavailable"))?;
+    resolve_document(
+        Some((path.to_owned(), document)),
+        RunOverrides::default(),
+        base,
+        Origin::Caller,
+        serving.then(Vec::new),
+        true,
+    )
 }
 
 /// Canonical direct-model serving. Explicit route list replaces the selected
@@ -127,7 +164,7 @@ pub fn resolve_serving(
     models: Vec<ModelInstance>,
     cwd: &Path,
 ) -> Result<(Request, ServeDoc)> {
-    resolve_document(document, overrides, cwd, Origin::Cli, Some(models))
+    resolve_document(document, overrides, cwd, Origin::Cli, Some(models), false)
 }
 
 fn resolve_document(
@@ -136,6 +173,7 @@ fn resolve_document(
     cwd: &Path,
     override_origin: Origin,
     served: Option<Vec<ModelInstance>>,
+    inspect: bool,
 ) -> Result<(Request, ServeDoc)> {
     if !cwd.is_absolute() {
         return Err(bad("run base directory must be absolute"));
@@ -276,7 +314,7 @@ fn resolve_document(
         .entrypoint
         .clone()
         .or_else(|| run.entrypoint.as_ref().map(EntryDoc::typed));
-    if let Some(models) = served {
+    if let Some(models) = served.filter(|_| !inspect) {
         if !graph.pipelines.is_empty()
             || !graph.routes.is_empty()
             || matches!(entrypoint, Some(Entrypoint::Pipeline(_)))
@@ -330,7 +368,7 @@ fn resolve_document(
             Some(Entrypoint::Pipeline(_)) => {
                 return Err(bad("--model cannot override a graph entrypoint"));
             }
-            None if selected.is_some() => {
+            None if selected.is_some() && !graph.models.is_empty() => {
                 return Err(bad(
                     "config model override requires an explicit model entrypoint",
                 ));
@@ -341,7 +379,7 @@ fn resolve_document(
         anchor_source(&mut source, cwd)?;
         if let Some(m) = graph.models.iter_mut().find(|m| m.id == id) {
             m.source = Some(source);
-        } else if selected.is_some() {
+        } else if selected.is_some() && !graph.models.is_empty() {
             return Err(bad("model override entrypoint is absent from model table"));
         } else {
             graph.models.push(ModelInstance {
@@ -401,7 +439,9 @@ fn resolve_document(
         }
         provenance.insert("graph".into(), override_origin.clone());
     }
+    let explicit_entry = entrypoint.clone();
     let entrypoint = entrypoint
+        .or_else(|| inspect.then(|| Entrypoint::Model("unselected".into())))
         .ok_or_else(|| bad("run requires exactly one explicit model/pipeline entrypoint"))?;
     if a.model_config.is_some()
         || a.tokenizer.is_some()
@@ -591,6 +631,30 @@ fn resolve_document(
         provenance,
         vendor_filter: a.vendor,
     };
+    if inspect {
+        if serving {
+            request.validate_serving_policy()?;
+        } else {
+            request.validate_policy()?;
+        }
+        request.graph.validate_model_table()?;
+        if !request.graph.pipelines.is_empty() || !request.graph.routes.is_empty() {
+            request.graph.validate()?;
+        }
+        if let Some(entry) = explicit_entry {
+            request.graph.validate_entrypoint(&entry)?;
+        }
+        if !matches!(
+            request.numerical.as_deref(),
+            None | Some("source" | "native")
+        ) {
+            return Err(bad("numerical must be source or native"));
+        }
+        if request.numerical.as_deref() == Some("native") && request.backend != Backend::Rocm {
+            return Err(bad("native numerical profile requires explicit ROCm"));
+        }
+        return Ok((request, serve));
+    }
     if serving {
         request.validate_serving_policy()?;
         return Ok((request, serve));
@@ -614,7 +678,7 @@ fn resolve_document(
     }
     Ok((request, serve))
 }
-fn anchor_source(s: &mut String, base: &Path) -> Result<()> {
+pub(crate) fn anchor_source(s: &mut String, base: &Path) -> Result<()> {
     if let SourceSelector::Local(p) = SourceSelector::parse(s)? {
         *s = absolute(
             base,

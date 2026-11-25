@@ -24,7 +24,78 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — Phase 2.1 UX-6 (25 Nov)
+### Current checkpoint — Phase 2.1 UX-7 (25 Nov)
+
+One typed ConfigDocument (the existing pipeline v2 Document, compatibility
+alias) for model/graph/run/serve declarations and actual UI/download
+preferences. No settings database, profile inheritance or second schema.
+
+- Shared selected-document read: explicit --config or --profile replaces
+  implicit XDG config.yaml. Missing implicit default => built-ins without
+  creation; malformed/dangling/explicit missing documents refuse. Named
+  "default" maps only to config.yaml. Canonical run/serve use the same
+  selected document even with a positional model. Direct positional run
+  replaces document model/graph entrypoint (does not inherit its source
+  pin); explicit targeted --model retains old override semantics. Explicit
+  serve model list replaces the model table. CLI settings override selected
+  document. Canonical model/device commands can select a document for UI
+  policy; opaque legacy commands retain their original grammar.
+- Typed ui.color/progress/interactive and downloads.ask_before_pull fields
+  control real behavior. Explicit CLI auto/always/never overrides stored
+  preferences; stored interactive always is best effort, never forces
+  nonterminal input. False ask_before_pull suppresses offer; it does not
+  authorize a transfer. No unimplemented concurrency/symbol knobs or secret
+  fields. Persisted HTTP sources refuse query/fragment/userinfo; transient
+  CLI locators retain original contracts.
+- SDK configuration::ConfigFile and cold validate/get/explain/change/copy
+  use original bounded YAML parser, core model-table/graph and run-policy
+  validators. Settings-only documents are allowed without a fake execution
+  route. Existing serve limits/loopback validation retained; cold validation
+  is not backend/source admission. Provenance uses existing run resolver
+  plus actual settings fields, conditional worker defaults. Actual selected
+  device/CLI provenance remains run --dry-run/--explain.
+- config show/path/get/set/unset/validate/edit/explain/init; profile
+  list/show/create/copy/edit/remove. Read-only commands do not initialize
+  files; create/copy never overwrite, removal explicit --yes or affirmative
+  TTY and default entry protected. All editors share ConfigFile. Dotted
+  mapping paths and whole YAML typed values; typed edits normalize YAML
+  (comments/anchors not retained). Raw edit uses VISUAL/EDITOR executable,
+  no shell, temporary draft, validate before publish. Same-base copy
+  preserves bytes; cross-base copy anchors relative source/sidecar/audit
+  paths to original base.
+- Atomic file replacement: bounded regular file, symlink mutation refusal,
+  private temporary file synced, short cooperative parent-directory lock,
+  exact original-byte compare for stale clients, no-clobber hard-link create,
+  same-directory rename replace, Unix parent sync (post-publication sync
+  failure reports unknown durability). No lock held over editor. Unix
+  directory lock does not add persistent files; non-Unix uses lock sidecar,
+  no parent-sync claim. Noncooperating external writers are not serialized.
+- Basic inline terminal config/profile managers reuse the same actions;
+  richer searchable/native TUI screens are UX-8D, not a second implementation.
+  SDK cold edit/copy/stale/invalid/symlink and feature-minimal CLI lifecycle
+  pass; actual terminal PTY set/get/invalid refusal/create/copy/decline/
+  confirm remove/exit pass with no cache effects. Combined strict
+  acquisition/serve Clippy and CUDA/HIP/acquisition/serve compile pass.
+  The isolated workspace gate passed GPU feature boundaries and CPU Clippy,
+  then exposed an invalid-source error-category regression in pipelines.
+  Preserved the existing parser's error contract; corrected minimal SDK
+  configuration/fabric/pipelines and CLI/config_cli suites pass (36/0).
+  The full gate requires a clean rerun on the corrected source. A separate
+  real cached-serving test refused the original 8 GiB host envelope under
+  concurrent compilation (about 2.5 GiB available); no lowered bound or
+  new serving qualification. Rerun it without competing builds. Keep both
+  acceptance checks open before UX-8A. Corrected combined run_unified
+  passed four shorter tests; the longer CPU equivalence test and following
+  lint were not completed before the checkpoint time bound. Resume those
+  within the full gate, rather than assuming completion.
+
+**Next coherent unit after acceptance: UX-8A — native TUI shell (§46A.28).**
+Read the TUI architecture and UX-8A–D design; native shell/navigation and
+shared lifecycle first, then Home/Running/Serve, Models/Downloads/Devices,
+Profiles/Config/Logs. Reuse original ControlPlane and ConfigFile; no
+separate runtime, configuration or settings owner. Web follows native TUI.
+
+### Previous checkpoint — Phase 2.1 UX-6 (25 Nov; 84e0681c)
 
 Canonical serve uses the original runtime, source preparation, model registry
 and HTTP owner; run and serve share cold source selection, configuration and
@@ -68,10 +139,7 @@ device policy. No duplicate transport/scheduler, dependency or model grant.
   pass. Two outdated CLI expectations (forced serve interaction and
   missing default document) corrected; complete rerun passes.
 
-**Next coherent unit: UX-7 — ConfigDocument/profile
-management (§46A.28).** Shared typed document/precedence already supports run
-and serve. Add cold get/set/unset/edit and profile create/copy/edit/remove
-through one validation/atomic edit path; no inheritance or new model grant.
+Historical next unit UX-7 is implemented in the current checkpoint above.
 Native TUI and Web follow in order.
 
 ### Previous checkpoint — Phase 2.1 UX-5 (25 Nov; 8e382947)

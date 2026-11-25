@@ -13,6 +13,7 @@ pub use zerogravity_artifacts::cache;
 pub use zerogravity_artifacts::{artifact, codecs, json_allocation, sharded};
 pub mod artifacts;
 pub mod builtins;
+pub mod configuration;
 pub mod control;
 pub mod devices;
 pub mod diagnostics;
