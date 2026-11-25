@@ -130,6 +130,19 @@ impl ResourceArbiter {
         }
         Ok(observed)
     }
+
+    /// A known upcoming cold reservation, not a lifetime upper bound. The
+    /// caller must still acquire its original lease. Explicit operator
+    /// routes keep their logical bounds when the live observation is unknown.
+    pub fn check_host_cold_allocation(&self, bytes: u64) -> Result<()> {
+        if self.is_process_shared() {
+            let observed = self.observe_host_backing()?;
+            if observed.ceiling.is_some() && observed.available.is_some() {
+                observed.require_fit(self.host_backing()?, bytes, 0)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(target_os = "linux")]

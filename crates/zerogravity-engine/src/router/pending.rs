@@ -191,23 +191,9 @@ impl ServingHost {
         bytes: u64,
     ) -> Result<GlobalResourceLease, ServiceError> {
         let total = checked_sum(&[bytes, self.lease_envelope(alias, session)?])?;
-        if self.arbiter.is_process_shared() {
-            let observed = self
-                .arbiter
-                .observe_host_backing()
-                .map_err(ServiceError::inference)?;
-            if observed.ceiling.is_some() && observed.available.is_some() {
-                observed
-                    .require_fit(
-                        self.arbiter
-                            .host_backing()
-                            .map_err(ServiceError::inference)?,
-                        total,
-                        0,
-                    )
-                    .map_err(ServiceError::inference)?;
-            }
-        }
+        self.arbiter
+            .check_host_cold_allocation(total)
+            .map_err(ServiceError::inference)?;
         self.reserve_lease(alias, session, kind, total)
     }
 

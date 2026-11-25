@@ -672,6 +672,9 @@ fn context_host_lease(
     arbiter: &ResourceArbiter,
     host_key: &PhysicalDeviceKey,
 ) -> Result<GlobalResourceLease> {
+    // The source-shaped lifetime upper bound remains a logical fit, not
+    // incremental physical growth. Check the actual next context reservation.
+    arbiter.check_host_cold_allocation(CONTEXT_HOST)?;
     arbiter.admit(
         host_key,
         ResourceOwner::new("backend/hip", "persistent-finite-qualification-context")?,
