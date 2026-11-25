@@ -257,9 +257,19 @@ vocabulary exact continuation, corrupt/wrong-model/budget refusal and
 stale-attempt/last-reader behavior pass; original diagnostic v1 wire and
 real domain bridge preserved. Full isolated gate: 2395 executions, zero
 failures, 102 explicit skips; release/installer/scripts pass. No sampler/prompt-prefix/authentication or
-provider-conversion permit. Next extend bounded resident committed state
-snapshot/restore through original completion/transport and artifact IO;
-keep unqualified persisted GPU and cross-provider restoration explicit.
+provider-conversion permit.
+Signed 804d4882/d9b25205: optional committed native HIP V2 contiguous F32
+persistence through original source-owned semantic revision, prepared
+identity, complete committed snapshot, bounded SHA256/atomic IO and
+admitted native plane uploads/root pool. Actual HF 0.8B same/fresh-process
+exact full-vocab continuation/all-domain replay, corrupt/stale refusal,
+known retirement and actual unknown H2D retention/fence pass; HF V2 C1/C8
+replay/retirement with persistence enabled pass. Full isolated gate: 2395 Rust test executions, zero failures, 102 explicit skips; release/installer/scripts pass.
+Other GPU
+formats/contexts/profile conversion remain unsupported. Next close the
+minimum source-declared pipeline/task preparation, lifecycle/control and
+SDK seams through existing model/source registry, graph and router;
+general DAG/media/context and unqualified transport remain explicit.
 Broader family/codec/task and unqualified backend routes remain open.
 No duplicate catalog, estimator, allocator or runtime.
 General DAG/media/context authority, pipeline source loading, transport

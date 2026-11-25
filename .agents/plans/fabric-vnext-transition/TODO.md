@@ -669,9 +669,14 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   and atomic IO, imported host backing retained by immutable root readers,
   original session authority. Real 0.8B/2B exact continuation, budget/
   source/corruption/stale refusal and last-reader retirement pass.
+- [x] Bounded native HIP V2 contiguous F32 committed persistence
+  (804d4882/d9b25205): original source revision and prepared geometry,
+  admitted snapshot/file/typed planes/root pool/completion, sole publication.
+  Actual HF 0.8B same/fresh-process complete state/full-vocab continuation
+  exact, corruption/stale refusal, known retirement and unknown upload fence.
 - [ ] Close qualified generic named Vulkan registry reuse, non-Linux
   bootstrap and actual host-visible GPU/UMA backing aliasing. Broader family/codec/task
-  registration, generalized resident snapshot persistence, cross-provider restore and
+  registration, other resident formats, generalized persistent session storage, cross-provider restore and
   additional backend prefix eligibility remain open.
 
 ## Handoff and documentation maintenance

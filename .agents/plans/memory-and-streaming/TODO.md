@@ -421,10 +421,16 @@ The following extends existing owners; source-byte qualification is not inferenc
   final reader retirement. No prompt history, sampler or prefix grant.
   Diagnostic typed F32 contiguous import compile compatibility restored at
   35629e6c; non-F32/paged import refuses, no new physical qualification.
-- [ ] Extend qualified resident committed snapshot persistence/restore;
-  general compatibility/security/tenant store UX, disk capacity and
-  restore-versus-recompute remain open. Diagnostic portable checkpoints
-  are not product cross-provider persistence.
+- [x] Bounded native HIP V2 contiguous F32 committed persistence
+  (804d4882/d9b25205): original static source revision, exact prepared
+  compatibility, committed snapshot, bounded file and native-plane decode,
+  original host workspace/root pool/Ready/SessionAuthority; real HF 0.8B
+  same/fresh-process exact all domains/full-vocab continuation, corrupt/
+  stale refusal, known retirement and actual unknown upload retention/fence.
+- [ ] Extend to other qualified resident layouts/providers and general
+  compatibility/security/tenant store UX, disk capacity and
+  restore-versus-recompute. Diagnostic portable checkpoints are not
+  product cross-provider persistence.
 - [ ] Add immutable source extents and bounded coalesced IO/materialization with stable logical tensor identity, genuine copy readiness and original IO/device reader leases.
 - [ ] Protect encoded-but-unsubmitted/captured expert reads and generation ABA; support mixed-codec expert size classes under one byte cap, source-exact routing and hot-cache preservation.
 - [ ] Add bounded PLE/Engram lookup rows and separately governed disk state/media tiers; fully resident execution must incur no mandatory IO or host cache dispatch.

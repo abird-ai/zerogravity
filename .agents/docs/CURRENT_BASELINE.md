@@ -5,6 +5,21 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — committed native HIP resident persistence
+
+804d4882/d9b25205: source-owned stable semantic revision, verified
+bundle/exact HIP V2 F32 contiguous state compatibility; original committed
+snapshot read, bounded SHA256/atomic IO, private decoded native planes
+and original root pool/initialization/completion publication. Actual HF
+Qwen 0.8B context512 same-process and fresh-process restore matches all
+state domains and full vocabulary continuation bits; corrupt/stale refusal,
+known retirement and actual unknown H2D retention/fence pass. Actual
+HF HIP V2 C1/C8 replay and retirement with persistence enabled pass.
+Full isolated gate: 2395 Rust test executions, zero failures, 102 explicit skips; release/installer/scripts pass.
+No new
+kernel/profile or performance claim. Other resident formats, generalized
+session store and cross-provider restore remain open.
+
 ## 25 Nov — committed CPU checkpoint persistence
 
 1d5c4ada: optional production state-checkpoint native CPU v2 file,

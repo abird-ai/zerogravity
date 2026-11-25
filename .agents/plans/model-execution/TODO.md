@@ -216,6 +216,11 @@ any external compiler. All phases retain the original resource/state owners.
   source/geometry/numerical compatibility, original imported host backing
   and bounded atomic SHA256 file IO. Real 0.8B/2B full-vocab continuation
   exact and legacy diagnostic v1 bytes preserved. No kernel/cross-provider change.
+- 804d4882/d9b25205: optional stable model-owned source semantic revision
+  on original static plan; native HIP V2 F32 contiguous committed restore
+  through exact prepared compatibility and original root pool/Ready.
+  Actual HF 0.8B full-domain/full-vocab same/fresh-process continuation
+  and unknown upload retention/fence pass; no kernel/cross-provider change.
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

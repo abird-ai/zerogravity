@@ -25,6 +25,84 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed committed native HIP resident persistence: 804d488200ea12b82e487f9e590f90f0d3055672.**
+Actual upload unknown-completion qualification: d9b252057ef76cc56bb0ecb37f9fc653a24061f4.
+
+- Existing optional state-checkpoint feature now weakly enables resident
+  persistence and core source-semantic revision metadata. Source factory
+  declares its actual immutable config/source-bundle and explicit semantic
+  revision on the original static ForwardPlan before sharing; no new plan
+  graph, source issuer or runtime registry. No additional plan field in
+  feature-disabled builds. This is trusted semantic compatibility metadata,
+  not authentication or new model/provider eligibility.
+- ResidentTextSnapshot/ResidentTextSession save_committed_checkpoint and
+  ResidentTextSession restore_committed_checkpoint use the original
+  completion-backed snapshot read and artifact bounded SHA256/atomic file IO.
+  Separate resident format (ZGRESTEXT_STATE1) binds the original verified
+  bundle, source-owned semantic revision, exact native HIP V2 profile,
+  actual compiler/device fingerprint and ordered F32 domain/plane geometry
+  including prepared context capacity. No local root/session/service
+  identities, unused KV tail, prompt history or sampler data on disk.
+  File payload is bounded by the original physical shape (max 1GiB).
+- Restore validates full extent, finite words, compatibility and integrity
+  while private. Decode active words directly into native full planes with
+  canonical zero tails, no intermediate flattened F32 payload or second
+  device copy; move owned bytes into existing initialization. Cold HOST
+  workspace protects packed/transfer bytes and IO scratch; retains source/
+  model owner on uncertainty. Use the original admission lock, root pool
+  checkout and queue; known pre-submission refusals leave current root and
+  original backing intact. Actual Ready service/lease/generation coverage
+  precedes existing SessionAuthority domain swap; invalidate derived state
+  and stale drafts. Legacy diagnostic import reuses this final publication
+  check; existing fresh upload path and zeroing protocol remain intact.
+- Actual X2 original HF Qwen 0.8B HIP V2 context512: complete committed
+  numerical state file 20815960 bytes. Restore into independent session
+  with outstanding draft, exact all-domain bits, exact full 248320-vocab
+  decode continuation; corrupt-trailer refusal leaves root/host reservation
+  unchanged. Real fresh-process replay reopens the original source and
+  file, exact domains and continuation again. Local replacement advances
+  receiver root/epoch and invalidates the previous draft; temporary host
+  charge retires; ordinary shutdown retains only original 4GiB native
+  context until process retirement.
+- d9b25205 reuses existing hardware-abort probe after real state H2D.
+  Actual X2 fault: cancel pending restore at submitted/unobserved boundary,
+  both committed roots unchanged, host/source/physical ownership retained
+  and service fenced. Unknown backing released only by process retirement.
+  No new fault harness/receipt machinery. GPU returned to idle baseline.
+- Actual X2 native HIP V2 0.8B C1/C8 population with state-checkpoint
+  enabled: all six waves [248068,198,90700], replay/lane invariant,
+  width8, zero failed GPU quanta, native/tokenizer retirement, unfenced.
+  Opt-in HIP and combined CUDA/HIP SDK compilation and strict core/model
+  Clippy passed. Include state-checkpoint in the existing HIP compile gate
+  (21ce3d7f); updated command passed. Combined legacy diagnostic build
+  initially found a borrow-check error at the shared publication seam;
+  ef7c3d6c retains the original model across the admission lock.
+  Final combined diagnostic compilation and both focused import tests pass.
+  Full isolated gate: 2395 Rust test executions, zero failures, 102 explicit skips; release/installer/scripts pass.
+  The gate began at 804d4882; subsequent fault-only, diagnostic-borrow
+  and compile-gate changes were separately qualified as described above.
+- Scope: only qualified native HIP V2 contiguous F32 original-HF text
+  state, exact prepared capacity, explicit caller-owned trusted local
+  checkpoint. No implicit CPU/HIP/CUDA conversion, paged/BF16 resident
+  restore, arbitrary graph/version migration, token/prompt prefix grant,
+  scheduler store, tenant authentication, encryption, disk quota or
+  asynchronous file IO. Integrity is not authenticity. The model/backend
+  revisions must be advanced on incompatible math/layout changes.
+
+**Next coherent unit:** finish the minimum source-declared pipeline/task
+preparation and control seam through the existing typed pipeline Config,
+Runtime catalog/load coordinator, model registry and original task router.
+Use actual already qualified language chain consumers for graph-declared
+source resolution, atomic bounded model/pipeline ownership and lifecycle
+rollback; keep source/model/task/codec eligibility separate from graph
+metadata. Do not introduce a second graph scheduler, catalog or root
+publisher; general DAG/media/context execution and unqualified cross-model
+transport remain explicit. Finish remaining SDK/control/observability
+foundations before Phase 2; preserve native performance primitives and
+defer new backend/profile/codec specializations to their planned phases.
+
+### Previous accepted CPU checkpoint
+
 **Signed committed CPU checkpoint foundation: 1d5c4ada3e224e7278ddd487563073e2d8d7be94.**
 
 - Optional production state-checkpoint feature (weakly forwarded by facade;
@@ -88,17 +166,9 @@ reusable work and measured history, not precedence over this order.
   live state allocation contracts remain authoritative. Other OS/filesystem
   behavior is not newly qualified.
 
-**Next coherent unit:** extend the existing committed-only resident
-snapshot/restore boundary through actual qualified consumers. Start at
-resident_text.rs, resident_checkpoint.rs,
-resident_state_transport.rs and engine state_cache.rs; separate existing
-same-owner snapshot readers/forks from durable bytes and source/profile/
-layout compatibility. Reuse original completion, admitted transport and
-artifact checkpoint IO; do not coerce HF state into the GGUF CPU format,
-mint a second state publisher or qualify cross-provider restoration from
-matching domain names. Keep unsupported persisted GPU paths explicit.
-Continue remaining shared task/pipeline and SDK/control foundations
-before Phase 2.
+The bounded native HIP V2 resident continuation is implemented at
+804d4882/d9b25205 above. Other resident formats and cross-provider
+restoration remain explicitly unqualified.
 
 ### Previous accepted portable admission checkpoint
 

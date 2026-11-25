@@ -444,8 +444,14 @@ and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
   original layer body, admitted imported state and atomic bounded IO;
   real 0.8B/2B restore/continuation exact, corrupt/source/budget refusal
   and stale attempt/last reader retirement. No new publisher or prefix grant.
-- [ ] Extend qualified resident persisted state and complete generic named
-  Vulkan registry reuse and actual shared host-visible GPU backing. General DAG/media/context
+- [x] Bounded native HIP V2 committed contiguous F32 persistence
+  (804d4882/d9b25205): original semantic revision, exact prepared profile/
+  layouts, admitted snapshot/typed native-plane transfer/root pool/Ready
+  and sole publication; real HF 0.8B fresh-process exact replay and unknown
+  upload retention/fence. Other layouts/providers remain unqualified.
+- [ ] Complete qualified source-declared pipeline/task preparation and
+  control; extend other qualified resident formats and generic named Vulkan
+  registry reuse and actual shared host-visible GPU backing. General DAG/media/context
   authority, source loading and pipeline transport activation remain
   unsupported. Continue source lifecycle/placement only through real
   consumers. Keep selected shape

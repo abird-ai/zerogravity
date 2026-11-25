@@ -64,11 +64,16 @@ restore. Real 0.8B/2B full-vocab exact continuation after reloading source;
 corrupt/wrong-model/budget/stale refusal and last-reader retirement pass.
 Diagnostic v1 bytes and actual bridge unchanged. Full isolated gate: 2395
 executions, zero failures, 102 explicit skips; release/installer/scripts pass.
-Next advance the bounded
-resident committed state/snapshot/restore seam through original transport/
-completion and artifact IO. Continue foundations in the
+Signed 804d4882/d9b25205: optional native HIP V2 F32 contiguous committed
+persistence, stable source semantic revision, exact prepared compatibility,
+original snapshot/root pool/upload/completion and shared bounded IO.
+Actual HF 0.8B same/fresh-process full-domain/full-vocab exact restore,
+corruption/stale refusal, clean retirement and unknown upload retention/fence.
+Full isolated gate: 2395 Rust test executions, zero failures, 102 explicit skips; release/installer/scripts pass.
+Next advance bounded source-declared pipeline/task preparation and control
+through original catalog, graph, model owners and router. Continue
 [full plan](FULL_IMPLEMENTATION_PLAN.md). No second cache hierarchy,
-allocator or publisher; general persisted GPU, cross-provider restore,
+allocator or publisher; other persisted GPU formats, cross-provider restore,
 scheduler-managed persistent sessions and media/DAG/context remain open.
 
 **20 Nov authoritative refresh:** pushed/tracked `origin/main` is `f0f0640`; local signed
