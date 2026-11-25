@@ -15,7 +15,8 @@ concept rather than historical qualification shorthand.
 Cross-window continuation starts at [the canonical current handoff](../docs/CURRENT_HANDOFF.md).
 For the complete original architecture, current accepted source checkpoint,
 historical chain and open-work/commit inventories, read the
-[24 Nov foundations takeover](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md).
+[25 Nov foundations takeover](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md).
+The [24 Nov foundations pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md) remains historical authority for its accepted scope.
 Read the main body first and use the appendices and earlier packs as needed.
 The live ordered [full implementation plan](FULL_IMPLEMENTATION_PLAN.md),
 source, tests and owner TODOs remain authoritative; the takeover is a

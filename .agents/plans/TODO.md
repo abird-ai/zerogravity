@@ -6,7 +6,7 @@ The historical queue narratives and P-level labels below preserve owner scopes, 
 
 Current source, tests, and this queue are authoritative; Git retains retired history.
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
-Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md).
+Full takeover context: [FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md).
 The foundations pack links the complete dated history, source checkpoint, original design and plan/open-work/Git inventories. Live source and owning TODOs remain authoritative.
 
 **25 Nov Phase 1 checkpoint:** `7b36a879`/`0342e103`/`fdfb467f`

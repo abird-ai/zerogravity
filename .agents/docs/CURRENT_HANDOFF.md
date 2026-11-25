@@ -1,6 +1,11 @@
-# ZeroGravity current comprehensive handoff — 24 Nov 2026
+# ZeroGravity current comprehensive handoff — 25 Nov 2026
 
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
+
+**Full takeover (25 Nov):** [FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md).
+Read the main body first; §13 is the current starting prompt. Older read-order
+and continuation text below is historical; the top checkpoint and ordered
+full plan govern.
 
 **24 Nov priority decision:** start with the
 [full implementation plan](../plans/FULL_IMPLEMENTATION_PLAN.md). Complete
@@ -563,15 +568,14 @@ Whole-program source preparation is accepted; the bounded next region
 slice is described above. The broader Phase 1 foundations remain open. See the full plan and composition TODO.
 
 Full dated takeover snapshot:
-[`FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md).
-The foundations handoff is the canonical comprehensive takeover after accepted
-source preparation at `17e2b7176eaec5b9a5b78aded583690795e81c30`. It records
-the initial architecture, complete historical chain, native provider work,
-ordered implementation plan, current foundation boundary and pending work.
-Its inventories cover all maintained docs/plans, the open checklist snapshot
-and every reachable commit through the source checkpoint. Read its main
-body first; use the appendices and older dated handoffs for detail as needed.
-They are historical snapshots, not a competing live task ledger.
+[`FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md`](FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md).
+The 25 Nov pack covers the original architecture, complete historical chain,
+all accepted checkpoints through `fdfb467f`, all 830 reachable commits
+through the last acceptance documentation checkpoint, open work and the
+next parameter-staging unit. The [24 Nov foundations handoff](FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md)
+and earlier packs remain intact; their dated continuation prompts are
+superseded. The newest main body is the first reading; inventories and
+historical packs are navigation aids, not a competing task ledger.
 
 The earlier [24 Nov morning takeover](FULL_COMPREHENSIVE_HANDOFF_2026-11-24.md)
 preserves the pre-native chronology at `e1929762`. The previously concurrent
@@ -2864,7 +2868,9 @@ Do not broadly requalify unchanged primitives merely because a new phase starts.
 On X2, do not reset/reclaim/restart/kill other GPU owners. Tiny physical HIP health
 is already green; repeat it only if host/runtime state changes.
 
-## Copy/paste next-agent prompt
+## Historical next-agent prompt (superseded)
+
+Use §13 of the [25 Nov takeover](FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md) for the actual starting prompt. The following is retained only as history.
 
 > Use `dotlink---l5` as the only source-authoring connector. Continue in
 > `/home/pvl/spaces/abird/src/zerogravity` on the single persistent `main`
