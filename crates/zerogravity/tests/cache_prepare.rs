@@ -445,18 +445,22 @@ fn qualify_approved_models(route: ImportRoute) {
             config_lease.manifest().digest().unwrap()
         );
         let denied = admission(64 * 1024 * 1024);
-        assert!(matches!(
-            PreparedQwen::from_snapshots(
-                &lease,
-                "model.gguf",
-                &config_lease,
-                "config.json",
-                &tokenizer_lease,
-                "tokenizer.json",
-                &denied
-            ),
-            Err(zerogravity::Error::Limit(_))
-        ));
+        match PreparedQwen::from_snapshots(
+            &lease,
+            "model.gguf",
+            &config_lease,
+            "config.json",
+            &tokenizer_lease,
+            "tokenizer.json",
+            &denied,
+        ) {
+            Err(zerogravity::Error::Resource(limit)) => {
+                assert_eq!(limit.resource, "host memory");
+                assert!(limit.requested > limit.available);
+            }
+            Err(error) => panic!("expected resource admission refusal: {error}"),
+            Ok(_) => panic!("unexpected preparation with insufficient source budget"),
+        }
         assert_eq!(
             denied.arbiter.snapshot(&denied.resource).unwrap().reserved,
             0
