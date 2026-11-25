@@ -199,6 +199,10 @@ any external compiler. All phases retain the original resource/state owners.
   registration preserve original source/physical ownership. Real CPU cache and
   HF-import/direct 0.8B/2B full vocabulary/all42, CUDA HF C1/GGUF and HIP V2
   C1/C8 pass. No kernel, codec or numerical-contract expansion.
+- 9ae6dd1e/e06213a5: ordinary/pinned Linux CUDA pre-Client provider envelope
+  adopts the original physical charge; exact PCI and actual live fit narrow
+  unused credit without duplicate admission or kernel changes. Actual HF
+  peer refusal/retry and pinned live fit, HF C1/GGUF and HIP V2 C1/C8 pass.
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.

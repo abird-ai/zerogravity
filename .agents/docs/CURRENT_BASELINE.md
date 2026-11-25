@@ -5,6 +5,19 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — CUDA physical pre-admission
+
+9ae6dd1e (physical identity accessor e06213a5): shared existing pre-Client
+reservation/adoption on Linux ordinary and pinned CUDA. Preserve source-shaped
+fit, actor cleanup/live clamp and compiler-context ownership; narrow unused
+reserved credit without retire/re-admit. Real HF peer refusal/retry without
+new compute owner/fence, actual pinned live-fit one-envelope retirement,
+HF CUDA C1 and same-process contiguous/paged C8 exact token replay, GGUF
+pipeline/selective unload, HIP V2 C1/C8 pass. Both GPUs
+return to idle baseline. No new performance or cross-provider numerical claim;
+generic non-Linux/portable HIP/Vulkan and OS/UMA admission remain open.
+Full isolated gate: 2396 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+
 ## 25 Nov — authenticated source eligibility
 
 8eb17bc2: backend-independent HF inventory and authenticated ForwardSource,

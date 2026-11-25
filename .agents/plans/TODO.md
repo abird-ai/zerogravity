@@ -40,8 +40,13 @@ Real CPU 0.8B/2B cached/direct and HF-import full vocabulary/all42 comparisons,
 CUDA HF C1/GGUF pipeline+unload and HIP V2 C1/C8 pass with original retirement.
 Test-only capacity/host fixture corrections 00f57e7a/9374e0ca.
 Full isolated gate: 2396 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-Next consolidate pre-Client physical fit/admission and stable identity, in
-particular ordinary CUDA bootstrap, via original physical owner (f4746c23).
+Signed 9ae6dd1e/e06213a5: Linux CUDA shared pre-Client original physical
+envelope, exact PCI adoption, post-bootstrap live clamp releases unused
+credit. Real HF peer refusal/no new compute owner/retry, actual pinned live
+fit, CUDA HF C1/contiguous-paged C8/GGUF pipeline+unload and HIP V2 C1/C8 pass.
+Full isolated gate: 2396 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Next reconcile remaining cold placement/resource observation and portable
+bootstrap gaps, explicit host/cgroup/UMA overlap, through original owners.
 Continue foundations in the [full plan](FULL_IMPLEMENTATION_PLAN.md).
 No second cache hierarchy, allocator or publisher; portable persistence,
 cross-provider restore and general media/DAG/context remain open.

@@ -218,10 +218,22 @@ registry retained. Real CPU 0.8B/2B cached/direct and HF-import comparisons
 match full vocabulary/all42 and source retirement (test-only 00f57e7a/9374e0ca).
 CUDA HF C1/GGUF pipeline+unload and HIP V2 C1/C8 pass. No new performance claim.
 Full isolated gate: 2396 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-Next consolidate pre-Client physical fit/admission and stable identity, closing
-the ordinary CUDA bootstrap gap through the existing f4746c23 physical owner
-and shared source-shaped preflight. General family/codec/task extension remains
-separately open; no duplicate catalog, estimator, allocator or runtime.
+Signed 9ae6dd1e/e06213a5: ordinary Linux CUDA and pinned source preparation
+reuse the original HIP/Vulkan preadmission owner; exact context-free PCI and
+configured provider charge precede Client. Original actor adopts the same
+lease, live downward clamp releases unused credit before model admission;
+source-shaped fit and compiler lifetime preserved. Real HF peer refusal
+(no new observed compute owner)/retry, pinned live-fit/retirement, CUDA HF C1,
+same-process contiguous/paged native C8 exact tokens and context reuse,
+GGUF pipeline/selective unload and HIP V2 C1/C8 pass. Logical admission is
+not an OS-wide VRAM guarantee; live observation is post-bootstrap and
+configured-cap conflicts may refuse conservatively.
+Full isolated gate: 2396 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Next close remaining bounded cold placement/physical resource observations:
+host/cgroup/UMA overlap, truthful live availability and remaining portable
+bootstrap gaps through existing owners and qualified consumers. Broader
+family/codec/task extension and unqualified backend routes remain open.
+No duplicate catalog, estimator, allocator or runtime.
 General DAG/media/context authority, pipeline source loading, transport
 activation, portable snapshot persistence and cross-provider restore remain
 unsupported. None of these slices closes Phase 1.

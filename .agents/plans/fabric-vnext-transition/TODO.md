@@ -651,8 +651,13 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   held descriptor/snapshot. Existing request variants preserved. Actual CPU
   0.8B/2B cache and HF-import/direct comparison, CUDA HF C1/GGUF pipeline and
   selective unload, HIP V2 C1/C8 pass with original retirement.
-- [ ] Consolidate remaining pre-Client physical fit/admission and stable
-  identity through original physical owner. Broader family/codec/task
+- [x] Ordinary Linux CUDA pre-Client physical envelope/adoption
+  (9ae6dd1e/e06213a5): share original HIP preadmission, exact PCI, actor
+  live downward clamp releases unused cold credit, no new resource owner.
+  Real peer refusal without a new compute owner, same-runtime retry, pinned
+  live-fit/retirement, HF C1/GGUF pipeline/selective unload and HIP V2 C1/C8 pass.
+- [ ] Reconcile remaining cold placement/resource observations, generic
+  portable bootstrap and host/UMA constraints. Broader family/codec/task
   registration, portable snapshot persistence, cross-provider restore and
   additional backend prefix eligibility remain open.
 

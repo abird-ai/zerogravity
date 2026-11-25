@@ -25,6 +25,60 @@ reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
 
+**Signed CUDA pre-Client physical admission: 9ae6dd1eb3c7bdd8c8ffb30479bd7775686a9c2c.**
+Public admitted physical identity accessor: e06213a517e1a88732fc5ceadac8fd1b9a97b354.
+
+- Shared existing PreAdmittedDevice bootstrap/adoption owner now covers Linux
+  CUDA as well as the original HIP/Vulkan guarded paths. Context-free driver
+  metadata selects exact PCI identity and total capacity, rejects ambiguous
+  PCI views and preserves source-specific SM86/compiler headroom. No new
+  inventory, allocator or estimator.
+- Ordinary HF and GGUF CUDA resident constructors reserve the configured
+  provider envelope through the original ResourceArbiter before Client.
+  Adopt exactly that charge/owner and verify actual Client identity/capacity.
+  GGUF capability validation uses the admitted service Client.
+- Pinned CUDA keeps existing actor cleanup and live free-memory clamp against
+  original configured headroom; release only unused cold credit through
+  partition_reserved before model admission. Known post-bootstrap capacity
+  misses drop unused admission; unknown bootstrap retains charge and fences
+  through the original guard. Source-shaped admission is recomputed only when
+  the live cap narrows. Separate compiler-context lifetime unchanged.
+- L5 actual Qwen 0.8B HF SDK peer pressure refuses before any new observed
+  NVML compute owner, exact peer-only reservation, no fence, same-runtime
+  retry/inference/unload succeeds. Compiler context remains independently
+  charged until process retirement. Actual pinned live fit narrows 2147483648
+  to 1987510272 bytes with one model envelope, zero after owner drop. Existing
+  HF C1 three-wave replay, actual same-process contiguous/paged native C8
+  exact token replay with retained compiler-context reuse, and GGUF two-stage
+  distinct-owner pipeline/selective unload pass. X2 HIP V2 C1/C8 all six
+  waves match [248068,198,90700], original
+  retirement and no fence. Both devices return to original idle usage.
+- No OS/driver-wide memory reservation guarantee: the pre-Client credit is the
+  conservative configured logical provider envelope, not free VRAM inferred
+  from total capacity. Logical conflicts can refuse before the later live
+  clamp. SDK smart config retains context-free NVML planning; actual actor
+  observation is post-bootstrap. Compiler-context charges still precede
+  compiler installation, not primary-context creation. Generic non-Linux
+  CUDA, portable HIP/Vulkan and finite diagnostic-only direct Client routes
+  retain their documented gaps. No fresh Vulkan physical or performance claim.
+- Full mandatory-private-network gate: 2396 Rust test executions, zero
+  failures, 101 explicit skips; architecture, feature isolation, release,
+  installer and scripts pass. Gate started on 9ae6dd1e; the visibility-only
+  accessor e06213a5 landed during it. Final combined CUDA/HIP SDK all-targets
+  compilation passes; actual native runs cover unchanged execution code.
+
+**Next coherent unit:** finish the minimum shared cold placement/physical
+resource observation contract through existing devices/inventory, core
+placement/provider/resource_arbiter and actual qualified load/admission
+consumers. Reconcile host/cgroup and overlapping UMA domain constraints,
+explicit capacity versus live availability, and remaining portable device
+bootstrap gaps where real supported routes permit. Preserve source-shaped
+fit, exact identity, typed resource refusal and actual admission authority;
+no generic layer spilling, automatic fallback or unqualified Vulkan execution.
+Continue remaining state/task and SDK/control foundations before Phase 2.
+
+### Previous accepted source/model eligibility checkpoint
+
 **Signed source/model eligibility: 8eb17bc2125ed73260240db9cda47312c501ac39.**
 Test-only corrections: 00f57e7a, 9374e0ca.
 
@@ -59,15 +113,9 @@ Test-only corrections: 00f57e7a, 9374e0ca.
   the two test-only corrections landed during it, with all four corrected
   cache-preparation tests run separately against real sources.
 
-**Next coherent unit:** consolidate pre-Client physical fit/admission and stable
-identity through the existing physical owner, particularly the ordinary CUDA
-source bootstrap gap. Start at `physical_service.rs`, `resident_leases/physical.rs`,
-`resident_inference.rs::load_cuda_forward_roots` and the HIP pre-admission seam
-accepted in f4746c23. Preserve live downward fit clamp, exact source-shaped
-preflight, provider/headroom accounting, original service/lease ownership and
-clean refusal/retry. Do not duplicate estimators, infer available memory from
-capacity, or add fallback. Keep general UMA overlap, new backend/codec/family
-support and unsupported task/pipeline extensions explicitly open.
+The ordinary Linux CUDA bootstrap continuation is closed by 9ae6dd1e above.
+Remaining physical placement, broader family/codec/task support and SDK/control
+foundations remain open.
 
 ### Previous accepted compiled-region checkpoint
 

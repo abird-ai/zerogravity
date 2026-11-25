@@ -424,8 +424,13 @@ and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
   CPU 0.8B/2B cached/direct/HF-import exact comparison, CUDA HF C1/GGUF SDK and
   HIP V2 C1/C8 pass with original retirement. Broader family/codec/task support
   remains open.
-- [ ] Continue physical pre-Client fit/admission and stable identity through
-  the original owner, including ordinary CUDA bootstrap. General DAG/media/context
+- [x] Ordinary Linux CUDA physical pre-Client admission (9ae6dd1e/e06213a5):
+  shared original preadmission owner, exact PCI selection/adoption, live clamp
+  releases only unused cold credit, no duplicate resource authority. Actual HF
+  peer refusal/retry, pinned live fit, CUDA HF C1/GGUF pipeline+unload
+  and HIP V2 C1/C8 pass; general portable/bootstrap and UMA gaps remain.
+- [ ] Reconcile remaining cold placement/resource observation and host/UMA
+  constraints through original qualified consumers. General DAG/media/context
   authority, source loading and pipeline transport activation remain
   unsupported. Continue source lifecycle/placement only through real
   consumers. Keep selected shape

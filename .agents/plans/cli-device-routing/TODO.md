@@ -93,11 +93,17 @@ Historical source20 .8B first-use refusal (two attempts after readiness) remains
 recorded. Current21 repairs it within the finite accepted scope above.
 - [~] Shared pre-Client transactional admission: accepted `f4746c23` adopts
   the original envelope before HIP source Client/runtime bootstrap; actual
-  Qwen refusal/retry passes without leaked reservation or fencing. CUDA
-  selected SM86/PCI/envelope checks precede Client, but the final live
-  clamp and actual admission remain actor-side after Client. Existing
-  Vulkan diagnostic attachment compiles. General transactional pre-Client
-  admission and OS hard-memory guarantees are not implied.
+  Qwen refusal/retry passes without leaked reservation or fencing.
+  9ae6dd1e/e06213a5 now share exact context-free CUDA PCI and original
+  configured provider reservation before Client on ordinary/pinned Linux
+  CUDA routes, actual identity adoption and original live downward clamp
+  with unused cold credit released. Real Qwen HF peer refusal (no new
+  observed compute owner)/retry, pinned live fit and retirement, HF C1,
+  GGUF pipeline/selective unload and HIP V2 C1/C8 pass. Existing Vulkan
+  diagnostic attachment compiles. Logical pre-admission is conservative;
+  current free memory still observed on actor after bootstrap when
+  necessary. Remaining generic portable/non-Linux bootstrap, host/UMA
+  overlap and OS hard-memory guarantees are not implied.
 
 ### Review and authorization
 
