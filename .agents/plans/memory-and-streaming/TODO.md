@@ -116,9 +116,19 @@ The following extends existing owners; source-byte qualification is not inferenc
   B1 full logits/all42 and native B4 tokens/scores/all42, streamed
   cancel/discard/retry, SDK C1 and native HIP regressions pass. Fresh
   compiler contexts avoid the cumulative PTX limit hit in the first
-  combined comparison; do not raise the budget. Next distinguish retained
-  authenticated parameter descriptors from transient source/conversion
-  backing and retire that backing on actual initialization completion.
+  combined comparison; do not raise the budget.
+- [x] **25 Nov parameter materialization/retirement:** 687d9a24/06df027f/
+  43928332/f4e09428 share authenticated complete parameters, exact storage policies
+  and admitted staging via the original initialization. Retain sealed
+  descriptor authority, retire raw/conversion backing only after actual
+  completion, quarantine on uncertainty. Portable logical Write/shared
+  Bytes handles padded views; native full-allocation matrix/page upload
+  remains strict. L5 actual cold-ready/shutdown host staging baseline and
+  resident/streamed exact B1/B4/all42 pass. X2 HIP V2 C1/C8 replay/
+  retirement, artifact 30/30 and conversion 3/3 pass.
+  X2 HIP portable typed slice 1024/2048 matches existing CPU/PyTorch
+  references and original retirement (test-only typed refusal correction).
+  Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
   Broader IO/cache/eviction and unknown-work recovery remain open.
 - [~] Canonical physical buffer identity now exists in the model-neutral device
   ledger. `DeviceBufferIdentity` is an opaque process-local **ledger namespace +

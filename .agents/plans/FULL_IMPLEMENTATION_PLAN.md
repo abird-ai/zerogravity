@@ -187,10 +187,24 @@ resident/streamed fits in fresh admitted contexts. L5 B1 full logits/all42,
 native B4 token/score/all42, streamed cancellation/retry, ordinary CUDA C1
 and X2 native HIP V2 C1/C8 plus alias chain pass. Full isolated gate:
 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-Next reconcile complete parameter materialization/conversion staging and
-transfer retirement, separating retained authenticated descriptors from
-transient admitted backing at actual initialization completion. No
-additional cache hierarchy, allocator or publisher.
+Signed 687d9a24/06df027f/43928332/f4e09428 consolidate authenticated parameter
+materialization and original initialization-owned transient backing. CUDA
+retains sealed descriptor/lease authority without raw/conversion staging;
+HIP keeps its aligned F32 layout and the same shared materializer. Use the
+original logical Write with shared Bytes, including padded physical views;
+the native full-allocation matrix/page primitive remains strict and reusable.
+Artifact 30/30, conversion 3/3, real CUDA resident/streamed B1 logits/all42,
+native B4 token/score/all42, cancel/discard/retry, actual host staging
+retirement and native HIP V2 C1/C8 replay/retirement pass.
+X2 HIP portable typed slice 1024/2048 matches existing CPU/PyTorch
+references and original retirement (test-only typed refusal correction).
+Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Next complete the minimum useful SDK-free optional compiled-provider
+scaffolding through the existing closed-region/prepared executable seam.
+Revalidate the already-implemented graph-only bindings, provider
+requirements, native/captured ownership and shape/state contracts; extend
+only the remaining useful direct semantic-region lowering/retirement gap.
+No new IR, external compiler dependency or independent ownership plane.
 General DAG/media/context authority, pipeline source loading, transport
 activation, portable snapshot persistence and cross-provider restore remain
 unsupported. None of these slices closes Phase 1.

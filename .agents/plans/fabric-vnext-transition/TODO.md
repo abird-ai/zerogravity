@@ -631,8 +631,17 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   native B4 token/score/all42, cancel/discard/retry and SDK C1; HIP native
   V2 C1/C8 and alias chain. Fresh compiler contexts, unchanged budget.
   Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
-- [ ] Reconcile transient parameter/conversion staging retirement through
-  existing source/initialization owners; portable snapshot persistence,
+- [x] 687d9a24/06df027f/43928332/f4e09428: complete authenticated parameter
+  binding/materialization, logical Write with shared Bytes, original
+  completion-owned raw/conversion staging. Sealed descriptor/lease authority
+  retained without staging. Actual L5 B1/B4/all42/cancel/retry and host
+  staging retirement, X2 HIP V2 C1/C8 replay/retirement, 30 artifact and
+  3 conversion tests pass. X2 HIP portable typed slice 1024/2048 matches
+  existing CPU/PyTorch
+  references and original retirement (test-only typed refusal correction).
+  Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+- [ ] Finish minimum useful SDK-free compiled-provider scaffolding under the
+  original closed-region ownership seam. Portable snapshot persistence,
   cross-provider restore and additional backend prefix eligibility remain
   deferred.
 

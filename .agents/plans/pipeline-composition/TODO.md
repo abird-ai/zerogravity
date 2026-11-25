@@ -397,12 +397,23 @@ their existing numeric/source/physical acceptance gates.
 Contract: [closed regions](REGIONS_AND_PROFILES.md#source-ingestion-semantics-and-executable-lowering)
 and [full plan, foundations](../FULL_IMPLEMENTATION_PLAN.md#1-foundations).
 
-- [ ] Reconcile complete parameter materialization/conversion staging
-  and transfer retirement through actual verified-source/native consumers.
-  Distinguish retained source/descriptor from transient admitted backing,
-  releasing only after known initialization completion. Preserve
-  source/lease/queue/completion authority and direct resident access;
-  no additional cache hierarchy or allocator. General DAG/media/context
+- [x] 687d9a24/06df027f/43928332/f4e09428: shared complete parameter binding/
+  materialization and original initialization-owned transient staging.
+  Retain sealed source/descriptor and device lease, not upload backing;
+  preserve Original/BF16 RNE/F32Exact, padded portable layout, original
+  logical Write, completion/quarantine and direct resident access.
+  Native full-allocation parameter selection rejected for padded views;
+  native matrix/page primitive retained. 30 artifact + 3 conversion tests,
+  actual CUDA exact B1/B4/all42, cancel/retry and host staging retirement,
+  HIP native V2 C1/C8 replay/retirement pass. No new performance claim.
+  X2 HIP portable typed slice 1024/2048 matches existing CPU/PyTorch
+  references and original retirement (test-only typed refusal correction).
+  Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+- [ ] Finish minimum useful SDK-free optional compiled-provider scaffolding
+  on existing region/provider/prepared executable contracts, not a second
+  IR or owner. Inspect graph-only binding and original completion/
+  retirement gaps; reuse native/captured proof, no compiler SDK/ONNX.
+  General DAG/media/context
   authority, source loading and pipeline transport activation remain
   unsupported. Continue source lifecycle/placement only through real
   consumers. Keep selected shape

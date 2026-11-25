@@ -5,6 +5,25 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 25 Nov — initialization-owned parameter materialization/retirement
+
+687d9a24/06df027f (test-only 43928332/f4e09428): shared exact
+parameter binding/materialization and admitted initialization backing.
+Original, BF16 RNE and F32Exact, portable padded layouts and direct resident
+access unchanged. Native complete-allocation parameter upload was refused
+on a padded physical view; the final route uses the original logical Write
+with shared Bytes, leaving the native matrix/page primitive intact.
+30 artifact and 3 conversion tests pass. L5 actual resident/streamed Qwen
+0.8B singleton full logits/all42 and native B4 token/score/all42, cancel/
+discard/retry and transfer-staging-at-ready/shutdown checks pass. X2 native
+HIP V2 C1/C8 expected tokens/replay and original retirement pass. X2 HIP
+portable typed slice 1024/2048 matches existing CPU/PyTorch references
+after the stale typed-Resource refusal assertion is corrected. Both
+devices return to prior idle usage; no new performance measurement or
+broader numerical/backend parity claim.
+Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+Unknown cold-upload fault injection and broader interop/async IO remain open.
+
 ## 25 Nov — shared authenticated matrix transport
 
 `7b36a879`, CUDA-only fix `0342e103`, fresh-context test `fdfb467f`:

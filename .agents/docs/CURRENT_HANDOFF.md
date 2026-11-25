@@ -3,9 +3,9 @@
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
 **Full takeover (25 Nov):** [FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md).
-Read the main body first; §13 is the current starting prompt. Older read-order
-and continuation text below is historical; the top checkpoint and ordered
-full plan govern.
+Read the main body first; §13 preserves the takeover prompt at the dated
+matrix checkpoint. Resume from the newer live checkpoint below and the
+ordered full plan; older continuation text is historical.
 
 **24 Nov priority decision:** start with the
 [full implementation plan](../plans/FULL_IMPLEMENTATION_PLAN.md). Complete
@@ -24,6 +24,67 @@ Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
 ### Current Phase 1 checkpoint
+
+**Signed parameter-retirement checkpoint: f4e09428cd8d1f77302a24e18050687fa8fba6e6.**
+Production commits: 687d9a2467af9479108b6069c12e68545032630b and
+06df027fd126a57368984c668dc7e277d3f442bd; 43928332 is the CUDA
+qualification-only consuming-shutdown correction. f4e09428 corrects the
+old portable diagnostic Limit assertion to the actual Resource refusal
+introduced in e79814ce, with requested > available and original zero
+allocation/event checks unchanged.
+
+- Complete ParameterWindow validation shares the exact authenticated
+  issuer/member/geometry/extent. ForwardParameter retains the sealed
+  VerifiedParameter and descriptor, codec, storage policy and original
+  device lease, not transient raw or conversion payloads. The typed-slice
+  diagnostic similarly separates retained source bindings/control budget
+  from its initialization inputs.
+- One materializer preserves Original, BF16 RNE, F32Exact, signed zero,
+  finite/overflow checks and portable 256-byte padded F32 layout. Charge
+  conversion and possible alignment bounce before allocating. CUDA and HIP
+  use the original logical Write with one shared payload; actual window,
+  payload and charge are retained by the original initialization until
+  known physical completion, or quarantine on uncertainty. Resident hot
+  access is unchanged.
+- The attempted native complete-allocation CUDA parameter upload refused
+  a padded physical view in the real consumer. Remove that parameter
+  selector, not the reusable strict native matrix/page upload primitive.
+  No change to the native ABI or original allocator.
+- Artifact tensor-window tests 30/30 and focused parameter conversion
+  tests 3/3 pass. L5 actual Qwen 0.8B resident/streamed B1 full vocabulary/
+  all42, native B4 token/score/all42, known-completed cancellation/discard/
+  retry, cold host transfer-staging baseline and shutdown assertions pass.
+  GPU returns to 37 MiB/no compute owners. X2 native HIP V2 C1/C8 expected
+  tokens, replay and original retirement pass on 06df027f (final CUDA-only
+  test correction does not alter HIP). X2 returns to 259768320 bytes/no KFD
+  process. X2 actual portable typed-slice HIP healthy at widths 1024/2048
+  matches CPU and the existing independently accepted PyTorch archives,
+  with original host/device owners retired, no pending events or fencing.
+  No new performance, parity or unknown cold-upload fault claim.
+
+Full mandatory-private-network workspace gate: 2393 Rust test executions,
+zero failures, 101 explicit skips; release, installer, architecture, feature
+isolation and script checks pass. Assembled on unchanged production
+06df027f; the two qualification-only corrections landed during the gate,
+with affected physical checks executed separately. No new full rerun of
+unaffected suites or exact-source evidence pinning.
+
+**Next coherent unit:** finish minimum useful optional compiled-provider
+scaffolding in Phase 1. Inspect the original RegionExecutionProvider,
+ModelRegion, PreparedRegion, PreparedExecutable and ExecutableBundle
+contracts and existing graph-only tests. Close the remaining direct
+native-semantic-region to prepared binding/retirement gap using existing
+typed source, shape/layout, state effects, physical admission and original
+completion owners. Exercise an SDK-free graph-only boundary and real
+native/captured consumers where changed; reuse existing proof. No external
+compiler SDK, ONNX requirement, new IR or independent execution owner.
+Do not redo accepted region or transport work. Continue remaining
+source/model registration, placement, state/task and SDK/control foundation
+exits before Phase 2. General asynchronous SSD IO, opaque cross-runtime/
+device interop, unknown cold-upload injection, portable persistence and
+cross-provider restore remain open.
+
+### Previous accepted matrix transport checkpoint
 
 **Signed source checkpoint `fdfb467f7ec86ddb891f78f562698675875a3565` —
 shared authenticated resident/streamed matrix transport.**
@@ -61,15 +122,8 @@ change its build. Full isolated gate: 2393 Rust test executions, zero failures, 
 No performance claim, new async SSD IO, unknown cold-upload fault injection
 or broader Vulkan physical/combined-context eligibility.
 
-Next: reconcile complete parameter materialization/conversion staging
-and transfer retirement through actual source consumers. Inspect
-`resident_leases::{forward_parameter_upload,source_parameters}` and
-`ParameterWindow`: distinguish retained authenticated descriptor/source
-authority from transient source/conversion backing. Release only after
-actual initialization completion, retain on uncertainty, preserve original
-codecs/RNE/finite checks and direct resident access. Reuse existing
-admission and completion owners; no second cache/allocator or generic IO
-framework. Phase 1 remains open; prior deferred scopes remain deferred.
+The matrix checkpoint's parameter follow-up is implemented in the newer
+checkpoint above. Phase 1 remains open; prior deferred scopes remain deferred.
 
 Prior accepted resident state identity checkpoint:
 

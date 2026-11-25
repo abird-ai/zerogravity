@@ -176,6 +176,18 @@ any external compiler. All phases retain the original resource/state owners.
   between resident/streamed fits in fresh contexts; known-completed
   cancel/discard/retry, SDK C1 and native HIP regressions pass. No new
   arithmetic/throughput claim or compiler-cap change (composition TODO).
+- Accepted bounded parameter slice 687d9a24/06df027f/43928332/f4e09428:
+  one exact Original/BF16 RNE/F32Exact materializer, portable padded layout,
+  authenticated retained descriptor and direct resident lease, transient
+  raw/conversion backing owned by original initialization. Shared logical
+  Write avoids duplicate payload copy; no relaxation of strict native
+  matrix/page transport. Real CUDA B1 full logits/all42 and native B4
+  token/score/all42 resident/streamed, cancel/retry and host staging
+  retirement, HIP V2 C1/C8 replay/retirement, artifact/convert tests pass.
+  X2 HIP portable typed slice 1024/2048 matches existing CPU/PyTorch
+  references and original retirement (test-only typed refusal correction).
+  Full isolated gate: 2393 Rust test executions, zero failures, 101 explicit skips; release/installer/scripts pass.
+  No new numerical profile or performance claim (composition TODO).
 - Core descriptors express mathematical geometry/precision, not provider or
   allocation permission. Add layouts, formats and operations only for a real
   consumer. Compact rows/head batches are the first shared dense geometry.
