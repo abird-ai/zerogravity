@@ -336,7 +336,7 @@ pub(super) async fn cold_physical_guards(
         inputs.token,
         None,
     );
-    assert!(matches!(refused, Err(Error::Limit(_))));
+    assert!(matches!(refused, Err(Error::Resource(limit)) if limit.requested > limit.available));
     assert_eq!(tiny.resident_bytes()?, 0);
     assert_eq!(tiny.pending_events()?, 0);
     drop(tiny);
