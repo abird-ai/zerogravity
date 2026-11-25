@@ -3,6 +3,8 @@ use super::{ActivationPrecision, ForwardPlan, ValueId};
 use crate::device_events::DeviceAccess;
 use crate::{Error, Result};
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ValueStorageFormat {
     F32,

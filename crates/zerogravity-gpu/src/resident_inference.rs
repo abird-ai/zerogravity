@@ -1020,12 +1020,22 @@ impl ResidentModel {
         use zerogravity_core::provider::{ExecutionDescription, PreparedExecutable};
         let workspace = self.workspace.lock().await;
         workspace.program.owned_source()?;
-        Ok(ExecutionDescription {
-            selected: self.selected()?,
-            numerical_profile: Some(workspace.program.plan().numerical_profile()),
-            text_calls: None,
-        })
+        Ok(ExecutionDescription::recorded(
+            workspace.program.plan(),
+            self.selected()?,
+        ))
     }
+    /// Cold view of an actual separately retained region at this node.
+    /// None means the prepared adapter has no such selected region record.
+    /// Does not derive/prepare a region or admit an invocation.
+    pub async fn describe_region(
+        &self,
+        node: usize,
+    ) -> Result<Option<zerogravity_core::provider::ExecutionDescription>> {
+        self.service.ensure_usable()?;
+        self.workspace.lock().await.program.describe_region(node)
+    }
+
     /// Read the existing model quota/leases, with no new allocation or actor IO.
     pub fn memory_snapshot(&self) -> Result<zerogravity_core::provider::ResidentModelMemory> {
         let service = &self.service;

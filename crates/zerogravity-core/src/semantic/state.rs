@@ -11,6 +11,8 @@ use std::collections::BTreeMap;
 
 /// Plane geometry retained by the original state owner. Vector ordering and
 /// arithmetic belong to the original plan/profile, not to an equal byte extent.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StateLayout {
     Vector { elements: usize },
@@ -51,6 +53,7 @@ impl SourceStateDomain {
 
 /// Exact external state version at a region boundary. Version 0 is the
 /// committed input, version 1 the invocation's provisional result.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RegionStatePort {
     pub version: StateVersion,

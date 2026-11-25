@@ -1627,6 +1627,24 @@ impl ResidentProgram {
             ],
         )
     }
+    /// Only return an actually retained selected region. A semantic node
+    /// alone is not evidence that its implementation was separately lowered.
+    pub(crate) fn describe_region(
+        &self,
+        node: usize,
+    ) -> Result<Option<zerogravity_core::provider::ExecutionDescription>> {
+        if node >= self.plan.nodes().len() {
+            return Err(Error::State(
+                "region observation node outside original plan".into(),
+            ));
+        }
+        #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+        if let ResidentProgramBody::CudaForward(body) = &self.body {
+            return Ok(body.describe_region(node));
+        }
+        Ok(None)
+    }
+
     pub fn plan(&self) -> &ForwardPlan {
         &self.plan
     }

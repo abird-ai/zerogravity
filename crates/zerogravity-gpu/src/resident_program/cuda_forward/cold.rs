@@ -506,6 +506,14 @@ impl CudaForwardCold {
     pub(super) fn attention(&self) -> &Arc<CudaForwardAttention> {
         &self.attention
     }
+    pub(super) fn describe_projection(
+        &self,
+        node: usize,
+    ) -> Option<zerogravity_core::provider::ExecutionDescription> {
+        self.projections
+            .get(&node)
+            .map(|projection| projection.region.description())
+    }
     pub(super) fn projection(&self, node: usize) -> Result<&Arc<CudaForwardProjection>> {
         self.projections
             .get(&node)

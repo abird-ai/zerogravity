@@ -1,4 +1,5 @@
 //! Coarse source-owned preparation; no execution authority from a descriptor.
+mod description;
 mod region;
 mod resources;
 mod selection;
@@ -10,6 +11,7 @@ use crate::{
     semantic::ForwardPlan,
     source::{ProgramSource, RegionSource},
 };
+pub use description::{ProgramDescription, RegionDescription};
 pub use region::{PhysicalRegionPort, PreparedRegion, RegionShape};
 pub use resources::{
     ProviderBufferMode, ProviderCompletionMode, ProviderMemoryBudget, ProviderRequirements,
@@ -50,6 +52,19 @@ pub trait PreparedExecutable: Send + Sync {
             .or_else(|| self.prepared_text().map(PreparedTextProgram::selected))
             .ok_or_else(|| Error::State("prepared executable selection absent".into()))
     }
+    /// Cold observation through the actual owner, never a fresh recording.
+    fn description(&self) -> impl Future<Output = Result<ExecutionDescription>> {
+        async {
+            if let Some(region) = self.prepared_region() {
+                Ok(region.description())
+            } else if let Some(text) = self.prepared_text() {
+                Ok(text.description())
+            } else {
+                let plan = self.program().await?;
+                Ok(ExecutionDescription::recorded(&plan, self.selected()?))
+            }
+        }
+    }
     /// Partial preparation carries the original region and physical ports.
     fn prepared_region(&self) -> Option<&PreparedRegion<Self::Source>> {
         None
@@ -70,6 +85,9 @@ impl<T: PreparedExecutable + ?Sized> PreparedExecutable for Arc<T> {
     }
     fn selected(&self) -> Result<SelectedMode> {
         self.as_ref().selected()
+    }
+    fn description(&self) -> impl Future<Output = Result<ExecutionDescription>> {
+        self.as_ref().description()
     }
     fn prepared_region(&self) -> Option<&PreparedRegion<Self::Source>> {
         self.as_ref().prepared_region()

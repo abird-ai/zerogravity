@@ -16,6 +16,7 @@ use std::{ops::RangeInclusive, sync::Arc};
 
 /// Logical precision and physical encoding are independent. These dense views
 /// describe caller-owned storage; an actual backend must bind admitted leases.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PhysicalRegionPort {
     logical: RegionPort,
@@ -49,6 +50,10 @@ impl PhysicalRegionPort {
     }
     pub fn value(self) -> ValueId {
         self.logical.value
+    }
+    /// Exact prepared capacity; active shape binding narrows this view.
+    pub fn capacity(self) -> PreparedTensorLayout {
+        self.capacity
     }
     pub fn format(self) -> ValueStorageFormat {
         self.format
@@ -162,6 +167,24 @@ impl<S: ProgramSource> PreparedRegion<S> {
     }
     pub fn selected(&self) -> SelectedMode {
         self.selected
+    }
+    pub fn description(&self) -> super::ExecutionDescription {
+        let region = self.model.region();
+        super::ExecutionDescription {
+            region: Some(super::RegionDescription {
+                nodes: region.range(),
+                supported_rows: self.rows.clone(),
+                inputs: self.inputs.clone(),
+                outputs: self.outputs.clone(),
+                state_inputs: region.state_inputs().into(),
+                state_outputs: region.state_outputs().into(),
+                state_storage: self.states.clone(),
+                invocation_ports: region.invocation_ports(),
+                observations: self.observations,
+                requirements: self.requirements,
+            }),
+            ..super::ExecutionDescription::recorded(self.model.program(), self.selected)
+        }
     }
     pub fn requirements(&self) -> ProviderRequirements {
         self.requirements

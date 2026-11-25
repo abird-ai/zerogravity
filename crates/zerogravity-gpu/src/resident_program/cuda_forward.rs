@@ -359,12 +359,12 @@ impl CudaForwardProjection {
             (output, DeviceAccess::Write),
             (status, DeviceAccess::Write),
         ])?;
-        let input = exact_view(
-            input,
-            input_offset,
-            operation.input_bytes(),
-            "streamed GEMM input",
+        let input_storage = zerogravity_core::placement::PreparedTensorLayout::dense(
+            2,
+            operation.inner * 2,
+            operation.rows,
         )?;
+        let input = input.typed_view(input_offset, input_storage)?;
         let mut base = 0;
         let mut launches = 0;
         for matrix in self.weights.matrices() {
@@ -376,12 +376,13 @@ impl CudaForwardProjection {
                 let rows = first..first + (geometry.rows - first).min(geometry.rows_per_page);
                 let shape = Bf16GemmShape::new(rows.len(), operation.rows, operation.inner)?;
                 let offset = (base + rows.start) * 2;
-                let extent = crate::cuda::bf16_gemm::output_span(
-                    shape.columns,
+                let output_storage = zerogravity_core::placement::PreparedTensorLayout::strided(
+                    2,
+                    shape.columns * 2,
+                    operation.columns * 2,
                     shape.rows,
-                    operation.columns,
                 )?;
-                let target = exact_view(output, offset, extent, "streamed GEMM output")?;
+                let target = output.typed_view(offset, output_storage)?;
                 page.with_rows(flight, matrix, rows, None, |view| {
                     if view.rows().len() != shape.columns
                         || view.matrix().columns() != shape.inner

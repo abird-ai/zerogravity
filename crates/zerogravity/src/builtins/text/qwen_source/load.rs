@@ -1775,6 +1775,40 @@ mod cuda_paged_tests {
                 .await
                 .unwrap();
                 assert_eq!(model.admission().resident_weight_bytes, resident_bytes);
+                {
+                    use zerogravity_core::accelerator::program::{
+                        PlanOperation, SourceOperatorKind, ValueStorageFormat,
+                    };
+                    use zerogravity_core::provider::{
+                        ExecutionMode, PreparedExecutable, ProviderKind,
+                    };
+                    let plan = parts.source.plan.plan();
+                    let description = model.description().await.unwrap();
+                    assert_eq!(
+                        description.program.unwrap(),
+                        zerogravity_core::provider::ProgramDescription::recorded(plan)
+                    );
+                    assert_eq!(description.selected.provider, ProviderKind::Cuda);
+                    assert_eq!(description.selected.mode, ExecutionMode::Native);
+                    assert!(description.text_calls.is_some());
+                    let node = plan.nodes().iter().position(|node| matches!(
+                        &node.operation, PlanOperation::SourceOperatorTemplate { descriptor, .. }
+                            if matches!(descriptor.kind(), SourceOperatorKind::Projection { .. })
+                    )).unwrap();
+                    let selected = model.describe_region(node).await.unwrap().unwrap();
+                    assert_eq!(selected.program, description.program);
+                    assert_eq!(selected.selected, description.selected);
+                    let region = selected.region.unwrap();
+                    assert_eq!(region.nodes, node..node + 1);
+                    assert_eq!(region.inputs[0].format(), ValueStorageFormat::Bf16);
+                    assert_eq!(region.outputs[0].format(), ValueStorageFormat::Bf16);
+                    region.requirements.require_original_queue().unwrap();
+                    assert!(model.describe_region(0).await.unwrap().is_none());
+                    assert!(model.describe_region(plan.nodes().len()).await.is_err());
+                    eprintln!(
+                        "CUDA_SELECTED_REGION_PASS node={node} resident_weights={resident_bytes}"
+                    );
+                }
                 assert_eq!(staging(), before, "cold source transfer backing retired");
                 let singleton = trajectory(&model, &parts.source.plan, &tokens, page_tokens)
                     .await

@@ -61,7 +61,10 @@ pub use crate::model::DeclaredModel;
 pub use zerogravity_core::model::{
     ModelAssembly, ModelDefinition, ModelProgram, ModelRegion, ProgramRequest, SourceRegionOperator,
 };
-pub use zerogravity_core::provider::{PreparedExecutable, RegionExecutionProvider};
+pub use zerogravity_core::provider::{
+    ExecutionDescription, PreparedExecutable, ProgramDescription, RegionDescription,
+    RegionExecutionProvider,
+};
 pub use zerogravity_core::source::{ProgramSource, RegionSource, SourceTensorRef, TensorSource};
 pub use zerogravity_engine::diagnostics::{
     ArtifactDescription, ModelCapabilities, ModelDetails, ModelLifecycle, ModelMemory,

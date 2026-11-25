@@ -683,6 +683,13 @@ impl ResidentTextModel {
     pub fn state_policy(&self) -> ResidentStatePolicy {
         self.state_policy
     }
+    /// Selected retained region observation from the original physical owner.
+    pub async fn describe_region(
+        &self,
+        node: usize,
+    ) -> Result<Option<zerogravity_core::provider::ExecutionDescription>> {
+        self.inner.describe_region(node).await
+    }
     /// Allocation-free observation of the original prepared state contract.
     /// The loader proves exact plan/source binding with require_prepared_text.
     pub fn state_identity(&self) -> Result<ResidentTextStateIdentity> {

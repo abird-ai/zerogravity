@@ -16,6 +16,10 @@ impl<E: PreparedExecutable> ExecutableBundle<E> {
     pub async fn program(&self) -> Result<Arc<ForwardPlan>> {
         self.prepared.program().await
     }
+    /// Observe the actual prepared contract without creating another plan.
+    pub async fn description(&self) -> Result<zerogravity_core::provider::ExecutionDescription> {
+        self.prepared.description().await
+    }
     pub fn selected(&self) -> Result<SelectedMode> {
         self.prepared.selected()
     }

@@ -158,15 +158,28 @@ pub fn compare_prepared(
             .find(|owner| owner.registration_id == actual.registration_id)
             .unwrap();
         assert_eq!(owner.source, stage.source());
-        assert!(
-            owner
-                .capabilities
-                .as_ref()
-                .unwrap()
-                .details
-                .execution
-                .is_some()
-        );
+        let execution = owner
+            .capabilities
+            .as_ref()
+            .unwrap()
+            .details
+            .execution
+            .as_ref()
+            .unwrap();
+        if execution.selected.provider == zerogravity::provider::ProviderKind::Cpu {
+            assert!(execution.program.is_none());
+        } else {
+            let recorded = execution.program.expect("actual prepared GPU program");
+            assert_eq!(recorded.source, owner.source);
+            assert!(recorded.node_count > 0 && recorded.context_capacity > 0);
+            assert!(
+                execution.region.is_none(),
+                "whole model is not a selected partial region"
+            );
+            if execution.text_calls.is_some() {
+                assert!(recorded.source_template.is_some());
+            }
+        }
     }
     let mut stream = runtime.submit_task(task).unwrap();
     let mut deltas = String::new();

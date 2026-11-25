@@ -218,6 +218,7 @@ fn resident_private_provider_bridge_is_ordered_and_retained() -> Result<()> {
     use crate::cuda::bf16_gemm::{Bf16Gemm, Bf16GemmReduction};
     use cubecl_common::bytes::Bytes;
     use zerogravity_core::{
+        accelerator::program::ValueStorageFormat,
         device_events::{BufferRole, DeviceAccess},
         placement::PreparedTensorLayout,
         provider::{ProviderBufferMode, ProviderCompletionMode, ProviderRequirements},
@@ -286,6 +287,71 @@ fn resident_private_provider_bridge_is_ordered_and_retained() -> Result<()> {
     drop(cubecl::future::block_on(init.complete_sync())?);
     active.finish()?;
     let workspace = [&private_input, &private_output, &status];
+    use crate::resident_leases::ProviderView;
+    let input_view = ProviderView::new(&input, 0, input_layout, ValueStorageFormat::Bf16)?;
+    let private_input_view =
+        ProviderView::new(&private_input, 0, input_layout, ValueStorageFormat::Bf16)?;
+    let private_output_view =
+        ProviderView::new(&private_output, 0, output_layout, ValueStorageFormat::Bf16)?;
+    let output_view = ProviderView::new(&output, 0, output_layout, ValueStorageFormat::Bf16)?;
+    // Same bytes do not authorize an encoding/layout conversion.
+    let wrong = ProviderView::new(
+        &private_input,
+        0,
+        PreparedTensorLayout::dense(4, inner * 2, rows)?,
+        ValueStorageFormat::F32,
+    )?;
+    assert!(matches!(
+        input_view.require_copy_to(wrong),
+        Err(Error::Unsupported(_))
+    ));
+    assert!(input_view.require_copy_to(input_view).is_err());
+    let wrong_rows = ProviderView::new(
+        &private_input,
+        0,
+        PreparedTensorLayout::dense(2, inner * 4, rows / 2)?,
+        ValueStorageFormat::Bf16,
+    )?;
+    assert!(input_view.require_copy_to(wrong_rows).is_err());
+    assert!(ProviderView::new(&input, 1, input_layout, ValueStorageFormat::Bf16).is_err());
+    assert!(
+        service
+            .bind_cuda_provider(&primary, requirements, &workspace, &[])
+            .is_err()
+    );
+    assert!(
+        service
+            .bind_cuda_provider(
+                &secondary,
+                ProviderRequirements {
+                    completion: ProviderCompletionMode::OriginalQueue,
+                    ..requirements
+                },
+                &workspace,
+                &[]
+            )
+            .is_err()
+    );
+    assert!(
+        service
+            .bind_cuda_provider(&secondary, requirements, &workspace[..2], &[])
+            .is_err()
+    );
+    assert!(
+        service
+            .bind_cuda_provider(
+                &secondary,
+                requirements,
+                &[&private_input, &private_input, &status],
+                &[]
+            )
+            .is_err()
+    );
+    service.ensure_usable()?;
+    let binding = service.bind_cuda_provider(&secondary, requirements, &workspace, &[])?;
+    println!(
+        "CUDA_PROVIDER_PREFLIGHT_PASS incompatible_stream_layout_extent_refused=true unfenced=true"
+    );
 
     let mut active = slot()?;
     active.begin_submission()?;
@@ -306,34 +372,27 @@ fn resident_private_provider_bridge_is_ordered_and_retained() -> Result<()> {
         .client()
         .write(&input.handle(), Bytes::from_bytes_vec(encode(&inputs)));
     let flight = unsafe {
-        flight.with_cuda_provider(
-            &secondary,
-            requirements,
-            &workspace,
-            &[],
-            gemm.clone(),
-            |commands| {
-                commands.copy(&input, 0, &private_input, 0, input_layout)?;
-                commands.require_accesses([
-                    (&weights, DeviceAccess::Read),
-                    (&private_input, DeviceAccess::Read),
-                    (&private_output, DeviceAccess::Write),
-                    (&status, DeviceAccess::Write),
-                ])?;
-                commands
-                    .client()
-                    .write(&status.handle(), Bytes::from_bytes_vec(vec![0; 4]));
-                gemm.prepare_certified(
-                    commands.client(),
-                    weights.handle(),
-                    private_input.handle(),
-                    private_output.handle(),
-                    status.handle(),
-                )?
-                .launch()?;
-                commands.copy(&private_output, 0, &output, 0, output_layout)
-            },
-        )
+        flight.with_cuda_provider(binding, gemm.clone(), |commands| {
+            commands.copy(input_view, private_input_view)?;
+            commands.require_accesses([
+                (&weights, DeviceAccess::Read),
+                (&private_input, DeviceAccess::Read),
+                (&private_output, DeviceAccess::Write),
+                (&status, DeviceAccess::Write),
+            ])?;
+            commands
+                .client()
+                .write(&status.handle(), Bytes::from_bytes_vec(vec![0; 4]));
+            gemm.prepare_certified(
+                commands.client(),
+                weights.handle(),
+                private_input.handle(),
+                private_output.handle(),
+                status.handle(),
+            )?
+            .launch()?;
+            commands.copy(private_output_view, output_view)
+        })
     }?;
     assert!(!output.is_initialized()); // No Ready merely from inserting a wait.
     let readback = [output.readback(0, output.bytes())?, status.readback(0, 4)?];
@@ -371,19 +430,12 @@ fn resident_private_provider_bridge_is_ordered_and_retained() -> Result<()> {
     let weak = Arc::downgrade(&gemm);
     let handles_before = crate::physical_quarantine::quarantined_handles_for(service.client())?;
     let result = unsafe {
-        flight.with_cuda_provider(
-            &secondary,
-            requirements,
-            &workspace,
-            &[],
-            gemm,
-            |commands| {
-                commands.copy(&input, 0, &private_input, 0, input_layout)?;
-                Err(Error::State(
-                    "diagnostic interrupted external provider".into(),
-                ))
-            },
-        )
+        flight.with_cuda_provider(binding, gemm, |commands| {
+            commands.copy(input_view, private_input_view)?;
+            Err(Error::State(
+                "diagnostic interrupted external provider".into(),
+            ))
+        })
     };
     assert!(
         matches!(result, Err(Error::State(message)) if message == "diagnostic interrupted external provider")

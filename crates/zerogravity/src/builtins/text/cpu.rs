@@ -72,6 +72,8 @@ impl PreparedModel for Model {
                 // This direct CPU adapter has no explicit prepared ForwardPlan.
                 numerical_profile: None,
                 text_calls: None,
+                program: None,
+                region: None,
             }),
             prefix_sharing: Some(false),
             source_host_reserved_bytes: Some(self.weights.host_reserved_bytes()?),

@@ -25,6 +25,7 @@ pub enum ResidentStatePolicy {
 
 /// Explicit dense state storage, independently of logical arithmetic. The
 /// original semantic program/profile supplies vector ordering and precision.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StateStorage {
     slot: StateSlot,

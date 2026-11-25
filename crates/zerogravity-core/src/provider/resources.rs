@@ -2,6 +2,8 @@
 //! The original physical owner admits and retains them.
 use crate::{Error, Result, resource_arbiter::PhysicalDeviceKey};
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProviderBufferMode {
     /// Import/borrow the original admitted port allocations.
@@ -10,6 +12,8 @@ pub enum ProviderBufferMode {
     Private,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProviderCompletionMode {
     /// All commands participate in the original physical queue's completion.
@@ -22,6 +26,7 @@ pub enum ProviderCompletionMode {
 /// allocation, accounting receipt, or completion witness. Ordinary operands,
 /// state, existing mathematical scratch, and shared backend context/module
 /// envelopes remain priced by their original owners, not once per region.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ProviderRequirements {
     /// Exclusive writable workspace supplied by the fabric, including any

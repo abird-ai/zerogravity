@@ -110,6 +110,12 @@ impl CudaForwardBody {
         Ok((program, body))
     }
 
+    pub(in crate::resident_program) fn describe_region(
+        &self,
+        node: usize,
+    ) -> Option<zerogravity_core::provider::ExecutionDescription> {
+        self.cold.describe_projection(node)
+    }
     pub(super) fn cold(&self) -> &Arc<CudaForwardCold> {
         &self.cold
     }

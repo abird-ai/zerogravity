@@ -4,6 +4,8 @@ use crate::encoding::{QuantScheme, ScalarDType, StoredTensorEncoding};
 use crate::{Error, Result};
 
 /// Mathematical precision carried in F32 storage, independent of weight codec.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ActivationPrecision {
     #[default]

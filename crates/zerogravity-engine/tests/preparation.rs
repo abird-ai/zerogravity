@@ -1118,7 +1118,30 @@ fn partial_provider_preparation_retains_exact_source_plan_and_scope() {
             let prepared = bundle.prepared_region().unwrap();
             assert_eq!(bundle.selected().unwrap(), COMPILED_PROBE);
             assert_eq!(prepared.selected(), COMPILED_PROBE);
+            let description = ready(bundle.description()).unwrap();
+            assert_eq!(description.selected, COMPILED_PROBE);
+            assert_eq!(
+                description.program.unwrap(),
+                zerogravity_core::provider::ProgramDescription::recorded(&plan)
+            );
+            assert!(description.text_calls.is_none());
+            let observed = description.region.as_ref().unwrap();
+            assert_eq!(observed.nodes, 1..3);
+            assert_eq!(observed.supported_rows, 2..=8);
+            assert_eq!(
+                observed.inputs[0].logical(),
+                prepared.model().region().inputs()[0]
+            );
+            assert_eq!(
+                observed.inputs[0].capacity(),
+                prepared.capacity().input(0).unwrap()
+            );
+            assert_eq!(
+                observed.invocation_ports,
+                prepared.model().region().invocation_ports()
+            );
             let requirements = prepared.requirements();
+            assert_eq!(observed.requirements, requirements);
             assert_eq!(requirements.device_bytes().unwrap(), 1280);
             requirements.require_original_queue().unwrap();
             requirements.require_admitted(256, 1024).unwrap();
@@ -1259,6 +1282,16 @@ fn compiled_region_borrows_original_learned_operands_and_late_call() {
         .unwrap();
     let call = invocation.call(InvocationPhase::Prefill).unwrap();
     let prepared = bundle.prepared_region().unwrap();
+    let description = ready(bundle.description()).unwrap();
+    let observed = description.region.as_ref().unwrap();
+    assert_eq!(
+        observed.state_inputs.as_ref(),
+        prepared.model().region().state_inputs()
+    );
+    assert_eq!(
+        observed.state_outputs.as_ref(),
+        prepared.model().region().state_outputs()
+    );
     let (logical, physical) = prepared.bind_call(call, false).unwrap();
     assert_eq!(logical.positions(), Some(13..20));
     assert_eq!(logical.token_ids(), None);

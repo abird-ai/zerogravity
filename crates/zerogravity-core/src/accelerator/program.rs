@@ -224,12 +224,17 @@ pub struct SourceVector<'a> {
     pub name: &'a str,
     pub values: &'a [f32],
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ConvDomain(pub usize);
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RecurrentDomain(pub usize);
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct KvDomain(pub usize);
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum StateSlot {
     Conv(ConvDomain),
@@ -579,6 +584,7 @@ pub enum ParameterSlot {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ParameterRef(pub ParameterSlot);
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ValueId(pub u32);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -622,6 +628,7 @@ pub struct StaticVector {
     pub name: String,
     pub values: Arc<[f32]>,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StateVersion {
     pub slot: StateSlot,

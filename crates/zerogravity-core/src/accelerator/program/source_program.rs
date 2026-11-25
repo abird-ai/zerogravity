@@ -169,6 +169,7 @@ impl TextInvocation {
 
 /// Static bounds for one invocation-free plan. Model owners authenticate eligibility;
 /// this core value owns no source bytes, state root or execution capability.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SourcePlanGeometry {
     source: SourceIdentity,
@@ -617,6 +618,8 @@ pub struct SourceOperatorTemplate {
     row_selection: SourceRowSelection,
     semantics: Arc<SourceOperatorSemantics>,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SourceRowSelection {
     AllActive,

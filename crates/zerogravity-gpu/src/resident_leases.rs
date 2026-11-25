@@ -51,6 +51,40 @@ mod native_cache;
     reason = "reusable private provider bridge; ordinary serving remains on its selected native path"
 )]
 mod provider_bridge;
+#[cfg(all(test, feature = "cuda-native", target_os = "linux"))]
+pub(crate) use provider_bridge::ProviderView;
+#[cfg(any(
+    feature = "cuda-native",
+    all(feature = "qualification", feature = "cuda"),
+    all(feature = "hip-source", target_os = "linux")
+))]
+fn require_provider_extents(
+    service: &Arc<ResidentService>,
+    requirements: zerogravity_core::provider::ProviderRequirements,
+    workspace: &[&ResidentLease],
+    charges: &[Arc<ForeignProviderCharge>],
+) -> Result<()> {
+    requirements.device_bytes()?;
+    let mut bytes = 0usize;
+    for (index, lease) in workspace.iter().enumerate() {
+        if lease.role() != BufferRole::Scratch {
+            return Err(Error::State(
+                "provider workspace is not original scratch".into(),
+            ));
+        }
+        if workspace[..index]
+            .iter()
+            .any(|prior| prior.id() == lease.id())
+        {
+            return Err(Error::State("provider workspace counted twice".into()));
+        }
+        bytes = bytes
+            .checked_add(lease.bytes())
+            .ok_or_else(|| Error::Limit("provider workspace extent overflow".into()))?;
+    }
+    let opaque = ForeignProviderCharge::require_total(service, charges)?;
+    requirements.require_admitted(bytes, opaque)
+}
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) use enqueue::{
     ENQUEUE_PROFILE_ADMISSION_BYTES, EnqueuePlacement, enqueue_profile_enabled,
@@ -932,7 +966,10 @@ impl ResidentLease {
 
     /// Bind the selected physical tensor layout without copying or allocating.
     /// Original flight membership and access are checked by the consuming adapter.
-    #[cfg(all(target_os = "linux", feature = "cuda-cublas"))]
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "cuda-cublas", feature = "cuda-native")
+    ))]
     pub(crate) fn typed_view(
         &self,
         offset: usize,
@@ -1122,31 +1159,14 @@ impl ResidentSubmission<'_> {
         workspace: &[&ResidentLease],
         charges: &[Arc<ForeignProviderCharge>],
     ) -> Result<()> {
-        requirements.device_bytes()?;
-        if !Arc::ptr_eq(self.service, service)
-            || workspace
-                .iter()
-                .any(|lease| lease.role() != BufferRole::Scratch)
-        {
+        if !Arc::ptr_eq(self.service, service) {
             return Err(Error::State(
-                "provider original flight/workspace owner differs".into(),
+                "provider original flight owner differs".into(),
             ));
         }
         self.require_accesses(workspace.iter().map(|&lease| (lease, DeviceAccess::Write)))?;
-        let mut bytes = 0usize;
-        for (index, lease) in workspace.iter().enumerate() {
-            if workspace[..index]
-                .iter()
-                .any(|prior| prior.id() == lease.id())
-            {
-                return Err(Error::State("provider workspace counted twice".into()));
-            }
-            bytes = bytes
-                .checked_add(lease.bytes())
-                .ok_or_else(|| Error::Limit("provider workspace extent overflow".into()))?;
-        }
-        let opaque = ForeignProviderCharge::require_total(service, charges)?;
-        requirements.require_admitted(bytes, opaque)
+        // require_accesses already checks exact service/lease/generation.
+        require_provider_extents(service, requirements, workspace, charges)
     }
 
     pub(crate) fn retain_completion_owner(

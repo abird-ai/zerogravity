@@ -11,6 +11,7 @@ use crate::{
 use std::{ops::Range, sync::Arc};
 
 /// Logical layout, not a device allocation or storage encoding.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RegionPort {
     pub value: ValueId,

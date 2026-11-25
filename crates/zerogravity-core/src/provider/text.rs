@@ -1,5 +1,5 @@
 //! Whole invocation preparation over the existing source/plan owners.
-use super::SelectedMode;
+use super::{ProgramDescription, RegionDescription, SelectedMode};
 use crate::{
     Error, Result,
     accelerator::program::InvocationPhase,
@@ -40,6 +40,25 @@ pub struct ExecutionDescription {
     pub numerical_profile: Option<NumericalProfile>,
     /// Only a real prepared text template supplies this binding contract.
     pub text_calls: Option<TextCallSupport>,
+    /// Only an actual retained recording supplies these facts.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub program: Option<ProgramDescription>,
+    /// Only a selected prepared closed region supplies this contract.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub region: Option<RegionDescription>,
+}
+impl ExecutionDescription {
+    /// Older native whole-model adapters may report their original plan
+    /// without inventing a typed source-template invocation contract.
+    pub fn recorded(plan: &crate::semantic::ForwardPlan, selected: SelectedMode) -> Self {
+        Self {
+            selected,
+            numerical_profile: Some(plan.numerical_profile()),
+            text_calls: None,
+            program: Some(ProgramDescription::recorded(plan)),
+            region: None,
+        }
+    }
 }
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -108,13 +127,12 @@ impl<S: ProgramSource> PreparedTextProgram<S> {
     }
     pub fn description(&self) -> ExecutionDescription {
         ExecutionDescription {
-            selected: self.selected,
-            numerical_profile: Some(self.model.program().numerical_profile()),
             text_calls: Some(TextCallSupport {
                 supported_rows: self.rows.clone(),
                 invocation_ports: self.ports,
                 observations: self.observations,
             }),
+            ..ExecutionDescription::recorded(self.model.program(), self.selected)
         }
     }
 

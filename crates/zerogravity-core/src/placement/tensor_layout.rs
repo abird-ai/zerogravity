@@ -3,6 +3,7 @@ use crate::{Error, Result, encoding::StoredTensorEncoding};
 use std::num::NonZeroUsize;
 
 /// Lossless row layout. No allocation, cast, source binding or readiness grant.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PreparedTensorLayout {
     alignment: NonZeroUsize,
