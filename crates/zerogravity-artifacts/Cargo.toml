@@ -8,6 +8,7 @@ publish = false
 license = "MIT"
 
 [features]
+state-checkpoint = ["dep:sha2", "dep:rustix"]
 cache = ["dep:sha2", "dep:rustix"]
 diagnostic-cache = ["cache"]
 acquisition = ["cache", "dep:ureq", "dep:url", "dep:log", "dep:hmac", "dep:quick-xml", "dep:time", "dep:base64", "dep:blake3", "dep:xxhash-rust"]

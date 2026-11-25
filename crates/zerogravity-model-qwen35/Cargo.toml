@@ -20,7 +20,9 @@ source-binding = ["cache", "zerogravity-cpu?/cache"]
 # model-side source contracts needed by that backend's adapter.
 cuda = ["source-binding"]
 hip = ["source-binding"]
-diagnostic-cpu-checkpoint = ["zerogravity-core/diagnostic-cpu-checkpoint"]
+# Optional cold persistence, independent of diagnostic/cross-provider adapters.
+state-checkpoint = ["dep:sha2", "zerogravity-artifacts/state-checkpoint"]
+diagnostic-cpu-checkpoint = ["zerogravity-core/diagnostic-cpu-checkpoint", "zerogravity-artifacts/state-checkpoint"]
 
 [dependencies]
 zerogravity-core = { path = "../zerogravity-core", features = ["serde"] }

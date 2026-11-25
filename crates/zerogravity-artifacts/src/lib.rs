@@ -1,5 +1,7 @@
 pub use zerogravity_core::{Error, Result, accelerator};
 pub mod artifact;
+#[cfg(feature = "state-checkpoint")]
+pub mod checkpoint;
 pub mod codecs;
 pub mod config;
 pub mod derived;

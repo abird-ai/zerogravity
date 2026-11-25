@@ -191,7 +191,6 @@ impl SessionAuthority {
 
     /// Check replacement counters before allocating a private checkpoint
     /// payload. This creates no import attempt and validates no portable data.
-    #[cfg(feature = "diagnostic-cpu-checkpoint")]
     pub fn preflight_replacement(&self) -> Result<()> {
         self.reserve_replacement(self.binding.frontier).map(|_| ())
     }

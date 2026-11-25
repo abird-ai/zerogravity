@@ -47,6 +47,8 @@ impl SourceStorage {
 pub struct SourceWeights {
     source_identity: SourceIdentity,
     source: SourceStorage,
+    #[cfg(feature = "state-checkpoint")]
+    gguf_digest: std::sync::OnceLock<[u8; 32]>,
     tensors: HashMap<String, TensorInfo>,
     /// Each tensor binds one exact immutable owned file allocation.
     shards: HashMap<String, usize>,
@@ -166,6 +168,8 @@ impl SourceWeights {
         Ok(Self {
             source_identity: SourceIdentity::for_new_allocation()?,
             source: SourceStorage::Gguf(source),
+            #[cfg(feature = "state-checkpoint")]
+            gguf_digest: std::sync::OnceLock::new(),
             tensors,
             shards,
             architecture: info.architecture.unwrap_or_default(),
@@ -195,6 +199,8 @@ impl SourceWeights {
         Ok(Self {
             source_identity: SourceIdentity::for_new_allocation()?,
             source: SourceStorage::Safetensors(source),
+            #[cfg(feature = "state-checkpoint")]
+            gguf_digest: std::sync::OnceLock::new(),
             tensors,
             shards,
             architecture: String::new(),
@@ -210,9 +216,24 @@ impl SourceWeights {
         self.source_identity
     }
 
+    /// Exact owned GGUF content identity, computed once on explicit cold use.
+    /// Source identity and verified model eligibility remain independent.
+    #[cfg(feature = "state-checkpoint")]
+    pub fn gguf_content_sha256(&self) -> Result<[u8; 32]> {
+        use sha2::{Digest, Sha256};
+        match &self.source {
+            SourceStorage::Gguf(bytes) => Ok(*self
+                .gguf_digest
+                .get_or_init(|| Sha256::digest(bytes).into())),
+            #[cfg(all(feature = "cache", target_os = "linux"))]
+            _ => Err(Error::Unsupported(
+                "checkpoint requires an owned GGUF source".into(),
+            )),
+        }
+    }
+
     /// Total immutable owned source bytes, either one GGUF or the sum of
     /// complete indexed Safetensors shards (including their file headers).
-    /// Querying this does not allocate or qualify a numerical model.
     pub fn source_len(&self) -> usize {
         self.source.total_bytes()
     }

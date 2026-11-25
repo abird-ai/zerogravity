@@ -37,7 +37,10 @@ use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 
-#[cfg(feature = "diagnostic-cpu-checkpoint")]
+#[cfg(any(
+    feature = "diagnostic-cpu-checkpoint",
+    all(feature = "cpu", feature = "state-checkpoint")
+))]
 mod checkpoint;
 #[cfg(feature = "diagnostic-cpu-checkpoint")]
 pub use checkpoint::QwenCheckpoint;
@@ -100,6 +103,10 @@ pub struct QwenState {
     position: usize,
     binding: RootBinding,
     attempt: Option<RootAttempt>,
+    // Imported arrays may be shared by later immutable roots and readers.
+    // Default builds carry no additional state field or clone operation.
+    #[cfg(feature = "state-checkpoint")]
+    imported: Option<Arc<zerogravity_core::resource_arbiter::GlobalResourceLease>>,
 }
 
 #[cfg(feature = "cpu")]
@@ -673,6 +680,8 @@ impl QwenDenseCpu {
                 position: 0,
                 binding,
                 attempt: None,
+                #[cfg(feature = "state-checkpoint")]
+                imported: None,
             },
             authority,
         })
@@ -1043,6 +1052,12 @@ impl QwenDenseCpu {
             }
         }
         candidate.position = 0;
+        // All domains are newly owned after reset; only old readers retain
+        // the original imported-state charge.
+        #[cfg(feature = "state-checkpoint")]
+        {
+            candidate.imported = None;
+        }
         candidate.attempt = Some(attempt.clone());
         self.publish_state(candidate, attempt)
     }
@@ -1671,6 +1686,8 @@ mod tests {
             position: 2,
             binding: authority.binding(),
             attempt: None,
+            #[cfg(feature = "state-checkpoint")]
+            imported: None,
         };
         let before = state.fingerprint();
         let domains = state.domain_values();
