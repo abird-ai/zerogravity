@@ -64,6 +64,8 @@ qwen35-cuda-serving = ["serve", "qwen35-cuda"]
 qwen35-cuda-qualification = ["qwen35-cuda", "zerogravity-gpu/qualification", "zerogravity-gpu/cuda-native-qualification"]
 # P12-C cancellation probes only; no default or batched paged behavior.
 qwen35-cuda-paged-cancellation-qualification = ["qwen35-cuda-qualification", "zerogravity-gpu/hardware-abort-probe"]
+# Existing hardware-abort probe, opt-in for the bounded resident checkpoint.
+qwen35-hip-checkpoint-qualification = ["qwen35-hip", "state-checkpoint", "zerogravity-gpu/hardware-abort-probe"]
 all-models = ["model-qwen35", "model-gemma4"]
 all-backends = ["cpu", "vulkan", "cuda", "hip"]
 # Normal production superset. Qualification/fault-injection features remain

@@ -1042,7 +1042,11 @@ mod tests {
         let explicit_path =
             std::env::var_os("ZG_RESIDENT_CHECKPOINT_PATH").map(std::path::PathBuf::from);
         let replay = std::env::var_os("ZG_RESIDENT_CHECKPOINT_REPLAY").is_some();
+        #[cfg(feature = "qwen35-hip-checkpoint-qualification")]
+        let abort = std::env::var_os("ZG_RESIDENT_CHECKPOINT_ABORT").is_some();
         assert!(!replay || explicit_path.is_some());
+        #[cfg(feature = "qwen35-hip-checkpoint-qualification")]
+        assert!(!abort || replay);
         let path = explicit_path.clone().unwrap_or_else(|| {
             std::env::temp_dir().join(format!("zg-resident-state-{}.bin", std::process::id()))
         });
@@ -1227,13 +1231,55 @@ mod tests {
                 &original.snapshot().unwrap().read_domains().await.unwrap(),
                 &receiving.snapshot().unwrap().read_domains().await.unwrap(),
             );
-            drop((logits, original, receiving));
+            drop(logits);
+            #[cfg(feature = "qwen35-hip-checkpoint-qualification")]
+            if abort {
+                let before = receiving.binding();
+                let other = original.binding();
+                let host_before = arbiter.snapshot(&resource).unwrap().reserved;
+                model.diagnostic_pause_next_launch().unwrap();
+                let mut restore = Box::pin(receiving.restore_committed_checkpoint(&path));
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                loop {
+                    assert!(
+                        futures_lite::future::poll_once(restore.as_mut())
+                            .await
+                            .is_none(),
+                        "restore completed before fault boundary"
+                    );
+                    if model.diagnostic_launch_handles() > 0 {
+                        break;
+                    }
+                    assert!(std::time::Instant::now() < deadline);
+                    futures_lite::future::yield_now().await;
+                }
+                assert!(model.diagnostic_pending_events().unwrap() > 0);
+                let retained = arbiter.snapshot(&resource).unwrap().reserved;
+                assert!(retained > host_before);
+                drop(restore);
+                assert_eq!(receiving.binding(), before);
+                assert_eq!(original.binding(), other);
+                assert!(!model.diagnostic_service_usable());
+                assert!(arbiter.snapshot(&resource).unwrap().reserved >= retained);
+                drop((original, receiving, model));
+                return;
+            }
+            drop((original, receiving));
             model.shutdown().await.unwrap();
         });
         drop(parts);
         let physical = arbiter
             .snapshot(&PhysicalDeviceKey::new("pci", "0000:c6:00.0").unwrap())
             .unwrap();
+        #[cfg(feature = "qwen35-hip-checkpoint-qualification")]
+        if abort {
+            assert!(physical.fenced);
+            assert!(physical.reserved > 4 * 1024 * 1024 * 1024);
+            eprintln!(
+                "RESIDENT_CHECKPOINT_UNKNOWN_PASS prior_roots_unchanged=true host_retained=true fenced=true; process retirement required"
+            );
+            return;
+        }
         assert_eq!(physical.reserved, 4 * 1024 * 1024 * 1024);
         assert!(!physical.fenced);
         eprintln!(

@@ -311,8 +311,24 @@ impl ResidentTextSession {
             .service
             .begin_initialization(attempt.base().root())?;
         initialization.retain_completion_owner(scope)?;
+        #[cfg(feature = "hardware-abort-probe")]
+        let launched = leases.len();
         for (lease, data) in leases.into_iter().zip(packed) {
             initialization.upload_owned_into(lease, data)?;
+        }
+        #[cfg(feature = "hardware-abort-probe")]
+        if model
+            .inner
+            .abort_after_launch
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |remaining| {
+                remaining.checked_sub(1)
+            })
+            .is_ok_and(|remaining| remaining == 1)
+        {
+            // The existing fault probe pauses after real writes have been
+            // submitted and the original guard owns their completion backing.
+            model.inner.launch_seen.store(launched, Ordering::Release);
+            std::future::pending::<()>().await;
         }
         let ready = initialization.complete_sync().await?;
         slot.finish()?;
