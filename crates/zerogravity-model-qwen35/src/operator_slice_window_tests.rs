@@ -481,6 +481,35 @@ fn forward_plan_and_invocation_retain_exact_source_and_workspace_without_a_cycle
     let before_seal = reserved(&admission);
     let seal = ForwardSourceSeal::for_test(model.clone(), QwenModelVariant::Qwen800M).unwrap();
     assert_eq!(reserved(&admission), before_seal + 64 * 1024);
+    // The same authenticated role/geometry owner can select another supported
+    // numerical contract without new source allocation or metadata credit.
+    use zerogravity_core::{numerics::NumericalContract, task::TaskKind};
+    let bound = seal.authenticated_source();
+    assert_eq!(bound.tasks(), crate::TEXT_TASKS);
+    let hip = bound
+        .bind(TaskKind::Language, NumericalContract::HipRocBlasBf16MixedV2)
+        .unwrap();
+    assert_eq!(
+        hip.numerical_contract(),
+        NumericalContract::HipRocBlasBf16MixedV2
+    );
+    assert_eq!(hip.model_profile(), seal.model_profile());
+    assert!(hip.source().same_issuer(seal.source()));
+    assert!(
+        bound
+            .bind(
+                TaskKind::SpeechRecognition,
+                NumericalContract::HipRocBlasBf16MixedV2
+            )
+            .is_err()
+    );
+    assert!(
+        bound
+            .bind(TaskKind::Language, NumericalContract::GgmlF32V1)
+            .is_err()
+    );
+    assert_eq!(reserved(&admission), before_seal + 64 * 1024);
+    drop(hip);
     let plan = build_test_forward_plan(&seal, 512).unwrap();
     assert!(plan.source().same_issuer(&source));
     assert!(plan.source_seal().source().same_issuer(&source));

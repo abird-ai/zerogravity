@@ -47,11 +47,15 @@ impl Model {
             ResourceOwner::new("qwen35-cuda-forward-candidate", "forward-source")?,
         )?;
         let opened = forward_source::open(hf_directory, &host, cancelled)?;
-        let geometry = opened.seal.model_profile();
+        let seal = opened.source.bind(
+            crate::task::TaskKind::Language,
+            crate::numerics::NumericalContract::CudaSm86Bf16ReferenceV1,
+        )?;
+        let geometry = seal.model_profile();
         let profile = geometry;
-        let plan = opened.seal.build_plan(context_capacity_tokens)?;
+        let plan = seal.build_plan(context_capacity_tokens)?;
         if plan.model_profile() != geometry
-            || plan.source().source_identity() != opened.seal.source_identity()
+            || plan.source().source_identity() != seal.source_identity()
             || plan.context_capacity_tokens() != context_capacity_tokens
         {
             return Err(Error::State(
@@ -60,7 +64,7 @@ impl Model {
         }
         let resident = ResidentModel::load_cuda_forward(
             device,
-            opened.seal.source().clone(),
+            seal.source().clone(),
             plan.plan().clone(),
             provider_capacity_bytes,
             device_capacity_bytes,

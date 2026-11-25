@@ -175,8 +175,11 @@ pub(super) fn load(
         })?;
     let config = zerogravity_artifacts::config::read(&parent.join("config.json"), 1024 * 1024)
         .map_err(ServiceError::inference)?;
-    let source = materialize_weights(file, path, input_len)?;
-    let model = LoadedQwenModel::from_source(source, &config).map_err(ServiceError::inference)?;
+    let geometry = crate::qwen35::config::ModelGeometry::from_json(&config)
+        .map_err(ServiceError::inference)?;
+    let artifact = inspect_admitted_weights(file, path, input_len)?;
+    let model = LoadedQwenModel::from_inspected_gguf(artifact, geometry)
+        .map_err(ServiceError::inference)?;
     let weights = Arc::new(AdmittedGguf {
         model,
         _weight_charge: weight_charge,
@@ -202,11 +205,11 @@ pub(super) fn load(
 
 // Metadata inspection and the owned copy use the descriptor whose extent was
 // admitted; pathname replacement must not change either source or allocation.
-fn materialize_weights(
+fn inspect_admitted_weights(
     file: std::fs::File,
     path: &Path,
     admitted_bytes: u64,
-) -> Result<zerogravity_artifacts::source_weights::SourceWeights, ServiceError> {
+) -> Result<zerogravity_artifacts::artifact::Artifact, ServiceError> {
     let artifact = zerogravity_artifacts::artifact::Artifact::from_file(file, path)
         .map_err(ServiceError::inference)?;
     if artifact.info.file_len != admitted_bytes {
@@ -216,8 +219,7 @@ fn materialize_weights(
             "model extent changed after admission",
         ));
     }
-    zerogravity_artifacts::source_weights::SourceWeights::from_inspected_artifact(artifact)
-        .map_err(ServiceError::inference)
+    Ok(artifact)
 }
 
 #[cfg(test)]
@@ -296,7 +298,9 @@ mod tests {
         let mut replacement = empty_gguf("gemma4");
         replacement.resize(replacement.len() + 32, 0);
         std::fs::write(&path, replacement).unwrap();
-        let source = materialize_weights(file, &path, original.len() as u64).unwrap();
+        let artifact = inspect_admitted_weights(file, &path, original.len() as u64).unwrap();
+        let source =
+            zerogravity_artifacts::SourceWeights::from_inspected_artifact(artifact).unwrap();
         assert_eq!(source.architecture(), "qwen35");
         assert_eq!(source.source_len(), original.len());
     }
@@ -313,7 +317,9 @@ mod tests {
             .unwrap()
             .write_all(&[0; 32])
             .unwrap();
-        let error = materialize_weights(file, &path, original.len() as u64).unwrap_err();
+        let error = inspect_admitted_weights(file, &path, original.len() as u64)
+            .err()
+            .unwrap();
         assert_eq!((error.status, error.code), (400, "model_source_changed"));
     }
 }

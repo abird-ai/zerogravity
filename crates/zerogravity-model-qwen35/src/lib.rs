@@ -27,6 +27,9 @@ pub mod reference;
 pub mod source;
 pub use zerogravity_core::{Error, Result, accelerator, session_root};
 pub mod model_catalog;
+/// Actual text semantic task support, independent of source encoding/backend.
+pub const TEXT_TASKS: &[zerogravity_core::task::TaskKind] =
+    &[zerogravity_core::task::TaskKind::Language];
 #[cfg(feature = "text")]
 pub mod tokenize;
 #[cfg(feature = "cpu")]
@@ -371,7 +374,7 @@ impl LoadedQwenModel {
     pub fn open(gguf: &Path, config_json: &Path) -> Result<Arc<Self>> {
         let g = ModelGeometry::from_file(config_json)?;
         Self::validate_direct_geometry(&g)?;
-        Self::from_checked_source(SourceWeights::open(gguf)?, g)
+        Self::from_inspected_gguf(artifact::Artifact::open(gguf)?, g)
     }
 
     /// Prepare the existing family from one immutable original source owner.
@@ -381,6 +384,42 @@ impl LoadedQwenModel {
         let geometry = ModelGeometry::from_json(config_json)?;
         Self::validate_direct_geometry(&geometry)?;
         Self::from_checked_source(weights, geometry)
+    }
+
+    /// Shared cold routing eligibility, not an authenticated model or permit.
+    /// Actual role/codec and payload checks still run on the original owner.
+    pub fn validate_gguf_info(
+        info: &artifact::ArtifactInfo,
+        geometry: &ModelGeometry,
+    ) -> Result<()> {
+        Self::validate_direct_geometry(geometry)?;
+        SourceWeights::validate_gguf_info(info)?;
+        if info.architecture.as_deref() != Some("qwen35") {
+            return Err(Error::Unsupported(
+                "Qwen runner needs qwen35 GGUF tensors".into(),
+            ));
+        }
+        let embedding = info
+            .tensors
+            .iter()
+            .find(|tensor| tensor.name == "token_embd.weight")
+            .ok_or_else(|| Error::Malformed("Qwen source embedding absent".into()))?;
+        if embedding.shape != [geometry.hidden_size, geometry.vocab_size] {
+            return Err(Error::Malformed(
+                "model embedding differs from official config".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Consume the same inspected descriptor; the materializer revalidates its
+    /// actual tensor directory before the family's complete source checks.
+    pub fn from_inspected_gguf(
+        artifact: artifact::Artifact,
+        geometry: ModelGeometry,
+    ) -> Result<Arc<Self>> {
+        Self::validate_gguf_info(&artifact.info, &geometry)?;
+        Self::from_checked_source(SourceWeights::from_inspected_artifact(artifact)?, geometry)
     }
 
     fn from_checked_source(weights: SourceWeights, g: ModelGeometry) -> Result<Arc<Self>> {

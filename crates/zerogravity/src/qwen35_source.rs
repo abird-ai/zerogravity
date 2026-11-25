@@ -4,12 +4,11 @@
 //! source-semantic seal used by the call-free forward plan. It owns no
 //! tokenizer, native artifact, capture table, GPU allocation or root authority.
 
-use self::source_inventory::{digest, member, select};
+use self::source_inventory::{digest, member};
 use crate::{
     Error, Result,
-    accelerator::program::NumericalContract,
     qwen35::source::{
-        binding::{ForwardSourceSeal, OriginalWindowModelSource},
+        binding::{ForwardSource, OriginalWindowModelSource},
         owned::QwenOriginalWindowText,
     },
     resource_arbiter::TransferAdmission,
@@ -32,7 +31,7 @@ const MIB: usize = 1024 * 1024;
 pub(crate) mod held_directory;
 pub(crate) mod held_file;
 mod inputs;
-pub(crate) mod source_inventory;
+pub(crate) use crate::models::qwen_source_inventory as source_inventory;
 pub(crate) use inputs::Inputs;
 
 #[derive(Clone, Debug)]
@@ -44,7 +43,7 @@ pub(crate) struct Metadata {
 }
 
 pub(crate) struct Opened {
-    pub(crate) seal: ForwardSourceSeal,
+    pub(crate) source: ForwardSource,
     pub(crate) metadata: Metadata,
     #[cfg(any(
         all(feature = "model-qwen35", feature = "hip"),
@@ -60,15 +59,14 @@ pub(crate) fn not_cancelled(flag: Option<&AtomicBool>) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn open(
+pub(crate) fn authenticate(
     dir: Inputs<'_>,
-    numerical: NumericalContract,
     host: &TransferAdmission,
     cancelled: Option<&AtomicBool>,
 ) -> Result<Opened> {
     not_cancelled(cancelled)?;
     let config = dir.bounded("config.json", 64 * 1024, cancelled)?;
-    let spec = select(&config)?;
+    let spec = dir.select_spec(&config)?;
     if Sha256::digest(spec.inventory.as_bytes())[..] != digest(spec.manifest_sha) {
         return Err(Error::State(
             "compiled original inventory identity differs".into(),
@@ -168,24 +166,14 @@ pub(crate) fn open(
         spec.index_sha,
     )?);
     let model = OriginalWindowModelSource::from_owner(owner)?;
-    let seal = match numerical {
-        NumericalContract::CudaSm86Bf16ReferenceV1 => model.bind_cuda_forward_source()?,
-        NumericalContract::TorchCpuAvx2Bf16MixedV1 => model.bind_cpu_forward_source()?,
-        NumericalContract::HipRocBlasBf16MixedV1 => model.bind_hip_native_forward_source()?,
-        NumericalContract::HipRocBlasBf16MixedV2 => model.bind_hip_native_solve_forward_source()?,
-        _ => {
-            return Err(Error::Unsupported(
-                "forward source numerical contract".into(),
-            ));
-        }
-    };
-    if seal.model_profile().hidden_size() != spec.hidden {
+    let source = model.authenticate_forward_source()?;
+    if source.model_profile().hidden_size() != spec.hidden {
         return Err(Error::State(
             "Qwen forward actual source/profile differs from inventory".into(),
         ));
     }
     Ok(Opened {
-        seal,
+        source,
         #[cfg(any(
             all(feature = "model-qwen35", feature = "hip"),
             all(feature = "model-qwen35", feature = "cuda")

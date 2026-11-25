@@ -10,7 +10,7 @@ use zerogravity_core::resource_arbiter::GlobalResourceLease;
 #[cfg(all(feature = "cache", target_os = "linux"))]
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
 
-const MAX_CPU_SOURCE: u64 = 4 * 1024 * 1024 * 1024;
+const MAX_GGUF_SOURCE: u64 = 4 * 1024 * 1024 * 1024;
 
 #[cfg(all(feature = "cache", target_os = "linux"))]
 mod tensor_window;
@@ -84,12 +84,12 @@ impl SourceWeights {
     /// Materialize the original inspected descriptor. A routing metadata view
     /// is not trusted if its tensor table changed before the owned copy.
     pub fn from_inspected_artifact(parsed: Artifact) -> Result<Self> {
-        Self::validate_artifact(&parsed)?;
+        Self::validate_gguf_info(&parsed.info)?;
         let expected = parsed.info.tensors.clone();
         let architecture = parsed.info.architecture.clone();
         // Materialize through the SAME opened file descriptor and reparse
         // tensor metadata from those exact bytes.
-        let (info, source) = parsed.into_bounded_source(MAX_CPU_SOURCE)?;
+        let (info, source) = parsed.into_bounded_source(MAX_GGUF_SOURCE)?;
         if info.architecture != architecture
             || info.tensors.len() != expected.len()
             || info.tensors.iter().zip(&expected).any(|(a, b)| {
@@ -107,15 +107,16 @@ impl SourceWeights {
         Self::from_owned_source(info, source, None)
     }
 
-    fn validate_artifact(parsed: &Artifact) -> Result<()> {
-        if parsed.info.format != ArtifactFormat::Gguf {
+    /// Bounded GGUF ingestion metadata check, not a source authentication.
+    pub fn validate_gguf_info(info: &ArtifactInfo) -> Result<()> {
+        if info.format != ArtifactFormat::Gguf {
             return Err(Error::Unsupported(
-                "first CPU model runtime requires GGUF v3".into(),
+                "direct source materialization requires GGUF v3".into(),
             ));
         }
-        if parsed.info.file_len > MAX_CPU_SOURCE {
+        if info.file_len > MAX_GGUF_SOURCE {
             return Err(Error::Limit(
-                "CPU source exceeds the 4 GiB initial safety budget".into(),
+                "GGUF source exceeds the 4 GiB direct materialization budget".into(),
             ));
         }
         Ok(())
@@ -134,7 +135,7 @@ impl SourceWeights {
         expected_sha256: &str,
         admission: &crate::cache::TransferAdmission,
     ) -> Result<Self> {
-        Self::validate_artifact(&parsed)?;
+        Self::validate_gguf_info(&parsed.info)?;
         let memory = admission.arbiter.admit(
             &admission.resource,
             admission.owner.clone(),
@@ -143,8 +144,11 @@ impl SourceWeights {
                 bytes: expected_bytes,
             }],
         )?;
-        let (info, source) =
-            parsed.into_verified_bounded_source(MAX_CPU_SOURCE, expected_bytes, expected_sha256)?;
+        let (info, source) = parsed.into_verified_bounded_source(
+            MAX_GGUF_SOURCE,
+            expected_bytes,
+            expected_sha256,
+        )?;
         Self::from_owned_source(info, source, Some(memory))
     }
 

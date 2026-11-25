@@ -7,15 +7,61 @@ use zerogravity_core::numerics::NumericalContract;
 struct ForwardSourceOwner {
     model: Arc<OriginalWindowModelSource>,
     profile: QwenForwardGeometry,
-    numerical: NumericalContract,
     _metadata: WindowWorkspace,
 }
 
-/// Exact original source/config/role authentication retained for the lifetime
-/// of forward plans. This seal grants source semantics only; no device,
-/// allocation, root, queue, completion or publication permission.
+/// Authenticated original text source, independent of numerical lowering.
+/// Retains the exact issuer, family roles, geometry and existing admission.
 #[derive(Clone)]
-pub struct ForwardSourceSeal(Arc<ForwardSourceOwner>);
+pub struct ForwardSource(Arc<ForwardSourceOwner>);
+
+impl ForwardSource {
+    pub fn source_identity(&self) -> crate::accelerator::SourceIdentity {
+        self.source().source_identity()
+    }
+    pub fn source(&self) -> &VerifiedTensorSource {
+        self.0.model.source()
+    }
+    pub fn model_profile(&self) -> QwenForwardGeometry {
+        self.0.profile
+    }
+    pub fn tasks(&self) -> &'static [zerogravity_core::task::TaskKind] {
+        crate::TEXT_TASKS
+    }
+    /// Choose only an existing family arithmetic contract. No reauthentication,
+    /// new source identity, allocation or device permission.
+    pub fn bind(
+        &self,
+        task: zerogravity_core::task::TaskKind,
+        numerical: NumericalContract,
+    ) -> Result<ForwardSourceSeal> {
+        if !self.tasks().contains(&task)
+            || !matches!(
+                numerical,
+                NumericalContract::CudaSm86Bf16ReferenceV1
+                    | NumericalContract::TorchCpuAvx2Bf16MixedV1
+                    | NumericalContract::HipRocBlasBf16MixedV1
+                    | NumericalContract::HipRocBlasBf16MixedV2
+            )
+        {
+            return Err(Error::Unsupported(
+                "Qwen forward source task/numerical contract".into(),
+            ));
+        }
+        Ok(ForwardSourceSeal {
+            source: self.clone(),
+            numerical,
+        })
+    }
+}
+
+/// The original authenticated source plus a selected arithmetic contract.
+/// No backend, allocation, root, queue, completion or publication permission.
+#[derive(Clone)]
+pub struct ForwardSourceSeal {
+    source: ForwardSource,
+    numerical: NumericalContract,
+}
 impl std::fmt::Debug for ForwardSourceSeal {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -26,20 +72,23 @@ impl std::fmt::Debug for ForwardSourceSeal {
     }
 }
 impl ForwardSourceSeal {
+    pub fn authenticated_source(&self) -> &ForwardSource {
+        &self.source
+    }
     pub fn source_identity(&self) -> crate::accelerator::SourceIdentity {
-        self.0.model.source_identity()
+        self.source.source_identity()
     }
     pub fn model_profile(&self) -> QwenForwardGeometry {
-        self.0.profile
+        self.source.model_profile()
     }
     pub fn numerical_contract(&self) -> NumericalContract {
-        self.0.numerical
+        self.numerical
     }
     pub fn source(&self) -> &VerifiedTensorSource {
-        self.0.model.source()
+        self.source.source()
     }
     pub fn build_plan(&self, context_capacity_tokens: usize) -> Result<QwenForwardPlan> {
-        let model = &self.0.model;
+        let model = &self.source.0.model;
         build_forward_plan(
             self,
             context_capacity_tokens,
@@ -61,12 +110,15 @@ impl ForwardSourceSeal {
         profile: QwenModelVariant,
     ) -> Result<Self> {
         let metadata = model.source().reserve_workspace(64 * 1024)?;
-        Ok(Self(Arc::new(ForwardSourceOwner {
+        ForwardSource(Arc::new(ForwardSourceOwner {
             model,
             profile: profile.into(),
-            numerical: NumericalContract::CudaSm86Bf16ReferenceV1,
             _metadata: metadata,
-        })))
+        }))
+        .bind(
+            zerogravity_core::task::TaskKind::Language,
+            NumericalContract::CudaSm86Bf16ReferenceV1,
+        )
     }
 }
 
@@ -91,6 +143,12 @@ impl OriginalWindowModelSource {
         self: &Arc<Self>,
         numerical: NumericalContract,
     ) -> Result<ForwardSourceSeal> {
+        self.authenticate_forward_source()?
+            .bind(zerogravity_core::task::TaskKind::Language, numerical)
+    }
+
+    /// Authenticate source/family roles once, before choosing arithmetic.
+    pub fn authenticate_forward_source(self: &Arc<Self>) -> Result<ForwardSource> {
         let profile = if self.owner().config_sha256() == CONFIG_LARGE {
             require_large_pins(self)?;
             let geometry = QwenForwardGeometry::from_config(self.owner().config())?;
@@ -100,25 +158,23 @@ impl OriginalWindowModelSource {
                 geometry,
                 zerogravity_core::encoding::ScalarDType::Bf16,
             )?;
-            return self.seal_forward_source(geometry, numerical);
+            return self.seal_forward_source(geometry);
         } else if self.owner().config_sha256() == super::full_model_source::CONFIG2B {
             QwenModelVariant::Qwen2B
         } else {
             QwenModelVariant::Qwen800M
         };
         super::full_model_source::require_source(self, profile)?;
-        self.seal_forward_source(profile.into(), numerical)
+        self.seal_forward_source(profile.into())
     }
     fn seal_forward_source(
         self: &Arc<Self>,
         profile: QwenForwardGeometry,
-        numerical: NumericalContract,
-    ) -> Result<ForwardSourceSeal> {
+    ) -> Result<ForwardSource> {
         let metadata = self.source().reserve_workspace(64 * 1024)?;
-        Ok(ForwardSourceSeal(Arc::new(ForwardSourceOwner {
+        Ok(ForwardSource(Arc::new(ForwardSourceOwner {
             model: self.clone(),
             profile,
-            numerical,
             _metadata: metadata,
         })))
     }

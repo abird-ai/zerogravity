@@ -765,10 +765,10 @@ impl zerogravity_core::model::ModelDefinition for LoadedQwenModel {
         self.source_identity()
     }
     fn tasks(&self) -> &[zerogravity_core::task::TaskKind] {
-        &[zerogravity_core::task::TaskKind::Language]
+        crate::TEXT_TASKS
     }
     fn program(&self, request: zerogravity_core::model::ProgramRequest) -> Result<ForwardPlan> {
-        if request.task != zerogravity_core::task::TaskKind::Language {
+        if !crate::TEXT_TASKS.contains(&request.task) {
             return Err(Error::Unsupported(
                 "Qwen model task has no recording implementation".into(),
             ));

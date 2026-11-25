@@ -76,21 +76,17 @@ pub(crate) fn load_text(
             snapshot,
             profile,
             budget,
-        } => {
-            profile.validate_base()?;
-            profile.validate_cohort_width(profile.cohort_width)?;
-            validate_limits(1, profile.active, profile.max_pending, limits)?;
-            super::text::qwen_source::load_router(
-                aliases,
-                cache,
-                snapshot,
-                profile,
-                super::text::qwen_source::SourceBackend::Hip(
-                    budget,
-                    crate::accelerator::program::NumericalContract::HipRocBlasBf16MixedV2,
-                ),
-            )
-        }
+        } => load_qwen_source(
+            aliases,
+            cache,
+            snapshot,
+            profile,
+            super::text::qwen_source::SourceBackend::Hip(
+                budget,
+                crate::accelerator::program::NumericalContract::HipRocBlasBf16MixedV2,
+            ),
+            limits,
+        ),
         #[cfg(all(feature = "model-qwen35", feature = "hip", target_os = "linux"))]
         ModelLoadRequest::QwenHipWithBudget {
             aliases,
@@ -98,42 +94,34 @@ pub(crate) fn load_text(
             snapshot,
             profile,
             budget,
-        } => {
-            profile.validate_base()?;
-            profile.validate_cohort_width(profile.cohort_width)?;
-            validate_limits(1, profile.active, profile.max_pending, limits)?;
-            super::text::qwen_source::load_router(
-                aliases,
-                cache,
-                snapshot,
-                profile,
-                super::text::qwen_source::SourceBackend::Hip(
-                    budget,
-                    crate::accelerator::program::NumericalContract::TorchCpuAvx2Bf16MixedV1,
-                ),
-            )
-        }
+        } => load_qwen_source(
+            aliases,
+            cache,
+            snapshot,
+            profile,
+            super::text::qwen_source::SourceBackend::Hip(
+                budget,
+                crate::accelerator::program::NumericalContract::TorchCpuAvx2Bf16MixedV1,
+            ),
+            limits,
+        ),
         #[cfg(all(feature = "model-qwen35", feature = "hip", target_os = "linux"))]
         ModelLoadRequest::QwenHip {
             aliases,
             cache,
             snapshot,
             profile,
-        } => {
-            profile.validate_base()?;
-            profile.validate_cohort_width(profile.cohort_width)?;
-            validate_limits(1, profile.active, profile.max_pending, limits)?;
-            super::text::qwen_source::load_router(
-                aliases,
-                cache,
-                snapshot,
-                profile,
-                super::text::qwen_source::SourceBackend::Hip(
-                    Default::default(),
-                    crate::accelerator::program::NumericalContract::TorchCpuAvx2Bf16MixedV1,
-                ),
-            )
-        }
+        } => load_qwen_source(
+            aliases,
+            cache,
+            snapshot,
+            profile,
+            super::text::qwen_source::SourceBackend::Hip(
+                Default::default(),
+                crate::accelerator::program::NumericalContract::TorchCpuAvx2Bf16MixedV1,
+            ),
+            limits,
+        ),
         #[cfg(feature = "serve")]
         ModelLoadRequest::ServingText { declared, profile } => {
             profile.validate()?;
@@ -201,9 +189,7 @@ fn load_qwen_cuda(
     smart_config: crate::models::SmartConfig<crate::models::QwenCudaSmartOverrides>,
     limits: SchedulerLimits,
 ) -> Result<Router, ServiceError> {
-    profile.validate_base()?;
-    validate_limits(1, profile.active, profile.max_pending, limits)?;
-    super::text::qwen_source::load_router(
+    load_qwen_source(
         aliases,
         cache,
         snapshot,
@@ -213,7 +199,32 @@ fn load_qwen_cuda(
             device_bytes,
             smart_config,
         },
+        limits,
     )
+}
+
+/// One original HF text registration path, regardless of the selected
+/// arithmetic/device policy. Retain compatibility request variants above.
+#[cfg(all(
+    feature = "model-qwen35",
+    any(feature = "cuda", feature = "hip"),
+    target_os = "linux"
+))]
+fn load_qwen_source(
+    aliases: Vec<String>,
+    cache: crate::cache::CacheOptions,
+    snapshot: String,
+    profile: crate::models::QwenServingProfile,
+    backend: super::text::qwen_source::SourceBackend,
+    limits: SchedulerLimits,
+) -> Result<Router, ServiceError> {
+    profile.validate_base()?;
+    #[cfg(feature = "hip")]
+    if matches!(backend, super::text::qwen_source::SourceBackend::Hip(..)) {
+        profile.validate_cohort_width(profile.cohort_width)?;
+    }
+    validate_limits(1, profile.active, profile.max_pending, limits)?;
+    super::text::qwen_source::load_router(aliases, cache, snapshot, profile, backend)
 }
 
 fn validate_limits(
@@ -352,5 +363,48 @@ mod tests {
 
         let exclusive = expect_pre_source_error(request(SmartConfig::exclusive(overrides)));
         assert_ne!(exclusive.code, "invalid_source_state_policy");
+    }
+}
+
+#[cfg(all(
+    test,
+    feature = "model-qwen35",
+    any(feature = "cuda", feature = "hip"),
+    target_os = "linux"
+))]
+#[test]
+fn unapproved_snapshot_refuses_before_cache_or_physical_preparation() {
+    use crate::{cache::CacheOptions, models::QwenServingProfile};
+    let profile = QwenServingProfile {
+        active: 1,
+        context: 512,
+        output: 1,
+        max_pending: Some(1),
+        cohort_width: 0,
+    };
+    let requests = [
+        #[cfg(feature = "cuda")]
+        ModelLoadRequest::QwenCuda {
+            aliases: vec!["source".into()],
+            cache: CacheOptions::new(Some("/source-not-opened".into()), 1),
+            snapshot: "0".repeat(64),
+            profile,
+            provider_bytes: 1,
+            device_bytes: 1,
+        },
+        #[cfg(feature = "hip")]
+        ModelLoadRequest::QwenHip {
+            aliases: vec!["source".into()],
+            cache: CacheOptions::new(Some("/source-not-opened".into()), 1),
+            snapshot: "0".repeat(64),
+            profile,
+        },
+    ];
+    for request in requests {
+        let error = load_text(request, SchedulerLimits::default())
+            .err()
+            .unwrap();
+        assert_eq!((error.status, error.code), (400, "unsupported"));
+        assert!(error.message.contains("exact approved snapshot"));
     }
 }

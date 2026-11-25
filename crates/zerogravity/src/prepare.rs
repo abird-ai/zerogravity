@@ -1,8 +1,8 @@
 //! Cold preparation joins original source and model-family validation. It does
 //! not acquire data, publish a session root, select a backend or run inference.
-use crate::artifact::{ArtifactFormat, ArtifactInfo};
+use crate::artifact::ArtifactInfo;
 use crate::qwen35::LoadedQwenModel;
-use crate::qwen35::config::{Family, ModelGeometry};
+use crate::qwen35::config::ModelGeometry;
 use crate::tokenize::QwenTokenizer;
 use crate::{Error, Result};
 use std::path::Path;
@@ -15,19 +15,13 @@ pub struct PreparedQwen {
 impl PreparedQwen {
     /// Pure family routing metadata; no source authority or execution grant.
     pub fn routing_target(g: &ModelGeometry) -> Result<String> {
-        if g.family == Family::QwenHybrid
-            && g.layers.len() == 24
-            && matches!(g.hidden_size, 1024 | 2048)
-        {
-            Ok(if g.hidden_size == 1024 {
-                "qwen3.5-0.8b"
-            } else {
-                "qwen3.5-2b"
-            }
-            .into())
+        LoadedQwenModel::validate_direct_geometry(g)?;
+        Ok(if g.hidden_size == 1024 {
+            "qwen3.5-0.8b"
         } else {
-            Err(Error::Unsupported("generic run CPU adapter currently supports Qwen3.5 0.8B/2B direct geometry; model metadata is not runtime eligibility".into()))
+            "qwen3.5-2b"
         }
+        .into())
     }
     pub fn routing_bytes(
         info: &ArtifactInfo,
@@ -35,14 +29,7 @@ impl PreparedQwen {
         tokenizer_bytes: u64,
         context: usize,
     ) -> Result<u64> {
-        if info.format != ArtifactFormat::Gguf
-            || info.architecture.as_deref() != Some("qwen35")
-            || info.file_len > 4 * 1024u64.pow(3)
-        {
-            return Err(Error::Unsupported(
-                "CPU run needs bounded original qwen35 GGUF".into(),
-            ));
-        }
+        LoadedQwenModel::validate_gguf_info(info, g)?;
         let add = |a: u64, b: u64| {
             a.checked_add(b)
                 .ok_or_else(|| Error::Limit("source-shaped CPU planning overflow".into()))
@@ -131,11 +118,7 @@ impl PreparedQwen {
         let geometry = crate::qwen35::config::ModelGeometry::from_json(config)?;
         LoadedQwenModel::validate_direct_geometry(&geometry)?;
         let tokenizer = QwenTokenizer::from_bytes(tokenizer)?;
-        let weights =
-            zerogravity_artifacts::source_weights::SourceWeights::from_inspected_artifact(
-                artifact,
-            )?;
-        let model = LoadedQwenModel::from_source(weights, config)?;
+        let model = LoadedQwenModel::from_inspected_gguf(artifact, geometry)?;
         Ok(Self { model, tokenizer })
     }
 

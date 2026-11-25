@@ -16,9 +16,32 @@ pub(crate) enum Inputs<'a> {
         all(feature = "model-qwen35", feature = "hip"),
         all(feature = "model-qwen35", feature = "cuda")
     ))]
-    Snapshot(&'a zerogravity_artifacts::cache::SnapshotDescriptorLease),
+    Snapshot(
+        &'a zerogravity_artifacts::cache::SnapshotDescriptorLease,
+        &'static Spec,
+    ),
 }
 impl Inputs<'_> {
+    pub(super) fn select_spec(&self, config: &[u8]) -> Result<&'static Spec> {
+        let selected = super::source_inventory::select(config)?;
+        match self {
+            #[cfg(feature = "qwen35-cuda-qualification")]
+            Self::Directory(_) => Ok(selected),
+            #[cfg(any(
+                all(feature = "model-qwen35", feature = "hip"),
+                all(feature = "model-qwen35", feature = "cuda")
+            ))]
+            Self::Snapshot(_, expected) => {
+                if !std::ptr::eq(selected, *expected) {
+                    return Err(Error::State(
+                        "selected snapshot/config source differs".into(),
+                    ));
+                }
+                Ok(selected)
+            }
+        }
+    }
+
     pub(super) fn file(&self, name: &str) -> Result<File> {
         match self {
             #[cfg(feature = "qwen35-cuda-qualification")]
@@ -27,7 +50,7 @@ impl Inputs<'_> {
                 all(feature = "model-qwen35", feature = "hip"),
                 all(feature = "model-qwen35", feature = "cuda")
             ))]
-            Self::Snapshot(snapshot) => Ok(snapshot.file(name)?.try_clone()?),
+            Self::Snapshot(snapshot, _) => Ok(snapshot.file(name)?.try_clone()?),
         }
     }
     pub(super) fn bounded(
@@ -43,7 +66,7 @@ impl Inputs<'_> {
                 all(feature = "model-qwen35", feature = "hip"),
                 all(feature = "model-qwen35", feature = "cuda")
             ))]
-            Self::Snapshot(_) => super::held_file::HeldFile::from_file(self.file(name)?)?
+            Self::Snapshot(..) => super::held_file::HeldFile::from_file(self.file(name)?)?
                 .read_bounded(cap, None, cancelled),
         }
     }
@@ -61,7 +84,7 @@ impl Inputs<'_> {
                 all(feature = "model-qwen35", feature = "hip"),
                 all(feature = "model-qwen35", feature = "cuda")
             ))]
-            Self::Snapshot(_) => super::held_file::HeldFile::from_file(self.file(name)?)?
+            Self::Snapshot(..) => super::held_file::HeldFile::from_file(self.file(name)?)?
                 .read_exact_bounded(bytes, 32 * 1024 * 1024, sha, cancelled),
         }
     }
@@ -91,7 +114,7 @@ impl Inputs<'_> {
                 all(feature = "model-qwen35", feature = "hip"),
                 all(feature = "model-qwen35", feature = "cuda")
             ))]
-            Self::Snapshot(snapshot) => {
+            Self::Snapshot(snapshot, _) => {
                 let manifest = snapshot.manifest();
                 if manifest.entries().len() != members
                     || manifest.digest()? != spec.snapshot_sha
@@ -112,6 +135,6 @@ impl Inputs<'_> {
         all(feature = "model-qwen35", feature = "cuda")
     ))]
     pub(super) fn retains_tokenizer(&self) -> bool {
-        matches!(self, Self::Snapshot(_))
+        matches!(self, Self::Snapshot(..))
     }
 }

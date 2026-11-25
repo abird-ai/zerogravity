@@ -2,12 +2,21 @@
 //! qualification loaders. These identify source bytes only; they grant no
 //! device, execution, capture, root or publication authority.
 
+#[cfg(all(target_os = "linux", any(feature = "cuda", feature = "hip")))]
 use crate::{Error, Result};
+#[cfg(all(target_os = "linux", any(feature = "cuda", feature = "hip")))]
 use sha2::{Digest, Sha256};
 
 const MIB: usize = 1024 * 1024;
 
+// The same inventory is used by model-only selection and authenticated
+// window ingestion. Only the latter needs the complete member closure.
+#[cfg_attr(
+    not(all(target_os = "linux", any(feature = "cuda", feature = "hip"))),
+    allow(dead_code)
+)]
 pub(crate) struct Spec {
+    pub(crate) target: &'static str,
     pub(crate) family: &'static str,
     pub(crate) repository: &'static str,
     pub(crate) revision: &'static str,
@@ -21,20 +30,13 @@ pub(crate) struct Spec {
     pub(crate) tensor_limit: usize,
     pub(crate) named_members: bool,
     pub(crate) max_source: u64,
-    #[cfg(any(
-        all(feature = "model-qwen35", feature = "hip"),
-        all(feature = "model-qwen35", feature = "cuda")
-    ))]
     pub(crate) snapshot_sha: &'static str,
 }
 
 static SPECS: &[Spec] = &[
     Spec {
+        target: "qwen3.5-0.8b",
         family: "0.8b",
-        #[cfg(any(
-            all(feature = "model-qwen35", feature = "hip"),
-            all(feature = "model-qwen35", feature = "cuda")
-        ))]
         snapshot_sha: "d7c7bf56e176bd70a8190acb9873cc719e65b6b306181039f2896d6f9387b36c",
         repository: "Qwen/Qwen3.5-0.8B",
         revision: "2fc06364715b967f1860aea9cf38778875588b17",
@@ -50,11 +52,8 @@ static SPECS: &[Spec] = &[
         max_source: 2 * 1024 * MIB as u64,
     },
     Spec {
+        target: "qwen3.5-2b",
         family: "2b",
-        #[cfg(any(
-            all(feature = "model-qwen35", feature = "hip"),
-            all(feature = "model-qwen35", feature = "cuda")
-        ))]
         snapshot_sha: "88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52",
         repository: "Qwen/Qwen3.5-2B",
         revision: "15852e8c16360a2fea060d615a32b45270f8a8fc",
@@ -70,11 +69,8 @@ static SPECS: &[Spec] = &[
         max_source: 5 * 1024 * MIB as u64,
     },
     Spec {
+        target: "qwen3.8-27b",
         family: "27b",
-        #[cfg(any(
-            all(feature = "model-qwen35", feature = "hip"),
-            all(feature = "model-qwen35", feature = "cuda")
-        ))]
         snapshot_sha: "98cea13c169310196c4d8a113765f8fe58ab7a7961f0d1be69212c70dba8015e",
         repository: "Qwen/Qwen3.8-27B",
         revision: "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
@@ -91,23 +87,24 @@ static SPECS: &[Spec] = &[
     },
 ];
 
-#[cfg(any(
-    all(feature = "model-qwen35", feature = "hip"),
-    all(feature = "model-qwen35", feature = "cuda")
-))]
 pub(crate) fn snapshot_for_target(target: &str) -> Option<&'static str> {
-    let family = match target {
-        "qwen3.5-0.8b" => "0.8b",
-        "qwen3.5-2b" => "2b",
-        "qwen3.8-27b" => "27b",
-        _ => return None,
-    };
     SPECS
         .iter()
-        .find(|spec| spec.family == family)
+        .find(|spec| spec.target == target)
         .map(|spec| spec.snapshot_sha)
 }
 
+/// Resolve an exact allowed source before touching the cache or a device.
+#[cfg(all(target_os = "linux", any(feature = "cuda", feature = "hip")))]
+pub(crate) fn select_snapshot(snapshot: &str) -> Result<&'static Spec> {
+    crate::cache::paths::validate_digest(snapshot)?;
+    SPECS
+        .iter()
+        .find(|spec| spec.snapshot_sha == snapshot)
+        .ok_or_else(|| Error::Unsupported("Qwen exact approved snapshot required".into()))
+}
+
+#[cfg(all(target_os = "linux", any(feature = "cuda", feature = "hip")))]
 pub(crate) fn select(config: &[u8]) -> Result<&'static Spec> {
     let sha = Sha256::digest(config);
     SPECS
@@ -116,6 +113,7 @@ pub(crate) fn select(config: &[u8]) -> Result<&'static Spec> {
         .ok_or_else(|| Error::Unsupported("Qwen exact approved config/source required".into()))
 }
 
+#[cfg(all(target_os = "linux", any(feature = "cuda", feature = "hip")))]
 pub(crate) fn member(row: &serde_json::Value, named: bool) -> Result<(&str, usize, &str)> {
     let text = |key| {
         row[key]
@@ -132,6 +130,7 @@ pub(crate) fn member(row: &serde_json::Value, named: bool) -> Result<(&str, usiz
     Ok((name, bytes, sha))
 }
 
+#[cfg(all(target_os = "linux", any(feature = "cuda", feature = "hip")))]
 pub(crate) fn digest(hex: &str) -> [u8; 32] {
     assert_eq!(hex.len(), 64, "compiled SHA256 literal");
     let mut out = [0; 32];
@@ -144,4 +143,17 @@ pub(crate) fn digest(hex: &str) -> [u8; 32] {
         out[i] = digit(pair[0]) * 16 + digit(pair[1]);
     }
     out
+}
+
+#[cfg(test)]
+#[test]
+fn approved_snapshot_metadata_is_available_without_backend_selection() {
+    for spec in SPECS {
+        assert_eq!(
+            crate::models::qwen_source_snapshot(spec.target),
+            Some(spec.snapshot_sha)
+        );
+        assert_eq!(spec.snapshot_sha.len(), 64);
+    }
+    assert_eq!(crate::models::qwen_source_snapshot("unknown"), None);
 }

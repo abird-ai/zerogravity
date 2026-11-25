@@ -3,7 +3,10 @@ use crate::{
     accelerator::program::NumericalContract,
     cache::{CacheOptions, CacheStore},
     gpu::Device,
-    qwen35_source::{self, Inputs},
+    qwen35_source::{
+        self, Inputs,
+        source_inventory::{Spec, select_snapshot},
+    },
     resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner, TransferAdmission},
     tokenize::QwenTokenizer,
 };
@@ -459,7 +462,7 @@ pub(crate) fn load_router(
     let (profile, backend) = normalize_cuda_smart_input(profile, backend);
     backend.validate(profile)?;
     validate_aliases(&aliases)?;
-    crate::cache::paths::validate_digest(&snapshot).map_err(ServiceError::inference)?;
+    let spec = select_snapshot(&snapshot).map_err(ServiceError::inference)?;
     let arbiter = ResourceArbiter::process_shared();
     let resource = PhysicalDeviceKey::new("host", "system-ram").map_err(ServiceError::inference)?;
     arbiter
@@ -480,7 +483,7 @@ pub(crate) fn load_router(
     } = open_source(
         &aliases[0],
         cache,
-        &snapshot,
+        spec,
         profile.context,
         &host,
         backend.contract(),
@@ -632,7 +635,7 @@ struct SourceParts {
 fn open_source(
     alias: &str,
     mut cache: CacheOptions,
-    snapshot: &str,
+    spec: &'static Spec,
     context: usize,
     host: &ServingHost,
     contract: NumericalContract,
@@ -654,10 +657,15 @@ fn open_source(
     // only to repeat the exact shard authentication in VerifiedWindowPlan::open.
     let snapshot = Arc::new(
         store
-            .open_snapshot_descriptors(snapshot)
+            .open_snapshot_descriptors(spec.snapshot_sha)
             .map_err(ServiceError::inference)?,
     );
-    let mut opened = qwen35_source::open(Inputs::Snapshot(&snapshot), contract, &admission, None)
+    let mut opened =
+        qwen35_source::authenticate(Inputs::Snapshot(&snapshot, spec), &admission, None)
+            .map_err(ServiceError::inference)?;
+    let seal = opened
+        .source
+        .bind(crate::task::TaskKind::Language, contract)
         .map_err(ServiceError::inference)?;
     let tokenizer_bytes = opened.tokenizer.take().ok_or_else(|| {
         ServiceError::new(
@@ -682,10 +690,7 @@ fn open_source(
     let max_token_bytes = tokenizer
         .max_token_bytes()
         .map_err(ServiceError::inference)?;
-    let plan = opened
-        .seal
-        .build_plan(context)
-        .map_err(ServiceError::inference)?;
+    let plan = seal.build_plan(context).map_err(ServiceError::inference)?;
     let source = Arc::new(Source {
         plan,
         metadata: opened.metadata,
@@ -735,7 +740,7 @@ mod tests {
         let parts = open_source(
             "source-host",
             CacheOptions::new(root, 96 * 1024 * 1024 * 1024),
-            &snapshot,
+            select_snapshot(&snapshot).unwrap(),
             514,
             &host,
             NumericalContract::TorchCpuAvx2Bf16MixedV1,
@@ -853,7 +858,7 @@ mod tests {
         let parts = open_source(
             "source-prefill",
             CacheOptions::new(root, 96 * 1024 * 1024 * 1024),
-            &snapshot,
+            select_snapshot(&snapshot).unwrap(),
             512,
             &host,
             NumericalContract::TorchCpuAvx2Bf16MixedV1,
@@ -1170,7 +1175,7 @@ mod cuda_paged_tests {
         let parts = open_source(
             label,
             CacheOptions::new(root, 96 * 1024 * 1024 * 1024),
-            &snapshot,
+            select_snapshot(&snapshot).unwrap(),
             512,
             &host,
             NumericalContract::CudaSm86Bf16ReferenceV1,

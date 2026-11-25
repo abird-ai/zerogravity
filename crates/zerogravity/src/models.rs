@@ -46,13 +46,15 @@ impl From<QwenCudaStatePolicy> for crate::gpu::CudaSourceStatePolicy {
         }
     }
 }
-#[cfg(all(
-    feature = "model-qwen35",
-    any(feature = "cuda", feature = "hip"),
-    target_os = "linux"
-))]
+#[cfg(feature = "model-qwen35")]
+#[path = "qwen35_source/source_inventory.rs"]
+pub(crate) mod qwen_source_inventory;
+
+/// Approved exact HF source metadata, independent of any compiled backend.
+/// This neither acquires the source nor qualifies any execution.
+#[cfg(feature = "model-qwen35")]
 pub fn qwen_source_snapshot(target: &str) -> Option<&'static str> {
-    crate::qwen35_source::source_inventory::snapshot_for_target(target)
+    qwen_source_inventory::snapshot_for_target(target)
 }
 
 pub use crate::model::DeclaredModel;
