@@ -13,7 +13,7 @@ mod yaml;
 pub use document::{
     ChatContextDoc, ContextFilterDoc, DiagnosticDoc, Document, DownloadDoc, EntryDoc, LinkDoc,
     ModelDoc, ModelEntry, PipelineDoc, PipelineEntry, RouteDoc, RunDoc, ServeDoc, StepDoc, TaskDoc,
-    UiDoc, UiSwitch,
+    ThemeMode, UiDoc, UiSwitch,
 };
 pub(crate) use yaml::parse_document_node;
 pub use yaml::{MAX_CONFIG_BYTES, load_document, parse_document, read_document_bytes};

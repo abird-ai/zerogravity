@@ -436,11 +436,13 @@ build or general model/backend grant. Historical failures keep their source scop
 ### UX-P — native TUI interaction and visual polish (26 Nov decision)
 
 Design: [TUI polish and mouse interaction](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
-Retain accepted UX-1–10 ownership and keyboard behavior. No implementation
-claimed at plan checkpoint.
+Retain accepted UX-1–10 ownership and keyboard behavior.
 
-- [ ] UX-P1: semantic palette, restrained chrome, Dark/Light/Auto,
-  typed appearance preference/edit, safe terminal depth/Auto, Web parity.
+- [x] UX-P1: semantic palette, restrained chrome, Dark/Light/Auto,
+  typed appearance preview/save, safe terminal depth/Auto, Web parity.
+  Focused Rust 81/0/3, JS 3/0, strict minimal/Web-only/combined lint,
+  real PTY and Firefox settings/appearance passed. Native Auto hint or
+  dark fallback; no OSC probe. Full gate at assembled UX-P4.
 - [ ] UX-P2: scoped mouse capture/restore, render-derived visible hit
   targets, focus, rail/inner split drag, maximize/restore, separate scroll.
 - [ ] UX-P3: mouse-accessible controls in all nine views, actions,

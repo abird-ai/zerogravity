@@ -111,6 +111,22 @@ listening endpoints. See [pipeline examples](../examples/pipelines/README.md).
 
 ## Native UI, Web and serving
 
+On a capable terminal, bare `zerogravity` opens the native control panel.
+Press **T** to open the active document's appearance setting, Enter to edit,
+arrow keys to preview, Enter to apply or Esc to cancel. The Web header
+opens the same setting; changes are previews until saved. To set it directly:
+
+```sh
+zerogravity config set ui.theme dark
+zerogravity config set ui.theme light
+zerogravity config set ui.theme auto
+```
+
+Auto follows the browser's system appearance, or the terminal's
+`COLORFGBG` hint (dark if unknown). Explicit themes work without detection;
+`--color never`/existing color policy remains separate. Appearance changes
+do not reconfigure admitted models, transfers or listeners.
+
 ```sh
 zerogravity web
 zerogravity serve --model local=./model.gguf --listen 127.0.0.1:8000

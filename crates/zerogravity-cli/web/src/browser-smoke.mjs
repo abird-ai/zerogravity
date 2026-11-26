@@ -277,6 +277,23 @@ try {
     await waitFor(() => contains("Valid configuration"), "validate");
     await click("Activate profile");
     await waitFor(() => evaluate("document.querySelector('.profile').textContent.includes('browserdesk')"), "active profile");
+    await click("Theme: Auto");
+    await waitFor(() => evaluate("document.querySelector('#config-search')?.value === 'ui.theme' && document.querySelector('.config-row')?.innerText.includes('ui.theme')"), "appearance shortcut");
+    await click("Edit");
+    await waitFor(() => evaluate("document.querySelector('#config-draft')?.tagName === 'SELECT'"), "typed theme picker");
+    await evaluate("(()=>{const e=document.querySelector('#config-draft'); e.value='light'; e.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await waitFor(() => evaluate("document.querySelector('.shell').classList.contains('light')"), "theme preview");
+    await click("Cancel draft");
+    await waitFor(() => evaluate("document.querySelector('.theme-control').textContent.includes('Auto')"), "cancel preview");
+    await click("Edit");
+    await evaluate("(()=>{const e=document.querySelector('#config-draft'); e.value='dark'; e.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await click("Save configuration");
+    await waitFor(() => evaluate("!document.querySelector('#config-draft') && document.querySelector('.config-row > .mono')?.textContent.trim() === 'dark' && !document.querySelector('.shell').classList.contains('light')"), "persisted dark theme");
+    await go("Home");
+    await waitFor(() => evaluate("document.querySelector('.theme-control').textContent.includes('Dark')"), "active theme after navigation");
+    await click("Theme: Dark");
+    await waitFor(() => evaluate("document.querySelector('#config-search')?.value === 'ui.theme' && document.querySelector('.config-row')?.innerText.includes('ui.theme')"), "reopen appearance");
+
     await fill("#copy-profile", "browsercopy");
     await click("Copy profile");
     await waitFor(() => contains("Created profile browsercopy"), "copy");

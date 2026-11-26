@@ -66,10 +66,6 @@ impl Target {
 #[derive(Clone)]
 pub(crate) struct Document {
     pub target: Target,
-    #[cfg_attr(
-        not(feature = "tui"),
-        allow(dead_code, reason = "terminal presentation only")
-    )]
     pub ui: zerogravity::configuration::UiDoc,
     #[cfg_attr(
         not(feature = "tui"),

@@ -99,7 +99,7 @@ pub(super) fn snapshot(
             "actions": true,
         },
         // Named selection only, never a portable path or document bytes.
-        "configuration": { "profile": selected.target.profile, "offline": selected.offline, "chat": selected.chat },
+        "configuration": { "profile": selected.target.profile, "offline": selected.offline, "chat": selected.chat, "theme": selected.ui.theme.unwrap_or_default() },
         "runtime": { "status": owner.runtime.status, "models": models, "scheduler": scheduler },
         "serving": serving,
         "download": download,

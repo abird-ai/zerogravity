@@ -27,13 +27,16 @@ def environment(root):
 
 
 class Terminal:
-    def __init__(self, root, args, width=100, height=28):
+    def __init__(self, root, args, width=100, height=28, hints=None):
         self.master, self.slave = pty.openpty()
         self.height = height
         self.repaint_on_wait = False
         self.resize(width)
         self.initial = termios.tcgetattr(self.slave)
-        self.proc = subprocess.Popen([binary, *args], cwd=root, env=environment(root),
+        env = environment(root)
+        if hints:
+            env.update(hints)
+        self.proc = subprocess.Popen([binary, *args], cwd=root, env=env,
                                      stdin=self.slave, stdout=self.slave,
                                      stderr=self.slave, start_new_session=True)
         self.pending = bytearray()
@@ -158,6 +161,78 @@ def shell(root):
     assert not (profile.parent.parent / "config.yaml").exists()
     assert not (root / "cache").exists()
     print("TUI shell PTY: navigation, palette, resize, quit/SIGTERM restoration, plain fallback; no cache/config effects")
+
+
+def appearance(root):
+    default = root / "config/abird/zerogravity/config.yaml"
+    hints = {"COLORTERM": "truecolor", "COLORFGBG": "0;15", "NO_COLOR": ""}
+    with Terminal(root, [], width=100, height=28, hints=hints) as terminal:
+        terminal.repaint_on_wait = True
+        terminal.check_started()
+        terminal.until(b"Auto")
+        assert b"48;2;255;255;255" in terminal.transcript
+        terminal.send(b"T", b"ui.theme = auto")
+        terminal.send(b"\r", b"Enter apply")
+        terminal.send(b"j", b"> Dark")
+        assert b"48;2;23;26;32" in terminal.transcript
+        assert not default.exists()
+        terminal.send(b"\x1b", b"ui.theme = auto")
+        assert not default.exists()
+        terminal.send(b"\r", b"Enter apply")
+        terminal.send(b"jj", b"> Light")
+        terminal.send(b"\r", b"Saved", 10)
+        assert "theme: light" in default.read_text()
+        terminal.send(b"1", b"Quick")
+        from web_shell import Client
+        client = Client(terminal.private_web_url())
+        os.write(terminal.master, b"\r")
+        assert client.snapshot()["configuration"]["theme"] == "light"
+        # Preview of an exact observed document cannot overwrite a newer
+        # setting applied by the attached Web client.
+        terminal.send(b"T", b"ui.theme = light")
+        terminal.send(b"\r", b"Enter apply")
+        document = client.config("@active")
+        client.action({"kind":"settings", "action":{"command":"set",
+            "snapshot":document["snapshot"], "key":"ui.theme", "value":"dark"}})
+        assert client.snapshot()["configuration"]["theme"] == "dark"
+        assert "theme: dark" in default.read_text()
+        time.sleep(0.4)  # allow the foreground observation of the completed action
+        terminal.send(b"\r", b"changed", 10)
+        assert "theme: dark" in default.read_text()
+        terminal.send(b"\x1b", b"48;2;23;26;32", 10)
+        # Inactive profile theme edits must not reconfigure active appearance.
+        client.action({"kind":"settings","action":{"command":"create","name":"theme-alt"}})
+        alternate = client.config("theme-alt")
+        client.action({"kind":"settings","action":{"command":"set",
+            "snapshot":alternate["snapshot"],"key":"ui.theme","value":"light"}})
+        assert client.snapshot()["configuration"]["theme"] == "dark"
+        assert "theme: light" in (default.parent / "profiles/theme-alt.yaml").read_text()
+        terminal.send(b"q", b"confirm")
+        os.write(terminal.master, b"y")
+        terminal.finish()
+        client.closed()
+    # Reopen, verify explicit mode wins over the Auto light hint.
+    with Terminal(root, [], hints=hints) as terminal:
+        terminal.check_started()
+        assert b"48;2;23;26;32" in terminal.transcript
+        os.write(terminal.master, b"q")
+        terminal.finish()
+    # Restricted terminals preserve usable text, and color=never wins.
+    for args, term, color, expected in [
+        ([], "xterm-256color", "", b"48;5;"),
+        ([], "xterm", "", b"48;5;0m"),
+        (["--color", "never"], "xterm-256color", "truecolor", None),
+    ]:
+        with Terminal(root, args, hints={"TERM":term, "COLORTERM":color, "NO_COLOR":""}) as terminal:
+            terminal.check_started()
+            if expected:
+                assert expected in terminal.transcript, terminal.transcript[-2000:]
+            else:
+                assert not re.search(rb"\x1b\[(?:38|48);", terminal.transcript)
+            os.write(terminal.master, b"q")
+            terminal.finish()
+    assert not (root / "cache").exists()
+    print("TUI appearance PTY: Auto light, Dark/Light preview, cancel/no write, explicit save, stale Web edit refusal, inactive profile isolation, persisted reopen, 256/16/no-color")
 
 
 def settings_lifecycle(root):
@@ -631,6 +706,9 @@ if len(sys.argv) == 2:
 elif sys.argv[2] == "--settings-fixture":
     with tempfile.TemporaryDirectory(prefix="zg-tui-settings-") as tmp:
         settings_lifecycle(Path(tmp) / "settings")
+elif sys.argv[2] == "--appearance-fixture":
+    with tempfile.TemporaryDirectory(prefix="zg-tui-appearance-") as tmp:
+        appearance(Path(tmp))
 elif sys.argv[2] == "--shared-download-fixture":
     shared_download()
 elif sys.argv[2] == "--download-fixture":

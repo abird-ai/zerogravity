@@ -63,7 +63,12 @@ fn config_profile_lifecycle_is_cold_and_refuses_invalid_edits() {
         value(root, &["config", "path", "--format=json"])["path"],
         file.to_str().unwrap()
     );
+    assert_eq!(
+        value(root, &["config", "get", "ui.theme", "--format=json"])["value"],
+        "auto"
+    );
     assert!(!base.exists());
+    refuse(root, &["config", "set", "ui.theme", "carbon"]);
     refuse(root, &["config", "set", "ui.color", "pink"]);
     refuse(root, &["profile", "create", "../escape"]);
     assert!(!base.exists());
@@ -72,6 +77,16 @@ fn config_profile_lifecycle_is_cold_and_refuses_invalid_edits() {
     pass(root, &["config", "set", "run.task.context", "64"]);
     pass(root, &["config", "set", "ui.progress", "never"]);
     pass(root, &["config", "set", "ui.color", "always"]);
+    pass(root, &["config", "set", "ui.theme", "light"]);
+    assert_eq!(
+        value(root, &["config", "get", "ui.theme", "--format=json"])["value"],
+        "light"
+    );
+    pass(root, &["config", "unset", "ui.theme"]);
+    assert_eq!(
+        value(root, &["config", "get", "ui.theme", "--format=json"])["value"],
+        "auto"
+    );
     let missing = root.join("missing.gguf");
     let args = ["model", "inspect", missing.to_str().unwrap()];
     let colored = run(root, &args);

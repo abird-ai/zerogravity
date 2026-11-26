@@ -71,9 +71,36 @@ impl UiSwitch {
         }
     }
 }
+/// Application appearance; independent of whether terminal colors are enabled.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeMode {
+    #[default]
+    Auto,
+    Dark,
+    Light,
+}
+impl ThemeMode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Dark => "dark",
+            Self::Light => "light",
+        }
+    }
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "auto" => Some(Self::Auto),
+            "dark" => Some(Self::Dark),
+            "light" => Some(Self::Light),
+            _ => None,
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UiDoc {
+    pub theme: Option<ThemeMode>,
     pub color: Option<UiSwitch>,
     pub progress: Option<UiSwitch>,
     pub interactive: Option<UiSwitch>,

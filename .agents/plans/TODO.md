@@ -208,8 +208,9 @@ diagnostics reuse original authorities; focused 44/0/2 and strict lint
 pass. Complete isolated gate sequence passed 2,505/0/109 (318 Rust suites), release Web/TUI/installer/scripts. Original run stopped at two transient busy-observation fixture assertions in acquisition/cache transactions; test-only bounded busy retry, reran affected cache-only/diagnostic/acquisition suites and exact remaining gate commands. No production change after the initial run.
 UX-1–10 accepted. User-directed follow-on [UX-P TUI polish](cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 is now next: full mouse/keyboard controls, resizable panes and independent
-scroll, coordinated semantic Dark/Light/Auto appearance. No implementation
-claimed. Complete UX-P before public serving/ordinary benchmarks, then
+scroll, coordinated semantic Dark/Light/Auto appearance. UX-P1 landed with
+focused 81/0/3 Rust, JS 3/0, real native/Web appearance and settings
+regression; UX-P2 mouse/layout next. Complete UX-P before public serving/ordinary benchmarks, then
 ordered performance phases.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical

@@ -718,8 +718,10 @@ visual system before public serving. See the owning
 [TUI polish specification](cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md).
 UX-1–10 remains accepted; this is additional presentation work.
 
-- [ ] UX-P1: coordinated semantic palette, Dark/Light/Auto and shared
-  typed appearance configuration; minimal Web theme/token parity.
+- [x] UX-P1: semantic palette, Dark/Light/Auto, typed appearance preview/save,
+  quieter native chrome and Web theme/token parity. Strict lint and focused
+  Rust 81/0/3, JS 3/0, real PTY and Firefox regressions passed. Native Auto
+  uses terminal hint/dark fallback; active probe deferred.
 - [ ] UX-P2: scoped mouse capture, render-derived hit targets, focus,
   drag/resize/maximize/restore, responsive layout and independent scrolling.
 - [ ] UX-P3: complete mouse and keyboard affordances across nine views,

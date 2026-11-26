@@ -3,17 +3,17 @@ use super::{
     App,
     library::{Key, Kind},
     settings::Snapshot,
+    theme::Theme,
     work::{Owner, Request},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
-    text::Line,
-    widgets::{Block, Clear, Paragraph, Wrap},
+    text::{Line, Span},
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
-use zerogravity::control::ServeSummary;
+use zerogravity::{configuration::ThemeMode, control::ServeSummary};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum View {
@@ -203,6 +203,10 @@ enum Modal {
     None,
     Palette(Palette),
     Help,
+    Theme {
+        file: Snapshot,
+        choice: ThemeMode,
+    },
     #[cfg(feature = "web")]
     WebUrl(String),
     Form {
@@ -283,6 +287,7 @@ pub(super) enum Action {
     Settings(SettingsAction),
     Logs(LogAction),
     OpenWeb,
+    Appearance,
     Submit(Form),
     Confirmed(Confirmation),
 }
@@ -304,6 +309,21 @@ impl Navigation {
             form: Form { kind, value },
             cursor,
         };
+    }
+    pub fn edit_setting(&mut self, file: Snapshot, key: String, value: String) {
+        if key == "ui.theme" {
+            let choice = serde_yaml::from_str(&value).unwrap_or_default();
+            self.modal = Modal::Theme { file, choice };
+        } else {
+            self.form_value(FormKind::ConfigValue { file, key }, value);
+        }
+    }
+    pub fn preview_theme(&self) -> Option<ThemeMode> {
+        if let Modal::Theme { choice, .. } = &self.modal {
+            Some(*choice)
+        } else {
+            None
+        }
     }
     pub fn idle(&self) -> bool {
         matches!(self.modal, Modal::None)
@@ -416,6 +436,32 @@ impl Navigation {
                 }
                 return Action::Redraw;
             }
+            Modal::Theme { choice, .. } => {
+                const MODES: [ThemeMode; 3] = [ThemeMode::Auto, ThemeMode::Dark, ThemeMode::Light];
+                let index = MODES
+                    .iter()
+                    .position(|mode| mode == choice)
+                    .expect("known theme");
+                match key.code {
+                    Esc => self.modal = Modal::None,
+                    Enter if key.kind == crossterm::event::KeyEventKind::Press => {
+                        let Modal::Theme { file, choice } = std::mem::take(&mut self.modal) else {
+                            unreachable!()
+                        };
+                        return Action::Submit(Form {
+                            kind: FormKind::ConfigValue {
+                                file,
+                                key: "ui.theme".into(),
+                            },
+                            value: choice.label().into(),
+                        });
+                    }
+                    Up | Left | Char('k') => *choice = MODES[index.saturating_sub(1)],
+                    Down | Right | Char('j') => *choice = MODES[(index + 1).min(2)],
+                    _ => {}
+                }
+                return Action::Redraw;
+            }
             Modal::Form { form, cursor } => {
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
                 let raw = matches!(form.kind, FormKind::RawYaml { .. });
@@ -494,6 +540,7 @@ impl Navigation {
         }
         match key.code {
             Char('q') => Action::Quit,
+            Char('T') => Action::Appearance,
             Char(':') => {
                 self.modal = Modal::Palette(Palette::default());
                 Action::Redraw
@@ -653,16 +700,19 @@ impl Navigation {
     }
 }
 
-fn accent(color: bool) -> Style {
-    let style = Style::default().add_modifier(Modifier::BOLD);
-    if color { style.fg(Color::Cyan) } else { style }
+// One restrained rule per pane rather than a nested bright frame.
+fn pane<'a>(title: impl Into<Line<'a>>, theme: Theme, focused: bool) -> Block<'a> {
+    Block::new()
+        .borders(Borders::TOP)
+        .border_style(theme.border(focused))
+        .style(theme.surface())
+        .title(title.into().style(theme.heading()))
 }
-fn muted(color: bool) -> Style {
-    if color {
-        Style::default().fg(Color::DarkGray)
-    } else {
-        Style::default()
-    }
+fn dialog<'a>(title: &'a str, theme: Theme) -> Block<'a> {
+    Block::bordered()
+        .border_style(theme.border(true))
+        .style(theme.raised())
+        .title(Line::styled(title, theme.heading()))
 }
 fn clean(text: &str) -> String {
     text.chars()
@@ -672,8 +722,8 @@ fn clean(text: &str) -> String {
 fn text(text: impl AsRef<str>) -> Line<'static> {
     Line::raw(clean(text.as_ref()))
 }
-fn label(text: impl AsRef<str>, color: bool) -> Line<'static> {
-    self::text(text).style(accent(color))
+fn label(text: impl AsRef<str>, theme: Theme) -> Line<'static> {
+    self::text(text).style(theme.heading())
 }
 
 fn serve(summary: ServeSummary) -> String {
@@ -692,6 +742,14 @@ fn serve(summary: ServeSummary) -> String {
         ServeSummary::Finished { binding } => {
             format!("Finished at {}; terminal join pending", binding.address)
         }
+    }
+}
+fn serve_style(summary: ServeSummary, theme: Theme) -> ratatui::style::Style {
+    match summary {
+        ServeSummary::Listening { .. } => theme.success(),
+        ServeSummary::Transitioning => theme.info(),
+        ServeSummary::Finished { .. } => theme.warning(),
+        _ => theme.muted(),
     }
 }
 fn downloads(app: &App) -> String {
@@ -794,18 +852,29 @@ fn download_rows(rows: &mut Vec<Line<'static>>, app: &App) {
     let _ = (rows, app);
 }
 
-fn content(app: &App) -> Vec<Line<'static>> {
+fn content(app: &App, theme: Theme) -> Vec<Line<'static>> {
     let runtime = &app.snapshot.runtime;
     let mut rows = Vec::new();
     match app.navigation.view {
         View::Home => {
-            rows.push(label("Local runtime", app.color));
-            rows.push(text(format!(
-                "{:?} · {} model owners · {} aliases",
-                runtime.status.phase, runtime.status.loaded_owners, runtime.status.loaded_models
-            )));
+            rows.push(label("Local runtime", theme));
+            rows.push(
+                text(format!(
+                    "{:?} · {} model owners · {} aliases",
+                    runtime.status.phase,
+                    runtime.status.loaded_owners,
+                    runtime.status.loaded_models
+                ))
+                .style(if runtime.status.failed {
+                    theme.danger()
+                } else {
+                    theme.info()
+                }),
+            );
             if runtime.status.failed {
-                rows.push(text("Runtime reports a failure; inspect diagnostics."));
+                rows.push(
+                    text("Runtime reports a failure; inspect diagnostics.").style(theme.danger()),
+                );
             }
             if let Some(scheduler) = &runtime.scheduler {
                 rows.push(text(format!(
@@ -824,16 +893,18 @@ fn content(app: &App) -> Vec<Line<'static>> {
             )));
             #[cfg(feature = "web")]
             rows.push(text("b open private Web control URL"));
-            rows.push(label("Quick run", app.color));
+            rows.push(label("Quick run", theme));
             rows.push(text(match &app.selected {
                 Some(owner) => format!("Enter: prompt for {}", owner.alias),
                 None => "Enter: choose a source and prompt".into(),
             }));
             rows.push(text("l load a cached/local model or configured route set"));
             rows.push(Line::default());
-            rows.push(label("Inference API", app.color));
-            rows.push(text(serve(app.snapshot.serving)));
-            rows.push(label("Downloads", app.color));
+            rows.push(label("Inference API", theme));
+            rows.push(
+                text(serve(app.snapshot.serving)).style(serve_style(app.snapshot.serving, theme)),
+            );
+            rows.push(label("Downloads", theme));
             rows.push(text(downloads(app)));
         }
         View::Running => {
@@ -854,7 +925,7 @@ fn content(app: &App) -> Vec<Line<'static>> {
                     model.admitted_requests
                 ));
                 rows.push(if selected {
-                    line.style(accent(app.color))
+                    line.style(theme.selected())
                 } else {
                     line
                 });
@@ -871,7 +942,7 @@ fn content(app: &App) -> Vec<Line<'static>> {
                         "{} · registration {}",
                         selected.alias, selected.registration
                     ),
-                    app.color,
+                    theme,
                 ));
                 if let Some(capability) = &model.capabilities {
                     rows.push(text(format!(
@@ -918,8 +989,10 @@ fn content(app: &App) -> Vec<Line<'static>> {
             }
         }
         View::Serve => {
-            rows.push(label("OpenAI-compatible inference API", app.color));
-            rows.push(text(serve(app.snapshot.serving)));
+            rows.push(label("OpenAI-compatible inference API", theme));
+            rows.push(
+                text(serve(app.snapshot.serving)).style(serve_style(app.snapshot.serving, theme)),
+            );
             rows.push(text("This process only · s start · t stop · l load"));
             #[cfg(feature = "web")]
             rows.push(text("b open private Web control URL"));
@@ -946,7 +1019,7 @@ fn content(app: &App) -> Vec<Line<'static>> {
             unreachable!("library views render their own selected row and detail")
         }
         View::Downloads => {
-            rows.push(label("Download operation", app.color));
+            rows.push(label("Download operation", theme));
             rows.push(text(downloads(app)));
             rows.push(text("d new pull · p pause · s resume · c cancel"));
             if app.document.snapshot().offline {
@@ -970,7 +1043,7 @@ fn content(app: &App) -> Vec<Line<'static>> {
                     )
                 },
             ),
-            app.color,
+            theme,
         ));
         if response.text.is_empty() {
             rows.push(text("No output yet"));
@@ -988,6 +1061,8 @@ fn content(app: &App) -> Vec<Line<'static>> {
 
 pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
     let area = frame.area();
+    let theme = app.theme();
+    frame.render_widget(Block::default().style(theme.canvas()), area);
     if area.width < 20 || area.height < 7 {
         frame.render_widget(Paragraph::new("ZeroGravity · resize / q quit"), area);
         return;
@@ -998,23 +1073,46 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
         Constraint::Length(2),
     ])
     .areas(area);
+    let profile = clean(&app.document.snapshot().target.label());
+    let appearance = format!(" T Theme: {} ", theme.description());
+    let appearance_width = if header.width >= 52 {
+        appearance.chars().count() as u16
+    } else {
+        0
+    };
+    let [identity, appearance_area] =
+        Layout::horizontal([Constraint::Min(1), Constraint::Length(appearance_width)])
+            .areas(header);
+    let header_context = if area.width >= 100 {
+        format!("  ·  {profile}")
+    } else {
+        String::new()
+    };
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            ratatui::text::Span::styled(" ZeroGravity", accent(app.color)),
-            ratatui::text::Span::raw("  /  local control"),
-        ])),
-        header,
+            Span::styled(" ZeroGravity", theme.accent()),
+            Span::raw("  /  local control"),
+            Span::styled(header_context, theme.muted()),
+        ]))
+        .style(theme.surface()),
+        identity,
     );
+    if appearance_width > 0 {
+        frame.render_widget(
+            Paragraph::new(text(appearance)).style(theme.raised()),
+            appearance_area,
+        );
+    }
     if body.width >= 70 {
         let rail = if body.width < 100 { 18 } else { 23 };
         let [nav, workspace] =
             Layout::horizontal([Constraint::Length(rail), Constraint::Min(1)]).areas(body);
-        render_rail(frame, nav, app);
-        render_workspace(frame, workspace, app);
+        render_rail(frame, nav, app, theme);
+        render_workspace(frame, workspace, app, theme);
     } else if app.navigation.rail {
-        render_rail(frame, body, app);
+        render_rail(frame, body, app, theme);
     } else {
-        render_workspace(frame, body, app);
+        render_workspace(frame, body, app, theme);
     }
     let status = if let Some(job) = &app.active {
         format!(
@@ -1034,9 +1132,14 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
     };
     frame.render_widget(
         Paragraph::new(vec![
-            text(status).style(muted(app.color)),
-            text("1–9 views  Tab nav  : palette  r refresh  ? help  q quit"),
-        ]),
+            text(status).style(if app.active.is_some() {
+                theme.info()
+            } else {
+                theme.muted()
+            }),
+            text("1–9 views  Tab focus  : palette  T theme  ? help  q quit").style(theme.muted()),
+        ])
+        .style(theme.surface()),
         footer,
     );
     match &app.navigation.modal {
@@ -1047,7 +1150,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             frame.render_widget(Clear, popup);
             frame.render_widget(
                 Paragraph::new(vec![
-                    label("Open this private URL in a browser", app.color),
+                    label("Open this private URL in a browser", theme),
                     text(url),
                     Line::default(),
                     text("Same process and runtime. Keep the control credential private."),
@@ -1056,16 +1159,16 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     ),
                 ])
                 .wrap(Wrap { trim: false })
-                .block(Block::bordered().title(" Embedded Web ")),
+                .block(dialog(" Embedded Web ", theme)),
                 popup,
             );
         }
         Modal::Help => {
-            let popup = center(body, 68, 16);
+            let popup = center(body, 68, 18);
             frame.render_widget(Clear, popup);
             frame.render_widget(
                 Paragraph::new(vec![
-                    label("Navigation", app.color),
+                    label("Navigation", theme),
                     text("1–9     Open a view"),
                     text("Tab     Switch navigation/workspace"),
                     text("↑ ↓ j k Move/scroll"),
@@ -1077,11 +1180,54 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     text("c       Request cancellation"),
                     text(":       Destination palette"),
                     text("r       Refresh observations"),
+                    text("T       Appearance setting (Auto / Dark / Light)"),
                     text("Esc     Back / close overlay"),
                     text("q       Quit · Ctrl-C cancel/quit"),
                 ])
-                .block(Block::bordered().title(" Help "))
+                .block(dialog(" Help ", theme))
                 .wrap(Wrap { trim: false }),
+                popup,
+            );
+        }
+        Modal::Theme { file, choice } => {
+            let popup = center(body, 54, 11);
+            frame.render_widget(Clear, popup);
+            let mut rows = Vec::new();
+            if popup.height >= 11 {
+                rows.push(text(format!("Editing: {}", file.target.label())).style(theme.muted()));
+                rows.push(Line::default());
+            }
+            if popup.height >= 7 {
+                for (mode, title) in [
+                    (ThemeMode::Auto, "Auto"),
+                    (ThemeMode::Dark, "Dark"),
+                    (ThemeMode::Light, "Light"),
+                ] {
+                    let selected = *choice == mode;
+                    let row = text(format!("{} {title}", if selected { ">" } else { " " }));
+                    rows.push(if selected {
+                        row.style(theme.selected())
+                    } else {
+                        row
+                    });
+                }
+            } else {
+                rows.push(text(format!("‹ {} ›", choice.label())).style(theme.selected()));
+            }
+            if popup.height >= 11 {
+                rows.push(Line::default());
+                rows.push(text("Auto: terminal hint; unknown uses dark.").style(theme.muted()));
+            }
+            rows.push(
+                text(if popup.width >= 41 {
+                    "↑ ↓ preview · Enter apply · Esc cancel"
+                } else {
+                    "↑↓ Enter Esc"
+                })
+                .style(theme.accent()),
+            );
+            frame.render_widget(
+                Paragraph::new(rows).block(dialog(" Appearance ", theme)),
                 popup,
             );
         }
@@ -1159,7 +1305,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     "",
                 ),
             };
-            let block = Block::bordered().title(title);
+            let block = dialog(title, theme);
             let inner = block.inner(popup);
             frame.render_widget(block, popup);
             let header = match &form.kind {
@@ -1199,7 +1345,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 .chars()
                 .take(input.width as usize)
                 .collect();
-            rows.push(label(format!("{left}▏{right}"), app.color));
+            rows.push(label(format!("{left}▏{right}"), theme));
             rows.extend(suffix.take(input.height as usize).map(text));
             frame.render_widget(Paragraph::new(rows).wrap(Wrap { trim: false }), input);
             frame.render_widget(
@@ -1216,7 +1362,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
         } => {
             let popup = center(body, 86, 15);
             frame.render_widget(Clear, popup);
-            let block = Block::bordered().title(" Confirm ");
+            let block = dialog(" Confirm ", theme);
             let inner = block.inner(popup);
             frame.render_widget(block, popup);
             let [question_area, controls] =
@@ -1228,7 +1374,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 question_area,
             );
             frame.render_widget(
-                Paragraph::new(label("y confirm · n/Esc cancel · arrows scroll", app.color)),
+                Paragraph::new(label("y confirm · n/Esc cancel · arrows scroll", theme)),
                 controls,
             );
         }
@@ -1236,7 +1382,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             let popup = center(body, 56, 14);
             frame.render_widget(Clear, popup);
             let mut rows = vec![
-                label(format!("› {}", palette.query), app.color),
+                label(format!("› {}", palette.query), theme),
                 Line::default(),
             ];
             let matches = palette.matches();
@@ -1250,19 +1396,19 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     view.name()
                 ));
                 rows.push(if i == palette.cursor {
-                    line.style(accent(app.color))
+                    line.style(theme.selected())
                 } else {
                     line
                 });
             }
             frame.render_widget(
-                Paragraph::new(rows).block(Block::bordered().title(" Go to · Enter / Esc ")),
+                Paragraph::new(rows).block(dialog(" Go to · Enter / Esc ", theme)),
                 popup,
             );
         }
     }
 }
-fn render_rail(frame: &mut Frame<'_>, area: Rect, app: &App) {
+fn render_rail(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
     let rows: Vec<_> = View::ALL
         .into_iter()
         .map(|view| {
@@ -1280,8 +1426,10 @@ fn render_rail(frame: &mut Frame<'_>, area: Rect, app: &App) {
                 view.index() + 1,
                 view.name()
             ));
-            if selected || active {
-                line.style(accent(app.color))
+            if selected {
+                line.style(theme.selected())
+            } else if active {
+                line.style(theme.accent())
             } else {
                 line
             }
@@ -1296,23 +1444,30 @@ fn render_rail(frame: &mut Frame<'_>, area: Rect, app: &App) {
     };
     frame.render_widget(
         Paragraph::new(rows)
-            .block(Block::bordered().title(if app.navigation.rail {
-                " Navigation * "
-            } else {
-                " Navigation "
-            }))
+            .block(
+                pane(
+                    if app.navigation.rail {
+                        " Navigation * "
+                    } else {
+                        " Navigation "
+                    },
+                    theme,
+                    app.navigation.rail,
+                )
+                .borders(Borders::TOP | Borders::RIGHT),
+            )
             .scroll((offset, 0)),
         area,
     );
 }
-fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind) {
+fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, theme: Theme) {
     let title = match kind {
         Kind::Models => format!(" Models · {:?} ", app.library.shelf),
         Kind::Devices => " Devices ".into(),
         Kind::Profiles => " Profiles ".into(),
         Kind::Config => format!(" Config · {} ", app.library.editor.label()),
     };
-    let block = Block::bordered().title(title);
+    let block = pane(title, theme, false);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let collection = app.library.rows(kind);
@@ -1390,7 +1545,7 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind) 
             let next = super::settings::group(key);
             if next != group {
                 group = next;
-                lines.push(label(group, app.color));
+                lines.push(label(group, theme));
             }
         }
         let selected = collection.selected.as_ref() == Some(&row.key);
@@ -1403,7 +1558,7 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind) 
             row.title
         ));
         lines.push(if selected {
-            line.style(accent(app.color))
+            line.style(theme.selected())
         } else {
             line
         });
@@ -1413,7 +1568,7 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind) 
         .min(u16::MAX as usize) as u16;
     frame.render_widget(
         Paragraph::new(lines)
-            .block(Block::bordered().title(" Entries "))
+            .block(pane(" Entries ", theme, !app.navigation.rail))
             .scroll((list_offset, 0)),
         list,
     );
@@ -1426,7 +1581,7 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind) 
             }
         }
     } else if let Some(row) = collection.selected() {
-        details.push(label(&row.title, app.color));
+        details.push(label(&row.title, theme));
         details.extend(row.details.iter().map(text));
         if let Some((key, result)) = &app.library.detail
             && key == &row.key
@@ -1445,15 +1600,15 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind) 
     *scroll = (*scroll).min(details.len().saturating_sub(1).min(u16::MAX as usize) as u16);
     frame.render_widget(
         Paragraph::new(details)
-            .block(Block::bordered().title(" Selected · PgUp/PgDn "))
+            .block(pane(" Selected · PgUp/PgDn ", theme, false))
             .wrap(Wrap { trim: false })
             .scroll((*scroll, 0)),
         detail,
     );
 }
 
-fn render_logs(frame: &mut Frame<'_>, area: Rect, app: &mut App) {
-    let block = Block::bordered().title(" Operational logs ");
+fn render_logs(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
+    let block = pane(" Operational logs ", theme, false);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let [head, body] =
@@ -1488,32 +1643,32 @@ fn render_logs(frame: &mut Frame<'_>, area: Rect, app: &mut App) {
     };
     frame.render_widget(Paragraph::new(lines).scroll((*scroll, 0)), body);
 }
-fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App) {
+fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
     match app.navigation.view {
         View::Models => {
-            render_library(frame, area, app, Kind::Models);
+            render_library(frame, area, app, Kind::Models, theme);
             return;
         }
         View::Devices => {
-            render_library(frame, area, app, Kind::Devices);
+            render_library(frame, area, app, Kind::Devices, theme);
             return;
         }
         View::Profiles => {
-            render_library(frame, area, app, Kind::Profiles);
+            render_library(frame, area, app, Kind::Profiles, theme);
             return;
         }
         View::Config => {
-            render_library(frame, area, app, Kind::Config);
+            render_library(frame, area, app, Kind::Config, theme);
             return;
         }
         View::Logs => {
-            render_logs(frame, area, app);
+            render_logs(frame, area, app, theme);
             return;
         }
 
         _ => {}
     }
-    let rows = content(app);
+    let rows = content(app, theme);
     let scroll = &mut app.navigation.scroll[app.navigation.view.index()];
     *scroll = (*scroll).min(rows.len().saturating_sub(1).min(u16::MAX as usize) as u16);
     let offset = *scroll;
@@ -1521,7 +1676,11 @@ fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App) {
         Paragraph::new(rows)
             .wrap(Wrap { trim: false })
             .scroll((offset, 0))
-            .block(Block::bordered().title(format!(" {} ", app.navigation.view.name()))),
+            .block(pane(
+                format!(" {} ", app.navigation.view.name()),
+                theme,
+                false,
+            )),
         area,
     );
 }
@@ -1617,6 +1776,7 @@ mod tests {
             web: None,
             notice: None,
             color: false,
+            appearance: super::super::theme::Environment::detect(),
             document: crate::control_host::Selection::new(
                 super::super::work::Document::test_default(),
             ),
@@ -1652,6 +1812,24 @@ mod tests {
                 .collect::<String>();
             assert!(text.contains("Navigation"));
             app.navigation.rail = false;
+        }
+        app.color = true;
+        app.appearance =
+            super::super::theme::Environment::from_hints(Some("truecolor"), None, None);
+        for (mode, expected) in [
+            (ThemeMode::Dark, (23, 26, 32)),
+            (ThemeMode::Light, (255, 255, 255)),
+        ] {
+            let mut doc = app.document.snapshot();
+            doc.ui.theme = Some(mode);
+            app.document.update(doc);
+            let mut terminal = Terminal::new(TestBackend::new(100, 28)).unwrap();
+            terminal.draw(|frame| render(frame, &mut app)).unwrap();
+            let cell = &terminal.backend().buffer()[(0, 0)];
+            assert_eq!(
+                cell.bg,
+                ratatui::style::Color::Rgb(expected.0, expected.1, expected.2)
+            );
         }
         runtime.shutdown().unwrap();
     }

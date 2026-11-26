@@ -107,6 +107,7 @@ fn help(key: &str) -> &'static str {
             "Optional finite queue count; host admission still applies."
         }
         "serve.enable_per_request_metrics" => "Enable supported per-request inference metrics.",
+        "ui.theme" => "Auto, dark or light appearance; no execution policy changes.",
         "ui.color" | "ui.progress" | "ui.interactive" => {
             "auto, always or never; explicit CLI presentation preferences win."
         }
@@ -182,7 +183,11 @@ pub(crate) fn observe(target: Target) -> Result<Observed> {
     })
 }
 pub(crate) fn group(key: &str) -> &str {
-    key.rsplit_once('.').map_or("graph", |(group, _)| group)
+    if key.starts_with("ui.") {
+        "Appearance"
+    } else {
+        key.rsplit_once('.').map_or("graph", |(group, _)| group)
+    }
 }
 
 pub(crate) fn profiles() -> Result<Vec<String>> {

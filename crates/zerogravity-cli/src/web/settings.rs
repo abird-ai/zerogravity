@@ -54,6 +54,7 @@ fn editable(key: &str) -> bool {
             | "serve.host_mib"
             | "serve.max_pending_requests"
             | "serve.enable_per_request_metrics"
+            | "ui.theme"
             | "ui.color"
             | "ui.progress"
             | "ui.interactive"
@@ -91,6 +92,7 @@ fn safe_value(key: &str, value: &Yaml) -> bool {
                     .parse::<std::net::SocketAddr>()
                     .is_ok_and(|address| address.ip().is_loopback())
         }
+        "ui.theme" => zerogravity::configuration::ThemeMode::parse(text).is_some(),
         "ui.color" | "ui.progress" | "ui.interactive" => {
             matches!(text, "auto" | "always" | "never")
         }

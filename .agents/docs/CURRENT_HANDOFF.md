@@ -27,7 +27,27 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current next priority — UX-P native TUI polish (26 Nov)
+### Current checkpoint — UX-P1 visual foundation (26 Nov)
+
+Typed ui.theme Auto/Dark/Light, native T shortcut → Config appearance
+picker (preview/explicit apply/cancel), semantic color roles, restrained
+pane rules and header, 24-bit/256/16/no-color, coordinated Web tokens and
+active theme observation. No execution/control owner or dependency change.
+Web Auto follows matchMedia, native Auto captures COLORFGBG else dark;
+active OSC probe deferred. Focused Rust 81/0/3; minimal/Web-only/combined
+strict lint, JS 3/0, actual native PTY appearance/settings/shell and Firefox
+settings, mobile/tablet/desktop passed. Stale native draft vs newer Web
+write refused, inactive profile isolation and persisted reopen proven.
+Initial browser header overflow fixed with compact mobile glyph; final
+PTY fixture waits for actual selected row instead of stale repaint.
+Full gate and real resident/transfer regression at UX-P4.
+
+**Next:** UX-P2 scoped mouse capture/restore, render-derived hit regions,
+pane focus, resize/maximize, responsive layout and independent scrolling.
+Keep all existing typed actions and owner identities. UI-specific mouse
+preference and full actionable controls follow the UX-P plan.
+
+### Original UX-P priority decision — native TUI polish (26 Nov)
 
 User decision: before public serving, complete mouse support throughout
 the TUI (click pane/row/tab/action/setting, drag splitters, independent
@@ -36,11 +56,11 @@ scroll), elegant clean colors and Dark/Light/Auto theme selection.
 defines current-source audit, inspected Whisrs v0.2.1 design, semantic
 palette, appearance/Auto and terminal depth policy, responsive geometry,
 render-derived hit targets, stable typed identities, all nine views and
-ordered UX-P1–4 checkpoints. Design-only checkpoint; no implementation or
-UX-P acceptance claimed. Existing UX-1–10 remains accepted.
+ordered UX-P1–4 checkpoints. UX-P1 is focused-qualified above; overall
+UX-P acceptance pending. Existing UX-1–10 remains accepted.
 
-**Next:** read the UX-P specification and live CLI/device TODO, implement
-UX-P1 then UX-P2–4 with one coherent validated checkpoint per turn.
+Read the UX-P specification and live CLI/device TODO, continue
+UX-P2–4 with one coherent validated checkpoint per turn.
 No new runtime, cache, configuration or execution authority; mouse
 selection is inert, explicit actions use original owners. Keep both
 keyboard and mouse pathways. Optional local Auto background probe

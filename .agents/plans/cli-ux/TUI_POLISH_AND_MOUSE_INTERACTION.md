@@ -4,7 +4,7 @@ Author: Project owner
 Co-authors: GPT-6.2
 Owner: @pvl
 Decision: 26 Nov 2026 — polish before public serving
-Status: planned; no implementation or acceptance claimed
+Status: UX-P1 implemented and focused-qualified (26 Nov); UX-P2 next.
 
 This is the follow-on to the accepted UX-1–10 iteration at `1b8de1cb`.
 It supersedes only the relevant interaction/presentation details of
@@ -422,11 +422,27 @@ One coherent signed, validated checkpoint per turn (~30 min upper
 target); prefer practical slices, not a multitude of tiny commits. Do
 not mark an untested or interrupted phase accepted.
 
-- [ ] **UX-P1 — visual foundation and appearance:** semantic roles,
+- [x] **UX-P1 — visual foundation and appearance:** semantic roles,
   restrained chrome, Dark/Light/Auto, config/typed appearance selector,
   depth/NO_COLOR and safe Auto fallback, minimal Web token/theme parity.
   Actual rendered preview in each supported mode; agree final tokens
   against real terminal view. Preserve all original keyboard functions.
+  Landed: typed optional ui.theme (Auto/Dark/Light), semantic RGB and
+  ANSI256/16/no-color styles, quieter pane rules, focused selection,
+  native T shortcut → exact observed Config theme picker with preview,
+  explicit apply/cancel, coordinated Web CSS and active theme observation.
+  Web Auto follows matchMedia; native Auto captures COLORFGBG at startup,
+  otherwise dark. No active OSC probe or new dependency. Mouse setting,
+  full control affordances and geometry remain UX-P2/P3.
+  Strict minimal/Web-only/combined lint; 81/0/3 focused Rust tests
+  (including 51/0/3 optimized CLI units), JS 3/0, actual PTY shell,
+  settings and appearance (truecolor/256/16/no-color, stale Web edit
+  refusal, inactive-profile isolation, persisted reopen), real Firefox
+  desktop/tablet/mobile theme preview/cancel/save and existing settings
+  passed. Initial narrow header overflow fixed by compact mobile glyph;
+  test-only PTY repaint assertion corrected to wait for selected choice.
+  Full isolated workspace gate and real resident/transfer acceptance
+  deferred to assembled UX-P4, no new GPU/performance claim.
 - [ ] **UX-P2 — input/layout foundation:** scoped mouse capture/restoration,
   one render-derived hit layout, pane focus, rail navigation, drags,
   maximize/restore, responsive collapse and independent scroll primitives.

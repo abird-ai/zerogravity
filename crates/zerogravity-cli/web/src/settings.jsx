@@ -1,5 +1,5 @@
 // Cold documents and bounded host observations; no browser-owned policy store.
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show, onCleanup } from "solid-js";
 import { ConfirmButton } from "./resident.jsx";
 
 const nameValid = name => /^[a-z0-9._-]{1,128}$/.test(name) && ![".","..","default"].includes(name);
@@ -46,7 +46,13 @@ export function Config(props) {
   const rows = createMemo(() => (data()?.rows ?? []).filter(row => (row.key + " " + (row.value ?? "") + " " + row.help).toLowerCase().includes(search().toLowerCase())));
   const stale = () => draft() && draft().snapshot !== data()?.snapshot;
   const request = (command, extra={}) => settings({command,snapshot:data().snapshot,...extra});
-  const openDraft = row => setDraft({snapshot:data().snapshot, key:row?.key, value:row ? (row.explicit ? row.value ?? "" : "") : data().raw});
+  const openDraft = row => setDraft({snapshot:data().snapshot, key:row?.key,
+    value:row?.key === "ui.theme" ? (row.value?.trim() || "auto") : row ? (row.explicit ? row.value ?? "" : "") : data().raw});
+  createEffect(() => {
+    const editing = draft();
+    props.previewTheme(editing?.key === "ui.theme" ? editing.value : null);
+  });
+  onCleanup(() => props.previewTheme(null));
   const save = async () => {
     const selected = draft();
     if (!selected || stale()) return;
@@ -59,6 +65,12 @@ export function Config(props) {
     const target = props.target();
     void target;
     setDraft(null); setSaving(null); setSearch(""); setCopy("");
+  });
+  createEffect(() => {
+    if (props.appearanceRequest()) {
+      setSearch("ui.theme");
+      props.clearAppearance();
+    }
   });
   createEffect(() => {
     const result = props.work.result();
@@ -87,7 +99,16 @@ export function Config(props) {
       <Show when={draft()}>{editing=>
         <div class="confirmation" role="group" aria-label="Configuration draft">
           <label class="field-label" for="config-draft">{editing().key ?? "Normalized YAML"}</label>
-          <textarea id="config-draft" rows={editing().key ? 3 : 12} value={editing().value} onInput={event=>setDraft(previous=>({...previous,value:event.currentTarget.value}))}/>
+          <Show when={editing().key === "ui.theme"} fallback={
+            <textarea id="config-draft" rows={editing().key ? 3 : 12} value={editing().value} onInput={event=>setDraft(previous=>({...previous,value:event.currentTarget.value}))}/>
+          }>
+            <select id="config-draft" value={editing().value} onChange={event=>setDraft(previous=>({...previous,value:event.currentTarget.value}))}>
+              <option value="auto">Auto · follow system appearance</option>
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
+            <p class="field-hint">Preview only until Save. Editing an inactive profile does not change the active host appearance.</p>
+          </Show>
           <Show when={stale()}><p class="notice">Document observation changed. Cancel and reopen the draft before saving.</p></Show>
           <div class="form-actions">
             <button class="primary" disabled={!ready() || !!saving() || stale() || !editing().value.trim() || bytes(editing().value) > (editing().key ? 8192 : 128*1024)} onClick={save}>Save configuration</button>

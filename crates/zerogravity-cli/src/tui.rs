@@ -4,6 +4,7 @@ pub(crate) mod library;
 mod logs;
 pub(crate) mod settings;
 mod terminal;
+mod theme;
 mod view;
 mod work;
 
@@ -77,6 +78,7 @@ fn session(
         library: Library::new(document.snapshot().target),
         notice: None,
         color,
+        appearance: theme::Environment::detect(),
         document,
         actions,
         active: None,
@@ -233,6 +235,7 @@ struct App {
     web: Option<crate::web::Host>,
     notice: Option<String>,
     color: bool,
+    appearance: theme::Environment,
     document: Selection,
     actions: Actions,
     active: Option<ActionSummary>,
@@ -243,6 +246,13 @@ struct App {
 }
 
 impl App {
+    fn theme(&self) -> theme::Theme {
+        let mode = self
+            .navigation
+            .preview_theme()
+            .unwrap_or_else(|| self.document.snapshot().ui.theme.unwrap_or_default());
+        self.appearance.resolve(mode, self.color)
+    }
     fn owners(&self) -> impl Iterator<Item = Owner> + '_ {
         self.snapshot
             .runtime
@@ -371,8 +381,7 @@ impl App {
                         settings::Action::Set { file, key, value }
                             if file.target == self.library.editor =>
                         {
-                            self.navigation
-                                .form_value(FormKind::ConfigValue { file, key }, value)
+                            self.navigation.edit_setting(file, key, value)
                         }
                         settings::Action::Replace { file, yaml } => {
                             self.navigation.form_value(FormKind::RawYaml { file }, yaml)
@@ -408,6 +417,14 @@ impl App {
             Action::Settings(action) => self.settings_action(runtime, action),
             Action::Logs(action) => self.log_action(action),
             Action::OpenWeb => self.open_web(runtime),
+            Action::Appearance => {
+                // A shortcut to the same cold Config reader and typed setting.
+                // No file creation, preview or write on navigation.
+                self.library.set_editor(self.document.snapshot().target);
+                self.library.query = "ui.theme".into();
+                self.navigation.open(View::Config);
+                self.library.request(runtime, Kind::Config);
+            }
             Action::Submit(Form { kind: FormKind::Search { view }, value }) => {
                 match view {
                     View::Config => {
@@ -807,13 +824,7 @@ impl App {
             SettingsAction::Open => {
                 if let Some(Key::Setting(key)) = self.library.rows(kind).selected.as_ref() {
                     let value = self.library.value(key).unwrap_or("").to_owned();
-                    self.navigation.form_value(
-                        FormKind::ConfigValue {
-                            file,
-                            key: key.clone(),
-                        },
-                        value,
-                    );
+                    self.navigation.edit_setting(file, key.clone(), value);
                 }
             }
             SettingsAction::RawEdit => match file.raw() {

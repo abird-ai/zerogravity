@@ -141,7 +141,13 @@ function App() {
   const [palette, setPalette] = createSignal(false);
   const [nav, setNav] = createSignal(false);
   const [selection, select] = createSignal("");
-  const [light, setLight] = createSignal(false);
+  const [previewTheme, setPreviewTheme] = createSignal(null);
+  const [appearanceRequest, setAppearanceRequest] = createSignal(false);
+  const systemTheme = window.matchMedia("(prefers-color-scheme: light)");
+  const [systemLight, setSystemLight] = createSignal(systemTheme.matches);
+  const appearanceChanged = event => setSystemLight(event.matches);
+  systemTheme.addEventListener("change", appearanceChanged);
+  onCleanup(() => systemTheme.removeEventListener("change", appearanceChanged));
   const deviceSource = createSignal("");
   const configTarget = createSignal("@active");
   let previousFocus;
@@ -150,7 +156,8 @@ function App() {
   const work = createWork(key, control, lock);
   const inventory = createInventory(key, control, view, lock, configTarget[0]);
   const navigate = name => { setView(name); setNav(false); };
-  const openConfig = name => { configTarget[1](name); navigate("Config"); };
+  const openConfig = name => { setAppearanceRequest(false); configTarget[1](name); navigate("Config"); };
+  const openAppearance = () => { openConfig("@active"); setAppearanceRequest(true); };
   const chooseDevice = digest => { deviceSource[1](digest); navigate("Devices"); };
   const openPalette = () => { previousFocus = document.activeElement; setPalette(true); };
   const closePalette = () => { setPalette(false); queueMicrotask(() => previousFocus?.focus()); };
@@ -178,12 +185,14 @@ function App() {
     window.removeEventListener("hashchange", newLaunch);
   });
   const observation = control.value;
+  const mode = () => previewTheme() ?? observation()?.configuration.theme ?? "auto";
+  const light = () => mode() === "light" || (mode() === "auto" && systemLight());
   return <div classList={{ shell: true, light: light() }}>
     <header>
       <button class="brand" onClick={() => navigate("Home")}><span class="mark">Z</span>ZeroGravity</button>
       <button class="nav-toggle" onClick={() => setNav(!nav())} aria-expanded={nav()} aria-label="Toggle navigation">☰</button>
       <div class="header-context"><span class="subtle">Local control</span><Show when={observation()}>{row => <span class="profile">{row().configuration.profile ?? "Portable config"}{row().configuration.offline ? " · offline" : ""}</span>}</Show></div>
-      <div class="header-actions"><button class="quiet" onClick={openPalette} aria-label="Open command palette">⌕ <span>Go to</span></button><button class="quiet" onClick={() => setLight(!light())} aria-label="Toggle theme">{light() ? "◐" : "☼"}</button><State text={control.status()} good={control.status() === "connected"}/></div>
+      <div class="header-actions"><button class="quiet" onClick={openPalette} aria-label="Open command palette">⌕ <span>Go to</span></button><button class="quiet theme-control" onClick={openAppearance} disabled={!observation()} aria-label="Appearance settings" title="Open appearance settings"><span>Theme: {mode() === "auto" ? "Auto" : mode() === "light" ? "Light" : "Dark"}</span></button><State text={control.status()} good={control.status() === "connected"}/></div>
     </header>
     <aside classList={{ rail: true, "nav-open": nav() }} aria-label="Workspace navigation">
       <div class="eyebrow rail-heading">Workspace</div>
@@ -210,7 +219,7 @@ function App() {
             <Match when={view() === "Serve"}><Serve value={row()} work={work}/></Match>
             <Match when={view() === "Downloads"}><Download value={row()} work={work}/><Show when={row().capabilities.acquisition}><button class="quiet" onClick={() => navigate("Models")}>Acquire or resume from Models</button></Show></Match>
             <Match when={view() === "Profiles"}><Profiles inventory={inventory} work={work} open={openConfig}/></Match>
-            <Match when={view() === "Config"}><Config inventory={inventory} work={work} target={configTarget[0]} open={openConfig}/></Match>
+            <Match when={view() === "Config"}><Config inventory={inventory} work={work} target={configTarget[0]} open={openConfig} appearanceRequest={appearanceRequest} clearAppearance={()=>setAppearanceRequest(false)} previewTheme={setPreviewTheme}/></Match>
             <Match when={view() === "Models"}><Models value={row()} inventory={inventory} work={work} navigate={navigate} chooseDevice={chooseDevice}/></Match>
             <Match when={view() === "Devices"}><Devices value={row()} inventory={inventory} work={work} source={deviceSource}/></Match>
             <Match when={view() === "Logs"}><Logs inventory={inventory}/></Match>
