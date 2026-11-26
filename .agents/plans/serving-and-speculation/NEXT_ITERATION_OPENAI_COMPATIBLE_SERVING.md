@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1A and OA-1B ingress/WebSocket primitives accepted; public chunked text focused-qualified, assembled gate pending** (26 Nov). Multipart remains open; OA-2 and later remain ordered.
+Status: **OA-1A and OA-1B ingress/WebSocket primitives accepted; public chunked text accepted** (27 Nov). Multipart remains open; OA-2 and later remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1211,8 +1211,14 @@ JSON, with authorization before reads and complete JSON validation before
 model admission. Persistent connection and SSE ownership are unchanged.
 No new model semantics or modality capability.
 
-Remaining multipart blocker: `multer` is indexed locally (3.1.0 candidate)
-but its archive/source is absent. Cached `form-data 0.6.0` was reviewed and
+The full isolated retry on 08a9d30e exited 0 (2,546/0/109 across 318
+Rust suites; real cached CPU consumers and SDK passed). Exact Nix
+source-integrity remains unverified because locked inputs are absent.
+
+Remaining multipart blocker: `multer` 3.1.0 is indexed locally; a
+metadata-only offline resolution resolves its 20 registry packages and
+only the multer archive/source is absent. Acquire that pinned archive
+with explicit authorization and checksum verification before review. Cached `form-data 0.6.0` was reviewed and
 rejected: its decoder loops after truncated input and can treat malformed
 boundary suffixes as EOF. Do not substitute that parser or a whole-body
 email MIME decoder for strict streaming form-data. Obtain authorized pinned

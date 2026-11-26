@@ -71,7 +71,7 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   1/0/0 (60.72s) and SDK listener/model lifecycle 1/0/0 (10.33s).
   Full isolated workspace gate passed (466.3s): 2,544/0/109 across
   318 Rust suites, release TUI/Web, installer and scripts.
-- [~] OA-1B public chunked text: pinned cached Hyper 1.13.0 server-parser
+- [x] OA-1B public chunked text: pinned cached Hyper 1.13.0 server-parser
   patch refuses mixed TE/CL and repeated CL before normalization; exact
   upstream bytes except role.rs and local patch notice. Same charged
   reader, authorization, JSON/SSE, persistent connection and listener.
@@ -81,13 +81,16 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   strict lint pass; real cached CLI/TUI/Web (60.52s) and SDK (9.11s)
   regressions pass 1/0/0 each. Assembled HIP/Vulkan/CUDA compile
   boundaries, full-default/CPU strict lint, GPU boundary tests 26/0/2,
-  source-only regressions and dependency isolation passed. Gate timed out
-  at 1100s compiling CPU workspace tests; no CPU suites executed. Retry
-  full isolated gate with the warmed cache before acceptance.
-  Nix vendor source filter/check updated and syntax passes; actual locked
-  source-integrity check blocked by unavailable nixpkgs archive offline.
+  source-only regressions and dependency isolation passed. Initial gate
+  timed out at 1100s compiling CPU workspace tests. Full isolated retry
+  on 08a9d30e exited 0: 2,546/0/109 across 318 Rust suites, release TUI/Web,
+  installer and scripts. Nix source filter/check updated and syntax passes;
+  exact locked source-integrity derivation blocked by four unavailable
+  flake source hashes offline. No new physical GPU qualification.
 - [ ] OA-1B multipart: acquire approved pinned mature multipart decoder
-  (multer 3.1.0 indexed but bytes absent); cached form-data 0.6.0 rejected
+  (multer 3.1.0 indexed; offline resolution of 20 registry packages
+  lacks only its archive, checksum recorded in current handoff);
+  cached form-data 0.6.0 rejected
   on truncated-input loop and invalid boundary termination. Qualify
   bounded per-part/aggregate admission and cleanup. No second HTTP parser,
   automatic downloads or fake modality endpoint. OA-2 follows OA-1.

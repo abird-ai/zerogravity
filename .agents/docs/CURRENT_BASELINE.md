@@ -12,10 +12,11 @@ normalization; bounded public chunked JSON now reuses original auth,
 charged staging, SSE and model scheduler. Actual public socket tests
 and strict lint pass (focused 33/0/0); real cached CLI/TUI/Web and SDK
 regressions pass (60.52s and 9.11s). Assembled GPU boundary tests
-26/0/2, strict default/CPU lint and dependency isolation passed; gate
-timed out at 1100s during CPU workspace test compilation, no CPU suites
-executed. Complete assembled acceptance remains pending. Nix vendor source check blocked by uncached locked
-nixpkgs input; syntax passed. No new physical GPU or performance evidence.
+26/0/2, strict default/CPU lint and dependency isolation passed; initial
+gate timed out during CPU workspace test compilation. Full isolated retry
+on 08a9d30e exited 0: 2,546/0/109 across 318 Rust suites, release TUI/Web,
+installer and scripts. Chunked text accepted. Nix vendor source derivation
+remains blocked by unavailable exact locked flake inputs; syntax passed. No new physical GPU or performance evidence.
 Multipart remains blocked on approved decoder acquisition (cached
 form-data 0.6.0 not suitable). OA-2 follows complete OA-1.
 

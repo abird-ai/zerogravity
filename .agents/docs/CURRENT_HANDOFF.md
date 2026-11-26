@@ -57,21 +57,32 @@ The CLI fixture sends both alias completions (fixed and chunked) over one
 connection and compares exact model output. Assembled gate passed all
 HIP/Vulkan/CUDA compile boundaries, strict full-default lint, GPU feature
 boundary tests (26/0/2), source-only qualification, dependency isolation
-and strict CPU workspace Clippy. Timed out at 1100s during CPU workspace
-test compilation after dependency-path cache invalidation; no CPU test
-suites executed. Full assembled gate remains required; retry with the
-warmed cache, then finish OA-1B multipart. Vendor source filter/check
-updated; Nix syntax passes, exact source-integrity derivation is blocked
-by the locked nixpkgs archive unavailable in the private network.
+and strict CPU workspace Clippy. Initial run timed out at 1100s during
+CPU workspace test compilation after dependency-path cache invalidation.
+The full isolated warmed-cache retry on signed 08a9d30e exited 0:
+2,546/0/109 across 318 Rust suites, strict lint, release TUI/Web, installer
+and scripts passed. Chunked text accepted; no production source changes
+during retry. Vendor source filter/check updated and Nix syntax passed;
+the exact Nix source-integrity derivation remains unverified (locked
+nixpkgs, pyproject-build-systems, pyproject-nix and uv2nix source hashes
+not present among locally available Nix source roots; crane and rust-overlay
+matched). No substitutions or downloads.
 Logs: `target/oa1b-chunked-focused-final.log`,
 `target/oa1b-chunked-real-consumers.log`, `target/oa1b-chunked-assembled.log`,
-`target/oa1b-chunked-nix-source.log`.
+`target/oa1b-chunked-assembled-retry.log`, `target/oa1b-chunked-nix-source.log`.
 
 Next OA-1B multipart: `multer 3.1.0` exists in local index, no archive or
-source. Cached form-data 0.6.0 rejected after reviewing decoder: truncated
-input may loop, invalid delimiter suffix may be treated as EOF. No
-downloads or duplicate parser. Obtain approved pinned decoder and qualify
-bounded part/aggregate ownership and cleanup, then OA-2. No real
+source. A metadata-only isolated Cargo resolution (exact version, default
+features disabled) resolved 20 registry packages; only the multer archive
+is absent. Its indexed SHA-256 is
+83e87776546dc87511aa5ee218730c92b666d7264ab6ed41f9d215af9cd5224b.
+Request approval to acquire that single archive from crates.io and verify
+its checksum against the cached index before extraction. Review the actual
+decoder source, then integrate under the existing bounded reader,
+per-part/aggregate admission, deadlines and joined cancellation.
+Cached form-data 0.6.0 rejected (truncated input may loop; invalid
+delimiter suffix may be treated as EOF). No automatic downloads, duplicate
+parser or fabricated endpoint. OA-2 follows accepted OA-1. No real
 Realtime/model/media or new physical GPU performance claim.
 
 ### Prior checkpoint — OA-1B bounded ingress and owned WebSocket primitives (26 Nov)

@@ -770,7 +770,8 @@ bounded decoded-body staging and owned WebSocket primitives implemented
 and accepted (2,544/0/109 across 318 isolated Rust suites; real cached
 CLI/TUI/Web and SDK passed). Public chunked text now uses the same
 bounded reader and a narrow cached Hyper server framing patch; focused
-33/0/0 and real cached CLI/TUI/Web/SDK pass; assembled acceptance pending. Remaining OA-1B multipart
+33/0/0, real cached CLI/TUI/Web/SDK and full isolated retry 2,546/0/109
+(318 suites) passed. Remaining OA-1B multipart
 requires authorized pinned decoder acquisition; OA-2 semantic
 request/model-template boundary follows complete OA-1.
 Preserve the original runtime, admission and listener owner.
