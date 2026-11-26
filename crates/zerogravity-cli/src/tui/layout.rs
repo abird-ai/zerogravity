@@ -64,6 +64,59 @@ impl Viewport {
         .min(self.max);
     }
 }
+/// Remember a visible item, not an index into a mutable observation.
+/// Keep the preferred top through a temporary clamp or empty refresh.
+/// Explicit scroll/reveal supersedes it; an evicted key falls back safely.
+#[derive(Debug)]
+pub(super) struct Anchor<K> {
+    key: Option<(K, usize)>,
+    preferred: usize,
+    painted: Option<usize>,
+}
+impl<K> Default for Anchor<K> {
+    fn default() -> Self {
+        Self {
+            key: None,
+            preferred: 0,
+            painted: None,
+        }
+    }
+}
+impl<K> Anchor<K> {
+    pub fn last(&self) -> Option<usize> {
+        self.painted
+    }
+
+    pub fn restore(
+        &mut self,
+        offset: usize,
+        reveal: bool,
+        empty: bool,
+        find: impl FnOnce(&K) -> Option<usize>,
+        missing: usize,
+    ) -> usize {
+        if reveal || self.painted != Some(offset) {
+            self.key = None;
+            self.preferred = offset;
+        } else if !empty && let Some((key, gap)) = &self.key {
+            if let Some(row) = find(key) {
+                self.preferred = row.saturating_sub(*gap);
+            } else {
+                self.key = None;
+                self.preferred = missing;
+            }
+        }
+        self.preferred
+    }
+
+    pub fn remember(&mut self, offset: usize, next: impl FnOnce() -> Option<(usize, K)>) {
+        if self.key.is_none() {
+            self.preferred = offset;
+            self.key = next().map(|(row, key)| (key, row.saturating_sub(offset)));
+        }
+        self.painted = Some(offset);
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct Scrollbar {
     pub pane: Pane,
@@ -102,6 +155,7 @@ impl Scrollbar {
 struct ViewState {
     main: Viewport,
     detail: Viewport,
+    output: Viewport,
     maximized: Option<Pane>,
     follow_output: bool,
     reveal: bool,
@@ -141,6 +195,9 @@ impl Workspace {
             Pane::Main => &mut self.views[view].main,
             Pane::Detail => &mut self.views[view].detail,
         }
+    }
+    pub fn output(&mut self, view: usize) -> &mut Viewport {
+        &mut self.views[view].output
     }
     pub fn focus(&mut self, view: usize, pane: Pane) {
         self.focus = pane;
@@ -332,6 +389,32 @@ mod tests {
         let (_, _, vertical) = state.inner(compact, 3);
         state.drag(vertical.unwrap().1, 0, 18);
         assert_eq!(state.inner(compact, 3).0.height, 13);
+    }
+    #[test]
+    fn identity_anchor_survives_reorder_clamp_and_empty_refresh() {
+        let mut anchor = Anchor::default();
+        let mut viewport = Viewport::default();
+        viewport.measure(10, 3);
+        viewport.scroll(Motion::At(4));
+        anchor.restore(viewport.offset, false, false, |_: &u64| None, 0);
+        anchor.remember(4, || Some((4, 42)));
+        // Reorder: the same observed item is now at row 6.
+        assert_eq!(
+            anchor.restore(4, false, false, |key| (*key == 42).then_some(6), 0),
+            6
+        );
+        viewport.offset = 6;
+        viewport.measure(10, 8);
+        assert_eq!(viewport.offset, 2);
+        anchor.remember(2, || panic!("clamp is not a new anchor"));
+        assert_eq!(anchor.restore(2, false, true, |_| None, 0), 6);
+        anchor.remember(0, || None);
+        assert_eq!(anchor.restore(0, false, false, |_| Some(3), 0), 3);
+        anchor.remember(3, || None);
+        // Manual scroll replaces the preferred identity.
+        assert_eq!(anchor.restore(1, false, false, |_| Some(3), 0), 1);
+        anchor.remember(1, || Some((1, 99)));
+        assert_eq!(anchor.restore(1, false, false, |_| None, 0), 0);
     }
     #[test]
     fn independent_viewports_and_scrollbar_bounds() {

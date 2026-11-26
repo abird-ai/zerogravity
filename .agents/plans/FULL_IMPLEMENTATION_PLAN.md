@@ -738,8 +738,9 @@ UX-1–10 remains accepted; this is additional presentation work.
   one navigation rail, concise summaries, on-demand exact Details and
   smart units. Follow-up removes toolbar entirely: selected exact-row
   context menus and inline live local search, explicit Alt shortcuts.
-  P4A2 stable scroll/response/log and compact/focus edges;
-  P4B final full gate.
+  P4A2 identity scroll anchors, separate response, safe log details,
+  compact scrollable dialogs/editor drag edges focused-qualified
+  (91/0/3 and native/shared transfer PTY). P4B final full gate.
 
 No new runtime, cache, configuration or execution owner. No inference
 protocol or backend performance work until this bounded polish exit.

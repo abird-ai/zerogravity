@@ -4,7 +4,7 @@ Author: Project owner
 Co-authors: GPT-6.2
 Owner: @pvl
 Decision: 26 Nov 2026 — polish before public serving
-Status: UX-P1/P2/P3 implemented and focused-qualified; P4A1 minimal presentation and its toolbar-free/context/live-search revision landed (26 Nov). Remaining ergonomics P4A2, full acceptance P4B.
+Status: UX-P1/P2/P3 and UX-P4A1/P4A2 focused-qualified (26 Nov); full acceptance P4B next.
 
 This is the follow-on to the accepted UX-1–10 iteration at `1b8de1cb`.
 It supersedes only the relevant interaction/presentation details of
@@ -642,16 +642,44 @@ not mark an untested or interrupted phase accepted.
     Actual attached Firefox/native transfer durable and cancelled pass;
     exact default CPU/TUI/Web release and native PTY pass.
     No new dependency or runtime/authority changes. Earlier P4A1 toolbar guidance superseded.
-  Remaining coherent exit slices: P4A2 ergonomics/visual review
-  (stable item/log/output anchors across refresh/resize/reorder, distinct
-  Running selected-detail/output affordance, safe log-row detail, compact
-  modal navigation/scroll and editor edge-of-viewport selection, keyboard
-  focus/shortcuts and minimal remaining view actions). Verify actual
-  rendered cells and terminal PTY at representative sizes/themes; no
-  golden matrix. P4B final simultaneous cached resident/transfer/config
-  regressions and full offline isolated workspace gate. No premature
-  acceptance; keep native Auto hint fallback truthful unless separately
-  authorized bounded probe. Resume public serving only after P4 exit.
+  - [x] P4A2 ergonomic refinement: one small Anchor<K> per library
+    shelf/list, ready registration list, log sequence and response byte
+    position. Preserve preferred top across reorder/empty observation
+    and resize clamp; explicit scroll/reveal takes precedence. Missing
+    identity reconciles/clamps safely, log eviction falls back to first
+    retained entry. No copied inventory or history. Separate Running
+    model/response viewport (click detail title/F3), bounded response
+    grapheme rows painted only for visible range, new response focuses
+    its pane, manual scroll pauses and returning to tail/F9 resumes.
+    Selected log row exposes exact safe operational entry via Enter,
+    ellipsis/right-click; level/component/search retain local filters;
+    paused view remains original bounded ring, End resumes. Evicted
+    sequence cannot resolve to a replacement. Short dialogs use full
+    screen; Help/Web URL/Details/confirmation shared scroll bounds,
+    destination palette reveals cursor and only visible targets.
+    Captured editor drag outside top/bottom moves one visual row per
+    actual event, clamps horizontal cell, retains selection anchor,
+    release over button cannot submit. Actual rendered cells (reorder,
+    shelf, clamp, independent response) and 20x7 PTY. Strict feature
+    lint, 18 focused TUI tests, optimized 91/0/3 and native PTY with
+    exact safe log details, compact action/palette/help, original
+    mouse/editor/settings/appearance and controlled transfer passed.
+    Attached Firefox/native transfer durable and cancelled passed;
+    exact default release and native PTY pass before final response-only
+    fix. Real cached test exposed long digest alias hiding registration:
+    heading registration first, truncate alias; F9 focuses detail.
+    Strict combined lint/18 focused tests rerun; browser resident
+    passes, initial native differential assertion corrected. Final
+    native/attached-Web cached CPU/HTTP 1/0/0 (34.49s, five filtered),
+    exact output/8 GiB admission, real F3 switch and shared policy
+    pass. Full combined final run and comprehensive gate at P4B.
+    No new dependency, runtime authority or output/history store.
+  - [ ] P4B full offline isolated workspace gate and final real
+    resident/transfer/config acceptance on assembled source. Review
+    remaining compact affordances and rendered terminal legibility;
+    no golden matrix. Native Auto remains conservative hint fallback,
+    active probe deferred unless separately approved. No public
+    serving or performance acceptance before P4 exit.
 
 Use these as order, not four compulsory isolated branches. Preserve
 working keyboard controls during every slice. Continue from the live

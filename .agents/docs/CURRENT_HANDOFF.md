@@ -27,7 +27,64 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — UX-P4A1 follow-up: toolbar-free contextual UI (26 Nov)
+### Current checkpoint — UX-P4A2 final ergonomics (26 Nov)
+
+Toolbar-free/object-first layout retained; no new permanent chrome.
+
+- layout::Anchor<K> keeps preferred visible identity/relative row gap,
+  last paint and numeric fallback through reorder, empty refresh and
+  viewport clamp. Per-library shelf/list, Running ready owner, log
+  sequence and response byte-position anchors. Explicit scroll/reveal
+  supersedes preferred anchor. Shelf switch restores last offset,
+  first visit reveals selection. No duplicate inventory/history.
+- Running separates model metadata from response (detail title/F3);
+  response has an independent Viewport and follow state in each
+  Home/Running view. New response follows and focuses detail; selecting
+  another registration shows model details. Visible grapheme ranges
+  only are painted from original bounded Response text; byte anchor
+  preserves position through wrapping/append. Scrolling metadata never
+  changes response follow. Tail/F9 resumes original output.
+- Log list uses single-row entries, exact safe sequence selection
+  and Details via ellipsis/right-click/Enter/F4. Original bounded ring
+  and paused revision cap, no sensitive raw payload or extra history.
+  Selecting/manual scroll pauses; End/downward tail resumes; evicted
+  sequence refuses and anchors fall back to first retained entry.
+- Dialogs use full screen when height <12; Help/Web URL/Details/
+  confirm share bounded scroll rendering. Compact destination palette
+  scrolls to cursor and masks hidden destinations. Explicit editor
+  capture supports edge drag (one step per real event, no timer) and
+  horizontal clamp without click-through. Tiny view does not turn
+  search q into quit. All original typed action/confirmation guards.
+- 18/0 focused native tests incl actual TestBackend rendered anchors
+  (reorder/clamp/shelf), distinct model/response viewports and 20x7
+  selectable menu. Strict minimal/Web-only/TUI-Web/combined lint,
+  optimized Rust 91/0/3, actual compact 20x7 PTY context/palette/help,
+  original native mouse/action/editor/settings/theme/shell with safe
+  log-detail/End-follow tests, controlled download and attached
+  native/Firefox durable/cancelled shared transfer passed. New
+  compact fixture in standard release gate. Exact default CPU/TUI/Web
+  release and all native PTY passed before final response-only fix.
+  Real browser/native lifecycle first exposed digest alias concealing
+  registration in the new single-line heading: put registration first,
+  truncate alias, F9 focuses detail in collapsed/maximized layout.
+  Strict combined lint/18 focused tests rerun on final source. Second
+  combined run passed browser resident and reached native F3 metadata;
+  PTY split Context/capacity across ANSI updates. Corrected assertion
+  to capacity:. Final native/attached-Web cached CPU/HTTP 1/0/0
+  (34.49s, five filtered), original 8 GiB admission and exact output,
+  response/model switch, stale identities/shared settings all pass.
+  Browser portion passed both combined runs; full combined final and
+  full workspace gate remain P4B. No new dependency or GPU/performance
+  claim. Logs target/ux-p4a2-resident.log, -resident-final.log,
+  -native-final.log.
+- Next UX-P4B: full isolated workspace gate, final actual cached
+  resident/transfer/config regressions on assembled source; retain
+  original 8 GiB admission, no relaxed tests. Native Auto remains
+  hint/dark fallback; no active probe. No overall UX-P acceptance
+  or public serving yet. Logs target/ux-p4a2-render.log,
+  target/ux-p4a2-acceptance.log, target/ux-p4a2-default.log.
+
+### Previous checkpoint — UX-P4A1 follow-up: toolbar-free contextual UI (26 Nov; d1e27080)
 
 User rejected even a minimal top toolbar: select an object, show its
 actions in context, only inline search at the top. Supersedes previous
@@ -70,9 +127,8 @@ wide/curated action strips and modal search.
   target/ux-context-default.log.
   Test-only geometry and differential-render assertions adjusted; no effect guard
   weakened. Logs target/ux-context-acceptance.log, -pty-rerun.log,
-  -pty-final.log. Remaining P4A2 stable scroll anchors, separate Running
-  selected detail/response, safe log row details, compact/focus/editor
-  edges and P4B full acceptance. No public serving or performance claim.
+  -pty-final.log. Remaining P4A2 landed above; P4B full acceptance
+  pending. No public serving or performance claim.
 
 ### Previous checkpoint — UX-P4A1 minimal presentation (26 Nov; f723b0b6)
 

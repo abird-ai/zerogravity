@@ -6,7 +6,7 @@ use super::{
     editor::{self, Editor},
     format,
     input::{Hits, Intent, Pointer, Target},
-    layout::{Motion, Pane, Scrollbar, SplitKind, Splitter, Workspace},
+    layout::{Anchor, Motion, Pane, Scrollbar, SplitKind, Splitter, Viewport, Workspace},
     library::{Key, Kind, Shelf},
     settings::Snapshot,
     theme::Theme,
@@ -83,6 +83,7 @@ impl View {
 struct Palette {
     query: String,
     cursor: usize,
+    scroll: usize,
 }
 impl Palette {
     fn matches(&self) -> Vec<View> {
@@ -175,7 +176,9 @@ enum Modal {
     #[default]
     None,
     Palette(Palette),
-    Help,
+    Help {
+        scroll: u16,
+    },
     Details {
         title: String,
         lines: Vec<String>,
@@ -188,7 +191,10 @@ enum Modal {
         choice: ThemeMode,
     },
     #[cfg(feature = "web")]
-    WebUrl(String),
+    WebUrl {
+        url: String,
+        scroll: u16,
+    },
     Form {
         form: Form,
         editor: Editor,
@@ -198,6 +204,18 @@ enum Modal {
         action: Confirmation,
         scroll: u16,
     },
+}
+impl Modal {
+    fn text_scroll(&mut self) -> Option<&mut u16> {
+        match self {
+            Self::Help { scroll } | Self::Details { scroll, .. } | Self::Confirm { scroll, .. } => {
+                Some(scroll)
+            }
+            #[cfg(feature = "web")]
+            Self::WebUrl { scroll, .. } => Some(scroll),
+            _ => None,
+        }
+    }
 }
 #[derive(Debug, Default)]
 pub(super) struct Navigation {
@@ -210,6 +228,12 @@ pub(super) struct Navigation {
     split_visible: bool,
     search: Option<Editor>,
     search_width: u16,
+    library_anchors: [Anchor<Key>; 6],
+    running_anchor: Anchor<Owner>,
+    log_anchor: Anchor<u64>,
+    output_anchors: [Anchor<usize>; 2],
+    running_response: bool,
+    has_response: bool,
     modal: Modal,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -279,6 +303,9 @@ pub(super) enum Action {
     Stop,
     Cancel,
     MoveOwner(i8),
+    MoveLog(i8),
+    SelectLog(u64),
+    ShowLog(Option<u64>),
     SelectOwner(Owner),
     SelectRow(Kind, Key),
     Scroll(Pane, Motion),
@@ -309,8 +336,22 @@ pub(super) enum SearchEdit {
     },
     Clear,
     Escape,
+    DragEdge(i16, u16),
 }
 
+fn move_text_scroll(scroll: &mut u16, key: KeyCode) {
+    match key {
+        KeyCode::Up | KeyCode::PageUp => {
+            *scroll = scroll.saturating_sub(if key == KeyCode::PageUp { 8 } else { 1 })
+        }
+        KeyCode::Down | KeyCode::PageDown => {
+            *scroll = scroll.saturating_add(if key == KeyCode::PageDown { 8 } else { 1 })
+        }
+        KeyCode::Home => *scroll = 0,
+        KeyCode::End => *scroll = u16::MAX,
+        _ => {}
+    }
+}
 impl Navigation {
     pub fn view(&self) -> View {
         self.view
@@ -350,6 +391,7 @@ impl Navigation {
                 editor.measure(value, self.search_width.max(1), 1);
                 editor.point(value, start..end, column, extend);
             }
+            SearchEdit::DragEdge(delta, column) => editor.drag_edge(value, delta, column),
             SearchEdit::Clear | SearchEdit::Escape => editor.clear(value),
         }
         if escape {
@@ -375,6 +417,13 @@ impl Navigation {
         self.workspace.follow_output(self.view.index())
     }
     pub fn toggle_output_follow(&mut self) {
+        if !self.has_response || !matches!(self.view, View::Home | View::Running) {
+            return;
+        }
+        if self.view == View::Running {
+            self.running_response = true;
+        }
+        self.focus(Pane::Detail);
         self.workspace
             .set_follow_output(self.view.index(), !self.following_output());
     }
@@ -484,7 +533,7 @@ impl Navigation {
     pub fn web_url(&mut self, url: String) {
         self.pointer.cancel();
         self.search = None;
-        self.modal = Modal::WebUrl(url);
+        self.modal = Modal::WebUrl { url, scroll: 0 };
     }
     pub fn confirm(&mut self, question: String, action: Confirmation) {
         self.pointer.cancel();
@@ -517,7 +566,50 @@ impl Navigation {
     pub fn cancel_pointer(&mut self) {
         self.pointer.cancel();
     }
+    fn list_slot(kind: Kind, shelf: Shelf) -> usize {
+        match kind {
+            Kind::Models => match shelf {
+                Shelf::Cached => 0,
+                Shelf::Catalog => 1,
+                Shelf::Partial => 2,
+            },
+            Kind::Devices => 3,
+            Kind::Profiles => 4,
+            Kind::Config => 5,
+        }
+    }
+    pub fn shelf_changed(&mut self, shelf: Shelf) {
+        self.search = None;
+        let view = self.view.index();
+        let last = self.library_anchors[Self::list_slot(Kind::Models, shelf)].last();
+        self.workspace.viewport(view, Pane::Main).offset = last.unwrap_or(0);
+        self.workspace.viewport(view, Pane::Detail).offset = 0;
+        if last.is_none() {
+            self.workspace.request_reveal(view);
+        } else {
+            self.workspace.take_reveal(view);
+        }
+    }
+    fn output_visible(&self) -> bool {
+        self.has_response
+            && (self.view == View::Home || (self.view == View::Running && self.running_response))
+    }
+    fn viewport(&mut self, pane: Pane) -> &mut Viewport {
+        let view = self.view.index();
+        if pane == Pane::Detail && self.output_visible() {
+            self.workspace.output(view)
+        } else {
+            self.workspace.viewport(view, pane)
+        }
+    }
+    fn toggle_response(&mut self) {
+        if self.view == View::Running && self.has_response {
+            self.running_response = !self.running_response;
+            self.focus(Pane::Detail);
+        }
+    }
     pub fn reveal_owner(&mut self, _: usize) {
+        self.running_response = false;
         self.reveal_library(0);
     }
     pub fn reveal_library(&mut self, _: usize) {
@@ -527,17 +619,34 @@ impl Navigation {
             .offset = 0;
     }
     pub fn follow_response(&mut self) {
+        self.output_anchors = Default::default();
+        self.running_response = true;
+        self.has_response = true;
+        if matches!(self.view, View::Home | View::Running) {
+            self.focus(Pane::Detail);
+        }
         for view in [View::Home, View::Running] {
             self.workspace.set_follow_output(view.index(), true);
-            self.workspace.viewport(view.index(), Pane::Detail).offset = 0;
+            *self.workspace.output(view.index()) = Viewport::default();
         }
     }
-    pub fn scroll(&mut self, pane: Pane, motion: Motion) -> bool {
-        let viewport = self.workspace.viewport(self.view.index(), pane);
+    pub fn scroll(&mut self, pane: Pane, motion: Motion, shelf: Shelf) -> bool {
+        let output = self.output_visible();
+        let viewport = self.viewport(pane);
         viewport.scroll(motion);
         let at_end = viewport.offset == viewport.max;
-        if pane == Pane::Detail {
+        if pane == Pane::Detail && output {
+            self.output_anchors[usize::from(self.view == View::Running)] = Anchor::default();
             self.workspace.set_follow_output(self.view.index(), at_end);
+        }
+        if pane == Pane::Main {
+            if let Some(kind) = self.view.library() {
+                self.library_anchors[Self::list_slot(kind, shelf)] = Anchor::default();
+            } else if self.view == View::Running {
+                self.running_anchor = Anchor::default();
+            } else if self.view == View::Logs {
+                self.log_anchor = Anchor::default();
+            }
         }
         // Wheel/manual scrollbar deliberately does not reveal the selection.
         if pane == Pane::Main {
@@ -567,6 +676,16 @@ impl Navigation {
                     None
                 }
             }
+            Intent::EditEdge(delta, column) => {
+                if let Modal::Form { form, editor } = &mut self.modal {
+                    editor.drag_edge(&form.value, delta, column);
+                    Some(Action::Redraw)
+                } else if self.inline_search() {
+                    Some(Action::Search(SearchEdit::DragEdge(delta, column)))
+                } else {
+                    None
+                }
+            }
             Intent::EditScroll(motion) => {
                 if let Modal::Form { editor, .. } = &mut self.modal {
                     editor.scroll(motion);
@@ -576,9 +695,7 @@ impl Navigation {
                 }
             }
             Intent::ScrollModal(delta, max) => {
-                if let Modal::Confirm { scroll, .. } | Modal::Details { scroll, .. } =
-                    &mut self.modal
-                {
+                if let Some(scroll) = self.modal.text_scroll() {
                     *scroll = scroll.saturating_add_signed(delta).min(max);
                     Some(Action::Redraw)
                 } else if let Modal::Form { editor, .. } = &mut self.modal {
@@ -587,6 +704,12 @@ impl Navigation {
                 } else if let Modal::Choice(picker) = &mut self.modal {
                     picker.scroll = picker.scroll.saturating_add_signed(delta).min(max);
                     picker.move_by(delta as isize);
+                    Some(Action::Redraw)
+                } else if let Modal::Palette(palette) = &mut self.modal {
+                    palette.cursor = palette
+                        .cursor
+                        .saturating_add_signed(delta as isize)
+                        .min(palette.matches().len().saturating_sub(1));
                     Some(Action::Redraw)
                 } else if let Modal::Menu(menu) = &mut self.modal {
                     menu.scroll = menu.scroll.saturating_add_signed(delta).min(max);
@@ -610,6 +733,7 @@ impl Navigation {
                     Target::Row(kind, key) | Target::RowMenu(kind, key) => {
                         Some(Action::RowActions(kind, key))
                     }
+                    Target::Log(id) | Target::LogDetails(id) => Some(Action::ShowLog(Some(id))),
                     Target::Owner(owner) | Target::OwnerMenu(owner) => {
                         Some(Action::OwnerActions(owner))
                     }
@@ -699,6 +823,10 @@ impl Navigation {
                         self.focus(pane);
                         Action::Redraw
                     }
+                    Target::ResponseTab => {
+                        self.toggle_response();
+                        Action::Redraw
+                    }
                     Target::Maximize(pane) => {
                         self.search = None;
                         self.workspace.toggle_maximize(self.view.index(), pane);
@@ -708,6 +836,11 @@ impl Navigation {
                         self.focus(Pane::Main);
                         Action::SelectRow(kind, key)
                     }
+                    Target::Log(id) => {
+                        self.focus(Pane::Main);
+                        Action::SelectLog(id)
+                    }
+                    Target::LogDetails(id) => Action::ShowLog(Some(id)),
                     Target::Owner(owner) => {
                         self.focus(Pane::Main);
                         Action::SelectOwner(owner)
@@ -718,7 +851,7 @@ impl Navigation {
                     }
                     Target::Help => {
                         self.search = None;
-                        self.modal = Modal::Help;
+                        self.modal = Modal::Help { scroll: 0 };
                         Action::Redraw
                     }
                     _ => return None,
@@ -771,7 +904,13 @@ impl Navigation {
                     self.modal = Modal::None;
                     Action::Redraw
                 }
-                Char('q') if self.idle() => Action::Quit,
+                Char('q')
+                    if self.idle()
+                        && (key.modifiers.contains(KeyModifiers::CONTROL)
+                            || !self.view.searchable()) =>
+                {
+                    Action::Quit
+                }
                 Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     if self.idle() {
                         Action::Quit
@@ -822,31 +961,22 @@ impl Navigation {
                 }
                 return Action::Redraw;
             }
+            Modal::Help { .. } | Modal::Details { .. } => {
+                if matches!(key.code, Esc | Enter) {
+                    return self.dismiss_modal();
+                }
+                if let Some(scroll) = self.modal.text_scroll() {
+                    move_text_scroll(scroll, key.code);
+                }
+                return Action::Redraw;
+            }
             #[cfg(feature = "web")]
-            Modal::WebUrl(_) => {
+            Modal::WebUrl { .. } => {
                 if matches!(key.code, Esc | Enter) {
-                    self.modal = Modal::None;
+                    return self.dismiss_modal();
                 }
-                return Action::Redraw;
-            }
-            Modal::Details { scroll, .. } => {
-                match key.code {
-                    Esc | Enter => return self.dismiss_modal(),
-                    Up | PageUp => {
-                        *scroll = scroll.saturating_sub(if key.code == PageUp { 8 } else { 1 })
-                    }
-                    Down | PageDown => {
-                        *scroll = scroll.saturating_add(if key.code == PageDown { 8 } else { 1 })
-                    }
-                    Home => *scroll = 0,
-                    End => *scroll = u16::MAX,
-                    _ => {}
-                }
-                return Action::Redraw;
-            }
-            Modal::Help => {
-                if matches!(key.code, Esc | Enter) {
-                    self.modal = Modal::None;
+                if let Some(scroll) = self.modal.text_scroll() {
+                    move_text_scroll(scroll, key.code);
                 }
                 return Action::Redraw;
             }
@@ -1039,7 +1169,11 @@ impl Navigation {
         }
         match key.code {
             F(1) => {
-                self.modal = Modal::Help;
+                self.modal = Modal::Help { scroll: 0 };
+                Action::Redraw
+            }
+            F(3) if self.view == View::Running && self.has_response => {
+                self.toggle_response();
                 Action::Redraw
             }
             F(4) => Action::OpenActions,
@@ -1088,7 +1222,7 @@ impl Navigation {
                 Action::Redraw
             }
             Char('?') => {
-                self.modal = Modal::Help;
+                self.modal = Modal::Help { scroll: 0 };
                 Action::Redraw
             }
             Enter if !self.rail() && matches!(self.view, View::Profiles | View::Config) => {
@@ -1150,10 +1284,7 @@ impl Navigation {
             Char('m') if !self.rail() && self.view == View::Models => {
                 Action::Library(LibraryAction::Cycle)
             }
-            Enter
-                if !self.rail()
-                    && matches!(self.view, View::Models | View::Devices | View::Logs) =>
-            {
+            Enter if !self.rail() && matches!(self.view, View::Models | View::Devices) => {
                 Action::OpenActions
             }
             Char('i') if !self.rail() && matches!(self.view, View::Models | View::Devices) => {
@@ -1193,6 +1324,7 @@ impl Navigation {
                 Action::Load
             }
             Enter if !self.rail() && self.view == View::Running => Action::OpenActions,
+            Enter if !self.rail() && self.view == View::Logs => Action::ShowLog(None),
             Enter | Char('p')
                 if !self.rail() && matches!(self.view, View::Home | View::Running) =>
             {
@@ -1249,6 +1381,8 @@ impl Navigation {
             Down | Char('j') if matches!(self.view, View::Profiles | View::Config) => {
                 Action::Settings(SettingsAction::Move(1))
             }
+            Up if self.view == View::Logs => Action::MoveLog(-1),
+            Down if self.view == View::Logs => Action::MoveLog(1),
             Up | Char('k') if self.view == View::Running => Action::MoveOwner(-1),
             Down | Char('j') if self.view == View::Running => Action::MoveOwner(1),
             Up | Char('k') => Action::Scroll(pane, Motion::Step(-1)),
@@ -1627,36 +1761,6 @@ fn content(app: &App, theme: Theme) -> Content {
         }
         View::Profiles | View::Config | View::Logs => unreachable!("dedicated workspace renderer"),
     }
-    if matches!(app.navigation.view, View::Home | View::Running)
-        && let Some(response) = &app.response
-    {
-        if detail_at.is_none() {
-            detail_at = Some(rows.len());
-        }
-        rows.push(Line::default());
-        rows.push(label(
-            response.owner.as_ref().map_or_else(
-                || "Response".into(),
-                |owner| {
-                    format!(
-                        "Response · {} · registration {}",
-                        owner.alias, owner.registration
-                    )
-                },
-            ),
-            theme,
-        ));
-        if response.text.is_empty() {
-            rows.push(text("No output yet"));
-        } else {
-            rows.extend(response.text.lines().map(text));
-        }
-        if response.clipped {
-            rows.push(text(
-                "[Display limit reached; original output was not altered]",
-            ));
-        }
-    }
     let details = detail_at.map_or_else(Vec::new, |at| rows.split_off(at));
     Content {
         rows,
@@ -1907,6 +2011,18 @@ impl From<Option<usize>> for ScrollMode {
         row.map_or(Self::Manual, Self::Reveal)
     }
 }
+fn paint_bar(frame: &mut Frame<'_>, theme: Theme, bar: Scrollbar) {
+    for y in bar.track.y..bar.track.bottom() {
+        let thumb = y >= bar.thumb.y && y < bar.thumb.bottom();
+        frame.buffer_mut()[(bar.track.x, y)]
+            .set_symbol(if thumb { "┃" } else { "│" })
+            .set_style(if thumb {
+                theme.muted()
+            } else {
+                theme.border(false)
+            });
+    }
+}
 fn scroll_rows(
     frame: &mut Frame<'_>,
     nav: &mut Navigation,
@@ -1926,7 +2042,7 @@ fn scroll_rows(
         area.height,
     );
     let track = Rect::new(area.right().saturating_sub(1), area.y, 1, area.height);
-    let viewport = nav.workspace.viewport(nav.view.index(), which);
+    let viewport = nav.viewport(which);
     viewport.measure(
         paragraph
             .line_count(body.width)
@@ -1941,16 +2057,7 @@ fn scroll_rows(
     let viewport = *viewport;
     frame.render_widget(paragraph.scroll((viewport.offset as u16, 0)), body);
     if let Some(bar) = Scrollbar::new(which, track, viewport) {
-        for y in track.y..track.bottom() {
-            let thumb = y >= bar.thumb.y && y < bar.thumb.bottom();
-            frame.buffer_mut()[(track.x, y)]
-                .set_symbol(if thumb { "┃" } else { "│" })
-                .set_style(if thumb {
-                    theme.muted()
-                } else {
-                    theme.border(false)
-                });
-        }
+        paint_bar(frame, theme, bar);
         nav.hits.add(track, Target::Scrollbar(bar));
     }
     (body, viewport.offset)
@@ -2023,20 +2130,26 @@ fn render_editor(
     }
     let track = Rect::new(body.right(), body.y, 1, body.height);
     if let Some(bar) = Scrollbar::new(Pane::Main, track, viewport) {
-        for y in track.y..track.bottom() {
-            let thumb = y >= bar.thumb.y && y < bar.thumb.bottom();
-            frame.buffer_mut()[(track.x, y)]
-                .set_symbol(if thumb { "┃" } else { "│" })
-                .set_style(if thumb {
-                    theme.muted()
-                } else {
-                    theme.border(false)
-                });
-        }
+        paint_bar(frame, theme, bar);
         hits.add(track, Target::EditorBar(bar));
     }
 }
 
+fn modal_text(
+    frame: &mut Frame<'_>,
+    hits: &mut Hits,
+    content: Rect,
+    paragraph: Paragraph<'_>,
+    scroll: &mut u16,
+) {
+    let max = paragraph
+        .line_count(content.width)
+        .saturating_sub(content.height as usize)
+        .min(u16::MAX as usize) as u16;
+    *scroll = (*scroll).min(max);
+    frame.render_widget(paragraph.scroll((*scroll, 0)), content);
+    hits.add(content, Target::ModalScroll(max));
+}
 fn render_search(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
     if area.is_empty() || area.width < 12 {
         return;
@@ -2097,10 +2210,11 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
     let area = frame.area();
     let theme = app.theme();
     app.navigation.hits.clear();
+    app.navigation.has_response = app.response.is_some();
     frame.render_widget(Block::default().style(theme.canvas()), area);
     app.navigation.too_small = area.width < 20 || area.height < 7;
     if app.navigation.too_small {
-        frame.render_widget(Paragraph::new("ZeroGravity · resize / q quit"), area);
+        frame.render_widget(Paragraph::new("ZeroGravity · resize / Ctrl-Q quit"), area);
         return;
     }
     let [header, body, footer] = Layout::vertical([
@@ -2239,10 +2353,11 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
         _ => true,
     };
     let busy = app.active.is_some() || app.job.is_some();
+    let body = if area.height < 12 { area } else { body };
     match &mut app.navigation.modal {
         Modal::None => {}
         #[cfg(feature = "web")]
-        Modal::WebUrl(url) => {
+        Modal::WebUrl { url, scroll } => {
             let popup = center(body, 110, 11);
             frame.render_widget(Clear, popup);
             let block = dialog(" Embedded Web ", theme);
@@ -2250,7 +2365,10 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             frame.render_widget(block, popup);
             let [content, controls] =
                 Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(inner);
-            frame.render_widget(
+            modal_text(
+                frame,
+                &mut app.navigation.hits,
+                content,
                 Paragraph::new(vec![
                     label("Open this private URL in a browser", theme),
                     text(url),
@@ -2261,11 +2379,11 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     ),
                 ])
                 .wrap(Wrap { trim: false }),
-                content,
+                scroll,
             );
             close_button(frame, &mut app.navigation.hits, theme, controls);
         }
-        Modal::Help => {
+        Modal::Help { scroll } => {
             let popup = center(body, 68, 23);
             frame.render_widget(Clear, popup);
             let block = dialog(" Help ", theme);
@@ -2273,7 +2391,10 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             frame.render_widget(block, popup);
             let [content, controls] =
                 Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(inner);
-            frame.render_widget(
+            modal_text(
+                frame,
+                &mut app.navigation.hits,
+                content,
                 Paragraph::new(vec![
                     label("Navigation", theme),
                     text("Alt+1–9   Views · Alt+: go to view"),
@@ -2286,14 +2407,14 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                     text("F4 / …    Context actions · right-click row"),
                     text("F10       Session menu · Web / theme / refresh"),
                     text("Alt+key   Listed operation shortcuts"),
-                    text("F6 panes · F7 maximize · F8 mouse"),
+                    text("F3 model/response · F6 panes · F7 maximize · F8 mouse"),
                     text("Alt+←/→ rail · Ctrl+arrows split size"),
                     text("Editor    Drag or Shift+arrows select"),
                     text("Esc       Back / close dialog"),
                     text("Ctrl-Q    Quit · Ctrl-C cancel / quit"),
                 ])
                 .wrap(Wrap { trim: false }),
-                content,
+                scroll,
             );
             close_button(frame, &mut app.navigation.hits, theme, controls);
         }
@@ -2312,13 +2433,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(inner);
             let paragraph = Paragraph::new(lines.iter().map(text).collect::<Vec<_>>())
                 .wrap(Wrap { trim: false });
-            let max = paragraph
-                .line_count(content.width)
-                .saturating_sub(content.height as usize)
-                .min(u16::MAX as usize) as u16;
-            *scroll = (*scroll).min(max);
-            frame.render_widget(paragraph.scroll((*scroll, 0)), content);
-            app.navigation.hits.add(content, Target::ModalScroll(max));
+            modal_text(frame, &mut app.navigation.hits, content, paragraph, scroll);
             close_button(frame, &mut app.navigation.hits, theme, controls);
         }
         Modal::Menu(menu) => {
@@ -2681,15 +2796,13 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
                 Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
             let paragraph = Paragraph::new(question.lines().map(text).collect::<Vec<_>>())
                 .wrap(Wrap { trim: false });
-            let max = paragraph
-                .line_count(question_area.width)
-                .saturating_sub(question_area.height as usize)
-                .min(u16::MAX as usize) as u16;
-            *scroll = (*scroll).min(max);
-            frame.render_widget(paragraph.scroll((*scroll, 0)), question_area);
-            app.navigation
-                .hits
-                .add(question_area, Target::ModalScroll(max));
+            modal_text(
+                frame,
+                &mut app.navigation.hits,
+                question_area,
+                paragraph,
+                scroll,
+            );
             modal_buttons(
                 frame,
                 &mut app.navigation.hits,
@@ -2708,30 +2821,44 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &mut App) {
             frame.render_widget(block, popup);
             let [content, controls] =
                 Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(inner);
-            let mut rows = vec![
-                label(format!("› {}", palette.query), theme),
-                Line::default(),
-            ];
+            let [query, list] =
+                Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(content);
+            frame.render_widget(
+                Paragraph::new(label(format!("› {}", palette.query), theme)),
+                query,
+            );
             let matches = palette.matches();
+            let max = matches.len().saturating_sub(list.height as usize);
+            palette.scroll = palette.scroll.min(max);
+            if palette.cursor < palette.scroll {
+                palette.scroll = palette.cursor;
+            } else if list.height > 0 && palette.cursor >= palette.scroll + list.height as usize {
+                palette.scroll = (palette.cursor + 1 - list.height as usize).min(max);
+            }
+            app.navigation
+                .hits
+                .add(list, Target::ModalScroll(max as u16));
             if matches.is_empty() {
-                rows.push(text("No matching view"));
+                frame.render_widget(Paragraph::new("No matching view"), list);
             }
             for (i, view) in matches.into_iter().enumerate() {
-                if let Some(rect) = row_rect(content, rows.len(), 0) {
+                if let Some(rect) = row_rect(list, i, palette.scroll) {
+                    let line = text(format!(
+                        "{} {}",
+                        if i == palette.cursor { ">" } else { " " },
+                        view.name()
+                    ));
+                    frame.render_widget(
+                        Paragraph::new(if i == palette.cursor {
+                            line.style(theme.selected())
+                        } else {
+                            line
+                        }),
+                        rect,
+                    );
                     app.navigation.hits.add(rect, Target::Navigate(view));
                 }
-                let line = text(format!(
-                    "{} {}",
-                    if i == palette.cursor { ">" } else { " " },
-                    view.name()
-                ));
-                rows.push(if i == palette.cursor {
-                    line.style(theme.selected())
-                } else {
-                    line
-                });
             }
-            frame.render_widget(Paragraph::new(rows), content);
             close_button(frame, &mut app.navigation.hits, theme, controls);
         }
     }
@@ -3000,6 +3127,22 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
             .workspace
             .take_reveal(app.navigation.view.index())
             .then_some(selected_line);
+        let slot = Navigation::list_slot(kind, app.library.shelf);
+        let viewport = app
+            .navigation
+            .workspace
+            .viewport(app.navigation.view.index(), Pane::Main);
+        viewport.offset = app.navigation.library_anchors[slot].restore(
+            viewport.offset,
+            reveal.is_some(),
+            keys.is_empty(),
+            |key| {
+                keys.iter()
+                    .find(|(_, candidate)| *candidate == key)
+                    .map(|(row, _)| *row)
+            },
+            viewport.offset,
+        );
         let (visible, offset) = scroll_rows(
             frame,
             &mut app.navigation,
@@ -3009,6 +3152,11 @@ fn render_library(frame: &mut Frame<'_>, area: Rect, app: &mut App, kind: Kind, 
             Paragraph::new(lines),
             reveal.into(),
         );
+        app.navigation.library_anchors[slot].remember(offset, || {
+            keys.iter()
+                .find(|(row, _)| *row >= offset)
+                .map(|(row, key)| (*row, (*key).clone()))
+        });
         for (index, key) in keys {
             if let Some(rect) = row_rect(visible, index, offset) {
                 app.navigation
@@ -3102,26 +3250,181 @@ fn render_logs(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
         heading.push_str(&format!(" · {dropped} older entries dropped"));
     }
     frame.render_widget(Paragraph::new(text(heading)).style(theme.muted()), head);
-    let rows = app.logs.lines();
+    let rows = app.logs.entries();
+    if app
+        .logs
+        .selected
+        .is_some_and(|id| !rows.iter().any(|row| row.sequence == id))
+    {
+        app.logs.selected = None;
+    }
+    let selected = app.logs.selected;
+    let reveal = app
+        .navigation
+        .workspace
+        .take_reveal(View::Logs.index())
+        .then(|| rows.iter().position(|row| Some(row.sequence) == selected))
+        .flatten();
     let lines = if rows.is_empty() {
         vec![text("No notifications received.")]
     } else {
-        rows.iter().map(text).collect()
+        rows.iter()
+            .map(|entry| {
+                item_line(
+                    &entry.line(),
+                    None,
+                    body.width.saturating_sub(6),
+                    Some(entry.sequence) == selected,
+                    theme,
+                )
+            })
+            .collect()
     };
-    scroll_rows(
+    let follow = app.logs.following();
+    let viewport = app
+        .navigation
+        .workspace
+        .viewport(View::Logs.index(), Pane::Main);
+    if !follow {
+        viewport.offset = app.navigation.log_anchor.restore(
+            viewport.offset,
+            reveal.is_some(),
+            rows.is_empty(),
+            |id| rows.iter().position(|row| row.sequence == *id),
+            0,
+        );
+    }
+    let (visible, offset) = scroll_rows(
         frame,
         &mut app.navigation,
         theme,
         Pane::Main,
         body,
-        Paragraph::new(lines).wrap(Wrap { trim: false }),
-        if app.logs.following() {
+        Paragraph::new(lines),
+        if follow {
             ScrollMode::Follow
         } else {
-            ScrollMode::Manual
+            reveal.into()
         },
     );
+    if follow {
+        app.navigation.log_anchor = Anchor::default();
+    }
+    app.navigation.log_anchor.remember(offset, || {
+        rows.get(offset).map(|entry| (offset, entry.sequence))
+    });
+    for (i, entry) in rows.iter().enumerate() {
+        if let Some(rect) = row_rect(visible, i, offset) {
+            app.navigation.hits.add(rect, Target::Log(entry.sequence));
+            if selected == Some(entry.sequence) && rect.width >= 7 {
+                control(
+                    frame,
+                    &mut app.navigation,
+                    theme,
+                    Rect::new(rect.right() - 4, rect.y, 4, 1),
+                    " … ",
+                    Target::LogDetails(entry.sequence),
+                );
+            }
+        }
+    }
 }
+fn render_response(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
+    let Some(response) = &app.response else {
+        return;
+    };
+    if area.width < 3 || area.height == 0 {
+        return;
+    }
+    let heading = response.owner.as_ref().map_or_else(
+        || "Response".into(),
+        |owner| {
+            // Long digest aliases must not conceal the response owner.
+            let prefix = format!("registration {} · ", owner.registration);
+            format!(
+                "{prefix}{}",
+                truncate_cells(
+                    &owner.alias,
+                    (area.width as usize).saturating_sub(prefix.width())
+                )
+            )
+        },
+    );
+    let [head, body] = Layout::vertical([
+        Constraint::Length(u16::from(area.height > 1)),
+        Constraint::Min(1),
+    ])
+    .areas(area);
+    frame.render_widget(Paragraph::new(text(heading)).style(theme.muted()), head);
+    let width = body.width.saturating_sub(2).max(1);
+    let value = if response.text.is_empty() {
+        "No output yet"
+    } else {
+        &response.text
+    };
+    let visual = editor::VisualRows::new(value, width);
+    let view = app.navigation.view;
+    let slot = usize::from(view == View::Running);
+    let follow = app.navigation.following_output();
+    let viewport = app.navigation.workspace.output(view.index());
+    if !follow {
+        viewport.offset = app.navigation.output_anchors[slot].restore(
+            viewport.offset,
+            false,
+            false,
+            |byte| {
+                Some(
+                    visual
+                        .rows
+                        .partition_point(|row| row.start <= *byte)
+                        .saturating_sub(1),
+                )
+            },
+            viewport.offset,
+        );
+    }
+    let viewport = app.navigation.workspace.output(view.index());
+    viewport.measure(
+        visual.rows.len() + usize::from(response.clipped),
+        body.height,
+    );
+    if follow {
+        viewport.scroll(Motion::End);
+    }
+    let viewport = *viewport;
+    let offset = viewport.offset;
+    let visible = Rect::new(body.x + 1, body.y, width, body.height);
+    let mut lines = Vec::new();
+    for row in visual.rows.iter().skip(offset).take(body.height as usize) {
+        lines.push(Line::from(
+            value[row.clone()]
+                .graphemes(true)
+                .map(|g| Span::raw(editor::display(g, width)))
+                .collect::<Vec<_>>(),
+        ));
+    }
+    if response.clipped
+        && lines.len() < body.height as usize
+        && offset + lines.len() == visual.rows.len()
+    {
+        lines.push(
+            text("[Display limit reached; original output was not altered]").style(theme.muted()),
+        );
+    }
+    frame.render_widget(Paragraph::new(lines), visible);
+    let track = Rect::new(body.right() - 1, body.y, 1, body.height);
+    if let Some(bar) = Scrollbar::new(Pane::Detail, track, viewport) {
+        paint_bar(frame, theme, bar);
+        app.navigation.hits.add(track, Target::Scrollbar(bar));
+    }
+    if follow {
+        app.navigation.output_anchors[slot] = Anchor::default();
+    }
+    app.navigation.output_anchors[slot].remember(offset, || {
+        visual.rows.get(offset).map(|row| (offset, row.start))
+    });
+}
+
 fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
     match app.navigation.view {
         View::Models => {
@@ -3178,6 +3481,21 @@ fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: The
         } else {
             None
         };
+        if view == View::Running {
+            let viewport = app.navigation.workspace.viewport(view.index(), Pane::Main);
+            viewport.offset = app.navigation.running_anchor.restore(
+                viewport.offset,
+                reveal.is_some(),
+                owners.is_empty(),
+                |key| {
+                    owners
+                        .iter()
+                        .find(|(_, candidate)| candidate == key)
+                        .map(|(row, _)| *row)
+                },
+                viewport.offset,
+            );
+        }
         let (visible, offset) = scroll_rows(
             frame,
             &mut app.navigation,
@@ -3191,6 +3509,11 @@ fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: The
             },
             reveal.into(),
         );
+        if view == View::Running {
+            app.navigation.running_anchor.remember(offset, || {
+                owners.iter().find(|(row, _)| *row >= offset).cloned()
+            });
+        }
         for (line, owner) in owners {
             if let Some(rect) = row_rect(visible, line, offset) {
                 app.navigation.hits.add(rect, Target::Owner(owner.clone()));
@@ -3213,39 +3536,49 @@ fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: The
         menu_visible = true;
     }
     if !detail.is_empty() {
+        let output = app.navigation.output_visible();
         let inner = pane_body(
             frame,
             detail,
             &mut app.navigation,
             theme,
             Pane::Detail,
-            if view == View::Home {
-                "Response"
-            } else {
-                "Selected"
-            },
+            if output { "Response" } else { "Selected" },
         );
         if !menu_visible {
             pane_actions(frame, &mut app.navigation, theme, detail);
         }
-        let follow = app.response.is_some()
-            && app
-                .navigation
-                .workspace
-                .follow_output(app.navigation.view.index());
-        scroll_rows(
-            frame,
-            &mut app.navigation,
-            theme,
-            Pane::Detail,
-            inner,
-            Paragraph::new(details).wrap(Wrap { trim: false }),
-            if follow {
-                ScrollMode::Follow
+        if view == View::Running && app.response.is_some() && detail.width >= 20 {
+            // A single tab switch, not another toolbar. Title region
+            // remains distinct from maximize/restore and pane actions.
+            let title = if app.navigation.running_response {
+                " Response↔"
             } else {
-                ScrollMode::Manual
-            },
-        );
+                " Model ↔ "
+            };
+            let width = title.chars().count() as u16;
+            control(
+                frame,
+                &mut app.navigation,
+                theme,
+                Rect::new(detail.x, detail.y, width, 1),
+                title,
+                Target::ResponseTab,
+            );
+        }
+        if app.navigation.output_visible() {
+            render_response(frame, inner, app, theme);
+        } else {
+            scroll_rows(
+                frame,
+                &mut app.navigation,
+                theme,
+                Pane::Detail,
+                inner,
+                Paragraph::new(details).wrap(Wrap { trim: false }),
+                ScrollMode::Manual,
+            );
+        }
     }
 }
 
@@ -3280,7 +3613,7 @@ mod tests {
             nav.key(key(KeyCode::Down)),
             Action::Scroll(Pane::Main, Motion::Step(1))
         );
-        nav.scroll(Pane::Main, Motion::Step(1));
+        nav.scroll(Pane::Main, Motion::Step(1), Shelf::Cached);
         nav.key(key(KeyCode::Char(':')));
         assert_eq!(nav.key(key(KeyCode::Char('q'))), Action::Redraw);
         assert!(matches!(&nav.modal, Modal::Palette(p) if p.query=="q"));
@@ -3549,6 +3882,153 @@ mod tests {
                 .iter()
                 .any(|b| matches!(b.label, "Load" | "Run" | "Verify payloads" | "Remove"))
         );
+        // Actual rendered list anchors, including per-shelf preservation
+        // and a temporary viewport clamp after a larger resize.
+        app.library.shelf = Shelf::Cached;
+        app.navigation.shelf_changed(Shelf::Cached);
+        let rows: Vec<_> = (0..40)
+            .map(|i| super::super::library::Row {
+                key: Key::Snapshot(format!("fixture-{i}")),
+                title: format!("fixture-{i:02}"),
+                annotation: None,
+                details: vec![],
+                technical: vec![],
+            })
+            .collect();
+        app.library.test_replace(Kind::Models, rows.clone());
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        app.navigation
+            .scroll(Pane::Main, Motion::At(12), Shelf::Cached);
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        let mut reordered = rows;
+        reordered.rotate_right(2);
+        app.library.test_replace(Kind::Models, reordered);
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        assert_eq!(
+            app.navigation
+                .workspace
+                .viewport(View::Models.index(), Pane::Main)
+                .offset,
+            14
+        );
+        let mut tall = Terminal::new(TestBackend::new(128, 70)).unwrap();
+        tall.draw(|frame| render(frame, &mut app)).unwrap();
+        assert_eq!(
+            app.navigation
+                .workspace
+                .viewport(View::Models.index(), Pane::Main)
+                .offset,
+            0
+        );
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        assert_eq!(
+            app.navigation
+                .workspace
+                .viewport(View::Models.index(), Pane::Main)
+                .offset,
+            14
+        );
+        app.library.shelf = Shelf::Catalog;
+        app.navigation.shelf_changed(Shelf::Catalog);
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        app.library.shelf = Shelf::Cached;
+        app.navigation.shelf_changed(Shelf::Cached);
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        assert_eq!(
+            app.navigation
+                .workspace
+                .viewport(View::Models.index(), Pane::Main)
+                .offset,
+            14
+        );
+
+        // Render bounded response text on its own viewport. Changing
+        // model-detail scroll/focus cannot move or resume that response.
+        app.navigation.open(View::Running);
+        app.response = Some(super::super::work::Response {
+            owner: Some(Owner {
+                alias: "fixture".into(),
+                registration: 9,
+            }),
+            text: (0..50).map(|i| format!("response line {i:02}\n")).collect(),
+            ..Default::default()
+        });
+        app.navigation.follow_response();
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        assert!(app.navigation.output_visible());
+        assert!(
+            app.navigation
+                .workspace
+                .output(View::Running.index())
+                .offset
+                > 0
+        );
+        app.navigation
+            .scroll(Pane::Detail, Motion::At(8), Shelf::Cached);
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        assert!(!app.navigation.following_output());
+        app.navigation.toggle_response();
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        assert!(!app.navigation.output_visible());
+        app.navigation
+            .scroll(Pane::Detail, Motion::End, Shelf::Cached);
+        assert!(!app.navigation.following_output());
+        app.navigation.toggle_response();
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        assert_eq!(
+            app.navigation
+                .workspace
+                .output(View::Running.index())
+                .offset,
+            8
+        );
+        app.response
+            .as_mut()
+            .unwrap()
+            .text
+            .push_str("new appended line\n");
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        assert_eq!(
+            app.navigation
+                .workspace
+                .output(View::Running.index())
+                .offset,
+            8
+        );
+        let mut narrow = Terminal::new(TestBackend::new(60, 18)).unwrap();
+        narrow.draw(|frame| render(frame, &mut app)).unwrap();
+        assert_eq!(
+            app.navigation
+                .workspace
+                .output(View::Running.index())
+                .offset,
+            8
+        );
+
+        // Minimum usable terminal: a menu still has actual visible
+        // selectable rows, not just its footer.
+        app.navigation.open(View::Home);
+        app.response = None;
+        app.navigation.menu(Menu::new(&app, false));
+        let mut compact = Terminal::new(TestBackend::new(20, 7)).unwrap();
+        compact.draw(|frame| render(frame, &mut app)).unwrap();
+        use crossterm::event::{MouseButton, MouseEventKind};
+        let event = |kind| MouseEvent {
+            kind,
+            column: 4,
+            row: 1,
+            modifiers: KeyModifiers::NONE,
+        };
+        assert!(
+            app.navigation
+                .mouse(event(MouseEventKind::Down(MouseButton::Left)))
+                .is_none()
+        );
+        assert!(
+            matches!(app.navigation.mouse(event(MouseEventKind::Up(MouseButton::Left))),
+            Some(Action::Bound(bound)) if bound.command==super::super::controls::Command::Run)
+        );
+        app.navigation.dismiss_modal();
         runtime.shutdown().unwrap();
     }
 }

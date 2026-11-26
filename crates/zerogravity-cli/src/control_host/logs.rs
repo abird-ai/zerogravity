@@ -54,6 +54,7 @@ impl Component {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Entry {
     pub sequence: u64,
     pub level: Level,

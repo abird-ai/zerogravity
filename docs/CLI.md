@@ -155,14 +155,22 @@ opens exact metadata, full digest/revision, raw bytes and last action
 result without executing inspection or verification. Disabled actions
 cannot activate; changed observations require choosing again.
 Form and confirmation buttons use the same typed actions as
-Enter/Ctrl-S and y/n/Esc. F9 toggles response following.
+Enter/Ctrl-S and y/n/Esc. The Running detail title switches between
+model details and Response (F3); each has its own viewport. New
+responses follow the tail, manual scroll pauses and returning to the
+tail or F9 resumes. Selected item/registration and log sequence
+anchors preserve scroll through refresh and resize; model shelves
+keep their own positions.
 
 In Config, Edit from the context menu or Alt+e opens a finite setting
 picker when available; choose a row and apply explicitly. F2 opens its
 selected value in the original YAML form. Enter retains direct YAML
 value editing; raw document repair remains available. Logs Level and
 Component choices are in the pane menu (Alt+l/f, uppercase Alt+L/F
-retain cycling). Filtering is client-local and does not trigger any
+retain cycling). Click a log row or select it with arrows; Enter,
+its ellipsis or right-click opens the exact safe operational entry.
+Selecting/scrolling off tail pauses the bounded view; End resumes.
+Filtering is client-local and does not trigger any
 provider acquisition or runtime action.
 
 Text forms and the raw editor accept click-to-place caret, drag selection,
@@ -170,7 +178,11 @@ Shift+arrow selection, bounded paste/replacement, PageUp/PageDown and
 mouse wheel/scrollbar scrolling. Ctrl-U clears, Ctrl-A/E move to the
 start/end of the value; raw Ctrl-S saves, Esc cancels. An editor scroll
 never changes an underlying model/setting selection or saves the draft.
-Mouse capture does not install a clipboard bridge.
+Dragging outside a captured editor extends selection and scrolls one
+visual row per actual drag event; releasing over another control does
+not activate it. At short terminal heights dialogs use the full usable
+screen and their text/results scroll. Mouse capture does not install a
+clipboard bridge.
 
 ```sh
 zerogravity web

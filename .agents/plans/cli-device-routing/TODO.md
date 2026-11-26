@@ -476,8 +476,11 @@ Retain accepted UX-1–10 ownership and keyboard behavior.
     rendered cell/native/context/search/settings and transfer PTY pass.
     Actual cached Qwen browser/native/HTTP 1/0/0 (57.77s), unchanged
     admission and exact output; shared Firefox/native transfer outcomes pass.
-  - [ ] P4A2 remaining scroll anchors, separate Running response,
-    safe log detail, compact/modal/focus and editor drag edges.
+  - [x] P4A2 stable list/shelf/log/output anchors, separate Running
+    response viewport/F3, safe exact log detail, compact scrollable
+    dialogs and palette, editor edge selection. 18 focused TUI tests,
+    optimized 91/0/3, strict lint, 20x7 native PTY and all native/
+    controlled and simultaneous Firefox transfer regressions passed.
   - [ ] P4B full simultaneous owner regressions and isolated gate.
 
 Deferred public serving until UX-P exit. Optional terminal background

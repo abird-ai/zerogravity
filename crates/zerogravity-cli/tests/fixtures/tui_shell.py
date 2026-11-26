@@ -484,6 +484,30 @@ def editor_and_choices(root):
     print("TUI editor/choices PTY: typed effective enum and boolean, cancel/apply, log pickers, local shelf search, grapheme drag/caret replacement and independent raw scroll; exact saved bytes")
 
 
+def compact_ergonomics(root):
+    with Terminal(root,[],width=20,height=7) as terminal:
+        terminal.repaint_on_wait=True
+        terminal.repaint_width=21
+        # The body is too short for the normal modal; the full-screen
+        # compact menu must still expose a visible action and close.
+        terminal.until(b"\x1b[?1049h")
+        terminal.send(b"\x1bOS",b"> Run")
+        terminal.send(click(4,1),b"Apply")
+        os.write(terminal.master,b"\x1b")
+        time.sleep(0.2)
+        terminal.send(alt(b":"),b"Go to")
+        terminal.send(b"\x1b[B"*8,b"> Logs")
+        terminal.send(b"\r",b"Search")
+        terminal.send(b"\x1bOP",b"Help")
+        terminal.send(b"\x1b[4~",b"quit")
+        os.write(terminal.master,b"\x1b")
+        time.sleep(0.2)
+        os.write(terminal.master,b"\x11")
+        terminal.finish()
+    assert not (root/"cache").exists() and not (root/"config").exists()
+    print("TUI compact PTY: 20x7 context action, scrolled destination palette and help, no hidden effects")
+
+
 def appearance(root):
     default = root / "config/abird/zerogravity/config.yaml"
     hints = {"COLORTERM": "truecolor", "COLORFGBG": "0;15", "NO_COLOR": ""}
@@ -621,6 +645,12 @@ def settings_lifecycle(root):
         assert broken.read_text() == valid
         # The Logs surface records actions/owner outcomes, not draft contents.
         terminal.send(alt(b"9"), b"Operational")
+        terminal.send(b"\x1b[A",b"Paused")
+        terminal.send(b"\r",b"Correlation:")
+        terminal.until(b"Sequence:")
+        os.write(terminal.master,b"\x1b")
+        time.sleep(0.2)
+        terminal.send(b"\x1b[4~",b"Following")
         terminal.send(alt(b"p"), b"Paused")
         filter_text(terminal,"Save config".encode(),b"Save")
         terminal.send(alt(b"p"), b"Following")
@@ -724,6 +754,8 @@ def lifecycle(root, expected):
         terminal.send(b"\x1b[200~" + prompt.encode() + b"\x1b[201~" + click(105,24), b"length", 90)
         assert b"Response" in terminal.transcript
         terminal.send(alt(b"2"), b"registration")
+        terminal.send(b"\x1bOR",b"capacity:")
+        terminal.send(b"\x1bOR",b"Response")
         terminal.send(alt(b"p"), b"Prompt")
         terminal.send(b"\x1b[200~" + prompt.encode() + b"\x1b[201~\r", b"length", 30)
         terminal.send(alt(b"3"), b"OpenAI-compatible")
@@ -1039,6 +1071,9 @@ elif sys.argv[2] == "--controls-fixture":
 elif sys.argv[2] == "--editor-fixture":
     with tempfile.TemporaryDirectory(prefix="zg-tui-editor-") as tmp:
         editor_and_choices(Path(tmp))
+elif sys.argv[2] == "--ergonomics-fixture":
+    with tempfile.TemporaryDirectory(prefix="zg-tui-ergonomics-") as tmp:
+        compact_ergonomics(Path(tmp))
 elif sys.argv[2] == "--appearance-fixture":
     with tempfile.TemporaryDirectory(prefix="zg-tui-appearance-") as tmp:
         appearance(Path(tmp))

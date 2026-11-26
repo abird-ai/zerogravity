@@ -5,6 +5,20 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 26 Nov — UX-P4A2 final ergonomics
+
+Stable identity/byte scroll anchors, distinct response/detail viewport,
+safe operational log details, compact scrollable dialogs/palette and
+editor drag edges. Strict lint, 18 focused TUI tests, optimized 91/0/3,
+actual rendered cells and real compact 20x7/native regressions, native
+and simultaneous Firefox shared transfer durable/cancelled pass. Final
+response heading fix (registration first, alias truncated), F9 reveal;
+strict combined lint/18 focused tests rerun. Actual native/attached-Web
+cached CPU/HTTP 1/0/0 (34.49s), original 8 GiB admission/exact output;
+browser portion passed separately. No new dependency or runtime
+authority/performance/GPU claim. Final
+isolated workspace gate/assembled owner acceptance P4B next.
+
 ## 26 Nov — UX-P4A1 follow-up toolbar-free contextual UI
 
 User-directed removal of permanent toolbar; selected-row contextual

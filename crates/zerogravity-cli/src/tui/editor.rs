@@ -133,6 +133,23 @@ impl Editor {
         // the user selects the end of a wrapped row.
         self.reveal = false;
     }
+    /// One visual-row step per real drag event past the top/bottom.
+    /// The original anchor stays fixed. No timers or synthetic input.
+    pub fn drag_edge(&mut self, value: &str, delta: i16, column: u16) {
+        let rows = VisualRows::new(value, self.width);
+        self.viewport
+            .measure(rows.rows.len(), self.viewport.page.max(1));
+        self.viewport.scroll(Motion::Step(delta));
+        let index = if delta < 0 {
+            self.viewport.offset
+        } else {
+            self.viewport
+                .offset
+                .saturating_add(self.viewport.page.max(1) as usize - 1)
+                .min(rows.rows.len() - 1)
+        };
+        self.point(value, rows.rows[index].clone(), column, true);
+    }
     fn move_to(&mut self, value: &str, at: usize, extend: bool) {
         if extend {
             self.anchor.get_or_insert(self.caret);
@@ -244,6 +261,21 @@ impl Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn edge_drag_scrolls_and_preserves_selection_anchor() {
+        let value = "first\nsecond\nthird\nfourth";
+        let mut editor = Editor::new(value, 0);
+        let visual = editor.measure(value, 10, 2);
+        editor.point(value, visual.rows[0].clone(), 0, false);
+        editor.drag_edge(value, 1, 99);
+        assert_eq!(editor.viewport.offset, 1);
+        assert_eq!(&value[editor.selection()], "first\nsecond\nthird");
+        editor.drag_edge(value, 1, 99);
+        assert_eq!(editor.viewport.offset, 2);
+        assert_eq!(&value[editor.selection()], value);
+        editor.drag_edge(value, -1, 0);
+        assert_eq!(&value[editor.selection()], "first\n");
+    }
     #[test]
     fn graphemes_mouse_selection_wrap_and_bounded_replace() {
         let mut value = "a界e\u{301}z\nlong".to_string();

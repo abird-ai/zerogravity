@@ -222,8 +222,10 @@ browser/native/HTTP 1/0/0 (55.96s) pass. UX-P4A1 screenshot-driven minimalism la
 summary, smart sizes and on-demand exact Details; 87/0/3 and native PTY
 regression. User follow-up removes toolbar entirely; exact selected-row
 context menus, inline live local search, separate session menu and explicit
-Alt shortcuts landed with focused 88/0/3 and native PTY. P4A2 remaining
-ergonomics/visual review, then full gate. Complete UX-P before public serving/ordinary benchmarks, then
+Alt shortcuts landed with focused 88/0/3 and native PTY. P4A2 stable
+identity scroll anchors, separate response, safe log details, compact
+scrollable dialogs and editor edges focused-qualified (91/0/3, native
+and shared transfer PTY). P4B final full gate next. Complete UX-P before public serving/ordinary benchmarks, then
 ordered performance phases.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical

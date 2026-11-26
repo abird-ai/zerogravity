@@ -27,6 +27,7 @@ pub(super) enum Command {
     Settings(SettingsAction),
     Logs(LogAction),
     Details,
+    LogDetails(u64),
     FollowOutput,
     OpenWeb,
     Appearance,
@@ -48,6 +49,7 @@ impl Command {
             Self::Settings(action) => Action::Settings(action),
             Self::Logs(action) => Action::Logs(action),
             Self::Details => Action::ShowDetails,
+            Self::LogDetails(id) => Action::ShowLog(Some(id)),
             Self::FollowOutput => Action::FollowOutput,
             Self::OpenWeb => Action::OpenWeb,
             Self::Appearance => Action::Appearance,
@@ -98,6 +100,7 @@ pub(super) struct Scope {
     explicit_value: bool,
     raw: bool,
     follow_logs: bool,
+    log: Option<u64>,
     follow_output: bool,
     has_response: bool,
 }
@@ -146,6 +149,7 @@ impl Scope {
             explicit_value,
             raw: app.library.raw,
             follow_logs: app.logs.following(),
+            log: app.logs.selected,
             follow_output: app.navigation.following_output(),
             has_response: app.response.is_some(),
         }
@@ -369,6 +373,9 @@ impl Scope {
                 );
             }
             View::Logs => {
+                if let Some(id) = self.log {
+                    add(C::LogDetails(id), "Details", "Enter", None);
+                }
                 add(
                     C::Logs(G::Follow),
                     if self.follow_logs {

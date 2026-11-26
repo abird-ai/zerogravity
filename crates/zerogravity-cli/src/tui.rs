@@ -578,6 +578,21 @@ impl App {
             Action::Redraw => {},
             Action::Cancel => self.cancel(),
             Action::MoveOwner(delta) => self.move_owner(delta),
+            Action::MoveLog(delta) => {
+                if self.navigation.view()==View::Logs && self.logs.move_selection(delta) {
+                    self.navigation.reveal_library(0);
+                }
+            }
+            Action::SelectLog(id) => {
+                if self.navigation.view()==View::Logs && self.logs.select(id) {self.navigation.reveal_library(0);}
+            }
+            Action::ShowLog(id) => {
+                if self.navigation.view()==View::Logs
+                    && let Some(id)=id.or(self.logs.selected)
+                    && let Some(lines)=self.logs.detail(id) {
+                    self.navigation.details(format!("Log #{id}"),lines);
+                }
+            }
             Action::SelectOwner(owner) => {
                 if self.navigation.view() == View::Running && self.owners().any(|candidate| candidate == owner) {
                     self.selected = Some(owner);
@@ -586,9 +601,12 @@ impl App {
             }
             Action::SelectRow(kind,key) => {self.select_row(kind,key);}
             Action::Scroll(pane, motion) => {
-                let at_end = self.navigation.scroll(pane, motion);
-                if self.navigation.view() == View::Logs && pane == layout::Pane::Main && !at_end && self.logs.following() {
-                    self.logs.toggle_follow();
+                let at_end = self.navigation.scroll(pane, motion,self.library.shelf);
+                if self.navigation.view()==View::Logs && pane==layout::Pane::Main {
+                    let resume=at_end && matches!(motion,layout::Motion::End|layout::Motion::Step(1..)|layout::Motion::Page(1..));
+                    if (!at_end && self.logs.following()) || (resume && !self.logs.following()) {
+                        self.logs.toggle_follow();
+                    }
                 }
             }
             Action::Submit(form) if self.active.is_some() || self.job.is_some() => {
@@ -711,8 +729,7 @@ impl App {
                     LibraryAction::SelectShelf(shelf) => shelf,
                     _ => self.library.shelf.next(),
                 };
-                self.navigation
-                    .reveal_library(self.library.rows(kind).index());
+                self.navigation.shelf_changed(self.library.shelf);
                 return;
             }
             LibraryAction::Move(delta) => {

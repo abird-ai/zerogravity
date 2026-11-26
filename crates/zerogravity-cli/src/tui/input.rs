@@ -19,6 +19,8 @@ pub(super) enum Target {
     RowMenu(Kind, Key),
     Owner(Owner),
     OwnerMenu(Owner),
+    Log(u64),
+    LogDetails(u64),
     Shelf(Shelf),
     Split(Splitter),
     Scrollbar(Scrollbar),
@@ -28,6 +30,7 @@ pub(super) enum Target {
     Help,
     More,
     SessionMenu,
+    ResponseTab,
     SearchFocus,
     SearchClear,
     Command(Bound),
@@ -75,6 +78,37 @@ impl Hits {
             }
         })
     }
+    /// Only used during an existing editor capture. Motion outside
+    /// the field extends the selection, never becomes a button press.
+    fn editor_drag(&self, pos: Position) -> Option<Intent> {
+        if let Some(intent) = self.editor_point(pos, true) {
+            return Some(intent);
+        }
+        let rows = self.0.iter().filter_map(|(rect, target)| {
+            if let Target::EditorRow { start, end } = target {
+                Some((*rect, *start, *end))
+            } else {
+                None
+            }
+        });
+        let mut rows = rows.peekable();
+        let first = *rows.peek()?;
+        let last = rows.clone().last().unwrap_or(first);
+        if pos.y < first.0.y || pos.y >= last.0.bottom() {
+            let edge = if pos.y < first.0.y { -1 } else { 1 };
+            return Some(Intent::EditEdge(
+                edge,
+                pos.x.saturating_sub(first.0.x).min(first.0.width),
+            ));
+        }
+        rows.find(|(rect, _, _)| pos.y >= rect.y && pos.y < rect.bottom())
+            .map(|(rect, start, end)| Intent::EditPoint {
+                start,
+                end,
+                column: pos.x.saturating_sub(rect.x).min(rect.width),
+                extend: true,
+            })
+    }
     fn pane(&self, pos: Position) -> Option<Pane> {
         self.0.iter().rev().find_map(|(rect, target)| {
             if let Target::Pane(pane) = target
@@ -111,6 +145,7 @@ pub(super) enum Intent {
         extend: bool,
     },
     EditScroll(Motion),
+    EditEdge(i16, u16),
 }
 impl Pointer {
     pub fn cancel(&mut self) {
@@ -124,6 +159,8 @@ impl Pointer {
                     | Target::RowMenu(..)
                     | Target::Owner(_)
                     | Target::OwnerMenu(_)
+                    | Target::Log(_)
+                    | Target::LogDetails(_)
                     | Target::Command(_)
             )) | Some(Capture::Context(_))
         ) {
@@ -139,7 +176,9 @@ impl Pointer {
                     target @ (Target::Row(..)
                     | Target::RowMenu(..)
                     | Target::Owner(_)
-                    | Target::OwnerMenu(_)),
+                    | Target::OwnerMenu(_)
+                    | Target::Log(_)
+                    | Target::LogDetails(_)),
                 ) = hits.at(pos)
                 {
                     self.0 = Some(Capture::Context(target.clone()));
@@ -197,7 +236,7 @@ impl Pointer {
                     bar.pane,
                     Motion::At(bar.offset(event.row, *grab)),
                 )),
-                Some(Capture::Editor) => hits.editor_point(pos, true),
+                Some(Capture::Editor) => hits.editor_drag(pos),
                 Some(Capture::EditorBar(bar, grab)) => {
                     Some(Intent::EditScroll(Motion::At(bar.offset(event.row, *grab))))
                 }
@@ -257,6 +296,41 @@ mod tests {
             row,
             modifiers: KeyModifiers::NONE,
         }
+    }
+    #[test]
+    fn captured_editor_drags_past_edges_without_click_through() {
+        let mut hits = Hits::default();
+        let mut pointer = Pointer::default();
+        hits.add(
+            Rect::new(2, 3, 8, 1),
+            Target::EditorRow { start: 0, end: 4 },
+        );
+        hits.add(
+            Rect::new(2, 4, 8, 1),
+            Target::EditorRow { start: 5, end: 9 },
+        );
+        hits.add(Rect::new(2, 5, 8, 1), Target::AcceptModal);
+        assert!(matches!(
+            pointer.event(event(MouseEventKind::Down(MouseButton::Left), 2, 3), &hits),
+            Some(Intent::EditPoint { extend: false, .. })
+        ));
+        assert!(matches!(
+            pointer.event(event(MouseEventKind::Drag(MouseButton::Left), 12, 3), &hits),
+            Some(Intent::EditPoint {
+                column: 8,
+                extend: true,
+                ..
+            })
+        ));
+        assert!(matches!(
+            pointer.event(event(MouseEventKind::Drag(MouseButton::Left), 5, 5), &hits),
+            Some(Intent::EditEdge(1, 3))
+        ));
+        assert!(
+            pointer
+                .event(event(MouseEventKind::Up(MouseButton::Left), 5, 5), &hits)
+                .is_none()
+        );
     }
     #[test]
     fn right_click_is_exact_visible_context_only() {
