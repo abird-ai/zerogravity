@@ -127,6 +127,17 @@ Auto follows the browser's system appearance, or the terminal's
 `--color never`/existing color policy remains separate. Appearance changes
 do not reconfigure admitted models, transfers or listeners.
 
+Native mouse capture is enabled by default on a capable terminal. Click
+navigation, model shelves, visible rows and pane controls; drag the rail
+and inner dividers, or scroll/drag a pane's scrollbar independently.
+Tab moves focus, F6 switches main/detail, F7 maximizes/restores,
+Alt+Left/Right resizes the rail, Ctrl+arrows resize inner splits. F8
+toggles mouse capture for this session; set `ui.mouse: never` (or
+`zg config set ui.mouse never`) to opt out persistently. Terminal text
+selection is emulator-owned (often Shift+drag, or disable capture first).
+Selection alone does not execute. Effectful action and editor mouse
+controls are the next polish slice; existing keyboard actions remain.
+
 ```sh
 zerogravity web
 zerogravity serve --model local=./model.gguf --listen 127.0.0.1:8000

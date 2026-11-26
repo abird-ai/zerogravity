@@ -107,6 +107,9 @@ fn help(key: &str) -> &'static str {
             "Optional finite queue count; host admission still applies."
         }
         "serve.enable_per_request_metrics" => "Enable supported per-request inference metrics.",
+        "ui.mouse" => {
+            "Native mouse capture: auto/always on a capable terminal, never disables it; F8 toggles this session."
+        }
         "ui.theme" => "Auto, dark or light appearance; no execution policy changes.",
         "ui.color" | "ui.progress" | "ui.interactive" => {
             "auto, always or never; explicit CLI presentation preferences win."

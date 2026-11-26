@@ -27,7 +27,37 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — UX-P1 visual foundation (26 Nov)
+### Current checkpoint — UX-P2 mouse and pane foundation (26 Nov)
+
+- Scoped Crossterm capture (including quit/error/signal restore), typed
+  ui.mouse auto/always/never; F8 session-only override.
+- Presentation-only layout/input modules; one set of visible render
+  hit regions, release match and original exact Row Key/ready Owner
+  revalidation. Click rail/rows/shelf, theme preview, palette/help and
+  pane focus. Modal masking; no effectful mouse confirmation/submit yet.
+- Preferred rail width and both orientation ratios, per-view focus,
+  maximize/restore, narrow nav and detail drill-in, separate visual-row
+  scroll offsets and draggable scrollbar. Running/response secondary
+  viewport; log wheel off tail pauses original ring view. Existing pinned
+  Ratatui line-count feature; no new dependency.
+- Final isolated focused Rust 84/0/3, strict minimal/Web-only/TUI-Web/
+  combined lint; real SGR PTY wheel/scrolled exact-row, both split drags,
+  maximize/restore, raw-YAML independent detail scrollbar/selection,
+  modal masking, opt-out/toggle, terminal restoration and original
+  shell/appearance/settings/Firefox regressions all pass. Corrected
+  initial ANSI differential fixture assertions. Logs: target/ux-p2-final.log.
+- Full gate/real cached resident and transfer at assembled UX-P4.
+  Stable anchors across data reorder, full modal/form/editor scrolling,
+  caret/selection and full mouse action buttons/confirmations remain
+  P3/P4. Native Auto theme probe remains deferred as before.
+
+**Next:** UX-P3 complete visible mouse-accessible action controls, typed
+pickers/modal buttons and editor interaction across nine views. Reuse
+the original App::handle/request/confirmation and exact-owner guards;
+no alternate runtime or configuration authority. UX-P4 final ergonomics
+and acceptance before public serving.
+
+### Previous checkpoint — UX-P1 visual foundation (26 Nov; b1073e7c)
 
 Typed ui.theme Auto/Dark/Light, native T shortcut → Config appearance
 picker (preview/explicit apply/cancel), semantic color roles, restrained
@@ -42,10 +72,7 @@ Initial browser header overflow fixed with compact mobile glyph; final
 PTY fixture waits for actual selected row instead of stale repaint.
 Full gate and real resident/transfer regression at UX-P4.
 
-**Next:** UX-P2 scoped mouse capture/restore, render-derived hit regions,
-pane focus, resize/maximize, responsive layout and independent scrolling.
-Keep all existing typed actions and owner identities. UI-specific mouse
-preference and full actionable controls follow the UX-P plan.
+The mouse/layout foundation landed in UX-P2 above. Continue UX-P3/P4.
 
 ### Original UX-P priority decision — native TUI polish (26 Nov)
 

@@ -69,6 +69,7 @@ fn config_profile_lifecycle_is_cold_and_refuses_invalid_edits() {
     );
     assert!(!base.exists());
     refuse(root, &["config", "set", "ui.theme", "carbon"]);
+    refuse(root, &["config", "set", "ui.mouse", "invalid"]);
     refuse(root, &["config", "set", "ui.color", "pink"]);
     refuse(root, &["profile", "create", "../escape"]);
     assert!(!base.exists());
@@ -78,6 +79,12 @@ fn config_profile_lifecycle_is_cold_and_refuses_invalid_edits() {
     pass(root, &["config", "set", "ui.progress", "never"]);
     pass(root, &["config", "set", "ui.color", "always"]);
     pass(root, &["config", "set", "ui.theme", "light"]);
+    pass(root, &["config", "set", "ui.mouse", "never"]);
+    assert_eq!(
+        value(root, &["config", "get", "ui.mouse", "--format=json"])["value"],
+        "never"
+    );
+    pass(root, &["config", "unset", "ui.mouse"]);
     assert_eq!(
         value(root, &["config", "get", "ui.theme", "--format=json"])["value"],
         "light"

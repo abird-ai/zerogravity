@@ -2,7 +2,7 @@
 //! unwind. Crossterm handles keys/resizes; external Unix signals request exit.
 use crossterm::{
     cursor::Show,
-    event::{DisableBracketedPaste, EnableBracketedPaste},
+    event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -13,11 +13,16 @@ use zerogravity::Result;
 pub(super) struct Session {
     pub terminal: DefaultTerminal,
     active: bool,
+    mouse: bool,
 }
 impl Session {
-    pub fn enter() -> Result<Self> {
+    pub fn enter(mouse: bool) -> Result<Self> {
         enable_raw_mode()?;
         if let Err(error) = execute!(stdout(), EnterAlternateScreen, EnableBracketedPaste) {
+            let _ = restore();
+            return Err(error.into());
+        }
+        if mouse && let Err(error) = execute!(stdout(), EnableMouseCapture) {
             let _ = restore();
             return Err(error.into());
         }
@@ -31,7 +36,22 @@ impl Session {
         Ok(Self {
             terminal,
             active: true,
+            mouse,
         })
+    }
+    pub fn mouse(&self) -> bool {
+        self.mouse
+    }
+    pub fn set_mouse(&mut self, enabled: bool) -> Result<()> {
+        if enabled != self.mouse {
+            if enabled {
+                execute!(stdout(), EnableMouseCapture)?;
+            } else {
+                execute!(stdout(), DisableMouseCapture)?;
+            }
+            self.mouse = enabled;
+        }
+        Ok(())
     }
     pub fn restore(&mut self) -> Result<()> {
         restore()?;
@@ -48,7 +68,13 @@ impl Drop for Session {
 }
 fn restore() -> io::Result<()> {
     let raw = disable_raw_mode();
-    let screen = execute!(stdout(), DisableBracketedPaste, LeaveAlternateScreen, Show);
+    let screen = execute!(
+        stdout(),
+        DisableMouseCapture,
+        DisableBracketedPaste,
+        LeaveAlternateScreen,
+        Show
+    );
     raw.and(screen)
 }
 

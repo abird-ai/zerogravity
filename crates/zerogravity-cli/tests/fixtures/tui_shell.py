@@ -100,6 +100,8 @@ class Terminal:
     def finish(self, *, interactive=True):
         if interactive:
             self.until(b"\x1b[?1049l")
+            if b"\x1b[?1006h" in self.transcript:
+                assert b"\x1b[?1006l" in self.transcript
         assert self.proc.wait(timeout=60) == 0
         assert termios.tcgetattr(self.slave) == self.initial
 
@@ -161,6 +163,114 @@ def shell(root):
     assert not (profile.parent.parent / "config.yaml").exists()
     assert not (root / "cache").exists()
     print("TUI shell PTY: navigation, palette, resize, quit/SIGTERM restoration, plain fallback; no cache/config effects")
+
+
+def mouse_interaction(root):
+    # SGR mouse reports as emitted by a real terminal, using zero-based
+    # coordinates here and converting to the protocol's one-based cells.
+    def sgr(code, x, y, release=False):
+        return f"\x1b[<{code};{x+1};{y+1}{'m' if release else 'M'}".encode()
+    def click(x,y):
+        return sgr(0,x,y) + sgr(0,x,y,True)
+    def drag(x,y,end_x,end_y):
+        return sgr(0,x,y) + sgr(32,end_x,end_y) + sgr(0,end_x,end_y,True)
+    def wheel(x,y,down=True):
+        return sgr(65 if down else 64,x,y)
+
+    with Terminal(root, ["--offline"], width=150, height=24) as terminal:
+        terminal.check_started()
+        assert b"\x1b[?1006h" in terminal.transcript
+        terminal.send(click(4,5), b"Cached")
+        terminal.send(click(35,2), b"qwen3.5-plus")
+        # The first visible row after a 3-line wheel movement is the fourth
+        # catalog entry. Wheel doesn't alter selection; click must use the
+        # actual scrolled row, not its index in the unscrolled catalog.
+        terminal.send(wheel(30,10), b"gemma4")
+        terminal.send(click(30,8), b"Qwen/Qwen3.8-27B")
+        # Drag the rail from its default 22 cells to 29; clicking the newly
+        # exposed rail area (previously workspace) must navigate.
+        terminal.send(drag(22,18,29,18), b"Models")
+        terminal.send(click(26,6), b"Download operation")
+        terminal.send(click(26,5), b"Catalog")
+        # Resize the actual inner divider, then select through the newly
+        # enlarged list region (which was formerly the detail pane).
+        terminal.send(drag(95,15,105,15), b"Selected")
+        terminal.send(click(101,9), b"> qwen3.8-flash-next")
+        terminal.until(b"Source-specific")
+        # Maximize the list; select a row in the former details area, then
+        # restore its old split and observe the selected exact source.
+        terminal.send(click(102,7) + click(140,8), b"> qwen3.8-27b")
+        terminal.send(click(147,7), b"Qwen/Qwen3.8-27B")
+        # Focus details and return with keyboard equivalence. Opening a
+        # modal masks every hit target behind it.
+        terminal.send(b"\x1b[17~?", b"Help")
+        os.write(terminal.master, click(4,2))
+        time.sleep(0.2)
+        os.write(terminal.master,b"\x1b")
+        time.sleep(0.2)
+        terminal.send(b"d",b"prohibits")
+        terminal.send(b"\x1b[19~", b"\x1b[?1006l")
+        assert b"\x1b[?1006l" in terminal.transcript
+        terminal.send(b"\x1b[19~", b"\x1b[?1006h")
+        os.write(terminal.master,b"q")
+        terminal.finish()
+        assert b"\x1b[?1006l" in terminal.transcript
+
+    # Compact vertical split: move the horizontal divider down to expose
+    # an additional visible row and click the newly exposed row.
+    with Terminal(root, ["--offline"], width=60, height=24) as terminal:
+        terminal.check_started()
+        terminal.send(click(2,0),b"Navigation")
+        terminal.send(click(4,5),b"Cached")
+        terminal.send(click(12,2),b"qwen3.5-plus")
+        terminal.send(drag(25,14,25,15) + click(4,14),b"> qwen-gguf-quant")
+        # Narrow view collapses to one pane; Nav remains available.
+        terminal.resize(30)
+        os.kill(terminal.proc.pid,signal.SIGWINCH)
+        terminal.until(b"ZeroGravity")
+        terminal.send(click(2,0),b"Navigation")
+        terminal.send(click(4,2),b"Local runtime")
+        os.write(terminal.master,b"q")
+        terminal.finish()
+    assert not (root/"cache").exists()
+    assert not (root/"config").exists()
+
+    # Actual wrapped/raw detail viewport: wheel over detail and drag its
+    # scrollbar without changing keyboard focus or the selected setting.
+    document = root/"config/abird/zerogravity/config.yaml"
+    document.parent.mkdir(parents=True)
+    long_yaml = "\n".join(
+        "# zzzzzzzzzzzzzzzzzzzz" if i == 15 else
+        "# TAIL-TARGET-ONLY" if i == 39 else f"# filler-{i:02d}"
+        for i in range(40)
+    ) + "\nschema: zerogravity.pipeline.v2\n"
+    document.write_text(long_yaml)
+    with Terminal(root, [], width=100, height=24) as terminal:
+        terminal.check_started()
+        terminal.send(b"8", b"ui.color")
+        terminal.send(b"v", b"filler-00")
+        terminal.send(wheel(75,12), b"zzzzzzzzzzzzzzzzzzzz")
+        terminal.send(drag(99,10,99,21), b"TAIL-TARGET-ONLY")
+        terminal.send(wheel(30,10) + b"\r", b"Ctrl-U")
+        os.write(terminal.master,b"\x1b")
+        time.sleep(0.2)
+        os.write(terminal.master,b"q")
+        terminal.finish()
+    assert document.read_text() == long_yaml
+
+    # Explicit persistent opt-out is respected; temporary F8 override is
+    # session-local and restoration still disables capture on exit.
+    original = "schema: zerogravity.pipeline.v2\nui: {mouse: never}\n"
+    document.write_text(original)
+    with Terminal(root, []) as terminal:
+        terminal.check_started()
+        assert b"\x1b[?1006h" not in terminal.transcript
+        terminal.send(b"\x1b[19~", b"\x1b[?1006h")
+        os.write(terminal.master,b"q")
+        terminal.finish()
+        assert b"\x1b[?1006l" in terminal.transcript
+    assert document.read_text() == original
+    print("TUI mouse PTY: actual SGR click/wheel/drag, rail/inner split, maximize/restore, narrow nav, modal isolation, session toggle and persistent opt-out")
 
 
 def appearance(root):
@@ -706,6 +816,9 @@ if len(sys.argv) == 2:
 elif sys.argv[2] == "--settings-fixture":
     with tempfile.TemporaryDirectory(prefix="zg-tui-settings-") as tmp:
         settings_lifecycle(Path(tmp) / "settings")
+elif sys.argv[2] == "--mouse-fixture":
+    with tempfile.TemporaryDirectory(prefix="zg-tui-mouse-") as tmp:
+        mouse_interaction(Path(tmp))
 elif sys.argv[2] == "--appearance-fixture":
     with tempfile.TemporaryDirectory(prefix="zg-tui-appearance-") as tmp:
         appearance(Path(tmp))

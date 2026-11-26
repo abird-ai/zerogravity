@@ -1,5 +1,7 @@
 //! Native client shell. Runtime lifetime belongs to the outer host; view
 //! selection owns no model, task, listener or download.
+mod input;
+mod layout;
 pub(crate) mod library;
 mod logs;
 pub(crate) mod settings;
@@ -90,7 +92,8 @@ fn session(
     #[cfg(all(feature = "acquisition", target_os = "linux"))]
     app.actions
         .with_logs_mut(|ring| ring.observe_download(app.snapshot.download.as_ref()));
-    let mut terminal = terminal::Session::enter()?;
+    let mut mouse_preference = app.document.snapshot().ui.mouse.unwrap_or_default();
+    let mut terminal = terminal::Session::enter(mouse_preference != output::Switch::Never)?;
     let result = (|| {
         let mut dirty = true;
         let mut sampled = Instant::now();
@@ -102,11 +105,21 @@ fn session(
             let action_changed = active != app.active;
             app.active = active;
             dirty |= action_changed;
-            dirty |= app.library.poll(runtime);
+            if app.library.poll(runtime) {
+                app.navigation.invalidate_pointer();
+                dirty = true;
+            }
             let observed = app.document.configuration_revision();
             if config_revision != observed {
                 config_revision = observed;
-                app.color = output::document_color(app.document.snapshot().ui);
+                let ui = app.document.snapshot().ui;
+                app.color = output::document_color(ui);
+                let mouse = ui.mouse.unwrap_or_default();
+                if mouse != mouse_preference {
+                    mouse_preference = mouse;
+                    terminal.set_mouse(mouse != output::Switch::Never)?;
+                }
+                app.navigation.cancel_pointer();
                 app.library.invalidate_config();
                 if matches!(app.navigation.view(), View::Config | View::Profiles) {
                     app.refresh_cold(runtime, control);
@@ -177,8 +190,20 @@ fn session(
                 break;
             }
             match input? {
-                Event::Resize(_, _) => dirty = true,
+                Event::Resize(_, _) => {
+                    app.navigation.cancel_pointer();
+                    dirty = true;
+                }
+                Event::Mouse(mouse) if terminal.mouse() => {
+                    if let Some(action) = app.navigation.mouse(mouse) {
+                        if app.handle(runtime, control, action) {
+                            break;
+                        }
+                        dirty = true;
+                    }
+                }
                 Event::Paste(value) => {
+                    app.navigation.cancel_pointer();
                     if !app.navigation.paste(&value) {
                         app.notice = Some(
                             "Paste ignored outside an editable field or outside its input bounds"
@@ -190,6 +215,20 @@ fn session(
                 Event::Key(key)
                     if matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) =>
                 {
+                    if key.code == crossterm::event::KeyCode::F(8) && app.navigation.idle() {
+                        app.navigation.cancel_pointer();
+                        terminal.set_mouse(!terminal.mouse())?;
+                        app.notice = Some(
+                            if terminal.mouse() {
+                                "Mouse capture enabled"
+                            } else {
+                                "Mouse capture disabled · F8 enables it"
+                            }
+                            .into(),
+                        );
+                        dirty = true;
+                        continue;
+                    }
                     // Ctrl-C is cooperative cancellation while an action
                     // owns work, otherwise it follows the explicit quit path.
                     if key.code == crossterm::event::KeyCode::Char('c')
@@ -323,6 +362,7 @@ impl App {
                 job.id = id;
                 if generates {
                     self.response = Some(Response::default());
+                    self.navigation.follow_response();
                 }
                 self.notice = None;
                 self.job = Some(job);
@@ -365,6 +405,7 @@ impl App {
                     self.library.set_editor(editor);
                     if matches!(self.navigation.view(), View::Config | View::Profiles) {
                         self.navigation.open(View::Config);
+                        self.navigation.focus_main();
                     }
                 } else {
                     self.library.invalidate_config();
@@ -423,6 +464,7 @@ impl App {
                 self.library.set_editor(self.document.snapshot().target);
                 self.library.query = "ui.theme".into();
                 self.navigation.open(View::Config);
+                self.navigation.focus_main();
                 self.library.request(runtime, Kind::Config);
             }
             Action::Submit(Form { kind: FormKind::Search { view }, value }) => {
@@ -440,6 +482,31 @@ impl App {
             Action::Redraw => {},
             Action::Cancel => self.cancel(),
             Action::MoveOwner(delta) => self.move_owner(delta),
+            Action::SelectOwner(owner) => {
+                if self.navigation.view() == View::Running && self.owners().any(|candidate| candidate == owner) {
+                    self.selected = Some(owner);
+                    self.navigation.reveal_owner(0);
+                }
+            }
+            Action::SelectRow(kind, key) => {
+                let expected = match self.navigation.view() {
+                    View::Models => Some(Kind::Models),
+                    View::Devices => Some(Kind::Devices),
+                    View::Profiles => Some(Kind::Profiles),
+                    View::Config => Some(Kind::Config),
+                    _ => None,
+                };
+                if expected == Some(kind) && self.library.rows(kind).rows.iter().any(|row| row.key == key) {
+                    self.library.rows_mut(kind).selected = Some(key);
+                    self.navigation.reveal_library(0);
+                }
+            }
+            Action::Scroll(pane, motion) => {
+                let at_end = self.navigation.scroll(pane, motion);
+                if self.navigation.view() == View::Logs && pane == layout::Pane::Main && !at_end && self.logs.following() {
+                    self.logs.toggle_follow();
+                }
+            }
             // A modal or repeated key cannot queue another effectful operation.
             _ if self.active.is_some() || self.job.is_some() => {
                 self.notice = Some("An action is already in progress; wait or request cancellation".into());
@@ -549,8 +616,14 @@ impl App {
             Kind::Models
         };
         match action {
-            LibraryAction::Cycle => {
-                self.library.shelf = self.library.shelf.next();
+            LibraryAction::Cycle | LibraryAction::SelectShelf(_) => {
+                if self.navigation.view() != View::Models {
+                    return;
+                }
+                self.library.shelf = match action {
+                    LibraryAction::SelectShelf(shelf) => shelf,
+                    _ => self.library.shelf.next(),
+                };
                 self.navigation
                     .reveal_library(self.library.rows(kind).index());
                 return;
@@ -798,6 +871,7 @@ impl App {
                         Ok(target) => {
                             self.library.set_editor(target);
                             self.navigation.open(View::Config);
+                            self.navigation.focus_main();
                             self.library.request(runtime, Kind::Config);
                         }
                         Err(error) => self.notice = Some(error.to_string()),

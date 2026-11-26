@@ -443,8 +443,12 @@ Retain accepted UX-1–10 ownership and keyboard behavior.
   Focused Rust 81/0/3, JS 3/0, strict minimal/Web-only/combined lint,
   real PTY and Firefox settings/appearance passed. Native Auto hint or
   dark fallback; no OSC probe. Full gate at assembled UX-P4.
-- [ ] UX-P2: scoped mouse capture/restore, render-derived visible hit
-  targets, focus, rail/inner split drag, maximize/restore, separate scroll.
+- [x] UX-P2: scoped mouse capture/restore and ui.mouse, exact visible
+  inert row/shelf/nav hit targets, focus, rail/inner split drag, maximize/
+  restore, independent wrapped scroll/scrollbars and narrow navigation.
+  Strict minimal/Web-only/TUI-Web/combined lint; focused 84/0/3 and actual
+  SGR/native/Firefox regressions pass. Stable data-reorder anchors and
+  full editor/action interaction remain P3/P4.
 - [ ] UX-P3: mouse-accessible controls in all nine views, actions,
   modal/editor/picker interaction, exact owner/document and confirmations.
 - [ ] UX-P4: complete ergonomics, actual PTY and accepted real cached

@@ -722,8 +722,10 @@ UX-1–10 remains accepted; this is additional presentation work.
   quieter native chrome and Web theme/token parity. Strict lint and focused
   Rust 81/0/3, JS 3/0, real PTY and Firefox regressions passed. Native Auto
   uses terminal hint/dark fallback; active probe deferred.
-- [ ] UX-P2: scoped mouse capture, render-derived hit targets, focus,
-  drag/resize/maximize/restore, responsive layout and independent scrolling.
+- [x] UX-P2: scoped mouse capture and ui.mouse policy, render-derived
+  exact inert selection, focus, draggable splits, maximize/restore,
+  responsive collapse and independent visual-row scrolling. Strict lint,
+  focused Rust 84/0/3, real SGR PTY and original native/Firefox smoke pass.
 - [ ] UX-P3: complete mouse and keyboard affordances across nine views,
   actions, pickers, forms, settings and exact-owner confirmations.
 - [ ] UX-P4: visual/terminal-depth/accessibility polish, actual PTY and

@@ -101,6 +101,7 @@ impl ThemeMode {
 #[serde(deny_unknown_fields)]
 pub struct UiDoc {
     pub theme: Option<ThemeMode>,
+    pub mouse: Option<UiSwitch>,
     pub color: Option<UiSwitch>,
     pub progress: Option<UiSwitch>,
     pub interactive: Option<UiSwitch>,

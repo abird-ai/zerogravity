@@ -4,7 +4,7 @@ Author: Project owner
 Co-authors: GPT-6.2
 Owner: @pvl
 Decision: 26 Nov 2026 — polish before public serving
-Status: UX-P1 implemented and focused-qualified (26 Nov); UX-P2 next.
+Status: UX-P1/P2 implemented and focused-qualified (26 Nov); UX-P3 next.
 
 This is the follow-on to the accepted UX-1–10 iteration at `1b8de1cb`.
 It supersedes only the relevant interaction/presentation details of
@@ -443,11 +443,34 @@ not mark an untested or interrupted phase accepted.
   test-only PTY repaint assertion corrected to wait for selected choice.
   Full isolated workspace gate and real resident/transfer acceptance
   deferred to assembled UX-P4, no new GPU/performance claim.
-- [ ] **UX-P2 — input/layout foundation:** scoped mouse capture/restoration,
+- [x] **UX-P2 — input/layout foundation:** scoped mouse capture/restoration,
   one render-derived hit layout, pane focus, rail navigation, drags,
   maximize/restore, responsive collapse and independent scroll primitives.
   Actual PTY click/nav/resize/scroll with exact geometry; no effectful
   click path until identity/confirmation mapping is proven.
+  Landed: scoped Crossterm capture/restore and typed ui.mouse policy,
+  F8 session override; one render-derived bounded visible hit list,
+  exact row/ready-registration identity with release matching and original
+  owner validation. Inert navigation, shelf and row selection, theme
+  previews, palette destinations and modal isolation. Preferred rail
+  width and horizontal/vertical split ratios, per-view focus, maximize,
+  scroll offsets, narrow nav/collapsed detail controls. Keyboard Tab,
+  F6 pane, F7 maximize, Alt+Left/Right rail, Ctrl+arrows inner resize.
+  Actual wrapped visual row count uses the existing pinned Ratatui
+  rendered-line-info feature; no new dependency. Scrollbars, independent
+  list/detail and main/output scroll, logs pause when scrolling off tail.
+  Running selected details and response share the secondary viewport
+  for now. Stable anchors across reordered/refreshed content, complete
+  editor/modal scrolling and Unicode editing remain P3/P4.
+  Strict minimal, Web-only, TUI/Web and combined lint; focused Rust
+  84/0/3 (54/0/3 optimized CLI units), actual SGR PTY click, wheel,
+  scrolled exact row, both splitter orientations, maximize/restore,
+  narrow nav, raw detail scrollbar/selection independence, modal mask,
+  capture opt-out and restoration. Original native shell/settings/theme
+  and actual Firefox desktop/tablet/mobile/settings smoke pass. Initial
+  fixture assertions corrected for ANSI differential updates; no
+  production interaction relaxed. Full workspace and actual resident/
+  transfer acceptance remain assembled UX-P4.
 - [ ] **UX-P3 — full view controls:** action bars/overflow and mouse row/tab/
   filter selection for all nine views; pickers/modal buttons and typed
   settings/editor mouse interaction. Shared original actions and guards,

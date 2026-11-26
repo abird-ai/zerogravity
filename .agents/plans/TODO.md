@@ -210,7 +210,10 @@ UX-1–10 accepted. User-directed follow-on [UX-P TUI polish](cli-ux/TUI_POLISH_
 is now next: full mouse/keyboard controls, resizable panes and independent
 scroll, coordinated semantic Dark/Light/Auto appearance. UX-P1 landed with
 focused 81/0/3 Rust, JS 3/0, real native/Web appearance and settings
-regression; UX-P2 mouse/layout next. Complete UX-P before public serving/ordinary benchmarks, then
+regression. UX-P2 scoped mouse capture, exact inert hit targets, responsive
+splits, focus/maximize and independent scrolling landed; focused Rust 84/0/3,
+strict lint, actual SGR/native/Firefox tests passed. UX-P3 complete controls
+next. Complete UX-P before public serving/ordinary benchmarks, then
 ordered performance phases.
 General UMA/foreign backing, device-write host read, unqualified model/
 backend/media and other expansion holds remain explicit. Historical
