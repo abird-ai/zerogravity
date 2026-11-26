@@ -499,6 +499,20 @@ Retain accepted UX-1–10 ownership and keyboard behavior.
   - [ ] UX-P-M2 optional exact per-request/phase and detailed layer
     observations; keep profiling explicit and capability-bound.
   - [ ] P4B full simultaneous owner regressions and isolated gate.
+    Handoff audit (26 Nov; not an executed new gate): reconcile changed
+    production default with the explicit CPU/cache coverage. At M1 HEAD
+    scripts/check.sh shared CPU cache Clippy/test (lines 131–132) still
+    inherit the old CLI default assumptions; review them and preserve
+    original CPU/cache scope separately from full production checks.
+    Full-default link/launch and strict full GPU lint remain unverified
+    (previous link timed out; previous GPU Clippy 38 errors). Do not
+    remove valid reusable primitives or relax admission/tests. Portable
+    Nix/release CLI still explicitly CPU; reconcile full normal native
+    package intent with platform owner without silently losing portability.
+    Run actual cached SDK ServeRequestFailed generation/metadata case,
+    combined owner regressions and actual supported GPU layer observation
+    where claimed. See [complete takeover §10.2 and §11](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md).
+
 
 Deferred public serving until UX-P exit. Optional terminal background
 helper requires dependency/offline approval; conservative Auto fallback

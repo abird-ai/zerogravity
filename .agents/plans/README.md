@@ -13,24 +13,29 @@ Repository naming follows the short canonical vocabulary in
 concept rather than historical qualification shorthand.
 
 Cross-window continuation starts at [the canonical current handoff](../docs/CURRENT_HANDOFF.md).
-For the complete current takeover through accepted UX-9B, read the
-[26 Nov comprehensive handoff](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md) §§0–13;
-the historical continuation was UX-9C (now accepted). The live handoff
-records accepted UX-1–10, focused-qualified UX-P1/P2/P3/P4A (including toolbar-free follow-up) and the [live performance follow-up](cli-ux/LIVE_MODEL_PERFORMANCE.md). Next: P4B in
-[UX-P native TUI polish](cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
-(mouse, panes, scrolling, themes), added by user decision 26 Nov before
-public serving and ordinary benchmarks; then ordered backend performance.
-The [standalone UX-9C prompt](../docs/NEXT_AGENT_2026-11-26_UX9C.md) is historical.
-Appendix D preserves every Phase 2 landing. Appendix E and the
-[25 Nov Phase 1 exit takeover](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
-retain the complete original design, foundation history and prior evidence.
-The [25 Nov foundations pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md)
-and [24 Nov foundations pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md)
-remain historical authority for their accepted scope.
-Read the main body first and use the appendices and earlier packs as needed.
+The latest [comprehensive takeover through UX-P-M1](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md)
+§§0–13 describes current architecture, accepted UX-1–10 and focused
+UX-P1/P2/P3/P4A, full default/error follow-up and live model metrics.
+Use the [standalone P4B prompt](../docs/NEXT_AGENT_2026-11-26_UX_P4B.md).
+Next required: P4B assembled acceptance in
+[UX-P polish](cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md) and
+[live performance](cli-ux/LIVE_MODEL_PERFORMANCE.md); deeper M2 inspection
+is optional and capability-bound. Do not start public serving before
+UX-P exit. The comprehensive handoff §10.2 records known full-default
+link/gate/packaging and physical qualification caveats.
+Its Appendices A–E preserve the engineering index, unresolved snapshot,
+complete reachable Git ledger, every post-UX-9B landing narrative and
+the complete previous takeover main body. The retained
+[UX-9B pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md),
+[Phase 1 exit pack](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md),
+[25 Nov foundations](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-25_FOUNDATIONS.md)
+and [24 Nov foundations](../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-24_FOUNDATIONS.md)
+link all earlier original architecture, exact chronology and accepted/rejected
+experiments going back to the beginning. Earlier next-agent prompts are
+historical. Read the main body first, then the relevant appendices.
 The live ordered [full implementation plan](FULL_IMPLEMENTATION_PLAN.md),
-source, tests and owner TODOs remain authoritative; the takeover is a
-navigation snapshot, not a separate tracking system.
+source, executed tests and owner TODOs remain authoritative; the handoff
+is a requested navigation snapshot, not a separate tracking system.
 
 ## Layout
 

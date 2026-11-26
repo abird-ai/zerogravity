@@ -2,14 +2,21 @@
 
 Canonical cross-window entry point for `/home/pvl/spaces/abird/src/zerogravity`.
 
-**Full historical takeover (26 Nov, through accepted UX-9B):**
-[FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md).
-Read §§0–13 first; §11/§13 and the [standalone UX-9C prompt](NEXT_AGENT_2026-11-26_UX9C.md) describe the original UX-9C implementation scope. Appendix D retains the exact earlier Phase 2 landing narratives. Resume from the live checkpoint below.
-The [25 Nov Phase 1 exit pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
-and earlier foundation packs retain the complete original architecture,
-foundation chronology, exact evidence and rejected experiments. Their
-older continuation prompts are historical. Resume from the latest live
-checkpoint below and ordered full plan.
+**Latest complete takeover (26 Nov, through UX-P-M1):**
+[FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md).
+Read §§0–13 first, especially §10.2 (default/build/gate caveats) and §11
+(next required P4B acceptance, optional M2). Use the
+[standalone P4B takeover prompt](NEXT_AGENT_2026-11-26_UX_P4B.md).
+Appendix D preserves all fifteen post-UX-9B landing narratives and
+changed paths; Appendix B records the literal pending-marker snapshot.
+The complete [UX-9B pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX9B_EXIT.md),
+[Phase 1 exit pack](FULL_COMPREHENSIVE_HANDOFF_2026-11-25_PHASE1_EXIT.md)
+and preceding historical handoffs retain original design, exact
+implementation chronology, experiments, rejected choices, reusable
+primitives and all historical work items. Their old continuation
+prompts are historical. This is a one-time requested navigation
+snapshot; live source, tests, owning TODOs and ordered plan remain
+authoritative. Resume from the live checkpoint below.
 
 **24 Nov priority decision:** start with the
 [full implementation plan](../plans/FULL_IMPLEMENTATION_PLAN.md). Complete
