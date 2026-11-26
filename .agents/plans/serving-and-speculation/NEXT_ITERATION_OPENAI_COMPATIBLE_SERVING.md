@@ -6,7 +6,7 @@ scaffolding), CLI/TUI/Web and serving, ROCm, CUDA, Vulkan, then concrete
 compiled providers. Native Hugging Face/Safetensors and GGUF are primary.
 Older ordering below is context; valid owner constraints remain authoritative.
 
-Status: **OA-1 through OA-3 and OA-4A foreground response resources accepted** (27 Nov). OA-4 remains open for background, conversations and token count; later units remain ordered.
+Status: **OA-1 through OA-3 and OA-4A/B accepted** (27 Nov). OA-4 remains open for conversations, token count and background replay; later units remain ordered.
 
 26 Nov user decision: [UX-P native TUI polish](../cli-ux/TUI_POLISH_AND_MOUSE_INTERACTION.md)
 was the prerequisite. The assembled P4B gate passed on ad7a4178;
@@ -1372,11 +1372,30 @@ CLI/TUI/Web (134.83s) and Rust SDK (15.18s) lifecycle passed.
 Full isolated assembled gate 2,560/0/109 (318 suites, 690.5s),
 release TUI/Web, installer and scripts passed. OA-4A accepted.
 
-Remaining: background work/cancel with joined owner; conversation/items
-CRUD and atomic append on successful generation; exact input_tokens
-count without generation through original charged tokenizer. No false
-capability until qualified. Retain one protocol quota; no model-state
-store or second scheduler.
+**OA-4B background polling/cancellation (27 Nov).** Rechecked current
+[background mode](https://developers.openai.com/api/docs/guides/background)
+and [cancel](https://developers.openai.com/api/reference/resources/responses/methods/cancel).
+Nonstream background=true create/poll/cancel through listener-supervised
+bounded JoinSet and original event receipt; no second inference queue.
+Same protocol quota and charged immutable snapshots. Actual receipt
+cancel and atomic active-entry transition, late terminal cannot overwrite;
+repeated cancel returns final object. Active delete refuses. Safe failure
+fallback even on terminal serialization overflow; original deadline
+and shutdown retirement. Local store=true 30min with continuation,
+background store=false temporary 10min with polling only, foreground
+store=false remains unretained. Default/soonest completion window only;
+background streaming/resume refuses until bounded replay exists.
+Focused 172/0/0 and strict lint passed. Real installed SDK/CLI/TUI/Web
+(130.88s) and Rust SDK (14.36s) passed, including actual cancelled
+on the cached model. Full isolated gate 2,562/0/109 across 318 Rust
+suites (377.3s), release TUI/Web, installer and scripts passed.
+OA-4B accepted.
+
+Remaining: conversation/items CRUD and atomic append on successful
+generation; exact input_tokens count without generation through original
+charged tokenizer; bounded background streaming/replay and resume.
+Retain one protocol quota, no model-state store or second scheduler.
+No false capability until qualified.
 
 ### OA-5 — Chat/Completions compatibility close
 

@@ -1,7 +1,9 @@
 //! OpenAI Responses projection of the original typed text event receipt.
 //! Optional protocol record; no secondary scheduler, producer task or event queue.
+mod background;
 mod input;
 mod store;
+pub(super) use background::{Jobs, start as start_background};
 pub(super) use input::parse;
 pub(super) use store::{Pending, Store, route as resource_route};
 
@@ -33,6 +35,7 @@ pub(super) struct Options {
     tool_choice: &'static str,
     parallel_tool_calls: bool,
     store: bool,
+    pub(super) background: bool,
     previous: Option<String>,
     _charge: Arc<ServingCharge>,
 }
@@ -294,7 +297,7 @@ impl Options {
             usage,
             user: None,
             metadata: &self.metadata,
-            background: false,
+            background: self.background,
             service_tier: "default",
             top_logprobs: 0,
         }
@@ -312,6 +315,30 @@ fn terminal_status(reason: &str) -> Result<&'static str> {
         )),
     }
 }
+fn response_error(errors: &ErrorReporting, failure: &ServiceError, authorized: bool) -> Value {
+    let mut reported = errors.report(failure, authorized);
+    let mut failure_object = reported["error"].take();
+    failure_object
+        .as_object_mut()
+        .expect("fixed error envelope")
+        .remove("type");
+    failure_object
+        .as_object_mut()
+        .expect("fixed error envelope")
+        .remove("param");
+    // Response.error uses a narrower canonical code vocabulary than the
+    // HTTP error envelope. Original typed details remain opt-in.
+    failure_object["code"] = Value::String(
+        match failure.code {
+            "invalid_messages" | "invalid_prompt" | "context_overflow" => "invalid_prompt",
+            "queue_full" | "backpressure" | "connections_full" => "rate_limit_exceeded",
+            _ => "server_error",
+        }
+        .into(),
+    );
+    failure_object
+}
+
 fn wire_error(_: io::Error) -> ServiceError {
     ServiceError::new(
         503,
@@ -320,18 +347,16 @@ fn wire_error(_: io::Error) -> ServiceError {
     )
 }
 
-pub(super) async fn completion(
-    request: RequestEvents,
-    options: Options,
-    mut wire: Wire,
-    request_id: &str,
-    pending: Option<Pending>,
-) -> Result<Response<Reply>> {
-    let identity = Identity::new(request_id);
-    let owner = Arc::new(request);
+struct Terminal {
+    output: String,
+    status: &'static str,
+    usage: Usage,
+}
+
+async fn terminal(events: &RequestEvents) -> Result<Terminal> {
     let deadline = time::Instant::now() + body::RESPONSE_TIMEOUT;
     loop {
-        let event = time::timeout_at(deadline, body::next(&owner))
+        let event = time::timeout_at(deadline, body::next(events))
             .await
             .map_err(|_| ServiceError::new(504, "timeout", "generation deadline reached"))?
             .map_err(|_| {
@@ -354,25 +379,44 @@ pub(super) async fn completion(
                 completion_tokens,
                 finish_reason,
             } => {
-                let status = terminal_status(finish_reason)?;
-                let content = [TextPart::new(&output)];
-                let items = [Message::new(&identity, status, &content)];
-                let usage = Usage::new(prompt_tokens, cached_prompt_tokens, completion_tokens)?;
-                let view = options.view(&identity, &owner.model, status, &items, Some(usage), None);
-                let data = wire.encode(&owner, None, &view).map_err(wire_error)?;
-                if let Some(pending) = pending {
-                    pending.finish(&view, &output, true)?;
-                }
-                return Ok(Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, "application/json")
-                    .header(header::CACHE_CONTROL, "no-store")
-                    .header("x-content-type-options", "nosniff")
-                    .body(Reply::Full(Some(data)))
-                    .expect("fixed Responses headers"));
+                return Ok(Terminal {
+                    output,
+                    status: terminal_status(finish_reason)?,
+                    usage: Usage::new(prompt_tokens, cached_prompt_tokens, completion_tokens)?,
+                });
             }
         }
     }
+}
+
+pub(super) async fn completion(
+    request: RequestEvents,
+    options: Options,
+    mut wire: Wire,
+    request_id: &str,
+    pending: Option<Pending>,
+) -> Result<Response<Reply>> {
+    let identity = Identity::new(request_id);
+    let owner = Arc::new(request);
+    let Terminal {
+        output,
+        status,
+        usage,
+    } = terminal(&owner).await?;
+    let content = [TextPart::new(&output)];
+    let items = [Message::new(&identity, status, &content)];
+    let view = options.view(&identity, &owner.model, status, &items, Some(usage), None);
+    let data = wire.encode(&owner, None, &view).map_err(wire_error)?;
+    if let Some(pending) = pending {
+        pending.finish(&view, &output, true)?;
+    }
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::CACHE_CONTROL, "no-store")
+        .header("x-content-type-options", "nosniff")
+        .body(Reply::Full(Some(data)))
+        .expect("fixed Responses headers"))
 }
 
 #[derive(Serialize)]
@@ -528,17 +572,7 @@ pub(super) fn streaming(
         owner.cancel();
         // Observe/report the original typed error once, but use the canonical
         // Response failure object rather than a Chat error chunk.
-        let mut reported = errors.report(&failure, authorized);
-        let mut failure_object = reported["error"].take();
-        failure_object.as_object_mut().expect("fixed error envelope").remove("type");
-        failure_object.as_object_mut().expect("fixed error envelope").remove("param");
-        // Response.error uses a narrower canonical code vocabulary than the
-        // HTTP error envelope. Original typed details remain opt-in.
-        failure_object["code"] = Value::String(match failure.code {
-            "invalid_messages" | "invalid_prompt" | "context_overflow" => "invalid_prompt",
-            "queue_full" | "backpressure" | "connections_full" => "rate_limit_exceeded",
-            _ => "server_error",
-        }.into());
+        let failure_object = response_error(&errors, &failure, authorized);
         let part = [TextPart::new(&partial)];
         let items = [Message::new(&identity, "incomplete", &part)];
         let view = options.view(&identity, &owner.model, "failed", &items, None, Some(&failure_object));

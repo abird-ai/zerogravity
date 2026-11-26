@@ -34,7 +34,87 @@ No additional canonical IR, conversion pipeline or compiler dependency in
 Phase 1. Older next-step performance notes below describe
 reusable work and measured history, not precedence over this order.
 
-### Current checkpoint — OA-4A accepted; OA-4 background/conversations/count next (27 Nov)
+### Current checkpoint — OA-4B accepted; OA-4 conversations/count/replay next (27 Nov)
+
+Started from clean signed 0898734b on L5. Rechecked current background
+mode and cancel contracts:
+https://developers.openai.com/api/docs/guides/background
+https://developers.openai.com/api/reference/resources/responses/methods/cancel
+Support text background=true with nonstream create/poll/cancel, default
+soonest completion window. Explicit background_options.completion_window
+soonest accepted; other windows/continuation-ID controls refuse.
+Background streaming/resumption still refuses until a bounded replay
+contract is qualified. No webhook or cloud capacity/discount claim.
+
+One listener-owned JoinSet supervised by the existing accept loop
+(reap even without incoming connections, abort/join after ingress stop).
+Hard maximum 64 task handles including completed/unjoined handles.
+No extra inference queue, worker, scheduler, detached task or model state.
+Reserve the original shared protocol quota before model admission:
+64 pending/retained record slots, 32 MiB conservative backing, same
+original ServingCharge. Background reserves 7x at most 1 MiB terminal
+serialization limit plus actual input backing and 64 KiB headroom for
+immutable initial/cancel/failure/terminal projections and task state;
+options metadata retains its own allowance, no unused SSE reservation.
+Foreground reservations unchanged. Initial in_progress means accepted
+protocol processing, not physical GPU execution or an exact scheduler
+phase. After admission, mandatory snapshots are prepared before
+publishing the ID and spawning the joined consumer. If preparation
+fails, the original receipt is dropped and cancelled; no published ID.
+Background owns the original nonstream event receipt independently of
+the creation socket, shares the same absolute 180s generation deadline
+and terminal parser as foreground JSON. Initial and terminal snapshots
+retain one shared input and credit; polling uses Bytes owner references,
+never another strong inference receipt. Safe failure records, including
+oversized terminal output, always have a pre-priced failed fallback.
+No partial output/usage fabricated for cancellation or failed nonstream.
+
+Cancel signals the original receipt, wakes its joined consumer and
+atomically replaces the active entry with cancelled; terminal publication
+checks active entry identity, so a late Done cannot revive a cancelled
+or deleted record. Repeated cancel on terminal background returns the
+same final object. Active DELETE refuses until terminal. Foreground
+cancel still refuses; foreground disconnect still cancels its request.
+Logical cancellation is not a physical completion proof; original
+engine owns physical retirement. All resource routes retain original
+listener authorization and bounded socket output.
+
+Explicit store=true retains terminal resources 30min and permits
+successful/incomplete continuation. Background store=false retains
+only temporary polling/input-item resources for 10min from terminal,
+no continuation; ordinary foreground store=false retains nothing.
+Both remain memory-only and expire on access/idle listener tick or
+listener shutdown. Shared quota follows all retained readers even after
+expiry/deletion; active tasks cannot age out before their deadline.
+These are local bounded policies, not cloud retention guarantees.
+
+Focused engine/serving 172/0/0 and strict lint passed. Actual held-receipt
+TCP tests verify create disconnect independence, input items during
+processing, active deletion refusal, cancellation/late terminal race,
+idempotence, unrelated worker completion and usage, temporary continuation
+refusal, joined shutdown and ledger retirement. Worker error and oversized
+terminal output publish safe failed records. Existing installed OpenAI
+Python SDK 2.33.0 real cached model fixture now exercises background
+polling, text/usage parity, terminal cancel idempotence, cancellation
+race and stored vs temporary continuation. Actual official SDK
+cancellation returned cancelled, and the cached CLI/TUI/Web/SDK
+lifecycle passed (130.88s); Rust SDK passed (14.36s).
+Full isolated assembled gate exited 0 (377.3s): 2,562/0/109 across
+318 Rust suites, backend feature boundaries, strict lint, release TUI/Web,
+installer and scripts passed. OA-4B accepted. Build concurrency reduced to 4 jobs per lane
+for observed memory pressure; no new dependencies/downloads.
+Logs: `target/oa4b-focused.log`, `target/oa4b-real-consumers.log`,
+`target/oa4b-assembled.log`. Exact Nix source-integrity remains separately
+blocked by unavailable locked inputs. No new physical GPU/performance
+claim.
+
+Remaining OA-4: conversations/items CRUD and atomic context append
+using same protocol quota; exact input-token counting through original
+charged model tokenizer without opening generation; bounded background
+streaming/replay and resume contract. No fake support, additional model
+state store or scheduler. Do not mark OA-4 complete.
+
+### Prior checkpoint — OA-4A accepted; OA-4 background/conversations/count next (27 Nov)
 
 Started from clean signed cea0f18c on L5. Current Responses retrieve,
 delete, input_items, create/previous_response_id, and cancel reference

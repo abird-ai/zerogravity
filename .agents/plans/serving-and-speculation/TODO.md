@@ -137,11 +137,21 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   (15.18s) passed, including exact Chat parity and deletion. Full
   isolated gate 2,560/0/109 (318 suites, 690.5s), release TUI/Web,
   installer and scripts passed. OA-4A accepted.
-- [ ] OA-4 remaining: bounded joined background response execution and
-  explicit cancellation; conversation/item resources and atomic context
+- [x] OA-4B: bounded joined nonstream background response execution,
+  independent of create connection, polling and explicit original receipt
+  cancellation, terminal race/idempotence, safe failure fallback and
+  joined shutdown. Same quota and final reader ownership, hard 64 task
+  handles. store=true 30min continuation, background store=false 10min
+  temporary polling only; foreground unchanged. Default/soonest window.
+  Background stream/replay refused. Focused 172/0/0, strict lint passed;
+  real installed SDK/CLI/TUI/Web (130.88s, actual cancelled) and Rust
+  SDK (14.36s) passed. Full isolated gate 2,562/0/109 (318 suites,
+  377.3s), release TUI/Web, installer and scripts passed. OA-4B accepted.
+- [ ] OA-4 remaining: conversation/item resources and atomic context
   append using the same quota; exact input-token counting without
-  generation through original charged tokenizer. No duplicate model
-  state store, scheduler or fake capability. Real SDK qualification.
+  generation through original charged tokenizer; bounded background
+  streaming/replay and resume. No duplicate model state store,
+  scheduler or fake capability. Real SDK qualification.
 
 ### Current continuation — 22 Nov 2026
 

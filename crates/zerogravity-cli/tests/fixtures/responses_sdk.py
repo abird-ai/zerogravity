@@ -1,6 +1,7 @@
 """Optional real cached-model canary using the installed official SDK."""
 import ipaddress
 import sys
+import time
 
 import httpx
 import openai
@@ -162,4 +163,53 @@ with openai.OpenAI(
         raise AssertionError("deleted child remained available")
     except openai.NotFoundError:
         pass
-    print(f"OpenAI SDK {openai.__version__}: Models, Responses JSON/SSE, exact Chat parity, stored response lifecycle and continuation passed")
+    # The create HTTP receipt is no longer the background execution owner.
+    # Poll the exact ID through the installed official client.
+    for retain in (True, False):
+        job = client.responses.create(**{**kwargs, "background": True, "store": retain})
+        assert job.background is True and job.store is retain
+        assert job.status == "in_progress" and job.usage is None
+        deadline = time.monotonic() + 60
+        while job.status in ("queued", "in_progress"):
+            assert time.monotonic() < deadline, "background deadline"
+            time.sleep(0.05)
+            job = client.responses.retrieve(job.id)
+        assert job.status == response.status
+        assert job.output_text == response.output_text
+        assert job.usage == response.usage
+        assert client.responses.cancel(job.id).model_dump() == job.model_dump()
+        if retain:
+            child = client.responses.create(
+                model="fast", input=new_prompt, instructions=new_instructions,
+                previous_response_id=job.id, store=False, max_output_tokens=2,
+                temperature=0,
+            )
+            assert child.output_text == expected.choices[0].message.content
+            assert child.usage.input_tokens == expected.usage.prompt_tokens
+        else:
+            try:
+                client.responses.create(
+                    model="fast", input=new_prompt, previous_response_id=job.id,
+                    store=False,
+                )
+                raise AssertionError("temporary polling record accepted continuation")
+            except openai.BadRequestError as error:
+                assert error.body["param"] == "previous_response_id"
+        assert client.responses.delete(job.id) is None
+
+    # A real small model can finish before the next HTTP request arrives.
+    # Either cancellation wins, or the already published terminal wins;
+    # the deterministic held-receipt socket test proves the in-flight case.
+    job = client.responses.create(**{**kwargs, "background": True})
+    stopped = client.responses.cancel(job.id)
+    assert stopped.status in ("cancelled", response.status)
+    assert stopped.background is True and stopped.id == job.id
+    if stopped.status == "cancelled":
+        assert stopped.usage is None
+    else:
+        assert stopped.output_text == response.output_text
+        assert stopped.usage == response.usage
+    assert client.responses.cancel(job.id).model_dump() == stopped.model_dump()
+    assert client.responses.retrieve(job.id).model_dump() == stopped.model_dump()
+    assert client.responses.delete(job.id) is None
+    print(f"OpenAI SDK {openai.__version__}: Models, Responses JSON/SSE, exact Chat parity, stored response/continuation, background polling and idempotent cancel ({stopped.status}) passed")

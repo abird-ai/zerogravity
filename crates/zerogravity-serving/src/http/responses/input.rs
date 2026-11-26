@@ -176,6 +176,7 @@ pub(in crate::http) fn parse(
             | "truncation"
             | "include"
             | "background"
+            | "background_options"
             | "previous_response_id"
             | "conversation"
             | "reasoning"
@@ -207,11 +208,24 @@ pub(in crate::http) fn parse(
         .ok_or_else(|| invalid("model", "model name required"))?;
     zerogravity_engine::router::validate_alias(model).map_err(|e| e.with_parameter("model"))?;
     let stream = boolean(map, "stream", false)?;
-    // Local storage stays opt-in. Foreground requests do not survive a
-    // disconnected client; background ownership is a separate capability.
+    // Foreground storage is opt-in. Background always needs a temporary
+    // polling record, but store=false never permits durable continuation.
     let store = boolean(map, "store", false)?;
-    if boolean(map, "background", false)? {
-        return Err(unsupported("background"));
+    let background = boolean(map, "background", false)?;
+    if background && stream {
+        return Err(unsupported("stream"));
+    }
+    if let Some(options) = optional(map, "background_options") {
+        if !background {
+            return Err(unsupported("background_options"));
+        }
+        let options = options
+            .as_object()
+            .ok_or_else(|| invalid("background_options", "expected object"))?;
+        only(options, &["completion_window"], "background_options")?;
+        if optional(options, "completion_window").is_some_and(|v| v.as_str() != Some("soonest")) {
+            return Err(unsupported("background_options"));
+        }
     }
     for name in ["conversation", "reasoning"] {
         neutral(map, name, |_| false)?;
@@ -343,7 +357,11 @@ pub(in crate::http) fn parse(
     });
     let wire = Wire::new(
         service,
-        if store {
+        if background {
+            // Pending owns every serialized polling snapshot. Only retain
+            // the options/metadata allowance, not a second wire budget.
+            0
+        } else if store {
             output_limit.min(super::super::MAX_BODY)
         } else {
             output_limit
@@ -400,6 +418,7 @@ pub(in crate::http) fn parse(
             tool_choice,
             parallel_tool_calls,
             store,
+            background,
             previous: previous.map(str::to_owned),
             _charge: wire.charge.clone(),
         },

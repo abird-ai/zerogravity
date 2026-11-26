@@ -364,6 +364,7 @@ struct Host {
     shutdown: Arc<Shutdown>,
     metrics: Arc<Counters>,
     resources: Arc<responses::Store>,
+    jobs: responses::Jobs,
 }
 struct Connection {
     host: Arc<Host>,
@@ -510,6 +511,9 @@ impl Connection {
                     host.config.limits.output_bytes,
                     &host.resources,
                 )?;
+                if options.background {
+                    host.jobs.require_capacity()?;
+                }
                 let pending = responses::Pending::prepare(
                     &host.resources,
                     host.service.as_ref(),
@@ -545,7 +549,16 @@ impl Connection {
                 None => host.service.request_semantic_admitted(task, ingress)?,
             };
             if let Some((options, wire, pending)) = projection {
-                if stream {
+                if options.background {
+                    responses::start_background(
+                        &host.jobs,
+                        events,
+                        options,
+                        request_id,
+                        pending.expect("background reserves a polling record"),
+                        host.config.errors.clone(),
+                    )
+                } else if stream {
                     Ok(responses::streaming(
                         events,
                         options,
@@ -706,6 +719,11 @@ async fn accept_loop(listener: TcpListener, host: Arc<Host>) -> io::Result<()> {
             biased;
             _ = host.shutdown.requested() => break Ok(()),
             _ = expiry.tick() => host.resources.expire(),
+            joined = host.jobs.join_next() => {
+                if let Err(error) = joined {
+                    break Err(io::Error::other(error));
+                }
+            }
             joined = tasks.join_next(), if !tasks.is_empty() => {
                 if let Some(Err(error)) = joined {
                     break Err(io::Error::other(error));
@@ -751,7 +769,8 @@ async fn accept_loop(listener: TcpListener, host: Arc<Host>) -> io::Result<()> {
             joined = Err(io::Error::other(error));
         }
     }
-    result.and(joined)
+    let background = host.jobs.stop().await.map_err(io::Error::other);
+    result.and(joined).and(background)
 }
 
 pub(crate) fn serve(
@@ -776,6 +795,7 @@ pub(crate) fn serve(
                 shutdown,
                 metrics,
                 resources: Arc::new(responses::Store::default()),
+                jobs: responses::Jobs::default(),
             }),
         )
         .await

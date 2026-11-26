@@ -366,3 +366,252 @@ fn panicked_connection_is_reported_and_other_tasks_are_joined() {
     drop((receipt, consumer, service));
     assert_eq!(host.serving_bytes(), baseline);
 }
+
+// Every exchange uses a fresh connection; the create socket owns no
+// background execution lifetime.
+fn background_exchange(
+    address: std::net::SocketAddr,
+    method: &str,
+    path: &str,
+    body: Option<&serde_json::Value>,
+) -> (u16, serde_json::Value) {
+    let mut socket = TcpStream::connect(address).unwrap();
+    socket
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    let data = body.map(serde_json::Value::to_string).unwrap_or_default();
+    write!(socket, "{method} {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{data}", data.len()).unwrap();
+    let mut raw = String::new();
+    socket.read_to_string(&mut raw).unwrap();
+    let (head, body) = raw.split_once("\r\n\r\n").expect("HTTP response");
+    let status = head.split_whitespace().nth(1).unwrap().parse().unwrap();
+    (status, serde_json::from_str(body).unwrap())
+}
+
+#[test]
+fn background_poll_cancel_completion_and_shutdown_share_original_receipts() {
+    use serde_json::json;
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = PendingService::open(host.clone());
+    let consumer = service.queue.worker().unwrap();
+    let server = start(service.clone());
+    let address = server.local_addr();
+
+    let submit = |store: bool| {
+        let (status, response) = background_exchange(
+            address,
+            "POST",
+            "/v1/responses",
+            Some(&json!({
+                "model":"fixture","input":"hello","background":true,"store":store,
+                "background_options":{"completion_window":"soonest"}
+            })),
+        );
+        assert_eq!(status, 200, "{response}");
+        assert_eq!(response["background"], true);
+        assert_eq!(response["store"], store);
+        assert_eq!(response["status"], "in_progress");
+        assert!(response["usage"].is_null());
+        let path = format!("/v1/responses/{}", response["id"].as_str().unwrap());
+        assert_eq!(
+            background_exchange(address, "GET", &path, None),
+            (200, response)
+        );
+        path
+    };
+
+    let first = submit(true);
+    let first_token = service.receipt(0);
+    assert!(!first_token.is_cancelled(), "create connection closed");
+    let first_job = match consumer.try_pop(|(cancel, _)| cancel.is_cancelled()) {
+        Pop::Item(job) => job,
+        _ => panic!("original active receipt missing"),
+    };
+    let second = submit(false);
+    let second_token = service.receipt(1);
+    let second_job = match consumer.try_pop(|(cancel, _)| cancel.is_cancelled()) {
+        Pop::Item(job) => job,
+        _ => panic!("original active receipt missing"),
+    };
+    assert_eq!(background_exchange(address, "DELETE", &first, None).0, 409);
+    let (status, items) =
+        background_exchange(address, "GET", &format!("{first}/input_items"), None);
+    assert_eq!(status, 200);
+    assert_eq!(items["data"][0]["content"][0]["text"], "hello");
+    let cancel_path = format!("{first}/cancel");
+    let (status, cancelled) = background_exchange(address, "POST", &cancel_path, None);
+    assert_eq!(status, 200);
+    assert_eq!(cancelled["status"], "cancelled");
+    assert!(cancelled["usage"].is_null());
+    assert!(first_token.is_cancelled());
+    assert!(!second_token.is_cancelled());
+    assert_eq!(
+        background_exchange(address, "POST", &cancel_path, None),
+        (200, cancelled.clone())
+    );
+    // A late worker terminal cannot overwrite an accepted cancellation.
+    let _ = first_job.1.try_send(ResponseEvent::Done {
+        output: "late".into(),
+        prompt_tokens: 3,
+        cached_prompt_tokens: 0,
+        completion_tokens: 1,
+        finish_reason: "stop",
+    });
+    second_job
+        .1
+        .try_send(ResponseEvent::Done {
+            output: "done".into(),
+            prompt_tokens: 3,
+            cached_prompt_tokens: 1,
+            completion_tokens: 2,
+            finish_reason: "length",
+        })
+        .unwrap_or_else(|_| panic!("unrelated original worker disconnected"));
+    let mut terminal = serde_json::Value::Null;
+    wait_until(|| {
+        let (status, value) = background_exchange(address, "GET", &second, None);
+        assert_eq!(status, 200);
+        terminal = value;
+        terminal["status"] != "in_progress"
+    });
+    assert_eq!(terminal["status"], "incomplete");
+    assert_eq!(
+        terminal["incomplete_details"]["reason"],
+        "max_output_tokens"
+    );
+    assert_eq!(terminal["output"][0]["content"][0]["text"], "done");
+    assert_eq!(
+        terminal["usage"]["input_tokens_details"]["cached_tokens"],
+        1
+    );
+    assert_eq!(
+        background_exchange(address, "POST", &format!("{second}/cancel"), None),
+        (200, terminal.clone())
+    );
+    assert_eq!(
+        background_exchange(address, "GET", &first, None),
+        (200, cancelled)
+    );
+    // Temporary store=false has polling semantics, not continuation.
+    let (status, error) = background_exchange(
+        address,
+        "POST",
+        "/v1/responses",
+        Some(&json!({
+            "model":"fixture","input":"again","previous_response_id":terminal["id"],
+        })),
+    );
+    assert_eq!(status, 400);
+    assert_eq!(error["error"]["param"], "previous_response_id");
+
+    assert_eq!(background_exchange(address, "DELETE", &first, None).0, 200);
+    assert_eq!(background_exchange(address, "GET", &first, None).0, 404);
+    let (status, error) = background_exchange(
+        address,
+        "POST",
+        "/v1/responses",
+        Some(&json!({
+            "model":"fixture","input":"hello","background":true,"stream":true,
+        })),
+    );
+    assert_eq!(status, 400);
+    assert_eq!(error["error"]["param"], "stream");
+
+    let _third = submit(true);
+    let third_token = service.receipt(2);
+    assert!(!third_token.is_cancelled());
+    assert_eq!(service.queue.snapshot().pending, 1);
+    server.shutdown().unwrap();
+    assert!(third_token.is_cancelled());
+    assert_eq!(
+        service
+            .queue
+            .sweep(|(cancel, _)| cancel.is_cancelled())
+            .unwrap(),
+        1
+    );
+    drop((
+        first_job,
+        second_job,
+        first_token,
+        second_token,
+        third_token,
+        consumer,
+        service,
+    ));
+    assert_eq!(host.serving_bytes(), baseline);
+}
+
+#[test]
+fn background_worker_failure_and_output_limit_publish_safe_terminal_records() {
+    use serde_json::json;
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let service = PendingService::open(host.clone());
+    let consumer = service.queue.worker().unwrap();
+    let server = ServerBuilder::from_service(service.clone())
+        .bind("127.0.0.1:0".parse().unwrap())
+        .limits(crate::ingress::IngressLimits {
+            output_bytes: 4096,
+            ..Default::default()
+        })
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let address = server.local_addr();
+    for (event, expected) in [
+        (
+            ResponseEvent::Error(ServiceError::new(400, "invalid_prompt", "private-path")),
+            "invalid_prompt",
+        ),
+        (
+            ResponseEvent::Done {
+                output: "x".repeat(8192),
+                prompt_tokens: 3,
+                cached_prompt_tokens: 0,
+                completion_tokens: 2,
+                finish_reason: "length",
+            },
+            "server_error",
+        ),
+    ] {
+        let (status, response) = background_exchange(
+            address,
+            "POST",
+            "/v1/responses",
+            Some(&json!({
+                "model":"fixture","input":"hello","background":true,"store":true,
+            })),
+        );
+        assert_eq!(status, 200, "{response}");
+        let path = format!("/v1/responses/{}", response["id"].as_str().unwrap());
+        let job = match consumer.try_pop(|(cancel, _)| cancel.is_cancelled()) {
+            Pop::Item(job) => job,
+            _ => panic!("original active receipt missing"),
+        };
+        job.1
+            .try_send(event)
+            .unwrap_or_else(|_| panic!("original worker disconnected"));
+        wait_until(|| {
+            let (status, result) = background_exchange(address, "GET", &path, None);
+            assert_eq!(status, 200);
+            if result["status"] == "in_progress" {
+                return false;
+            }
+            assert_eq!(result["status"], "failed");
+            assert_eq!(result["error"]["code"], expected);
+            assert!(result["usage"].is_null());
+            assert!(!result.to_string().contains("private-path"));
+            true
+        });
+        assert_eq!(background_exchange(address, "DELETE", &path, None).0, 200);
+        drop(job);
+    }
+    server.shutdown().unwrap();
+    drop((consumer, service));
+    assert_eq!(host.serving_bytes(), baseline);
+}

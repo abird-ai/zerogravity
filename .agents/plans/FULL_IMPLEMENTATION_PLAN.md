@@ -788,8 +788,13 @@ deletion/input pages and continuation implemented using the original
 semantic request and listener-owned bounded charged protocol store;
 focused 170/0/0, strict lint and real installed official SDK/CLI/TUI/Web/
 Rust SDK and full isolated gate 2,560/0/109 (318 suites, 690.5s)
-passed. OA-4A accepted. OA-4 remains open for background cancellation,
-conversations/items and exact input-token count.
+passed. OA-4A accepted. OA-4B joined nonstream background polling/
+cancel implemented on original receipt and shared quota; focused
+172/0/0 and strict lint passed; real official SDK/CLI/TUI/Web and Rust
+SDK passed, including actual cancelled. Full isolated assembled gate
+2,562/0/109 (318 suites, 377.3s) passed. OA-4B accepted.
+OA-4 remains open for conversations/items, exact input-token count
+and bounded background stream/replay.
 Preserve the original runtime, admission and listener owner.
 
 - [ ] Close the [OpenAI-compatible serving iteration](serving-and-speculation/NEXT_ITERATION_OPENAI_COMPATIBLE_SERVING.md):

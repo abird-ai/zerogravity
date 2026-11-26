@@ -1290,7 +1290,8 @@ fn responses_refuses_unsupported_state_controls_and_content_before_enqueue() {
         .start()
         .unwrap();
     for (key, value) in [
-        ("background", json!(true)),
+        ("background", json!("true")),
+        ("background_options", json!({"completion_window":"8h"})),
         ("conversation", json!("conv_prior")),
         ("temperature", json!(0.7)),
         ("reasoning", json!({"effort":"high"})),

@@ -5,6 +5,18 @@ It replaces older benchmark/evidence chronology as engineering authority. Git
 history preserves prior experiments; do not carry old benchmark artifacts or
 historical comparison numbers into new implementation decisions.
 
+## 27 Nov — OA-4B background polling and cancellation
+
+Listener-owned joined nonstream background jobs over original receipt,
+shared charged protocol quota and immutable polling snapshots; actual
+cancellation, terminal race/idempotence and safe failure fallback.
+Focused 172/0/0 and strict lint passed; real installed SDK/CLI/TUI/Web
+(130.88s), including actual cancelled, and Rust SDK (14.36s) passed.
+Full isolated assembled gate 2,562/0/109 (318 suites, 377.3s), release
+TUI/Web, installer and scripts passed. OA-4B accepted. Temporary store=false polling, no
+continuation; background SSE/replay, conversations and input token
+counting remain OA-4. No new physical GPU/performance claim.
+
 ## 27 Nov — OA-4A foreground response resources
 
 Memory-only charged listener records, retrieval/deletion/input pages,

@@ -6,18 +6,20 @@ use bytes::Bytes;
 use serde::Serialize;
 use std::{
     collections::BTreeMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
     time::{Duration, Instant},
 };
 use zerogravity_engine::router::{
-    ChatMessage, ChatRole, SemanticRequest, ServiceError, TextInput, pending::ServingCharge,
+    ChatMessage, ChatRole, RequestEvents, SemanticRequest, ServiceError, TextInput,
+    pending::ServingCharge,
 };
 
 type Result<T> = std::result::Result<T, ServiceError>;
 
-const MAX_RECORDS: usize = 64;
+pub(super) const MAX_RECORDS: usize = 64;
 const MAX_BYTES: usize = 32 * 1024 * 1024;
 const TTL: Duration = Duration::from_secs(30 * 60);
+const TEMPORARY_TTL: Duration = Duration::from_secs(10 * 60);
 
 #[derive(Default)]
 struct Budget {
@@ -27,7 +29,7 @@ struct Budget {
 
 #[derive(Default)]
 pub(in crate::http) struct Store {
-    records: Mutex<BTreeMap<String, Arc<Record>>>,
+    records: Mutex<BTreeMap<String, Entry>>,
     budget: Arc<Mutex<Budget>>,
 }
 impl Store {
@@ -38,7 +40,10 @@ impl Store {
         self.records
             .lock()
             .expect("protocol store")
-            .retain(|_, record| record.expires > now);
+            .retain(|_, entry| match entry {
+                Entry::Active(_) => true,
+                Entry::Terminal { expires, .. } => *expires > now,
+            });
     }
 
     fn reserve(&self, bytes: usize, service: &dyn TextService) -> Result<Credit> {
@@ -76,20 +81,83 @@ impl Store {
             .lock()
             .expect("protocol store")
             .get(id)
-            .cloned()
+            .map(Entry::record)
             .ok_or_else(missing)
     }
 
     fn remove(&self, id: &str) -> Result<()> {
         self.expire();
-        self.records
-            .lock()
-            .expect("protocol store")
-            .remove(id)
-            .ok_or_else(missing)?;
+        let mut records = self.records.lock().expect("protocol store");
+        if matches!(records.get(id), Some(Entry::Active(_))) {
+            return Err(ServiceError::new(
+                409,
+                "response_in_progress",
+                "cancel the active response before deleting it",
+            ));
+        }
+        records.remove(id).ok_or_else(missing)?;
         Ok(())
     }
+
+    fn cancel(&self, id: &str) -> Result<Arc<Record>> {
+        self.expire();
+        let mut records = self.records.lock().expect("protocol store");
+        match records.get(id).ok_or_else(missing)? {
+            Entry::Terminal { record, .. } if record.background => Ok(record.clone()),
+            Entry::Terminal { .. } => Err(ServiceError::new(
+                400,
+                "invalid_request",
+                "only background responses can be cancelled",
+            )
+            .with_parameter("background")),
+            Entry::Active(active) => {
+                let active = active.clone();
+                let record = active.cancelled.clone();
+                // Serialize cancellation vs completion by the same store lock.
+                // Publish only after signaling the original receipt.
+                if let Some(owner) = active.owner.upgrade() {
+                    owner.cancel();
+                }
+                active.wake.notify_one();
+                records.insert(id.to_owned(), Entry::terminal(record.clone()));
+                Ok(record)
+            }
+        }
+    }
 }
+
+enum Entry {
+    Active(Arc<Active>),
+    Terminal {
+        record: Arc<Record>,
+        expires: Instant,
+    },
+}
+impl Entry {
+    fn terminal(record: Arc<Record>) -> Self {
+        let ttl = if record.stored { TTL } else { TEMPORARY_TTL };
+        Self::Terminal {
+            record,
+            expires: Instant::now() + ttl,
+        }
+    }
+    fn record(&self) -> Arc<Record> {
+        match self {
+            Self::Active(active) => active.initial.clone(),
+            Self::Terminal { record, .. } => record.clone(),
+        }
+    }
+}
+
+// Immutable initial and cancellation projections share the same input and
+// reservation as the eventual terminal record. No per-poll snapshots.
+pub(super) struct Active {
+    initial: Arc<Record>,
+    cancelled: Arc<Record>,
+    owner: Weak<RequestEvents>,
+    pub(super) wake: tokio::sync::Notify,
+}
+
 fn missing() -> ServiceError {
     ServiceError::new(404, "response_not_found", "response not found")
 }
@@ -112,11 +180,12 @@ pub(super) struct Record {
     // Normalized text used by this request, excluding request-local
     // instructions. A continuation copies these turns and the output,
     // never references a previous physical session or a chain of records.
-    pub(super) input: Vec<ChatMessage>,
+    pub(super) input: Arc<Vec<ChatMessage>>,
     pub(super) output: ChatMessage,
     pub(super) continuable: bool,
-    expires: Instant,
-    _credit: Credit,
+    background: bool,
+    stored: bool,
+    _credit: Arc<Credit>,
 }
 struct Retained(Arc<Record>);
 impl AsRef<[u8]> for Retained {
@@ -125,7 +194,7 @@ impl AsRef<[u8]> for Retained {
     }
 }
 impl Record {
-    fn bytes(self: Arc<Self>) -> Bytes {
+    pub(super) fn bytes(self: Arc<Self>) -> Bytes {
         Bytes::from_owner(Retained(self))
     }
 }
@@ -134,9 +203,11 @@ impl Record {
 pub(in crate::http) struct Pending {
     store: Arc<Store>,
     id: String,
-    input: Vec<ChatMessage>,
+    input: Arc<Vec<ChatMessage>>,
     limit: usize,
-    credit: Credit,
+    background: bool,
+    stored: bool,
+    credit: Arc<Credit>,
 }
 impl Pending {
     pub(in crate::http) fn prepare(
@@ -147,7 +218,7 @@ impl Pending {
         request_id: &str,
         output_limit: usize,
     ) -> Result<Option<Self>> {
-        if !options.store {
+        if !options.store && !options.background {
             return Ok(None);
         }
         let TextInput::Conversation(messages) = &request.input else {
@@ -169,8 +240,16 @@ impl Pending {
                     .saturating_mul(std::mem::size_of::<ChatMessage>()),
                 |n, turn| n.checked_add(turn.text.len()),
             )
-            .and_then(|n| n.checked_add(limit.checked_mul(3)?))
-            .and_then(|n| n.checked_add(16 * 1024))
+            .and_then(|n| {
+                n.checked_add(limit.checked_mul(if options.background { 7 } else { 3 })?)
+            })
+            .and_then(|n| {
+                n.checked_add(if options.background {
+                    64 * 1024
+                } else {
+                    16 * 1024
+                })
+            })
             .ok_or_else(|| {
                 ServiceError::new(400, "size_overflow", "response store bound overflow")
             })?;
@@ -178,18 +257,20 @@ impl Pending {
         Ok(Some(Self {
             store: store.clone(),
             id: Identity::new(request_id).response,
-            input: input.to_vec(),
+            input: Arc::new(input.to_vec()),
             limit,
-            credit,
+            background: options.background,
+            stored: options.store,
+            credit: Arc::new(credit),
         }))
     }
 
-    pub(super) fn finish<T: Serialize>(
-        self,
+    pub(super) fn record<T: Serialize>(
+        &self,
         view: &T,
         output: &str,
         continuable: bool,
-    ) -> Result<()> {
+    ) -> Result<Arc<Record>> {
         let mut buffer = BoundedWriter {
             bytes: Vec::new(),
             limit: self.limit,
@@ -203,25 +284,67 @@ impl Pending {
                 "stored output exceeds bound",
             ));
         }
-        let record = Arc::new(Record {
+        Ok(Arc::new(Record {
             json: buffer.bytes,
-            input: self.input,
+            input: self.input.clone(),
             output: ChatMessage {
                 role: ChatRole::Assistant,
                 text: output.to_owned(),
             },
-            continuable,
-            expires: Instant::now() + TTL,
-            _credit: self.credit,
+            continuable: self.stored && continuable,
+            background: self.background,
+            stored: self.stored,
+            _credit: self.credit.clone(),
+        }))
+    }
+
+    pub(super) fn finish<T: Serialize>(
+        self,
+        view: &T,
+        output: &str,
+        continuable: bool,
+    ) -> Result<()> {
+        let record = self.record(view, output, continuable)?;
+        let previous = self
+            .store
+            .records
+            .lock()
+            .expect("protocol store")
+            .insert(self.id, Entry::terminal(record));
+        assert!(previous.is_none(), "server response ID reused");
+        Ok(())
+    }
+
+    pub(super) fn publish_active(
+        &self,
+        owner: &Arc<RequestEvents>,
+        initial: Arc<Record>,
+        cancelled: Arc<Record>,
+    ) -> Arc<Active> {
+        let active = Arc::new(Active {
+            initial,
+            cancelled,
+            owner: Arc::downgrade(owner),
+            wake: tokio::sync::Notify::new(),
         });
         let previous = self
             .store
             .records
             .lock()
             .expect("protocol store")
-            .insert(self.id, record);
+            .insert(self.id.clone(), Entry::Active(active.clone()));
         assert!(previous.is_none(), "server response ID reused");
-        Ok(())
+        active
+    }
+
+    pub(super) fn finish_active(self, active: &Arc<Active>, record: Arc<Record>) {
+        let mut records = self.store.records.lock().expect("protocol store");
+        // Cancellation may have already won. Never recreate deleted records
+        // or overwrite the cancelled snapshot with a later worker result.
+        if matches!(records.get(&self.id), Some(Entry::Active(current)) if Arc::ptr_eq(current, active))
+        {
+            records.insert(self.id, Entry::terminal(record));
+        }
     }
 }
 
@@ -386,15 +509,7 @@ pub(in crate::http) fn route(
                 ))
             }
             (&Method::POST, "cancel") if uri.query().is_none() => {
-                // Current API permits explicit cancellation only for
-                // background responses; no misleading cancelled status.
-                store.get(id)?;
-                Err(ServiceError::new(
-                    400,
-                    "invalid_request",
-                    "only background responses can be cancelled",
-                )
-                .with_parameter("background"))
+                Ok(body::retained_json(store.cancel(id)?.bytes(), None))
             }
             (&Method::GET, "input_items") => {
                 let page = Pagination::parse(uri.query())?;
@@ -481,17 +596,21 @@ mod tests {
         let now = Instant::now();
         store.records.lock().unwrap().insert(
             "resp_fixture".into(),
-            Arc::new(Record {
-                json: b"{}".to_vec(),
-                input: Vec::new(),
-                output: ChatMessage {
-                    role: ChatRole::Assistant,
-                    text: String::new(),
-                },
-                continuable: true,
+            Entry::Terminal {
                 expires: now + TTL,
-                _credit: credit,
-            }),
+                record: Arc::new(Record {
+                    json: b"{}".to_vec(),
+                    input: Arc::new(Vec::new()),
+                    output: ChatMessage {
+                        role: ChatRole::Assistant,
+                        text: String::new(),
+                    },
+                    continuable: true,
+                    background: false,
+                    stored: true,
+                    _credit: Arc::new(credit),
+                }),
+            },
         );
         let read = store.get("resp_fixture").unwrap().bytes();
         store.expire_at(now + TTL);
