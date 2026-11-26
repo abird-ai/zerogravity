@@ -66,6 +66,17 @@ returning to the two failed P4B serving tests. Revalidated clean
   diagnostic; unconfigured scheduler is Unsupported with "no text
   scheduler configured". Focused standalone serving 4/0/0. Production
   classification, public redaction and owner/admission unchanged.
+- Assembled isolated retry passed HIP/Vulkan/CUDA-native compilation,
+  full-default check and strict Clippy, GPU feature-boundary tests (26/0/2),
+  source-only regressions (7/0), architecture (18/0) and CPU dependency
+  isolation, then stopped at a TUI format import used only with Linux
+  acquisition or tests. Scoped the import accordingly; exact CPU workspace
+  strict all-target Clippy passes (6.33s). See target/ux-pm2-cpu-clippy-fix.log.
+  Exact isolated CPU workspace test-stage retry (including dependency
+  isolation, strict lint and private loopback setup) reached test compilation
+  but exceeded the 90s remaining turn budget; no test suites executed.
+  See target/ux-pm2-cpu-workspace-retry.log. Next rerun the full gate;
+  do not mark P4B accepted yet.
 - Full mandatory isolated assembled gate still required. No additional
   GPU physical requalification or overhead/throughput benchmark claimed.
   Reuse prior physical CPU/CUDA and full-default launch evidence where

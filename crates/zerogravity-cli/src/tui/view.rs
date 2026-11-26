@@ -1,10 +1,11 @@
 //! Cell-native navigation and rendering. No execution or filesystem effects.
+#[cfg(any(test, all(feature = "acquisition", target_os = "linux")))]
+use super::format;
 use super::{
     App,
     choice::Picker,
     controls::{Bound, Menu, Scope},
     editor::{self, Editor},
-    format,
     input::{Hits, Intent, Pointer, Target},
     layout::{Anchor, Motion, Pane, Scrollbar, SplitKind, Splitter, Viewport, Workspace},
     library::{Key, Kind, Shelf},

@@ -517,7 +517,12 @@ Retain accepted UX-1–10 ownership and keyboard behavior.
     isolated workspace gate retry stopped at two cold_server typed refusal
     assertions (1191 passed, 2 failed, 56 ignored). Both corrected to the
     exact existing InvalidInput/Unsupported categories and messages;
-    focused cold_server 4/0/0. Complete isolated assembled gate pending.
+    focused cold_server 4/0/0. M2 assembled retry passed full-default
+    strict lint, GPU feature-boundary tests 26/0/2 and CPU dependency
+    isolation. Acquisition-disabled TUI format import fixed; exact CPU
+    workspace strict all-target lint passes. Isolated CPU test-stage retry
+    timed out during compilation (90s budget, no suites executed). Complete
+    isolated assembled gate pending.
     Do not close P4B before actual pass.
     See [live checkpoint](../../docs/CURRENT_HANDOFF.md) and
     [takeover context](../../docs/FULL_COMPREHENSIVE_HANDOFF_2026-11-26_UX_PM1.md).

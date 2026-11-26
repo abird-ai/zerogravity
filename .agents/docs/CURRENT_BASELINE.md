@@ -13,7 +13,11 @@ JS 5/0, strict combined CPU lint, actual cached native/Firefox/HTTP
 1/0/0 (53.65s) with original admission, exact output and 24 reported CPU
 layers. Existing two cold_server typed-refusal assertions repaired:
 standalone serving 4/0/0. No additional hot-path observation or
-performance comparison. Complete P4B gate pending.
+performance comparison. Assembled retry passed GPU feature-boundary tests
+(26/0/2) and full-default strict lint, then found an acquisition-disabled
+TUI import. Import scope corrected; exact CPU workspace strict all-target
+Clippy passes. CPU workspace test-stage retry timed out during compilation
+(90s budget, no suites executed). Complete P4B gate pending.
 
 ## 26 Nov — UX-P4B acceptance progress
 
